@@ -31,7 +31,7 @@ CORS(app)  # Allow cross-origin requests (needed for embedded widget)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 PINECONE_INDEX   = "remedy-match-llc"
-NAMESPACES       = ["mentors", ""]
+NAMESPACES       = ["mentors", "ingredients", ""]
 TOP_K_PER_NS     = 8
 MAX_CONTEXT_CHARS = 18000
 
