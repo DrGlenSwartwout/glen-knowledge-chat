@@ -1,4 +1,4 @@
-/* Glen Swartwout Knowledge Assistant — Embeddable Widget
+/* The Minding Body Mentor — Embeddable Widget
  * Add to any webpage with one line:
  *   <script src="https://YOUR-DOMAIN/widget.js"></script>
  *
@@ -25,9 +25,9 @@
 
   // ── Config from data attributes ──────────────────────────────────────────
   var position = (scriptEl && scriptEl.dataset.position) || 'bottom-right';
-  var color    = (scriptEl && scriptEl.dataset.color)    || '#58a6ff';
+  var color    = (scriptEl && scriptEl.dataset.color)    || '#d4a843';
   var label    = (scriptEl && scriptEl.dataset.label)    || 'Ask Dr. Glen';
-  var title    = (scriptEl && scriptEl.dataset.title)    || "Glen's Knowledge Assistant";
+  var title    = (scriptEl && scriptEl.dataset.title)    || "The Minding Body Mentor";
 
   var isRight  = position !== 'bottom-left';
   var side     = isRight ? 'right' : 'left';
@@ -41,31 +41,43 @@
       position: fixed;
       ${side}: ${gap}px;
       bottom: ${gap}px;
-      width: 56px; height: 56px;
+      width: 64px; height: 64px;
       border-radius: 50%;
-      background: ${color};
+      background: transparent;
       border: none;
       cursor: pointer;
       z-index: 2147483646;
       display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.45);
       transition: transform 0.2s, box-shadow 0.2s;
+      padding: 0;
+      overflow: hidden;
     }
     #gsw-widget-btn:hover {
       transform: scale(1.08);
-      box-shadow: 0 6px 28px rgba(0,0,0,0.45);
+      box-shadow: 0 6px 28px rgba(0,0,0,0.55);
     }
-    #gsw-widget-btn svg { width: 26px; height: 26px; pointer-events: none; }
+    #gsw-widget-btn .gsw-logo-icon {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      object-fit: cover;
+      pointer-events: none;
+      display: block;
+    }
     #gsw-widget-btn .gsw-close-icon { display: none; }
-    #gsw-widget-btn.open .gsw-chat-icon { display: none; }
-    #gsw-widget-btn.open .gsw-close-icon { display: block; }
+    #gsw-widget-btn.open .gsw-logo-icon { display: none; }
+    #gsw-widget-btn.open .gsw-close-icon { display: flex; }
+    #gsw-widget-btn.open {
+      background: #21472d;
+      align-items: center; justify-content: center;
+    }
 
     #gsw-widget-tooltip {
       position: fixed;
       ${side}: ${gap + 64}px;
       bottom: ${gap + 16}px;
-      background: rgba(13,17,23,0.92);
-      color: #e6edf3;
+      background: rgba(10,21,13,0.92);
+      color: #fdf4d8;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 13px;
       padding: 5px 10px;
@@ -120,14 +132,12 @@
   styleEl.textContent = css;
   document.head.appendChild(styleEl);
 
-  // ── Chat icon SVG ────────────────────────────────────────────────────────
-  var chatIconSVG = `<svg class="gsw-chat-icon" viewBox="0 0 24 24" fill="none"
-      stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-  </svg>`;
+  // ── Icons ────────────────────────────────────────────────────────────────
+  var chatIconSVG = `<img class="gsw-logo-icon" src="${serverOrigin}/static/logo.png" alt="Mentorship University">`;
 
   var closeIconSVG = `<svg class="gsw-close-icon" viewBox="0 0 24 24" fill="none"
-      stroke="#000" stroke-width="2.5" stroke-linecap="round">
+      stroke="#fdf4d8" stroke-width="2.5" stroke-linecap="round"
+      style="width:28px;height:28px;pointer-events:none;">
     <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
   </svg>`;
 

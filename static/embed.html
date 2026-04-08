@@ -3,19 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Glen Swartwout — Knowledge Assistant</title>
+<title>The Minding Body Mentor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0d1117;
-    --surface: #161b22;
-    --surface2: #21262d;
-    --border: #30363d;
-    --text: #e6edf3;
-    --text-muted: #8b949e;
-    --accent: #58a6ff;
-    --accent2: #3fb950;
+    --bg: #0a150d;
+    --surface: #111f16;
+    --surface2: #162318;
+    --border: #21472d;
+    --text: #fdf4d8;
+    --text-muted: #a89870;
+    --accent: #d4a843;
+    --accent2: #3d8a52;
     --radius: 8px;
-    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --font: "Open Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    --heading-font: "Raleway", -apple-system, BlinkMacSystemFont, sans-serif;
     --mono: "SFMono-Regular", Consolas, monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -43,10 +47,14 @@
     flex-shrink: 0;
   }
   .embed-header .logo {
-    font-size: 14px; opacity: 0.8;
+    width: 24px; height: 24px;
+    border-radius: 4px; overflow: hidden; flex-shrink: 0;
+  }
+  .embed-header .logo img {
+    width: 100%; height: 100%; object-fit: cover;
   }
   .embed-header h1 {
-    font-size: 13px; font-weight: 600; flex: 1;
+    font-size: 13px; font-weight: 700; flex: 1; font-family: var(--heading-font);
   }
   #clear-btn {
     background: none; border: 1px solid var(--border);
@@ -71,7 +79,7 @@
     border-radius: var(--radius);
   }
   .message.user {
-    background: #1f2937;
+    background: #152019;
     border-left: 3px solid var(--accent);
   }
   .message.assistant {
@@ -92,7 +100,7 @@
   .message-body strong { color: var(--text); }
   .message-body ul, .message-body ol { padding-left: 1.3em; margin-bottom: 0.6em; }
   .message-body li { margin-bottom: 0.2em; }
-  .message-body h3 { font-size: 13px; font-weight: 700; margin: 0.8em 0 0.3em; }
+  .message-body h3 { font-size: 13px; font-weight: 700; margin: 0.8em 0 0.3em; font-family: var(--heading-font); }
   .message-body code {
     font-family: var(--mono); font-size: 12px;
     background: var(--surface2); border-radius: 3px;
@@ -130,9 +138,9 @@
     font-weight: 700;
     font-size: 10px;
   }
-  .pill-high { color: #3fb950; }
-  .pill-mid  { color: #d29922; }
-  .pill-low  { color: #8b949e; }
+  .pill-high { color: #3d8a52; }
+  .pill-mid  { color: #d4a843; }
+  .pill-low  { color: #a89870; }
 
   /* ── Action buttons ── */
   .msg-actions {
@@ -265,8 +273,8 @@
 <body>
 
 <div class="embed-header">
-  <span class="logo">✦</span>
-  <h1>Glen's Knowledge Assistant</h1>
+  <span class="logo"><img src="/static/logo.png" alt="Mentorship University"></span>
+  <h1>The Minding Body Mentor</h1>
   <button id="clear-btn" onclick="clearChat()">Clear</button>
 </div>
 
@@ -374,7 +382,7 @@
     div.dataset.msgId = id;
     div.dataset.rawText = text;
 
-    const label = role === 'user' ? 'You' : 'Assistant';
+    const label = role === 'user' ? 'You' : 'Mentor';
 
     // Source pills (assistant only)
     let pillsHtml = '';
@@ -462,7 +470,7 @@
   }
   document.addEventListener('click', ()=>{ document.querySelectorAll('.share-popover.open').forEach(p=>p.classList.remove('open')); });
   function snip(id) { const t=getT(id); return t.length>280?t.slice(0,277)+'…':t; }
-  function shareEmail(id) { window.open(`mailto:?subject=${encodeURIComponent('Glen Swartwout Knowledge Assistant')}&body=${encodeURIComponent(getT(id))}`); document.getElementById('share-'+id).classList.remove('open'); }
+  function shareEmail(id) { window.open(`mailto:?subject=${encodeURIComponent('The Minding Body Mentor')}&body=${encodeURIComponent(getT(id))}`); document.getElementById('share-'+id).classList.remove('open'); }
   function shareTwitter(id) { window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(snip(id))}`, '_blank'); document.getElementById('share-'+id).classList.remove('open'); }
   function shareWA(id) { window.open(`https://wa.me/?text=${encodeURIComponent(snip(id))}`, '_blank'); document.getElementById('share-'+id).classList.remove('open'); }
 
