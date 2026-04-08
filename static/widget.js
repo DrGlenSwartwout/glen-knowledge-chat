@@ -76,7 +76,7 @@
       position: fixed;
       ${side}: ${gap + 64}px;
       bottom: ${gap + 16}px;
-      background: rgba(10,21,13,0.92);
+      background: #111f16;
       color: #fdf4d8;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 13px;
