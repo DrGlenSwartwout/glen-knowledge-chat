@@ -58,7 +58,7 @@
       box-shadow: 0 6px 28px rgba(0,0,0,0.55);
     }
     #gsw-widget-btn .gsw-logo-icon {
-      width: 90px; height: 90px;
+      width: 110px; height: 110px;
       object-fit: cover;
       pointer-events: none;
       display: block;
