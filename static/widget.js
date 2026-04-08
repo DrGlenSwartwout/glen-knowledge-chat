@@ -62,7 +62,7 @@
       object-fit: cover;
       pointer-events: none;
       display: block;
-      transform: translate(-5px, 10px);
+      transform: translate(-3px, 8px);
     }
     #gsw-widget-btn .gsw-close-icon { display: none; }
     #gsw-widget-btn.open .gsw-logo-icon { display: none; }
