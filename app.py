@@ -37,7 +37,7 @@ PINECONE_INDEX    = "remedy-match-llc"
 NAMESPACES        = ["mentors", "ingredients", "e4l-protocols", ""]
 TOP_K_PER_NS      = 8
 MAX_CONTEXT_CHARS = 18000
-FEEDBACK_URL      = os.environ.get("FEEDBACK_URL", "")   # set in Render env vars
+FEEDBACK_URL      = os.environ.get("FEEDBACK_URL", "https://Truly.VIP/Feedback")
 
 # ── Query log DB ──────────────────────────────────────────────────────────────
 LOG_DB   = Path(__file__).parent / "chat_log.db"
