@@ -4,6 +4,9 @@ RAG Chat Server — Glen Swartwout Knowledge Base (Production)
 """
 
 import os
+import sqlite3
+import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -30,10 +33,44 @@ app = Flask(__name__, static_folder=str(STATIC))
 CORS(app)  # Allow cross-origin requests (needed for embedded widget)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-PINECONE_INDEX   = "remedy-match-llc"
-NAMESPACES       = ["mentors", "ingredients", "e4l-protocols", ""]
-TOP_K_PER_NS     = 8
+PINECONE_INDEX    = "remedy-match-llc"
+NAMESPACES        = ["mentors", "ingredients", "e4l-protocols", ""]
+TOP_K_PER_NS      = 8
 MAX_CONTEXT_CHARS = 18000
+FEEDBACK_URL      = os.environ.get("FEEDBACK_URL", "")   # set in Render env vars
+
+# ── Query log DB ──────────────────────────────────────────────────────────────
+LOG_DB   = Path(__file__).parent / "chat_log.db"
+_db_lock = threading.Lock()
+
+def _init_log_db():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS query_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts          TEXT    NOT NULL,
+                query       TEXT    NOT NULL,
+                level       TEXT,
+                answer      TEXT,
+                rating      INTEGER,
+                rated_at    TEXT
+            )
+        """)
+        cx.commit()
+
+_init_log_db()
+
+
+def log_query(query: str, level: str, answer: str) -> int:
+    """Insert a query row and return its id."""
+    ts = datetime.now(timezone.utc).isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cur = cx.execute(
+            "INSERT INTO query_log (ts, query, level, answer) VALUES (?,?,?,?)",
+            (ts, query, level, answer[:2000])
+        )
+        cx.commit()
+        return cur.lastrowid
 
 _SYSTEM_BASE = """You are Glen Swartwout's knowledge assistant — a deeply informed synthesis engine for his Clinical Theory of Everything, which integrates:
 - BEV terrain medicine (Louis-Claude Vincent's 5 Phases of Health)
@@ -191,12 +228,37 @@ def chat():
     except Exception as e:
         return jsonify({"error": f"Claude error: {e}"}), 500
 
+    log_id = log_query(query, level, answer)
+
     return jsonify({
         "answer": answer,
         "sources": sources_list,
         "query": query,
-        "chunks_retrieved": len(all_matches)
+        "chunks_retrieved": len(all_matches),
+        "log_id": log_id
     })
+
+
+@app.route("/rate", methods=["POST", "OPTIONS"])
+def rate():
+    if request.method == "OPTIONS":
+        return "", 200
+    data   = request.get_json() or {}
+    log_id = data.get("log_id")
+    rating = data.get("rating")
+    if not log_id or rating not in (1, 2, 3, 4, 5):
+        return jsonify({"error": "Invalid"}), 400
+    ts = datetime.now(timezone.utc).isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("UPDATE query_log SET rating=?, rated_at=? WHERE id=?",
+                   (rating, ts, log_id))
+        cx.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/feedback-url")
+def feedback_url():
+    return jsonify({"url": FEEDBACK_URL})
 
 
 if __name__ == "__main__":

@@ -194,11 +194,26 @@
 
   /* ── Input bar ── */
   #input-bar {
-    padding: 10px 24px 16px;
+    padding: 10px 24px 12px;
     background: var(--surface);
     display: flex; gap: 10px; align-items: flex-end;
     flex-shrink: 0;
   }
+
+  /* ── Feedback bar ── */
+  #feedback-bar {
+    padding: 6px 24px 14px;
+    background: var(--surface);
+    text-align: center;
+    flex-shrink: 0;
+  }
+  #feedback-bar a {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  #feedback-bar a:hover { color: var(--accent); }
   #query-input {
     flex: 1;
     background: var(--surface2);
@@ -388,6 +403,31 @@
     padding: 6px 24px 0;
   }
 
+  /* ── Star rating ── */
+  .star-rating {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .star-rating .rate-label {
+    font-size: 11px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .stars { display: flex; gap: 3px; }
+  .star {
+    font-size: 18px; cursor: pointer; color: var(--border);
+    transition: color 0.12s, transform 0.1s;
+    line-height: 1; user-select: none;
+  }
+  .star:hover, .star.hover, .star.filled { color: var(--accent); }
+  .star:hover { transform: scale(1.2); }
+  .rate-thanks {
+    font-size: 11px; color: var(--accent2);
+    display: none;
+  }
+  .rate-thanks.visible { display: inline; }
+
   /* ── Action buttons (Copy / Share) ── */
   .msg-actions {
     display: flex;
@@ -494,6 +534,9 @@
       ></textarea>
       <button id="send-btn" onclick="sendQuery()">Send</button>
     </div>
+    <div id="feedback-bar">
+      <a id="feedback-link" href="#" target="_blank">Leave feedback or a video message ↗</a>
+    </div>
   </div>
 
   <!-- Sources pane -->
@@ -522,6 +565,57 @@
     document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentLevel = btn.dataset.level;
+  }
+
+  // Load feedback URL from server
+  fetch('/feedback-url').then(r => r.json()).then(d => {
+    if (d.url) {
+      const lnk = document.getElementById('feedback-link');
+      if (lnk) lnk.href = d.url;
+    }
+  }).catch(() => {});
+
+  function buildStars(logId) {
+    const wrap = document.createElement('div');
+    wrap.className = 'star-rating';
+    wrap.innerHTML = `
+      <span class="rate-label">Rate this answer:</span>
+      <div class="stars" id="stars-${logId}">
+        ${[1,2,3,4,5].map(n =>
+          `<span class="star" data-n="${n}"
+            onmouseenter="hoverStars(${logId},${n})"
+            onmouseleave="unhoverStars(${logId})"
+            onclick="submitRating(${logId},${n})">★</span>`
+        ).join('')}
+      </div>
+      <span class="rate-thanks" id="thanks-${logId}">Thanks!</span>`;
+    return wrap;
+  }
+
+  function hoverStars(logId, n) {
+    document.querySelectorAll(`#stars-${logId} .star`).forEach(s => {
+      s.classList.toggle('hover', +s.dataset.n <= n);
+    });
+  }
+  function unhoverStars(logId) {
+    document.querySelectorAll(`#stars-${logId} .star`).forEach(s => {
+      if (!s.classList.contains('filled')) s.classList.remove('hover');
+    });
+  }
+  async function submitRating(logId, rating) {
+    document.querySelectorAll(`#stars-${logId} .star`).forEach(s => {
+      const filled = +s.dataset.n <= rating;
+      s.classList.toggle('filled', filled);
+      s.classList.toggle('hover', false);
+      s.style.cursor = 'default';
+      s.onmouseenter = null; s.onmouseleave = null; s.onclick = null;
+    });
+    document.getElementById(`thanks-${logId}`).classList.add('visible');
+    await fetch('/rate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ log_id: logId, rating })
+    }).catch(() => {});
   }
 
   function autoResize(el) {
@@ -600,7 +694,7 @@
       if (data.error) {
         appendMessage('assistant', `**Error:** ${data.error}`);
       } else {
-        appendMessage('assistant', data.answer, data.chunks_retrieved);
+        appendMessage('assistant', data.answer, data.chunks_retrieved, data.log_id);
         renderSourcesPanel(data.sources || []);
         history.push({ role: 'user', content: query });
         history.push({ role: 'assistant', content: data.answer });
@@ -617,7 +711,7 @@
 
   let _msgCounter = 0;
 
-  function appendMessage(role, text, chunksRetrieved) {
+  function appendMessage(role, text, chunksRetrieved, logId) {
     const msgs = document.getElementById('messages');
     const div = document.createElement('div');
     div.className = `message ${role}`;
@@ -669,6 +763,9 @@
       <div class="message-body">${renderMarkdown(text)}</div>
       ${actionsHtml}
     `;
+    if (role === 'assistant' && logId) {
+      div.appendChild(buildStars(logId));
+    }
     msgs.appendChild(div);
 
     if (role === 'assistant' && chunksRetrieved !== undefined) {

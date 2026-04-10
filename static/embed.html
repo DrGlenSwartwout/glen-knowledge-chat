@@ -285,6 +285,40 @@
   }
   .example-q:hover { border-color: var(--accent); color: var(--text); }
 
+  /* ── Star rating ── */
+  .star-rating {
+    display: flex; align-items: center; gap: 5px;
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .star-rating .rate-label {
+    font-size: 10px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .stars { display: flex; gap: 2px; }
+  .star {
+    font-size: 16px; cursor: pointer; color: var(--border);
+    transition: color 0.12s, transform 0.1s;
+    line-height: 1; user-select: none;
+  }
+  .star:hover, .star.hover, .star.filled { color: var(--accent); }
+  .star:hover { transform: scale(1.2); }
+  .rate-thanks { font-size: 10px; color: var(--accent2); display: none; }
+  .rate-thanks.visible { display: inline; }
+
+  /* ── Feedback link ── */
+  #feedback-bar {
+    padding: 4px 12px 6px;
+    background: var(--surface);
+    text-align: center;
+  }
+  #feedback-bar a {
+    font-size: 11px; color: var(--text-muted);
+    text-decoration: none; transition: color 0.15s;
+  }
+  #feedback-bar a:hover { color: var(--accent); }
+
   /* ── Branding footer ── */
   .embed-footer {
     text-align: center; padding: 4px;
@@ -328,6 +362,9 @@
   <button id="send-btn" onclick="sendQuery()">Send</button>
 </div>
 
+<div id="feedback-bar">
+  <a id="feedback-link" href="#" target="_blank">Leave feedback or a video message ↗</a>
+</div>
 <div class="embed-footer">
   Powered by <a href="https://mentorshipu.com" target="_blank">Mentorship University</a>
 </div>
@@ -342,6 +379,50 @@
     document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentLevel = btn.dataset.level;
+  }
+
+  fetch(BASE + '/feedback-url').then(r => r.json()).then(d => {
+    if (d.url) { const lnk = document.getElementById('feedback-link'); if (lnk) lnk.href = d.url; }
+  }).catch(() => {});
+
+  function buildStars(logId) {
+    const wrap = document.createElement('div');
+    wrap.className = 'star-rating';
+    wrap.innerHTML = `<span class="rate-label">Rate:</span>
+      <div class="stars" id="stars-${logId}">
+        ${[1,2,3,4,5].map(n =>
+          `<span class="star" data-n="${n}"
+            onmouseenter="hoverStars(${logId},${n})"
+            onmouseleave="unhoverStars(${logId})"
+            onclick="submitRating(${logId},${n})">★</span>`
+        ).join('')}
+      </div>
+      <span class="rate-thanks" id="thanks-${logId}">Thanks!</span>`;
+    return wrap;
+  }
+  function hoverStars(logId, n) {
+    document.querySelectorAll(`#stars-${logId} .star`).forEach(s => {
+      s.classList.toggle('hover', +s.dataset.n <= n);
+    });
+  }
+  function unhoverStars(logId) {
+    document.querySelectorAll(`#stars-${logId} .star`).forEach(s => {
+      if (!s.classList.contains('filled')) s.classList.remove('hover');
+    });
+  }
+  async function submitRating(logId, rating) {
+    document.querySelectorAll(`#stars-${logId} .star`).forEach(s => {
+      s.classList.toggle('filled', +s.dataset.n <= rating);
+      s.classList.remove('hover');
+      s.style.cursor = 'default';
+      s.onmouseenter = null; s.onmouseleave = null; s.onclick = null;
+    });
+    document.getElementById(`thanks-${logId}`).classList.add('visible');
+    await fetch(BASE + '/rate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ log_id: logId, rating })
+    }).catch(() => {});
   }
 
   // Detect the server base URL from the iframe src
@@ -400,7 +481,7 @@
       if (data.error) {
         appendMessage('assistant', `**Error:** ${data.error}`, null, null);
       } else {
-        appendMessage('assistant', data.answer, data.sources, data.chunks_retrieved);
+        appendMessage('assistant', data.answer, data.sources, data.chunks_retrieved, data.log_id);
         history.push({ role: 'user', content: query });
         history.push({ role: 'assistant', content: data.answer });
       }
@@ -413,7 +494,7 @@
     inp.focus();
   }
 
-  function appendMessage(role, text, sources, chunks) {
+  function appendMessage(role, text, sources, chunks, logId) {
     const msgs = document.getElementById('messages');
     const id = 'msg-' + (++_mc);
     const div = document.createElement('div');
@@ -471,6 +552,9 @@
       ${pillsHtml}
       ${actionsHtml}
     `;
+    if (role === 'assistant' && logId) {
+      div.appendChild(buildStars(logId));
+    }
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;
   }
