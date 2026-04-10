@@ -275,6 +275,7 @@
     padding: 20px;
   }
   .empty-state .icon { font-size: 32px; opacity: 0.3; }
+  .empty-state .logo-icon { width: 120px; height: 120px; object-fit: contain; opacity: 0.9; }
   .empty-state p { font-size: 12px; max-width: 200px; }
   .example-queries { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; width: 100%; }
   .example-q {
@@ -340,8 +341,8 @@
 
 <div id="messages">
   <div class="empty-state" id="empty-state">
-    <div class="icon">◈</div>
-    <p>Ask about mentors, clinical theory, energy medicine, or organizations.</p>
+    <img class="logo-icon" src="/static/logo.png" alt="Mentorship University">
+    <p>Ask about healing yourself, your patients/clients, or the sciences.</p>
     <div class="example-queries">
       <button class="example-q" onclick="fillQuery(this.textContent)">What is the 5 Phases of Health model?</button>
       <button class="example-q" onclick="fillQuery(this.textContent)">How does biophoton coherence relate to healing?</button>
