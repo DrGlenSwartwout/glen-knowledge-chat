@@ -363,7 +363,9 @@
 </div>
 
 <div id="feedback-bar">
-  <a id="feedback-link" href="#" target="_blank">Leave feedback or a video message ↗</a>
+  <a id="feedback-submit-link" href="https://Truly.VIP/Results" target="_blank">Leave feedback or a video message ↗</a>
+  <span style="color:var(--border);margin:0 6px">·</span>
+  <a id="feedback-view-link" href="https://Truly.VIP/Feedback" target="_blank">See approved feedback ↗</a>
 </div>
 <div class="embed-footer">
   Powered by <a href="https://mentorshipu.com" target="_blank">Mentorship University</a>
@@ -382,7 +384,8 @@
   }
 
   fetch(BASE + '/feedback-url').then(r => r.json()).then(d => {
-    if (d.url) { const lnk = document.getElementById('feedback-link'); if (lnk) lnk.href = d.url; }
+    if (d.submit) { const l = document.getElementById('feedback-submit-link'); if (l) l.href = d.submit; }
+    if (d.view)   { const l = document.getElementById('feedback-view-link');   if (l) l.href = d.view; }
   }).catch(() => {});
 
   function buildStars(logId) {

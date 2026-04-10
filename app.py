@@ -37,7 +37,8 @@ PINECONE_INDEX    = "remedy-match-llc"
 NAMESPACES        = ["mentors", "ingredients", "e4l-protocols", ""]
 TOP_K_PER_NS      = 8
 MAX_CONTEXT_CHARS = 18000
-FEEDBACK_URL      = os.environ.get("FEEDBACK_URL", "https://Truly.VIP/Feedback")
+FEEDBACK_SUBMIT_URL = os.environ.get("FEEDBACK_SUBMIT_URL", "https://Truly.VIP/Results")
+FEEDBACK_VIEW_URL   = os.environ.get("FEEDBACK_VIEW_URL",   "https://Truly.VIP/Feedback")
 
 # ── Query log DB ──────────────────────────────────────────────────────────────
 LOG_DB   = Path(__file__).parent / "chat_log.db"
@@ -258,7 +259,7 @@ def rate():
 
 @app.route("/feedback-url")
 def feedback_url():
-    return jsonify({"url": FEEDBACK_URL})
+    return jsonify({"submit": FEEDBACK_SUBMIT_URL, "view": FEEDBACK_VIEW_URL})
 
 
 if __name__ == "__main__":
