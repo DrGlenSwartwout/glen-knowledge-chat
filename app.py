@@ -31,11 +31,11 @@ CORS(app)  # Allow cross-origin requests (needed for embedded widget)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 PINECONE_INDEX   = "remedy-match-llc"
-NAMESPACES       = ["mentors", "ingredients", ""]
+NAMESPACES       = ["mentors", "ingredients", "e4l-protocols", ""]
 TOP_K_PER_NS     = 8
 MAX_CONTEXT_CHARS = 18000
 
-SYSTEM_PROMPT = """You are Glen Swartwout's knowledge assistant — a deeply informed synthesis engine for his Clinical Theory of Everything, which integrates:
+_SYSTEM_BASE = """You are Glen Swartwout's knowledge assistant — a deeply informed synthesis engine for his Clinical Theory of Everything, which integrates:
 - BEV terrain medicine (Louis-Claude Vincent's 5 Phases of Health)
 - Bioenergetic diagnostics (EAV/Voll, Vegatest, NES body-field, O-Ring/BDORT)
 - Syntonic Optometry and Behavioral Optometry
@@ -47,11 +47,33 @@ SYSTEM_PROMPT = """You are Glen Swartwout's knowledge assistant — a deeply inf
 
 Your task:
 1. Synthesize the provided source snippets into a unified, coherent answer to the user's question.
-2. Write in an authoritative, integrative voice — as if explaining the connections Glen himself would draw.
-3. When multiple mentors or concepts connect, explicitly show how they reinforce each other.
-4. At the end of your response, list the source references used (name + field) so the reader can identify which profiles to explore.
-5. Do NOT fabricate information not present in the snippets. If the snippets don't fully answer the question, say so clearly.
-6. Keep responses focused and readable — prefer synthesis over exhaustive lists."""
+2. When multiple mentors or concepts connect, explicitly show how they reinforce each other.
+3. At the end of your response, list the source references used (name + field).
+4. Do NOT fabricate information not present in the snippets. If the snippets don't fully answer the question, say so clearly.
+5. Keep responses focused and readable — prefer synthesis over exhaustive lists."""
+
+_LEVEL_INSTRUCTIONS = {
+    "self-healing": """
+LANGUAGE LEVEL: Self-Healing (general public)
+Write in warm, empowering, accessible language. Avoid clinical jargon — use everyday words and intuitive analogies. Speak to the reader's own inner healing intelligence. Focus on what they can feel, experience, and do for themselves. Use "you" and "your body." Make the information feel practical and hopeful, not overwhelming.""",
+
+    "health-care": """
+LANGUAGE LEVEL: Health Care (practitioner)
+Write at a clinical practitioner level — naturopathic, integrative, or functional medicine context. Use anatomical and physiological terminology, meridian names, clinical protocols, dosage ranges, and mechanism-of-action language. Assume the reader can interpret lab values, treatment timelines, and nutrient biochemistry. Be precise and protocol-oriented.""",
+
+    "science": """
+LANGUAGE LEVEL: Science (researcher / academic)
+Write at a scientific research level. Use precise biochemical and biophysical terminology: receptor names, signaling cascades, molecular pathways, quantitative parameters. Cite mechanisms referenced in the source material. Be rigorous — distinguish between established findings and hypotheses. Appropriate for a peer-reviewed or academic audience.""",
+}
+
+
+def get_system_prompt(level: str) -> str:
+    instruction = _LEVEL_INSTRUCTIONS.get(level, _LEVEL_INSTRUCTIONS["self-healing"])
+    return _SYSTEM_BASE + "\n" + instruction
+
+
+# Default for backward compatibility
+SYSTEM_PROMPT = get_system_prompt("self-healing")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -122,6 +144,7 @@ def chat():
     data    = request.get_json() or {}
     query   = (data.get("query") or "").strip()
     history = data.get("history") or []
+    level   = (data.get("level") or "self-healing").strip().lower()
 
     if not query:
         return jsonify({"error": "Empty query"}), 400
@@ -162,7 +185,7 @@ def chat():
         answer = cl.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=2048,
-            system=SYSTEM_PROMPT,
+            system=get_system_prompt(level),
             messages=messages
         ).content[0].text
     except Exception as e:

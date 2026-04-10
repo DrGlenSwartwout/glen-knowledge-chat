@@ -156,10 +156,45 @@
     40% { transform: translateY(-6px); opacity: 1; }
   }
 
+  /* ── Level selector ── */
+  #level-bar {
+    display: flex; gap: 6px; align-items: center;
+    padding: 10px 24px 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #level-bar .level-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-muted);
+    margin-right: 4px;
+    white-space: nowrap;
+  }
+  .level-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--text-muted);
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 4px 14px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .level-btn:hover { border-color: var(--accent); color: var(--text); }
+  .level-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: 700;
+  }
+
   /* ── Input bar ── */
   #input-bar {
-    border-top: 1px solid var(--border);
-    padding: 16px 24px;
+    padding: 10px 24px 16px;
     background: var(--surface);
     display: flex; gap: 10px; align-items: flex-end;
     flex-shrink: 0;
@@ -443,6 +478,12 @@
       </div>
     </div>
 
+    <div id="level-bar">
+      <span class="level-label">Level:</span>
+      <button class="level-btn active" data-level="self-healing" onclick="setLevel(this)">Self-Healing</button>
+      <button class="level-btn" data-level="health-care" onclick="setLevel(this)">Health Care</button>
+      <button class="level-btn" data-level="science" onclick="setLevel(this)">Science</button>
+    </div>
     <div id="input-bar">
       <textarea
         id="query-input"
@@ -475,6 +516,13 @@
 <script>
   const history = [];
   let isLoading = false;
+  let currentLevel = 'self-healing';
+
+  function setLevel(btn) {
+    document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentLevel = btn.dataset.level;
+  }
 
   function autoResize(el) {
     el.style.height = 'auto';
@@ -543,7 +591,7 @@
       const resp = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, history: history.slice() })
+        body: JSON.stringify({ query, history: history.slice(), level: currentLevel })
       });
 
       const data = await resp.json();

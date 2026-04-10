@@ -203,10 +203,36 @@
     40% { transform: translateY(-5px); opacity: 1; }
   }
 
+  /* ── Level selector ── */
+  #level-bar {
+    display: flex; gap: 5px; align-items: center;
+    padding: 7px 12px 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #level-bar .level-label {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--text-muted);
+    margin-right: 3px; white-space: nowrap;
+  }
+  .level-btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 20px; color: var(--text-muted);
+    font-family: var(--font); font-size: 11px;
+    padding: 3px 10px; cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .level-btn:hover { border-color: var(--accent); color: var(--text); }
+  .level-btn.active {
+    background: var(--accent); border-color: var(--accent);
+    color: #000; font-weight: 700;
+  }
+
   /* ── Input bar ── */
   #input-bar {
-    border-top: 1px solid var(--border);
-    padding: 10px 12px;
+    padding: 6px 12px 10px;
     background: var(--surface);
     display: flex; gap: 8px; align-items: flex-end;
     flex-shrink: 0;
@@ -290,6 +316,12 @@
   </div>
 </div>
 
+<div id="level-bar">
+  <span class="level-label">Level:</span>
+  <button class="level-btn active" data-level="self-healing" onclick="setLevel(this)">Self-Healing</button>
+  <button class="level-btn" data-level="health-care" onclick="setLevel(this)">Health Care</button>
+  <button class="level-btn" data-level="science" onclick="setLevel(this)">Science</button>
+</div>
 <div id="input-bar">
   <textarea id="query-input" placeholder="Ask a question…" rows="1"
     onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
@@ -304,6 +336,13 @@
   const history = [];
   let isLoading = false;
   let _mc = 0;
+  let currentLevel = 'self-healing';
+
+  function setLevel(btn) {
+    document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentLevel = btn.dataset.level;
+  }
 
   // Detect the server base URL from the iframe src
   const BASE = window.location.origin;
@@ -354,7 +393,7 @@
       const r = await fetch(BASE + '/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, history: history.slice() })
+        body: JSON.stringify({ query, history: history.slice(), level: currentLevel })
       });
       const data = await r.json();
       removeEl(tid);
