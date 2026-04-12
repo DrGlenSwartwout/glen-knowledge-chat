@@ -4,6 +4,7 @@ RAG Chat Server — Glen Swartwout Knowledge Base (Production)
 """
 
 import os
+import json
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -260,6 +261,102 @@ def rate():
 @app.route("/feedback-url")
 def feedback_url():
     return jsonify({"submit": FEEDBACK_SUBMIT_URL, "view": FEEDBACK_VIEW_URL})
+
+
+# ── Practice Better Webhook ───────────────────────────────────────────────────
+# Receives events from Zapier (Practice Better → Zapier → this endpoint).
+# Events are stored in pb_events table for local sync via /pb-events endpoint.
+#
+# Zapier setup: POST to https://your-render-url.onrender.com/webhook/practice-better
+# Add header: X-Webhook-Secret: <value of WEBHOOK_SECRET env var>
+
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
+
+def _init_pb_events_table():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS pb_events (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                received_at TEXT    NOT NULL,
+                event_type  TEXT,
+                pb_email    TEXT,
+                pb_name     TEXT,
+                raw_json    TEXT,
+                synced      INTEGER DEFAULT 0
+            )
+        """)
+        cx.commit()
+
+_init_pb_events_table()
+
+
+@app.route("/webhook/practice-better", methods=["POST"])
+def pb_webhook():
+    # Verify shared secret
+    if WEBHOOK_SECRET:
+        incoming = request.headers.get("X-Webhook-Secret", "")
+        if incoming != WEBHOOK_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+
+    data       = request.get_json(force=True) or {}
+    event_type = data.get("event_type", "unknown")
+    pb_email   = data.get("email", "")
+    pb_name    = data.get("name", data.get("full_name", ""))
+    raw        = json.dumps(data)
+    ts         = datetime.now(timezone.utc).isoformat()
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            INSERT INTO pb_events (received_at, event_type, pb_email, pb_name, raw_json)
+            VALUES (?, ?, ?, ?, ?)
+        """, (ts, event_type, pb_email, pb_name, raw))
+        cx.commit()
+
+    return jsonify({"ok": True, "event": event_type}), 200
+
+
+@app.route("/pb-events", methods=["GET"])
+def get_pb_events():
+    """Pull unsynced PB events for local processing. Protected by WEBHOOK_SECRET."""
+    if WEBHOOK_SECRET:
+        incoming = request.headers.get("X-Webhook-Secret", "")
+        if incoming != WEBHOOK_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+
+    limit = int(request.args.get("limit", 500))
+
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute("""
+            SELECT id, received_at, event_type, pb_email, pb_name, raw_json
+            FROM pb_events WHERE synced = 0
+            ORDER BY id ASC LIMIT ?
+        """, (limit,)).fetchall()
+
+    events = [
+        {"id": r[0], "received_at": r[1], "event_type": r[2],
+         "email": r[3], "name": r[4], "data": json.loads(r[5])}
+        for r in rows
+    ]
+    return jsonify({"events": events, "count": len(events)})
+
+
+@app.route("/pb-events/mark-synced", methods=["POST"])
+def mark_pb_synced():
+    """Mark a batch of event IDs as synced. Called by local sync script."""
+    if WEBHOOK_SECRET:
+        incoming = request.headers.get("X-Webhook-Secret", "")
+        if incoming != WEBHOOK_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+
+    ids = request.get_json(force=True).get("ids", [])
+    if not ids:
+        return jsonify({"ok": True, "marked": 0})
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.executemany("UPDATE pb_events SET synced=1 WHERE id=?", [(i,) for i in ids])
+        cx.commit()
+
+    return jsonify({"ok": True, "marked": len(ids)})
 
 
 if __name__ == "__main__":
