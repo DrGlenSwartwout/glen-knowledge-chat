@@ -174,12 +174,18 @@ def sse(payload: dict) -> str:
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
-    return send_from_directory(STATIC, "index.html")
+    resp = send_from_directory(STATIC, "index.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 @app.route("/embed")
 def embed_page():
-    return send_from_directory(STATIC, "embed.html")
+    resp = send_from_directory(STATIC, "embed.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 @app.route("/widget.js")
