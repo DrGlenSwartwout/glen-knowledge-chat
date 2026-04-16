@@ -286,6 +286,181 @@ def feedback_url():
     return jsonify({"submit": FEEDBACK_SUBMIT_URL, "view": FEEDBACK_VIEW_URL})
 
 
+# ── GHL Integration ──────────────────────────────────────────────────────────
+GHL_API_KEY      = os.environ.get("GHL_API_KEY", "")
+GHL_BASE         = "https://rest.gohighlevel.com/v1"
+GHL_PIPELINE_ID  = "A6LWJMBoIsOFBMeCa6NY"   # E4L Onboarding pipeline
+GHL_STAGE_NEW    = "397c5fb2-1612-4b7a-aa14-f0dac42a7fda"  # E4L Account Invite
+GHL_WORKFLOW_ID  = "0b02dd3e-b82a-4032-a575-f9269afbd3ac"  # E4L Onboarding Workflow
+
+import urllib.request as _urllib_req
+
+def _ghl_headers():
+    return {
+        "Authorization": f"Bearer {GHL_API_KEY}",
+        "Content-Type":  "application/json",
+    }
+
+def _ghl_post(path, payload):
+    req = _urllib_req.Request(
+        f"{GHL_BASE}{path}",
+        data=json.dumps(payload).encode(),
+        headers=_ghl_headers(),
+        method="POST"
+    )
+    try:
+        with _urllib_req.urlopen(req, timeout=10) as r:
+            return json.loads(r.read()), None
+    except Exception as e:
+        return None, str(e)
+
+def _ghl_put(path, payload):
+    req = _urllib_req.Request(
+        f"{GHL_BASE}{path}",
+        data=json.dumps(payload).encode(),
+        headers=_ghl_headers(),
+        method="PUT"
+    )
+    try:
+        with _urllib_req.urlopen(req, timeout=10) as r:
+            return json.loads(r.read()), None
+    except Exception as e:
+        return None, str(e)
+
+def _ghl_get(path, params=None):
+    url = f"{GHL_BASE}{path}"
+    if params:
+        url += "?" + "&".join(f"{k}={v}" for k, v in params.items())
+    req = _urllib_req.Request(url, headers=_ghl_headers())
+    try:
+        with _urllib_req.urlopen(req, timeout=10) as r:
+            return json.loads(r.read()), None
+    except Exception as e:
+        return None, str(e)
+
+
+def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag=""):
+    """Find or create a GHL contact. Returns (contact_id, created_bool, error)."""
+    if not GHL_API_KEY:
+        return None, False, "GHL_API_KEY not set"
+
+    # Try to find existing contact
+    data, err = _ghl_get("/contacts/", {"email": email})
+    if not err:
+        contacts = data.get("contacts", [])
+        if contacts:
+            contact_id = contacts[0]["id"]
+            # Add source tag if provided
+            if source_tag:
+                existing_tags = set(contacts[0].get("tags", []))
+                existing_tags.add(source_tag)
+                _ghl_put(f"/contacts/{contact_id}", {"tags": list(existing_tags)})
+            return contact_id, False, None
+
+    # Create new contact
+    payload = {"email": email, "firstName": first_name, "lastName": last_name}
+    if phone:
+        payload["phone"] = phone
+    if source_tag:
+        payload["tags"] = [source_tag]
+
+    data, err = _ghl_post("/contacts/", payload)
+    if err:
+        return None, False, err
+
+    contact_id = data.get("contact", {}).get("id") or data.get("id")
+    return contact_id, True, None
+
+
+def ghl_add_to_pipeline(contact_id, name="", email=""):
+    """Create an opportunity in the E4L Onboarding pipeline at stage 1."""
+    if not contact_id:
+        return None, "No contact_id"
+    payload = {
+        "pipelineId":      GHL_PIPELINE_ID,
+        "pipelineStageId": GHL_STAGE_NEW,
+        "contactId":       contact_id,
+        "name":            name or email or contact_id,
+        "status":          "open",
+    }
+    data, err = _ghl_post("/opportunities/", payload)
+    if err:
+        return None, err
+    opp_id = data.get("opportunity", {}).get("id") or data.get("id")
+    return opp_id, None
+
+
+def ghl_enroll_workflow(contact_id):
+    """Enroll a contact in the E4L Onboarding Workflow."""
+    if not contact_id:
+        return None, "No contact_id"
+    data, err = _ghl_post(f"/contacts/{contact_id}/workflow/{GHL_WORKFLOW_ID}", {})
+    return data, err
+
+
+def ghl_onboard_contact(email, first_name="", last_name="", phone="", source_tag=""):
+    """Full onboarding: upsert contact → pipeline → workflow. Returns result dict."""
+    result = {"email": email, "source_tag": source_tag}
+
+    contact_id, created, err = ghl_upsert_contact(email, first_name, last_name, phone, source_tag)
+    result["contact_id"] = contact_id
+    result["contact_created"] = created
+    if err:
+        result["contact_error"] = err
+        return result
+
+    opp_id, err = ghl_add_to_pipeline(contact_id, f"{first_name} {last_name}".strip(), email)
+    result["opportunity_id"] = opp_id
+    if err:
+        result["pipeline_error"] = err
+
+    _, err = ghl_enroll_workflow(contact_id)
+    if err:
+        result["workflow_error"] = err
+    else:
+        result["workflow_enrolled"] = True
+
+    return result
+
+
+# ── Inbound lead DB table ─────────────────────────────────────────────────────
+def _init_leads_table():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS inbound_leads (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                received_at TEXT    NOT NULL,
+                source      TEXT    NOT NULL,
+                email       TEXT,
+                first_name  TEXT,
+                last_name   TEXT,
+                phone       TEXT,
+                raw_json    TEXT,
+                ghl_contact_id TEXT,
+                ghl_opp_id     TEXT,
+                ghl_error      TEXT
+            )
+        """)
+        cx.commit()
+
+_init_leads_table()
+
+
+def _log_inbound_lead(source, email, first_name, last_name, phone, raw, ghl_result):
+    ts = datetime.now(timezone.utc).isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            INSERT INTO inbound_leads
+              (received_at, source, email, first_name, last_name, phone, raw_json,
+               ghl_contact_id, ghl_opp_id, ghl_error)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+        """, (ts, source, email, first_name, last_name, phone, raw,
+              ghl_result.get("contact_id"),
+              ghl_result.get("opportunity_id"),
+              ghl_result.get("contact_error") or ghl_result.get("pipeline_error")))
+        cx.commit()
+
+
 # ── Practice Better Webhook ───────────────────────────────────────────────────
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
@@ -321,6 +496,7 @@ def pb_webhook():
     raw        = json.dumps(data)
     ts         = datetime.now(timezone.utc).isoformat()
 
+    # Log to pb_events table (existing)
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.execute("""
             INSERT INTO pb_events (received_at, event_type, pb_email, pb_name, raw_json)
@@ -328,7 +504,110 @@ def pb_webhook():
         """, (ts, event_type, pb_email, pb_name, raw))
         cx.commit()
 
+    # For new member signups → push to GHL E4L pipeline
+    if event_type in ("client.created", "client.signup", "member.created", "unknown") and pb_email:
+        parts = pb_name.split(" ", 1) if pb_name else ["", ""]
+        first = parts[0]
+        last  = parts[1] if len(parts) > 1 else ""
+        ghl_result = ghl_onboard_contact(
+            email=pb_email, first_name=first, last_name=last,
+            source_tag="source:pb-signup"
+        )
+        _log_inbound_lead("practice-better", pb_email, first, last, "", raw, ghl_result)
+
     return jsonify({"ok": True, "event": event_type}), 200
+
+
+@app.route("/webhook/scoreapp", methods=["POST"])
+def scoreapp_webhook():
+    """ScoreApp quiz completion → GHL E4L pipeline."""
+    data  = request.get_json(force=True) or {}
+    email = (data.get("email") or data.get("contact", {}).get("email") or "").strip()
+    name  = (data.get("name")  or data.get("contact", {}).get("name")  or "").strip()
+    phone = (data.get("phone") or data.get("contact", {}).get("phone") or "").strip()
+    score = data.get("score") or data.get("result_score") or ""
+    raw   = json.dumps(data)
+
+    if not email:
+        return jsonify({"error": "No email in payload"}), 400
+
+    parts = name.split(" ", 1) if name else ["", ""]
+    first = parts[0]
+    last  = parts[1] if len(parts) > 1 else ""
+
+    ghl_result = ghl_onboard_contact(
+        email=email, first_name=first, last_name=last, phone=phone,
+        source_tag="source:scoreapp"
+    )
+    # Store score as a note on the contact
+    if ghl_result.get("contact_id") and score:
+        _ghl_post(f"/contacts/{ghl_result['contact_id']}/notes",
+                  {"body": f"ScoreApp quiz result: {score}"})
+
+    _log_inbound_lead("scoreapp", email, first, last, phone, raw, ghl_result)
+    return jsonify({"ok": True, "ghl": ghl_result}), 200
+
+
+@app.route("/webhook/groovekart", methods=["POST"])
+def groovekart_webhook():
+    """GrooveKart order → GHL E4L pipeline with purchase tag."""
+    data  = request.get_json(force=True) or {}
+
+    # Support multiple GrooveKart webhook payload formats
+    customer = data.get("customer") or data.get("billing_address") or data
+    email    = (customer.get("email") or data.get("email") or "").strip()
+    first    = (customer.get("first_name") or customer.get("firstName") or "").strip()
+    last     = (customer.get("last_name")  or customer.get("lastName")  or "").strip()
+    phone    = (customer.get("phone")      or customer.get("telephone") or "").strip()
+    product  = data.get("line_items", [{}])[0].get("name", "") if data.get("line_items") else ""
+    raw      = json.dumps(data)
+
+    if not email:
+        return jsonify({"error": "No email in payload"}), 400
+
+    ghl_result = ghl_onboard_contact(
+        email=email, first_name=first, last_name=last, phone=phone,
+        source_tag="source:gk-purchase"
+    )
+    # Add product note
+    if ghl_result.get("contact_id") and product:
+        _ghl_post(f"/contacts/{ghl_result['contact_id']}/notes",
+                  {"body": f"GrooveKart purchase: {product}"})
+
+    _log_inbound_lead("groovekart", email, first, last, phone, raw, ghl_result)
+    return jsonify({"ok": True, "ghl": ghl_result}), 200
+
+
+@app.route("/inbound-leads", methods=["GET"])
+def get_inbound_leads():
+    """Review recent inbound leads and their GHL sync status."""
+    if WEBHOOK_SECRET:
+        incoming = request.headers.get("X-Webhook-Secret", "")
+        if incoming != WEBHOOK_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+
+    limit = int(request.args.get("limit", 100))
+    source = request.args.get("source", "")
+
+    with sqlite3.connect(LOG_DB) as cx:
+        if source:
+            rows = cx.execute("""
+                SELECT received_at, source, email, first_name, last_name,
+                       ghl_contact_id, ghl_opp_id, ghl_error
+                FROM inbound_leads WHERE source = ? ORDER BY id DESC LIMIT ?
+            """, (source, limit)).fetchall()
+        else:
+            rows = cx.execute("""
+                SELECT received_at, source, email, first_name, last_name,
+                       ghl_contact_id, ghl_opp_id, ghl_error
+                FROM inbound_leads ORDER BY id DESC LIMIT ?
+            """, (limit,)).fetchall()
+
+    leads = [{"received_at": r[0], "source": r[1], "email": r[2],
+              "name": f"{r[3]} {r[4]}".strip(),
+              "ghl_contact_id": r[5], "ghl_opp_id": r[6], "error": r[7]}
+             for r in rows]
+    return jsonify({"leads": leads, "count": len(leads)})
 
 
 @app.route("/pb-events", methods=["GET"])

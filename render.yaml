@@ -11,4 +11,8 @@ services:
         sync: false
       - key: PINECONE_API_KEY
         sync: false
+      - key: GHL_API_KEY
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false
     healthCheckPath: /
