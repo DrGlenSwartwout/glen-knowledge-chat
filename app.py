@@ -7,9 +7,10 @@ import os
 import json
 import sqlite3
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 from pinecone import Pinecone
 from openai import OpenAI
@@ -31,7 +32,7 @@ if _env.exists():
 # ── App setup ─────────────────────────────────────────────────────────────────
 STATIC = Path(__file__).parent / "static"
 app = Flask(__name__, static_folder=str(STATIC))
-CORS(app)  # Allow cross-origin requests (needed for embedded widget)
+CORS(app)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 PINECONE_INDEX    = "remedy-match-llc"
@@ -40,6 +41,12 @@ TOP_K_PER_NS      = 8
 MAX_CONTEXT_CHARS = 18000
 FEEDBACK_SUBMIT_URL = os.environ.get("FEEDBACK_SUBMIT_URL", "https://Truly.VIP/Results")
 FEEDBACK_VIEW_URL   = os.environ.get("FEEDBACK_VIEW_URL",   "https://Truly.VIP/Feedback")
+
+# ── Module-level API clients (initialized once at startup) ────────────────────
+_oa  = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+_pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
+_idx = _pc.Index(PINECONE_INDEX)
+_cl  = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
 
 # ── Query log DB ──────────────────────────────────────────────────────────────
 LOG_DB   = Path(__file__).parent / "chat_log.db"
@@ -64,7 +71,6 @@ _init_log_db()
 
 
 def log_query(query: str, level: str, answer: str) -> int:
-    """Insert a query row and return its id."""
     ts = datetime.now(timezone.utc).isoformat()
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cur = cx.execute(
@@ -73,6 +79,7 @@ def log_query(query: str, level: str, answer: str) -> int:
         )
         cx.commit()
         return cur.lastrowid
+
 
 _SYSTEM_BASE = """You are Glen Swartwout's knowledge assistant — a deeply informed synthesis engine for his Clinical Theory of Everything, which integrates:
 - BEV terrain medicine (Louis-Claude Vincent's 5 Phases of Health)
@@ -111,20 +118,29 @@ def get_system_prompt(level: str) -> str:
     return _SYSTEM_BASE + "\n" + instruction
 
 
-# Default for backward compatibility
 SYSTEM_PROMPT = get_system_prompt("self-healing")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def embed(text, client):
-    return client.embeddings.create(input=[text], model="text-embedding-ada-002").data[0].embedding
+def embed(text):
+    return _oa.embeddings.create(input=[text], model="text-embedding-ada-002").data[0].embedding
 
 
-def query_ns(vec, idx, ns, k):
+def query_ns(vec, ns, k):
     try:
-        return idx.query(vector=vec, top_k=k, namespace=ns, include_metadata=True).matches
+        return _idx.query(vector=vec, top_k=k, namespace=ns, include_metadata=True).matches
     except Exception:
         return []
+
+
+def query_all_namespaces(vec):
+    """Query all namespaces in parallel."""
+    all_matches = []
+    with ThreadPoolExecutor(max_workers=len(NAMESPACES)) as pool:
+        futures = {pool.submit(query_ns, vec, ns, TOP_K_PER_NS): ns for ns in NAMESPACES}
+        for future in as_completed(futures):
+            all_matches.extend(future.result())
+    return all_matches
 
 
 def build_context(matches):
@@ -149,6 +165,10 @@ def build_context(matches):
         parts.append(f"[SOURCE: {name} | {field} | score {score}]\n{text}")
         total += len(text)
     return "\n\n---\n\n".join(parts), sorted(sources.values(), key=lambda x: -x["score"])
+
+
+def sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -188,57 +208,60 @@ def chat():
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
-    try:
-        oa  = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        pc  = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
-        idx = pc.Index(PINECONE_INDEX)
-        cl  = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    except Exception as e:
-        return jsonify({"error": f"Init failed: {e}"}), 500
+    def generate():
+        try:
+            q_vec = embed(query)
+        except Exception as e:
+            yield sse({"error": f"Embedding failed: {e}"})
+            return
 
-    try:
-        q_vec = embed(query, oa)
-    except Exception as e:
-        return jsonify({"error": f"Embedding failed: {e}"}), 500
+        all_matches = query_all_namespaces(q_vec)
 
-    all_matches = []
-    for ns in NAMESPACES:
-        all_matches.extend(query_ns(q_vec, idx, ns, TOP_K_PER_NS))
+        if not all_matches:
+            yield sse({"done": True, "answer": "No relevant content found.",
+                       "sources": [], "chunks_retrieved": 0, "log_id": None})
+            return
 
-    if not all_matches:
-        return jsonify({"answer": "No relevant content found.", "sources": [], "query": query})
+        context_str, sources_list = build_context(all_matches)
 
-    context_str, sources_list = build_context(all_matches)
+        messages = []
+        for turn in history[-6:]:
+            if turn.get("role") in ("user", "assistant") and turn.get("content"):
+                messages.append({"role": turn["role"], "content": turn["content"]})
 
-    messages = []
-    for turn in history[-6:]:
-        if turn.get("role") in ("user", "assistant") and turn.get("content"):
-            messages.append({"role": turn["role"], "content": turn["content"]})
+        messages.append({"role": "user", "content":
+            f"USER QUESTION: {query}\n\nRETRIEVED SNIPPETS:\n{context_str}\n\n"
+            "Synthesize these into a comprehensive answer. List sources used at the end."
+        })
 
-    messages.append({"role": "user", "content":
-        f"USER QUESTION: {query}\n\nRETRIEVED SNIPPETS:\n{context_str}\n\n"
-        "Synthesize these into a comprehensive answer. List sources used at the end."
-    })
+        full_answer = []
+        try:
+            with _cl.messages.stream(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1024,
+                system=get_system_prompt(level),
+                messages=messages
+            ) as stream:
+                for token in stream.text_stream:
+                    full_answer.append(token)
+                    yield sse({"token": token})
+        except Exception as e:
+            yield sse({"error": f"Claude error: {e}"})
+            return
 
-    try:
-        answer = cl.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2048,
-            system=get_system_prompt(level),
-            messages=messages
-        ).content[0].text
-    except Exception as e:
-        return jsonify({"error": f"Claude error: {e}"}), 500
+        answer = "".join(full_answer)
+        log_id = log_query(query, level, answer)
+        yield sse({"done": True, "log_id": log_id,
+                   "sources": sources_list, "chunks_retrieved": len(all_matches)})
 
-    log_id = log_query(query, level, answer)
-
-    return jsonify({
-        "answer": answer,
-        "sources": sources_list,
-        "query": query,
-        "chunks_retrieved": len(all_matches),
-        "log_id": log_id
-    })
+    return Response(
+        stream_with_context(generate()),
+        content_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 @app.route("/rate", methods=["POST", "OPTIONS"])
@@ -264,12 +287,6 @@ def feedback_url():
 
 
 # ── Practice Better Webhook ───────────────────────────────────────────────────
-# Receives events from Zapier (Practice Better → Zapier → this endpoint).
-# Events are stored in pb_events table for local sync via /pb-events endpoint.
-#
-# Zapier setup: POST to https://your-render-url.onrender.com/webhook/practice-better
-# Add header: X-Webhook-Secret: <value of WEBHOOK_SECRET env var>
-
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
 def _init_pb_events_table():
@@ -292,7 +309,6 @@ _init_pb_events_table()
 
 @app.route("/webhook/practice-better", methods=["POST"])
 def pb_webhook():
-    # Verify shared secret
     if WEBHOOK_SECRET:
         incoming = request.headers.get("X-Webhook-Secret", "")
         if incoming != WEBHOOK_SECRET:
@@ -317,7 +333,6 @@ def pb_webhook():
 
 @app.route("/pb-events", methods=["GET"])
 def get_pb_events():
-    """Pull unsynced PB events for local processing. Protected by WEBHOOK_SECRET."""
     if WEBHOOK_SECRET:
         incoming = request.headers.get("X-Webhook-Secret", "")
         if incoming != WEBHOOK_SECRET:
@@ -342,7 +357,6 @@ def get_pb_events():
 
 @app.route("/pb-events/mark-synced", methods=["POST"])
 def mark_pb_synced():
-    """Mark a batch of event IDs as synced. Called by local sync script."""
     if WEBHOOK_SECRET:
         incoming = request.headers.get("X-Webhook-Secret", "")
         if incoming != WEBHOOK_SECRET:

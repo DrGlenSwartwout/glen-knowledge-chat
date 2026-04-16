@@ -1,6 +1,7 @@
 flask
 flask-cors
 gunicorn
+gevent
 anthropic
 openai
 pinecone

@@ -479,14 +479,77 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, history: history.slice(), level: currentLevel })
       });
-      const data = await r.json();
-      removeEl(tid);
-      if (data.error) {
-        appendMessage('assistant', `**Error:** ${data.error}`, null, null);
+
+      if (!r.ok || !r.body) {
+        const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+        removeEl(tid);
+        appendMessage('assistant', `**Error:** ${data.error || r.statusText}`, null, null);
       } else {
-        appendMessage('assistant', data.answer, data.sources, data.chunks_retrieved, data.log_id);
-        history.push({ role: 'user', content: query });
-        history.push({ role: 'assistant', content: data.answer });
+        // Streaming SSE response
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        let accumulated = '';
+        let streamDiv = null;
+        let bodyDiv = null;
+
+        const msgs = document.getElementById('messages');
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6).trim();
+            if (!raw) continue;
+            let evt;
+            try { evt = JSON.parse(raw); } catch { continue; }
+
+            if (evt.error) {
+              removeEl(tid);
+              appendMessage('assistant', `**Error:** ${evt.error}`, null, null);
+              break;
+            }
+
+            if (evt.token) {
+              if (!streamDiv) {
+                removeEl(tid);
+                streamDiv = document.createElement('div');
+                streamDiv.className = 'message assistant';
+                bodyDiv = document.createElement('div');
+                bodyDiv.className = 'message-body';
+                const label = document.createElement('div');
+                label.className = 'role-label';
+                label.textContent = 'Mentor';
+                streamDiv.appendChild(label);
+                streamDiv.appendChild(bodyDiv);
+                msgs.appendChild(streamDiv);
+              }
+              accumulated += evt.token;
+              bodyDiv.innerHTML = md(accumulated);
+              msgs.scrollTop = msgs.scrollHeight;
+            }
+
+            if (evt.done) {
+              // Replace streaming div with fully rendered message (with sources, actions, stars)
+              if (streamDiv) streamDiv.remove();
+              appendMessage('assistant', accumulated || '(no response)', evt.sources, evt.chunks_retrieved, evt.log_id);
+              history.push({ role: 'user', content: query });
+              history.push({ role: 'assistant', content: accumulated });
+            }
+          }
+        }
+
+        // Handle case where stream ended without a done event
+        if (streamDiv && !accumulated) {
+          streamDiv.remove();
+          removeEl(tid);
+          appendMessage('assistant', '**Error:** Empty response from server.', null, null);
+        }
       }
     } catch(e) {
       removeEl(tid);
