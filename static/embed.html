@@ -378,6 +378,8 @@
   let _mc = 0;
   let currentLevel = 'self-healing';
 
+  const BASE = window.location.origin;
+
   function setLevel(btn) {
     document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -428,9 +430,6 @@
       body: JSON.stringify({ log_id: logId, rating })
     }).catch(() => {});
   }
-
-  // Detect the server base URL from the iframe src
-  const BASE = window.location.origin;
 
   function autoResize(el) {
     el.style.height = 'auto';
