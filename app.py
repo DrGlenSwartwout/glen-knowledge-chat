@@ -4,6 +4,7 @@ RAG Chat Server — Glen Swartwout Knowledge Base (Production)
 """
 
 import os
+import re
 import json
 import sqlite3
 import threading
@@ -345,10 +346,16 @@ def _ghl_get(path, params=None):
         return None, str(e)
 
 
-def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag=""):
+def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag="", extra_tags=None):
     """Find or create a GHL contact. Returns (contact_id, created_bool, error)."""
     if not GHL_API_KEY:
         return None, False, "GHL_API_KEY not set"
+
+    all_new_tags = set()
+    if source_tag:
+        all_new_tags.add(source_tag)
+    if extra_tags:
+        all_new_tags.update(extra_tags)
 
     # Try to find existing contact
     data, err = _ghl_get("/contacts/", {"email": email})
@@ -356,10 +363,9 @@ def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag=
         contacts = data.get("contacts", [])
         if contacts:
             contact_id = contacts[0]["id"]
-            # Add source tag if provided
-            if source_tag:
+            if all_new_tags:
                 existing_tags = set(contacts[0].get("tags", []))
-                existing_tags.add(source_tag)
+                existing_tags.update(all_new_tags)
                 _ghl_put(f"/contacts/{contact_id}", {"tags": list(existing_tags)})
             return contact_id, False, None
 
@@ -367,8 +373,8 @@ def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag=
     payload = {"email": email, "firstName": first_name, "lastName": last_name}
     if phone:
         payload["phone"] = phone
-    if source_tag:
-        payload["tags"] = [source_tag]
+    if all_new_tags:
+        payload["tags"] = list(all_new_tags)
 
     data, err = _ghl_post("/contacts/", payload)
     if err:
@@ -404,11 +410,11 @@ def ghl_enroll_workflow(contact_id):
     return data, err
 
 
-def ghl_onboard_contact(email, first_name="", last_name="", phone="", source_tag=""):
+def ghl_onboard_contact(email, first_name="", last_name="", phone="", source_tag="", extra_tags=None):
     """Full onboarding: upsert contact → pipeline → workflow. Returns result dict."""
     result = {"email": email, "source_tag": source_tag}
 
-    contact_id, created, err = ghl_upsert_contact(email, first_name, last_name, phone, source_tag)
+    contact_id, created, err = ghl_upsert_contact(email, first_name, last_name, phone, source_tag, extra_tags)
     result["contact_id"] = contact_id
     result["contact_created"] = created
     if err:
@@ -524,34 +530,80 @@ def pb_webhook():
     return jsonify({"ok": True, "event": event_type}), 200
 
 
+# Maps question text fragments → GHL tag prefix
+_SCOREAPP_Q_PREFIX = {
+    "which system is most in need": "system",
+    "what's the main challenge":    "phase",
+    "what is the main challenge":   "phase",
+    "what's your top concern":      "concern",
+    "what is your top concern":     "concern",
+    "how well you heal when you try": "regulation",
+}
+
+def _scoreapp_answer_tags(quiz_questions):
+    """Convert ScoreApp quiz_questions list → list of GHL tags like ['system:immune', ...]."""
+    tags = []
+    for q in quiz_questions:
+        q_text  = (q.get("question") or "").lower().strip().rstrip("?:")
+        answers = q.get("answers") or []
+        prefix  = next((v for k, v in _SCOREAPP_Q_PREFIX.items() if k in q_text), None)
+        if not prefix:
+            continue
+        for a in answers:
+            val = (a.get("answer") or "").strip()
+            if val:
+                slug = re.sub(r"[^a-z0-9]+", "-", val.lower()).strip("-")
+                tags.append(f"{prefix}:{slug}")
+    return tags
+
+
 @app.route("/webhook/scoreapp", methods=["POST"])
 def scoreapp_webhook():
-    """ScoreApp quiz completion → GHL E4L pipeline."""
-    data  = request.get_json(force=True) or {}
-    email = (data.get("email") or data.get("contact", {}).get("email") or "").strip()
-    name  = (data.get("name")  or data.get("contact", {}).get("name")  or "").strip()
-    phone = (data.get("phone") or data.get("contact", {}).get("phone") or "").strip()
-    score = data.get("score") or data.get("result_score") or ""
-    raw   = json.dumps(data)
+    """ScoreApp QUIZ_FINISHED → GHL E4L pipeline with per-answer tags."""
+    payload = request.get_json(force=True) or {}
+    raw     = json.dumps(payload)
+
+    # ScoreApp wraps everything in {"event_name": "...", "data": {...}}
+    data  = payload.get("data", payload)
+    email = (data.get("email") or "").strip()
+    first = (data.get("first_name") or "").strip()
+    last  = (data.get("last_name")  or "").strip()
+    phone = (data.get("phone")      or "").strip()
+    score = (data.get("total_score") or {}).get("percent") or data.get("score") or ""
+
+    # Only process QUIZ_FINISHED (ignore QUIZ_STARTED)
+    event = payload.get("event_name", "")
+    if event == "QUIZ_STARTED":
+        return jsonify({"ok": True, "skipped": "quiz_started"}), 200
 
     if not email:
         return jsonify({"error": "No email in payload"}), 400
 
-    parts = name.split(" ", 1) if name else ["", ""]
-    first = parts[0]
-    last  = parts[1] if len(parts) > 1 else ""
+    # Build answer tags from quiz_questions
+    quiz_questions = data.get("quiz_questions") or []
+    answer_tags    = _scoreapp_answer_tags(quiz_questions)
 
     ghl_result = ghl_onboard_contact(
         email=email, first_name=first, last_name=last, phone=phone,
-        source_tag="source:scoreapp"
+        source_tag="source:scoreapp",
+        extra_tags=answer_tags,
     )
-    # Store score as a note on the contact
-    if ghl_result.get("contact_id") and score:
+
+    # Store quiz answers + score as a note
+    if ghl_result.get("contact_id"):
+        note_lines = [f"ScoreApp quiz — {event or 'QUIZ_FINISHED'}"]
+        if score:
+            note_lines.append(f"Score: {score}%")
+        for q in quiz_questions:
+            q_text = q.get("question", "")
+            ans    = ", ".join(a.get("answer", "") for a in (q.get("answers") or []))
+            if q_text and ans:
+                note_lines.append(f"{q_text}: {ans}")
         _ghl_post(f"/contacts/{ghl_result['contact_id']}/notes",
-                  {"body": f"ScoreApp quiz result: {score}"})
+                  {"body": "\n".join(note_lines)})
 
     _log_inbound_lead("scoreapp", email, first, last, phone, raw, ghl_result)
-    return jsonify({"ok": True, "ghl": ghl_result}), 200
+    return jsonify({"ok": True, "tags": answer_tags, "ghl": ghl_result}), 200
 
 
 @app.route("/webhook/groovekart", methods=["POST"])
