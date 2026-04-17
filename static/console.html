@@ -128,7 +128,7 @@
     <label class="show-done-toggle">
       <input type="checkbox" id="show-done" onchange="refresh()"> Show done
     </label>
-    <div class="refresh-info">Refresh in <span id="countdown">60</span>s</div>
+    <div class="refresh-info">Refresh in <span id="countdown">30:00</span></div>
     <button class="btn-refresh" onclick="refresh()">Refresh now</button>
   </div>
 </header>
@@ -142,7 +142,7 @@
 const API = '';  // same origin
 let currentOwner = 'glen';
 let consoleKey = '';
-let countdown = 60;
+let countdown = 1800;
 let countdownTimer;
 let openMenuId = null;
 
@@ -361,11 +361,12 @@ async function refresh() {
 
 function resetCountdown() {
   clearInterval(countdownTimer);
-  countdown = 60;
-  document.getElementById('countdown').textContent = countdown;
+  countdown = 1800;
+  document.getElementById('countdown').textContent = '30:00';
   countdownTimer = setInterval(() => {
     countdown--;
-    document.getElementById('countdown').textContent = countdown;
+    const m = Math.floor(countdown/60), s = countdown%60;
+    document.getElementById('countdown').textContent = `${m}:${String(s).padStart(2,'0')}`;
     if (countdown <= 0) refresh();
   }, 1000);
 }
