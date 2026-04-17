@@ -378,6 +378,15 @@ function switchOwner(owner, btn) {
   refresh();
 }
 
+// Set owner from URL param if present
+const urlOwner = new URLSearchParams(location.search).get('owner');
+if (urlOwner && ['glen','rae','shaira'].includes(urlOwner)) {
+  currentOwner = urlOwner;
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.owner === urlOwner);
+  });
+}
+
 initKey();
 </script>
 </body>
