@@ -878,7 +878,7 @@ def get_todos():
     with sqlite3.connect(LOG_DB) as cx:
         rows = cx.execute("""
             SELECT id, created_at, owner, category, title, body, priority,
-                   status, delegated_to, delegated_at, done_at, source
+                   status, delegated_to, delegated_at, done_at, source, dedup_key
             FROM todos
             WHERE owner=? AND status=?
             ORDER BY
@@ -886,7 +886,7 @@ def get_todos():
                 created_at DESC
         """, (owner, status)).fetchall()
     cols = ["id","created_at","owner","category","title","body","priority",
-            "status","delegated_to","delegated_at","done_at","source"]
+            "status","delegated_to","delegated_at","done_at","source","dedup_key"]
     return jsonify({"todos": [dict(zip(cols, r)) for r in rows]})
 
 

@@ -101,6 +101,8 @@
   .btn-done:hover    { background: #1a3a1a; border-color: var(--shaira); color: var(--shaira); }
   .btn-reopen:hover  { background: #1a2a3a; border-color: var(--glen); color: var(--glen); }
   .btn-dismiss:hover { background: #2a1a1a; border-color: var(--high); color: var(--high); }
+  .btn-gmail { text-decoration: none; color: var(--muted); }
+  .btn-gmail:hover { border-color: var(--glen); color: var(--glen); background: #0d1a30; }
   .delegate-wrap { position: relative; }
   .btn-delegate { border: 1px solid var(--border); background: transparent; border-radius: 6px; color: var(--muted); cursor: pointer; padding: 4px 10px; font-size: 12px; transition: all .15s; }
   .btn-delegate:hover { border-color: var(--rae); color: var(--rae); background: #2a1a0a; }
@@ -374,6 +376,14 @@ function renderTodos(todos) {
   }).join('');
 }
 
+function gmailUrl(dedupKey) {
+  // dedup_key format: "glen:gmail:{msg_id}"
+  if (!dedupKey) return null;
+  const parts = dedupKey.split(':');
+  if (parts[1] !== 'gmail' || !parts[2]) return null;
+  return `https://mail.google.com/mail/u/0/#all/${parts[2]}`;
+}
+
 function todoCard(t) {
   const isDone      = t.status === 'done';
   const isDelegated = t.status === 'delegated';
@@ -382,13 +392,19 @@ function todoCard(t) {
   if (t.source)     meta.push(`<span class="meta-badge">${escHtml(t.source)}</span>`);
   if (t.created_at) meta.push(`<span class="meta-badge">${timeAgo(t.created_at)}</span>`);
   if (isDelegated && t.delegated_to) meta.push(`<span class="meta-badge delegated">→ ${t.delegated_to}</span>`);
+  const gmailLink = gmailUrl(t.dedup_key);
   const targets = ['glen','rae','shaira'].filter(o => o !== currentOwner);
   const delegateOptions = targets.map(to =>
     `<button class="delegate-option" onclick="doDelegate(${t.id},'${to}',event)">${to.charAt(0).toUpperCase()+to.slice(1)}</button>`
   ).join('');
+  const gmailBtn = gmailLink
+    ? `<a class="btn-action btn-gmail" href="${gmailLink}" target="_blank" rel="noopener">Open in Gmail ↗</a>`
+    : '';
   const actions = isDone || isDelegated ? `
+    ${gmailBtn}
     <button class="btn-action btn-reopen" onclick="doReopen(${t.id})">Reopen</button>
   ` : `
+    ${gmailBtn}
     <button class="btn-action btn-done" onclick="doDone(${t.id})">Done</button>
     <div class="delegate-wrap">
       <button class="btn-delegate" onclick="toggleMenu(${t.id},event)">Delegate ▾</button>
