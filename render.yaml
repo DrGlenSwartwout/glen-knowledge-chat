@@ -17,4 +17,10 @@ services:
         sync: false
       - key: CONSOLE_SECRET
         sync: false
+      - key: DATA_DIR
+        value: /data
     healthCheckPath: /
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1

@@ -50,7 +50,7 @@ _idx = _pc.Index(PINECONE_INDEX)
 _cl  = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
 
 # ── Query log DB ──────────────────────────────────────────────────────────────
-LOG_DB   = Path(__file__).parent / "chat_log.db"
+LOG_DB   = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "chat_log.db"
 _db_lock = threading.Lock()
 
 def _init_log_db():
