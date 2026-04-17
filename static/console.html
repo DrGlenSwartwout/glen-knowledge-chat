@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Remedy Match Console</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3e;
+    --text: #e2e4ed;
+    --muted: #7a7f96;
+    --glen: #4f8ef7;
+    --rae: #f78b4f;
+    --shaira: #5fc98e;
+    --high: #ff5a5a;
+    --normal: #f7c54f;
+    --low: #7a7f96;
+    --done-bg: #141810;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+
+  #key-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.85);
+    display: flex; align-items: center; justify-content: center; z-index: 100;
+  }
+  #key-overlay.hidden { display: none; }
+  .key-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 32px; width: 340px; text-align: center; }
+  .key-box h2 { margin-bottom: 8px; }
+  .key-box p { color: var(--muted); margin-bottom: 20px; font-size: 13px; }
+  .key-box input { width: 100%; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px; margin-bottom: 12px; }
+  .key-box button { width: 100%; padding: 10px; background: var(--glen); border: none; border-radius: 6px; color: #fff; font-size: 14px; cursor: pointer; font-weight: 600; }
+
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; position: sticky; top: 0; z-index: 10; }
+  header h1 { font-size: 15px; font-weight: 700; color: var(--text); white-space: nowrap; }
+  .tabs { display: flex; gap: 6px; }
+  .tab {
+    padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 600; transition: all .15s;
+  }
+  .tab.glen.active  { background: var(--glen); color: #fff; border-color: var(--glen); }
+  .tab.rae.active   { background: var(--rae);  color: #fff; border-color: var(--rae); }
+  .tab.shaira.active { background: var(--shaira); color: #fff; border-color: var(--shaira); }
+  .tab:hover:not(.active) { border-color: var(--text); color: var(--text); }
+
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .refresh-info { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .btn-refresh { background: var(--border); border: none; border-radius: 6px; color: var(--text); padding: 5px 12px; cursor: pointer; font-size: 12px; }
+  .btn-refresh:hover { background: var(--glen); color: #fff; }
+
+  .show-done-toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; cursor: pointer; }
+  .show-done-toggle input { accent-color: var(--glen); }
+
+  main { max-width: 900px; margin: 0 auto; padding: 20px 16px; }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+
+  .category-group { margin-bottom: 24px; }
+  .cat-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .cat-name { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .cat-count { background: var(--border); border-radius: 10px; padding: 1px 7px; font-size: 11px; color: var(--muted); }
+
+  .todo-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 12px; align-items: flex-start;
+    transition: opacity .2s;
+  }
+  .todo-card.done-item { opacity: .4; background: var(--done-bg); }
+  .todo-card.delegated-item { opacity: .5; }
+
+  .priority-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+  .priority-dot.high   { background: var(--high); }
+  .priority-dot.normal { background: var(--normal); }
+  .priority-dot.low    { background: var(--low); }
+
+  .todo-body { flex: 1; min-width: 0; }
+  .todo-title { font-weight: 600; line-height: 1.4; word-break: break-word; }
+  .todo-detail { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.5; word-break: break-word; }
+  .todo-meta { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+  .meta-badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; background: var(--border); color: var(--muted); }
+  .meta-badge.delegated { background: #2a1f10; color: #f7a54f; }
+
+  .todo-actions { display: flex; gap: 6px; align-items: flex-start; flex-shrink: 0; }
+  .btn-action { border: 1px solid var(--border); background: transparent; border-radius: 6px; color: var(--muted); cursor: pointer; padding: 4px 10px; font-size: 12px; transition: all .15s; white-space: nowrap; }
+  .btn-done:hover   { background: #1a3a1a; border-color: var(--shaira); color: var(--shaira); }
+  .btn-reopen:hover { background: #1a2a3a; border-color: var(--glen); color: var(--glen); }
+  .btn-dismiss:hover { background: #2a1a1a; border-color: var(--high); color: var(--high); }
+
+  .delegate-wrap { position: relative; }
+  .btn-delegate { border: 1px solid var(--border); background: transparent; border-radius: 6px; color: var(--muted); cursor: pointer; padding: 4px 10px; font-size: 12px; transition: all .15s; }
+  .btn-delegate:hover { border-color: var(--rae); color: var(--rae); background: #2a1a0a; }
+  .delegate-menu { position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; z-index: 20; min-width: 120px; }
+  .delegate-menu.hidden { display: none; }
+  .delegate-option { display: block; width: 100%; padding: 8px 14px; background: transparent; border: none; color: var(--text); cursor: pointer; text-align: left; font-size: 13px; }
+  .delegate-option:hover { background: var(--border); }
+
+  #loading { text-align: center; padding: 40px; color: var(--muted); }
+
+  @media (max-width: 600px) {
+    .todo-actions { flex-direction: column; gap: 4px; }
+    header { gap: 10px; }
+    .header-right { margin-left: 0; width: 100%; justify-content: space-between; }
+  }
+</style>
+</head>
+<body>
+
+<div id="key-overlay">
+  <div class="key-box">
+    <h2>Console Access</h2>
+    <p>Enter the console key to continue</p>
+    <input type="password" id="key-input" placeholder="Console key" autocomplete="off">
+    <button onclick="saveKey()">Unlock</button>
+  </div>
+</div>
+
+<header>
+  <h1>Remedy Match</h1>
+  <div class="tabs">
+    <button class="tab glen active" data-owner="glen" onclick="switchOwner('glen', this)">Glen</button>
+    <button class="tab rae" data-owner="rae" onclick="switchOwner('rae', this)">Rae</button>
+    <button class="tab shaira" data-owner="shaira" onclick="switchOwner('shaira', this)">Shaira</button>
+  </div>
+  <div class="header-right">
+    <label class="show-done-toggle">
+      <input type="checkbox" id="show-done" onchange="refresh()"> Show done
+    </label>
+    <div class="refresh-info">Refresh in <span id="countdown">60</span>s</div>
+    <button class="btn-refresh" onclick="refresh()">Refresh now</button>
+  </div>
+</header>
+
+<main>
+  <div id="loading">Loading...</div>
+  <div id="todos-container" style="display:none"></div>
+</main>
+
+<script>
+const API = '';  // same origin
+let currentOwner = 'glen';
+let consoleKey = '';
+let countdown = 60;
+let countdownTimer;
+let openMenuId = null;
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+function saveKey() {
+  const val = document.getElementById('key-input').value.trim();
+  if (!val) return;
+  consoleKey = val;
+  localStorage.setItem('console_key', val);
+  document.getElementById('key-overlay').classList.add('hidden');
+  refresh();
+}
+
+function initKey() {
+  const stored = localStorage.getItem('console_key');
+  if (stored) {
+    consoleKey = stored;
+    document.getElementById('key-overlay').classList.add('hidden');
+    refresh();
+  }
+  document.getElementById('key-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveKey();
+  });
+}
+
+// ── Data ──────────────────────────────────────────────────────────────────────
+async function fetchTodos(owner, status) {
+  const r = await fetch(`${API}/api/todos?owner=${owner}&status=${status}`, {
+    headers: { 'X-Console-Key': consoleKey }
+  });
+  if (!r.ok) {
+    if (r.status === 401) {
+      localStorage.removeItem('console_key');
+      location.reload();
+    }
+    return [];
+  }
+  const d = await r.json();
+  return d.todos || [];
+}
+
+async function patchTodo(id, payload) {
+  await fetch(`${API}/api/todos/${id}?key=${encodeURIComponent(consoleKey)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'X-Console-Key': consoleKey },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function deleteTodo(id) {
+  await fetch(`${API}/api/todos/${id}?key=${encodeURIComponent(consoleKey)}`, {
+    method: 'DELETE',
+    headers: { 'X-Console-Key': consoleKey }
+  });
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function timeAgo(iso) {
+  if (!iso) return '';
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60)   return `${Math.floor(diff)}s ago`;
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  return `${Math.floor(diff/86400)}d ago`;
+}
+
+function renderTodos(todos) {
+  const container = document.getElementById('todos-container');
+  document.getElementById('loading').style.display = 'none';
+  container.style.display = '';
+
+  if (!todos.length) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">✓</div><p>All clear — nothing to action.</p></div>`;
+    return;
+  }
+
+  // Group by category
+  const groups = {};
+  todos.forEach(t => {
+    const cat = t.category || 'General';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(t);
+  });
+
+  // Priority order for categories
+  const catOrder = ['E4L — Client Messages','Payments','Facebook Ads','CTD / Strategic Profits',
+                    'E4L — New Signups','Orders / Fulfillment','Scheduling','Client Comms',
+                    'Financial','GHL Admin','Delegated Tasks','General'];
+  const sortedCats = Object.keys(groups).sort((a,b) => {
+    const ai = catOrder.indexOf(a), bi = catOrder.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  container.innerHTML = sortedCats.map(cat => {
+    const items = groups[cat];
+    const cards = items.map(t => todoCard(t)).join('');
+    return `<div class="category-group">
+      <div class="cat-header">
+        <span class="cat-name">${escHtml(cat)}</span>
+        <span class="cat-count">${items.length}</span>
+      </div>
+      ${cards}
+    </div>`;
+  }).join('');
+}
+
+function delegateTargets(currentOwner) {
+  const all = ['glen','rae','shaira'];
+  return all.filter(o => o !== currentOwner);
+}
+
+function todoCard(t) {
+  const isDone = t.status === 'done';
+  const isDelegated = t.status === 'delegated';
+  let cardClass = 'todo-card';
+  if (isDone) cardClass += ' done-item';
+  if (isDelegated) cardClass += ' delegated-item';
+
+  const meta = [];
+  if (t.source) meta.push(`<span class="meta-badge">${escHtml(t.source)}</span>`);
+  if (t.created_at) meta.push(`<span class="meta-badge">${timeAgo(t.created_at)}</span>`);
+  if (isDelegated && t.delegated_to) meta.push(`<span class="meta-badge delegated">→ ${t.delegated_to}</span>`);
+
+  const targets = delegateTargets(currentOwner);
+  const delegateOptions = targets.map(to =>
+    `<button class="delegate-option" onclick="doDelegate(${t.id}, '${to}', event)">${to.charAt(0).toUpperCase()+to.slice(1)}</button>`
+  ).join('');
+
+  const actions = isDone || isDelegated ? `
+    <button class="btn-action btn-reopen" onclick="doReopen(${t.id})">Reopen</button>
+  ` : `
+    <button class="btn-action btn-done" onclick="doDone(${t.id})">Done</button>
+    <div class="delegate-wrap">
+      <button class="btn-delegate" onclick="toggleMenu(${t.id}, event)">Delegate ▾</button>
+      <div class="delegate-menu hidden" id="menu-${t.id}">${delegateOptions}</div>
+    </div>
+    <button class="btn-action btn-dismiss" onclick="doDelete(${t.id})" title="Dismiss">✕</button>
+  `;
+
+  return `<div class="${cardClass}" id="card-${t.id}">
+    <div class="priority-dot ${t.priority || 'normal'}"></div>
+    <div class="todo-body">
+      <div class="todo-title">${escHtml(t.title)}</div>
+      ${t.body ? `<div class="todo-detail">${escHtml(t.body)}</div>` : ''}
+      ${meta.length ? `<div class="todo-meta">${meta.join('')}</div>` : ''}
+    </div>
+    <div class="todo-actions">${actions}</div>
+  </div>`;
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+async function doDone(id) {
+  await patchTodo(id, { action: 'done' });
+  animateRemove(id, () => refresh());
+}
+
+async function doReopen(id) {
+  await patchTodo(id, { action: 'reopen' });
+  refresh();
+}
+
+async function doDelegate(id, to, e) {
+  e.stopPropagation();
+  closeAllMenus();
+  await patchTodo(id, { action: 'delegate', to });
+  animateRemove(id, () => refresh());
+}
+
+async function doDelete(id) {
+  await deleteTodo(id);
+  animateRemove(id, () => refresh());
+}
+
+function animateRemove(id, cb) {
+  const el = document.getElementById(`card-${id}`);
+  if (el) { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; }
+  setTimeout(cb, 300);
+}
+
+function toggleMenu(id, e) {
+  e.stopPropagation();
+  const menu = document.getElementById(`menu-${id}`);
+  if (!menu) return;
+  if (menu.classList.contains('hidden')) {
+    closeAllMenus();
+    menu.classList.remove('hidden');
+    openMenuId = id;
+  } else {
+    menu.classList.add('hidden');
+    openMenuId = null;
+  }
+}
+
+function closeAllMenus() {
+  document.querySelectorAll('.delegate-menu').forEach(m => m.classList.add('hidden'));
+  openMenuId = null;
+}
+
+document.addEventListener('click', closeAllMenus);
+
+// ── Refresh ───────────────────────────────────────────────────────────────────
+async function refresh() {
+  resetCountdown();
+  const showDone = document.getElementById('show-done').checked;
+  const status = showDone ? 'done' : 'open';
+  const todos = await fetchTodos(currentOwner, status);
+  renderTodos(todos);
+}
+
+function resetCountdown() {
+  clearInterval(countdownTimer);
+  countdown = 60;
+  document.getElementById('countdown').textContent = countdown;
+  countdownTimer = setInterval(() => {
+    countdown--;
+    document.getElementById('countdown').textContent = countdown;
+    if (countdown <= 0) refresh();
+  }, 1000);
+}
+
+function switchOwner(owner, btn) {
+  currentOwner = owner;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  refresh();
+}
+
+initKey();
+</script>
+</body>
+</html>

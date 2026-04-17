@@ -710,6 +710,148 @@ def mark_pb_synced():
     return jsonify({"ok": True, "marked": len(ids)})
 
 
+# ── Team Console ──────────────────────────────────────────────────────────────
+CONSOLE_SECRET = os.environ.get("CONSOLE_SECRET", os.environ.get("WEBHOOK_SECRET", ""))
+
+def _init_todos_table():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS todos (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at   TEXT NOT NULL,
+                owner        TEXT NOT NULL,
+                category     TEXT DEFAULT 'General',
+                title        TEXT NOT NULL,
+                body         TEXT DEFAULT '',
+                priority     TEXT DEFAULT 'normal',
+                status       TEXT DEFAULT 'open',
+                delegated_to TEXT DEFAULT '',
+                delegated_at TEXT DEFAULT '',
+                done_at      TEXT DEFAULT '',
+                source       TEXT DEFAULT '',
+                dedup_key    TEXT UNIQUE
+            )
+        """)
+        cx.commit()
+
+_init_todos_table()
+
+
+@app.route("/console")
+def console_page():
+    resp = send_from_directory(STATIC, "console.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/todos", methods=["GET"])
+def get_todos():
+    owner  = request.args.get("owner", "glen").lower()
+    status = request.args.get("status", "open")
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute("""
+            SELECT id, created_at, owner, category, title, body, priority,
+                   status, delegated_to, delegated_at, done_at, source
+            FROM todos
+            WHERE owner=? AND status=?
+            ORDER BY
+                CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
+                created_at DESC
+        """, (owner, status)).fetchall()
+    cols = ["id","created_at","owner","category","title","body","priority",
+            "status","delegated_to","delegated_at","done_at","source"]
+    return jsonify({"todos": [dict(zip(cols, r)) for r in rows]})
+
+
+@app.route("/api/todos", methods=["POST"])
+def post_todos():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+
+    items = request.get_json(force=True) or {}
+    # Accept single item or list
+    if isinstance(items, dict):
+        items = [items]
+
+    ts = datetime.now(timezone.utc).isoformat()
+    inserted = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        for item in items:
+            owner    = (item.get("owner") or "glen").lower()
+            category = item.get("category") or "General"
+            title    = (item.get("title") or "").strip()
+            body     = item.get("body") or ""
+            priority = item.get("priority") or "normal"
+            source   = item.get("source") or ""
+            dedup    = item.get("dedup_key") or None
+            if not title:
+                continue
+            try:
+                cx.execute("""
+                    INSERT OR IGNORE INTO todos
+                      (created_at, owner, category, title, body, priority, source, dedup_key)
+                    VALUES (?,?,?,?,?,?,?,?)
+                """, (ts, owner, category, title, body, priority, source, dedup))
+                if cx.execute("SELECT changes()").fetchone()[0]:
+                    inserted += 1
+            except Exception:
+                pass
+        cx.commit()
+    return jsonify({"ok": True, "inserted": inserted}), 201
+
+
+@app.route("/api/todos/<int:todo_id>", methods=["PATCH"])
+def patch_todo(todo_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+
+    data   = request.get_json(force=True) or {}
+    action = data.get("action", "")
+    ts     = datetime.now(timezone.utc).isoformat()
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        if action == "done":
+            cx.execute("UPDATE todos SET status='done', done_at=? WHERE id=?", (ts, todo_id))
+        elif action == "delegate":
+            to = (data.get("to") or "").lower()
+            if to not in ("glen", "rae", "shaira"):
+                return jsonify({"error": "Invalid delegate target"}), 400
+            # Create a copy for the delegate, mark original as delegated
+            row = cx.execute(
+                "SELECT owner, category, title, body, priority, source FROM todos WHERE id=?",
+                (todo_id,)
+            ).fetchone()
+            if row:
+                cx.execute("UPDATE todos SET status='delegated', delegated_to=?, delegated_at=? WHERE id=?",
+                           (to, ts, todo_id))
+                new_title = f"[From {row[0].title()}] {row[2]}"
+                cx.execute("""
+                    INSERT INTO todos (created_at, owner, category, title, body, priority, source)
+                    VALUES (?,?,?,?,?,?,?)
+                """, (ts, to, row[1], new_title, row[3], row[4], row[5]))
+        elif action == "reopen":
+            cx.execute("UPDATE todos SET status='open', done_at='', delegated_to='', delegated_at=? WHERE id=?",
+                       (ts, todo_id))
+        cx.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/todos/<int:todo_id>", methods=["DELETE"])
+def delete_todo(todo_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("UPDATE todos SET status='dismissed' WHERE id=?", (todo_id,))
+        cx.commit()
+    return jsonify({"ok": True})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
