@@ -15,4 +15,6 @@ services:
         sync: false
       - key: WEBHOOK_SECRET
         sync: false
+      - key: CONSOLE_SECRET
+        sync: false
     healthCheckPath: /
