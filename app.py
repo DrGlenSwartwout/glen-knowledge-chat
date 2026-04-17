@@ -737,6 +737,133 @@ def _init_todos_table():
 _init_todos_table()
 
 
+def _init_calendar_table():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_events (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                pushed_at       TEXT NOT NULL,
+                google_cal_id   TEXT NOT NULL,
+                google_event_id TEXT NOT NULL,
+                calendar_name   TEXT DEFAULT '',
+                summary         TEXT NOT NULL,
+                start           TEXT NOT NULL,
+                end             TEXT DEFAULT '',
+                location        TEXT DEFAULT '',
+                owner           TEXT DEFAULT 'glen',
+                status          TEXT DEFAULT 'visible',
+                UNIQUE(google_cal_id, google_event_id)
+            )
+        """)
+        cx.commit()
+
+_init_calendar_table()
+
+
+@app.route("/api/calendar", methods=["GET"])
+def get_calendar():
+    owner  = request.args.get("owner", "glen").lower()
+    status = request.args.get("status", "visible")
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute("""
+            SELECT id, google_cal_id, google_event_id, calendar_name,
+                   summary, start, end, location, owner, status
+            FROM calendar_events
+            WHERE owner=? AND status=?
+            ORDER BY start ASC
+        """, (owner, status)).fetchall()
+    cols = ["id","google_cal_id","google_event_id","calendar_name",
+            "summary","start","end","location","owner","status"]
+    return jsonify({"events": [dict(zip(cols, r)) for r in rows]})
+
+
+@app.route("/api/calendar", methods=["POST"])
+def post_calendar():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+
+    items = request.get_json(force=True) or []
+    if isinstance(items, dict):
+        items = [items]
+
+    ts = datetime.now(timezone.utc).isoformat()
+    upserted = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        for ev in items:
+            try:
+                cx.execute("""
+                    INSERT INTO calendar_events
+                      (pushed_at, google_cal_id, google_event_id, calendar_name,
+                       summary, start, end, location, owner)
+                    VALUES (?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(google_cal_id, google_event_id) DO UPDATE SET
+                      pushed_at=excluded.pushed_at,
+                      calendar_name=excluded.calendar_name,
+                      summary=excluded.summary,
+                      start=excluded.start,
+                      end=excluded.end,
+                      location=excluded.location
+                    WHERE status='visible'
+                """, (ts,
+                      ev.get("google_cal_id",""),
+                      ev.get("google_event_id",""),
+                      ev.get("calendar_name",""),
+                      ev.get("summary","(no title)"),
+                      ev.get("start",""),
+                      ev.get("end",""),
+                      ev.get("location",""),
+                      ev.get("owner","glen")))
+                upserted += 1
+            except Exception:
+                pass
+        cx.commit()
+    return jsonify({"ok": True, "upserted": upserted}), 201
+
+
+@app.route("/api/calendar/<int:event_id>", methods=["PATCH"])
+def patch_calendar(event_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+
+    action = (request.get_json(force=True) or {}).get("action", "hide")
+    new_status = "delete_requested" if action == "delete" else "hidden"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("UPDATE calendar_events SET status=? WHERE id=?", (new_status, event_id))
+        cx.commit()
+    return jsonify({"ok": True, "status": new_status})
+
+
+@app.route("/api/calendar/delete-queue", methods=["GET"])
+def calendar_delete_queue():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute("""
+            SELECT id, google_cal_id, google_event_id, summary
+            FROM calendar_events WHERE status='delete_requested'
+        """).fetchall()
+    return jsonify({"queue": [{"id":r[0],"cal_id":r[1],"event_id":r[2],"summary":r[3]} for r in rows]})
+
+
+@app.route("/api/calendar/delete-queue/clear", methods=["POST"])
+def clear_delete_queue():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    ids = (request.get_json(force=True) or {}).get("ids", [])
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.executemany("UPDATE calendar_events SET status='deleted' WHERE id=?", [(i,) for i in ids])
+        cx.commit()
+    return jsonify({"ok": True, "cleared": len(ids)})
+
+
 @app.route("/console")
 def console_page():
     resp = send_from_directory(STATIC, "console.html")

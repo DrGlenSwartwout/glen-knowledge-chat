@@ -18,15 +18,14 @@
     --normal: #f7c54f;
     --low: #7a7f96;
     --done-bg: #141810;
+    --cal-bg: #111420;
     --radius: 8px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
 
-  #key-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,.85);
-    display: flex; align-items: center; justify-content: center; z-index: 100;
-  }
+  /* Auth overlay */
+  #key-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; z-index: 100; }
   #key-overlay.hidden { display: none; }
   .key-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 32px; width: 340px; text-align: center; }
   .key-box h2 { margin-bottom: 8px; }
@@ -34,61 +33,74 @@
   .key-box input { width: 100%; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px; margin-bottom: 12px; }
   .key-box button { width: 100%; padding: 10px; background: var(--glen); border: none; border-radius: 6px; color: #fff; font-size: 14px; cursor: pointer; font-weight: 600; }
 
+  /* Header */
   header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; position: sticky; top: 0; z-index: 10; }
   header h1 { font-size: 15px; font-weight: 700; color: var(--text); white-space: nowrap; }
   .tabs { display: flex; gap: 6px; }
-  .tab {
-    padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border);
-    background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 600; transition: all .15s;
-  }
+  .tab { padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 600; transition: all .15s; }
   .tab.glen.active  { background: var(--glen); color: #fff; border-color: var(--glen); }
   .tab.rae.active   { background: var(--rae);  color: #fff; border-color: var(--rae); }
   .tab.shaira.active { background: var(--shaira); color: #fff; border-color: var(--shaira); }
   .tab:hover:not(.active) { border-color: var(--text); color: var(--text); }
-
   .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
   .refresh-info { color: var(--muted); font-size: 12px; white-space: nowrap; }
   .btn-refresh { background: var(--border); border: none; border-radius: 6px; color: var(--text); padding: 5px 12px; cursor: pointer; font-size: 12px; }
   .btn-refresh:hover { background: var(--glen); color: #fff; }
-
   .show-done-toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; cursor: pointer; }
   .show-done-toggle input { accent-color: var(--glen); }
 
   main { max-width: 900px; margin: 0 auto; padding: 20px 16px; }
   .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
-  .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
 
+  /* Calendar section */
+  #cal-section { margin-bottom: 28px; }
+  .cal-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .cal-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .btn-cal-toggle { background: transparent; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); padding: 3px 10px; font-size: 11px; cursor: pointer; }
+  .btn-cal-toggle:hover { border-color: var(--text); color: var(--text); }
+  #cal-body { }
+  #cal-body.hidden { display: none; }
+  .cal-days { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+  .cal-day { flex-shrink: 0; min-width: 180px; max-width: 220px; }
+  .cal-day-header { font-size: 11px; font-weight: 700; color: var(--muted); padding: 4px 0 6px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+  .cal-day-header.today { color: var(--glen); }
+  .cal-event {
+    background: var(--cal-bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; margin-bottom: 6px; font-size: 12px;
+  }
+  .cal-event-time { color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+  .cal-event-title { font-weight: 600; line-height: 1.3; word-break: break-word; }
+  .cal-event-cal { color: var(--muted); font-size: 10px; margin-top: 3px; }
+  .cal-event-loc { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .cal-event-actions { display: flex; gap: 5px; margin-top: 7px; }
+  .btn-cal { border: 1px solid var(--border); background: transparent; border-radius: 5px; color: var(--muted); cursor: pointer; padding: 3px 8px; font-size: 11px; }
+  .btn-cal-hide:hover   { border-color: var(--muted); color: var(--text); }
+  .btn-cal-delete:hover { border-color: var(--high); color: var(--high); background: #2a1a1a; }
+  #cal-empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+
+  /* Todo section */
   .category-group { margin-bottom: 24px; }
   .cat-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
   .cat-name { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
   .cat-count { background: var(--border); border-radius: 10px; padding: 1px 7px; font-size: 11px; color: var(--muted); }
-
-  .todo-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 12px; align-items: flex-start;
-    transition: opacity .2s;
-  }
+  .todo-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 12px; align-items: flex-start; transition: opacity .2s; }
   .todo-card.done-item { opacity: .4; background: var(--done-bg); }
   .todo-card.delegated-item { opacity: .5; }
-
   .priority-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
   .priority-dot.high   { background: var(--high); }
   .priority-dot.normal { background: var(--normal); }
   .priority-dot.low    { background: var(--low); }
-
   .todo-body { flex: 1; min-width: 0; }
   .todo-title { font-weight: 600; line-height: 1.4; word-break: break-word; }
   .todo-detail { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.5; word-break: break-word; }
   .todo-meta { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
   .meta-badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; background: var(--border); color: var(--muted); }
   .meta-badge.delegated { background: #2a1f10; color: #f7a54f; }
-
   .todo-actions { display: flex; gap: 6px; align-items: flex-start; flex-shrink: 0; }
   .btn-action { border: 1px solid var(--border); background: transparent; border-radius: 6px; color: var(--muted); cursor: pointer; padding: 4px 10px; font-size: 12px; transition: all .15s; white-space: nowrap; }
-  .btn-done:hover   { background: #1a3a1a; border-color: var(--shaira); color: var(--shaira); }
-  .btn-reopen:hover { background: #1a2a3a; border-color: var(--glen); color: var(--glen); }
+  .btn-done:hover    { background: #1a3a1a; border-color: var(--shaira); color: var(--shaira); }
+  .btn-reopen:hover  { background: #1a2a3a; border-color: var(--glen); color: var(--glen); }
   .btn-dismiss:hover { background: #2a1a1a; border-color: var(--high); color: var(--high); }
-
   .delegate-wrap { position: relative; }
   .btn-delegate { border: 1px solid var(--border); background: transparent; border-radius: 6px; color: var(--muted); cursor: pointer; padding: 4px 10px; font-size: 12px; transition: all .15s; }
   .btn-delegate:hover { border-color: var(--rae); color: var(--rae); background: #2a1a0a; }
@@ -96,13 +108,14 @@
   .delegate-menu.hidden { display: none; }
   .delegate-option { display: block; width: 100%; padding: 8px 14px; background: transparent; border: none; color: var(--text); cursor: pointer; text-align: left; font-size: 13px; }
   .delegate-option:hover { background: var(--border); }
-
   #loading { text-align: center; padding: 40px; color: var(--muted); }
 
   @media (max-width: 600px) {
     .todo-actions { flex-direction: column; gap: 4px; }
     header { gap: 10px; }
     .header-right { margin-left: 0; width: 100%; justify-content: space-between; }
+    .cal-days { gap: 8px; }
+    .cal-day { min-width: 160px; }
   }
 </style>
 </head>
@@ -135,16 +148,31 @@
 
 <main>
   <div id="loading">Loading...</div>
-  <div id="todos-container" style="display:none"></div>
+  <div id="main-content" style="display:none">
+    <!-- Calendar -->
+    <div id="cal-section">
+      <div class="cal-header">
+        <span class="cal-title">Calendar — Next 14 Days</span>
+        <button class="btn-cal-toggle" id="cal-toggle-btn" onclick="toggleCalendar()">Hide</button>
+      </div>
+      <div id="cal-body">
+        <div id="cal-empty" style="display:none">No upcoming events.</div>
+        <div class="cal-days" id="cal-days"></div>
+      </div>
+    </div>
+    <!-- Todos -->
+    <div id="todos-container"></div>
+  </div>
 </main>
 
 <script>
-const API = '';  // same origin
+const API = '';
 let currentOwner = 'glen';
 let consoleKey = '';
 let countdown = 1800;
 let countdownTimer;
 let openMenuId = null;
+let calVisible = true;
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 function saveKey() {
@@ -166,127 +194,210 @@ function initKey() {
   document.getElementById('key-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') saveKey();
   });
+  // Restore calendar toggle state
+  calVisible = localStorage.getItem('cal_visible') !== 'false';
+  applyCalToggle();
 }
 
-// ── Data ──────────────────────────────────────────────────────────────────────
-async function fetchTodos(owner, status) {
-  const r = await fetch(`${API}/api/todos?owner=${owner}&status=${status}`, {
-    headers: { 'X-Console-Key': consoleKey }
-  });
-  if (!r.ok) {
-    if (r.status === 401) {
-      localStorage.removeItem('console_key');
-      location.reload();
-    }
-    return [];
+// ── Calendar toggle ───────────────────────────────────────────────────────────
+function toggleCalendar() {
+  calVisible = !calVisible;
+  localStorage.setItem('cal_visible', calVisible);
+  applyCalToggle();
+}
+
+function applyCalToggle() {
+  const body = document.getElementById('cal-body');
+  const btn  = document.getElementById('cal-toggle-btn');
+  if (calVisible) {
+    body.classList.remove('hidden');
+    btn.textContent = 'Hide';
+  } else {
+    body.classList.add('hidden');
+    btn.textContent = 'Show';
   }
-  const d = await r.json();
-  return d.todos || [];
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function apiFetch(path, opts={}) {
+  const r = await fetch(API + path, {
+    ...opts,
+    headers: { 'X-Console-Key': consoleKey, 'Content-Type': 'application/json', ...(opts.headers||{}) }
+  });
+  if (r.status === 401) { localStorage.removeItem('console_key'); location.reload(); }
+  return r;
+}
+
+async function fetchTodos(owner, status) {
+  const r = await apiFetch(`/api/todos?owner=${owner}&status=${status}`);
+  return r.ok ? (await r.json()).todos || [] : [];
+}
+
+async function fetchCalendar(owner) {
+  const r = await apiFetch(`/api/calendar?owner=${owner}`);
+  return r.ok ? (await r.json()).events || [] : [];
 }
 
 async function patchTodo(id, payload) {
-  await fetch(`${API}/api/todos/${id}?key=${encodeURIComponent(consoleKey)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'X-Console-Key': consoleKey },
-    body: JSON.stringify(payload)
-  });
+  await apiFetch(`/api/todos/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
 }
 
 async function deleteTodo(id) {
-  await fetch(`${API}/api/todos/${id}?key=${encodeURIComponent(consoleKey)}`, {
-    method: 'DELETE',
-    headers: { 'X-Console-Key': consoleKey }
-  });
+  await apiFetch(`/api/todos/${id}`, { method: 'DELETE' });
 }
 
-// ── Render ────────────────────────────────────────────────────────────────────
+async function patchCalEvent(id, action) {
+  await apiFetch(`/api/calendar/${id}`, { method: 'PATCH', body: JSON.stringify({ action }) });
+}
+
+// ── Calendar render ───────────────────────────────────────────────────────────
+function formatCalTime(iso) {
+  if (!iso) return '';
+  if (!iso.includes('T')) return 'All day';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  } catch { return ''; }
+}
+
+function formatCalDate(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+    const today = new Date(); today.setHours(0,0,0,0);
+    const evDay = new Date(d); evDay.setHours(0,0,0,0);
+    const diff = Math.round((evDay - today) / 86400000);
+    const dayName = d.toLocaleDateString([], { weekday: 'short' });
+    const datePart = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    if (diff === 0) return { label: `Today — ${datePart}`, isToday: true };
+    if (diff === 1) return { label: `Tomorrow — ${datePart}`, isToday: false };
+    return { label: `${dayName} ${datePart}`, isToday: false };
+  } catch { return { label: iso.substring(0,10), isToday: false }; }
+}
+
+function renderCalendar(events) {
+  const daysEl  = document.getElementById('cal-days');
+  const emptyEl = document.getElementById('cal-empty');
+  daysEl.innerHTML = '';
+
+  if (!events.length) {
+    emptyEl.style.display = '';
+    return;
+  }
+  emptyEl.style.display = 'none';
+
+  // Group by date string (YYYY-MM-DD)
+  const groups = {};
+  const order  = [];
+  events.forEach(ev => {
+    const dateKey = (ev.start || '').substring(0, 10);
+    if (!groups[dateKey]) { groups[dateKey] = []; order.push(dateKey); }
+    groups[dateKey].push(ev);
+  });
+
+  daysEl.innerHTML = order.map(dateKey => {
+    const { label, isToday } = formatCalDate(dateKey);
+    const cards = groups[dateKey].map(ev => {
+      const time = formatCalTime(ev.start);
+      const loc  = ev.location ? `<div class="cal-event-loc">📍 ${escHtml(ev.location.substring(0,50))}</div>` : '';
+      return `<div class="cal-event" id="cal-ev-${ev.id}">
+        <div class="cal-event-time">${escHtml(time)}</div>
+        <div class="cal-event-title">${escHtml(ev.summary)}</div>
+        <div class="cal-event-cal">${escHtml(ev.calendar_name)}</div>
+        ${loc}
+        <div class="cal-event-actions">
+          <button class="btn-cal btn-cal-hide" onclick="doCalHide(${ev.id})">Hide</button>
+          <button class="btn-cal btn-cal-delete" onclick="doCalDelete(${ev.id})">Delete from Calendar</button>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="cal-day">
+      <div class="cal-day-header${isToday ? ' today' : ''}">${escHtml(label)}</div>
+      ${cards}
+    </div>`;
+  }).join('');
+}
+
+async function doCalHide(id) {
+  await patchCalEvent(id, 'hide');
+  const el = document.getElementById(`cal-ev-${id}`);
+  if (el) { el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(() => el.remove(), 300); }
+}
+
+async function doCalDelete(id) {
+  if (!confirm('Delete this event from Google Calendar? This cannot be undone.')) return;
+  await patchCalEvent(id, 'delete');
+  const el = document.getElementById(`cal-ev-${id}`);
+  if (el) { el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(() => el.remove(), 300); }
+}
+
+// ── Todo render ───────────────────────────────────────────────────────────────
 function timeAgo(iso) {
   if (!iso) return '';
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60)   return `${Math.floor(diff)}s ago`;
-  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 60)    return `${Math.floor(diff)}s ago`;
+  if (diff < 3600)  return `${Math.floor(diff/60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
   return `${Math.floor(diff/86400)}d ago`;
 }
 
 function renderTodos(todos) {
   const container = document.getElementById('todos-container');
-  document.getElementById('loading').style.display = 'none';
-  container.style.display = '';
-
   if (!todos.length) {
-    container.innerHTML = `<div class="empty-state"><div class="icon">✓</div><p>All clear — nothing to action.</p></div>`;
+    container.innerHTML = `<div class="empty-state"><p>No action items.</p></div>`;
     return;
   }
-
-  // Group by category
   const groups = {};
   todos.forEach(t => {
     const cat = t.category || 'General';
     if (!groups[cat]) groups[cat] = [];
     groups[cat].push(t);
   });
-
-  // Priority order for categories
   const catOrder = ['E4L — Client Messages','Payments','Facebook Ads','CTD / Strategic Profits',
-                    'E4L — New Signups','Orders / Fulfillment','Scheduling','Client Comms',
-                    'Financial','GHL Admin','Delegated Tasks','General'];
-  const sortedCats = Object.keys(groups).sort((a,b) => {
+                    'E4L — Sequence Test','E4L — New Signups','Orders / Fulfillment','Scheduling',
+                    'Client Comms','Financial','GHL Admin','Delegated Tasks','General'];
+  const sorted = Object.keys(groups).sort((a,b) => {
     const ai = catOrder.indexOf(a), bi = catOrder.indexOf(b);
-    if (ai === -1 && bi === -1) return a.localeCompare(b);
-    if (ai === -1) return 1;
-    if (bi === -1) return -1;
+    if (ai===-1 && bi===-1) return a.localeCompare(b);
+    if (ai===-1) return 1; if (bi===-1) return -1;
     return ai - bi;
   });
-
-  container.innerHTML = sortedCats.map(cat => {
+  container.innerHTML = sorted.map(cat => {
     const items = groups[cat];
-    const cards = items.map(t => todoCard(t)).join('');
     return `<div class="category-group">
       <div class="cat-header">
         <span class="cat-name">${escHtml(cat)}</span>
         <span class="cat-count">${items.length}</span>
       </div>
-      ${cards}
+      ${items.map(t => todoCard(t)).join('')}
     </div>`;
   }).join('');
 }
 
-function delegateTargets(currentOwner) {
-  const all = ['glen','rae','shaira'];
-  return all.filter(o => o !== currentOwner);
-}
-
 function todoCard(t) {
-  const isDone = t.status === 'done';
+  const isDone      = t.status === 'done';
   const isDelegated = t.status === 'delegated';
-  let cardClass = 'todo-card';
-  if (isDone) cardClass += ' done-item';
-  if (isDelegated) cardClass += ' delegated-item';
-
+  let cls = 'todo-card' + (isDone ? ' done-item' : '') + (isDelegated ? ' delegated-item' : '');
   const meta = [];
-  if (t.source) meta.push(`<span class="meta-badge">${escHtml(t.source)}</span>`);
+  if (t.source)     meta.push(`<span class="meta-badge">${escHtml(t.source)}</span>`);
   if (t.created_at) meta.push(`<span class="meta-badge">${timeAgo(t.created_at)}</span>`);
   if (isDelegated && t.delegated_to) meta.push(`<span class="meta-badge delegated">→ ${t.delegated_to}</span>`);
-
-  const targets = delegateTargets(currentOwner);
+  const targets = ['glen','rae','shaira'].filter(o => o !== currentOwner);
   const delegateOptions = targets.map(to =>
-    `<button class="delegate-option" onclick="doDelegate(${t.id}, '${to}', event)">${to.charAt(0).toUpperCase()+to.slice(1)}</button>`
+    `<button class="delegate-option" onclick="doDelegate(${t.id},'${to}',event)">${to.charAt(0).toUpperCase()+to.slice(1)}</button>`
   ).join('');
-
   const actions = isDone || isDelegated ? `
     <button class="btn-action btn-reopen" onclick="doReopen(${t.id})">Reopen</button>
   ` : `
     <button class="btn-action btn-done" onclick="doDone(${t.id})">Done</button>
     <div class="delegate-wrap">
-      <button class="btn-delegate" onclick="toggleMenu(${t.id}, event)">Delegate ▾</button>
+      <button class="btn-delegate" onclick="toggleMenu(${t.id},event)">Delegate ▾</button>
       <div class="delegate-menu hidden" id="menu-${t.id}">${delegateOptions}</div>
     </div>
     <button class="btn-action btn-dismiss" onclick="doDelete(${t.id})" title="Dismiss">✕</button>
   `;
-
-  return `<div class="${cardClass}" id="card-${t.id}">
-    <div class="priority-dot ${t.priority || 'normal'}"></div>
+  return `<div class="${cls}" id="card-${t.id}">
+    <div class="priority-dot ${t.priority||'normal'}"></div>
     <div class="todo-body">
       <div class="todo-title">${escHtml(t.title)}</div>
       ${t.body ? `<div class="todo-detail">${escHtml(t.body)}</div>` : ''}
@@ -300,32 +411,19 @@ function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Actions ───────────────────────────────────────────────────────────────────
-async function doDone(id) {
-  await patchTodo(id, { action: 'done' });
-  animateRemove(id, () => refresh());
+// ── Todo actions ──────────────────────────────────────────────────────────────
+async function doDone(id)        { await patchTodo(id,{action:'done'});    animateRemove(`card-${id}`, refresh); }
+async function doReopen(id)      { await patchTodo(id,{action:'reopen'});  refresh(); }
+async function doDelete(id)      { await deleteTodo(id);                   animateRemove(`card-${id}`, refresh); }
+async function doDelegate(id,to,e) {
+  e.stopPropagation(); closeAllMenus();
+  await patchTodo(id,{action:'delegate',to});
+  animateRemove(`card-${id}`, refresh);
 }
 
-async function doReopen(id) {
-  await patchTodo(id, { action: 'reopen' });
-  refresh();
-}
-
-async function doDelegate(id, to, e) {
-  e.stopPropagation();
-  closeAllMenus();
-  await patchTodo(id, { action: 'delegate', to });
-  animateRemove(id, () => refresh());
-}
-
-async function doDelete(id) {
-  await deleteTodo(id);
-  animateRemove(id, () => refresh());
-}
-
-function animateRemove(id, cb) {
-  const el = document.getElementById(`card-${id}`);
-  if (el) { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; }
+function animateRemove(elemId, cb) {
+  const el = document.getElementById(elemId);
+  if (el) { el.style.opacity='0'; el.style.transition='opacity .3s'; }
   setTimeout(cb, 300);
 }
 
@@ -333,14 +431,8 @@ function toggleMenu(id, e) {
   e.stopPropagation();
   const menu = document.getElementById(`menu-${id}`);
   if (!menu) return;
-  if (menu.classList.contains('hidden')) {
-    closeAllMenus();
-    menu.classList.remove('hidden');
-    openMenuId = id;
-  } else {
-    menu.classList.add('hidden');
-    openMenuId = null;
-  }
+  if (menu.classList.contains('hidden')) { closeAllMenus(); menu.classList.remove('hidden'); openMenuId = id; }
+  else { menu.classList.add('hidden'); openMenuId = null; }
 }
 
 function closeAllMenus() {
@@ -353,9 +445,19 @@ document.addEventListener('click', closeAllMenus);
 // ── Refresh ───────────────────────────────────────────────────────────────────
 async function refresh() {
   resetCountdown();
+  document.getElementById('loading').style.display = '';
+  document.getElementById('main-content').style.display = 'none';
+
   const showDone = document.getElementById('show-done').checked;
-  const status = showDone ? 'done' : 'open';
-  const todos = await fetchTodos(currentOwner, status);
+  const [todos, calEvents] = await Promise.all([
+    fetchTodos(currentOwner, showDone ? 'done' : 'open'),
+    fetchCalendar('glen'),   // calendar always shows Glen's (shared view)
+  ]);
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('main-content').style.display = '';
+
+  renderCalendar(calEvents);
   renderTodos(todos);
 }
 
@@ -378,7 +480,7 @@ function switchOwner(owner, btn) {
   refresh();
 }
 
-// Set owner from URL param if present
+// ── Init ──────────────────────────────────────────────────────────────────────
 const urlOwner = new URLSearchParams(location.search).get('owner');
 if (urlOwner && ['glen','rae','shaira'].includes(urlOwner)) {
   currentOwner = urlOwner;
