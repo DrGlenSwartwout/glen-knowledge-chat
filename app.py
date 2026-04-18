@@ -396,14 +396,15 @@ def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag=
     if extra_tags:
         all_new_tags.update(extra_tags)
 
-    # Try to find existing contact
-    data, err = _ghl_get("/contacts/", {"email": email})
+    # Try to find existing contact (GHL v1 email filter is fuzzy — check exact match)
+    data, err = _ghl_get("/contacts/", {"email": email, "limit": "20"})
     if not err:
         contacts = data.get("contacts", [])
-        if contacts:
-            contact_id = contacts[0]["id"]
+        match = next((c for c in contacts if (c.get("email") or "").lower() == email.lower()), None)
+        if match:
+            contact_id = match["id"]
             if all_new_tags:
-                existing_tags = set(contacts[0].get("tags", []))
+                existing_tags = set(match.get("tags", []))
                 existing_tags.update(all_new_tags)
                 _ghl_put(f"/contacts/{contact_id}", {"tags": list(existing_tags)})
             return contact_id, False, None
