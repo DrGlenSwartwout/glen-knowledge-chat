@@ -1264,14 +1264,26 @@ def ingest_transcript():
     if ws and secret != ws:
         return jsonify({"error": "unauthorized"}), 401
 
-    body      = request.get_json(force=True) or {}
-    text      = (body.get("text") or "").strip()
-    title     = (body.get("title") or "Untitled Session").strip()
-    speakers  = (body.get("speakers") or "").strip()
-    namespace = (body.get("namespace") or "").strip().lower()
+    body         = request.get_json(force=True) or {}
+    text         = (body.get("text") or "").strip()
+    download_url = (body.get("download_url") or "").strip()
+    token        = (body.get("download_token") or "").strip()
+    title        = (body.get("title") or "Untitled Session").strip()
+    speakers     = (body.get("speakers") or "").strip()
+    namespace    = (body.get("namespace") or "").strip().lower()
+
+    # Fetch transcript from Zoom if download_url provided instead of text
+    if not text and download_url:
+        import urllib.request as _ur2
+        try:
+            req = _ur2.Request(download_url, headers={"Authorization": f"Bearer {token}"} if token else {})
+            with _ur2.urlopen(req, timeout=30) as resp:
+                text = resp.read().decode("utf-8", errors="replace")
+        except Exception as e:
+            return jsonify({"error": f"Failed to fetch transcript: {str(e)[:200]}"}), 500
 
     if not text:
-        return jsonify({"error": "text is required"}), 400
+        return jsonify({"error": "text or download_url is required"}), 400
 
     # Auto-route by title if namespace not specified
     if not namespace:
