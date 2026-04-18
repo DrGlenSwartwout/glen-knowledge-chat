@@ -1169,6 +1169,133 @@ def generate_audio():
     })
 
 
+# ── Transcript Ingest Endpoint ───────────────────────────────────────────────
+import re as _re
+import time as _time
+from concurrent.futures import ThreadPoolExecutor as _TPE
+
+_INGEST_CHUNK_SIZE    = 500
+_INGEST_CHUNK_OVERLAP = 50
+_INGEST_MIN_WORDS     = 20
+_INGEST_BATCH_SIZE    = 50
+
+_TRAINING_KEYWORDS = ["cert", "certification", "training", "class", "workshop", "cohort"]
+
+
+def _clean_zoom_transcript(text):
+    """Strip VTT/SRT timestamps, WEBVTT headers, and Otter branding."""
+    # WEBVTT header
+    text = _re.sub(r'^WEBVTT.*?\n\n', '', text, flags=_re.DOTALL)
+    # VTT/SRT cue timestamps  e.g. 00:01:23.456 --> 00:01:27.890
+    text = _re.sub(r'\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[.,]\d{3}', '', text)
+    # Plain timestamps  00:04:12 or 4:12
+    text = _re.sub(r'\b\d{1,2}:\d{2}(:\d{2})?\b', '', text)
+    # Cue numeric identifiers (lines that are just a number)
+    text = _re.sub(r'^\d+\s*$', '', text, flags=_re.MULTILINE)
+    # Otter branding
+    text = _re.sub(r'Transcript by Otter\.ai.*', '', text, flags=_re.IGNORECASE | _re.DOTALL)
+    # Unknown Speaker lines
+    text = _re.sub(r'^Unknown Speaker\s*$', '', text, flags=_re.MULTILINE)
+    # Collapse whitespace
+    text = _re.sub(r'[ \t]{2,}', ' ', text)
+    text = _re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+def _chunk_text(text):
+    words = text.split()
+    if len(words) <= _INGEST_CHUNK_SIZE:
+        return [text]
+    chunks, start = [], 0
+    while start < len(words):
+        end = min(start + _INGEST_CHUNK_SIZE, len(words))
+        chunks.append(" ".join(words[start:end]))
+        start += _INGEST_CHUNK_SIZE - _INGEST_CHUNK_OVERLAP
+    return chunks
+
+
+def _ingest_to_pinecone(text, title, namespace, speakers=""):
+    chunks = [c for c in _chunk_text(text) if len(c.split()) >= _INGEST_MIN_WORDS]
+    if not chunks:
+        return 0, "No usable content after chunking"
+
+    ns_prefix = {"consultations": "consult", "training": "train"}.get(namespace, namespace[:6])
+    slug      = _re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')[:60]
+
+    for i in range(0, len(chunks), _INGEST_BATCH_SIZE):
+        batch  = chunks[i:i + _INGEST_BATCH_SIZE]
+        texts  = batch
+        resp   = _oa.embeddings.create(input=texts, model="text-embedding-3-small")
+        vecs   = []
+        for j, (chunk, emb) in enumerate(zip(batch, resp.data)):
+            vecs.append({
+                "id":     f"{ns_prefix}-{slug}-{i+j:03d}",
+                "values": emb.embedding,
+                "metadata": {
+                    "text":      chunk,
+                    "source":    "zoom-transcript",
+                    "namespace": namespace,
+                    "title":     title,
+                    "speakers":  speakers,
+                    "chunk":     i + j,
+                }
+            })
+        _idx.upsert(vectors=vecs, namespace=namespace)
+        _time.sleep(0.2)
+
+    return len(chunks), None
+
+
+@app.route("/ingest-transcript", methods=["POST"])
+def ingest_transcript():
+    """
+    Ingest a Zoom transcript into Pinecone.
+    Called by Make.com after a Zoom recording is ready.
+
+    POST body (JSON):
+      text       — transcript text (required)
+      title      — meeting title (used for routing + metadata)
+      namespace  — override auto-routing: "consultations" or "training"
+      speakers   — comma-separated speaker names (optional)
+      secret     — webhook secret (or pass as X-Webhook-Secret header)
+    """
+    secret = request.headers.get("X-Webhook-Secret", "") or (request.get_json(force=True) or {}).get("secret", "")
+    ws     = os.environ.get("WEBHOOK_SECRET", "")
+    if ws and secret != ws:
+        return jsonify({"error": "unauthorized"}), 401
+
+    body      = request.get_json(force=True) or {}
+    text      = (body.get("text") or "").strip()
+    title     = (body.get("title") or "Untitled Session").strip()
+    speakers  = (body.get("speakers") or "").strip()
+    namespace = (body.get("namespace") or "").strip().lower()
+
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+
+    # Auto-route by title if namespace not specified
+    if not namespace:
+        title_lower = title.lower()
+        namespace   = "training" if any(k in title_lower for k in _TRAINING_KEYWORDS) else "consultations"
+
+    if namespace not in ["consultations", "training", "default"]:
+        return jsonify({"error": f"invalid namespace: {namespace}"}), 400
+
+    cleaned      = _clean_zoom_transcript(text)
+    n, err       = _ingest_to_pinecone(cleaned, title, namespace, speakers)
+
+    if err:
+        return jsonify({"error": err}), 500
+
+    return jsonify({
+        "ok":        True,
+        "title":     title,
+        "namespace": namespace,
+        "chunks":    n,
+        "words":     len(cleaned.split()),
+    })
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
