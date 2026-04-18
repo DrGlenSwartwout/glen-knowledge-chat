@@ -506,6 +506,42 @@ def _log_inbound_lead(source, email, first_name, last_name, phone, raw, ghl_resu
         cx.commit()
 
 
+# ── GHL sync endpoint (for local-machine sync when Cloudflare blocks Render→GHL) ──
+@app.route("/leads/pending-ghl", methods=["GET"])
+def leads_pending_ghl():
+    secret = request.headers.get("X-Webhook-Secret", "")
+    ws = os.environ.get("WEBHOOK_SECRET", "")
+    if ws and secret != ws:
+        return jsonify({"error": "unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute("""
+            SELECT id, received_at, source, email, first_name, last_name, phone, raw_json, ghl_error
+            FROM inbound_leads
+            WHERE ghl_contact_id IS NULL AND email IS NOT NULL AND email != ''
+            ORDER BY received_at ASC LIMIT 100
+        """).fetchall()
+    return jsonify({"leads": [dict(r) for r in rows], "count": len(rows)})
+
+
+@app.route("/leads/mark-ghl-synced", methods=["POST"])
+def leads_mark_ghl_synced():
+    secret = request.headers.get("X-Webhook-Secret", "")
+    ws = os.environ.get("WEBHOOK_SECRET", "")
+    if ws and secret != ws:
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(force=True) or {}
+    lead_id = data.get("id")
+    contact_id = data.get("contact_id")
+    if not lead_id or not contact_id:
+        return jsonify({"error": "id and contact_id required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("UPDATE inbound_leads SET ghl_contact_id=?, ghl_error=NULL WHERE id=?",
+                   (contact_id, lead_id))
+        cx.commit()
+    return jsonify({"ok": True, "id": lead_id, "contact_id": contact_id})
+
+
 # ── Practice Better Webhook ───────────────────────────────────────────────────
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
