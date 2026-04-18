@@ -293,6 +293,17 @@ def feedback_url():
     return jsonify({"submit": FEEDBACK_SUBMIT_URL, "view": FEEDBACK_VIEW_URL})
 
 
+@app.route("/debug-ghl")
+def debug_ghl():
+    key = GHL_API_KEY
+    return jsonify({
+        "key_length": len(key),
+        "key_first10": key[:10],
+        "key_last10": key[-10:],
+        "has_key": bool(key),
+    })
+
+
 # ── GHL Integration ──────────────────────────────────────────────────────────
 GHL_API_KEY      = os.environ.get("GHL_API_KEY", "")
 GHL_BASE         = "https://rest.gohighlevel.com/v1"
