@@ -1057,6 +1057,118 @@ def delete_todo(todo_id):
     return jsonify({"ok": True})
 
 
+# ── Audio Generation ──────────────────────────────────────────────────────────
+_EL_API_KEY  = os.environ.get("ELEVENLABS_API_KEY", "")
+_EL_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "")
+_EL_BASE     = "https://api.elevenlabs.io/v1"
+
+_AUDIO_SCRIPT_PROMPT = """You are preparing a spoken audio summary for Dr. Glen Swartwout's students.
+Convert the following content into a natural, engaging spoken script of approximately {max_words} words
+(about {minutes} minutes when read aloud at 150 words/minute).
+
+Write in first person as Dr. Glen. Keep his warm, knowledgeable, mentor tone.
+No bullet points — flowing spoken prose only. No stage directions or labels.
+Start speaking immediately (no "Hello" or "Welcome" opener).
+
+Content:
+{content}"""
+
+def _el_tts(script: str) -> tuple[bytes | None, str | None]:
+    """Call ElevenLabs TTS. Returns (audio_bytes, error)."""
+    if not _EL_API_KEY or not _EL_VOICE_ID:
+        return None, "ELEVENLABS_API_KEY or ELEVENLABS_VOICE_ID not set"
+    import urllib.request as _ur
+    payload = json.dumps({
+        "text":           script,
+        "model_id":       "eleven_turbo_v2_5",
+        "voice_settings": {"stability": 0.45, "similarity_boost": 0.80, "style": 0.20},
+    }).encode()
+    req = _ur.Request(
+        f"{_EL_BASE}/text-to-speech/{_EL_VOICE_ID}",
+        data=payload,
+        headers={
+            "xi-api-key":   _EL_API_KEY,
+            "Content-Type": "application/json",
+            "Accept":       "audio/mpeg",
+        },
+        method="POST",
+    )
+    try:
+        with _ur.urlopen(req, timeout=60) as resp:
+            return resp.read(), None
+    except Exception as e:
+        return None, str(e)
+
+
+@app.route("/generate-audio", methods=["POST"])
+def generate_audio():
+    """
+    Generate a spoken audio summary from text content using Claude + ElevenLabs.
+
+    POST body (JSON):
+      text      — raw content to summarize (required)
+      title     — label for this audio piece (optional)
+      max_words — target script length in words, default 450 (~3 min)
+      raw       — if true, send text directly to ElevenLabs without Claude summarization
+
+    Returns JSON:
+      { "ok": true, "title": "...", "script": "...", "audio_base64": "...",
+        "audio_bytes": <int>, "estimated_minutes": <float> }
+    """
+    secret = request.headers.get("X-Webhook-Secret", "")
+    ws     = os.environ.get("WEBHOOK_SECRET", "")
+    if ws and secret != ws:
+        return jsonify({"error": "unauthorized"}), 401
+
+    body      = request.get_json(force=True) or {}
+    text      = (body.get("text") or "").strip()
+    title     = (body.get("title") or "Audio Summary").strip()
+    max_words = int(body.get("max_words") or 450)
+    raw_mode  = bool(body.get("raw"))
+
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    if not _EL_API_KEY or not _EL_VOICE_ID:
+        return jsonify({"error": "ElevenLabs not configured (set ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID)"}), 503
+
+    # Step 1 — summarize with Claude (skip if raw mode or text is already short)
+    if raw_mode or len(text.split()) <= max_words:
+        script = text
+    else:
+        minutes = round(max_words / 150, 1)
+        prompt  = _AUDIO_SCRIPT_PROMPT.format(
+            max_words=max_words, minutes=minutes, content=text[:12000]
+        )
+        try:
+            msg    = _cl.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1200,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            script = msg.content[0].text.strip()
+        except Exception as e:
+            return jsonify({"error": f"Claude error: {str(e)[:200]}"}), 500
+
+    # Step 2 — render with ElevenLabs
+    audio_bytes, err = _el_tts(script)
+    if err:
+        return jsonify({"error": f"ElevenLabs error: {err}"}), 500
+
+    import base64
+    word_count        = len(script.split())
+    estimated_minutes = round(word_count / 150, 1)
+
+    return jsonify({
+        "ok":                True,
+        "title":             title,
+        "script":            script,
+        "word_count":        word_count,
+        "estimated_minutes": estimated_minutes,
+        "audio_bytes":       len(audio_bytes),
+        "audio_base64":      base64.b64encode(audio_bytes).decode(),
+    })
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
