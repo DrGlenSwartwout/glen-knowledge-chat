@@ -1296,6 +1296,44 @@ def ingest_transcript():
     })
 
 
+# ── Clip hosting (temporary storage for Creatomate) ──────────────────────────
+_CLIPS_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "clips"
+_CLIPS_DIR.mkdir(exist_ok=True)
+
+@app.route("/clips/upload", methods=["PUT"])
+def clips_upload():
+    secret = request.headers.get("X-Webhook-Secret", "")
+    ws     = os.environ.get("WEBHOOK_SECRET", "")
+    if ws and secret != ws:
+        return jsonify({"error": "unauthorized"}), 401
+    filename = request.args.get("filename", "")
+    if not filename or not re.match(r'^[\w\-]+\.mp4$', filename):
+        return jsonify({"error": "invalid filename (alphanumeric, hyphens, .mp4 only)"}), 400
+    dest = _CLIPS_DIR / filename
+    dest.write_bytes(request.data)
+    base_url = os.environ.get("RENDER_EXTERNAL_URL", "https://glen-knowledge-chat.onrender.com")
+    return jsonify({"ok": True, "url": f"{base_url}/clips/{filename}"})
+
+
+@app.route("/clips/<filename>")
+def clips_serve(filename):
+    if not re.match(r'^[\w\-]+\.mp4$', filename):
+        return jsonify({"error": "invalid filename"}), 400
+    return send_from_directory(str(_CLIPS_DIR), filename, mimetype="video/mp4")
+
+
+@app.route("/clips/<filename>", methods=["DELETE"])
+def clips_delete(filename):
+    secret = request.headers.get("X-Webhook-Secret", "")
+    ws     = os.environ.get("WEBHOOK_SECRET", "")
+    if ws and secret != ws:
+        return jsonify({"error": "unauthorized"}), 401
+    f = _CLIPS_DIR / filename
+    if f.exists():
+        f.unlink()
+    return jsonify({"ok": True})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
