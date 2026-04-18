@@ -295,31 +295,25 @@ def feedback_url():
 
 @app.route("/debug-ghl")
 def debug_ghl():
-    import urllib.request as _ur
-    import urllib.error
     key = GHL_API_KEY
     result = {
         "key_length": len(key),
         "key_first10": key[:10],
         "key_last10": key[-10:],
         "has_key": bool(key),
+        "curl_available": bool(_CURL),
     }
-    # Live test against GHL API
+    # Live test via curl (bypasses Cloudflare JA3 blocking)
     try:
-        req = _ur.Request(
-            "https://rest.gohighlevel.com/v1/contacts/?limit=1",
-            headers={"Authorization": f"Bearer {key}"}
+        r = _subprocess.run(
+            [_CURL, "-s", "--max-time", "10",
+             "https://rest.gohighlevel.com/v1/contacts/?limit=1",
+             "-H", f"Authorization: Bearer {key}"],
+            capture_output=True, text=True, timeout=15
         )
-        with _ur.urlopen(req, timeout=10) as r:
-            body = json.loads(r.read())
-            result["ghl_test"] = "ok"
-            result["ghl_contacts_total"] = body.get("meta", {}).get("total", "unknown")
-    except urllib.error.HTTPError as e:
-        result["ghl_test"] = f"HTTPError {e.code}: {e.reason}"
-        try:
-            result["ghl_error_body"] = e.read().decode()[:200]
-        except Exception:
-            pass
+        body = json.loads(r.stdout)
+        result["ghl_test"] = "ok"
+        result["ghl_contacts_total"] = body.get("meta", {}).get("total", "unknown")
     except Exception as e:
         result["ghl_test"] = f"Error: {str(e)[:100]}"
     return jsonify(result)
