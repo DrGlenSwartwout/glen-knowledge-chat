@@ -37,7 +37,7 @@ CORS(app)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 PINECONE_INDEX    = "remedy-match-llc"
-NAMESPACES        = ["mentors", "ingredients", "e4l-protocols", "consultations", ""]
+NAMESPACES        = ["mentors", "ingredients", "e4l-protocols", "consultations", "training", ""]
 TOP_K_PER_NS      = 8
 MAX_CONTEXT_CHARS = 18000
 FEEDBACK_SUBMIT_URL = os.environ.get("FEEDBACK_SUBMIT_URL", "https://Truly.VIP/Results")
