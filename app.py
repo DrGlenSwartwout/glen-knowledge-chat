@@ -295,13 +295,34 @@ def feedback_url():
 
 @app.route("/debug-ghl")
 def debug_ghl():
+    import urllib.request as _ur
+    import urllib.error
     key = GHL_API_KEY
-    return jsonify({
+    result = {
         "key_length": len(key),
         "key_first10": key[:10],
         "key_last10": key[-10:],
         "has_key": bool(key),
-    })
+    }
+    # Live test against GHL API
+    try:
+        req = _ur.Request(
+            "https://rest.gohighlevel.com/v1/contacts/?limit=1",
+            headers={"Authorization": f"Bearer {key}"}
+        )
+        with _ur.urlopen(req, timeout=10) as r:
+            body = json.loads(r.read())
+            result["ghl_test"] = "ok"
+            result["ghl_contacts_total"] = body.get("meta", {}).get("total", "unknown")
+    except urllib.error.HTTPError as e:
+        result["ghl_test"] = f"HTTPError {e.code}: {e.reason}"
+        try:
+            result["ghl_error_body"] = e.read().decode()[:200]
+        except Exception:
+            pass
+    except Exception as e:
+        result["ghl_test"] = f"Error: {str(e)[:100]}"
+    return jsonify(result)
 
 
 # ── GHL Integration ──────────────────────────────────────────────────────────
