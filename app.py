@@ -307,8 +307,8 @@ def debug_ghl():
     # Live test against GHL API
     try:
         req = _ur.Request(
-            "https://services.leadconnectorhq.com/contacts/?limit=1",
-            headers={"Authorization": f"Bearer {key}", "Version": "2021-07-28"}
+            "https://rest.gohighlevel.com/v1/contacts/?limit=1",
+            headers={"Authorization": f"Bearer {key}"}
         )
         with _ur.urlopen(req, timeout=10) as r:
             body = json.loads(r.read())
@@ -327,7 +327,7 @@ def debug_ghl():
 
 # ── GHL Integration ──────────────────────────────────────────────────────────
 GHL_API_KEY      = os.environ.get("GHL_API_KEY", "")
-GHL_BASE         = "https://services.leadconnectorhq.com"
+GHL_BASE         = "https://rest.gohighlevel.com/v1"
 GHL_PIPELINE_ID  = "A6LWJMBoIsOFBMeCa6NY"   # E4L Onboarding pipeline
 GHL_STAGE_NEW    = "397c5fb2-1612-4b7a-aa14-f0dac42a7fda"  # E4L Account Invite
 GHL_WORKFLOW_ID  = "0b02dd3e-b82a-4032-a575-f9269afbd3ac"  # E4L Onboarding Workflow
@@ -338,43 +338,54 @@ def _ghl_headers():
     return {
         "Authorization": f"Bearer {GHL_API_KEY}",
         "Content-Type":  "application/json",
-        "Version":       "2021-07-28",
     }
 
+import subprocess as _subprocess
+import shutil as _shutil
+
+_CURL = _shutil.which("curl")  # Use curl to bypass Cloudflare JA3 fingerprint blocking
+
+def _curl_args(method="GET", data=None):
+    args = [_CURL, "-s", "--max-time", "10"]
+    if method != "GET":
+        args += ["-X", method]
+    h = _ghl_headers()
+    for k, v in h.items():
+        args += ["-H", f"{k}: {v}"]
+    if data is not None:
+        args += ["-d", json.dumps(data)]
+    return args
+
 def _ghl_post(path, payload):
-    req = _urllib_req.Request(
-        f"{GHL_BASE}{path}",
-        data=json.dumps(payload).encode(),
-        headers=_ghl_headers(),
-        method="POST"
-    )
+    if not _CURL:
+        return None, "curl not available"
     try:
-        with _urllib_req.urlopen(req, timeout=10) as r:
-            return json.loads(r.read()), None
+        r = _subprocess.run(_curl_args("POST", payload) + [f"{GHL_BASE}{path}"],
+                            capture_output=True, text=True, timeout=15)
+        return json.loads(r.stdout), None
     except Exception as e:
         return None, str(e)
 
 def _ghl_put(path, payload):
-    req = _urllib_req.Request(
-        f"{GHL_BASE}{path}",
-        data=json.dumps(payload).encode(),
-        headers=_ghl_headers(),
-        method="PUT"
-    )
+    if not _CURL:
+        return None, "curl not available"
     try:
-        with _urllib_req.urlopen(req, timeout=10) as r:
-            return json.loads(r.read()), None
+        r = _subprocess.run(_curl_args("PUT", payload) + [f"{GHL_BASE}{path}"],
+                            capture_output=True, text=True, timeout=15)
+        return json.loads(r.stdout), None
     except Exception as e:
         return None, str(e)
 
 def _ghl_get(path, params=None):
+    if not _CURL:
+        return None, "curl not available"
     url = f"{GHL_BASE}{path}"
     if params:
         url += "?" + "&".join(f"{k}={v}" for k, v in params.items())
-    req = _urllib_req.Request(url, headers=_ghl_headers())
     try:
-        with _urllib_req.urlopen(req, timeout=10) as r:
-            return json.loads(r.read()), None
+        r = _subprocess.run(_curl_args("GET") + [url],
+                            capture_output=True, text=True, timeout=15)
+        return json.loads(r.stdout), None
     except Exception as e:
         return None, str(e)
 
@@ -439,7 +450,7 @@ def ghl_enroll_workflow(contact_id):
     """Enroll a contact in the E4L Onboarding Workflow."""
     if not contact_id:
         return None, "No contact_id"
-    data, err = _ghl_post(f"/contacts/{contact_id}/workflow/{GHL_WORKFLOW_ID}/subscribe", {})
+    data, err = _ghl_post(f"/contacts/{contact_id}/workflow/{GHL_WORKFLOW_ID}", {})
     return data, err
 
 
