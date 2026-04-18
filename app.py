@@ -356,7 +356,7 @@ def _ghl_post(path, payload):
     try:
         r = _subprocess.run(_curl_args("POST", payload) + [f"{GHL_BASE}{path}"],
                             capture_output=True, text=True, timeout=15)
-        return json.loads(r.stdout), None
+        return (json.loads(r.stdout) if r.stdout.strip() else {}), None
     except Exception as e:
         return None, str(e)
 
@@ -366,7 +366,7 @@ def _ghl_put(path, payload):
     try:
         r = _subprocess.run(_curl_args("PUT", payload) + [f"{GHL_BASE}{path}"],
                             capture_output=True, text=True, timeout=15)
-        return json.loads(r.stdout), None
+        return (json.loads(r.stdout) if r.stdout.strip() else {}), None
     except Exception as e:
         return None, str(e)
 
@@ -375,11 +375,12 @@ def _ghl_get(path, params=None):
         return None, "curl not available"
     url = f"{GHL_BASE}{path}"
     if params:
-        url += "?" + "&".join(f"{k}={v}" for k, v in params.items())
+        import urllib.parse as _urlparse
+        url += "?" + "&".join(f"{k}={_urlparse.quote(str(v))}" for k, v in params.items())
     try:
         r = _subprocess.run(_curl_args("GET") + [url],
                             capture_output=True, text=True, timeout=15)
-        return json.loads(r.stdout), None
+        return (json.loads(r.stdout) if r.stdout.strip() else {}), None
     except Exception as e:
         return None, str(e)
 
