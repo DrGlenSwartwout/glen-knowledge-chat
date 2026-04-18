@@ -429,15 +429,17 @@ def ghl_add_to_pipeline(contact_id, name="", email=""):
     if not contact_id:
         return None, "No contact_id"
     payload = {
-        "pipelineId":      GHL_PIPELINE_ID,
-        "pipelineStageId": GHL_STAGE_NEW,
-        "contactId":       contact_id,
-        "name":            name or email or contact_id,
-        "status":          "open",
+        "stageId":   GHL_STAGE_NEW,
+        "contactId": contact_id,
+        "title":     name or email or contact_id,
+        "status":    "open",
     }
-    data, err = _ghl_post("/opportunities/", payload)
+    data, err = _ghl_post(f"/pipelines/{GHL_PIPELINE_ID}/opportunities", payload)
     if err:
         return None, err
+    # GHL returns error if contact already has an opportunity in this pipeline — treat as OK
+    if data.get("contactId", {}).get("rule") == "invalid":
+        return "already_exists", None
     opp_id = data.get("opportunity", {}).get("id") or data.get("id")
     return opp_id, None
 
