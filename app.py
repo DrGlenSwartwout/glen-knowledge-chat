@@ -307,8 +307,8 @@ def debug_ghl():
     # Live test against GHL API
     try:
         req = _ur.Request(
-            "https://rest.gohighlevel.com/v1/contacts/?limit=1",
-            headers={"Authorization": f"Bearer {key}"}
+            "https://services.leadconnectorhq.com/contacts/?limit=1",
+            headers={"Authorization": f"Bearer {key}", "Version": "2021-07-28"}
         )
         with _ur.urlopen(req, timeout=10) as r:
             body = json.loads(r.read())
@@ -327,7 +327,7 @@ def debug_ghl():
 
 # ── GHL Integration ──────────────────────────────────────────────────────────
 GHL_API_KEY      = os.environ.get("GHL_API_KEY", "")
-GHL_BASE         = "https://rest.gohighlevel.com/v1"
+GHL_BASE         = "https://services.leadconnectorhq.com"
 GHL_PIPELINE_ID  = "A6LWJMBoIsOFBMeCa6NY"   # E4L Onboarding pipeline
 GHL_STAGE_NEW    = "397c5fb2-1612-4b7a-aa14-f0dac42a7fda"  # E4L Account Invite
 GHL_WORKFLOW_ID  = "0b02dd3e-b82a-4032-a575-f9269afbd3ac"  # E4L Onboarding Workflow
@@ -338,6 +338,7 @@ def _ghl_headers():
     return {
         "Authorization": f"Bearer {GHL_API_KEY}",
         "Content-Type":  "application/json",
+        "Version":       "2021-07-28",
     }
 
 def _ghl_post(path, payload):
@@ -438,7 +439,7 @@ def ghl_enroll_workflow(contact_id):
     """Enroll a contact in the E4L Onboarding Workflow."""
     if not contact_id:
         return None, "No contact_id"
-    data, err = _ghl_post(f"/contacts/{contact_id}/workflow/{GHL_WORKFLOW_ID}", {})
+    data, err = _ghl_post(f"/contacts/{contact_id}/workflow/{GHL_WORKFLOW_ID}/subscribe", {})
     return data, err
 
 
