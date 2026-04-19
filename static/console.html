@@ -99,6 +99,7 @@
   .todo-actions { display: flex; gap: 6px; align-items: flex-start; flex-shrink: 0; }
   .btn-action { border: 1px solid var(--border); background: transparent; border-radius: 6px; color: var(--muted); cursor: pointer; padding: 4px 10px; font-size: 12px; transition: all .15s; white-space: nowrap; }
   .btn-done:hover    { background: #1a3a1a; border-color: var(--shaira); color: var(--shaira); }
+  .btn-read:hover    { background: #1a2a3a; border-color: var(--glen); color: var(--glen); }
   .btn-reopen:hover  { background: #1a2a3a; border-color: var(--glen); color: var(--glen); }
   .btn-dismiss:hover { background: #2a1a1a; border-color: var(--high); color: var(--high); }
   .btn-gmail { text-decoration: none; color: var(--muted); }
@@ -405,6 +406,7 @@ function todoCard(t) {
     <button class="btn-action btn-reopen" onclick="doReopen(${t.id})">Reopen</button>
   ` : `
     ${gmailBtn}
+    <button class="btn-action btn-read" onclick="doDone(${t.id})">Read</button>
     <button class="btn-action btn-done" onclick="doDone(${t.id})">Done</button>
     <div class="delegate-wrap">
       <button class="btn-delegate" onclick="toggleMenu(${t.id},event)">Delegate ▾</button>
