@@ -37,7 +37,7 @@ CORS(app)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 PINECONE_INDEX    = "remedy-match-llc"
-NAMESPACES        = ["mentors", "ingredients", "e4l-protocols", "consultations", "training", ""]
+NAMESPACES        = ["mentors", "ingredients", "e4l-protocols", "consultations", "training", "business", ""]
 TOP_K_PER_NS      = 8
 MAX_CONTEXT_CHARS = 18000
 FEEDBACK_SUBMIT_URL = os.environ.get("FEEDBACK_SUBMIT_URL", "https://Truly.VIP/Results")
@@ -1290,7 +1290,7 @@ def ingest_transcript():
         title_lower = title.lower()
         namespace   = "training" if any(k in title_lower for k in _TRAINING_KEYWORDS) else "consultations"
 
-    if namespace not in ["consultations", "training", "default"]:
+    if namespace not in ["consultations", "training", "business", "default"]:
         return jsonify({"error": f"invalid namespace: {namespace}"}), 400
 
     cleaned      = _clean_zoom_transcript(text)
