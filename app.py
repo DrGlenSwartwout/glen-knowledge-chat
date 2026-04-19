@@ -1180,6 +1180,9 @@ _INGEST_MIN_WORDS     = 20
 _INGEST_BATCH_SIZE    = 50
 
 _TRAINING_KEYWORDS = ["cert", "certification", "training", "class", "workshop", "cohort"]
+_BUSINESS_KEYWORDS = ["marketing", "copywriting", "copy", "funnel", "launch", "ads", "advertising",
+                      "strategy", "business", "ai tool", "automation", "make.com", "campaign",
+                      "sales", "conversion", "brand", "seo", "social media"]
 
 
 def _clean_zoom_transcript(text):
@@ -1288,7 +1291,12 @@ def ingest_transcript():
     # Auto-route by title if namespace not specified
     if not namespace:
         title_lower = title.lower()
-        namespace   = "training" if any(k in title_lower for k in _TRAINING_KEYWORDS) else "consultations"
+        if any(k in title_lower for k in _TRAINING_KEYWORDS):
+            namespace = "training"
+        elif any(k in title_lower for k in _BUSINESS_KEYWORDS):
+            namespace = "business"
+        else:
+            namespace = "consultations"
 
     if namespace not in ["consultations", "training", "business", "default"]:
         return jsonify({"error": f"invalid namespace: {namespace}"}), 400
