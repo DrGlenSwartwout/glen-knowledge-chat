@@ -467,9 +467,10 @@ async function refresh() {
   document.getElementById('main-content').style.display = 'none';
 
   const showDone = document.getElementById('show-done').checked;
+  const calOwner = currentOwner === 'shaira' ? null : currentOwner;
   const [todos, calEvents] = await Promise.all([
     fetchTodos(currentOwner, showDone ? 'done' : 'open'),
-    fetchCalendar('glen'),   // calendar always shows Glen's (shared view)
+    calOwner ? fetchCalendar(calOwner) : Promise.resolve([]),
   ]);
 
   document.getElementById('loading').style.display = 'none';
