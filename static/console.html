@@ -382,7 +382,7 @@ function gmailUrl(dedupKey) {
   if (!dedupKey) return null;
   const parts = dedupKey.split(':');
   if (parts[1] !== 'gmail' || !parts[2]) return null;
-  return `https://mail.google.com/mail/u/0/#all/${parts[2]}`;
+  return `https://mail.google.com/mail/u/0/#inbox/${parts[2]}`;
 }
 
 function todoCard(t) {
