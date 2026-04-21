@@ -139,12 +139,12 @@ async function loadPortal() {
 
 function showError() {
   document.getElementById('loading').style.display = 'none';
-  document.getElementById('error-view').style.display = '';
+  document.getElementById('error-view').style.display = 'block';
 }
 
 function render(d) {
   document.getElementById('loading').style.display = 'none';
-  document.getElementById('portal').style.display = '';
+  document.getElementById('portal').style.display = 'block';
 
   document.getElementById('welcome-name').textContent =
     `Welcome${d.organization ? ', ' + d.organization : (d.name ? ', ' + d.name.split(' ')[0] : '')}`;
