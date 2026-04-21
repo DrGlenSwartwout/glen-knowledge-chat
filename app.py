@@ -639,6 +639,8 @@ def affiliate_apply_form():
     email = (request.form.get("email") or "").strip().lower()
     org   = (request.form.get("organization") or "").strip()
     site  = (request.form.get("website") or "").strip()
+    if site and not site.startswith(("http://", "https://")):
+        site = "https://" + site
     promo = (request.form.get("promo_method") or "").strip()
 
     if not name or not email:
