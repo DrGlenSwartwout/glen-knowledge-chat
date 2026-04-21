@@ -662,15 +662,16 @@ def affiliate_page():
 
 @app.route("/affiliate/portal")
 def affiliate_portal_page():
+    from flask import redirect as _redir
+    import urllib.parse as _up
     # Allow ?email= as a convenience — look up token and redirect
     email = request.args.get("email", "").strip().lower()
     if email and not request.args.get("token"):
         with sqlite3.connect(LOG_DB) as cx:
             row = cx.execute("SELECT token FROM affiliate_signups WHERE LOWER(email)=?", (email,)).fetchone()
         if row:
-            return _redirect(f"/affiliate/portal?token={row[0]}")
-        # No account found — send to signup
-        return _redirect("/affiliate?error=" + _urlparse.quote("No affiliate account found for that email. Apply below."))
+            return _redir(f"/affiliate/portal?token={row[0]}")
+        return _redir("/affiliate?error=" + _up.quote("No affiliate account found for that email. Apply below."))
     resp = send_from_directory(STATIC, "affiliate-portal.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
