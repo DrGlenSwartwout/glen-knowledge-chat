@@ -888,6 +888,30 @@ def patch_affiliate(aff_id):
     return jsonify({"ok": True, "status": status})
 
 
+@app.route("/api/affiliates/backfill-links", methods=["POST"])
+def backfill_affiliate_links():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    results = []
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute(
+            "SELECT id, slug, name, organization FROM affiliate_signups WHERE (short_url IS NULL OR short_url='') AND status='approved'"
+        ).fetchall()
+    for aff_id, slug, name, org in rows:
+        destination = f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+        short_url = _rebrandly_create(slug, destination, title=f"Affiliate: {org or name}")
+        if short_url:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.execute("UPDATE affiliate_signups SET short_url=? WHERE id=?", (short_url, aff_id))
+                cx.commit()
+            results.append({"slug": slug, "short_url": short_url, "status": "created"})
+        else:
+            results.append({"slug": slug, "status": "failed"})
+    return jsonify({"backfilled": len(results), "results": results})
+
+
 def _log_referral_event(lead_id, email, first_name, last_name, utm_source, utm_medium,
                         utm_campaign, utm_content, utm_term, quiz_score, raw):
     if not utm_source:
