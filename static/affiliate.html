@@ -166,6 +166,7 @@ async function handleSubmit(e) {
   btn.disabled = true;
   btn.textContent = 'Setting up your account…';
   errEl.style.display = 'none';
+  errEl.textContent = '';
 
   const payload = {
     name:         document.getElementById('f-name').value.trim(),
@@ -175,27 +176,32 @@ async function handleSubmit(e) {
     promo_method: document.getElementById('f-promo').value,
   };
 
+  function showErr(msg) {
+    errEl.textContent = msg;
+    errEl.style.setProperty('display', 'block', 'important');
+    btn.disabled = false;
+    btn.textContent = 'Get My Tracking Link →';
+  }
+
   try {
     const r = await fetch('/affiliate/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const data = await r.json();
+    let data;
+    try { data = await r.json(); } catch(e) { data = {}; }
     if (!r.ok) {
-      errEl.textContent = data.error || 'Something went wrong. Please try again.';
-      errEl.style.display = '';
-      btn.disabled = false;
-      btn.textContent = 'Get My Tracking Link →';
+      showErr(data.error || 'Error ' + r.status + ' — please try again.');
       return;
     }
-    // Success — redirect to portal
+    if (!data.portal_url) {
+      showErr('Signup succeeded but no portal URL returned. Please contact support.');
+      return;
+    }
     window.location.href = data.portal_url;
   } catch (err) {
-    errEl.textContent = 'Network error. Please try again.';
-    errEl.style.display = '';
-    btn.disabled = false;
-    btn.textContent = 'Get My Tracking Link →';
+    showErr('Network error — please try again. (' + err.message + ')');
   }
 }
 </script>
