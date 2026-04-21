@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Become an Affiliate — Accelerate Self-Healing Quiz</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #7c5cbf;
+    --accent-light: #a07fe0;
+    --green: #3fb950;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+
+  .page { max-width: 540px; width: 100%; }
+
+  .hero { text-align: center; margin-bottom: 36px; }
+  .hero-badge { display: inline-block; background: rgba(124,92,191,.2); border: 1px solid rgba(124,92,191,.4); border-radius: 20px; padding: 5px 16px; font-size: 12px; color: var(--accent-light); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 18px; }
+  .hero h1 { font-size: 28px; font-weight: 800; line-height: 1.2; margin-bottom: 12px; }
+  .hero h1 span { color: var(--accent-light); }
+  .hero p { color: var(--muted); line-height: 1.7; font-size: 15px; }
+
+  .benefits { display: flex; flex-direction: column; gap: 10px; margin-bottom: 32px; }
+  .benefit { display: flex; align-items: flex-start; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .benefit-icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+  .benefit-text { font-size: 13px; line-height: 1.6; }
+  .benefit-text strong { display: block; font-size: 14px; margin-bottom: 2px; }
+  .benefit-text span { color: var(--muted); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px 24px; }
+  .card h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .card p { color: var(--muted); font-size: 13px; margin-bottom: 22px; line-height: 1.6; }
+
+  .form-group { margin-bottom: 16px; }
+  label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+  input, textarea, select {
+    width: 100%; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 7px; color: var(--text); font-size: 14px; transition: border-color .15s;
+    font-family: inherit;
+  }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 80px; }
+  select option { background: #1a1f27; }
+
+  .submit-btn {
+    width: 100%; padding: 13px; background: var(--accent); border: none; border-radius: 8px;
+    color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 8px;
+    transition: background .15s, transform .1s;
+  }
+  .submit-btn:hover { background: #6a4db0; }
+  .submit-btn:active { transform: scale(.99); }
+  .submit-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+  .fine-print { font-size: 11px; color: var(--muted); text-align: center; margin-top: 12px; line-height: 1.6; }
+
+  /* Success state */
+  #success-view { display: none; text-align: center; padding: 12px 0; }
+  #success-view .check { font-size: 48px; margin-bottom: 16px; }
+  #success-view h2 { font-size: 22px; font-weight: 800; margin-bottom: 10px; }
+  #success-view p { color: var(--muted); font-size: 14px; line-height: 1.7; margin-bottom: 20px; }
+  .portal-btn { display: inline-block; padding: 12px 28px; background: var(--accent); border-radius: 8px; color: #fff; text-decoration: none; font-weight: 700; font-size: 15px; }
+  .portal-btn:hover { background: #6a4db0; }
+
+  .error-msg { color: #f85149; font-size: 13px; margin-top: 8px; display: none; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="hero">
+    <div class="hero-badge">Affiliate Partner Program</div>
+    <h1>Help people <span>accelerate their healing</span> — and track every referral</h1>
+    <p>Share our free self-healing assessment quiz with your community. Get your own unique tracking link and see exactly how many people you've helped discover their path to healing.</p>
+  </div>
+
+  <div class="benefits">
+    <div class="benefit">
+      <div class="benefit-icon">🔗</div>
+      <div class="benefit-text">
+        <strong>Your personal tracking link</strong>
+        <span>A unique URL just for you — every quiz completion from your link is attributed to you.</span>
+      </div>
+    </div>
+    <div class="benefit">
+      <div class="benefit-icon">📊</div>
+      <div class="benefit-text">
+        <strong>Live referral dashboard</strong>
+        <span>See your referral count and recent leads in your personal portal anytime.</span>
+      </div>
+    </div>
+    <div class="benefit">
+      <div class="benefit-icon">🌿</div>
+      <div class="benefit-text">
+        <strong>Free to share, free to join</strong>
+        <span>No cost to become an affiliate. The quiz is free for your audience too.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div id="form-view">
+      <h2>Apply in 30 seconds</h2>
+      <p>Fill in your details below and you'll get instant access to your tracking link.</p>
+
+      <form id="apply-form" onsubmit="handleSubmit(event)">
+        <div style="display:flex;gap:12px;">
+          <div class="form-group" style="flex:1;">
+            <label>Your Name *</label>
+            <input type="text" id="f-name" placeholder="Jane Smith" required autocomplete="name">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>Email *</label>
+            <input type="email" id="f-email" placeholder="jane@example.com" required autocomplete="email">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Organization / Website / Practice</label>
+          <input type="text" id="f-org" placeholder="Healing Arts Center, YouTube channel, etc.">
+        </div>
+        <div class="form-group">
+          <label>Website (optional)</label>
+          <input type="url" id="f-website" placeholder="https://...">
+        </div>
+        <div class="form-group">
+          <label>How will you share the quiz?</label>
+          <select id="f-promo">
+            <option value="">— Select —</option>
+            <option value="email-list">Email newsletter / list</option>
+            <option value="social-media">Social media (Facebook, Instagram, etc.)</option>
+            <option value="youtube">YouTube channel</option>
+            <option value="podcast">Podcast</option>
+            <option value="website-blog">Website / blog</option>
+            <option value="in-person">In-person events or practice</option>
+            <option value="nonprofit">Nonprofit / community org</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="error-msg" id="error-msg"></div>
+        <button class="submit-btn" type="submit" id="submit-btn">Get My Tracking Link →</button>
+        <p class="fine-print">By signing up you agree to share the quiz ethically with people who may genuinely benefit. No spamming.</p>
+      </form>
+    </div>
+
+    <div id="success-view">
+      <div class="check">✅</div>
+      <h2>You're in!</h2>
+      <p>Your affiliate account is set up. Click below to access your personal tracking link and referral dashboard.</p>
+      <a id="portal-link" href="#" class="portal-btn">Go to My Dashboard →</a>
+      <p style="margin-top:16px;font-size:12px;color:var(--muted);">Bookmark this link — it's unique to you.</p>
+    </div>
+  </div>
+
+</div>
+<script>
+async function handleSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('submit-btn');
+  const errEl = document.getElementById('error-msg');
+  btn.disabled = true;
+  btn.textContent = 'Setting up your account…';
+  errEl.style.display = 'none';
+
+  const payload = {
+    name:         document.getElementById('f-name').value.trim(),
+    email:        document.getElementById('f-email').value.trim(),
+    organization: document.getElementById('f-org').value.trim(),
+    website:      document.getElementById('f-website').value.trim(),
+    promo_method: document.getElementById('f-promo').value,
+  };
+
+  try {
+    const r = await fetch('/affiliate/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      errEl.textContent = data.error || 'Something went wrong. Please try again.';
+      errEl.style.display = '';
+      btn.disabled = false;
+      btn.textContent = 'Get My Tracking Link →';
+      return;
+    }
+    // Success — redirect to portal
+    document.getElementById('portal-link').href = data.portal_url;
+    document.getElementById('form-view').style.display = 'none';
+    document.getElementById('success-view').style.display = '';
+  } catch (err) {
+    errEl.textContent = 'Network error. Please try again.';
+    errEl.style.display = '';
+    btn.disabled = false;
+    btn.textContent = 'Get My Tracking Link →';
+  }
+}
+</script>
+</body>
+</html>

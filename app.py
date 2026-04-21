@@ -481,6 +481,21 @@ def ghl_onboard_contact(email, first_name="", last_name="", phone="", source_tag
 def _init_referral_tables():
     with sqlite3.connect(LOG_DB) as cx:
         cx.execute("""
+            CREATE TABLE IF NOT EXISTS affiliate_signups (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at   TEXT NOT NULL,
+                name         TEXT NOT NULL,
+                email        TEXT NOT NULL UNIQUE,
+                organization TEXT DEFAULT '',
+                website      TEXT DEFAULT '',
+                promo_method TEXT DEFAULT '',
+                slug         TEXT NOT NULL UNIQUE,
+                token        TEXT NOT NULL UNIQUE,
+                status       TEXT DEFAULT 'approved',
+                notes        TEXT DEFAULT ''
+            )
+        """)
+        cx.execute("""
             CREATE TABLE IF NOT EXISTS referral_sources (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at  TEXT NOT NULL,
@@ -596,6 +611,176 @@ def get_referrals():
                     "utm_campaign": r[3], "name": f"{r[4] or ''} {r[5] or ''}".strip(),
                     "email": r[6], "quiz_score": r[7]} for r in recent]
     return jsonify({"stats": stat_list, "recent": recent_list})
+
+
+QUIZ_URL = "https://healing.scoreapp.com"
+
+
+@app.route("/affiliate")
+def affiliate_page():
+    resp = send_from_directory(STATIC, "affiliate.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/affiliate/portal")
+def affiliate_portal_page():
+    resp = send_from_directory(STATIC, "affiliate-portal.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/affiliate/apply", methods=["POST", "OPTIONS"])
+def affiliate_apply():
+    if request.method == "OPTIONS":
+        return "", 200
+    data  = request.get_json(force=True) or {}
+    name  = (data.get("name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    org   = (data.get("organization") or "").strip()
+    site  = (data.get("website") or "").strip()
+    promo = (data.get("promo_method") or "").strip()
+
+    if not name or not email:
+        return jsonify({"error": "Name and email are required"}), 400
+
+    # Generate slug from org or name
+    base = re.sub(r"[^a-z0-9]+", "-", (org or name).lower()).strip("-")[:30]
+    slug = base
+    # Generate secure token
+    import secrets as _secrets
+    token = _secrets.token_urlsafe(24)
+
+    ts = datetime.now(timezone.utc).isoformat()
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            # Ensure slug uniqueness
+            existing = cx.execute("SELECT id FROM affiliate_signups WHERE slug=?", (slug,)).fetchone()
+            if existing:
+                slug = f"{base}-{token[:6]}"
+            cx.execute("""
+                INSERT INTO affiliate_signups
+                  (created_at, name, email, organization, website, promo_method, slug, token, status)
+                VALUES (?,?,?,?,?,?,?,?,?)
+            """, (ts, name, email, org, site, promo, slug, token, "approved"))
+            # Also create referral_sources entry so tracking is live immediately
+            cx.execute("""
+                INSERT OR IGNORE INTO referral_sources
+                  (created_at, name, slug, description, utm_source, utm_medium, utm_campaign)
+                VALUES (?,?,?,?,?,?,?)
+            """, (ts, org or name, slug,
+                  f"Affiliate: {name}" + (f" ({org})" if org else ""),
+                  slug, "affiliate", "scoreapp-quiz"))
+            cx.commit()
+    except sqlite3.IntegrityError:
+        # Email already exists — return their existing portal link
+        with sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute("SELECT token, slug FROM affiliate_signups WHERE email=?", (email,)).fetchone()
+        if row:
+            token, slug = row
+        else:
+            return jsonify({"error": "Email already registered"}), 409
+
+    tracking_url = (
+        f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+    )
+    portal_url = f"/affiliate/portal?token={token}"
+    return jsonify({
+        "ok": True,
+        "portal_url": portal_url,
+        "tracking_url": tracking_url,
+        "slug": slug,
+    }), 201
+
+
+@app.route("/affiliate/portal-data", methods=["GET"])
+def affiliate_portal_data():
+    token = request.args.get("token", "").strip()
+    if not token:
+        return jsonify({"error": "token required"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("""
+            SELECT id, name, email, organization, slug, status, created_at
+            FROM affiliate_signups WHERE token=?
+        """, (token,)).fetchone()
+    if not row:
+        return jsonify({"error": "Invalid token"}), 404
+    aff_id, name, email, org, slug, status, created_at = row
+    if status != "approved":
+        return jsonify({"error": "Application pending review"}), 403
+
+    tracking_url = f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+
+    with sqlite3.connect(LOG_DB) as cx:
+        stats = cx.execute("""
+            SELECT COUNT(*) as total, MAX(received_at) as last_lead
+            FROM referral_events WHERE utm_source=?
+        """, (slug,)).fetchone()
+        recent = cx.execute("""
+            SELECT received_at, first_name, last_name, quiz_score
+            FROM referral_events WHERE utm_source=?
+            ORDER BY received_at DESC LIMIT 10
+        """, (slug,)).fetchall()
+
+    return jsonify({
+        "name": name,
+        "organization": org,
+        "slug": slug,
+        "tracking_url": tracking_url,
+        "total_leads": stats[0] if stats else 0,
+        "last_lead": stats[1] if stats else None,
+        "recent": [{"received_at": r[0],
+                    "name": f"{r[1] or ''} {r[2] or ''}".strip(),
+                    "score": r[3]} for r in recent],
+        "member_since": created_at,
+    })
+
+
+@app.route("/api/affiliates", methods=["GET"])
+def get_affiliates():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute("""
+            SELECT a.id, a.created_at, a.name, a.email, a.organization,
+                   a.website, a.promo_method, a.slug, a.status,
+                   COUNT(r.id) as lead_count
+            FROM affiliate_signups a
+            LEFT JOIN referral_events r ON r.utm_source = a.slug
+            GROUP BY a.id
+            ORDER BY a.created_at DESC
+        """).fetchall()
+    cols = ["id","created_at","name","email","organization","website","promo_method","slug","status","lead_count"]
+    return jsonify({"affiliates": [dict(zip(cols, r)) for r in rows]})
+
+
+@app.route("/api/affiliates/<int:aff_id>", methods=["PATCH"])
+def patch_affiliate(aff_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    data   = request.get_json(force=True) or {}
+    status = data.get("status", "")
+    if status not in ("approved", "rejected", "suspended"):
+        return jsonify({"error": "status must be approved, rejected, or suspended"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("UPDATE affiliate_signups SET status=? WHERE id=?", (status, aff_id))
+        if status == "approved":
+            row = cx.execute("SELECT name, organization, slug, created_at FROM affiliate_signups WHERE id=?", (aff_id,)).fetchone()
+            if row:
+                name, org, slug, ts = row
+                cx.execute("""
+                    INSERT OR IGNORE INTO referral_sources
+                      (created_at, name, slug, description, utm_source, utm_medium, utm_campaign)
+                    VALUES (?,?,?,?,?,?,?)
+                """, (ts, org or name, slug,
+                      f"Affiliate: {name}" + (f" ({org})" if org else ""),
+                      slug, "affiliate", "scoreapp-quiz"))
+        cx.commit()
+    return jsonify({"ok": True, "status": status})
 
 
 def _log_referral_event(lead_id, email, first_name, last_name, utm_source, utm_medium,

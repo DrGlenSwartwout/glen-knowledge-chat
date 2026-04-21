@@ -156,6 +156,13 @@
   .ref-add-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
   .ref-add-form input { flex: 1; min-width: 120px; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-size: 13px; }
   .ref-add-form button { padding: 6px 14px; background: #7c5cbf; border: none; border-radius: 5px; color: #fff; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .aff-status { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .aff-status.approved  { background: #1a3a1a; color: var(--shaira); }
+  .aff-status.pending   { background: #2a1e0a; color: #f7a54f; }
+  .aff-status.suspended { background: #2a1a1a; color: var(--high); }
+  .aff-status.rejected  { background: #2a1a1a; color: var(--high); }
+  .btn-aff { border: 1px solid var(--border); background: transparent; border-radius: 5px; color: var(--muted); cursor: pointer; padding: 3px 8px; font-size: 10px; }
+  .btn-aff:hover { border-color: var(--glen); color: var(--glen); }
 
   @media (max-width: 600px) {
     .todo-actions { flex-direction: column; gap: 4px; }
@@ -248,10 +255,22 @@
         </div>
       </details>
     </div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:28px;">
       <table class="ref-recent-table">
         <thead><tr><th>Date</th><th>Source</th><th>Name</th><th>Email</th><th>Score</th></tr></thead>
         <tbody id="ref-recent-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Affiliates section -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <span class="cal-title">Affiliate Signups</span>
+      <a href="/affiliate" target="_blank" style="font-size:11px;color:#a07fe0;text-decoration:none;border:1px solid #7c5cbf;padding:3px 10px;border-radius:5px;">View Public Form ↗</a>
+    </div>
+    <div id="affiliates-container" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+      <table class="ref-recent-table">
+        <thead><tr><th>Joined</th><th>Name</th><th>Org</th><th>Method</th><th>Leads</th><th>Status</th><th></th></tr></thead>
+        <tbody id="affiliates-tbody"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px;">Loading…</td></tr></tbody>
       </table>
     </div>
   </main>
@@ -810,6 +829,25 @@ async function loadReferrals() {
     </div>`;
   }).join('') || '<p style="color:var(--muted);font-size:12px;">No sources yet.</p>';
 
+  // Affiliates table
+  const affData = await apiFetch('/api/affiliates').then(r => r.ok ? r.json() : { affiliates: [] });
+  const affTbody = document.getElementById('affiliates-tbody');
+  affTbody.innerHTML = affData.affiliates.length
+    ? affData.affiliates.map(a => `<tr>
+        <td>${timeAgo(a.created_at)}</td>
+        <td><strong>${escHtml(a.name)}</strong></td>
+        <td>${escHtml(a.organization || '—')}</td>
+        <td>${escHtml(a.promo_method ? a.promo_method.replace(/-/g,' ') : '—')}</td>
+        <td>${a.lead_count || 0}</td>
+        <td><span class="aff-status ${a.status}">${escHtml(a.status)}</span></td>
+        <td style="white-space:nowrap;">
+          ${a.status === 'approved'
+            ? `<button class="btn-aff" onclick="patchAffiliate(${a.id},'suspended')">Suspend</button>`
+            : `<button class="btn-aff" onclick="patchAffiliate(${a.id},'approved')">Approve</button>`}
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px;">No affiliate signups yet.</td></tr>';
+
   // Recent leads table
   const tbody = document.getElementById('ref-recent-tbody');
   tbody.innerHTML = refData.recent.length
@@ -830,6 +868,14 @@ function copyRefUrl(elemId, btn) {
     btn.textContent = 'Copied!';
     setTimeout(() => btn.textContent = 'Copy', 1500);
   });
+}
+
+async function patchAffiliate(id, status) {
+  const r = await apiFetch(`/api/affiliates/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status })
+  });
+  if (r.ok) await loadReferrals();
 }
 
 async function addReferralSource() {
