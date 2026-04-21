@@ -133,6 +133,30 @@
   .settings-box label { display: flex; align-items: center; font-size: 13px; color: var(--text); }
   .settings-box input[type=number] { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; color: var(--text); padding: 4px 8px; font-size: 14px; }
 
+  /* Referrals tab */
+  .tab.referrals.active { background: #7c5cbf; color: #fff; border-color: #7c5cbf; }
+  #referrals-section { display: none; }
+  #referrals-section.active { display: block; }
+  .ref-stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+  .ref-stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; min-width: 160px; flex: 1; }
+  .ref-stat-num { font-size: 28px; font-weight: 700; color: #a07fe0; line-height: 1; }
+  .ref-stat-label { font-size: 11px; color: var(--muted); margin-top: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .ref-stat-last { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .ref-url-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 24px; }
+  .ref-url-box h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 12px; }
+  .ref-source-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .ref-source-name { font-size: 13px; font-weight: 600; min-width: 130px; }
+  .ref-url-code { font-family: monospace; font-size: 11px; color: #a07fe0; background: var(--bg); padding: 4px 8px; border-radius: 4px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .btn-copy-url { border: 1px solid var(--border); background: transparent; border-radius: 5px; color: var(--muted); cursor: pointer; padding: 3px 10px; font-size: 11px; white-space: nowrap; }
+  .btn-copy-url:hover { border-color: #7c5cbf; color: #a07fe0; }
+  .ref-recent-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .ref-recent-table th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .ref-recent-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .ref-recent-table tr:last-child td { border-bottom: none; }
+  .ref-add-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .ref-add-form input { flex: 1; min-width: 120px; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-size: 13px; }
+  .ref-add-form button { padding: 6px 14px; background: #7c5cbf; border: none; border-radius: 5px; color: #fff; cursor: pointer; font-size: 13px; font-weight: 600; }
+
   @media (max-width: 600px) {
     .todo-actions { flex-direction: column; gap: 4px; }
     header { gap: 10px; }
@@ -176,6 +200,7 @@
     <button class="tab glen active" data-owner="glen" onclick="switchOwner('glen', this)">Glen</button>
     <button class="tab rae" data-owner="rae" onclick="switchOwner('rae', this)">Rae</button>
     <button class="tab shaira" data-owner="shaira" onclick="switchOwner('shaira', this)">Shaira</button>
+    <button class="tab referrals" id="tab-referrals" onclick="switchToReferrals(this)">Referrals</button>
   </div>
   <div class="header-right">
     <label class="show-done-toggle">
@@ -205,6 +230,32 @@
     <div id="todos-container"></div>
   </div>
 </main>
+
+<!-- Referrals panel (outside main, full-width) -->
+<div id="referrals-section">
+  <main>
+    <div id="ref-stats" class="ref-stats"></div>
+    <div class="ref-url-box">
+      <h3>Tracking Links</h3>
+      <div id="ref-sources-list"></div>
+      <details style="margin-top:16px;">
+        <summary style="font-size:12px;color:var(--muted);cursor:pointer;">+ Add new referral source</summary>
+        <div class="ref-add-form" style="margin-top:10px;">
+          <input id="ref-new-name" placeholder="Source name (e.g. AllHeal)">
+          <input id="ref-new-slug" placeholder="Slug (e.g. allheal)">
+          <input id="ref-new-desc" placeholder="Description (optional)">
+          <button onclick="addReferralSource()">Add</button>
+        </div>
+      </details>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+      <table class="ref-recent-table">
+        <thead><tr><th>Date</th><th>Source</th><th>Name</th><th>Email</th><th>Score</th></tr></thead>
+        <tbody id="ref-recent-tbody"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
 
 <script>
 const API = '';
@@ -700,9 +751,105 @@ function copyReply(replyId, evt) {
 
 function switchOwner(owner, btn) {
   currentOwner = owner;
+  leaveReferrals();
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
   refresh();
+}
+
+// ── Referrals ─────────────────────────────────────────────────────────────────
+let inReferrals = false;
+
+async function switchToReferrals(btn) {
+  inReferrals = true;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('main-content').style.display = 'none';
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('referrals-section').classList.add('active');
+  await loadReferrals();
+}
+
+function switchOwner_orig(owner, btn) { switchOwner(owner, btn); }
+
+function leaveReferrals() {
+  inReferrals = false;
+  document.getElementById('referrals-section').classList.remove('active');
+  document.getElementById('tab-referrals').classList.remove('active');
+}
+
+async function loadReferrals() {
+  const [refData, sourcesData] = await Promise.all([
+    apiFetch('/api/referrals').then(r => r.ok ? r.json() : { stats:[], recent:[] }),
+    apiFetch('/api/referral-sources').then(r => r.ok ? r.json() : { sources:[] }),
+  ]);
+
+  // Stats cards
+  const statsEl = document.getElementById('ref-stats');
+  const totalAll = refData.stats.reduce((s, r) => s + r.total, 0);
+  let statsHtml = `<div class="ref-stat-card"><div class="ref-stat-num">${totalAll}</div><div class="ref-stat-label">Total Referral Leads</div></div>`;
+  refData.stats.forEach(s => {
+    statsHtml += `<div class="ref-stat-card">
+      <div class="ref-stat-num">${s.total}</div>
+      <div class="ref-stat-label">${escHtml(s.utm_source)}</div>
+      ${s.last_lead ? `<div class="ref-stat-last">Last: ${timeAgo(s.last_lead)}</div>` : ''}
+    </div>`;
+  });
+  statsEl.innerHTML = statsHtml;
+
+  // Tracking links
+  const srcEl = document.getElementById('ref-sources-list');
+  const QUIZ_BASE = 'https://healing.scoreapp.com';
+  srcEl.innerHTML = sourcesData.sources.map(s => {
+    const url = `${QUIZ_BASE}?utm_source=${encodeURIComponent(s.utm_source)}&utm_medium=${encodeURIComponent(s.utm_medium)}&utm_campaign=${encodeURIComponent(s.utm_campaign || 'scoreapp-quiz')}`;
+    const urlId = `url-${s.id}`;
+    return `<div class="ref-source-row">
+      <span class="ref-source-name">${escHtml(s.name)}</span>
+      <span class="ref-url-code" id="${urlId}">${escHtml(url)}</span>
+      <button class="btn-copy-url" onclick="copyRefUrl('${urlId}', this)">Copy</button>
+    </div>`;
+  }).join('') || '<p style="color:var(--muted);font-size:12px;">No sources yet.</p>';
+
+  // Recent leads table
+  const tbody = document.getElementById('ref-recent-tbody');
+  tbody.innerHTML = refData.recent.length
+    ? refData.recent.map(r => `<tr>
+        <td>${timeAgo(r.received_at)}</td>
+        <td>${escHtml(r.utm_source)}</td>
+        <td>${escHtml(r.name || '—')}</td>
+        <td>${escHtml(r.email || '—')}</td>
+        <td>${r.quiz_score ? escHtml(r.quiz_score)+'%' : '—'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">No referral leads yet.</td></tr>';
+}
+
+function copyRefUrl(elemId, btn) {
+  const el = document.getElementById(elemId);
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  });
+}
+
+async function addReferralSource() {
+  const name = document.getElementById('ref-new-name').value.trim();
+  const slug = document.getElementById('ref-new-slug').value.trim();
+  const desc = document.getElementById('ref-new-desc').value.trim();
+  if (!name) return alert('Name is required');
+  const r = await apiFetch('/api/referral-sources', {
+    method: 'POST',
+    body: JSON.stringify({ name, slug: slug || name, description: desc })
+  });
+  if (r.ok) {
+    document.getElementById('ref-new-name').value = '';
+    document.getElementById('ref-new-slug').value = '';
+    document.getElementById('ref-new-desc').value = '';
+    await loadReferrals();
+  } else {
+    const err = await r.json();
+    alert(err.error || 'Failed to add source');
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

@@ -477,6 +477,143 @@ def ghl_onboard_contact(email, first_name="", last_name="", phone="", source_tag
     return result
 
 
+# ── Referral tracking ─────────────────────────────────────────────────────────
+def _init_referral_tables():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS referral_sources (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at  TEXT NOT NULL,
+                name        TEXT NOT NULL,
+                slug        TEXT NOT NULL UNIQUE,
+                description TEXT DEFAULT '',
+                utm_source  TEXT NOT NULL,
+                utm_medium  TEXT DEFAULT 'referral',
+                utm_campaign TEXT DEFAULT '',
+                active      INTEGER DEFAULT 1
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS referral_events (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                received_at  TEXT NOT NULL,
+                lead_id      INTEGER,
+                email        TEXT,
+                first_name   TEXT,
+                last_name    TEXT,
+                utm_source   TEXT DEFAULT '',
+                utm_medium   TEXT DEFAULT '',
+                utm_campaign TEXT DEFAULT '',
+                utm_content  TEXT DEFAULT '',
+                utm_term     TEXT DEFAULT '',
+                quiz_score   TEXT DEFAULT '',
+                raw_json     TEXT DEFAULT ''
+            )
+        """)
+        # Seed AllHeal as first referral source if not exists
+        existing = cx.execute("SELECT id FROM referral_sources WHERE slug='allheal'").fetchone()
+        if not existing:
+            ts = datetime.now(timezone.utc).isoformat()
+            cx.execute("""
+                INSERT INTO referral_sources (created_at, name, slug, description, utm_source, utm_medium, utm_campaign)
+                VALUES (?,?,?,?,?,?,?)
+            """, (ts, "AllHeal Nonprofit", "allheal",
+                  "AllHeal nonprofit referrals to Accelerate Self-Healing quiz",
+                  "allheal", "referral", "scoreapp-quiz"))
+        cx.commit()
+
+_init_referral_tables()
+
+
+@app.route("/api/referral-sources", methods=["GET"])
+def get_referral_sources():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute("""
+            SELECT id, created_at, name, slug, description, utm_source, utm_medium, utm_campaign, active
+            FROM referral_sources ORDER BY name ASC
+        """).fetchall()
+    cols = ["id","created_at","name","slug","description","utm_source","utm_medium","utm_campaign","active"]
+    return jsonify({"sources": [dict(zip(cols, r)) for r in rows]})
+
+
+@app.route("/api/referral-sources", methods=["POST"])
+def post_referral_source():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(force=True) or {}
+    name     = (data.get("name") or "").strip()
+    slug     = re.sub(r"[^a-z0-9]+", "-", (data.get("slug") or name).lower()).strip("-")
+    desc     = (data.get("description") or "").strip()
+    utm_src  = (data.get("utm_source") or slug).strip()
+    utm_med  = (data.get("utm_medium") or "referral").strip()
+    utm_camp = (data.get("utm_campaign") or "scoreapp-quiz").strip()
+    if not name or not slug:
+        return jsonify({"error": "name required"}), 400
+    ts = datetime.now(timezone.utc).isoformat()
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute("""
+                INSERT INTO referral_sources (created_at, name, slug, description, utm_source, utm_medium, utm_campaign)
+                VALUES (?,?,?,?,?,?,?)
+            """, (ts, name, slug, desc, utm_src, utm_med, utm_camp))
+            cx.commit()
+    except sqlite3.IntegrityError:
+        return jsonify({"error": f"slug '{slug}' already exists"}), 409
+    return jsonify({"ok": True, "slug": slug,
+                    "tracking_url": f"https://healing.scoreapp.com?utm_source={utm_src}&utm_medium={utm_med}&utm_campaign={utm_camp}"}), 201
+
+
+@app.route("/api/referrals", methods=["GET"])
+def get_referrals():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    # Stats per utm_source
+    with sqlite3.connect(LOG_DB) as cx:
+        stats = cx.execute("""
+            SELECT utm_source,
+                   COUNT(*) as total,
+                   MAX(received_at) as last_lead
+            FROM referral_events
+            GROUP BY utm_source
+            ORDER BY total DESC
+        """).fetchall()
+        recent = cx.execute("""
+            SELECT received_at, utm_source, utm_medium, utm_campaign,
+                   first_name, last_name, email, quiz_score
+            FROM referral_events
+            ORDER BY received_at DESC LIMIT 50
+        """).fetchall()
+    stat_list = [{"utm_source": r[0], "total": r[1], "last_lead": r[2]} for r in stats]
+    recent_list = [{"received_at": r[0], "utm_source": r[1], "utm_medium": r[2],
+                    "utm_campaign": r[3], "name": f"{r[4] or ''} {r[5] or ''}".strip(),
+                    "email": r[6], "quiz_score": r[7]} for r in recent]
+    return jsonify({"stats": stat_list, "recent": recent_list})
+
+
+def _log_referral_event(lead_id, email, first_name, last_name, utm_source, utm_medium,
+                        utm_campaign, utm_content, utm_term, quiz_score, raw):
+    if not utm_source:
+        return
+    ts = datetime.now(timezone.utc).isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            INSERT INTO referral_events
+              (received_at, lead_id, email, first_name, last_name,
+               utm_source, utm_medium, utm_campaign, utm_content, utm_term, quiz_score, raw_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (ts, lead_id, email, first_name, last_name,
+              utm_source, utm_medium, utm_campaign, utm_content, utm_term, quiz_score, raw))
+        cx.commit()
+
+
 # ── Inbound lead DB table ─────────────────────────────────────────────────────
 def _init_leads_table():
     with sqlite3.connect(LOG_DB) as cx:
@@ -680,8 +817,26 @@ def scoreapp_webhook():
         _ghl_post(f"/contacts/{ghl_result['contact_id']}/notes",
                   {"body": "\n".join(note_lines)})
 
+    lead_id = None
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT id FROM inbound_leads WHERE email=? ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+        if row:
+            lead_id = row[0]
     _log_inbound_lead("scoreapp", email, first, last, phone, raw, ghl_result)
-    return jsonify({"ok": True, "tags": answer_tags, "ghl": ghl_result}), 200
+
+    # Referral tracking — extract UTM params from ScoreApp payload
+    utm_source   = (data.get("utm_source")   or payload.get("utm_source")   or "").strip()
+    utm_medium   = (data.get("utm_medium")   or payload.get("utm_medium")   or "").strip()
+    utm_campaign = (data.get("utm_campaign") or payload.get("utm_campaign") or "").strip()
+    utm_content  = (data.get("utm_content")  or payload.get("utm_content")  or "").strip()
+    utm_term     = (data.get("utm_term")     or payload.get("utm_term")     or "").strip()
+    if utm_source:
+        _log_referral_event(lead_id, email, first, last,
+                            utm_source, utm_medium, utm_campaign,
+                            utm_content, utm_term, str(score), raw)
+
+    return jsonify({"ok": True, "tags": answer_tags, "ghl": ghl_result,
+                    "utm_source": utm_source or None}), 200
 
 
 @app.route("/webhook/groovekart", methods=["POST"])
