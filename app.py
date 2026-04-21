@@ -795,21 +795,32 @@ def _init_todos_table():
     with sqlite3.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS todos (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at   TEXT NOT NULL,
-                owner        TEXT NOT NULL,
-                category     TEXT DEFAULT 'General',
-                title        TEXT NOT NULL,
-                body         TEXT DEFAULT '',
-                priority     TEXT DEFAULT 'normal',
-                status       TEXT DEFAULT 'open',
-                delegated_to TEXT DEFAULT '',
-                delegated_at TEXT DEFAULT '',
-                done_at      TEXT DEFAULT '',
-                source       TEXT DEFAULT '',
-                dedup_key    TEXT UNIQUE
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at     TEXT NOT NULL,
+                owner          TEXT NOT NULL,
+                category       TEXT DEFAULT 'General',
+                title          TEXT NOT NULL,
+                body           TEXT DEFAULT '',
+                priority       TEXT DEFAULT 'normal',
+                status         TEXT DEFAULT 'open',
+                delegated_to   TEXT DEFAULT '',
+                delegated_at   TEXT DEFAULT '',
+                done_at        TEXT DEFAULT '',
+                source         TEXT DEFAULT '',
+                dedup_key      TEXT UNIQUE,
+                ai_summary      TEXT DEFAULT '',
+                suggested_reply TEXT DEFAULT '',
+                action_note     TEXT DEFAULT '',
+                received_at     TEXT DEFAULT ''
             )
         """)
+        # Migrate existing tables that predate these columns
+        for col, ddl in [("ai_summary", "TEXT DEFAULT ''"), ("suggested_reply", "TEXT DEFAULT ''"),
+                         ("action_note", "TEXT DEFAULT ''"), ("received_at", "TEXT DEFAULT ''")] :
+            try:
+                cx.execute(f"ALTER TABLE todos ADD COLUMN {col} {ddl}")
+            except Exception:
+                pass
         cx.commit()
 
 _init_todos_table()
@@ -956,7 +967,8 @@ def get_todos():
     with sqlite3.connect(LOG_DB) as cx:
         rows = cx.execute("""
             SELECT id, created_at, owner, category, title, body, priority,
-                   status, delegated_to, delegated_at, done_at, source, dedup_key
+                   status, delegated_to, delegated_at, done_at, source, dedup_key,
+                   ai_summary, suggested_reply, action_note, received_at
             FROM todos
             WHERE owner=? AND status=?
             ORDER BY
@@ -964,7 +976,8 @@ def get_todos():
                 created_at DESC
         """, (owner, status)).fetchall()
     cols = ["id","created_at","owner","category","title","body","priority",
-            "status","delegated_to","delegated_at","done_at","source","dedup_key"]
+            "status","delegated_to","delegated_at","done_at","source","dedup_key",
+            "ai_summary","suggested_reply","action_note","received_at"]
     return jsonify({"todos": [dict(zip(cols, r)) for r in rows]})
 
 
@@ -984,21 +997,32 @@ def post_todos():
     inserted = 0
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         for item in items:
-            owner    = (item.get("owner") or "glen").lower()
-            category = item.get("category") or "General"
-            title    = (item.get("title") or "").strip()
-            body     = item.get("body") or ""
-            priority = item.get("priority") or "normal"
-            source   = item.get("source") or ""
-            dedup    = item.get("dedup_key") or None
+            owner           = (item.get("owner") or "glen").lower()
+            category        = item.get("category") or "General"
+            title           = (item.get("title") or "").strip()
+            body            = item.get("body") or ""
+            priority        = item.get("priority") or "normal"
+            source          = item.get("source") or ""
+            dedup           = item.get("dedup_key") or None
+            ai_summary      = item.get("ai_summary") or ""
+            suggested_reply = item.get("suggested_reply") or ""
+            action_note     = item.get("action_note") or ""
+            received_at     = item.get("received_at") or ""
             if not title:
                 continue
             try:
                 cx.execute("""
-                    INSERT OR IGNORE INTO todos
-                      (created_at, owner, category, title, body, priority, source, dedup_key)
-                    VALUES (?,?,?,?,?,?,?,?)
-                """, (ts, owner, category, title, body, priority, source, dedup))
+                    INSERT INTO todos
+                      (created_at, owner, category, title, body, priority, source, dedup_key,
+                       ai_summary, suggested_reply, action_note, received_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(dedup_key) DO UPDATE SET
+                      ai_summary=excluded.ai_summary,
+                      suggested_reply=excluded.suggested_reply,
+                      action_note=excluded.action_note,
+                      received_at=CASE WHEN excluded.received_at != '' THEN excluded.received_at ELSE received_at END
+                """, (ts, owner, category, title, body, priority, source, dedup,
+                      ai_summary, suggested_reply, action_note, received_at))
                 if cx.execute("SELECT changes()").fetchone()[0]:
                     inserted += 1
             except Exception:
@@ -1027,7 +1051,7 @@ def patch_todo(todo_id):
                 return jsonify({"error": "Invalid delegate target"}), 400
             # Create a copy for the delegate, mark original as delegated
             row = cx.execute(
-                "SELECT owner, category, title, body, priority, source FROM todos WHERE id=?",
+                "SELECT owner, category, title, body, priority, source, ai_summary, suggested_reply FROM todos WHERE id=?",
                 (todo_id,)
             ).fetchone()
             if row:
@@ -1035,9 +1059,10 @@ def patch_todo(todo_id):
                            (to, ts, todo_id))
                 new_title = f"[From {row[0].title()}] {row[2]}"
                 cx.execute("""
-                    INSERT INTO todos (created_at, owner, category, title, body, priority, source)
-                    VALUES (?,?,?,?,?,?,?)
-                """, (ts, to, row[1], new_title, row[3], row[4], row[5]))
+                    INSERT INTO todos (created_at, owner, category, title, body, priority, source,
+                                       ai_summary, suggested_reply)
+                    VALUES (?,?,?,?,?,?,?,?,?)
+                """, (ts, to, row[1], new_title, row[3], row[4], row[5], row[6], row[7]))
         elif action == "reopen":
             cx.execute("UPDATE todos SET status='open', done_at='', delegated_to='', delegated_at=? WHERE id=?",
                        (ts, todo_id))

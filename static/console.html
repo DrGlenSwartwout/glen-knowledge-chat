@@ -93,6 +93,14 @@
   .todo-body { flex: 1; min-width: 0; }
   .todo-title { font-weight: 600; line-height: 1.4; word-break: break-word; }
   .todo-detail { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.5; word-break: break-word; }
+  .ai-summary { font-size: 12px; margin-top: 6px; color: #a8c4ff; line-height: 1.5; }
+  .action-note { font-size: 12px; margin-top: 5px; padding: 4px 8px; border-radius: 5px; background: #2a1e0a; border-left: 3px solid #f7a54f; color: #f7c54f; line-height: 1.5; }
+  .suggested-reply-wrap { margin-top: 8px; border-left: 2px solid #2a3a5a; padding-left: 8px; }
+  .suggested-reply-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; display: flex; align-items: center; gap: 8px; }
+  .suggested-reply { font-size: 12px; color: #c8d8f0; line-height: 1.6; white-space: pre-wrap; }
+  .btn-copy-reply { font-size: 10px; padding: 1px 7px; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+  .btn-copy-reply:hover { background: #1a2a3a; color: var(--glen); border-color: var(--glen); }
+  .ai-no-reply { font-size: 11px; color: var(--muted); margin-top: 5px; font-style: italic; }
   .todo-meta { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
   .meta-badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; background: var(--border); color: var(--muted); }
   .meta-badge.delegated { background: #2a1f10; color: #f7a54f; }
@@ -112,6 +120,14 @@
   .delegate-option { display: block; width: 100%; padding: 8px 14px; background: transparent; border: none; color: var(--text); cursor: pointer; text-align: left; font-size: 13px; }
   .delegate-option:hover { background: var(--border); }
   #loading { text-align: center; padding: 40px; color: var(--muted); }
+
+  .settings-panel { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 50; }
+  .settings-panel.hidden { display: none; }
+  .settings-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 320px; }
+  .settings-box h3 { margin-bottom: 8px; }
+  .settings-hint { color: var(--muted); font-size: 12px; margin-bottom: 16px; line-height: 1.5; }
+  .settings-box label { display: flex; align-items: center; font-size: 13px; color: var(--text); }
+  .settings-box input[type=number] { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; color: var(--text); padding: 4px 8px; font-size: 14px; }
 
   @media (max-width: 600px) {
     .todo-actions { flex-direction: column; gap: 4px; }
@@ -133,6 +149,23 @@
   </div>
 </div>
 
+<div id="settings-panel" class="settings-panel hidden">
+  <div class="settings-box">
+    <h3>Settings</h3>
+    <p class="settings-hint">Gmail account # = the position of the account in your browser (0 = first signed-in account, 1 = second, etc.)</p>
+    <label>Glen's Gmail account #
+      <input type="number" id="setting-glen-idx" min="0" max="5" value="1" style="width:60px;margin-left:8px;">
+    </label>
+    <label style="margin-top:10px;">Rae's Gmail account #
+      <input type="number" id="setting-rae-idx" min="0" max="5" value="0" style="width:60px;margin-left:8px;">
+    </label>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button onclick="saveSettings()" style="flex:1;padding:8px;background:var(--glen);border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:600;">Save</button>
+      <button onclick="toggleSettings()" style="flex:1;padding:8px;background:var(--border);border:none;border-radius:6px;color:var(--text);cursor:pointer;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <header>
   <h1>Remedy Match</h1>
   <div class="tabs">
@@ -146,6 +179,7 @@
     </label>
     <div class="refresh-info">Refresh in <span id="countdown">30:00</span></div>
     <button class="btn-refresh" onclick="refresh()">Refresh now</button>
+    <button class="btn-refresh" onclick="toggleSettings()" title="Settings">⚙</button>
   </div>
 </header>
 
@@ -185,6 +219,20 @@ function saveKey() {
   localStorage.setItem('console_key', val);
   document.getElementById('key-overlay').classList.add('hidden');
   refresh();
+}
+
+function toggleSettings() {
+  const p = document.getElementById('settings-panel');
+  if (p.classList.contains('hidden')) {
+    document.getElementById('setting-glen-idx').value = localStorage.getItem('gmailIdx_glen') ?? '1';
+    document.getElementById('setting-rae-idx').value  = localStorage.getItem('gmailIdx_rae')  ?? '0';
+  }
+  p.classList.toggle('hidden');
+}
+function saveSettings() {
+  localStorage.setItem('gmailIdx_glen', document.getElementById('setting-glen-idx').value);
+  localStorage.setItem('gmailIdx_rae',  document.getElementById('setting-rae-idx').value);
+  document.getElementById('settings-panel').classList.add('hidden');
 }
 
 function initKey() {
@@ -377,12 +425,29 @@ function renderTodos(todos) {
   }).join('');
 }
 
-function gmailUrl(dedupKey) {
-  // dedup_key format: "glen:gmail:{msg_id}"
+function gmailAccountIdx(owner) {
+  const key = owner === 'rae' ? 'gmailIdx_rae' : 'gmailIdx_glen';
+  return localStorage.getItem(key) ?? (owner === 'rae' ? '0' : '1');
+}
+function mailUrl(dedupKey) {
   if (!dedupKey) return null;
   const parts = dedupKey.split(':');
-  if (parts[1] !== 'gmail' || !parts[2]) return null;
-  return `https://mail.google.com/mail/u/0/#inbox/${parts[2]}`;
+  const owner = parts[0];
+  const type  = parts[1];
+  if (type === 'gmail' && parts[2]) {
+    const idx = gmailAccountIdx(owner);
+    return { url: `https://mail.google.com/mail/u/${idx}/#inbox/${parts[2]}`, label: 'Open in Gmail ↗' };
+  }
+  if (type === 'groovekart')
+    return { url: 'https://mail.groovekartmail.com/SOGo/so/support@remedymatch.com/Mail/view#!/Mail/0/INBOX', label: 'Open in GrooveKart Mail ↗' };
+  if (type === 'proton')
+    return { url: 'https://mail.proton.me/u/0/inbox', label: 'Open in Proton Mail ↗' };
+  return null;
+}
+// kept for backward compat
+function gmailUrl(dedupKey) {
+  const r = mailUrl(dedupKey);
+  return r ? r.url : null;
 }
 
 function todoCard(t) {
@@ -391,21 +456,26 @@ function todoCard(t) {
   let cls = 'todo-card' + (isDone ? ' done-item' : '') + (isDelegated ? ' delegated-item' : '');
   const meta = [];
   if (t.source)     meta.push(`<span class="meta-badge">${escHtml(t.source)}</span>`);
-  if (t.created_at) meta.push(`<span class="meta-badge">${timeAgo(t.created_at)}</span>`);
+  const displayTime = t.received_at || t.created_at;
+  if (displayTime)  meta.push(`<span class="meta-badge" title="Received">${timeAgo(displayTime)}</span>`);
   if (isDelegated && t.delegated_to) meta.push(`<span class="meta-badge delegated">→ ${t.delegated_to}</span>`);
-  const gmailLink = gmailUrl(t.dedup_key);
+  const mailLink = mailUrl(t.dedup_key);
   const targets = ['glen','rae','shaira'].filter(o => o !== currentOwner);
   const delegateOptions = targets.map(to =>
     `<button class="delegate-option" onclick="doDelegate(${t.id},'${to}',event)">${to.charAt(0).toUpperCase()+to.slice(1)}</button>`
   ).join('');
-  const gmailBtn = gmailLink
-    ? `<a class="btn-action btn-gmail" href="${gmailLink}" target="_blank" rel="noopener">Open in Gmail ↗</a>`
+  const gmailBtn = mailLink
+    ? `<a class="btn-action btn-gmail" href="${mailLink.url}" target="_blank" rel="noopener">${escHtml(mailLink.label)}</a>`
+    : '';
+  const pbCategories = ['E4L — Client Messages', 'E4L — New Signups', 'Clients — Direct'];
+  const pbBtn = pbCategories.some(c => t.category && t.category.startsWith('E4L'))
+    ? `<a class="btn-action btn-gmail" href="https://app.practicebetter.io/" target="_blank" rel="noopener">Open Practice Better ↗</a>`
     : '';
   const actions = isDone || isDelegated ? `
-    ${gmailBtn}
+    ${gmailBtn}${pbBtn}
     <button class="btn-action btn-reopen" onclick="doReopen(${t.id})">Reopen</button>
   ` : `
-    ${gmailBtn}
+    ${gmailBtn}${pbBtn}
     <button class="btn-action btn-read" onclick="doDone(${t.id})">Read</button>
     <button class="btn-action btn-done" onclick="doDone(${t.id})">Done</button>
     <div class="delegate-wrap">
@@ -414,11 +484,31 @@ function todoCard(t) {
     </div>
     <button class="btn-action btn-dismiss" onclick="doDelete(${t.id})" title="Dismiss">✕</button>
   `;
+  const aiSummary = t.ai_summary
+    ? `<div class="ai-summary">💡 ${escHtml(t.ai_summary)}</div>`
+    : '';
+  const actionBadge = t.action_note && t.action_note !== 'Reply only.'
+    ? `<div class="action-note">⚡ Action needed: ${escHtml(t.action_note)}</div>`
+    : '';
+  const replyId = `reply-${t.id}`;
+  const suggestedReply = t.suggested_reply && t.suggested_reply !== 'No reply needed.'
+    ? `<div class="suggested-reply-wrap">
+         <div class="suggested-reply-label">Suggested reply
+           <button class="btn-copy-reply" onclick="copyReply('${replyId}',event)" title="Copy to clipboard">Copy</button>
+         </div>
+         <div class="suggested-reply" id="${replyId}">${escHtml(t.suggested_reply)}</div>
+       </div>`
+    : (t.suggested_reply === 'No reply needed.'
+        ? `<div class="ai-no-reply">No reply needed</div>`
+        : '');
   return `<div class="${cls}" id="card-${t.id}">
     <div class="priority-dot ${t.priority||'normal'}"></div>
     <div class="todo-body">
       <div class="todo-title">${escHtml(t.title)}</div>
       ${t.body ? `<div class="todo-detail">${escHtml(t.body)}</div>` : ''}
+      ${aiSummary}
+      ${actionBadge}
+      ${suggestedReply}
       ${meta.length ? `<div class="todo-meta">${meta.join('')}</div>` : ''}
     </div>
     <div class="todo-actions">${actions}</div>
@@ -490,6 +580,17 @@ function resetCountdown() {
     document.getElementById('countdown').textContent = `${m}:${String(s).padStart(2,'0')}`;
     if (countdown <= 0) refresh();
   }, 1000);
+}
+
+function copyReply(replyId, evt) {
+  evt.stopPropagation();
+  const el = document.getElementById(replyId);
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    const btn = evt.target;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  });
 }
 
 function switchOwner(owner, btn) {
