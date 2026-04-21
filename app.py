@@ -626,28 +626,37 @@ REBRANDLY_SO        = "truly.so"    # general short links
 
 
 def _rebrandly_create(slashtag, destination, domain=REBRANDLY_VIP, title=""):
-    """Create a Rebrandly short link. Returns shortUrl string or None on failure."""
+    """Create (or fetch existing) Rebrandly short link. Returns shortUrl string or None."""
     if not REBRANDLY_API_KEY:
         return None
     import urllib.request as _ur
+    import urllib.error as _ue
+    headers = {"apikey": REBRANDLY_API_KEY, "Content-Type": "application/json"}
     payload = json.dumps({
         "destination": destination,
         "slashtag":    slashtag,
         "domain":      {"fullName": domain},
         "title":       title,
     }).encode()
-    req = _ur.Request(
-        "https://api.rebrandly.com/v1/links",
-        data=payload,
-        headers={
-            "apikey":       REBRANDLY_API_KEY,
-            "Content-Type": "application/json",
-        },
-        method="POST"
-    )
+    req = _ur.Request("https://api.rebrandly.com/v1/links", data=payload, headers=headers, method="POST")
     try:
         resp = json.loads(_ur.urlopen(req, timeout=10).read())
         return "https://" + resp.get("shortUrl", "")
+    except _ue.HTTPError as e:
+        if e.code == 409:  # slashtag already taken — fetch the existing link
+            try:
+                get_req = _ur.Request(
+                    f"https://api.rebrandly.com/v1/links?domain.fullName={domain}&slashtag={slashtag}",
+                    headers={"apikey": REBRANDLY_API_KEY}, method="GET"
+                )
+                links = json.loads(_ur.urlopen(get_req, timeout=10).read())
+                if links:
+                    return "https://" + links[0].get("shortUrl", "")
+            except Exception as e2:
+                print(f"[rebrandly] fetch existing error: {e2}")
+        else:
+            print(f"[rebrandly] create error {e.code}: {e.read()[:200]}")
+        return None
     except Exception as e:
         print(f"[rebrandly] create error: {e}")
         return None
