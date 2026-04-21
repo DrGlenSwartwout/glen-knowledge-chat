@@ -652,34 +652,33 @@ def affiliate_apply():
     token = _secrets.token_urlsafe(24)
 
     ts = datetime.now(timezone.utc).isoformat()
-    try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
-            # Ensure slug uniqueness
-            existing = cx.execute("SELECT id FROM affiliate_signups WHERE slug=?", (slug,)).fetchone()
-            if existing:
-                slug = f"{base}-{token[:6]}"
-            cx.execute("""
-                INSERT INTO affiliate_signups
-                  (created_at, name, email, organization, website, promo_method, slug, token, status)
-                VALUES (?,?,?,?,?,?,?,?,?)
-            """, (ts, name, email, org, site, promo, slug, token, "approved"))
-            # Also create referral_sources entry so tracking is live immediately
-            cx.execute("""
-                INSERT OR IGNORE INTO referral_sources
-                  (created_at, name, slug, description, utm_source, utm_medium, utm_campaign)
-                VALUES (?,?,?,?,?,?,?)
-            """, (ts, org or name, slug,
-                  f"Affiliate: {name}" + (f" ({org})" if org else ""),
-                  slug, "affiliate", "scoreapp-quiz"))
-            cx.commit()
-    except sqlite3.IntegrityError:
-        # Email already exists — return their existing portal link
+    # Check if email already exists — if so, return their existing portal
+    with sqlite3.connect(LOG_DB) as cx:
+        existing_row = cx.execute("SELECT token, slug FROM affiliate_signups WHERE email=?", (email,)).fetchone()
+    if existing_row:
+        token, slug = existing_row
+    else:
+        # Ensure slug uniqueness
         with sqlite3.connect(LOG_DB) as cx:
-            row = cx.execute("SELECT token, slug FROM affiliate_signups WHERE email=?", (email,)).fetchone()
-        if row:
-            token, slug = row
-        else:
-            return jsonify({"error": "Email already registered"}), 409
+            if cx.execute("SELECT id FROM affiliate_signups WHERE slug=?", (slug,)).fetchone():
+                slug = f"{base}-{token[:6]}"
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.execute("""
+                    INSERT INTO affiliate_signups
+                      (created_at, name, email, organization, website, promo_method, slug, token, status)
+                    VALUES (?,?,?,?,?,?,?,?,?)
+                """, (ts, name, email, org, site, promo, slug, token, "approved"))
+                cx.execute("""
+                    INSERT OR IGNORE INTO referral_sources
+                      (created_at, name, slug, description, utm_source, utm_medium, utm_campaign)
+                    VALUES (?,?,?,?,?,?,?)
+                """, (ts, org or name, slug,
+                      f"Affiliate: {name}" + (f" ({org})" if org else ""),
+                      slug, "affiliate", "scoreapp-quiz"))
+                cx.commit()
+        except sqlite3.IntegrityError as e:
+            return jsonify({"error": f"Signup failed: {str(e)[:100]}"}), 409
 
     tracking_url = (
         f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"

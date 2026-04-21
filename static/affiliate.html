@@ -190,9 +190,7 @@ async function handleSubmit(e) {
       return;
     }
     // Success — redirect to portal
-    document.getElementById('portal-link').href = data.portal_url;
-    document.getElementById('form-view').style.display = 'none';
-    document.getElementById('success-view').style.display = '';
+    window.location.href = data.portal_url;
   } catch (err) {
     errEl.textContent = 'Network error. Please try again.';
     errEl.style.display = '';
