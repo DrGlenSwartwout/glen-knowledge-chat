@@ -496,10 +496,11 @@ def _init_referral_tables():
                 referred_by  TEXT DEFAULT ''
             )
         """)
-        try:
-            cx.execute("ALTER TABLE affiliate_signups ADD COLUMN referred_by TEXT DEFAULT ''")
-        except Exception:
-            pass
+        for col in ["referred_by TEXT DEFAULT ''", "short_url TEXT DEFAULT ''"]:
+            try:
+                cx.execute(f"ALTER TABLE affiliate_signups ADD COLUMN {col}")
+            except Exception:
+                pass
         cx.execute("""
             CREATE TABLE IF NOT EXISTS referral_sources (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -618,7 +619,38 @@ def get_referrals():
     return jsonify({"stats": stat_list, "recent": recent_list})
 
 
-QUIZ_URL = "https://healing.scoreapp.com"
+QUIZ_URL            = "https://healing.scoreapp.com"
+REBRANDLY_API_KEY   = os.environ.get("REBRANDLY_API_KEY", "")
+REBRANDLY_VIP       = "truly.vip"   # affiliate / referral tracking links
+REBRANDLY_SO        = "truly.so"    # general short links
+
+
+def _rebrandly_create(slashtag, destination, domain=REBRANDLY_VIP, title=""):
+    """Create a Rebrandly short link. Returns shortUrl string or None on failure."""
+    if not REBRANDLY_API_KEY:
+        return None
+    import urllib.request as _ur
+    payload = json.dumps({
+        "destination": destination,
+        "slashtag":    slashtag,
+        "domain":      {"fullName": domain},
+        "title":       title,
+    }).encode()
+    req = _ur.Request(
+        "https://api.rebrandly.com/v1/links",
+        data=payload,
+        headers={
+            "apikey":       REBRANDLY_API_KEY,
+            "Content-Type": "application/json",
+        },
+        method="POST"
+    )
+    try:
+        resp = json.loads(_ur.urlopen(req, timeout=10).read())
+        return "https://" + resp.get("shortUrl", "")
+    except Exception as e:
+        print(f"[rebrandly] create error: {e}")
+        return None
 
 
 @app.route("/affiliate")
@@ -671,11 +703,18 @@ def affiliate_apply_form():
 
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            # Generate Rebrandly short link (truly.vip/{slug})
+            destination = f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+            short_url = _rebrandly_create(
+                slashtag=slug, destination=destination,
+                title=f"Affiliate: {org or name}"
+            ) or ""
+
             cx.execute("""
                 INSERT INTO affiliate_signups
-                  (created_at, name, email, organization, website, promo_method, slug, token, status, referred_by)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
-            """, (ts, name, email, org, site, promo, slug, token, "approved", referred_by))
+                  (created_at, name, email, organization, website, promo_method, slug, token, status, referred_by, short_url)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            """, (ts, name, email, org, site, promo, slug, token, "approved", referred_by, short_url))
             cx.execute("""
                 INSERT OR IGNORE INTO referral_sources
                   (created_at, name, slug, description, utm_source, utm_medium, utm_campaign)
@@ -759,16 +798,17 @@ def affiliate_portal_data():
         return jsonify({"error": "token required"}), 400
     with sqlite3.connect(LOG_DB) as cx:
         row = cx.execute("""
-            SELECT id, name, email, organization, slug, status, created_at
+            SELECT id, name, email, organization, slug, status, created_at, short_url
             FROM affiliate_signups WHERE token=?
         """, (token,)).fetchone()
     if not row:
         return jsonify({"error": "Invalid token"}), 404
-    aff_id, name, email, org, slug, status, created_at = row
+    aff_id, name, email, org, slug, status, created_at, short_url = row
     if status != "approved":
         return jsonify({"error": "Application pending review"}), 403
 
-    tracking_url   = f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+    long_url       = f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+    tracking_url   = short_url if short_url else long_url
     recruit_url    = f"https://glen-knowledge-chat.onrender.com/affiliate?ref={slug}"
 
     with sqlite3.connect(LOG_DB) as cx:
