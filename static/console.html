@@ -226,7 +226,8 @@ function saveKey() {
 }
 
 // ── Calendar Alerts ───────────────────────────────────────────────────────────
-let calAlerts = JSON.parse(localStorage.getItem('calAlerts') || '{}'); // { eventId: isoStart }
+// calAlerts seeded from server (cal_alert=1) on each renderCalendar call
+let calAlerts = {}; // { eventId: isoStart }
 const alertTimers = {}; // { eventId: timeoutId }
 
 function playChime(title) {
@@ -272,15 +273,20 @@ function scheduleAlert(evId, isoStart, title) {
   alertTimers[evId] = setTimeout(() => {
     playChime(title);
     if (Notification.permission === 'granted') {
-      new Notification('Upcoming: ' + title, { body: 'Starting in 3 minutes', icon: '' });
+      const n = new Notification('⏰ Starting in 3 minutes', {
+        body: title,
+        icon: '',
+        requireInteraction: true
+      });
+      n.onclick = () => { window.focus(); n.close(); };
     }
     delete alertTimers[evId];
   }, delay);
 }
 
-function toggleCalAlert(evId, isoStart, title) {
-  if (calAlerts[evId]) {
-    // Remove alert
+async function toggleCalAlert(evId, isoStart, title) {
+  const enabling = !calAlerts[evId];
+  if (!enabling) {
     delete calAlerts[evId];
     if (alertTimers[evId]) { clearTimeout(alertTimers[evId]); delete alertTimers[evId]; }
     const el = document.getElementById(`cal-ev-${evId}`);
@@ -288,30 +294,33 @@ function toggleCalAlert(evId, isoStart, title) {
     const btn = document.getElementById(`alert-btn-${evId}`);
     if (btn) btn.classList.remove('active');
   } else {
-    // Set alert
     calAlerts[evId] = isoStart;
     scheduleAlert(evId, isoStart, title);
     const el = document.getElementById(`cal-ev-${evId}`);
     if (el) el.classList.add('alerted');
     const btn = document.getElementById(`alert-btn-${evId}`);
     if (btn) btn.classList.add('active');
-    // Request notification permission
-    if (Notification.permission === 'default') Notification.requestPermission();
+    if (Notification.permission === 'default') await Notification.requestPermission();
   }
-  localStorage.setItem('calAlerts', JSON.stringify(calAlerts));
+  // Sync to server (enables iCloud Reminder via triage script)
+  apiFetch(`/api/calendar/${evId}/alert`, {
+    method: 'PATCH',
+    body: JSON.stringify({ alert: enabling })
+  });
 }
 
 function restoreCalAlerts(events) {
-  // Re-schedule any saved alerts for events still in the list
+  // Seed from server state (cal_alert=1 field)
+  calAlerts = {};
+  events.forEach(ev => {
+    if (ev.cal_alert) calAlerts[ev.id] = ev.start;
+  });
+  // Schedule browser timers for all alerted events
   events.forEach(ev => {
     if (calAlerts[ev.id] && ev.start) {
       scheduleAlert(ev.id, ev.start, ev.summary || '');
     }
   });
-  // Prune stale alert keys no longer in the event list
-  const evIds = new Set(events.map(e => String(e.id)));
-  Object.keys(calAlerts).forEach(k => { if (!evIds.has(k)) delete calAlerts[k]; });
-  localStorage.setItem('calAlerts', JSON.stringify(calAlerts));
 }
 
 function toggleSettings() {
@@ -444,7 +453,7 @@ function renderCalendar(events) {
     const cards = groups[dateKey].map(ev => {
       const time = formatCalTime(ev.start);
       const loc  = ev.location ? `<div class="cal-event-loc">📍 ${escHtml(ev.location.substring(0,50))}</div>` : '';
-      const isAlerted = calAlerts[ev.id];
+      const isAlerted = ev.cal_alert || calAlerts[ev.id];
       return `<div class="cal-event${isAlerted ? ' alerted' : ''}" id="cal-ev-${ev.id}" data-start="${escHtml(ev.start||'')}">
         <div class="cal-event-time">${escHtml(time)}</div>
         <div class="cal-event-title">${escHtml(ev.summary)}</div>

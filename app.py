@@ -841,9 +841,14 @@ def _init_calendar_table():
                 location        TEXT DEFAULT '',
                 owner           TEXT DEFAULT 'glen',
                 status          TEXT DEFAULT 'visible',
+                cal_alert       INTEGER DEFAULT 0,
                 UNIQUE(google_cal_id, google_event_id)
             )
         """)
+        try:
+            cx.execute("ALTER TABLE calendar_events ADD COLUMN cal_alert INTEGER DEFAULT 0")
+        except Exception:
+            pass
         cx.commit()
 
 _init_calendar_table()
@@ -856,13 +861,13 @@ def get_calendar():
     with sqlite3.connect(LOG_DB) as cx:
         rows = cx.execute("""
             SELECT id, google_cal_id, google_event_id, calendar_name,
-                   summary, start, end, location, owner, status
+                   summary, start, end, location, owner, status, cal_alert
             FROM calendar_events
             WHERE owner=? AND status=?
             ORDER BY start ASC
         """, (owner, status)).fetchall()
     cols = ["id","google_cal_id","google_event_id","calendar_name",
-            "summary","start","end","location","owner","status"]
+            "summary","start","end","location","owner","status","cal_alert"]
     return jsonify({"events": [dict(zip(cols, r)) for r in rows]})
 
 
@@ -924,6 +929,40 @@ def patch_calendar(event_id):
         cx.execute("UPDATE calendar_events SET status=? WHERE id=?", (new_status, event_id))
         cx.commit()
     return jsonify({"ok": True, "status": new_status})
+
+
+@app.route("/api/calendar/<int:event_id>/alert", methods=["PATCH"])
+def patch_calendar_alert(event_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    enabled = (request.get_json(force=True) or {}).get("alert", True)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("UPDATE calendar_events SET cal_alert=? WHERE id=?", (1 if enabled else 0, event_id))
+        cx.commit()
+    return jsonify({"ok": True, "cal_alert": 1 if enabled else 0})
+
+
+@app.route("/api/calendar/alerts", methods=["GET"])
+def get_calendar_alerts():
+    """Return events with cal_alert=1 whose start is within the next 90 minutes."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    window_end = now + timedelta(minutes=90)
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute("""
+            SELECT id, summary, start, owner
+            FROM calendar_events
+            WHERE cal_alert=1 AND status='visible'
+              AND start > ? AND start <= ?
+            ORDER BY start ASC
+        """, (now.strftime("%Y-%m-%dT%H:%M:%SZ"), window_end.strftime("%Y-%m-%dT%H:%M:%SZ"))).fetchall()
+    return jsonify({"alerts": [{"id":r[0],"summary":r[1],"start":r[2],"owner":r[3]} for r in rows]})
 
 
 @app.route("/api/calendar/delete-queue", methods=["GET"])
