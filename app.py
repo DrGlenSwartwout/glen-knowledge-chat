@@ -630,6 +630,58 @@ def affiliate_portal_page():
     return resp
 
 
+@app.route("/affiliate/apply-form", methods=["POST"])
+def affiliate_apply_form():
+    """HTML form POST — processes signup and does a 302 redirect to the portal."""
+    from flask import redirect as _redirect
+    import urllib.parse as _urlparse
+    name  = (request.form.get("name") or "").strip()
+    email = (request.form.get("email") or "").strip().lower()
+    org   = (request.form.get("organization") or "").strip()
+    site  = (request.form.get("website") or "").strip()
+    promo = (request.form.get("promo_method") or "").strip()
+
+    if not name or not email:
+        return _redirect("/affiliate?error=" + _urlparse.quote("Name and email are required"))
+
+    base = re.sub(r"[^a-z0-9]+", "-", (org or name).lower()).strip("-")[:30]
+    import secrets as _sec
+    token = _sec.token_urlsafe(24)
+    slug  = base
+    ts    = datetime.now(timezone.utc).isoformat()
+
+    # Return existing portal if email already registered
+    with sqlite3.connect(LOG_DB) as cx:
+        existing = cx.execute("SELECT token FROM affiliate_signups WHERE email=?", (email,)).fetchone()
+    if existing:
+        return _redirect(f"/affiliate/portal?token={existing[0]}")
+
+    # Ensure unique slug
+    with sqlite3.connect(LOG_DB) as cx:
+        if cx.execute("SELECT id FROM affiliate_signups WHERE slug=?", (slug,)).fetchone():
+            slug = f"{base}-{token[:6]}"
+
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute("""
+                INSERT INTO affiliate_signups
+                  (created_at, name, email, organization, website, promo_method, slug, token, status)
+                VALUES (?,?,?,?,?,?,?,?,?)
+            """, (ts, name, email, org, site, promo, slug, token, "approved"))
+            cx.execute("""
+                INSERT OR IGNORE INTO referral_sources
+                  (created_at, name, slug, description, utm_source, utm_medium, utm_campaign)
+                VALUES (?,?,?,?,?,?,?)
+            """, (ts, org or name, slug,
+                  f"Affiliate: {name}" + (f" ({org})" if org else ""),
+                  slug, "affiliate", "scoreapp-quiz"))
+            cx.commit()
+    except Exception as e:
+        return _redirect("/affiliate?error=" + _urlparse.quote(f"Signup failed: {str(e)[:80]}"))
+
+    return _redirect(f"/affiliate/portal?token={token}")
+
+
 @app.route("/affiliate/apply", methods=["POST", "OPTIONS"])
 def affiliate_apply():
     if request.method == "OPTIONS":

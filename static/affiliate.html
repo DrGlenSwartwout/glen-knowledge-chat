@@ -109,7 +109,7 @@
       <h2>Apply in 30 seconds</h2>
       <p>Fill in your details below and you'll get instant access to your tracking link.</p>
 
-      <form id="apply-form" onsubmit="handleSubmit(event)">
+      <form id="apply-form" action="/affiliate/apply-form" method="POST">
         <div style="display:flex;gap:12px;">
           <div class="form-group" style="flex:1;">
             <label>Your Name *</label>
@@ -148,61 +148,16 @@
       </form>
     </div>
 
-    <div id="success-view">
-      <div class="check">✅</div>
-      <h2>You're in!</h2>
-      <p>Your affiliate account is set up. Click below to access your personal tracking link and referral dashboard.</p>
-      <a id="portal-link" href="#" class="portal-btn">Go to My Dashboard →</a>
-      <p style="margin-top:16px;font-size:12px;color:var(--muted);">Bookmark this link — it's unique to you.</p>
-    </div>
   </div>
 
 </div>
 <script>
-async function handleSubmit(e) {
-  e.preventDefault();
-  const btn = document.getElementById('submit-btn');
-  const errEl = document.getElementById('error-msg');
-  btn.disabled = true;
-  btn.textContent = 'Setting up your account…';
-  errEl.style.display = 'none';
-  errEl.textContent = '';
-
-  const payload = {
-    name:         document.getElementById('f-name').value.trim(),
-    email:        document.getElementById('f-email').value.trim(),
-    organization: document.getElementById('f-org').value.trim(),
-    website:      document.getElementById('f-website').value.trim(),
-    promo_method: document.getElementById('f-promo').value,
-  };
-
-  function showErr(msg) {
-    errEl.textContent = msg;
-    errEl.style.setProperty('display', 'block', 'important');
-    btn.disabled = false;
-    btn.textContent = 'Get My Tracking Link →';
-  }
-
-  try {
-    const r = await fetch('/affiliate/apply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    let data;
-    try { data = await r.json(); } catch(e) { data = {}; }
-    if (!r.ok) {
-      showErr(data.error || 'Error ' + r.status + ' — please try again.');
-      return;
-    }
-    if (!data.portal_url) {
-      showErr('Signup succeeded but no portal URL returned. Please contact support.');
-      return;
-    }
-    window.location.href = data.portal_url;
-  } catch (err) {
-    showErr('Network error — please try again. (' + err.message + ')');
-  }
+// Show error from query param (set by server on failed signup)
+const _err = new URLSearchParams(location.search).get('error');
+if (_err) {
+  const el = document.getElementById('error-msg');
+  el.textContent = _err;
+  el.style.display = 'block';
 }
 </script>
 </body>
