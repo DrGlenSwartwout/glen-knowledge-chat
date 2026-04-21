@@ -531,6 +531,25 @@ def _init_referral_tables():
                 raw_json     TEXT DEFAULT ''
             )
         """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS affiliate_offers (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                sort_order  INTEGER DEFAULT 0,
+                name        TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                url_template TEXT NOT NULL,
+                active      INTEGER DEFAULT 1
+            )
+        """)
+        # Seed quiz as first offer
+        if not cx.execute("SELECT id FROM affiliate_offers WHERE name='Accelerate Self-Healing Quiz'").fetchone():
+            cx.execute("""
+                INSERT INTO affiliate_offers (sort_order, name, description, url_template, active)
+                VALUES (1, 'Accelerate Self-Healing Quiz',
+                    'Free quiz — discover your top healing opportunities. Share with anyone curious about natural healing.',
+                    'https://healing.scoreapp.com?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz',
+                    1)
+            """)
         # Seed AllHeal as first referral source if not exists
         existing = cx.execute("SELECT id FROM referral_sources WHERE slug='allheal'").fetchone()
         if not existing:
@@ -643,19 +662,18 @@ def _rebrandly_create(slashtag, destination, domain=REBRANDLY_VIP, title=""):
         resp = json.loads(_ur.urlopen(req, timeout=10).read())
         return "https://" + resp.get("shortUrl", "")
     except _ue.HTTPError as e:
-        if e.code == 409:  # slashtag already taken — fetch the existing link
-            try:
-                get_req = _ur.Request(
-                    f"https://api.rebrandly.com/v1/links?domain.fullName={domain}&slashtag={slashtag}",
-                    headers={"apikey": REBRANDLY_API_KEY}, method="GET"
-                )
-                links = json.loads(_ur.urlopen(get_req, timeout=10).read())
-                if links:
-                    return "https://" + links[0].get("shortUrl", "")
-            except Exception as e2:
-                print(f"[rebrandly] fetch existing error: {e2}")
-        else:
-            print(f"[rebrandly] create error {e.code}: {e.read()[:200]}")
+        # 403 = slashtag already taken (Rebrandly quirk) — fetch the existing link
+        try:
+            get_req = _ur.Request(
+                f"https://api.rebrandly.com/v1/links?domain.fullName={domain}&slashtag={slashtag}",
+                headers={"apikey": REBRANDLY_API_KEY}, method="GET"
+            )
+            links = json.loads(_ur.urlopen(get_req, timeout=10).read())
+            if links:
+                return "https://" + links[0].get("shortUrl", "")
+        except Exception as e2:
+            print(f"[rebrandly] fetch existing error: {e2}")
+        print(f"[rebrandly] create error {e.code}")
         return None
     except Exception as e:
         print(f"[rebrandly] create error: {e}")
@@ -667,6 +685,42 @@ def affiliate_page():
     resp = send_from_directory(STATIC, "affiliate.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+@app.route("/affiliate/hub/<slug>")
+def affiliate_hub_page(slug):
+    resp = send_from_directory(STATIC, "affiliate-hub.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/affiliate/hub-data/<slug>")
+def affiliate_hub_data(slug):
+    with sqlite3.connect(LOG_DB) as cx:
+        aff = cx.execute(
+            "SELECT name, organization, slug FROM affiliate_signups WHERE slug=? AND status='approved'",
+            (slug,)
+        ).fetchone()
+    if not aff:
+        return jsonify({"error": "Not found"}), 404
+    name, org, slug = aff
+    with sqlite3.connect(LOG_DB) as cx:
+        offers = cx.execute(
+            "SELECT name, description, url_template FROM affiliate_offers WHERE active=1 ORDER BY sort_order ASC"
+        ).fetchall()
+    return jsonify({
+        "name": name,
+        "organization": org,
+        "slug": slug,
+        "offers": [
+            {
+                "name": o[0],
+                "description": o[1],
+                "url": o[2].replace("{slug}", slug),
+            }
+            for o in offers
+        ]
+    })
 
 
 @app.route("/affiliate/portal")
@@ -722,10 +776,10 @@ def affiliate_apply_form():
 
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
-            # Generate Rebrandly short link (truly.vip/{slug})
-            destination = f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+            # Generate Rebrandly short link → points to affiliate hub
+            _hub_dest = f"{request.host_url.rstrip('/')}/affiliate/hub/{slug}"
             short_url = _rebrandly_create(
-                slashtag=slug, destination=destination,
+                slashtag=slug, destination=_hub_dest,
                 title=f"Affiliate: {org or name}"
             ) or ""
 
@@ -918,8 +972,9 @@ def backfill_affiliate_links():
         rows = cx.execute(
             "SELECT id, slug, name, organization FROM affiliate_signups WHERE (short_url IS NULL OR short_url='') AND status='approved'"
         ).fetchall()
+    base_url = request.host_url.rstrip("/")
     for aff_id, slug, name, org in rows:
-        destination = f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+        destination = f"{base_url}/affiliate/hub/{slug}"
         short_url = _rebrandly_create(slug, destination, title=f"Affiliate: {org or name}")
         if short_url:
             with _db_lock, sqlite3.connect(LOG_DB) as cx:

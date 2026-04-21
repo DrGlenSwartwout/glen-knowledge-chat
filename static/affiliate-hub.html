@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Healing Resources</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f8f5f0;
+      color: #1a1a1a;
+      min-height: 100vh;
+      padding: 40px 16px 60px;
+    }
+    .container { max-width: 560px; margin: 0 auto; }
+    .header { text-align: center; margin-bottom: 40px; }
+    .header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #2d6a4f;
+      margin-bottom: 6px;
+    }
+    .header .subtitle {
+      font-size: 0.95rem;
+      color: #666;
+    }
+    .header .via {
+      font-size: 0.82rem;
+      color: #999;
+      margin-top: 4px;
+    }
+    .offer-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    }
+    .offer-card h2 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 8px;
+    }
+    .offer-card p {
+      font-size: 0.9rem;
+      color: #555;
+      line-height: 1.55;
+      margin-bottom: 16px;
+    }
+    .offer-link-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .offer-url {
+      flex: 1;
+      font-size: 0.78rem;
+      color: #2d6a4f;
+      background: #f0f7f3;
+      border: 1px solid #c5e0d0;
+      border-radius: 6px;
+      padding: 7px 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: default;
+      user-select: all;
+    }
+    .btn-copy {
+      background: #2d6a4f;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .15s;
+    }
+    .btn-copy:hover { background: #235c42; }
+    .btn-copy.copied { background: #4caf7d; }
+    .btn-go {
+      display: block;
+      text-align: center;
+      background: #2d6a4f;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      padding: 11px 20px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-top: 10px;
+      transition: background .15s;
+    }
+    .btn-go:hover { background: #235c42; }
+    .error { text-align: center; color: #c0392b; padding: 40px 0; }
+    .loading { text-align: center; color: #999; padding: 40px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 id="header-name">Healing Resources</h1>
+      <div class="subtitle">Recommended by <span id="ref-name">your guide</span></div>
+      <div class="via">Dr. Glen Swartwout · Remedy Match</div>
+    </div>
+    <div id="offers-list"><div class="loading">Loading…</div></div>
+  </div>
+
+  <script>
+    const slug = location.pathname.split('/').pop();
+
+    function copyLink(url, btn) {
+      navigator.clipboard.writeText(url).then(() => {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy Link'; btn.classList.remove('copied'); }, 2000);
+      });
+    }
+
+    async function load() {
+      const list = document.getElementById('offers-list');
+      try {
+        const r = await fetch(`/affiliate/hub-data/${encodeURIComponent(slug)}`);
+        if (!r.ok) { list.innerHTML = '<div class="error">Link not found.</div>'; return; }
+        const d = await r.json();
+
+        document.getElementById('header-name').textContent = 'Healing Resources';
+        document.getElementById('ref-name').textContent = d.organization || d.name;
+        document.title = `Healing Resources · ${d.organization || d.name}`;
+
+        if (!d.offers.length) { list.innerHTML = '<div class="loading">Coming soon.</div>'; return; }
+
+        list.innerHTML = d.offers.map((o, i) => `
+          <div class="offer-card">
+            <h2>${o.name}</h2>
+            <p>${o.description}</p>
+            <div class="offer-link-row">
+              <div class="offer-url" title="${o.url}">${o.url}</div>
+              <button class="btn-copy" onclick="copyLink('${o.url}', this)">Copy Link</button>
+            </div>
+            <a class="btn-go" href="${o.url}" target="_blank">Open →</a>
+          </div>
+        `).join('');
+      } catch(e) {
+        list.innerHTML = '<div class="error">Could not load resources.</div>';
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>
