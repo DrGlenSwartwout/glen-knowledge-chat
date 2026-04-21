@@ -110,37 +110,17 @@
       <p>Fill in your details below and you'll get instant access to your tracking link.</p>
 
       <form id="apply-form" action="/affiliate/apply-form" method="POST">
-        <div style="display:flex;gap:12px;">
-          <div class="form-group" style="flex:1;">
-            <label>Your Name *</label>
-            <input type="text" id="f-name" placeholder="Jane Smith" required autocomplete="name">
-          </div>
-          <div class="form-group" style="flex:1;">
-            <label>Email *</label>
-            <input type="email" id="f-email" placeholder="jane@example.com" required autocomplete="email">
-          </div>
+        <div class="form-group">
+          <label>Your Name *</label>
+          <input type="text" name="name" placeholder="Jane Smith" required autocomplete="name">
         </div>
         <div class="form-group">
-          <label>Organization / Website / Practice</label>
-          <input type="text" id="f-org" placeholder="Healing Arts Center, YouTube channel, etc.">
+          <label>Email *</label>
+          <input type="email" name="email" placeholder="jane@example.com" required autocomplete="email">
         </div>
         <div class="form-group">
-          <label>Website (optional)</label>
-          <input type="url" id="f-website" placeholder="https://...">
-        </div>
-        <div class="form-group">
-          <label>How will you share the quiz?</label>
-          <select id="f-promo">
-            <option value="">— Select —</option>
-            <option value="email-list">Email newsletter / list</option>
-            <option value="social-media">Social media (Facebook, Instagram, etc.)</option>
-            <option value="youtube">YouTube channel</option>
-            <option value="podcast">Podcast</option>
-            <option value="website-blog">Website / blog</option>
-            <option value="in-person">In-person events or practice</option>
-            <option value="nonprofit">Nonprofit / community org</option>
-            <option value="other">Other</option>
-          </select>
+          <label>Organization <span style="font-weight:400;text-transform:none;font-size:11px;">(optional)</span></label>
+          <input type="text" name="organization" placeholder="AllHeal, YouTube channel, practice name…">
         </div>
         <div class="error-msg" id="error-msg"></div>
         <button class="submit-btn" type="submit" id="submit-btn">Get My Tracking Link →</button>
