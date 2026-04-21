@@ -112,6 +112,15 @@
     <div id="leads-container"></div>
   </div>
 
+  <div class="section" id="recruit-section" style="border-color:#7c5cbf33;">
+    <h2>Recruit Other Affiliates</h2>
+    <div class="link-box" style="border-color:#7c5cbf55;">
+      <span class="link-text" id="recruit-url" style="color:#c4a8ff;"></span>
+      <button class="btn-copy" id="recruit-copy-btn" onclick="copyRecruit()" style="border-color:#7c5cbf;color:#c4a8ff;">Copy Link</button>
+    </div>
+    <p class="link-hint">Know someone who'd make a great affiliate? Share this link — when they sign up, they're tracked as your recruit. <span id="recruited-count-text" style="color:#c4a8ff;font-weight:600;"></span></p>
+  </div>
+
   <p class="bookmark-note">Bookmark this page to check your referrals anytime. Questions? <a href="mailto:support@remedymatch.com">Contact us</a></p>
 </div>
 
@@ -154,6 +163,10 @@ function render(d) {
   document.getElementById('stat-last').textContent = d.last_lead ? 'Last: ' + timeAgo(d.last_lead) : 'No referrals yet';
   document.getElementById('stat-slug').textContent = d.slug;
   document.getElementById('tracking-url').textContent = d.tracking_url;
+  document.getElementById('recruit-url').textContent  = d.recruit_url || '';
+  const rc = d.recruited_count || 0;
+  document.getElementById('recruited-count-text').textContent =
+    rc ? `You've recruited ${rc} affiliate${rc === 1 ? '' : 's'} so far.` : '';
 
   // Leads table
   const container = document.getElementById('leads-container');
@@ -169,6 +182,15 @@ function render(d) {
       </tr>`).join('')}</tbody>
     </table>`;
   }
+}
+
+function copyRecruit() {
+  const url = document.getElementById('recruit-url').textContent;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('recruit-copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy Link', 1800);
+  });
 }
 
 function copyLink() {

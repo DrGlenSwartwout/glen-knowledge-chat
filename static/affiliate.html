@@ -110,6 +110,7 @@
       <p>Fill in your details below and you'll get instant access to your tracking link.</p>
 
       <form id="apply-form" action="/affiliate/apply-form" method="POST">
+        <input type="hidden" name="referred_by" id="referred_by_field">
         <div class="form-group">
           <label>Your Name *</label>
           <input type="text" name="name" placeholder="Jane Smith" required autocomplete="name">
@@ -136,13 +137,17 @@
 
 </div>
 <script>
-// Show error from query param (set by server on failed signup)
-const _err = new URLSearchParams(location.search).get('error');
+const _params = new URLSearchParams(location.search);
+// Show error if redirected back with one
+const _err = _params.get('error');
 if (_err) {
   const el = document.getElementById('error-msg');
   el.textContent = _err;
   el.style.display = 'block';
 }
+// Pass recruiter slug through the form as hidden field
+const _ref = _params.get('ref');
+if (_ref) document.getElementById('referred_by_field').value = _ref;
 </script>
 </body>
 </html>

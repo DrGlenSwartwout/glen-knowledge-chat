@@ -492,9 +492,14 @@ def _init_referral_tables():
                 slug         TEXT NOT NULL UNIQUE,
                 token        TEXT NOT NULL UNIQUE,
                 status       TEXT DEFAULT 'approved',
-                notes        TEXT DEFAULT ''
+                notes        TEXT DEFAULT '',
+                referred_by  TEXT DEFAULT ''
             )
         """)
+        try:
+            cx.execute("ALTER TABLE affiliate_signups ADD COLUMN referred_by TEXT DEFAULT ''")
+        except Exception:
+            pass
         cx.execute("""
             CREATE TABLE IF NOT EXISTS referral_sources (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -635,10 +640,11 @@ def affiliate_apply_form():
     """HTML form POST — processes signup and does a 302 redirect to the portal."""
     from flask import redirect as _redirect
     import urllib.parse as _urlparse
-    name  = (request.form.get("name") or "").strip()
-    email = (request.form.get("email") or "").strip().lower()
-    org   = (request.form.get("organization") or "").strip()
-    site  = (request.form.get("website") or "").strip()
+    name        = (request.form.get("name") or "").strip()
+    email       = (request.form.get("email") or "").strip().lower()
+    org         = (request.form.get("organization") or "").strip()
+    site        = (request.form.get("website") or "").strip()
+    referred_by = (request.form.get("referred_by") or "").strip()
     if site and not site.startswith(("http://", "https://")):
         site = "https://" + site
     promo = (request.form.get("promo_method") or "").strip()
@@ -667,9 +673,9 @@ def affiliate_apply_form():
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             cx.execute("""
                 INSERT INTO affiliate_signups
-                  (created_at, name, email, organization, website, promo_method, slug, token, status)
-                VALUES (?,?,?,?,?,?,?,?,?)
-            """, (ts, name, email, org, site, promo, slug, token, "approved"))
+                  (created_at, name, email, organization, website, promo_method, slug, token, status, referred_by)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+            """, (ts, name, email, org, site, promo, slug, token, "approved", referred_by))
             cx.execute("""
                 INSERT OR IGNORE INTO referral_sources
                   (created_at, name, slug, description, utm_source, utm_medium, utm_campaign)
@@ -762,7 +768,8 @@ def affiliate_portal_data():
     if status != "approved":
         return jsonify({"error": "Application pending review"}), 403
 
-    tracking_url = f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+    tracking_url   = f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+    recruit_url    = f"https://glen-knowledge-chat.onrender.com/affiliate?ref={slug}"
 
     with sqlite3.connect(LOG_DB) as cx:
         stats = cx.execute("""
@@ -774,14 +781,19 @@ def affiliate_portal_data():
             FROM referral_events WHERE utm_source=?
             ORDER BY received_at DESC LIMIT 10
         """, (slug,)).fetchall()
+        recruited_count = cx.execute("""
+            SELECT COUNT(*) FROM affiliate_signups WHERE referred_by=? AND status='approved'
+        """, (slug,)).fetchone()[0]
 
     return jsonify({
         "name": name,
         "organization": org,
         "slug": slug,
         "tracking_url": tracking_url,
+        "recruit_url": recruit_url,
         "total_leads": stats[0] if stats else 0,
         "last_lead": stats[1] if stats else None,
+        "recruited_count": recruited_count,
         "recent": [{"received_at": r[0],
                     "name": f"{r[1] or ''} {r[2] or ''}".strip(),
                     "score": r[3]} for r in recent],
