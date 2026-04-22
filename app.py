@@ -1961,6 +1961,124 @@ def clips_delete(filename):
     return jsonify({"ok": True})
 
 
+# ── Rae Feedback (humor / speech monitoring) ──────────────────────────────────
+
+def _init_rae_feedback_table():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS rae_feedback (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts               TEXT NOT NULL,
+                event_type       TEXT NOT NULL,  -- 'laugh', 'speech', 'greeting_played'
+                greeting_index   INTEGER DEFAULT -1,
+                greeting_style   TEXT DEFAULT '',
+                amplitude_peak   REAL DEFAULT 0,
+                duration_ms      INTEGER DEFAULT 0,
+                transcript       TEXT DEFAULT '',
+                notes            TEXT DEFAULT ''
+            )
+        """)
+        cx.commit()
+
+_init_rae_feedback_table()
+
+
+@app.route("/api/rae-feedback", methods=["POST"])
+def post_rae_feedback():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+
+    events = request.get_json(force=True) or {}
+    # Accept either a single event dict or a list
+    if isinstance(events, dict):
+        events = [events]
+
+    ts = datetime.now(timezone.utc).isoformat()
+    inserted = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        for e in events:
+            cx.execute("""
+                INSERT INTO rae_feedback
+                    (ts, event_type, greeting_index, greeting_style,
+                     amplitude_peak, duration_ms, transcript, notes)
+                VALUES (?,?,?,?,?,?,?,?)
+            """, (
+                e.get("ts", ts),
+                e.get("event_type", "unknown"),
+                e.get("greeting_index", -1),
+                e.get("greeting_style", ""),
+                e.get("amplitude_peak", 0),
+                e.get("duration_ms", 0),
+                e.get("transcript", "")[:500],
+                e.get("notes", ""),
+            ))
+            inserted += 1
+        cx.commit()
+    return jsonify({"ok": True, "inserted": inserted}), 201
+
+
+@app.route("/api/rae-feedback", methods=["GET"])
+def get_rae_feedback():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+
+    event_type = request.args.get("event_type")       # optional filter
+    limit      = min(int(request.args.get("limit", 200)), 1000)
+
+    query  = "SELECT * FROM rae_feedback"
+    params = []
+    if event_type:
+        query += " WHERE event_type = ?"
+        params.append(event_type)
+    query += " ORDER BY ts DESC LIMIT ?"
+    params.append(limit)
+
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute(query, params).fetchall()
+
+    return jsonify({"events": [dict(r) for r in rows]})
+
+
+@app.route("/api/rae-feedback/summary", methods=["GET"])
+def get_rae_feedback_summary():
+    """Laugh counts grouped by greeting_style — reveals which humor lands best."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        by_style = cx.execute("""
+            SELECT greeting_style,
+                   COUNT(*)                          AS laugh_count,
+                   AVG(amplitude_peak)               AS avg_amplitude,
+                   AVG(duration_ms)                  AS avg_duration_ms,
+                   MAX(ts)                           AS last_seen
+            FROM   rae_feedback
+            WHERE  event_type = 'laugh'
+            GROUP  BY greeting_style
+            ORDER  BY laugh_count DESC
+        """).fetchall()
+
+        recent = cx.execute("""
+            SELECT ts, event_type, greeting_style, transcript, amplitude_peak
+            FROM   rae_feedback
+            ORDER  BY ts DESC
+            LIMIT  20
+        """).fetchall()
+
+    return jsonify({
+        "laugh_by_style": [dict(r) for r in by_style],
+        "recent_events":  [dict(r) for r in recent],
+    })
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
