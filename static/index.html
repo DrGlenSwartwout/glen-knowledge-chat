@@ -156,41 +156,81 @@
     40% { transform: translateY(-6px); opacity: 1; }
   }
 
-  /* ── Level selector ── */
-  #level-bar {
-    display: flex; gap: 6px; align-items: center;
+  /* ── Ask bar (healing level inline radio) ── */
+  #ask-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     padding: 10px 24px 0;
     background: var(--surface);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
   }
-  #level-bar .level-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: var(--text-muted);
-    margin-right: 4px;
+  #ask-bar .ask-label {
+    font-size: 12px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.07em;
     white-space: nowrap;
   }
-  .level-btn {
-    background: var(--surface2);
+  .ask-radio-group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .ask-radio-group label {
+    display: flex; align-items: center;
+    font-size: 13px; color: var(--text-muted);
+    cursor: pointer; white-space: nowrap;
+    padding: 4px 14px;
     border: 1px solid var(--border);
     border-radius: 20px;
-    color: var(--text-muted);
-    font-family: var(--font);
-    font-size: 12px;
-    padding: 4px 14px;
-    cursor: pointer;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
-    white-space: nowrap;
   }
-  .level-btn:hover { border-color: var(--accent); color: var(--text); }
-  .level-btn.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #000;
-    font-weight: 700;
+  .ask-radio-group label.active {
+    background: var(--accent); border-color: var(--accent);
+    color: #000; font-weight: 700;
   }
+  .ask-radio-group label:not(.active):hover { border-color: var(--accent); color: var(--text); }
+  .ask-radio-group input[type=radio] { display: none; }
+
+  /* ── Opt-in bar ── */
+  #optin-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 7px 24px 0;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .optin-field { display: flex; align-items: center; gap: 5px; }
+  .optin-field label { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  .optin-field input {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-family: var(--font);
+    font-size: 12px; padding: 4px 9px; width: 130px; outline: none;
+    transition: border-color 0.15s;
+  }
+  .optin-field input:focus { border-color: var(--accent); }
+  .optin-field input::placeholder { color: var(--text-muted); opacity: 0.6; }
+  .freq-group { display: flex; gap: 3px; align-items: center; margin-left: 4px; }
+  .freq-group label {
+    font-size: 11px; color: var(--text-muted); cursor: pointer;
+    padding: 3px 8px; border: 1px solid var(--border);
+    border-radius: 4px; transition: all 0.15s; white-space: nowrap;
+  }
+  .freq-group label.active { border-color: var(--accent2); color: var(--accent2); background: #3d8a5212; }
+  .freq-group label:not(.active):hover { border-color: var(--accent); color: var(--text); }
+  .freq-group input[type=radio] { display: none; }
+
+  /* ── Suggestion bar ── */
+  #suggestion-bar {
+    padding: 7px 24px 3px;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  #suggestion-bar .suggest-label {
+    font-size: 11px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  #suggested-q {
+    background: none; border: none; padding: 0;
+    color: var(--accent); font-size: 13px; font-family: var(--font);
+    cursor: pointer; text-align: left;
+    margin-left: 8px;
+    transition: color 0.15s; text-decoration: none;
+  }
+  #suggested-q:hover { color: var(--text); }
 
   /* ── Input bar ── */
   #input-bar {
@@ -377,25 +417,6 @@
   .empty-state .logo-icon { width: 180px; height: 180px; object-fit: contain; opacity: 0.9; }
   .empty-state p { font-size: 13px; max-width: 220px; }
 
-  /* ── Example queries ── */
-  .example-queries {
-    display: flex; flex-direction: column; gap: 6px;
-    margin-top: 20px; width: 100%;
-    max-width: 600px;
-    padding: 0 24px;
-  }
-  .example-q {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 14px;
-    font-size: 13px;
-    color: var(--text-muted);
-    cursor: pointer;
-    text-align: left;
-    transition: all 0.15s;
-  }
-  .example-q:hover { border-color: var(--accent); color: var(--text); }
 
   /* ── Metadata bar ── */
   .meta-bar {
@@ -507,22 +528,36 @@
     <div id="messages">
       <div class="empty-state" id="empty-state">
         <img class="logo-icon" src="/static/logo.png" alt="Mentorship University">
-        <p>Ask about healing yourself, those in your care, or the sciences.</p>
-        <div class="example-queries">
-          <button class="example-q" onclick="fillQuery(this.textContent)">How does Fritz Popp's biophoton research relate to NES body-field scanning?</button>
-          <button class="example-q" onclick="fillQuery(this.textContent)">What is Glen's 5 Phases of Health model and how does BEV terrain work?</button>
-          <button class="example-q" onclick="fillQuery(this.textContent)">Explain the connection between mercury toxicity, EMF, and chronic illness.</button>
-          <button class="example-q" onclick="fillQuery(this.textContent)">What organizations validate electromagnetic hypersensitivity as a medical condition?</button>
-          <button class="example-q" onclick="fillQuery(this.textContent)">How do Wal Thornhill, Halton Arp, and Stephen Crothers challenge mainstream cosmology?</button>
-        </div>
       </div>
     </div>
 
-    <div id="level-bar">
-      <span class="level-label">Level:</span>
-      <button class="level-btn active" data-level="self-healing" onclick="setLevel(this)">Self-Healing</button>
-      <button class="level-btn" data-level="health-care" onclick="setLevel(this)">Health Care</button>
-      <button class="level-btn" data-level="science" onclick="setLevel(this)">Science</button>
+    <div id="ask-bar">
+      <span class="ask-label">Ask about healing:</span>
+      <div class="ask-radio-group">
+        <label class="active"><input type="radio" name="ask-level" value="self-healing" checked><span>yourself</span></label>
+        <label><input type="radio" name="ask-level" value="health-care"><span>health care</span></label>
+        <label><input type="radio" name="ask-level" value="science"><span>the sciences</span></label>
+      </div>
+    </div>
+    <div id="optin-bar">
+      <div class="optin-field">
+        <label>Name</label>
+        <input type="text" id="optin-name" placeholder="optional">
+      </div>
+      <div class="optin-field">
+        <label>Email</label>
+        <input type="email" id="optin-email" placeholder="optional">
+      </div>
+      <div class="freq-group">
+        <label class="active"><input type="radio" name="frequency" value="" checked><span>None</span></label>
+        <label><input type="radio" name="frequency" value="monthly"><span>Monthly</span></label>
+        <label><input type="radio" name="frequency" value="weekly"><span>Weekly</span></label>
+        <label><input type="radio" name="frequency" value="daily"><span>Daily</span></label>
+      </div>
+    </div>
+    <div id="suggestion-bar">
+      <span class="suggest-label">Try asking:</span>
+      <button id="suggested-q" onclick="fillQuery(this.textContent)">What is your body trying to tell you through this symptom?</button>
     </div>
     <div id="input-bar">
       <textarea
@@ -561,13 +596,38 @@
 <script>
   const history = [];
   let isLoading = false;
-  let currentLevel = 'self-healing';
 
-  function setLevel(btn) {
-    document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentLevel = btn.dataset.level;
+  const SEED_QUESTIONS = {
+    'self-healing': 'What is your body trying to tell you through this symptom?',
+    'health-care':  'Which bioenergetic protocol reveals the most about complex chronic illness?',
+    'science':      'How does biophoton coherence theory align with the living matrix model?',
+  };
+
+  function getCurrentLevel() {
+    const r = document.querySelector('input[name="ask-level"]:checked');
+    return r ? r.value : 'self-healing';
   }
+
+  function updateSuggestion(q) {
+    if (q) document.getElementById('suggested-q').textContent = q;
+  }
+
+  // Wire ask-level radio buttons
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('input[name="ask-level"]').forEach(r => {
+      r.addEventListener('change', () => {
+        document.querySelectorAll('.ask-radio-group label').forEach(l => l.classList.remove('active'));
+        r.closest('label').classList.add('active');
+        updateSuggestion(SEED_QUESTIONS[r.value]);
+      });
+    });
+    document.querySelectorAll('input[name="frequency"]').forEach(r => {
+      r.addEventListener('change', () => {
+        document.querySelectorAll('.freq-group label').forEach(l => l.classList.remove('active'));
+        r.closest('label').classList.add('active');
+      });
+    });
+  });
 
   // Load feedback URL from server
   fetch('/feedback-url').then(r => r.json()).then(d => {
@@ -646,15 +706,8 @@
     document.getElementById('messages').innerHTML =
       `<div class="empty-state" id="empty-state">
         <img class="logo-icon" src="/static/logo.png" alt="Mentorship University">
-        <p>Ask about healing yourself, those in your care, or the sciences.</p>
-        <div class="example-queries">
-          <button class="example-q" onclick="fillQuery(this.textContent)">How does Fritz Popp's biophoton research relate to NES body-field scanning?</button>
-          <button class="example-q" onclick="fillQuery(this.textContent)">What is Glen's 5 Phases of Health model and how does BEV terrain work?</button>
-          <button class="example-q" onclick="fillQuery(this.textContent)">Explain the connection between mercury toxicity, EMF, and chronic illness.</button>
-          <button class="example-q" onclick="fillQuery(this.textContent)">What organizations validate electromagnetic hypersensitivity as a medical condition?</button>
-          <button class="example-q" onclick="fillQuery(this.textContent)">How do Wal Thornhill, Halton Arp, and Stephen Crothers challenge mainstream cosmology?</button>
-        </div>
       </div>`;
+    updateSuggestion(SEED_QUESTIONS[getCurrentLevel()]);
     renderSourcesPanel([]);
   }
 
@@ -685,7 +738,14 @@
       const resp = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, history: history.slice(), level: currentLevel })
+        body: JSON.stringify({
+          query,
+          history: history.slice(),
+          level:     getCurrentLevel(),
+          name:      (document.getElementById('optin-name').value || '').trim(),
+          email:     (document.getElementById('optin-email').value || '').trim(),
+          frequency: (document.querySelector('input[name="frequency"]:checked') || {}).value || ''
+        })
       });
 
       if (!resp.ok || !resp.body) {
@@ -738,7 +798,7 @@
                 msgs.appendChild(streamDiv);
               }
               accumulated += evt.token;
-              bodyDiv.innerHTML = md(accumulated);
+              bodyDiv.innerHTML = renderMarkdown(accumulated);
               msgs.scrollTop = msgs.scrollHeight;
             }
 
@@ -748,6 +808,7 @@
               renderSourcesPanel(evt.sources || []);
               history.push({ role: 'user', content: query });
               history.push({ role: 'assistant', content: accumulated });
+              if (evt.next_question) updateSuggestion(evt.next_question);
             }
           }
         }

@@ -93,11 +93,12 @@ _SYSTEM_BASE = """You are Glen Swartwout's knowledge assistant — a deeply info
 - Consciousness science (IONS, HeartMath, morphic resonance)
 
 Your task:
-1. Synthesize the provided source snippets into a unified, coherent answer to the user's question.
-2. When multiple mentors or concepts connect, explicitly show how they reinforce each other.
-3. At the end of your response, list the source references used (name + field).
-4. Do NOT fabricate information not present in the snippets. If the snippets don't fully answer the question, say so clearly.
-5. Keep responses focused and readable — prefer synthesis over exhaustive lists."""
+1. OPEN WITH A HOOK: Begin with a single compelling sentence — a surprising research finding, a thought-provoking reframe, or a striking quote from the source material. This hook is your first line, before any explanation.
+2. Synthesize the provided source snippets into a unified, coherent answer to the user's question.
+3. When multiple mentors or concepts connect, explicitly show how they reinforce each other.
+4. At the end of your response, list the source references used (name + field).
+5. Do NOT fabricate information not present in the snippets. If the snippets don't fully answer the question, say so clearly.
+6. Keep responses focused and readable — prefer synthesis over exhaustive lists."""
 
 _LEVEL_INSTRUCTIONS = {
     "self-healing": """
@@ -207,10 +208,13 @@ def chat():
     if request.method == "OPTIONS":
         return "", 200
 
-    data    = request.get_json() or {}
-    query   = (data.get("query") or "").strip()
-    history = data.get("history") or []
-    level   = (data.get("level") or "self-healing").strip().lower()
+    data      = request.get_json() or {}
+    query     = (data.get("query") or "").strip()
+    history   = data.get("history") or []
+    level     = (data.get("level") or "self-healing").strip().lower()
+    name      = (data.get("name") or "").strip()
+    email     = (data.get("email") or "").strip()
+    frequency = (data.get("frequency") or "").strip()
 
     if not query:
         return jsonify({"error": "Empty query"}), 400
@@ -258,8 +262,42 @@ def chat():
 
         answer = "".join(full_answer)
         log_id = log_query(query, level, answer)
+
+        # GHL onboarding for email opt-ins (non-blocking)
+        if email:
+            import threading as _threading
+            def _onboard():
+                try:
+                    parts = name.split(None, 1)
+                    first = parts[0] if parts else ""
+                    last  = parts[1] if len(parts) > 1 else ""
+                    tags  = ["chatbot-lead"]
+                    if frequency:
+                        tags.append(f"frequency-{frequency}")
+                    ghl_onboard_contact(email, first, last, source_tag="chatbot", extra_tags=tags)
+                except Exception:
+                    pass
+            _threading.Thread(target=_onboard, daemon=True).start()
+
+        # Generate next Socratic question
+        next_question = ""
+        try:
+            nq_msg = _cl.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=80,
+                system="Generate a single Socratic follow-up question for a healing wisdom chatbot. Output only the question, nothing else.",
+                messages=[{"role": "user", "content":
+                    f"Question: {query}\nAnswer summary: {answer[:400]}\n\n"
+                    "What one deeper question would guide the person further into this exploration? "
+                    "Make it personally evocative and specific to what was just discussed."}]
+            )
+            next_question = nq_msg.content[0].text.strip().strip('"')
+        except Exception:
+            pass
+
         yield sse({"done": True, "log_id": log_id,
-                   "sources": sources_list, "chunks_retrieved": len(all_matches)})
+                   "sources": sources_list, "chunks_retrieved": len(all_matches),
+                   "next_question": next_question})
 
     return Response(
         stream_with_context(generate()),
