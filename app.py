@@ -1570,7 +1570,12 @@ def patch_calendar(event_id):
             return jsonify({"error": "Unauthorized"}), 401
 
     action = (request.get_json(force=True) or {}).get("action", "hide")
-    new_status = "delete_requested" if action == "delete" else "hidden"
+    if action == "show":
+        new_status = "visible"
+    elif action == "delete":
+        new_status = "delete_requested"
+    else:
+        new_status = "hidden"
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.execute("UPDATE calendar_events SET status=? WHERE id=?", (new_status, event_id))
         cx.commit()
@@ -1636,6 +1641,30 @@ def clear_delete_queue():
         cx.executemany("UPDATE calendar_events SET status='deleted' WHERE id=?", [(i,) for i in ids])
         cx.commit()
     return jsonify({"ok": True, "cleared": len(ids)})
+
+
+@app.route("/api/calendar/<int:event_id>/suppress", methods=["DELETE"])
+def unsuppress_calendar_event(event_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT summary, owner, start FROM calendar_events WHERE id=?", (event_id,)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        summary, owner, start = row
+        pattern = _normalize_cal_title(summary)
+        dow, hr  = _parse_event_start(start)
+        cx.execute(
+            "DELETE FROM calendar_suppressed WHERE owner=? AND title_pattern=? AND day_of_week=? AND hour=?",
+            (owner, pattern, dow, hr)
+        )
+        cx.execute("UPDATE calendar_events SET status='visible' WHERE id=?", (event_id,))
+        cx.commit()
+    return jsonify({"ok": True, "unsuppressed": summary})
 
 
 @app.route("/api/calendar/<int:event_id>/suppress", methods=["POST"])
@@ -1792,6 +1821,17 @@ def patch_todo(todo_id):
                                        ai_summary, suggested_reply)
                     VALUES (?,?,?,?,?,?,?,?,?)
                 """, (ts, to, row[1], new_title, (row[3] or "") + extra_body, row[4], row[5], row[6], row[7]))
+        elif action == "undelegated":
+            # Undo a delegate: restore original to open, remove the delegated copy
+            cx.execute(
+                "UPDATE todos SET status='open', delegated_to='', delegated_at='' WHERE id=?",
+                (todo_id,)
+            )
+            cx.execute(
+                "DELETE FROM todos WHERE source=(SELECT source FROM todos WHERE id=?) "
+                "AND title LIKE '[From %' AND id != ?",
+                (todo_id, todo_id)
+            )
         elif action == "reopen":
             cx.execute("UPDATE todos SET status='open', done_at='', delegated_to='', delegated_at=? WHERE id=?",
                        (ts, todo_id))
