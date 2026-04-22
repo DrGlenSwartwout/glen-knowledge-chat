@@ -1430,6 +1430,15 @@ def _init_calendar_table():
             cx.execute("ALTER TABLE calendar_events ADD COLUMN cal_alert INTEGER DEFAULT 0")
         except Exception:
             pass
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_suppressed (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner      TEXT NOT NULL DEFAULT 'glen',
+                summary    TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(owner, summary)
+            )
+        """)
         cx.commit()
 
 _init_calendar_table()
@@ -1464,9 +1473,21 @@ def post_calendar():
         items = [items]
 
     ts = datetime.now(timezone.utc).isoformat()
-    upserted = 0
+    upserted = skipped = 0
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        # Build suppression sets per owner
+        suppressed_rows = cx.execute("SELECT owner, summary FROM calendar_suppressed").fetchall()
+        suppressed = {}
+        for owner, summary in suppressed_rows:
+            suppressed.setdefault(owner, set()).add(summary.lower())
+
         for ev in items:
+            owner   = ev.get("owner", "glen")
+            summary = ev.get("summary", "(no title)")
+            # Skip if this owner has suppressed this event title
+            if summary.lower() in suppressed.get(owner, set()):
+                skipped += 1
+                continue
             try:
                 cx.execute("""
                     INSERT INTO calendar_events
@@ -1479,22 +1500,23 @@ def post_calendar():
                       summary=excluded.summary,
                       start=excluded.start,
                       end=excluded.end,
-                      location=excluded.location
+                      location=excluded.location,
+                      owner=excluded.owner
                     WHERE status='visible'
                 """, (ts,
                       ev.get("google_cal_id",""),
                       ev.get("google_event_id",""),
                       ev.get("calendar_name",""),
-                      ev.get("summary","(no title)"),
+                      summary,
                       ev.get("start",""),
                       ev.get("end",""),
                       ev.get("location",""),
-                      ev.get("owner","glen")))
+                      owner))
                 upserted += 1
             except Exception:
                 pass
         cx.commit()
-    return jsonify({"ok": True, "upserted": upserted}), 201
+    return jsonify({"ok": True, "upserted": upserted, "skipped": skipped}), 201
 
 
 @app.route("/api/calendar/<int:event_id>", methods=["PATCH"])
@@ -1571,6 +1593,29 @@ def clear_delete_queue():
         cx.executemany("UPDATE calendar_events SET status='deleted' WHERE id=?", [(i,) for i in ids])
         cx.commit()
     return jsonify({"ok": True, "cleared": len(ids)})
+
+
+@app.route("/api/calendar/<int:event_id>/suppress", methods=["POST"])
+def suppress_calendar_event(event_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT summary, owner FROM calendar_events WHERE id=?", (event_id,)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        summary, owner = row
+        ts = datetime.now(timezone.utc).isoformat()
+        cx.execute(
+            "INSERT OR IGNORE INTO calendar_suppressed (owner, summary, created_at) VALUES (?,?,?)",
+            (owner, summary, ts)
+        )
+        cx.execute("UPDATE calendar_events SET status='hidden' WHERE id=?", (event_id,))
+        cx.commit()
+    return jsonify({"ok": True, "suppressed": summary, "owner": owner})
 
 
 @app.route("/console")

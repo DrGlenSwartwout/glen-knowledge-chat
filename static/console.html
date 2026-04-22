@@ -79,8 +79,9 @@
   .cal-event-loc { color: var(--muted); font-size: 11px; margin-top: 2px; }
   .cal-event-actions { display: flex; gap: 5px; margin-top: 7px; }
   .btn-cal { border: 1px solid var(--border); background: transparent; border-radius: 5px; color: var(--muted); cursor: pointer; padding: 3px 8px; font-size: 11px; }
-  .btn-cal-hide:hover   { border-color: var(--muted); color: var(--text); }
-  .btn-cal-delete:hover { border-color: var(--high); color: var(--high); background: #2a1a1a; }
+  .btn-cal-hide:hover     { border-color: var(--muted); color: var(--text); }
+  .btn-cal-suppress:hover { border-color: var(--muted); color: var(--muted); }
+  .btn-cal-delete:hover   { border-color: var(--high); color: var(--high); background: #2a1a1a; }
   #cal-empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
 
   /* Todo section */
@@ -559,8 +560,9 @@ function renderCalendar(events) {
         ${loc}
         <div class="cal-event-actions">
           <button class="btn-cal btn-cal-alert${isAlerted ? ' active' : ''}" id="alert-btn-${ev.id}" onclick="toggleCalAlert(${ev.id}, '${escHtml(ev.start||'')}', '${escHtml(ev.summary||'').replace(/'/g,"\\'")}')">🔔 Alert</button>
-          <button class="btn-cal btn-cal-hide" onclick="doCalHide(${ev.id})">Hide</button>
-          <button class="btn-cal btn-cal-delete" onclick="doCalDelete(${ev.id})">Delete from Calendar</button>
+          <button class="btn-cal btn-cal-hide" onclick="doCalHide(${ev.id})">Skip</button>
+          <button class="btn-cal btn-cal-suppress" onclick="doCalSuppress(${ev.id})">Always ignore</button>
+          <button class="btn-cal btn-cal-delete" onclick="doCalDelete(${ev.id})">Delete from Google</button>
         </div>
       </div>`;
     }).join('');
@@ -573,6 +575,12 @@ function renderCalendar(events) {
 
 async function doCalHide(id) {
   await patchCalEvent(id, 'hide');
+  const el = document.getElementById(`cal-ev-${id}`);
+  if (el) { el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(() => el.remove(), 300); }
+}
+
+async function doCalSuppress(id) {
+  await apiFetch(`/api/calendar/${id}/suppress`, { method: 'POST' });
   const el = document.getElementById(`cal-ev-${id}`);
   if (el) { el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(() => el.remove(), 300); }
 }
