@@ -14,6 +14,7 @@
     --glen: #4f8ef7;
     --rae: #f78b4f;
     --shaira: #5fc98e;
+    --justus: #c084fc;
     --high: #ff5a5a;
     --normal: #f7c54f;
     --low: #7a7f96;
@@ -119,6 +120,22 @@
   .delegate-wrap { position: relative; }
   .btn-delegate { border: 1px solid var(--border); background: transparent; border-radius: 6px; color: var(--muted); cursor: pointer; padding: 4px 10px; font-size: 12px; transition: all .15s; }
   .btn-delegate:hover { border-color: var(--rae); color: var(--rae); background: #2a1a0a; }
+  .delegate-option.justus { color: var(--justus); }
+  .delegate-option.justus:hover { background: #1e1030; }
+  dialog#justus-dialog { background: var(--surface); border: 1px solid var(--justus); border-radius: 10px; padding: 0; color: var(--text); min-width: 340px; max-width: 480px; width: 90vw; box-shadow: 0 8px 32px #0008; }
+  dialog#justus-dialog::backdrop { background: #000a; }
+  .justus-header { background: #1e1030; border-bottom: 1px solid var(--border); padding: 14px 18px; border-radius: 10px 10px 0 0; }
+  .justus-header h3 { margin: 0; font-size: 15px; color: var(--justus); }
+  .justus-header p { margin: 6px 0 0; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .justus-body { padding: 16px 18px; }
+  .justus-body label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .justus-body textarea { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; padding: 10px; resize: vertical; min-height: 90px; font-family: inherit; }
+  .justus-body textarea:focus { outline: none; border-color: var(--justus); }
+  .justus-footer { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); }
+  .btn-justus-cancel { flex: 1; padding: 9px; background: transparent; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; font-size: 13px; }
+  .btn-justus-cancel:hover { border-color: var(--text); color: var(--text); }
+  .btn-justus-send { flex: 2; padding: 9px; background: var(--justus); border: none; border-radius: 6px; color: #0f1117; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .btn-justus-send:hover { opacity: .85; }
   .delegate-menu { position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; z-index: 20; min-width: 120px; }
   .delegate-menu.hidden { display: none; }
   .delegate-option { display: block; width: 100%; padding: 8px 14px; background: transparent; border: none; color: var(--text); cursor: pointer; text-align: left; font-size: 13px; }
@@ -637,7 +654,7 @@ function todoCard(t) {
   const targets = ['glen','rae','shaira'].filter(o => o !== currentOwner);
   const delegateOptions = targets.map(to =>
     `<button class="delegate-option" onclick="doDelegate(${t.id},'${to}',event)">${to.charAt(0).toUpperCase()+to.slice(1)}</button>`
-  ).join('');
+  ).join('') + `<button class="delegate-option justus" onclick="openJustusDialog(${t.id},${JSON.stringify(t.title)},event)">✦ Justus</button>`;
   const gmailBtn = mailLink
     ? `<a class="btn-action btn-gmail" href="${mailLink.url}" target="_blank" rel="noopener">${escHtml(mailLink.label)}</a>`
     : '';
@@ -701,6 +718,21 @@ async function doDelegate(id,to,e) {
   e.stopPropagation(); closeAllMenus();
   await patchTodo(id,{action:'delegate',to});
   animateRemove(`card-${id}`, refresh);
+}
+
+let _justusId = null;
+function openJustusDialog(id, title, e) {
+  e.stopPropagation(); closeAllMenus();
+  _justusId = id;
+  document.getElementById('justus-todo-title').textContent = title;
+  document.getElementById('justus-note').value = '';
+  document.getElementById('justus-dialog').showModal();
+}
+async function submitJustusDelegate() {
+  const note = document.getElementById('justus-note').value.trim();
+  document.getElementById('justus-dialog').close();
+  await patchTodo(_justusId, {action:'delegate', to:'justus', note});
+  animateRemove(`card-${_justusId}`, refresh);
 }
 
 function animateRemove(elemId, cb) {
@@ -912,5 +944,21 @@ if (urlOwner && ['glen','rae','shaira'].includes(urlOwner)) {
 
 initKey();
 </script>
+
+<dialog id="justus-dialog">
+  <div class="justus-header">
+    <h3>✦ Delegate to Justus</h3>
+    <p id="justus-todo-title"></p>
+  </div>
+  <div class="justus-body">
+    <label for="justus-note">Context for Justus (optional)</label>
+    <textarea id="justus-note" placeholder="Any extra context, instructions, or questions…"></textarea>
+  </div>
+  <div class="justus-footer">
+    <button class="btn-justus-cancel" onclick="document.getElementById('justus-dialog').close()">Cancel</button>
+    <button class="btn-justus-send" onclick="submitJustusDelegate()">Send to Justus ✦</button>
+  </div>
+</dialog>
+
 </body>
 </html>

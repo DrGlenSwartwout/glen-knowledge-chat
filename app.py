@@ -1629,8 +1629,9 @@ def patch_todo(todo_id):
             cx.execute("UPDATE todos SET status='done', done_at=? WHERE id=?", (ts, todo_id))
         elif action == "delegate":
             to = (data.get("to") or "").lower()
-            if to not in ("glen", "rae", "shaira"):
+            if to not in ("glen", "rae", "shaira", "justus"):
                 return jsonify({"error": "Invalid delegate target"}), 400
+            note = (data.get("note") or "").strip()
             # Create a copy for the delegate, mark original as delegated
             row = cx.execute(
                 "SELECT owner, category, title, body, priority, source, ai_summary, suggested_reply FROM todos WHERE id=?",
@@ -1640,11 +1641,12 @@ def patch_todo(todo_id):
                 cx.execute("UPDATE todos SET status='delegated', delegated_to=?, delegated_at=? WHERE id=?",
                            (to, ts, todo_id))
                 new_title = f"[From {row[0].title()}] {row[2]}"
+                extra_body = f"\n\n📝 Glen's note: {note}" if note else ""
                 cx.execute("""
                     INSERT INTO todos (created_at, owner, category, title, body, priority, source,
                                        ai_summary, suggested_reply)
                     VALUES (?,?,?,?,?,?,?,?,?)
-                """, (ts, to, row[1], new_title, row[3], row[4], row[5], row[6], row[7]))
+                """, (ts, to, row[1], new_title, (row[3] or "") + extra_body, row[4], row[5], row[6], row[7]))
         elif action == "reopen":
             cx.execute("UPDATE todos SET status='open', done_at='', delegated_to='', delegated_at=? WHERE id=?",
                        (ts, todo_id))
