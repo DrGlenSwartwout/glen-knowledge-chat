@@ -1432,16 +1432,48 @@ def _init_calendar_table():
             pass
         cx.execute("""
             CREATE TABLE IF NOT EXISTS calendar_suppressed (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                owner      TEXT NOT NULL DEFAULT 'glen',
-                summary    TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                UNIQUE(owner, summary)
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner         TEXT NOT NULL DEFAULT 'glen',
+                title_pattern TEXT NOT NULL,
+                day_of_week   INTEGER,
+                hour          INTEGER,
+                created_at    TEXT NOT NULL,
+                UNIQUE(owner, title_pattern, day_of_week, hour)
             )
         """)
+        # Migrate old schema if needed
+        for col in ["day_of_week INTEGER", "hour INTEGER", "title_pattern TEXT DEFAULT ''"]:
+            try:
+                cx.execute(f"ALTER TABLE calendar_suppressed ADD COLUMN {col}")
+            except Exception:
+                pass
         cx.commit()
 
 _init_calendar_table()
+
+
+def _normalize_cal_title(title: str) -> str:
+    """Strip session numbers and minor variation markers from event titles."""
+    import re as _re
+    t = title
+    t = _re.sub(r'\s+\d+\s*:', ':', t)               # "Training 4:" → "Training:"
+    t = _re.sub(r':\s*\d+\s*:', ':', t)               # ": 4:" → ":"
+    t = _re.sub(r'\s+\d+\s*$', '', t)                 # trailing numbers
+    t = _re.sub(r'\[\d+\s+of\s+\d+[^\]]*\]', '', t)  # "[11 of 100 spots filled]"
+    t = _re.sub(r'\s+', ' ', t).strip()
+    return t.lower()
+
+
+def _parse_event_start(start_iso: str):
+    """Return (day_of_week 0=Mon, hour) from ISO start string, or (None, None)."""
+    if not start_iso or 'T' not in start_iso:
+        return None, None
+    try:
+        d = datetime.fromisoformat(start_iso.replace('Z', '+00:00'))
+        return d.weekday(), d.hour
+    except Exception:
+        return None, None
+
 
 
 @app.route("/api/calendar", methods=["GET"])
@@ -1475,17 +1507,28 @@ def post_calendar():
     ts = datetime.now(timezone.utc).isoformat()
     upserted = skipped = 0
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        # Build suppression sets per owner
-        suppressed_rows = cx.execute("SELECT owner, summary FROM calendar_suppressed").fetchall()
-        suppressed = {}
-        for owner, summary in suppressed_rows:
-            suppressed.setdefault(owner, set()).add(summary.lower())
+        # Build suppression rules per owner: list of (title_pattern, day_of_week, hour)
+        sup_rows = cx.execute(
+            "SELECT owner, title_pattern, day_of_week, hour FROM calendar_suppressed"
+        ).fetchall()
+        suppressed = {}  # owner → list of (pattern, dow, hour)
+        for row_owner, pattern, dow, hr in sup_rows:
+            suppressed.setdefault(row_owner, []).append((pattern, dow, hr))
 
         for ev in items:
             owner   = ev.get("owner", "glen")
             summary = ev.get("summary", "(no title)")
-            # Skip if this owner has suppressed this event title
-            if summary.lower() in suppressed.get(owner, set()):
+            start   = ev.get("start", "")
+            norm    = _normalize_cal_title(summary)
+            ev_dow, ev_hr = _parse_event_start(start)
+            # Check suppression: title_pattern match + same day-of-week + same hour
+            is_suppressed = False
+            for pattern, dow, hr in suppressed.get(owner, []):
+                if norm == pattern:
+                    if (dow is None or dow == ev_dow) and (hr is None or hr == ev_hr):
+                        is_suppressed = True
+                        break
+            if is_suppressed:
                 skipped += 1
                 continue
             try:
@@ -1603,19 +1646,38 @@ def suppress_calendar_event(event_id):
             return jsonify({"error": "Unauthorized"}), 401
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         row = cx.execute(
-            "SELECT summary, owner FROM calendar_events WHERE id=?", (event_id,)
+            "SELECT summary, owner, start FROM calendar_events WHERE id=?", (event_id,)
         ).fetchone()
         if not row:
             return jsonify({"error": "Not found"}), 404
-        summary, owner = row
+        summary, owner, start = row
+        pattern = _normalize_cal_title(summary)
+        dow, hr  = _parse_event_start(start)
         ts = datetime.now(timezone.utc).isoformat()
         cx.execute(
-            "INSERT OR IGNORE INTO calendar_suppressed (owner, summary, created_at) VALUES (?,?,?)",
-            (owner, summary, ts)
+            """INSERT OR IGNORE INTO calendar_suppressed
+               (owner, title_pattern, day_of_week, hour, created_at)
+               VALUES (?,?,?,?,?)""",
+            (owner, pattern, dow, hr, ts)
         )
         cx.execute("UPDATE calendar_events SET status='hidden' WHERE id=?", (event_id,))
+        # Also hide all existing visible events matching the same pattern/day/hour for this owner
+        existing = cx.execute(
+            "SELECT id, summary, start FROM calendar_events WHERE owner=? AND status='visible'",
+            (owner,)
+        ).fetchall()
+        to_hide = [
+            r[0] for r in existing
+            if _normalize_cal_title(r[1]) == pattern and _parse_event_start(r[2]) == (dow, hr)
+        ]
+        if to_hide:
+            cx.executemany(
+                "UPDATE calendar_events SET status='hidden' WHERE id=?",
+                [(i,) for i in to_hide]
+            )
         cx.commit()
-    return jsonify({"ok": True, "suppressed": summary, "owner": owner})
+    return jsonify({"ok": True, "suppressed": summary, "pattern": pattern,
+                    "day_of_week": dow, "hour": hr, "owner": owner})
 
 
 @app.route("/console")
