@@ -664,8 +664,8 @@ function todoCard(t) {
   const mailLink = mailUrl(t.dedup_key);
   const targets = ['glen','rae','shaira'].filter(o => o !== currentOwner);
   const delegateOptions = targets.map(to =>
-    `<button class="delegate-option" onclick="doDelegate(${t.id},'${to}',event)">${to.charAt(0).toUpperCase()+to.slice(1)}</button>`
-  ).join('') + `<button class="delegate-option justus" onclick="openJustusDialog(${t.id},${JSON.stringify(t.title)},event)">✦ Justus</button>`;
+    `<button class="delegate-option" onclick="openDelegateDialog(${t.id},'${to}',${JSON.stringify(t.title)},event)">${to.charAt(0).toUpperCase()+to.slice(1)}</button>`
+  ).join('') + `<button class="delegate-option justus" onclick="openDelegateDialog(${t.id},'justus',${JSON.stringify(t.title)},event)">✦ Justus</button>`;
   const gmailBtn = mailLink
     ? `<a class="btn-action btn-gmail" href="${mailLink.url}" target="_blank" rel="noopener">${escHtml(mailLink.label)}</a>`
     : '';
@@ -733,25 +733,24 @@ function escHtml(s) {
 async function doDone(id)        { await patchTodo(id,{action:'done'});    animateRemove(`card-${id}`, refresh); }
 async function doReopen(id)      { await patchTodo(id,{action:'reopen'});  refresh(); }
 async function doDelete(id)      { await deleteTodo(id);                   animateRemove(`card-${id}`, refresh); }
-async function doDelegate(id,to,e) {
+let _delegateId = null, _delegateTo = null;
+function openDelegateDialog(id, to, title, e) {
   e.stopPropagation(); closeAllMenus();
-  await patchTodo(id,{action:'delegate',to});
-  animateRemove(`card-${id}`, refresh);
-}
-
-let _justusId = null;
-function openJustusDialog(id, title, e) {
-  e.stopPropagation(); closeAllMenus();
-  _justusId = id;
-  document.getElementById('justus-todo-title').textContent = title;
-  document.getElementById('justus-note').value = '';
+  _delegateId = id; _delegateTo = to;
+  const label = to === 'justus' ? '✦ Justus' : to.charAt(0).toUpperCase() + to.slice(1);
+  document.getElementById('delegate-dialog-heading').textContent = `Delegate to ${label}`;
+  document.getElementById('delegate-todo-title').textContent = title;
+  document.getElementById('delegate-note-label').textContent = `Guidance for ${label} (optional)`;
+  document.getElementById('delegate-send-btn').textContent =
+    to === 'justus' ? 'Send to Justus ✦' : `Send to ${label}`;
+  document.getElementById('delegate-note').value = '';
   document.getElementById('justus-dialog').showModal();
 }
-async function submitJustusDelegate() {
-  const note = document.getElementById('justus-note').value.trim();
+async function submitDelegate() {
+  const note = document.getElementById('delegate-note').value.trim();
   document.getElementById('justus-dialog').close();
-  await patchTodo(_justusId, {action:'delegate', to:'justus', note});
-  animateRemove(`card-${_justusId}`, refresh);
+  await patchTodo(_delegateId, {action:'delegate', to: _delegateTo, note});
+  animateRemove(`card-${_delegateId}`, refresh);
 }
 
 function toggleDraftReply(id) {
@@ -999,16 +998,16 @@ initKey();
 
 <dialog id="justus-dialog">
   <div class="justus-header">
-    <h3>✦ Delegate to Justus</h3>
-    <p id="justus-todo-title"></p>
+    <h3 id="delegate-dialog-heading">Delegate</h3>
+    <p id="delegate-todo-title"></p>
   </div>
   <div class="justus-body">
-    <label for="justus-note">Context for Justus (optional)</label>
-    <textarea id="justus-note" placeholder="Any extra context, instructions, or questions…"></textarea>
+    <label id="delegate-note-label" for="delegate-note">Guidance (optional)</label>
+    <textarea id="delegate-note" placeholder="Any context, instructions, or questions…"></textarea>
   </div>
   <div class="justus-footer">
     <button class="btn-justus-cancel" onclick="document.getElementById('justus-dialog').close()">Cancel</button>
-    <button class="btn-justus-send" onclick="submitJustusDelegate()">Send to Justus ✦</button>
+    <button id="delegate-send-btn" class="btn-justus-send" onclick="submitDelegate()">Send</button>
   </div>
 </dialog>
 
