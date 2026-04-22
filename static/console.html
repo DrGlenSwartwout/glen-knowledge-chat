@@ -140,6 +140,17 @@
   .delegate-menu.hidden { display: none; }
   .delegate-option { display: block; width: 100%; padding: 8px 14px; background: transparent; border: none; color: var(--text); cursor: pointer; text-align: left; font-size: 13px; }
   .delegate-option:hover { background: var(--border); }
+  .btn-draft { border-color: var(--justus); color: var(--justus); }
+  .btn-draft:hover { background: #1e1030; border-color: var(--justus); }
+  .draft-reply-wrap { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; display: none; }
+  .draft-guidance-row { display: flex; gap: 8px; align-items: flex-start; }
+  .draft-guidance-row textarea { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; padding: 7px 10px; resize: none; font-family: inherit; height: 52px; }
+  .draft-guidance-row textarea:focus { outline: none; border-color: var(--justus); }
+  .btn-generate { padding: 7px 12px; background: var(--justus); border: none; border-radius: 6px; color: #0f1117; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; align-self: stretch; }
+  .btn-generate:hover { opacity: .85; }
+  .draft-output { margin-top: 8px; }
+  .draft-spinner { font-size: 12px; color: var(--justus); font-style: italic; }
+  .draft-error { font-size: 12px; color: var(--high); }
   #loading { text-align: center; padding: 40px; color: var(--muted); }
 
   .settings-panel { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 50; }
@@ -669,6 +680,7 @@ function todoCard(t) {
     ${gmailBtn}${pbBtn}
     <button class="btn-action btn-read" onclick="doDone(${t.id})">Read</button>
     <button class="btn-action btn-done" onclick="doDone(${t.id})">Done</button>
+    <button class="btn-action btn-draft" onclick="toggleDraftReply(${t.id})">Draft Reply ✉</button>
     <div class="delegate-wrap">
       <button class="btn-delegate" onclick="toggleMenu(${t.id},event)">Delegate ▾</button>
       <div class="delegate-menu hidden" id="menu-${t.id}">${delegateOptions}</div>
@@ -701,6 +713,13 @@ function todoCard(t) {
       ${actionBadge}
       ${suggestedReply}
       ${meta.length ? `<div class="todo-meta">${meta.join('')}</div>` : ''}
+      <div class="draft-reply-wrap" id="draft-wrap-${t.id}">
+        <div class="draft-guidance-row">
+          <textarea id="draft-guidance-${t.id}" placeholder="Optional guidance for Justus…"></textarea>
+          <button class="btn-generate" onclick="generateDraft(${t.id})">Generate ✦</button>
+        </div>
+        <div class="draft-output" id="draft-output-${t.id}"></div>
+      </div>
     </div>
     <div class="todo-actions">${actions}</div>
   </div>`;
@@ -733,6 +752,39 @@ async function submitJustusDelegate() {
   document.getElementById('justus-dialog').close();
   await patchTodo(_justusId, {action:'delegate', to:'justus', note});
   animateRemove(`card-${_justusId}`, refresh);
+}
+
+function toggleDraftReply(id) {
+  const wrap = document.getElementById(`draft-wrap-${id}`);
+  const visible = wrap.style.display === 'block';
+  wrap.style.display = visible ? 'none' : 'block';
+  if (!visible) document.getElementById(`draft-guidance-${id}`).focus();
+}
+
+async function generateDraft(id) {
+  const guidance = document.getElementById(`draft-guidance-${id}`).value.trim();
+  const output   = document.getElementById(`draft-output-${id}`);
+  output.innerHTML = '<div class="draft-spinner">Justus is drafting…</div>';
+  try {
+    const resp = await fetch(`/api/todos/${id}/draft-reply`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-Console-Key': KEY},
+      body: JSON.stringify({guidance})
+    });
+    const data = await resp.json();
+    if (data.draft) {
+      const did = `draft-text-${id}`;
+      output.innerHTML = `
+        <div class="suggested-reply-label">Draft reply
+          <button class="btn-copy-reply" onclick="copyReply('${did}',event)">Copy</button>
+        </div>
+        <div class="suggested-reply" id="${did}">${escHtml(data.draft)}</div>`;
+    } else {
+      output.innerHTML = `<div class="draft-error">Error: ${escHtml(data.error||'unknown')}</div>`;
+    }
+  } catch(e) {
+    output.innerHTML = `<div class="draft-error">Network error</div>`;
+  }
 }
 
 function animateRemove(elemId, cb) {

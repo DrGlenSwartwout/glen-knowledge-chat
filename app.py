@@ -1654,6 +1654,40 @@ def patch_todo(todo_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/todos/<int:todo_id>/draft-reply", methods=["POST"])
+def draft_reply_endpoint(todo_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    data     = request.get_json(force=True) or {}
+    guidance = (data.get("guidance") or "").strip()
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT title, body, category FROM todos WHERE id=?", (todo_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+    title, body, category = row
+    guidance_block = f"\n\nGlen's guidance: {guidance}" if guidance else ""
+    prompt = (
+        "You are drafting a reply on behalf of Dr. Glen Swartwout, naturopathic physician "
+        "and biofield scientist in Hilo, Hawaiʻi. Be warm, concise, and professional. "
+        "Sign off naturally as Dr. Glen.\n\n"
+        f"Email subject: {title}\n"
+        f"Email content:\n{(body or '')[:2000]}"
+        f"{guidance_block}\n\n"
+        "Draft the reply now:"
+    )
+    try:
+        msg = _cl.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return jsonify({"draft": msg.content[0].text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/todos/<int:todo_id>", methods=["DELETE"])
 def delete_todo(todo_id):
     if CONSOLE_SECRET:
