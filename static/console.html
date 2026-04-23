@@ -157,6 +157,31 @@
   .delegate-menu { position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; z-index: 20; min-width: 120px; }
   .delegate-menu.hidden { display: none; }
   .delegate-option { display: block; width: 100%; padding: 8px 14px; background: transparent; border: none; color: var(--text); cursor: pointer; text-align: left; font-size: 13px; }
+  /* New task button + dialog */
+  .btn-add-task { background: var(--glen); border: none; border-radius: 6px; color: #fff; padding: 5px 14px; cursor: pointer; font-size: 12px; font-weight: 700; }
+  .btn-add-task:hover { opacity: .85; }
+  dialog#new-task-dialog { background: var(--surface); border: 1px solid var(--glen); border-radius: 10px; padding: 0; color: var(--text); min-width: 340px; max-width: 520px; width: 92vw; box-shadow: 0 8px 32px #0008; }
+  dialog#new-task-dialog::backdrop { background: #000a; }
+  .newtask-header { background: #0e1a2e; border-bottom: 1px solid var(--border); padding: 14px 18px; border-radius: 10px 10px 0 0; }
+  .newtask-header h3 { margin: 0; font-size: 15px; color: var(--glen); }
+  .newtask-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+  .newtask-body label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .newtask-body input[type=text], .newtask-body textarea, .newtask-body select {
+    width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-size: 13px; padding: 9px 11px; font-family: inherit;
+  }
+  .newtask-body textarea { resize: vertical; min-height: 80px; }
+  .newtask-body input:focus, .newtask-body textarea:focus, .newtask-body select:focus { outline: none; border-color: var(--glen); }
+  .newtask-assign { display: flex; gap: 8px; flex-wrap: wrap; }
+  .assign-btn { padding: 7px 16px; border-radius: 20px; border: 2px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 600; transition: all .15s; }
+  .assign-btn.glen.selected  { border-color: var(--glen);   background: #0e2040; color: var(--glen); }
+  .assign-btn.rae.selected   { border-color: var(--rae);    background: #2a1200; color: var(--rae); }
+  .assign-btn.shaira.selected { border-color: var(--shaira); background: #0a2018; color: var(--shaira); }
+  .newtask-footer { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); }
+  .btn-newtask-cancel { flex: 1; padding: 9px; background: transparent; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; font-size: 13px; }
+  .btn-newtask-cancel:hover { border-color: var(--text); color: var(--text); }
+  .btn-newtask-save { flex: 2; padding: 9px; background: var(--glen); border: none; border-radius: 6px; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .btn-newtask-save:hover { opacity: .85; }
   .delegate-option:hover { background: var(--border); }
   .btn-draft { border-color: var(--justus); color: var(--justus); }
   .btn-draft:hover { background: #1e1030; border-color: var(--justus); }
@@ -261,6 +286,7 @@
     </label>
     <div class="refresh-info">Refresh in <span id="countdown">30:00</span></div>
     <button class="btn-refresh" onclick="refresh()">Refresh now</button>
+    <button class="btn-add-task" onclick="openNewTaskDialog()" title="Add task">+ Task</button>
     <button class="btn-refresh" onclick="toggleSettings()" title="Settings">⚙</button>
   </div>
 </header>
@@ -763,6 +789,43 @@ async function doDone(id)        { await patchTodo(id,{action:'done'});    anima
 async function doReopen(id)      { await patchTodo(id,{action:'reopen'});  refresh(); }
 async function doDelete(id)      { await deleteTodo(id);                   animateRemove(`card-${id}`, refresh); }
 let _delegateId = null, _delegateTo = null;
+// ── New Task ──────────────────────────────────────────────────────────────────
+function openNewTaskDialog() {
+  document.getElementById('nt-title').value = '';
+  document.getElementById('nt-notes').value = '';
+  document.getElementById('nt-priority').value = 'normal';
+  // Default assignee = current view owner
+  document.querySelectorAll('.assign-btn').forEach(b => {
+    b.classList.toggle('selected', b.dataset.who === currentOwner);
+  });
+  document.getElementById('new-task-dialog').showModal();
+  setTimeout(() => document.getElementById('nt-title').focus(), 50);
+}
+
+function selectAssignee(btn) {
+  document.querySelectorAll('.assign-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+}
+
+async function submitNewTask() {
+  const title = document.getElementById('nt-title').value.trim();
+  if (!title) { document.getElementById('nt-title').focus(); return; }
+  const notes    = document.getElementById('nt-notes').value.trim();
+  const priority = document.getElementById('nt-priority').value;
+  const owner    = document.querySelector('.assign-btn.selected')?.dataset.who || currentOwner;
+  document.getElementById('new-task-dialog').close();
+  const res = await fetch(`${BASE}/api/todos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Console-Key': consoleKey },
+    body: JSON.stringify([{
+      owner, category: 'Task', title, body: notes,
+      priority, source: 'manual',
+      dedup_key: `manual:${Date.now()}:${title.slice(0,20)}`
+    }])
+  });
+  if (res.ok) refresh();
+}
+
 function openDelegateDialog(id, to, title, e) {
   e.stopPropagation(); closeAllMenus();
   _delegateId = id; _delegateTo = to;
@@ -1069,6 +1132,40 @@ document.body.dataset.owner = currentOwner;
 
 initKey();
 </script>
+
+<dialog id="new-task-dialog">
+  <div class="newtask-header"><h3>New Task</h3></div>
+  <div class="newtask-body">
+    <div>
+      <label for="nt-title">Task</label>
+      <input type="text" id="nt-title" placeholder="What needs to be done?" autocomplete="off">
+    </div>
+    <div>
+      <label for="nt-notes">Notes / guidance (optional)</label>
+      <textarea id="nt-notes" placeholder="Context, links, instructions…"></textarea>
+    </div>
+    <div>
+      <label>Priority</label>
+      <select id="nt-priority">
+        <option value="high">High</option>
+        <option value="normal" selected>Normal</option>
+        <option value="low">Low</option>
+      </select>
+    </div>
+    <div>
+      <label>Assign to</label>
+      <div class="newtask-assign">
+        <button class="assign-btn glen selected" data-who="glen" onclick="selectAssignee(this)">Glen</button>
+        <button class="assign-btn rae" data-who="rae" onclick="selectAssignee(this)">Rae</button>
+        <button class="assign-btn shaira" data-who="shaira" onclick="selectAssignee(this)">Shaira</button>
+      </div>
+    </div>
+  </div>
+  <div class="newtask-footer">
+    <button class="btn-newtask-cancel" onclick="document.getElementById('new-task-dialog').close()">Cancel</button>
+    <button class="btn-newtask-save" onclick="submitNewTask()">Add Task</button>
+  </div>
+</dialog>
 
 <dialog id="justus-dialog">
   <div class="justus-header">
