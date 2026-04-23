@@ -1486,6 +1486,7 @@ def get_calendar():
                    summary, start, end, location, owner, status, cal_alert
             FROM calendar_events
             WHERE owner=? AND status=?
+              AND substr(start, 1, 10) >= date('now')
             ORDER BY start ASC
         """, (owner, status)).fetchall()
     cols = ["id","google_cal_id","google_event_id","calendar_name",
