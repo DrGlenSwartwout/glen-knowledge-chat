@@ -2301,6 +2301,282 @@ def get_rae_feedback_summary():
     })
 
 
+# ── People / CRM ──────────────────────────────────────────────────────────────
+# GHL custom field IDs that have actual data
+GHL_FIELD_MAP = {
+    "1lkRpyfPcZNrTBpCzJnk": "terrain_concerns",
+    "6Z8AK3c4Z56HcJpV5bft": "request",
+    "BywF1IMDoVyg9kEvLOBL": "birth_time",
+    "HwkLqsLPUrpPzsjKu38Q": "surgeries",
+    "I4Enwr40l0s9vW5auWMK": "challenges",
+    "Icll73HcO6QFyCbqLGPS": "budget",
+    "PPomHxQW6jaj5vf0r8Sx": "personal_history",
+    "UIoZLhStWzI84krSl0tZ": "roles",
+    "bwLAZCPo7hByZ7xQEKvN": "title",
+    "cTtOuUiZN8lQjBzyrwb4": "birthplace",
+    "fx3khczY6JEhAODOV9os": "gender",
+    "ghiyQnT354WRKL1csRfm": "resources",
+    "h91bcznkcDa2994aNfwb": "healing_response",
+    "icNJnKoS1OW0r4apHmbs": "form_completed_by",
+    "kmIvkDLwMTvogkWkkF4X": "family_history",
+    "q12KidO5toCrpPtSY3Mj": "medications",
+    "quRxBSJr4S6XF4gRAGsC": "goals",
+    "uk6jYxfE45gKT2FBsqPo": "conditions",
+    "vR79NGSTFxn3WZ34VXGW": "body_systems",
+    "zW4bdPaR6GMUKt1jtR7U": "issue_duration",
+    "eE8sWQAEy4stBPMS1jV3": "investment",
+    "xyGLzfZyHSw26rxlEbRl": "interests",
+    # New fields
+    "DsbMjwrQqecAsShUJ49b": "profession",
+    "FFChZTwhu9nqlFKTULjB": "organizations",
+    "Hu7x2xN60nOG3fMT0uZY": "island",
+}
+
+def _init_people_table():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS people (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                email            TEXT UNIQUE NOT NULL,
+                first_name       TEXT DEFAULT '',
+                last_name        TEXT DEFAULT '',
+                name             TEXT DEFAULT '',
+                phone            TEXT DEFAULT '',
+                dob              TEXT DEFAULT '',
+                birth_time       TEXT DEFAULT '',
+                birthplace       TEXT DEFAULT '',
+                gender           TEXT DEFAULT '',
+                city             TEXT DEFAULT '',
+                state            TEXT DEFAULT '',
+                country          TEXT DEFAULT '',
+                island           TEXT DEFAULT '',
+                profession       TEXT DEFAULT '',
+                title            TEXT DEFAULT '',
+                organizations    TEXT DEFAULT '[]',
+                ghl_id           TEXT DEFAULT '',
+                pb_id            TEXT DEFAULT '',
+                source           TEXT DEFAULT '',
+                tags             TEXT DEFAULT '[]',
+                roles            TEXT DEFAULT '[]',
+                challenges       TEXT DEFAULT '',
+                goals            TEXT DEFAULT '',
+                terrain_concerns TEXT DEFAULT '[]',
+                body_systems     TEXT DEFAULT '[]',
+                conditions       TEXT DEFAULT '[]',
+                healing_response TEXT DEFAULT '[]',
+                interests        TEXT DEFAULT '[]',
+                request          TEXT DEFAULT '[]',
+                personal_history TEXT DEFAULT '',
+                family_history   TEXT DEFAULT '',
+                medications      TEXT DEFAULT '',
+                surgeries        TEXT DEFAULT '',
+                budget           TEXT DEFAULT '',
+                investment       TEXT DEFAULT '',
+                resources        TEXT DEFAULT '',
+                issue_duration   TEXT DEFAULT '',
+                form_completed_by TEXT DEFAULT '',
+                order_count      INTEGER DEFAULT 0,
+                last_order_date  TEXT DEFAULT '',
+                session_count    INTEGER DEFAULT 0,
+                last_session_date TEXT DEFAULT '',
+                last_contact_date TEXT DEFAULT '',
+                notes            TEXT DEFAULT '',
+                created_at       TEXT DEFAULT '',
+                updated_at       TEXT DEFAULT '',
+                synced_at        TEXT DEFAULT ''
+            )
+        """)
+        cx.commit()
+
+_init_people_table()
+
+
+def _people_search_query(params):
+    """Build WHERE clause from search params. Returns (where_str, args)."""
+    clauses, args = [], []
+    q = params.get("q", "").strip()
+    if q:
+        clauses.append("(name LIKE ? OR email LIKE ? OR first_name LIKE ? OR last_name LIKE ?)")
+        like = f"%{q}%"
+        args += [like, like, like, like]
+    for fld in ("state", "island", "profession", "gender", "source", "city"):
+        val = params.get(fld, "").strip()
+        if val:
+            clauses.append(f"{fld} LIKE ?")
+            args.append(f"%{val}%")
+    # Multi-tag filter: all tags must match (AND logic)
+    for tag in [t.strip() for t in params.get("tags", "").split(",") if t.strip()]:
+        clauses.append("tags LIKE ?")
+        args.append(f"%{tag}%")
+    if params.get("has_orders") == "1":
+        clauses.append("order_count > 0")
+    if params.get("has_sessions") == "1":
+        clauses.append("session_count > 0")
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    return where, args
+
+
+@app.route("/api/people", methods=["GET"])
+def get_people():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key","") or request.args.get("key","")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error":"Unauthorized"}), 401
+    limit  = min(int(request.args.get("limit", 50)), 200)
+    offset = int(request.args.get("offset", 0))
+    where, args = _people_search_query(request.args)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        total = cx.execute(f"SELECT COUNT(*) FROM people {where}", args).fetchone()[0]
+        rows  = cx.execute(
+            f"SELECT id,email,name,first_name,last_name,phone,city,state,country,island,"
+            f"profession,title,organizations,ghl_id,source,tags,roles,challenges,goals,"
+            f"terrain_concerns,body_systems,conditions,order_count,last_order_date,"
+            f"session_count,last_session_date,last_contact_date,synced_at "
+            f"FROM people {where} ORDER BY last_contact_date DESC, name ASC "
+            f"LIMIT ? OFFSET ?",
+            args + [limit, offset]
+        ).fetchall()
+    return jsonify({"total": total, "people": [dict(r) for r in rows]})
+
+
+@app.route("/api/people/<int:person_id>", methods=["GET"])
+def get_person(person_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key","") or request.args.get("key","")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error":"Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute("SELECT * FROM people WHERE id=?", (person_id,)).fetchone()
+    if not row:
+        return jsonify({"error":"Not found"}), 404
+    return jsonify(dict(row))
+
+
+@app.route("/api/people", methods=["POST"])
+def upsert_people():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key","") or request.args.get("key","")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error":"Unauthorized"}), 401
+    items = request.get_json(force=True) or []
+    if isinstance(items, dict):
+        items = [items]
+    ts = datetime.now(timezone.utc).isoformat()
+    inserted = updated = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        for p in items:
+            email = (p.get("email") or "").strip().lower()
+            if not email:
+                continue
+            existing = cx.execute("SELECT id FROM people WHERE email=?", (email,)).fetchone()
+            fields = {k: p.get(k, "") for k in [
+                "first_name","last_name","name","phone","dob","birth_time","birthplace",
+                "gender","city","state","country","island","profession","title",
+                "ghl_id","pb_id","source","challenges","goals","personal_history",
+                "family_history","medications","surgeries","budget","investment",
+                "resources","issue_duration","form_completed_by",
+                "last_order_date","last_session_date","last_contact_date","notes",
+            ]}
+            # JSON array fields
+            for jf in ["organizations","tags","roles","terrain_concerns","body_systems",
+                        "conditions","healing_response","interests","request"]:
+                v = p.get(jf, [])
+                fields[jf] = json.dumps(v) if isinstance(v, list) else v
+            # Integer fields
+            fields["order_count"]   = int(p.get("order_count", 0) or 0)
+            fields["session_count"] = int(p.get("session_count", 0) or 0)
+            fields["synced_at"]     = ts
+            if existing:
+                fields["updated_at"] = ts
+                set_clause = ", ".join(f"{k}=?" for k in fields)
+                cx.execute(f"UPDATE people SET {set_clause} WHERE email=?",
+                           list(fields.values()) + [email])
+                updated += 1
+            else:
+                fields["email"]      = email
+                fields["created_at"] = ts
+                fields["updated_at"] = ts
+                cols = ", ".join(fields.keys())
+                vals = ", ".join("?" * len(fields))
+                cx.execute(f"INSERT INTO people ({cols}) VALUES ({vals})",
+                           list(fields.values()))
+                inserted += 1
+        cx.commit()
+    return jsonify({"inserted": inserted, "updated": updated, "ok": True})
+
+
+@app.route("/api/people/<int:person_id>/note", methods=["POST"])
+def add_person_note(person_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key","") or request.args.get("key","")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error":"Unauthorized"}), 401
+    note = (request.get_json(force=True) or {}).get("note","").strip()
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            UPDATE people SET notes = CASE
+              WHEN notes='' THEN ?
+              ELSE notes || char(10) || ?
+            END WHERE id=?
+        """, (f"[{ts}] {note}", f"[{ts}] {note}", person_id))
+        cx.commit()
+    return jsonify({"ok": True})
+
+
+# ── Console AI chat (context-aware) ───────────────────────────────────────────
+@app.route("/api/console-ask", methods=["POST"])
+def console_ask():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key","") or request.args.get("key","")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error":"Unauthorized"}), 401
+    data    = request.get_json(force=True) or {}
+    query   = (data.get("query") or "").strip()
+    owner   = (data.get("owner") or "glen").lower()
+    context = (data.get("context") or "")   # page context string
+    history = data.get("history") or []
+    if not query:
+        return jsonify({"error":"No query"}), 400
+
+    owner_desc = {
+        "glen":   "Dr. Glen Swartwout, naturopathic optometrist, solopreneur — full access to all systems and data.",
+        "rae":    "Rae (Susan Luscombe), business owner and operations partner — full access, handles orders/fulfillment/finance/scheduling.",
+        "shaira": "Shaira, technical VA — focused on implementation tasks, GHL/tech integrations.",
+    }.get(owner, owner)
+
+    system = (
+        f"You are the AI assistant in the Remedy Match business console. "
+        f"You are speaking with: {owner_desc}\n"
+        f"Be concise and action-oriented. Use bullet points for lists. "
+        f"Answer questions about clients, business, health protocols, operations, or anything relevant.\n"
+    )
+    if context:
+        system += f"\nCurrent context:\n{context}"
+
+    msgs = []
+    for h in history[-6:]:
+        msgs.append({"role": h.get("role","user"), "content": h.get("content","")})
+    msgs.append({"role": "user", "content": query})
+
+    def _stream():
+        with _cl.messages.stream(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=600,
+            system=system,
+            messages=msgs,
+        ) as stream:
+            for text in stream.text_stream:
+                yield f"data: {json.dumps({'text': text})}\n\n"
+        yield f"data: {json.dumps({'done': True})}\n\n"
+
+    return Response(stream_with_context(_stream()),
+                    mimetype="text/event-stream",
+                    headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")

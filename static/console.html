@@ -157,6 +157,88 @@
   .delegate-menu { position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; z-index: 20; min-width: 120px; }
   .delegate-menu.hidden { display: none; }
   .delegate-option { display: block; width: 100%; padding: 8px 14px; background: transparent; border: none; color: var(--text); cursor: pointer; text-align: left; font-size: 13px; }
+  /* Section tabs */
+  .section-tabs { display:flex; gap:4px; border-left:1px solid var(--border); padding-left:12px; }
+  .section-tab { padding:5px 14px; border-radius:20px; border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer; font-size:12px; font-weight:600; transition:all .15s; }
+  .section-tab.active { background:var(--surface); color:var(--text); border-color:var(--text); }
+  .section-tab:hover:not(.active) { color:var(--text); }
+
+  /* People page */
+  .people-layout { display:flex; gap:16px; align-items:flex-start; }
+  .people-left  { flex:0 0 340px; min-width:0; }
+  .people-detail { flex:1; min-width:0; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); min-height:400px; }
+  .people-search-bar { display:flex; gap:8px; margin-bottom:10px; }
+  .people-search-bar input { flex:1; padding:8px 12px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:14px; }
+  .people-search-bar input:focus { outline:none; border-color:var(--glen); }
+  .btn-add-person { background:var(--glen); border:none; border-radius:6px; color:#fff; padding:8px 14px; cursor:pointer; font-size:12px; font-weight:700; white-space:nowrap; }
+  .btn-add-person:hover { opacity:.85; }
+  .people-filters { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .filter-chip-input { padding:5px 10px; background:var(--bg); border:1px solid var(--border); border-radius:20px; color:var(--text); font-size:12px; width:100px; }
+  .filter-chip-input:focus { outline:none; border-color:var(--glen); }
+  .filter-check { display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); cursor:pointer; }
+  .filter-check input { accent-color:var(--glen); }
+  .filter-clear { background:transparent; border:1px solid var(--border); border-radius:20px; color:var(--muted); padding:5px 10px; font-size:11px; cursor:pointer; }
+  .filter-clear:hover { border-color:var(--text); color:var(--text); }
+  .people-meta { font-size:12px; color:var(--muted); margin-bottom:8px; }
+  .person-card { padding:10px 12px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .12s; }
+  .person-card:hover { background:var(--surface); }
+  .person-card.selected { background:#0e2040; border-left:3px solid var(--glen); }
+  .person-card-name { font-weight:600; font-size:14px; }
+  .person-card-email { font-size:12px; color:var(--muted); margin-top:1px; }
+  .person-card-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
+  .ptag { font-size:10px; padding:2px 7px; border-radius:10px; background:var(--border); color:var(--muted); }
+  .ptag.system  { background:#1a2a40; color:#7ab8f5; }
+  .ptag.phase   { background:#1a2a1a; color:#7af57a; }
+  .ptag.concern { background:#2a1a1a; color:#f57a7a; }
+  .ptag.source  { background:#2a2a1a; color:#f5d07a; }
+  .person-card-meta { font-size:11px; color:var(--muted); margin-top:4px; }
+  /* Detail panel */
+  .people-detail-empty { padding:40px; text-align:center; color:var(--muted); font-size:14px; }
+  .detail-header { padding:16px 18px 12px; border-bottom:1px solid var(--border); }
+  .detail-name  { font-size:20px; font-weight:700; }
+  .detail-sub   { font-size:13px; color:var(--muted); margin-top:3px; }
+  .detail-tags  { display:flex; flex-wrap:wrap; gap:5px; margin-top:10px; }
+  .detail-tabs  { display:flex; gap:0; border-bottom:1px solid var(--border); }
+  .detail-tab   { padding:8px 16px; border:none; background:transparent; color:var(--muted); cursor:pointer; font-size:13px; border-bottom:2px solid transparent; }
+  .detail-tab.active { color:var(--text); border-bottom-color:var(--glen); }
+  .detail-pane  { padding:16px 18px; display:none; }
+  .detail-pane.active { display:block; }
+  .detail-field { margin-bottom:12px; }
+  .detail-field label { font-size:11px; color:var(--muted); display:block; margin-bottom:3px; text-transform:uppercase; letter-spacing:.05em; }
+  .detail-field p { font-size:13px; line-height:1.5; }
+  .detail-note-row { display:flex; gap:8px; margin-top:8px; }
+  .detail-note-row input { flex:1; padding:7px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; }
+  .detail-note-row input:focus { outline:none; border-color:var(--glen); }
+  .detail-note-row button { padding:7px 14px; background:var(--glen); border:none; border-radius:6px; color:#fff; cursor:pointer; font-size:13px; }
+  .detail-enrich-btn { margin-top:12px; padding:8px 16px; background:transparent; border:1px solid var(--glen); border-radius:6px; color:var(--glen); cursor:pointer; font-size:13px; }
+  .detail-enrich-btn:hover { background:#0e1a2e; }
+  @media (max-width: 700px) {
+    .people-layout { flex-direction:column; }
+    .people-left   { flex:none; width:100%; }
+  }
+
+  /* AI Sidebar */
+  #ai-sidebar { position:fixed; top:0; right:-420px; width:400px; height:100vh; background:var(--surface); border-left:1px solid var(--border); z-index:50; display:flex; flex-direction:column; transition:right .25s ease; box-shadow:-4px 0 24px #0006; }
+  #ai-sidebar.open { right:0; }
+  .ai-sidebar-header { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border); background:var(--bg); }
+  .ai-sidebar-header h3 { font-size:14px; font-weight:700; color:var(--glen); margin:0; }
+  .btn-close-ai { background:transparent; border:none; color:var(--muted); font-size:18px; cursor:pointer; padding:0 4px; }
+  .btn-close-ai:hover { color:var(--text); }
+  .ai-messages { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:12px; }
+  .ai-msg { max-width:100%; }
+  .ai-msg.user .ai-bubble { background:var(--glen); color:#fff; border-radius:10px 10px 2px 10px; margin-left:auto; max-width:85%; }
+  .ai-msg.assistant .ai-bubble { background:var(--bg); border:1px solid var(--border); border-radius:10px 10px 10px 2px; max-width:95%; }
+  .ai-bubble { padding:9px 13px; font-size:13px; line-height:1.5; }
+  .ai-bubble p { margin:0 0 6px; } .ai-bubble p:last-child { margin:0; }
+  .ai-bubble ul, .ai-bubble ol { margin:4px 0 4px 16px; } .ai-bubble li { margin-bottom:2px; }
+  .ai-input-row { padding:12px 14px; border-top:1px solid var(--border); display:flex; gap:8px; background:var(--bg); }
+  .ai-input-row textarea { flex:1; padding:9px 11px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; font-family:inherit; resize:none; height:38px; max-height:120px; overflow-y:auto; }
+  .ai-input-row textarea:focus { outline:none; border-color:var(--glen); }
+  .btn-ask-ai { padding:9px 14px; background:var(--glen); border:none; border-radius:6px; color:#fff; cursor:pointer; font-size:13px; font-weight:700; align-self:flex-end; }
+  .btn-ask-ai:disabled { opacity:.5; cursor:default; }
+  #btn-open-ai { position:fixed; bottom:20px; right:20px; z-index:49; background:var(--glen); border:none; border-radius:24px; color:#fff; padding:10px 18px; font-size:13px; font-weight:700; cursor:pointer; box-shadow:0 4px 16px #0006; transition:right .25s ease; }
+  #btn-open-ai.shifted { right:420px; }
+
   /* New task button + dialog */
   .btn-add-task { background: var(--glen); border: none; border-radius: 6px; color: #fff; padding: 5px 14px; cursor: pointer; font-size: 12px; font-weight: 700; }
   .btn-add-task:hover { opacity: .85; }
@@ -280,6 +362,10 @@
     <button class="tab shaira" data-owner="shaira" onclick="switchOwner('shaira', this)">Shaira</button>
     <button class="tab referrals" id="tab-referrals" onclick="switchToReferrals(this)">Referrals</button>
   </div>
+  <div class="section-tabs">
+    <button class="section-tab active" id="stab-inbox" onclick="switchSection('inbox', this)">Inbox</button>
+    <button class="section-tab" id="stab-people" onclick="switchSection('people', this)">People</button>
+  </div>
   <div class="header-right">
     <label class="show-done-toggle">
       <input type="checkbox" id="show-done" onchange="refresh()"> Show done
@@ -309,6 +395,37 @@
     <div id="todos-container"></div>
   </div>
 </main>
+
+<!-- People section -->
+<div id="people-section" style="display:none; max-width:1200px; margin:0 auto; padding:16px;">
+  <div class="people-layout">
+    <!-- Left: search + list -->
+    <div class="people-left">
+      <div class="people-search-bar">
+        <input type="text" id="people-q" placeholder="Search by name or email…" oninput="peopleDebouncedSearch()" autocomplete="off">
+        <button class="btn-add-person" onclick="openAddPersonDialog()">+ Person</button>
+      </div>
+      <div class="people-filters" id="people-filters">
+        <input class="filter-chip-input" type="text" id="pf-tag"    placeholder="Tag…"        oninput="peopleDebouncedSearch()">
+        <input class="filter-chip-input" type="text" id="pf-state"  placeholder="State…"      oninput="peopleDebouncedSearch()">
+        <input class="filter-chip-input" type="text" id="pf-island" placeholder="Island…"     oninput="peopleDebouncedSearch()">
+        <input class="filter-chip-input" type="text" id="pf-prof"   placeholder="Profession…" oninput="peopleDebouncedSearch()">
+        <label class="filter-check"><input type="checkbox" id="pf-orders" onchange="peopleDebouncedSearch()"> Has orders</label>
+        <label class="filter-check"><input type="checkbox" id="pf-sessions" onchange="peopleDebouncedSearch()"> Has sessions</label>
+        <button class="filter-clear" onclick="clearPeopleFilters()">Clear</button>
+      </div>
+      <div class="people-meta" id="people-meta"></div>
+      <div id="people-list"></div>
+      <div id="people-load-more" style="display:none; text-align:center; padding:12px;">
+        <button class="btn-refresh" onclick="loadMorePeople()">Load more</button>
+      </div>
+    </div>
+    <!-- Right: person detail -->
+    <div class="people-detail" id="people-detail">
+      <div class="people-detail-empty">Select a person to view their profile</div>
+    </div>
+  </div>
+</div>
 
 <!-- Referrals panel (outside main, full-width) -->
 <div id="referrals-section">
@@ -789,6 +906,291 @@ async function doDone(id)        { await patchTodo(id,{action:'done'});    anima
 async function doReopen(id)      { await patchTodo(id,{action:'reopen'});  refresh(); }
 async function doDelete(id)      { await deleteTodo(id);                   animateRemove(`card-${id}`, refresh); }
 let _delegateId = null, _delegateTo = null;
+// ── Section switching ─────────────────────────────────────────────────────────
+let currentSection = 'inbox';
+function switchSection(section, btn) {
+  currentSection = section;
+  document.querySelectorAll('.section-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  document.querySelector('main').style.display   = section === 'inbox'  ? '' : 'none';
+  document.getElementById('people-section').style.display = section === 'people' ? '' : 'none';
+  if (section === 'people') loadPeople();
+}
+
+// ── People page ───────────────────────────────────────────────────────────────
+let _peopleOffset = 0, _peopleTotal = 0, _selectedPersonId = null;
+let _peopleTimer = null;
+function peopleDebouncedSearch() {
+  clearTimeout(_peopleTimer);
+  _peopleTimer = setTimeout(() => { _peopleOffset = 0; loadPeople(); }, 300);
+}
+function clearPeopleFilters() {
+  ['people-q','pf-tag','pf-state','pf-island','pf-prof'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('pf-orders').checked = false;
+  document.getElementById('pf-sessions').checked = false;
+  _peopleOffset = 0; loadPeople();
+}
+function _peopleParams() {
+  const p = new URLSearchParams();
+  const q = document.getElementById('people-q').value.trim();
+  if (q) p.set('q', q);
+  const tag = document.getElementById('pf-tag').value.trim();
+  if (tag) p.set('tags', tag);
+  const state = document.getElementById('pf-state').value.trim();
+  if (state) p.set('state', state);
+  const island = document.getElementById('pf-island').value.trim();
+  if (island) p.set('island', island);
+  const prof = document.getElementById('pf-prof').value.trim();
+  if (prof) p.set('profession', prof);
+  if (document.getElementById('pf-orders').checked) p.set('has_orders','1');
+  if (document.getElementById('pf-sessions').checked) p.set('has_sessions','1');
+  p.set('limit', 50); p.set('offset', _peopleOffset);
+  return p;
+}
+async function loadPeople(append=false) {
+  if (!append) _peopleOffset = 0;
+  const params = _peopleParams();
+  const res  = await fetch(`${BASE}/api/people?${params}`, { headers:{ 'X-Console-Key': consoleKey } });
+  const data = await res.json();
+  _peopleTotal = data.total || 0;
+  document.getElementById('people-meta').textContent =
+    `${_peopleTotal} person${_peopleTotal===1?'':'s'}${_peopleTotal>50?' — showing '+Math.min(_peopleOffset+50,_peopleTotal):''}`;
+  const list = document.getElementById('people-list');
+  if (!append) list.innerHTML = '';
+  if (!data.people?.length && !append) {
+    list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">No results</div>';
+    document.getElementById('people-load-more').style.display = 'none';
+    return;
+  }
+  (data.people || []).forEach(p => list.appendChild(_personCard(p)));
+  document.getElementById('people-load-more').style.display =
+    (_peopleOffset + 50) < _peopleTotal ? '' : 'none';
+}
+function loadMorePeople() { _peopleOffset += 50; loadPeople(true); }
+
+function _personCard(p) {
+  const div = document.createElement('div');
+  div.className = 'person-card' + (p.id === _selectedPersonId ? ' selected' : '');
+  div.id = `pcard-${p.id}`;
+  div.onclick = () => loadPersonDetail(p.id);
+  const tags = _parseTags(p.tags);
+  const loc = [p.island||p.city, p.state].filter(Boolean).join(', ');
+  const activity = p.last_contact_date ? p.last_contact_date.slice(0,10) : '';
+  div.innerHTML = `
+    <div class="person-card-name">${_esc(p.name || (p.first_name+' '+p.last_name).trim() || p.email)}</div>
+    <div class="person-card-email">${_esc(p.email)}${p.profession ? ' · '+_esc(p.profession) : ''}</div>
+    <div class="person-card-tags">${tags.map(_renderPtag).join('')}</div>
+    <div class="person-card-meta">${loc ? loc+' · ' : ''}${p.order_count>0?p.order_count+' order(s) · ':''}${activity}</div>`;
+  return div;
+}
+function _parseTags(raw) {
+  try { return JSON.parse(raw||'[]'); } catch { return (raw||'').split(',').filter(Boolean); }
+}
+function _renderPtag(tag) {
+  const cls = tag.startsWith('system:') ? 'system' : tag.startsWith('phase:') ? 'phase' :
+              tag.startsWith('concern:') ? 'concern' : tag.startsWith('source:') ? 'source' : '';
+  return `<span class="ptag ${cls}">${_esc(tag)}</span>`;
+}
+function _esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function loadPersonDetail(id) {
+  _selectedPersonId = id;
+  document.querySelectorAll('.person-card').forEach(c => c.classList.toggle('selected', c.id===`pcard-${id}`));
+  const res = await fetch(`${BASE}/api/people/${id}`, { headers:{'X-Console-Key':consoleKey} });
+  const p   = await res.json();
+  renderPersonDetail(p);
+}
+
+function renderPersonDetail(p) {
+  const tags  = _parseTags(p.tags);
+  const loc   = [p.island, p.city, p.state, p.country].filter(Boolean).join(', ');
+  const orgs  = (() => { try { return JSON.parse(p.organizations||'[]'); } catch { return p.organizations ? [p.organizations] : []; } })();
+
+  const field = (label, val) => val ? `<div class="detail-field"><label>${label}</label><p>${_esc(val)}</p></div>` : '';
+  const listField = (label, raw) => {
+    const items = (() => { try { const v=JSON.parse(raw||'[]'); return Array.isArray(v)?v:[]; } catch { return raw?[raw]:[]; } })();
+    return items.length ? `<div class="detail-field"><label>${label}</label><p>${items.map(_esc).join(' · ')}</p></div>` : '';
+  };
+
+  document.getElementById('people-detail').innerHTML = `
+    <div class="detail-header">
+      <div class="detail-name">${_esc(p.name||(p.first_name+' '+p.last_name).trim()||p.email)}</div>
+      <div class="detail-sub">${_esc(p.email)}${p.phone?' · '+_esc(p.phone):''}${loc?' · '+_esc(loc):''}</div>
+      <div class="detail-tags">${tags.map(_renderPtag).join('')}</div>
+    </div>
+    <div class="detail-tabs">
+      <button class="detail-tab active" onclick="showDetailPane('overview',this)">Overview</button>
+      <button class="detail-tab" onclick="showDetailPane('health',this)">Health</button>
+      <button class="detail-tab" onclick="showDetailPane('activity',this)">Activity</button>
+      <button class="detail-tab" onclick="showDetailPane('notes',this)">Notes</button>
+    </div>
+    <!-- Overview -->
+    <div class="detail-pane active" id="dp-overview">
+      ${field('Profession', p.profession)} ${field('Title', p.title)}
+      ${orgs.length ? `<div class="detail-field"><label>Organizations</label><p>${orgs.map(_esc).join(', ')}</p></div>` : ''}
+      ${field('Source', p.source)} ${field('GHL ID', p.ghl_id)}
+      ${field('Date of Birth', p.dob)} ${field('Birthplace', p.birthplace)} ${field('Gender', p.gender)}
+      ${listField('Roles', p.roles)}
+      <button class="detail-enrich-btn" onclick="enrichPerson(${p.id}, '${_esc(p.name||(p.first_name+' '+p.last_name).trim())}')">✦ Research &amp; Enrich with AI</button>
+    </div>
+    <!-- Health -->
+    <div class="detail-pane" id="dp-health">
+      ${field('Challenges', p.challenges)} ${field('Goals', p.goals)}
+      ${listField('Terrain Concerns', p.terrain_concerns)} ${listField('Body Systems', p.body_systems)}
+      ${listField('Conditions', p.conditions)} ${listField('Healing Response', p.healing_response)}
+      ${field('Issue Duration', p.issue_duration)} ${field('Medications', p.medications)}
+      ${field('Surgeries', p.surgeries)} ${field('Personal History', p.personal_history)}
+      ${field('Family History', p.family_history)} ${field('Budget', p.budget)}
+      ${field('Investment Approach', p.investment)}
+    </div>
+    <!-- Activity -->
+    <div class="detail-pane" id="dp-activity">
+      ${field('Orders', p.order_count ? p.order_count+' order(s), last: '+p.last_order_date : 'None')}
+      ${field('Sessions', p.session_count ? p.session_count+' session(s), last: '+p.last_session_date : 'None')}
+      ${field('Last Contact', p.last_contact_date)}
+      ${listField('Interests', p.interests)} ${listField('Request', p.request)}
+      ${field('Resources', p.resources)}
+    </div>
+    <!-- Notes -->
+    <div class="detail-pane" id="dp-notes">
+      <div style="white-space:pre-wrap;font-size:13px;line-height:1.6;color:var(--text)">${_esc(p.notes||'No notes yet.')}</div>
+      <div class="detail-note-row">
+        <input type="text" id="note-input-${p.id}" placeholder="Add a note…">
+        <button onclick="addPersonNote(${p.id})">Add</button>
+      </div>
+    </div>`;
+}
+
+function showDetailPane(name, btn) {
+  document.querySelectorAll('.detail-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.detail-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('dp-'+name).classList.add('active');
+  btn.classList.add('active');
+}
+
+async function addPersonNote(id) {
+  const inp = document.getElementById(`note-input-${id}`);
+  const note = inp.value.trim();
+  if (!note) return;
+  await fetch(`${BASE}/api/people/${id}/note`, {
+    method:'POST', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+    body: JSON.stringify({note})
+  });
+  inp.value = '';
+  loadPersonDetail(id);
+}
+
+function enrichPerson(id, name) {
+  toggleAI(true);
+  document.getElementById('ai-input').value = `Research and enrich the profile for ${name}. Find their professional background, publications, organizations, and anything relevant to our work in integrative healing.`;
+  sendAI();
+}
+
+// Add Person dialog
+function openAddPersonDialog() {
+  ['ap-first','ap-last','ap-email','ap-phone','ap-city','ap-state','ap-prof','ap-island','ap-orgs','ap-tags','ap-notes']
+    .forEach(id => document.getElementById(id).value = '');
+  document.getElementById('add-person-dialog').showModal();
+  setTimeout(() => document.getElementById('ap-first').focus(), 50);
+}
+async function submitAddPerson() {
+  const email = document.getElementById('ap-email').value.trim();
+  if (!email) { document.getElementById('ap-email').focus(); return; }
+  const tags = document.getElementById('ap-tags').value.split(',').map(t=>t.trim()).filter(Boolean);
+  const orgs = document.getElementById('ap-orgs').value.split(',').map(t=>t.trim()).filter(Boolean);
+  document.getElementById('add-person-dialog').close();
+  await fetch(`${BASE}/api/people`, {
+    method:'POST', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+    body: JSON.stringify([{
+      first_name: document.getElementById('ap-first').value.trim(),
+      last_name:  document.getElementById('ap-last').value.trim(),
+      name: (document.getElementById('ap-first').value+' '+document.getElementById('ap-last').value).trim(),
+      email, phone: document.getElementById('ap-phone').value.trim(),
+      city: document.getElementById('ap-city').value.trim(),
+      state: document.getElementById('ap-state').value.trim(),
+      profession: document.getElementById('ap-prof').value.trim(),
+      island: document.getElementById('ap-island').value.trim(),
+      organizations: orgs, tags,
+      notes: document.getElementById('ap-notes').value.trim(),
+      source: 'manual',
+    }])
+  });
+  _peopleOffset = 0; loadPeople();
+}
+
+// ── AI Sidebar ────────────────────────────────────────────────────────────────
+let _aiHistory = [], _aiStreaming = false;
+function toggleAI(forceOpen) {
+  const sb = document.getElementById('ai-sidebar');
+  const btn = document.getElementById('btn-open-ai');
+  const open = forceOpen || !sb.classList.contains('open');
+  sb.classList.toggle('open', open);
+  btn.classList.toggle('shifted', open);
+  if (open) setTimeout(() => document.getElementById('ai-input').focus(), 300);
+}
+function closeAI() {
+  document.getElementById('ai-sidebar').classList.remove('open');
+  document.getElementById('btn-open-ai').classList.remove('shifted');
+}
+function _aiContext() {
+  let ctx = `Section: ${currentSection}. Owner: ${currentOwner}.`;
+  if (currentSection === 'people' && _selectedPersonId) {
+    const card = document.getElementById(`pcard-${_selectedPersonId}`);
+    if (card) ctx += `\nViewing person: ${card.querySelector('.person-card-name')?.textContent} (${card.querySelector('.person-card-email')?.textContent})`;
+  }
+  return ctx;
+}
+async function sendAI() {
+  if (_aiStreaming) return;
+  const inp = document.getElementById('ai-input');
+  const query = inp.value.trim();
+  if (!query) return;
+  inp.value = ''; inp.style.height = '38px';
+  _aiHistory.push({role:'user', content: query});
+  const msgs = document.getElementById('ai-messages');
+  msgs.innerHTML += `<div class="ai-msg user"><div class="ai-bubble">${_esc(query)}</div></div>`;
+  const respDiv = document.createElement('div');
+  respDiv.className = 'ai-msg assistant';
+  const bubble = document.createElement('div');
+  bubble.className = 'ai-bubble';
+  bubble.textContent = '…';
+  respDiv.appendChild(bubble);
+  msgs.appendChild(respDiv);
+  msgs.scrollTop = msgs.scrollHeight;
+  _aiStreaming = true;
+  document.getElementById('btn-send-ai').disabled = true;
+  let accumulated = '';
+  try {
+    const res = await fetch(`${BASE}/api/console-ask`, {
+      method:'POST', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+      body: JSON.stringify({query, owner:currentOwner, context:_aiContext(), history:_aiHistory.slice(-6)})
+    });
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream:true});
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        try {
+          const evt = JSON.parse(line.slice(5).trim());
+          if (evt.text) { accumulated += evt.text; bubble.innerHTML = renderMarkdown(accumulated); msgs.scrollTop = msgs.scrollHeight; }
+        } catch {}
+      }
+    }
+  } catch(e) { bubble.textContent = 'Error: '+e.message; }
+  _aiHistory.push({role:'assistant', content:accumulated});
+  _aiStreaming = false;
+  document.getElementById('btn-send-ai').disabled = false;
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
 // ── New Task ──────────────────────────────────────────────────────────────────
 function openNewTaskDialog() {
   document.getElementById('nt-title').value = '';
@@ -1132,6 +1534,51 @@ document.body.dataset.owner = currentOwner;
 
 initKey();
 </script>
+
+<!-- AI Sidebar -->
+<div id="ai-sidebar">
+  <div class="ai-sidebar-header">
+    <h3>✦ Ask Claude</h3>
+    <button class="btn-close-ai" onclick="closeAI()">✕</button>
+  </div>
+  <div class="ai-messages" id="ai-messages"></div>
+  <div class="ai-input-row">
+    <textarea id="ai-input" placeholder="Ask anything…" rows="1"
+      onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();sendAI();}
+                 else if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAI();}"
+      oninput="this.style.height='38px';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+    <button class="btn-ask-ai" id="btn-send-ai" onclick="sendAI()">Send</button>
+  </div>
+</div>
+<button id="btn-open-ai" onclick="toggleAI()">✦ Ask Claude</button>
+
+<!-- Add Person dialog -->
+<dialog id="add-person-dialog">
+  <div class="newtask-header" style="border-color:var(--glen)"><h3>Add Person</h3></div>
+  <div class="newtask-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div><label for="ap-first">First name</label><input type="text" id="ap-first" autocomplete="off"></div>
+      <div><label for="ap-last">Last name</label><input type="text" id="ap-last" autocomplete="off"></div>
+    </div>
+    <div><label for="ap-email">Email *</label><input type="text" id="ap-email" autocomplete="off"></div>
+    <div><label for="ap-phone">Phone</label><input type="text" id="ap-phone" autocomplete="off"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div><label for="ap-city">City</label><input type="text" id="ap-city" autocomplete="off"></div>
+      <div><label for="ap-state">State</label><input type="text" id="ap-state" autocomplete="off"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div><label for="ap-prof">Profession</label><input type="text" id="ap-prof" placeholder="OD, MD, ND…" autocomplete="off"></div>
+      <div><label for="ap-island">Island (if HI)</label><input type="text" id="ap-island" placeholder="Hawaii, Maui…" autocomplete="off"></div>
+    </div>
+    <div><label for="ap-orgs">Organizations</label><input type="text" id="ap-orgs" placeholder="ACAM, IAOMT, AOA…" autocomplete="off"></div>
+    <div><label for="ap-tags">Tags (comma-separated)</label><input type="text" id="ap-tags" placeholder="e.g. prospect, OD, hawaii-island" autocomplete="off"></div>
+    <div><label for="ap-notes">Notes</label><textarea id="ap-notes" style="min-height:60px" placeholder="Context, how you know them, strategic value…"></textarea></div>
+  </div>
+  <div class="newtask-footer">
+    <button class="btn-newtask-cancel" onclick="document.getElementById('add-person-dialog').close()">Cancel</button>
+    <button class="btn-newtask-save" onclick="submitAddPerson()">Add Person</button>
+  </div>
+</dialog>
 
 <dialog id="new-task-dialog">
   <div class="newtask-header"><h3>New Task</h3></div>
