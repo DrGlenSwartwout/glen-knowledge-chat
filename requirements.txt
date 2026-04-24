@@ -5,3 +5,8 @@ gevent
 anthropic
 openai
 pinecone
+google-auth
+google-auth-oauthlib
+google-api-python-client
+requests
+APScheduler

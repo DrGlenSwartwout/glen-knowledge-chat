@@ -2577,6 +2577,126 @@ def console_ask():
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
 
 
+# ── Token storage (OAuth tokens persisted in DB for cloud cron) ───────────────
+def _init_tokens_table():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS oauth_tokens (
+                name       TEXT PRIMARY KEY,
+                token_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        cx.commit()
+
+_init_tokens_table()
+
+
+@app.route("/api/tokens/<name>", methods=["GET"])
+def get_token(name):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key","") or request.args.get("key","")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error":"Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT token_json, updated_at FROM oauth_tokens WHERE name=?", (name,)).fetchone()
+    if not row:
+        return jsonify({"error":"Not found"}), 404
+    return jsonify({"name": name, "token_json": row[0], "updated_at": row[1]})
+
+
+@app.route("/api/tokens/<name>", methods=["PUT"])
+def put_token(name):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key","") or request.args.get("key","")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error":"Unauthorized"}), 401
+    data = request.get_json(force=True) or {}
+    token_json = data.get("token_json","")
+    if not token_json:
+        return jsonify({"error":"Missing token_json"}), 400
+    ts = datetime.now(timezone.utc).isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            INSERT INTO oauth_tokens (name, token_json, updated_at) VALUES (?,?,?)
+            ON CONFLICT(name) DO UPDATE SET token_json=excluded.token_json, updated_at=excluded.updated_at
+        """, (name, token_json, ts))
+        cx.commit()
+    return jsonify({"ok": True, "updated_at": ts})
+
+
+# ── Background cron scheduler ─────────────────────────────────────────────────
+def _run_cron():
+    """Run the console push logic in-process on Render (no Mac needed)."""
+    import importlib.util, sys as _sys, tempfile, base64 as _b64
+    from pathlib import Path as _Path
+
+    print(f"[CRON] Starting scheduled push at {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+
+    # Load tokens from DB → temp files
+    token_map = {
+        "glen_gmail":  "/tmp/token_glen.json",
+        "rae_gmail":   "/tmp/token_rae.json",
+        "calendar":    "/tmp/token_calendar.json",
+    }
+    with sqlite3.connect(LOG_DB) as cx:
+        for name, path in token_map.items():
+            row = cx.execute("SELECT token_json FROM oauth_tokens WHERE name=?", (name,)).fetchone()
+            if row:
+                _Path(path).write_text(row[0])
+
+    # Import and run console-push logic with Render token paths
+    try:
+        import requests as _req
+
+        base_url  = f"http://localhost:{os.environ.get('PORT','10000')}"
+        headers   = {"X-Console-Key": CONSOLE_SECRET, "Content-Type": "application/json"}
+
+        # Run the push script as a subprocess so it uses the right paths
+        import subprocess as _sp
+        env = os.environ.copy()
+        env["GLEN_TOKEN_PATH"]     = token_map["glen_gmail"]
+        env["RAE_TOKEN_PATH"]      = token_map["rae_gmail"]
+        env["CALENDAR_TOKEN_PATH"] = token_map["calendar"]
+        env["RENDER_BASE"]         = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME','glen-knowledge-chat.onrender.com')}"
+        result = _sp.run(
+            ["python3", "/opt/render/project/src/console_push_cron.py"],
+            capture_output=True, text=True, timeout=300, env=env
+        )
+        print(result.stdout[-3000:] if result.stdout else "(no output)")
+        if result.returncode != 0:
+            print(f"[CRON] Error: {result.stderr[-1000:]}")
+
+        # Save any refreshed tokens back to DB
+        for name, path in token_map.items():
+            p = _Path(path)
+            if p.exists():
+                with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                    cx.execute("""
+                        INSERT INTO oauth_tokens (name, token_json, updated_at) VALUES (?,?,?)
+                        ON CONFLICT(name) DO UPDATE SET token_json=excluded.token_json, updated_at=excluded.updated_at
+                    """, (name, p.read_text(), datetime.now(timezone.utc).isoformat()))
+                    cx.commit()
+    except Exception as e:
+        print(f"[CRON] Exception: {e}")
+
+
+def _start_scheduler():
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        scheduler = BackgroundScheduler()
+        scheduler.add_job(_run_cron, "interval", hours=1, id="console_push",
+                          next_run_time=datetime.now(timezone.utc))
+        scheduler.start()
+        print("[CRON] Scheduler started — hourly push active")
+    except Exception as e:
+        print(f"[CRON] Scheduler failed to start: {e}")
+
+# Only start scheduler on Render (DATA_DIR is set), not in local dev
+if os.environ.get("DATA_DIR"):
+    _start_scheduler()
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
