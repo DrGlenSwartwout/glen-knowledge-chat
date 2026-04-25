@@ -43,6 +43,36 @@
   body[data-owner="rae"] .btn-cal { font-size: 15px; padding: 5px 11px; }
   body[data-owner="rae"] .todo-actions { min-width: 170px; }
 
+  /* Compact view — show titles only; click to expand individual cards */
+  body[data-view="compact"] .todo-card { padding: 8px 12px; align-items: center; }
+  body[data-view="compact"] .todo-card .todo-detail,
+  body[data-view="compact"] .todo-card .ai-summary,
+  body[data-view="compact"] .todo-card .action-note,
+  body[data-view="compact"] .todo-card .suggested-reply-wrap,
+  body[data-view="compact"] .todo-card .ai-no-reply,
+  body[data-view="compact"] .todo-card .todo-meta,
+  body[data-view="compact"] .todo-card .draft-reply-wrap,
+  body[data-view="compact"] .todo-card .todo-actions { display: none; }
+  body[data-view="compact"] .todo-card.expanded { padding: 12px 14px; align-items: flex-start; }
+  body[data-view="compact"] .todo-card.expanded .todo-detail,
+  body[data-view="compact"] .todo-card.expanded .ai-summary,
+  body[data-view="compact"] .todo-card.expanded .action-note,
+  body[data-view="compact"] .todo-card.expanded .suggested-reply-wrap,
+  body[data-view="compact"] .todo-card.expanded .ai-no-reply,
+  body[data-view="compact"] .todo-card.expanded .todo-meta,
+  body[data-view="compact"] .todo-card.expanded .draft-reply-wrap,
+  body[data-view="compact"] .todo-card.expanded .todo-actions { display: flex; }
+  body[data-view="compact"] .todo-card.expanded .todo-actions { display: flex; flex-direction: column; }
+  body[data-view="compact"] .todo-title { cursor: pointer; display: flex; align-items: center; gap: 8px; }
+  body[data-view="compact"] .todo-title::before { content: "▸"; font-size: 11px; color: var(--muted); flex-shrink: 0; transition: transform .15s; }
+  body[data-view="compact"] .todo-card.expanded .todo-title::before { transform: rotate(90deg); }
+  .btn-view-toggle { background: var(--border); border: none; border-radius: 6px; color: var(--text); padding: 5px 12px; cursor: pointer; font-size: 12px; }
+  .btn-view-toggle:hover { background: var(--glen); color: #fff; }
+  .btn-view-toggle.active { background: var(--glen); color: #fff; }
+  .btn-bulk-expand { display: none; background: transparent; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); padding: 5px 10px; cursor: pointer; font-size: 11px; }
+  .btn-bulk-expand:hover { border-color: var(--glen); color: var(--glen); }
+  body[data-view="compact"] .btn-bulk-expand { display: inline-block; }
+
   /* Auth overlay */
   #key-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; z-index: 100; }
   #key-overlay.hidden { display: none; }
@@ -374,6 +404,9 @@
     <label class="show-done-toggle">
       <input type="checkbox" id="show-done" onchange="refresh()"> Show done
     </label>
+    <button class="btn-view-toggle" id="btn-view-toggle" onclick="toggleCompactView()" title="Toggle compact view">☰ Compact</button>
+    <button class="btn-bulk-expand" onclick="expandAllCards()">Expand all</button>
+    <button class="btn-bulk-expand" onclick="collapseAllCards()">Collapse all</button>
     <div class="refresh-info">Refresh in <span id="countdown">30:00</span></div>
     <button class="btn-refresh" onclick="refresh()">Refresh now</button>
     <button class="btn-add-task" onclick="openNewTaskDialog()" title="Add task">+ Task</button>
@@ -1349,6 +1382,38 @@ function closeAllMenus() {
 }
 
 document.addEventListener('click', closeAllMenus);
+
+// ── Compact view ──────────────────────────────────────────────────────────────
+function toggleCompactView() {
+  const isCompact = document.body.getAttribute('data-view') === 'compact';
+  if (isCompact) {
+    document.body.removeAttribute('data-view');
+    document.getElementById('btn-view-toggle').classList.remove('active');
+    localStorage.setItem('console-view', 'expanded');
+  } else {
+    document.body.setAttribute('data-view', 'compact');
+    document.getElementById('btn-view-toggle').classList.add('active');
+    localStorage.setItem('console-view', 'compact');
+  }
+}
+function expandAllCards()   { document.querySelectorAll('.todo-card').forEach(c => c.classList.add('expanded')); }
+function collapseAllCards() { document.querySelectorAll('.todo-card').forEach(c => c.classList.remove('expanded')); }
+function initCompactView() {
+  if (localStorage.getItem('console-view') === 'compact') {
+    document.body.setAttribute('data-view', 'compact');
+    const btn = document.getElementById('btn-view-toggle');
+    if (btn) btn.classList.add('active');
+  }
+}
+// Delegated click on titles to toggle individual card in compact mode
+document.addEventListener('click', (e) => {
+  if (document.body.getAttribute('data-view') !== 'compact') return;
+  const title = e.target.closest('.todo-title');
+  if (!title) return;
+  const card = title.closest('.todo-card');
+  if (card) card.classList.toggle('expanded');
+});
+initCompactView();
 
 // ── Refresh ───────────────────────────────────────────────────────────────────
 async function refresh(restoreScrollY) {
