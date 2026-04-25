@@ -41,6 +41,7 @@
   body[data-owner="rae"] .cal-event-cal,
   body[data-owner="rae"] .cal-event-loc { font-size: 16px; }
   body[data-owner="rae"] .btn-cal { font-size: 15px; padding: 5px 11px; }
+  body[data-owner="rae"] .todo-actions { min-width: 170px; }
 
   /* Auth overlay */
   #key-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; z-index: 100; }
@@ -127,7 +128,10 @@
   .todo-meta { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
   .meta-badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; background: var(--border); color: var(--muted); }
   .meta-badge.delegated { background: #2a1f10; color: #f7a54f; }
-  .todo-actions { display: flex; gap: 6px; align-items: flex-start; flex-shrink: 0; }
+  .todo-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; flex-shrink: 0; min-width: 130px; }
+  .todo-actions > * { text-align: center; }
+  .todo-actions .delegate-wrap { width: 100%; }
+  .todo-actions .delegate-wrap .btn-delegate { width: 100%; }
   .btn-action { border: 1px solid var(--border); background: transparent; border-radius: 6px; color: var(--muted); cursor: pointer; padding: 4px 10px; font-size: 12px; transition: all .15s; white-space: nowrap; }
   .btn-done:hover    { background: #1a3a1a; border-color: var(--shaira); color: var(--shaira); }
   .btn-read:hover    { background: #1a2a3a; border-color: var(--glen); color: var(--glen); }
