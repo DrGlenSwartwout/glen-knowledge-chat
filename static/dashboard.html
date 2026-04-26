@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a0907">
+<title>Command Center · Dr. Glen Swartwout</title>
+<style>
+  :root{
+    --bg:#0a0907;
+    --bg-2:#13110d;
+    --ink:#ece6d6;
+    --ink-2:#9a9384;
+    --ink-3:#5a564b;
+    --rule:#2a2620;
+    --gold:#e6b800;
+    --gold-soft:#a88800;
+    --green:#7fb069;
+    --yellow:#e6b800;
+    --red:#cc4b2c;
+    --gray:#5a564b;
+    --serif: "Iowan Old Style","Cambria","Hoefler Text","Times New Roman",serif;
+    --mono: ui-monospace,"SF Mono","Menlo","Consolas",monospace;
+    --sans: -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision;font-feature-settings:"tnum" 1,"ss01" 1}
+  body{
+    min-height:100vh;
+    background-image:
+      radial-gradient(1200px 600px at 100% -10%, rgba(230,184,0,.06), transparent 60%),
+      radial-gradient(900px 700px at -10% 110%, rgba(230,184,0,.04), transparent 50%);
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* grain */
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:1; opacity:.04; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.6'/></svg>");
+  }
+
+  .wrap{max-width:1400px;margin:0 auto;padding:24px 18px 80px;position:relative;z-index:2}
+  @media(min-width:1024px){.wrap{padding:36px 36px 100px}}
+
+  /* masthead */
+  header.masthead{
+    display:flex; align-items:flex-end; justify-content:space-between; gap:18px;
+    padding-bottom:18px; margin-bottom:28px; border-bottom:1px solid var(--rule);
+  }
+  .brand{display:flex; flex-direction:column; gap:4px}
+  .brand .eyebrow{
+    font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--gold-soft);
+  }
+  .brand h1{
+    font-family:var(--serif); font-style:italic; font-weight:400;
+    font-size:clamp(28px, 6vw, 44px); line-height:.95; letter-spacing:-.01em;
+    color:var(--ink);
+  }
+  .brand h1 em{font-style:normal; color:var(--gold)}
+  .meta{
+    text-align:right; font-family:var(--mono); font-size:11px; line-height:1.5;
+    color:var(--ink-2);
+  }
+  .meta .clock{color:var(--ink); font-size:14px; letter-spacing:.04em}
+  .refresh-all{
+    display:inline-flex; align-items:center; gap:6px; margin-top:6px;
+    background:transparent; border:1px solid var(--rule); color:var(--ink-2);
+    font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase;
+    padding:6px 10px; cursor:pointer; transition:.18s ease;
+  }
+  .refresh-all:hover{border-color:var(--gold); color:var(--gold)}
+  .refresh-all:active{transform:translateY(1px)}
+
+  /* section row */
+  section.row{margin-bottom:36px}
+  .row-head{
+    display:flex; align-items:baseline; gap:14px; margin-bottom:14px;
+  }
+  .row-head h2{
+    font-family:var(--serif); font-style:italic; font-weight:400;
+    font-size:24px; letter-spacing:-.01em; color:var(--ink);
+  }
+  .row-head .num{
+    font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--ink-3);
+  }
+  .row-head .rule{flex:1; height:1px; background:var(--rule); align-self:center}
+
+  /* grid */
+  .grid{display:grid; gap:14px; grid-template-columns:1fr}
+  @media(min-width:640px){.grid{grid-template-columns:1fr 1fr; gap:16px}}
+  @media(min-width:1024px){.grid{grid-template-columns:repeat(4,1fr); gap:18px}}
+  .grid.two{grid-template-columns:1fr}
+  @media(min-width:640px){.grid.two{grid-template-columns:1fr 1fr}}
+  .grid.full{grid-template-columns:1fr}
+
+  /* card */
+  .card{
+    position:relative; background:var(--bg-2); border:1px solid var(--rule); border-radius:2px;
+    padding:16px 16px 12px; min-height:140px; display:flex; flex-direction:column;
+    cursor:pointer; transition:border-color .25s ease, transform .25s ease;
+  }
+  .card:hover{border-color:#3d372e}
+  .card:active{transform:scale(.997)}
+
+  .card .head{
+    display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;
+  }
+  .card .title{
+    font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--ink-2);
+  }
+  .dot{
+    width:6px; height:6px; border-radius:50%; background:var(--gray); flex-shrink:0;
+    box-shadow:0 0 0 0 rgba(127,176,105,0); transition:background .3s, box-shadow .3s;
+  }
+  .dot.green{background:var(--green); box-shadow:0 0 0 3px rgba(127,176,105,.12)}
+  .dot.yellow{background:var(--yellow); box-shadow:0 0 0 3px rgba(230,184,0,.12)}
+  .dot.red{background:var(--red); box-shadow:0 0 0 3px rgba(204,75,44,.15)}
+  .dot.loading{background:var(--gold); animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+
+  .card .body{flex:1; display:flex; flex-direction:column; gap:8px; overflow:hidden}
+  .card footer{
+    margin-top:12px; padding-top:10px; border-top:1px dashed var(--rule);
+    font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--ink-3); display:flex; justify-content:space-between;
+  }
+  .card footer .err{color:var(--red); text-transform:none; letter-spacing:.04em; font-size:10px; max-width:70%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
+  /* number display */
+  .figure{font-family:var(--serif); font-weight:500; font-size:34px; line-height:1; color:var(--ink); letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+  .figure.gold{color:var(--gold)}
+  .figure.sm{font-size:22px}
+  .figure-row{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+  .figure-row .label{font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-3)}
+
+  /* lists */
+  ul.feed{list-style:none; display:flex; flex-direction:column; gap:6px}
+  ul.feed li{
+    display:flex; align-items:baseline; gap:10px; font-size:13px; color:var(--ink); line-height:1.35;
+  }
+  ul.feed li .lead{color:var(--ink-2); font-family:var(--mono); font-size:10px; letter-spacing:.08em; min-width:42px}
+  ul.feed li .body-text{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  ul.feed li .amount{font-family:var(--mono); font-size:11px; color:var(--gold); font-variant-numeric:tabular-nums}
+
+  /* health grid */
+  .health-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px}
+  .health-cell{
+    display:flex; align-items:center; gap:10px; padding:10px 12px;
+    background:rgba(255,255,255,.015); border:1px solid var(--rule);
+  }
+  .health-cell .name{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-2); flex:1}
+  .health-cell .ts{font-family:var(--mono); font-size:9px; color:var(--ink-3); letter-spacing:.06em}
+
+  /* states */
+  .empty, .loading-text{font-family:var(--serif); font-style:italic; color:var(--ink-3); font-size:14px; text-align:center; padding:18px 0}
+
+  /* badges */
+  .badge{
+    display:inline-block; font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase;
+    padding:2px 6px; border:1px solid var(--rule); color:var(--ink-2);
+  }
+  .badge.gold{color:var(--gold); border-color:var(--gold-soft)}
+  .badge.warn{color:var(--yellow); border-color:var(--gold-soft)}
+  .badge.err{color:var(--red); border-color:var(--red)}
+
+  /* pipeline / kv */
+  .kv{display:flex; flex-direction:column; gap:5px}
+  .kv .row-kv{display:flex; justify-content:space-between; align-items:baseline; gap:10px;
+    font-family:var(--mono); font-size:11px; color:var(--ink); letter-spacing:.04em}
+  .kv .row-kv .k{color:var(--ink-2); text-transform:uppercase; font-size:10px; letter-spacing:.14em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .kv .row-kv .v{color:var(--gold); font-variant-numeric:tabular-nums}
+
+  /* lockout overlay */
+  #lockout{
+    position:fixed; inset:0; background:var(--bg); display:none; align-items:center; justify-content:center;
+    z-index:50; padding:24px;
+  }
+  #lockout.on{display:flex}
+  #lockout .panel{
+    max-width:380px; width:100%; border:1px solid var(--rule); padding:32px;
+    background:var(--bg-2);
+  }
+  #lockout h3{
+    font-family:var(--serif); font-style:italic; font-weight:400; font-size:24px; margin-bottom:6px; color:var(--gold);
+  }
+  #lockout p{color:var(--ink-2); font-size:13px; margin-bottom:18px}
+  #lockout input{
+    width:100%; background:transparent; border:none; border-bottom:1px solid var(--rule);
+    padding:10px 0; color:var(--ink); font-family:var(--mono); font-size:14px; letter-spacing:.06em;
+    outline:none;
+  }
+  #lockout input:focus{border-bottom-color:var(--gold)}
+  #lockout button{
+    margin-top:16px; width:100%; background:var(--gold); border:none; color:#1a1500;
+    font-family:var(--mono); font-size:11px; letter-spacing:.22em; text-transform:uppercase;
+    padding:12px; cursor:pointer; transition:.2s;
+  }
+  #lockout button:hover{background:#fac826}
+
+  .refreshing{animation:flash .5s ease}
+  @keyframes flash{0%{background:rgba(230,184,0,.06)}100%{background:var(--bg-2)}}
+</style>
+</head>
+<body>
+
+<div id="lockout">
+  <div class="panel">
+    <h3>Command Center</h3>
+    <p>Enter your console key to access the dashboard.</p>
+    <input id="keyInput" type="password" placeholder="console key" autocomplete="off">
+    <button id="keyBtn">Enter</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brand">
+      <div class="eyebrow">Healing Oasis · Remedy Match</div>
+      <h1>Command <em>Center</em></h1>
+    </div>
+    <div class="meta">
+      <div class="clock" id="clock">—</div>
+      <div id="dateline">—</div>
+      <button class="refresh-all" id="refreshAll">Refresh All</button>
+    </div>
+  </header>
+
+  <!-- ROW 1 — MONEY -->
+  <section class="row">
+    <div class="row-head">
+      <span class="num">I</span>
+      <h2>Money</h2>
+      <span class="rule"></span>
+    </div>
+    <div class="grid">
+      <article class="card" data-endpoint="/api/money/today" data-render="moneyToday">
+        <div class="head"><span class="title">Today</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card" data-endpoint="/api/money/week" data-render="moneyWeek">
+        <div class="head"><span class="title">7 Days</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card" data-endpoint="/api/money/banks" data-render="moneyBanks">
+        <div class="head"><span class="title">Bank Balances</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card" data-endpoint="/api/money/wise" data-render="moneyWise">
+        <div class="head"><span class="title">Wise</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+    </div>
+  </section>
+
+  <!-- ROW 2 — ACTION -->
+  <section class="row">
+    <div class="row-head">
+      <span class="num">II</span>
+      <h2>Action</h2>
+      <span class="rule"></span>
+    </div>
+    <div class="grid">
+      <article class="card" data-endpoint="/api/todos?owner=glen" data-render="todos" data-noenv>
+        <div class="head"><span class="title">Top Todos</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card" data-endpoint="/api/calendar" data-render="calendar" data-noenv>
+        <div class="head"><span class="title">Today's Calendar</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card" data-endpoint="/leads/pending-ghl" data-render="leads" data-noenv>
+        <div class="head"><span class="title">Pending Leads</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card" data-endpoint="/api/rae-feedback/summary" data-render="raeFeedback" data-noenv>
+        <div class="head"><span class="title">Rae · Feedback</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+    </div>
+  </section>
+
+  <!-- ROW 3 — MARKETING -->
+  <section class="row">
+    <div class="row-head">
+      <span class="num">III</span>
+      <h2>Marketing</h2>
+      <span class="rule"></span>
+    </div>
+    <div class="grid">
+      <article class="card" data-endpoint="/api/ghl/pipeline" data-render="ghlPipeline">
+        <div class="head"><span class="title">GHL · Pipeline</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card" data-endpoint="/api/scoreapp/recent" data-render="scoreApp">
+        <div class="head"><span class="title">ScoreApp · Recent</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card" data-endpoint="/api/facebook/boulder-test" data-render="facebookAds">
+        <div class="head"><span class="title">FB · Boulder Test</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card" data-endpoint="/api/heygen/recent" data-render="heygen">
+        <div class="head"><span class="title">HeyGen · Renders</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+    </div>
+  </section>
+
+  <!-- ROW 4 — KNOWLEDGE -->
+  <section class="row">
+    <div class="row-head">
+      <span class="num">IV</span>
+      <h2>Knowledge</h2>
+      <span class="rule"></span>
+    </div>
+    <div class="grid two">
+      <article class="card" data-endpoint="/api/brain" data-render="brain">
+        <div class="head"><span class="title">Brain State</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card" data-endpoint="/api/pinecone/stats" data-render="pinecone">
+        <div class="head"><span class="title">Pinecone · remedy-match-llc</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+    </div>
+  </section>
+
+  <!-- ROW 5 — HEALTH -->
+  <section class="row">
+    <div class="row-head">
+      <span class="num">V</span>
+      <h2>System Health</h2>
+      <span class="rule"></span>
+    </div>
+    <div class="grid full">
+      <article class="card" data-endpoint="/api/health" data-render="health" style="min-height:auto">
+        <div class="head"><span class="title">All Integrations</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+    </div>
+  </section>
+
+</div>
+
+<script>
+// ── auth gate ─────────────────────────────────────────────────────────────
+const KEY_STORAGE = "consoleKey";
+let consoleKey = localStorage.getItem(KEY_STORAGE) || "";
+
+function showLockout(){
+  const lo = document.getElementById("lockout");
+  lo.classList.add("on");
+  document.getElementById("keyInput").focus();
+}
+function hideLockout(){
+  document.getElementById("lockout").classList.remove("on");
+}
+document.getElementById("keyBtn").addEventListener("click", () => {
+  const v = document.getElementById("keyInput").value.trim();
+  if(!v) return;
+  consoleKey = v;
+  localStorage.setItem(KEY_STORAGE, v);
+  hideLockout();
+  refreshAll();
+});
+document.getElementById("keyInput").addEventListener("keydown", e => {
+  if(e.key === "Enter") document.getElementById("keyBtn").click();
+});
+if(!consoleKey) showLockout();
+
+// ── clock ─────────────────────────────────────────────────────────────────
+function updateClock(){
+  const now = new Date();
+  const t = now.toLocaleTimeString("en-US", {hour:"numeric", minute:"2-digit", hour12:true});
+  const d = now.toLocaleDateString("en-US", {weekday:"long", month:"long", day:"numeric"});
+  document.getElementById("clock").textContent = t;
+  document.getElementById("dateline").textContent = d;
+}
+updateClock(); setInterval(updateClock, 30000);
+
+// ── helpers ───────────────────────────────────────────────────────────────
+const fmtMoney = n => "$" + (Number(n)||0).toLocaleString("en-US", {minimumFractionDigits:0, maximumFractionDigits:0});
+const fmtMoneyP = n => "$" + (Number(n)||0).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
+function fmtAge(iso){
+  if(!iso) return "—";
+  const sec = Math.max(0, (Date.now() - new Date(iso).getTime())/1000);
+  if(sec < 60) return Math.floor(sec) + "s ago";
+  if(sec < 3600) return Math.floor(sec/60) + "m ago";
+  if(sec < 86400) return Math.floor(sec/3600) + "h ago";
+  return Math.floor(sec/86400) + "d ago";
+}
+function dotClass(card, lastSuccessIso, hasError){
+  if(hasError) return "red";
+  if(!lastSuccessIso) return "yellow";
+  const ageMin = (Date.now() - new Date(lastSuccessIso).getTime()) / 60000;
+  if(ageMin < 5) return "green";
+  if(ageMin < 10) return "yellow";
+  return "yellow";
+}
+function setDot(card, cls){
+  const dot = card.querySelector(".dot");
+  dot.className = "dot " + (cls || "");
+}
+
+// ── renderers ─────────────────────────────────────────────────────────────
+const R = {};
+
+R.moneyToday = (d) => {
+  const wise = (d.wise_balances || []).map(b => `<li><span class="lead">${b.currency}</span><span class="body-text">balance</span><span class="amount">${(+b.amount).toFixed(2)}</span></li>`).join("");
+  return `
+    <div class="figure-row"><span class="label">PB</span><span class="figure sm gold">${fmtMoney(d.pb_today)}</span></div>
+    <div class="figure-row"><span class="label">Authnet</span><span class="figure sm">${fmtMoney(d.an_today)}</span></div>
+    ${wise ? `<ul class="feed" style="margin-top:6px">${wise}</ul>` : ""}
+  `;
+};
+
+R.moneyWeek = (d) => `
+  <div class="figure-row"><span class="label">PB Coll.</span><span class="figure sm gold">${fmtMoney(d.pb_collected)}</span></div>
+  <div class="figure-row"><span class="label">PB Out.</span><span class="figure sm">${fmtMoney(d.pb_outstanding)}</span></div>
+  <div class="figure-row"><span class="label">Authnet</span><span class="figure sm">${fmtMoney(d.an_net)}</span></div>
+  <div class="figure-row"><span class="label">Txns</span><span class="figure sm">${(d.an_count||0).toLocaleString()}</span></div>
+`;
+
+R.moneyBanks = (d) => {
+  const accts = d.accounts || [];
+  if(!accts.length) return `<div class="empty">no accounts</div>`;
+  const total = accts.reduce((s,a)=>s + (+a.balance||0), 0);
+  const rows = accts.slice(0,6).map(a => `
+    <li><span class="body-text">${a.name||"—"}</span><span class="amount">${fmtMoney(a.balance)}</span></li>
+  `).join("");
+  return `
+    <div class="figure-row"><span class="label">Total</span><span class="figure sm gold">${fmtMoney(total)}</span></div>
+    <ul class="feed">${rows}</ul>
+  `;
+};
+
+R.moneyWise = (d) => {
+  const bals = d.balances || [];
+  if(!bals.length) return `<div class="empty">—</div>`;
+  return `<ul class="feed">${bals.map(b=>`<li><span class="lead">${b.currency}</span><span class="body-text">balance</span><span class="amount">${(+b.amount).toFixed(2)}</span></li>`).join("")}</ul>`;
+};
+
+R.todos = (d) => {
+  const todos = (d.todos || []).slice(0,5);
+  if(!todos.length) return `<div class="empty">inbox zero</div>`;
+  return `<ul class="feed">${todos.map(t=>{
+    const p = t.priority === "high" ? "gold" : "warn";
+    return `<li><span class="badge ${p}">${(t.priority||"").slice(0,3)||"·"}</span><span class="body-text">${escapeHtml(t.title||"")}</span></li>`;
+  }).join("")}</ul>`;
+};
+
+R.calendar = (d) => {
+  const events = (d.events || d.items || []).slice(0,5);
+  if(!events.length) return `<div class="empty">no events today</div>`;
+  return `<ul class="feed">${events.map(e=>{
+    const t = e.start_time || e.start || "";
+    const time = t ? t.substring(11,16) : "—";
+    return `<li><span class="lead">${time}</span><span class="body-text">${escapeHtml(e.title||e.summary||"")}</span></li>`;
+  }).join("")}</ul>`;
+};
+
+R.leads = (d) => {
+  // /leads/pending-ghl returns { leads: [...] } directly (not wrapped in {ok,data})
+  const leads = d.leads || d.data?.leads || [];
+  if(!leads.length) return `<div class="empty">no pending leads</div>`;
+  const top = leads.slice(0,3);
+  return `
+    <div class="figure-row"><span class="label">Pending</span><span class="figure sm gold">${leads.length}</span></div>
+    <ul class="feed">${top.map(l=>`<li><span class="body-text">${escapeHtml((l.first_name||"")+" "+(l.last_name||""))}</span></li>`).join("")}</ul>
+  `;
+};
+
+R.raeFeedback = (d) => {
+  const summary = d.summary || d.data?.summary || d.text;
+  if(!summary) return `<div class="empty">no feedback yet</div>`;
+  return `<p style="font-family:var(--serif); font-size:14px; line-height:1.55; color:var(--ink-2);">${escapeHtml(String(summary).slice(0,180))}${String(summary).length>180?"…":""}</p>`;
+};
+
+R.ghlPipeline = (d) => {
+  if(d.empty) return `<div class="empty">no pipelines</div>`;
+  const stages = d.by_stage || {};
+  const entries = Object.entries(stages).slice(0,6);
+  return `
+    <div class="figure-row"><span class="label">${escapeHtml((d.pipeline||"—").slice(0,18))}</span><span class="figure sm gold">${d.total||0}</span></div>
+    <div class="kv">${entries.map(([k,v])=>`<div class="row-kv"><span class="k">${escapeHtml(k.slice(0,16))}</span><span class="v">${v}</span></div>`).join("")}</div>
+  `;
+};
+
+R.scoreApp = (d) => {
+  const sigs = d.signups || [];
+  return `
+    <div class="figure-row"><span class="label">Recent</span><span class="figure sm gold">${d.count||0}</span></div>
+    ${sigs.length ? `<ul class="feed">${sigs.slice(0,4).map(s=>`<li><span class="body-text">${escapeHtml(s.name||s.email||"—")}</span></li>`).join("")}</ul>` : `<div class="empty">none</div>`}
+  `;
+};
+
+R.facebookAds = (d) => {
+  if(d.status === "verification_pending"){
+    return `
+      <span class="badge warn">verification pending</span>
+      <p style="margin-top:10px; font-family:var(--serif); font-style:italic; color:var(--ink-2); font-size:13px;">${escapeHtml(d.message||"Awaiting Meta Business verification.")}</p>
+      <div class="figure-row" style="margin-top:6px"><span class="label">Campaign</span><span class="figure sm">${escapeHtml(d.campaign_id||"—")}</span></div>
+    `;
+  }
+  const m = d.metrics || {};
+  return `
+    <div class="figure-row"><span class="label">Spend</span><span class="figure sm gold">${fmtMoneyP(m.spend)}</span></div>
+    <div class="figure-row"><span class="label">Clicks</span><span class="figure sm">${(m.clicks||0).toLocaleString()}</span></div>
+    <div class="figure-row"><span class="label">CTR</span><span class="figure sm">${(+m.ctr||0).toFixed(2)}%</span></div>
+    <div class="figure-row"><span class="label">CPC</span><span class="figure sm">${fmtMoneyP(m.cpc)}</span></div>
+  `;
+};
+
+R.heygen = (d) => {
+  if(d.empty) return `<div class="empty">${escapeHtml(d.message||"—")}</div>`;
+  const vids = d.videos || [];
+  if(!vids.length) return `<div class="empty">no recent renders</div>`;
+  return `<ul class="feed">${vids.slice(0,5).map(v=>{
+    const s = (v.status||"").toLowerCase();
+    const cls = s === "completed" ? "gold" : s === "failed" ? "err" : "warn";
+    return `<li><span class="badge ${cls}">${(s||"·").slice(0,4)}</span><span class="body-text">${escapeHtml(v.title||v.id||"untitled")}</span></li>`;
+  }).join("")}</ul>`;
+};
+
+R.brain = (d) => {
+  if(d.empty) return `<div class="empty">${escapeHtml(d.message||"awaiting first observation")}</div>`;
+  const sec = (label, items) => {
+    if(!items || !items.length) return "";
+    return `
+      <div style="margin-bottom:8px">
+        <div style="font-family:var(--mono); font-size:9px; letter-spacing:.18em; text-transform:uppercase; color:var(--gold-soft); margin-bottom:4px">${label}</div>
+        <ul class="feed">${items.slice(0,3).map(x => `<li><span class="body-text">${escapeHtml(typeof x === 'string' ? x : (x.text || x.title || JSON.stringify(x).slice(0,80)))}</span></li>`).join("")}</ul>
+      </div>
+    `;
+  };
+  return `
+    <div class="figure-row"><span class="label">Observations</span><span class="figure sm gold">${d.total_observations||0}</span></div>
+    ${sec("Commitments", d.commitments)}
+    ${sec("Follow-ups", d.follow_ups)}
+    ${sec("Predictions", d.predictions)}
+  `;
+};
+
+R.pinecone = (d) => {
+  const ns = Object.entries(d.namespaces || {}).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  return `
+    <div class="figure-row" style="margin-bottom:10px">
+      <span class="label">Total Vectors</span>
+      <span class="figure gold">${(d.total_vectors||0).toLocaleString()}</span>
+    </div>
+    <div class="kv">${ns.map(([k,v])=>`<div class="row-kv"><span class="k">${escapeHtml(k)}</span><span class="v">${v.toLocaleString()}</span></div>`).join("")}</div>
+  `;
+};
+
+R.health = (d) => {
+  const sys = d.systems || {};
+  const cells = Object.entries(sys).map(([name, info]) => {
+    let cls = "gray", ts = "—";
+    if(info.ok === true){ cls = "green"; ts = "ok"; }
+    else if(info.ok === false){ cls = "red"; ts = info.error?.slice(0,16) || "err"; }
+    else if(info.configured === true){
+      cls = info.last_success ? "green" : "yellow";
+      ts = info.last_success ? fmtAge(info.last_success) : "no data";
+    } else {
+      cls = "gray"; ts = "not set";
+    }
+    return `<div class="health-cell"><span class="dot ${cls}"></span><span class="name">${escapeHtml(name)}</span><span class="ts">${escapeHtml(ts)}</span></div>`;
+  }).join("");
+  return `<div class="health-grid">${cells}</div>`;
+};
+
+function escapeHtml(s){
+  return String(s||"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ── fetch + render loop ───────────────────────────────────────────────────
+async function fetchCard(card){
+  const ep = card.dataset.endpoint;
+  const renderName = card.dataset.render;
+  const fn = R[renderName];
+  if(!fn) return;
+
+  card.classList.add("refreshing");
+  setTimeout(()=>card.classList.remove("refreshing"), 600);
+
+  try{
+    const res = await fetch(ep, {
+      headers: {"X-Console-Key": consoleKey},
+      cache: "no-store",
+    });
+    if(res.status === 401){
+      localStorage.removeItem(KEY_STORAGE);
+      consoleKey = "";
+      showLockout();
+      return;
+    }
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const json = await res.json();
+    // Most endpoints return {ok:true, data:{...}}; some legacy ones return data directly
+    const data = (json && typeof json === "object" && "ok" in json && "data" in json) ? json.data : json;
+
+    const body = card.querySelector(".body");
+    body.innerHTML = fn(data || {});
+
+    const lastSuccess = data?.last_success || data?.as_of || new Date().toISOString();
+    setDot(card, dotClass(card, lastSuccess, false));
+
+    const foot = card.querySelector("footer");
+    foot.innerHTML = `<span class="ts">Updated ${fmtAge(lastSuccess)}</span><span class="ts">${ep}</span>`;
+    card.dataset.lastSuccess = lastSuccess;
+  } catch(err){
+    setDot(card, "red");
+    const foot = card.querySelector("footer");
+    const last = card.dataset.lastSuccess || "never";
+    foot.innerHTML = `<span class="err">${escapeHtml(err.message)}</span><span class="ts">${last !== "never" ? fmtAge(last) : "never"}</span>`;
+  }
+}
+
+const cards = Array.from(document.querySelectorAll(".card"));
+
+function refreshAll(){
+  if(!consoleKey){ showLockout(); return; }
+  cards.forEach(fetchCard);
+}
+
+cards.forEach(card => {
+  card.addEventListener("click", () => fetchCard(card));
+  setInterval(() => fetchCard(card), 60000);
+});
+
+document.getElementById("refreshAll").addEventListener("click", refreshAll);
+
+if(consoleKey) refreshAll();
+</script>
+</body>
+</html>
