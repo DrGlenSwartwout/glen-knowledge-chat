@@ -370,6 +370,19 @@
 const KEY_STORAGE = "consoleKey";
 let consoleKey = localStorage.getItem(KEY_STORAGE) || "";
 
+// Auto-auth: if URL has ?key=..., save it and strip from address bar.
+// Lets the desktop launcher open the dashboard already authenticated.
+(function autoAuthFromURL(){
+  const u = new URL(window.location.href);
+  const k = u.searchParams.get("key");
+  if(k){
+    consoleKey = k;
+    localStorage.setItem(KEY_STORAGE, k);
+    u.searchParams.delete("key");
+    window.history.replaceState({}, "", u.pathname + (u.search || "") + u.hash);
+  }
+})();
+
 function showLockout(){
   const lo = document.getElementById("lockout");
   lo.classList.add("on");
