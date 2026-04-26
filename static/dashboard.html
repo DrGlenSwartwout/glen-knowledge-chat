@@ -209,8 +209,12 @@
 <div id="lockout">
   <div class="panel">
     <h3>Command Center</h3>
-    <p>Enter your console key to access the dashboard.</p>
-    <input id="keyInput" type="password" placeholder="console key" autocomplete="off">
+    <p id="keyMsg">Enter your console key to access the dashboard.</p>
+    <input id="keyInput" type="password" placeholder="console key"
+           name="dashboard-access-key-no-autofill"
+           autocomplete="new-password"
+           data-1p-ignore data-lpignore="true" data-bwignore
+           autocorrect="off" autocapitalize="off" spellcheck="false">
     <button id="keyBtn">Enter</button>
   </div>
 </div>
@@ -369,18 +373,57 @@ let consoleKey = localStorage.getItem(KEY_STORAGE) || "";
 function showLockout(){
   const lo = document.getElementById("lockout");
   lo.classList.add("on");
-  document.getElementById("keyInput").focus();
+  // Defeat browser autofill: clear the input each time the lockout opens
+  const input = document.getElementById("keyInput");
+  input.value = "";
+  setTimeout(() => { input.value = ""; input.focus(); }, 50);
 }
 function hideLockout(){
   document.getElementById("lockout").classList.remove("on");
 }
+async function tryKey(v){
+  const btn = document.getElementById("keyBtn");
+  const msg = document.getElementById("keyMsg");
+  if(!v){
+    msg.textContent = "Please enter a key.";
+    msg.style.color = "var(--red)";
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "Checking…";
+  msg.textContent = "Verifying…";
+  msg.style.color = "var(--ink-2)";
+  try{
+    const res = await fetch("/api/health", {
+      headers: {"X-Console-Key": v},
+      cache: "no-store",
+    });
+    if(res.status === 200){
+      consoleKey = v;
+      localStorage.setItem(KEY_STORAGE, v);
+      msg.textContent = "Welcome.";
+      msg.style.color = "var(--green)";
+      setTimeout(() => { hideLockout(); refreshAll(); }, 250);
+    } else if(res.status === 401){
+      msg.textContent = "Wrong key. Same as the /console key — try again.";
+      msg.style.color = "var(--red)";
+      document.getElementById("keyInput").value = "";
+      document.getElementById("keyInput").focus();
+    } else {
+      msg.textContent = `Server returned HTTP ${res.status}. Try again.`;
+      msg.style.color = "var(--red)";
+    }
+  } catch(err){
+    msg.textContent = "Network error: " + err.message;
+    msg.style.color = "var(--red)";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Enter";
+  }
+}
 document.getElementById("keyBtn").addEventListener("click", () => {
   const v = document.getElementById("keyInput").value.trim();
-  if(!v) return;
-  consoleKey = v;
-  localStorage.setItem(KEY_STORAGE, v);
-  hideLockout();
-  refreshAll();
+  tryKey(v);
 });
 document.getElementById("keyInput").addEventListener("keydown", e => {
   if(e.key === "Enter") document.getElementById("keyBtn").click();
