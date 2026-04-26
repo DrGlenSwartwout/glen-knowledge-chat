@@ -3,6 +3,14 @@
 RAG Chat Server — Glen Swartwout Knowledge Base (Production)
 """
 
+# gevent monkey-patch MUST run before any stdlib imports (especially ssl/socket/http)
+# Without this, requests through urllib3 recurse infinitely on Python 3.12+
+try:
+    from gevent import monkey
+    monkey.patch_all()
+except ImportError:
+    pass
+
 import os
 import re
 import json
