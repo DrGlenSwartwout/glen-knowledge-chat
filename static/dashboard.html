@@ -663,12 +663,6 @@ async function fetchCard(card){
       headers: {"X-Console-Key": consoleKey},
       cache: "no-store",
     });
-    if(res.status === 401){
-      localStorage.removeItem(KEY_STORAGE);
-      consoleKey = "";
-      showLockout();
-      return;
-    }
     if(!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
     // Most endpoints return {ok:true, data:{...}}; some legacy ones return data directly
