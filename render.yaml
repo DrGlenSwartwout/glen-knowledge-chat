@@ -21,6 +21,30 @@ services:
         sync: false
       - key: ELEVENLABS_VOICE_ID
         sync: false
+      - key: PRACTICE_BETTER_CLIENT_ID
+        sync: false
+      - key: PRACTICE_BETTER_CLIENT_SECRET
+        sync: false
+      - key: AUTHNET_API_LOGIN_ID
+        sync: false
+      - key: AUTHNET_TRANSACTION_KEY
+        sync: false
+      - key: WISE_API_TOKEN
+        sync: false
+      - key: QUICKBOOKS_PROD_CLIENT_ID
+        sync: false
+      - key: QUICKBOOKS_PROD_CLIENT_SECRET
+        sync: false
+      - key: QUICKBOOKS_PROD_REALM_ID
+        sync: false
+      - key: QUICKBOOKS_PROD_REFRESH_TOKEN
+        sync: false
+      - key: GHL_LOCATION_ID
+        sync: false
+      - key: HEYGEN_API_KEY
+        sync: false
+      - key: BRAIN_SNAPSHOT_PATH
+        value: /data/brain-state.json
       - key: DATA_DIR
         value: /data
     healthCheckPath: /

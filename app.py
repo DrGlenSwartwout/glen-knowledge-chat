@@ -2697,6 +2697,107 @@ if os.environ.get("DATA_DIR"):
     _start_scheduler()
 
 
+# ── Command Center Dashboard ──────────────────────────────────────────────────
+from dashboard import require_console_key, ok, fail
+from dashboard import money as _money
+from dashboard import brain as _brain
+from dashboard import pinecone_stats as _pc_stats
+from dashboard import ghl as _ghl
+from dashboard import scoreapp as _scoreapp
+from dashboard import heygen as _heygen
+from dashboard import facebook as _fb
+from dashboard import health as _health
+
+
+@app.route("/dashboard")
+def dashboard_page():
+    return send_from_directory(STATIC, "dashboard.html")
+
+
+@app.route("/api/money/today")
+@require_console_key
+def api_money_today():
+    try: return ok(_money.today_summary())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/money/week")
+@require_console_key
+def api_money_week():
+    try: return ok(_money.week_summary())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/money/banks")
+@require_console_key
+def api_money_banks():
+    try: return ok(_money.qb_banks())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/money/wise")
+@require_console_key
+def api_money_wise():
+    try: return ok(_money.wise_data())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/brain")
+@require_console_key
+def api_brain_get():
+    try: return ok(_brain.read_brain())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/brain/upload", methods=["POST"])
+@require_console_key
+def api_brain_upload():
+    try: return ok(_brain.write_brain(request.get_data()))
+    except Exception as e: return fail(e, status=400)
+
+
+@app.route("/api/pinecone/stats")
+@require_console_key
+def api_pinecone_stats():
+    try: return ok(_pc_stats.index_stats())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ghl/pipeline")
+@require_console_key
+def api_ghl_pipeline():
+    try: return ok(_ghl.opportunities_by_stage())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/scoreapp/recent")
+@require_console_key
+def api_scoreapp_recent():
+    try: return ok(_scoreapp.recent_signups())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/heygen/recent")
+@require_console_key
+def api_heygen_recent():
+    try: return ok(_heygen.recent_videos())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/facebook/boulder-test")
+@require_console_key
+def api_facebook_boulder():
+    try: return ok(_fb.boulder_test_stats())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/health")
+@require_console_key
+def api_dashboard_health():
+    try: return ok(_health.status_grid())
+    except Exception as e: return fail(e)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
