@@ -553,10 +553,10 @@ R.raeFeedback = (d) => {
 
 R.ghlPipeline = (d) => {
   if(d.empty) return `<div class="empty">${escapeHtml(d.message||"no pipelines")}</div>`;
-  const pipes = (d.pipelines || []).filter(p => p.count !== null && p.count > 0).slice(0,7);
+  const active = (d.pipelines || []).filter(p => p.count !== null && p.count > 0).length;
   return `
-    <div class="figure-row"><span class="label">All Pipelines</span><span class="figure sm gold">${d.total||0}</span></div>
-    ${pipes.length ? `<div class="kv">${pipes.map(p=>`<div class="row-kv"><span class="k">${escapeHtml((p.name||"").slice(0,22))}</span><span class="v">${p.count}</span></div>`).join("")}</div>` : `<div class="empty">all pipelines empty</div>`}
+    <div class="figure-row"><span class="label">All Pipelines</span><span class="figure gold">${d.total||0}</span></div>
+    <div class="figure-row" style="margin-top:6px"><span class="label">${active}/${d.pipeline_count||0} active</span><span class="ts" style="font-size:9px; color:var(--ink-3); letter-spacing:.14em; text-transform:uppercase">tap to expand · TBD</span></div>
   `;
 };
 
