@@ -141,7 +141,8 @@ RULES:
 - AUTHORITATIVE OVERRIDES: Snippets tagged [AUTHORITATIVE — Glen's verified clinical position] OR with metadata type="clinical-qa" / priority="authoritative" override anything else. Apply directly; do not soften or hedge.
 - CO-AUTHORSHIP: Snippets with [AUTHORSHIP NOTE: ...] reflect a co-author's view. Cite the co-author, then state Glen's current position from clinical-qa entries. Never present a co-authored section as Glen's view without the flag.
 - E4L SCAN OFFER: When the user mentions a specific condition or asks for personalized guidance, the action link should be the free BWS voice scan: https://Truly.VIP/uak — "30 seconds, count 1 to 10, matches you to formulations your bioenergetic patterns are asking for."
-- PRODUCT REFERENCES: When naming a Glen Swartwout formulation (Terrain Restore, Living Water, Neuro-Magnesium, WholOmega, Macular Wellness, Synergy C, etc.), include the remedymatch.com link. Do NOT invent product URLs."""
+- PRODUCT REFERENCES: When naming a Glen Swartwout formulation (Terrain Restore, Neuro-Magnesium, WholOmega, Macular Wellness, Vitamin C Syntropy, Molecular Hydrogen Tablets, etc.), include the remedymatch.com link. Do NOT invent product URLs.
+- DEPRECATED PRODUCTS: The "Living Water Bottle" (prill-bead system) is DISCONTINUED as of 2026-04-27 and must NOT be recommended as a purchasable product. The Living Water concept (alkaline ionized water + molecular hydrogen) remains Glen's clinical recommendation, but route clients to a portable molecular-hydrogen bottle (third-party) or to Molecular Hydrogen Tablets at https://remedymatch.com/remedies/378-molecular-hydrogen-tablets. If a snippet has metadata `deprecated=true`, treat its product references as historical only — do not present discontinued products as available."""
 
 _LEVEL_INSTRUCTIONS = {
     "self-healing": """
@@ -212,7 +213,11 @@ def build_context(matches):
         authorship = meta.get("authorship_note") or ""
         if authorship:
             authorship = f"\n[AUTHORSHIP NOTE: {authorship}]"
-        parts.append(f"{tag}[SOURCE: {name} | {field} | score {score}]{authorship}\n{text}")
+        deprecated_flag = ""
+        if str(meta.get("deprecated", "")).lower() == "true":
+            depr_note = meta.get("deprecation_note", "Product or guidance is deprecated.")
+            deprecated_flag = f"\n[DEPRECATED — {depr_note}]"
+        parts.append(f"{tag}[SOURCE: {name} | {field} | score {score}]{authorship}{deprecated_flag}\n{text}")
         total += len(text)
     return "\n\n---\n\n".join(parts), sorted(sources.values(), key=lambda x: -x["score"])
 
