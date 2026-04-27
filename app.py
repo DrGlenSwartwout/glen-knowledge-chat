@@ -45,7 +45,7 @@ CORS(app)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 PINECONE_INDEX    = "remedy-match-llc"
-NAMESPACES        = ["mentors", "ingredients", "e4l-protocols", "consultations", "training", "business", ""]
+NAMESPACES        = ["clinical-qa", "mentors", "ingredients", "e4l-protocols", "consultations", "training", "business", ""]
 TOP_K_PER_NS      = 8
 MAX_CONTEXT_CHARS = 18000
 FEEDBACK_SUBMIT_URL = os.environ.get("FEEDBACK_SUBMIT_URL", "https://Truly.VIP/Results")
@@ -106,7 +106,11 @@ Your task:
 3. When multiple mentors or concepts connect, explicitly show how they reinforce each other.
 4. At the end of your response, list the source references used (name + field).
 5. Do NOT fabricate information not present in the snippets. If the snippets don't fully answer the question, say so clearly.
-6. Keep responses focused and readable — prefer synthesis over exhaustive lists."""
+6. Keep responses focused and readable — prefer synthesis over exhaustive lists.
+7. AUTHORITATIVE OVERRIDES: When a snippet's metadata indicates type="clinical-qa" or priority="authoritative", treat its guidance as Glen's verified clinical position. It overrides anything you might infer from other snippets or general knowledge. Do not soften, hedge, or contradict authoritative snippets — apply them directly.
+7a. CO-AUTHORSHIP HANDLING: When a snippet carries an [AUTHORSHIP NOTE: ...] marker, the section in question reflects a co-author's view, not Glen's current clinical position. Cite the source (e.g., "Marc Grossman, OD's section in Natural Eye Care recommends X"), acknowledge the authorship distinction, and then state Glen's current position from the authoritative clinical-qa entries. Never present a co-authored section as if it were Glen's view without flagging the distinction.
+8. E4L SCAN OFFER: When the user mentions a specific health condition, symptom pattern, or asks for personalized guidance (e.g., wet AMD, drusen, retinal issues, gut symptoms, neurological symptoms, hormonal patterns, energy issues, etc.), end your response with a brief, warm offer for a free Bioenergetic Wellness System (BWS) voice scan. Format: "For personalized remedy recommendations matched to your specific bioenergetic patterns, you can take a free voice scan at https://Truly.VIP/uak — it takes 30 seconds (count from 1 to 10) and matches you to the formulations your body is asking for." Do not include this offer for purely educational/abstract questions or when the user explicitly does not want a recommendation.
+9. PRODUCT REFERENCES: When you name a specific Glen Swartwout formulation (e.g., Terrain Restore, Living Water Bottle, Neuro-Magnesium, WholOmega, Macular Wellness, Synergy C, etc.), tell the user it's available at https://remedymatch.com — they can search for the formulation by name, or contact the team at https://truly.vip/help to be matched to the right product. Do not invent product URLs. If you don't know whether a specific product page exists, link to remedymatch.com and let the user search."""
 
 _LEVEL_INSTRUCTIONS = {
     "self-healing": """
@@ -172,7 +176,12 @@ def build_context(matches):
                              "score": score, "chunks": []}
         sources[name]["chunks"].append(meta.get("chunk_index", 0))
         sources[name]["score"] = max(sources[name]["score"], score)
-        parts.append(f"[SOURCE: {name} | {field} | score {score}]\n{text}")
+        is_authoritative = meta.get("type") == "clinical-qa" or meta.get("priority") == "authoritative"
+        tag = "[AUTHORITATIVE — Glen's verified clinical position] " if is_authoritative else ""
+        authorship = meta.get("authorship_note") or ""
+        if authorship:
+            authorship = f"\n[AUTHORSHIP NOTE: {authorship}]"
+        parts.append(f"{tag}[SOURCE: {name} | {field} | score {score}]{authorship}\n{text}")
         total += len(text)
     return "\n\n---\n\n".join(parts), sorted(sources.values(), key=lambda x: -x["score"])
 
@@ -257,7 +266,7 @@ def chat():
         try:
             with _cl.messages.stream(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=1024,
+                max_tokens=4096,
                 system=get_system_prompt(level),
                 messages=messages
             ) as stream:
