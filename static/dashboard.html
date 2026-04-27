@@ -552,12 +552,11 @@ R.raeFeedback = (d) => {
 };
 
 R.ghlPipeline = (d) => {
-  if(d.empty) return `<div class="empty">no pipelines</div>`;
-  const stages = d.by_stage || {};
-  const entries = Object.entries(stages).slice(0,6);
+  if(d.empty) return `<div class="empty">${escapeHtml(d.message||"no pipelines")}</div>`;
+  const pipes = (d.pipelines || []).filter(p => p.count !== null && p.count > 0).slice(0,7);
   return `
-    <div class="figure-row"><span class="label">${escapeHtml((d.pipeline||"—").slice(0,18))}</span><span class="figure sm gold">${d.total||0}</span></div>
-    <div class="kv">${entries.map(([k,v])=>`<div class="row-kv"><span class="k">${escapeHtml(k.slice(0,16))}</span><span class="v">${v}</span></div>`).join("")}</div>
+    <div class="figure-row"><span class="label">All Pipelines</span><span class="figure sm gold">${d.total||0}</span></div>
+    ${pipes.length ? `<div class="kv">${pipes.map(p=>`<div class="row-kv"><span class="k">${escapeHtml((p.name||"").slice(0,22))}</span><span class="v">${p.count}</span></div>`).join("")}</div>` : `<div class="empty">all pipelines empty</div>`}
   `;
 };
 

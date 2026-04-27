@@ -33,27 +33,35 @@ def pipelines():
 
 @cached("ghl.opportunities")
 def opportunities_by_stage():
-    """Returns count per stage for the first pipeline (with stage names, not IDs)."""
+    """Returns total opportunity count for each pipeline, sorted highest first.
+
+    Glen has 10+ pipelines. Showing one pipeline's stage breakdown buries the
+    overall picture. This returns a ranked list so the dashboard widget shows
+    every active pipeline at a glance.
+    """
     pls = pipelines()["pipelines"]
     if not pls:
         return {"empty": True, "message": "No pipelines configured in GHL"}
-    pipeline = pls[0]
-    pipeline_id = pipeline["id"]
-    stage_id_to_name = {s["id"]: s["name"] for s in pipeline.get("stages", [])}
 
-    r = requests.get(f"{BASE}/pipelines/{pipeline_id}/opportunities",
-                     headers=_headers(),
-                     params={"limit": 100},
-                     timeout=15)
-    r.raise_for_status()
-    opps = r.json().get("opportunities", [])
-    by_stage = {}
-    for o in opps:
-        stage_id = o.get("pipelineStageId", "unknown")
-        stage_name = stage_id_to_name.get(stage_id, stage_id)
-        by_stage[stage_name] = by_stage.get(stage_name, 0) + 1
-    return {"pipeline": pipeline["name"],
-            "by_stage": by_stage,
-            "total": len(opps),
+    pipeline_counts = []
+    for pipe in pls:
+        try:
+            r = requests.get(f"{BASE}/pipelines/{pipe['id']}/opportunities",
+                             headers=_headers(),
+                             params={"limit": 100},
+                             timeout=15)
+            r.raise_for_status()
+            opps = r.json().get("opportunities", [])
+            pipeline_counts.append({"name": pipe["name"], "count": len(opps)})
+        except Exception:
+            # If one pipeline fails, skip it rather than fail the whole widget
+            pipeline_counts.append({"name": pipe["name"], "count": None})
+
+    pipeline_counts.sort(key=lambda x: (x["count"] is None, -(x["count"] or 0)))
+    total = sum(p["count"] for p in pipeline_counts if p["count"] is not None)
+
+    return {"pipelines": pipeline_counts,
+            "total": total,
+            "pipeline_count": len(pipeline_counts),
             "last_success": last_success("ghl.opportunities"),
             "as_of": datetime.now(timezone.utc).isoformat()}
