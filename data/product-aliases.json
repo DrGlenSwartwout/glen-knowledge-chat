@@ -1,51 +1,141 @@
 {
-  "_comment": "Maps clinical names (the names Glen says) to canonical catalog products. Bot uses this to inject the right product URL when a formulation is mentioned. Loaded at startup from this file — edit + redeploy to update.",
+  "_comment": "Maps clinical names (the names Glen says) to canonical catalog products. Bot uses this to inject the right product URL when a formulation is mentioned. Loaded at startup from this file \u2014 edit + redeploy to update.",
   "_updated": "2026-04-27",
   "_source": "00 System/remedymatch-product-inventory.json + Glen's clinical-qa entries",
-
   "aliases": {
-    "Synergy C":                  { "catalog_name": "Vitamin C Syntropy",        "url": "https://remedymatch.com/remedies/syntropy/112-vitamin-c-syntropy" },
-    "Vitamin C Syntropy":         { "catalog_name": "Vitamin C Syntropy",        "url": "https://remedymatch.com/remedies/syntropy/112-vitamin-c-syntropy" },
-
-    "Terrain Restore":            { "catalog_name": "Terrain Restore",           "url": "https://remedymatch.com/search?controller=search&search_query=Terrain+Restore" },
-
-    "WholOmega":                  { "catalog_name": "WholOmega",                 "url": "https://remedymatch.com/remedies/syntropy/82-wholomega" },
-    "Whole Omega":                { "catalog_name": "WholOmega",                 "url": "https://remedymatch.com/remedies/syntropy/82-wholomega" },
-    "WholOmega 120":              { "catalog_name": "WholOmega 120 capsules",    "url": "https://remedymatch.com/remedies/syntropy/237-wholomega-120-capsules" },
-
-    "Macular Wellness":           { "catalog_name": "Macular Wellness Program",  "url": "https://remedymatch.com/remedies/program/464-macular-wellness-program" },
-    "Macular Wellness Program":   { "catalog_name": "Macular Wellness Program",  "url": "https://remedymatch.com/remedies/program/464-macular-wellness-program" },
-    "Macular Wellness Lutein":    { "catalog_name": "Macular Wellness Lutein",   "url": "https://remedymatch.com/remedies/syntropy/67-macular-wellness-lutein" },
-    "Macular Wellness Zeaxanthin":{ "catalog_name": "Macular Wellness Zeaxanthin","url": "https://remedymatch.com/remedies/syntropy/69-macular-wellness-zeaxanthin" },
-    "Macular Wellness Meso-Zeaxanthin":{ "catalog_name": "Macular Wellness Meso-Zeaxanthin","url": "https://remedymatch.com/remedies/syntropy/70-macular-wellness-mesozeaxanthin" },
-    "Macular Wellness Astaxanthin":{ "catalog_name": "Macular Wellness Astaxanthin","url": "https://remedymatch.com/remedies/syntropy/65-macular-wellness-astaxanthin" },
-    "Macular Wellness Lycopene":  { "catalog_name": "Macular Wellness Lycopene", "url": "https://remedymatch.com/remedies/syntropy/358-macular-wellness-lycopene" },
-    "Macular Wellness Crocin":    { "catalog_name": "Macular Wellness Crocin",   "url": "https://remedymatch.com/remedies/syntropy/236-macular-wellness-crocin" },
-    "Macular Wellness Safranal":  { "catalog_name": "Macular Wellness Safranal", "url": "https://remedymatch.com/remedies/syntropy/68-macular-wellness-safranal" },
-
-    "Neuro Magnesium":            { "catalog_name": "Neuro Magnesium",           "url": "https://remedymatch.com/search?controller=search&search_query=Neuro+Magnesium" },
-    "Neuro-Magnesium":            { "catalog_name": "Neuro Magnesium",           "url": "https://remedymatch.com/search?controller=search&search_query=Neuro+Magnesium" },
-
-    "Molecular Hydrogen Tablets": { "catalog_name": "Molecular Hydrogen Tablets","url": "https://remedymatch.com/remedies/378-molecular-hydrogen-tablets" },
-    "Molecular Hydrogen":         { "catalog_name": "Molecular Hydrogen (portable bottle)", "url": "https://remedymatch.com/resources/439-molecular-hydrogen",
-                                    "note": "Portable molecular-hydrogen bottle — Glen's recommended replacement for the discontinued Living Water Bottle. Generates molecular-hydrogen-rich water via electrolysis." },
-    "Hydrogen Bottle":            { "catalog_name": "Molecular Hydrogen (portable bottle)", "url": "https://remedymatch.com/resources/439-molecular-hydrogen" },
-    "Portable Molecular Hydrogen Bottle":{ "catalog_name": "Molecular Hydrogen (portable bottle)", "url": "https://remedymatch.com/resources/439-molecular-hydrogen" },
-
-    "Litewater":                  { "catalog_name": "Litewater",                 "url": "https://remedymatch.com/remedies/541-litewater" },
-    "CDS Water Purifier":         { "catalog_name": "CDS Water Purifier & Activator", "url": "https://remedymatch.com/remedies/syntropy/366-cds-water-purifier--activator" },
-
-    "Scar Silk":                  { "catalog_name": "Scar Silk",                 "url": "https://remedymatch.com/remedies/syntropy/551-scar-silk" },
-    "Nerve Repair":               { "catalog_name": "Nerve Repair",              "url": "https://remedymatch.com/remedies/syntropy/550-nerve-repair" },
-    "Wash & Rinse":               { "catalog_name": "Wash & Rinse",              "url": "https://remedymatch.com/remedies/syntropy/543-wash--rinse" },
-    "Electrolyte Mineral Manna":  { "catalog_name": "Electrolyte Mineral Manna", "url": "https://remedymatch.com/remedies/syntropy/542-electrolyte-mineral-manna" },
-    "C15 Syntropy":               { "catalog_name": "C15 Syntropy: Pentadecanoic Acid", "url": "https://remedymatch.com/remedies/533-c15-syntropy-pentadecanoic-acid" },
-
-    "Living Water":               { "catalog_name": "Molecular Hydrogen (portable bottle)", "url": "https://remedymatch.com/resources/439-molecular-hydrogen",
-                                    "note": "Living Water is the CONCEPT — alkaline ionized + molecular hydrogen. The recommended PRODUCT for clients is the portable Molecular Hydrogen bottle at the URL. The earlier 'Living Water Bottle' (prill-bead system) is DEPRECATED and no longer sold." }
+    "Synergy C": {
+      "catalog_name": "Vitamin C Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/112-vitamin-c-syntropy"
+    },
+    "Vitamin C Syntropy": {
+      "catalog_name": "Vitamin C Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/112-vitamin-c-syntropy"
+    },
+    "Terrain Restore": {
+      "catalog_name": "Terrain Restore",
+      "url": "https://remedymatch.com/search?controller=search&search_query=Terrain+Restore"
+    },
+    "WholOmega": {
+      "catalog_name": "WholOmega",
+      "url": "https://remedymatch.com/remedies/syntropy/82-wholomega"
+    },
+    "Whole Omega": {
+      "catalog_name": "WholOmega",
+      "url": "https://remedymatch.com/remedies/syntropy/82-wholomega"
+    },
+    "WholOmega 120": {
+      "catalog_name": "WholOmega 120 capsules",
+      "url": "https://truly.vip/wholomega-120-capsules",
+      "canonical_url": "https://remedymatch.com/remedies/syntropy/237-wholomega-120-capsules"
+    },
+    "Macular Wellness": {
+      "catalog_name": "Macular Wellness Program",
+      "url": "https://truly.vip/macular-wellness-program",
+      "canonical_url": "https://remedymatch.com/remedies/program/464-macular-wellness-program"
+    },
+    "Macular Wellness Program": {
+      "catalog_name": "Macular Wellness Program",
+      "url": "https://truly.vip/macular-wellness-program",
+      "canonical_url": "https://remedymatch.com/remedies/program/464-macular-wellness-program"
+    },
+    "Macular Wellness Lutein": {
+      "catalog_name": "Macular Wellness Lutein",
+      "url": "https://remedymatch.com/remedies/syntropy/67-macular-wellness-lutein"
+    },
+    "Macular Wellness Zeaxanthin": {
+      "catalog_name": "Macular Wellness Zeaxanthin",
+      "url": "https://remedymatch.com/remedies/syntropy/69-macular-wellness-zeaxanthin"
+    },
+    "Macular Wellness Meso-Zeaxanthin": {
+      "catalog_name": "Macular Wellness Meso-Zeaxanthin",
+      "url": "https://remedymatch.com/remedies/syntropy/70-macular-wellness-mesozeaxanthin"
+    },
+    "Macular Wellness Astaxanthin": {
+      "catalog_name": "Macular Wellness Astaxanthin",
+      "url": "https://remedymatch.com/remedies/syntropy/65-macular-wellness-astaxanthin"
+    },
+    "Macular Wellness Lycopene": {
+      "catalog_name": "Macular Wellness Lycopene",
+      "url": "https://truly.vip/macular-wellness-lycopene",
+      "canonical_url": "https://remedymatch.com/remedies/syntropy/358-macular-wellness-lycopene"
+    },
+    "Macular Wellness Crocin": {
+      "catalog_name": "Macular Wellness Crocin",
+      "url": "https://truly.vip/macular-wellness-crocin",
+      "canonical_url": "https://remedymatch.com/remedies/syntropy/236-macular-wellness-crocin"
+    },
+    "Macular Wellness Safranal": {
+      "catalog_name": "Macular Wellness Safranal",
+      "url": "https://remedymatch.com/remedies/syntropy/68-macular-wellness-safranal"
+    },
+    "Neuro Magnesium": {
+      "catalog_name": "Neuro Magnesium",
+      "url": "https://remedymatch.com/search?controller=search&search_query=Neuro+Magnesium"
+    },
+    "Neuro-Magnesium": {
+      "catalog_name": "Neuro Magnesium",
+      "url": "https://remedymatch.com/search?controller=search&search_query=Neuro+Magnesium"
+    },
+    "Molecular Hydrogen Tablets": {
+      "catalog_name": "Molecular Hydrogen Tablets",
+      "url": "https://truly.vip/molecular-hydrogen-tablets",
+      "canonical_url": "https://remedymatch.com/remedies/378-molecular-hydrogen-tablets"
+    },
+    "Molecular Hydrogen": {
+      "catalog_name": "Molecular Hydrogen (portable bottle)",
+      "url": "https://remedymatch.com/resources/439-molecular-hydrogen",
+      "note": "Portable molecular-hydrogen bottle \u2014 Glen's recommended replacement for the discontinued Living Water Bottle. Generates molecular-hydrogen-rich water via electrolysis."
+    },
+    "Hydrogen Bottle": {
+      "catalog_name": "Molecular Hydrogen (portable bottle)",
+      "url": "https://remedymatch.com/resources/439-molecular-hydrogen"
+    },
+    "Portable Molecular Hydrogen Bottle": {
+      "catalog_name": "Molecular Hydrogen (portable bottle)",
+      "url": "https://remedymatch.com/resources/439-molecular-hydrogen"
+    },
+    "Litewater": {
+      "catalog_name": "Litewater",
+      "url": "https://truly.vip/litewater",
+      "canonical_url": "https://remedymatch.com/remedies/541-litewater"
+    },
+    "CDS Water Purifier": {
+      "catalog_name": "CDS Water Purifier & Activator",
+      "url": "https://truly.vip/cds-water-purifier-activator",
+      "canonical_url": "https://remedymatch.com/remedies/syntropy/366-cds-water-purifier--activator"
+    },
+    "Scar Silk": {
+      "catalog_name": "Scar Silk",
+      "url": "https://truly.vip/scar-silk",
+      "canonical_url": "https://remedymatch.com/remedies/syntropy/551-scar-silk"
+    },
+    "Nerve Repair": {
+      "catalog_name": "Nerve Repair",
+      "url": "https://truly.vip/nerve-repair",
+      "canonical_url": "https://remedymatch.com/remedies/syntropy/550-nerve-repair"
+    },
+    "Wash & Rinse": {
+      "catalog_name": "Wash & Rinse",
+      "url": "https://truly.vip/wash-rinse",
+      "canonical_url": "https://remedymatch.com/remedies/syntropy/543-wash--rinse"
+    },
+    "Electrolyte Mineral Manna": {
+      "catalog_name": "Electrolyte Mineral Manna",
+      "url": "https://truly.vip/electrolyte-mineral-manna",
+      "canonical_url": "https://remedymatch.com/remedies/syntropy/542-electrolyte-mineral-manna"
+    },
+    "C15 Syntropy": {
+      "catalog_name": "C15 Syntropy: Pentadecanoic Acid",
+      "url": "https://truly.vip/c15-syntropy-pentadecanoic-acid",
+      "canonical_url": "https://remedymatch.com/remedies/533-c15-syntropy-pentadecanoic-acid"
+    },
+    "Living Water": {
+      "catalog_name": "Molecular Hydrogen (portable bottle)",
+      "url": "https://remedymatch.com/resources/439-molecular-hydrogen",
+      "note": "Living Water is the CONCEPT \u2014 alkaline ionized + molecular hydrogen. The recommended PRODUCT for clients is the portable Molecular Hydrogen bottle at the URL. The earlier 'Living Water Bottle' (prill-bead system) is DEPRECATED and no longer sold."
+    }
   },
-
   "search_url_pattern": "https://remedymatch.com/search?controller=search&search_query={query}",
-  "store_homepage":     "https://remedymatch.com",
-  "fallback_help_url":  "https://truly.vip/help"
+  "store_homepage": "https://remedymatch.com",
+  "fallback_help_url": "https://truly.vip/help"
 }
