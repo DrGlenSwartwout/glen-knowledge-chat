@@ -402,6 +402,35 @@ def chat():
     return resp
 
 
+@app.route("/me", methods=["GET"])
+def me():
+    """Return the most recent contact info logged against the current
+    session cookie. Lets the front-end autofill name/email/frequency for
+    a returning visitor even when localStorage has been cleared.
+
+    No auth required — the session cookie itself is the identity claim.
+    Returns 200 with {} when no prior interaction exists.
+    """
+    sid = request.cookies.get("amg_session", "").strip()
+    if not sid:
+        return jsonify({})
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        # Most recent row with any contact info attached
+        row = cx.execute(
+            """SELECT email, name FROM query_log
+               WHERE session_id = ? AND (email != '' OR name != '')
+               ORDER BY id DESC LIMIT 1""",
+            (sid,)
+        ).fetchone()
+    if not row:
+        return jsonify({})
+    return jsonify({
+        "email": row["email"] or "",
+        "name":  row["name"] or "",
+    })
+
+
 @app.route("/rate", methods=["POST", "OPTIONS"])
 def rate():
     if request.method == "OPTIONS":

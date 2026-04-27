@@ -203,7 +203,9 @@
   }
   .optin-field input:focus { border-color: var(--accent); }
   .optin-field input::placeholder { color: var(--text-muted); opacity: 0.6; }
-  .freq-group { display: flex; gap: 3px; align-items: center; margin-left: 4px; }
+  .optin-consent { display: flex; flex-direction: column; gap: 4px; margin-left: 4px; flex: 1; }
+  .consent-text { font-size: 11px; color: var(--text-muted); line-height: 1.3; }
+  .freq-group { display: flex; gap: 3px; align-items: center; }
   .freq-group label {
     font-size: 11px; color: var(--text-muted); cursor: pointer;
     padding: 3px 8px; border: 1px solid var(--border);
@@ -560,11 +562,14 @@
         <label>Email</label>
         <input type="email" id="optin-email" placeholder="optional">
       </div>
-      <div class="freq-group">
-        <label class="active"><input type="radio" name="frequency" value="" checked><span>None</span></label>
-        <label><input type="radio" name="frequency" value="monthly"><span>Monthly</span></label>
-        <label><input type="radio" name="frequency" value="weekly"><span>Weekly</span></label>
-        <label><input type="radio" name="frequency" value="daily"><span>Daily</span></label>
+      <div class="optin-consent">
+        <span class="consent-text">Receive emails from Dr. Glen — education, events, special offers. Change cadence or unsubscribe anytime.</span>
+        <div class="freq-group">
+          <label class="active"><input type="radio" name="frequency" value="" checked><span>None</span></label>
+          <label><input type="radio" name="frequency" value="monthly"><span>Monthly</span></label>
+          <label><input type="radio" name="frequency" value="weekly"><span>Weekly</span></label>
+          <label><input type="radio" name="frequency" value="daily"><span>Daily</span></label>
+        </div>
       </div>
     </div>
     <div id="suggestion-bar">
@@ -624,7 +629,46 @@
     if (q) document.getElementById('suggested-q').textContent = q;
   }
 
-  // Wire ask-level radio buttons
+  // Cookie/localStorage autofill — restore name, email, frequency for
+  // returning visitors. (Logged-in autofill comes in Phase 4 once auth is
+  // wired; this is the no-auth pattern that works immediately.)
+  function restoreContactFromLocalStorage() {
+    try {
+      const e = localStorage.getItem('amg_email');
+      const n = localStorage.getItem('amg_name');
+      const f = localStorage.getItem('amg_frequency');
+      const eEl = document.getElementById('optin-email');
+      const nEl = document.getElementById('optin-name');
+      if (e && eEl && !eEl.value) eEl.value = e;
+      if (n && nEl && !nEl.value) nEl.value = n;
+      if (f !== null) {
+        const radio = document.querySelector(`input[name="frequency"][value="${f}"]`);
+        if (radio) {
+          radio.checked = true;
+          document.querySelectorAll('.freq-group label').forEach(l => l.classList.remove('active'));
+          radio.closest('label').classList.add('active');
+        }
+      }
+    } catch (_) {}
+  }
+
+  function clearStoredContact() {
+    try {
+      localStorage.removeItem('amg_email');
+      localStorage.removeItem('amg_name');
+      localStorage.removeItem('amg_frequency');
+    } catch (_) {}
+    const e = document.getElementById('optin-email'); if (e) e.value = '';
+    const n = document.getElementById('optin-name');  if (n) n.value = '';
+    const noneRadio = document.querySelector('input[name="frequency"][value=""]');
+    if (noneRadio) {
+      noneRadio.checked = true;
+      document.querySelectorAll('.freq-group label').forEach(l => l.classList.remove('active'));
+      noneRadio.closest('label').classList.add('active');
+    }
+  }
+
+  // Wire ask-level radio buttons + restore contact info
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('input[name="ask-level"]').forEach(r => {
       r.addEventListener('change', () => {
@@ -639,6 +683,19 @@
         r.closest('label').classList.add('active');
       });
     });
+    restoreContactFromLocalStorage();
+    // Server-side autofill — if the session cookie identifies a returning
+    // visitor whose email/name we already have in query_log, prefer that
+    // (newer or more authoritative than stale localStorage).
+    fetch('/me', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(d => {
+        const eEl = document.getElementById('optin-email');
+        const nEl = document.getElementById('optin-name');
+        if (d.email && eEl && !eEl.value) eEl.value = d.email;
+        if (d.name  && nEl && !nEl.value) nEl.value = d.name;
+      })
+      .catch(() => {});
   });
 
   // Load feedback URL from server
@@ -747,16 +804,30 @@
     document.getElementById('send-btn').disabled = true;
 
     try {
+      const _name      = (document.getElementById('optin-name').value || '').trim();
+      const _email     = (document.getElementById('optin-email').value || '').trim();
+      const _frequency = (document.querySelector('input[name="frequency"]:checked') || {}).value || '';
+
+      // Persist contact info locally so we can autofill on return visits.
+      // Cleared by clearStoredContact() if user opts out.
+      try {
+        if (_email) localStorage.setItem('amg_email', _email);
+        if (_name)  localStorage.setItem('amg_name', _name);
+        if (_frequency !== undefined && _frequency !== null) {
+          localStorage.setItem('amg_frequency', _frequency);
+        }
+      } catch (_) {}
+
       const resp = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query,
-          history: history.slice(),
+          history:   history.slice(),
           level:     getCurrentLevel(),
-          name:      (document.getElementById('optin-name').value || '').trim(),
-          email:     (document.getElementById('optin-email').value || '').trim(),
-          frequency: (document.querySelector('input[name="frequency"]:checked') || {}).value || ''
+          name:      _name,
+          email:     _email,
+          frequency: _frequency
         })
       });
 
