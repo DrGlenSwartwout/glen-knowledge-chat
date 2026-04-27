@@ -433,6 +433,25 @@ def chat():
         context_str, sources_list = build_context(all_matches)
 
         messages = []
+        # If the front-end didn't send any history (e.g. fresh page load
+        # after browser refresh), fall back to the last 3 Q&A pairs we've
+        # already logged for this session_id. This is the cross-reload
+        # conversation memory layer that makes "Continue with the Bowden
+        # Connection" work after page refresh.
+        if not history and session_id:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                rows = cx.execute(
+                    """SELECT query, answer FROM query_log
+                       WHERE session_id = ?
+                       ORDER BY id DESC LIMIT 3""",
+                    (session_id,),
+                ).fetchall()
+            for r in reversed(rows):  # oldest → newest
+                if r["query"]:
+                    messages.append({"role": "user", "content": r["query"]})
+                if r["answer"]:
+                    messages.append({"role": "assistant", "content": r["answer"]})
         for turn in history[-6:]:
             if turn.get("role") in ("user", "assistant") and turn.get("content"):
                 messages.append({"role": turn["role"], "content": turn["content"]})
@@ -545,6 +564,52 @@ def chat():
             secure=request.is_secure,
         )
     return resp
+
+
+@app.route("/history", methods=["GET"])
+def history():
+    """Return up to N (default 30) most recent Q&A pairs logged against the
+    current session cookie. Drives both:
+      (a) cross-page-reload conversation memory — the front-end re-renders
+          past turns so multi-turn questions work after browser refresh.
+      (b) debugging/development — visibility into what the bot has been
+          answering for any visitor identified by their session cookie.
+
+    Order: oldest → newest (chronological — natural for chat re-render).
+    Image content (extracted_image_data) is included as a separate field
+    when present; image bytes were never stored.
+    """
+    sid = request.cookies.get("amg_session", "").strip()
+    if not sid:
+        return jsonify({"turns": []})
+    try:
+        limit = int(request.args.get("limit", "30"))
+    except (TypeError, ValueError):
+        limit = 30
+    limit = max(1, min(limit, 100))
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute(
+            """SELECT id, ts, query, answer, mode, level, image_count,
+                      extracted_image_data
+               FROM query_log
+               WHERE session_id = ?
+               ORDER BY id DESC LIMIT ?""",
+            (sid, limit),
+        ).fetchall()
+    rows = list(reversed(rows))  # oldest → newest
+    turns = [{
+        "log_id":           r["id"],
+        "ts":               r["ts"],
+        "query":            r["query"] or "",
+        "answer":           r["answer"] or "",
+        "mode":             r["mode"] or "brief",
+        "level":            r["level"] or "self-healing",
+        "image_count":      r["image_count"] or 0,
+        "extracted_image_data": r["extracted_image_data"] or "",
+    } for r in rows]
+    return jsonify({"turns": turns})
 
 
 @app.route("/me", methods=["GET"])

@@ -893,6 +893,39 @@
       }
     } catch (_) {}
     wireDragDrop();
+    // Cross-page-reload conversation memory — hydrate past Q&A from the
+    // server, keyed off the amg_session cookie. Re-renders prior messages
+    // and pushes them into the in-memory history array so the next /chat
+    // call carries the full context.
+    fetch('/history?limit=30', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(d => {
+        if (!d || !d.turns || d.turns.length === 0) return;
+        const empty = document.getElementById('empty-state');
+        if (empty) empty.remove();
+        // Add a one-line "Previously" divider so it's clear these turns
+        // are restored history, not fresh from this session.
+        const msgs = document.getElementById('messages');
+        if (msgs) {
+          const divider = document.createElement('div');
+          divider.className = 'meta-bar';
+          divider.style.opacity = '0.6';
+          divider.style.fontStyle = 'italic';
+          divider.textContent = `— Previously (${d.turns.length} turn${d.turns.length === 1 ? '' : 's'} restored from your earlier visit) —`;
+          msgs.appendChild(divider);
+        }
+        d.turns.forEach(t => {
+          if (t.query) {
+            appendMessage('user', t.query);
+            history.push({ role: 'user', content: t.query });
+          }
+          if (t.answer) {
+            appendMessage('assistant', t.answer, undefined, t.log_id);
+            history.push({ role: 'assistant', content: t.answer });
+          }
+        });
+      })
+      .catch(() => {});
   });
 
   // Load feedback URL from server
