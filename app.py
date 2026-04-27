@@ -14,6 +14,7 @@ except ImportError:
 import os
 import re
 import json
+import uuid
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -74,43 +75,73 @@ def _init_log_db():
                 rated_at    TEXT
             )
         """)
+        # Phase 1 migration — additive columns. Each ALTER wrapped because
+        # SQLite errors if column already exists.
+        for col_def in [
+            "session_id      TEXT",
+            "email           TEXT",
+            "ghl_contact_id  TEXT",
+            "mode            TEXT",
+            "full_answer     TEXT",
+            "name            TEXT",
+            "user_agent      TEXT",
+            "referer         TEXT",
+        ]:
+            try:
+                cx.execute(f"ALTER TABLE query_log ADD COLUMN {col_def}")
+            except sqlite3.OperationalError:
+                pass  # column already exists
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_query_log_session ON query_log(session_id)")
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_query_log_email   ON query_log(email)")
         cx.commit()
 
 _init_log_db()
 
 
-def log_query(query: str, level: str, answer: str) -> int:
+def log_query(query: str, level: str, answer: str,
+              session_id: str = "", email: str = "", name: str = "",
+              ghl_contact_id: str = "", mode: str = "brief",
+              user_agent: str = "", referer: str = "") -> int:
+    """Insert a row into query_log. Always logs, even for anonymous sessions."""
     ts = datetime.now(timezone.utc).isoformat()
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cur = cx.execute(
-            "INSERT INTO query_log (ts, query, level, answer) VALUES (?,?,?,?)",
-            (ts, query, level, answer[:2000])
+            """INSERT INTO query_log
+               (ts, query, level, answer, session_id, email, name,
+                ghl_contact_id, mode, user_agent, referer)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (ts, query, level, answer[:8000], session_id, email, name,
+             ghl_contact_id, mode, user_agent[:500], referer[:500])
         )
         cx.commit()
         return cur.lastrowid
 
 
-_SYSTEM_BASE = """You are Glen Swartwout's knowledge assistant — a deeply informed synthesis engine for his Clinical Theory of Everything, which integrates:
-- BEV terrain medicine (Louis-Claude Vincent's 5 Phases of Health)
-- Bioenergetic diagnostics (EAV/Voll, Vegatest, NES body-field, O-Ring/BDORT)
-- Syntonic Optometry and Behavioral Optometry
-- Orthomolecular and nutritional medicine
-- Spirit Minerals / ORMUS (monatomic elements, Bose-Einstein Condensates)
-- Electromagnetic medicine (PEMF, biophotons, living matrix, EMF sensitivity)
-- Living Universe cosmology (Electric Universe, plasma cosmology)
-- Consciousness science (IONS, HeartMath, morphic resonance)
+_SYSTEM_BASE = """You are Glen Swartwout's knowledge assistant — a synthesis engine for his Clinical Theory of Everything (BEV terrain medicine, Bioenergetic diagnostics, Syntonic/Behavioral Optometry, Orthomolecular medicine, Spirit Minerals/ORMUS, Electromagnetic medicine, Living Universe cosmology, Consciousness science).
 
-Your task:
-1. OPEN WITH A HOOK: Begin with a single compelling sentence — a surprising research finding, a thought-provoking reframe, or a striking quote from the source material. This hook is your first line, before any explanation.
-2. Synthesize the provided source snippets into a unified, coherent answer to the user's question.
-3. When multiple mentors or concepts connect, explicitly show how they reinforce each other.
-4. At the end of your response, list the source references used (name + field).
-5. Do NOT fabricate information not present in the snippets. If the snippets don't fully answer the question, say so clearly.
-6. Keep responses focused and readable — prefer synthesis over exhaustive lists.
-7. AUTHORITATIVE OVERRIDES: When a snippet's metadata indicates type="clinical-qa" or priority="authoritative", treat its guidance as Glen's verified clinical position. It overrides anything you might infer from other snippets or general knowledge. Do not soften, hedge, or contradict authoritative snippets — apply them directly.
-7a. CO-AUTHORSHIP HANDLING: When a snippet carries an [AUTHORSHIP NOTE: ...] marker, the section in question reflects a co-author's view, not Glen's current clinical position. Cite the source (e.g., "Marc Grossman, OD's section in Natural Eye Care recommends X"), acknowledge the authorship distinction, and then state Glen's current position from the authoritative clinical-qa entries. Never present a co-authored section as if it were Glen's view without flagging the distinction.
-8. E4L SCAN OFFER: When the user mentions a specific health condition, symptom pattern, or asks for personalized guidance (e.g., wet AMD, drusen, retinal issues, gut symptoms, neurological symptoms, hormonal patterns, energy issues, etc.), end your response with a brief, warm offer for a free Bioenergetic Wellness System (BWS) voice scan. Format: "For personalized remedy recommendations matched to your specific bioenergetic patterns, you can take a free voice scan at https://Truly.VIP/uak — it takes 30 seconds (count from 1 to 10) and matches you to the formulations your body is asking for." Do not include this offer for purely educational/abstract questions or when the user explicitly does not want a recommendation.
-9. PRODUCT REFERENCES: When you name a specific Glen Swartwout formulation (e.g., Terrain Restore, Living Water Bottle, Neuro-Magnesium, WholOmega, Macular Wellness, Synergy C, etc.), tell the user it's available at https://remedymatch.com — they can search for the formulation by name, or contact the team at https://truly.vip/help to be matched to the right product. Do not invent product URLs. If you don't know whether a specific product page exists, link to remedymatch.com and let the user search."""
+DEFAULT FORMAT — EXECUTIVE SUMMARY:
+Write like a senior consultant briefing a busy clinician. Lead with the highest-leverage action. Be tight, scannable, decisive. Target ~200 words.
+
+STRUCTURE:
+1. **Hook** (1 sentence): the most surprising or decisive insight from the snippets — the thing they need to hear first.
+2. **Top action** (1-2 sentences): the single highest-leverage step they should take. Include an action link if relevant (E4L scan, product page, contact).
+3. **Brief rationale** (2-4 bullets, max 1 line each): the mechanism or evidence in compressed form.
+4. **Action link**: the single best next step as a clickable URL on its own line — examples:
+   - Free BWS voice scan: https://Truly.VIP/uak
+   - Product: https://remedymatch.com (search by name)
+   - Contact for matching: https://truly.vip/help
+5. **Sources** (1 line, comma-separated): name + field of references used.
+
+OPTIONAL EXTENDED FORMAT (only when mode=full or user explicitly asks for the full breakdown):
+Expand each bullet with mechanism, dosage ranges, supporting citations, and edge cases. Aim for clinical depth.
+
+RULES:
+- Do NOT fabricate. If snippets don't answer, say "the source material doesn't address this directly."
+- Do NOT pad with caveats, headers, or repeated context. Brevity is the deliverable.
+- AUTHORITATIVE OVERRIDES: Snippets tagged [AUTHORITATIVE — Glen's verified clinical position] OR with metadata type="clinical-qa" / priority="authoritative" override anything else. Apply directly; do not soften or hedge.
+- CO-AUTHORSHIP: Snippets with [AUTHORSHIP NOTE: ...] reflect a co-author's view. Cite the co-author, then state Glen's current position from clinical-qa entries. Never present a co-authored section as Glen's view without the flag.
+- E4L SCAN OFFER: When the user mentions a specific condition or asks for personalized guidance, the action link should be the free BWS voice scan: https://Truly.VIP/uak — "30 seconds, count 1 to 10, matches you to formulations your bioenergetic patterns are asking for."
+- PRODUCT REFERENCES: When naming a Glen Swartwout formulation (Terrain Restore, Living Water, Neuro-Magnesium, WholOmega, Macular Wellness, Synergy C, etc.), include the remedymatch.com link. Do NOT invent product URLs."""
 
 _LEVEL_INSTRUCTIONS = {
     "self-healing": """
@@ -232,6 +263,18 @@ def chat():
     name      = (data.get("name") or "").strip()
     email     = (data.get("email") or "").strip()
     frequency = (data.get("frequency") or "").strip()
+    mode      = (data.get("mode") or "brief").strip().lower()
+    if mode not in ("brief", "full"):
+        mode = "brief"
+
+    # Phase 1 — universal session tracking. Read existing cookie or mint one.
+    session_id = (
+        request.cookies.get("amg_session")
+        or (data.get("session_id") or "").strip()
+        or uuid.uuid4().hex
+    )
+    user_agent = request.headers.get("User-Agent", "")
+    referer    = request.headers.get("Referer", "")
 
     if not query:
         return jsonify({"error": "Empty query"}), 400
@@ -247,7 +290,8 @@ def chat():
 
         if not all_matches:
             yield sse({"done": True, "answer": "No relevant content found.",
-                       "sources": [], "chunks_retrieved": 0, "log_id": None})
+                       "sources": [], "chunks_retrieved": 0, "log_id": None,
+                       "session_id": session_id, "mode": mode})
             return
 
         context_str, sources_list = build_context(all_matches)
@@ -257,16 +301,28 @@ def chat():
             if turn.get("role") in ("user", "assistant") and turn.get("content"):
                 messages.append({"role": turn["role"], "content": turn["content"]})
 
+        synth_instr = (
+            "Produce the EXTENDED FORMAT response — full clinical depth, "
+            "mechanism, dosage ranges, supporting citations, edge cases. "
+            "List sources at the end."
+            if mode == "full" else
+            "Produce the DEFAULT EXECUTIVE SUMMARY response — Hook, Top action, "
+            "2-4 bullet rationale, single action link, source line. ~200 words. "
+            "Tight and decisive."
+        )
         messages.append({"role": "user", "content":
             f"USER QUESTION: {query}\n\nRETRIEVED SNIPPETS:\n{context_str}\n\n"
-            "Synthesize these into a comprehensive answer. List sources used at the end."
+            f"{synth_instr}"
         })
+
+        # Brief mode: 1024 tokens (≈700 words headroom). Full mode: 4096.
+        max_tok = 4096 if mode == "full" else 1024
 
         full_answer = []
         try:
             with _cl.messages.stream(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=4096,
+                max_tokens=max_tok,
                 system=get_system_prompt(level),
                 messages=messages
             ) as stream:
@@ -278,7 +334,11 @@ def chat():
             return
 
         answer = "".join(full_answer)
-        log_id = log_query(query, level, answer)
+        log_id = log_query(
+            query, level, answer,
+            session_id=session_id, email=email, name=name,
+            mode=mode, user_agent=user_agent, referer=referer,
+        )
 
         # GHL onboarding for email opt-ins (non-blocking)
         if email:
@@ -314,9 +374,10 @@ def chat():
 
         yield sse({"done": True, "log_id": log_id,
                    "sources": sources_list, "chunks_retrieved": len(all_matches),
-                   "next_question": next_question})
+                   "next_question": next_question,
+                   "session_id": session_id, "mode": mode})
 
-    return Response(
+    resp = Response(
         stream_with_context(generate()),
         content_type="text/event-stream",
         headers={
@@ -324,6 +385,16 @@ def chat():
             "X-Accel-Buffering": "no",
         }
     )
+    # Persist the session cookie for ~1 year so returning visitors keep their
+    # thread of questions tied to the same anonymous session.
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie(
+            "amg_session", session_id,
+            max_age=60 * 60 * 24 * 365,
+            httponly=True, samesite="Lax",
+            secure=request.is_secure,
+        )
+    return resp
 
 
 @app.route("/rate", methods=["POST", "OPTIONS"])

@@ -474,6 +474,18 @@
   .action-btn.copied { border-color: var(--accent2); color: var(--accent2); }
   .action-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
 
+  /* Quiet copy button — icon-only, low contrast, no border (Glen spec). */
+  .action-btn.quiet {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    opacity: 0.45;
+    padding: 4px 6px;
+    gap: 0;
+  }
+  .action-btn.quiet:hover { opacity: 1; color: var(--accent); }
+  .action-btn.quiet.copied { opacity: 1; color: var(--accent2); }
+
   /* Share popover */
   .share-wrap { position: relative; }
   .share-popover {
@@ -838,9 +850,8 @@
     // Action bar only on assistant messages
     const actionsHtml = role === 'assistant' ? `
       <div class="msg-actions">
-        <button class="action-btn" onclick="copyMessage('${msgId}')" id="copy-${msgId}">
+        <button class="action-btn quiet" onclick="copyMessage('${msgId}')" id="copy-${msgId}" title="Copy question and answer as plain text" aria-label="Copy Q&amp;A">
           <svg viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
-          Copy
         </button>
         <div class="share-wrap">
           <button class="action-btn" onclick="toggleShare('${msgId}', event)">
@@ -970,19 +981,34 @@
     return el ? (el.dataset.rawText || '') : '';
   }
 
+  // Build "Q: ...\n\nA: ..." plain text from this assistant message + its
+  // preceding user question. Falls back to just the answer if no prior user.
+  function getQAPairText(msgId) {
+    const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+    if (!el) return '';
+    const answer = el.dataset.rawText || '';
+    let question = '';
+    let prev = el.previousElementSibling;
+    while (prev) {
+      if (prev.classList && prev.classList.contains('message') && prev.classList.contains('user')) {
+        question = prev.dataset.rawText || '';
+        break;
+      }
+      prev = prev.previousElementSibling;
+    }
+    if (!question) return answer;
+    return `Q: ${question}\n\nA: ${answer}`;
+  }
+
   async function copyMessage(msgId) {
-    const text = getMsgText(msgId);
+    const text = getQAPairText(msgId);
     const btn = document.getElementById('copy-' + msgId);
+    const restore = () => { btn.classList.remove('copied'); };
     try {
       await navigator.clipboard.writeText(text);
       btn.classList.add('copied');
-      btn.innerHTML = btn.innerHTML.replace('Copy', 'Copied!');
-      setTimeout(() => {
-        btn.classList.remove('copied');
-        btn.innerHTML = btn.innerHTML.replace('Copied!', 'Copy');
-      }, 2000);
+      setTimeout(restore, 1500);
     } catch {
-      // Fallback for older browsers
       const ta = document.createElement('textarea');
       ta.value = text;
       ta.style.position = 'fixed'; ta.style.opacity = '0';
@@ -990,6 +1016,8 @@
       ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
+      btn.classList.add('copied');
+      setTimeout(restore, 1500);
     }
   }
 
