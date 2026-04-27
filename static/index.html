@@ -612,25 +612,6 @@
         <label><input type="radio" name="ask-level" value="science"><span>the sciences</span></label>
       </div>
     </div>
-    <div id="optin-bar">
-      <div class="optin-field">
-        <label>Name</label>
-        <input type="text" id="optin-name" placeholder="optional">
-      </div>
-      <div class="optin-field">
-        <label>Email</label>
-        <input type="email" id="optin-email" placeholder="optional">
-      </div>
-      <div class="optin-consent">
-        <span class="consent-text">Receive emails from Dr. Glen</span>
-        <div class="freq-group">
-          <label class="active"><input type="radio" name="frequency" value="" checked><span>None</span></label>
-          <label><input type="radio" name="frequency" value="monthly"><span>Monthly</span></label>
-          <label><input type="radio" name="frequency" value="weekly"><span>Weekly</span></label>
-          <label><input type="radio" name="frequency" value="daily"><span>Daily</span></label>
-        </div>
-      </div>
-    </div>
     <div id="image-consent-bar">
       <input type="checkbox" id="image-consent" />
       <label for="image-consent">
@@ -652,13 +633,32 @@
     <div id="input-bar">
       <textarea
         id="query-input"
-        placeholder="Ask about mentors, clinical theory, energy medicine, organizations…"
+        placeholder="Ask about self-healing, clinical praxis, clinical theory…"
         rows="1"
         onkeydown="handleKey(event)"
         oninput="autoResize(this)"
         onpaste="handlePaste(event)"
       ></textarea>
       <button id="send-btn" onclick="sendQuery()">Send</button>
+    </div>
+    <div id="optin-bar">
+      <div class="optin-field">
+        <label>Name</label>
+        <input type="text" id="optin-name" placeholder="optional">
+      </div>
+      <div class="optin-field">
+        <label>Email</label>
+        <input type="email" id="optin-email" placeholder="optional">
+      </div>
+      <div class="optin-consent">
+        <span class="consent-text">Receive emails from Dr. Glen</span>
+        <div class="freq-group">
+          <label class="active"><input type="radio" name="frequency" value="" checked><span>None</span></label>
+          <label><input type="radio" name="frequency" value="monthly"><span>Monthly</span></label>
+          <label><input type="radio" name="frequency" value="weekly"><span>Weekly</span></label>
+          <label><input type="radio" name="frequency" value="daily"><span>Daily</span></label>
+        </div>
+      </div>
     </div>
     <div id="feedback-bar">
       <a id="feedback-submit-link" href="https://Truly.VIP/Results" target="_blank">Leave feedback or a video message ↗</a>
