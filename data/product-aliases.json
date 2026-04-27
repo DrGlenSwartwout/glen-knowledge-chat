@@ -27,6 +27,10 @@
     "Neuro-Magnesium":            { "catalog_name": "Neuro Magnesium",           "url": "https://remedymatch.com/search?controller=search&search_query=Neuro+Magnesium" },
 
     "Molecular Hydrogen Tablets": { "catalog_name": "Molecular Hydrogen Tablets","url": "https://remedymatch.com/remedies/378-molecular-hydrogen-tablets" },
+    "Molecular Hydrogen":         { "catalog_name": "Molecular Hydrogen (portable bottle)", "url": "https://remedymatch.com/resources/439-molecular-hydrogen",
+                                    "note": "Portable molecular-hydrogen bottle — Glen's recommended replacement for the discontinued Living Water Bottle. Generates molecular-hydrogen-rich water via electrolysis." },
+    "Hydrogen Bottle":            { "catalog_name": "Molecular Hydrogen (portable bottle)", "url": "https://remedymatch.com/resources/439-molecular-hydrogen" },
+    "Portable Molecular Hydrogen Bottle":{ "catalog_name": "Molecular Hydrogen (portable bottle)", "url": "https://remedymatch.com/resources/439-molecular-hydrogen" },
 
     "Litewater":                  { "catalog_name": "Litewater",                 "url": "https://remedymatch.com/remedies/541-litewater" },
     "CDS Water Purifier":         { "catalog_name": "CDS Water Purifier & Activator", "url": "https://remedymatch.com/remedies/syntropy/366-cds-water-purifier--activator" },
@@ -37,8 +41,8 @@
     "Electrolyte Mineral Manna":  { "catalog_name": "Electrolyte Mineral Manna", "url": "https://remedymatch.com/remedies/syntropy/542-electrolyte-mineral-manna" },
     "C15 Syntropy":               { "catalog_name": "C15 Syntropy: Pentadecanoic Acid", "url": "https://remedymatch.com/remedies/533-c15-syntropy-pentadecanoic-acid" },
 
-    "Living Water":               { "catalog_name": null, "url": null,
-                                    "note": "Concept, not a single product. Bot should describe (alkaline ionized + molecular hydrogen) and route to portable molecular-hydrogen bottle (third-party) or Molecular Hydrogen Tablets. The Living Water Bottle is DEPRECATED." }
+    "Living Water":               { "catalog_name": "Molecular Hydrogen (portable bottle)", "url": "https://remedymatch.com/resources/439-molecular-hydrogen",
+                                    "note": "Living Water is the CONCEPT — alkaline ionized + molecular hydrogen. The recommended PRODUCT for clients is the portable Molecular Hydrogen bottle at the URL. The earlier 'Living Water Bottle' (prill-bead system) is DEPRECATED and no longer sold." }
   },
 
   "search_url_pattern": "https://remedymatch.com/search?controller=search&search_query={query}",
