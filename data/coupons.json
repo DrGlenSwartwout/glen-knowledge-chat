@@ -1,0 +1,24 @@
+{
+  "_comment": "Daily-rotating discount codes for Functional Formulations / Syntropy line. Each code is created manually in GrooveKart admin (Coupons → New) by Glen or Shaira, with the dates and discount % matching what's set here. The bot reads `today_code` based on current HST date and includes it inline in product references. The expectation is 24-hour expiry per code (single calendar day HST). Refill 7-30 codes at a time.",
+  "_updated": "2026-04-27",
+  "_timezone": "Pacific/Honolulu",
+  "_discount_percent": 5,
+  "_groovekart_admin_url": "https://app.groove.cm/groovekart/coupons",
+  "_creation_steps_for_glen_or_shaira": [
+    "1. Open https://app.groove.cm/groovekart/coupons",
+    "2. Click + New Coupon",
+    "3. Name: ASKDRGLEN-YYYYMMDD (the date this code is valid)",
+    "4. Type: Percentage",
+    "5. Amount: 5",
+    "6. Start date: that calendar day 00:00 HST",
+    "7. End date: that calendar day 23:59 HST",
+    "8. Usage limit per coupon: leave default (or set if you want to cap)",
+    "9. Apply to: Functional Formulations / Syntropy collection (or all products)",
+    "10. Save",
+    "11. Add the code + date to the daily_codes array below",
+    "12. Repeat for the next 7-30 days; re-fill when running low"
+  ],
+
+  "default_code": "",
+  "daily_codes": []
+}

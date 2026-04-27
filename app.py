@@ -58,6 +58,73 @@ _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
 _cl  = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
 
+
+# ── Phase 3 — product alias map + daily coupon ───────────────────────────────
+DATA_DIR = Path(__file__).parent / "data"
+
+def _load_json(path: Path, default):
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[warn] could not load {path}: {e}", flush=True)
+    return default
+
+_PRODUCT_ALIASES = _load_json(DATA_DIR / "product-aliases.json",
+                              default={"aliases": {}, "store_homepage": "https://remedymatch.com"})
+_COUPONS         = _load_json(DATA_DIR / "coupons.json",
+                              default={"default_code": "", "daily_codes": []})
+
+
+def get_today_coupon_code():
+    """Return today's coupon code (HST timezone) from coupons.json, or ''.
+    Format expected in coupons.json:
+      daily_codes: [{"date": "2026-04-27", "code": "ASKDRGLEN-20260427"}]
+    """
+    try:
+        from datetime import datetime, timedelta
+        # HST = UTC-10 (no DST)
+        hst = datetime.now(timezone.utc) - timedelta(hours=10)
+        today = hst.strftime("%Y-%m-%d")
+        for entry in (_COUPONS.get("daily_codes") or []):
+            if entry.get("date") == today and entry.get("code"):
+                return entry["code"]
+    except Exception:
+        pass
+    return _COUPONS.get("default_code", "") or ""
+
+
+def build_product_directive():
+    """Build the per-request product-routing directive injected into the
+    synthesis prompt. Includes the alias map and today's coupon if any.
+    """
+    aliases = _PRODUCT_ALIASES.get("aliases", {}) or {}
+    if not aliases:
+        return ""
+    code = get_today_coupon_code()
+    discount = _COUPONS.get("_discount_percent", 5)
+
+    lines = [
+        "PRODUCT LINK INJECTION TABLE — when you mention any of the LEFT-side names "
+        "in your answer, append the URL on the RIGHT immediately after the product "
+        "name, formatted as a markdown link, e.g. [Terrain Restore](URL)."
+    ]
+    for clinical_name, info in sorted(aliases.items()):
+        if info.get("url"):
+            lines.append(f"  • {clinical_name} → {info['url']}")
+        elif info.get("note"):
+            lines.append(f"  • {clinical_name} → DESCRIBE-ONLY: {info['note']}")
+
+    if code:
+        lines.append(
+            f"\nACTIVE DISCOUNT: today's code is `{code}` for {discount}% off "
+            f"Functional Formulations / Syntropy products. Include the code "
+            f"naturally in product recommendations: \"Use code {code} at checkout "
+            f"for {discount}% off (today only).\" Mention it ONCE per response, "
+            f"only when at least one product is recommended."
+        )
+    return "\n".join(lines)
+
 # ── Query log DB ──────────────────────────────────────────────────────────────
 LOG_DB   = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "chat_log.db"
 _db_lock = threading.Lock()
@@ -242,8 +309,9 @@ RULES:
 - AUTHORITATIVE OVERRIDES: Snippets tagged [AUTHORITATIVE — Glen's verified clinical position] OR with metadata type="clinical-qa" / priority="authoritative" override anything else. Apply directly; do not soften or hedge.
 - CO-AUTHORSHIP: Snippets with [AUTHORSHIP NOTE: ...] reflect a co-author's view. Cite the co-author, then state Glen's current position from clinical-qa entries. Never present a co-authored section as Glen's view without the flag.
 - E4L SCAN OFFER: When the user mentions a specific condition or asks for personalized guidance, the action link should be the free BWS voice scan: https://Truly.VIP/uak — "30 seconds, count 1 to 10, matches you to formulations your bioenergetic patterns are asking for."
-- PRODUCT REFERENCES: When naming a Glen Swartwout formulation (Terrain Restore, Neuro-Magnesium, WholOmega, Macular Wellness, Vitamin C Syntropy, Molecular Hydrogen Tablets, etc.), include the remedymatch.com link. Do NOT invent product URLs.
-- DEPRECATED PRODUCTS: The "Living Water Bottle" (prill-bead system) is DISCONTINUED as of 2026-04-27 and must NOT be recommended as a purchasable product. The Living Water concept (alkaline ionized water + molecular hydrogen) remains Glen's clinical recommendation, but route clients to a portable molecular-hydrogen bottle (third-party) or to Molecular Hydrogen Tablets at https://remedymatch.com/remedies/378-molecular-hydrogen-tablets. If a snippet has metadata `deprecated=true`, treat its product references as historical only — do not present discontinued products as available."""
+- PRODUCT REFERENCES: Each request includes a PRODUCT LINK INJECTION TABLE listing every Glen Swartwout formulation by its clinical name and the canonical URL to use. When you mention a product, append the URL as a markdown link immediately after the name, e.g. [Terrain Restore](URL). Do NOT invent URLs. If a product isn't in the table, link to the search URL pattern from the table or the store homepage instead.
+- ACTIVE DISCOUNT CODE: When the request includes an ACTIVE DISCOUNT block, include today's code naturally — once per response, only when at least one product is recommended.
+- DEPRECATED PRODUCTS: The "Living Water Bottle" (prill-bead system) is DISCONTINUED as of 2026-04-27 and must NOT be recommended as a purchasable product. The Living Water concept (alkaline ionized water + molecular hydrogen) remains Glen's clinical recommendation, but route clients to a portable molecular-hydrogen bottle (third-party) or to [Molecular Hydrogen Tablets](https://remedymatch.com/remedies/378-molecular-hydrogen-tablets). If a snippet has metadata `deprecated=true`, treat its product references as historical only — do not present discontinued products as available."""
 
 _LEVEL_INSTRUCTIONS = {
     "self-healing": """
@@ -475,10 +543,14 @@ def chat():
                 f"context. Quote specific values or labels from it when relevant.\n\n"
             )
 
+        product_directive = build_product_directive()
+        product_block = f"{product_directive}\n\n" if product_directive else ""
+
         messages.append({"role": "user", "content":
             f"USER QUESTION: {query}\n\n"
             f"{image_context}"
             f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
+            f"{product_block}"
             f"{synth_instr}"
         })
 
