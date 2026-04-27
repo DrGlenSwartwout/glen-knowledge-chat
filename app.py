@@ -78,14 +78,16 @@ def _init_log_db():
         # Phase 1 migration — additive columns. Each ALTER wrapped because
         # SQLite errors if column already exists.
         for col_def in [
-            "session_id      TEXT",
-            "email           TEXT",
-            "ghl_contact_id  TEXT",
-            "mode            TEXT",
-            "full_answer     TEXT",
-            "name            TEXT",
-            "user_agent      TEXT",
-            "referer         TEXT",
+            "session_id           TEXT",
+            "email                TEXT",
+            "ghl_contact_id       TEXT",
+            "mode                 TEXT",
+            "full_answer          TEXT",
+            "name                 TEXT",
+            "user_agent           TEXT",
+            "referer              TEXT",
+            "extracted_image_data TEXT",
+            "image_count          INTEGER DEFAULT 0",
         ]:
             try:
                 cx.execute(f"ALTER TABLE query_log ADD COLUMN {col_def}")
@@ -101,20 +103,119 @@ _init_log_db()
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
-              user_agent: str = "", referer: str = "") -> int:
-    """Insert a row into query_log. Always logs, even for anonymous sessions."""
+              user_agent: str = "", referer: str = "",
+              extracted_image_data: str = "", image_count: int = 0) -> int:
+    """Insert a row into query_log. Always logs, even for anonymous sessions.
+
+    Image bytes are NEVER persisted — only the extracted text output of
+    Claude vision (extracted_image_data column) and a count of images
+    contributed to the question.
+    """
     ts = datetime.now(timezone.utc).isoformat()
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cur = cx.execute(
             """INSERT INTO query_log
                (ts, query, level, answer, session_id, email, name,
-                ghl_contact_id, mode, user_agent, referer)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                ghl_contact_id, mode, user_agent, referer,
+                extracted_image_data, image_count)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (ts, query, level, answer[:8000], session_id, email, name,
-             ghl_contact_id, mode, user_agent[:500], referer[:500])
+             ghl_contact_id, mode, user_agent[:500], referer[:500],
+             extracted_image_data[:8000], image_count)
         )
         cx.commit()
         return cur.lastrowid
+
+
+def _normalize_image_payload(images):
+    """Accepts a list of image entries and returns Anthropic-API-shaped image
+    blocks. Each input entry can be either:
+      - {"data": "<base64>", "media_type": "image/png"}
+      - {"data_url": "data:image/png;base64,..."}
+      - "data:image/png;base64,..." (string form for convenience)
+
+    Caps at 3 images per call; rejects entries over MAX_IMAGE_BYTES_B64.
+    Returns (image_blocks, errors).
+    """
+    MAX_IMAGES = 3
+    MAX_IMAGE_BYTES_B64 = 5 * 1024 * 1024 * 4 // 3  # ~5 MB raw → ~6.7 MB base64
+    ALLOWED = ("image/png", "image/jpeg", "image/webp", "image/gif")
+    blocks, errors = [], []
+
+    for i, entry in enumerate(images[:MAX_IMAGES]):
+        try:
+            if isinstance(entry, str):
+                if entry.startswith("data:") and ";base64," in entry:
+                    head, b64 = entry.split(";base64,", 1)
+                    media = head[5:]  # strip "data:"
+                else:
+                    errors.append(f"image[{i}]: unsupported string format")
+                    continue
+            elif isinstance(entry, dict) and entry.get("data_url"):
+                d = entry["data_url"]
+                if d.startswith("data:") and ";base64," in d:
+                    head, b64 = d.split(";base64,", 1)
+                    media = head[5:]
+                else:
+                    errors.append(f"image[{i}]: bad data_url")
+                    continue
+            elif isinstance(entry, dict) and entry.get("data"):
+                b64 = entry["data"]
+                media = entry.get("media_type", "image/png")
+            else:
+                errors.append(f"image[{i}]: unrecognized payload shape")
+                continue
+
+            if media not in ALLOWED:
+                errors.append(f"image[{i}]: media_type {media!r} not allowed")
+                continue
+            if len(b64) > MAX_IMAGE_BYTES_B64:
+                errors.append(f"image[{i}]: exceeds 5 MB size limit")
+                continue
+
+            blocks.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": media, "data": b64},
+            })
+        except Exception as e:
+            errors.append(f"image[{i}]: {e}")
+    return blocks, errors
+
+
+def extract_image_content(image_blocks, query):
+    """Single non-streaming Claude call to extract structured text content
+    from images. Returns the extraction string. Image bytes are NOT persisted
+    anywhere — they exist only in this function's call to Anthropic.
+    """
+    if not image_blocks:
+        return ""
+    instr = (
+        "Extract everything visible in these images as plain text. Focus on:\n"
+        "• Any text, labels, headings, captions\n"
+        "• Numbers, measurements, dosages, lab values, ranges\n"
+        "• Supplement ingredients lists, milligram amounts, serving sizes\n"
+        "• Lab/test result values with units and reference ranges if present\n"
+        "• E4L scan results: item codes (EI/ES/ED/ET/MB), category labels, scores\n"
+        "• Any visible chart axes, legend entries, or graph markers\n"
+        "• Visible symptoms in clinical photos (describe objectively)\n"
+        "• Handwritten notes (transcribe carefully)\n\n"
+        f"USER'S QUESTION: {query}\n\n"
+        "Return a clean, structured extraction. Label each image (Image 1, Image 2, "
+        "etc.) if multiple. Do not analyze, diagnose, or recommend — just extract. "
+        "Be exhaustive but concise."
+    )
+    try:
+        resp = _cl.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1500,
+            messages=[{"role": "user", "content": [
+                *image_blocks,
+                {"type": "text", "text": instr},
+            ]}],
+        )
+        return (resp.content[0].text or "").strip() if resp.content else ""
+    except Exception as e:
+        return f"[image-extraction-error: {e}]"
 
 
 _SYSTEM_BASE = """You are Glen Swartwout's knowledge assistant — a synthesis engine for his Clinical Theory of Everything (BEV terrain medicine, Bioenergetic diagnostics, Syntonic/Behavioral Optometry, Orthomolecular medicine, Spirit Minerals/ORMUS, Electromagnetic medicine, Living Universe cosmology, Consciousness science).
@@ -281,12 +382,41 @@ def chat():
     user_agent = request.headers.get("User-Agent", "")
     referer    = request.headers.get("Referer", "")
 
+    # Image attachments — opt-in gated, multi-image (max 3), extraction-only
+    # storage. Image bytes are passed to Claude vision for extraction and then
+    # discarded; only the extracted text is persisted to query_log.
+    images_consented = bool(data.get("images_consented"))
+    raw_images = data.get("images") or []
+    image_blocks = []
+    image_errors = []
+    if raw_images:
+        if not images_consented:
+            return jsonify({
+                "error": "Image consent required. Check the image-opt-in box "
+                         "before attaching images."
+            }), 400
+        image_blocks, image_errors = _normalize_image_payload(raw_images)
+
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
     def generate():
+        # Step A — image extraction (if any images attached, run vision call
+        # FIRST so the extracted text can be embedded for retrieval and also
+        # joined to the user question as context).
+        extracted_text = ""
+        if image_blocks:
+            yield sse({"status": f"Reading {len(image_blocks)} image(s)…"})
+            extracted_text = extract_image_content(image_blocks, query)
+
+        # Combine the user question with extracted image text for embedding
+        # so retrieval can match on label/scan/lab content too.
+        embedding_input = query
+        if extracted_text:
+            embedding_input = f"{query}\n\nIMAGE CONTENT:\n{extracted_text}"
+
         try:
-            q_vec = embed(query)
+            q_vec = embed(embedding_input)
         except Exception as e:
             yield sse({"error": f"Embedding failed: {e}"})
             return
@@ -296,7 +426,8 @@ def chat():
         if not all_matches:
             yield sse({"done": True, "answer": "No relevant content found.",
                        "sources": [], "chunks_retrieved": 0, "log_id": None,
-                       "session_id": session_id, "mode": mode})
+                       "session_id": session_id, "mode": mode,
+                       "image_count": len(image_blocks)})
             return
 
         context_str, sources_list = build_context(all_matches)
@@ -315,8 +446,20 @@ def chat():
             "2-4 bullet rationale, single action link, source line. ~200 words. "
             "Tight and decisive."
         )
+
+        image_context = ""
+        if extracted_text:
+            image_context = (
+                f"IMAGE CONTENT EXTRACTED FROM USER ATTACHMENT(S):\n"
+                f"{extracted_text}\n\n"
+                f"Reference the image content as part of the user's question "
+                f"context. Quote specific values or labels from it when relevant.\n\n"
+            )
+
         messages.append({"role": "user", "content":
-            f"USER QUESTION: {query}\n\nRETRIEVED SNIPPETS:\n{context_str}\n\n"
+            f"USER QUESTION: {query}\n\n"
+            f"{image_context}"
+            f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
             f"{synth_instr}"
         })
 
@@ -343,6 +486,8 @@ def chat():
             query, level, answer,
             session_id=session_id, email=email, name=name,
             mode=mode, user_agent=user_agent, referer=referer,
+            extracted_image_data=extracted_text,
+            image_count=len(image_blocks),
         )
 
         # GHL onboarding for email opt-ins (non-blocking)

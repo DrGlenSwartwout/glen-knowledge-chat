@@ -215,6 +215,65 @@
   .freq-group label:not(.active):hover { border-color: var(--accent); color: var(--text); }
   .freq-group input[type=radio] { display: none; }
 
+  /* ── Image attachment row ── */
+  #image-row {
+    display: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 24px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+  #image-row.has-images { display: flex; }
+  .img-thumb {
+    position: relative;
+    width: 56px; height: 56px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--surface2);
+  }
+  .img-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .img-thumb .img-remove {
+    position: absolute; top: 2px; right: 2px;
+    width: 18px; height: 18px;
+    background: rgba(0,0,0,0.7);
+    color: var(--text);
+    border: none; border-radius: 50%;
+    font-size: 11px; line-height: 1;
+    cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .img-thumb .img-remove:hover { background: var(--accent); color: var(--bg); }
+  #image-tools {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: var(--text-muted);
+  }
+  #image-tools button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: var(--font);
+  }
+  #image-tools button:hover { border-color: var(--accent); color: var(--text); }
+  #image-consent-bar {
+    padding: 8px 24px;
+    background: var(--surface2);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: var(--text-muted);
+  }
+  #image-consent-bar input[type=checkbox] {
+    accent-color: var(--accent2);
+    cursor: pointer;
+  }
+  #image-consent-bar label { cursor: pointer; }
+  .img-error { color: #c25; font-size: 11px; }
+
   /* ── Suggestion bar ── */
   #suggestion-bar {
     padding: 7px 24px 3px;
@@ -572,6 +631,20 @@
         </div>
       </div>
     </div>
+    <div id="image-consent-bar">
+      <input type="checkbox" id="image-consent" />
+      <label for="image-consent">
+        Allow attaching images (lab results, supplement labels, scan PDFs, photos) — image content is extracted and stored as text; the original image is not saved.
+      </label>
+    </div>
+    <div id="image-row">
+      <div id="image-tools">
+        <button type="button" id="add-image-btn" onclick="document.getElementById('image-input').click()">+ Add image</button>
+        <span id="image-help">or paste / drag-drop</span>
+        <input type="file" id="image-input" accept="image/png,image/jpeg,image/webp,image/gif" multiple style="display:none" onchange="handleImageFiles(this.files)">
+      </div>
+      <span class="img-error" id="image-error"></span>
+    </div>
     <div id="suggestion-bar">
       <span class="suggest-label">Try asking:</span>
       <button id="suggested-q" onclick="fillQuery(this.textContent)">What is your body trying to tell you through this symptom?</button>
@@ -583,6 +656,7 @@
         rows="1"
         onkeydown="handleKey(event)"
         oninput="autoResize(this)"
+        onpaste="handlePaste(event)"
       ></textarea>
       <button id="send-btn" onclick="sendQuery()">Send</button>
     </div>
@@ -627,6 +701,112 @@
 
   function updateSuggestion(q) {
     if (q) document.getElementById('suggested-q').textContent = q;
+  }
+
+  // ── Image attachments ──
+  // pendingImages: array of {data_url, name} — held in memory only;
+  // never written to localStorage or any persistent store on the client.
+  const pendingImages = [];
+  const MAX_IMAGES = 3;
+  const MAX_BYTES  = 5 * 1024 * 1024;
+
+  function imagesConsented() {
+    const cb = document.getElementById('image-consent');
+    return !!(cb && cb.checked);
+  }
+
+  function setImageError(msg) {
+    const el = document.getElementById('image-error');
+    if (el) el.textContent = msg || '';
+    if (msg) setTimeout(() => { if (el && el.textContent === msg) el.textContent = ''; }, 4000);
+  }
+
+  function refreshImageRow() {
+    const row = document.getElementById('image-row');
+    // Remove existing thumbs (keep #image-tools + #image-error)
+    Array.from(row.querySelectorAll('.img-thumb')).forEach(el => el.remove());
+    pendingImages.forEach((img, idx) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'img-thumb';
+      wrap.innerHTML = `<img src="${img.data_url}" alt="${img.name || 'attached image'}">
+        <button class="img-remove" onclick="removeImage(${idx})" title="Remove">×</button>`;
+      row.insertBefore(wrap, document.getElementById('image-tools'));
+    });
+    if (pendingImages.length > 0) row.classList.add('has-images');
+    else row.classList.remove('has-images');
+  }
+
+  function removeImage(idx) {
+    pendingImages.splice(idx, 1);
+    refreshImageRow();
+  }
+
+  async function handleImageFiles(fileList) {
+    if (!fileList || fileList.length === 0) return;
+    if (!imagesConsented()) {
+      setImageError('Check the image-attachment consent box first.');
+      return;
+    }
+    for (const file of Array.from(fileList)) {
+      if (pendingImages.length >= MAX_IMAGES) {
+        setImageError(`Max ${MAX_IMAGES} images per question.`);
+        break;
+      }
+      if (!file.type || !file.type.startsWith('image/')) {
+        setImageError('Only image files are accepted.');
+        continue;
+      }
+      if (file.size > MAX_BYTES) {
+        setImageError(`"${file.name}" exceeds the 5 MB limit.`);
+        continue;
+      }
+      try {
+        const data_url = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload  = () => resolve(r.result);
+          r.onerror = () => reject(r.error);
+          r.readAsDataURL(file);
+        });
+        pendingImages.push({ data_url, name: file.name });
+      } catch (e) {
+        setImageError(`Could not read "${file.name}".`);
+      }
+    }
+    refreshImageRow();
+  }
+
+  function handlePaste(e) {
+    if (!e.clipboardData || !e.clipboardData.items) return;
+    const items = Array.from(e.clipboardData.items)
+      .filter(it => it.kind === 'file' && it.type.startsWith('image/'));
+    if (items.length === 0) return;
+    if (!imagesConsented()) {
+      setImageError('Check the image-attachment consent box first.');
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    const files = items.map(it => it.getAsFile()).filter(Boolean);
+    handleImageFiles(files);
+  }
+
+  // Drag-drop wiring (attached on DOMContentLoaded below)
+  function wireDragDrop() {
+    const target = document.getElementById('input-bar');
+    if (!target) return;
+    ['dragenter', 'dragover'].forEach(ev => target.addEventListener(ev, e => {
+      e.preventDefault();
+      target.style.outline = '2px dashed var(--accent)';
+    }));
+    ['dragleave', 'drop'].forEach(ev => target.addEventListener(ev, e => {
+      e.preventDefault();
+      target.style.outline = '';
+    }));
+    target.addEventListener('drop', e => {
+      const dt = e.dataTransfer;
+      if (!dt || !dt.files) return;
+      handleImageFiles(dt.files);
+    });
   }
 
   // Cookie/localStorage autofill — restore name, email, frequency for
@@ -696,6 +876,23 @@
         if (d.name  && nEl && !nEl.value) nEl.value = d.name;
       })
       .catch(() => {});
+    // Restore image-consent preference (separate from email opt-in).
+    try {
+      const consented = localStorage.getItem('amg_images_consented') === 'true';
+      const cb = document.getElementById('image-consent');
+      if (cb) {
+        cb.checked = consented;
+        cb.addEventListener('change', () => {
+          try { localStorage.setItem('amg_images_consented', cb.checked ? 'true' : 'false'); } catch (_) {}
+          if (!cb.checked && pendingImages.length > 0) {
+            pendingImages.length = 0;
+            refreshImageRow();
+            setImageError('Image consent withdrawn — pending images cleared.');
+          }
+        });
+      }
+    } catch (_) {}
+    wireDragDrop();
   });
 
   // Load feedback URL from server
@@ -818,6 +1015,13 @@
         }
       } catch (_) {}
 
+      // Snapshot pending images at submit time, then clear so the user
+      // can attach different images for the next question.
+      const _images = pendingImages.map(im => ({ data_url: im.data_url }));
+      const _images_consented = imagesConsented();
+      pendingImages.length = 0;
+      refreshImageRow();
+
       const resp = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -827,7 +1031,9 @@
           level:     getCurrentLevel(),
           name:      _name,
           email:     _email,
-          frequency: _frequency
+          frequency: _frequency,
+          images:    _images,
+          images_consented: _images_consented
         })
       });
 
