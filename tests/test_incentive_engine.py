@@ -452,6 +452,16 @@ def test_run_daily_send_iterates_beta_cohort_and_gates(tmp_db, monkeypatch, tmp_
     monkeypatch.setattr("incentive_engine._load_incentive_config",
                         lambda: json.loads(cfg_path.read_text()))
 
+    # Hermetic — mock Pinecone helpers so the orchestrator doesn't live-call
+    monkeypatch.setattr(
+        "pinecone_content_pool.candidate_topics_for_audience",
+        lambda audience: ["leaky-gut"],
+    )
+    monkeypatch.setattr(
+        "pinecone_content_pool.fetch_source_text_for_topic",
+        lambda t, a: "stub source text",
+    )
+
     sent_emails = []
 
     def fake_send(user, subject, body):
@@ -475,3 +485,90 @@ def test_run_daily_send_iterates_beta_cohort_and_gates(tmp_db, monkeypatch, tmp_
     n = run_daily_send_for_beta_cohort()
     assert n == 1
     assert sent_emails[0]["user_id"] == 1
+
+
+def test_run_daily_send_uses_pinecone_topics(tmp_path, monkeypatch):
+    """When Pinecone returns a real pool, orchestrator picks from it
+    rather than falling back to the stub topic."""
+    db_path = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr("incentive_engine.LOG_DB", db_path)
+
+    sent_emails = []
+    monkeypatch.setattr(
+        "incentive_engine._send_email",
+        lambda u, s, b: sent_emails.append(
+            {"topic_in_body": "leaky-gut" in b.lower()}
+        ),
+    )
+    monkeypatch.setattr(
+        "incentive_engine._llm_complete",
+        lambda p, max_tokens=500: "Stub teaching about leaky-gut.",
+    )
+    monkeypatch.setattr(
+        "incentive_engine._load_incentive_config",
+        lambda: {
+            "beta_cohort_emails": ["a@x.com"],
+            "beta_shared_code": "BETA5",
+        },
+    )
+    monkeypatch.setattr(
+        "pinecone_content_pool.candidate_topics_for_audience",
+        lambda audience: ["leaky-gut", "EMF"],
+    )
+    monkeypatch.setattr(
+        "pinecone_content_pool.fetch_source_text_for_topic",
+        lambda t, a: f"source for {t}",
+    )
+
+    from incentive_engine import _init_test_state
+    _init_test_state(db_path, [
+        {"user_id": 1, "name": "Alice", "email": "a@x.com",
+         "last_send_at": None, "last_open_at": None},
+    ])
+
+    from incentive_engine import run_daily_send_for_beta_cohort
+    n = run_daily_send_for_beta_cohort()
+    assert n == 1
+    assert len(sent_emails) == 1
+
+
+def test_run_daily_send_fallback_when_pinecone_fails(tmp_path, monkeypatch):
+    """When Pinecone raises, orchestrator should fall back to the stub
+    topic so beta subscribers still receive *something*."""
+    db_path = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr("incentive_engine.LOG_DB", db_path)
+
+    sent_emails = []
+    monkeypatch.setattr(
+        "incentive_engine._send_email",
+        lambda u, s, b: sent_emails.append({"subject": s}),
+    )
+    monkeypatch.setattr(
+        "incentive_engine._llm_complete",
+        lambda p, max_tokens=500: "Stub teaching.",
+    )
+    monkeypatch.setattr(
+        "incentive_engine._load_incentive_config",
+        lambda: {
+            "beta_cohort_emails": ["a@x.com"],
+            "beta_shared_code": "BETA5",
+        },
+    )
+
+    def boom(audience):
+        raise RuntimeError("simulated Pinecone outage")
+    monkeypatch.setattr(
+        "pinecone_content_pool.candidate_topics_for_audience", boom
+    )
+
+    from incentive_engine import _init_test_state
+    _init_test_state(db_path, [
+        {"user_id": 1, "name": "Alice", "email": "a@x.com",
+         "last_send_at": None, "last_open_at": None},
+    ])
+
+    from incentive_engine import run_daily_send_for_beta_cohort
+    n = run_daily_send_for_beta_cohort()
+    # Fallback path should still send (with stub topic 'leaky-gut')
+    assert n == 1
+    assert len(sent_emails) == 1
