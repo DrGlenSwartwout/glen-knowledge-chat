@@ -158,6 +158,61 @@
   .action-btn.copied { border-color: var(--accent2); color: var(--accent2); }
   .action-btn svg { width: 11px; height: 11px; }
 
+  /* Quiet (icon-only, low-contrast) copy button per Glen spec */
+  .action-btn.quiet {
+    background: transparent; border: none; padding: 3px 5px;
+    color: var(--text-muted); opacity: 0.45; gap: 0;
+  }
+  .action-btn.quiet:hover { opacity: 1; color: var(--accent); }
+  .action-btn.quiet.copied { opacity: 1; color: var(--accent2); }
+
+  /* ── Opt-in row (below input box) ── */
+  #optin-bar {
+    padding: 6px 12px 8px;
+    background: var(--surface);
+    display: flex; flex-wrap: wrap; gap: 6px 10px;
+    align-items: center;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    font-size: 11px;
+  }
+  .optin-field { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 110px; }
+  .optin-field label { color: var(--text-muted); white-space: nowrap; }
+  .optin-field input {
+    flex: 1; min-width: 70px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 11px;
+    padding: 3px 7px;
+    outline: none;
+  }
+  .optin-field input:focus { border-color: var(--accent); }
+  .optin-field input::placeholder { color: var(--text-muted); opacity: 0.55; }
+  .optin-consent {
+    display: flex; align-items: center; gap: 6px;
+    flex: 1 1 100%;
+  }
+  .consent-text { color: var(--text-muted); white-space: nowrap; }
+  .freq-group { display: flex; gap: 2px; align-items: center; }
+  .freq-group label {
+    color: var(--text-muted); cursor: pointer;
+    padding: 2px 6px; border: 1px solid var(--border);
+    border-radius: 3px; transition: all 0.12s; white-space: nowrap;
+    font-size: 10px;
+  }
+  .freq-group label.active { border-color: var(--accent2); color: var(--accent2); background: #3d8a5212; }
+  .freq-group label:not(.active):hover { border-color: var(--accent); color: var(--text); }
+  .freq-group input[type=radio] { display: none; }
+
+  /* ── Restored-history divider ── */
+  .meta-bar {
+    text-align: center; font-size: 10px; color: var(--text-muted);
+    padding: 4px 8px; opacity: 0.6;
+  }
+
   .share-wrap { position: relative; }
   .share-popover {
     display: none;
@@ -358,9 +413,31 @@
   <button class="level-btn" data-level="science" onclick="setLevel(this)">Science</button>
 </div>
 <div id="input-bar">
-  <textarea id="query-input" placeholder="Ask a question…" rows="1"
+  <textarea id="query-input"
+    placeholder="Ask about self-healing, clinical praxis, clinical theory…"
+    rows="1"
     onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
   <button id="send-btn" onclick="sendQuery()">Send</button>
+</div>
+
+<div id="optin-bar">
+  <div class="optin-field">
+    <label>Name</label>
+    <input type="text" id="optin-name" placeholder="optional">
+  </div>
+  <div class="optin-field">
+    <label>Email</label>
+    <input type="email" id="optin-email" placeholder="optional">
+  </div>
+  <div class="optin-consent">
+    <span class="consent-text">Receive emails from Dr. Glen</span>
+    <div class="freq-group">
+      <label class="active"><input type="radio" name="frequency" value="" checked><span>None</span></label>
+      <label><input type="radio" name="frequency" value="monthly"><span>Monthly</span></label>
+      <label><input type="radio" name="frequency" value="weekly"><span>Weekly</span></label>
+      <label><input type="radio" name="frequency" value="daily"><span>Daily</span></label>
+    </div>
+  </div>
 </div>
 
 <div id="feedback-bar">
@@ -390,6 +467,74 @@
     if (d.submit) { const l = document.getElementById('feedback-submit-link'); if (l) l.href = d.submit; }
     if (d.view)   { const l = document.getElementById('feedback-view-link');   if (l) l.href = d.view; }
   }).catch(() => {});
+
+  // ── Init: restore opt-in fields (localStorage + /me) and past Q&A (/history) ──
+  function restoreContactFromLocalStorage() {
+    try {
+      const e = localStorage.getItem('amg_email');
+      const n = localStorage.getItem('amg_name');
+      const f = localStorage.getItem('amg_frequency');
+      const eEl = document.getElementById('optin-email');
+      const nEl = document.getElementById('optin-name');
+      if (e && eEl && !eEl.value) eEl.value = e;
+      if (n && nEl && !nEl.value) nEl.value = n;
+      if (f !== null) {
+        const radio = document.querySelector(`input[name="frequency"][value="${f}"]`);
+        if (radio) {
+          radio.checked = true;
+          document.querySelectorAll('.freq-group label').forEach(l => l.classList.remove('active'));
+          radio.closest('label').classList.add('active');
+        }
+      }
+    } catch (_) {}
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // freq-group active-class swap on change
+    document.querySelectorAll('input[name="frequency"]').forEach(r => {
+      r.addEventListener('change', () => {
+        document.querySelectorAll('.freq-group label').forEach(l => l.classList.remove('active'));
+        r.closest('label').classList.add('active');
+      });
+    });
+    restoreContactFromLocalStorage();
+    // Server-side autofill via session cookie
+    fetch(BASE + '/me', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(d => {
+        const eEl = document.getElementById('optin-email');
+        const nEl = document.getElementById('optin-name');
+        if (d.email && eEl && !eEl.value) eEl.value = d.email;
+        if (d.name  && nEl && !nEl.value) nEl.value = d.name;
+      })
+      .catch(() => {});
+    // Cross-page-reload conversation memory hydration
+    fetch(BASE + '/history?limit=20', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(d => {
+        if (!d || !d.turns || d.turns.length === 0) return;
+        const empty = document.getElementById('empty-state');
+        if (empty) empty.remove();
+        const msgs = document.getElementById('messages');
+        if (msgs) {
+          const divider = document.createElement('div');
+          divider.className = 'meta-bar';
+          divider.textContent = `— Previously (${d.turns.length} turn${d.turns.length===1?'':'s'} restored) —`;
+          msgs.appendChild(divider);
+        }
+        d.turns.forEach(t => {
+          if (t.query) {
+            appendMessage('user', t.query, null, null);
+            history.push({ role: 'user', content: t.query });
+          }
+          if (t.answer) {
+            appendMessage('assistant', t.answer, null, null, t.log_id);
+            history.push({ role: 'assistant', content: t.answer });
+          }
+        });
+      })
+      .catch(() => {});
+  });
 
   function buildStars(logId) {
     const wrap = document.createElement('div');
@@ -473,11 +618,30 @@
     isLoading = true;
     document.getElementById('send-btn').disabled = true;
 
+    const _name      = (document.getElementById('optin-name').value || '').trim();
+    const _email     = (document.getElementById('optin-email').value || '').trim();
+    const _frequency = (document.querySelector('input[name="frequency"]:checked') || {}).value || '';
+    try {
+      if (_email) localStorage.setItem('amg_email', _email);
+      if (_name)  localStorage.setItem('amg_name', _name);
+      if (_frequency !== undefined && _frequency !== null) {
+        localStorage.setItem('amg_frequency', _frequency);
+      }
+    } catch (_) {}
+
     try {
       const r = await fetch(BASE + '/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, history: history.slice(), level: currentLevel })
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          query,
+          history:   history.slice(),
+          level:     currentLevel,
+          name:      _name,
+          email:     _email,
+          frequency: _frequency
+        })
       });
 
       if (!r.ok || !r.body) {
@@ -588,9 +752,8 @@
     let actionsHtml = '';
     if (role === 'assistant') {
       actionsHtml = `<div class="msg-actions">
-        <button class="action-btn" onclick="copyMsg('${id}')" id="copy-${id}">
+        <button class="action-btn quiet" onclick="copyMsg('${id}')" id="copy-${id}" title="Copy question and answer as plain text" aria-label="Copy Q&amp;A">
           <svg viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
-          Copy
         </button>
         <div class="share-wrap">
           <button class="action-btn" onclick="toggleShare('${id}',event)">
@@ -645,12 +808,29 @@
     const el = document.querySelector(`[data-msg-id="${id}"]`);
     return el ? (el.dataset.rawText || '') : '';
   }
+  // Build "Q: ...\n\nA: ..." plain text — copy walks back to the preceding
+  // user message so the Q&A pair lands in the clipboard together.
+  function getQAPairText(id) {
+    const el = document.querySelector(`[data-msg-id="${id}"]`);
+    if (!el) return '';
+    const answer = el.dataset.rawText || '';
+    let q = '';
+    let prev = el.previousElementSibling;
+    while (prev) {
+      if (prev.classList && prev.classList.contains('message') && prev.classList.contains('user')) {
+        q = prev.dataset.rawText || ''; break;
+      }
+      prev = prev.previousElementSibling;
+    }
+    return q ? `Q: ${q}\n\nA: ${answer}` : answer;
+  }
   async function copyMsg(id) {
     const btn = document.getElementById('copy-' + id);
-    try { await navigator.clipboard.writeText(getT(id)); }
-    catch { const t=document.createElement('textarea');t.value=getT(id);document.body.appendChild(t);t.select();document.execCommand('copy');t.remove(); }
-    btn.classList.add('copied'); btn.innerHTML=btn.innerHTML.replace('Copy','Copied!');
-    setTimeout(()=>{btn.classList.remove('copied');btn.innerHTML=btn.innerHTML.replace('Copied!','Copy');}, 2000);
+    const text = getQAPairText(id);
+    try { await navigator.clipboard.writeText(text); }
+    catch { const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove(); }
+    btn.classList.add('copied');
+    setTimeout(()=>{ btn.classList.remove('copied'); }, 1500);
   }
   function toggleShare(id,e) {
     e.stopPropagation();
