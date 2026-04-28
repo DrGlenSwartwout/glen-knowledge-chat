@@ -145,6 +145,26 @@
   ul.feed li .body-text{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   ul.feed li .amount{font-family:var(--mono); font-size:11px; color:var(--gold); font-variant-numeric:tabular-nums}
 
+  /* intelligence card — taller, scrollable, renders markdown */
+  .intel-card{min-height:280px}
+  @media(min-width:1024px){.intel-card{min-height:340px}}
+  .intel-md{
+    flex:1; overflow-y:auto; padding-right:6px;
+    font-family:var(--serif); font-size:13.5px; line-height:1.55; color:var(--ink);
+  }
+  .intel-md::-webkit-scrollbar{width:4px}
+  .intel-md::-webkit-scrollbar-thumb{background:var(--rule); border-radius:2px}
+  .intel-md h1{font-size:16px; font-style:italic; font-weight:500; color:var(--gold); margin:0 0 8px; letter-spacing:-.01em}
+  .intel-md h2{font-size:11px; font-family:var(--mono); font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-2); margin:14px 0 6px; border-top:1px solid var(--rule); padding-top:10px}
+  .intel-md h2:first-child{margin-top:0; border-top:none; padding-top:0}
+  .intel-md h3{font-size:13px; font-style:italic; color:var(--gold-soft); margin:10px 0 4px}
+  .intel-md p{margin:0 0 8px}
+  .intel-md ul, .intel-md ol{margin:4px 0 8px; padding-left:18px}
+  .intel-md li{margin-bottom:3px}
+  .intel-md strong{color:var(--ink); font-weight:600}
+  .intel-md em{color:var(--gold-soft); font-style:italic}
+  .intel-md code{font-family:var(--mono); font-size:11px; background:rgba(230,184,0,.06); padding:1px 4px; color:var(--gold)}
+
   /* health grid */
   .health-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px}
   .health-cell{
@@ -232,6 +252,42 @@
       <button class="refresh-all" id="refreshAll">Refresh All</button>
     </div>
   </header>
+
+  <!-- ROW 0 — INTELLIGENCE -->
+  <section class="row">
+    <div class="row-head">
+      <span class="num">0</span>
+      <h2>Intelligence</h2>
+      <span class="rule"></span>
+    </div>
+    <div class="grid">
+      <article class="card intel-card" data-endpoint="/api/intelligence/daily-briefing" data-render="briefing">
+        <div class="head"><span class="title">Daily Briefing</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card intel-card" data-endpoint="/api/intelligence/eyes-on-every-street" data-render="briefing">
+        <div class="head"><span class="title">Eyes on Every Street</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card intel-card" data-endpoint="/api/intelligence/founders-radar" data-render="briefing">
+        <div class="head"><span class="title">Founder's Radar</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card intel-card" data-endpoint="/api/intelligence/revenue-x-ray" data-render="briefing">
+        <div class="head"><span class="title">Revenue X-Ray</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+      <article class="card intel-card" data-endpoint="/api/intelligence/pattern-which-connects" data-render="briefing">
+        <div class="head"><span class="title">Pattern Which Connects</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
+    </div>
+  </section>
 
   <!-- ROW 1 — MONEY -->
   <section class="row">
@@ -646,6 +702,53 @@ R.health = (d) => {
 function escapeHtml(s){
   return String(s||"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+
+// Tiny markdown → HTML for briefing cards. Handles headings, lists, bold, italic, code, paragraphs.
+function mdRender(src){
+  if(!src) return "";
+  const lines = String(src).split("\n");
+  const out = [];
+  let inUL = false, inOL = false, inP = false;
+  const closeBlocks = () => {
+    if(inUL){ out.push("</ul>"); inUL = false; }
+    if(inOL){ out.push("</ol>"); inOL = false; }
+    if(inP){ out.push("</p>"); inP = false; }
+  };
+  const inline = s => escapeHtml(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  for(const raw of lines){
+    const line = raw.trimEnd();
+    if(!line.trim()){ closeBlocks(); continue; }
+    let m;
+    if((m = line.match(/^### (.+)/))){ closeBlocks(); out.push(`<h3>${inline(m[1])}</h3>`); }
+    else if((m = line.match(/^## (.+)/))){ closeBlocks(); out.push(`<h2>${inline(m[1])}</h2>`); }
+    else if((m = line.match(/^# (.+)/))){ closeBlocks(); out.push(`<h1>${inline(m[1])}</h1>`); }
+    else if((m = line.match(/^[-*] (.+)/))){
+      if(!inUL){ closeBlocks(); out.push("<ul>"); inUL = true; }
+      out.push(`<li>${inline(m[1])}</li>`);
+    }
+    else if((m = line.match(/^\d+\. (.+)/))){
+      if(!inOL){ closeBlocks(); out.push("<ol>"); inOL = true; }
+      out.push(`<li>${inline(m[1])}</li>`);
+    }
+    else {
+      if(inUL || inOL) closeBlocks();
+      if(!inP){ out.push("<p>"); inP = true; }
+      else out.push("<br>");
+      out.push(inline(line));
+    }
+  }
+  closeBlocks();
+  return out.join("");
+}
+
+R.briefing = (d) => {
+  if(d.empty) return `<div class="empty">${escapeHtml(d.message||"awaiting first run")}</div>`;
+  return `<div class="intel-md">${mdRender(d.markdown||"")}</div>`;
+};
 
 // ── fetch + render loop ───────────────────────────────────────────────────
 async function fetchCard(card){
