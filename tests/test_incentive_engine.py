@@ -266,6 +266,36 @@ def test_process_reply_extracts_topics_and_categorizes(monkeypatch):
     assert result["routed_to"] == "glen-review"
 
 
+def test_process_reply_routes_correction_to_pinecone(monkeypatch):
+    from incentive_engine import process_reply
+    def fake_llm(prompt, max_tokens=500):
+        return json.dumps({
+            "summary": "User flags incorrect dosage for AngiogenX.",
+            "category": "correction",
+            "topics": [],
+            "products": ["AngiogenX"],
+            "conditions": [],
+        })
+    monkeypatch.setattr("incentive_engine._llm_complete", fake_llm)
+
+    result = process_reply(
+        user_id=1, original_send_id=None,
+        raw_text="The dose you mentioned for AngiogenX is wrong.",
+    )
+    assert result["routed_to"] == "pinecone-correction"
+
+
+def test_process_reply_handles_malformed_llm_output(monkeypatch):
+    """If LLM returns non-JSON, fall back to a sensible default."""
+    from incentive_engine import process_reply
+    monkeypatch.setattr("incentive_engine._llm_complete",
+                       lambda p, max_tokens=500: "not valid json at all")
+    result = process_reply(user_id=1, original_send_id=None,
+                            raw_text="hi")
+    assert result["ai_category"] == "question"  # safe default
+    assert result["extracted_topics"] == []
+
+
 # ── Task 10: reply-as-personalization update loop ────────────────────
 
 
