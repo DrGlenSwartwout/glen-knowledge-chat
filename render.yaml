@@ -47,29 +47,32 @@ services:
         value: /data/brain-state.json
       - key: DATA_DIR
         value: /data
+      - key: CRON_SECRET
+        sync: false
     healthCheckPath: /
     disk:
       name: data
       mountPath: /data
       sizeGB: 1
 
+  # Cron container does NOT share the web service's persistent disk —
+  # it just curls /cron/personal-send on the web service, which runs the
+  # orchestrator inside the web container where the disk + chat_log.db
+  # live. Cron stays minimal: stdlib-only, no Pinecone/Anthropic keys,
+  # no DATA_DIR.
   - type: cron
     name: glen-personal-email-daily
     runtime: python
     schedule: "0 17 * * *"   # 7 AM HST daily (HST is UTC-10)
-    buildCommand: pip install -r requirements.txt
+    buildCommand: "true"     # stdlib-only, no deps to install
     startCommand: python scripts/run_personal_email_cron.py
     envVars:
+      - key: WEB_URL
+        value: https://glen-knowledge-chat.onrender.com
       - fromService:
           type: web
           name: glen-knowledge-chat
-          envVarKey: ANTHROPIC_API_KEY
-      - fromService:
-          type: web
-          name: glen-knowledge-chat
-          envVarKey: PINECONE_API_KEY
-      - key: DATA_DIR
-        value: /data
+          envVarKey: CRON_SECRET
 
   - type: cron
     name: glen-reply-watcher
