@@ -4,47 +4,39 @@ These tests exercise the additive schema migration that creates the
 incentive engine tables alongside the existing query_log table.
 """
 
-import os
+import subprocess
 import sqlite3
 import sys
-import tempfile
 from pathlib import Path
 
-import pytest
 
-# Ensure the worktree root is on sys.path so `import app` works when pytest
-# is invoked from anywhere.
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-
-@pytest.fixture
-def tmp_db():
-    """Provide a temp SQLite DB path for tests; cleans up after."""
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    # Make sure the file is empty so _init_log_db() runs every CREATE fresh.
-    os.unlink(path)
-    yield path
-    if os.path.exists(path):
-        os.unlink(path)
-
-
-def test_incentive_schema_creates_required_tables(tmp_db, monkeypatch):
+def test_incentive_schema_creates_required_tables(tmp_path):
     """The schema migration should create personal_email_state,
     personal_email_sends, personal_email_feedback, and
-    holdout_assignments tables."""
-    # `app` performs `_init_log_db()` at import time against the real
-    # chat_log.db. Import it first, then redirect LOG_DB to our temp file
-    # and re-run the initializer so the migration is exercised against the
-    # temp DB only.
-    import app
+    holdout_assignments tables.
 
-    monkeypatch.setattr(app, "LOG_DB", tmp_db)
-    app._init_log_db()
+    Runs in a subprocess with a fresh DATA_DIR so the assertion
+    actually exercises the migration logic, not preexisting tables
+    in the dev chat_log.db.
+    """
+    db_dir = tmp_path
+    db_path = db_dir / "chat_log.db"
 
-    with sqlite3.connect(tmp_db) as cx:
+    repo_root = Path(__file__).resolve().parent.parent
+    code = (
+        "import sys, os\n"
+        f"sys.path.insert(0, {str(repo_root)!r})\n"
+        f"os.environ['DATA_DIR'] = {str(db_dir)!r}\n"
+        "import app\n"
+        "app._init_log_db()\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+
+    with sqlite3.connect(str(db_path)) as cx:
         tables = {
             r[0]
             for r in cx.execute(

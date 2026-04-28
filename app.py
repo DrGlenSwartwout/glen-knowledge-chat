@@ -543,7 +543,7 @@ def _init_log_db():
                 id                INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id           INTEGER NOT NULL,
                 sent_at            TEXT NOT NULL,
-                channel            TEXT NOT NULL,    -- 'personal' or 'newsletter'
+                channel            TEXT NOT NULL CHECK (channel IN ('personal','newsletter')),
                 topic              TEXT,
                 product_name       TEXT,
                 coupon_code        TEXT,
@@ -574,7 +574,7 @@ def _init_log_db():
         cx.execute("""
             CREATE TABLE IF NOT EXISTS holdout_assignments (
                 user_id    INTEGER PRIMARY KEY,
-                cohort     TEXT NOT NULL,    -- 'treatment' | 'holdout'
+                cohort     TEXT NOT NULL CHECK (cohort IN ('treatment','holdout')),
                 assigned_at TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
