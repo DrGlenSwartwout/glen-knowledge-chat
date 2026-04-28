@@ -199,3 +199,61 @@ def should_send_today(state: dict, paused: bool = False) -> bool:
     return _at_or_after(last_click, last_send_dt) or _at_or_after(
         last_open, last_send_dt
     )
+
+
+# ── Reply ingestion + categorization (Task 9) ────────────────────────
+
+ROUTE_BY_CATEGORY = {
+    "suggestion":    "glen-review",
+    "correction":    "pinecone-correction",
+    "topic-request": "glen-review",
+    "complaint":     "glen-review",
+    "praise":        "archive",
+    "question":      "glen-review",
+}
+
+
+def process_reply(
+    user_id: int,
+    original_send_id: Optional[int],
+    raw_text: str,
+) -> dict:
+    """Run a Claude Haiku call on the reply, return structured fields.
+
+    Returns:
+      {ai_summary, ai_category, extracted_topics, extracted_products,
+       extracted_conditions, routed_to}
+    """
+    prompt = (
+        "Analyze this email reply from a wellness-newsletter subscriber. "
+        "Output STRICT JSON with these fields:\n"
+        "  summary: 1-2 sentence summary\n"
+        "  category: one of "
+        "    suggestion | correction | topic-request | complaint | praise | question\n"
+        "  topics: list of topic labels mentioned (e.g. 'leaky-gut',\n"
+        "    'wet-AMD', 'glaucoma', 'EMF', 'omega-3')\n"
+        "  products: list of formulation names mentioned\n"
+        "  conditions: list of health conditions / symptoms mentioned\n\n"
+        f"Reply text:\n{raw_text[:4000]}"
+    )
+    raw = _llm_complete(prompt, max_tokens=500)
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        parsed = {
+            "summary": raw[:200],
+            "category": "question",
+            "topics": [],
+            "products": [],
+            "conditions": [],
+        }
+
+    category = parsed.get("category", "question")
+    return {
+        "ai_summary":           parsed.get("summary", "")[:500],
+        "ai_category":          category,
+        "extracted_topics":     parsed.get("topics", []),
+        "extracted_products":   parsed.get("products", []),
+        "extracted_conditions": parsed.get("conditions", []),
+        "routed_to":            ROUTE_BY_CATEGORY.get(category, "glen-review"),
+    }

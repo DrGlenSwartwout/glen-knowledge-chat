@@ -211,3 +211,29 @@ def test_should_send_today_first_send_for_new_user():
     from incentive_engine import should_send_today
     state = {"last_send_at": None}
     assert should_send_today(state, paused=False) is True
+
+
+# ── Task 9: reply ingestion + AI categorization ──────────────────────
+
+
+def test_process_reply_extracts_topics_and_categorizes(monkeypatch):
+    from incentive_engine import process_reply
+
+    def fake_llm(prompt, max_tokens=500):
+        return json.dumps({
+            "summary": "User asks about Terrain Restore for their leaky gut.",
+            "category": "topic-request",
+            "topics": ["leaky-gut", "terrain-restore"],
+            "products": ["Terrain Restore"],
+            "conditions": ["leaky gut"],
+        })
+    monkeypatch.setattr("incentive_engine._llm_complete", fake_llm)
+
+    result = process_reply(
+        user_id=42,
+        original_send_id=100,
+        raw_text="I'd love more info on Terrain Restore for my leaky gut.",
+    )
+    assert result["ai_category"] == "topic-request"
+    assert "leaky-gut" in result["extracted_topics"]
+    assert result["routed_to"] == "glen-review"
