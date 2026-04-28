@@ -420,8 +420,12 @@ def _init_test_state(db_path: str, rows: list) -> None:
         cx.executescript("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY,
-                email TEXT,
-                name TEXT
+                email TEXT UNIQUE,
+                name TEXT,
+                auth_method TEXT,
+                created_at TEXT,
+                last_login_at TEXT,
+                ghl_contact_id TEXT
             );
             CREATE TABLE IF NOT EXISTS personal_email_state (
                 user_id INTEGER PRIMARY KEY,
@@ -498,18 +502,35 @@ def _load_incentive_config() -> dict:
 
 def _list_beta_cohort_users() -> list:
     """Phase 0: identify beta users by email-list in incentive-config.json.
-    Phase 1+ will switch to GHL tag membership."""
+    Phase 1+ will switch to GHL tag membership.
+
+    Bootstrap behavior: any cohort email without a row in `users` is
+    auto-created (auth_method='beta-bootstrap') so the daily cron can
+    reach pre-registration cohort members. When those users later
+    authenticate via magic-link, the existing row is reused (email is
+    UNIQUE).
+    """
     config = _load_incentive_config()
     cohort_emails = list(config.get("beta_cohort_emails", []))
     if not cohort_emails:
         return []
 
-    placeholders = ",".join(["?"] * len(cohort_emails))
+    now = datetime.now(timezone.utc).isoformat()
     with _sqlite3.connect(LOG_DB) as cx:
+        # Ensure each cohort email has a user row (idempotent via UNIQUE
+        # constraint on email).
+        for email in cohort_emails:
+            cx.execute(
+                "INSERT OR IGNORE INTO users (email, auth_method, created_at) "
+                "VALUES (?, ?, ?)",
+                (email.lower(), "beta-bootstrap", now),
+            )
+        cx.commit()
         cx.row_factory = _sqlite3.Row
+        placeholders = ",".join(["?"] * len(cohort_emails))
         rows = cx.execute(
             f"SELECT id, email, name FROM users WHERE email IN ({placeholders})",
-            tuple(cohort_emails),
+            tuple(e.lower() for e in cohort_emails),
         ).fetchall()
     return [
         {"id": r["id"], "email": r["email"], "name": r["name"]} for r in rows
