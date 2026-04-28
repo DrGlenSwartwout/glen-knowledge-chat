@@ -20,6 +20,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from typing import Optional, Tuple
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 from pinecone import Pinecone
@@ -2921,7 +2922,7 @@ Start speaking immediately (no "Hello" or "Welcome" opener).
 Content:
 {content}"""
 
-def _el_tts(script: str) -> tuple[bytes | None, str | None]:
+def _el_tts(script: str) -> Tuple[Optional[bytes], Optional[str]]:
     """Call ElevenLabs TTS. Returns (audio_bytes, error)."""
     if not _EL_API_KEY or not _EL_VOICE_ID:
         return None, "ELEVENLABS_API_KEY or ELEVENLABS_VOICE_ID not set"
