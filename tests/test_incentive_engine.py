@@ -66,3 +66,70 @@ def test_resolve_channel_tags_omits_unchecked():
     assert "personal-email-opt-in" not in tags
     assert "newsletter-opt-in" in tags
     assert "beta-personal-email" not in tags
+
+
+# ── Task 6: content selector ─────────────────────────────────────────
+
+import json
+from datetime import datetime, timedelta, timezone
+
+
+def test_select_topic_respects_anti_stale():
+    """If a topic was sent in last 30 days, selector should skip it."""
+    from incentive_engine import select_topic_for_user
+    user_state = {
+        "topic_send_history": json.dumps([
+            {"topic": "wet-AMD", "last_sent_at":
+             (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()},
+            {"topic": "leaky-gut", "last_sent_at":
+             (datetime.now(timezone.utc) - timedelta(days=40)).isoformat()},
+        ]),
+        "topic_engagement_history": json.dumps([
+            {"topic": "wet-AMD", "click_count": 5},
+            {"topic": "leaky-gut", "click_count": 1},
+        ]),
+    }
+    candidate_topics = ["wet-AMD", "leaky-gut", "EMF"]
+    chosen = select_topic_for_user(user_state, candidate_topics, "client")
+    assert chosen != "wet-AMD"  # too recent (anti-stale)
+    assert chosen in ["leaky-gut", "EMF"]
+
+
+def test_select_topic_prefers_high_affinity():
+    """Among non-stale candidates, the one with most clicks wins."""
+    from incentive_engine import select_topic_for_user
+    user_state = {
+        "topic_send_history": json.dumps([]),
+        "topic_engagement_history": json.dumps([
+            {"topic": "leaky-gut", "click_count": 7},
+            {"topic": "EMF", "click_count": 1},
+        ]),
+    }
+    chosen = select_topic_for_user(user_state, ["leaky-gut", "EMF", "vision"], "client")
+    assert chosen == "leaky-gut"
+
+
+def test_select_topic_returns_none_if_all_stale():
+    """If every candidate was sent recently, return None."""
+    from incentive_engine import select_topic_for_user
+    user_state = {
+        "topic_send_history": json.dumps([
+            {"topic": "X", "last_sent_at":
+             (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()},
+            {"topic": "Y", "last_sent_at":
+             (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()},
+        ]),
+        "topic_engagement_history": json.dumps([]),
+    }
+    assert select_topic_for_user(user_state, ["X", "Y"], "client") is None
+
+
+def test_select_topic_deterministic_alphabetical_tiebreak():
+    """When clicks tied at zero, alphabetical wins (deterministic)."""
+    from incentive_engine import select_topic_for_user
+    user_state = {
+        "topic_send_history": json.dumps([]),
+        "topic_engagement_history": json.dumps([]),
+    }
+    chosen = select_topic_for_user(user_state, ["zebra", "apple", "mango"], "client")
+    assert chosen == "apple"
