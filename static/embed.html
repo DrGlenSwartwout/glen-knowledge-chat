@@ -205,7 +205,8 @@
   }
   .freq-group label.active { border-color: var(--accent2); color: var(--accent2); background: #3d8a5212; }
   .freq-group label:not(.active):hover { border-color: var(--accent); color: var(--text); }
-  .freq-group input[type=radio] { display: none; }
+  .freq-group input[type=radio],
+  .freq-group input[type=checkbox] { display: none; }
 
   /* ── Restored-history divider ── */
   .meta-bar {
@@ -430,12 +431,10 @@
     <input type="email" id="optin-email" placeholder="optional">
   </div>
   <div class="optin-consent">
-    <span class="consent-text">Receive emails from Dr. Glen</span>
+    <span class="consent-text">Email from Dr. Glen</span>
     <div class="freq-group">
-      <label class="active"><input type="radio" name="frequency" value="" checked><span>None</span></label>
-      <label><input type="radio" name="frequency" value="monthly"><span>Monthly</span></label>
-      <label><input type="radio" name="frequency" value="weekly"><span>Weekly</span></label>
-      <label><input type="radio" name="frequency" value="daily"><span>Daily</span></label>
+      <label class="active"><input type="checkbox" id="optin-personal"><span>Personal</span></label>
+      <label class="active"><input type="checkbox" id="optin-newsletter" checked><span>Newsletter</span></label>
     </div>
   </div>
 </div>
@@ -473,28 +472,33 @@
     try {
       const e = localStorage.getItem('amg_email');
       const n = localStorage.getItem('amg_name');
-      const f = localStorage.getItem('amg_frequency');
       const eEl = document.getElementById('optin-email');
       const nEl = document.getElementById('optin-name');
       if (e && eEl && !eEl.value) eEl.value = e;
       if (n && nEl && !nEl.value) nEl.value = n;
-      if (f !== null) {
-        const radio = document.querySelector(`input[name="frequency"][value="${f}"]`);
-        if (radio) {
-          radio.checked = true;
-          document.querySelectorAll('.freq-group label').forEach(l => l.classList.remove('active'));
-          radio.closest('label').classList.add('active');
-        }
+
+      const p  = localStorage.getItem('amg_personal_optin');
+      const nl = localStorage.getItem('amg_newsletter_optin');
+      const pEl = document.getElementById('optin-personal');
+      const nEl2 = document.getElementById('optin-newsletter');
+      if (p !== null && pEl) {
+        pEl.checked = (p === '1');
+        pEl.closest('label').classList.toggle('active', pEl.checked);
+      }
+      if (nl !== null && nEl2) {
+        nEl2.checked = (nl === '1');
+        nEl2.closest('label').classList.toggle('active', nEl2.checked);
       }
     } catch (_) {}
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    // freq-group active-class swap on change
-    document.querySelectorAll('input[name="frequency"]').forEach(r => {
-      r.addEventListener('change', () => {
-        document.querySelectorAll('.freq-group label').forEach(l => l.classList.remove('active'));
-        r.closest('label').classList.add('active');
+    // freq-group active-class swap on change (checkboxes)
+    ['optin-personal', 'optin-newsletter'].forEach(id => {
+      const cb = document.getElementById(id);
+      if (!cb) return;
+      cb.addEventListener('change', () => {
+        cb.closest('label').classList.toggle('active', cb.checked);
       });
     });
     restoreContactFromLocalStorage();
@@ -620,13 +624,13 @@
 
     const _name      = (document.getElementById('optin-name').value || '').trim();
     const _email     = (document.getElementById('optin-email').value || '').trim();
-    const _frequency = (document.querySelector('input[name="frequency"]:checked') || {}).value || '';
+    const _personal_optin   = !!(document.getElementById('optin-personal') || {}).checked;
+    const _newsletter_optin = !!(document.getElementById('optin-newsletter') || {}).checked;
     try {
       if (_email) localStorage.setItem('amg_email', _email);
       if (_name)  localStorage.setItem('amg_name', _name);
-      if (_frequency !== undefined && _frequency !== null) {
-        localStorage.setItem('amg_frequency', _frequency);
-      }
+      localStorage.setItem('amg_personal_optin',   _personal_optin   ? '1' : '0');
+      localStorage.setItem('amg_newsletter_optin', _newsletter_optin ? '1' : '0');
     } catch (_) {}
 
     try {
@@ -640,7 +644,8 @@
           level:     currentLevel,
           name:      _name,
           email:     _email,
-          frequency: _frequency
+          personal_optin:   _personal_optin,
+          newsletter_optin: _newsletter_optin
         })
       });
 
