@@ -591,8 +591,30 @@
     <h1>The Minding Body Mentor</h1>
   </div>
   <div class="spacer"></div>
+  <span id="auth-state">
+    <button id="signin-btn" onclick="openAuthModal()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:5px;padding:4px 12px;font-size:12px;cursor:pointer;font-family:var(--font);">Sign in</button>
+    <span id="signed-in-state" style="display:none;color:var(--text-muted);font-size:12px;">
+      <span id="signed-in-name"></span>
+      <a href="#" onclick="doSignOut(event)" style="color:var(--text-muted);margin-left:8px;text-decoration:underline;">Sign out</a>
+    </span>
+  </span>
   <button id="clear-btn" onclick="clearChat()">Clear</button>
 </header>
+
+<!-- Sign-in modal -->
+<div id="auth-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:24px;width:340px;max-width:90vw;font-family:var(--font);color:var(--text);">
+    <h3 style="font-family:var(--heading-font);margin-bottom:8px;">Sign in</h3>
+    <p style="color:var(--text-muted);font-size:12px;margin-bottom:14px;line-height:1.4;">Enter your email; we'll send a one-click sign-in link. No password.</p>
+    <input type="email" id="auth-email" placeholder="you@example.com" style="width:100%;padding:8px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;margin-bottom:10px;">
+    <input type="text" id="auth-name" placeholder="your name (optional)" style="width:100%;padding:8px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;margin-bottom:14px;">
+    <button id="auth-send-btn" onclick="requestMagicLink()" style="width:100%;background:var(--accent);border:none;border-radius:6px;color:#000;font-weight:700;padding:9px;cursor:pointer;font-family:var(--font);">Send sign-in link</button>
+    <div id="auth-status" style="margin-top:10px;font-size:12px;color:var(--text-muted);min-height:1em;"></div>
+    <div style="text-align:center;margin-top:12px;">
+      <a href="#" onclick="closeAuthModal(event)" style="color:var(--text-muted);font-size:11px;">cancel</a>
+    </div>
+  </div>
+</div>
 
 <div class="main">
 
@@ -701,6 +723,80 @@
 
   function updateSuggestion(q) {
     if (q) document.getElementById('suggested-q').textContent = q;
+  }
+
+  // ── Phase 4 — sign in / sign out (magic-link) ──
+  function openAuthModal() {
+    document.getElementById('auth-modal').style.display = 'flex';
+    // Pre-fill email from autofill if present
+    const e = document.getElementById('optin-email');
+    const n = document.getElementById('optin-name');
+    if (e && e.value) document.getElementById('auth-email').value = e.value;
+    if (n && n.value) document.getElementById('auth-name').value  = n.value;
+    document.getElementById('auth-status').textContent = '';
+    setTimeout(() => document.getElementById('auth-email').focus(), 50);
+  }
+  function closeAuthModal(e) {
+    if (e) e.preventDefault();
+    document.getElementById('auth-modal').style.display = 'none';
+  }
+  async function requestMagicLink() {
+    const email = (document.getElementById('auth-email').value || '').trim();
+    const name  = (document.getElementById('auth-name').value || '').trim();
+    const status = document.getElementById('auth-status');
+    if (!email || !email.includes('@')) {
+      status.textContent = 'Please enter a valid email.';
+      status.style.color = '#c25';
+      return;
+    }
+    const btn = document.getElementById('auth-send-btn');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    try {
+      const r = await fetch('/auth/magic-link/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email, name })
+      });
+      const d = await r.json();
+      if (r.ok && d.ok) {
+        status.style.color = 'var(--accent2)';
+        status.textContent = d.note || 'Check your email for the sign-in link.';
+        btn.textContent = 'Sent ✓';
+      } else {
+        status.style.color = '#c25';
+        status.textContent = d.error || `Error (HTTP ${r.status})`;
+        btn.disabled = false;
+        btn.textContent = 'Send sign-in link';
+      }
+    } catch (e) {
+      status.style.color = '#c25';
+      status.textContent = `Connection error: ${e.message}`;
+      btn.disabled = false;
+      btn.textContent = 'Send sign-in link';
+    }
+  }
+  async function doSignOut(e) {
+    if (e) e.preventDefault();
+    try {
+      await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    } catch (_) {}
+    location.reload();
+  }
+  function refreshAuthState(meData) {
+    const isAuth = meData && meData.authenticated;
+    const sIn  = document.getElementById('signin-btn');
+    const sed  = document.getElementById('signed-in-state');
+    if (isAuth) {
+      sIn.style.display = 'none';
+      sed.style.display = 'inline';
+      const display = meData.name || meData.email;
+      document.getElementById('signed-in-name').textContent = `Hi, ${display}`;
+    } else {
+      sIn.style.display = 'inline';
+      sed.style.display = 'none';
+    }
   }
 
   // ── Image attachments ──
@@ -874,6 +970,7 @@
         const nEl = document.getElementById('optin-name');
         if (d.email && eEl && !eEl.value) eEl.value = d.email;
         if (d.name  && nEl && !nEl.value) nEl.value = d.name;
+        refreshAuthState(d);
       })
       .catch(() => {});
     // Restore image-consent preference (separate from email opt-in).

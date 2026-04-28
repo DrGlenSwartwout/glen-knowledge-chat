@@ -18,7 +18,7 @@ import uuid
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
@@ -100,6 +100,165 @@ def _init_shortlink_cache():
         cx.execute("CREATE INDEX IF NOT EXISTS idx_shortlink_canon ON shortlink_cache(canonical)")
         cx.commit()
 _init_shortlink_cache()
+
+
+# ── Phase 4 — login (magic-link) infrastructure ─────────────────────────────
+import hashlib, hmac, secrets
+
+AUTH_TOKEN_TTL_MIN  = 15           # magic-link token validity window
+SESSION_TTL_DAYS    = 30           # session cookie validity
+PUBLIC_BASE_URL     = os.environ.get("PUBLIC_BASE_URL", "https://glen-knowledge-chat.onrender.com").rstrip("/")
+GHL_MAGIC_WORKFLOW  = os.environ.get("GHL_MAGIC_LINK_WORKFLOW_ID", "")
+
+
+def _init_auth_tables():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                email           TEXT UNIQUE NOT NULL,
+                name            TEXT,
+                auth_method     TEXT,
+                created_at      TEXT NOT NULL,
+                last_login_at   TEXT,
+                ghl_contact_id  TEXT
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS auth_tokens (
+                token_hash    TEXT PRIMARY KEY,
+                email         TEXT NOT NULL,
+                purpose       TEXT NOT NULL,
+                created_at    TEXT NOT NULL,
+                expires_at    TEXT NOT NULL,
+                consumed_at   TEXT
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                token_hash    TEXT PRIMARY KEY,
+                user_id       INTEGER NOT NULL,
+                created_at    TEXT NOT NULL,
+                expires_at    TEXT NOT NULL,
+                ip            TEXT,
+                user_agent    TEXT
+            )
+        """)
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)")
+        cx.commit()
+_init_auth_tables()
+
+
+def _hash_token(t: str) -> str:
+    return hashlib.sha256(t.encode("utf-8")).hexdigest()
+
+
+def _now_utc():
+    return datetime.now(timezone.utc)
+
+
+def send_magic_link_email(to_email: str, name: str, magic_url: str) -> tuple:
+    """Send a magic-link email. Tries (in order):
+      1. GHL workflow trigger (if GHL_MAGIC_LINK_WORKFLOW_ID env var is set)
+      2. SMTP (if SMTP_HOST/USER/PASS env vars are set)
+      3. Console log (development fallback — link visible in Render logs)
+
+    Returns (sent_via, error_or_none).
+    """
+    subject = "Sign in to Ask Dr. Glen"
+    body = (
+        f"Hi {name or 'there'},\n\n"
+        f"Click the link below to sign in to Ask Dr. Glen. The link expires in "
+        f"{AUTH_TOKEN_TTL_MIN} minutes.\n\n"
+        f"{magic_url}\n\n"
+        f"If you didn't request this, you can ignore this email.\n\n"
+        f"— Dr. Glen Swartwout\n"
+    )
+    html_body = (
+        f"<p>Hi {name or 'there'},</p>"
+        f"<p>Click the link below to sign in to Ask Dr. Glen. The link expires in "
+        f"{AUTH_TOKEN_TTL_MIN} minutes.</p>"
+        f"<p><a href=\"{magic_url}\">Sign in to Ask Dr. Glen</a></p>"
+        f"<p style=\"color:#666;font-size:12px;\">Or paste this URL into your browser: {magic_url}</p>"
+        f"<p>If you didn't request this, you can ignore this email.</p>"
+        f"<p>— Dr. Glen Swartwout</p>"
+    )
+
+    # Path 1: GHL workflow trigger
+    if GHL_MAGIC_WORKFLOW:
+        try:
+            contact_id, _, err = ghl_upsert_contact(to_email, name or "", "",
+                                                     source_tag="magic-link-auth")
+            if contact_id:
+                # Trigger workflow with the magic-link in a custom field
+                # NOTE: Shaira must build the workflow in GHL UI:
+                #   "Chatbot Magic-Link Send" — single-action workflow that
+                #   reads the contact's `magic_link_url` custom value and
+                #   sends an email containing it. See
+                #   00 System/ghl-magic-link-workflow-spec.md
+                _ghl_post(f"/workflows/{GHL_MAGIC_WORKFLOW}/run",
+                          {"contactId": contact_id, "customValues": {
+                              "magic_link_url": magic_url,
+                              "magic_link_expires_min": str(AUTH_TOKEN_TTL_MIN),
+                          }})
+                return "ghl-workflow", None
+        except Exception as e:
+            print(f"[auth] GHL magic-link send failed: {e}", flush=True)
+
+    # Path 2: SMTP
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    if smtp_host and smtp_user and smtp_pass:
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = smtp_from
+            msg["To"]      = to_email
+            msg.attach(MIMEText(body, "plain"))
+            msg.attach(MIMEText(html_body, "html"))
+            port = int(os.environ.get("SMTP_PORT", "587"))
+            with smtplib.SMTP(smtp_host, port, timeout=10) as s:
+                s.starttls()
+                s.login(smtp_user, smtp_pass)
+                s.sendmail(smtp_from, [to_email], msg.as_string())
+            return "smtp", None
+        except Exception as e:
+            print(f"[auth] SMTP magic-link send failed: {e}", flush=True)
+
+    # Path 3: console fallback (development / pre-config)
+    print(f"\n[auth] MAGIC LINK for {to_email}: {magic_url}\n", flush=True)
+    return "console-log", "no email send mechanism configured"
+
+
+def get_authenticated_user(request_obj):
+    """Resolve the auth_token cookie to a user record. Returns user dict or None."""
+    tok = request_obj.cookies.get("amg_auth", "").strip()
+    if not tok:
+        return None
+    th = _hash_token(tok)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            """SELECT u.id, u.email, u.name, u.ghl_contact_id, s.expires_at
+               FROM sessions s JOIN users u ON s.user_id = u.id
+               WHERE s.token_hash = ?""",
+            (th,)
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        expires = datetime.fromisoformat(row["expires_at"])
+        if expires < _now_utc():
+            return None
+    except Exception:
+        return None
+    return {"id": row["id"], "email": row["email"], "name": row["name"],
+            "ghl_contact_id": row["ghl_contact_id"]}
 
 
 def _slugify_product(name: str) -> str:
@@ -644,6 +803,15 @@ def chat():
     user_agent = request.headers.get("User-Agent", "")
     referer    = request.headers.get("Referer", "")
 
+    # Phase 4 — if the visitor is authenticated, the auth identity wins
+    # over any form-submitted email/name. This stops a logged-in user from
+    # accidentally splitting their question history across multiple emails.
+    auth_user = get_authenticated_user(request)
+    if auth_user:
+        email = auth_user["email"]
+        if not name and auth_user.get("name"):
+            name = auth_user["name"]
+
     # Image attachments — opt-in gated, multi-image (max 3), extraction-only
     # storage. Image bytes are passed to Claude vision for extraction and then
     # discarded; only the extracted text is persisted to query_log.
@@ -837,6 +1005,153 @@ def chat():
     return resp
 
 
+@app.route("/auth/magic-link/request", methods=["POST", "OPTIONS"])
+def auth_magic_link_request():
+    """Generate a magic-link token, email it, and stash the hash in
+    auth_tokens table. Returns 200 always (no email enumeration leak).
+    """
+    if request.method == "OPTIONS":
+        return "", 200
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    name  = (data.get("name") or "").strip()
+    if not email or "@" not in email:
+        return jsonify({"error": "Valid email required"}), 400
+
+    token = secrets.token_urlsafe(32)
+    th    = _hash_token(token)
+    now   = _now_utc()
+    expires = now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            """INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at)
+               VALUES (?,?,?,?,?)""",
+            (th, email, "magic_link", now.isoformat(), expires.isoformat())
+        )
+        cx.commit()
+
+    magic_url = f"{PUBLIC_BASE_URL}/auth/magic-link/verify?token={token}"
+    sent_via, err = send_magic_link_email(email, name, magic_url)
+
+    return jsonify({
+        "ok":       True,
+        "sent_via": sent_via,
+        "expires_in_minutes": AUTH_TOKEN_TTL_MIN,
+        "note":     ("Check your email for the sign-in link."
+                     if sent_via in ("ghl-workflow", "smtp")
+                     else "Email sending not yet configured. Check Render logs for the magic link.")
+    })
+
+
+@app.route("/auth/magic-link/verify", methods=["GET"])
+def auth_magic_link_verify():
+    """Click target for the magic link. Validates token, creates user (if
+    new) + session, sets HttpOnly auth cookie, redirects to /.
+    """
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        return jsonify({"error": "Missing token"}), 400
+    th = _hash_token(token)
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT email, expires_at, consumed_at FROM auth_tokens WHERE token_hash = ?",
+            (th,)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Invalid or expired token"}), 400
+        if row["consumed_at"]:
+            return jsonify({"error": "Token already used"}), 400
+        try:
+            expires = datetime.fromisoformat(row["expires_at"])
+            if expires < _now_utc():
+                return jsonify({"error": "Token expired"}), 400
+        except Exception:
+            return jsonify({"error": "Token corrupted"}), 400
+
+        email = row["email"]
+        # Mark the token consumed
+        cx.execute("UPDATE auth_tokens SET consumed_at = ? WHERE token_hash = ?",
+                   (_now_utc().isoformat(), th))
+
+        # Find or create user
+        u = cx.execute("SELECT id, name, ghl_contact_id FROM users WHERE email = ?",
+                        (email,)).fetchone()
+        if u:
+            user_id = u["id"]
+            cx.execute("UPDATE users SET last_login_at = ? WHERE id = ?",
+                       (_now_utc().isoformat(), user_id))
+        else:
+            cur = cx.execute(
+                """INSERT INTO users (email, auth_method, created_at, last_login_at)
+                   VALUES (?,?,?,?)""",
+                (email, "magic_link", _now_utc().isoformat(), _now_utc().isoformat())
+            )
+            user_id = cur.lastrowid
+
+        # Create session
+        sess = secrets.token_urlsafe(32)
+        sh   = _hash_token(sess)
+        sess_expires = _now_utc() + timedelta(days=SESSION_TTL_DAYS)
+        cx.execute(
+            """INSERT INTO sessions (token_hash, user_id, created_at, expires_at, ip, user_agent)
+               VALUES (?,?,?,?,?,?)""",
+            (sh, user_id, _now_utc().isoformat(), sess_expires.isoformat(),
+             request.headers.get("X-Forwarded-For", request.remote_addr or "")[:64],
+             request.headers.get("User-Agent", "")[:500])
+        )
+        cx.commit()
+
+    # GHL reconciliation in background — non-blocking
+    def _reconcile():
+        try:
+            cid, _, err = ghl_upsert_contact(email, "", "", source_tag="chatbot-login")
+            if cid:
+                with _db_lock, sqlite3.connect(LOG_DB) as cx2:
+                    cx2.execute("UPDATE users SET ghl_contact_id = ? WHERE id = ?",
+                                (cid, user_id))
+                    cx2.commit()
+        except Exception as e:
+            print(f"[auth] GHL reconciliation failed: {e}", flush=True)
+    threading.Thread(target=_reconcile, daemon=True).start()
+
+    # Set auth cookie + redirect to chat home
+    resp = Response(
+        f"""<!DOCTYPE html><html><head><title>Signed in</title>
+        <meta http-equiv=\"refresh\" content=\"1;url=/\"/>
+        <style>body{{font-family:sans-serif;background:#0a150d;color:#fdf4d8;
+        text-align:center;padding-top:80px}}</style></head>
+        <body><h2>You're signed in.</h2>
+        <p>Redirecting to chat… or <a href=\"/\" style=\"color:#d4a843\">click here</a>.</p>
+        </body></html>""",
+        mimetype="text/html",
+    )
+    resp.set_cookie(
+        "amg_auth", sess,
+        max_age=60 * 60 * 24 * SESSION_TTL_DAYS,
+        httponly=True, samesite="Lax",
+        secure=request.is_secure,
+    )
+    return resp
+
+
+@app.route("/auth/logout", methods=["POST", "OPTIONS"])
+def auth_logout():
+    if request.method == "OPTIONS":
+        return "", 200
+    tok = request.cookies.get("amg_auth", "")
+    if tok:
+        th = _hash_token(tok)
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute("DELETE FROM sessions WHERE token_hash = ?", (th,))
+            cx.commit()
+    resp = jsonify({"ok": True})
+    resp.set_cookie("amg_auth", "", max_age=0, httponly=True, samesite="Lax",
+                    secure=request.is_secure)
+    return resp
+
+
 @app.route("/history", methods=["GET"])
 def history():
     """Return up to N (default 30) most recent Q&A pairs logged against the
@@ -885,19 +1200,28 @@ def history():
 
 @app.route("/me", methods=["GET"])
 def me():
-    """Return the most recent contact info logged against the current
-    session cookie. Lets the front-end autofill name/email/frequency for
-    a returning visitor even when localStorage has been cleared.
+    """Return the current visitor's contact info.
+    Priority:
+      1. Authenticated user (auth_token cookie → users table)
+      2. Anonymous session cookie → most recent query_log row with contact
 
-    No auth required — the session cookie itself is the identity claim.
-    Returns 200 with {} when no prior interaction exists.
+    Returns:
+      {email, name, authenticated: bool, user_id: int|null}
     """
+    auth_user = get_authenticated_user(request)
+    if auth_user:
+        return jsonify({
+            "email":         auth_user["email"],
+            "name":          auth_user["name"] or "",
+            "authenticated": True,
+            "user_id":       auth_user["id"],
+        })
+
     sid = request.cookies.get("amg_session", "").strip()
     if not sid:
-        return jsonify({})
+        return jsonify({"authenticated": False})
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
-        # Most recent row with any contact info attached
         row = cx.execute(
             """SELECT email, name FROM query_log
                WHERE session_id = ? AND (email != '' OR name != '')
@@ -905,10 +1229,11 @@ def me():
             (sid,)
         ).fetchone()
     if not row:
-        return jsonify({})
+        return jsonify({"authenticated": False})
     return jsonify({
-        "email": row["email"] or "",
-        "name":  row["name"] or "",
+        "email":         row["email"] or "",
+        "name":          row["name"] or "",
+        "authenticated": False,
     })
 
 
