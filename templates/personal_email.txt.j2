@@ -1,0 +1,15 @@
+{% if is_beta -%}
+🧪 Beta — your feedback shapes this. Reply with thoughts, requests, corrections, or topic ideas.
+
+{% endif -%}
+Hi {{ user.name or "" }},
+
+{{ teaching_body }}
+
+If you'd like to try {{ product.name }}, it's at {{ product.url }} — your code: {{ product.code }} (5% off, valid through this {{ "month" if monthly_window else "week" }}).
+
+P.S. Pass it forward — forward this email to a friend who'd benefit. Your code works for them too, and we'll know you sent them.
+
+— Glen
+
+{{ unsubscribe_url }}

@@ -133,3 +133,45 @@ def test_select_topic_deterministic_alphabetical_tiebreak():
     }
     chosen = select_topic_for_user(user_state, ["zebra", "apple", "mango"], "client")
     assert chosen == "apple"
+
+
+# ── Task 7: AI-draft personal email generator ────────────────────────
+
+
+def test_generate_personal_email_includes_required_sections(monkeypatch):
+    """Generated email must contain: teaching nugget, product link with
+    coupon code, share-PS, beta banner (when in beta), unsubscribe link."""
+    from incentive_engine import generate_personal_email
+
+    fake_topic_text = "Terrain Restore activates intestinal tight junctions..."
+    fake_product = {
+        "name": "Terrain Restore",
+        "url":  "https://truly.vip/terrain-restore",
+        "code": "TR-U42-W17",
+    }
+
+    def fake_llm(prompt, max_tokens=500):
+        # Subject prompt opens with "Write a short email subject line";
+        # teaching prompt opens with "You are writing a short plain-text email".
+        if prompt.lower().startswith("write a short email subject line"):
+            return "What if your gut runs the show?"
+        return ("Today's discovery: tight junctions matter. "
+                "Try Terrain Restore 30 minutes before meals.")
+    monkeypatch.setattr("incentive_engine._llm_complete", fake_llm)
+
+    email = generate_personal_email(
+        user={"id": 42, "name": "Test", "email": "test@example.com"},
+        topic="leaky-gut",
+        topic_source_text=fake_topic_text,
+        product=fake_product,
+        is_beta=True,
+        audience="client",
+    )
+
+    assert "tight junctions" in email["body"].lower()
+    assert "TR-U42-W17" in email["body"]
+    assert "https://truly.vip/terrain-restore" in email["body"]
+    assert "P.S." in email["body"]
+    assert "Beta" in email["body"]      # banner for beta cohort
+    assert "unsubscribe" in email["body"].lower()
+    assert email["subject"]              # non-empty subject
