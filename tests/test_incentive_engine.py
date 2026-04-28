@@ -237,3 +237,44 @@ def test_process_reply_extracts_topics_and_categorizes(monkeypatch):
     assert result["ai_category"] == "topic-request"
     assert "leaky-gut" in result["extracted_topics"]
     assert result["routed_to"] == "glen-review"
+
+
+# ── Task 10: reply-as-personalization update loop ────────────────────
+
+
+def test_update_personalization_boosts_clicked_topics(tmp_db, monkeypatch):
+    """When a reply mentions topics, those topics get +REPLY_BOOST_WEIGHT
+    in topic_engagement_history; new topics are added at REPLY_BOOST_WEIGHT."""
+    monkeypatch.setattr("incentive_engine.LOG_DB", tmp_db)
+
+    with sqlite3.connect(tmp_db) as cx:
+        cx.executescript("""
+            CREATE TABLE personal_email_state (
+              user_id                  INTEGER PRIMARY KEY,
+              topic_engagement_history TEXT,
+              product_affinity         TEXT
+            );
+            INSERT INTO personal_email_state
+              (user_id, topic_engagement_history, product_affinity)
+            VALUES (42, '[{"topic":"leaky-gut","click_count":1}]', '{}');
+        """)
+        cx.commit()
+
+    from incentive_engine import update_personalization_from_reply
+    update_personalization_from_reply(
+        user_id=42,
+        extracted_topics=["leaky-gut", "wet-AMD"],
+        extracted_products=["Terrain Restore"],
+    )
+
+    with sqlite3.connect(tmp_db) as cx:
+        row = cx.execute(
+            "SELECT topic_engagement_history, product_affinity "
+            "FROM personal_email_state WHERE user_id=42"
+        ).fetchone()
+    history = json.loads(row[0])
+    affinity = json.loads(row[1])
+    by_topic = {h["topic"]: h["click_count"] for h in history}
+    assert by_topic["leaky-gut"] >= 3   # 1 baseline + 2 reply boost
+    assert by_topic["wet-AMD"] >= 2     # new topic, +2 reply boost
+    assert affinity.get("Terrain Restore", 0) >= 2

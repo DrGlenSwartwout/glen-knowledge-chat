@@ -257,3 +257,67 @@ def process_reply(
         "extracted_conditions": parsed.get("conditions", []),
         "routed_to":            ROUTE_BY_CATEGORY.get(category, "glen-review"),
     }
+
+
+# ── Reply-as-personalization update loop (Task 10) ───────────────────
+
+import sqlite3 as _sqlite3
+
+LOG_DB = str(
+    Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "chat_log.db"
+)
+
+REPLY_BOOST_WEIGHT = 2  # a reply counts as 2 clicks (stronger signal)
+
+
+def update_personalization_from_reply(
+    user_id: int,
+    extracted_topics: list,
+    extracted_products: list,
+) -> None:
+    """Boost the user's topic + product affinity based on what they
+    mentioned in their reply. Replies are stronger signals than clicks
+    because the user invested effort to write."""
+    with _sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = _sqlite3.Row
+        row = cx.execute(
+            "SELECT topic_engagement_history, product_affinity "
+            "FROM personal_email_state WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        if not row:
+            cx.execute(
+                "INSERT INTO personal_email_state (user_id, "
+                "topic_engagement_history, product_affinity) VALUES (?, ?, ?)",
+                (user_id, "[]", "{}"),
+            )
+            history, affinity = [], {}
+        else:
+            history = json.loads(row["topic_engagement_history"] or "[]")
+            affinity = json.loads(row["product_affinity"] or "{}")
+
+        by_topic = {h["topic"]: h for h in history}
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for t in extracted_topics:
+            if t in by_topic:
+                by_topic[t]["click_count"] = (
+                    by_topic[t].get("click_count", 0) + REPLY_BOOST_WEIGHT
+                )
+                by_topic[t]["last_clicked_at"] = now_iso
+            else:
+                by_topic[t] = {
+                    "topic": t,
+                    "click_count": REPLY_BOOST_WEIGHT,
+                    "last_clicked_at": now_iso,
+                }
+        history = list(by_topic.values())
+
+        for p in extracted_products:
+            affinity[p] = affinity.get(p, 0) + REPLY_BOOST_WEIGHT
+
+        cx.execute(
+            "UPDATE personal_email_state SET topic_engagement_history = ?, "
+            "product_affinity = ? WHERE user_id = ?",
+            (json.dumps(history), json.dumps(affinity), user_id),
+        )
+        cx.commit()
