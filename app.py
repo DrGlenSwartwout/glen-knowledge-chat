@@ -3726,6 +3726,33 @@ def api_dashboard_health():
     except Exception as e: return fail(e)
 
 
+# ── Intelligence briefings ────────────────────────────────────────────────────
+from dashboard import intelligence as _intel
+
+
+@app.route("/api/intelligence/<slug>")
+@require_console_key
+def api_intelligence_get(slug):
+    try: return ok(_intel.read_briefing(slug))
+    except ValueError as e: return fail(e, status=400)
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/intelligence/<slug>/upload", methods=["POST"])
+@require_console_key
+def api_intelligence_upload(slug):
+    try: return ok(_intel.write_briefing(slug, request.get_data()))
+    except ValueError as e: return fail(e, status=400)
+    except Exception as e: return fail(e, status=400)
+
+
+@app.route("/api/intelligence")
+@require_console_key
+def api_intelligence_list():
+    try: return ok(_intel.list_all())
+    except Exception as e: return fail(e)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
