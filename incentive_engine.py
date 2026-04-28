@@ -409,3 +409,181 @@ def build_personal_note_for_user(user_state: dict) -> str:
         f"Output ONLY the note, no greeting, no signature."
     )
     return _llm_complete(prompt, max_tokens=120).strip()
+
+
+# ── Beta send orchestrator + cron worker (Task 13) ───────────────────
+
+
+def _init_test_state(db_path: str, rows: list) -> None:
+    """Test helper — seed users + personal_email_state rows."""
+    with _sqlite3.connect(db_path) as cx:
+        cx.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY,
+                email TEXT,
+                name TEXT
+            );
+            CREATE TABLE IF NOT EXISTS personal_email_state (
+                user_id INTEGER PRIMARY KEY,
+                last_send_at TEXT,
+                last_open_at TEXT,
+                last_click_at TEXT,
+                consecutive_no_engagement_days INTEGER DEFAULT 0,
+                topic_engagement_history TEXT,
+                topic_send_history TEXT,
+                product_affinity TEXT,
+                paused_until TEXT
+            );
+            CREATE TABLE IF NOT EXISTS personal_email_sends (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                sent_at TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                topic TEXT,
+                product_name TEXT,
+                coupon_code TEXT,
+                subject TEXT,
+                body_snippet TEXT,
+                opened_at TEXT,
+                clicked_at TEXT
+            );
+        """)
+        for r in rows:
+            cx.execute(
+                "INSERT OR REPLACE INTO users (id, email, name) VALUES (?,?,?)",
+                (r["user_id"], r["email"], r["name"]),
+            )
+            cx.execute(
+                """INSERT OR REPLACE INTO personal_email_state
+                   (user_id, last_send_at, last_open_at, last_click_at)
+                   VALUES (?,?,?,?)""",
+                (
+                    r["user_id"],
+                    r.get("last_send_at"),
+                    r.get("last_open_at"),
+                    r.get("last_click_at"),
+                ),
+            )
+        cx.commit()
+
+
+def _send_email(user: dict, subject: str, body: str) -> None:
+    """Plug-point for sending. Phase 0 default: SMTP via env vars; falls
+    back to stdout. Replaceable in tests."""
+    smtp_host = os.environ.get("SMTP_HOST")
+    if smtp_host:
+        import smtplib
+        from email.mime.text import MIMEText
+        msg = MIMEText(body, "plain")
+        msg["Subject"] = subject
+        msg["From"] = os.environ.get("SMTP_FROM", os.environ.get("SMTP_USER", ""))
+        msg["To"] = user["email"]
+        with smtplib.SMTP(smtp_host, int(os.environ.get("SMTP_PORT", "587"))) as s:
+            s.starttls()
+            s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
+            s.sendmail(msg["From"], [user["email"]], msg.as_string())
+    else:
+        print(
+            f"\n[email] TO: {user['email']}\nSUBJECT: {subject}\n\n{body}\n",
+            flush=True,
+        )
+
+
+def _load_incentive_config() -> dict:
+    cfg_path = Path(__file__).parent / "data" / "incentive-config.json"
+    if cfg_path.exists():
+        return json.loads(cfg_path.read_text())
+    return {"beta_cohort_emails": []}
+
+
+def _list_beta_cohort_users() -> list:
+    """Phase 0: identify beta users by email-list in incentive-config.json.
+    Phase 1+ will switch to GHL tag membership."""
+    config = _load_incentive_config()
+    cohort_emails = list(config.get("beta_cohort_emails", []))
+    if not cohort_emails:
+        return []
+
+    placeholders = ",".join(["?"] * len(cohort_emails))
+    with _sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = _sqlite3.Row
+        rows = cx.execute(
+            f"SELECT id, email, name FROM users WHERE email IN ({placeholders})",
+            tuple(cohort_emails),
+        ).fetchall()
+    return [
+        {"id": r["id"], "email": r["email"], "name": r["name"]} for r in rows
+    ]
+
+
+def _load_user_state(user_id: int) -> dict:
+    with _sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = _sqlite3.Row
+        row = cx.execute(
+            "SELECT * FROM personal_email_state WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    return dict(row) if row else {}
+
+
+def _record_send(
+    user_id: int,
+    channel: str,
+    topic: str,
+    product_name: str,
+    coupon_code: str,
+    subject: str,
+    body: str,
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with _sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            """INSERT INTO personal_email_sends
+               (user_id, sent_at, channel, topic, product_name,
+                coupon_code, subject, body_snippet)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                user_id, now, channel, topic, product_name, coupon_code,
+                subject, body[:500],
+            ),
+        )
+        cx.execute(
+            "UPDATE personal_email_state SET last_send_at = ? WHERE user_id = ?",
+            (now, user_id),
+        )
+        cx.commit()
+
+
+def run_daily_send_for_beta_cohort() -> int:
+    """Iterate the beta cohort, apply engagement gate, generate + send +
+    record for each pass-through user. Returns number sent."""
+    config = _load_incentive_config()
+    sent = 0
+    for user in _list_beta_cohort_users():
+        state = _load_user_state(user["id"])
+        if not should_send_today(state, paused=False):
+            continue
+
+        # Phase 0 stubs — Phase 1 wires select_topic_for_user + Pinecone fetch.
+        topic = "leaky-gut"
+        product = {
+            "name": "Terrain Restore",
+            "url":  "https://truly.vip/terrain-restore",
+            "code": config.get("beta_shared_code", "BETA5"),
+        }
+
+        email = generate_personal_email(
+            user=user,
+            topic=topic,
+            topic_source_text="(Phase 0 stub — Pinecone fetch in Phase 1)",
+            product=product,
+            is_beta=True,
+            audience="client",
+        )
+        _send_email(user, email["subject"], email["body"])
+        _record_send(
+            user["id"], "personal", topic, product["name"],
+            product["code"], email["subject"], email["body"],
+        )
+        sent += 1
+    return sent

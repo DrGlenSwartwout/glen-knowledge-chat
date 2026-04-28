@@ -344,3 +344,45 @@ def test_personal_note_falls_back_when_no_data():
     note = build_personal_note_for_user(state)
     assert "reply" in note.lower()
     assert "personal email" in note.lower()
+
+
+# ── Task 13: beta send orchestrator ──────────────────────────────────
+
+
+def test_run_daily_send_iterates_beta_cohort_and_gates(tmp_db, monkeypatch, tmp_path):
+    """Daily-send orchestrator iterates beta cohort users, applies
+    should_send_today, and only sends to gated-pass users."""
+    monkeypatch.setattr("incentive_engine.LOG_DB", tmp_db)
+
+    # Point config-loader at a tmp config file with both users in cohort
+    cfg_path = tmp_path / "incentive-config.json"
+    cfg_path.write_text(json.dumps({
+        "beta_cohort_emails": ["a@x.com", "b@x.com"],
+        "beta_shared_code": "BETA5",
+    }))
+    monkeypatch.setattr("incentive_engine._load_incentive_config",
+                        lambda: json.loads(cfg_path.read_text()))
+
+    sent_emails = []
+
+    def fake_send(user, subject, body):
+        sent_emails.append({"user_id": user["id"], "subject": subject})
+    monkeypatch.setattr("incentive_engine._send_email", fake_send)
+
+    monkeypatch.setattr("incentive_engine._llm_complete",
+                        lambda p, max_tokens=500: "Stub teaching.")
+
+    from incentive_engine import _init_test_state
+    _init_test_state(tmp_db, [
+        {"user_id": 1, "name": "Alice", "email": "a@x.com",
+         "last_send_at": "2026-04-26T00:00:00+00:00",
+         "last_open_at":  "2026-04-26T08:00:00+00:00"},   # engaged → send
+        {"user_id": 2, "name": "Bob",   "email": "b@x.com",
+         "last_send_at": "2026-04-26T00:00:00+00:00",
+         "last_open_at":  None},                           # silent → skip
+    ])
+
+    from incentive_engine import run_daily_send_for_beta_cohort
+    n = run_daily_send_for_beta_cohort()
+    assert n == 1
+    assert sent_emails[0]["user_id"] == 1

@@ -1,0 +1,8 @@
+{
+  "_comment": "Incentive system runtime config. Glen populates beta_cohort_emails before enabling the cron. Empty list = cron is a no-op.",
+  "_updated": "2026-04-28",
+  "beta_cohort_emails": [],
+  "beta_shared_code": "BETA5",
+  "beta_shared_code_pct": 5,
+  "beta_banner_active": true
+}
