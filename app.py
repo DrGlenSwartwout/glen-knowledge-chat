@@ -83,6 +83,13 @@ REBRANDLY_API_KEY = os.environ.get("REBRANDLY_API_KEY", "")
 TRULY_VIP_DOMAIN  = "truly.vip"
 TRULY_SO_DOMAIN   = "truly.so"
 
+# LOG_DB and _db_lock are defined here (early) because several module-level
+# initializers below (_init_shortlink_cache, _init_auth_tables, etc.) rely
+# on LOG_DB at import time. The definitive _init_log_db() and any further
+# log-DB plumbing live further down in the file.
+LOG_DB   = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "chat_log.db"
+_db_lock = threading.Lock()
+
 
 def _init_shortlink_cache():
     with sqlite3.connect(LOG_DB) as cx:
@@ -479,8 +486,8 @@ def build_product_directive(snippets_text: str = ""):
     return "\n".join(lines)
 
 # ── Query log DB ──────────────────────────────────────────────────────────────
-LOG_DB   = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "chat_log.db"
-_db_lock = threading.Lock()
+# (LOG_DB and _db_lock are defined earlier in the module so module-level
+# initializers above can use them; kept here as a section anchor.)
 
 def _init_log_db():
     with sqlite3.connect(LOG_DB) as cx:
@@ -515,6 +522,67 @@ def _init_log_db():
                 pass  # column already exists
         cx.execute("CREATE INDEX IF NOT EXISTS idx_query_log_session ON query_log(session_id)")
         cx.execute("CREATE INDEX IF NOT EXISTS idx_query_log_email   ON query_log(email)")
+
+        # Incentive engine tables (Phase 0 beta)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS personal_email_state (
+                user_id                          INTEGER PRIMARY KEY,
+                last_send_at                     TEXT,
+                last_open_at                     TEXT,
+                last_click_at                    TEXT,
+                consecutive_no_engagement_days   INTEGER DEFAULT 0,
+                topic_engagement_history         TEXT,   -- JSON
+                topic_send_history               TEXT,   -- JSON
+                product_affinity                 TEXT,   -- JSON
+                paused_until                     TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS personal_email_sends (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id           INTEGER NOT NULL,
+                sent_at            TEXT NOT NULL,
+                channel            TEXT NOT NULL,    -- 'personal' or 'newsletter'
+                topic              TEXT,
+                product_name       TEXT,
+                coupon_code        TEXT,
+                subject            TEXT,
+                body_snippet       TEXT,
+                opened_at          TEXT,
+                clicked_at         TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS personal_email_feedback (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                received_at         TEXT NOT NULL,
+                user_id             INTEGER,
+                original_send_id    INTEGER,
+                raw_text            TEXT,
+                ai_summary          TEXT,
+                ai_category         TEXT,
+                routed_to           TEXT,
+                extracted_topics    TEXT,   -- JSON list
+                extracted_products  TEXT,   -- JSON list
+                extracted_conditions TEXT,  -- JSON list
+                glen_reviewed_at    TEXT,
+                action_taken        TEXT
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS holdout_assignments (
+                user_id    INTEGER PRIMARY KEY,
+                cohort     TEXT NOT NULL,    -- 'treatment' | 'holdout'
+                assigned_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_pes_state ON personal_email_state(last_send_at)")
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_pes_sends ON personal_email_sends(user_id, sent_at)")
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_pes_fb ON personal_email_feedback(user_id, received_at)")
+
         cx.commit()
 
 _init_log_db()
