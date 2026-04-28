@@ -516,6 +516,7 @@ def _init_log_db():
             "referer              TEXT",
             "extracted_image_data TEXT",
             "image_count          INTEGER DEFAULT 0",
+            "email_sent_at        TEXT",
         ]:
             try:
                 cx.execute(f"ALTER TABLE query_log ADD COLUMN {col_def}")
@@ -1079,6 +1080,237 @@ def chat():
             secure=request.is_secure,
         )
     return resp
+
+
+# ── Phase 2B — full-report endpoint (View full / Email full) ─────────────────
+@app.route("/full-report", methods=["POST", "OPTIONS"])
+def full_report():
+    """Regenerate the original query in mode=full. If email is provided,
+    send the result via SMTP and tag the GHL contact. Otherwise stream
+    the full content back inline (same SSE protocol as /chat).
+    """
+    if request.method == "OPTIONS":
+        return "", 200
+
+    data    = request.get_json() or {}
+    log_id  = data.get("log_id")
+    email   = (data.get("email") or "").strip().lower()
+    name    = (data.get("name") or "").strip()
+    if not log_id:
+        return jsonify({"error": "log_id required"}), 400
+
+    # Look up the original query
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT query, level, session_id FROM query_log WHERE id = ?",
+            (log_id,)
+        ).fetchone()
+    if not row:
+        return jsonify({"error": "log_id not found"}), 404
+
+    original_query = row["query"]
+    level          = row["level"] or "self-healing"
+    session_id     = row["session_id"]
+
+    # If user is authenticated, prefer their identity
+    auth_user = get_authenticated_user(request)
+    if auth_user:
+        email = email or auth_user["email"]
+        name  = name  or (auth_user.get("name") or "")
+
+    # If email provided, send via SMTP/console (synchronous since user is waiting).
+    # If no email, stream the response back as SSE for inline rendering.
+    if email:
+        return _full_report_send_email(
+            log_id, original_query, level, email, name, session_id
+        )
+    return _full_report_stream(log_id, original_query, level, session_id)
+
+
+def _generate_full_answer(query: str, level: str):
+    """Run the same retrieval + synthesis pipeline as /chat but in
+    mode=full (synchronous; used when the email path needs the body
+    before sending).
+
+    Returns (answer_str, sources_list, chunks_retrieved_int).
+    """
+    q_vec = embed(query)
+    matches = query_all_namespaces(q_vec)
+    if not matches:
+        return ("No relevant content found.", [], 0)
+
+    context_str, sources_list = build_context(matches)
+    product_directive = build_product_directive(
+        snippets_text=(context_str or "")
+    )
+    product_block = f"{product_directive}\n\n" if product_directive else ""
+
+    synth_instr = (
+        "Produce the EXTENDED FORMAT response — full clinical depth, "
+        "mechanism, dosage ranges, supporting citations, edge cases. "
+        "List sources at the end."
+    )
+    user_msg = (
+        f"USER QUESTION: {query}\n\n"
+        f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
+        f"{product_block}"
+        f"{synth_instr}"
+    )
+
+    answer = ""
+    msg = _cl.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=4096,
+        system=get_system_prompt(level),
+        messages=[{"role": "user", "content": user_msg}],
+    )
+    if msg.content:
+        answer = msg.content[0].text
+    return (answer, sources_list, len(matches))
+
+
+def _send_full_report_email(to_email: str, name: str,
+                            subject: str, body: str):
+    """Send the full report via SMTP (if configured) or console fallback.
+    Returns (sent_via, error_or_none).
+    """
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    if smtp_host and smtp_user and smtp_pass:
+        try:
+            import smtplib
+            from email.mime.text import MIMEText
+            msg = MIMEText(body, "plain")
+            msg["Subject"] = subject
+            msg["From"]    = smtp_from
+            msg["To"]      = to_email
+            port = int(os.environ.get("SMTP_PORT", "587"))
+            with smtplib.SMTP(smtp_host, port, timeout=15) as s:
+                s.starttls()
+                s.login(smtp_user, smtp_pass)
+                s.sendmail(smtp_from, [to_email], msg.as_string())
+            return ("smtp", None)
+        except Exception as e:
+            print(f"[full-report] SMTP failed: {e}", flush=True)
+
+    # Console fallback (development / SMTP-not-configured)
+    print(f"\n[full-report] TO: {to_email}\nSUBJECT: {subject}\n\n{body}\n",
+          flush=True)
+    return ("console-log", "no email-send mechanism configured")
+
+
+def _full_report_send_email(log_id, query, level, email, name, session_id):
+    """Synchronous full-mode regeneration → email send → GHL tag + log."""
+    full_answer, sources, chunks = _generate_full_answer(query, level)
+
+    subject = f"Your full report from Dr. Glen: {query[:60]}"
+    body = (
+        f"Hi {name or ''},\n\n"
+        f"Here's the full clinical breakdown for your question.\n\n"
+        f"YOUR QUESTION: {query}\n\n"
+        f"DR. GLEN'S RESPONSE:\n\n"
+        f"{full_answer}\n\n"
+        f"— Dr. Glen Swartwout\n"
+        f"https://glen-knowledge-chat.onrender.com/"
+    )
+
+    sent_via, _err = _send_full_report_email(email, name, subject, body)
+
+    # Tag the GHL contact (best-effort, non-blocking failure)
+    try:
+        topic_slug = re.sub(r'[^a-z0-9]+', '-', query.lower()[:30]).strip('-')
+        parts = name.split(None, 1) if name else []
+        first = parts[0] if parts else ""
+        last  = parts[1] if len(parts) > 1 else ""
+        ghl_onboard_contact(
+            email, first, last,
+            source_tag="chatbot-fullreport",
+            extra_tags=["chatbot-fullreport", f"topic-{topic_slug}"]
+        )
+    except Exception as e:
+        print(f"[full-report] GHL onboard failed: {e}", flush=True)
+
+    # Update email_sent_at in query_log (best-effort)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "UPDATE query_log SET email_sent_at = ? WHERE id = ?",
+                (now_iso, log_id)
+            )
+            cx.commit()
+    except Exception as e:
+        print(f"[full-report] log update failed: {e}", flush=True)
+
+    return jsonify({
+        "ok":       True,
+        "sent_via": sent_via,
+        "to":       email,
+        "preview":  (full_answer[:200] + "...") if full_answer else "",
+    })
+
+
+def _full_report_stream(log_id, query, level, session_id):
+    """Stream the full-mode regeneration via SSE, like /chat. The
+    front-end replaces the brief inline body with this stream.
+    """
+    def generate():
+        try:
+            q_vec = embed(query)
+        except Exception as e:
+            yield sse({"error": f"Embedding failed: {e}"})
+            return
+
+        matches = query_all_namespaces(q_vec)
+        if not matches:
+            yield sse({"done": True, "answer": "No relevant content found.",
+                       "sources": [], "chunks_retrieved": 0,
+                       "log_id": log_id, "mode": "full"})
+            return
+
+        context_str, sources_list = build_context(matches)
+        product_directive = build_product_directive(
+            snippets_text=(context_str or "")
+        )
+        product_block = f"{product_directive}\n\n" if product_directive else ""
+
+        synth_instr = (
+            "Produce the EXTENDED FORMAT response — full clinical depth, "
+            "mechanism, dosage ranges, supporting citations, edge cases. "
+            "List sources at the end."
+        )
+        user_msg = (
+            f"USER QUESTION: {query}\n\n"
+            f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
+            f"{product_block}"
+            f"{synth_instr}"
+        )
+
+        try:
+            with _cl.messages.stream(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=4096,
+                system=get_system_prompt(level),
+                messages=[{"role": "user", "content": user_msg}],
+            ) as stream:
+                for tok in stream.text_stream:
+                    yield sse({"token": tok})
+        except Exception as e:
+            yield sse({"error": f"Claude error: {e}"})
+            return
+
+        yield sse({"done": True, "sources": sources_list,
+                   "chunks_retrieved": len(matches), "log_id": log_id,
+                   "mode": "full"})
+
+    return Response(
+        stream_with_context(generate()),
+        content_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.route("/auth/magic-link/request", methods=["POST", "OPTIONS"])

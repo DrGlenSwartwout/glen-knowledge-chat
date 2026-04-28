@@ -1298,6 +1298,13 @@
             </a>
           </div>
         </div>
+        ${logId ? `
+        <button class="action-btn" onclick="viewFullReport('${msgId}', ${logId})" id="vfb-${msgId}" title="View the full clinical breakdown inline">
+          📖 View full
+        </button>
+        <button class="action-btn" onclick="emailFullReport('${msgId}', ${logId})" id="efb-${msgId}" title="Email the full clinical breakdown to your inbox">
+          ✉️ Email full
+        </button>` : ''}
       </div>` : '';
 
     div.innerHTML = `
@@ -1435,6 +1442,119 @@
       document.body.removeChild(ta);
       btn.classList.add('copied');
       setTimeout(restore, 1500);
+    }
+  }
+
+  // ── Phase 2B — View full / Email full ──
+  async function viewFullReport(msgId, logId) {
+    if (!logId) { alert("Cannot expand — original message has no log id."); return; }
+    const btn = document.getElementById('vfb-' + msgId);
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+
+    const msgEl = document.querySelector(`[data-msg-id="${msgId}"]`);
+    if (!msgEl) return;
+    const bodyDiv = msgEl.querySelector('.message-body');
+    if (!bodyDiv) return;
+
+    bodyDiv.innerHTML = '<em>Loading full breakdown…</em>';
+
+    try {
+      const r = await fetch('/full-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ log_id: logId }),
+      });
+      if (!r.ok || !r.body) {
+        bodyDiv.innerHTML = `<em>Error: ${r.status}</em>`;
+        if (btn) btn.style.display = 'none';
+        return;
+      }
+      const reader = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '', acc = '';
+      bodyDiv.innerHTML = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const evt = JSON.parse(line.slice(6).trim());
+            if (evt.token) {
+              acc += evt.token;
+              bodyDiv.innerHTML = renderMarkdown(acc);
+            }
+          } catch (_) {}
+        }
+      }
+      msgEl.dataset.rawText = acc;          // copy now reflects full body
+      if (btn) btn.style.display = 'none';  // hide once expanded
+
+      // Append "Email this to me" trailer button
+      const trailerHtml = `
+        <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
+          <button class="action-btn" onclick="emailFullReport('${msgId}', ${logId}, true)">
+            ✉️ Email this to me
+          </button>
+        </div>`;
+      bodyDiv.insertAdjacentHTML('beforeend', trailerHtml);
+    } catch (e) {
+      bodyDiv.innerHTML = `<em>Connection error: ${e.message}</em>`;
+      if (btn) { btn.disabled = false; btn.textContent = '📖 View full'; }
+    }
+  }
+
+  async function emailFullReport(msgId, logId, alreadyExpanded) {
+    if (!logId) { alert("Cannot email — original message has no log id."); return; }
+    const optEmailEl = document.getElementById('optin-email');
+    const optNameEl  = document.getElementById('optin-name');
+    const optinEmail = (optEmailEl && optEmailEl.value || '').trim();
+    const optinName  = (optNameEl  && optNameEl.value  || '').trim();
+
+    let email = optinEmail;
+    if (!email) {
+      email = prompt("Enter your email to receive the full report:");
+      if (!email || !email.includes('@')) return;
+      if (optEmailEl) optEmailEl.value = email;
+      try { localStorage.setItem('amg_email', email); } catch (_) {}
+    }
+
+    const btnId = alreadyExpanded ? null : 'efb-' + msgId;
+    const btn = btnId ? document.getElementById(btnId) : null;
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Sending…'; }
+
+    try {
+      const r = await fetch('/full-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ log_id: logId, email, name: optinName }),
+      });
+      const d = await r.json();
+      if (r.ok && d.ok) {
+        if (btn) {
+          btn.textContent = '✓ Sent to ' + email;
+          btn.classList.add('copied');
+        } else {
+          alert('Sent to ' + email);
+        }
+      } else {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '✉️ Email full';
+        }
+        alert('Error: ' + (d && d.error ? d.error : r.status));
+      }
+    } catch (e) {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '✉️ Email full';
+      }
+      alert('Connection error: ' + e.message);
     }
   }
 
