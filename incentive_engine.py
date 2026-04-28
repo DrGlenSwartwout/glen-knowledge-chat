@@ -321,3 +321,55 @@ def update_personalization_from_reply(
             (json.dumps(history), json.dumps(affinity), user_id),
         )
         cx.commit()
+
+
+# ── Newsletter renderer (Task 11) ────────────────────────────────────
+
+
+def generate_newsletter(
+    kind: str,                          # 'weekly' or 'monthly'
+    user: dict,
+    title: str,
+    body_html: str,
+    offer: dict,                        # {product_url, code, pct, cta_text, deadline, ...}
+    is_beta: bool = False,
+    personal_note: Optional[str] = None,
+    closeouts: Optional[list] = None,
+) -> dict:
+    """Render a per-subscriber newsletter HTML body.
+
+    The broadcast body (body_html, title, offer) is the same for everyone
+    in this send; personal_note differs per user.
+
+    Returns: {"subject": str, "body": str}
+    """
+    template_name = (
+        f"newsletter_{kind}.html.j2"
+        if kind in ("weekly", "monthly")
+        else "newsletter_weekly.html.j2"
+    )
+    env = _get_jinja_env()
+    template = env.get_template(template_name)
+
+    body = template.render(
+        title=title,
+        body=body_html,
+        offer_pitch=offer.get("pitch", ""),
+        product_url=offer.get("product_url", ""),
+        cta_text=offer.get("cta_text", "Shop now"),
+        coupon_code=offer.get("code", ""),
+        discount_pct=offer.get("pct", 10),
+        deadline=offer.get("deadline", "this Friday"),
+        headline_offer=offer.get("headline", ""),
+        window_days=offer.get("window_days", 3),
+        month_label=offer.get("month_label", ""),
+        closeouts=closeouts or [],
+        personal_note=personal_note,
+        is_beta=is_beta,
+        unsubscribe_url=(
+            f"https://glen-knowledge-chat.onrender.com/"
+            f"unsubscribe?email={user['email']}&channel={kind}"
+        ),
+    )
+
+    return {"subject": title, "body": body}

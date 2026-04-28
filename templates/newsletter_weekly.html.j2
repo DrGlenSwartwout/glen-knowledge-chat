@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html><body style="font-family:Georgia,serif;max-width:600px;margin:0 auto;color:#222;">
+{% if is_beta %}
+<div style="background:#fff8d6;padding:10px;border-left:4px solid #d4a843;">
+🧪 <strong>Beta — your feedback shapes this.</strong> Reply with thoughts, suggestions, corrections, or topic ideas.
+</div>
+{% endif %}
+<h1>{{ title }}</h1>
+<div>{{ body | safe }}</div>
+
+<h2>This week's drop</h2>
+<p>{{ offer_pitch }}</p>
+<p><a href="{{ product_url }}" style="background:#3d8a52;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block;">{{ cta_text }}</a></p>
+<p>Code: <strong>{{ coupon_code }}</strong> — {{ discount_pct }}% off, valid through {{ deadline }}.</p>
+
+{% if personal_note %}
+<hr>
+<h3>Personal note</h3>
+<p>{{ personal_note }}</p>
+{% endif %}
+
+<hr>
+<p style="font-size:12px;color:#666;">💛 <strong>Pass it forward.</strong> Forward this to a friend — your code works for them too. We'll know you sent them.</p>
+<p style="font-size:11px;color:#999;"><a href="{{ unsubscribe_url }}">Unsubscribe</a></p>
+</body></html>

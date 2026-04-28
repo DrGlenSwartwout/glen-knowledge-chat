@@ -278,3 +278,45 @@ def test_update_personalization_boosts_clicked_topics(tmp_db, monkeypatch):
     assert by_topic["leaky-gut"] >= 3   # 1 baseline + 2 reply boost
     assert by_topic["wet-AMD"] >= 2     # new topic, +2 reply boost
     assert affinity.get("Terrain Restore", 0) >= 2
+
+
+# ── Task 11: newsletter HTML renderer ────────────────────────────────
+
+
+def test_generate_newsletter_renders_personal_note():
+    from incentive_engine import generate_newsletter
+    out = generate_newsletter(
+        kind="weekly",
+        user={"id": 1, "email": "u@example.com"},
+        title="This week: tight junctions",
+        body_html="<p>Body text here</p>",
+        offer={"product_url": "https://truly.vip/x",
+               "code": "WK10", "pct": 10, "cta_text": "Shop",
+               "deadline": "Friday"},
+        is_beta=True,
+        personal_note="Saw you've been curious about leaky gut — next week's drop ties in.",
+    )
+    assert "Saw you've been curious" in out["body"]
+    assert "WK10" in out["body"]
+    assert "Beta" in out["body"]
+
+
+def test_generate_newsletter_monthly_includes_closeouts():
+    from incentive_engine import generate_newsletter
+    out = generate_newsletter(
+        kind="monthly",
+        user={"id": 1, "email": "u@example.com"},
+        title="April Edition",
+        body_html="<p>Headline body</p>",
+        offer={"product_url": "https://truly.vip/y", "code": "APR15",
+               "pct": 15, "cta_text": "Get it", "headline": "Spring stack",
+               "window_days": 5, "month_label": "April 2026"},
+        closeouts=[
+            {"name": "Old Formula A", "url": "https://truly.vip/a",
+             "reason": "Reformulated"},
+        ],
+    )
+    assert "Old Formula A" in out["body"]
+    assert "APR15" in out["body"]
+    assert "Monthly Edition" in out["body"]
+    assert "Beta" not in out["body"]
