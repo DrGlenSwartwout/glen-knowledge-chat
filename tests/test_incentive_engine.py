@@ -337,6 +337,38 @@ def test_update_personalization_boosts_clicked_topics(tmp_db, monkeypatch):
     assert affinity.get("Terrain Restore", 0) >= 2
 
 
+def test_update_personalization_creates_state_for_new_user(tmp_db, monkeypatch):
+    """If no state row exists for the user, create one and apply boosts."""
+    monkeypatch.setattr("incentive_engine.LOG_DB", tmp_db)
+
+    # Empty table — no rows
+    with sqlite3.connect(tmp_db) as cx:
+        cx.execute("""
+            CREATE TABLE personal_email_state (
+              user_id                  INTEGER PRIMARY KEY,
+              topic_engagement_history TEXT,
+              product_affinity         TEXT
+            )
+        """)
+        cx.commit()
+
+    from incentive_engine import update_personalization_from_reply
+    update_personalization_from_reply(
+        user_id=99,
+        extracted_topics=["EMF"],
+        extracted_products=[],
+    )
+
+    with sqlite3.connect(tmp_db) as cx:
+        row = cx.execute(
+            "SELECT topic_engagement_history FROM personal_email_state WHERE user_id=99"
+        ).fetchone()
+    assert row is not None
+    history = json.loads(row[0])
+    by_topic = {h["topic"]: h["click_count"] for h in history}
+    assert by_topic["EMF"] >= 2
+
+
 # ── Task 11: newsletter HTML renderer ────────────────────────────────
 
 
