@@ -67,10 +67,23 @@ def fetch_pool_for_audience(audience: str = "both",
     if not all_ids:
         return []
 
-    # Pinecone fetch is batched
-    rec = idx.fetch(ids=all_ids, namespace="clinical-qa")
+    # Pinecone fetch has a 512-char limit on the joined ID list. Chunk by
+    # fixed count (10) to stay well under that ceiling regardless of ID length.
+    FETCH_CHUNK = 10
+    all_vectors = {}
+    for i in range(0, len(all_ids), FETCH_CHUNK):
+        chunk = all_ids[i : i + FETCH_CHUNK]
+        try:
+            rec = idx.fetch(ids=chunk, namespace="clinical-qa")
+            all_vectors.update(rec.vectors)
+        except Exception as e:
+            # Continue on chunk failure rather than aborting the whole pool
+            import os
+            if os.environ.get("DEBUG_PINECONE_FETCH"):
+                print(f"[pool] chunk {i}-{i+FETCH_CHUNK} failed: {e}", flush=True)
+
     pool = []
-    for vid, v in rec.vectors.items():
+    for vid, v in all_vectors.items():
         meta = v.metadata or {}
         entry_audience = meta.get("audience", "both")
         if audience == "client" and entry_audience == "practitioner":
