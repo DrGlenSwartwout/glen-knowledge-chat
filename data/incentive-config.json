@@ -1,0 +1,13 @@
+{
+  "_comment": "Incentive system runtime config. beta_cohort_emails are the addresses the daily Personal-email cron will send to (gated by should_send_today engagement check).",
+  "_updated": "2026-04-28",
+  "beta_cohort_emails": [
+    "this.elf@gmail.com",
+    "suerae1111@gmail.com",
+    "restorealoha@gmail.com",
+    "keikibright@gmail.com"
+  ],
+  "beta_shared_code": "BETA5",
+  "beta_shared_code_pct": 5,
+  "beta_banner_active": true
+}

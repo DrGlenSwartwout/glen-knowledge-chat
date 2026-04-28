@@ -20,6 +20,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from typing import Optional, Tuple
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 from pinecone import Pinecone
@@ -82,6 +83,13 @@ _COUPONS         = _load_json(DATA_DIR / "coupons.json",
 REBRANDLY_API_KEY = os.environ.get("REBRANDLY_API_KEY", "")
 TRULY_VIP_DOMAIN  = "truly.vip"
 TRULY_SO_DOMAIN   = "truly.so"
+
+# LOG_DB and _db_lock are defined here (early) because several module-level
+# initializers below (_init_shortlink_cache, _init_auth_tables, etc.) rely
+# on LOG_DB at import time. The definitive _init_log_db() and any further
+# log-DB plumbing live further down in the file.
+LOG_DB   = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "chat_log.db"
+_db_lock = threading.Lock()
 
 
 def _init_shortlink_cache():
@@ -479,8 +487,8 @@ def build_product_directive(snippets_text: str = ""):
     return "\n".join(lines)
 
 # ── Query log DB ──────────────────────────────────────────────────────────────
-LOG_DB   = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "chat_log.db"
-_db_lock = threading.Lock()
+# (LOG_DB and _db_lock are defined earlier in the module so module-level
+# initializers above can use them; kept here as a section anchor.)
 
 def _init_log_db():
     with sqlite3.connect(LOG_DB) as cx:
@@ -515,6 +523,67 @@ def _init_log_db():
                 pass  # column already exists
         cx.execute("CREATE INDEX IF NOT EXISTS idx_query_log_session ON query_log(session_id)")
         cx.execute("CREATE INDEX IF NOT EXISTS idx_query_log_email   ON query_log(email)")
+
+        # Incentive engine tables (Phase 0 beta)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS personal_email_state (
+                user_id                          INTEGER PRIMARY KEY,
+                last_send_at                     TEXT,
+                last_open_at                     TEXT,
+                last_click_at                    TEXT,
+                consecutive_no_engagement_days   INTEGER DEFAULT 0,
+                topic_engagement_history         TEXT,   -- JSON
+                topic_send_history               TEXT,   -- JSON
+                product_affinity                 TEXT,   -- JSON
+                paused_until                     TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS personal_email_sends (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id           INTEGER NOT NULL,
+                sent_at            TEXT NOT NULL,
+                channel            TEXT NOT NULL CHECK (channel IN ('personal','newsletter')),
+                topic              TEXT,
+                product_name       TEXT,
+                coupon_code        TEXT,
+                subject            TEXT,
+                body_snippet       TEXT,
+                opened_at          TEXT,
+                clicked_at         TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS personal_email_feedback (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                received_at         TEXT NOT NULL,
+                user_id             INTEGER,
+                original_send_id    INTEGER,
+                raw_text            TEXT,
+                ai_summary          TEXT,
+                ai_category         TEXT,
+                routed_to           TEXT,
+                extracted_topics    TEXT,   -- JSON list
+                extracted_products  TEXT,   -- JSON list
+                extracted_conditions TEXT,  -- JSON list
+                glen_reviewed_at    TEXT,
+                action_taken        TEXT
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS holdout_assignments (
+                user_id    INTEGER PRIMARY KEY,
+                cohort     TEXT NOT NULL CHECK (cohort IN ('treatment','holdout')),
+                assigned_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_pes_state ON personal_email_state(last_send_at)")
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_pes_sends ON personal_email_sends(user_id, sent_at)")
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_pes_fb ON personal_email_feedback(user_id, received_at)")
+
         cx.commit()
 
 _init_log_db()
@@ -790,6 +859,9 @@ def chat():
     name      = (data.get("name") or "").strip()
     email     = (data.get("email") or "").strip()
     frequency = (data.get("frequency") or "").strip()
+    # Phase 0 — channel opt-in (replaces older frequency selector)
+    personal_optin   = bool(data.get("personal_optin"))
+    newsletter_optin = bool(data.get("newsletter_optin"))
     mode      = (data.get("mode") or "brief").strip().lower()
     if mode not in ("brief", "full"):
         mode = "brief"
@@ -956,8 +1028,12 @@ def chat():
                     parts = name.split(None, 1)
                     first = parts[0] if parts else ""
                     last  = parts[1] if len(parts) > 1 else ""
-                    tags  = ["chatbot-lead"]
-                    if frequency:
+                    tags = _resolve_channel_tags(
+                        personal=personal_optin,
+                        newsletter=newsletter_optin,
+                        is_beta=False,  # beta tag set by backfill script, not user-side
+                    )
+                    if frequency:  # backwards-compatible — old clients may still send
                         tags.append(f"frequency-{frequency}")
                     ghl_onboard_contact(email, first, last, source_tag="chatbot", extra_tags=tags)
                 except Exception:
@@ -1441,6 +1517,22 @@ def ghl_onboard_contact(email, first_name="", last_name="", phone="", source_tag
         result["workflow_enrolled"] = True
 
     return result
+
+
+def _resolve_channel_tags(personal: bool = False,
+                           newsletter: bool = False,
+                           is_beta: bool = False) -> list:
+    """Map the front-end's channel-opt-in booleans to GHL tags.
+    Replaces the older frequency-* tags. Both old and new tags can
+    coexist during transition; the engine reads the new tags only."""
+    tags = ["chatbot-lead"]
+    if personal:
+        tags.append("personal-email-opt-in")
+    if newsletter:
+        tags.append("newsletter-opt-in")
+    if is_beta:
+        tags.append("beta-personal-email")
+    return tags
 
 
 # ── Referral tracking ─────────────────────────────────────────────────────────
@@ -2830,7 +2922,7 @@ Start speaking immediately (no "Hello" or "Welcome" opener).
 Content:
 {content}"""
 
-def _el_tts(script: str) -> tuple[bytes | None, str | None]:
+def _el_tts(script: str) -> Tuple[Optional[bytes], Optional[str]]:
     """Call ElevenLabs TTS. Returns (audio_bytes, error)."""
     if not _EL_API_KEY or not _EL_VOICE_ID:
         return None, "ELEVENLABS_API_KEY or ELEVENLABS_VOICE_ID not set"

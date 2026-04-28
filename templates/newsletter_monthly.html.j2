@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html><body style="font-family:Georgia,serif;max-width:600px;margin:0 auto;color:#222;">
+{% if is_beta %}
+<div style="background:#fff8d6;padding:10px;border-left:4px solid #d4a843;">
+🧪 <strong>Beta — your feedback shapes this.</strong> Reply with thoughts, suggestions, corrections, or topic ideas.
+</div>
+{% endif %}
+<h1 style="text-align:center;font-size:28px;">{{ title }}</h1>
+<p style="text-align:center;color:#888;">Monthly Edition · {{ month_label }}</p>
+
+<div>{{ body | safe }}</div>
+
+{% if closeouts %}
+<h2>Closeouts — last batch</h2>
+<ul>
+{% for c in closeouts %}
+<li><a href="{{ c.url }}">{{ c.name }}</a> — {{ c.reason }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+<h2 style="text-align:center;">{{ headline_offer }}</h2>
+<p style="text-align:center;font-size:18px;"><strong>{{ discount_pct }}% off</strong> · valid for the next {{ window_days }} days</p>
+<p style="text-align:center;"><a href="{{ product_url }}" style="background:#d4a843;color:#000;padding:14px 30px;border-radius:6px;text-decoration:none;font-weight:700;">{{ cta_text }}</a></p>
+<p style="text-align:center;">Code: <strong>{{ coupon_code }}</strong></p>
+
+{% if personal_note %}
+<hr>
+<h3>Personal note</h3>
+<p>{{ personal_note }}</p>
+{% endif %}
+
+<hr>
+<p style="font-size:12px;color:#666;">💛 Pass it forward — your code works for friends too.</p>
+<p style="font-size:11px;color:#999;"><a href="{{ unsubscribe_url }}">Unsubscribe</a></p>
+</body></html>

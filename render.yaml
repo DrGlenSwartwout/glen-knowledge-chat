@@ -52,3 +52,21 @@ services:
       name: data
       mountPath: /data
       sizeGB: 1
+
+  - type: cron
+    name: glen-personal-email-daily
+    runtime: python
+    schedule: "0 17 * * *"   # 7 AM HST daily (HST is UTC-10)
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/run_personal_email_cron.py
+    envVars:
+      - fromService:
+          type: web
+          name: glen-knowledge-chat
+          envVarKey: ANTHROPIC_API_KEY
+      - fromService:
+          type: web
+          name: glen-knowledge-chat
+          envVarKey: PINECONE_API_KEY
+      - key: DATA_DIR
+        value: /data
