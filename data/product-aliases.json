@@ -122,22 +122,27 @@
     "AngiogenX": {
       "catalog_name": "AngiogenX",
       "url": "https://remedymatch.com/remedies/syntropy/51-angiogenx",
-      "note": "Anti-angioneogenesis phytonutrients. Wet-AMD-specific lever for choroidal neovascularization."
+      "note": "Anti-angioneogenesis phytonutrients. Wet-AMD-specific lever for choroidal neovascularization. FIRST PRIORITY for wet AMD if budget allows. Dose: 1-3 caps/day according to severity and client need for speed of result (e.g., bad reaction to anti-VEGF injections → escalate to 3/day)."
     },
     "Clear the Way": {
       "catalog_name": "Clear the Way",
       "url": "https://remedymatch.com/remedies/syntropy/20-clear-the-way",
-      "note": "Maximum-potency Serrapeptase. Indicated for visible scar tissue OR scar-driven symptoms (closed head trauma vision effects, macular pucker, non-comitant eye movements post-EOM surgery, wet AMD bleeds — fibrin matrix from CNV)."
+      "note": "Maximum-potency Serrapeptase. Indicated for visible scar tissue OR scar-driven symptoms (closed head trauma vision effects, macular pucker, non-comitant eye movements post-EOM surgery, wet AMD bleeds — fibrin matrix from CNV). For wet AMD: SECOND PRIORITY after AngiogenX when strong scar/bleed need + low budget."
     },
     "MSM Syntropy": {
       "catalog_name": "MSM Syntropy",
       "url": "https://remedymatch.com/remedies/syntropy/135-msm-syntropy",
-      "note": "Synergist — supports tissue remodeling and antioxidant cycling. Used in wet AMD stack."
+      "note": "Synergist — supports tissue remodeling and antioxidant cycling. Wet AMD stack. Dose: starts at 1 scoop twice daily; can take more if desired. For higher therapeutic doses, substitute MSM powder 2-3 g/day in divided doses (https://remedymatch.com/remedies/forms/powders/pure-simple-singles/361-msm-powder)."
+    },
+    "MSM Powder": {
+      "catalog_name": "MSM Powder",
+      "url": "https://remedymatch.com/remedies/forms/powders/pure-simple-singles/361-msm-powder",
+      "note": "High-dose alternative to MSM Syntropy. Dose: 2-3 g/day in divided doses. Use when client needs higher therapeutic MSM than MSM Syntropy delivers."
     },
     "Vitamin E Spectrum": {
       "catalog_name": "Vitamin E Spectrum",
       "url": "https://remedymatch.com/remedies/syntropy/124-vitamin-e-spectrum",
-      "note": "Synergist — full tocopherol + tocotrienol spectrum. Used in wet AMD stack."
+      "note": "Synergist — full tocopherol + tocotrienol spectrum. Wet AMD stack. Dose: 1 cap/day."
     },
     "Nerve Repair": {
       "catalog_name": "Nerve Repair",
