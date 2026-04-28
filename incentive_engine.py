@@ -373,3 +373,39 @@ def generate_newsletter(
     )
 
     return {"subject": title, "body": body}
+
+
+# ── Per-subscriber personal closing note (Task 12) ───────────────────
+
+DEFAULT_PERSONAL_NOTE = (
+    "Reply with anything — questions, requests, corrections, what you'd "
+    "want to read about. I read every reply. And if you'd like a personal "
+    "email cadence (adaptive to what interests you), reply with 'personal' "
+    "and I'll set it up."
+)
+
+
+def build_personal_note_for_user(user_state: dict) -> str:
+    """Generate the per-user personal note section for newsletters.
+
+    Returns DEFAULT_PERSONAL_NOTE if no engagement data exists; otherwise
+    asks the LLM for a 1-2 sentence note that references the user's
+    top-affinity topic without being creepy.
+    """
+    history = _parse_state_field(user_state, "topic_engagement_history", [])
+    high_affinity = [h for h in history if h.get("click_count", 0) > 0]
+
+    if not high_affinity:
+        return DEFAULT_PERSONAL_NOTE
+
+    high_affinity.sort(key=lambda h: -h.get("click_count", 0))
+    top_topic = high_affinity[0]["topic"]
+
+    prompt = (
+        f"Write a 1-2 sentence personal note in Dr. Glen Swartwout's warm "
+        f"direct voice, addressed to a subscriber whose recent reading "
+        f"interest is '{top_topic}'. Reference the topic without being "
+        f"creepy about it; tease something coming up that ties in. "
+        f"Output ONLY the note, no greeting, no signature."
+    )
+    return _llm_complete(prompt, max_tokens=120).strip()

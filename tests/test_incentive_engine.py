@@ -320,3 +320,27 @@ def test_generate_newsletter_monthly_includes_closeouts():
     assert "APR15" in out["body"]
     assert "Monthly Edition" in out["body"]
     assert "Beta" not in out["body"]
+
+
+# ── Task 12: per-subscriber personal closing note ────────────────────
+
+
+def test_personal_note_uses_data_when_available(monkeypatch):
+    from incentive_engine import build_personal_note_for_user
+
+    def fake_llm(prompt, max_tokens=500):
+        return "Saw you've been curious about leaky gut — next week's drop ties in."
+    monkeypatch.setattr("incentive_engine._llm_complete", fake_llm)
+
+    state = {"topic_engagement_history":
+             '[{"topic":"leaky-gut","click_count":5}]'}
+    note = build_personal_note_for_user(state)
+    assert "leaky gut" in note.lower()
+
+
+def test_personal_note_falls_back_when_no_data():
+    from incentive_engine import build_personal_note_for_user
+    state = {"topic_engagement_history": "[]"}
+    note = build_personal_note_for_user(state)
+    assert "reply" in note.lower()
+    assert "personal email" in note.lower()
