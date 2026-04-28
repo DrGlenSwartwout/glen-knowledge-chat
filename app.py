@@ -4077,6 +4077,30 @@ def api_intelligence_list():
     except Exception as e: return fail(e)
 
 
+# ── Cron webhooks (called by Render cron services) ───────────────────────────
+# Render persistent disks attach to ONE service at a time. The disk `data` is
+# mounted on glen-knowledge-chat (web), so cron containers don't have it. To
+# avoid sqlite3.OperationalError when the orchestrator opens chat_log.db,
+# Render cron just curls this endpoint. The orchestrator runs inside the web
+# container where the disk lives.
+#
+# Auth: X-Cron-Secret header must match CRON_SECRET env (falls back to
+# CONSOLE_SECRET so a single shared secret can cover both).
+
+@app.route("/cron/personal-send", methods=["POST"])
+def cron_personal_send():
+    key = request.headers.get("X-Cron-Secret", "")
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        from incentive_engine import run_daily_send_for_beta_cohort
+        n = run_daily_send_for_beta_cohort()
+        return jsonify({"ok": True, "sent": n})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
