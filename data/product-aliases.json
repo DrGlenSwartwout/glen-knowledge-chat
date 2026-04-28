@@ -109,6 +109,36 @@
       "url": "https://truly.vip/scar-silk",
       "canonical_url": "https://remedymatch.com/remedies/syntropy/551-scar-silk"
     },
+    "Scar Solve": {
+      "catalog_name": "Scar Solve",
+      "url": "https://remedymatch.com/remedies/548-scar-solve",
+      "note": "Scar reduction program — pairs with Scar Silk and forthcoming Scar Soft."
+    },
+    "Scar Soft": {
+      "catalog_name": "Scar Soft",
+      "url": "https://remedymatch.com/search?controller=search&search_query=Scar+Soft",
+      "note": "New product — check current availability at remedymatch.com. Bot phrasing: \"Scar Soft (new — check availability).\""
+    },
+    "AngiogenX": {
+      "catalog_name": "AngiogenX",
+      "url": "https://remedymatch.com/remedies/syntropy/51-angiogenx",
+      "note": "Anti-angioneogenesis phytonutrients. Wet-AMD-specific lever for choroidal neovascularization."
+    },
+    "Clear the Way": {
+      "catalog_name": "Clear the Way",
+      "url": "https://remedymatch.com/remedies/syntropy/20-clear-the-way",
+      "note": "Maximum-potency Serrapeptase. Indicated for visible scar tissue OR scar-driven symptoms (closed head trauma vision effects, macular pucker, non-comitant eye movements post-EOM surgery, wet AMD bleeds — fibrin matrix from CNV)."
+    },
+    "MSM Syntropy": {
+      "catalog_name": "MSM Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/135-msm-syntropy",
+      "note": "Synergist — supports tissue remodeling and antioxidant cycling. Used in wet AMD stack."
+    },
+    "Vitamin E Spectrum": {
+      "catalog_name": "Vitamin E Spectrum",
+      "url": "https://remedymatch.com/remedies/syntropy/124-vitamin-e-spectrum",
+      "note": "Synergist — full tocopherol + tocotrienol spectrum. Used in wet AMD stack."
+    },
     "Nerve Repair": {
       "catalog_name": "Nerve Repair",
       "url": "https://truly.vip/nerve-repair",
