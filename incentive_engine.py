@@ -152,3 +152,50 @@ def generate_personal_email(
     )
 
     return {"subject": subject, "body": body}
+
+
+# ── Engagement-gated send decision (Task 8) ──────────────────────────
+
+DORMANT_THRESHOLD_DAYS = 14
+
+
+def should_send_today(state: dict, paused: bool = False) -> bool:
+    """Decide whether to send Personal email to this user today.
+
+    Rules:
+      1. If admin paused → no.
+      2. If never sent before → yes (welcome moment).
+      3. If last send was today (UTC) → no (don't double-send).
+      4. If last_open_at OR last_click_at is at-or-after last_send_at
+         → yes (they engaged).
+      5. Otherwise → no (engagement gate closed).
+    """
+    if paused:
+        return False
+    last_send = state.get("last_send_at")
+    if not last_send:
+        return True  # first send for this user
+
+    now = datetime.now(timezone.utc)
+    try:
+        last_send_dt = datetime.fromisoformat(last_send)
+    except Exception:
+        return True  # corrupted timestamp; default to send
+
+    if last_send_dt.date() == now.date():
+        return False
+
+    last_open = state.get("last_open_at")
+    last_click = state.get("last_click_at")
+
+    def _at_or_after(ts_str, ref_dt):
+        if not ts_str:
+            return False
+        try:
+            return datetime.fromisoformat(ts_str) >= ref_dt
+        except Exception:
+            return False
+
+    return _at_or_after(last_click, last_send_dt) or _at_or_after(
+        last_open, last_send_dt
+    )

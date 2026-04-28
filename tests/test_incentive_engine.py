@@ -175,3 +175,39 @@ def test_generate_personal_email_includes_required_sections(monkeypatch):
     assert "Beta" in email["body"]      # banner for beta cohort
     assert "unsubscribe" in email["body"].lower()
     assert email["subject"]              # non-empty subject
+
+
+# ── Task 8: engagement-gated send decision ───────────────────────────
+
+
+def test_should_send_today_unlocks_after_engagement():
+    """Should send if user opened/clicked yesterday's send."""
+    from incentive_engine import should_send_today
+
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    state = {
+        "last_send_at": yesterday,
+        "last_open_at": yesterday,
+        "consecutive_no_engagement_days": 0,
+    }
+    assert should_send_today(state, paused=False) is True
+
+
+def test_should_send_today_pauses_after_no_engagement():
+    """Should NOT send if user didn't engage with yesterday's email."""
+    from incentive_engine import should_send_today
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    state = {
+        "last_send_at": yesterday,
+        "last_open_at": None,
+        "last_click_at": None,
+        "consecutive_no_engagement_days": 1,
+    }
+    assert should_send_today(state, paused=False) is False
+
+
+def test_should_send_today_first_send_for_new_user():
+    """Brand-new opt-in (no last_send_at) should send immediately."""
+    from incentive_engine import should_send_today
+    state = {"last_send_at": None}
+    assert should_send_today(state, paused=False) is True
