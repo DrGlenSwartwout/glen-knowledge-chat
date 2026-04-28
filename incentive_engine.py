@@ -548,8 +548,28 @@ def _record_send(
             ),
         )
         cx.execute(
-            "UPDATE personal_email_state SET last_send_at = ? WHERE user_id = ?",
-            (now, user_id),
+            "INSERT OR IGNORE INTO personal_email_state (user_id) VALUES (?)",
+            (user_id,),
+        )
+        # Update last_send_at + topic_send_history (anti-stale tracking)
+        cx.row_factory = _sqlite3.Row
+        row = cx.execute(
+            "SELECT topic_send_history FROM personal_email_state "
+            "WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        history = (
+            json.loads(row["topic_send_history"] or "[]")
+            if row and row["topic_send_history"] else []
+        )
+        # Replace existing entry for this topic, or append
+        history = [h for h in history if h.get("topic") != topic]
+        history.append({"topic": topic, "last_sent_at": now})
+        cx.execute(
+            "UPDATE personal_email_state "
+            "SET last_send_at = ?, topic_send_history = ? "
+            "WHERE user_id = ?",
+            (now, json.dumps(history), user_id),
         )
         cx.commit()
 
@@ -564,8 +584,41 @@ def run_daily_send_for_beta_cohort() -> int:
         if not should_send_today(state, paused=False):
             continue
 
-        # Phase 0 stubs — Phase 1 wires select_topic_for_user + Pinecone fetch.
-        topic = "leaky-gut"
+        # Audience routing — Phase 0 default 'client'; Phase 1 enhancement
+        # could read GHL tag from a cached column. For now, default 'client'
+        # for the broad cohort.
+        audience = state.get("audience_tag") or "client"
+
+        # Adaptive topic selection from Pinecone audience-filtered pool
+        from pinecone_content_pool import (
+            candidate_topics_for_audience,
+            fetch_source_text_for_topic,
+        )
+        try:
+            candidate_topics = candidate_topics_for_audience(audience)
+        except Exception as e:
+            print(
+                f"[orch] Pinecone fetch failed for user {user['id']}: {e}",
+                flush=True,
+            )
+            candidate_topics = []
+
+        if not candidate_topics:
+            # Pool empty — fall back to the original stub so beta
+            # subscribers still receive *something* during the warm-up window.
+            topic = "leaky-gut"
+            topic_source_text = "(content pool unavailable — fallback)"
+        else:
+            chosen = select_topic_for_user(state, candidate_topics, audience)
+            if chosen is None:
+                # All candidates stale for this user — skip them today.
+                continue
+            topic = chosen
+            topic_source_text = (
+                fetch_source_text_for_topic(chosen, audience)
+                or "(no source text fetched)"
+            )
+
         product = {
             "name": "Terrain Restore",
             "url":  "https://truly.vip/terrain-restore",
@@ -575,10 +628,10 @@ def run_daily_send_for_beta_cohort() -> int:
         email = generate_personal_email(
             user=user,
             topic=topic,
-            topic_source_text="(Phase 0 stub — Pinecone fetch in Phase 1)",
+            topic_source_text=topic_source_text,
             product=product,
             is_beta=True,
-            audience="client",
+            audience=audience,
         )
         _send_email(user, email["subject"], email["body"])
         _record_send(
