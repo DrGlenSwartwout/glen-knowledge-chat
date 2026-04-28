@@ -48,3 +48,21 @@ def test_incentive_schema_creates_required_tables(tmp_path):
     assert "personal_email_sends" in tables
     assert "personal_email_feedback" in tables
     assert "holdout_assignments" in tables
+
+
+def test_resolve_channel_tags_includes_personal_newsletter_beta():
+    """_resolve_channel_tags should produce tags for each opt-in flag."""
+    from app import _resolve_channel_tags
+    tags = _resolve_channel_tags(personal=True, newsletter=True, is_beta=True)
+    assert "personal-email-opt-in" in tags
+    assert "newsletter-opt-in" in tags
+    assert "beta-personal-email" in tags
+    assert "chatbot-lead" in tags  # baseline tag
+
+def test_resolve_channel_tags_omits_unchecked():
+    """If a channel is not opted in, its tag should not appear."""
+    from app import _resolve_channel_tags
+    tags = _resolve_channel_tags(personal=False, newsletter=True, is_beta=False)
+    assert "personal-email-opt-in" not in tags
+    assert "newsletter-opt-in" in tags
+    assert "beta-personal-email" not in tags

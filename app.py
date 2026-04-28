@@ -858,6 +858,9 @@ def chat():
     name      = (data.get("name") or "").strip()
     email     = (data.get("email") or "").strip()
     frequency = (data.get("frequency") or "").strip()
+    # Phase 0 — channel opt-in (replaces older frequency selector)
+    personal_optin   = bool(data.get("personal_optin"))
+    newsletter_optin = bool(data.get("newsletter_optin"))
     mode      = (data.get("mode") or "brief").strip().lower()
     if mode not in ("brief", "full"):
         mode = "brief"
@@ -1024,8 +1027,12 @@ def chat():
                     parts = name.split(None, 1)
                     first = parts[0] if parts else ""
                     last  = parts[1] if len(parts) > 1 else ""
-                    tags  = ["chatbot-lead"]
-                    if frequency:
+                    tags = _resolve_channel_tags(
+                        personal=personal_optin,
+                        newsletter=newsletter_optin,
+                        is_beta=False,  # beta tag set by backfill script, not user-side
+                    )
+                    if frequency:  # backwards-compatible — old clients may still send
                         tags.append(f"frequency-{frequency}")
                     ghl_onboard_contact(email, first, last, source_tag="chatbot", extra_tags=tags)
                 except Exception:
@@ -1509,6 +1516,22 @@ def ghl_onboard_contact(email, first_name="", last_name="", phone="", source_tag
         result["workflow_enrolled"] = True
 
     return result
+
+
+def _resolve_channel_tags(personal: bool = False,
+                           newsletter: bool = False,
+                           is_beta: bool = False) -> list:
+    """Map the front-end's channel-opt-in booleans to GHL tags.
+    Replaces the older frequency-* tags. Both old and new tags can
+    coexist during transition; the engine reads the new tags only."""
+    tags = ["chatbot-lead"]
+    if personal:
+        tags.append("personal-email-opt-in")
+    if newsletter:
+        tags.append("newsletter-opt-in")
+    if is_beta:
+        tags.append("beta-personal-email")
+    return tags
 
 
 # ── Referral tracking ─────────────────────────────────────────────────────────
