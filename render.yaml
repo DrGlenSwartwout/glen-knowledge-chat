@@ -70,3 +70,19 @@ services:
           envVarKey: PINECONE_API_KEY
       - key: DATA_DIR
         value: /data
+
+  - type: cron
+    name: glen-reply-watcher
+    runtime: python
+    schedule: "*/15 * * * *"   # every 15 minutes
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/run_reply_watcher_cron.py
+    envVars:
+      - fromService:
+          type: web
+          name: glen-knowledge-chat
+          envVarKey: ANTHROPIC_API_KEY
+      - key: DATA_DIR
+        value: /data
+      - key: GMAIL_TOKEN_PATH
+        value: /data/google-token.json
