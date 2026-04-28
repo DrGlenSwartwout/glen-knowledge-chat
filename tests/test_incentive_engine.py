@@ -213,6 +213,33 @@ def test_should_send_today_first_send_for_new_user():
     assert should_send_today(state, paused=False) is True
 
 
+def test_should_send_today_paused_admin_override():
+    """Paused flag overrides everything."""
+    from incentive_engine import should_send_today
+    state = {"last_send_at": None}  # would normally send
+    assert should_send_today(state, paused=True) is False
+
+
+def test_should_send_today_no_double_send_same_day():
+    """If we already sent today, don't send again today."""
+    from incentive_engine import should_send_today
+    today = datetime.now(timezone.utc).isoformat()
+    state = {"last_send_at": today, "last_open_at": today}
+    assert should_send_today(state, paused=False) is False
+
+
+def test_should_send_today_click_counts_as_engagement():
+    """A click is sufficient engagement to unlock today's send."""
+    from incentive_engine import should_send_today
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    state = {
+        "last_send_at": yesterday,
+        "last_open_at": None,
+        "last_click_at": yesterday,  # clicked but didn't open (rare but real)
+    }
+    assert should_send_today(state, paused=False) is True
+
+
 # ── Task 9: reply ingestion + AI categorization ──────────────────────
 
 
