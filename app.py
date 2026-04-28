@@ -76,6 +76,174 @@ _COUPONS         = _load_json(DATA_DIR / "coupons.json",
                               default={"default_code": "", "daily_codes": []})
 
 
+# ── On-the-fly Rebrandly shortlink creation ──────────────────────────────────
+# Products only consume Rebrandly cap when actually mentioned by the bot.
+# Cache hits in SQLite. Cap-exceeded errors fall back gracefully to canonical.
+REBRANDLY_API_KEY = os.environ.get("REBRANDLY_API_KEY", "")
+TRULY_VIP_DOMAIN  = "truly.vip"
+TRULY_SO_DOMAIN   = "truly.so"
+
+
+def _init_shortlink_cache():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS shortlink_cache (
+                product_name  TEXT PRIMARY KEY,
+                shortlink     TEXT NOT NULL,
+                canonical     TEXT NOT NULL,
+                domain        TEXT NOT NULL,
+                rebrandly_id  TEXT,
+                created_at    TEXT NOT NULL,
+                last_used_at  TEXT
+            )
+        """)
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_shortlink_canon ON shortlink_cache(canonical)")
+        cx.commit()
+_init_shortlink_cache()
+
+
+def _slugify_product(name: str) -> str:
+    s = name.lower().strip()
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    s = re.sub(r"-{2,}", "-", s)
+    return s.strip("-")[:40]
+
+
+def _pick_domain_for_product(product_name: str, alias_info: dict) -> str:
+    """Tier rule: Glen's primary remedies / Syntropy / flagship → truly.vip;
+    books / info / courses / services / healing tools / low-priority → truly.so.
+    """
+    name = (product_name or "").lower()
+    cat  = (alias_info.get("category") or "").lower()
+    canonical = (alias_info.get("canonical_url") or alias_info.get("url") or "").lower()
+
+    # truly.so signals
+    truly_so_markers = ["book", "ebook", "guide", "manual", "journal", "kit",
+                        "course", "training"]
+    if any(k in name for k in truly_so_markers):
+        return TRULY_SO_DOMAIN
+    if cat in ("resources", "books", "courses"):
+        return TRULY_SO_DOMAIN
+    if "/resources/" in canonical:
+        return TRULY_SO_DOMAIN
+    # NES Health Infoceuticals (single-letter+digit codes like EI8, ED12, MB7)
+    first = name.split()[0] if name.split() else ""
+    if re.match(r"^(ei|es|ed|et|mb|sk|bfa)\d+", first):
+        return TRULY_SO_DOMAIN
+
+    # Default: primary remedy → truly.vip
+    return TRULY_VIP_DOMAIN
+
+
+def _create_rebrandly_link(slug: str, destination: str, domain: str):
+    """Returns (shortlink_url, rebrandly_id, error). On 403 cap-exceeded
+    or any other failure, returns (None, None, error_str).
+    """
+    if not REBRANDLY_API_KEY:
+        return None, None, "REBRANDLY_API_KEY not set"
+    try:
+        import urllib.request as _ur, urllib.error as _ue
+        body = json.dumps({
+            "destination": destination,
+            "slashtag":    slug,
+            "domain":      {"fullName": domain},
+        }).encode("utf-8")
+        req = _ur.Request(
+            "https://api.rebrandly.com/v1/links",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "apikey":       REBRANDLY_API_KEY,
+                "Accept":       "application/json",
+            },
+            method="POST",
+        )
+        with _ur.urlopen(req, timeout=8) as r:
+            d = json.loads(r.read())
+            return f"https://{domain}/{slug}", d.get("id"), None
+    except _ue.HTTPError as e:
+        try:
+            payload = json.loads(e.read())
+        except Exception:
+            payload = {}
+        msg = payload.get("message", f"HTTP {e.code}")
+        return None, None, msg
+    except Exception as e:
+        return None, None, str(e)
+
+
+def resolve_or_create_shortlink(product_name: str, alias_info: dict):
+    """Look up or create a Rebrandly shortlink for this product. Returns
+    (url_to_use, was_newly_created). Falls back to canonical_url on any
+    error (cap-exceeded, network, slug collision, etc.).
+    """
+    if not product_name:
+        return None, False
+    canonical = alias_info.get("canonical_url") or alias_info.get("url") or ""
+    if not canonical:
+        return None, False
+    # Already a truly.vip / truly.so shortlink in the static map?
+    if alias_info.get("url", "").startswith(("https://truly.vip/", "https://truly.so/")):
+        return alias_info["url"], False
+
+    # Cache hit?
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT shortlink FROM shortlink_cache WHERE product_name = ?",
+            (product_name,)
+        ).fetchone()
+    if row:
+        # Update last_used_at non-blocking
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.execute("UPDATE shortlink_cache SET last_used_at = ? WHERE product_name = ?",
+                           (datetime.now(timezone.utc).isoformat(), product_name))
+                cx.commit()
+        except Exception:
+            pass
+        return row["shortlink"], False
+
+    # Cache miss → attempt to create on-the-fly
+    domain = _pick_domain_for_product(product_name, alias_info)
+    slug   = _slugify_product(product_name)
+    short, rid, err = _create_rebrandly_link(slug, canonical, domain)
+    if not short:
+        # On collision (slug exists), retry with -2 suffix
+        if err and "already" in (err or "").lower():
+            short, rid, err = _create_rebrandly_link(slug + "-rm", canonical, domain)
+        if not short:
+            print(f"[shortlink] fallback to canonical for {product_name!r}: {err}", flush=True)
+            return canonical, False
+
+    # Cache the new shortlink
+    try:
+        ts = datetime.now(timezone.utc).isoformat()
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                """INSERT OR REPLACE INTO shortlink_cache
+                   (product_name, shortlink, canonical, domain, rebrandly_id,
+                    created_at, last_used_at)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (product_name, short, canonical, domain, rid, ts, ts)
+            )
+            cx.commit()
+    except Exception as e:
+        print(f"[shortlink] cache write failed: {e}", flush=True)
+    return short, True
+
+
+def get_cached_shortlink(product_name: str):
+    """Read-only lookup — returns shortlink if cached, else None."""
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT shortlink FROM shortlink_cache WHERE product_name = ?",
+            (product_name,)
+        ).fetchone()
+    return row["shortlink"] if row else None
+
+
 def get_today_coupon_code():
     """Return today's coupon code (HST timezone) from coupons.json, or ''.
     Format expected in coupons.json:
@@ -94,9 +262,15 @@ def get_today_coupon_code():
     return _COUPONS.get("default_code", "") or ""
 
 
-def build_product_directive():
+def build_product_directive(snippets_text: str = ""):
     """Build the per-request product-routing directive injected into the
     synthesis prompt. Includes the alias map and today's coupon if any.
+
+    If snippets_text is provided, scans for product-name mentions and
+    proactively resolves (creating on-the-fly) the truly.vip/truly.so
+    shortlinks for products likely to be mentioned in the response. This
+    makes the bot's link-injection demand-driven — Rebrandly slots are
+    only consumed when products are actually about to be discussed.
     """
     aliases = _PRODUCT_ALIASES.get("aliases", {}) or {}
     if not aliases:
@@ -104,14 +278,34 @@ def build_product_directive():
     code = get_today_coupon_code()
     discount = _COUPONS.get("_discount_percent", 5)
 
+    # On-the-fly resolution: scan snippets for product-name matches; for
+    # each match without an existing truly.vip/truly.so URL, attempt to
+    # create one. The resolved URL is used in the directive table below.
+    resolved_urls = {}
+    if snippets_text:
+        snippets_lower = snippets_text.lower()
+        for clinical_name, info in aliases.items():
+            if not info.get("canonical_url") and not info.get("url"):
+                continue
+            # Skip if the alias is already a shortlink
+            if info.get("url", "").startswith(("https://truly.vip/", "https://truly.so/")):
+                resolved_urls[clinical_name] = info["url"]
+                continue
+            # Match clinical_name against snippets text (case-insensitive)
+            if clinical_name.lower() in snippets_lower:
+                short_url, _ = resolve_or_create_shortlink(clinical_name, info)
+                if short_url:
+                    resolved_urls[clinical_name] = short_url
+
     lines = [
         "PRODUCT LINK INJECTION TABLE — when you mention any of the LEFT-side names "
         "in your answer, append the URL on the RIGHT immediately after the product "
         "name, formatted as a markdown link, e.g. [Terrain Restore](URL)."
     ]
     for clinical_name, info in sorted(aliases.items()):
-        if info.get("url"):
-            lines.append(f"  • {clinical_name} → {info['url']}")
+        url = resolved_urls.get(clinical_name) or info.get("url")
+        if url:
+            lines.append(f"  • {clinical_name} → {url}")
         elif info.get("note"):
             lines.append(f"  • {clinical_name} → DESCRIBE-ONLY: {info['note']}")
 
@@ -543,7 +737,12 @@ def chat():
                 f"context. Quote specific values or labels from it when relevant.\n\n"
             )
 
-        product_directive = build_product_directive()
+        # Pass the retrieved snippet text + extracted image content into the
+        # directive builder so on-the-fly Rebrandly creation only fires for
+        # products actually likely to be mentioned in this response.
+        product_directive = build_product_directive(
+            snippets_text=(context_str or "") + " " + (extracted_text or "")
+        )
         product_block = f"{product_directive}\n\n" if product_directive else ""
 
         messages.append({"role": "user", "content":
