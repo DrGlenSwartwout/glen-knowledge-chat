@@ -151,11 +151,14 @@
 
   /* Field 3: suggested reply */
   .field.reply textarea#reply-body {
-    width: 100%; min-height: 140px; max-height: 360px; resize: vertical;
+    width: 100%; min-height: 160px; max-height: 420px; resize: vertical;
     background: #0d1117; color: var(--text); border: 1px solid var(--border);
     border-radius: 6px; padding: 12px 14px; font-size: 13px; line-height: 1.55;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    cursor: text; outline: none; transition: border-color .15s, box-shadow .15s;
   }
+  .field.reply textarea#reply-body:hover { border-color: var(--accent); }
+  .field.reply textarea#reply-body:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(124, 92, 191, 0.18); }
 
   /* Field 4: prompt / notes */
   .field.prompt textarea#prompt-body {
@@ -262,13 +265,15 @@
         <!-- Field 3: suggested reply -->
         <div class="field reply">
           <div class="field-header">
-            <h3>3 · Suggested Reply (editable)</h3>
+            <h3>3 · Suggested Reply <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">— click to edit</span></h3>
             <div class="field-actions">
-              <button id="btn-clear-reply">Clear</button>
+              <button id="btn-field3-regenerate">↻ Regenerate</button>
+              <button id="btn-field3-clear">Clear</button>
+              <button id="btn-field3-send" style="background:var(--accent); color:white; border-color:var(--accent); font-weight:600;">Send</button>
             </div>
           </div>
           <div class="field-body">
-            <textarea id="reply-body" placeholder="AI-drafted reply will appear here…"></textarea>
+            <textarea id="reply-body" placeholder="AI-drafted reply will appear here. Click anywhere in this box to edit — your changes are kept when you Send."></textarea>
           </div>
         </div>
 
@@ -586,7 +591,10 @@ document.getElementById("btn-show-raw").addEventListener("click", () => {
 document.getElementById("btn-rerun-summary").addEventListener("click", () => {
   if (CURRENT_THREAD_ID) runAI(CURRENT_THREAD_ID);
 });
-document.getElementById("btn-clear-reply").addEventListener("click", () => {
+// Field-3 inline buttons (mirror the bottom action bar so Glen doesn't have to scroll)
+document.getElementById("btn-field3-send").addEventListener("click", sendReply);
+document.getElementById("btn-field3-regenerate").addEventListener("click", regenerateReply);
+document.getElementById("btn-field3-clear").addEventListener("click", () => {
   document.getElementById("reply-body").value = "";
 });
 document.getElementById("search").addEventListener("keydown", e => {
