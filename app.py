@@ -4124,6 +4124,38 @@ def cron_usps_rate_check():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ── One-time Gmail token upload (helper for first-time setup on Render) ───────
+# Local token at ~/.config/google/token.json gets POSTed here once and
+# persisted to /data/google-token.json on the web service's disk.
+@app.route("/admin/upload-gmail-token", methods=["POST"])
+@require_console_key
+def admin_upload_gmail_token():
+    try:
+        body = request.get_json(silent=True) or {}
+        token_json = body.get("token")
+        if not token_json:
+            return fail("token field required (paste contents of ~/.config/google/token.json)", status=400)
+        # Validate it parses + has expected shape
+        if isinstance(token_json, str):
+            import json as _json
+            token_json = _json.loads(token_json)
+        for required in ("token", "refresh_token", "client_id", "client_secret"):
+            if required not in token_json:
+                return fail(f"token JSON missing field: {required}", status=400)
+        target = os.environ.get("GMAIL_TOKEN_PATH", "/data/google-token.json")
+        Path(target).parent.mkdir(parents=True, exist_ok=True)
+        import json as _json
+        with open(target, "w") as f:
+            _json.dump(token_json, f)
+        os.chmod(target, 0o600)
+        return ok({
+            "saved_to": target,
+            "scopes": token_json.get("scopes", []),
+            "client_id_suffix": token_json.get("client_id", "")[-12:],
+        })
+    except Exception as e: return fail(e, status=500)
+
+
 # ── Inbox (Gmail in console) ──────────────────────────────────────────────────
 # /console/inbox  — full Gmail thread list + read + reply, behind console auth
 # /api/inbox/*    — JSON API behind require_console_key
