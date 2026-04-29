@@ -28,16 +28,15 @@
     font-size: 14px; min-height: 100vh;
     display: flex; flex-direction: column;
   }
-
-  /* Layout: nav (40px) + toolbar + 3-pane grid filling the rest */
   #inbox-shell { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
   .toolbar {
     display: flex; gap: 10px; align-items: center;
     padding: 10px 16px; border-bottom: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--surface); flex-wrap: wrap;
   }
   .toolbar input.search {
-    flex: 1; max-width: 460px;
+    flex: 1; min-width: 200px; max-width: 400px;
     background: #0d1117; color: var(--text); border: 1px solid var(--border);
     border-radius: 6px; padding: 7px 10px; font-size: 13px;
   }
@@ -51,10 +50,21 @@
   .toolbar .spacer { flex: 1; }
   .toolbar .status { font-size: 11px; color: var(--muted); }
 
-  /* 3-pane grid: thread list (380) | message (1fr) | reply box (collapsible) */
+  .filter-chips {
+    display: flex; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--border);
+    background: var(--surface-2); overflow-x: auto;
+  }
+  .chip {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 999px; padding: 4px 12px; font-size: 12px; cursor: pointer;
+    white-space: nowrap; transition: .12s;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--accent-light); }
+  .chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+
   .panes {
     flex: 1; display: grid;
-    grid-template-columns: 380px 1fr;
+    grid-template-columns: 360px 1fr;
     min-height: 0;
   }
   @media (max-width: 900px) {
@@ -66,62 +76,125 @@
   .pane.list  { border-right: 1px solid var(--border); background: var(--surface); }
   .pane.detail { background: var(--bg); display: flex; flex-direction: column; }
 
-  /* Thread list rows */
+  /* Thread list */
   .thread-row {
-    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
     cursor: pointer; transition: background .12s;
   }
   .thread-row:hover { background: var(--surface-2); }
   .thread-row.active { background: rgba(124, 92, 191, 0.12); border-left: 3px solid var(--accent); padding-left: 11px; }
-  .thread-row.unread .sender { font-weight: 700; }
-  .thread-row.unread .subject { color: var(--text); font-weight: 600; }
-  .thread-row .top { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
-  .thread-row .sender { color: var(--muted); font-size: 12px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thread-row.unread .sender, .thread-row.unread .subject { color: var(--text); font-weight: 600; }
+  .thread-row .top { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+  .thread-row .sender { color: var(--muted); font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .thread-row .date { color: var(--muted); font-size: 11px; flex-shrink: 0; }
-  .thread-row .subject { color: var(--muted); font-size: 13px; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .thread-row .snippet { color: var(--muted); font-size: 12px; line-height: 1.3; max-height: 32px; overflow: hidden; }
-  .thread-row .badges { display: inline-flex; gap: 4px; margin-left: 6px; }
-  .badge-tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+  .thread-row .subject { color: var(--muted); font-size: 13px; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thread-row .snippet { color: var(--muted); font-size: 11px; line-height: 1.3; max-height: 28px; overflow: hidden; }
+  .thread-row .badges { display: inline-flex; gap: 4px; margin-left: 4px; vertical-align: middle; }
+  .badge-tag { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
   .badge-tag.unread { background: var(--blue); color: white; }
   .badge-tag.starred { background: var(--amber); color: #0a0a0a; }
-  .badge-tag.count { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+  .badge-tag.cat-promotions { background: rgba(247, 165, 30, 0.15); color: var(--amber); border: 1px solid rgba(247, 165, 30, 0.4); }
+  .badge-tag.cat-social { background: rgba(88, 166, 255, 0.12); color: var(--blue); border: 1px solid rgba(88, 166, 255, 0.4); }
+  .badge-tag.cat-updates { background: rgba(139, 148, 158, 0.15); color: var(--muted); border: 1px solid var(--border); }
+  .badge-tag.cat-important { background: rgba(63, 185, 80, 0.15); color: var(--green); border: 1px solid rgba(63, 185, 80, 0.4); }
 
-  /* Detail pane */
-  .detail-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 14px; }
-  .thread-header { padding: 16px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-  .thread-header h1 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
-  .thread-header .actions { display: flex; gap: 6px; margin-top: 8px; }
-  .thread-header .actions button { font-size: 11px; padding: 4px 10px; }
+  /* Detail */
+  .detail-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 14px; padding: 40px; text-align: center; }
+  .thread-header { padding: 14px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .thread-header h1 { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .thread-header .meta { font-size: 12px; color: var(--muted); }
+  .thread-header .meta .from { color: var(--text); font-weight: 600; }
 
-  .messages { flex: 1; overflow-y: auto; padding: 12px 22px; min-height: 0; }
-  .message-card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px;
+  .detail-body { flex: 1; overflow-y: auto; padding: 18px 22px 80px; min-height: 0; }
+
+  .field {
+    margin-bottom: 18px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); overflow: hidden;
   }
-  .message-card .from { font-weight: 600; font-size: 13px; }
-  .message-card .meta { color: var(--muted); font-size: 11px; margin-top: 2px; margin-bottom: 10px; }
-  .message-card .body { white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.55; color: var(--text); }
-  .message-card .body a { color: var(--accent-light); }
+  .field-header {
+    padding: 10px 14px; background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .field-header h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--muted); font-weight: 700;
+  }
+  .field-header .field-actions { display: flex; gap: 6px; }
+  .field-header .field-actions button {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px 8px; font-size: 10px; cursor: pointer;
+  }
+  .field-header .field-actions button:hover { border-color: var(--accent); color: var(--accent-light); }
+  .field-body { padding: 14px 16px; }
 
-  /* Reply box */
-  .reply-area { flex-shrink: 0; padding: 14px 22px; border-top: 1px solid var(--border); background: var(--surface); }
-  .reply-area .reply-meta { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
-  .reply-area textarea {
-    width: 100%; min-height: 90px; max-height: 240px; resize: vertical;
+  /* Field 1: cleaned message */
+  .field.message .field-body {
+    white-space: pre-wrap; word-break: break-word;
+    font-size: 13px; line-height: 1.55; color: var(--text);
+    max-height: 360px; overflow-y: auto;
+  }
+  .field.message .field-body a { color: var(--accent-light); }
+
+  /* Field 2: summary + actions */
+  .field.summary .field-body { font-size: 13px; line-height: 1.5; }
+  .field.summary ul { list-style: disc; margin-left: 20px; margin-bottom: 10px; color: var(--text); }
+  .field.summary ul li { margin-bottom: 4px; }
+  .field.summary ol { list-style: decimal; margin-left: 22px; color: var(--text); }
+  .field.summary ol li { margin-bottom: 4px; }
+  .field.summary .actions-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); font-weight: 700; margin-bottom: 6px;
+  }
+  .field.summary .loading-ai { color: var(--muted); font-size: 12px; padding: 6px 0; }
+
+  /* Field 3: suggested reply */
+  .field.reply textarea#reply-body {
+    width: 100%; min-height: 140px; max-height: 360px; resize: vertical;
+    background: #0d1117; color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px 14px; font-size: 13px; line-height: 1.55;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  /* Field 4: prompt / notes */
+  .field.prompt textarea#prompt-body {
+    width: 100%; min-height: 70px; max-height: 200px; resize: vertical;
     background: #0d1117; color: var(--text); border: 1px solid var(--border);
     border-radius: 6px; padding: 10px 12px; font-size: 13px; line-height: 1.5;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
-  .reply-area .row { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
-  .reply-area .row .spacer { flex: 1; }
+  .field.prompt .hint { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
 
-  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10000; }
+  /* Action bar */
+  .action-bar {
+    position: sticky; bottom: 0; z-index: 5;
+    padding: 12px 22px; border-top: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  }
+  .action-bar .spacer { flex: 1; }
+  .action-bar button {
+    background: transparent; color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .action-bar button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-light); }
+  .action-bar button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .action-bar button.primary:hover:not(:disabled) { background: var(--accent-light); }
+  .action-bar button.regenerate { color: var(--blue); border-color: rgba(88, 166, 255, 0.4); }
+  .action-bar button.regenerate:hover:not(:disabled) { background: rgba(88, 166, 255, 0.08); }
+  .action-bar button.skip { color: var(--muted); }
+  .action-bar button:disabled { opacity: .4; cursor: not-allowed; }
+  .action-bar button.coming-soon::after {
+    content: " (M3)"; font-size: 9px; color: var(--muted); font-weight: 400;
+  }
+
+  #toast { position: fixed; bottom: 80px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10000; }
   #toast.show { opacity: 1; }
   #toast.error { border-color: var(--red); color: var(--red); }
   #toast.ok { border-color: var(--green); color: var(--green); }
 
   .auth-warn { background: rgba(248, 81, 73, 0.08); border: 1px solid var(--red); border-radius: 8px; padding: 14px; color: var(--red); margin: 20px; display: none; }
-
   .loading { color: var(--muted); padding: 20px; text-align: center; font-size: 13px; }
 </style>
 </head>
@@ -134,11 +207,20 @@
   </div>
 
   <div class="toolbar">
-    <input class="search" id="search" placeholder="Search Gmail (e.g. from:alice OR is:unread)" value="in:inbox">
+    <input class="search" id="search" placeholder="Gmail search (e.g. from:alice OR is:unread)" value="in:inbox">
     <button id="btn-refresh">Refresh</button>
     <button id="btn-back-list" style="display:none">← Threads</button>
     <span class="spacer"></span>
     <span class="status" id="status">—</span>
+  </div>
+
+  <div class="filter-chips" id="filter-chips">
+    <button class="chip active" data-filter="all">All</button>
+    <button class="chip" data-filter="important">Important</button>
+    <button class="chip" data-filter="inbox">Inbox</button>
+    <button class="chip" data-filter="updates">Updates</button>
+    <button class="chip" data-filter="social">Social</button>
+    <button class="chip" data-filter="promotions">Promotions</button>
   </div>
 
   <div class="panes">
@@ -148,16 +230,71 @@
     </div>
     <div class="pane detail" id="pane-detail">
       <div class="detail-empty" id="detail-empty">Select a thread to read it.</div>
+
       <div id="thread-header" class="thread-header" style="display:none"></div>
-      <div id="messages" class="messages" style="display:none"></div>
-      <div id="reply-area" class="reply-area" style="display:none">
-        <div class="reply-meta" id="reply-meta">Reply to: —</div>
-        <textarea id="reply-body" placeholder="Type your reply…"></textarea>
-        <div class="row">
-          <span class="spacer"></span>
-          <button id="btn-send" class="primary">Send reply</button>
+
+      <div id="detail-body" class="detail-body" style="display:none">
+
+        <!-- Field 1: cleaned core message -->
+        <div class="field message">
+          <div class="field-header">
+            <h3>1 · Core Message</h3>
+            <div class="field-actions">
+              <button id="btn-show-raw">Show raw</button>
+            </div>
+          </div>
+          <div class="field-body" id="msg-body">—</div>
         </div>
+
+        <!-- Field 2: AI summary + numbered actions -->
+        <div class="field summary">
+          <div class="field-header">
+            <h3>2 · Summary &amp; Suggested Actions</h3>
+            <div class="field-actions">
+              <button id="btn-rerun-summary">Rerun</button>
+            </div>
+          </div>
+          <div class="field-body" id="summary-body">
+            <div class="loading-ai">AI summary loading…</div>
+          </div>
+        </div>
+
+        <!-- Field 3: suggested reply -->
+        <div class="field reply">
+          <div class="field-header">
+            <h3>3 · Suggested Reply (editable)</h3>
+            <div class="field-actions">
+              <button id="btn-clear-reply">Clear</button>
+            </div>
+          </div>
+          <div class="field-body">
+            <textarea id="reply-body" placeholder="AI-drafted reply will appear here…"></textarea>
+          </div>
+        </div>
+
+        <!-- Field 4: prompt / notes -->
+        <div class="field prompt">
+          <div class="field-header">
+            <h3>4 · Prompt / Notes</h3>
+          </div>
+          <div class="field-body">
+            <div class="hint">Tell the AI how to change the suggested reply, write from scratch, or jot notes for yourself. Examples: "make it warmer", "ignore prior draft and focus on the appointment Tuesday", "shorten by half".</div>
+            <textarea id="prompt-body" placeholder="Your instructions for regenerate, or freeform notes…"></textarea>
+          </div>
+        </div>
+
       </div>
+
+      <!-- Sticky action bar -->
+      <div class="action-bar" id="action-bar" style="display:none">
+        <button class="regenerate" id="btn-regenerate">↻ Regenerate</button>
+        <button class="skip" id="btn-skip">Skip</button>
+        <button id="btn-archive">Archive</button>
+        <span class="spacer"></span>
+        <button class="coming-soon" id="btn-send-mirror" disabled title="Coming in M3 — needs PB messaging API verification">Send + Mirror to PB</button>
+        <button class="primary" id="btn-send">Send Reply</button>
+      </div>
+
     </div>
   </div>
 </div>
@@ -167,8 +304,11 @@
 <script>
 const KEY = new URLSearchParams(location.search).get("key") || "";
 const HEADERS = { "Content-Type": "application/json", "X-Console-Key": KEY };
-let CURRENT_THREAD = null;   // full thread data
+let CURRENT_THREAD = null;
 let CURRENT_THREAD_ID = null;
+let ALL_THREADS = [];          // unfiltered list
+let CURRENT_FILTER = "all";
+let SHOW_RAW = false;
 
 function toast(msg, kind="ok") {
   const t = document.getElementById("toast");
@@ -183,28 +323,35 @@ async function api(path, opts={}) {
     document.getElementById("auth-warn").style.display = "block";
     throw new Error("unauthorized");
   }
-  const j = await r.json();
+  let j;
+  try { j = await r.json(); }
+  catch { throw new Error(`server returned non-JSON (HTTP ${r.status})`); }
   if (!j.ok) throw new Error(j.error || "request failed");
   return j.data;
 }
 
-// ── Date formatting ─────────────────────────────────────────────────────────
-function shortDate(internalMs) {
-  if (!internalMs) return "";
-  const d = new Date(internalMs);
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  if (sameDay) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const fmtDate = ms => {
+  if (!ms) return "";
+  const d = new Date(ms), now = new Date();
+  if (d.toDateString() === now.toDateString())
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const yearAgo = new Date(now); yearAgo.setFullYear(now.getFullYear() - 1);
   if (d > yearAgo) return d.toLocaleDateString([], { month: "short", day: "numeric" });
   return d.toLocaleDateString([], { year: "2-digit", month: "short", day: "numeric" });
-}
+};
 
-function shortenSender(s) {
+const shortenSender = s => {
   if (!s) return "";
-  // "Name <addr@x.com>" → "Name"; "addr@x.com" → "addr@x.com"
   const m = s.match(/^"?([^"<]+?)"?\s*<.+>$/);
   return (m ? m[1] : s).trim();
+};
+
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function linkify(s) {
+  return s.replace(/\bhttps?:\/\/[^\s<>]+/g, m => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
 }
 
 // ── Thread list ─────────────────────────────────────────────────────────────
@@ -214,37 +361,9 @@ async function loadThreads() {
   document.getElementById("list-loading").style.display = "block";
   document.getElementById("thread-list").innerHTML = "";
   try {
-    const threads = await api(`/api/inbox/threads?q=${encodeURIComponent(q)}&max=50`);
+    ALL_THREADS = await api(`/api/inbox/threads?q=${encodeURIComponent(q)}&max=80`);
     document.getElementById("list-loading").style.display = "none";
-    const wrap = document.getElementById("thread-list");
-    if (!threads.length) {
-      wrap.innerHTML = `<div class="loading">No threads matching "${q}".</div>`;
-      document.getElementById("status").textContent = "0 threads";
-      return;
-    }
-    document.getElementById("status").textContent = `${threads.length} threads`;
-    wrap.innerHTML = threads.map(t => {
-      const cls = "thread-row" + (t.unread ? " unread" : "") + (t.id === CURRENT_THREAD_ID ? " active" : "");
-      const starred = (t.labels || []).includes("STARRED");
-      return `
-        <div class="${cls}" data-tid="${t.id}">
-          <div class="top">
-            <div class="sender">${escapeHtml(shortenSender(t.sender))}</div>
-            <div class="date">${shortDate(t.internal_date_ms)}</div>
-          </div>
-          <div class="subject">${escapeHtml(t.subject)}
-            <span class="badges">
-              ${t.unread ? '<span class="badge-tag unread">new</span>' : ''}
-              ${starred ? '<span class="badge-tag starred">★</span>' : ''}
-              ${t.msg_count > 1 ? `<span class="badge-tag count">${t.msg_count}</span>` : ''}
-            </span>
-          </div>
-          <div class="snippet">${escapeHtml(t.snippet)}</div>
-        </div>`;
-    }).join("");
-    for (const row of wrap.querySelectorAll(".thread-row")) {
-      row.addEventListener("click", () => openThread(row.dataset.tid));
-    }
+    renderList();
   } catch (e) {
     document.getElementById("list-loading").style.display = "none";
     if (e.message !== "unauthorized") toast(e.message, "error");
@@ -252,65 +371,139 @@ async function loadThreads() {
   }
 }
 
-// ── Thread detail ───────────────────────────────────────────────────────────
+function renderList() {
+  const wrap = document.getElementById("thread-list");
+  let threads = ALL_THREADS.slice();
+  if (CURRENT_FILTER !== "all") {
+    threads = threads.filter(t => t.category === CURRENT_FILTER);
+  }
+  document.getElementById("status").textContent = `${threads.length} of ${ALL_THREADS.length}`;
+  if (!threads.length) {
+    wrap.innerHTML = `<div class="loading">No threads in this filter.</div>`;
+    return;
+  }
+  wrap.innerHTML = threads.map(t => {
+    const cls = "thread-row" + (t.unread ? " unread" : "") + (t.id === CURRENT_THREAD_ID ? " active" : "");
+    const starred = (t.labels || []).includes("STARRED");
+    let catBadge = "";
+    if (t.category && t.category !== "inbox" && t.category !== "all") {
+      catBadge = `<span class="badge-tag cat-${t.category}">${t.category}</span>`;
+    }
+    return `
+      <div class="${cls}" data-tid="${t.id}">
+        <div class="top">
+          <div class="sender">${escapeHtml(shortenSender(t.sender))}</div>
+          <div class="date">${fmtDate(t.internal_date_ms)}</div>
+        </div>
+        <div class="subject">${escapeHtml(t.subject)}
+          <span class="badges">
+            ${t.unread ? '<span class="badge-tag unread">new</span>' : ''}
+            ${starred ? '<span class="badge-tag starred">★</span>' : ''}
+            ${catBadge}
+          </span>
+        </div>
+        <div class="snippet">${escapeHtml(t.snippet)}</div>
+      </div>`;
+  }).join("");
+  for (const row of wrap.querySelectorAll(".thread-row")) {
+    row.addEventListener("click", () => openThread(row.dataset.tid));
+  }
+}
+
+// ── Filter chips ────────────────────────────────────────────────────────────
+for (const chip of document.querySelectorAll(".chip")) {
+  chip.addEventListener("click", () => {
+    for (const c of document.querySelectorAll(".chip")) c.classList.remove("active");
+    chip.classList.add("active");
+    CURRENT_FILTER = chip.dataset.filter;
+    renderList();
+  });
+}
+
+// ── Open thread + run AI ────────────────────────────────────────────────────
 async function openThread(threadId) {
   CURRENT_THREAD_ID = threadId;
-  // Highlight active in list
-  for (const row of document.querySelectorAll(".thread-row")) {
+  for (const row of document.querySelectorAll(".thread-row"))
     row.classList.toggle("active", row.dataset.tid === threadId);
-  }
-  // Mobile: hide list, show detail
   if (window.innerWidth <= 900) {
     document.getElementById("pane-list").classList.add("hidden-mobile");
     document.getElementById("btn-back-list").style.display = "inline-block";
   }
-  // Show loading state
   document.getElementById("detail-empty").style.display = "none";
   document.getElementById("thread-header").style.display = "block";
   document.getElementById("thread-header").innerHTML = '<div class="loading">Loading…</div>';
-  document.getElementById("messages").style.display = "block";
-  document.getElementById("messages").innerHTML = "";
-  document.getElementById("reply-area").style.display = "none";
+  document.getElementById("detail-body").style.display = "block";
+  document.getElementById("action-bar").style.display = "flex";
+  document.getElementById("msg-body").textContent = "Loading…";
+  document.getElementById("summary-body").innerHTML = '<div class="loading-ai">AI summary loading…</div>';
+  document.getElementById("reply-body").value = "";
+  document.getElementById("prompt-body").value = "";
 
   try {
+    // 1. Fetch the thread itself for the message + header
     const thread = await api(`/api/inbox/threads/${threadId}`);
     CURRENT_THREAD = thread;
-    renderThread(thread);
-    // Auto mark-as-read
-    try { await api(`/api/inbox/threads/${threadId}/read`, { method: "POST", body: JSON.stringify({ read: true }) }); } catch {}
-    // Refresh list silently to update unread state
-    setTimeout(loadThreads, 600);
+    renderThreadHeader(thread);
+    renderMessage(thread);
+    // 2. Mark read in the background
+    api(`/api/inbox/threads/${threadId}/read`, { method: "POST", body: JSON.stringify({ read: true }) }).catch(() => {});
+    // 3. Fire AI in parallel (returns summary, actions, draft together)
+    runAI(threadId);
   } catch (e) {
     if (e.message !== "unauthorized") toast(e.message, "error");
   }
 }
 
-function renderThread(thread) {
+function renderThreadHeader(thread) {
   const msgs = thread.messages || [];
+  const last = msgs[msgs.length - 1] || {};
   const subject = (msgs[0] && msgs[0].subject) || "(no subject)";
-  const last = msgs[msgs.length - 1];
-
   document.getElementById("thread-header").innerHTML = `
     <h1>${escapeHtml(subject)}</h1>
-    <div class="actions">
-      <button onclick="archiveCurrent()">Archive</button>
-      <button onclick="toggleStarCurrent()">Star/Unstar</button>
-      <button onclick="markUnreadCurrent()">Mark unread</button>
+    <div class="meta">
+      From <span class="from">${escapeHtml(last.from || "")}</span>
+      &nbsp;·&nbsp; ${escapeHtml(last.date || "")}
+      ${msgs.length > 1 ? `&nbsp;·&nbsp; ${msgs.length} messages` : ""}
     </div>`;
-
-  document.getElementById("messages").innerHTML = msgs.map(m => `
-    <div class="message-card">
-      <div class="from">${escapeHtml(m.from || "")}</div>
-      <div class="meta">${escapeHtml(m.date || "")}${m.to ? " &nbsp;·&nbsp; to " + escapeHtml(m.to) : ""}</div>
-      <div class="body">${linkify(escapeHtml(m.body_plain || m.snippet || ""))}</div>
-    </div>`).join("");
-
-  document.getElementById("reply-area").style.display = "block";
-  document.getElementById("reply-meta").textContent = "Reply to: " + (last.from || "");
-  document.getElementById("reply-body").value = "";
-  document.getElementById("reply-body").focus();
 }
 
+function renderMessage(thread) {
+  const msgs = thread.messages || [];
+  const last = msgs[msgs.length - 1] || {};
+  const text = SHOW_RAW
+    ? (last.body_plain || last.snippet || "")
+    : (last.body_clean || last.body_plain || last.snippet || "");
+  document.getElementById("msg-body").innerHTML = linkify(escapeHtml(text)) || "<em>(empty)</em>";
+}
+
+async function runAI(threadId) {
+  try {
+    const result = await api(`/api/inbox/threads/${threadId}/ai`, { method: "POST" });
+    renderSummary(result.summary, result.actions);
+    if (result.draft) {
+      document.getElementById("reply-body").value = result.draft;
+    }
+  } catch (e) {
+    document.getElementById("summary-body").innerHTML =
+      `<div class="loading-ai" style="color: var(--red)">AI failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderSummary(summary, actions) {
+  const wrap = document.getElementById("summary-body");
+  let html = "";
+  if (summary && summary.length) {
+    html += `<ul>${summary.map(s => `<li>${escapeHtml(s)}</li>`).join("")}</ul>`;
+  }
+  if (actions && actions.length) {
+    html += `<div class="actions-label">Suggested actions</div>`;
+    html += `<ol>${actions.map(a => `<li>${escapeHtml(a)}</li>`).join("")}</ol>`;
+  }
+  if (!html) html = '<div class="loading-ai">No summary available.</div>';
+  wrap.innerHTML = html;
+}
+
+// ── Send / regenerate / skip / archive ──────────────────────────────────────
 async function sendReply() {
   if (!CURRENT_THREAD_ID) return;
   const body = document.getElementById("reply-body").value.trim();
@@ -323,44 +516,46 @@ async function sendReply() {
     });
     toast("Reply sent", "ok");
     document.getElementById("reply-body").value = "";
-    // Refresh thread to show the new message
     await openThread(CURRENT_THREAD_ID);
   } catch (e) {
     toast(e.message, "error");
   } finally {
-    btn.disabled = false; btn.textContent = "Send reply";
+    btn.disabled = false; btn.textContent = "Send Reply";
   }
+}
+
+async function regenerateReply() {
+  if (!CURRENT_THREAD_ID) return;
+  const prompt = document.getElementById("prompt-body").value.trim();
+  if (!prompt) { toast("Type instructions in field 4 first", "error"); return; }
+  const prior = document.getElementById("reply-body").value;
+  const btn = document.getElementById("btn-regenerate");
+  btn.disabled = true; btn.textContent = "Regenerating…";
+  try {
+    const result = await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/regenerate-reply`, {
+      method: "POST", body: JSON.stringify({ prompt, prior_draft: prior }),
+    });
+    document.getElementById("reply-body").value = result.draft || "";
+    toast("Reply regenerated", "ok");
+  } catch (e) {
+    toast(e.message, "error");
+  } finally {
+    btn.disabled = false; btn.textContent = "↻ Regenerate";
+  }
+}
+
+async function skipThread() {
+  if (!CURRENT_THREAD_ID) return;
+  // Mark read (already done on open) + go back to list
+  backToList();
 }
 
 async function archiveCurrent() {
   if (!CURRENT_THREAD_ID) return;
   try {
     await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/archive`, { method: "POST" });
-    toast("Archived", "ok");
+    toast("Archived (or 403 if scope missing)", "ok");
     backToList();
-    loadThreads();
-  } catch (e) { toast(e.message, "error"); }
-}
-
-async function toggleStarCurrent() {
-  if (!CURRENT_THREAD_ID || !CURRENT_THREAD) return;
-  const wasStarred = (CURRENT_THREAD.messages || []).some(m => (m.labels || []).includes("STARRED"));
-  try {
-    await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/star`, {
-      method: "POST", body: JSON.stringify({ starred: !wasStarred }),
-    });
-    toast(wasStarred ? "Unstarred" : "Starred", "ok");
-    loadThreads();
-  } catch (e) { toast(e.message, "error"); }
-}
-
-async function markUnreadCurrent() {
-  if (!CURRENT_THREAD_ID) return;
-  try {
-    await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/read`, {
-      method: "POST", body: JSON.stringify({ read: false }),
-    });
-    toast("Marked unread", "ok");
     loadThreads();
   } catch (e) { toast(e.message, "error"); }
 }
@@ -370,39 +565,46 @@ function backToList() {
   document.getElementById("btn-back-list").style.display = "none";
   document.getElementById("detail-empty").style.display = "flex";
   document.getElementById("thread-header").style.display = "none";
-  document.getElementById("messages").style.display = "none";
-  document.getElementById("reply-area").style.display = "none";
+  document.getElementById("detail-body").style.display = "none";
+  document.getElementById("action-bar").style.display = "none";
   CURRENT_THREAD_ID = null; CURRENT_THREAD = null;
+  loadThreads();   // refresh unread counts
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-function escapeHtml(s) {
-  if (s == null) return "";
-  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-}
-function linkify(s) {
-  return s.replace(/\bhttps?:\/\/[^\s<>]+/g, m => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
-}
-
-// ── Init ────────────────────────────────────────────────────────────────────
+// ── Wire events ─────────────────────────────────────────────────────────────
 document.getElementById("btn-refresh").addEventListener("click", loadThreads);
 document.getElementById("btn-back-list").addEventListener("click", backToList);
 document.getElementById("btn-send").addEventListener("click", sendReply);
+document.getElementById("btn-regenerate").addEventListener("click", regenerateReply);
+document.getElementById("btn-skip").addEventListener("click", skipThread);
+document.getElementById("btn-archive").addEventListener("click", archiveCurrent);
+document.getElementById("btn-show-raw").addEventListener("click", () => {
+  SHOW_RAW = !SHOW_RAW;
+  document.getElementById("btn-show-raw").textContent = SHOW_RAW ? "Show clean" : "Show raw";
+  if (CURRENT_THREAD) renderMessage(CURRENT_THREAD);
+});
+document.getElementById("btn-rerun-summary").addEventListener("click", () => {
+  if (CURRENT_THREAD_ID) runAI(CURRENT_THREAD_ID);
+});
+document.getElementById("btn-clear-reply").addEventListener("click", () => {
+  document.getElementById("reply-body").value = "";
+});
 document.getElementById("search").addEventListener("keydown", e => {
   if (e.key === "Enter") loadThreads();
 });
+// Cmd/Ctrl+Enter sends reply from anywhere in detail
+for (const id of ["reply-body", "prompt-body"]) {
+  document.getElementById(id).addEventListener("keydown", e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") sendReply();
+  });
+}
 
-// Cmd/Ctrl+Enter sends reply
-document.getElementById("reply-body").addEventListener("keydown", e => {
-  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") sendReply();
-});
-
+// ── Init ────────────────────────────────────────────────────────────────────
 if (!KEY) {
   document.getElementById("auth-warn").style.display = "block";
 } else {
   loadThreads();
-  // Auto-refresh thread list every 60s
-  setInterval(() => { if (!document.hidden) loadThreads(); }, 60000);
+  setInterval(() => { if (!document.hidden && !CURRENT_THREAD_ID) loadThreads(); }, 60000);
 }
 </script>
 </body>

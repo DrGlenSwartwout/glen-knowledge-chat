@@ -4187,7 +4187,13 @@ def api_inbox_list_threads():
     try:
         q = request.args.get("q", "in:inbox")
         max_results = int(request.args.get("max", 50))
-        return ok(_inbox.list_threads(query=q, max_results=max_results))
+        category = (request.args.get("category") or "").strip().lower()
+        threads = _inbox.list_threads(query=q, max_results=max_results)
+        if category:
+            # Comma-separated multi-select supported: ?category=important,inbox
+            wanted = {c.strip() for c in category.split(",") if c.strip()}
+            threads = [t for t in threads if t.get("category") in wanted]
+        return ok(threads)
     except Exception as e: return fail(e)
 
 
@@ -4243,6 +4249,66 @@ def api_inbox_read(thread_id):
         else:
             _inbox.mark_unread(thread_id)
         return ok({"thread_id": thread_id, "read": bool(body.get("read"))})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/inbox/threads/<thread_id>/ai", methods=["POST"])
+@require_console_key
+def api_inbox_ai(thread_id):
+    """Generate summary + numbered actions + initial suggested reply in one call."""
+    try:
+        from dashboard import inbox_ai as _ai
+        thread = _inbox.get_thread(thread_id)
+        msgs = thread.get("messages") or []
+        if not msgs:
+            return fail("thread is empty", status=400)
+        last = msgs[-1]
+        body_clean = last.get("body_clean") or last.get("body_plain") or ""
+        sender = last.get("from", "")
+        # Pull a few of Glen's recent sent emails as voice context
+        try:
+            voice_samples = _inbox.list_recent_sent(max_results=3)
+        except Exception:
+            voice_samples = []
+        summary = _ai.summarize(body_clean)
+        draft = _ai.draft_reply(body_clean, sender=sender, voice_samples=voice_samples)
+        return ok({
+            "summary": summary.get("summary", []),
+            "actions": summary.get("actions", []),
+            "draft": draft,
+            "body_clean": body_clean,
+            "sender": sender,
+        })
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/inbox/threads/<thread_id>/regenerate-reply", methods=["POST"])
+@require_console_key
+def api_inbox_regenerate(thread_id):
+    """Re-draft suggested reply using Glen's prompt instructions."""
+    try:
+        from dashboard import inbox_ai as _ai
+        body = request.get_json(silent=True) or {}
+        prompt = (body.get("prompt") or "").strip()
+        prior = (body.get("prior_draft") or "").strip()
+        if not prompt:
+            return fail("prompt is required", status=400)
+        thread = _inbox.get_thread(thread_id)
+        msgs = thread.get("messages") or []
+        if not msgs:
+            return fail("thread is empty", status=400)
+        last = msgs[-1]
+        body_clean = last.get("body_clean") or last.get("body_plain") or ""
+        sender = last.get("from", "")
+        try:
+            voice_samples = _inbox.list_recent_sent(max_results=3)
+        except Exception:
+            voice_samples = []
+        new_draft = _ai.regenerate_reply(
+            body_clean, prior_draft=prior, prompt=prompt,
+            sender=sender, voice_samples=voice_samples,
+        )
+        return ok({"draft": new_draft})
     except Exception as e: return fail(e)
 
 

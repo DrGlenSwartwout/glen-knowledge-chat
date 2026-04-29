@@ -128,6 +128,91 @@ def _header(headers: list, name: str) -> str:
     return ""
 
 
+def categorize(labels: list) -> str:
+    """Bucket a thread into a coarse category for filtering.
+
+    Returns one of: 'promotions', 'social', 'updates', 'forums',
+    'important', 'inbox' (everything else with INBOX label).
+    Gmail's CATEGORY_* labels carry most of the signal; IMPORTANT
+    overrides categories so a flagged "promotion" still surfaces.
+    """
+    s = set(labels or [])
+    if "IMPORTANT" in s or "STARRED" in s:
+        return "important"
+    if "CATEGORY_PROMOTIONS" in s:
+        return "promotions"
+    if "CATEGORY_SOCIAL" in s:
+        return "social"
+    if "CATEGORY_UPDATES" in s:
+        return "updates"
+    if "CATEGORY_FORUMS" in s:
+        return "forums"
+    return "inbox"
+
+
+# ── Body cleaning ────────────────────────────────────────────────────────────
+# Strip HTML, drop quoted-reply chains, trim email signatures so the UI
+# shows the actual message content rather than a wall of forwarded chrome.
+
+import re as _re
+
+_QUOTE_HEADER_PATTERNS = [
+    # "On Mon, Apr 28, 2026 at 12:11 PM Practice Better <...> wrote:"
+    _re.compile(r"^\s*On\s+\w+,?\s+\w+\s+\d+,?\s+\d{4}.*?wrote:\s*$", _re.M),
+    # "On 4/28/26 at 12:11 PM, ... wrote:"
+    _re.compile(r"^\s*On\s+\d+/\d+/\d+.*?wrote:\s*$", _re.M),
+    # "From: ...\nSent: ...\nTo: ...\nSubject: ..." (Outlook-style header block)
+    _re.compile(r"^\s*From:\s+.+\n(\s*Sent:\s+.+\n)?\s*To:\s+.+", _re.M),
+    # Gmail forward marker
+    _re.compile(r"^-{2,}\s*Forwarded message\s*-{2,}\s*$", _re.M | _re.I),
+    # Standard reply marker
+    _re.compile(r"^-{2,}\s*Original Message\s*-{2,}\s*$", _re.M | _re.I),
+]
+
+_SIGNATURE_PATTERNS = [
+    _re.compile(r"^\s*--\s*$", _re.M),  # Standard --\n signature delimiter
+    _re.compile(r"^\s*Sent from my (iPhone|iPad|Android|mobile).*$", _re.M | _re.I),
+    _re.compile(r"^\s*Get Outlook for (iOS|Android).*$", _re.M | _re.I),
+]
+
+
+def clean_body(text: str) -> str:
+    """Strip HTML tags, quoted-reply chains, and trailing signatures.
+
+    Heuristic-based. Optimized for email content where preserving the
+    'core message' matters more than perfect structure.
+    """
+    if not text:
+        return ""
+    # Strip HTML if any leaked through
+    s = _re.sub(r"<style[^>]*>.*?</style>", "", text, flags=_re.S | _re.I)
+    s = _re.sub(r"<script[^>]*>.*?</script>", "", s, flags=_re.S | _re.I)
+    s = _re.sub(r"<br\s*/?>", "\n", s, flags=_re.I)
+    s = _re.sub(r"</p>", "\n\n", s, flags=_re.I)
+    s = _re.sub(r"<[^>]+>", "", s)
+    # Decode common HTML entities
+    s = (s.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<")
+           .replace("&gt;", ">").replace("&#39;", "'").replace("&quot;", '"'))
+    # Cut at first quoted-history marker
+    earliest = len(s)
+    for pat in _QUOTE_HEADER_PATTERNS:
+        m = pat.search(s)
+        if m and m.start() < earliest:
+            earliest = m.start()
+    s = s[:earliest]
+    # Cut at signature delimiter
+    for pat in _SIGNATURE_PATTERNS:
+        m = pat.search(s)
+        if m:
+            s = s[:m.start()]
+    # Strip "> quoted line" prefixes
+    s = _re.sub(r"^>\s.*$", "", s, flags=_re.M)
+    # Collapse runs of blank lines
+    s = _re.sub(r"\n{3,}", "\n\n", s)
+    # Trim leading/trailing whitespace
+    return s.strip()
+
+
 def _summarize_thread(thread: dict) -> dict:
     """Distill a Gmail thread into a compact list-row dict for the inbox UI."""
     msgs = thread.get("messages") or []
@@ -155,6 +240,7 @@ def _summarize_thread(thread: dict) -> dict:
         "msg_count": len(msgs),
         "unread": unread,
         "labels": sorted(labels_union),
+        "category": categorize(sorted(labels_union)),
     }
 
 
@@ -196,9 +282,22 @@ def get_thread(thread_id: str) -> dict:
             "snippet": m.get("snippet", ""),
             "body_plain": body["plain"],
             "body_html": body["html"],
+            "body_clean": clean_body(body["plain"] or body["html"]),
             "labels": m.get("labelIds") or [],
         })
     return {"id": t.get("id"), "messages": msgs}
+
+
+def list_recent_sent(max_results: int = 5) -> list:
+    """Return a few of Glen's most recent SENT messages as voice-reference for the AI drafter."""
+    svc = _get_gmail_service()
+    res = svc.users().messages().list(userId="me", q="in:sent", maxResults=max_results).execute()
+    out = []
+    for m in (res.get("messages") or []):
+        full = svc.users().messages().get(userId="me", id=m["id"], format="full").execute()
+        body = _extract_body(full.get("payload", {}))
+        out.append({"id": m["id"], "body": clean_body(body["plain"] or body["html"])})
+    return out
 
 
 def _build_reply_message(thread: dict, body: str, override_to: Optional[str] = None) -> dict:

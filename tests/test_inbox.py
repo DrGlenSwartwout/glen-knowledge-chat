@@ -164,3 +164,101 @@ def test_build_reply_empty_thread_raises():
     from dashboard.inbox import _build_reply_message
     with pytest.raises(ValueError):
         _build_reply_message({"id": "X", "messages": []}, "body")
+
+
+# ── categorize ────────────────────────────────────────────────────────────────
+
+def test_categorize_promotions():
+    from dashboard.inbox import categorize
+    assert categorize(["INBOX", "CATEGORY_PROMOTIONS", "UNREAD"]) == "promotions"
+
+def test_categorize_important_overrides_category():
+    from dashboard.inbox import categorize
+    assert categorize(["INBOX", "CATEGORY_PROMOTIONS", "IMPORTANT"]) == "important"
+
+def test_categorize_starred_counts_as_important():
+    from dashboard.inbox import categorize
+    assert categorize(["INBOX", "STARRED"]) == "important"
+
+def test_categorize_default_inbox():
+    from dashboard.inbox import categorize
+    assert categorize(["INBOX", "CATEGORY_PERSONAL"]) == "inbox"
+
+def test_categorize_social_updates_forums():
+    from dashboard.inbox import categorize
+    assert categorize(["INBOX", "CATEGORY_SOCIAL"]) == "social"
+    assert categorize(["INBOX", "CATEGORY_UPDATES"]) == "updates"
+    assert categorize(["INBOX", "CATEGORY_FORUMS"]) == "forums"
+
+
+# ── clean_body ────────────────────────────────────────────────────────────────
+
+def test_clean_body_strips_html_tags():
+    from dashboard.inbox import clean_body
+    assert "Hello world" in clean_body("<p>Hello <b>world</b></p>")
+    assert "<" not in clean_body("<p>Hello</p>")
+
+def test_clean_body_strips_quote_history_on_marker():
+    from dashboard.inbox import clean_body
+    raw = (
+        "Aloha Glen,\n\n"
+        "I want to ask about the protocol.\n\n"
+        "On Mon, Apr 28, 2026 at 12:11 PM Practice Better <noreply@pb.io> wrote:\n"
+        "> Earlier message body\n"
+        "> More quoted text\n"
+    )
+    out = clean_body(raw)
+    assert "I want to ask about the protocol." in out
+    assert "Practice Better" not in out
+    assert "Earlier message" not in out
+
+def test_clean_body_strips_outlook_header_block():
+    from dashboard.inbox import clean_body
+    raw = (
+        "My response here.\n\n"
+        "From: alice@example.com\n"
+        "Sent: Monday\n"
+        "To: glen@x.com\n"
+        "Subject: thing\n\n"
+        "old message"
+    )
+    out = clean_body(raw)
+    assert "My response here." in out
+    assert "alice@example.com" not in out
+
+def test_clean_body_strips_signature_delimiter():
+    from dashboard.inbox import clean_body
+    raw = "The actual message.\n\n--\nGlen Swartwout\n+1 808-555-0100"
+    out = clean_body(raw)
+    assert "The actual message." in out
+    assert "808-555-0100" not in out
+
+def test_clean_body_strips_sent_from_iphone():
+    from dashboard.inbox import clean_body
+    out = clean_body("Quick note.\n\nSent from my iPhone")
+    assert "Quick note." in out
+    assert "iPhone" not in out
+
+def test_clean_body_collapses_blank_lines_and_html_entities():
+    from dashboard.inbox import clean_body
+    out = clean_body("hi&nbsp;there\n\n\n\n\nnext line")
+    assert "hi there" in out
+    assert "&nbsp;" not in out
+
+def test_clean_body_handles_empty():
+    from dashboard.inbox import clean_body
+    assert clean_body("") == ""
+    assert clean_body(None) == ""
+
+
+# ── summarize_thread now exposes category ────────────────────────────────────
+
+def test_summarize_thread_includes_category():
+    from dashboard.inbox import _summarize_thread
+    t = {"id": "x", "messages": [{
+        "payload": {"headers": [{"name": "Subject", "value": "Hi"}]},
+        "labelIds": ["INBOX", "CATEGORY_PROMOTIONS"],
+        "snippet": "promo", "internalDate": "0",
+    }]}
+    s = _summarize_thread(t)
+    assert s["category"] == "promotions"
