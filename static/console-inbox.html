@@ -230,8 +230,7 @@
 
   <div class="filter-chips" id="filter-chips">
     <button class="chip" data-filter="all">All</button>
-    <button class="chip active" data-filter="important" title="Gmail-flagged important + starred">Important</button>
-    <button class="chip" data-filter="inbox" title="Inbox excluding Promotions/Social/Updates">Inbox</button>
+    <button class="chip active" data-filter="inbox-merged" title="Important-flagged + uncategorized inbox (excludes Promotions/Social/Updates)">Inbox</button>
     <button class="chip" data-filter="updates">Updates</button>
     <button class="chip" data-filter="social">Social</button>
     <button class="chip" data-filter="promotions">Promotions</button>
@@ -327,7 +326,7 @@ const HEADERS = { "Content-Type": "application/json", "X-Console-Key": KEY };
 let CURRENT_THREAD = null;
 let CURRENT_THREAD_ID = null;
 let ALL_THREADS = [];          // unfiltered list
-let CURRENT_FILTER = "important";   // matches default-active chip
+let CURRENT_FILTER = "inbox-merged";   // matches default-active chip (important + inbox)
 let SHOW_RAW = false;
 
 function toast(msg, kind="ok") {
@@ -394,7 +393,10 @@ async function loadThreads() {
 function renderList() {
   const wrap = document.getElementById("thread-list");
   let threads = ALL_THREADS.slice();
-  if (CURRENT_FILTER !== "all") {
+  if (CURRENT_FILTER === "inbox-merged") {
+    // "Inbox" chip = important + inbox combined (everything except Promotions/Social/Updates/Forums)
+    threads = threads.filter(t => t.category === "important" || t.category === "inbox");
+  } else if (CURRENT_FILTER !== "all") {
     threads = threads.filter(t => t.category === CURRENT_FILTER);
   }
   document.getElementById("status").textContent = `${threads.length} of ${ALL_THREADS.length}`;
