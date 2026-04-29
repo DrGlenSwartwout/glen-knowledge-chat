@@ -218,9 +218,9 @@
   </div>
 
   <div class="filter-chips" id="filter-chips">
-    <button class="chip active" data-filter="all">All</button>
-    <button class="chip" data-filter="important">Important</button>
-    <button class="chip" data-filter="inbox">Inbox</button>
+    <button class="chip" data-filter="all">All</button>
+    <button class="chip active" data-filter="important" title="Gmail-flagged important + starred">Important</button>
+    <button class="chip" data-filter="inbox" title="Inbox excluding Promotions/Social/Updates">Inbox</button>
     <button class="chip" data-filter="updates">Updates</button>
     <button class="chip" data-filter="social">Social</button>
     <button class="chip" data-filter="promotions">Promotions</button>
@@ -313,7 +313,7 @@ const HEADERS = { "Content-Type": "application/json", "X-Console-Key": KEY };
 let CURRENT_THREAD = null;
 let CURRENT_THREAD_ID = null;
 let ALL_THREADS = [];          // unfiltered list
-let CURRENT_FILTER = "all";
+let CURRENT_FILTER = "important";   // matches default-active chip
 let SHOW_RAW = false;
 
 function toast(msg, kind="ok") {

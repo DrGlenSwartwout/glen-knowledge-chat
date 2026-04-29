@@ -92,10 +92,37 @@ def _decode_b64url(data: str) -> str:
     return base64.urlsafe_b64decode(data + pad).decode("utf-8", errors="replace")
 
 
+def _strip_html_to_text(html: str) -> str:
+    """Convert HTML to readable plain text. Strips <style>/<script> blocks
+    INCLUDING their contents (so the CSS doesn't leak), then strips remaining
+    tags, then decodes HTML entities (numeric + named) properly via stdlib."""
+    if not html:
+        return ""
+    import html as _html_mod
+    # Order matters: drop style/script CONTENTS first, before tag-stripping
+    s = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.S | re.I)
+    s = re.sub(r"<script[^>]*>.*?</script>", "", s, flags=re.S | re.I)
+    s = re.sub(r"<!--.*?-->", "", s, flags=re.S)
+    # Convert structural tags to whitespace before nuking the rest
+    s = re.sub(r"<br\s*/?>", "\n", s, flags=re.I)
+    s = re.sub(r"</p\s*>|</div\s*>|</tr\s*>|</li\s*>|</h[1-6]\s*>", "\n", s, flags=re.I)
+    # Strip remaining tags
+    s = re.sub(r"<[^>]+>", "", s)
+    # Decode entities (handles &#039;, &#064;, &amp;, &nbsp;, etc.)
+    s = _html_mod.unescape(s)
+    # Collapse runs of whitespace inside lines, preserve paragraph breaks
+    s = re.sub(r"[ \t]+", " ", s)
+    s = re.sub(r"\n[ \t]+", "\n", s)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
+
+
 def _extract_body(payload: dict) -> dict:
     """Walk a Gmail message payload tree and return {plain, html} bodies.
 
-    Prefers text/plain. Falls back to text/html stripped of tags.
+    Prefers text/plain when present. Otherwise renders HTML to readable plain
+    text via _strip_html_to_text (drops <style>/<script> contents, decodes
+    entities, normalizes whitespace).
     """
     plain = ""
     html = ""
@@ -114,9 +141,7 @@ def _extract_body(payload: dict) -> dict:
 
     walk(payload or {})
     if not plain and html:
-        # Strip HTML to plain text — quick heuristic, not a full parser
-        plain = re.sub(r"<[^>]+>", "", html)
-        plain = re.sub(r"\s+\n", "\n", plain).strip()
+        plain = _strip_html_to_text(html)
     return {"plain": plain, "html": html}
 
 
