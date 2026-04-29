@@ -100,10 +100,24 @@
 
   /* Detail */
   .detail-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 14px; padding: 40px; text-align: center; }
-  .thread-header { padding: 14px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-  .thread-header h1 { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .thread-header {
+    padding: 14px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  }
+  .thread-header .title-block { flex: 1; min-width: 0; }
+  .thread-header h1 { font-size: 17px; font-weight: 700; margin-bottom: 4px; word-break: break-word; }
   .thread-header .meta { font-size: 12px; color: var(--muted); }
   .thread-header .meta .from { color: var(--text); font-weight: 600; }
+  .thread-header .header-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .thread-header .header-actions button {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 11px; font-size: 11px; font-weight: 600;
+    cursor: pointer; text-transform: uppercase; letter-spacing: .04em;
+    transition: .12s;
+  }
+  .thread-header .header-actions button:hover { color: var(--text); border-color: var(--accent); }
+  .thread-header .header-actions button.danger { color: var(--red); border-color: rgba(248, 81, 73, 0.4); }
+  .thread-header .header-actions button.danger:hover { background: rgba(248, 81, 73, 0.08); border-color: var(--red); }
 
   .detail-body { flex: 1; overflow-y: auto; padding: 18px 22px 80px; min-height: 0; }
 
@@ -480,16 +494,26 @@ function renderThreadHeader(thread) {
   const msgs = thread.messages || [];
   const last = msgs[msgs.length - 1] || {};
   const subject = (msgs[0] && msgs[0].subject) || "(no subject)";
-  // Note: Star/Mark-unread/Archive moved out of header — they require
-  // gmail.modify scope which the current token doesn't have. They live
-  // in the bottom action bar where the failure mode is clearer.
+  // Three essential triage actions, top-right of the title row.
+  // The bottom action bar still has them too (redundant on long threads).
   document.getElementById("thread-header").innerHTML = `
-    <h1>${escapeHtml(subject)}</h1>
-    <div class="meta">
-      From <span class="from">${escapeHtml(last.from || "")}</span>
-      &nbsp;·&nbsp; ${escapeHtml(last.date || "")}
-      ${msgs.length > 1 ? `&nbsp;·&nbsp; ${msgs.length} messages` : ""}
+    <div class="title-block">
+      <h1>${escapeHtml(subject)}</h1>
+      <div class="meta">
+        From <span class="from">${escapeHtml(last.from || "")}</span>
+        &nbsp;·&nbsp; ${escapeHtml(last.date || "")}
+        ${msgs.length > 1 ? `&nbsp;·&nbsp; ${msgs.length} messages` : ""}
+      </div>
+    </div>
+    <div class="header-actions">
+      <button id="hdr-skip" title="Mark read and go back to the list (S)">Skip</button>
+      <button id="hdr-archive" title="Remove from inbox (needs gmail.modify scope — re-run google-auth.py)">Archive</button>
+      <button id="hdr-block" class="danger" title="Hide all future emails from this sender">Block</button>
     </div>`;
+  // Wire (re-wire each time since header is rebuilt on every openThread)
+  document.getElementById("hdr-skip").addEventListener("click", skipThread);
+  document.getElementById("hdr-archive").addEventListener("click", archiveCurrent);
+  document.getElementById("hdr-block").addEventListener("click", hideSender);
 }
 
 function renderMessage(thread) {
