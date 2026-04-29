@@ -294,10 +294,11 @@
       <div class="action-bar" id="action-bar" style="display:none">
         <button class="regenerate" id="btn-regenerate">↻ Regenerate</button>
         <button class="skip" id="btn-skip">Skip</button>
-        <button id="btn-archive">Archive</button>
+        <button id="btn-hide-sender" title="Hide all future emails from this sender from the inbox view">🚫 Hide sender</button>
         <span class="spacer"></span>
         <button class="coming-soon" id="btn-send-mirror" disabled title="Coming in M3 — needs PB messaging API verification">Send + Mirror to PB</button>
         <button class="primary" id="btn-send">Send Reply</button>
+        <button id="btn-archive" title="Archive (needs gmail.modify scope — re-run google-auth.py)">Archive</button>
       </div>
 
     </div>
@@ -463,6 +464,9 @@ function renderThreadHeader(thread) {
   const msgs = thread.messages || [];
   const last = msgs[msgs.length - 1] || {};
   const subject = (msgs[0] && msgs[0].subject) || "(no subject)";
+  // Note: Star/Mark-unread/Archive moved out of header — they require
+  // gmail.modify scope which the current token doesn't have. They live
+  // in the bottom action bar where the failure mode is clearer.
   document.getElementById("thread-header").innerHTML = `
     <h1>${escapeHtml(subject)}</h1>
     <div class="meta">
@@ -559,9 +563,36 @@ async function archiveCurrent() {
   if (!CURRENT_THREAD_ID) return;
   try {
     await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/archive`, { method: "POST" });
-    toast("Archived (or 403 if scope missing)", "ok");
+    toast("Archived", "ok");
     backToList();
-    loadThreads();
+  } catch (e) {
+    if (/403|scope|insufficient/i.test(e.message)) {
+      toast("Archive needs gmail.modify scope — re-run google-auth.py + re-upload token", "error");
+    } else {
+      toast(e.message, "error");
+    }
+  }
+}
+
+async function hideSender() {
+  if (!CURRENT_THREAD || !CURRENT_THREAD.messages) return;
+  const last = CURRENT_THREAD.messages[CURRENT_THREAD.messages.length - 1] || {};
+  const sender = last.from || "";
+  if (!sender) { toast("No sender on this thread", "error"); return; }
+  // Show what we're about to hide so Glen can back out
+  const shortSender = sender.length > 50 ? sender.slice(0, 50) + "…" : sender;
+  if (!confirm(`Hide all future emails from:\n\n${shortSender}\n\nFrom the inbox view? (You can unhide via /api/inbox/hidden-senders.)`)) return;
+  try {
+    const result = await api("/api/inbox/hide-sender", {
+      method: "POST", body: JSON.stringify({ sender }),
+    });
+    toast(`Hidden: ${result.hidden_email}`, "ok");
+    // Remove from current list AND back to list
+    ALL_THREADS = ALL_THREADS.filter(t => {
+      const addr = (t.sender || "").match(/<([^>]+)>/);
+      return (addr ? addr[1] : t.sender || "").toLowerCase() !== result.hidden_email;
+    });
+    backToList();
   } catch (e) { toast(e.message, "error"); }
 }
 
@@ -583,6 +614,7 @@ document.getElementById("btn-send").addEventListener("click", sendReply);
 document.getElementById("btn-regenerate").addEventListener("click", regenerateReply);
 document.getElementById("btn-skip").addEventListener("click", skipThread);
 document.getElementById("btn-archive").addEventListener("click", archiveCurrent);
+document.getElementById("btn-hide-sender").addEventListener("click", hideSender);
 document.getElementById("btn-show-raw").addEventListener("click", () => {
   SHOW_RAW = !SHOW_RAW;
   document.getElementById("btn-show-raw").textContent = SHOW_RAW ? "Show clean" : "Show raw";

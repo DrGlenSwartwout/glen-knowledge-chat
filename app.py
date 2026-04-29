@@ -4282,6 +4282,38 @@ def api_inbox_ai(thread_id):
     except Exception as e: return fail(e)
 
 
+@app.route("/api/inbox/hide-sender", methods=["POST"])
+@require_console_key
+def api_inbox_hide_sender():
+    try:
+        body = request.get_json(silent=True) or {}
+        sender = (body.get("sender") or "").strip()
+        if not sender:
+            return fail("sender field required", status=400)
+        return ok(_inbox.hide_sender(sender))
+    except ValueError as e: return fail(e, status=400)
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/inbox/unhide-sender", methods=["POST"])
+@require_console_key
+def api_inbox_unhide_sender():
+    try:
+        body = request.get_json(silent=True) or {}
+        sender = (body.get("sender") or "").strip()
+        if not sender:
+            return fail("sender field required", status=400)
+        return ok(_inbox.unhide_sender(sender))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/inbox/hidden-senders", methods=["GET"])
+@require_console_key
+def api_inbox_list_hidden():
+    try: return ok(_inbox.list_hidden_senders())
+    except Exception as e: return fail(e)
+
+
 @app.route("/api/inbox/threads/<thread_id>/regenerate-reply", methods=["POST"])
 @require_console_key
 def api_inbox_regenerate(thread_id):

@@ -246,20 +246,32 @@ def _summarize_thread(thread: dict) -> dict:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def list_threads(query: str = "in:inbox", max_results: int = 50) -> list:
-    """Return a list of thread summaries matching the Gmail search query."""
+def list_threads(query: str = "in:inbox", max_results: int = 50,
+                 include_hidden: bool = False) -> list:
+    """Return a list of thread summaries matching the Gmail search query.
+
+    By default, threads from senders in the hidden_senders block list are
+    filtered out. Pass include_hidden=True to override (used for the
+    "manage hidden senders" admin view).
+    """
     svc = _get_gmail_service()
     res = svc.users().threads().list(
         userId="me", q=query, maxResults=max(1, min(max_results, 100)),
     ).execute()
     threads = res.get("threads", [])
+    hidden = set() if include_hidden else _hidden_set()
     out = []
     for t in threads:
         full = svc.users().threads().get(
             userId="me", id=t["id"], format="metadata",
             metadataHeaders=["Subject", "From", "Date"],
         ).execute()
-        out.append(_summarize_thread(full))
+        summary = _summarize_thread(full)
+        if hidden:
+            sender_addr = _normalize_sender_email(summary.get("sender", ""))
+            if sender_addr in hidden:
+                continue
+        out.append(summary)
     return out
 
 
@@ -286,6 +298,76 @@ def get_thread(thread_id: str) -> dict:
             "labels": m.get("labelIds") or [],
         })
     return {"id": t.get("id"), "messages": msgs}
+
+
+# ── Hidden-sender filter (persistent block list) ─────────────────────────────
+# Stored in chat_log.db so the same hide list applies to every device.
+
+import sqlite3 as _sqlite3
+from pathlib import Path as _Path
+
+
+def _db_path() -> str:
+    base = os.environ.get("DATA_DIR", str(_Path(__file__).resolve().parent.parent))
+    return str(_Path(base) / "chat_log.db")
+
+
+def _init_hidden_senders_table(cx: "_sqlite3.Connection") -> None:
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS inbox_hidden_senders (
+            sender_email TEXT PRIMARY KEY,
+            hidden_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    cx.commit()
+
+
+def _normalize_sender_email(sender: str) -> str:
+    """Extract just the email part from 'Name <email@domain.com>' format. Lowercase."""
+    if not sender:
+        return ""
+    import re
+    m = re.search(r"<([^>]+)>", sender)
+    addr = (m.group(1) if m else sender).strip().lower()
+    return addr
+
+
+def hide_sender(sender: str) -> dict:
+    """Add a sender to the block list. Idempotent."""
+    addr = _normalize_sender_email(sender)
+    if not addr or "@" not in addr:
+        raise ValueError(f"invalid sender: {sender!r}")
+    with _sqlite3.connect(_db_path()) as cx:
+        _init_hidden_senders_table(cx)
+        cx.execute(
+            "INSERT OR IGNORE INTO inbox_hidden_senders (sender_email) VALUES (?)",
+            (addr,),
+        )
+        cx.commit()
+    return {"hidden_email": addr}
+
+
+def unhide_sender(sender: str) -> dict:
+    addr = _normalize_sender_email(sender)
+    with _sqlite3.connect(_db_path()) as cx:
+        _init_hidden_senders_table(cx)
+        cx.execute("DELETE FROM inbox_hidden_senders WHERE sender_email = ?", (addr,))
+        cx.commit()
+    return {"unhidden_email": addr}
+
+
+def list_hidden_senders() -> list:
+    with _sqlite3.connect(_db_path()) as cx:
+        _init_hidden_senders_table(cx)
+        rows = cx.execute(
+            "SELECT sender_email, hidden_at FROM inbox_hidden_senders ORDER BY hidden_at DESC"
+        ).fetchall()
+    return [{"sender_email": r[0], "hidden_at": r[1]} for r in rows]
+
+
+def _hidden_set() -> set:
+    """Return a set of normalized hidden sender emails for fast filtering."""
+    return {h["sender_email"] for h in list_hidden_senders()}
 
 
 def list_recent_sent(max_results: int = 5) -> list:
