@@ -19,6 +19,13 @@
   var key = new URLSearchParams(location.search).get("key") || "";
   var qs = key ? ("?key=" + encodeURIComponent(key)) : "";
 
+  // If this script is loaded on a PUBLIC page (e.g., the chatbot at /),
+  // only render the nav when a console key is in the URL — so public
+  // visitors aren't shown an internal "GLEN · OPS" bar with tabs they
+  // can't use. Glen visits with ?key= and sees the nav as expected.
+  var isPublic = script && script.dataset && script.dataset.publicPage === "true";
+  if (isPublic && !key) return;
+
   var tabs = [
     { id: "dashboard", label: "Dashboard", href: "/dashboard" + qs },
     { id: "console",   label: "Console",   href: "/console"   + qs },
