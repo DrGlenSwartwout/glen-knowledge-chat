@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Manual Order — Shipping Quote</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #7c5cbf;
+    --accent-light: #a07fe0;
+    --green: #3fb950;
+    --amber: #d29922;
+    --red: #f85149;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+  #wrap { max-width: 720px; margin: 0 auto; padding: 32px 16px; }
+
+  header { margin-bottom: 28px; }
+  h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+  header p { color: var(--muted); font-size: 13px; }
+  header a { color: var(--accent-light); text-decoration: none; }
+
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+  .section h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
+
+  .bottle-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .bottle-row:last-child { border-bottom: none; }
+  .bottle-name { flex: 1; }
+  .bottle-name strong { display: block; }
+  .bottle-name span { color: var(--muted); font-size: 12px; }
+  .bottle-row input[type="number"] { background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; width: 80px; font-size: 14px; text-align: center; }
+  .bottle-row .stepper { display: flex; align-items: center; gap: 6px; }
+  .bottle-row .stepper button { width: 30px; height: 32px; padding: 0; background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 6px; cursor: pointer; font-size: 16px; }
+  .bottle-row .stepper button:hover { background: rgba(124, 92, 191, 0.1); }
+
+  #quote { background: linear-gradient(135deg, rgba(124,92,191,0.12), rgba(124,92,191,0.04)); border: 1px solid var(--accent); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
+  #quote.empty { border-color: var(--border); background: var(--surface); text-align: center; color: var(--muted); padding: 40px 20px; }
+  #quote.error { border-color: var(--amber); background: rgba(210, 153, 34, 0.06); color: var(--amber); }
+  #quote .quote-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+  #quote .box { font-size: 15px; margin-bottom: 12px; }
+  #quote .box strong { color: var(--accent-light); font-weight: 700; }
+  #quote .cost { font-size: 36px; font-weight: 800; color: var(--accent-light); line-height: 1; }
+  #quote .effective { font-size: 11px; color: var(--muted); margin-top: 8px; }
+
+  .actions { display: flex; gap: 10px; margin-top: 16px; }
+  button.primary { background: var(--accent); color: white; border: none; border-radius: 6px; padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button.primary:hover { background: var(--accent-light); }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 10px 16px; font-size: 13px; cursor: pointer; }
+  button.ghost:hover { background: rgba(255,255,255,0.04); }
+
+  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  #toast.error { border-color: var(--red); color: var(--red); }
+  #toast.ok { border-color: var(--green); color: var(--green); }
+
+  .auth-warn { background: rgba(248, 81, 73, 0.08); border: 1px solid var(--red); border-radius: 8px; padding: 14px; color: var(--red); margin-bottom: 20px; display: none; }
+  .empty-catalog { color: var(--muted); text-align: center; padding: 24px; }
+  .empty-catalog a { color: var(--accent-light); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>New Manual Order — Shipping Quote</h1>
+    <p>Enter the order's bottle counts; the tool picks the smallest USPS Flat Rate box and looks up the shipping cost. Manage the catalog at <a href="/admin/shipping">Shipping Settings</a>.</p>
+  </header>
+
+  <div id="auth-warn" class="auth-warn">
+    Missing or invalid console key. Append <code>?key=YOUR_CONSOLE_SECRET</code> to the URL.
+  </div>
+
+  <div id="quote" class="empty">Pick bottles below to see the box size + shipping cost.</div>
+
+  <div class="section">
+    <h2>Order Bottles</h2>
+    <div id="bottles"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const KEY = new URLSearchParams(location.search).get("key") || "";
+const HEADERS = { "Content-Type": "application/json", "X-Console-Key": KEY };
+let BOTTLES = [];           // catalog
+const ORDER = {};           // bottle_name → qty
+
+function toast(msg, kind="ok") {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "show " + kind;
+  setTimeout(() => t.className = kind, 2000);
+}
+
+async function api(path, opts={}) {
+  const r = await fetch(path, { headers: HEADERS, ...opts });
+  if (r.status === 401) {
+    document.getElementById("auth-warn").style.display = "block";
+    throw new Error("unauthorized");
+  }
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "request failed");
+  return j.data;
+}
+
+const fmtDollars = c => c == null ? "—" : "$" + Math.round(c / 100);
+const SIZE_LABEL = { S: "Small", M: "Medium", L: "Large" };
+
+async function loadBottles() {
+  BOTTLES = await api("/api/shipping/bottles");
+  const container = document.getElementById("bottles");
+  container.innerHTML = "";
+  if (!BOTTLES.length) {
+    container.innerHTML = `<div class="empty-catalog">No bottles in the catalog yet. <a href="/admin/shipping?key=${encodeURIComponent(KEY)}">Add some on the settings page</a>.</div>`;
+    return;
+  }
+  for (const b of BOTTLES) {
+    ORDER[b.name] = 0;
+    const row = document.createElement("div");
+    row.className = "bottle-row";
+    row.innerHTML = `
+      <div class="bottle-name">
+        <strong>${b.name}</strong>
+        ${b.notes ? `<span>${b.notes}</span>` : ""}
+      </div>
+      <div class="stepper">
+        <button type="button" data-bottle="${b.name}" data-delta="-1">−</button>
+        <input type="number" min="0" value="0" data-bottle="${b.name}">
+        <button type="button" data-bottle="${b.name}" data-delta="1">+</button>
+      </div>`;
+    container.appendChild(row);
+  }
+  for (const btn of container.querySelectorAll("button")) {
+    btn.addEventListener("click", onStep);
+  }
+  for (const inp of container.querySelectorAll("input")) {
+    inp.addEventListener("change", onInputChange);
+  }
+}
+
+function onStep(ev) {
+  const name = ev.target.dataset.bottle;
+  const delta = parseInt(ev.target.dataset.delta, 10);
+  const inp = document.querySelector(`input[data-bottle="${name}"]`);
+  const next = Math.max(0, parseInt(inp.value, 10) + delta);
+  inp.value = next;
+  ORDER[name] = next;
+  refreshQuote();
+}
+
+function onInputChange(ev) {
+  const name = ev.target.dataset.bottle;
+  const v = Math.max(0, parseInt(ev.target.value, 10) || 0);
+  ev.target.value = v;
+  ORDER[name] = v;
+  refreshQuote();
+}
+
+let quoteTimer = null;
+function refreshQuote() {
+  // Debounce — Rae may step quickly
+  clearTimeout(quoteTimer);
+  quoteTimer = setTimeout(doQuote, 150);
+}
+
+async function doQuote() {
+  const bottles = Object.fromEntries(
+    Object.entries(ORDER).filter(([, qty]) => qty > 0)
+  );
+  const quoteEl = document.getElementById("quote");
+  if (Object.keys(bottles).length === 0) {
+    quoteEl.className = "empty";
+    quoteEl.innerHTML = "Pick bottles below to see the box size + shipping cost.";
+    return;
+  }
+  try {
+    const result = await api("/api/shipping/quote", {
+      method: "POST",
+      body: JSON.stringify({ bottles }),
+    });
+    if (result.error) {
+      quoteEl.className = "error";
+      quoteEl.innerHTML = `<div class="quote-label">Cannot quote</div><div>${result.error}</div>`;
+      return;
+    }
+    quoteEl.className = "";
+    const items = Object.entries(bottles).map(([n, q]) => `${q} × ${n}`).join(", ");
+    quoteEl.innerHTML = `
+      <div class="quote-label">Shipping Quote</div>
+      <div class="box">Order: ${items} → <strong>${SIZE_LABEL[result.box_size]} Flat Rate Box</strong></div>
+      <div class="cost">${fmtDollars(result.shipping_cents)}</div>
+      <div class="effective">USPS rate effective ${result.rate_effective_date}</div>
+      <div class="actions">
+        <button class="primary" onclick="copySummary()">Copy summary</button>
+        <button class="ghost" onclick="resetOrder()">New order</button>
+      </div>`;
+  } catch (e) {
+    quoteEl.className = "error";
+    quoteEl.innerHTML = `<div class="quote-label">Error</div><div>${e.message}</div>`;
+  }
+}
+
+function copySummary() {
+  const bottles = Object.entries(ORDER).filter(([, q]) => q > 0);
+  const items = bottles.map(([n, q]) => `  • ${q} × ${n}`).join("\n");
+  const quoteEl = document.getElementById("quote");
+  const cost = quoteEl.querySelector(".cost")?.textContent || "";
+  const box = quoteEl.querySelector("strong")?.textContent || "";
+  const summary = `Order:\n${items}\n\nShipping: ${box} — ${cost}\n`;
+  navigator.clipboard.writeText(summary).then(
+    () => toast("Copied to clipboard"),
+    () => toast("Clipboard blocked", "error"),
+  );
+}
+
+function resetOrder() {
+  for (const inp of document.querySelectorAll(".bottle-row input")) {
+    inp.value = 0;
+    ORDER[inp.dataset.bottle] = 0;
+  }
+  refreshQuote();
+}
+
+async function init() {
+  if (!KEY) {
+    document.getElementById("auth-warn").style.display = "block";
+    return;
+  }
+  try {
+    await loadBottles();
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+init();
+</script>
+</body>
+</html>

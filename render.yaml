@@ -89,3 +89,21 @@ services:
         value: /data
       - key: GMAIL_TOKEN_PATH
         value: /data/google-token.json
+
+  # Weekly USPS Flat Rate watcher — scrapes USPS retail prices, stages any
+  # changes as pending updates at /admin/shipping for Glen to confirm. Same
+  # cross-container pattern as glen-personal-email-daily: cron just curls
+  # the web service, which holds the persistent disk + DB.
+  - type: cron
+    name: glen-usps-rate-check
+    runtime: python
+    schedule: "0 16 * * 1"     # Mondays 6 AM HST (HST is UTC-10)
+    buildCommand: "true"       # stdlib-only, no deps to install
+    startCommand: python scripts/run_usps_rate_check_cron.py
+    envVars:
+      - key: WEB_URL
+        value: https://glen-knowledge-chat.onrender.com
+      - fromService:
+          type: web
+          name: glen-knowledge-chat
+          envVarKey: CRON_SECRET

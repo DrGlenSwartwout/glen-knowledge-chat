@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shipping Settings — Order-Flow Plumbing</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #7c5cbf;
+    --accent-light: #a07fe0;
+    --green: #3fb950;
+    --amber: #d29922;
+    --red: #f85149;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+  #wrap { max-width: 980px; margin: 0 auto; padding: 32px 16px; }
+
+  header { margin-bottom: 28px; }
+  h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+  header p { color: var(--muted); font-size: 13px; }
+  header a { color: var(--accent-light); text-decoration: none; }
+
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+  .section h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
+  .section .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+  td input[type="number"] { background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; width: 80px; font-size: 14px; }
+  td.cell-S, td.cell-M, td.cell-L { text-align: center; }
+  th.col-size { text-align: center; width: 110px; }
+
+  .row-form { display: flex; gap: 8px; margin-top: 12px; }
+  .row-form input[type="text"] { flex: 1; background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 14px; }
+  .row-form input[name="notes"] { flex: 1.5; }
+
+  button { background: var(--accent); color: white; border: none; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button:hover { background: var(--accent-light); }
+  button.danger { background: transparent; color: var(--red); border: 1px solid var(--border); }
+  button.danger:hover { background: rgba(248, 81, 73, 0.08); }
+  button.confirm { background: var(--green); }
+  button.confirm:hover { background: #4dc862; }
+
+  .rate-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .rate-card { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .rate-card .size { font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: .06em; }
+  .rate-card .charged { font-size: 26px; font-weight: 800; color: var(--accent-light); margin: 4px 0; }
+  .rate-card .retail { font-size: 12px; color: var(--muted); }
+  .rate-card .effective { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .rate-card.missing { border-color: var(--amber); }
+  .rate-card.missing .charged { color: var(--amber); font-size: 16px; font-weight: 600; }
+
+  .pending { border: 1px solid var(--amber); border-radius: 8px; padding: 12px; margin-top: 14px; background: rgba(210, 153, 34, 0.06); }
+  .pending h3 { font-size: 12px; color: var(--amber); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+  .pending-row { display: flex; gap: 10px; align-items: center; padding: 6px 0; font-size: 13px; }
+  .pending-row span { flex: 1; }
+
+  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  #toast.error { border-color: var(--red); color: var(--red); }
+  #toast.ok { border-color: var(--green); color: var(--green); }
+
+  .auth-warn { background: rgba(248, 81, 73, 0.08); border: 1px solid var(--red); border-radius: 8px; padding: 14px; color: var(--red); margin-bottom: 20px; display: none; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>Shipping — Order-Flow Plumbing</h1>
+    <p>Bottle catalog, box-fit matrix, and USPS Flat Rate prices. Used by <a href="/orders/new">Manual Order Entry</a>.</p>
+  </header>
+
+  <div id="auth-warn" class="auth-warn">
+    Missing or invalid console key. Append <code>?key=YOUR_CONSOLE_SECRET</code> to the URL.
+  </div>
+
+  <!-- Current rates -->
+  <div class="section">
+    <h2>Current USPS Flat Rate Prices</h2>
+    <div id="rates-grid" class="rate-grid"></div>
+    <div id="pending-rates"></div>
+    <div class="hint">
+      Charged price = USPS retail rounded to the nearest dollar (≥50¢ up, ≤49¢ down).
+      The weekly watcher proposes updates; you confirm them here before they go live.
+    </div>
+  </div>
+
+  <!-- Bottle library -->
+  <div class="section">
+    <h2>Bottle Library</h2>
+    <table id="bottle-table">
+      <thead>
+        <tr><th>Name</th><th>Notes</th><th></th></tr>
+      </thead>
+      <tbody id="bottle-tbody"></tbody>
+    </table>
+    <form id="add-bottle-form" class="row-form" onsubmit="addBottle(event)">
+      <input type="text" name="name" placeholder="e.g. dropper 1oz" required>
+      <input type="text" name="notes" placeholder="optional notes (height, weight)">
+      <button type="submit">Add bottle</button>
+    </form>
+  </div>
+
+  <!-- Box capacity matrix -->
+  <div class="section">
+    <h2>Box Capacity Matrix</h2>
+    <table id="matrix-table">
+      <thead>
+        <tr>
+          <th>Bottle</th>
+          <th class="col-size">Small</th>
+          <th class="col-size">Medium</th>
+          <th class="col-size">Large</th>
+        </tr>
+      </thead>
+      <tbody id="matrix-tbody"></tbody>
+    </table>
+    <div class="hint">
+      How many of each bottle fit in each USPS Flat Rate box size. Tab/click out of a cell to save.
+      Mixed orders use fractional fill — e.g., 3 droppers (3/6 of Small) + 2 caps (2/4 of Small) = full Small.
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const KEY = new URLSearchParams(location.search).get("key") || "";
+const HEADERS = { "Content-Type": "application/json", "X-Console-Key": KEY };
+
+function toast(msg, kind="ok") {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "show " + kind;
+  setTimeout(() => t.className = kind, 2000);
+}
+
+async function api(path, opts={}) {
+  const r = await fetch(path, { headers: HEADERS, ...opts });
+  if (r.status === 401) {
+    document.getElementById("auth-warn").style.display = "block";
+    throw new Error("unauthorized");
+  }
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "request failed");
+  return j.data;
+}
+
+const fmtCents = c => c == null ? "—" : "$" + (c / 100).toFixed(2);
+const fmtDollars = c => c == null ? "—" : "$" + Math.round(c / 100);
+
+// ── Rates ────────────────────────────────────────────────────────────────
+async function loadRates() {
+  const { current, pending } = await api("/api/shipping/rates");
+  const grid = document.getElementById("rates-grid");
+  grid.innerHTML = "";
+  for (const size of ["S", "M", "L"]) {
+    const r = current[size];
+    const label = { S: "Small", M: "Medium", L: "Large" }[size];
+    const card = document.createElement("div");
+    if (r) {
+      card.className = "rate-card";
+      card.innerHTML = `
+        <div class="size">${label}</div>
+        <div class="charged">${fmtDollars(r.charged_cents)}</div>
+        <div class="retail">USPS retail ${fmtCents(r.usps_retail_cents)}</div>
+        <div class="effective">Effective ${r.effective_date}</div>`;
+    } else {
+      card.className = "rate-card missing";
+      card.innerHTML = `
+        <div class="size">${label}</div>
+        <div class="charged">No rate set</div>
+        <div class="retail">Use the watcher or manually propose below.</div>`;
+    }
+    grid.appendChild(card);
+  }
+
+  const pwrap = document.getElementById("pending-rates");
+  pwrap.innerHTML = "";
+  if (pending.length) {
+    const div = document.createElement("div");
+    div.className = "pending";
+    div.innerHTML = `<h3>${pending.length} pending update${pending.length>1?"s":""} — review &amp; confirm</h3>`;
+    for (const p of pending) {
+      const row = document.createElement("div");
+      row.className = "pending-row";
+      row.innerHTML = `
+        <span><strong>${p.box_size}</strong> — USPS retail ${fmtCents(p.usps_retail_cents)} → charge ${fmtDollars(p.charged_cents)} (effective ${p.effective_date})</span>
+        <button class="confirm" onclick="confirmRate(${p.id})">Confirm</button>`;
+      div.appendChild(row);
+    }
+    pwrap.appendChild(div);
+  }
+}
+
+async function confirmRate(id) {
+  try {
+    await api(`/api/shipping/rates/${id}/confirm`, {
+      method: "POST",
+      body: JSON.stringify({ confirmed_by: "glen" }),
+    });
+    toast("Rate confirmed");
+    await loadRates();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Bottle library ───────────────────────────────────────────────────────
+async function loadBottles() {
+  const bottles = await api("/api/shipping/bottles");
+  const tbody = document.getElementById("bottle-tbody");
+  tbody.innerHTML = "";
+  for (const b of bottles) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong>${b.name}</strong></td>
+      <td style="color:var(--muted)">${b.notes || ""}</td>
+      <td style="text-align:right"><button class="danger" onclick="deleteBottle(${b.id}, '${b.name.replace(/'/g, "\\'")}')">Delete</button></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function addBottle(ev) {
+  ev.preventDefault();
+  const f = ev.target;
+  const name = f.name.value.trim();
+  const notes = f.notes.value.trim();
+  if (!name) return;
+  try {
+    await api("/api/shipping/bottles", {
+      method: "POST",
+      body: JSON.stringify({ name, notes }),
+    });
+    f.reset();
+    toast("Bottle added");
+    await loadBottles();
+    await loadMatrix();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function deleteBottle(id, name) {
+  if (!confirm(`Delete "${name}" and all its capacity rows?`)) return;
+  try {
+    await api(`/api/shipping/bottles/${id}`, { method: "DELETE" });
+    toast("Bottle deleted");
+    await loadBottles();
+    await loadMatrix();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Capacity matrix ──────────────────────────────────────────────────────
+async function loadMatrix() {
+  const rows = await api("/api/shipping/matrix");
+  const tbody = document.getElementById("matrix-tbody");
+  tbody.innerHTML = "";
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="color:var(--muted); text-align:center; padding:24px">Add bottles above to populate the matrix.</td></tr>`;
+    return;
+  }
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong>${r.name}</strong></td>
+      <td class="cell-S"><input type="number" min="0" value="${r.S ?? ''}" data-bid="${r.id}" data-size="S"></td>
+      <td class="cell-M"><input type="number" min="0" value="${r.M ?? ''}" data-bid="${r.id}" data-size="M"></td>
+      <td class="cell-L"><input type="number" min="0" value="${r.L ?? ''}" data-bid="${r.id}" data-size="L"></td>`;
+    tbody.appendChild(tr);
+  }
+  for (const inp of tbody.querySelectorAll("input")) {
+    inp.addEventListener("change", saveCell);
+  }
+}
+
+async function saveCell(ev) {
+  const inp = ev.target;
+  const bid = parseInt(inp.dataset.bid, 10);
+  const size = inp.dataset.size;
+  const qty = parseInt(inp.value, 10);
+  if (!Number.isFinite(qty) || qty < 1) {
+    toast("Quantity must be a positive integer", "error");
+    return;
+  }
+  try {
+    await api("/api/shipping/capacity", {
+      method: "POST",
+      body: JSON.stringify({ bottle_type_id: bid, box_size: size, qty }),
+    });
+    toast(`Saved ${size}=${qty}`);
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────
+async function init() {
+  if (!KEY) {
+    document.getElementById("auth-warn").style.display = "block";
+    return;
+  }
+  try {
+    await loadRates();
+    await loadBottles();
+    await loadMatrix();
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+init();
+</script>
+</body>
+</html>

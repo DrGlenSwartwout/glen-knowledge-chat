@@ -590,6 +590,15 @@ def _init_log_db():
 _init_log_db()
 
 
+def _init_shipping_tables():
+    """Order-Flow Plumbing — bottle catalog, box-fit matrix, USPS rate history."""
+    from dashboard.shipping import init_shipping_schema
+    with sqlite3.connect(LOG_DB) as cx:
+        init_shipping_schema(cx)
+
+_init_shipping_tables()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
@@ -4099,6 +4108,149 @@ def cron_personal_send():
         return jsonify({"ok": True, "sent": n})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/cron/usps-rate-check", methods=["POST"])
+def cron_usps_rate_check():
+    """Weekly USPS Flat Rate watcher. Stages pending updates for Glen to confirm."""
+    key = request.headers.get("X-Cron-Secret", "")
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        from dashboard.shipping import check_usps_rates
+        return jsonify({"ok": True, "summary": check_usps_rates()})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Shipping (Order-Flow Plumbing) ────────────────────────────────────────────
+# /admin/shipping  — Glen + Rae manage bottle catalog, box-fit matrix, USPS rates
+# /orders/new      — Rae enters a phone/email order; tool auto-picks box + cost
+# /api/shipping/*  — JSON API behind require_console_key
+from dashboard import shipping as _shipping
+
+
+@app.route("/admin/shipping")
+def admin_shipping_page():
+    resp = send_from_directory(STATIC, "admin-shipping.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/orders/new")
+def order_new_page():
+    resp = send_from_directory(STATIC, "order-new.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/shipping/bottles", methods=["GET"])
+@require_console_key
+def api_shipping_list_bottles():
+    try: return ok(_shipping.list_bottle_types())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/bottles", methods=["POST"])
+@require_console_key
+def api_shipping_add_bottle():
+    try:
+        body = request.get_json(silent=True) or {}
+        name = (body.get("name") or "").strip()
+        if not name:
+            return fail("name is required", status=400)
+        notes = (body.get("notes") or "").strip() or None
+        new_id = _shipping.add_bottle_type(name, notes=notes)
+        return ok({"id": new_id})
+    except sqlite3.IntegrityError:
+        return fail("bottle type already exists", status=409)
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/bottles/<int:bid>", methods=["DELETE"])
+@require_console_key
+def api_shipping_delete_bottle(bid):
+    try:
+        _shipping.delete_bottle_type(bid)
+        return ok({"deleted": bid})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/matrix", methods=["GET"])
+@require_console_key
+def api_shipping_matrix():
+    try: return ok(_shipping.get_capacity_matrix())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/capacity", methods=["POST"])
+@require_console_key
+def api_shipping_set_capacity():
+    try:
+        body = request.get_json(silent=True) or {}
+        bid = int(body.get("bottle_type_id"))
+        size = body.get("box_size")
+        qty = int(body.get("qty"))
+        _shipping.set_box_capacity(bid, size, qty)
+        return ok({"bottle_type_id": bid, "box_size": size, "qty": qty})
+    except (TypeError, ValueError) as e: return fail(e, status=400)
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/rates", methods=["GET"])
+@require_console_key
+def api_shipping_rates():
+    try:
+        return ok({
+            "current": _shipping.get_current_rates(),
+            "pending": _shipping.list_pending_rate_updates(),
+        })
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/rates/propose", methods=["POST"])
+@require_console_key
+def api_shipping_propose_rate():
+    try:
+        body = request.get_json(silent=True) or {}
+        rate_id = _shipping.propose_rate_update(
+            box_size=body["box_size"],
+            usps_retail_cents=int(body["usps_retail_cents"]),
+            source_url=body.get("source_url", ""),
+            effective_date=body["effective_date"],
+        )
+        return ok({"id": rate_id})
+    except (KeyError, ValueError, TypeError) as e: return fail(e, status=400)
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/rates/<int:rid>/confirm", methods=["POST"])
+@require_console_key
+def api_shipping_confirm_rate(rid):
+    try:
+        body = request.get_json(silent=True) or {}
+        confirmed_by = (body.get("confirmed_by") or "glen").strip()
+        _shipping.confirm_rate_update(rid, confirmed_by=confirmed_by)
+        return ok({"confirmed": rid, "by": confirmed_by})
+    except ValueError as e: return fail(e, status=400)
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/quote", methods=["POST"])
+@require_console_key
+def api_shipping_quote():
+    """Order-entry helper: bottles_by_type → {box_size, shipping_cents}."""
+    try:
+        body = request.get_json(silent=True) or {}
+        bottles = body.get("bottles") or {}
+        # sanitize: positive ints only
+        clean = {str(k): int(v) for k, v in bottles.items() if int(v) > 0}
+        return ok(_shipping.quote(clean))
+    except _shipping.UnknownBottleType as e:
+        return fail(f"unknown bottle type: {e}", status=400)
+    except (TypeError, ValueError) as e: return fail(e, status=400)
+    except Exception as e: return fail(e)
 
 
 if __name__ == "__main__":
