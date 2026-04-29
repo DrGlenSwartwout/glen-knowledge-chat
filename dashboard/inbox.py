@@ -59,12 +59,26 @@ def _resolve_token_path() -> Path:
 
 
 def _get_gmail_service():
-    """Build a Gmail API service client. Same loader pattern as reply_watcher.py."""
+    """Build a Gmail API service client.
+
+    Critical: passes the intersection of requested scopes and what the token
+    was actually granted. If we ask for a scope the token doesn't have (e.g.,
+    gmail.modify when the token was issued for read+send only), the SDK
+    requests it on token refresh and Google returns `invalid_scope: Bad
+    Request`. Reading the file's `scopes` field and intersecting avoids that.
+    """
     from googleapiclient.discovery import build
     from google.oauth2.credentials import Credentials
+    import json as _json
 
     token_path = _resolve_token_path()
-    creds = Credentials.from_authorized_user_file(str(token_path), scopes=GMAIL_SCOPES)
+    with open(token_path) as f:
+        granted = set((_json.load(f) or {}).get("scopes") or [])
+    # Use granted scopes only (intersection with what we'd want), else all granted
+    effective = list(set(GMAIL_SCOPES) & granted) if granted else list(GMAIL_SCOPES)
+    if not effective:
+        effective = list(granted) or list(GMAIL_SCOPES)
+    creds = Credentials.from_authorized_user_file(str(token_path), scopes=effective)
     return build("gmail", "v1", credentials=creds)
 
 
