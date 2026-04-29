@@ -506,14 +506,61 @@ function renderThreadHeader(thread) {
       </div>
     </div>
     <div class="header-actions">
-      <button id="hdr-skip" title="Mark read and go back to the list (S)">Skip</button>
-      <button id="hdr-archive" title="Remove from inbox (needs gmail.modify scope — re-run google-auth.py)">Archive</button>
+      <button id="hdr-star" title="Star this thread">${threadIsStarred(thread) ? '★ Unstar' : '☆ Star'}</button>
+      <button id="hdr-unread" title="Mark as unread">Unread</button>
+      <button id="hdr-skip" title="Mark read and return to list">Skip</button>
+      <button id="hdr-archive" title="Remove from inbox">Archive</button>
       <button id="hdr-block" class="danger" title="Hide all future emails from this sender">Block</button>
     </div>`;
   // Wire (re-wire each time since header is rebuilt on every openThread)
+  document.getElementById("hdr-star").addEventListener("click", toggleStarCurrent);
+  document.getElementById("hdr-unread").addEventListener("click", markUnreadCurrent);
   document.getElementById("hdr-skip").addEventListener("click", skipThread);
   document.getElementById("hdr-archive").addEventListener("click", archiveCurrent);
   document.getElementById("hdr-block").addEventListener("click", hideSender);
+}
+
+function threadIsStarred(thread) {
+  if (!thread || !thread.messages) return false;
+  return thread.messages.some(m => (m.labels || []).includes("STARRED"));
+}
+
+async function toggleStarCurrent() {
+  if (!CURRENT_THREAD_ID || !CURRENT_THREAD) return;
+  const wasStarred = threadIsStarred(CURRENT_THREAD);
+  try {
+    await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/star`, {
+      method: "POST", body: JSON.stringify({ starred: !wasStarred }),
+    });
+    toast(wasStarred ? "Unstarred" : "Starred", "ok");
+    // Refresh thread to update label state
+    const thread = await api(`/api/inbox/threads/${CURRENT_THREAD_ID}`);
+    CURRENT_THREAD = thread;
+    renderThreadHeader(thread);
+  } catch (e) {
+    if (/403|scope|insufficient/i.test(e.message)) {
+      toast("Star needs gmail.modify scope — re-run google-auth.py + re-upload token", "error");
+    } else {
+      toast(e.message, "error");
+    }
+  }
+}
+
+async function markUnreadCurrent() {
+  if (!CURRENT_THREAD_ID) return;
+  try {
+    await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/read`, {
+      method: "POST", body: JSON.stringify({ read: false }),
+    });
+    toast("Marked unread", "ok");
+    backToList();
+  } catch (e) {
+    if (/403|scope|insufficient/i.test(e.message)) {
+      toast("Mark unread needs gmail.modify scope", "error");
+    } else {
+      toast(e.message, "error");
+    }
+  }
 }
 
 function renderMessage(thread) {
