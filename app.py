@@ -1181,9 +1181,21 @@ def _generate_full_answer(query: str, level: str):
 
 def _send_full_report_email(to_email: str, name: str,
                             subject: str, body: str):
-    """Send the full report via SMTP (if configured) or console fallback.
+    """Send the full report — tries Gmail API → SMTP → console log.
     Returns (sent_via, error_or_none).
+
+    Gmail API path is preferred because it reuses the same OAuth token as
+    the inbox feature (no extra SMTP_USER/PASS to manage).
     """
+    # Path 1: Gmail API (preferred — reuses inbox auth)
+    try:
+        from dashboard.inbox import send_email as _gmail_send
+        _gmail_send(to_email, subject, body)
+        return ("gmail-api", None)
+    except Exception as e:
+        print(f"[full-report] Gmail API send failed: {e}", flush=True)
+
+    # Path 2: SMTP (fallback — only if env vars set)
     smtp_host = os.environ.get("SMTP_HOST")
     smtp_user = os.environ.get("SMTP_USER")
     smtp_pass = os.environ.get("SMTP_PASS")
@@ -1203,9 +1215,9 @@ def _send_full_report_email(to_email: str, name: str,
                 s.sendmail(smtp_from, [to_email], msg.as_string())
             return ("smtp", None)
         except Exception as e:
-            print(f"[full-report] SMTP failed: {e}", flush=True)
+            print(f"[full-report] SMTP fallback also failed: {e}", flush=True)
 
-    # Console fallback (development / SMTP-not-configured)
+    # Path 3: console log (last resort — dev / nothing configured)
     print(f"\n[full-report] TO: {to_email}\nSUBJECT: {subject}\n\n{body}\n",
           flush=True)
     return ("console-log", "no email-send mechanism configured")

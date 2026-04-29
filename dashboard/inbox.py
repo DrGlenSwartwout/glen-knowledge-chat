@@ -25,21 +25,45 @@ from pathlib import Path
 from typing import Optional
 
 
-GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
-DEFAULT_TOKEN_PATH = Path.home() / ".config" / "google" / "token.json"
+# Granted scopes the local OAuth flow asks for. Operations needing label
+# modification (archive/star/mark-unread) will require gmail.modify added
+# to google-auth.py and a re-auth — the current token doesn't include it,
+# so those API calls will return 403 until Glen re-authorizes.
+GMAIL_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.compose",
+    "https://www.googleapis.com/auth/gmail.modify",
+]
+
+# Token-path resolution: env var override → Render persistent disk →
+# local home-dir convention. First file that exists wins.
+_TOKEN_PATH_CANDIDATES = [
+    "/data/google-token.json",                                     # Render persistent disk
+    str(Path.home() / ".config" / "google" / "token.json"),        # local dev
+]
+
+
+def _resolve_token_path() -> Path:
+    """Return the first existing token path among env override + known locations."""
+    env_override = os.environ.get("GMAIL_TOKEN_PATH")
+    candidates = ([env_override] if env_override else []) + _TOKEN_PATH_CANDIDATES
+    for c in candidates:
+        if c and Path(c).exists():
+            return Path(c)
+    raise RuntimeError(
+        f"No Gmail token at any of: {[c for c in candidates if c]}. "
+        f"Run '~/AI-Training/02 Skills/google-auth.py' locally then POST it to "
+        f"/admin/upload-gmail-token to land it on the Render disk."
+    )
 
 
 def _get_gmail_service():
-    """Build a Gmail API service client. Same loader as reply_watcher.py."""
+    """Build a Gmail API service client. Same loader pattern as reply_watcher.py."""
     from googleapiclient.discovery import build
     from google.oauth2.credentials import Credentials
 
-    token_path = Path(os.environ.get("GMAIL_TOKEN_PATH", str(DEFAULT_TOKEN_PATH)))
-    if not token_path.exists():
-        raise RuntimeError(
-            f"No Gmail token at {token_path}. "
-            f"Run '~/AI-Training/02 Skills/google-auth.py' first."
-        )
+    token_path = _resolve_token_path()
     creds = Credentials.from_authorized_user_file(str(token_path), scopes=GMAIL_SCOPES)
     return build("gmail", "v1", credentials=creds)
 
@@ -200,6 +224,23 @@ def send_reply(thread_id: str, body: str, override_to: Optional[str] = None) -> 
     payload = _build_reply_message(thread, body, override_to=override_to)
     sent = svc.users().messages().send(userId="me", body=payload).execute()
     return {"id": sent.get("id"), "threadId": sent.get("threadId"), "labels": sent.get("labelIds", [])}
+
+
+def send_email(to_email: str, subject: str, body: str, from_name: Optional[str] = None) -> dict:
+    """Generic Gmail send — used by /full-report so it doesn't need SMTP creds.
+
+    Sends as plain text from drglenswartwout@gmail.com (the authorized account).
+    """
+    svc = _get_gmail_service()
+    mime = MIMEText(body, "plain", "utf-8")
+    mime["To"] = to_email
+    mime["Subject"] = subject
+    if from_name:
+        # Optional display name; the From address is whatever the OAuth account is
+        mime["From"] = f'"{from_name}"'
+    raw = base64.urlsafe_b64encode(mime.as_bytes()).decode("ascii")
+    sent = svc.users().messages().send(userId="me", body={"raw": raw}).execute()
+    return {"id": sent.get("id"), "threadId": sent.get("threadId")}
 
 
 # ── Mutations: archive / star / read state ────────────────────────────────────
