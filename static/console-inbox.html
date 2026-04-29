@@ -116,7 +116,18 @@
     padding: 10px 14px; background: var(--surface-2);
     border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
+    gap: 10px;
   }
+  .field-title { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; user-select: none; }
+  .field-title:hover .field-chevron { color: var(--accent-light); }
+  .field-chevron {
+    color: var(--muted); font-size: 11px; transition: transform .15s;
+    width: 14px; display: inline-block; text-align: center;
+  }
+  .field.collapsed .field-chevron { transform: rotate(-90deg); }
+  .field.collapsed .field-body { display: none; }
+  .field.collapsed { margin-bottom: 8px; }
+  .field.collapsed .field-header { border-bottom: none; }
   .field-header h3 {
     font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
     color: var(--muted); font-weight: 700;
@@ -238,10 +249,10 @@
 
       <div id="detail-body" class="detail-body" style="display:none">
 
-        <!-- Field 1: cleaned core message -->
-        <div class="field message">
+        <!-- Field 1: cleaned message (collapsed by default) -->
+        <div class="field message collapsed">
           <div class="field-header">
-            <h3>1 · Core Message</h3>
+            <div class="field-title"><span class="field-chevron">▾</span><h3>1 · Message</h3></div>
             <div class="field-actions">
               <button id="btn-show-raw">Show raw</button>
             </div>
@@ -252,7 +263,7 @@
         <!-- Field 2: AI summary + numbered actions -->
         <div class="field summary">
           <div class="field-header">
-            <h3>2 · Summary &amp; Suggested Actions</h3>
+            <div class="field-title"><span class="field-chevron">▾</span><h3>2 · Summary &amp; Suggested Actions</h3></div>
             <div class="field-actions">
               <button id="btn-rerun-summary">Rerun</button>
             </div>
@@ -265,7 +276,10 @@
         <!-- Field 3: suggested reply -->
         <div class="field reply">
           <div class="field-header">
-            <h3>3 · Suggested Reply <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">— click to edit</span></h3>
+            <div class="field-title">
+              <span class="field-chevron">▾</span>
+              <h3>3 · Suggested Reply <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">— click textarea to edit</span></h3>
+            </div>
             <div class="field-actions">
               <button id="btn-field3-regenerate">↻ Regenerate</button>
               <button id="btn-field3-clear">Clear</button>
@@ -280,7 +294,7 @@
         <!-- Field 4: prompt / notes -->
         <div class="field prompt">
           <div class="field-header">
-            <h3>4 · Prompt / Notes</h3>
+            <div class="field-title"><span class="field-chevron">▾</span><h3>4 · Prompt / Notes</h3></div>
           </div>
           <div class="field-body">
             <div class="hint">Tell the AI how to change the suggested reply, write from scratch, or jot notes for yourself. Examples: "make it warmer", "ignore prior draft and focus on the appointment Tuesday", "shorten by half".</div>
@@ -638,6 +652,17 @@ for (const id of ["reply-body", "prompt-body"]) {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") sendReply();
   });
 }
+
+// ── Field collapse toggle ───────────────────────────────────────────────────
+// Click any field's title row (chevron or h3) to collapse/expand its body.
+// Field-actions buttons (Send/Clear/Regenerate/etc.) are NOT inside .field-title
+// so they don't trigger the toggle when clicked.
+document.addEventListener("click", e => {
+  const title = e.target.closest(".field-title");
+  if (!title) return;
+  const field = title.closest(".field");
+  if (field) field.classList.toggle("collapsed");
+});
 
 // ── Init ────────────────────────────────────────────────────────────────────
 if (!KEY) {
