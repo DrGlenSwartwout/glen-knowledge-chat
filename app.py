@@ -4124,6 +4124,84 @@ def cron_usps_rate_check():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ── Inbox (Gmail in console) ──────────────────────────────────────────────────
+# /console/inbox  — full Gmail thread list + read + reply, behind console auth
+# /api/inbox/*    — JSON API behind require_console_key
+from dashboard import inbox as _inbox
+
+
+@app.route("/console/inbox")
+def console_inbox_page():
+    resp = send_from_directory(STATIC, "console-inbox.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/inbox/threads", methods=["GET"])
+@require_console_key
+def api_inbox_list_threads():
+    try:
+        q = request.args.get("q", "in:inbox")
+        max_results = int(request.args.get("max", 50))
+        return ok(_inbox.list_threads(query=q, max_results=max_results))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/inbox/threads/<thread_id>", methods=["GET"])
+@require_console_key
+def api_inbox_get_thread(thread_id):
+    try: return ok(_inbox.get_thread(thread_id))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/inbox/threads/<thread_id>/reply", methods=["POST"])
+@require_console_key
+def api_inbox_reply(thread_id):
+    try:
+        body = (request.get_json(silent=True) or {})
+        reply_body = (body.get("body") or "").strip()
+        if not reply_body:
+            return fail("body is required", status=400)
+        override_to = (body.get("to") or "").strip() or None
+        return ok(_inbox.send_reply(thread_id, reply_body, override_to=override_to))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/inbox/threads/<thread_id>/archive", methods=["POST"])
+@require_console_key
+def api_inbox_archive(thread_id):
+    try:
+        _inbox.archive_thread(thread_id)
+        return ok({"archived": thread_id})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/inbox/threads/<thread_id>/star", methods=["POST"])
+@require_console_key
+def api_inbox_star(thread_id):
+    try:
+        body = request.get_json(silent=True) or {}
+        if body.get("starred"):
+            _inbox.star_thread(thread_id)
+        else:
+            _inbox.unstar_thread(thread_id)
+        return ok({"thread_id": thread_id, "starred": bool(body.get("starred"))})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/inbox/threads/<thread_id>/read", methods=["POST"])
+@require_console_key
+def api_inbox_read(thread_id):
+    try:
+        body = request.get_json(silent=True) or {}
+        if body.get("read"):
+            _inbox.mark_read(thread_id)
+        else:
+            _inbox.mark_unread(thread_id)
+        return ok({"thread_id": thread_id, "read": bool(body.get("read"))})
+    except Exception as e: return fail(e)
+
+
 # ── Shipping (Order-Flow Plumbing) ────────────────────────────────────────────
 # /admin/shipping  — Glen + Rae manage bottle catalog, box-fit matrix, USPS rates
 # /orders/new      — Rae enters a phone/email order; tool auto-picks box + cost

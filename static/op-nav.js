@@ -22,6 +22,7 @@
   var tabs = [
     { id: "dashboard", label: "Dashboard", href: "/dashboard" + qs },
     { id: "console",   label: "Console",   href: "/console"   + qs },
+    { id: "inbox",     label: "Inbox",     href: "/console/inbox" + qs },
     { id: "shipping",  label: "Shipping",  href: "/admin/shipping" + qs },
     { id: "orders",    label: "Orders",    href: "/orders/new"     + qs },
   ];

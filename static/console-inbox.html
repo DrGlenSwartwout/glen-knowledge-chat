@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inbox — Glen Ops</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #1d242e;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #7c5cbf;
+    --accent-light: #a07fe0;
+    --green: #3fb950;
+    --amber: #d29922;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px; min-height: 100vh;
+    display: flex; flex-direction: column;
+  }
+
+  /* Layout: nav (40px) + toolbar + 3-pane grid filling the rest */
+  #inbox-shell { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .toolbar {
+    display: flex; gap: 10px; align-items: center;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .toolbar input.search {
+    flex: 1; max-width: 460px;
+    background: #0d1117; color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 10px; font-size: 13px;
+  }
+  .toolbar button {
+    background: transparent; color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer;
+  }
+  .toolbar button:hover { border-color: var(--accent); color: var(--accent-light); }
+  .toolbar button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .toolbar button.primary:hover { background: var(--accent-light); }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .status { font-size: 11px; color: var(--muted); }
+
+  /* 3-pane grid: thread list (380) | message (1fr) | reply box (collapsible) */
+  .panes {
+    flex: 1; display: grid;
+    grid-template-columns: 380px 1fr;
+    min-height: 0;
+  }
+  @media (max-width: 900px) {
+    .panes { grid-template-columns: 1fr; }
+    .pane.list.hidden-mobile, .pane.detail.hidden-mobile { display: none; }
+  }
+
+  .pane { overflow-y: auto; min-height: 0; }
+  .pane.list  { border-right: 1px solid var(--border); background: var(--surface); }
+  .pane.detail { background: var(--bg); display: flex; flex-direction: column; }
+
+  /* Thread list rows */
+  .thread-row {
+    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: background .12s;
+  }
+  .thread-row:hover { background: var(--surface-2); }
+  .thread-row.active { background: rgba(124, 92, 191, 0.12); border-left: 3px solid var(--accent); padding-left: 11px; }
+  .thread-row.unread .sender { font-weight: 700; }
+  .thread-row.unread .subject { color: var(--text); font-weight: 600; }
+  .thread-row .top { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+  .thread-row .sender { color: var(--muted); font-size: 12px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thread-row .date { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+  .thread-row .subject { color: var(--muted); font-size: 13px; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thread-row .snippet { color: var(--muted); font-size: 12px; line-height: 1.3; max-height: 32px; overflow: hidden; }
+  .thread-row .badges { display: inline-flex; gap: 4px; margin-left: 6px; }
+  .badge-tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+  .badge-tag.unread { background: var(--blue); color: white; }
+  .badge-tag.starred { background: var(--amber); color: #0a0a0a; }
+  .badge-tag.count { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+
+  /* Detail pane */
+  .detail-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 14px; }
+  .thread-header { padding: 16px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .thread-header h1 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .thread-header .actions { display: flex; gap: 6px; margin-top: 8px; }
+  .thread-header .actions button { font-size: 11px; padding: 4px 10px; }
+
+  .messages { flex: 1; overflow-y: auto; padding: 12px 22px; min-height: 0; }
+  .message-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px;
+  }
+  .message-card .from { font-weight: 600; font-size: 13px; }
+  .message-card .meta { color: var(--muted); font-size: 11px; margin-top: 2px; margin-bottom: 10px; }
+  .message-card .body { white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.55; color: var(--text); }
+  .message-card .body a { color: var(--accent-light); }
+
+  /* Reply box */
+  .reply-area { flex-shrink: 0; padding: 14px 22px; border-top: 1px solid var(--border); background: var(--surface); }
+  .reply-area .reply-meta { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .reply-area textarea {
+    width: 100%; min-height: 90px; max-height: 240px; resize: vertical;
+    background: #0d1117; color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 12px; font-size: 13px; line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  .reply-area .row { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+  .reply-area .row .spacer { flex: 1; }
+
+  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10000; }
+  #toast.show { opacity: 1; }
+  #toast.error { border-color: var(--red); color: var(--red); }
+  #toast.ok { border-color: var(--green); color: var(--green); }
+
+  .auth-warn { background: rgba(248, 81, 73, 0.08); border: 1px solid var(--red); border-radius: 8px; padding: 14px; color: var(--red); margin: 20px; display: none; }
+
+  .loading { color: var(--muted); padding: 20px; text-align: center; font-size: 13px; }
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="inbox"></script>
+
+<div id="inbox-shell">
+  <div id="auth-warn" class="auth-warn">
+    Missing or invalid console key. Append <code>?key=YOUR_CONSOLE_SECRET</code> to the URL.
+  </div>
+
+  <div class="toolbar">
+    <input class="search" id="search" placeholder="Search Gmail (e.g. from:alice OR is:unread)" value="in:inbox">
+    <button id="btn-refresh">Refresh</button>
+    <button id="btn-back-list" style="display:none">← Threads</button>
+    <span class="spacer"></span>
+    <span class="status" id="status">—</span>
+  </div>
+
+  <div class="panes">
+    <div class="pane list" id="pane-list">
+      <div class="loading" id="list-loading">Loading…</div>
+      <div id="thread-list"></div>
+    </div>
+    <div class="pane detail" id="pane-detail">
+      <div class="detail-empty" id="detail-empty">Select a thread to read it.</div>
+      <div id="thread-header" class="thread-header" style="display:none"></div>
+      <div id="messages" class="messages" style="display:none"></div>
+      <div id="reply-area" class="reply-area" style="display:none">
+        <div class="reply-meta" id="reply-meta">Reply to: —</div>
+        <textarea id="reply-body" placeholder="Type your reply…"></textarea>
+        <div class="row">
+          <span class="spacer"></span>
+          <button id="btn-send" class="primary">Send reply</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const KEY = new URLSearchParams(location.search).get("key") || "";
+const HEADERS = { "Content-Type": "application/json", "X-Console-Key": KEY };
+let CURRENT_THREAD = null;   // full thread data
+let CURRENT_THREAD_ID = null;
+
+function toast(msg, kind="ok") {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "show " + kind;
+  setTimeout(() => t.className = kind, 2500);
+}
+
+async function api(path, opts={}) {
+  const r = await fetch(path, { headers: HEADERS, ...opts });
+  if (r.status === 401) {
+    document.getElementById("auth-warn").style.display = "block";
+    throw new Error("unauthorized");
+  }
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "request failed");
+  return j.data;
+}
+
+// ── Date formatting ─────────────────────────────────────────────────────────
+function shortDate(internalMs) {
+  if (!internalMs) return "";
+  const d = new Date(internalMs);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const yearAgo = new Date(now); yearAgo.setFullYear(now.getFullYear() - 1);
+  if (d > yearAgo) return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  return d.toLocaleDateString([], { year: "2-digit", month: "short", day: "numeric" });
+}
+
+function shortenSender(s) {
+  if (!s) return "";
+  // "Name <addr@x.com>" → "Name"; "addr@x.com" → "addr@x.com"
+  const m = s.match(/^"?([^"<]+?)"?\s*<.+>$/);
+  return (m ? m[1] : s).trim();
+}
+
+// ── Thread list ─────────────────────────────────────────────────────────────
+async function loadThreads() {
+  const q = document.getElementById("search").value.trim() || "in:inbox";
+  document.getElementById("status").textContent = "Loading…";
+  document.getElementById("list-loading").style.display = "block";
+  document.getElementById("thread-list").innerHTML = "";
+  try {
+    const threads = await api(`/api/inbox/threads?q=${encodeURIComponent(q)}&max=50`);
+    document.getElementById("list-loading").style.display = "none";
+    const wrap = document.getElementById("thread-list");
+    if (!threads.length) {
+      wrap.innerHTML = `<div class="loading">No threads matching "${q}".</div>`;
+      document.getElementById("status").textContent = "0 threads";
+      return;
+    }
+    document.getElementById("status").textContent = `${threads.length} threads`;
+    wrap.innerHTML = threads.map(t => {
+      const cls = "thread-row" + (t.unread ? " unread" : "") + (t.id === CURRENT_THREAD_ID ? " active" : "");
+      const starred = (t.labels || []).includes("STARRED");
+      return `
+        <div class="${cls}" data-tid="${t.id}">
+          <div class="top">
+            <div class="sender">${escapeHtml(shortenSender(t.sender))}</div>
+            <div class="date">${shortDate(t.internal_date_ms)}</div>
+          </div>
+          <div class="subject">${escapeHtml(t.subject)}
+            <span class="badges">
+              ${t.unread ? '<span class="badge-tag unread">new</span>' : ''}
+              ${starred ? '<span class="badge-tag starred">★</span>' : ''}
+              ${t.msg_count > 1 ? `<span class="badge-tag count">${t.msg_count}</span>` : ''}
+            </span>
+          </div>
+          <div class="snippet">${escapeHtml(t.snippet)}</div>
+        </div>`;
+    }).join("");
+    for (const row of wrap.querySelectorAll(".thread-row")) {
+      row.addEventListener("click", () => openThread(row.dataset.tid));
+    }
+  } catch (e) {
+    document.getElementById("list-loading").style.display = "none";
+    if (e.message !== "unauthorized") toast(e.message, "error");
+    document.getElementById("status").textContent = "error";
+  }
+}
+
+// ── Thread detail ───────────────────────────────────────────────────────────
+async function openThread(threadId) {
+  CURRENT_THREAD_ID = threadId;
+  // Highlight active in list
+  for (const row of document.querySelectorAll(".thread-row")) {
+    row.classList.toggle("active", row.dataset.tid === threadId);
+  }
+  // Mobile: hide list, show detail
+  if (window.innerWidth <= 900) {
+    document.getElementById("pane-list").classList.add("hidden-mobile");
+    document.getElementById("btn-back-list").style.display = "inline-block";
+  }
+  // Show loading state
+  document.getElementById("detail-empty").style.display = "none";
+  document.getElementById("thread-header").style.display = "block";
+  document.getElementById("thread-header").innerHTML = '<div class="loading">Loading…</div>';
+  document.getElementById("messages").style.display = "block";
+  document.getElementById("messages").innerHTML = "";
+  document.getElementById("reply-area").style.display = "none";
+
+  try {
+    const thread = await api(`/api/inbox/threads/${threadId}`);
+    CURRENT_THREAD = thread;
+    renderThread(thread);
+    // Auto mark-as-read
+    try { await api(`/api/inbox/threads/${threadId}/read`, { method: "POST", body: JSON.stringify({ read: true }) }); } catch {}
+    // Refresh list silently to update unread state
+    setTimeout(loadThreads, 600);
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function renderThread(thread) {
+  const msgs = thread.messages || [];
+  const subject = (msgs[0] && msgs[0].subject) || "(no subject)";
+  const last = msgs[msgs.length - 1];
+
+  document.getElementById("thread-header").innerHTML = `
+    <h1>${escapeHtml(subject)}</h1>
+    <div class="actions">
+      <button onclick="archiveCurrent()">Archive</button>
+      <button onclick="toggleStarCurrent()">Star/Unstar</button>
+      <button onclick="markUnreadCurrent()">Mark unread</button>
+    </div>`;
+
+  document.getElementById("messages").innerHTML = msgs.map(m => `
+    <div class="message-card">
+      <div class="from">${escapeHtml(m.from || "")}</div>
+      <div class="meta">${escapeHtml(m.date || "")}${m.to ? " &nbsp;·&nbsp; to " + escapeHtml(m.to) : ""}</div>
+      <div class="body">${linkify(escapeHtml(m.body_plain || m.snippet || ""))}</div>
+    </div>`).join("");
+
+  document.getElementById("reply-area").style.display = "block";
+  document.getElementById("reply-meta").textContent = "Reply to: " + (last.from || "");
+  document.getElementById("reply-body").value = "";
+  document.getElementById("reply-body").focus();
+}
+
+async function sendReply() {
+  if (!CURRENT_THREAD_ID) return;
+  const body = document.getElementById("reply-body").value.trim();
+  if (!body) { toast("Reply body is empty", "error"); return; }
+  const btn = document.getElementById("btn-send");
+  btn.disabled = true; btn.textContent = "Sending…";
+  try {
+    await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/reply`, {
+      method: "POST", body: JSON.stringify({ body }),
+    });
+    toast("Reply sent", "ok");
+    document.getElementById("reply-body").value = "";
+    // Refresh thread to show the new message
+    await openThread(CURRENT_THREAD_ID);
+  } catch (e) {
+    toast(e.message, "error");
+  } finally {
+    btn.disabled = false; btn.textContent = "Send reply";
+  }
+}
+
+async function archiveCurrent() {
+  if (!CURRENT_THREAD_ID) return;
+  try {
+    await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/archive`, { method: "POST" });
+    toast("Archived", "ok");
+    backToList();
+    loadThreads();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function toggleStarCurrent() {
+  if (!CURRENT_THREAD_ID || !CURRENT_THREAD) return;
+  const wasStarred = (CURRENT_THREAD.messages || []).some(m => (m.labels || []).includes("STARRED"));
+  try {
+    await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/star`, {
+      method: "POST", body: JSON.stringify({ starred: !wasStarred }),
+    });
+    toast(wasStarred ? "Unstarred" : "Starred", "ok");
+    loadThreads();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function markUnreadCurrent() {
+  if (!CURRENT_THREAD_ID) return;
+  try {
+    await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/read`, {
+      method: "POST", body: JSON.stringify({ read: false }),
+    });
+    toast("Marked unread", "ok");
+    loadThreads();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function backToList() {
+  document.getElementById("pane-list").classList.remove("hidden-mobile");
+  document.getElementById("btn-back-list").style.display = "none";
+  document.getElementById("detail-empty").style.display = "flex";
+  document.getElementById("thread-header").style.display = "none";
+  document.getElementById("messages").style.display = "none";
+  document.getElementById("reply-area").style.display = "none";
+  CURRENT_THREAD_ID = null; CURRENT_THREAD = null;
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function linkify(s) {
+  return s.replace(/\bhttps?:\/\/[^\s<>]+/g, m => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+document.getElementById("btn-refresh").addEventListener("click", loadThreads);
+document.getElementById("btn-back-list").addEventListener("click", backToList);
+document.getElementById("btn-send").addEventListener("click", sendReply);
+document.getElementById("search").addEventListener("keydown", e => {
+  if (e.key === "Enter") loadThreads();
+});
+
+// Cmd/Ctrl+Enter sends reply
+document.getElementById("reply-body").addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") sendReply();
+});
+
+if (!KEY) {
+  document.getElementById("auth-warn").style.display = "block";
+} else {
+  loadThreads();
+  // Auto-refresh thread list every 60s
+  setInterval(() => { if (!document.hidden) loadThreads(); }, 60000);
+}
+</script>
+</body>
+</html>
