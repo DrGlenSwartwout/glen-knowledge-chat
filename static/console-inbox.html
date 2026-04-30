@@ -84,6 +84,21 @@
   .thread-row:hover { background: var(--surface-2); }
   .thread-row.active { background: rgba(124, 92, 191, 0.12); border-left: 3px solid var(--accent); padding-left: 11px; }
   .thread-row.unread .sender, .thread-row.unread .subject { color: var(--text); font-weight: 600; }
+  /* Per-session marks set on user action — cleared on page refresh */
+  .thread-row.read-just-now { background: rgba(63, 185, 80, 0.05); }
+  .thread-row.read-just-now.active { background: rgba(124, 92, 191, 0.12); }
+  .thread-row.read-just-now .top::after {
+    content: "✓"; color: var(--green); font-size: 11px;
+    margin-left: 6px; font-weight: 700;
+  }
+  .thread-row.archived-just-now { opacity: .35; }
+  .thread-row.archived-just-now .subject::after {
+    content: " · archived"; color: var(--green); font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .thread-row.blocked-just-now { opacity: .35; }
+  .thread-row.blocked-just-now .subject::after {
+    content: " · blocked"; color: var(--red); font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  }
   .thread-row .top { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
   .thread-row .sender { color: var(--muted); font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .thread-row .date { color: var(--muted); font-size: 11px; flex-shrink: 0; }
@@ -236,7 +251,7 @@
 
   <div class="toolbar">
     <input class="search" id="search" placeholder="Gmail search (e.g. from:alice OR is:unread)" value="in:inbox">
-    <button id="btn-refresh">Refresh</button>
+    <button id="btn-refresh" title="Re-pull the inbox — clears the ✓ read / archived / blocked marks">Refresh</button>
     <button id="btn-back-list" style="display:none">← Threads</button>
     <span class="spacer"></span>
     <span class="status" id="status">—</span>
@@ -459,8 +474,25 @@ for (const chip of document.querySelectorAll(".chip")) {
 // ── Open thread + run AI ────────────────────────────────────────────────────
 async function openThread(threadId) {
   CURRENT_THREAD_ID = threadId;
-  for (const row of document.querySelectorAll(".thread-row"))
-    row.classList.toggle("active", row.dataset.tid === threadId);
+
+  // Optimistic UI: mark this row active + read + add ✓ marker locally,
+  // without waiting for the server. The list does NOT re-fetch — read
+  // rows stay visible (faded ✓) until Glen hits Refresh to sweep them.
+  for (const row of document.querySelectorAll(".thread-row")) {
+    if (row.dataset.tid === threadId) {
+      row.classList.add("active");
+      row.classList.add("read-just-now");
+      row.classList.remove("unread");
+      const newBadge = row.querySelector(".badge-tag.unread");
+      if (newBadge) newBadge.remove();
+    } else {
+      row.classList.remove("active");
+    }
+  }
+  // Update local model so renderList() respects the read state if it fires
+  const localThread = ALL_THREADS.find(t => t.id === threadId);
+  if (localThread) localThread.unread = false;
+
   if (window.innerWidth <= 900) {
     document.getElementById("pane-list").classList.add("hidden-mobile");
     document.getElementById("btn-back-list").style.display = "inline-block";
@@ -476,14 +508,12 @@ async function openThread(threadId) {
   document.getElementById("prompt-body").value = "";
 
   try {
-    // 1. Fetch the thread itself for the message + header
     const thread = await api(`/api/inbox/threads/${threadId}`);
     CURRENT_THREAD = thread;
     renderThreadHeader(thread);
     renderMessage(thread);
-    // 2. Mark read in the background
+    // Background mark-read (no list refresh — UI already updated optimistically)
     api(`/api/inbox/threads/${threadId}/read`, { method: "POST", body: JSON.stringify({ read: true }) }).catch(() => {});
-    // 3. Fire AI in parallel (returns summary, actions, draft together)
     runAI(threadId);
   } catch (e) {
     if (e.message !== "unauthorized") toast(e.message, "error");
@@ -528,15 +558,32 @@ function threadIsStarred(thread) {
 async function toggleStarCurrent() {
   if (!CURRENT_THREAD_ID || !CURRENT_THREAD) return;
   const wasStarred = threadIsStarred(CURRENT_THREAD);
+  const tid = CURRENT_THREAD_ID;
   try {
-    await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/star`, {
+    await api(`/api/inbox/threads/${tid}/star`, {
       method: "POST", body: JSON.stringify({ starred: !wasStarred }),
     });
     toast(wasStarred ? "Unstarred" : "Starred", "ok");
-    // Refresh thread to update label state
-    const thread = await api(`/api/inbox/threads/${CURRENT_THREAD_ID}`);
-    CURRENT_THREAD = thread;
-    renderThreadHeader(thread);
+    // Optimistic local update of label state — no list re-fetch
+    for (const m of (CURRENT_THREAD.messages || [])) {
+      m.labels = m.labels || [];
+      if (wasStarred) {
+        m.labels = m.labels.filter(l => l !== "STARRED");
+      } else if (!m.labels.includes("STARRED")) {
+        m.labels.push("STARRED");
+      }
+    }
+    renderThreadHeader(CURRENT_THREAD);
+    // Update star badge on the row
+    const row = document.querySelector(`.thread-row[data-tid="${tid}"]`);
+    if (row) {
+      const existing = row.querySelector(".badge-tag.starred");
+      if (wasStarred && existing) existing.remove();
+      else if (!wasStarred && !existing) {
+        const badges = row.querySelector(".badges");
+        if (badges) badges.insertAdjacentHTML("beforeend", '<span class="badge-tag starred">★</span>');
+      }
+    }
   } catch (e) {
     if (/403|scope|insufficient/i.test(e.message)) {
       toast("Star needs gmail.modify scope — re-run google-auth.py + re-upload token", "error");
@@ -548,11 +595,24 @@ async function toggleStarCurrent() {
 
 async function markUnreadCurrent() {
   if (!CURRENT_THREAD_ID) return;
+  const tid = CURRENT_THREAD_ID;
   try {
-    await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/read`, {
+    await api(`/api/inbox/threads/${tid}/read`, {
       method: "POST", body: JSON.stringify({ read: false }),
     });
     toast("Marked unread", "ok");
+    // Optimistic UI: re-style the row as unread, drop the read-just-now mark
+    const row = document.querySelector(`.thread-row[data-tid="${tid}"]`);
+    if (row) {
+      row.classList.remove("read-just-now");
+      row.classList.add("unread");
+      const badges = row.querySelector(".badges");
+      if (badges && !badges.querySelector(".badge-tag.unread")) {
+        badges.insertAdjacentHTML("afterbegin", '<span class="badge-tag unread">new</span>');
+      }
+    }
+    const local = ALL_THREADS.find(t => t.id === tid);
+    if (local) local.unread = true;
     backToList();
   } catch (e) {
     if (/403|scope|insufficient/i.test(e.message)) {
@@ -648,9 +708,14 @@ async function skipThread() {
 
 async function archiveCurrent() {
   if (!CURRENT_THREAD_ID) return;
+  const tid = CURRENT_THREAD_ID;
   try {
-    await api(`/api/inbox/threads/${CURRENT_THREAD_ID}/archive`, { method: "POST" });
+    await api(`/api/inbox/threads/${tid}/archive`, { method: "POST" });
     toast("Archived", "ok");
+    // Optimistic UI: mark the row faded + "archived" tag, leave it in DOM
+    // until Glen hits Refresh — no list re-fetch
+    const row = document.querySelector(`.thread-row[data-tid="${tid}"]`);
+    if (row) row.classList.add("archived-just-now");
     backToList();
   } catch (e) {
     if (/403|scope|insufficient/i.test(e.message)) {
@@ -666,7 +731,6 @@ async function hideSender() {
   const last = CURRENT_THREAD.messages[CURRENT_THREAD.messages.length - 1] || {};
   const sender = last.from || "";
   if (!sender) { toast("No sender on this thread", "error"); return; }
-  // Show what we're about to hide so Glen can back out
   const shortSender = sender.length > 50 ? sender.slice(0, 50) + "…" : sender;
   if (!confirm(`Hide all future emails from:\n\n${shortSender}\n\nFrom the inbox view? (You can unhide via /api/inbox/hidden-senders.)`)) return;
   try {
@@ -674,11 +738,20 @@ async function hideSender() {
       method: "POST", body: JSON.stringify({ sender }),
     });
     toast(`Hidden: ${result.hidden_email}`, "ok");
-    // Remove from current list AND back to list
-    ALL_THREADS = ALL_THREADS.filter(t => {
+    // Optimistic UI: mark all rows from this sender as "blocked", leave them
+    // in the list until Refresh sweeps them
+    for (const row of document.querySelectorAll(".thread-row")) {
+      const rowSender = row.querySelector(".sender")?.textContent || "";
+      // The list-row sender is shortened, so cross-check against ALL_THREADS
+    }
+    for (const t of ALL_THREADS) {
       const addr = (t.sender || "").match(/<([^>]+)>/);
-      return (addr ? addr[1] : t.sender || "").toLowerCase() !== result.hidden_email;
-    });
+      const tAddr = (addr ? addr[1] : t.sender || "").toLowerCase();
+      if (tAddr === result.hidden_email) {
+        const row = document.querySelector(`.thread-row[data-tid="${t.id}"]`);
+        if (row) row.classList.add("blocked-just-now");
+      }
+    }
     backToList();
   } catch (e) { toast(e.message, "error"); }
 }
@@ -691,7 +764,8 @@ function backToList() {
   document.getElementById("detail-body").style.display = "none";
   document.getElementById("action-bar").style.display = "none";
   CURRENT_THREAD_ID = null; CURRENT_THREAD = null;
-  loadThreads();   // refresh unread counts
+  // No list refresh — read/archived/blocked rows stay visible (with their
+  // session markers) until Glen clicks Refresh to sweep them.
 }
 
 // ── Wire events ─────────────────────────────────────────────────────────────
@@ -742,7 +816,9 @@ if (!KEY) {
   document.getElementById("auth-warn").style.display = "block";
 } else {
   loadThreads();
-  setInterval(() => { if (!document.hidden && !CURRENT_THREAD_ID) loadThreads(); }, 60000);
+  // No auto-refresh interval — would wipe session marks (✓ read /
+  // archived / blocked) before Glen is ready. The Refresh button is
+  // the explicit "sweep all read/done items" action.
 }
 </script>
 </body>
