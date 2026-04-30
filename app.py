@@ -4015,6 +4015,15 @@ def api_money_wise():
     except Exception as e: return fail(e)
 
 
+@app.route("/api/studio/sales")
+@require_console_key
+def api_studio_sales():
+    try:
+        from dashboard import studio as _studio
+        return ok(_studio.summary())
+    except Exception as e: return fail(e)
+
+
 @app.route("/api/brain")
 @require_console_key
 def api_brain_get():

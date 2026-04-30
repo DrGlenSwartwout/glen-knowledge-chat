@@ -318,6 +318,11 @@
         <div class="body"><div class="loading-text">…</div></div>
         <footer><span class="ts">—</span></footer>
       </article>
+      <article class="card" data-endpoint="/api/studio/sales" data-render="studioSales">
+        <div class="head"><span class="title">Studio · Sales</span><span class="dot loading"></span></div>
+        <div class="body"><div class="loading-text">…</div></div>
+        <footer><span class="ts">—</span></footer>
+      </article>
     </div>
   </section>
 
@@ -570,6 +575,29 @@ R.moneyWise = (d) => {
   const bals = d.balances || [];
   if(!bals.length) return `<div class="empty">—</div>`;
   return `<ul class="feed">${bals.map(b=>`<li><span class="lead">${b.currency}</span><span class="body-text">balance</span><span class="amount">${(+b.amount).toFixed(2)}</span></li>`).join("")}</ul>`;
+};
+
+R.studioSales = (d) => {
+  if(d.error) return `<div class="empty" style="color:var(--red)">${escapeHtml(d.error)}</div>`;
+  const fmt = c => "$" + ((c||0)/100).toFixed(2);
+  if(d.awaiting_first_sale) {
+    const last_program = (d.recent_program_emails || [])[0];
+    const program_note = last_program
+      ? `<li><span class="lead">last</span><span class="body-text">${escapeHtml((last_program.subject||"").slice(0,50))}</span></li>`
+      : "";
+    return `<ul class="feed">
+      <li><span class="lead">today</span><span class="body-text">awaiting first sale</span><span class="amount">$0</span></li>
+      <li><span class="lead">7d</span><span class="body-text">${d.program_email_count_30d||0} program emails</span><span class="amount">—</span></li>
+      ${program_note}
+    </ul>`;
+  }
+  const last = d.last_sale;
+  return `<ul class="feed">
+    <li><span class="lead">today</span><span class="body-text">${d.sales_count_today} sale${d.sales_count_today===1?"":"s"}</span><span class="amount">${fmt(d.revenue_today_cents)}</span></li>
+    <li><span class="lead">7d</span><span class="body-text">${d.sales_count_week} sale${d.sales_count_week===1?"":"s"}</span><span class="amount">${fmt(d.revenue_week_cents)}</span></li>
+    <li><span class="lead">30d</span><span class="body-text">${d.sales_count_30d} sale${d.sales_count_30d===1?"":"s"}</span><span class="amount">${fmt(d.revenue_30d_cents)}</span></li>
+    ${last ? `<li><span class="lead">last</span><span class="body-text">${escapeHtml((last.subject||"").slice(0,40))}</span><span class="amount">${fmt(last.amount_cents)}</span></li>` : ""}
+  </ul>`;
 };
 
 R.todos = (d) => {
