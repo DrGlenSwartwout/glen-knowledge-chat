@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings — Remedy Match Console</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #1c222b;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #7c5cbf;
+    --accent-light: #a07fe0;
+    --green: #3fb950;
+    --amber: #d29922;
+    --red: #f85149;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+  #wrap { max-width: 980px; margin: 0 auto; padding: 32px 16px; }
+  header { margin-bottom: 28px; }
+  h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+  header p { color: var(--muted); font-size: 13px; }
+  header a { color: var(--accent-light); text-decoration: none; }
+
+  details.section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  details.section[open] { background: var(--surface-2); }
+  details.section > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    user-select: none;
+  }
+  details.section > summary::-webkit-details-marker { display: none; }
+  details.section > summary::before {
+    content: '▶';
+    color: var(--muted);
+    font-size: 10px;
+    transition: transform .15s ease;
+    width: 14px;
+  }
+  details.section[open] > summary::before { transform: rotate(90deg); }
+  details.section > summary .title {
+    font-size: 14px; font-weight: 700; flex: 1;
+  }
+  details.section > summary .badge {
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--bg);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  details.section > summary .badge.live { color: var(--green); border-color: var(--green); }
+  details.section > summary .badge.soon { color: var(--amber); border-color: var(--amber); }
+
+  details.section > .body {
+    padding: 4px 20px 20px 20px;
+    border-top: 1px solid var(--border);
+    margin-top: 8px;
+  }
+  details.section > .body p { color: var(--muted); font-size: 13px; line-height: 1.5; }
+  details.section > .body p + p { margin-top: 8px; }
+
+  /* Radio button group for active-mac */
+  .radio-group { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .radio-row {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .radio-row:hover { border-color: var(--accent); }
+  .radio-row.active { border-color: var(--accent-light); background: rgba(124, 92, 191, 0.10); }
+  .radio-row input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+  .radio-row .label { font-weight: 600; }
+  .radio-row .host { color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+  .radio-row .label-stack { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+
+  button.btn {
+    background: var(--accent); color: white;
+    border: none; border-radius: 6px;
+    padding: 8px 14px; font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+  }
+  button.btn:hover, a.btn:hover { background: var(--accent-light); }
+  a.btn { background: var(--accent); color: white !important; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  button.btn.outline { background: transparent; color: var(--accent-light); border: 1px solid var(--accent); }
+  button.btn.outline:hover { background: rgba(124, 92, 191, 0.10); }
+
+  .ship-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 14px;
+    margin-bottom: 14px;
+  }
+  .ship-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .ship-card .size { font-size: 10px; text-transform: uppercase; color: var(--muted); letter-spacing: .06em; }
+  .ship-card .charged { font-size: 22px; font-weight: 800; color: var(--accent-light); margin: 4px 0; }
+  .ship-card .effective { font-size: 11px; color: var(--muted); }
+
+  .ship-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10000; }
+  #toast.show { opacity: 1; }
+  #toast.error { border-color: var(--red); color: var(--red); }
+  #toast.ok { border-color: var(--green); color: var(--green); }
+
+  .auth-warn {
+    background: rgba(248, 81, 73, 0.08);
+    border: 1px solid var(--red);
+    border-radius: 8px;
+    padding: 14px;
+    color: var(--red);
+    margin-bottom: 20px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="settings"></script>
+<div id="wrap">
+  <header>
+    <h1>Settings</h1>
+    <p>Operational controls for the Remedy Match stack. Sections are collapsed by default — click any heading to expand.</p>
+  </header>
+
+  <div id="auth-warn" class="auth-warn">
+    No <code>?key=</code> in URL — settings reads/writes will fail. Append <code>?key=YOUR_CONSOLE_SECRET</code> to the URL.
+  </div>
+
+  <!-- ─────────── 1. SHIPPING ─────────── -->
+  <details class="section" id="sec-shipping">
+    <summary>
+      <span class="title">Shipping</span>
+      <span class="badge live">Live</span>
+    </summary>
+    <div class="body">
+      <p>USPS Flat Rate prices, bottle catalog, and box-fit matrix. The full admin page lives at <a href="/admin/shipping" style="color:var(--accent-light)">/admin/shipping</a>.</p>
+      <div class="ship-grid" id="ship-grid">
+        <div class="ship-card"><div class="size">Loading…</div></div>
+      </div>
+      <div class="ship-actions">
+        <a class="btn" id="ship-admin-link" href="/admin/shipping" target="_blank">Open Shipping Admin →</a>
+        <a class="btn outline" id="ship-orders-link" href="/orders/new" target="_blank">Manual Order Entry →</a>
+      </div>
+    </div>
+  </details>
+
+  <!-- ─────────── 2. ACTIVE WRITE MAC ─────────── -->
+  <details class="section" id="sec-active-mac">
+    <summary>
+      <span class="title">Active Write Mac</span>
+      <span class="badge live">Live</span>
+    </summary>
+    <div class="body">
+      <p>Designates which Mac is allowed to run scripts that mutate shared state (SQLite DBs, synced JSON, ingestion writers). Scripts on the other two Macs will fail fast with a clear message.</p>
+      <p><strong>Why this exists:</strong> the AI-Training vault syncs across 3 Macs via Obsidian Sync, but the local SQLite DBs (chat_log.db, e4l.db, ingredients.db) are <em>excluded</em> from sync. If two Macs ran the same writer simultaneously, the local DBs would diverge silently.</p>
+      <div class="radio-group" id="mac-radio-group">
+        <div class="radio-row"><input type="radio" disabled> <span>Loading…</span></div>
+      </div>
+      <p style="margin-top:14px"><strong>Mac-side helper:</strong> add <code>from active_mac import require_active_mac; require_active_mac()</code> at the top of any write-sensitive script.</p>
+    </div>
+  </details>
+
+  <!-- ─────────── 3. MAINTENANCE MODE ─────────── -->
+  <details class="section">
+    <summary>
+      <span class="title">Maintenance Mode</span>
+      <span class="badge soon">Coming soon</span>
+    </summary>
+    <div class="body">
+      <p>Global toggle to pause all perpetual cron agents (rae-reconciliation, knowledge-base-hygienist, mentor-keeper, etc.) for travel, debugging, or holidays. Currently each agent has its own schedule; this would add a single off-switch.</p>
+    </div>
+  </details>
+
+  <!-- ─────────── 4. VOICE ROUTING ─────────── -->
+  <details class="section">
+    <summary>
+      <span class="title">Voice Routing</span>
+      <span class="badge soon">Coming soon</span>
+    </summary>
+    <div class="body">
+      <p>Default voice for outbound content: <strong>Justus</strong> (the AI integrator) vs <strong>Glen</strong> (Glen's clone) vs <strong>per-context</strong>. Today this is decided per-task; surfacing it as a setting would let you flip it for a whole campaign.</p>
+    </div>
+  </details>
+
+  <!-- ─────────── 5. NOTIFICATIONS ─────────── -->
+  <details class="section">
+    <summary>
+      <span class="title">Notifications</span>
+      <span class="badge soon">Coming soon</span>
+    </summary>
+    <div class="body">
+      <p>Routing matrix: who (Glen / Rae / Shaira) gets pinged for which event type (E4L scan completed, payment received, support ticket, agent failure). Reduces inbox spam and clarifies ownership.</p>
+    </div>
+  </details>
+
+  <!-- ─────────── 6. QUIET HOURS ─────────── -->
+  <details class="section">
+    <summary>
+      <span class="title">Quiet Hours</span>
+      <span class="badge soon">Coming soon</span>
+    </summary>
+    <div class="body">
+      <p>Time window (default 21:00–07:00 HST) during which no agent sends notifications to Glen. Critical alerts can override.</p>
+    </div>
+  </details>
+
+  <!-- ─────────── 7. AI MODEL DEFAULTS ─────────── -->
+  <details class="section">
+    <summary>
+      <span class="title">AI Model Defaults</span>
+      <span class="badge soon">Coming soon</span>
+    </summary>
+    <div class="body">
+      <p>Per-task model picker: Haiku for chatbot retrieval, Sonnet for follow-up drafts, Opus for synthesis/distinction work. Cost lever — change without redeploying.</p>
+    </div>
+  </details>
+
+  <!-- ─────────── 8. CRON SCHEDULE ─────────── -->
+  <details class="section">
+    <summary>
+      <span class="title">Cron Schedule</span>
+      <span class="badge soon">Coming soon</span>
+    </summary>
+    <div class="body">
+      <p>Read-only view (initially) of every perpetual agent's next-run time, last-run status, and last error. Editable in v2.</p>
+    </div>
+  </details>
+
+  <!-- ─────────── 9. SYNC HEALTH ─────────── -->
+  <details class="section">
+    <summary>
+      <span class="title">Sync Health</span>
+      <span class="badge soon">Coming soon</span>
+    </summary>
+    <div class="body">
+      <p>One-click "Run sync test" — drops a timestamped file in <code>00 System/</code>, watches for round-trip on all 3 Macs, reports mesh health. Plus last-backup timestamps for PB / QB / Pinecone / Supabase.</p>
+    </div>
+  </details>
+
+  <!-- ─────────── 10. ENVIRONMENT ─────────── -->
+  <details class="section">
+    <summary>
+      <span class="title">Environment</span>
+      <span class="badge soon">Coming soon</span>
+    </summary>
+    <div class="body">
+      <p>Doppler config selector (prd / dev / staging) — for safer toggling between live and test environments without editing shell config.</p>
+    </div>
+  </details>
+
+</div>
+<div id="toast"></div>
+
+<script>
+(function() {
+  const KEY = new URLSearchParams(location.search).get('key') || '';
+  if (!KEY) document.getElementById('auth-warn').style.display = 'block';
+
+  const toast = (msg, kind) => {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'show ' + (kind || '');
+    setTimeout(() => { el.className = ''; }, 2500);
+  };
+
+  const apiHeaders = () => ({ 'Content-Type': 'application/json', 'X-Console-Key': KEY });
+
+  // ─────── Active Write Mac ───────
+  async function loadActiveMac() {
+    try {
+      const r = await fetch('/api/settings/active-mac', { headers: apiHeaders() });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || 'load failed');
+      renderMacRadios(j.data);
+    } catch (e) {
+      document.getElementById('mac-radio-group').innerHTML =
+        '<div class="radio-row" style="border-color:var(--red);color:var(--red)">' +
+        'Failed to load: ' + (e.message || e) + '</div>';
+    }
+  }
+
+  function renderMacRadios(data) {
+    const active = data.active_mac;
+    const wrap = document.getElementById('mac-radio-group');
+    wrap.innerHTML = '';
+    data.known_macs.forEach(m => {
+      const isActive = m.hostname === active;
+      const row = document.createElement('label');
+      row.className = 'radio-row' + (isActive ? ' active' : '');
+      row.innerHTML =
+        '<input type="radio" name="active-mac" value="' + m.hostname + '"' + (isActive ? ' checked' : '') + '>' +
+        '<div class="label-stack">' +
+        '<div class="label">' + m.label + '</div>' +
+        '<div class="host">' + m.hostname + '</div>' +
+        '</div>';
+      row.querySelector('input').addEventListener('change', () => setActiveMac(m.hostname));
+      wrap.appendChild(row);
+    });
+  }
+
+  async function setActiveMac(hostname) {
+    try {
+      const r = await fetch('/api/settings/active-mac', {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({ hostname }),
+      });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || 'save failed');
+      renderMacRadios(j.data);
+      toast('Active Mac set: ' + hostname, 'ok');
+    } catch (e) {
+      toast('Save failed: ' + (e.message || e), 'error');
+    }
+  }
+
+  // ─────── Shipping summary cards ───────
+  async function loadShipping() {
+    try {
+      const r = await fetch('/api/shipping/rates', { headers: apiHeaders() });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || 'load failed');
+      renderShipping(j.data.current || []);
+    } catch (e) {
+      document.getElementById('ship-grid').innerHTML =
+        '<div class="ship-card" style="border-color:var(--red);color:var(--red);grid-column:1/-1">' +
+        'Failed to load rates: ' + (e.message || e) + '</div>';
+    }
+  }
+
+  function renderShipping(rates) {
+    const wrap = document.getElementById('ship-grid');
+    wrap.innerHTML = '';
+    const sizes = ['S', 'M', 'L'];
+    const byBox = {};
+    rates.forEach(r => { byBox[r.box_size] = r; });
+    sizes.forEach(sz => {
+      const r = byBox[sz];
+      const card = document.createElement('div');
+      card.className = 'ship-card';
+      if (!r) {
+        card.innerHTML =
+          '<div class="size">Box ' + sz + '</div>' +
+          '<div class="charged" style="color:var(--amber);font-size:14px">No rate set</div>';
+      } else {
+        const eff = r.effective_date || '';
+        const charged = (r.charged_cents != null) ? '$' + (r.charged_cents / 100).toFixed(2) :
+                        (r.usps_retail_cents != null) ? '$' + (r.usps_retail_cents / 100).toFixed(2) : '—';
+        card.innerHTML =
+          '<div class="size">Box ' + sz + '</div>' +
+          '<div class="charged">' + charged + '</div>' +
+          '<div class="effective">eff. ' + eff + '</div>';
+      }
+      wrap.appendChild(card);
+    });
+  }
+
+  // Make admin/orders links carry the key through
+  if (KEY) {
+    document.getElementById('ship-admin-link').href = '/admin/shipping?key=' + encodeURIComponent(KEY);
+    document.getElementById('ship-orders-link').href = '/orders/new?key=' + encodeURIComponent(KEY);
+  }
+
+  // Lazy-load each section's data when expanded for the first time
+  let macLoaded = false, shipLoaded = false;
+  document.getElementById('sec-active-mac').addEventListener('toggle', (e) => {
+    if (e.target.open && !macLoaded) { macLoaded = true; loadActiveMac(); }
+  });
+  document.getElementById('sec-shipping').addEventListener('toggle', (e) => {
+    if (e.target.open && !shipLoaded) { shipLoaded = true; loadShipping(); }
+  });
+})();
+</script>
+</body>
+</html>

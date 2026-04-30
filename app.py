@@ -4482,6 +4482,38 @@ def api_shipping_quote():
     except Exception as e: return fail(e)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# /console/settings — collapsible settings panel (Shipping, Active-Mac, etc.)
+# ─────────────────────────────────────────────────────────────────────────────
+from dashboard import settings as _settings
+
+
+@app.route("/console/settings")
+def console_settings_page():
+    resp = send_from_directory(STATIC, "console-settings.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/settings/active-mac", methods=["GET"])
+@require_console_key
+def api_settings_get_active_mac():
+    try: return ok(_settings.active_mac_payload())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/settings/active-mac", methods=["POST"])
+@require_console_key
+def api_settings_set_active_mac():
+    try:
+        body = request.get_json(silent=True) or {}
+        hostname = (body.get("hostname") or "").strip()
+        _settings.set_active_mac(hostname)
+        return ok(_settings.active_mac_payload())
+    except ValueError as e: return fail(e, status=400)
+    except Exception as e: return fail(e)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
