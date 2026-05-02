@@ -1208,7 +1208,7 @@ async function loadRemediesAndAffirmations(entry) {
   // Render placeholder cards while affirmations load in parallel
   const cardEls = matches.map((r, i) => {
     const md = r.metadata || {};
-    const name = md.name || md.title || md.formulation_name || r.id;
+    const name = md.name || md.title || md.formulation || md.formulation_name || r.id;
     const purposeKey = ['purpose','description','clinical_purpose','summary','text','indication']
       .find(k => md[k]);
     const purpose = purposeKey ? String(md[purposeKey]).trim().slice(0, 280) : '';

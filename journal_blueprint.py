@@ -406,7 +406,8 @@ def _haiku_affirmations(remedy, transcript, dom_element, dom_treasure):
         raise RuntimeError("ANTHROPIC_API_KEY not set")
 
     md = remedy.get("metadata") or {}
-    remedy_label = md.get("name") or md.get("title") or md.get("formulation_name") or remedy.get("id")
+    remedy_label = (md.get("name") or md.get("title") or md.get("formulation")
+                    or md.get("formulation_name") or remedy.get("id"))
     purpose_keys = ["purpose", "description", "clinical_purpose", "summary", "text", "indication"]
     remedy_purpose = ""
     for k in purpose_keys:
