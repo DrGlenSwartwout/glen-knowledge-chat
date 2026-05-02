@@ -70,6 +70,21 @@
     text-align: center;
     margin-bottom: 18px;
   }
+  .test-banner {
+    display: none;
+    margin-bottom: 14px;
+    padding: 10px 14px;
+    background: rgba(240, 182, 107, 0.12);
+    border: 1px solid rgba(240, 182, 107, 0.45);
+    border-radius: 8px;
+    color: var(--warn);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-align: center;
+  }
+  .test-banner.show { display: block; }
+  .test-banner strong { color: var(--ink); margin-right: 6px; }
   .timer {
     font-variant-numeric: tabular-nums;
     font-size: 44px;
@@ -382,6 +397,10 @@
   <h1>Voice Journal</h1>
   <div class="sub">Speak freely for 30 seconds to 5 minutes. Transcribed by Whisper, read by Haiku across the 48-emotion vector, Five Elements, Three Treasures, polyvagal state, speech-pace, and the Chinese Organ Clock.</div>
 
+  <div class="test-banner" id="testBanner">
+    <strong>TEST MODE</strong>This entry will be tagged as a test recording and hidden from your trends dashboard by default.
+  </div>
+
   <div class="recorder">
     <div class="timer" id="timer">0:00</div>
     <div class="timer-sub" id="timerSub">Press Record to begin</div>
@@ -444,6 +463,13 @@
 
 <script>
 const ANALYZE_URL = '/journal/analyze';
+
+// Test-mode detection — recorder URL with ?test=true tags entries as test
+// recordings (metadata.test=true). Trends dashboard hides them by default.
+const IS_TEST_MODE = new URLSearchParams(window.location.search).get('test') === 'true';
+if (IS_TEST_MODE) {
+  document.getElementById('testBanner').classList.add('show');
+}
 
 // ─── Chinese Organ Clock (Horary Cycle) ──────────────────────────────────
 // 12 two-hour windows starting at 23:00. Pericardium + Triple Burner are
@@ -733,6 +759,7 @@ async function onRecordingStopped() {
   const form = new FormData();
   form.append('audio', blob, 'journal.webm');
   form.append('duration_seconds', duration.toFixed(1));
+  if (IS_TEST_MODE) form.append('test', 'true');
 
   try {
     const resp = await fetch(ANALYZE_URL, { method: 'POST', body: form });

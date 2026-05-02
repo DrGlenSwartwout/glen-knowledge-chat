@@ -296,6 +296,7 @@
     Five-Element resonance, Three-Treasure depth, polyvagal state, and emotional themes across the past 30 days.
     <a class="nav-link" id="recordLink" href="#">+ Record a new entry</a>
   </div>
+  <div id="testBadge" class="meta" style="display:none; margin-bottom:12px; color:var(--warn);"></div>
 
   <div class="panel">
     <div class="panel-label">Five-Element Calendar — dominant element per day</div>
@@ -420,14 +421,40 @@ async function load() {
     const r = await fetch(HISTORY_URL + window.location.search);
     if (!r.ok) throw new Error('history ' + r.status);
     const data = await r.json();
-    render(data.entries || [], data.count || 0);
+    render(data.entries || [], data.count || 0, data.test_count || 0, !!data.include_test);
   } catch (e) {
     meta.textContent = 'failed to load: ' + e.message;
   }
 }
 
-function render(entries, count) {
+function render(entries, count, testCount, includeTest) {
   meta.textContent = count + ' entr' + (count === 1 ? 'y' : 'ies') + ' · last 30 days';
+
+  const testBadge = document.getElementById('testBadge');
+  if (testCount > 0) {
+    const params = new URLSearchParams(window.location.search);
+    if (includeTest) {
+      params.delete('include_test');
+      testBadge.textContent = '⚠ Showing ' + testCount + ' test entr' + (testCount === 1 ? 'y' : 'ies') + ' alongside real data.';
+      const link = document.createElement('a');
+      link.className = 'nav-link';
+      link.style.marginLeft = '8px';
+      link.href = '?' + params.toString();
+      link.textContent = 'Hide test entries';
+      testBadge.appendChild(link);
+    } else {
+      params.set('include_test', 'true');
+      testBadge.textContent = testCount + ' test entr' + (testCount === 1 ? 'y' : 'ies') + ' hidden. ';
+      const link = document.createElement('a');
+      link.className = 'nav-link';
+      link.href = '?' + params.toString();
+      link.textContent = 'Show test entries';
+      testBadge.appendChild(link);
+    }
+    testBadge.style.display = '';
+  } else {
+    testBadge.style.display = 'none';
+  }
 
   renderHeatmap(entries);
   renderTreasureChart(entries);

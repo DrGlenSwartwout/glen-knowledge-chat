@@ -91,6 +91,7 @@ def analyze():
     audio_file = request.files["audio"]
     duration = float(request.form.get("duration_seconds", 0) or 0)
     retain_audio = request.form.get("retain_audio", "false").lower() == "true"
+    is_test = request.form.get("test", "false").lower() == "true"
 
     suffix = Path(audio_file.filename or "").suffix or ".webm"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tf:
@@ -168,7 +169,7 @@ def analyze():
         "top_themes": haiku.get("top_themes"),
         "transcript_embedding": embedding,
         "mapper_check": mapper_check,
-        "metadata": {"word_timestamps": words} if words else None,
+        "metadata": _build_metadata(words, is_test),
     }
 
     save_error = None
@@ -198,7 +199,18 @@ def analyze():
         response["save_error"] = save_error
     if "error" in (haiku or {}):
         response["analysis_error"] = haiku["error"]
+    if is_test:
+        response["test"] = True
     return jsonify(response)
+
+
+def _build_metadata(words, is_test):
+    md = {}
+    if words:
+        md["word_timestamps"] = words
+    if is_test:
+        md["test"] = True
+    return md or None
 
 
 # ---------------------------------------------------------------------------
@@ -206,13 +218,16 @@ def analyze():
 # ---------------------------------------------------------------------------
 @journal_bp.route("/journal/today", methods=["GET"])
 def today():
+    include_test = request.args.get("include_test", "false").lower() == "true"
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     rows = _supabase_select(
-        f"recorded_at=gte.{cutoff}&order=recorded_at.desc&limit=1"
+        f"recorded_at=gte.{cutoff}&order=recorded_at.desc&limit=5"
         "&select=id,recorded_at,duration_seconds,transcript,tcm_scores,"
         "dominant_element,dominant_treasure,top_emotions,polyvagal_state,"
-        "congruence,lexical_metrics,top_themes"
+        "congruence,lexical_metrics,top_themes,metadata"
     )
+    if not include_test:
+        rows = [r for r in rows if not (r.get("metadata") or {}).get("test")]
     return jsonify(rows[0] if rows else {})
 
 
@@ -221,13 +236,22 @@ def today():
 # ---------------------------------------------------------------------------
 @journal_bp.route("/journal/history", methods=["GET"])
 def history():
+    include_test = request.args.get("include_test", "false").lower() == "true"
     cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     rows = _supabase_select(
         f"recorded_at=gte.{cutoff}&order=recorded_at.asc"
         "&select=recorded_at,duration_seconds,tcm_scores,"
-        "dominant_element,dominant_treasure,top_emotions,polyvagal_state"
+        "dominant_element,dominant_treasure,top_emotions,polyvagal_state,metadata"
     )
-    return jsonify({"entries": rows, "count": len(rows)})
+    test_rows = [r for r in rows if (r.get("metadata") or {}).get("test")]
+    if not include_test:
+        rows = [r for r in rows if not (r.get("metadata") or {}).get("test")]
+    return jsonify({
+        "entries": rows,
+        "count": len(rows),
+        "test_count": len(test_rows),
+        "include_test": include_test,
+    })
 
 
 # ---------------------------------------------------------------------------
