@@ -296,7 +296,8 @@
     Five-Element resonance, Three-Treasure depth, polyvagal state, and emotional themes across the past 30 days.
     <a class="nav-link" id="recordLink" href="#">+ Record a new entry</a>
   </div>
-  <div id="testBadge" class="meta" style="display:none; margin-bottom:12px; color:var(--warn);"></div>
+  <div id="testBadge" class="meta" style="display:none; margin-bottom:8px; color:var(--warn);"></div>
+  <div id="followupBadge" class="meta" style="display:none; margin-bottom:12px; color:var(--accent);"></div>
 
   <div class="panel">
     <div class="panel-label">Five-Element Calendar — dominant element per day</div>
@@ -421,40 +422,57 @@ async function load() {
     const r = await fetch(HISTORY_URL + window.location.search);
     if (!r.ok) throw new Error('history ' + r.status);
     const data = await r.json();
-    render(data.entries || [], data.count || 0, data.test_count || 0, !!data.include_test);
+    render(
+      data.entries || [],
+      data.count || 0,
+      data.test_count || 0,
+      data.followup_count || 0,
+      !!data.include_test,
+      !!data.include_followups,
+    );
   } catch (e) {
     meta.textContent = 'failed to load: ' + e.message;
   }
 }
 
-function render(entries, count, testCount, includeTest) {
+function render(entries, count, testCount, followupCount, includeTest, includeFollowups) {
   meta.textContent = count + ' entr' + (count === 1 ? 'y' : 'ies') + ' · last 30 days';
 
-  const testBadge = document.getElementById('testBadge');
-  if (testCount > 0) {
+  function buildToggle(badgeEl, currentlyShown, hiddenCount, label, paramKey, color) {
+    if (!hiddenCount) { badgeEl.style.display = 'none'; return; }
+    badgeEl.innerHTML = '';
     const params = new URLSearchParams(window.location.search);
-    if (includeTest) {
-      params.delete('include_test');
-      testBadge.textContent = '⚠ Showing ' + testCount + ' test entr' + (testCount === 1 ? 'y' : 'ies') + ' alongside real data.';
-      const link = document.createElement('a');
-      link.className = 'nav-link';
-      link.style.marginLeft = '8px';
-      link.href = '?' + params.toString();
-      link.textContent = 'Hide test entries';
-      testBadge.appendChild(link);
+    let text, linkText;
+    if (currentlyShown) {
+      params.delete(paramKey);
+      text = '⚠ Showing ' + hiddenCount + ' ' + label + ' alongside journal data. ';
+      linkText = 'Hide ' + label;
     } else {
-      params.set('include_test', 'true');
-      testBadge.textContent = testCount + ' test entr' + (testCount === 1 ? 'y' : 'ies') + ' hidden. ';
-      const link = document.createElement('a');
-      link.className = 'nav-link';
-      link.href = '?' + params.toString();
-      link.textContent = 'Show test entries';
-      testBadge.appendChild(link);
+      params.set(paramKey, 'true');
+      text = hiddenCount + ' ' + label + ' hidden. ';
+      linkText = 'Show ' + label;
     }
-    testBadge.style.display = '';
-  } else {
-    testBadge.style.display = 'none';
+    badgeEl.appendChild(document.createTextNode(text));
+    const link = document.createElement('a');
+    link.className = 'nav-link';
+    link.href = '?' + params.toString();
+    link.textContent = linkText;
+    badgeEl.appendChild(link);
+    badgeEl.style.display = '';
   }
+
+  buildToggle(
+    document.getElementById('testBadge'),
+    includeTest, testCount,
+    testCount === 1 ? 'test entry' : 'test entries',
+    'include_test', 'warn'
+  );
+  buildToggle(
+    document.getElementById('followupBadge'),
+    includeFollowups, followupCount,
+    followupCount === 1 ? 'closed-loop entry' : 'closed-loop entries',
+    'include_followups', 'accent'
+  );
 
   renderHeatmap(entries);
   renderTreasureChart(entries);

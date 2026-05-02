@@ -237,15 +237,18 @@ def _build_metadata(words, is_test, parent_entry_id=None, entry_type=None):
 @journal_bp.route("/journal/today", methods=["GET"])
 def today():
     include_test = request.args.get("include_test", "false").lower() == "true"
+    include_followups = request.args.get("include_followups", "false").lower() == "true"
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     rows = _supabase_select(
-        f"recorded_at=gte.{cutoff}&order=recorded_at.desc&limit=5"
+        f"recorded_at=gte.{cutoff}&order=recorded_at.desc&limit=10"
         "&select=id,recorded_at,duration_seconds,transcript,tcm_scores,"
         "dominant_element,dominant_treasure,top_emotions,polyvagal_state,"
         "congruence,lexical_metrics,top_themes,metadata"
     )
     if not include_test:
         rows = [r for r in rows if not (r.get("metadata") or {}).get("test")]
+    if not include_followups:
+        rows = [r for r in rows if (r.get("metadata") or {}).get("entry_type") != "affirmation_reading"]
     return jsonify(rows[0] if rows else {})
 
 
@@ -254,21 +257,27 @@ def today():
 # ---------------------------------------------------------------------------
 @journal_bp.route("/journal/history", methods=["GET"])
 def history():
-    include_test = request.args.get("include_test", "false").lower() == "true"
+    include_test      = request.args.get("include_test", "false").lower() == "true"
+    include_followups = request.args.get("include_followups", "false").lower() == "true"
     cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     rows = _supabase_select(
         f"recorded_at=gte.{cutoff}&order=recorded_at.asc"
         "&select=recorded_at,duration_seconds,tcm_scores,"
         "dominant_element,dominant_treasure,top_emotions,polyvagal_state,metadata"
     )
-    test_rows = [r for r in rows if (r.get("metadata") or {}).get("test")]
+    test_rows     = [r for r in rows if (r.get("metadata") or {}).get("test")]
+    followup_rows = [r for r in rows if (r.get("metadata") or {}).get("entry_type") == "affirmation_reading"]
     if not include_test:
         rows = [r for r in rows if not (r.get("metadata") or {}).get("test")]
+    if not include_followups:
+        rows = [r for r in rows if (r.get("metadata") or {}).get("entry_type") != "affirmation_reading"]
     return jsonify({
         "entries": rows,
         "count": len(rows),
         "test_count": len(test_rows),
+        "followup_count": len(followup_rows),
         "include_test": include_test,
+        "include_followups": include_followups,
     })
 
 
