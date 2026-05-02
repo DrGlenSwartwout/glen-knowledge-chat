@@ -320,6 +320,44 @@
     letter-spacing: 1.5px;
     margin-right: 8px;
   }
+  .organ-recommend {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+    padding: 12px 14px;
+    background: linear-gradient(135deg, rgba(122, 215, 197, 0.08), rgba(106, 168, 232, 0.05));
+    border: 1px solid rgba(122, 215, 197, 0.25);
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .organ-recommend-label {
+    color: var(--accent);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 4px;
+  }
+  .organ-recommend-name {
+    color: var(--ink);
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+  .organ-recommend-blurb {
+    color: var(--dim);
+    margin-bottom: 8px;
+  }
+  .organ-recommend-cta {
+    display: inline-block;
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 0;
+  }
+  .organ-recommend-cta:hover {
+    text-decoration: underline;
+  }
 
   /* Lexical + congruence footer line */
   .meta-line {
@@ -525,6 +563,48 @@ const ORGAN_PHYSIOLOGY = {
 
 function meridianPhysiology(meridian, element) {
   return (ORGAN_PHYSIOLOGY[meridian] || {})[element] || null;
+}
+
+// ─── Topic tags per cell + Remedy/product links ──────────────────────────
+// Sparse — only cells whose physiology directly maps to a Glen-offered
+// product/protocol carry a topic tag. Topics resolve through REMEDY_LINKS
+// to a single source-of-truth URL block. To swap in a better landing page,
+// edit REMEDY_LINKS only.
+const ORGAN_TOPICS = {
+  // All Water-element cells share the hydration topic — fluid handling is
+  // the common physiological function whatever meridian is active.
+  Gallbladder:       { Water: ["hydration"] },
+  Liver:             { Water: ["hydration"] },
+  Lung:              { Water: ["hydration"] },
+  "Large Intestine": { Water: ["hydration"] },
+  Stomach:           { Water: ["hydration"] },
+  Spleen:            { Water: ["hydration"] },
+  Heart:             { Water: ["hydration"] },
+  "Small Intestine": { Water: ["hydration"] },
+  Bladder:           { Water: ["hydration"] },
+  Kidney:            { Water: ["hydration"] },
+  Pericardium:       { Water: ["hydration"] },
+  "Triple Burner":   { Water: ["hydration"] },
+};
+
+const REMEDY_LINKS = {
+  hydration: {
+    label: "Living Water Ionizer",
+    blurb: "Micro-clustered water penetrates tissues and cells about 10× better than standard filtered water — directly supports the fluid-handling function above.",
+    url: "https://remedymatch.com/?s=ionizer",
+    cta: "Browse Living Water options →",
+  },
+  // Future topics (placeholder shape — uncomment + fill URL when landing pages ship):
+  // detox:           { label: "...", blurb: "...", url: "...", cta: "..." },
+  // digestion:       { label: "...", blurb: "...", url: "...", cta: "..." },
+  // immunity:        { label: "...", blurb: "...", url: "...", cta: "..." },
+  // adrenal_stress:  { label: "...", blurb: "...", url: "...", cta: "..." },
+  // sleep_circadian: { label: "...", blurb: "...", url: "...", cta: "..." },
+};
+
+function meridianRecommendations(meridian, element) {
+  const topics = (ORGAN_TOPICS[meridian] || {})[element] || [];
+  return topics.map(t => REMEDY_LINKS[t]).filter(Boolean);
 }
 
 const ELEMENT_META = {
@@ -767,6 +847,18 @@ function renderResults(data) {
   const physiologyNote = data.dominant_element
     ? meridianPhysiology(win.meridian, data.dominant_element)
     : null;
+  const recommendations = data.dominant_element
+    ? meridianRecommendations(win.meridian, data.dominant_element)
+    : [];
+
+  const recommendationHtml = recommendations.map(r =>
+    '<div class="organ-recommend">' +
+      '<div class="organ-recommend-label">Recommended Support</div>' +
+      '<div class="organ-recommend-name">' + r.label + '</div>' +
+      '<div class="organ-recommend-blurb">' + r.blurb + '</div>' +
+      '<a href="' + r.url + '" target="_blank" rel="noopener" class="organ-recommend-cta">' + r.cta + '</a>' +
+    '</div>'
+  ).join('');
 
   els.organClock.innerHTML =
     '<div class="organ-time">' + hh + ':' + mm + '<span class="organ-tz">' + tzAbbr + '</span></div>' +
@@ -781,7 +873,8 @@ function renderResults(data) {
       : '') +
     (physiologyNote
       ? '<div class="organ-physiology"><span class="label">Physiology</span>' + physiologyNote + '</div>'
-      : '');
+      : '') +
+    recommendationHtml;
 
   // Lexical + congruence footer
   const lex = data.lexical_metrics || {};
