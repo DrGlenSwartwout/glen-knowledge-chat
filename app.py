@@ -45,6 +45,14 @@ STATIC = Path(__file__).parent / "static"
 app = Flask(__name__, static_folder=str(STATIC))
 CORS(app)
 
+# ── Voice Journal blueprint (T2 — Whisper + Haiku + ada-002 + pgvector) ──────
+try:
+    from journal_blueprint import journal_bp
+    app.register_blueprint(journal_bp)
+    print("[journal] blueprint registered: /journal, /journal/analyze, /journal/today, /journal/history", flush=True)
+except Exception as _je:
+    print(f"[journal] blueprint NOT registered: {_je}", flush=True)
+
 # ── Config ────────────────────────────────────────────────────────────────────
 PINECONE_INDEX    = "remedy-match-llc"
 NAMESPACES        = ["clinical-qa", "mentors", "ingredients", "e4l-protocols", "consultations", "training", "business", ""]

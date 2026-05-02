@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Voice Journal — TCM Resonance</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #1a1d24;
+    --panel-2: #11141a;
+    --ink: #e8ecf1;
+    --dim: #8a93a3;
+    --hair: #232733;
+    --accent: #7ad7c5;
+    --warn: #f0b66b;
+    --bad: #e07a7a;
+    --good: #7ad79a;
+    /* Five-element palette */
+    --wood:  #5fd97a;
+    --fire:  #d8324a;
+    --earth: #f0b66b;
+    --metal: #d6dde6;
+    --water: #6aa8e8;
+    /* Three Treasures palette */
+    --jing:  #2d3b66;   /* deep indigo — Kidney essence, hereditary depth */
+    --qi:    #e8b14a;   /* warm amber — vital force, breath, golden */
+    --shen:  #b06bd8;   /* violet — spirit, presence */
+    /* Polyvagal palette */
+    --ventral:     #7ad79a;  /* safe / connected */
+    --sympathetic: #f0b66b;  /* mobilized / activated */
+    --dorsal:      #6aa8e8;  /* collapsed / shut-down */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .app {
+    width: 100%;
+    max-width: 680px;
+    background: var(--panel);
+    border-radius: 18px;
+    padding: 28px 32px 24px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: 0.2px;
+  }
+  .sub {
+    color: var(--dim);
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+
+  .recorder {
+    background: var(--panel-2);
+    border: 1px solid var(--hair);
+    border-radius: 14px;
+    padding: 32px 24px;
+    text-align: center;
+    margin-bottom: 18px;
+  }
+  .timer {
+    font-variant-numeric: tabular-nums;
+    font-size: 44px;
+    font-weight: 200;
+    letter-spacing: -1px;
+    margin-bottom: 6px;
+  }
+  .timer-sub {
+    color: var(--dim);
+    font-size: 12px;
+    margin-bottom: 18px;
+  }
+  .level {
+    height: 6px;
+    background: var(--hair);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 0 0 18px;
+  }
+  .level-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--bad), var(--warn), var(--good));
+    transition: width 80ms linear;
+  }
+  .controls {
+    display: flex;
+    gap: 12px;
+  }
+  button {
+    flex: 1;
+    background: var(--accent);
+    color: #0f1115;
+    border: 0;
+    padding: 16px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.06s, opacity 0.2s;
+    font-family: inherit;
+  }
+  button.secondary {
+    background: #2a2f3a;
+    color: var(--ink);
+  }
+  button:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  .status {
+    color: var(--dim);
+    font-size: 12px;
+    text-align: center;
+    margin-top: 14px;
+    min-height: 16px;
+  }
+
+  .results { display: none; }
+  .results.show { display: block; }
+
+  .panel {
+    background: var(--panel-2);
+    border: 1px solid var(--hair);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+  }
+  .panel-label {
+    color: var(--dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+  }
+  .transcript {
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+
+  .top-emotions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .emo-chip {
+    background: #232733;
+    color: var(--ink);
+    border-radius: 16px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .emo-chip .pct {
+    color: var(--dim);
+    margin-left: 6px;
+  }
+
+  /* Generic bar row used for elements, treasures, polyvagal */
+  .bar-row {
+    display: grid;
+    grid-template-columns: 76px 1fr 60px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  .bar-name { color: var(--ink); }
+  .bar-name .conf {
+    color: var(--dim);
+    font-size: 10px;
+    margin-left: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .bar-track {
+    height: 10px;
+    background: #232733;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 5px;
+    transition: width 0.4s ease;
+  }
+  .bar-pct {
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* Element fills */
+  .ef-wood  { background: var(--wood); }
+  .ef-fire  { background: var(--fire); }
+  .ef-earth { background: var(--earth); }
+  .ef-metal { background: var(--metal); }
+  .ef-water { background: var(--water); }
+  /* Treasure fills */
+  .tf-jing { background: var(--jing); }
+  .tf-qi   { background: var(--qi); }
+  .tf-shen { background: var(--shen); }
+  /* Polyvagal fills */
+  .pv-ventral     { background: var(--ventral); }
+  .pv-sympathetic { background: var(--sympathetic); }
+  .pv-dorsal      { background: var(--dorsal); }
+
+  .dominant {
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  .dominant-label {
+    color: var(--dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 4px;
+  }
+  .dominant-name {
+    font-size: 28px;
+    font-weight: 300;
+    letter-spacing: -0.3px;
+  }
+  .dominant-organs {
+    color: var(--dim);
+    font-size: 12px;
+    margin-top: 2px;
+  }
+
+  /* Lexical + congruence footer line */
+  .meta-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    color: var(--dim);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .meta-line .meta-strong { color: var(--ink); }
+  .congruence-note {
+    color: var(--warn);
+    font-size: 12px;
+    margin-top: 8px;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Voice Journal</h1>
+  <div class="sub">Speak freely for 30 seconds to 5 minutes. Transcribed by Whisper, read by Haiku across the 48-emotion vector, Five Elements, Three Treasures, polyvagal state, and speech-pace.</div>
+
+  <div class="recorder">
+    <div class="timer" id="timer">0:00</div>
+    <div class="timer-sub" id="timerSub">Press Record to begin</div>
+    <div class="level"><div class="level-fill" id="lvl"></div></div>
+    <div class="controls">
+      <button id="recBtn">Record</button>
+      <button id="stopBtn" class="secondary" disabled>Stop &amp; Analyze</button>
+    </div>
+    <div class="status" id="status">&nbsp;</div>
+  </div>
+
+  <div class="results" id="results">
+    <div class="panel">
+      <div class="panel-label">Transcript</div>
+      <div class="transcript" id="transcript"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Top Emotions</div>
+      <div class="top-emotions" id="topEmotions"></div>
+    </div>
+
+    <div class="panel">
+      <div class="dominant">
+        <div class="dominant-label">Dominant Element</div>
+        <div class="dominant-name" id="domName">—</div>
+        <div class="dominant-organs" id="domOrgans"></div>
+      </div>
+      <div class="panel-label">Five-Element Resonance</div>
+      <div id="elements"></div>
+    </div>
+
+    <div class="panel">
+      <div class="dominant">
+        <div class="dominant-label">Dominant Treasure</div>
+        <div class="dominant-name" id="domTreasure">—</div>
+        <div class="dominant-organs" id="domTreasureNote"></div>
+      </div>
+      <div class="panel-label">Three Treasures (San Bao)</div>
+      <div id="treasures"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Polyvagal State</div>
+      <div id="polyvagal"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Speech-Pace + Congruence</div>
+      <div class="meta-line" id="metaLine"></div>
+      <div class="congruence-note" id="congruenceNote" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ANALYZE_URL = '/journal/analyze';
+
+const ELEMENT_META = {
+  Wood:  { cls: 'ef-wood',  organs: 'Liver / Gallbladder' },
+  Fire:  { cls: 'ef-fire',  organs: 'Heart / Small Intestine / Pericardium' },
+  Earth: { cls: 'ef-earth', organs: 'Spleen / Stomach' },
+  Metal: { cls: 'ef-metal', organs: 'Lung / Large Intestine' },
+  Water: { cls: 'ef-water', organs: 'Kidney / Bladder' },
+};
+
+const TREASURE_META = {
+  Jing: { cls: 'tf-jing', note: 'Essence — Kidney, hereditary depth' },
+  Qi:   { cls: 'tf-qi',   note: 'Vital force — breath, current vitality' },
+  Shen: { cls: 'tf-shen', note: 'Spirit — presence, awareness, joy' },
+};
+
+const POLYVAGAL_META = {
+  ventral_vagal: { label: 'Ventral',     cls: 'pv-ventral'     },
+  sympathetic:   { label: 'Sympathetic', cls: 'pv-sympathetic' },
+  dorsal_vagal:  { label: 'Dorsal',      cls: 'pv-dorsal'      },
+};
+
+const els = {
+  recBtn:   document.getElementById('recBtn'),
+  stopBtn:  document.getElementById('stopBtn'),
+  timer:    document.getElementById('timer'),
+  timerSub: document.getElementById('timerSub'),
+  lvl:      document.getElementById('lvl'),
+  status:   document.getElementById('status'),
+  results:  document.getElementById('results'),
+  transcript:   document.getElementById('transcript'),
+  topEmotions:  document.getElementById('topEmotions'),
+  domName:      document.getElementById('domName'),
+  domOrgans:    document.getElementById('domOrgans'),
+  domTreasure:     document.getElementById('domTreasure'),
+  domTreasureNote: document.getElementById('domTreasureNote'),
+  elements:        document.getElementById('elements'),
+  treasures:       document.getElementById('treasures'),
+  polyvagal:       document.getElementById('polyvagal'),
+  metaLine:        document.getElementById('metaLine'),
+  congruenceNote:  document.getElementById('congruenceNote'),
+};
+
+let mediaRecorder, audioChunks = [], stream;
+let audioCtx, analyser, levelRaf, levelBuf;
+let startedAt = 0, timerInterval;
+
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60).toString().padStart(2, '0');
+  return m + ':' + s;
+}
+
+function startLevelMeter(src) {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  levelBuf = new Float32Array(analyser.fftSize);
+  const node = audioCtx.createMediaStreamSource(src);
+  node.connect(analyser);
+  function step() {
+    analyser.getFloatTimeDomainData(levelBuf);
+    let rms = 0;
+    for (let i = 0; i < levelBuf.length; i++) rms += levelBuf[i] * levelBuf[i];
+    rms = Math.sqrt(rms / levelBuf.length);
+    els.lvl.style.width = Math.min(100, rms * 400) + '%';
+    levelRaf = requestAnimationFrame(step);
+  }
+  step();
+}
+
+function stopLevelMeter() {
+  cancelAnimationFrame(levelRaf);
+  if (audioCtx) audioCtx.close();
+  els.lvl.style.width = '0%';
+}
+
+async function record() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+  } catch (e) {
+    els.status.textContent = 'Mic blocked: ' + e.message;
+    return;
+  }
+  audioChunks = [];
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+  mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+  mediaRecorder.onstop = onRecordingStopped;
+  mediaRecorder.start();
+
+  startLevelMeter(stream);
+  startedAt = Date.now();
+  els.recBtn.disabled = true;
+  els.stopBtn.disabled = false;
+  els.timer.textContent = '0:00';
+  els.timerSub.textContent = 'Recording…';
+  els.status.textContent = '';
+  els.results.classList.remove('show');
+  timerInterval = setInterval(() => {
+    const sec = (Date.now() - startedAt) / 1000;
+    els.timer.textContent = fmtTime(sec);
+    if (sec >= 300) stop();
+  }, 200);
+}
+
+function stop() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stopLevelMeter();
+  clearInterval(timerInterval);
+  els.recBtn.disabled = false;
+  els.stopBtn.disabled = true;
+  els.timerSub.textContent = 'Analyzing…';
+  els.status.textContent = 'Uploading audio for transcription + clinical analysis…';
+}
+
+async function onRecordingStopped() {
+  const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+  const duration = (Date.now() - startedAt) / 1000;
+  const form = new FormData();
+  form.append('audio', blob, 'journal.webm');
+  form.append('duration_seconds', duration.toFixed(1));
+
+  try {
+    const resp = await fetch(ANALYZE_URL, { method: 'POST', body: form });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      els.timerSub.textContent = 'Analysis failed';
+      els.status.textContent = 'Server error: ' + resp.status + ' — ' + errText.slice(0, 200);
+      return;
+    }
+    const data = await resp.json();
+    renderResults(data);
+    els.timerSub.textContent = 'Done — entry saved';
+    els.status.textContent = 'Saved to journal_entries · ' + new Date().toLocaleString();
+  } catch (e) {
+    els.timerSub.textContent = 'Analysis failed';
+    els.status.textContent = 'Network error: ' + e.message;
+  }
+}
+
+function renderBars(target, items, metaLookup, withConfidence) {
+  target.innerHTML = '';
+  items.forEach(({ name, pct, conf, label, fillCls }) => {
+    const meta = metaLookup ? metaLookup[name] : null;
+    const cls = fillCls || (meta ? meta.cls : '');
+    const display = label || name;
+    const confLabel = (withConfidence && typeof conf === 'number')
+      ? ' <span class="conf">±' + Math.round((1 - conf) * 100) + '</span>'
+      : '';
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML =
+      '<div class="bar-name">' + display + confLabel + '</div>' +
+      '<div class="bar-track"><div class="bar-fill ' + cls + '" style="width:' + (pct || 0) + '%"></div></div>' +
+      '<div class="bar-pct">' + (pct || 0).toFixed(0) + '%</div>';
+    target.appendChild(row);
+  });
+}
+
+function renderResults(data) {
+  els.transcript.textContent = data.transcript || '(no transcript)';
+
+  // Top emotions
+  els.topEmotions.innerHTML = '';
+  (data.top_emotions || []).forEach(em => {
+    const chip = document.createElement('div');
+    chip.className = 'emo-chip';
+    const pct = (em.score * 100).toFixed(0) + '%';
+    chip.innerHTML = em.name + '<span class="pct">' + pct + '</span>';
+    els.topEmotions.appendChild(chip);
+  });
+
+  // Dominant element
+  const dom = data.dominant_element;
+  els.domName.textContent = dom || '—';
+  els.domOrgans.textContent = (ELEMENT_META[dom] || {}).organs || '';
+
+  // Five-Element bars (no Shen — Shen lives on the Treasures axis)
+  renderBars(
+    els.elements,
+    ['Wood','Fire','Earth','Metal','Water'].map(name => ({
+      name,
+      pct: (data.element_scores || {})[name] || 0,
+    })),
+    ELEMENT_META
+  );
+
+  // Dominant treasure
+  const domT = data.dominant_treasure;
+  els.domTreasure.textContent = domT || '—';
+  els.domTreasureNote.textContent = (TREASURE_META[domT] || {}).note || '';
+
+  // Treasures bars (with Jing-confidence band)
+  const tConf = data.treasure_confidence || {};
+  renderBars(
+    els.treasures,
+    ['Jing','Qi','Shen'].map(name => ({
+      name,
+      pct: (data.treasure_scores || {})[name] || 0,
+      conf: typeof tConf[name] === 'number' ? tConf[name] : null,
+    })),
+    TREASURE_META,
+    true
+  );
+
+  // Polyvagal bars
+  const pv = data.polyvagal_state || {};
+  renderBars(
+    els.polyvagal,
+    ['ventral_vagal','sympathetic','dorsal_vagal'].map(name => ({
+      name,
+      pct: pv[name] || 0,
+      label: POLYVAGAL_META[name].label,
+      fillCls: POLYVAGAL_META[name].cls,
+    }))
+  );
+
+  // Lexical + congruence footer
+  const lex = data.lexical_metrics || {};
+  const congScore = data.congruence && typeof data.congruence.score === 'number'
+    ? Math.round(data.congruence.score * 100) + '%'
+    : '—';
+  els.metaLine.innerHTML = [
+    '<span><span class="meta-strong">' + (lex.wpm || 0).toFixed(0) + '</span> wpm</span>',
+    '<span><span class="meta-strong">' + Math.round((lex.pause_density || 0) * 100) + '%</span> pause</span>',
+    '<span><span class="meta-strong">' + (lex.pause_count || 0) + '</span> breath-pauses</span>',
+    '<span><span class="meta-strong">' + (lex.type_token_ratio || 0).toFixed(2) + '</span> TTR</span>',
+    '<span>congruence <span class="meta-strong">' + congScore + '</span></span>',
+  ].join('');
+
+  // Surface congruence note when score is low or contradictions exist
+  const congNote = data.congruence;
+  const contradictions = (congNote && congNote.self_contradictions) || [];
+  if (congNote && (congNote.score < 0.6 || contradictions.length > 0)) {
+    let msg = '';
+    if (congNote.notes) msg += congNote.notes;
+    if (contradictions.length > 0) {
+      msg += (msg ? ' ' : '') + 'Watch: "' + contradictions.slice(0, 2).join('"  /  "') + '"';
+    }
+    els.congruenceNote.textContent = msg || 'Low internal congruence detected.';
+    els.congruenceNote.style.display = '';
+  } else {
+    els.congruenceNote.style.display = 'none';
+  }
+
+  els.results.classList.add('show');
+}
+
+els.recBtn.addEventListener('click', record);
+els.stopBtn.addEventListener('click', stop);
+</script>
+</body>
+</html>
