@@ -303,6 +303,23 @@
   .organ-phase.in-phase { color: var(--good); }
   .organ-phase.cross-phase { color: var(--warn); }
   .organ-phase strong { color: var(--ink); font-weight: 600; }
+  .organ-physiology {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: #1f2330;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--ink);
+    line-height: 1.55;
+  }
+  .organ-physiology .label {
+    color: var(--dim);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-right: 8px;
+  }
 
   /* Lexical + congruence footer line */
   .meta-line {
@@ -413,6 +430,101 @@ function chineseOrganClock(date) {
   // Map h → window index. Gallbladder window (23–01) covers h=23 and h=0.
   const idx = h === 23 ? 0 : Math.floor((h + 1) / 2);
   return ORGAN_WINDOWS[idx];
+}
+
+// ─── Meridian × Dominant-Element Physiology Bridges ───────────────────────
+// One-sentence Western-physiology bridge for each (meridian, dominant_element)
+// pair. Aligned cells confirm the natural function; cross-phase cells surface
+// the shared organ-system function that the patterns intersect on.
+const ORGAN_PHYSIOLOGY = {
+  Gallbladder: {
+    Wood:  "Bile concentration and release during deep sleep — the GB stores Liver-made bile and contracts at the next meal. Wood-aligned.",
+    Fire:  "Bile emulsifies dietary fats; fats fuel mitochondrial ATP — GB function meets Heart-Fire metabolic demand.",
+    Earth: "GB bile prepares fats for Spleen-Pancreas digestion — the Wood-to-Earth handoff powering nutrient assimilation.",
+    Metal: "GB bile carries hepatic waste (bilirubin, cholesterol breakdown) toward LI elimination — a Wood-to-Metal detox axis.",
+    Water: "GB concentrates bile by reabsorbing water; circadian cortisol-water regulation peaks in this window.",
+  },
+  Liver: {
+    Wood:  "Peak hepatic Phase I/II detoxification during deep sleep — the Liver-Wood resonance at its natural hour.",
+    Fire:  "Liver glycogen → blood glucose → cardiac fuel; estrogen and testosterone hepatic metabolism modulate Heart-Fire excitability.",
+    Earth: "Liver-Spleen axis: gluconeogenesis, bile output, lipid handling — supporting Earth's transformative function.",
+    Metal: "Phase I/II hepatic detox IS a Metal/Lung-LI elimination function operating in the Wood time-window.",
+    Water: "Liver makes albumin (oncotic pressure → water balance) and bile (95% water) — Wood-Water hydration interdependence.",
+  },
+  Lung: {
+    Wood:  "Breath modulates vagal tone — the autonomic balance lever for Liver-Wood anger/anxiety; oxygen fuels hepatic cytochromes.",
+    Fire:  "Lungs oxygenate blood for the Heart pump; pulmonary nitric oxide regulates cardiac afterload — the cardiopulmonary unit.",
+    Earth: "Oxygen is the substrate for Spleen-digestive metabolism; pulmonary mast cells link respiration to GI histamine load.",
+    Metal: "Respiration and immune Wei Qi at peak — pulmonary alveolar regeneration during this Metal window. Aligned.",
+    Water: "Lungs humidify inspired air, exchange ~250ml water/day, and regulate blood pH via the CO2-bicarbonate buffer.",
+  },
+  "Large Intestine": {
+    Wood:  "LI peristalsis is involuntary smooth-muscle under autonomic (Wood/Liver) modulation; Liver-bile triggers morning evacuation.",
+    Fire:  "LI gut-immune barrier; LPS endotoxemia from a permeable LI directly stresses cardiovascular Fire.",
+    Earth: "LI completes Earth's digestive arc — short-chain fatty acid absorption, microbiome-derived nutrient release.",
+    Metal: "Elimination and immune barrier at peak — the Metal meridian fulfilling its archetypal function. Aligned.",
+    Water: "LI reabsorbs water from stool to maintain hydration — Water-pattern in a Metal window meets at this fluid-conservation function.",
+  },
+  Stomach: {
+    Wood:  "Gastric tension somatizes Liver-Wood (anger, morning anxiety); HCl release is parasympathetically (vagal) gated.",
+    Fire:  "Gastric heat — HCl ~1L/day, body warmth at digestion; the Heart-Stomach Shao Yin axis modulates appetite.",
+    Earth: "Receiving and ripening food at the meridian's peak — the Earth function in its native window. Aligned.",
+    Metal: "Stomach acid kills swallowed pathogens (immune barrier = Metal); intrinsic factor enables B12 → blood building.",
+    Water: "Stomach secretes ~2L of water-based fluid daily; gastric osmolality calibration starts the upper-burner water cycle.",
+  },
+  Spleen: {
+    Wood:  "Spleen-Liver coordination — glycogen/glucose handoff; Liver Qi stagnation often manifests as Spleen-Qi-deficient digestion.",
+    Fire:  "Pancreatic insulin shuttles glucose into cells (cellular Fire); the Spleen-Pancreas-Heart energetic continuum.",
+    Earth: "Transforming food into Qi and blood — the meridian's archetype at peak hour. Aligned.",
+    Metal: "Spleen produces antibodies (immune Metal); gut-associated lymphoid tissue is the Earth-Metal interface.",
+    Water: "Pancreatic bicarbonate regulates blood/water acidity; insulin modulates renal sodium-water handling.",
+  },
+  Heart: {
+    Wood:  "Heart-Liver axis — anger spikes BP and HR; emotional regulation rides on cardiac vagal tone.",
+    Fire:  "Cardiac peak — pumping, consciousness, sovereign-Fire activity at its meridian's hour. Aligned.",
+    Earth: "Heart pumps blood to feed Spleen-digestion; the midday meal aligns with Heart-Fire warming digestion.",
+    Metal: "Heart-Lung cardiopulmonary unit; pulmonary venous return delivers oxygenated blood to the Heart.",
+    Water: "Heart-Kidney Shao Yin axis — cardiac output drives renal perfusion; blood volume governed by RAAS.",
+  },
+  "Small Intestine": {
+    Wood:  "SI motility is under autonomic (Wood/Liver) control; bile (Wood-GB) is absorbed in the distal SI — closing a Wood-Fire loop.",
+    Fire:  "Postprandial heat of digestion at peak; nutrient absorption fuels cellular Fire across all tissues. Aligned.",
+    Earth: "SI is the primary Earth-completion site — most macronutrient absorption happens here, not in the Spleen-Stomach proper.",
+    Metal: "Microvilli are an immune frontline — Peyer's patches and IgA secretion are Metal-immunity inside a Fire window.",
+    Water: "SI absorbs ~7L of water/day (the major site of water reabsorption, before LI) — Water-pattern meets this water-handling Fire-meridian.",
+  },
+  Bladder: {
+    Wood:  "Bladder detrusor and sphincters are autonomically (Wood-Liver) modulated; urge vs. control is a vagal/sympathetic balance.",
+    Fire:  "Sympathetic urinary urgency (Fire-overactivation); UTI patterns reflect Bladder-Heat in TCM, cystitis in Western terms.",
+    Earth: "Containing function (Earth = vessel) — pelvic floor and bladder storage parallel digestive containment.",
+    Metal: "Bladder is the urinary elimination terminus (Metal pair role) — urea, creatinine, uric acid excretion.",
+    Water: "Storage and regulated release of water and electrolytes — the Water meridian fulfilling its archetype. Aligned.",
+  },
+  Kidney: {
+    Wood:  "Renal renin → angiotensin → BP; adrenal cortisol (the Wood/stress axis) shares organ territory with the Kidney.",
+    Fire:  "Adrenal medulla (epinephrine/norepinephrine) IS Fire; Kidney-Heart Shao Yin governs systemic vitality.",
+    Earth: "Kidneys make erythropoietin (red blood cell production = Earth/blood-building); calcium/phosphate homeostasis.",
+    Metal: "Glomerular filtration is the elimination function (Metal) — ammonia, urea, creatinine excretion at peak.",
+    Water: "Filtration, water conservation, electrolyte balance, Jing storage — the Water meridian at its peak hour. Aligned.",
+  },
+  Pericardium: {
+    Wood:  "Pericardium protects the Heart from emotional/Wood shock; coronary vasodilation responds to parasympathetic tone.",
+    Fire:  "Ministerial Fire at its hour — emotional buffering, cardiac protection, intimate-relational physiology. Aligned.",
+    Earth: "Pericardial fluid (~50ml) cushions the Heart — the Earth-container function for the central organ.",
+    Metal: "Pericardium is mesothelial tissue (shared embryologic origin with Lung pleura); inflammation pathway parallels Metal.",
+    Water: "Pericardial fluid is water-based; fluid balance is critical for cardiac filling and stroke volume.",
+  },
+  "Triple Burner": {
+    Wood:  "SJ regulates lymphatic flow; Liver-Wood channels and lymphatic-vessel networks overlap functionally.",
+    Fire:  "Ministerial Fire — thermoregulation and metabolic heat distribution across the three burners. Aligned.",
+    Earth: "SJ as fluid distributor between body cavities mirrors Earth's containing function; lymphatic carries dietary fats from SI.",
+    Metal: "SJ fluid pathway parallels the lymphatic-immune system; Wei Qi distribution operates through this Fire channel.",
+    Water: "Triple Burner literally = 'three burners of fluid metabolism' (upper/middle/lower) — the Water-handling Fire meridian.",
+  },
+};
+
+function meridianPhysiology(meridian, element) {
+  return (ORGAN_PHYSIOLOGY[meridian] || {})[element] || null;
 }
 
 const ELEMENT_META = {
@@ -652,6 +764,10 @@ function renderResults(data) {
     : '<strong>In-phase:</strong> ' + (data.dominant_element || '—') +
       '-dominant pattern aligned with the active ' + win.meridian + ' (' + win.element + ') window.';
 
+  const physiologyNote = data.dominant_element
+    ? meridianPhysiology(win.meridian, data.dominant_element)
+    : null;
+
   els.organClock.innerHTML =
     '<div class="organ-time">' + hh + ':' + mm + '<span class="organ-tz">' + tzAbbr + '</span></div>' +
     '<div class="organ-meridian">' +
@@ -662,6 +778,9 @@ function renderResults(data) {
     '<div class="organ-element-pill el-' + win.element + '">' + win.element + '</div>' +
     (data.dominant_element
       ? '<div class="organ-phase ' + phaseClass + '">' + phaseLabel + '</div>'
+      : '') +
+    (physiologyNote
+      ? '<div class="organ-physiology"><span class="label">Physiology</span>' + physiologyNote + '</div>'
       : '');
 
   // Lexical + congruence footer
