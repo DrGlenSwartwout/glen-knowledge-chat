@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Voice Journal — 30-Day Trends</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #1a1d24;
+    --panel-2: #11141a;
+    --ink: #e8ecf1;
+    --dim: #8a93a3;
+    --hair: #232733;
+    --accent: #7ad7c5;
+    --warn: #f0b66b;
+    --bad: #e07a7a;
+    --good: #7ad79a;
+    --wood:  #5fd97a;
+    --fire:  #d8324a;
+    --earth: #f0b66b;
+    --metal: #d6dde6;
+    --water: #6aa8e8;
+    --jing:  #2d3b66;
+    --qi:    #e8b14a;
+    --shen:  #b06bd8;
+    --ventral:     #7ad79a;
+    --sympathetic: #f0b66b;
+    --dorsal:      #6aa8e8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .app {
+    width: 100%;
+    max-width: 880px;
+    margin: 0 auto;
+    background: var(--panel);
+    border-radius: 18px;
+    padding: 28px 32px 24px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.2px;
+  }
+  .meta {
+    color: var(--dim);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .sub {
+    color: var(--dim);
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+  .panel {
+    background: var(--panel-2);
+    border: 1px solid var(--hair);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .panel-label {
+    color: var(--dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+  }
+  .empty {
+    color: var(--dim);
+    font-size: 13px;
+    padding: 12px 0;
+    font-style: italic;
+  }
+  .legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    color: var(--dim);
+    font-size: 11px;
+    margin-top: 12px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .swatch {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border-radius: 3px;
+  }
+
+  /* Calendar heatmap — GitHub-style (weeks as columns, days as rows) */
+  .heatmap-wrap { display: flex; gap: 8px; align-items: flex-start; }
+  .heatmap-day-labels {
+    display: grid;
+    grid-template-rows: repeat(7, 16px);
+    gap: 2px;
+    color: var(--dim);
+    font-size: 9px;
+    padding-top: 2px;
+  }
+  .heatmap-day-labels span:nth-child(odd) { visibility: hidden; }
+  .heatmap-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(7, 16px);
+    gap: 2px;
+  }
+  .heatmap-cell {
+    width: 16px; height: 16px;
+    border-radius: 3px;
+    background: #1f2330;
+    transition: transform 0.06s;
+    cursor: pointer;
+    position: relative;
+  }
+  .heatmap-cell:hover { transform: scale(1.18); z-index: 2; }
+  .heatmap-cell[data-element="Wood"]  { background: var(--wood);  }
+  .heatmap-cell[data-element="Fire"]  { background: var(--fire);  }
+  .heatmap-cell[data-element="Earth"] { background: var(--earth); }
+  .heatmap-cell[data-element="Metal"] { background: var(--metal); }
+  .heatmap-cell[data-element="Water"] { background: var(--water); }
+  .heatmap-cell[data-multi="true"]::after {
+    content: "·";
+    position: absolute;
+    top: -3px; right: 2px;
+    font-size: 14px;
+    color: rgba(0,0,0,0.5);
+    line-height: 1;
+  }
+  .heatmap-tooltip {
+    position: fixed;
+    background: #0a0c10;
+    border: 1px solid var(--hair);
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: var(--ink);
+    font-size: 11px;
+    line-height: 1.5;
+    pointer-events: none;
+    z-index: 10;
+    max-width: 240px;
+    display: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  }
+
+  /* SVG charts */
+  .chart {
+    width: 100%;
+    height: 160px;
+    display: block;
+  }
+  .chart .grid line { stroke: var(--hair); stroke-width: 0.5; }
+  .chart .axis text { fill: var(--dim); font-size: 9px; }
+  .chart .series-line { fill: none; stroke-width: 1.6; }
+  .chart .series-line.jing { stroke: var(--jing); stroke-width: 2.4; }
+  .chart .series-line.qi   { stroke: var(--qi); }
+  .chart .series-line.shen { stroke: var(--shen); }
+  .chart .area-ventral     { fill: var(--ventral); fill-opacity: 0.7; }
+  .chart .area-sympathetic { fill: var(--sympathetic); fill-opacity: 0.7; }
+  .chart .area-dorsal      { fill: var(--dorsal); fill-opacity: 0.7; }
+  .chart .point {
+    fill: var(--ink);
+    stroke: var(--bg);
+    stroke-width: 1;
+  }
+
+  /* Drift alerts */
+  .drift-list { display: flex; flex-direction: column; gap: 8px; }
+  .drift-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #1f2330;
+    border-left: 3px solid var(--warn);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .drift-item.info { border-left-color: var(--accent); }
+  .drift-item.urgent { border-left-color: var(--bad); }
+  .drift-icon { color: var(--warn); font-size: 14px; line-height: 1.3; }
+  .drift-item.info .drift-icon { color: var(--accent); }
+  .drift-item.urgent .drift-icon { color: var(--bad); }
+  .drift-text { color: var(--ink); }
+  .drift-text .meta-strong { color: var(--ink); font-weight: 600; }
+
+  /* Top emotions bars */
+  .emo-row {
+    display: grid;
+    grid-template-columns: 140px 1fr 40px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 5px;
+    font-size: 12px;
+  }
+  .emo-name { color: var(--ink); }
+  .emo-track {
+    height: 8px;
+    background: #232733;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .emo-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--warn));
+    border-radius: 4px;
+  }
+  .emo-count {
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .nav-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 13px;
+  }
+  .nav-link:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Voice Journal — 30-Day Trends</h1>
+    <div class="meta" id="meta">loading…</div>
+  </header>
+  <div class="sub">
+    Five-Element resonance, Three-Treasure depth, polyvagal state, and emotional themes across the past 30 days.
+    <a class="nav-link" id="recordLink" href="#">+ Record a new entry</a>
+  </div>
+
+  <div class="panel">
+    <div class="panel-label">Five-Element Calendar — dominant element per day</div>
+    <div class="heatmap-wrap">
+      <div class="heatmap-day-labels">
+        <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+      </div>
+      <div class="heatmap-grid" id="heatmap"></div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><span class="swatch" style="background:var(--wood)"></span>Wood (Liver)</div>
+      <div class="legend-item"><span class="swatch" style="background:var(--fire)"></span>Fire (Heart)</div>
+      <div class="legend-item"><span class="swatch" style="background:var(--earth)"></span>Earth (Spleen)</div>
+      <div class="legend-item"><span class="swatch" style="background:var(--metal)"></span>Metal (Lung)</div>
+      <div class="legend-item"><span class="swatch" style="background:var(--water)"></span>Water (Kidney)</div>
+      <div class="legend-item"><span class="swatch" style="background:#1f2330"></span>no entry</div>
+    </div>
+    <div id="heatmapEmpty" class="empty" style="display:none;">No entries in the last 30 days yet.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-label">Three Treasures — 30-day trend (Jing line is 7-day rolling avg)</div>
+    <svg class="chart" id="treasureChart" viewBox="0 0 600 160" preserveAspectRatio="none"></svg>
+    <div class="legend">
+      <div class="legend-item"><span class="swatch" style="background:var(--jing)"></span>Jing — essence</div>
+      <div class="legend-item"><span class="swatch" style="background:var(--qi)"></span>Qi — vital force</div>
+      <div class="legend-item"><span class="swatch" style="background:var(--shen)"></span>Shen — spirit</div>
+    </div>
+    <div id="treasureEmpty" class="empty" style="display:none;">Need at least 2 entries to draw a trend.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-label">Polyvagal State — 30-day stacked area</div>
+    <svg class="chart" id="polyvagalChart" viewBox="0 0 600 160" preserveAspectRatio="none"></svg>
+    <div class="legend">
+      <div class="legend-item"><span class="swatch" style="background:var(--ventral)"></span>Ventral (regulated)</div>
+      <div class="legend-item"><span class="swatch" style="background:var(--sympathetic)"></span>Sympathetic (mobilized)</div>
+      <div class="legend-item"><span class="swatch" style="background:var(--dorsal)"></span>Dorsal (collapsed)</div>
+    </div>
+    <div id="polyvagalEmpty" class="empty" style="display:none;">Need at least 2 entries to draw a trend.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-label">Drift Alerts</div>
+    <div class="drift-list" id="driftList"></div>
+    <div id="driftEmpty" class="empty" style="display:none;">No drift signals yet — need ~7 days of entries to surface patterns.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-label">Top Emotions — 30-day cumulative</div>
+    <div id="topEmotions"></div>
+    <div id="emotionsEmpty" class="empty" style="display:none;">No emotion data in the last 30 days yet.</div>
+  </div>
+</div>
+
+<div class="heatmap-tooltip" id="tooltip"></div>
+
+<script>
+const HISTORY_URL = '/journal/history';
+
+const meta = document.getElementById('meta');
+const heatmap = document.getElementById('heatmap');
+const heatmapEmpty = document.getElementById('heatmapEmpty');
+const treasureChart = document.getElementById('treasureChart');
+const treasureEmpty = document.getElementById('treasureEmpty');
+const polyvagalChart = document.getElementById('polyvagalChart');
+const polyvagalEmpty = document.getElementById('polyvagalEmpty');
+const driftList = document.getElementById('driftList');
+const driftEmpty = document.getElementById('driftEmpty');
+const topEmotions = document.getElementById('topEmotions');
+const emotionsEmpty = document.getElementById('emotionsEmpty');
+const tooltip = document.getElementById('tooltip');
+
+// Preserve the dashboard auth key (?key=...) when linking back to the recorder
+const recordLink = document.getElementById('recordLink');
+recordLink.href = '/journal' + window.location.search;
+
+const ELEMENT_COLORS = { Wood: '--wood', Fire: '--fire', Earth: '--earth', Metal: '--metal', Water: '--water' };
+
+function fmtDate(d) {
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+function dayKey(d) {
+  return d.toISOString().slice(0, 10);
+}
+function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+
+// ─── Data fetch ────────────────────────────────────────────────────────────
+async function load() {
+  try {
+    const r = await fetch(HISTORY_URL + window.location.search);
+    if (!r.ok) throw new Error('history ' + r.status);
+    const data = await r.json();
+    render(data.entries || [], data.count || 0);
+  } catch (e) {
+    meta.textContent = 'failed to load: ' + e.message;
+  }
+}
+
+function render(entries, count) {
+  meta.textContent = count + ' entr' + (count === 1 ? 'y' : 'ies') + ' · last 30 days';
+
+  renderHeatmap(entries);
+  renderTreasureChart(entries);
+  renderPolyvagalChart(entries);
+  renderDrift(entries);
+  renderTopEmotions(entries);
+}
+
+// ─── Heatmap ───────────────────────────────────────────────────────────────
+function renderHeatmap(entries) {
+  heatmap.innerHTML = '';
+  if (entries.length === 0) {
+    heatmapEmpty.style.display = '';
+    return;
+  }
+  heatmapEmpty.style.display = 'none';
+
+  // Group entries by day
+  const byDay = {};
+  entries.forEach(e => {
+    const k = dayKey(new Date(e.recorded_at));
+    if (!byDay[k]) byDay[k] = [];
+    byDay[k].push(e);
+  });
+
+  // 30-day window ending today, padded to align with weekday columns
+  const end = new Date();
+  end.setHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setDate(end.getDate() - 29);
+  // Pad start back to Sunday so columns are aligned weeks
+  const startDow = start.getDay();
+  const gridStart = new Date(start);
+  gridStart.setDate(start.getDate() - startDow);
+  // Pad end forward to Saturday
+  const endDow = end.getDay();
+  const gridEnd = new Date(end);
+  gridEnd.setDate(end.getDate() + (6 - endDow));
+
+  for (let d = new Date(gridStart); d <= gridEnd; d.setDate(d.getDate() + 1)) {
+    const cell = document.createElement('div');
+    cell.className = 'heatmap-cell';
+    const k = dayKey(d);
+    const inWindow = d >= start && d <= end;
+    if (inWindow && byDay[k]) {
+      const dayEntries = byDay[k];
+      // pick most-recent dominant element of the day
+      const last = dayEntries[dayEntries.length - 1];
+      cell.dataset.element = last.dominant_element;
+      if (dayEntries.length > 1) cell.dataset.multi = 'true';
+
+      const elementSummary = last.dominant_element || '—';
+      const treasureSummary = last.dominant_treasure || '—';
+      const tip = fmtDate(d) + ' · ' + dayEntries.length + ' entr' +
+        (dayEntries.length === 1 ? 'y' : 'ies') +
+        '\nElement: ' + elementSummary +
+        '\nTreasure: ' + treasureSummary;
+      cell.title = tip;
+    } else if (!inWindow) {
+      cell.style.opacity = '0.3';
+    }
+    heatmap.appendChild(cell);
+  }
+}
+
+// ─── Series helpers ────────────────────────────────────────────────────────
+function buildDailySeries(entries, keyExtractor) {
+  // Returns array of {date, value} for each day in the 30-day window.
+  // value = mean of all entries on that day; null if no entries.
+  const end = new Date(); end.setHours(0,0,0,0);
+  const start = new Date(end); start.setDate(end.getDate() - 29);
+  const byDay = {};
+  entries.forEach(e => {
+    const k = dayKey(new Date(e.recorded_at));
+    const v = keyExtractor(e);
+    if (v === null || v === undefined || isNaN(v)) return;
+    if (!byDay[k]) byDay[k] = [];
+    byDay[k].push(v);
+  });
+  const out = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const k = dayKey(d);
+    const day = new Date(d);
+    if (byDay[k] && byDay[k].length) {
+      const mean = byDay[k].reduce((a,b) => a+b, 0) / byDay[k].length;
+      out.push({date: day, value: mean});
+    } else {
+      out.push({date: day, value: null});
+    }
+  }
+  return out;
+}
+
+function rollingAvg(series, window) {
+  return series.map((d, i) => {
+    let sum = 0, n = 0;
+    for (let j = Math.max(0, i - window + 1); j <= i; j++) {
+      if (series[j].value !== null) { sum += series[j].value; n++; }
+    }
+    return { date: d.date, value: n > 0 ? sum/n : null };
+  });
+}
+
+// Build SVG path "M x,y L x,y ..." skipping nulls
+function pathD(series, w, h, yMax) {
+  const pts = [];
+  let started = false;
+  series.forEach((d, i) => {
+    if (d.value === null) { started = false; return; }
+    const x = (i / (series.length - 1)) * w;
+    const y = h - (d.value / yMax) * h;
+    pts.push((started ? 'L' : 'M') + x.toFixed(1) + ',' + y.toFixed(1));
+    started = true;
+  });
+  return pts.join(' ');
+}
+
+// ─── Treasure chart ───────────────────────────────────────────────────────
+function renderTreasureChart(entries) {
+  const W = 600, H = 160, padTop = 10, padBot = 18;
+  treasureChart.innerHTML = '';
+
+  // Need at least 2 entries with treasure data
+  const withTreasure = entries.filter(e => e.tcm_scores && e.tcm_scores.treasures);
+  if (withTreasure.length < 2) {
+    treasureEmpty.style.display = '';
+    return;
+  }
+  treasureEmpty.style.display = 'none';
+
+  const innerH = H - padTop - padBot;
+
+  const jingSeries = rollingAvg(buildDailySeries(entries, e => e.tcm_scores?.treasures?.Jing ?? null), 7);
+  const qiSeries   = buildDailySeries(entries, e => e.tcm_scores?.treasures?.Qi ?? null);
+  const shenSeries = buildDailySeries(entries, e => e.tcm_scores?.treasures?.Shen ?? null);
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const g = document.createElementNS(ns, 'g');
+  g.setAttribute('transform', `translate(0,${padTop})`);
+
+  // Grid lines at 0, 25, 50, 75, 100
+  const grid = document.createElementNS(ns, 'g');
+  grid.setAttribute('class', 'grid');
+  [0, 25, 50, 75, 100].forEach(v => {
+    const y = innerH - (v / 100) * innerH;
+    const line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', 0);
+    line.setAttribute('x2', W);
+    line.setAttribute('y1', y);
+    line.setAttribute('y2', y);
+    grid.appendChild(line);
+  });
+  g.appendChild(grid);
+
+  // Lines
+  function addLine(series, cls) {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', pathD(series, W, innerH, 100));
+    path.setAttribute('class', 'series-line ' + cls);
+    g.appendChild(path);
+  }
+  addLine(qiSeries, 'qi');
+  addLine(shenSeries, 'shen');
+  addLine(jingSeries, 'jing');
+
+  treasureChart.appendChild(g);
+
+  // X axis (start / end label)
+  const axis = document.createElementNS(ns, 'g');
+  axis.setAttribute('class', 'axis');
+  const startLbl = document.createElementNS(ns, 'text');
+  startLbl.setAttribute('x', 2);
+  startLbl.setAttribute('y', H - 4);
+  startLbl.textContent = '30 days ago';
+  axis.appendChild(startLbl);
+  const endLbl = document.createElementNS(ns, 'text');
+  endLbl.setAttribute('x', W - 30);
+  endLbl.setAttribute('y', H - 4);
+  endLbl.textContent = 'today';
+  axis.appendChild(endLbl);
+  treasureChart.appendChild(axis);
+}
+
+// ─── Polyvagal stacked area ───────────────────────────────────────────────
+function renderPolyvagalChart(entries) {
+  const W = 600, H = 160, padTop = 10, padBot = 18;
+  polyvagalChart.innerHTML = '';
+
+  const withPv = entries.filter(e => e.polyvagal_state);
+  if (withPv.length < 2) {
+    polyvagalEmpty.style.display = '';
+    return;
+  }
+  polyvagalEmpty.style.display = 'none';
+
+  const innerH = H - padTop - padBot;
+
+  const ventral     = buildDailySeries(entries, e => e.polyvagal_state?.ventral_vagal ?? null);
+  const sympathetic = buildDailySeries(entries, e => e.polyvagal_state?.sympathetic ?? null);
+  const dorsal      = buildDailySeries(entries, e => e.polyvagal_state?.dorsal_vagal ?? null);
+
+  // Forward-fill nulls so the stacked area is continuous
+  function ffill(series) {
+    let last = null;
+    return series.map(d => {
+      if (d.value !== null) last = d.value;
+      return { date: d.date, value: last };
+    });
+  }
+  const v = ffill(ventral);
+  const s = ffill(sympathetic);
+  const d = ffill(dorsal);
+
+  const n = v.length;
+  const xAt = (i) => (i / (n - 1)) * W;
+
+  // Build stacked area paths (bottom→top: dorsal, sympathetic, ventral)
+  function stackedPath(top, bottom) {
+    let dStr = '';
+    for (let i = 0; i < n; i++) {
+      const tv = (top[i].value || 0);
+      const bv = (bottom[i].value || 0);
+      const y = innerH - ((tv) / 100) * innerH;
+      dStr += (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + y.toFixed(1) + ' ';
+    }
+    for (let i = n - 1; i >= 0; i--) {
+      const bv = (bottom[i].value || 0);
+      const y = innerH - ((bv) / 100) * innerH;
+      dStr += 'L' + xAt(i).toFixed(1) + ',' + y.toFixed(1) + ' ';
+    }
+    dStr += 'Z';
+    return dStr;
+  }
+
+  // Cumulative running totals so we can render bottom-up
+  // Each series is normalized to sum=100 in the data layer, so we can stack as:
+  // bottom (0) → ventral, middle → ventral+sympathetic, top → ventral+sympathetic+dorsal (=100)
+  const layer1Top = v.map((_, i) => ({ date: v[i].date, value: (v[i].value || 0) }));
+  const layer2Top = v.map((_, i) => ({ date: v[i].date, value: (v[i].value || 0) + (s[i].value || 0) }));
+  const layer3Top = v.map((_, i) => ({ date: v[i].date, value: (v[i].value || 0) + (s[i].value || 0) + (d[i].value || 0) }));
+  const zero      = v.map((_, i) => ({ date: v[i].date, value: 0 }));
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const g = document.createElementNS(ns, 'g');
+  g.setAttribute('transform', `translate(0,${padTop})`);
+
+  function addArea(top, bottom, cls) {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', stackedPath(top, bottom));
+    path.setAttribute('class', cls);
+    g.appendChild(path);
+  }
+  addArea(layer1Top, zero,       'area-ventral');
+  addArea(layer2Top, layer1Top,  'area-sympathetic');
+  addArea(layer3Top, layer2Top,  'area-dorsal');
+  polyvagalChart.appendChild(g);
+
+  const axis = document.createElementNS(ns, 'g');
+  axis.setAttribute('class', 'axis');
+  const startLbl = document.createElementNS(ns, 'text');
+  startLbl.setAttribute('x', 2);
+  startLbl.setAttribute('y', H - 4);
+  startLbl.textContent = '30 days ago';
+  axis.appendChild(startLbl);
+  const endLbl = document.createElementNS(ns, 'text');
+  endLbl.setAttribute('x', W - 30);
+  endLbl.setAttribute('y', H - 4);
+  endLbl.textContent = 'today';
+  axis.appendChild(endLbl);
+  polyvagalChart.appendChild(axis);
+}
+
+// ─── Drift detection ──────────────────────────────────────────────────────
+function renderDrift(entries) {
+  driftList.innerHTML = '';
+
+  if (entries.length < 3) {
+    driftEmpty.style.display = '';
+    return;
+  }
+  driftEmpty.style.display = 'none';
+
+  const alerts = [];
+
+  const recent = entries.slice(-7);
+  const baseline = entries.slice(0, Math.max(1, entries.length - 7));
+
+  function meanField(arr, getter) {
+    const vals = arr.map(getter).filter(v => typeof v === 'number' && !isNaN(v));
+    if (vals.length === 0) return null;
+    return vals.reduce((a,b) => a+b, 0) / vals.length;
+  }
+
+  // 1. Element drift — any element jumped >30% over baseline
+  ['Wood','Fire','Earth','Metal','Water'].forEach(el => {
+    const r = meanField(recent, e => e.tcm_scores?.elements?.[el] ?? null);
+    const b = meanField(baseline, e => e.tcm_scores?.elements?.[el] ?? null);
+    if (r === null || b === null || b < 5) return;
+    const lift = ((r - b) / b) * 100;
+    if (Math.abs(lift) >= 30) {
+      const dir = lift > 0 ? 'up' : 'down';
+      const organMap = { Wood:'Liver/anger', Fire:'Heart/joy', Earth:'Spleen/worry', Metal:'Lung/grief', Water:'Kidney/fear' };
+      alerts.push({
+        kind: lift > 0 && (el === 'Metal' || el === 'Water') ? 'urgent' : 'info',
+        text: '<span class="meta-strong">' + el + ' (' + organMap[el] + ')</span> signature is <span class="meta-strong">' + dir + ' ' + Math.abs(lift).toFixed(0) + '%</span> over the prior baseline.',
+      });
+    }
+  });
+
+  // 2. Jing trend — 7-day rolling avg dropped >15 percentage points
+  const jingDailySeries = buildDailySeries(entries, e => e.tcm_scores?.treasures?.Jing ?? null);
+  const jingRolling = rollingAvg(jingDailySeries, 7);
+  const validJing = jingRolling.filter(d => d.value !== null);
+  if (validJing.length >= 2) {
+    const earliest = validJing[0].value;
+    const latest = validJing[validJing.length - 1].value;
+    if (earliest - latest >= 15) {
+      alerts.push({
+        kind: 'urgent',
+        text: '<span class="meta-strong">Jing</span> 7-day rolling avg has fallen from <span class="meta-strong">' + earliest.toFixed(0) + '</span> to <span class="meta-strong">' + latest.toFixed(0) + '</span> — constitutional depletion signal.',
+      });
+    } else if (latest - earliest >= 10) {
+      alerts.push({
+        kind: 'info',
+        text: '<span class="meta-strong">Jing</span> 7-day rolling avg has risen from <span class="meta-strong">' + earliest.toFixed(0) + '</span> to <span class="meta-strong">' + latest.toFixed(0) + '</span> — restoration trending.',
+      });
+    }
+  }
+
+  // 3. Polyvagal — chronic dorsal or sympathetic
+  const dorsal = meanField(recent, e => e.polyvagal_state?.dorsal_vagal ?? null);
+  const symp = meanField(recent, e => e.polyvagal_state?.sympathetic ?? null);
+  const ventral = meanField(recent, e => e.polyvagal_state?.ventral_vagal ?? null);
+  if (dorsal !== null && dorsal > 30) {
+    alerts.push({
+      kind: 'urgent',
+      text: '<span class="meta-strong">Dorsal vagal</span> averaging <span class="meta-strong">' + dorsal.toFixed(0) + '%</span> in recent entries — collapse/freeze signal.',
+    });
+  }
+  if (symp !== null && symp > 50) {
+    alerts.push({
+      kind: 'urgent',
+      text: '<span class="meta-strong">Sympathetic</span> averaging <span class="meta-strong">' + symp.toFixed(0) + '%</span> in recent entries — sustained activation.',
+    });
+  }
+  if (ventral !== null && ventral > 60) {
+    alerts.push({
+      kind: 'info',
+      text: '<span class="meta-strong">Ventral vagal</span> averaging <span class="meta-strong">' + ventral.toFixed(0) + '%</span> recently — well-regulated.',
+    });
+  }
+
+  // 4. Congruence — average congruence dropping
+  const congRecent = meanField(recent, e => e.congruence?.score ?? null);
+  if (congRecent !== null && congRecent < 0.6) {
+    alerts.push({
+      kind: 'urgent',
+      text: 'Internal congruence averaging <span class="meta-strong">' + (congRecent * 100).toFixed(0) + '%</span> recently — pattern of self-contradiction.',
+    });
+  }
+
+  if (alerts.length === 0) {
+    const item = document.createElement('div');
+    item.className = 'drift-item info';
+    item.innerHTML = '<div class="drift-icon">✓</div><div class="drift-text">No significant drift detected. Patterns are within expected bounds.</div>';
+    driftList.appendChild(item);
+    return;
+  }
+
+  alerts.forEach(a => {
+    const item = document.createElement('div');
+    item.className = 'drift-item ' + a.kind;
+    const icon = a.kind === 'urgent' ? '⚠' : a.kind === 'info' ? 'ℹ' : '·';
+    item.innerHTML = '<div class="drift-icon">' + icon + '</div><div class="drift-text">' + a.text + '</div>';
+    driftList.appendChild(item);
+  });
+}
+
+// ─── Top emotions cumulative ──────────────────────────────────────────────
+function renderTopEmotions(entries) {
+  topEmotions.innerHTML = '';
+  const counts = {};
+  entries.forEach(e => {
+    (e.top_emotions || []).forEach(em => {
+      if (!em || !em.name) return;
+      counts[em.name] = (counts[em.name] || 0) + (em.score || 0);
+    });
+  });
+  const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0, 8);
+  if (sorted.length === 0) {
+    emotionsEmpty.style.display = '';
+    return;
+  }
+  emotionsEmpty.style.display = 'none';
+  const max = sorted[0][1];
+  sorted.forEach(([name, sum]) => {
+    const row = document.createElement('div');
+    row.className = 'emo-row';
+    const pct = (sum / max) * 100;
+    row.innerHTML =
+      '<div class="emo-name">' + name + '</div>' +
+      '<div class="emo-track"><div class="emo-fill" style="width:' + pct.toFixed(0) + '%"></div></div>' +
+      '<div class="emo-count">' + sum.toFixed(1) + '</div>';
+    topEmotions.appendChild(row);
+  });
+}
+
+load();
+</script>
+</body>
+</html>

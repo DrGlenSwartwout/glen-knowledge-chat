@@ -68,11 +68,16 @@ HERE = Path(__file__).parent
 
 
 # ---------------------------------------------------------------------------
-# Page route
+# Page routes
 # ---------------------------------------------------------------------------
 @journal_bp.route("/journal", methods=["GET"])
 def journal_page():
     return send_from_directory(HERE, "journal.html")
+
+
+@journal_bp.route("/journal/trends", methods=["GET"])
+def journal_trends_page():
+    return send_from_directory(HERE, "journal_trends.html")
 
 
 # ---------------------------------------------------------------------------
