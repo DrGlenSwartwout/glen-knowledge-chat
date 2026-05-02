@@ -346,7 +346,20 @@ let _byId = {};
 function render(data) {
   document.getElementById("board").hidden = false;
   const meta = document.getElementById("meta");
-  meta.innerHTML = `from <a href="https://github.com/${data.source.repo}/blob/${data.source.branch}/${encodeURI(data.source.path)}" target="_blank">${data.source.path}</a>`;
+  if (data.source && data.source.uploaded_at) {
+    const when = new Date(data.source.uploaded_at);
+    const minsAgo = Math.round((Date.now() - when.getTime()) / 60000);
+    const stamp = minsAgo < 60
+      ? `${minsAgo} min ago`
+      : minsAgo < 1440
+        ? `${Math.round(minsAgo/60)} h ago`
+        : `${Math.round(minsAgo/1440)} d ago`;
+    meta.textContent = `cached ${stamp} (${data.source.bytes} bytes)`;
+  } else if (data.source && data.source.status) {
+    meta.textContent = data.source.status;
+  } else {
+    meta.textContent = "";
+  }
 
   const map = {
     in_process: { col: "col-active", count: "count-active" },

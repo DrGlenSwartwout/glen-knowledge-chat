@@ -4534,6 +4534,14 @@ def api_projects_kanban():
     except Exception as e: return fail(e)
 
 
+@app.route("/api/projects/upload", methods=["POST"])
+@require_console_key
+def api_projects_upload():
+    try: return ok(_projects.write_projects(request.get_data()))
+    except ValueError as e: return fail(e, status=400)
+    except Exception as e: return fail(e, status=500)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")

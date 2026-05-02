@@ -1,61 +1,50 @@
-"""Projects kanban — reads 00 System/PROJECTS.md from the AI-Training vault on
-GitHub raw and parses it into a JSON kanban board.
+"""Projects kanban — reads a server-side cached snapshot of
+00 System/PROJECTS.md, uploaded via /api/projects/upload by the writer Mac's
+hourly cron (mirrors the brain.py upload pattern).
 
-Pure functions; routes are wired in app.py (matches the convention used by
-brain.py / settings.py / inbox.py / etc.).
+Pure functions; routes are wired in app.py.
 
-Drop into ~/deploy-chat/dashboard/projects.py.
-
-Environment variables (set on Render):
-    GITHUB_TOKEN     — optional; only needed if AI-Training repo becomes private
-    PROJECTS_REPO    — optional override (default: DrGlenSwartwout/AI-Training)
-    PROJECTS_BRANCH  — optional override (default: main)
-    PROJECTS_PATH    — optional override (default: 00 System/PROJECTS.md)
+Environment variables:
+    PROJECTS_SNAPSHOT_PATH — server-side path for the cached PROJECTS.md
+                              (default: /tmp/projects.md)
 """
 
 import os
 import re
-import time
-
-import requests
-
-
-PROJECTS_REPO   = os.environ.get("PROJECTS_REPO",   "DrGlenSwartwout/AI-Training")
-PROJECTS_BRANCH = os.environ.get("PROJECTS_BRANCH", "main")
-PROJECTS_PATH   = os.environ.get("PROJECTS_PATH",   "00 System/PROJECTS.md")
-GITHUB_TOKEN    = os.environ.get("GITHUB_TOKEN", "")
-
-PROJECTS_URL = (
-    f"https://raw.githubusercontent.com/{PROJECTS_REPO}/{PROJECTS_BRANCH}/"
-    f"{requests.utils.quote(PROJECTS_PATH)}"
-)
-
-# Simple in-process TTL cache (5 min). Mirrors dashboard/cache.py pattern but
-# kept inline here to avoid adding a dependency on its API surface.
-_CACHE_TTL = 300
-_cache = {"value": None, "fetched_at": 0.0}
+from pathlib import Path
+from datetime import datetime, timezone
 
 
-def fetch_projects_md(force_refresh: bool = False) -> str:
-    """Fetch PROJECTS.md from GitHub raw, with 5-min TTL cache."""
-    now = time.time()
-    if (
-        not force_refresh
-        and _cache["value"] is not None
-        and (now - _cache["fetched_at"]) < _CACHE_TTL
-    ):
-        return _cache["value"]
-    headers = {}
-    if GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
-    r = requests.get(PROJECTS_URL, headers=headers, timeout=10)
-    r.raise_for_status()
-    _cache["value"] = r.text
-    _cache["fetched_at"] = now
-    return r.text
+SNAPSHOT = Path(os.environ.get("PROJECTS_SNAPSHOT_PATH", "/tmp/projects.md"))
 
 
-# ─── Parser ───────────────────────────────────────────────────────────────
+# ─── Read / write ──────────────────────────────────────────────────────────
+
+def write_projects(payload_bytes: bytes) -> dict:
+    """Persist uploaded PROJECTS.md. Validates UTF-8 + non-empty + has at least one section header."""
+    text = payload_bytes.decode("utf-8")
+    if not text.strip():
+        raise ValueError("empty payload")
+    if "## In Process" not in text and "## Ideas" not in text and "## Completed" not in text:
+        raise ValueError("payload doesn't look like PROJECTS.md (no recognized section headers)")
+    SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
+    SNAPSHOT.write_text(text)
+    return {
+        "saved": True,
+        "path": str(SNAPSHOT),
+        "bytes": len(text),
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def read_projects_md():
+    """Read the cached snapshot. Returns None if not yet uploaded."""
+    if not SNAPSHOT.exists():
+        return None
+    return SNAPSHOT.read_text()
+
+
+# ─── Parser ────────────────────────────────────────────────────────────────
 
 _SECTION_MAP = {
     "in process": "in_process",
@@ -69,8 +58,9 @@ _FIELD_RE = re.compile(r"^\s+-\s+\*([^*]+?)\*:\s*(.+)$")
 
 
 def parse_sections(md: str) -> dict:
-    """Parse PROJECTS.md → {sections: {in_process: [...], ideas: [...], completed: [...]}, counts: {...}, source: {...}}.
+    """Parse PROJECTS.md → kanban-shaped dict.
 
+    Returns {sections: {in_process, ideas, completed}, counts}.
     Each entry: {name, description, fields: {status, where, eta, blockers, sessions, ...}}
     """
     sections = {"in_process": [], "ideas": [], "completed": []}
@@ -87,8 +77,7 @@ def parse_sections(md: str) -> dict:
         h2 = _H2_RE.match(line)
         if h2:
             flush()
-            key = h2.group(1).strip().lower()
-            current_section = _SECTION_MAP.get(key)
+            current_section = _SECTION_MAP.get(h2.group(1).strip().lower())
             continue
         if current_section is None:
             continue
@@ -114,14 +103,30 @@ def parse_sections(md: str) -> dict:
     return {
         "sections": sections,
         "counts": {k: len(v) for k, v in sections.items()},
-        "source": {
-            "repo":   PROJECTS_REPO,
-            "branch": PROJECTS_BRANCH,
-            "path":   PROJECTS_PATH,
-        },
     }
 
 
 def kanban_payload() -> dict:
-    """Top-level entry point used by the /api/projects route."""
-    return parse_sections(fetch_projects_md())
+    """Top-level entry point used by the /api/projects route.
+
+    If no snapshot yet, returns an empty board with a friendly meta note so
+    the page renders cleanly until the first cron push lands.
+    """
+    md = read_projects_md()
+    if md is None:
+        return {
+            "sections": {"in_process": [], "ideas": [], "completed": []},
+            "counts": {"in_process": 0, "ideas": 0, "completed": 0},
+            "source": {"status": "no snapshot uploaded yet — run console-push to populate"},
+        }
+    payload = parse_sections(md)
+    try:
+        st = SNAPSHOT.stat()
+        payload["source"] = {
+            "path": str(SNAPSHOT),
+            "uploaded_at": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
+            "bytes": st.st_size,
+        }
+    except Exception:
+        payload["source"] = {"path": str(SNAPSHOT)}
+    return payload
