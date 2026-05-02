@@ -198,6 +198,59 @@
   .drift-text { color: var(--ink); }
   .drift-text .meta-strong { color: var(--ink); font-weight: 600; }
 
+  /* Meridian distribution rows */
+  .mer-row {
+    display: grid;
+    grid-template-columns: 145px 60px 1fr 60px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 5px;
+    font-size: 12px;
+  }
+  .mer-name { color: var(--ink); }
+  .mer-name .mer-window {
+    color: var(--dim);
+    font-size: 10px;
+    margin-left: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .mer-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #0f1115;
+    text-align: center;
+  }
+  .mer-pill.el-Wood  { background: var(--wood);  }
+  .mer-pill.el-Fire  { background: var(--fire);  color: var(--ink); }
+  .mer-pill.el-Earth { background: var(--earth); }
+  .mer-pill.el-Metal { background: var(--metal); }
+  .mer-pill.el-Water { background: var(--water); color: var(--ink); }
+  .mer-track {
+    height: 8px;
+    background: #232733;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .mer-fill {
+    height: 100%;
+    border-radius: 4px;
+  }
+  .mer-fill.el-Wood  { background: var(--wood);  }
+  .mer-fill.el-Fire  { background: var(--fire);  }
+  .mer-fill.el-Earth { background: var(--earth); }
+  .mer-fill.el-Metal { background: var(--metal); }
+  .mer-fill.el-Water { background: var(--water); }
+  .mer-count {
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
   /* Top emotions bars */
   .emo-row {
     display: grid;
@@ -292,6 +345,13 @@
   </div>
 
   <div class="panel">
+    <div class="panel-label">Meridian Distribution — when you record, by Chinese Organ Clock</div>
+    <div id="meridianDist"></div>
+    <div id="meridianEmpty" class="empty" style="display:none;">No entries yet.</div>
+    <div class="legend" id="meridianStats"></div>
+  </div>
+
+  <div class="panel">
     <div class="panel-label">Top Emotions — 30-day cumulative</div>
     <div id="topEmotions"></div>
     <div id="emotionsEmpty" class="empty" style="display:none;">No emotion data in the last 30 days yet.</div>
@@ -302,6 +362,27 @@
 
 <script>
 const HISTORY_URL = '/journal/history';
+
+// ─── Chinese Organ Clock (Horary Cycle) ──────────────────────────────────
+const ORGAN_WINDOWS = [
+  { idx: 0,  meridian: 'Gallbladder',     element: 'Wood',  start: '23:00', end: '01:00' },
+  { idx: 1,  meridian: 'Liver',           element: 'Wood',  start: '01:00', end: '03:00' },
+  { idx: 2,  meridian: 'Lung',            element: 'Metal', start: '03:00', end: '05:00' },
+  { idx: 3,  meridian: 'Large Intestine', element: 'Metal', start: '05:00', end: '07:00' },
+  { idx: 4,  meridian: 'Stomach',         element: 'Earth', start: '07:00', end: '09:00' },
+  { idx: 5,  meridian: 'Spleen',          element: 'Earth', start: '09:00', end: '11:00' },
+  { idx: 6,  meridian: 'Heart',           element: 'Fire',  start: '11:00', end: '13:00' },
+  { idx: 7,  meridian: 'Small Intestine', element: 'Fire',  start: '13:00', end: '15:00' },
+  { idx: 8,  meridian: 'Bladder',         element: 'Water', start: '15:00', end: '17:00' },
+  { idx: 9,  meridian: 'Kidney',          element: 'Water', start: '17:00', end: '19:00' },
+  { idx: 10, meridian: 'Pericardium',     element: 'Fire',  start: '19:00', end: '21:00' },
+  { idx: 11, meridian: 'Triple Burner',   element: 'Fire',  start: '21:00', end: '23:00' },
+];
+function chineseOrganClock(date) {
+  const h = date.getHours();
+  const idx = h === 23 ? 0 : Math.floor((h + 1) / 2);
+  return ORGAN_WINDOWS[idx];
+}
 
 const meta = document.getElementById('meta');
 const heatmap = document.getElementById('heatmap');
@@ -314,6 +395,9 @@ const driftList = document.getElementById('driftList');
 const driftEmpty = document.getElementById('driftEmpty');
 const topEmotions = document.getElementById('topEmotions');
 const emotionsEmpty = document.getElementById('emotionsEmpty');
+const meridianDist = document.getElementById('meridianDist');
+const meridianEmpty = document.getElementById('meridianEmpty');
+const meridianStats = document.getElementById('meridianStats');
 const tooltip = document.getElementById('tooltip');
 
 // Preserve the dashboard auth key (?key=...) when linking back to the recorder
@@ -349,6 +433,7 @@ function render(entries, count) {
   renderTreasureChart(entries);
   renderPolyvagalChart(entries);
   renderDrift(entries);
+  renderMeridianDistribution(entries);
   renderTopEmotions(entries);
 }
 
@@ -397,10 +482,16 @@ function renderHeatmap(entries) {
 
       const elementSummary = last.dominant_element || '—';
       const treasureSummary = last.dominant_treasure || '—';
+      const lastTime = new Date(last.recorded_at);
+      const lastWin = chineseOrganClock(lastTime);
+      const hh = String(lastTime.getHours()).padStart(2, '0');
+      const mm = String(lastTime.getMinutes()).padStart(2, '0');
       const tip = fmtDate(d) + ' · ' + dayEntries.length + ' entr' +
         (dayEntries.length === 1 ? 'y' : 'ies') +
         '\nElement: ' + elementSummary +
-        '\nTreasure: ' + treasureSummary;
+        '\nTreasure: ' + treasureSummary +
+        '\nRecorded: ' + hh + ':' + mm + ' · ' + lastWin.meridian +
+        ' (' + lastWin.element + ')';
       cell.title = tip;
     } else if (!inWindow) {
       cell.style.opacity = '0.3';
@@ -720,6 +811,59 @@ function renderDrift(entries) {
     item.innerHTML = '<div class="drift-icon">' + icon + '</div><div class="drift-text">' + a.text + '</div>';
     driftList.appendChild(item);
   });
+}
+
+// ─── Meridian distribution ────────────────────────────────────────────────
+function renderMeridianDistribution(entries) {
+  meridianDist.innerHTML = '';
+  meridianStats.innerHTML = '';
+  if (entries.length === 0) {
+    meridianEmpty.style.display = '';
+    return;
+  }
+  meridianEmpty.style.display = 'none';
+
+  // Count entries per meridian window
+  const counts = new Array(ORGAN_WINDOWS.length).fill(0);
+  let inPhase = 0, crossPhase = 0;
+  entries.forEach(e => {
+    const t = new Date(e.recorded_at);
+    const w = chineseOrganClock(t);
+    counts[w.idx] += 1;
+    if (e.dominant_element) {
+      if (e.dominant_element === w.element) inPhase += 1;
+      else crossPhase += 1;
+    }
+  });
+  const max = Math.max(...counts, 1);
+
+  ORGAN_WINDOWS.forEach((w, i) => {
+    const row = document.createElement('div');
+    row.className = 'mer-row';
+    const pct = (counts[i] / max) * 100;
+    row.innerHTML =
+      '<div class="mer-name">' + w.meridian +
+        '<span class="mer-window">' + w.start + '–' + w.end + '</span></div>' +
+      '<div><span class="mer-pill el-' + w.element + '">' + w.element + '</span></div>' +
+      '<div class="mer-track"><div class="mer-fill el-' + w.element +
+        '" style="width:' + pct.toFixed(0) + '%"></div></div>' +
+      '<div class="mer-count">' + counts[i] + '</div>';
+    meridianDist.appendChild(row);
+  });
+
+  // Stats footer: in-phase vs cross-phase
+  const total = inPhase + crossPhase;
+  if (total > 0) {
+    const inPct = Math.round((inPhase / total) * 100);
+    meridianStats.innerHTML =
+      '<div class="legend-item">' +
+        '<span class="meta-strong" style="color:var(--good)">' + inPhase + '</span> in-phase' +
+      '</div>' +
+      '<div class="legend-item">' +
+        '<span class="meta-strong" style="color:var(--warn)">' + crossPhase + '</span> cross-phase' +
+      '</div>' +
+      '<div class="legend-item">' + inPct + '% aligned with active meridian</div>';
+  }
 }
 
 // ─── Top emotions cumulative ──────────────────────────────────────────────

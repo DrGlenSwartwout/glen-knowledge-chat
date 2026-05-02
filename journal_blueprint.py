@@ -147,9 +147,10 @@ def analyze():
 
     top_emotions = _top_n_emotions(haiku.get("emotions") or {}, n=3)
 
+    recorded_at_iso = datetime.now(timezone.utc).isoformat()
     record = {
         "user_id": "glen",
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "recorded_at": recorded_at_iso,
         "duration_seconds": duration,
         "transcript": transcript,
         "emotion_scores": haiku.get("emotions"),
@@ -179,6 +180,7 @@ def analyze():
 
     response = {
         "transcript": transcript,
+        "recorded_at": recorded_at_iso,
         "duration_seconds": duration,
         "top_emotions": top_emotions,
         "element_scores": elements,

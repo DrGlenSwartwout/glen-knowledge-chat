@@ -239,6 +239,71 @@
     margin-top: 2px;
   }
 
+  /* Chinese Organ Clock panel */
+  .organ-clock {
+    display: grid;
+    grid-template-columns: 110px 1fr 110px;
+    gap: 14px;
+    align-items: center;
+  }
+  .organ-time {
+    font-size: 24px;
+    font-weight: 200;
+    letter-spacing: -0.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .organ-time .organ-tz {
+    font-size: 10px;
+    color: var(--dim);
+    margin-left: 4px;
+    letter-spacing: 1px;
+  }
+  .organ-meridian {
+    text-align: center;
+  }
+  .organ-meridian-name {
+    font-size: 18px;
+    font-weight: 400;
+    letter-spacing: -0.2px;
+    color: var(--ink);
+  }
+  .organ-meridian-meta {
+    color: var(--dim);
+    font-size: 11px;
+    margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .organ-element-pill {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #0f1115;
+    text-align: center;
+    justify-self: end;
+  }
+  .organ-element-pill.el-Wood  { background: var(--wood);  }
+  .organ-element-pill.el-Fire  { background: var(--fire);  color: var(--ink); }
+  .organ-element-pill.el-Earth { background: var(--earth); }
+  .organ-element-pill.el-Metal { background: var(--metal); }
+  .organ-element-pill.el-Water { background: var(--water); color: var(--ink); }
+  .organ-phase {
+    grid-column: 1 / -1;
+    margin-top: 6px;
+    padding-top: 12px;
+    border-top: 1px solid var(--hair);
+    font-size: 12px;
+    color: var(--dim);
+    line-height: 1.5;
+  }
+  .organ-phase.in-phase { color: var(--good); }
+  .organ-phase.cross-phase { color: var(--warn); }
+  .organ-phase strong { color: var(--ink); font-weight: 600; }
+
   /* Lexical + congruence footer line */
   .meta-line {
     display: flex;
@@ -260,7 +325,7 @@
 <body>
 <div class="app">
   <h1>Voice Journal</h1>
-  <div class="sub">Speak freely for 30 seconds to 5 minutes. Transcribed by Whisper, read by Haiku across the 48-emotion vector, Five Elements, Three Treasures, polyvagal state, and speech-pace.</div>
+  <div class="sub">Speak freely for 30 seconds to 5 minutes. Transcribed by Whisper, read by Haiku across the 48-emotion vector, Five Elements, Three Treasures, polyvagal state, speech-pace, and the Chinese Organ Clock.</div>
 
   <div class="recorder">
     <div class="timer" id="timer">0:00</div>
@@ -310,6 +375,11 @@
     </div>
 
     <div class="panel">
+      <div class="panel-label">Time of Day · Chinese Organ Clock</div>
+      <div class="organ-clock" id="organClock"></div>
+    </div>
+
+    <div class="panel">
       <div class="panel-label">Speech-Pace + Congruence</div>
       <div class="meta-line" id="metaLine"></div>
       <div class="congruence-note" id="congruenceNote" style="display:none;"></div>
@@ -319,6 +389,31 @@
 
 <script>
 const ANALYZE_URL = '/journal/analyze';
+
+// ─── Chinese Organ Clock (Horary Cycle) ──────────────────────────────────
+// 12 two-hour windows starting at 23:00. Pericardium + Triple Burner are
+// "Ministerial Fire," distinct from the "Sovereign Fire" of Heart/SI.
+const ORGAN_WINDOWS = [
+  { idx: 0,  meridian: 'Gallbladder',     element: 'Wood',  start: '23:00', end: '01:00' },
+  { idx: 1,  meridian: 'Liver',           element: 'Wood',  start: '01:00', end: '03:00' },
+  { idx: 2,  meridian: 'Lung',            element: 'Metal', start: '03:00', end: '05:00' },
+  { idx: 3,  meridian: 'Large Intestine', element: 'Metal', start: '05:00', end: '07:00' },
+  { idx: 4,  meridian: 'Stomach',         element: 'Earth', start: '07:00', end: '09:00' },
+  { idx: 5,  meridian: 'Spleen',          element: 'Earth', start: '09:00', end: '11:00' },
+  { idx: 6,  meridian: 'Heart',           element: 'Fire',  start: '11:00', end: '13:00' },
+  { idx: 7,  meridian: 'Small Intestine', element: 'Fire',  start: '13:00', end: '15:00' },
+  { idx: 8,  meridian: 'Bladder',         element: 'Water', start: '15:00', end: '17:00' },
+  { idx: 9,  meridian: 'Kidney',          element: 'Water', start: '17:00', end: '19:00' },
+  { idx: 10, meridian: 'Pericardium',     element: 'Fire',  start: '19:00', end: '21:00', note: 'Ministerial' },
+  { idx: 11, meridian: 'Triple Burner',   element: 'Fire',  start: '21:00', end: '23:00', note: 'Ministerial' },
+];
+
+function chineseOrganClock(date) {
+  const h = date.getHours();
+  // Map h → window index. Gallbladder window (23–01) covers h=23 and h=0.
+  const idx = h === 23 ? 0 : Math.floor((h + 1) / 2);
+  return ORGAN_WINDOWS[idx];
+}
 
 const ELEMENT_META = {
   Wood:  { cls: 'ef-wood',  organs: 'Liver / Gallbladder' },
@@ -357,6 +452,7 @@ const els = {
   elements:        document.getElementById('elements'),
   treasures:       document.getElementById('treasures'),
   polyvagal:       document.getElementById('polyvagal'),
+  organClock:      document.getElementById('organClock'),
   metaLine:        document.getElementById('metaLine'),
   congruenceNote:  document.getElementById('congruenceNote'),
 };
@@ -540,6 +636,33 @@ function renderResults(data) {
       fillCls: POLYVAGAL_META[name].cls,
     }))
   );
+
+  // Chinese Organ Clock — uses recorded_at if backend stamps it; else now
+  const recordedAt = data.recorded_at ? new Date(data.recorded_at) : new Date();
+  const win = chineseOrganClock(recordedAt);
+  const tzAbbr = recordedAt.toLocaleTimeString('en-US', { timeZoneName: 'short' }).split(' ').pop();
+  const hh = String(recordedAt.getHours()).padStart(2, '0');
+  const mm = String(recordedAt.getMinutes()).padStart(2, '0');
+
+  const isCrossPhase = data.dominant_element && win.element !== data.dominant_element;
+  const phaseClass = isCrossPhase ? 'cross-phase' : 'in-phase';
+  const phaseLabel = isCrossPhase
+    ? '<strong>Cross-phase:</strong> ' + data.dominant_element + '-dominant pattern in the ' +
+      win.meridian + ' (' + win.element + ') window — your internal state is following an axis other than the active meridian.'
+    : '<strong>In-phase:</strong> ' + (data.dominant_element || '—') +
+      '-dominant pattern aligned with the active ' + win.meridian + ' (' + win.element + ') window.';
+
+  els.organClock.innerHTML =
+    '<div class="organ-time">' + hh + ':' + mm + '<span class="organ-tz">' + tzAbbr + '</span></div>' +
+    '<div class="organ-meridian">' +
+      '<div class="organ-meridian-name">' + win.meridian + '</div>' +
+      '<div class="organ-meridian-meta">' + win.start + '–' + win.end +
+      (win.note ? ' · ' + win.note : '') + '</div>' +
+    '</div>' +
+    '<div class="organ-element-pill el-' + win.element + '">' + win.element + '</div>' +
+    (data.dominant_element
+      ? '<div class="organ-phase ' + phaseClass + '">' + phaseLabel + '</div>'
+      : '');
 
   // Lexical + congruence footer
   const lex = data.lexical_metrics || {};
