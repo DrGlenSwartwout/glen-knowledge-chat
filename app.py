@@ -4514,6 +4514,26 @@ def api_settings_set_active_mac():
     except Exception as e: return fail(e)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# /console/projects — kanban view of 00 System/PROJECTS.md from the vault
+# ─────────────────────────────────────────────────────────────────────────────
+from dashboard import projects as _projects
+
+
+@app.route("/console/projects")
+def console_projects_page():
+    resp = send_from_directory(STATIC, "console-projects.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/projects", methods=["GET"])
+@require_console_key
+def api_projects_kanban():
+    try: return ok(_projects.kanban_payload())
+    except Exception as e: return fail(e)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")

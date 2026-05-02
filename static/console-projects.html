@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projects — Glen Knowledge Chat</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #1a1d24;
+    --panel-2: #11141a;
+    --ink: #e8ecf1;
+    --dim: #8a93a3;
+    --hair: #232733;
+    --accent: #7ad7c5;
+    --good: #7ad79a;
+    --warn: #f0b66b;
+    --bad: #e07a7a;
+    --col-active: #6aa8e8;
+    --col-ideas: #8a93a3;
+    --col-done: #7ad79a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+  header {
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--hair);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  header .meta {
+    color: var(--dim);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  header .meta a {
+    color: var(--dim);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--dim);
+  }
+  header .meta a:hover { color: var(--ink); }
+  #status {
+    color: var(--warn);
+    font-size: 12px;
+    padding: 8px 24px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--hair);
+    display: none;
+  }
+  #status.show { display: block; }
+  main {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    gap: 16px;
+    padding: 16px 24px 32px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  .col {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 16px 18px;
+    min-height: 200px;
+    border-top: 3px solid var(--col-ideas);
+  }
+  .col-active { border-top-color: var(--col-active); }
+  .col-ideas { border-top-color: var(--col-ideas); }
+  .col-done { border-top-color: var(--col-done); }
+  .col h2 {
+    margin: 0 0 12px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--dim);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .col h2 .count {
+    background: var(--panel-2);
+    padding: 2px 8px;
+    border-radius: 8px;
+    color: var(--ink);
+    font-size: 11px;
+    letter-spacing: 0;
+    text-transform: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .card {
+    background: var(--panel-2);
+    border: 1px solid var(--hair);
+    border-radius: 10px;
+    padding: 12px 14px 12px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: border-color 0.12s, transform 0.12s;
+  }
+  .card:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+  .card-name {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 4px;
+    color: var(--ink);
+  }
+  .card-desc {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--dim);
+    margin-bottom: 8px;
+  }
+  .card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    font-size: 10.5px;
+  }
+  .chip {
+    color: var(--dim);
+    background: var(--bg);
+    padding: 2px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--hair);
+    font-variant-numeric: tabular-nums;
+  }
+  .chip-eta { color: var(--accent); }
+  .chip-blocked { color: var(--bad); border-color: var(--bad); }
+  .chip-status { color: var(--ink); }
+  .empty {
+    color: var(--dim);
+    font-size: 12px;
+    padding: 8px 0;
+    font-style: italic;
+  }
+  /* Modal */
+  #modal-bg {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 24px;
+  }
+  #modal-bg.show { display: flex; }
+  #modal {
+    background: var(--panel);
+    border-radius: 14px;
+    border: 1px solid var(--hair);
+    max-width: 760px;
+    width: 100%;
+    max-height: 80vh;
+    overflow: auto;
+    padding: 24px 28px;
+  }
+  #modal h3 {
+    margin: 0 0 12px;
+    font-size: 18px;
+  }
+  #modal .modal-desc {
+    color: var(--dim);
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+  #modal .modal-fields {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 8px 14px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  #modal .modal-fields .label {
+    color: var(--dim);
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding-top: 3px;
+  }
+  #modal .modal-fields .value {
+    color: var(--ink);
+    word-break: break-word;
+  }
+  #modal-close {
+    float: right;
+    background: var(--panel-2);
+    color: var(--ink);
+    border: 1px solid var(--hair);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  #modal-close:hover { border-color: var(--accent); }
+  .key-prompt {
+    padding: 32px;
+    max-width: 480px;
+    margin: 60px auto;
+    background: var(--panel);
+    border-radius: 12px;
+    text-align: center;
+  }
+  .key-prompt input {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--hair);
+    color: var(--ink);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    margin: 12px 0;
+  }
+  .key-prompt button {
+    background: var(--accent);
+    color: #0f1115;
+    border: 0;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Projects</h1>
+  <div class="meta" id="meta">loading…</div>
+</header>
+<div id="status"></div>
+
+<div id="key-prompt-host"></div>
+
+<main id="board" hidden>
+  <section class="col col-active">
+    <h2>In Process <span class="count" id="count-active">0</span></h2>
+    <div id="col-active"></div>
+  </section>
+  <section class="col col-ideas">
+    <h2>Ideas <span class="count" id="count-ideas">0</span></h2>
+    <div id="col-ideas"></div>
+  </section>
+  <section class="col col-done">
+    <h2>Completed <span class="count" id="count-done">0</span></h2>
+    <div id="col-done"></div>
+  </section>
+</main>
+
+<div id="modal-bg" onclick="if(event.target===this) closeModal()">
+  <div id="modal">
+    <button id="modal-close" onclick="closeModal()">close</button>
+    <h3 id="modal-name"></h3>
+    <div class="modal-desc" id="modal-desc"></div>
+    <div class="modal-fields" id="modal-fields"></div>
+  </div>
+</div>
+
+<script>
+const KEY_STORAGE = "console_key";
+
+function consoleKey() {
+  return localStorage.getItem(KEY_STORAGE)
+    || new URLSearchParams(window.location.search).get("key")
+    || "";
+}
+
+function setKey(k) {
+  if (k) localStorage.setItem(KEY_STORAGE, k);
+}
+
+function showKeyPrompt() {
+  const host = document.getElementById("key-prompt-host");
+  host.innerHTML = `
+    <div class="key-prompt">
+      <h3 style="margin:0 0 8px">Console key required</h3>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 8px;">
+        Paste your CONSOLE_SECRET to view projects. Stored in this browser only.
+      </p>
+      <input id="key-input" type="password" placeholder="CONSOLE_SECRET" autofocus>
+      <button onclick="submitKey()">Continue</button>
+    </div>`;
+}
+
+function submitKey() {
+  const v = document.getElementById("key-input").value.trim();
+  if (!v) return;
+  setKey(v);
+  document.getElementById("key-prompt-host").innerHTML = "";
+  load();
+}
+
+async function load() {
+  const key = consoleKey();
+  if (!key) { showKeyPrompt(); return; }
+
+  setStatus("");
+  try {
+    const r = await fetch("/api/projects", { headers: { "X-Console-Key": key } });
+    if (r.status === 401) {
+      localStorage.removeItem(KEY_STORAGE);
+      showKeyPrompt();
+      return;
+    }
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const payload = await r.json();
+    if (!payload.ok) throw new Error(payload.error || "fetch failed");
+    render(payload.data);
+  } catch (e) {
+    setStatus("Error loading projects: " + e.message);
+  }
+}
+
+function setStatus(msg) {
+  const el = document.getElementById("status");
+  el.textContent = msg;
+  el.classList.toggle("show", !!msg);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+  ));
+}
+
+let _byId = {};
+
+function render(data) {
+  document.getElementById("board").hidden = false;
+  const meta = document.getElementById("meta");
+  meta.innerHTML = `from <a href="https://github.com/${data.source.repo}/blob/${data.source.branch}/${encodeURI(data.source.path)}" target="_blank">${data.source.path}</a>`;
+
+  const map = {
+    in_process: { col: "col-active", count: "count-active" },
+    ideas:      { col: "col-ideas",  count: "count-ideas" },
+    completed:  { col: "col-done",   count: "count-done" },
+  };
+
+  _byId = {};
+  for (const [key, target] of Object.entries(map)) {
+    const list = data.sections[key] || [];
+    document.getElementById(target.count).textContent = list.length;
+    const host = document.getElementById(target.col);
+    host.innerHTML = "";
+    if (list.length === 0) {
+      host.innerHTML = '<div class="empty">— none —</div>';
+      continue;
+    }
+    list.forEach((entry, i) => {
+      const id = key + "-" + i;
+      _byId[id] = entry;
+      host.appendChild(card(entry, id));
+    });
+  }
+}
+
+function card(entry, id) {
+  const el = document.createElement("div");
+  el.className = "card";
+  el.onclick = () => openModal(id);
+
+  const eta = entry.fields["eta / next milestone"] || entry.fields["eta"] || "";
+  const blockers = entry.fields["blockers"] || "";
+  const status = entry.fields["status"] || "";
+
+  const chips = [];
+  if (eta) chips.push(`<span class="chip chip-eta">ETA: ${escapeHtml(eta)}</span>`);
+  if (blockers && blockers.toLowerCase() !== "none")
+    chips.push(`<span class="chip chip-blocked">blocked</span>`);
+  if (status) chips.push(`<span class="chip chip-status">${escapeHtml(truncate(status, 40))}</span>`);
+
+  el.innerHTML = `
+    <div class="card-name">${escapeHtml(entry.name)}</div>
+    <div class="card-desc">${escapeHtml(truncate(entry.description, 140))}</div>
+    <div class="card-meta">${chips.join("")}</div>`;
+  return el;
+}
+
+function truncate(s, n) {
+  if (!s) return "";
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+function openModal(id) {
+  const e = _byId[id];
+  if (!e) return;
+  document.getElementById("modal-name").textContent = e.name;
+  document.getElementById("modal-desc").textContent = e.description || "";
+  const fields = document.getElementById("modal-fields");
+  fields.innerHTML = "";
+  for (const [k, v] of Object.entries(e.fields)) {
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = k;
+    const value = document.createElement("div");
+    value.className = "value";
+    value.innerHTML = linkify(escapeHtml(v));
+    fields.appendChild(label);
+    fields.appendChild(value);
+  }
+  document.getElementById("modal-bg").classList.add("show");
+}
+
+function closeModal() {
+  document.getElementById("modal-bg").classList.remove("show");
+}
+
+function linkify(s) {
+  return s.replace(
+    /(https?:\/\/[^\s)]+)/g,
+    '<a href="$1" target="_blank" style="color:var(--accent);">$1</a>'
+  );
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeModal();
+});
+
+load();
+setInterval(load, 5 * 60 * 1000); // refresh every 5 min (matches API cache)
+</script>
+</body>
+</html>
