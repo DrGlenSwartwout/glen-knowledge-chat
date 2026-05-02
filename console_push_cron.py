@@ -831,7 +831,37 @@ def main():
     push_calendar_events(days=14)
     process_delete_queue()
 
+    # Projects kanban (00 System/PROJECTS.md → /api/projects/upload)
+    push_projects_md()
+
     print(f'\nDone.\n')
+
+
+def push_projects_md():
+    """Upload the latest 00 System/PROJECTS.md to the console for /console/projects."""
+    vault_root = Path(os.environ.get('VAULT_ROOT', str(Path.home() / 'AI-Training')))
+    md_path = vault_root / '00 System' / 'PROJECTS.md'
+    if not md_path.exists():
+        print(f'[projects] skipped — {md_path} not found')
+        return
+    try:
+        body = md_path.read_bytes()
+        r = requests.post(
+            f'{RENDER_BASE}/api/projects/upload',
+            data=body,
+            headers={
+                'X-Console-Key': CONSOLE_SECRET,
+                'Content-Type': 'text/markdown',
+            },
+            timeout=15,
+        )
+        if r.ok:
+            payload = r.json().get('data', {})
+            print(f'[projects] uploaded {payload.get("bytes", "?")} bytes to {payload.get("path", "?")}')
+        else:
+            print(f'[projects] upload failed: {r.status_code} {r.text[:200]}')
+    except Exception as e:
+        print(f'[projects] upload error: {e}')
 
 if __name__ == '__main__':
     main()
