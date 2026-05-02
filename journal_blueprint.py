@@ -64,6 +64,12 @@ ANTHROPIC_MESSAGES    = "https://api.anthropic.com/v1/messages"
 HAIKU_MODEL           = "claude-haiku-4-5-20251001"
 EMBEDDING_MODEL       = "text-embedding-ada-002"
 
+# D7 — Remedy match config
+PINECONE_INDEX_NAME   = "remedy-match-llc"
+REMEDY_NAMESPACES     = ["e4l-protocols", "specific-formulations"]
+REMEDY_TOP_K_PER_NS   = 4
+REMEDY_FINAL_TOP_K    = 5
+
 HERE = Path(__file__).parent
 
 
@@ -92,6 +98,8 @@ def analyze():
     duration = float(request.form.get("duration_seconds", 0) or 0)
     retain_audio = request.form.get("retain_audio", "false").lower() == "true"
     is_test = request.form.get("test", "false").lower() == "true"
+    parent_entry_id = request.form.get("parent_entry_id") or None
+    entry_type = request.form.get("entry_type") or ("affirmation_reading" if parent_entry_id else "journal")
 
     suffix = Path(audio_file.filename or "").suffix or ".webm"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tf:
@@ -169,20 +177,26 @@ def analyze():
         "top_themes": haiku.get("top_themes"),
         "transcript_embedding": embedding,
         "mapper_check": mapper_check,
-        "metadata": _build_metadata(words, is_test),
+        "metadata": _build_metadata(words, is_test, parent_entry_id, entry_type),
     }
 
     save_error = None
+    saved_id = None
     try:
-        _supabase_insert(record)
+        saved = _supabase_insert(record)
+        if isinstance(saved, list) and saved:
+            saved_id = saved[0].get("id")
     except Exception as e:
         log.exception("Supabase insert failed")
         save_error = str(e)
 
     response = {
+        "id": saved_id,
         "transcript": transcript,
         "recorded_at": recorded_at_iso,
         "duration_seconds": duration,
+        "entry_type": entry_type,
+        "parent_entry_id": parent_entry_id,
         "top_emotions": top_emotions,
         "element_scores": elements,
         "dominant_element": dominant_element,
@@ -204,12 +218,16 @@ def analyze():
     return jsonify(response)
 
 
-def _build_metadata(words, is_test):
+def _build_metadata(words, is_test, parent_entry_id=None, entry_type=None):
     md = {}
     if words:
         md["word_timestamps"] = words
     if is_test:
         md["test"] = True
+    if parent_entry_id:
+        md["parent_entry_id"] = parent_entry_id
+    if entry_type and entry_type != "journal":
+        md["entry_type"] = entry_type
     return md or None
 
 
@@ -252,6 +270,190 @@ def history():
         "test_count": len(test_rows),
         "include_test": include_test,
     })
+
+
+# ---------------------------------------------------------------------------
+# D7 — POST /journal/match (Pinecone remedy match)
+# ---------------------------------------------------------------------------
+@journal_bp.route("/journal/match", methods=["POST"])
+def match_remedies():
+    """Given an entry's transcript + state, returns top remedy matches from
+    Pinecone (e4l-protocols + specific-formulations namespaces, dedup'd, ranked)."""
+    data = request.get_json(silent=True) or {}
+    transcript = (data.get("transcript") or "").strip()
+    dom_element = data.get("dominant_element")
+    dom_treasure = data.get("dominant_treasure")
+
+    if not transcript:
+        return jsonify({"error": "missing transcript"}), 400
+
+    # Build query — embed transcript + state context for richer match
+    parts = [transcript]
+    if dom_element:
+        parts.append(f"Current TCM state: {dom_element}-dominant element pattern.")
+    if dom_treasure:
+        parts.append(f"{dom_treasure}-prominent treasure (San Bao depth axis).")
+    query_text = "\n".join(parts)
+
+    try:
+        query_vec = _embed_ada002(query_text)
+    except Exception as e:
+        log.exception("Match embed failed")
+        return jsonify({"error": f"embedding failed: {e}"}), 502
+
+    try:
+        idx = _pinecone_index()
+    except Exception as e:
+        log.exception("Pinecone init failed")
+        return jsonify({"error": f"pinecone init failed: {e}"}), 502
+
+    raw_matches = []
+    for ns in REMEDY_NAMESPACES:
+        try:
+            res = idx.query(
+                vector=query_vec,
+                top_k=REMEDY_TOP_K_PER_NS,
+                namespace=ns,
+                include_metadata=True,
+            )
+            for m in (res.matches or []):
+                raw_matches.append({
+                    "id": m.id,
+                    "namespace": ns,
+                    "score": float(m.score),
+                    "metadata": dict(m.metadata or {}),
+                })
+        except Exception as e:
+            log.exception(f"Pinecone query failed in {ns}")
+
+    # Dedup by id (preserving best score) and take top N
+    raw_matches.sort(key=lambda m: m["score"], reverse=True)
+    seen, unique = set(), []
+    for m in raw_matches:
+        if m["id"] in seen:
+            continue
+        seen.add(m["id"])
+        unique.append(m)
+        if len(unique) >= REMEDY_FINAL_TOP_K:
+            break
+
+    return jsonify({
+        "matches": unique,
+        "query_state": {"dominant_element": dom_element, "dominant_treasure": dom_treasure},
+        "namespaces_searched": REMEDY_NAMESPACES,
+    })
+
+
+def _pinecone_index():
+    from pinecone import Pinecone
+    api_key = os.environ.get("PINECONE_API_KEY")
+    if not api_key:
+        raise RuntimeError("PINECONE_API_KEY not set")
+    pc = Pinecone(api_key=api_key)
+    return pc.Index(PINECONE_INDEX_NAME)
+
+
+# ---------------------------------------------------------------------------
+# D7 — POST /journal/affirmations (Haiku-generated, per remedy)
+# ---------------------------------------------------------------------------
+@journal_bp.route("/journal/affirmations", methods=["POST"])
+def generate_affirmations_endpoint():
+    """For a list of remedy matches, generates 3 first-person affirmations per
+    remedy using Haiku. Best-effort — failures per-remedy degrade gracefully."""
+    data = request.get_json(silent=True) or {}
+    remedies = data.get("remedies") or []
+    transcript = data.get("transcript") or ""
+    dom_element = data.get("dominant_element")
+    dom_treasure = data.get("dominant_treasure")
+
+    if not remedies or not isinstance(remedies, list):
+        return jsonify({"error": "missing remedies[]"}), 400
+
+    out = []
+    for r in remedies:
+        try:
+            affirmations = _haiku_affirmations(r, transcript, dom_element, dom_treasure)
+        except Exception as e:
+            log.exception(f"Affirmation generation failed for {r.get('id')}")
+            affirmations = []
+        out.append({
+            "remedy_id": r.get("id"),
+            "namespace": r.get("namespace"),
+            "affirmations": affirmations,
+        })
+
+    return jsonify({"affirmations_per_remedy": out})
+
+
+AFFIRMATION_SYSTEM_PROMPT = """You are generating personalized therapeutic affirmations to be read aloud by a user, immediately after a voice-journal session has revealed their current Traditional Chinese Medicine state.
+
+Each affirmation must:
+- Be first person, present tense ("I am...", "I feel...", "My...")
+- Be 8-20 words
+- Be embodied, sensory, specific (NOT abstract or generic wellness slogans)
+- Bridge the user's current TCM state to the remedy's clinical purpose
+- Read aloud naturally — vocal cadence and breath rhythm matter
+- Land in the user's body, not their head
+
+Generate 3 affirmations per remedy. Each affirmation should target a different angle of the remedy's purpose.
+
+OUTPUT STRICT JSON, NO PROSE: {"affirmations": ["...", "...", "..."]}"""
+
+
+def _haiku_affirmations(remedy, transcript, dom_element, dom_treasure):
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY not set")
+
+    md = remedy.get("metadata") or {}
+    remedy_label = md.get("name") or md.get("title") or md.get("formulation_name") or remedy.get("id")
+    purpose_keys = ["purpose", "description", "clinical_purpose", "summary", "text", "indication"]
+    remedy_purpose = ""
+    for k in purpose_keys:
+        if md.get(k):
+            remedy_purpose = str(md[k])[:600]
+            break
+
+    user_message = (
+        f"Remedy: {remedy_label}\n"
+        f"Remedy purpose / clinical text:\n{remedy_purpose or '(no purpose text in metadata)'}\n\n"
+        f"User's current state:\n"
+        f"  Dominant element:  {dom_element or '—'}\n"
+        f"  Dominant treasure: {dom_treasure or '—'}\n\n"
+        f"User's recent transcript: \"{(transcript or '').strip()[:600]}\"\n\n"
+        f"Generate 3 first-person affirmations the user will read aloud. JSON only."
+    )
+
+    payload = {
+        "model": HAIKU_MODEL,
+        "max_tokens": 512,
+        "system": [
+            {"type": "text", "text": AFFIRMATION_SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
+        ],
+        "messages": [
+            {"role": "user", "content": user_message}
+        ],
+    }
+
+    resp = requests.post(
+        ANTHROPIC_MESSAGES,
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json=payload,
+        timeout=30,
+    )
+    if not resp.ok:
+        raise RuntimeError(f"Haiku affirmations {resp.status_code}: {resp.text[:300]}")
+
+    body = resp.json()
+    text = "".join(b.get("text", "") for b in body.get("content", []) if b.get("type") == "text").strip()
+    parsed = _extract_json(text)
+    if not parsed or not isinstance(parsed.get("affirmations"), list):
+        raise RuntimeError(f"Haiku returned non-JSON or missing affirmations: {text[:300]}")
+    return [str(a).strip() for a in parsed["affirmations"] if str(a).strip()]
 
 
 # ---------------------------------------------------------------------------

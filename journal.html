@@ -374,6 +374,162 @@
     text-decoration: underline;
   }
 
+  /* D7 — Remedy matches + affirmations + read-aloud + Δ */
+  .remedy-card {
+    background: var(--panel-2);
+    border: 1px solid var(--hair);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .remedy-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+  .remedy-name {
+    color: var(--ink);
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .remedy-meta {
+    color: var(--dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
+  }
+  .remedy-purpose {
+    color: var(--dim);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+  .remedy-affirmations {
+    list-style: none;
+    margin: 0;
+    padding: 10px 0 4px;
+    border-top: 1px solid var(--hair);
+  }
+  .remedy-affirmations li {
+    padding: 6px 0 6px 18px;
+    position: relative;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink);
+  }
+  .remedy-affirmations li::before {
+    content: "·";
+    position: absolute;
+    left: 4px;
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 18px;
+    line-height: 1;
+    top: 8px;
+  }
+  .remedy-loading {
+    color: var(--dim);
+    font-size: 12px;
+    font-style: italic;
+    padding: 6px 0;
+  }
+  .readaloud-launch {
+    margin-top: 14px;
+    padding: 12px;
+    background: linear-gradient(135deg, rgba(122, 215, 197, 0.10), rgba(176, 107, 216, 0.08));
+    border: 1px solid rgba(122, 215, 197, 0.35);
+    border-radius: 8px;
+    text-align: center;
+  }
+  .readaloud-launch button {
+    flex: none;
+    width: auto;
+    padding: 12px 20px;
+  }
+  .readaloud-recorder {
+    background: var(--panel-2);
+    border: 1px dashed var(--accent);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .readaloud-recorder.hidden { display: none; }
+  .readaloud-recorder .timer {
+    font-size: 32px;
+    font-weight: 200;
+    margin-bottom: 8px;
+  }
+  .readaloud-recorder .level {
+    height: 5px;
+    background: var(--hair);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 0 auto 14px;
+    max-width: 80%;
+  }
+  .readaloud-recorder .controls { display: flex; gap: 10px; }
+
+  /* Δ panel — pre/post side-by-side */
+  .delta-row {
+    display: grid;
+    grid-template-columns: 76px 1fr 1fr 60px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .delta-row .delta-name { color: var(--ink); }
+  .delta-row .delta-pre, .delta-row .delta-post {
+    height: 8px;
+    background: #232733;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+  .delta-row .delta-pre .fill, .delta-row .delta-post .fill {
+    height: 100%;
+    border-radius: 4px;
+  }
+  .delta-row .delta-arrow {
+    color: var(--dim);
+    font-size: 10px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .delta-row .delta-arrow.up { color: var(--good); }
+  .delta-row .delta-arrow.down { color: var(--bad); }
+  .delta-section-label {
+    color: var(--dim);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin: 12px 0 6px;
+  }
+  .delta-section-label:first-child { margin-top: 0; }
+  .delta-headers {
+    display: grid;
+    grid-template-columns: 76px 1fr 1fr 60px;
+    gap: 10px;
+    color: var(--dim);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .delta-summary {
+    margin-top: 14px;
+    padding: 10px 14px;
+    background: rgba(122, 215, 197, 0.08);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--ink);
+  }
+
   /* Lexical + congruence footer line */
   .meta-line {
     display: flex;
@@ -457,6 +613,33 @@
       <div class="panel-label">Speech-Pace + Congruence</div>
       <div class="meta-line" id="metaLine"></div>
       <div class="congruence-note" id="congruenceNote" style="display:none;"></div>
+    </div>
+
+    <div class="panel" id="remediesPanel" style="display:none;">
+      <div class="panel-label">Recommended Remedies + Affirmations</div>
+      <div id="remedyLoading" class="remedy-loading">Matching remedies from Glen's protocols...</div>
+      <div id="remedyList"></div>
+      <div class="readaloud-launch" id="readaloudLaunch" style="display:none;">
+        <button id="readaloudBtn">Record Yourself Reading These Affirmations</button>
+        <div class="status" style="margin-top:8px;">Pre/post analysis will compare your state before and after.</div>
+      </div>
+    </div>
+
+    <div class="readaloud-recorder hidden" id="readaloudRecorder">
+      <div class="panel-label">Read-Aloud Session</div>
+      <div class="timer" id="raTimer">0:00</div>
+      <div class="status" id="raStatus">Tap Start when you're ready, then read the affirmations above slowly and out loud.</div>
+      <div class="level"><div class="level-fill" id="raLvl"></div></div>
+      <div class="controls">
+        <button id="raStartBtn">Start Reading</button>
+        <button id="raStopBtn" class="secondary" disabled>Stop &amp; Measure Δ</button>
+      </div>
+    </div>
+
+    <div class="panel" id="deltaPanel" style="display:none;">
+      <div class="panel-label">Effect Δ — Pre vs Post Read-Aloud</div>
+      <div id="deltaContent"></div>
+      <div class="delta-summary" id="deltaSummary"></div>
     </div>
   </div>
 </div>
@@ -691,6 +874,30 @@ const els = {
   metaLine:        document.getElementById('metaLine'),
   congruenceNote:  document.getElementById('congruenceNote'),
 };
+
+// D7 — element refs for remedy/affirmation/Δ panels
+const d7Els = {
+  panel:     document.getElementById('remediesPanel'),
+  loading:   document.getElementById('remedyLoading'),
+  list:      document.getElementById('remedyList'),
+  launch:    document.getElementById('readaloudLaunch'),
+  launchBtn: document.getElementById('readaloudBtn'),
+  recorder:  document.getElementById('readaloudRecorder'),
+  raTimer:   document.getElementById('raTimer'),
+  raStatus:  document.getElementById('raStatus'),
+  raLvl:     document.getElementById('raLvl'),
+  raStart:   document.getElementById('raStartBtn'),
+  raStop:    document.getElementById('raStopBtn'),
+  deltaPanel:   document.getElementById('deltaPanel'),
+  deltaContent: document.getElementById('deltaContent'),
+  deltaSummary: document.getElementById('deltaSummary'),
+};
+
+// Holds the original (pre) entry data so we can compute Δ after read-aloud
+let preEntry = null;
+let raMediaRecorder = null, raChunks = [], raStream = null;
+let raAudioCtx = null, raAnalyser = null, raLevelRaf = null, raLevelBuf = null;
+let raStartedAt = 0, raTimerInterval = null;
 
 let mediaRecorder, audioChunks = [], stream;
 let audioCtx, analyser, levelRaf, levelBuf;
@@ -949,10 +1156,296 @@ function renderResults(data) {
   }
 
   els.results.classList.add('show');
+
+  // D7 — fire the closed loop (remedy match → affirmations → read-aloud → Δ)
+  // Skip when this IS already an affirmation_reading entry.
+  if (data.entry_type !== 'affirmation_reading' && data.id) {
+    loadRemediesAndAffirmations(data);
+  }
 }
 
 els.recBtn.addEventListener('click', record);
 els.stopBtn.addEventListener('click', stop);
+
+// ─── D7 — closed-loop functions ──────────────────────────────────────────
+
+async function loadRemediesAndAffirmations(entry) {
+  // Skip the closed-loop UI for affirmation_reading entries (they're the post)
+  if (entry && entry.entry_type === 'affirmation_reading') return;
+
+  preEntry = entry;
+  d7Els.panel.style.display = '';
+  d7Els.loading.style.display = '';
+  d7Els.list.innerHTML = '';
+  d7Els.launch.style.display = 'none';
+  d7Els.deltaPanel.style.display = 'none';
+
+  let matches = [];
+  try {
+    const matchResp = await fetch('/journal/match' + window.location.search, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcript: entry.transcript,
+        dominant_element: entry.dominant_element,
+        dominant_treasure: entry.dominant_treasure,
+      }),
+    });
+    if (!matchResp.ok) throw new Error('match ' + matchResp.status);
+    const matchData = await matchResp.json();
+    matches = (matchData.matches || []).slice(0, 3);   // top 3 to keep UI tight
+  } catch (e) {
+    d7Els.loading.textContent = 'Could not match remedies: ' + e.message;
+    return;
+  }
+
+  if (matches.length === 0) {
+    d7Els.loading.textContent = 'No remedy matches returned. (Pinecone index may be empty for this query.)';
+    return;
+  }
+  d7Els.loading.style.display = 'none';
+
+  // Render placeholder cards while affirmations load in parallel
+  const cardEls = matches.map((r, i) => {
+    const md = r.metadata || {};
+    const name = md.name || md.title || md.formulation_name || r.id;
+    const purposeKey = ['purpose','description','clinical_purpose','summary','text','indication']
+      .find(k => md[k]);
+    const purpose = purposeKey ? String(md[purposeKey]).trim().slice(0, 280) : '';
+    const card = document.createElement('div');
+    card.className = 'remedy-card';
+    card.innerHTML =
+      '<div class="remedy-head">' +
+        '<div class="remedy-name">' + name + '</div>' +
+        '<div class="remedy-meta">' + r.namespace + ' · ' + (r.score * 100).toFixed(0) + '%</div>' +
+      '</div>' +
+      (purpose ? '<div class="remedy-purpose">' + purpose + (purpose.length >= 280 ? '…' : '') + '</div>' : '') +
+      '<div class="remedy-loading remedy-aff-loading">Generating affirmations...</div>' +
+      '<ul class="remedy-affirmations" style="display:none;"></ul>';
+    d7Els.list.appendChild(card);
+    return card;
+  });
+
+  // Fetch affirmations as a single batch call
+  let affirmationsResp;
+  try {
+    const r = await fetch('/journal/affirmations' + window.location.search, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        remedies: matches,
+        transcript: entry.transcript,
+        dominant_element: entry.dominant_element,
+        dominant_treasure: entry.dominant_treasure,
+      }),
+    });
+    if (!r.ok) throw new Error('affirmations ' + r.status);
+    affirmationsResp = await r.json();
+  } catch (e) {
+    cardEls.forEach(card => {
+      card.querySelector('.remedy-aff-loading').textContent = 'Could not generate affirmations: ' + e.message;
+    });
+    return;
+  }
+
+  // Wire affirmations into the cards
+  const byId = {};
+  (affirmationsResp.affirmations_per_remedy || []).forEach(a => { byId[a.remedy_id] = a.affirmations || []; });
+
+  cardEls.forEach((card, i) => {
+    const r = matches[i];
+    const affs = byId[r.id] || [];
+    const ul = card.querySelector('.remedy-affirmations');
+    const loading = card.querySelector('.remedy-aff-loading');
+    loading.style.display = 'none';
+    ul.style.display = '';
+    if (affs.length === 0) {
+      ul.innerHTML = '<li style="color:var(--dim); font-style:italic;">(no affirmations generated)</li>';
+    } else {
+      ul.innerHTML = affs.map(a => '<li>' + a + '</li>').join('');
+    }
+  });
+
+  d7Els.launch.style.display = '';
+}
+
+function showReadaloudRecorder() {
+  d7Els.recorder.classList.remove('hidden');
+  d7Els.launch.style.display = 'none';
+  d7Els.recorder.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function raStart() {
+  try {
+    raStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+  } catch (e) {
+    d7Els.raStatus.textContent = 'Mic blocked: ' + e.message;
+    return;
+  }
+  raChunks = [];
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+  raMediaRecorder = mime ? new MediaRecorder(raStream, { mimeType: mime }) : new MediaRecorder(raStream);
+  raMediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) raChunks.push(e.data); };
+  raMediaRecorder.onstop = raOnStopped;
+  raMediaRecorder.start();
+
+  // Level meter
+  raAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  raAnalyser = raAudioCtx.createAnalyser();
+  raAnalyser.fftSize = 1024;
+  raLevelBuf = new Float32Array(raAnalyser.fftSize);
+  const node = raAudioCtx.createMediaStreamSource(raStream);
+  node.connect(raAnalyser);
+  function step() {
+    raAnalyser.getFloatTimeDomainData(raLevelBuf);
+    let rms = 0;
+    for (let i = 0; i < raLevelBuf.length; i++) rms += raLevelBuf[i] * raLevelBuf[i];
+    rms = Math.sqrt(rms / raLevelBuf.length);
+    d7Els.raLvl.style.width = Math.min(100, rms * 400) + '%';
+    raLevelRaf = requestAnimationFrame(step);
+  }
+  step();
+
+  raStartedAt = Date.now();
+  d7Els.raStart.disabled = true;
+  d7Els.raStop.disabled = false;
+  d7Els.raTimer.textContent = '0:00';
+  d7Els.raStatus.textContent = 'Reading… speak slowly and deliberately.';
+  raTimerInterval = setInterval(() => {
+    const sec = (Date.now() - raStartedAt) / 1000;
+    d7Els.raTimer.textContent = fmtTime(sec);
+    if (sec >= 300) raStop();
+  }, 200);
+}
+
+function raStop() {
+  if (raMediaRecorder && raMediaRecorder.state !== 'inactive') raMediaRecorder.stop();
+  if (raStream) raStream.getTracks().forEach(t => t.stop());
+  if (raLevelRaf) cancelAnimationFrame(raLevelRaf);
+  if (raAudioCtx) raAudioCtx.close();
+  d7Els.raLvl.style.width = '0%';
+  clearInterval(raTimerInterval);
+  d7Els.raStart.disabled = false;
+  d7Els.raStop.disabled = true;
+  d7Els.raStatus.textContent = 'Analyzing read-aloud session...';
+}
+
+async function raOnStopped() {
+  const blob = new Blob(raChunks, { type: raMediaRecorder.mimeType || 'audio/webm' });
+  const duration = (Date.now() - raStartedAt) / 1000;
+  const form = new FormData();
+  form.append('audio', blob, 'readaloud.webm');
+  form.append('duration_seconds', duration.toFixed(1));
+  form.append('parent_entry_id', preEntry.id || '');
+  form.append('entry_type', 'affirmation_reading');
+  if (IS_TEST_MODE) form.append('test', 'true');
+
+  try {
+    const resp = await fetch(ANALYZE_URL + window.location.search, { method: 'POST', body: form });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      d7Els.raStatus.textContent = 'Analysis failed: ' + resp.status + ' — ' + errText.slice(0, 200);
+      return;
+    }
+    const post = await resp.json();
+    renderDelta(preEntry, post);
+    d7Els.raStatus.textContent = 'Done — Δ measured against your pre-reading state.';
+  } catch (e) {
+    d7Els.raStatus.textContent = 'Network error: ' + e.message;
+  }
+}
+
+function renderDelta(pre, post) {
+  d7Els.deltaPanel.style.display = '';
+  d7Els.deltaContent.innerHTML = '';
+
+  function deltaSection(label, items) {
+    const sectionLabel = document.createElement('div');
+    sectionLabel.className = 'delta-section-label';
+    sectionLabel.textContent = label;
+    d7Els.deltaContent.appendChild(sectionLabel);
+
+    const headers = document.createElement('div');
+    headers.className = 'delta-headers';
+    headers.innerHTML = '<div></div><div>Pre</div><div>Post</div><div>Δ</div>';
+    d7Els.deltaContent.appendChild(headers);
+
+    items.forEach(({ name, preVal, postVal, fillCls }) => {
+      const dPre = preVal || 0;
+      const dPost = postVal || 0;
+      const delta = dPost - dPre;
+      const arrowCls = delta > 0.1 ? 'up' : (delta < -0.1 ? 'down' : '');
+      const sign = delta > 0 ? '+' : '';
+      const row = document.createElement('div');
+      row.className = 'delta-row';
+      row.innerHTML =
+        '<div class="delta-name">' + name + '</div>' +
+        '<div class="delta-pre"><div class="fill ' + fillCls + '" style="width:' + dPre.toFixed(0) + '%; opacity:0.6;"></div></div>' +
+        '<div class="delta-post"><div class="fill ' + fillCls + '" style="width:' + dPost.toFixed(0) + '%;"></div></div>' +
+        '<div class="delta-arrow ' + arrowCls + '">' + sign + delta.toFixed(0) + '</div>';
+      d7Els.deltaContent.appendChild(row);
+    });
+  }
+
+  deltaSection('Five Elements', ['Wood','Fire','Earth','Metal','Water'].map(n => ({
+    name: n,
+    preVal: (pre.element_scores || {})[n],
+    postVal: (post.element_scores || {})[n],
+    fillCls: 'ef-' + n.toLowerCase(),
+  })));
+
+  const treasureClsMap = { Jing: 'tf-jing', Qi: 'tf-qi', Shen: 'tf-shen' };
+  deltaSection('Three Treasures', ['Jing','Qi','Shen'].map(n => ({
+    name: n,
+    preVal: (pre.treasure_scores || {})[n],
+    postVal: (post.treasure_scores || {})[n],
+    fillCls: treasureClsMap[n],
+  })));
+
+  const polyCls = { ventral_vagal: 'pv-ventral', sympathetic: 'pv-sympathetic', dorsal_vagal: 'pv-dorsal' };
+  const polyLbl = { ventral_vagal: 'Ventral', sympathetic: 'Sympathetic', dorsal_vagal: 'Dorsal' };
+  deltaSection('Polyvagal', ['ventral_vagal','sympathetic','dorsal_vagal'].map(n => ({
+    name: polyLbl[n],
+    preVal: (pre.polyvagal_state || {})[n],
+    postVal: (post.polyvagal_state || {})[n],
+    fillCls: polyCls[n],
+  })));
+
+  // Plain-language summary of biggest shift
+  const allShifts = [];
+  ['Wood','Fire','Earth','Metal','Water'].forEach(n => {
+    const d = ((post.element_scores||{})[n] || 0) - ((pre.element_scores||{})[n] || 0);
+    allShifts.push({ axis: 'Five-Element', name: n, delta: d });
+  });
+  ['Jing','Qi','Shen'].forEach(n => {
+    const d = ((post.treasure_scores||{})[n] || 0) - ((pre.treasure_scores||{})[n] || 0);
+    allShifts.push({ axis: 'Three-Treasure', name: n, delta: d });
+  });
+  ['ventral_vagal','sympathetic','dorsal_vagal'].forEach(n => {
+    const d = ((post.polyvagal_state||{})[n] || 0) - ((pre.polyvagal_state||{})[n] || 0);
+    allShifts.push({ axis: 'Polyvagal', name: polyLbl[n], delta: d });
+  });
+  const big = allShifts.filter(s => Math.abs(s.delta) >= 5).sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta));
+  if (big.length === 0) {
+    d7Els.deltaSummary.textContent = 'No measurable shift greater than ±5 points across any axis. The state was held steady through the read-aloud.';
+  } else {
+    const top = big.slice(0, 3).map(s => {
+      const dir = s.delta > 0 ? 'up' : 'down';
+      return s.axis + ' · <strong>' + s.name + '</strong> ' + dir + ' ' + Math.abs(s.delta).toFixed(0) + ' pts';
+    }).join(' &middot; ');
+    d7Els.deltaSummary.innerHTML = 'Biggest shifts after reading: ' + top + '.';
+  }
+
+  d7Els.deltaPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+d7Els.launchBtn.addEventListener('click', showReadaloudRecorder);
+d7Els.raStart.addEventListener('click', raStart);
+d7Els.raStop.addEventListener('click', raStop);
 </script>
 </body>
 </html>
