@@ -2362,9 +2362,10 @@ def _log_inbound_lead(source, email, first_name, last_name, phone, raw, ghl_resu
 # ── GHL sync endpoint (for local-machine sync when Cloudflare blocks Render→GHL) ──
 @app.route("/leads/pending-ghl", methods=["GET"])
 def leads_pending_ghl():
-    secret = request.headers.get("X-Webhook-Secret", "")
     ws = os.environ.get("WEBHOOK_SECRET", "")
-    if ws and secret != ws:
+    cs = os.environ.get("CONSOLE_SECRET", "")
+    given = request.headers.get("X-Webhook-Secret", "") or request.headers.get("X-Console-Key", "")
+    if not ((ws and given == ws) or (cs and given == cs)):
         return jsonify({"error": "unauthorized"}), 401
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
@@ -2379,9 +2380,10 @@ def leads_pending_ghl():
 
 @app.route("/leads/mark-ghl-synced", methods=["POST"])
 def leads_mark_ghl_synced():
-    secret = request.headers.get("X-Webhook-Secret", "")
     ws = os.environ.get("WEBHOOK_SECRET", "")
-    if ws and secret != ws:
+    cs = os.environ.get("CONSOLE_SECRET", "")
+    given = request.headers.get("X-Webhook-Secret", "") or request.headers.get("X-Console-Key", "")
+    if not ((ws and given == ws) or (cs and given == cs)):
         return jsonify({"error": "unauthorized"}), 401
     data = request.get_json(force=True) or {}
     lead_id = data.get("id")
