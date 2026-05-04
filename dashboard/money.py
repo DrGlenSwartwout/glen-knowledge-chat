@@ -18,8 +18,28 @@ QB_CLIENT_SECRET = os.environ.get("QUICKBOOKS_PROD_CLIENT_SECRET", "")
 QB_REALM_ID      = os.environ.get("QUICKBOOKS_PROD_REALM_ID", "")
 QB_REFRESH_TOKEN = os.environ.get("QUICKBOOKS_PROD_REFRESH_TOKEN", "")
 
-QB_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
-QB_BASE_URL  = f"https://quickbooks.api.intuit.com/v3/company/{QB_REALM_ID}"
+QB_TOKEN_URL    = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
+QB_BASE_URL     = f"https://quickbooks.api.intuit.com/v3/company/{QB_REALM_ID}"
+QB_RT_CACHE     = os.environ.get("QB_RT_CACHE_PATH", "/data/qb_refresh_token")
+
+
+def _qb_rt_read():
+    try:
+        with open(QB_RT_CACHE) as f:
+            return f.read().strip() or None
+    except (FileNotFoundError, OSError):
+        return None
+
+
+def _qb_rt_write(token):
+    if not token:
+        return
+    try:
+        os.makedirs(os.path.dirname(QB_RT_CACHE), exist_ok=True)
+        with open(QB_RT_CACHE, "w") as f:
+            f.write(token)
+    except OSError as e:
+        print(f"[qb] could not persist refresh token to {QB_RT_CACHE}: {e}")
 
 
 # ── PB ────────────────────────────────────────────────────────────────────────
@@ -122,18 +142,43 @@ def wise_data(days=30):
 
 # ── QuickBooks ────────────────────────────────────────────────────────────────
 def qb_refresh():
-    """Refresh and persist QB token (Render env var update needed manually if expired)."""
+    """Refresh QB access token. Tries persisted (rotated) RT first, falls back
+    to env-var RT. Persists the new RT Intuit returns on every call — Intuit
+    rotates refresh tokens on every use, so without persistence the env-var
+    value goes invalid after the first refresh."""
     import base64
     auth = base64.b64encode(f"{QB_CLIENT_ID}:{QB_CLIENT_SECRET}".encode()).decode()
-    r = requests.post(QB_TOKEN_URL,
-                      headers={"Authorization": f"Basic {auth}",
-                               "Accept": "application/json",
-                               "Content-Type": "application/x-www-form-urlencoded"},
-                      data={"grant_type": "refresh_token",
-                            "refresh_token": QB_REFRESH_TOKEN},
-                      timeout=15)
-    r.raise_for_status()
-    return r.json()["access_token"]
+
+    candidates = []
+    cached = _qb_rt_read()
+    if cached:
+        candidates.append(("cache", cached))
+    if QB_REFRESH_TOKEN and QB_REFRESH_TOKEN != cached:
+        candidates.append(("env", QB_REFRESH_TOKEN))
+
+    last_err = None
+    for source, rt in candidates:
+        try:
+            r = requests.post(QB_TOKEN_URL,
+                              headers={"Authorization": f"Basic {auth}",
+                                       "Accept": "application/json",
+                                       "Content-Type": "application/x-www-form-urlencoded"},
+                              data={"grant_type": "refresh_token",
+                                    "refresh_token": rt},
+                              timeout=15)
+            r.raise_for_status()
+            payload = r.json()
+            new_rt = payload.get("refresh_token")
+            if new_rt:
+                _qb_rt_write(new_rt)
+            return payload["access_token"]
+        except requests.HTTPError as e:
+            last_err = e
+            print(f"[qb] refresh from {source} failed: {e}")
+            continue
+    if last_err:
+        raise last_err
+    raise RuntimeError("No QB refresh token available (cache empty + env var unset)")
 
 
 def qb_get(access_token, path, params=None):
