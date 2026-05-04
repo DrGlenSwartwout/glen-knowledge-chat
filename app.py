@@ -4416,6 +4416,22 @@ def api_shipping_delete_bottle(bid):
     except Exception as e: return fail(e)
 
 
+@app.route("/api/shipping/bottles/<int:bid>", methods=["PATCH"])
+@require_console_key
+def api_shipping_update_bottle(bid):
+    try:
+        body = request.get_json(silent=True) or {}
+        name = (body.get("name") or "").strip()
+        if not name:
+            return fail("name is required", status=400)
+        notes = (body.get("notes") or "").strip() or None
+        _shipping.update_bottle_type(bid, name, notes=notes)
+        return ok({"id": bid})
+    except sqlite3.IntegrityError:
+        return fail("bottle name already exists", status=409)
+    except Exception as e: return fail(e)
+
+
 @app.route("/api/shipping/matrix", methods=["GET"])
 @require_console_key
 def api_shipping_matrix():

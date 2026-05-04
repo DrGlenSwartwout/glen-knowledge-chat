@@ -220,12 +220,52 @@ async function loadBottles() {
   tbody.innerHTML = "";
   for (const b of bottles) {
     const tr = document.createElement("tr");
+    tr.id = `bottle-row-${b.id}`;
+    tr.dataset.name = b.name;
+    tr.dataset.notes = b.notes || "";
     tr.innerHTML = `
-      <td><strong>${b.name}</strong></td>
-      <td style="color:var(--muted)">${b.notes || ""}</td>
-      <td style="text-align:right"><button class="danger" onclick="deleteBottle(${b.id}, '${b.name.replace(/'/g, "\\'")}')">Delete</button></td>`;
+      <td><strong>${escapeHtml(b.name)}</strong></td>
+      <td style="color:var(--muted)">${escapeHtml(b.notes || "")}</td>
+      <td style="text-align:right; white-space:nowrap">
+        <button onclick="editBottle(${b.id})">Edit</button>
+        <button class="danger" onclick="deleteBottle(${b.id}, '${b.name.replace(/'/g, "\\'")}')">Delete</button>
+      </td>`;
     tbody.appendChild(tr);
   }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+function editBottle(id) {
+  const tr = document.getElementById(`bottle-row-${id}`);
+  if (!tr) return;
+  const name = tr.dataset.name;
+  const notes = tr.dataset.notes;
+  tr.innerHTML = `
+    <td><input type="text" id="edit-name-${id}" value="${escapeHtml(name)}" required></td>
+    <td><input type="text" id="edit-notes-${id}" value="${escapeHtml(notes)}" placeholder="optional notes"></td>
+    <td style="text-align:right; white-space:nowrap">
+      <button onclick="saveBottle(${id})">Save</button>
+      <button onclick="loadBottles()">Cancel</button>
+    </td>`;
+  document.getElementById(`edit-name-${id}`).focus();
+}
+
+async function saveBottle(id) {
+  const name = document.getElementById(`edit-name-${id}`).value.trim();
+  const notes = document.getElementById(`edit-notes-${id}`).value.trim();
+  if (!name) { toast("Name is required", "error"); return; }
+  try {
+    await api(`/api/shipping/bottles/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name, notes }),
+    });
+    toast("Bottle updated");
+    await loadBottles();
+    await loadMatrix();
+  } catch (e) { toast(e.message, "error"); }
 }
 
 async function addBottle(ev) {

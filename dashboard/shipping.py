@@ -274,6 +274,20 @@ def delete_bottle_type(bottle_type_id: int, db_path: Optional[str] = None) -> No
         cx.commit()
 
 
+def update_bottle_type(
+    bottle_type_id: int,
+    name: str,
+    notes: Optional[str] = None,
+    db_path: Optional[str] = None,
+) -> None:
+    with _connect(db_path) as cx:
+        cx.execute(
+            "UPDATE bottle_types SET name = ?, notes = ? WHERE id = ?",
+            (name, notes, bottle_type_id),
+        )
+        cx.commit()
+
+
 # ── CRUD: box_capacity ────────────────────────────────────────────────────────
 
 def set_box_capacity(

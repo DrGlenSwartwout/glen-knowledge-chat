@@ -146,6 +146,13 @@
   .priority-dot.low    { background: var(--low); }
   .todo-body { flex: 1; min-width: 0; }
   .todo-title { font-weight: 600; line-height: 1.4; word-break: break-word; }
+  .todo-body-details { margin-top: 4px; }
+  .todo-body-details > summary { cursor: pointer; font-size: 11px; color: var(--muted); padding: 2px 0; user-select: none; list-style: none; display: inline-flex; align-items: center; gap: 4px; }
+  .todo-body-details > summary::-webkit-details-marker { display: none; }
+  .todo-body-details > summary::before { content: "▸"; font-size: 9px; transition: transform .15s; display: inline-block; }
+  .todo-body-details[open] > summary::before { transform: rotate(90deg); }
+  .todo-body-details > summary:hover { color: var(--text); }
+  body[data-owner="rae"] .todo-body-details > summary { font-size: 14px; }
   .todo-detail { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.5; word-break: break-word; }
   .ai-summary { font-size: 12px; margin-top: 6px; color: #a8c4ff; line-height: 1.5; }
   .action-note { font-size: 12px; margin-top: 5px; padding: 4px 8px; border-radius: 5px; background: #2a1e0a; border-left: 3px solid #f7a54f; color: #f7c54f; line-height: 1.5; }
@@ -918,7 +925,7 @@ function todoCard(t) {
     <div class="priority-dot ${t.priority||'normal'}"></div>
     <div class="todo-body">
       <div class="todo-title">${escHtml(t.title)}</div>
-      ${t.body ? `<div class="todo-detail">${escHtml(t.body)}</div>` : ''}
+      ${t.body ? `<details class="todo-body-details"><summary>Body</summary><div class="todo-detail">${escHtml(t.body)}</div></details>` : ''}
       ${aiSummary}
       ${actionBadge}
       ${suggestedReply}
