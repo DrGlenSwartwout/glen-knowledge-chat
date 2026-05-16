@@ -109,3 +109,22 @@ services:
           type: web
           name: glen-knowledge-chat
           envVarKey: CRON_SECRET
+
+  # Daily Intelligence-briefings regenerator — refreshes the 5 Intelligence
+  # cards (daily-briefing, eyes-on-every-street, founders-radar, revenue-x-ray,
+  # pattern-which-connects). Same cross-container pattern: cron curls the web
+  # service, which gathers live stats + calls Claude inside the web container
+  # where ANTHROPIC_API_KEY and the persistent disk live.
+  - type: cron
+    name: glen-briefings-daily
+    runtime: python
+    schedule: "30 17 * * *"    # 7:30 AM HST daily (HST is UTC-10)
+    buildCommand: "true"       # stdlib-only, no deps to install
+    startCommand: python scripts/run_briefings_cron.py
+    envVars:
+      - key: WEB_URL
+        value: https://glen-knowledge-chat.onrender.com
+      - fromService:
+          type: web
+          name: glen-knowledge-chat
+          envVarKey: CRON_SECRET

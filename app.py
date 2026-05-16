@@ -4155,6 +4155,22 @@ def cron_usps_rate_check():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/cron/regenerate-briefings", methods=["POST"])
+def cron_regenerate_briefings():
+    """Daily Intelligence-card regenerator. Gathers live system stats and
+    asks Claude to compose all 5 briefings, then writes them to disk so the
+    dashboard's Intelligence row serves fresh markdown."""
+    key = request.headers.get("X-Cron-Secret", "")
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        from dashboard.briefing_runner import regenerate_all
+        return jsonify({"ok": True, "summary": regenerate_all()})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 # ── One-time Gmail token upload (helper for first-time setup on Render) ───────
 # Local token at ~/.config/google/token.json gets POSTed here once and
 # persisted to /data/google-token.json on the web service's disk.
