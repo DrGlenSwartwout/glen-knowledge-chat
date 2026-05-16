@@ -825,7 +825,7 @@ function refreshAll(){
 
 cards.forEach(card => {
   card.addEventListener("click", () => fetchCard(card));
-  setInterval(() => fetchCard(card), 60000);
+  setInterval(() => { if(consoleKey) fetchCard(card); }, 60000);
 });
 
 document.getElementById("refreshAll").addEventListener("click", refreshAll);
