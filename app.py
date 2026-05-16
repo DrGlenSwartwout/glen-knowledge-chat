@@ -4568,6 +4568,26 @@ def api_projects_upload():
     except Exception as e: return fail(e, status=500)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Cache pre-warm — runs per gunicorn worker boot.
+# QB banks has a 5-min in-memory cache; on a cold dyno the first request must
+# succeed or the dashboard card 500s. Warm it in the background so the user
+# never sees a cold-cache failure.
+# ─────────────────────────────────────────────────────────────────────────────
+def _prewarm_caches():
+    def _warm():
+        import time as _t
+        _t.sleep(3)  # let worker finish booting before hitting upstream APIs
+        try:
+            _money.qb_banks()
+            print("[prewarm] money.qb_banks ✓")
+        except Exception as e:
+            print(f"[prewarm] money.qb_banks failed: {e}")
+    threading.Thread(target=_warm, daemon=True, name="prewarm-money").start()
+
+_prewarm_caches()
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
