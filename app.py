@@ -4557,6 +4557,44 @@ def api_settings_set_active_mac():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# /api/admin/chat-log-export — incremental query_log dump for local mirror.
+# Render's free-tier disk is ephemeral; chat_log.db is wiped on every restart.
+# A local mirror at ~/AI-Training/chat_log_mirror.db (populated hourly via
+# 02 Skills/pull-chat-log.py) preserves durable history. Read-only, paginated.
+# ─────────────────────────────────────────────────────────────────────────────
+@app.route("/api/admin/chat-log-export", methods=["GET"])
+@require_console_key
+def api_admin_chat_log_export():
+    try:
+        since = int(request.args.get("since", "0"))
+    except ValueError:
+        return fail("since must be an integer rowid", status=400)
+    try:
+        limit = min(int(request.args.get("limit", "5000")), 10000)
+    except ValueError:
+        return fail("limit must be an integer", status=400)
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            rows = cx.execute(
+                "SELECT id, ts, query, level, answer, rating, rated_at, "
+                "session_id, email, ghl_contact_id, mode, full_answer, "
+                "name, user_agent, referer, image_count, email_sent_at "
+                "FROM query_log WHERE id > ? ORDER BY id ASC LIMIT ?",
+                (since, limit),
+            ).fetchall()
+        out = [dict(r) for r in rows]
+        return ok({
+            "rows": out,
+            "count": len(out),
+            "last_id": out[-1]["id"] if out else since,
+            "has_more": len(out) == limit,
+        })
+    except Exception as e:
+        return fail(e)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # /console/projects — kanban view of 00 System/PROJECTS.md from the vault
 # ─────────────────────────────────────────────────────────────────────────────
 from dashboard import projects as _projects
