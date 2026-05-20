@@ -2743,6 +2743,30 @@ def _init_workspace_schema():
             )
         """)
         cx.execute("CREATE INDEX IF NOT EXISTS idx_todo_steps_todo ON todo_steps(todo_id, sequence)")
+        # Per-user access tokens (Phase 2): supersede the shared CONSOLE_SECRET for
+        # offshore / per-user access (Shaira). Admin (CONSOLE_SECRET) keeps full access.
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS workspace_users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                name          TEXT NOT NULL UNIQUE,
+                display_name  TEXT DEFAULT '',
+                scope         TEXT NOT NULL,
+                created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS access_tokens (
+                token         TEXT PRIMARY KEY,
+                user_id       INTEGER NOT NULL,
+                created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+                last_used_at  TEXT,
+                revoked_at    TEXT,
+                note          TEXT DEFAULT '',
+                FOREIGN KEY (user_id) REFERENCES workspace_users(id)
+            )
+        """)
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_access_tokens_user ON access_tokens(user_id)")
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_access_tokens_active ON access_tokens(token, revoked_at)")
         cx.commit()
 
 _init_workspace_schema()
@@ -3060,7 +3084,16 @@ def console_page():
 
 @app.route("/api/todos", methods=["GET"])
 def get_todos():
-    owner  = request.args.get("owner", "glen").lower()
+    # Auth: when CONSOLE_SECRET is set, require auth. Scoped tokens get their
+    # owner param force-rewritten (you can't enumerate someone else's data).
+    requested_owner = request.args.get("owner", "glen").lower()
+    if CONSOLE_SECRET:
+        ok, ctx, code = _auth()
+        if not ok:
+            return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
+        owner = _scoped_owner(ctx, requested_owner)
+    else:
+        owner = requested_owner
     status = request.args.get("status", "open")
     with sqlite3.connect(LOG_DB) as cx:
         rows = cx.execute("""
@@ -3919,12 +3952,17 @@ def _ask_justus_stream(query: str, system: str, history: list, on_complete=None,
 @app.route("/api/console-ask", methods=["POST"])
 def console_ask():
     if CONSOLE_SECRET:
-        key = request.headers.get("X-Console-Key","") or request.args.get("key","")
-        if key != CONSOLE_SECRET:
-            return jsonify({"error":"Unauthorized"}), 401
+        ok, ctx, code = _auth()
+        if not ok:
+            return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
+    else:
+        ctx = {"scope": "admin"}
     data    = request.get_json(force=True) or {}
     query   = (data.get("query") or "").strip()
-    owner   = (data.get("owner") or "glen").lower()
+    requested_owner = (data.get("owner") or "glen").lower()
+    # Scoped tokens are forced to their own owner identity — prevents Shaira from
+    # asking Justus "as Glen" and bypassing the per-user context boundary.
+    owner   = _scoped_owner(ctx, requested_owner)
     context = (data.get("context") or "")
     history = data.get("history") or []
     if not query:
@@ -4027,10 +4065,94 @@ _SHAIRA_DIRECTIVES = (
 
 
 def _ws_auth_ok():
+    """Legacy admin-only check. Kept for endpoints that must remain admin-only
+    (cron, backup, token issuance). New workspace endpoints use _auth()."""
     if not CONSOLE_SECRET:
         return True
     key = request.headers.get("X-Console-Key","") or request.args.get("key","")
     return key == CONSOLE_SECRET
+
+
+# ── Per-user access tokens (Phase 2) ──────────────────────────────────────────
+# Tokens supersede CONSOLE_SECRET for offshore/per-user access. Admin key
+# (CONSOLE_SECRET) continues to have full access for the existing /console flow.
+
+def _auth(required_scope=None):
+    """Authenticate + (optionally) check scope.
+
+    Returns (ok: bool, ctx: dict | None, code: int).
+      - ctx is None when unauthenticated, otherwise has:
+          scope:     'admin' | 'workspace:<owner>'
+          user_name: e.g. 'shaira' | None (None for admin)
+          user_id:   row id in workspace_users | None for admin
+      - code is the HTTP status to return on failure (401 unauth / 403 forbidden).
+
+    If required_scope is set, the caller's scope must equal it OR be 'admin'.
+    """
+    key = (request.headers.get("X-Console-Key","")
+           or request.args.get("key","")).strip()
+    if not key:
+        return False, None, 401
+
+    # Admin = CONSOLE_SECRET
+    if CONSOLE_SECRET and key == CONSOLE_SECRET:
+        ctx = {"scope": "admin", "user_name": None, "user_id": None}
+        if required_scope is None or required_scope == "admin" or required_scope.startswith("workspace:"):
+            return True, ctx, 200
+        return False, ctx, 403
+
+    # Per-user access token
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute(
+                "SELECT u.id, u.name, u.scope "
+                "FROM access_tokens t JOIN workspace_users u ON u.id = t.user_id "
+                "WHERE t.token = ? AND t.revoked_at IS NULL",
+                (key,)
+            ).fetchone()
+    except Exception:
+        return False, None, 401
+    if not row:
+        return False, None, 401
+    user_id, user_name, scope = row
+    ctx = {"scope": scope, "user_name": user_name, "user_id": user_id}
+
+    # Best-effort last_used_at touch (don't hold the request open if it fails)
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute("UPDATE access_tokens SET last_used_at=datetime('now') WHERE token=?", (key,))
+            cx.commit()
+    except Exception:
+        pass
+
+    if required_scope is None or scope == required_scope or scope == "admin":
+        return True, ctx, 200
+    return False, ctx, 403
+
+
+def _owner_from_scope(scope: str):
+    """'workspace:shaira' -> 'shaira'. Admin -> None."""
+    if not scope or not scope.startswith("workspace:"):
+        return None
+    return scope.split(":", 1)[1]
+
+
+def _can_access_owner(ctx, owner: str) -> bool:
+    """True if ctx (from _auth) is admin or its scope matches `owner`."""
+    if not ctx:
+        return False
+    if ctx.get("scope") == "admin":
+        return True
+    return _owner_from_scope(ctx.get("scope", "")) == owner
+
+
+def _scoped_owner(ctx, requested_owner: str) -> str:
+    """For endpoints where the caller passes an owner (e.g. /api/todos?owner=X):
+    admin gets whatever they asked for; scoped users are silently forced to
+    their own owner (matches the 'enumerated by token' principle)."""
+    if not ctx or ctx.get("scope") == "admin":
+        return (requested_owner or "glen").lower()
+    return _owner_from_scope(ctx["scope"]) or (requested_owner or "").lower()
 
 
 def _todo_owner(cx, todo_id: int):
@@ -4067,6 +4189,11 @@ def _close_open_session(cx, owner: str):
 
 @app.route("/workspace/<owner>")
 def workspace_page(owner):
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
+    if not _can_access_owner(ctx, owner):
+        return jsonify({"error":"Forbidden"}), 403
     if owner != "shaira":
         return jsonify({"error": "Workspace not available for this owner yet."}), 404
     resp = send_from_directory(STATIC, "shaira-workspace.html")
@@ -4076,12 +4203,15 @@ def workspace_page(owner):
 
 @app.route("/api/todos/<int:todo_id>/focus", methods=["POST"])
 def todo_focus(todo_id):
-    if not _ws_auth_ok():
-        return jsonify({"error":"Unauthorized"}), 401
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
+        if not _can_access_owner(ctx, owner):
+            return jsonify({"error":"Forbidden"}), 403
         _close_open_session(cx, owner)
         cx.execute(
             "INSERT INTO todo_time_sessions (todo_id, owner) VALUES (?, ?)",
@@ -4107,12 +4237,15 @@ def todo_focus(todo_id):
 
 @app.route("/api/todos/<int:todo_id>/unfocus", methods=["POST"])
 def todo_unfocus(todo_id):
-    if not _ws_auth_ok():
-        return jsonify({"error":"Unauthorized"}), 401
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
+        if not _can_access_owner(ctx, owner):
+            return jsonify({"error":"Forbidden"}), 403
         _close_open_session(cx, owner)
         cx.execute(
             "UPDATE owner_state SET focused_todo_id=NULL, updated_at=datetime('now') "
@@ -4128,13 +4261,16 @@ def todo_complete_workspace(todo_id):
     """Workspace-style complete: closes the time session, flips phase='complete',
     logs the outcome to the thread. Named -workspace to avoid colliding with the
     existing PATCH-based /api/todos/<id> action='done' used by /console."""
-    if not _ws_auth_ok():
-        return jsonify({"error":"Unauthorized"}), 401
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
     outcome = (request.get_json(force=True) or {}).get("outcome","").strip()
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
+        if not _can_access_owner(ctx, owner):
+            return jsonify({"error":"Forbidden"}), 403
         _close_open_session(cx, owner)
         cx.execute(
             "UPDATE todos SET phase='complete', status='done', done_at=? WHERE id=?",
@@ -4161,8 +4297,9 @@ def todo_complete_workspace(todo_id):
 @app.route("/api/todos/<int:todo_id>/mark-blocked", methods=["POST"])
 def todo_mark_blocked(todo_id):
     """Soft-blocked: logs a system message + sets a justus_to_glen row to surface in Glen's console."""
-    if not _ws_auth_ok():
-        return jsonify({"error":"Unauthorized"}), 401
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
     reason = (request.get_json(force=True) or {}).get("reason","").strip()
     if not reason:
         return jsonify({"error":"Reason required"}), 400
@@ -4170,6 +4307,8 @@ def todo_mark_blocked(todo_id):
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
+        if not _can_access_owner(ctx, owner):
+            return jsonify({"error":"Forbidden"}), 403
         cx.execute(
             "INSERT INTO todo_messages (todo_id, role, content) VALUES (?, ?, ?)",
             (todo_id, "system", f"Blocked by {owner}: {reason}")
@@ -4184,9 +4323,15 @@ def todo_mark_blocked(todo_id):
 
 @app.route("/api/todos/<int:todo_id>/messages", methods=["GET"])
 def todo_messages_get(todo_id):
-    if not _ws_auth_ok():
-        return jsonify({"error":"Unauthorized"}), 401
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
     with sqlite3.connect(LOG_DB) as cx:
+        owner = _todo_owner(cx, todo_id)
+        if not owner:
+            return jsonify({"error":"Not found"}), 404
+        if not _can_access_owner(ctx, owner):
+            return jsonify({"error":"Forbidden"}), 403
         rows = cx.execute(
             "SELECT id, role, content, created_at FROM todo_messages "
             "WHERE todo_id=? ORDER BY id ASC", (todo_id,)
@@ -4253,8 +4398,9 @@ def _persist_justus_reply(todo_id: int, full_text: str):
 
 @app.route("/api/todos/<int:todo_id>/messages", methods=["POST"])
 def todo_messages_post(todo_id):
-    if not _ws_auth_ok():
-        return jsonify({"error":"Unauthorized"}), 401
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
     data = request.get_json(force=True) or {}
     role = (data.get("role") or "").lower().strip()
     content = (data.get("content") or "").strip()
@@ -4263,10 +4409,16 @@ def todo_messages_post(todo_id):
     if not content:
         return jsonify({"error":"Empty content"}), 400
 
+    # Role-spoofing guard: scoped users may only post as themselves.
+    if ctx.get("scope") != "admin" and role != ctx.get("user_name"):
+        return jsonify({"error":"Forbidden — cannot post as another user"}), 403
+
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
+        if not _can_access_owner(ctx, owner):
+            return jsonify({"error":"Forbidden"}), 403
         cx.execute(
             "INSERT INTO todo_messages (todo_id, role, content) VALUES (?, ?, ?)",
             (todo_id, role, content)
@@ -4297,9 +4449,15 @@ def todo_messages_post(todo_id):
 
 @app.route("/api/todos/<int:todo_id>/steps", methods=["GET"])
 def todo_steps_get(todo_id):
-    if not _ws_auth_ok():
-        return jsonify({"error":"Unauthorized"}), 401
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
     with sqlite3.connect(LOG_DB) as cx:
+        owner = _todo_owner(cx, todo_id)
+        if not owner:
+            return jsonify({"error":"Not found"}), 404
+        if not _can_access_owner(ctx, owner):
+            return jsonify({"error":"Forbidden"}), 403
         rows = cx.execute(
             "SELECT id, sequence, text, done, done_at FROM todo_steps "
             "WHERE todo_id=? ORDER BY sequence ASC", (todo_id,)
@@ -4313,8 +4471,16 @@ def todo_steps_post(todo_id):
     """Add a single step manually OR extract via Justus.
     Body {"text": "..."} → manual add.
     Body {"extract": true} → one-shot Justus extraction (replaces un-done steps)."""
-    if not _ws_auth_ok():
-        return jsonify({"error":"Unauthorized"}), 401
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
+    # Owner check upfront (extract path reads the todo anyway, but we 403 sooner)
+    with sqlite3.connect(LOG_DB) as cx:
+        owner = _todo_owner(cx, todo_id)
+    if not owner:
+        return jsonify({"error":"Not found"}), 404
+    if not _can_access_owner(ctx, owner):
+        return jsonify({"error":"Forbidden"}), 403
     data = request.get_json(force=True) or {}
     if data.get("extract"):
         return _extract_steps_via_justus(todo_id)
@@ -4382,10 +4548,16 @@ def _extract_steps_via_justus(todo_id: int):
 
 @app.route("/api/todos/<int:todo_id>/steps/<int:step_id>", methods=["PATCH"])
 def todo_steps_patch(todo_id, step_id):
-    if not _ws_auth_ok():
-        return jsonify({"error":"Unauthorized"}), 401
-    done = bool((request.get_json(force=True) or {}).get("done"))
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        owner = _todo_owner(cx, todo_id)
+        if not owner:
+            return jsonify({"error":"Not found"}), 404
+        if not _can_access_owner(ctx, owner):
+            return jsonify({"error":"Forbidden"}), 403
+        done = bool((request.get_json(force=True) or {}).get("done"))
         cx.execute(
             "UPDATE todo_steps SET done=?, "
             "done_at=CASE WHEN ?=1 THEN datetime('now') ELSE NULL END "
@@ -4400,8 +4572,11 @@ def todo_steps_patch(todo_id, step_id):
 def workspace_state(owner):
     """Returns the complete workspace payload for an owner: focused item, in-process,
     plan, recently-completed, plus per-item time/steps aggregates and pending-ask flags."""
-    if not _ws_auth_ok():
-        return jsonify({"error":"Unauthorized"}), 401
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
+    if not _can_access_owner(ctx, owner):
+        return jsonify({"error":"Forbidden"}), 403
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         focused = cx.execute(
@@ -4494,6 +4669,98 @@ def workspace_state(owner):
         "complete_recent": complete_recent,
         "open_session": dict(open_session) if open_session else None,
     })
+
+
+# ── Access tokens — admin-only issuance, list, revoke ─────────────────────────
+import secrets as _secrets
+
+
+@app.route("/api/access-tokens", methods=["POST"])
+def access_token_create():
+    """Mint a per-user access token. Admin (CONSOLE_SECRET) only.
+    Body: {"name":"shaira","scope":"workspace:shaira","display_name":"Shaira","note":"..."}
+    Returns the full token ONCE — never retrievable again."""
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    data = request.get_json(force=True) or {}
+    name  = (data.get("name") or "").lower().strip()
+    scope = (data.get("scope") or "").strip()
+    if not name or not scope:
+        return jsonify({"error":"name + scope required"}), 400
+    if scope != "admin" and not scope.startswith("workspace:"):
+        return jsonify({"error":"scope must be 'admin' or 'workspace:<owner>'"}), 400
+    display_name = (data.get("display_name") or name.title()).strip()
+    note = (data.get("note") or "").strip()
+    token = _secrets.token_urlsafe(32)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO workspace_users (name, display_name, scope) VALUES (?, ?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET display_name=excluded.display_name, scope=excluded.scope",
+            (name, display_name, scope)
+        )
+        user_id = cx.execute("SELECT id FROM workspace_users WHERE name=?", (name,)).fetchone()[0]
+        cx.execute(
+            "INSERT INTO access_tokens (token, user_id, note) VALUES (?, ?, ?)",
+            (token, user_id, note)
+        )
+        cx.commit()
+    owner = _owner_from_scope(scope) or name
+    return jsonify({
+        "ok": True,
+        "token": token,
+        "user": name,
+        "display_name": display_name,
+        "scope": scope,
+        "url": f"/workspace/{owner}?key={token}",
+        "note": note,
+    })
+
+
+@app.route("/api/access-tokens", methods=["GET"])
+def access_token_list():
+    """List all tokens. Admin only. Full token is NEVER returned — only the
+    first 8 chars (prefix) for identification + revoke."""
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute(
+            "SELECT t.token, t.created_at, t.last_used_at, t.revoked_at, t.note, "
+            "       u.name, u.display_name, u.scope "
+            "FROM access_tokens t JOIN workspace_users u ON u.id = t.user_id "
+            "ORDER BY t.created_at DESC"
+        ).fetchall()
+    return jsonify({"tokens": [{
+        "prefix": r[0][:8],
+        "created_at": r[1],
+        "last_used_at": r[2],
+        "revoked_at": r[3],
+        "note": r[4],
+        "user": r[5],
+        "display_name": r[6],
+        "scope": r[7],
+    } for r in rows]})
+
+
+@app.route("/api/access-tokens/<prefix>", methods=["DELETE"])
+def access_token_revoke(prefix):
+    """Revoke (soft-delete) a token by its 8-char prefix. Admin only."""
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    if not prefix or len(prefix) < 6:
+        return jsonify({"error":"prefix too short"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute(
+            "SELECT token FROM access_tokens WHERE token LIKE ? AND revoked_at IS NULL",
+            (prefix + "%",)
+        ).fetchall()
+        if not rows:
+            return jsonify({"error":"no active token matches that prefix"}), 404
+        if len(rows) > 1:
+            return jsonify({"error":"prefix matches multiple tokens — be more specific","matches":len(rows)}), 409
+        full = rows[0][0]
+        cx.execute("UPDATE access_tokens SET revoked_at=datetime('now') WHERE token=?", (full,))
+        cx.commit()
+    return jsonify({"ok": True, "revoked_prefix": prefix})
 
 
 WORKSPACE_BACKUP_DIR = Path(os.environ.get(
