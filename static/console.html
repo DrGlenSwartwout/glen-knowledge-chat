@@ -263,8 +263,8 @@
   #ai-sidebar.open { right:0; }
   .ai-sidebar-header { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border); background:var(--bg); }
   .ai-sidebar-header h3 { font-size:14px; font-weight:700; color:var(--glen); margin:0; }
-  .btn-close-ai { background:transparent; border:none; color:var(--muted); font-size:18px; cursor:pointer; padding:0 4px; }
-  .btn-close-ai:hover { color:var(--text); }
+  .btn-close-ai { background:transparent; border:none; color:var(--muted); font-size:22px; line-height:1; cursor:pointer; padding:4px 10px; border-radius:6px; }
+  .btn-close-ai:hover { color:var(--text); background:var(--surface); }
   .ai-messages { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:12px; }
   .ai-msg { max-width:100%; }
   .ai-msg.user .ai-bubble { background:var(--glen); color:#fff; border-radius:10px 10px 2px 10px; margin-left:auto; max-width:85%; }
@@ -512,6 +512,7 @@
 
 <script>
 const API = '';
+const BASE = '';   // same-origin; restores ${BASE}/api/... template fetches below
 let currentOwner = 'glen';
 let consoleKey = '';
 let countdown = 1800;
@@ -1173,12 +1174,20 @@ function toggleAI(forceOpen) {
   const open = forceOpen || !sb.classList.contains('open');
   sb.classList.toggle('open', open);
   btn.classList.toggle('shifted', open);
+  btn.textContent = open ? '✕ Close' : '✦ Ask Justus';
   if (open) setTimeout(() => document.getElementById('ai-input').focus(), 300);
 }
 function closeAI() {
   document.getElementById('ai-sidebar').classList.remove('open');
-  document.getElementById('btn-open-ai').classList.remove('shifted');
+  const btn = document.getElementById('btn-open-ai');
+  btn.classList.remove('shifted');
+  btn.textContent = '✦ Ask Justus';
 }
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('ai-sidebar')?.classList.contains('open')) {
+    closeAI();
+  }
+});
 function _aiContext() {
   let ctx = `Section: ${currentSection}. Owner: ${currentOwner}.`;
   if (currentSection === 'people' && _selectedPersonId) {
@@ -1206,6 +1215,35 @@ async function sendAI() {
   msgs.scrollTop = msgs.scrollHeight;
   _aiStreaming = true;
   document.getElementById('btn-send-ai').disabled = true;
+
+  // ── [capture] branch: split into individual todos instead of chat reply ─────
+  if (query.toLowerCase().startsWith('[capture]')) {
+    try {
+      const res = await fetch(`${BASE}/api/capture-split`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+        body: JSON.stringify({ text: query, owner: currentOwner })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const items = data.items || [];
+      if (!items.length) {
+        bubble.innerHTML = '<em>Capture parsed but no items were created.</em>';
+      } else {
+        const lines = items.map(it => `• ${_esc(it.title)}`).join('<br>');
+        bubble.innerHTML = `<strong>Captured ${items.length} item${items.length===1?'':'s'}:</strong><br>${lines}`;
+      }
+      _aiHistory.push({role:'assistant', content:`Captured ${items.length} items.`});
+      if (typeof refresh === 'function') refresh();
+    } catch(e) {
+      bubble.textContent = 'Capture failed: ' + e.message;
+    }
+    _aiStreaming = false;
+    document.getElementById('btn-send-ai').disabled = false;
+    msgs.scrollTop = msgs.scrollHeight;
+    return;
+  }
+
   let accumulated = '';
   try {
     const res = await fetch(`${BASE}/api/console-ask`, {
@@ -1616,7 +1654,7 @@ initKey();
 <div id="ai-sidebar">
   <div class="ai-sidebar-header">
     <h3>✦ Ask Justus</h3>
-    <button class="btn-close-ai" onclick="closeAI()">✕</button>
+    <button class="btn-close-ai" onclick="closeAI()" aria-label="Close Justus">✕</button>
   </div>
   <div class="ai-messages" id="ai-messages"></div>
   <div class="ai-input-row">

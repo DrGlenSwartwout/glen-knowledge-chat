@@ -802,7 +802,7 @@ async function fetchCard(card){
     const body = card.querySelector(".body");
     body.innerHTML = fn(data || {});
 
-    const lastSuccess = data?.last_success || data?.as_of || new Date().toISOString();
+    const lastSuccess = data?.last_success || data?.as_of || data?.generated_at || new Date().toISOString();
     setDot(card, dotClass(card, lastSuccess, false));
 
     const foot = card.querySelector("footer");

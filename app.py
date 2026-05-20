@@ -3860,6 +3860,82 @@ def console_ask():
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
 
 
+# ── Capture splitter: [capture] free-text → N discrete todos ──────────────────
+_CAPTURE_SPLIT_SYSTEM = (
+    "You split a free-form capture into discrete actionable items for a personal "
+    "task inbox. Return ONLY a JSON array (no prose, no code fences) of objects "
+    "with keys: title (≤80 chars, imperative), body (one sentence of context, "
+    "may be empty), priority (one of: low, normal, high). If the capture "
+    "describes a single idea, return a one-element array. Preserve the "
+    "speaker's intent — don't invent items. Output JSON only."
+)
+
+
+@app.route("/api/capture-split", methods=["POST"])
+def capture_split():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    data  = request.get_json(force=True) or {}
+    text  = (data.get("text") or "").strip()
+    owner = (data.get("owner") or "glen").lower()
+    if not text:
+        return jsonify({"error": "No text"}), 400
+
+    stripped = text
+    if stripped.lower().startswith("[capture]"):
+        stripped = stripped[len("[capture]"):].strip()
+    if not stripped:
+        return jsonify({"error": "Capture body empty after stripping prefix"}), 400
+
+    try:
+        resp = _cl.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=800,
+            system=_CAPTURE_SPLIT_SYSTEM,
+            messages=[{"role": "user", "content": stripped}],
+        )
+        raw = "".join(b.text for b in resp.content if b.type == "text").strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`").lstrip("json").strip()
+        items = json.loads(raw)
+        if not isinstance(items, list) or not items:
+            raise ValueError("Splitter returned no items")
+    except Exception as e:
+        app.logger.exception("capture_split LLM/parse failed")
+        return jsonify({"ok": False, "error": f"split failed: {type(e).__name__}: {e}"}), 500
+
+    import time as __t
+    ts = datetime.now(timezone.utc).isoformat()
+    ts_epoch = int(__t.time())
+    inserted = []
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        for i, it in enumerate(items):
+            title    = (it.get("title") or "").strip()[:200]
+            body     = (it.get("body") or "").strip()
+            priority = (it.get("priority") or "normal").lower()
+            if priority not in ("low", "normal", "high"):
+                priority = "normal"
+            if not title:
+                continue
+            dedup = f"capture:{ts_epoch}:{i}:{title[:40]}"
+            try:
+                cx.execute("""
+                    INSERT INTO todos
+                      (created_at, owner, category, title, body, priority, source, dedup_key)
+                    VALUES (?,?,?,?,?,?,?,?)
+                    ON CONFLICT(dedup_key) DO NOTHING
+                """, (ts, owner, "Idea", title, body, priority, "capture", dedup))
+                if cx.execute("SELECT changes()").fetchone()[0]:
+                    inserted.append({"title": title, "priority": priority})
+            except Exception:
+                app.logger.exception("capture_split insert failed for item %s", i)
+        cx.commit()
+
+    return jsonify({"ok": True, "items": inserted, "count": len(inserted)}), 201
+
+
 # ── Token storage (OAuth tokens persisted in DB for cloud cron) ───────────────
 def _init_tokens_table():
     with sqlite3.connect(LOG_DB) as cx:
