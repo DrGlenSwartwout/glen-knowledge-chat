@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shaira's Workspace · Remedy Match</title>
+<style>
+  :root {
+    --bg: #0e1410;
+    --surface: #16201a;
+    --surface-2: #1c2820;
+    --border: #2a3a30;
+    --text: #e8efe9;
+    --muted: #8aa599;
+    --shaira: #4fa56b;
+    --shaira-dim: #2c5a38;
+    --justus: #5c9cd6;
+    --justus-dim: #1f3a55;
+    --glen: #d6b85c;
+    --rae:  #c47ad6;
+    --system: #6c8076;
+    --ask: #e69c4a;
+    --danger: #d66d6d;
+    --shadow: 0 4px 18px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", sans-serif; font-size: 16px; line-height: 1.45; min-height: 100vh; }
+  body { padding: 0 0 100px; }
+
+  /* Header */
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 10; }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header h1 .accent { color: var(--shaira); }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .btn { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .btn:hover:not(:disabled) { border-color: var(--shaira); color: var(--shaira); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--shaira-dim); border-color: var(--shaira); color: var(--shaira); }
+  .btn-primary:hover:not(:disabled) { background: var(--shaira); color: #0e1410; }
+  .btn-danger { color: var(--danger); border-color: var(--danger); }
+  .btn-danger:hover:not(:disabled) { background: var(--danger); color: #0e1410; }
+  .ai-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; background: var(--justus-dim); border: 1px solid var(--justus); color: var(--justus); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .ai-pill:hover { background: var(--justus); color: #0e1410; }
+
+  /* Layout */
+  main { max-width: 980px; margin: 0 auto; padding: 24px; }
+  section { margin-bottom: 32px; }
+  .section-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em; color: var(--muted); }
+  .section-count { font-size: 12px; color: var(--muted); }
+  .section-action { margin-left: auto; font-size: 12px; color: var(--muted); background: none; border: none; cursor: pointer; }
+  .section-action:hover { color: var(--text); }
+
+  /* Soft banner */
+  .soft-banner { background: linear-gradient(90deg, #4a3a1a 0%, #2a2a1a 100%); border: 1px solid var(--glen); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; color: var(--glen); font-size: 14px; display: flex; align-items: center; gap: 10px; }
+  .soft-banner.hidden { display: none; }
+
+  /* Focused card */
+  .focused-card { background: var(--surface); border: 2px solid var(--shaira); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); }
+  .focused-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+  .focused-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+  .focused-meta .chip { display: inline-flex; align-items: center; gap: 4px; }
+  .priority-high { color: var(--ask); }
+  .priority-normal { color: var(--muted); }
+  .focused-body { font-size: 14px; color: var(--text); margin-bottom: 18px; white-space: pre-wrap; max-height: 180px; overflow-y: auto; padding: 12px; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); }
+  .focused-body:empty { display: none; }
+
+  /* Steps */
+  .steps-block { margin-bottom: 18px; }
+  .steps-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .steps-progress { flex: 1; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+  .steps-progress-bar { height: 100%; background: var(--shaira); transition: width .3s; }
+  .steps-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .step { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; cursor: pointer; user-select: none; }
+  .step input[type="checkbox"] { margin-top: 3px; accent-color: var(--shaira); cursor: pointer; }
+  .step-text { font-size: 14px; }
+  .step.done .step-text { text-decoration: line-through; color: var(--muted); }
+  .steps-empty { font-size: 13px; color: var(--muted); padding: 8px 0; }
+  .steps-extract-btn { font-size: 12px; color: var(--justus); background: none; border: 1px dashed var(--justus); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  .steps-extract-btn:hover { background: var(--justus-dim); }
+
+  /* Thread */
+  .thread-block { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 16px; max-height: 420px; overflow-y: auto; }
+  .thread-header { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .msg { padding: 8px 12px; margin-bottom: 8px; border-radius: 8px; font-size: 14px; line-height: 1.5; }
+  .msg-role { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; opacity: 0.8; }
+  .msg-content { white-space: pre-wrap; word-wrap: break-word; }
+  .msg-time { font-size: 10px; color: var(--muted); margin-top: 4px; opacity: 0.7; }
+  .msg.shaira { background: var(--shaira-dim); border-left: 3px solid var(--shaira); }
+  .msg.shaira .msg-role { color: var(--shaira); }
+  .msg.justus { background: var(--justus-dim); border-left: 3px solid var(--justus); }
+  .msg.justus .msg-role { color: var(--justus); }
+  .msg.glen { background: rgba(214,184,92,.12); border-left: 3px solid var(--glen); }
+  .msg.glen .msg-role { color: var(--glen); }
+  .msg.rae { background: rgba(196,122,214,.12); border-left: 3px solid var(--rae); }
+  .msg.rae .msg-role { color: var(--rae); }
+  .msg.system { background: transparent; border-left: 3px solid var(--system); color: var(--muted); font-style: italic; font-size: 12px; padding: 4px 12px; }
+  .msg.system .msg-role { display: none; }
+  .msg.justus_to_glen, .msg.justus_to_rae { background: rgba(230,156,74,.10); border-left: 3px solid var(--ask); }
+  .msg.justus_to_glen .msg-role, .msg.justus_to_rae .msg-role { color: var(--ask); }
+  .msg.justus_to_glen .msg-role::before, .msg.justus_to_rae .msg-role::before { content: "🔔 "; }
+  .msg.streaming { opacity: 0.85; }
+  .msg.streaming::after { content: "▌"; color: var(--justus); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .thread-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 20px 0; }
+
+  /* Composer */
+  .composer { display: flex; gap: 8px; margin-top: 10px; }
+  .composer textarea { flex: 1; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-family: inherit; font-size: 14px; resize: vertical; min-height: 60px; max-height: 200px; }
+  .composer textarea:focus { outline: none; border-color: var(--shaira); }
+  .composer .btn-send { align-self: stretch; min-width: 80px; }
+
+  /* Action buttons */
+  .focused-actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+
+  /* Minimized in-process cards */
+  .mini-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: all .15s; }
+  .mini-card:hover { border-color: var(--shaira); background: var(--surface-2); }
+  .mini-title { flex: 1; font-size: 14px; font-weight: 600; }
+  .mini-meta { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .mini-bell { color: var(--ask); font-size: 14px; }
+
+  /* Plan list */
+  .plan-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .plan-item:last-child { border-bottom: none; }
+  .plan-circle { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--muted); flex-shrink: 0; }
+  .plan-title { flex: 1; font-size: 14px; }
+  .plan-priority-high .plan-circle { border-color: var(--ask); }
+  .plan-priority-high .plan-title::before { content: "● "; color: var(--ask); }
+
+  /* Completed list */
+  .complete-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .complete-item:last-child { border-bottom: none; }
+  .complete-item:hover { background: var(--surface-2); }
+  .complete-check { color: var(--shaira); font-weight: 700; flex-shrink: 0; }
+  .complete-content { flex: 1; }
+  .complete-title { font-size: 14px; }
+  .complete-outcome { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .complete-meta { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+  /* Empty state */
+  .empty-state { text-align: center; padding: 30px 20px; color: var(--muted); }
+  .empty-state h3 { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+  .empty-state p { font-size: 14px; margin-bottom: 12px; }
+
+  /* Modal */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal-backdrop.show { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 480px; width: 90%; box-shadow: var(--shadow); }
+  .modal h3 { font-size: 16px; margin-bottom: 12px; }
+  .modal textarea, .modal input { width: 100%; padding: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: inherit; font-size: 14px; margin-bottom: 12px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--shaira); border-radius: 8px; padding: 12px 18px; box-shadow: var(--shadow); font-size: 14px; z-index: 200; opacity: 0; transform: translateY(10px); transition: all .25s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { border-color: var(--danger); color: var(--danger); }
+
+  /* Loading */
+  .loading { text-align: center; padding: 40px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Aloha <span class="accent">Shaira</span> ✨</h1>
+  <div class="header-right">
+    <span class="ai-pill" onclick="openGeneralAsk()" title="Ask Justus anything">✦ Ask Justus</span>
+    <button class="btn" onclick="loadState()">Refresh</button>
+  </div>
+</header>
+
+<main>
+
+  <div id="soft-banner" class="soft-banner hidden">
+    ⚠️ <span id="soft-banner-text">You have 2 projects in process — want to focus on one before starting another?</span>
+  </div>
+
+  <!-- FOCUSED -->
+  <section id="focused-section">
+    <div class="section-header">
+      <span class="section-title">Right Now</span>
+      <span class="section-count" id="focused-meta"></span>
+    </div>
+    <div id="focused-container">
+      <div class="loading">Loading…</div>
+    </div>
+  </section>
+
+  <!-- IN PROCESS -->
+  <section id="in-process-section">
+    <div class="section-header">
+      <span class="section-title">In Process</span>
+      <span class="section-count" id="in-process-count"></span>
+    </div>
+    <div id="in-process-container"></div>
+  </section>
+
+  <!-- PLAN -->
+  <section id="plan-section">
+    <div class="section-header">
+      <span class="section-title">Plan</span>
+      <span class="section-count" id="plan-count"></span>
+    </div>
+    <div id="plan-container"></div>
+  </section>
+
+  <!-- COMPLETED -->
+  <section id="complete-section">
+    <div class="section-header">
+      <span class="section-title">Completed This Week</span>
+      <span class="section-count" id="complete-count"></span>
+      <button class="section-action" onclick="toggleComplete()" id="complete-toggle">expand</button>
+    </div>
+    <div id="complete-container" style="display:none;"></div>
+  </section>
+
+</main>
+
+<!-- Modals -->
+<div class="modal-backdrop" id="complete-modal">
+  <div class="modal">
+    <h3>Mark complete — what was the outcome?</h3>
+    <textarea id="complete-outcome" rows="4" placeholder="One or two sentences. What was done? Any links or evidence?"></textarea>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('complete-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmComplete()">Mark complete</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="blocked-modal">
+  <div class="modal">
+    <h3>What's blocking you?</h3>
+    <textarea id="blocked-reason" rows="3" placeholder="Specific blocker — what did you try, what happened?"></textarea>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('blocked-modal')">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmBlocked()">Flag to Glen</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="general-ask-modal">
+  <div class="modal" style="max-width: 600px;">
+    <h3>Ask Justus (general)</h3>
+    <div id="general-ask-thread" style="max-height:300px; overflow-y:auto; margin-bottom:12px; padding:8px; background:var(--bg); border-radius:6px; border:1px solid var(--border);"></div>
+    <textarea id="general-ask-input" rows="2" placeholder="Ask anything — about your tasks, the systems, Glen's preferences…"></textarea>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('general-ask-modal')">Close</button>
+      <button class="btn btn-primary" onclick="sendGeneralAsk()">Send</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Config / state ────────────────────────────────────────────────────────────
+const OWNER = 'shaira';
+const API = (path) => path;
+let KEY = '';
+let STATE = null;
+let CURRENT_THREAD = [];
+let STREAMING_MSG_EL = null;
+let SESSION_TICK_TIMER = null;
+let COMPLETE_TARGET_ID = null;
+let BLOCKED_TARGET_ID = null;
+let GENERAL_HISTORY = [];
+
+// ── Auth / key bootstrap ──────────────────────────────────────────────────────
+function initKey() {
+  const fromUrl = new URLSearchParams(location.search).get('key');
+  if (fromUrl) {
+    localStorage.setItem('console_key', fromUrl);
+    // Remove key from URL so it's not bookmarked / shown in tabs
+    const url = new URL(location.href);
+    url.searchParams.delete('key');
+    history.replaceState({}, '', url.toString());
+  }
+  KEY = localStorage.getItem('console_key') || '';
+  if (!KEY) {
+    const entered = prompt('Enter your workspace access key:');
+    if (entered) {
+      localStorage.setItem('console_key', entered);
+      KEY = entered;
+    }
+  }
+}
+
+// ── Fetch helpers ─────────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const headers = Object.assign({ 'X-Console-Key': KEY }, opts.headers || {});
+  if (opts.body && typeof opts.body !== 'string') {
+    headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(opts.body);
+  }
+  const resp = await fetch(API(path), Object.assign({}, opts, { headers }));
+  if (resp.status === 401) {
+    localStorage.removeItem('console_key');
+    toast('Access key rejected. Please refresh and re-enter.', true);
+    throw new Error('Unauthorized');
+  }
+  return resp;
+}
+
+async function apiJson(path, opts = {}) {
+  const r = await api(path, opts);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ error: r.statusText }));
+    toast(err.error || 'Request failed', true);
+    throw new Error(err.error || r.statusText);
+  }
+  return r.json();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer = null;
+function toast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (isError ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast' + (isError ? ' error' : ''); }, 3000);
+}
+
+// ── Formatting ────────────────────────────────────────────────────────────────
+function fmtDuration(sec) {
+  sec = Math.max(0, Math.round(sec || 0));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm ? `${h}h ${rm}m` : `${h}h`;
+}
+
+function fmtRelative(iso) {
+  if (!iso) return '—';
+  const then = new Date(iso);
+  if (isNaN(then.getTime())) return '—';
+  const diff = (Date.now() - then.getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  if (diff < 86400 * 7) return `${Math.floor(diff/86400)}d ago`;
+  return then.toLocaleDateString();
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// ── Load state ────────────────────────────────────────────────────────────────
+async function loadState() {
+  try {
+    STATE = await apiJson(`/api/workspace/${OWNER}/state`);
+  } catch (e) {
+    return;
+  }
+  renderAll();
+}
+
+function renderAll() {
+  if (!STATE) return;
+  renderSoftBanner();
+  renderFocused();
+  renderInProcess();
+  renderPlan();
+  renderComplete();
+  startSessionTick();
+}
+
+function renderSoftBanner() {
+  const inProcessCount = (STATE.in_process || []).length + (STATE.focused ? 1 : 0);
+  const banner = document.getElementById('soft-banner');
+  const text   = document.getElementById('soft-banner-text');
+  if (inProcessCount >= 2) {
+    banner.classList.remove('hidden');
+    text.textContent = `You have ${inProcessCount} projects in process — want to wrap one up before starting another?`;
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+// ── Focused card ──────────────────────────────────────────────────────────────
+function renderFocused() {
+  const container = document.getElementById('focused-container');
+  const meta = document.getElementById('focused-meta');
+  const t = STATE.focused;
+  if (!t) {
+    meta.textContent = '';
+    // Decide empty state copy based on what else exists
+    if ((STATE.in_process || []).length > 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <h3>No focused project right now</h3>
+          <p>You have ${STATE.in_process.length} in process. Click one below to resume.</p>
+        </div>`;
+    } else if ((STATE.plan || []).length > 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <h3>Ready to start something</h3>
+          <p>Pick a task from your Plan below and click <strong>Focus</strong>.</p>
+        </div>`;
+    } else if ((STATE.complete_recent || []).length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <h3>All caught up 🎉</h3>
+          <p>Nothing in your queue. Ping Glen for what's next, or use Ask Justus.</p>
+        </div>`;
+    } else {
+      container.innerHTML = `
+        <div class="empty-state">
+          <h3>Nice work — queue is empty</h3>
+          <p>See your completions below. Ask Justus or wait for Glen's next assignment.</p>
+        </div>`;
+    }
+    return;
+  }
+
+  meta.textContent = '';
+  const sessionSec = computeSessionSeconds();
+  const totalSec   = (t.time_total_seconds || 0) + sessionSec;
+  const stepsPct   = t.steps_total ? Math.round((t.steps_done / t.steps_total) * 100) : 0;
+  const priority   = (t.priority || 'normal').toLowerCase();
+  const startedRel = t.first_started_at ? `Started ${fmtRelative(t.first_started_at)}` : '';
+  const pendingAsk = (t.pending_asks || []).length;
+
+  container.innerHTML = `
+    <div class="focused-card" data-todo-id="${t.id}">
+      <div class="focused-title">${escapeHtml(t.title)}</div>
+      <div class="focused-meta">
+        <span class="chip">⏱ This session: <strong id="focused-session-time">${fmtDuration(sessionSec)}</strong></span>
+        <span class="chip">Total: <strong id="focused-total-time">${fmtDuration(totalSec)}</strong> (${t.time_sessions || 0} session${t.time_sessions === 1 ? '' : 's'})</span>
+        ${startedRel ? `<span class="chip">${startedRel}</span>` : ''}
+        <span class="chip priority-${priority}">Priority: ${priority}</span>
+        ${pendingAsk ? `<span class="chip" style="color:var(--ask)">🔔 ${pendingAsk} pending question${pendingAsk === 1 ? '' : 's'} for ${t.pending_asks[0].target}</span>` : ''}
+      </div>
+      ${(t.body || t.ai_summary) ? `<div class="focused-body">${escapeHtml(t.body || t.ai_summary)}</div>` : ''}
+
+      <div class="steps-block" id="steps-block">
+        <div class="steps-header">
+          <span class="section-title">Steps</span>
+          ${t.steps_total ? `
+            <div class="steps-progress"><div class="steps-progress-bar" style="width:${stepsPct}%"></div></div>
+            <span class="steps-count">${t.steps_done} / ${t.steps_total} done</span>
+          ` : ''}
+        </div>
+        <div id="steps-list"></div>
+      </div>
+
+      <div class="thread-block" id="thread-block">
+        <div class="thread-header">Thread with Justus${pendingAsk ? ' · awaiting Glen' : ''}</div>
+        <div id="thread-list"><div class="thread-empty">Loading thread…</div></div>
+      </div>
+      <div class="composer">
+        <textarea id="composer-input" placeholder="Ask Justus, report progress, or note what you tried…" onkeydown="if (event.metaKey && event.key === 'Enter') sendMessage()"></textarea>
+        <button class="btn btn-primary btn-send" onclick="sendMessage()">Send</button>
+      </div>
+
+      <div class="focused-actions">
+        <button class="btn" onclick="unfocusCurrent()">Unfocus → minimize</button>
+        <button class="btn btn-danger" onclick="openBlocked(${t.id})">Mark blocked</button>
+        <button class="btn btn-primary" onclick="openComplete(${t.id})">Complete →</button>
+      </div>
+    </div>
+  `;
+
+  // Load steps + thread in parallel
+  loadSteps(t.id);
+  loadThread(t.id);
+}
+
+// ── Session ticker ────────────────────────────────────────────────────────────
+function computeSessionSeconds() {
+  if (!STATE || !STATE.open_session) return 0;
+  const started = new Date(STATE.open_session.started_at);
+  if (isNaN(started.getTime())) return 0;
+  return Math.max(0, Math.floor((Date.now() - started.getTime()) / 1000));
+}
+
+function startSessionTick() {
+  if (SESSION_TICK_TIMER) clearInterval(SESSION_TICK_TIMER);
+  SESSION_TICK_TIMER = setInterval(() => {
+    const el = document.getElementById('focused-session-time');
+    if (!el) return;
+    const sec = computeSessionSeconds();
+    el.textContent = fmtDuration(sec);
+    const tot = document.getElementById('focused-total-time');
+    if (tot && STATE.focused) {
+      tot.textContent = fmtDuration((STATE.focused.time_total_seconds || 0) + sec);
+    }
+  }, 30000); // every 30s
+}
+
+// ── Steps ─────────────────────────────────────────────────────────────────────
+async function loadSteps(todoId) {
+  let data;
+  try {
+    data = await apiJson(`/api/todos/${todoId}/steps`);
+  } catch (e) { return; }
+  const list = document.getElementById('steps-list');
+  if (!list) return;
+  const steps = data.steps || [];
+  if (steps.length === 0) {
+    list.innerHTML = `
+      <div class="steps-empty">
+        No steps yet.
+        <button class="steps-extract-btn" onclick="extractSteps(${todoId})">✦ Let Justus break it into steps</button>
+      </div>`;
+    return;
+  }
+  list.innerHTML = steps.map(s => `
+    <label class="step ${s.done ? 'done' : ''}">
+      <input type="checkbox" ${s.done ? 'checked' : ''} onchange="toggleStep(${todoId}, ${s.id}, this.checked)">
+      <span class="step-text">${escapeHtml(s.text)}</span>
+    </label>
+  `).join('');
+}
+
+async function extractSteps(todoId) {
+  toast('Justus is extracting steps…');
+  try {
+    await apiJson(`/api/todos/${todoId}/steps`, { method: 'POST', body: { extract: true } });
+    await loadSteps(todoId);
+    await loadState();
+  } catch (e) { /* toast shown by apiJson */ }
+}
+
+async function toggleStep(todoId, stepId, done) {
+  try {
+    await apiJson(`/api/todos/${todoId}/steps/${stepId}`, { method: 'PATCH', body: { done } });
+    // Refresh state so progress bar/badge updates
+    await loadState();
+  } catch (e) { /* */ }
+}
+
+// ── Thread ────────────────────────────────────────────────────────────────────
+async function loadThread(todoId) {
+  let data;
+  try {
+    data = await apiJson(`/api/todos/${todoId}/messages`);
+  } catch (e) { return; }
+  CURRENT_THREAD = data.messages || [];
+  renderThread();
+}
+
+function renderThread() {
+  const list = document.getElementById('thread-list');
+  if (!list) return;
+  if (CURRENT_THREAD.length === 0) {
+    list.innerHTML = `<div class="thread-empty">No messages yet. Say hi to Justus to get started.</div>`;
+    return;
+  }
+  list.innerHTML = CURRENT_THREAD.map(m => msgHtml(m)).join('');
+  list.scrollTop = list.scrollHeight;
+}
+
+function msgHtml(m) {
+  const roleLabel = {
+    'shaira':'Shaira', 'justus':'Justus', 'glen':'Glen', 'rae':'Rae',
+    'system':'', 'justus_to_glen':'Justus → Glen', 'justus_to_rae':'Justus → Rae'
+  }[m.role] || m.role;
+  return `
+    <div class="msg ${m.role}">
+      ${roleLabel ? `<div class="msg-role">${escapeHtml(roleLabel)}</div>` : ''}
+      <div class="msg-content">${escapeHtml(m.content)}</div>
+      ${m.created_at ? `<div class="msg-time">${fmtRelative(m.created_at)}</div>` : ''}
+    </div>`;
+}
+
+async function sendMessage() {
+  if (!STATE || !STATE.focused) return;
+  const input = document.getElementById('composer-input');
+  const text = input.value.trim();
+  if (!text) return;
+  const todoId = STATE.focused.id;
+  input.value = '';
+  input.disabled = true;
+
+  // Optimistically add Shaira's message
+  CURRENT_THREAD.push({ id: -1, role: 'shaira', content: text, created_at: new Date().toISOString() });
+  // Add a streaming placeholder for Justus
+  const streamingMsg = { id: -2, role: 'justus', content: '', created_at: new Date().toISOString(), streaming: true };
+  CURRENT_THREAD.push(streamingMsg);
+  renderThread();
+  // Find the just-rendered last .msg for live updates
+  const list = document.getElementById('thread-list');
+  STREAMING_MSG_EL = list.lastElementChild;
+  STREAMING_MSG_EL.classList.add('streaming');
+
+  let resp;
+  try {
+    resp = await api(`/api/todos/${todoId}/messages`, {
+      method: 'POST',
+      body: { role: 'shaira', content: text },
+    });
+  } catch (e) {
+    input.disabled = false;
+    input.focus();
+    return;
+  }
+  if (!resp.ok) {
+    toast('Send failed', true);
+    input.disabled = false;
+    return;
+  }
+
+  // Consume SSE
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let accumulated = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const ln of lines) {
+        if (!ln.startsWith('data: ')) continue;
+        let data;
+        try { data = JSON.parse(ln.slice(6)); } catch { continue; }
+        if (data.text) {
+          accumulated += data.text;
+          if (STREAMING_MSG_EL) {
+            const contentEl = STREAMING_MSG_EL.querySelector('.msg-content');
+            if (contentEl) contentEl.textContent = accumulated;
+            list.scrollTop = list.scrollHeight;
+          }
+        }
+        if (data.done) {
+          if (STREAMING_MSG_EL) STREAMING_MSG_EL.classList.remove('streaming');
+          // Reload thread from server (gets the persisted version + any ASK row + ids)
+          await loadThread(todoId);
+          await loadState(); // pending_asks badge etc.
+        }
+      }
+    }
+  } catch (e) {
+    console.error('SSE error:', e);
+    toast('Stream interrupted', true);
+  }
+  input.disabled = false;
+  input.focus();
+  STREAMING_MSG_EL = null;
+}
+
+// ── In Process minimized ──────────────────────────────────────────────────────
+function renderInProcess() {
+  const cont = document.getElementById('in-process-container');
+  const items = STATE.in_process || [];
+  document.getElementById('in-process-count').textContent = items.length ? `${items.length} minimized` : '';
+  if (items.length === 0) { cont.innerHTML = ''; return; }
+  cont.innerHTML = items.map(t => {
+    const pending = (t.pending_asks || []).length;
+    return `
+      <div class="mini-card" onclick="focusTodo(${t.id})">
+        <div class="mini-title">${escapeHtml(t.title)}</div>
+        ${pending ? `<span class="mini-bell" title="${pending} pending question${pending===1?'':'s'} for ${t.pending_asks[0].target}">🔔</span>` : ''}
+        <span class="mini-meta">${fmtDuration(t.time_total_seconds)} · ${fmtRelative(t.last_touched)}</span>
+      </div>`;
+  }).join('');
+}
+
+// ── Plan list ─────────────────────────────────────────────────────────────────
+function renderPlan() {
+  const cont = document.getElementById('plan-container');
+  const items = STATE.plan || [];
+  document.getElementById('plan-count').textContent = items.length ? `${items.length} next` : '';
+  if (items.length === 0) { cont.innerHTML = `<div class="empty-state" style="padding:14px;color:var(--muted);font-size:13px;">No tasks in plan.</div>`; return; }
+  cont.innerHTML = items.map(t => `
+    <div class="plan-item plan-priority-${(t.priority || 'normal').toLowerCase()}">
+      <span class="plan-circle"></span>
+      <span class="plan-title">${escapeHtml(t.title)}</span>
+      <button class="btn" onclick="focusTodo(${t.id})">Focus</button>
+    </div>
+  `).join('');
+}
+
+// ── Completed list ────────────────────────────────────────────────────────────
+function renderComplete() {
+  const cont = document.getElementById('complete-container');
+  const items = STATE.complete_recent || [];
+  document.getElementById('complete-count').textContent = items.length ? `${items.length} this week` : '0 this week';
+  if (items.length === 0) { cont.innerHTML = `<div class="empty-state" style="padding:14px;color:var(--muted);font-size:13px;">Nothing completed in the last 7 days.</div>`; return; }
+  cont.innerHTML = items.map(t => `
+    <div class="complete-item" onclick="viewCompletedThread(${t.id})">
+      <span class="complete-check">✓</span>
+      <div class="complete-content">
+        <div class="complete-title">${escapeHtml(t.title)}</div>
+        ${t.action_note ? `<div class="complete-outcome">${escapeHtml(t.action_note)}</div>` : ''}
+      </div>
+      <span class="complete-meta">${fmtRelative(t.done_at)} · ${fmtDuration(t.time_total_seconds)}</span>
+    </div>
+  `).join('');
+}
+
+function toggleComplete() {
+  const c = document.getElementById('complete-container');
+  const tog = document.getElementById('complete-toggle');
+  if (c.style.display === 'none') {
+    c.style.display = 'block';
+    tog.textContent = 'collapse';
+  } else {
+    c.style.display = 'none';
+    tog.textContent = 'expand';
+  }
+}
+
+async function viewCompletedThread(todoId) {
+  // Open a modal-style read-only view by re-loading thread under a temporary CURRENT_THREAD
+  let data;
+  try {
+    data = await apiJson(`/api/todos/${todoId}/messages`);
+  } catch (e) { return; }
+  const msgs = data.messages || [];
+  if (msgs.length === 0) { toast('No thread for this item.'); return; }
+  // Simple alert-like modal using the general-ask modal
+  const modal = document.getElementById('general-ask-modal');
+  modal.querySelector('h3').textContent = 'Completed item — thread (read-only)';
+  modal.querySelector('#general-ask-input').style.display = 'none';
+  modal.querySelectorAll('.modal-actions .btn-primary').forEach(b => b.style.display = 'none');
+  const thread = document.getElementById('general-ask-thread');
+  thread.innerHTML = msgs.map(m => msgHtml(m)).join('');
+  modal.classList.add('show');
+}
+
+// ── Actions: focus, unfocus, complete, blocked ────────────────────────────────
+async function focusTodo(todoId) {
+  try {
+    await apiJson(`/api/todos/${todoId}/focus`, { method: 'POST' });
+    await loadState();
+  } catch (e) { /* */ }
+}
+
+async function unfocusCurrent() {
+  if (!STATE.focused) return;
+  try {
+    await apiJson(`/api/todos/${STATE.focused.id}/unfocus`, { method: 'POST' });
+    await loadState();
+  } catch (e) { /* */ }
+}
+
+function openComplete(todoId) {
+  COMPLETE_TARGET_ID = todoId;
+  document.getElementById('complete-outcome').value = '';
+  document.getElementById('complete-modal').classList.add('show');
+  setTimeout(() => document.getElementById('complete-outcome').focus(), 50);
+}
+
+async function confirmComplete() {
+  const outcome = document.getElementById('complete-outcome').value.trim();
+  if (!COMPLETE_TARGET_ID) return;
+  try {
+    await apiJson(`/api/todos/${COMPLETE_TARGET_ID}/complete-workspace`, {
+      method: 'POST',
+      body: { outcome }
+    });
+    closeModal('complete-modal');
+    toast('Completed!');
+    await loadState();
+  } catch (e) { /* */ }
+}
+
+function openBlocked(todoId) {
+  BLOCKED_TARGET_ID = todoId;
+  document.getElementById('blocked-reason').value = '';
+  document.getElementById('blocked-modal').classList.add('show');
+  setTimeout(() => document.getElementById('blocked-reason').focus(), 50);
+}
+
+async function confirmBlocked() {
+  const reason = document.getElementById('blocked-reason').value.trim();
+  if (!reason || !BLOCKED_TARGET_ID) return;
+  try {
+    await apiJson(`/api/todos/${BLOCKED_TARGET_ID}/mark-blocked`, {
+      method: 'POST',
+      body: { reason }
+    });
+    closeModal('blocked-modal');
+    toast('Flagged to Glen.');
+    await loadState();
+    if (STATE.focused && STATE.focused.id === BLOCKED_TARGET_ID) {
+      await loadThread(BLOCKED_TARGET_ID);
+    }
+  } catch (e) { /* */ }
+}
+
+function closeModal(id) {
+  const m = document.getElementById(id);
+  m.classList.remove('show');
+  // Reset the general-ask modal if it was repurposed
+  if (id === 'general-ask-modal') {
+    m.querySelector('h3').textContent = 'Ask Justus (general)';
+    m.querySelector('#general-ask-input').style.display = '';
+    m.querySelectorAll('.modal-actions .btn-primary').forEach(b => b.style.display = '');
+  }
+}
+
+// ── General Ask Justus (no specific item) ─────────────────────────────────────
+function openGeneralAsk() {
+  document.getElementById('general-ask-modal').classList.add('show');
+  setTimeout(() => document.getElementById('general-ask-input').focus(), 50);
+}
+
+async function sendGeneralAsk() {
+  const input = document.getElementById('general-ask-input');
+  const query = input.value.trim();
+  if (!query) return;
+  input.value = '';
+  input.disabled = true;
+  const thread = document.getElementById('general-ask-thread');
+  GENERAL_HISTORY.push({ role: 'user', content: query });
+  thread.innerHTML += `<div class="msg shaira"><div class="msg-role">Shaira</div><div class="msg-content">${escapeHtml(query)}</div></div>`;
+  thread.innerHTML += `<div class="msg justus streaming" id="general-streaming"><div class="msg-role">Justus</div><div class="msg-content"></div></div>`;
+  thread.scrollTop = thread.scrollHeight;
+  const streamingEl = document.getElementById('general-streaming');
+
+  let resp;
+  try {
+    resp = await api('/api/console-ask', {
+      method: 'POST',
+      body: { query, owner: 'shaira', context: 'On the Shaira Workspace page', history: GENERAL_HISTORY.slice(0, -1) },
+    });
+  } catch (e) { input.disabled = false; return; }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let accumulated = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const ln of lines) {
+      if (!ln.startsWith('data: ')) continue;
+      try {
+        const d = JSON.parse(ln.slice(6));
+        if (d.text) {
+          accumulated += d.text;
+          streamingEl.querySelector('.msg-content').textContent = accumulated;
+          thread.scrollTop = thread.scrollHeight;
+        }
+        if (d.done) {
+          streamingEl.classList.remove('streaming');
+          streamingEl.id = '';
+          GENERAL_HISTORY.push({ role: 'assistant', content: accumulated });
+        }
+      } catch { /* */ }
+    }
+  }
+  input.disabled = false;
+  input.focus();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+initKey();
+loadState();
+
+// Refresh every 5 minutes (catches new tasks pushed by console-push.py hourly)
+setInterval(loadState, 5 * 60 * 1000);
+
+// Backdrop click to close modals
+document.querySelectorAll('.modal-backdrop').forEach(b => {
+  b.addEventListener('click', e => { if (e.target === b) closeModal(b.id); });
+});
+
+// Escape to close modals
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-backdrop.show').forEach(b => closeModal(b.id));
+  }
+});
+</script>
+</body>
+</html>

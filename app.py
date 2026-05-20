@@ -2680,14 +2680,72 @@ def _init_todos_table():
         """)
         # Migrate existing tables that predate these columns
         for col, ddl in [("ai_summary", "TEXT DEFAULT ''"), ("suggested_reply", "TEXT DEFAULT ''"),
-                         ("action_note", "TEXT DEFAULT ''"), ("received_at", "TEXT DEFAULT ''")] :
+                         ("action_note", "TEXT DEFAULT ''"), ("received_at", "TEXT DEFAULT ''"),
+                         ("phase", "TEXT NOT NULL DEFAULT 'plan'"),
+                         ("first_started_at", "TEXT DEFAULT ''")] :
             try:
                 cx.execute(f"ALTER TABLE todos ADD COLUMN {col} {ddl}")
             except Exception:
                 pass
+        # Backfill phase from existing status (one-time; idempotent)
+        try:
+            cx.execute("UPDATE todos SET phase='complete' WHERE status='done' AND (phase IS NULL OR phase='plan')")
+        except Exception:
+            pass
         cx.commit()
 
 _init_todos_table()
+
+
+def _init_workspace_schema():
+    """Tables backing the per-owner Workspace page (focused item, threads, time, steps)."""
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS owner_state (
+                owner            TEXT PRIMARY KEY,
+                focused_todo_id  INTEGER,
+                updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS todo_messages (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                todo_id     INTEGER NOT NULL,
+                role        TEXT NOT NULL,
+                content     TEXT NOT NULL,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (todo_id) REFERENCES todos(id)
+            )
+        """)
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_todo_messages_todo ON todo_messages(todo_id, created_at)")
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS todo_time_sessions (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                todo_id           INTEGER NOT NULL,
+                owner             TEXT NOT NULL,
+                started_at        TEXT NOT NULL DEFAULT (datetime('now')),
+                ended_at          TEXT,
+                duration_seconds  INTEGER,
+                FOREIGN KEY (todo_id) REFERENCES todos(id)
+            )
+        """)
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_todo_time_todo ON todo_time_sessions(todo_id)")
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_todo_time_open ON todo_time_sessions(owner, ended_at)")
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS todo_steps (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                todo_id   INTEGER NOT NULL,
+                sequence  INTEGER NOT NULL,
+                text      TEXT NOT NULL,
+                done      INTEGER NOT NULL DEFAULT 0,
+                done_at   TEXT,
+                FOREIGN KEY (todo_id) REFERENCES todos(id)
+            )
+        """)
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_todo_steps_todo ON todo_steps(todo_id, sequence)")
+        cx.commit()
+
+_init_workspace_schema()
 
 
 def _init_calendar_table():
@@ -3810,6 +3868,54 @@ def add_person_note(person_id):
 
 
 # ── Console AI chat (context-aware) ───────────────────────────────────────────
+_OWNER_DESC = {
+    "glen":   "Dr. Glen Swartwout, naturopathic optometrist, solopreneur — full access to all systems and data.",
+    "rae":    "Rae (Susan Luscombe), business owner and operations partner — full access, handles orders/fulfillment/finance/scheduling.",
+    "shaira": "Shaira, technical VA — focused on implementation tasks, GHL/tech integrations.",
+}
+
+def _justus_system_prompt(owner: str, extra_context: str = "", extra_directives: str = "") -> str:
+    """Build Justus's system prompt for a given owner. Reused by /api/console-ask
+    and the per-item workspace thread endpoint."""
+    s = (
+        f"You are Justus, the AI assistant in the Remedy Match business console. "
+        f"You are speaking with: {_OWNER_DESC.get(owner, owner)}\n"
+        f"Be concise and action-oriented. Use bullet points for lists. "
+        f"Answer questions about clients, business, health protocols, operations, or anything relevant.\n"
+    )
+    if extra_context:
+        s += f"\nCurrent context:\n{extra_context}"
+    if extra_directives:
+        s += f"\n{extra_directives}"
+    return s
+
+
+def _ask_justus_stream(query: str, system: str, history: list, on_complete=None, history_n: int = 8):
+    """SSE generator that streams Justus's reply and (optionally) calls
+    on_complete(full_text) once the stream is exhausted."""
+    msgs = []
+    for h in (history or [])[-history_n:]:
+        msgs.append({"role": h.get("role","user"), "content": h.get("content","")})
+    msgs.append({"role": "user", "content": query})
+
+    parts: list[str] = []
+    with _cl.messages.stream(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=600,
+        system=system,
+        messages=msgs,
+    ) as stream:
+        for text in stream.text_stream:
+            parts.append(text)
+            yield f"data: {json.dumps({'text': text})}\n\n"
+    yield f"data: {json.dumps({'done': True})}\n\n"
+    if on_complete:
+        try:
+            on_complete("".join(parts))
+        except Exception:
+            app.logger.exception("Justus on_complete callback failed")
+
+
 @app.route("/api/console-ask", methods=["POST"])
 def console_ask():
     if CONSOLE_SECRET:
@@ -3819,43 +3925,12 @@ def console_ask():
     data    = request.get_json(force=True) or {}
     query   = (data.get("query") or "").strip()
     owner   = (data.get("owner") or "glen").lower()
-    context = (data.get("context") or "")   # page context string
+    context = (data.get("context") or "")
     history = data.get("history") or []
     if not query:
         return jsonify({"error":"No query"}), 400
-
-    owner_desc = {
-        "glen":   "Dr. Glen Swartwout, naturopathic optometrist, solopreneur — full access to all systems and data.",
-        "rae":    "Rae (Susan Luscombe), business owner and operations partner — full access, handles orders/fulfillment/finance/scheduling.",
-        "shaira": "Shaira, technical VA — focused on implementation tasks, GHL/tech integrations.",
-    }.get(owner, owner)
-
-    system = (
-        f"You are the AI assistant in the Remedy Match business console. "
-        f"You are speaking with: {owner_desc}\n"
-        f"Be concise and action-oriented. Use bullet points for lists. "
-        f"Answer questions about clients, business, health protocols, operations, or anything relevant.\n"
-    )
-    if context:
-        system += f"\nCurrent context:\n{context}"
-
-    msgs = []
-    for h in history[-6:]:
-        msgs.append({"role": h.get("role","user"), "content": h.get("content","")})
-    msgs.append({"role": "user", "content": query})
-
-    def _stream():
-        with _cl.messages.stream(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=600,
-            system=system,
-            messages=msgs,
-        ) as stream:
-            for text in stream.text_stream:
-                yield f"data: {json.dumps({'text': text})}\n\n"
-        yield f"data: {json.dumps({'done': True})}\n\n"
-
-    return Response(stream_with_context(_stream()),
+    system = _justus_system_prompt(owner, context)
+    return Response(stream_with_context(_ask_justus_stream(query, system, history, history_n=6)),
                     mimetype="text/event-stream",
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
 
@@ -3883,6 +3958,7 @@ def capture_split():
     if not text:
         return jsonify({"error": "No text"}), 400
 
+    # Strip the [capture] prefix (case-insensitive) if present.
     stripped = text
     if stripped.lower().startswith("[capture]"):
         stripped = stripped[len("[capture]"):].strip()
@@ -3897,6 +3973,7 @@ def capture_split():
             messages=[{"role": "user", "content": stripped}],
         )
         raw = "".join(b.text for b in resp.content if b.type == "text").strip()
+        # Tolerate accidental code fences.
         if raw.startswith("```"):
             raw = raw.strip("`").lstrip("json").strip()
         items = json.loads(raw)
@@ -3906,9 +3983,8 @@ def capture_split():
         app.logger.exception("capture_split LLM/parse failed")
         return jsonify({"ok": False, "error": f"split failed: {type(e).__name__}: {e}"}), 500
 
-    import time as __t
     ts = datetime.now(timezone.utc).isoformat()
-    ts_epoch = int(__t.time())
+    ts_epoch = int(_time.time())
     inserted = []
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         for i, it in enumerate(items):
@@ -3934,6 +4010,560 @@ def capture_split():
         cx.commit()
 
     return jsonify({"ok": True, "items": inserted, "count": len(inserted)}), 201
+
+
+# ── Workspace (per-owner focused-item page) ───────────────────────────────────
+_SHAIRA_DIRECTIVES = (
+    "\nSpecial guidance for Shaira:\n"
+    "- If she uses stuck-language ('still working on…', 'deepening my understanding of…', "
+    "'reviewing how X should work…') without naming a specific blocker, ask: "
+    "'It sounds like you may have hit a snag — what specifically is stopping you?'\n"
+    "- If she asks something requiring authority (priority order, publish/no-publish, "
+    "contact-eligibility, business decision) and the answer isn't in available context, "
+    "end your reply with [ASK:glen] (or [ASK:rae]) followed by a clearly-worded question. "
+    "The server routes the question to that person's console.\n"
+    "- Stay focused on the current task. Don't open new threads unless she asks.\n"
+)
+
+
+def _ws_auth_ok():
+    if not CONSOLE_SECRET:
+        return True
+    key = request.headers.get("X-Console-Key","") or request.args.get("key","")
+    return key == CONSOLE_SECRET
+
+
+def _todo_owner(cx, todo_id: int):
+    row = cx.execute("SELECT owner FROM todos WHERE id=?", (todo_id,)).fetchone()
+    return row[0] if row else None
+
+
+def _close_open_session(cx, owner: str):
+    """Close any currently-open time session for this owner. Returns closed session id or None."""
+    row = cx.execute(
+        "SELECT id, started_at FROM todo_time_sessions "
+        "WHERE owner=? AND ended_at IS NULL ORDER BY id DESC LIMIT 1",
+        (owner,)
+    ).fetchone()
+    if not row:
+        return None
+    sid, started = row
+    now = datetime.now(timezone.utc)
+    duration = 0
+    try:
+        if started:
+            start_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            duration = max(0, int((now - start_dt).total_seconds()))
+    except Exception:
+        pass
+    cx.execute(
+        "UPDATE todo_time_sessions SET ended_at=?, duration_seconds=? WHERE id=?",
+        (now.isoformat(), duration, sid)
+    )
+    return sid
+
+
+@app.route("/workspace/<owner>")
+def workspace_page(owner):
+    if owner != "shaira":
+        return jsonify({"error": "Workspace not available for this owner yet."}), 404
+    resp = send_from_directory(STATIC, "shaira-workspace.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/todos/<int:todo_id>/focus", methods=["POST"])
+def todo_focus(todo_id):
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        owner = _todo_owner(cx, todo_id)
+        if not owner:
+            return jsonify({"error":"Not found"}), 404
+        _close_open_session(cx, owner)
+        cx.execute(
+            "INSERT INTO todo_time_sessions (todo_id, owner) VALUES (?, ?)",
+            (todo_id, owner)
+        )
+        cx.execute(
+            "UPDATE todos SET phase='in_process', "
+            "first_started_at = CASE WHEN first_started_at IS NULL OR first_started_at='' "
+            "                        THEN datetime('now') ELSE first_started_at END "
+            "WHERE id=? AND phase!='complete'",
+            (todo_id,)
+        )
+        cx.execute(
+            "INSERT INTO owner_state (owner, focused_todo_id, updated_at) "
+            "VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT(owner) DO UPDATE SET "
+            "  focused_todo_id=excluded.focused_todo_id, updated_at=excluded.updated_at",
+            (owner, todo_id)
+        )
+        cx.commit()
+    return jsonify({"ok": True, "todo_id": todo_id, "owner": owner})
+
+
+@app.route("/api/todos/<int:todo_id>/unfocus", methods=["POST"])
+def todo_unfocus(todo_id):
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        owner = _todo_owner(cx, todo_id)
+        if not owner:
+            return jsonify({"error":"Not found"}), 404
+        _close_open_session(cx, owner)
+        cx.execute(
+            "UPDATE owner_state SET focused_todo_id=NULL, updated_at=datetime('now') "
+            "WHERE owner=? AND focused_todo_id=?",
+            (owner, todo_id)
+        )
+        cx.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/todos/<int:todo_id>/complete-workspace", methods=["POST"])
+def todo_complete_workspace(todo_id):
+    """Workspace-style complete: closes the time session, flips phase='complete',
+    logs the outcome to the thread. Named -workspace to avoid colliding with the
+    existing PATCH-based /api/todos/<id> action='done' used by /console."""
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    outcome = (request.get_json(force=True) or {}).get("outcome","").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        owner = _todo_owner(cx, todo_id)
+        if not owner:
+            return jsonify({"error":"Not found"}), 404
+        _close_open_session(cx, owner)
+        cx.execute(
+            "UPDATE todos SET phase='complete', status='done', done_at=? WHERE id=?",
+            (datetime.now(timezone.utc).isoformat(), todo_id)
+        )
+        if outcome:
+            cx.execute(
+                "INSERT INTO todo_messages (todo_id, role, content) VALUES (?, ?, ?)",
+                (todo_id, owner, outcome)
+            )
+        cx.execute(
+            "INSERT INTO todo_messages (todo_id, role, content) VALUES (?, ?, ?)",
+            (todo_id, "system", "Completed.")
+        )
+        cx.execute(
+            "UPDATE owner_state SET focused_todo_id=NULL, updated_at=datetime('now') "
+            "WHERE owner=? AND focused_todo_id=?",
+            (owner, todo_id)
+        )
+        cx.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/todos/<int:todo_id>/mark-blocked", methods=["POST"])
+def todo_mark_blocked(todo_id):
+    """Soft-blocked: logs a system message + sets a justus_to_glen row to surface in Glen's console."""
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    reason = (request.get_json(force=True) or {}).get("reason","").strip()
+    if not reason:
+        return jsonify({"error":"Reason required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        owner = _todo_owner(cx, todo_id)
+        if not owner:
+            return jsonify({"error":"Not found"}), 404
+        cx.execute(
+            "INSERT INTO todo_messages (todo_id, role, content) VALUES (?, ?, ?)",
+            (todo_id, "system", f"Blocked by {owner}: {reason}")
+        )
+        cx.execute(
+            "INSERT INTO todo_messages (todo_id, role, content) VALUES (?, ?, ?)",
+            (todo_id, "justus_to_glen", f"{owner.title()} flagged blocked: {reason}")
+        )
+        cx.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/todos/<int:todo_id>/messages", methods=["GET"])
+def todo_messages_get(todo_id):
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute(
+            "SELECT id, role, content, created_at FROM todo_messages "
+            "WHERE todo_id=? ORDER BY id ASC", (todo_id,)
+        ).fetchall()
+    msgs = [{"id": r[0], "role": r[1], "content": r[2], "created_at": r[3]} for r in rows]
+    return jsonify({"messages": msgs})
+
+
+def _todo_context_for_justus(cx, todo_id: int) -> str:
+    row = cx.execute(
+        "SELECT title, body, ai_summary FROM todos WHERE id=?", (todo_id,)
+    ).fetchone()
+    if not row:
+        return ""
+    title, body, ai_summary = row
+    steps = cx.execute(
+        "SELECT sequence, done, text FROM todo_steps WHERE todo_id=? ORDER BY sequence ASC",
+        (todo_id,)
+    ).fetchall()
+    parts = [f"Task: {title}"]
+    if body:
+        parts.append(f"Details:\n{body}")
+    if ai_summary:
+        parts.append(f"Summary: {ai_summary}")
+    if steps:
+        steps_str = "\n".join(f"  {'[x]' if s[1] else '[ ]'} {s[2]}" for s in steps)
+        parts.append(f"Steps:\n{steps_str}")
+    return "\n\n".join(parts)
+
+
+def _thread_history_for_justus(cx, todo_id: int, limit: int = 10) -> list:
+    rows = cx.execute(
+        "SELECT role, content FROM todo_messages WHERE todo_id=? ORDER BY id DESC LIMIT ?",
+        (todo_id, limit)
+    ).fetchall()
+    rows = list(reversed(rows))
+    history = []
+    for role, content in rows:
+        if role == "justus":
+            history.append({"role": "assistant", "content": content})
+        else:
+            history.append({"role": "user", "content": f"[{role}] {content}"})
+    return history
+
+
+def _persist_justus_reply(todo_id: int, full_text: str):
+    """Store Justus's full reply, parse [ASK:glen|rae] tag → justus_to_X row."""
+    import re as _re
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO todo_messages (todo_id, role, content) VALUES (?, ?, ?)",
+            (todo_id, "justus", full_text)
+        )
+        m = _re.search(r"\[ASK:(glen|rae)\]\s*(.+)$", full_text, _re.IGNORECASE | _re.DOTALL)
+        if m:
+            target = m.group(1).lower()
+            question = m.group(2).strip()
+            cx.execute(
+                "INSERT INTO todo_messages (todo_id, role, content) VALUES (?, ?, ?)",
+                (todo_id, f"justus_to_{target}", question)
+            )
+        cx.commit()
+
+
+@app.route("/api/todos/<int:todo_id>/messages", methods=["POST"])
+def todo_messages_post(todo_id):
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    data = request.get_json(force=True) or {}
+    role = (data.get("role") or "").lower().strip()
+    content = (data.get("content") or "").strip()
+    if role not in ("shaira", "glen", "rae"):
+        return jsonify({"error":"Invalid role"}), 400
+    if not content:
+        return jsonify({"error":"Empty content"}), 400
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        owner = _todo_owner(cx, todo_id)
+        if not owner:
+            return jsonify({"error":"Not found"}), 404
+        cx.execute(
+            "INSERT INTO todo_messages (todo_id, role, content) VALUES (?, ?, ?)",
+            (todo_id, role, content)
+        )
+        cx.commit()
+
+    if role != "shaira":
+        # Glen/Rae replies don't trigger a Justus stream.
+        return jsonify({"ok": True})
+
+    # Shaira spoke → stream Justus's reply.
+    with sqlite3.connect(LOG_DB) as cx:
+        todo_ctx = _todo_context_for_justus(cx, todo_id)
+        history = _thread_history_for_justus(cx, todo_id, limit=10)
+    # Drop the just-inserted shaira line (it's the new query, included separately by the stream helper)
+    if history and history[-1].get("role") == "user":
+        history = history[:-1]
+    system = _justus_system_prompt("shaira", todo_ctx, _SHAIRA_DIRECTIVES)
+    return Response(
+        stream_with_context(_ask_justus_stream(
+            content, system, history,
+            on_complete=lambda t: _persist_justus_reply(todo_id, t),
+        )),
+        mimetype="text/event-stream",
+        headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"}
+    )
+
+
+@app.route("/api/todos/<int:todo_id>/steps", methods=["GET"])
+def todo_steps_get(todo_id):
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute(
+            "SELECT id, sequence, text, done, done_at FROM todo_steps "
+            "WHERE todo_id=? ORDER BY sequence ASC", (todo_id,)
+        ).fetchall()
+    steps = [{"id": r[0], "sequence": r[1], "text": r[2], "done": bool(r[3]), "done_at": r[4]} for r in rows]
+    return jsonify({"steps": steps})
+
+
+@app.route("/api/todos/<int:todo_id>/steps", methods=["POST"])
+def todo_steps_post(todo_id):
+    """Add a single step manually OR extract via Justus.
+    Body {"text": "..."} → manual add.
+    Body {"extract": true} → one-shot Justus extraction (replaces un-done steps)."""
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    data = request.get_json(force=True) or {}
+    if data.get("extract"):
+        return _extract_steps_via_justus(todo_id)
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error":"Empty text"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT COALESCE(MAX(sequence), 0) FROM todo_steps WHERE todo_id=?", (todo_id,)).fetchone()
+        seq = (row[0] or 0) + 1
+        cx.execute(
+            "INSERT INTO todo_steps (todo_id, sequence, text, done) VALUES (?, ?, ?, 0)",
+            (todo_id, seq, text)
+        )
+        sid = cx.execute("SELECT last_insert_rowid()").fetchone()[0]
+        cx.commit()
+    return jsonify({"ok": True, "id": sid, "sequence": seq})
+
+
+def _extract_steps_via_justus(todo_id: int):
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT title, body, ai_summary FROM todos WHERE id=?", (todo_id,)
+        ).fetchone()
+    if not row:
+        return jsonify({"error":"Not found"}), 404
+    title, body, ai_summary = row
+    prompt = (
+        f"Task: {title}\n\n"
+        f"Details:\n{body or ai_summary or '(no details)'}\n\n"
+        "Extract this into a numbered checklist of 3–7 concrete steps the assignee can check off. "
+        "Each step is one short action. Reply with ONLY the numbered list, no preamble, no commentary.\n"
+        "Example:\n1. Open <URL>\n2. Click <button>\n3. ..."
+    )
+    try:
+        resp = _cl.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            system="You extract concrete, scannable checklists from task descriptions. No preamble.",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(b.text for b in resp.content if hasattr(b, "text"))
+    except Exception as e:
+        return jsonify({"error": f"Justus extraction failed: {e}"}), 500
+    import re as _re
+    extracted = []
+    for line in text.splitlines():
+        m = _re.match(r"^\s*(?:\d+[\.\)]|[-*])\s*(.+)$", line.strip())
+        if m:
+            extracted.append(m.group(1).strip())
+    if not extracted:
+        return jsonify({"error": "Justus returned no steps", "raw": text}), 500
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("DELETE FROM todo_steps WHERE todo_id=? AND done=0", (todo_id,))
+        row = cx.execute("SELECT COALESCE(MAX(sequence), 0) FROM todo_steps WHERE todo_id=?", (todo_id,)).fetchone()
+        seq = row[0] or 0
+        for s in extracted:
+            seq += 1
+            cx.execute(
+                "INSERT INTO todo_steps (todo_id, sequence, text, done) VALUES (?, ?, ?, 0)",
+                (todo_id, seq, s)
+            )
+        cx.commit()
+    return jsonify({"ok": True, "steps": extracted})
+
+
+@app.route("/api/todos/<int:todo_id>/steps/<int:step_id>", methods=["PATCH"])
+def todo_steps_patch(todo_id, step_id):
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    done = bool((request.get_json(force=True) or {}).get("done"))
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "UPDATE todo_steps SET done=?, "
+            "done_at=CASE WHEN ?=1 THEN datetime('now') ELSE NULL END "
+            "WHERE id=? AND todo_id=?",
+            (1 if done else 0, 1 if done else 0, step_id, todo_id)
+        )
+        cx.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/workspace/<owner>/state", methods=["GET"])
+def workspace_state(owner):
+    """Returns the complete workspace payload for an owner: focused item, in-process,
+    plan, recently-completed, plus per-item time/steps aggregates and pending-ask flags."""
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        focused = cx.execute(
+            "SELECT focused_todo_id FROM owner_state WHERE owner=?", (owner,)
+        ).fetchone()
+        focused_id = focused["focused_todo_id"] if focused else None
+
+        all_todos = cx.execute(
+            "SELECT id, title, body, ai_summary, priority, phase, first_started_at, "
+            "       created_at, done_at, status, action_note "
+            "FROM todos WHERE owner=? AND status!='dismissed' "
+            "ORDER BY created_at DESC",
+            (owner,)
+        ).fetchall()
+
+        time_rows = cx.execute(
+            "SELECT todo_id, COALESCE(SUM(duration_seconds), 0) AS total, COUNT(*) AS sessions, "
+            "       MAX(COALESCE(ended_at, started_at)) AS last_touched "
+            "FROM todo_time_sessions WHERE owner=? GROUP BY todo_id",
+            (owner,)
+        ).fetchall()
+        time_by_id = {r["todo_id"]: dict(r) for r in time_rows}
+
+        open_session = cx.execute(
+            "SELECT id, todo_id, started_at FROM todo_time_sessions "
+            "WHERE owner=? AND ended_at IS NULL ORDER BY id DESC LIMIT 1",
+            (owner,)
+        ).fetchone()
+
+        step_rows = cx.execute(
+            "SELECT t.id AS todo_id, "
+            "       COUNT(s.id) AS total_steps, "
+            "       SUM(CASE WHEN s.done=1 THEN 1 ELSE 0 END) AS done_steps "
+            "FROM todos t LEFT JOIN todo_steps s ON s.todo_id=t.id "
+            "WHERE t.owner=? GROUP BY t.id",
+            (owner,)
+        ).fetchall()
+        steps_by_id = {r["todo_id"]: dict(r) for r in step_rows}
+
+        # Pending ASK = a justus_to_X row newer than the latest X reply on the same todo
+        ask_rows = cx.execute("""
+            SELECT tm.todo_id, tm.role, tm.content, tm.created_at
+            FROM todo_messages tm
+            WHERE tm.role IN ('justus_to_glen','justus_to_rae')
+              AND tm.created_at > COALESCE((
+                SELECT MAX(tm2.created_at) FROM todo_messages tm2
+                WHERE tm2.todo_id=tm.todo_id
+                  AND tm2.role = CASE tm.role WHEN 'justus_to_glen' THEN 'glen' ELSE 'rae' END
+              ), '')
+        """).fetchall()
+        pending_by_id = {}
+        for r in ask_rows:
+            pending_by_id.setdefault(r["todo_id"], []).append({
+                "target": r["role"].replace("justus_to_",""),
+                "content": r["content"],
+                "created_at": r["created_at"],
+            })
+
+    def _serialize(t):
+        d = dict(t)
+        tid = d["id"]
+        tinfo = time_by_id.get(tid, {})
+        sinfo = steps_by_id.get(tid, {})
+        d["time_total_seconds"] = int(tinfo.get("total", 0) or 0)
+        d["time_sessions"] = int(tinfo.get("sessions", 0) or 0)
+        d["last_touched"] = tinfo.get("last_touched") or d["created_at"]
+        d["steps_total"] = int(sinfo.get("total_steps", 0) or 0)
+        d["steps_done"] = int(sinfo.get("done_steps", 0) or 0)
+        d["pending_asks"] = pending_by_id.get(tid, [])
+        return d
+
+    serialized = [_serialize(t) for t in all_todos]
+    focused_todo = next((t for t in serialized if t["id"] == focused_id), None)
+    in_process = [t for t in serialized if t["phase"] == "in_process" and t["id"] != focused_id]
+    plan = [t for t in serialized if t["phase"] == "plan"]
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    complete_recent = [t for t in serialized if t["phase"] == "complete" and (t.get("done_at") or "") >= cutoff]
+    # Sort completed by done_at desc
+    complete_recent.sort(key=lambda t: t.get("done_at") or "", reverse=True)
+    # Sort in-process by last_touched desc
+    in_process.sort(key=lambda t: t.get("last_touched") or "", reverse=True)
+    # Sort plan by priority then created_at
+    plan.sort(key=lambda t: (0 if t.get("priority")=="high" else 1, t.get("created_at") or ""), reverse=False)
+
+    return jsonify({
+        "owner": owner,
+        "focused": focused_todo,
+        "in_process": in_process,
+        "plan": plan,
+        "complete_recent": complete_recent,
+        "open_session": dict(open_session) if open_session else None,
+    })
+
+
+WORKSPACE_BACKUP_DIR = Path(os.environ.get(
+    "WORKSPACE_BACKUP_DIR",
+    "/Users/remedymatch/AI-Training/00 System/console-archive"
+))
+
+
+@app.route("/cron/backup-workspace", methods=["POST", "GET"])
+def cron_backup_workspace():
+    """Nightly dump of workspace tables + recently-touched todos to a JSON file in the
+    AI-Training vault. The vault's auto-snapshot will commit the file."""
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    try:
+        WORKSPACE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        return jsonify({"error": f"Cannot create backup dir: {e}"}), 500
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        messages = [dict(r) for r in cx.execute(
+            "SELECT id, todo_id, role, content, created_at FROM todo_messages ORDER BY id ASC"
+        ).fetchall()]
+        sessions = [dict(r) for r in cx.execute(
+            "SELECT id, todo_id, owner, started_at, ended_at, duration_seconds "
+            "FROM todo_time_sessions ORDER BY id ASC"
+        ).fetchall()]
+        steps = [dict(r) for r in cx.execute(
+            "SELECT id, todo_id, sequence, text, done, done_at FROM todo_steps ORDER BY id ASC"
+        ).fetchall()]
+        owner_state = [dict(r) for r in cx.execute(
+            "SELECT owner, focused_todo_id, updated_at FROM owner_state"
+        ).fetchall()]
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        # Touched = created_at, done_at, or any session/message activity in the window
+        todos = [dict(r) for r in cx.execute(
+            "SELECT id, created_at, owner, category, title, body, priority, status, "
+            "       delegated_to, delegated_at, done_at, source, dedup_key, ai_summary, "
+            "       suggested_reply, action_note, received_at, phase, first_started_at "
+            "FROM todos "
+            "WHERE created_at >= ? OR done_at >= ? OR id IN ("
+            "  SELECT DISTINCT todo_id FROM todo_messages WHERE created_at >= ? "
+            "  UNION SELECT DISTINCT todo_id FROM todo_time_sessions WHERE started_at >= ? "
+            ") "
+            "ORDER BY id ASC",
+            (cutoff, cutoff, cutoff, cutoff)
+        ).fetchall()]
+    payload = {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "cutoff_30d": cutoff,
+        "counts": {
+            "messages": len(messages),
+            "sessions": len(sessions),
+            "steps": len(steps),
+            "todos_30d": len(todos),
+            "owner_state": len(owner_state),
+        },
+        "owner_state": owner_state,
+        "todos_30d": todos,
+        "todo_messages": messages,
+        "todo_time_sessions": sessions,
+        "todo_steps": steps,
+    }
+    date_tag = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    out_path = WORKSPACE_BACKUP_DIR / f"{date_tag}-workspace.json"
+    try:
+        out_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    except Exception as e:
+        return jsonify({"error": f"Write failed: {e}", "path": str(out_path)}), 500
+    return jsonify({"ok": True, "path": str(out_path), "counts": payload["counts"]})
 
 
 # ── Token storage (OAuth tokens persisted in DB for cloud cron) ───────────────
