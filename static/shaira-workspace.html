@@ -152,6 +152,39 @@
   .modal textarea, .modal input { width: 100%; padding: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: inherit; font-size: 14px; margin-bottom: 12px; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
+  /* Justus side drawer (replaces the old Ask Justus modal so the page stays visible) */
+  #justus-drawer {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: 420px; min-width: 320px; max-width: 70vw;
+    background: var(--surface); border-left: 1px solid var(--border);
+    box-shadow: -8px 0 32px rgba(0,0,0,.45);
+    z-index: 50;
+    display: flex; flex-direction: column;
+    transform: translateX(100%);
+    transition: transform .22s ease-out;
+  }
+  #justus-drawer.open { transform: translateX(0); }
+  body.drawer-open main { padding-right: calc(var(--drawer-w, 420px) + 24px); }
+  main { transition: padding-right .22s ease-out; }
+  .drawer-resizer {
+    position: absolute; left: -3px; top: 0; bottom: 0; width: 6px;
+    cursor: col-resize; z-index: 2;
+  }
+  .drawer-resizer:hover, .drawer-resizer.active { background: var(--justus); opacity: .35; }
+  .drawer-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+  }
+  .drawer-header h3 { font-size: 14px; font-weight: 700; color: var(--justus); margin: 0; flex: 1; }
+  .drawer-header .btn-close { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .drawer-header .btn-close:hover { color: var(--text); border-color: var(--text); }
+  .drawer-thread { flex: 1; overflow-y: auto; padding: 12px 16px; background: var(--bg); }
+  .drawer-thread:empty::before { content: 'Ask anything about your tasks, the systems, or Glen\27 s preferences. I have full context.'; color: var(--muted); font-size: 13px; display: block; padding: 8px 4px; font-style: italic; }
+  .drawer-composer { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+  .drawer-composer textarea { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-family: inherit; font-size: 14px; resize: vertical; min-height: 48px; max-height: 160px; }
+  .drawer-composer textarea:focus { outline: none; border-color: var(--justus); }
+  .ai-pill.active { background: var(--justus); color: #0e1410; }
+
   /* Toast */
   .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--shaira); border-radius: 8px; padding: 12px 18px; box-shadow: var(--shadow); font-size: 14px; z-index: 200; opacity: 0; transform: translateY(10px); transition: all .25s; pointer-events: none; }
   .toast.show { opacity: 1; transform: translateY(0); }
@@ -241,14 +274,27 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="general-ask-modal">
-  <div class="modal" style="max-width: 600px;">
-    <h3>Ask Justus (general)</h3>
-    <div id="general-ask-thread" style="max-height:300px; overflow-y:auto; margin-bottom:12px; padding:8px; background:var(--bg); border-radius:6px; border:1px solid var(--border);"></div>
-    <textarea id="general-ask-input" rows="2" placeholder="Ask anything — about your tasks, the systems, Glen's preferences…"></textarea>
+<!-- Ask Justus side drawer (stays open alongside the workspace) -->
+<aside id="justus-drawer" aria-label="Ask Justus">
+  <div class="drawer-resizer" id="drawer-resizer" title="Drag to resize"></div>
+  <div class="drawer-header">
+    <h3>✦ Ask Justus</h3>
+    <button class="btn-close" onclick="closeDrawer()" title="Close (Esc)">✕</button>
+  </div>
+  <div class="drawer-thread" id="general-ask-thread"></div>
+  <div class="drawer-composer">
+    <textarea id="general-ask-input" rows="2" placeholder="Ask anything — copy/paste from your tasks if helpful…" onkeydown="if (event.metaKey && event.key === 'Enter') sendGeneralAsk()"></textarea>
+    <button class="btn btn-primary" onclick="sendGeneralAsk()">Send</button>
+  </div>
+</aside>
+
+<!-- Read-only completed-thread viewer (rare/brief — keeps modal form) -->
+<div class="modal-backdrop" id="completed-thread-modal">
+  <div class="modal" style="max-width: 640px;">
+    <h3 id="completed-thread-title">Completed item — thread</h3>
+    <div id="completed-thread-body" style="max-height:50vh; overflow-y:auto; margin-bottom:12px; padding:8px; background:var(--bg); border-radius:6px; border:1px solid var(--border);"></div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('general-ask-modal')">Close</button>
-      <button class="btn btn-primary" onclick="sendGeneralAsk()">Send</button>
+      <button class="btn" onclick="closeModal('completed-thread-modal')">Close</button>
     </div>
   </div>
 </div>
@@ -711,21 +757,17 @@ function toggleComplete() {
 }
 
 async function viewCompletedThread(todoId) {
-  // Open a modal-style read-only view by re-loading thread under a temporary CURRENT_THREAD
   let data;
   try {
     data = await apiJson(`/api/todos/${todoId}/messages`);
   } catch (e) { return; }
   const msgs = data.messages || [];
   if (msgs.length === 0) { toast('No thread for this item.'); return; }
-  // Simple alert-like modal using the general-ask modal
-  const modal = document.getElementById('general-ask-modal');
-  modal.querySelector('h3').textContent = 'Completed item — thread (read-only)';
-  modal.querySelector('#general-ask-input').style.display = 'none';
-  modal.querySelectorAll('.modal-actions .btn-primary').forEach(b => b.style.display = 'none');
-  const thread = document.getElementById('general-ask-thread');
-  thread.innerHTML = msgs.map(m => msgHtml(m)).join('');
-  modal.classList.add('show');
+  const todo = (STATE.complete_recent || []).find(t => t.id === todoId);
+  document.getElementById('completed-thread-title').textContent =
+    todo ? `${todo.title} — thread (read-only)` : 'Completed item — thread (read-only)';
+  document.getElementById('completed-thread-body').innerHTML = msgs.map(m => msgHtml(m)).join('');
+  document.getElementById('completed-thread-modal').classList.add('show');
 }
 
 // ── Actions: focus, unfocus, complete, blocked ────────────────────────────────
@@ -790,21 +832,60 @@ async function confirmBlocked() {
 }
 
 function closeModal(id) {
-  const m = document.getElementById(id);
-  m.classList.remove('show');
-  // Reset the general-ask modal if it was repurposed
-  if (id === 'general-ask-modal') {
-    m.querySelector('h3').textContent = 'Ask Justus (general)';
-    m.querySelector('#general-ask-input').style.display = '';
-    m.querySelectorAll('.modal-actions .btn-primary').forEach(b => b.style.display = '');
-  }
+  document.getElementById(id).classList.remove('show');
 }
 
-// ── General Ask Justus (no specific item) ─────────────────────────────────────
+// ── Justus side drawer (toggle, resizable) ────────────────────────────────────
 function openGeneralAsk() {
-  document.getElementById('general-ask-modal').classList.add('show');
-  setTimeout(() => document.getElementById('general-ask-input').focus(), 50);
+  const drawer = document.getElementById('justus-drawer');
+  if (drawer.classList.contains('open')) { closeDrawer(); return; }
+  drawer.classList.add('open');
+  document.body.classList.add('drawer-open');
+  document.querySelector('.ai-pill').classList.add('active');
+  setTimeout(() => document.getElementById('general-ask-input').focus(), 80);
 }
+function closeDrawer() {
+  document.getElementById('justus-drawer').classList.remove('open');
+  document.body.classList.remove('drawer-open');
+  document.querySelector('.ai-pill').classList.remove('active');
+}
+
+// Drag-to-resize on the drawer's left edge
+(function initDrawerResize() {
+  const drawer = document.getElementById('justus-drawer');
+  const handle = document.getElementById('drawer-resizer');
+  if (!drawer || !handle) return;
+  // Restore saved width
+  const saved = parseInt(localStorage.getItem('justus_drawer_w') || '0', 10);
+  if (saved >= 320 && saved <= window.innerWidth * 0.7) {
+    drawer.style.width = saved + 'px';
+    document.documentElement.style.setProperty('--drawer-w', saved + 'px');
+  }
+  let dragging = false, startX = 0, startW = 0;
+  handle.addEventListener('mousedown', e => {
+    dragging = true;
+    startX = e.clientX;
+    startW = drawer.getBoundingClientRect().width;
+    handle.classList.add('active');
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const dx = startX - e.clientX;
+    let next = Math.max(320, Math.min(window.innerWidth * 0.7, startW + dx));
+    drawer.style.width = next + 'px';
+    document.documentElement.style.setProperty('--drawer-w', next + 'px');
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('active');
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+    localStorage.setItem('justus_drawer_w', String(parseInt(drawer.style.width || '420', 10)));
+  });
+})();
 
 async function sendGeneralAsk() {
   const input = document.getElementById('general-ask-input');
@@ -869,11 +950,11 @@ document.querySelectorAll('.modal-backdrop').forEach(b => {
   b.addEventListener('click', e => { if (e.target === b) closeModal(b.id); });
 });
 
-// Escape to close modals
+// Escape to close modals + drawer
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    document.querySelectorAll('.modal-backdrop.show').forEach(b => closeModal(b.id));
-  }
+  if (e.key !== 'Escape') return;
+  document.querySelectorAll('.modal-backdrop.show').forEach(b => closeModal(b.id));
+  if (document.getElementById('justus-drawer').classList.contains('open')) closeDrawer();
 });
 </script>
 </body>
