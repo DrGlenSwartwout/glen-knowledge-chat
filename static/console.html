@@ -98,7 +98,10 @@
   .show-done-toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; cursor: pointer; }
   .show-done-toggle input { accent-color: var(--glen); }
 
-  main { max-width: 900px; margin: 0 auto; padding: 20px 16px; }
+  main { max-width: 900px; margin: 0 auto; padding: 20px 16px; transition: margin .25s ease; }
+  /* When a side panel is open, the center activity column reflows so nothing overlaps */
+  body.ws-thread-open main { margin-left: 420px; }
+  body.ai-open main { margin-right: 400px; }
   .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
 
   /* Calendar section */
@@ -365,6 +368,55 @@
     .cal-days { gap: 8px; }
     .cal-day { min-width: 160px; }
   }
+  /* ── Workspace decorations (Shaira tab: phase badge, time, thread) ────────── */
+  .ws-chip { display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:700;
+    padding:2px 7px; border-radius:10px; margin-right:5px; vertical-align:middle; }
+  .ws-chip.plan       { background:#1a3a24; color:#7fc99a; }
+  .ws-chip.in_process { background:#3a3318; color:#e0c45c; }
+  .ws-chip.complete   { background:#21472d; color:#a89870; }
+  .ws-chip.time       { background:#16241a; color:#a89870; font-weight:600; }
+  .ws-chip.ask        { background:#4a2618; color:#e69c4a; cursor:pointer; }
+  .ws-thread-btn { background:transparent; border:1px solid var(--border); color:var(--justus);
+    border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer; }
+  .ws-thread-btn:hover { border-color:var(--justus); background:#1c1726; }
+  .ws-thread-btn.has-ask { border-color:#e69c4a; color:#e69c4a; }
+  #ws-thread-panel { position:fixed; top:0; left:-440px; width:420px; height:100vh;
+    background:var(--surface); color:var(--text); border-right:1px solid var(--border);
+    z-index:50; display:flex; flex-direction:column; transition:left .25s ease;
+    box-shadow:4px 0 24px #0006; }
+  #ws-thread-panel.open { left:0; }
+  .ws-thread-head { display:flex; align-items:center; gap:10px; padding:14px 18px;
+    border-bottom:1px solid var(--border); }
+  .ws-thread-head h3 { margin:0; font-size:14px; flex:1; }
+  .ws-thread-head button { background:transparent; border:1px solid var(--border); color:var(--muted);
+    border-radius:6px; padding:3px 9px; cursor:pointer; }
+  .ws-thread-body { flex:1; overflow-y:auto; padding:14px 18px; }
+  .ws-msg { padding:8px 11px; margin-bottom:8px; border-radius:8px; font-size:13px; line-height:1.5; }
+  .ws-msg-role { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
+    margin-bottom:3px; opacity:.85; }
+  .ws-msg-content { white-space:pre-wrap; word-wrap:break-word; }
+  .ws-msg-time { font-size:9px; color:var(--muted); margin-top:3px; opacity:.7; }
+  .ws-msg.shaira { background:#16241a; border-left:3px solid var(--shaira); }
+  .ws-msg.shaira .ws-msg-role { color:var(--shaira); }
+  .ws-msg.justus { background:#1c1726; border-left:3px solid var(--justus); }
+  .ws-msg.justus .ws-msg-role { color:var(--justus); }
+  .ws-msg.glen { background:#2a2412; border-left:3px solid var(--glen); }
+  .ws-msg.glen .ws-msg-role { color:var(--glen); }
+  .ws-msg.rae { background:#2a1d14; border-left:3px solid var(--rae); }
+  .ws-msg.rae .ws-msg-role { color:var(--rae); }
+  .ws-msg.system { background:transparent; border-left:3px solid var(--muted); color:var(--muted);
+    font-style:italic; font-size:12px; }
+  .ws-msg.system .ws-msg-role { display:none; }
+  .ws-msg.justus_to_glen, .ws-msg.justus_to_rae { background:#3a2615; border-left:3px solid #e69c4a; }
+  .ws-msg.justus_to_glen .ws-msg-role, .ws-msg.justus_to_rae .ws-msg-role { color:#e69c4a; }
+  .ws-msg.justus_to_glen .ws-msg-role::before, .ws-msg.justus_to_rae .ws-msg-role::before { content:"🔔 "; }
+  .ws-thread-compose { display:flex; gap:8px; padding:12px 18px; border-top:1px solid var(--border); }
+  .ws-thread-compose textarea { flex:1; background:var(--bg); border:1px solid var(--border);
+    color:var(--text); border-radius:6px; padding:8px 10px; font-family:inherit; font-size:13px;
+    resize:vertical; min-height:46px; }
+  .ws-thread-compose button { background:var(--glen); border:none; color:#0a150d; border-radius:6px;
+    padding:0 16px; font-weight:700; cursor:pointer; }
+  .ws-thread-empty { text-align:center; color:var(--muted); font-size:12px; padding:18px 0; }
 </style>
 </head>
 <body>
@@ -517,6 +569,7 @@ let currentOwner = 'glen';
 let consoleKey = '';
 let countdown = 1800;
 let countdownTimer;
+let WS_META = {};   // todo_id → {phase, time_total_seconds, pending_asks} for owners with a Workspace
 let openMenuId = null;
 let calVisible = true;
 
@@ -694,6 +747,36 @@ async function fetchTodos(owner, status) {
 async function fetchCalendar(owner) {
   const r = await apiFetch(`/api/calendar?owner=${owner}`);
   return r.ok ? (await r.json()).events || [] : [];
+}
+
+// Pull the Workspace state for an owner and flatten into a {todo_id → meta} map.
+async function fetchWorkspaceMeta(owner) {
+  try {
+    const r = await apiFetch(`/api/workspace/${owner}/state`);
+    if (!r.ok) return {};
+    const s = await r.json();
+    const map = {};
+    const focusedId = (s.focused || {}).id;
+    [...(s.focused ? [s.focused] : []), ...(s.in_process||[]), ...(s.plan||[]), ...(s.complete_recent||[])]
+      .forEach(t => {
+        map[t.id] = {
+          phase: t.phase || 'plan',
+          focused: t.id === focusedId,
+          time_total_seconds: t.time_total_seconds || 0,
+          pending_asks: t.pending_asks || [],
+        };
+      });
+    return map;
+  } catch { return {}; }
+}
+
+function wsFmtDuration(sec) {
+  sec = Math.max(0, Math.round(sec || 0));
+  if (sec < 60) return sec + 's';
+  const m = Math.floor(sec/60);
+  if (m < 60) return m + 'm';
+  const h = Math.floor(m/60), rm = m % 60;
+  return rm ? `${h}h ${rm}m` : `${h}h`;
 }
 
 async function patchTodo(id, payload) {
@@ -874,6 +957,21 @@ function todoCard(t) {
   const isDone      = t.status === 'done';
   const isDelegated = t.status === 'delegated';
   let cls = 'todo-card' + (isDone ? ' done-item' : '') + (isDelegated ? ' delegated-item' : '');
+  // Workspace decorations (only populated when viewing an owner with a Workspace)
+  const wm = WS_META[t.id];
+  let wsBadges = '', wsThreadBtn = '';
+  if (wm) {
+    const phaseLabel = { plan:'🌱 Plan',
+                         in_process: wm.focused ? '⚡ Focused' : '◌ In process',
+                         complete:'✓ Complete' }[wm.phase] || wm.phase;
+    wsBadges = `<span class="ws-chip ${wm.phase}">${phaseLabel}</span>`;
+    if (wm.time_total_seconds > 0)
+      wsBadges += `<span class="ws-chip time">⏱ ${wsFmtDuration(wm.time_total_seconds)}</span>`;
+    const askN = (wm.pending_asks || []).length;
+    if (askN)
+      wsBadges += `<span class="ws-chip ask" onclick="openWsThread(${t.id})">🔔 ${askN} need${askN===1?'s':''} a reply</span>`;
+    wsThreadBtn = `<button class="ws-thread-btn${askN?' has-ask':''}" onclick="openWsThread(${t.id})">Thread${askN?' 🔔':''}</button>`;
+  }
   const meta = [];
   if (t.source)     meta.push(`<span class="meta-badge">${escHtml(t.source)}</span>`);
   const displayTime = t.received_at || t.created_at;
@@ -926,6 +1024,7 @@ function todoCard(t) {
     <div class="priority-dot ${t.priority||'normal'}"></div>
     <div class="todo-body">
       <div class="todo-title">${escHtml(t.title)}</div>
+      ${wsBadges ? `<div class="ws-badge-row">${wsBadges}</div>` : ''}
       ${t.body ? `<details class="todo-body-details"><summary>Body</summary><div class="todo-detail">${escHtml(t.body)}</div></details>` : ''}
       ${aiSummary}
       ${actionBadge}
@@ -939,7 +1038,7 @@ function todoCard(t) {
         <div class="draft-output" id="draft-output-${t.id}"></div>
       </div>
     </div>
-    <div class="todo-actions">${actions}</div>
+    <div class="todo-actions">${wsThreadBtn}${actions}</div>
   </div>`;
 }
 
@@ -1172,13 +1271,16 @@ function toggleAI(forceOpen) {
   const sb = document.getElementById('ai-sidebar');
   const btn = document.getElementById('btn-open-ai');
   const open = forceOpen || !sb.classList.contains('open');
+  if (open) _dockPanel(sb);
   sb.classList.toggle('open', open);
+  document.body.classList.toggle('ai-open', open);
   btn.classList.toggle('shifted', open);
   btn.textContent = open ? '✕ Close' : '✦ Ask Justus';
   if (open) setTimeout(() => document.getElementById('ai-input').focus(), 300);
 }
 function closeAI() {
   document.getElementById('ai-sidebar').classList.remove('open');
+  document.body.classList.remove('ai-open');
   const btn = document.getElementById('btn-open-ai');
   btn.classList.remove('shifted');
   btn.textContent = '✦ Ask Justus';
@@ -1469,10 +1571,13 @@ async function refresh(restoreScrollY) {
 
   const showDone = document.getElementById('show-done').checked;
   const calOwner = currentOwner === 'shaira' ? null : currentOwner;
-  const [todos, calEvents] = await Promise.all([
+  const wsOwner  = currentOwner === 'shaira' ? currentOwner : null;
+  const [todos, calEvents, wsMeta] = await Promise.all([
     fetchTodos(currentOwner, showDone ? 'done' : 'open'),
     calOwner ? fetchCalendar(calOwner) : Promise.resolve([]),
+    wsOwner ? fetchWorkspaceMeta(wsOwner) : Promise.resolve({}),
   ]);
+  WS_META = wsMeta;
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('main-content').style.display = '';
@@ -1647,6 +1752,76 @@ if (urlOwner && ['glen','rae','shaira'].includes(urlOwner)) {
 }
 document.body.dataset.owner = currentOwner;
 
+// ── Workspace thread viewer (read + reply to Shaira's per-item Justus threads) ──
+let _wsThreadId = null;
+
+// Position a side panel as a full-height column starting just below the header,
+// so it never overlaps the header controls or (with main's reflow) the center.
+function _dockPanel(el) {
+  const h = document.querySelector('header').offsetHeight;
+  el.style.top = h + 'px';
+  el.style.height = `calc(100vh - ${h}px)`;
+}
+
+async function openWsThread(todoId) {
+  _wsThreadId = todoId;
+  const titleEl = document.querySelector(`#card-${todoId} .todo-title`);
+  document.getElementById('ws-thread-title').textContent =
+    titleEl ? titleEl.textContent : `Item ${todoId}`;
+  const body = document.getElementById('ws-thread-body');
+  body.innerHTML = `<div class="ws-thread-empty">Loading…</div>`;
+  document.getElementById('ws-thread-input').placeholder =
+    `Reply as ${currentOwner.charAt(0).toUpperCase()+currentOwner.slice(1)}…`;
+  const panel = document.getElementById('ws-thread-panel');
+  _dockPanel(panel);
+  panel.classList.add('open');
+  document.body.classList.add('ws-thread-open');
+  await loadWsThread();
+}
+
+async function loadWsThread() {
+  const r = await apiFetch(`/api/todos/${_wsThreadId}/messages`);
+  const body = document.getElementById('ws-thread-body');
+  if (!r.ok) { body.innerHTML = `<div class="ws-thread-empty">Couldn't load thread.</div>`; return; }
+  const msgs = (await r.json()).messages || [];
+  if (!msgs.length) {
+    body.innerHTML = `<div class="ws-thread-empty">No messages yet on this item.</div>`;
+    return;
+  }
+  const roleLabel = { shaira:'Shaira', justus:'Justus', glen:'Glen', rae:'Rae',
+    system:'', justus_to_glen:'Justus → Glen', justus_to_rae:'Justus → Rae' };
+  body.innerHTML = msgs.map(m => `
+    <div class="ws-msg ${m.role}">
+      ${roleLabel[m.role] ? `<div class="ws-msg-role">${roleLabel[m.role]}</div>` : ''}
+      <div class="ws-msg-content">${escHtml(m.content)}</div>
+      ${m.created_at ? `<div class="ws-msg-time">${timeAgo(m.created_at)}</div>` : ''}
+    </div>`).join('');
+  body.scrollTop = body.scrollHeight;
+}
+
+async function sendWsThread() {
+  const input = document.getElementById('ws-thread-input');
+  const content = input.value.trim();
+  if (!content || _wsThreadId == null) return;
+  input.value = '';
+  input.disabled = true;
+  const r = await apiFetch(`/api/todos/${_wsThreadId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ role: currentOwner, content }),
+  });
+  input.disabled = false;
+  if (!r.ok) { input.value = content; alert('Failed to post reply.'); return; }
+  await loadWsThread();
+  input.focus();
+}
+
+function closeWsThread() {
+  document.getElementById('ws-thread-panel').classList.remove('open');
+  document.body.classList.remove('ws-thread-open');
+  _wsThreadId = null;
+  refresh(window.scrollY);   // clears the 🔔 once a reply lands
+}
+
 initKey();
 </script>
 
@@ -1666,6 +1841,20 @@ initKey();
   </div>
 </div>
 <button id="btn-open-ai" onclick="toggleAI()">✦ Ask Justus</button>
+
+<!-- Workspace thread viewer — left-docked column -->
+<div id="ws-thread-panel">
+  <div class="ws-thread-head">
+    <h3 id="ws-thread-title">Thread</h3>
+    <button onclick="closeWsThread()" aria-label="Close">✕</button>
+  </div>
+  <div class="ws-thread-body" id="ws-thread-body"></div>
+  <div class="ws-thread-compose">
+    <textarea id="ws-thread-input" rows="2" placeholder="Reply…"
+      onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();sendWsThread();}"></textarea>
+    <button onclick="sendWsThread()">Send</button>
+  </div>
+</div>
 
 <!-- Add Person dialog -->
 <dialog id="add-person-dialog">
