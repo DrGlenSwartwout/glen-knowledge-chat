@@ -4404,7 +4404,9 @@ def todo_messages_post(todo_id):
     data = request.get_json(force=True) or {}
     role = (data.get("role") or "").lower().strip()
     content = (data.get("content") or "").strip()
-    if role not in ("shaira", "glen", "rae"):
+    # Admin may post as system (used by cron / watcher bots). Humans post as themselves.
+    allowed_roles = ("shaira", "glen", "rae", "system") if ctx.get("scope") == "admin" else ("shaira", "glen", "rae")
+    if role not in allowed_roles:
         return jsonify({"error":"Invalid role"}), 400
     if not content:
         return jsonify({"error":"Empty content"}), 400
