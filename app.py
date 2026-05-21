@@ -2767,6 +2767,18 @@ def _init_workspace_schema():
         """)
         cx.execute("CREATE INDEX IF NOT EXISTS idx_access_tokens_user ON access_tokens(user_id)")
         cx.execute("CREATE INDEX IF NOT EXISTS idx_access_tokens_active ON access_tokens(token, revoked_at)")
+        # Daily monitoring reports (Phase 4) — one row per owner per day, upserted on re-run.
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS daily_reports (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner         TEXT NOT NULL,
+                report_date   TEXT NOT NULL,
+                report_md     TEXT NOT NULL DEFAULT '',
+                metrics_json  TEXT NOT NULL DEFAULT '{}',
+                created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(owner, report_date)
+            )
+        """)
         cx.commit()
 
 _init_workspace_schema()
@@ -4870,6 +4882,38 @@ def cron_backup_workspace():
         "server_wrote": server_wrote,
         "payload": payload,
     })
+
+
+# ── Shaira daily monitoring report (Phase 4) ──────────────────────────────────
+@app.route("/cron/shaira-daily-report", methods=["POST", "GET"])
+def cron_shaira_daily_report():
+    """Generate (or regenerate) today's Shaira daily report. Admin-only.
+    Fired daily by a launchd job at ~8 AM HST; idempotent (upserts the day)."""
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    try:
+        from dashboard.shaira_daily import generate_and_store
+        result = generate_and_store(str(LOG_DB), _cl, "shaira")
+    except Exception as e:
+        app.logger.exception("shaira-daily-report failed")
+        return jsonify({"error": f"Report generation failed: {e}"}), 500
+    return jsonify({
+        "ok": True,
+        "report_date": result["report_date"],
+        "markdown": result["markdown"],
+        "metrics": result["metrics"],
+    })
+
+
+@app.route("/api/shaira-daily")
+def api_shaira_daily():
+    """Latest Shaira daily report, shaped for the dashboard 'briefing' card."""
+    if CONSOLE_SECRET:
+        ok_, _ctx, code = _auth()
+        if not ok_:
+            return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
+    from dashboard.shaira_daily import latest_report
+    return jsonify({"ok": True, "data": latest_report(str(LOG_DB), "shaira")})
 
 
 # ── Token storage (OAuth tokens persisted in DB for cloud cron) ───────────────
