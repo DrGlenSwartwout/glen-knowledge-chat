@@ -325,6 +325,64 @@ def get_thread(thread_id: str) -> dict:
     return {"id": t.get("id"), "messages": msgs}
 
 
+def get_thread_attachments(thread_id: str, max_bytes: int = 25 * 1024 * 1024) -> list:
+    """Download every real file attachment across all messages in a thread.
+
+    Returns a list of dicts:
+      {message_id, filename, mime_type, size, content_b64, inline, skipped}
+    `content_b64` is standard base64 (decoded from Gmail's url-safe form and
+    re-encoded) so the caller can base64.b64decode() it directly. Attachments
+    larger than max_bytes are returned with skipped=True and no content.
+    """
+    svc = _get_gmail_service()
+    t = svc.users().threads().get(userId="me", id=thread_id, format="full").execute()
+    out = []
+    for m in (t.get("messages") or []):
+        msg_id = m.get("id")
+
+        def walk(p):
+            filename = (p.get("filename") or "").strip()
+            body = p.get("body") or {}
+            att_id = body.get("attachmentId")
+            if filename and att_id:
+                # Is it inline (referenced in HTML, e.g. signature logo)?
+                headers = {h.get("name", "").lower(): h.get("value", "")
+                           for h in (p.get("headers") or [])}
+                disposition = headers.get("content-disposition", "").lower()
+                inline = disposition.startswith("inline") or "content-id" in headers
+                size = int(body.get("size") or 0)
+                rec = {
+                    "message_id": msg_id,
+                    "filename": filename,
+                    "mime_type": p.get("mimeType") or "application/octet-stream",
+                    "size": size,
+                    "inline": inline,
+                    "skipped": False,
+                    "content_b64": "",
+                }
+                if size and size > max_bytes:
+                    rec["skipped"] = True
+                else:
+                    att = svc.users().messages().attachments().get(
+                        userId="me", messageId=msg_id, id=att_id
+                    ).execute()
+                    raw = att.get("data", "")
+                    if raw:
+                        pad = "=" * (-len(raw) % 4)
+                        decoded = base64.urlsafe_b64decode(raw + pad)
+                        if len(decoded) > max_bytes:
+                            rec["skipped"] = True
+                        else:
+                            rec["content_b64"] = base64.b64encode(decoded).decode("ascii")
+                            rec["size"] = len(decoded)
+                out.append(rec)
+            for child in (p.get("parts") or []):
+                walk(child)
+
+        walk(m.get("payload") or {})
+    return out
+
+
 # ── Hidden-sender filter (persistent block list) ─────────────────────────────
 # Stored in chat_log.db so the same hide list applies to every device.
 

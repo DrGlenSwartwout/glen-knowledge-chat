@@ -4765,6 +4765,32 @@ def access_token_revoke(prefix):
     return jsonify({"ok": True, "revoked_prefix": prefix})
 
 
+@app.route("/api/gmail/thread-attachments", methods=["GET"])
+def gmail_thread_attachments():
+    """Download all real file attachments in a Gmail thread, using the server's
+    existing Gmail OAuth token. Admin-only. Used by the Shaira vault watcher,
+    which runs on Glen's Mac and writes the bytes into the vault.
+
+    Query: ?thread_id=<id>  (also accepts ?message_id=<id>)
+    Returns: {ok, count, attachments: [{message_id, filename, mime_type, size,
+              inline, skipped, content_b64}]}
+    """
+    if not _ws_auth_ok():
+        return jsonify({"error":"Unauthorized"}), 401
+    thread_id = (request.args.get("thread_id") or request.args.get("message_id") or "").strip()
+    if not thread_id:
+        return jsonify({"error":"thread_id required"}), 400
+    try:
+        from dashboard.inbox import get_thread_attachments
+        attachments = get_thread_attachments(thread_id)
+    except FileNotFoundError as e:
+        return jsonify({"error": f"Gmail token not configured: {e}"}), 503
+    except Exception as e:
+        app.logger.exception("thread-attachments failed")
+        return jsonify({"error": f"Gmail fetch failed: {e}"}), 502
+    return jsonify({"ok": True, "count": len(attachments), "attachments": attachments})
+
+
 WORKSPACE_BACKUP_DIR = Path(os.environ.get(
     "WORKSPACE_BACKUP_DIR",
     "/Users/remedymatch/AI-Training/00 System/console-archive"
