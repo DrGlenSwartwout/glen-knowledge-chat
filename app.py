@@ -4799,14 +4799,15 @@ WORKSPACE_BACKUP_DIR = Path(os.environ.get(
 
 @app.route("/cron/backup-workspace", methods=["POST", "GET"])
 def cron_backup_workspace():
-    """Nightly dump of workspace tables + recently-touched todos to a JSON file in the
-    AI-Training vault. The vault's auto-snapshot will commit the file."""
+    """Dump of workspace tables + recently-touched todos.
+
+    Always returns the full `payload` in the JSON response — the nightly
+    backup launchd job runs on Glen's Mac, calls this, and writes the payload
+    into the vault locally (the vault is not on the Render filesystem). The
+    server-side file write is best-effort and only succeeds if WORKSPACE_BACKUP_DIR
+    happens to be writable (i.e. when run on a Mac, not on Render)."""
     if not _ws_auth_ok():
         return jsonify({"error":"Unauthorized"}), 401
-    try:
-        WORKSPACE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        return jsonify({"error": f"Cannot create backup dir: {e}"}), 500
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         messages = [dict(r) for r in cx.execute(
@@ -4853,12 +4854,22 @@ def cron_backup_workspace():
         "todo_steps": steps,
     }
     date_tag = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    out_path = WORKSPACE_BACKUP_DIR / f"{date_tag}-workspace.json"
+    # Best-effort server-side write (only meaningful when run on a Mac, not Render).
+    server_wrote = None
     try:
+        WORKSPACE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        out_path = WORKSPACE_BACKUP_DIR / f"{date_tag}-workspace.json"
         out_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-    except Exception as e:
-        return jsonify({"error": f"Write failed: {e}", "path": str(out_path)}), 500
-    return jsonify({"ok": True, "path": str(out_path), "counts": payload["counts"]})
+        server_wrote = str(out_path)
+    except Exception:
+        server_wrote = None  # expected on Render — caller writes the payload locally
+    return jsonify({
+        "ok": True,
+        "date_tag": date_tag,
+        "counts": payload["counts"],
+        "server_wrote": server_wrote,
+        "payload": payload,
+    })
 
 
 # ── Token storage (OAuth tokens persisted in DB for cloud cron) ───────────────
