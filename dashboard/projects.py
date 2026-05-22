@@ -48,6 +48,8 @@ def read_projects_md():
 
 _SECTION_MAP = {
     "in process": "in_process",
+    "queued":     "queued",
+    "planning":   "planning",
     "ideas":      "ideas",
     "completed":  "completed",
 }
@@ -63,7 +65,8 @@ def parse_sections(md: str) -> dict:
     Returns {sections: {in_process, ideas, completed}, counts}.
     Each entry: {name, description, fields: {status, where, eta, blockers, sessions, ...}}
     """
-    sections = {"in_process": [], "ideas": [], "completed": []}
+    sections = {"in_process": [], "queued": [], "planning": [],
+                "ideas": [], "completed": []}
     current_section = None
     current_entry = None
 
@@ -114,9 +117,10 @@ def kanban_payload() -> dict:
     """
     md = read_projects_md()
     if md is None:
+        empty = ["in_process", "queued", "planning", "ideas", "completed"]
         return {
-            "sections": {"in_process": [], "ideas": [], "completed": []},
-            "counts": {"in_process": 0, "ideas": 0, "completed": 0},
+            "sections": {k: [] for k in empty},
+            "counts": {k: 0 for k in empty},
             "source": {"status": "no snapshot uploaded yet — run console-push to populate"},
         }
     payload = parse_sections(md)

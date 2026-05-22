@@ -17,6 +17,8 @@
     --warn: #d4a843;
     --bad: #cc4b2c;
     --col-active: #d4a843;
+    --col-queued: #c2632e;
+    --col-planning: #5b8a9e;
     --col-ideas: #a89870;
     --col-done: #3d8a52;
   }
@@ -64,13 +66,14 @@
   #status.show { display: block; }
   main {
     display: grid;
-    grid-template-columns: 1.6fr 1fr 1fr;
-    gap: 16px;
+    grid-template-columns: 1.3fr 1fr 1fr 1fr 1.2fr;
+    gap: 14px;
     padding: 16px 24px 32px;
-    max-width: 1600px;
+    max-width: 1900px;
     margin: 0 auto;
   }
-  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  @media (max-width: 1400px) { main { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; } }
   .col {
     background: var(--panel);
     border-radius: 12px;
@@ -79,6 +82,8 @@
     border-top: 3px solid var(--col-ideas);
   }
   .col-active { border-top-color: var(--col-active); }
+  .col-queued { border-top-color: var(--col-queued); }
+  .col-planning { border-top-color: var(--col-planning); }
   .col-ideas { border-top-color: var(--col-ideas); }
   .col-done { border-top-color: var(--col-done); }
   .col h2 {
@@ -143,6 +148,8 @@
   .chip-eta { color: var(--accent); }
   .chip-blocked { color: var(--bad); border-color: var(--bad); }
   .chip-status { color: var(--ink); }
+  .chip-effort { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .chip-value { color: var(--good); border-color: var(--good); font-weight: 600; }
   .empty {
     color: var(--dim);
     font-size: 12px;
@@ -255,6 +262,14 @@
     <h2>In Process <span class="count" id="count-active">0</span></h2>
     <div id="col-active"></div>
   </section>
+  <section class="col col-queued">
+    <h2>Queued <span class="count" id="count-queued">0</span></h2>
+    <div id="col-queued"></div>
+  </section>
+  <section class="col col-planning">
+    <h2>Planning <span class="count" id="count-planning">0</span></h2>
+    <div id="col-planning"></div>
+  </section>
   <section class="col col-ideas">
     <h2>Ideas <span class="count" id="count-ideas">0</span></h2>
     <div id="col-ideas"></div>
@@ -362,9 +377,11 @@ function render(data) {
   }
 
   const map = {
-    in_process: { col: "col-active", count: "count-active" },
-    ideas:      { col: "col-ideas",  count: "count-ideas" },
-    completed:  { col: "col-done",   count: "count-done" },
+    in_process: { col: "col-active",   count: "count-active" },
+    queued:     { col: "col-queued",   count: "count-queued" },
+    planning:   { col: "col-planning", count: "count-planning" },
+    ideas:      { col: "col-ideas",    count: "count-ideas" },
+    completed:  { col: "col-done",     count: "count-done" },
   };
 
   _byId = {};
@@ -393,8 +410,12 @@ function card(entry, id) {
   const eta = entry.fields["eta / next milestone"] || entry.fields["eta"] || "";
   const blockers = entry.fields["blockers"] || "";
   const status = entry.fields["status"] || "";
+  const effort = entry.fields["effort"] || "";
+  const value = entry.fields["value"] || "";
 
   const chips = [];
+  if (effort) chips.push(`<span class="chip chip-effort">effort ${escapeHtml(effort)}</span>`);
+  if (value) chips.push(`<span class="chip chip-value">value ${escapeHtml(value)}</span>`);
   if (eta) chips.push(`<span class="chip chip-eta">ETA: ${escapeHtml(eta)}</span>`);
   if (blockers && blockers.toLowerCase() !== "none")
     chips.push(`<span class="chip chip-blocked">blocked</span>`);
