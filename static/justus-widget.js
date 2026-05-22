@@ -164,6 +164,7 @@
         body: JSON.stringify({
           query: query, owner: 'glen',
           context: pageContext(), history: history.slice(-6),
+          page: window.location.pathname,
         }),
       });
       if (res.status === 401) { bubble.textContent = 'Unauthorized — console key rejected.'; }

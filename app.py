@@ -2339,6 +2339,14 @@ def _init_leads_table():
                 ghl_error      TEXT
             )
         """)
+        # Per-item action columns (interactive dashboard) — idempotent migration
+        for col, ddl in [("tags",             "TEXT DEFAULT '[]'"),
+                         ("status",           "TEXT DEFAULT 'pending'"),
+                         ("last_outbound_at", "TEXT DEFAULT ''")]:
+            try:
+                cx.execute(f"ALTER TABLE inbound_leads ADD COLUMN {col} {ddl}")
+            except Exception:
+                pass
         cx.commit()
 
 _init_leads_table()
@@ -2372,7 +2380,9 @@ def leads_pending_ghl():
         rows = cx.execute("""
             SELECT id, received_at, source, email, first_name, last_name, phone, raw_json, ghl_error
             FROM inbound_leads
-            WHERE ghl_contact_id IS NULL AND email IS NOT NULL AND email != ''
+            WHERE ghl_contact_id IS NULL
+              AND email IS NOT NULL AND email != ''
+              AND (status IS NULL OR status != 'dismissed')
             ORDER BY received_at ASC LIMIT 100
         """).fetchall()
     return jsonify({"leads": [dict(r) for r in rows], "count": len(rows)})
@@ -2395,6 +2405,123 @@ def leads_mark_ghl_synced():
                    (contact_id, lead_id))
         cx.commit()
     return jsonify({"ok": True, "id": lead_id, "contact_id": contact_id})
+
+
+# ── Per-lead actions (interactive dashboard) ──────────────────────────────────
+# These mirror the todo action surface so leads + scoreapp signups can be
+# replied to, tagged, or dismissed without leaving /dashboard.
+
+def _lead_auth_or_401():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    return None
+
+
+@app.route("/api/leads/<int:lead_id>/draft-reply", methods=["POST"])
+def api_lead_draft_reply(lead_id):
+    err = _lead_auth_or_401()
+    if err: return err
+    data     = request.get_json(force=True) or {}
+    guidance = (data.get("guidance") or "").strip()
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT first_name, last_name, email, source, raw_json FROM inbound_leads WHERE id=?",
+            (lead_id,)
+        ).fetchone()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+    first, last, email, source, raw = row
+    name = (first or "").strip() or "there"
+    source_note = {
+        "scoreapp":         "They just completed your ScoreApp self-healing quiz.",
+        "scoreapp-webhook": "They just completed your ScoreApp self-healing quiz.",
+        "pb":               "They booked through Practice Better.",
+        "practice-better":  "They booked through Practice Better.",
+    }.get((source or "").lower(), f"They came in via {source or 'an inbound channel'}.")
+    guidance_block = f"\n\nGlen's guidance for this reply: {guidance}" if guidance else ""
+    prompt = (
+        "You are drafting a warm first-contact email on behalf of Dr. Glen Swartwout, naturopathic "
+        "physician and biofield scientist in Hilo, Hawaiʻi. Be warm, brief (3–5 short paragraphs), "
+        "and human — not salesy. Sign off naturally as Dr. Glen.\n\n"
+        f"Recipient: {name} {last or ''}  <{email}>\n"
+        f"Context: {source_note}{guidance_block}\n\n"
+        "Draft the reply now (no subject line, just the body):"
+    )
+    try:
+        msg = _cl.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        subject = "A note from Dr. Glen" if not (source or "").startswith("score") \
+            else "Following up on your self-healing scan"
+        return jsonify({"draft": msg.content[0].text, "subject": subject, "to": email})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/leads/<int:lead_id>/send-reply", methods=["POST"])
+def api_lead_send_reply(lead_id):
+    err = _lead_auth_or_401()
+    if err: return err
+    data    = request.get_json(force=True) or {}
+    subject = (data.get("subject") or "").strip()
+    body    = (data.get("body") or "").strip()
+    if not subject or not body:
+        return jsonify({"error": "subject and body required"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT email FROM inbound_leads WHERE id=?", (lead_id,)).fetchone()
+    if not row or not row[0]:
+        return jsonify({"error": "lead not found or has no email"}), 404
+    to_email = row[0]
+    try:
+        from dashboard.inbox import send_email as _gmail_send
+        result = _gmail_send(to_email, subject, body, from_name="Dr. Glen Swartwout")
+    except Exception as e:
+        return jsonify({"error": f"send failed: {e}"}), 502
+    ts = datetime.now(timezone.utc).isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("UPDATE inbound_leads SET last_outbound_at=? WHERE id=?", (ts, lead_id))
+        cx.commit()
+    return jsonify({"ok": True, "to": to_email, "gmail_id": result.get("id"),
+                    "thread_id": result.get("threadId"), "sent_at": ts})
+
+
+@app.route("/api/leads/<int:lead_id>/tag", methods=["POST"])
+def api_lead_tag(lead_id):
+    err = _lead_auth_or_401()
+    if err: return err
+    data = request.get_json(force=True) or {}
+    tag  = (data.get("tag") or "").strip()
+    if not tag:
+        return jsonify({"error": "tag required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT tags FROM inbound_leads WHERE id=?", (lead_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "not found"}), 404
+        try:
+            tags = json.loads(row[0] or "[]")
+            if not isinstance(tags, list): tags = []
+        except Exception:
+            tags = []
+        if tag not in tags:
+            tags.append(tag)
+        cx.execute("UPDATE inbound_leads SET tags=? WHERE id=?",
+                   (json.dumps(tags), lead_id))
+        cx.commit()
+    return jsonify({"ok": True, "tags": tags})
+
+
+@app.route("/api/leads/<int:lead_id>/dismiss", methods=["POST"])
+def api_lead_dismiss(lead_id):
+    err = _lead_auth_or_401()
+    if err: return err
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("UPDATE inbound_leads SET status='dismissed' WHERE id=?", (lead_id,))
+        cx.commit()
+    return jsonify({"ok": True})
 
 
 # ── Practice Better Webhook ───────────────────────────────────────────────────
@@ -3586,9 +3713,30 @@ def _init_rae_feedback_table():
                 notes            TEXT DEFAULT ''
             )
         """)
+        # Per-item action columns (interactive dashboard) — idempotent migration
+        for col, ddl in [("tag",         "TEXT DEFAULT ''"),       # helpful|not_helpful|noise
+                         ("reviewed_at", "TEXT DEFAULT ''")]:
+            try:
+                cx.execute(f"ALTER TABLE rae_feedback ADD COLUMN {col} {ddl}")
+            except Exception:
+                pass
         cx.commit()
 
 _init_rae_feedback_table()
+
+
+def _init_heygen_reviewed_table():
+    """Local 'mark reviewed' flag for HeyGen renders (HeyGen has no such concept)."""
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS heygen_reviewed (
+                video_id    TEXT PRIMARY KEY,
+                reviewed_at TEXT NOT NULL
+            )
+        """)
+        cx.commit()
+
+_init_heygen_reviewed_table()
 
 
 @app.route("/api/rae-feedback", methods=["POST"])
@@ -3675,7 +3823,8 @@ def get_rae_feedback_summary():
         """).fetchall()
 
         recent = cx.execute("""
-            SELECT ts, event_type, greeting_style, transcript, amplitude_peak
+            SELECT id, ts, event_type, greeting_style, transcript, amplitude_peak,
+                   tag, reviewed_at
             FROM   rae_feedback
             ORDER  BY ts DESC
             LIMIT  20
@@ -3685,6 +3834,41 @@ def get_rae_feedback_summary():
         "laugh_by_style": [dict(r) for r in by_style],
         "recent_events":  [dict(r) for r in recent],
     })
+
+
+# ── Per-feedback actions (interactive dashboard) ─────────────────────────────
+
+@app.route("/api/rae-feedback/<int:fb_id>/tag", methods=["POST"])
+def api_rae_feedback_tag(fb_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(force=True) or {}
+    tag  = (data.get("tag") or "").strip().lower()
+    if tag not in ("helpful", "not_helpful", "noise"):
+        return jsonify({"error": "tag must be one of: helpful, not_helpful, noise"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        n = cx.execute("UPDATE rae_feedback SET tag=? WHERE id=?", (tag, fb_id)).rowcount
+        cx.commit()
+    if not n:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"ok": True, "tag": tag})
+
+
+@app.route("/api/rae-feedback/<int:fb_id>/mark-reviewed", methods=["POST"])
+def api_rae_feedback_mark_reviewed(fb_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    ts = datetime.now(timezone.utc).isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        n = cx.execute("UPDATE rae_feedback SET reviewed_at=? WHERE id=?", (ts, fb_id)).rowcount
+        cx.commit()
+    if not n:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"ok": True, "reviewed_at": ts})
 
 
 # ── People / CRM ──────────────────────────────────────────────────────────────
@@ -3961,6 +4145,138 @@ def _ask_justus_stream(query: str, system: str, history: list, on_complete=None,
             app.logger.exception("Justus on_complete callback failed")
 
 
+# ── Tracker tool-use — Justus can edit projects from /console/projects ────────
+
+PROJECT_TOOLS = [
+    {
+        "name": "add_idea",
+        "description": "Add a new idea to the project tracker's Ideas section.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"text": {"type": "string",
+                                     "description": "The idea — 1-500 chars."}},
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "move_project",
+        "description": "Move an existing project to a different section.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string",
+                         "description": "Project name (substring match against the bolded name)."},
+                "target": {"type": "string",
+                            "enum": ["in_process","queued","planning","ideas","completed"]},
+            },
+            "required": ["name", "target"],
+        },
+    },
+    {
+        "name": "set_project_field",
+        "description": "Set a field on an existing project (status, effort, value, eta, blockers, where).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name":  {"type": "string"},
+                "field": {"type": "string",
+                          "description": "Field name, e.g. 'effort', 'value', 'status', 'eta', 'blockers'."},
+                "value": {"type": "string"},
+            },
+            "required": ["name", "field", "value"],
+        },
+    },
+    {
+        "name": "drop_project",
+        "description": "Remove a project from the tracker entirely.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
+]
+
+TRACKER_DIRECTIVES = (
+    "You can edit the projects tracker. When the user wants to add an idea, move a project, "
+    "set a field, or drop a project, call the matching tool. "
+    "Sections: in_process / queued / planning / ideas / completed. "
+    "Fields on each project: status, where, eta, blockers, effort (S/M/L/XL), "
+    "value ($/$$/$$$/$$$$), sessions. "
+    "After a tool call, confirm what you did in one short line. "
+    "Edits queue immediately; PROJECTS.md updates within ~10 minutes via the Mac sync job."
+)
+
+
+def _execute_project_tool(name: str, inp: dict) -> str:
+    """Map a Justus tool call to a queued tracker edit."""
+    try:
+        if name == "add_idea":
+            r = _projects.add_pending_edit({"type": "add_idea", "text": inp.get("text", "")})
+            return f"Queued idea (id {r['id']})."
+        if name == "move_project":
+            r = _projects.add_pending_edit({"type": "move",
+                                            "name":   inp.get("name", ""),
+                                            "target": inp.get("target", "")})
+            return f"Queued move (id {r['id']})."
+        if name == "set_project_field":
+            r = _projects.add_pending_edit({"type":  "set",
+                                            "name":  inp.get("name", ""),
+                                            "field": inp.get("field", ""),
+                                            "value": inp.get("value", "")})
+            return f"Queued field update (id {r['id']})."
+        if name == "drop_project":
+            r = _projects.add_pending_edit({"type": "drop", "name": inp.get("name", "")})
+            return f"Queued drop (id {r['id']})."
+        return f"Unknown tool: {name}"
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def _ask_justus_stream_tools(query: str, system: str, history: list, tools: list,
+                              tool_dispatch, on_complete=None,
+                              history_n: int = 6, max_iters: int = 4):
+    """SSE generator with a multi-iteration tool-use loop. Streams text from
+    each model turn; when a turn ends with tool_use blocks, executes them and
+    starts the next turn with the tool_results appended."""
+    msgs = []
+    for h in (history or [])[-history_n:]:
+        msgs.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+    msgs.append({"role": "user", "content": query})
+
+    full_text: list[str] = []
+    for _ in range(max_iters):
+        with _cl.messages.stream(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=600,
+            system=system,
+            tools=tools,
+            messages=msgs,
+        ) as stream:
+            for text in stream.text_stream:
+                full_text.append(text)
+                yield f"data: {json.dumps({'text': text})}\n\n"
+            final = stream.get_final_message()
+
+        tool_uses = [b for b in final.content if getattr(b, "type", None) == "tool_use"]
+        if not tool_uses:
+            break
+        msgs.append({"role": "assistant",
+                     "content": [b.model_dump() for b in final.content]})
+        tool_results = []
+        for tu in tool_uses:
+            result = tool_dispatch(tu.name, getattr(tu, "input", {}) or {})
+            tool_results.append({"type": "tool_result",
+                                  "tool_use_id": tu.id,
+                                  "content": result})
+        msgs.append({"role": "user", "content": tool_results})
+
+    yield f"data: {json.dumps({'done': True})}\n\n"
+    if on_complete:
+        try: on_complete("".join(full_text))
+        except Exception: app.logger.exception("Justus on_complete callback failed")
+
+
 @app.route("/api/console-ask", methods=["POST"])
 def console_ask():
     if CONSOLE_SECRET:
@@ -3977,10 +4293,18 @@ def console_ask():
     owner   = _scoped_owner(ctx, requested_owner)
     context = (data.get("context") or "")
     history = data.get("history") or []
+    page    = (data.get("page") or "")
     if not query:
         return jsonify({"error":"No query"}), 400
-    system = _justus_system_prompt(owner, context)
-    return Response(stream_with_context(_ask_justus_stream(query, system, history, history_n=6)),
+    # On /console/projects, give Justus the tracker tools so he can execute edits.
+    if page == "/console/projects":
+        system = _justus_system_prompt(owner, context, TRACKER_DIRECTIVES)
+        gen = _ask_justus_stream_tools(query, system, history, PROJECT_TOOLS,
+                                        _execute_project_tool, history_n=6)
+    else:
+        system = _justus_system_prompt(owner, context)
+        gen = _ask_justus_stream(query, system, history, history_n=6)
+    return Response(stream_with_context(gen),
                     mimetype="text/event-stream",
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
 
@@ -5132,6 +5456,21 @@ def api_heygen_recent():
     except Exception as e: return fail(e)
 
 
+@app.route("/api/heygen/<video_id>/mark-reviewed", methods=["POST"])
+@require_console_key
+def api_heygen_mark_reviewed(video_id):
+    # HeyGen itself has no "reviewed" concept — track it locally.
+    ts = datetime.now(timezone.utc).isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO heygen_reviewed (video_id, reviewed_at) VALUES (?,?) "
+            "ON CONFLICT(video_id) DO UPDATE SET reviewed_at=excluded.reviewed_at",
+            (video_id, ts),
+        )
+        cx.commit()
+    return ok({"video_id": video_id, "reviewed_at": ts})
+
+
 @app.route("/api/facebook/boulder-test")
 @require_console_key
 def api_facebook_boulder():
@@ -5702,6 +6041,23 @@ def api_projects_pending_clear():
         data = request.get_json(force=True, silent=True) or {}
         return ok(_projects.clear_pending_ideas(data.get("ids", [])))
     except Exception as e: return fail(e, status=500)
+
+
+@app.route("/api/projects/edit", methods=["POST"])
+@require_console_key
+def api_projects_edit():
+    """Queue any typed tracker edit (add_idea / move / set / drop)."""
+    try:
+        return ok(_projects.add_pending_edit(request.get_json(force=True) or {}))
+    except ValueError as e: return fail(e, status=400)
+    except Exception as e: return fail(e, status=500)
+
+
+@app.route("/api/projects/pending-edits", methods=["GET"])
+@require_console_key
+def api_projects_pending_edits():
+    try: return ok({"edits": _projects.pending_edits()})
+    except Exception as e: return fail(e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

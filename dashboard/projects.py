@@ -65,26 +65,68 @@ def _write_pending(items: list) -> None:
     PENDING.write_text(json.dumps(items, indent=2))
 
 
-def add_pending_idea(text: str) -> dict:
-    """Queue an idea submitted from the page. The Mac sync job folds it into
-    PROJECTS.md's ## Ideas section, then clears it."""
-    text = (text or "").strip()
-    if not text:
-        raise ValueError("empty idea")
-    if len(text) > 500:
-        raise ValueError("idea too long (500 character max)")
+_VALID_SECTIONS = ("in_process", "queued", "planning", "ideas", "completed")
+
+
+def _enqueue(edit: dict) -> dict:
+    """Validate + queue any typed edit (add_idea / move / set / drop)."""
+    t = edit.get("type")
+    if t == "add_idea":
+        text = (edit.get("text") or "").strip()
+        if not text: raise ValueError("empty idea")
+        if len(text) > 500: raise ValueError("idea too long (500 char max)")
+        item = {"type": "add_idea", "text": text}
+    elif t == "move":
+        name = (edit.get("name") or "").strip()
+        target = (edit.get("target") or "").strip().lower()
+        if not name: raise ValueError("missing name")
+        if target not in _VALID_SECTIONS:
+            raise ValueError(f"invalid target: {target!r} (use one of {_VALID_SECTIONS})")
+        item = {"type": "move", "name": name, "target": target}
+    elif t == "set":
+        name = (edit.get("name") or "").strip()
+        field = (edit.get("field") or "").strip().lower()
+        value = str(edit.get("value") or "").strip()
+        if not (name and field and value):
+            raise ValueError("missing name / field / value")
+        item = {"type": "set", "name": name, "field": field, "value": value}
+    elif t == "drop":
+        name = (edit.get("name") or "").strip()
+        if not name: raise ValueError("missing name")
+        item = {"type": "drop", "name": name}
+    else:
+        raise ValueError(f"unknown edit type: {t!r}")
+    item["id"] = uuid.uuid4().hex[:12]
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
     items = _read_pending()
-    items.append({
-        "id": uuid.uuid4().hex[:12],
-        "text": text,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
+    items.append(item)
     _write_pending(items)
-    return {"added": True, "pending_count": len(items)}
+    return {"queued": True, "id": item["id"], "type": item["type"]}
+
+
+def add_pending_idea(text: str) -> dict:
+    """Back-compat shim — queues an add_idea edit."""
+    return _enqueue({"type": "add_idea", "text": text})
+
+
+def add_pending_edit(edit: dict) -> dict:
+    """Queue a typed edit (add_idea / move / set / drop)."""
+    return _enqueue(edit)
 
 
 def pending_ideas() -> list:
-    return _read_pending()
+    """Back-compat: returns add_idea-typed items in the legacy shape."""
+    return [{"id": it["id"], "text": it.get("text", ""),
+             "created_at": it.get("created_at", "")}
+            for it in _read_pending() if it.get("type", "add_idea") == "add_idea"]
+
+
+def pending_edits() -> list:
+    """Returns all pending edits (typed). Legacy untyped items show as add_idea."""
+    items = _read_pending()
+    for it in items:
+        it.setdefault("type", "add_idea")
+    return items
 
 
 def clear_pending_ideas(ids: list) -> dict:
@@ -93,6 +135,27 @@ def clear_pending_ideas(ids: list) -> dict:
     keep = [it for it in items if it.get("id") not in drop]
     _write_pending(keep)
     return {"cleared": len(items) - len(keep), "remaining": len(keep)}
+
+
+# Alias for clarity — same op, used by the Mac sync after applying any edit
+clear_pending_edits = clear_pending_ideas
+
+
+def _find_entry(payload: dict, name: str):
+    """Case-insensitive substring match. Returns (section, entry) or (None, None)."""
+    needle = (name or "").strip().lower()
+    if not needle:
+        return None, None
+    # prefer exact name match first
+    for sec, entries in payload["sections"].items():
+        for e in entries:
+            if e["name"].lower() == needle:
+                return sec, e
+    for sec, entries in payload["sections"].items():
+        for e in entries:
+            if needle in e["name"].lower():
+                return sec, e
+    return None, None
 
 
 # ─── Parser ────────────────────────────────────────────────────────────────
@@ -161,18 +224,37 @@ def parse_sections(md: str) -> dict:
 
 
 def _merge_pending(payload: dict) -> dict:
-    """Append page-submitted pending ideas to the ideas column so they show
-    immediately, before the Mac sync job folds them into PROJECTS.md."""
-    pend = _read_pending()
-    for p in pend:
-        payload["sections"]["ideas"].append({
-            "name": p.get("text", ""),
-            "description": "",
-            "fields": {},
-            "pending": True,
-        })
-    if pend:
-        payload["counts"]["ideas"] = len(payload["sections"]["ideas"])
+    """Apply all pending edits to the kanban payload so the page reflects them
+    immediately (Mac sync folds them into PROJECTS.md within ~10 min). Edited
+    entries get `pending: true` for a dashed visual treatment."""
+    for edit in _read_pending():
+        t = edit.get("type", "add_idea")
+        if t == "add_idea":
+            payload["sections"]["ideas"].append({
+                "name": edit.get("text", ""),
+                "description": "",
+                "fields": {},
+                "pending": True,
+            })
+        elif t == "move":
+            sec, entry = _find_entry(payload, edit.get("name", ""))
+            target = edit.get("target")
+            if entry and target in payload["sections"] and target != sec:
+                payload["sections"][sec].remove(entry)
+                entry["pending"] = True
+                payload["sections"][target].append(entry)
+        elif t == "set":
+            _, entry = _find_entry(payload, edit.get("name", ""))
+            if entry:
+                entry["fields"][edit.get("field", "")] = edit.get("value", "")
+                entry["pending"] = True
+        elif t == "drop":
+            sec, entry = _find_entry(payload, edit.get("name", ""))
+            if entry and sec:
+                payload["sections"][sec].remove(entry)
+    # recompute counts after mutations
+    for k, v in payload["sections"].items():
+        payload["counts"][k] = len(v)
     return payload
 
 
