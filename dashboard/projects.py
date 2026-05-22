@@ -9,13 +9,18 @@ Environment variables:
                               (default: /tmp/projects.md)
 """
 
+import json
 import os
 import re
+import uuid
 from pathlib import Path
 from datetime import datetime, timezone
 
 
 SNAPSHOT = Path(os.environ.get("PROJECTS_SNAPSHOT_PATH", "/tmp/projects.md"))
+# Page-submitted ideas awaiting fold-in to PROJECTS.md by the Mac sync job.
+PENDING = Path(os.environ.get("PROJECTS_PENDING_PATH",
+                              "/tmp/pending_project_ideas.json"))
 
 
 # ─── Read / write ──────────────────────────────────────────────────────────
@@ -42,6 +47,52 @@ def read_projects_md():
     if not SNAPSHOT.exists():
         return None
     return SNAPSHOT.read_text()
+
+
+# ─── Pending ideas (page-submitted, awaiting fold-in to PROJECTS.md) ─────────
+
+def _read_pending() -> list:
+    if not PENDING.exists():
+        return []
+    try:
+        return json.loads(PENDING.read_text())
+    except Exception:
+        return []
+
+
+def _write_pending(items: list) -> None:
+    PENDING.parent.mkdir(parents=True, exist_ok=True)
+    PENDING.write_text(json.dumps(items, indent=2))
+
+
+def add_pending_idea(text: str) -> dict:
+    """Queue an idea submitted from the page. The Mac sync job folds it into
+    PROJECTS.md's ## Ideas section, then clears it."""
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("empty idea")
+    if len(text) > 500:
+        raise ValueError("idea too long (500 character max)")
+    items = _read_pending()
+    items.append({
+        "id": uuid.uuid4().hex[:12],
+        "text": text,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    _write_pending(items)
+    return {"added": True, "pending_count": len(items)}
+
+
+def pending_ideas() -> list:
+    return _read_pending()
+
+
+def clear_pending_ideas(ids: list) -> dict:
+    items = _read_pending()
+    drop = set(ids or [])
+    keep = [it for it in items if it.get("id") not in drop]
+    _write_pending(keep)
+    return {"cleared": len(items) - len(keep), "remaining": len(keep)}
 
 
 # ─── Parser ────────────────────────────────────────────────────────────────
@@ -109,6 +160,22 @@ def parse_sections(md: str) -> dict:
     }
 
 
+def _merge_pending(payload: dict) -> dict:
+    """Append page-submitted pending ideas to the ideas column so they show
+    immediately, before the Mac sync job folds them into PROJECTS.md."""
+    pend = _read_pending()
+    for p in pend:
+        payload["sections"]["ideas"].append({
+            "name": p.get("text", ""),
+            "description": "",
+            "fields": {},
+            "pending": True,
+        })
+    if pend:
+        payload["counts"]["ideas"] = len(payload["sections"]["ideas"])
+    return payload
+
+
 def kanban_payload() -> dict:
     """Top-level entry point used by the /api/projects route.
 
@@ -118,11 +185,11 @@ def kanban_payload() -> dict:
     md = read_projects_md()
     if md is None:
         empty = ["in_process", "queued", "planning", "ideas", "completed"]
-        return {
+        return _merge_pending({
             "sections": {k: [] for k in empty},
             "counts": {k: 0 for k in empty},
             "source": {"status": "no snapshot uploaded yet — run console-push to populate"},
-        }
+        })
     payload = parse_sections(md)
     try:
         st = SNAPSHOT.stat()
@@ -133,4 +200,4 @@ def kanban_payload() -> dict:
         }
     except Exception:
         payload["source"] = {"path": str(SNAPSHOT)}
-    return payload
+    return _merge_pending(payload)

@@ -150,6 +150,36 @@
   .chip-status { color: var(--ink); }
   .chip-effort { color: var(--accent); border-color: var(--accent); font-weight: 600; }
   .chip-value { color: var(--good); border-color: var(--good); font-weight: 600; }
+  .chip-pending { color: var(--col-planning); border-color: var(--col-planning); }
+  .add-idea {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .add-idea input {
+    flex: 1;
+    min-width: 0;
+    background: var(--panel-2);
+    border: 1px solid var(--hair);
+    color: var(--ink);
+    padding: 7px 9px;
+    border-radius: 7px;
+    font-family: inherit;
+    font-size: 12px;
+  }
+  .add-idea input:focus { outline: none; border-color: var(--accent); }
+  .add-idea button {
+    background: var(--accent);
+    color: #0f1115;
+    border: 0;
+    border-radius: 7px;
+    padding: 0 13px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .add-idea button:disabled { opacity: 0.5; cursor: default; }
+  .card.pending { border-style: dashed; }
   .empty {
     color: var(--dim);
     font-size: 12px;
@@ -272,6 +302,11 @@
   </section>
   <section class="col col-ideas">
     <h2>Ideas <span class="count" id="count-ideas">0</span></h2>
+    <div class="add-idea">
+      <input id="idea-input" type="text" placeholder="New idea…" maxlength="500"
+             onkeydown="if(event.key==='Enter')addIdea()">
+      <button id="idea-add-btn" onclick="addIdea()">Add</button>
+    </div>
     <div id="col-ideas"></div>
   </section>
   <section class="col col-done">
@@ -350,6 +385,33 @@ function setStatus(msg) {
   el.classList.toggle("show", !!msg);
 }
 
+async function addIdea() {
+  const input = document.getElementById("idea-input");
+  const btn = document.getElementById("idea-add-btn");
+  const text = input.value.trim();
+  if (!text) return;
+  const key = consoleKey();
+  if (!key) { showKeyPrompt(); return; }
+  input.disabled = btn.disabled = true;
+  try {
+    const r = await fetch("/api/projects/add-idea", {
+      method: "POST",
+      headers: { "X-Console-Key": key, "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const payload = await r.json();
+    if (!payload.ok) throw new Error(payload.error || "add failed");
+    input.value = "";
+    setStatus("Idea added — folds into PROJECTS.md within ~10 min.");
+    load();
+  } catch (e) {
+    setStatus("Couldn't add idea: " + e.message);
+  } finally {
+    input.disabled = btn.disabled = false;
+  }
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => (
     {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
@@ -404,7 +466,7 @@ function render(data) {
 
 function card(entry, id) {
   const el = document.createElement("div");
-  el.className = "card";
+  el.className = entry.pending ? "card pending" : "card";
   el.onclick = () => openModal(id);
 
   const eta = entry.fields["eta / next milestone"] || entry.fields["eta"] || "";
@@ -414,6 +476,7 @@ function card(entry, id) {
   const value = entry.fields["value"] || "";
 
   const chips = [];
+  if (entry.pending) chips.push(`<span class="chip chip-pending">pending sync</span>`);
   if (effort) chips.push(`<span class="chip chip-effort">effort ${escapeHtml(effort)}</span>`);
   if (value) chips.push(`<span class="chip chip-value">value ${escapeHtml(value)}</span>`);
   if (eta) chips.push(`<span class="chip chip-eta">ETA: ${escapeHtml(eta)}</span>`);

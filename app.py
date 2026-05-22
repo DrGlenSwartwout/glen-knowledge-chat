@@ -5678,6 +5678,32 @@ def api_projects_upload():
     except Exception as e: return fail(e, status=500)
 
 
+@app.route("/api/projects/add-idea", methods=["POST"])
+@require_console_key
+def api_projects_add_idea():
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        return ok(_projects.add_pending_idea(data.get("text", "")))
+    except ValueError as e: return fail(e, status=400)
+    except Exception as e: return fail(e, status=500)
+
+
+@app.route("/api/projects/pending-ideas", methods=["GET"])
+@require_console_key
+def api_projects_pending_ideas():
+    try: return ok({"ideas": _projects.pending_ideas()})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/projects/pending-ideas/clear", methods=["POST"])
+@require_console_key
+def api_projects_pending_clear():
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        return ok(_projects.clear_pending_ideas(data.get("ids", [])))
+    except Exception as e: return fail(e, status=500)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Cache pre-warm — runs per gunicorn worker boot.
 # QB banks has a 5-min in-memory cache; on a cold dyno the first request must
