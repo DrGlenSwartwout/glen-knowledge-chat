@@ -222,6 +222,74 @@
 
   .refreshing{animation:flash .5s ease}
   @keyframes flash{0%{background:rgba(230,184,0,.06)}100%{background:var(--bg-2)}}
+
+  /* ── interactive list items (per-item action panels) ──────────────────── */
+  ul.feed li.item{display:block; padding:0}
+  ul.feed li.item .item-row{
+    display:flex; align-items:baseline; gap:10px; padding:3px 6px 3px 2px; margin:0 -6px 0 -2px;
+    cursor:pointer; border-radius:2px; transition:background .12s ease, color .12s ease;
+  }
+  ul.feed li.item:hover .item-row{background:rgba(212,168,67,.05)}
+  ul.feed li.item.expanded .item-row{background:rgba(212,168,67,.08); color:var(--gold)}
+  ul.feed li.item .item-row .caret{
+    font-family:var(--mono); font-size:9px; color:var(--ink-3); min-width:8px;
+    display:inline-block; transition:transform .15s ease, color .15s ease;
+  }
+  ul.feed li.item.expanded .item-row .caret{transform:rotate(90deg); color:var(--gold)}
+
+  .action-panel{
+    padding:10px 0 8px 18px; margin:4px 0 6px;
+    border-left:1px solid var(--rule);
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .action-panel .btn-row{display:flex; flex-wrap:wrap; gap:6px}
+  .action-panel button{
+    font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+    padding:5px 9px; background:transparent; border:1px solid var(--rule); color:var(--ink-2);
+    cursor:pointer; transition:.15s ease; line-height:1;
+  }
+  .action-panel button:hover{border-color:var(--gold-soft); color:var(--gold)}
+  .action-panel button.primary{color:var(--gold); border-color:var(--gold-soft)}
+  .action-panel button.primary:hover{background:var(--gold); color:#1a1500}
+  .action-panel button.danger:hover{border-color:var(--red); color:var(--red)}
+  .action-panel button:disabled{opacity:.5; cursor:progress}
+
+  .action-panel .meta{
+    font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--ink-3);
+    word-break:break-all;
+  }
+  .action-panel .meta a{color:var(--gold-soft); text-decoration:none}
+  .action-panel .meta a:hover{color:var(--gold)}
+
+  .action-panel .draft-wrap{
+    display:flex; flex-direction:column; gap:6px;
+    padding:8px 0 4px; border-top:1px dashed var(--rule);
+  }
+  .action-panel textarea,
+  .action-panel input{
+    background:rgba(0,0,0,.22); color:var(--ink);
+    border:1px solid var(--rule); padding:6px 8px;
+    font-family:var(--sans); font-size:12px; line-height:1.4;
+    resize:vertical; min-height:28px; width:100%; box-sizing:border-box;
+  }
+  .action-panel textarea:focus,
+  .action-panel input:focus{outline:none; border-color:var(--gold-soft)}
+  .action-panel .draft-out{
+    background:rgba(212,168,67,.04); border-left:2px solid var(--gold-soft);
+    padding:8px 10px; font-family:var(--serif); font-size:12.5px; line-height:1.55;
+    white-space:pre-wrap; max-height:220px; overflow-y:auto; color:var(--ink); margin:0;
+  }
+  .action-panel .msg{
+    font-family:var(--mono); font-size:10px; letter-spacing:.06em;
+    color:var(--gold-soft); padding-top:2px;
+  }
+  .action-panel .msg.err{color:var(--red)}
+
+  ul.feed .pills{display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px}
+  ul.feed .pills .pill{
+    font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase;
+    padding:1px 6px; border:1px solid var(--rule); color:var(--ink-3);
+  }
 </style>
 </head>
 <body>
@@ -610,7 +678,14 @@ R.todos = (d) => {
   if(!todos.length) return `<div class="empty">inbox zero</div>`;
   return `<ul class="feed">${todos.map(t=>{
     const p = t.priority === "high" ? "gold" : "warn";
-    return `<li><span class="badge ${p}">${(t.priority||"").slice(0,3)||"·"}</span><span class="body-text">${escapeHtml(t.title||"")}</span></li>`;
+    return `<li class="item" data-kind="todo" data-id="${t.id}">
+      <div class="item-row">
+        <span class="caret">▸</span>
+        <span class="badge ${p}">${(t.priority||"").slice(0,3)||"·"}</span>
+        <span class="body-text">${escapeHtml(t.title||"")}</span>
+      </div>
+      <div class="action-panel" hidden></div>
+    </li>`;
   }).join("")}</ul>`;
 };
 
@@ -620,7 +695,14 @@ R.calendar = (d) => {
   return `<ul class="feed">${events.map(e=>{
     const t = e.start_time || e.start || "";
     const time = t ? t.substring(11,16) : "—";
-    return `<li><span class="lead">${time}</span><span class="body-text">${escapeHtml(e.title||e.summary||"")}</span></li>`;
+    return `<li class="item" data-kind="event" data-id="${e.id}">
+      <div class="item-row">
+        <span class="caret">▸</span>
+        <span class="lead">${time}</span>
+        <span class="body-text">${escapeHtml(e.title||e.summary||"")}</span>
+      </div>
+      <div class="action-panel" hidden></div>
+    </li>`;
   }).join("")}</ul>`;
 };
 
@@ -628,17 +710,51 @@ R.leads = (d) => {
   // /leads/pending-ghl returns { leads: [...] } directly (not wrapped in {ok,data})
   const leads = d.leads || d.data?.leads || [];
   if(!leads.length) return `<div class="empty">no pending leads</div>`;
-  const top = leads.slice(0,3);
+  const top = leads.slice(0,5);
   return `
     <div class="figure-row"><span class="label">Pending</span><span class="figure sm gold">${leads.length}</span></div>
-    <ul class="feed">${top.map(l=>`<li><span class="body-text">${escapeHtml((l.first_name||"")+" "+(l.last_name||""))}</span></li>`).join("")}</ul>
+    <ul class="feed">${top.map(l=>{
+      const name = ((l.first_name||"")+" "+(l.last_name||"")).trim() || (l.email||"—");
+      return `<li class="item" data-kind="lead" data-id="${l.id}" data-email="${escapeHtml(l.email||"")}">
+        <div class="item-row">
+          <span class="caret">▸</span>
+          <span class="body-text">${escapeHtml(name)}</span>
+        </div>
+        <div class="action-panel" hidden></div>
+      </li>`;
+    }).join("")}</ul>
   `;
 };
 
 R.raeFeedback = (d) => {
-  const summary = d.summary || d.data?.summary || d.text;
-  if(!summary) return `<div class="empty">no feedback yet</div>`;
-  return `<p style="font-family:var(--serif); font-size:14px; line-height:1.55; color:var(--ink-2);">${escapeHtml(String(summary).slice(0,180))}${String(summary).length>180?"…":""}</p>`;
+  // Backwards-compatible: some older shapes returned {summary: "..."} text only.
+  if(d.summary && !d.recent_events){
+    return `<p style="font-family:var(--serif); font-size:14px; line-height:1.55; color:var(--ink-2);">${escapeHtml(String(d.summary).slice(0,180))}${String(d.summary).length>180?"…":""}</p>`;
+  }
+  const events = (d.recent_events || []).slice(0,5);
+  const styles = (d.laugh_by_style || []).slice(0,3);
+  if(!events.length && !styles.length) return `<div class="empty">no feedback yet</div>`;
+  const pills = styles.length
+    ? `<div class="pills">${styles.map(s => `<span class="pill">${escapeHtml(s.greeting_style||"—")} · ${s.laugh_count}</span>`).join("")}</div>`
+    : "";
+  if(!events.length) return pills;
+  return `<ul class="feed">${pills}${events.map(e => {
+    const time = (e.ts||"").substring(11,16) || "—";
+    const tx   = (e.transcript||"").trim() || `(${e.event_type||"event"})`;
+    const tagBadge = e.tag
+      ? `<span class="badge ${e.tag==="helpful"?"gold":e.tag==="noise"?"err":"warn"}">${escapeHtml(e.tag.replace("_"," "))}</span>`
+      : "";
+    const dim = e.reviewed_at ? ' style="opacity:.55"' : "";
+    return `<li class="item" data-kind="feedback" data-id="${e.id}" data-transcript="${escapeHtml(tx)}"${dim}>
+      <div class="item-row">
+        <span class="caret">▸</span>
+        <span class="lead">${time}</span>
+        <span class="body-text">${escapeHtml(tx.slice(0,60))}${tx.length>60?"…":""}</span>
+        ${tagBadge}
+      </div>
+      <div class="action-panel" hidden></div>
+    </li>`;
+  }).join("")}</ul>`;
 };
 
 R.ghlPipeline = (d) => {
@@ -654,7 +770,17 @@ R.scoreApp = (d) => {
   const sigs = d.signups || [];
   return `
     <div class="figure-row"><span class="label">Recent</span><span class="figure sm gold">${d.count||0}</span></div>
-    ${sigs.length ? `<ul class="feed">${sigs.slice(0,4).map(s=>`<li><span class="body-text">${escapeHtml(s.name||s.email||"—")}</span></li>`).join("")}</ul>` : `<div class="empty">none</div>`}
+    ${sigs.length ? `<ul class="feed">${sigs.slice(0,4).map(s=>{
+      const name = (s.name||"").trim() || s.email || "—";
+      // ScoreApp signups live in inbound_leads — reuse the per-lead action panel.
+      return `<li class="item" data-kind="signup" data-id="${s.id}" data-email="${escapeHtml(s.email||"")}">
+        <div class="item-row">
+          <span class="caret">▸</span>
+          <span class="body-text">${escapeHtml(name)}</span>
+        </div>
+        <div class="action-panel" hidden></div>
+      </li>`;
+    }).join("")}</ul>` : `<div class="empty">none</div>`}
   `;
 };
 
@@ -682,7 +808,14 @@ R.heygen = (d) => {
   return `<ul class="feed">${vids.slice(0,5).map(v=>{
     const s = (v.status||"").toLowerCase();
     const cls = s === "completed" ? "gold" : s === "failed" ? "err" : "warn";
-    return `<li><span class="badge ${cls}">${(s||"·").slice(0,4)}</span><span class="body-text">${escapeHtml(v.title||v.id||"untitled")}</span></li>`;
+    return `<li class="item" data-kind="video" data-id="${escapeHtml(v.id||"")}" data-url="${escapeHtml(v.url||"")}">
+      <div class="item-row">
+        <span class="caret">▸</span>
+        <span class="badge ${cls}">${(s||"·").slice(0,4)}</span>
+        <span class="body-text">${escapeHtml(v.title||v.id||"untitled")}</span>
+      </div>
+      <div class="action-panel" hidden></div>
+    </li>`;
   }).join("")}</ul>`;
 };
 
@@ -829,14 +962,28 @@ function refreshAll(){
 }
 
 cards.forEach(card => {
-  card.addEventListener("click", () => fetchCard(card));
-  setInterval(() => { if(consoleKey) fetchCard(card); }, 60000);
+  // Tapping an item-row (or anything inside an open action panel) should
+  // NOT trigger a card-level refresh — that's handled in dashboard-actions.js.
+  card.addEventListener("click", (e) => {
+    if(e.target.closest(".feed li.item, .action-panel")) return;
+    fetchCard(card);
+  });
+  setInterval(() => {
+    if(!consoleKey) return;
+    // Don't refetch a card while the user is mid-edit inside an open panel.
+    if(typeof window.cardHasOpenPanel === "function" && window.cardHasOpenPanel(card)) return;
+    fetchCard(card);
+  }, 60000);
 });
 
 document.getElementById("refreshAll").addEventListener("click", refreshAll);
 
+// Expose for dashboard-actions.js (per-item action panels).
+window.fetchCard = fetchCard;
+
 if(consoleKey) refreshAll();
 </script>
+<script src="/static/dashboard-actions.js"></script>
 <script src="/static/justus-widget.js" defer></script>
 </body>
 </html>
