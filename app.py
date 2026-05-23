@@ -740,8 +740,21 @@ STRUCTURE:
    - Contact for matching: https://truly.vip/help
 5. **Sources** (1 line, comma-separated): name + field of references used.
 
-OPTIONAL EXTENDED FORMAT (only when mode=full or user explicitly asks for the full breakdown):
+OPTIONAL EXTENDED FORMAT (when mode=full, anonymous user):
 Expand each bullet with mechanism, dosage ranges, supporting citations, and edge cases. Aim for clinical depth.
+
+OPTIONAL BREAK & REBUILD LONG-FORM (when mode=full or emailed full-report AND the user is logged in):
+Logged-in users get the long-form structured to actually shift belief, not just deliver more facts. Follow Russell Brunson's Break & Rebuild arc on the most central limiting belief in the user's question:
+1. **Hook** (1-2 sentences): the most surprising / decisive insight that frames what is about to be broken and rebuilt.
+2. **Justify the false belief** (2-4 sentences): name the limiting belief the reader almost certainly holds — and steelman it. Acknowledge the reasons it feels true (mainstream medicine reinforces it, every authority says it, etc.). They should nod, not feel attacked.
+3. **Break** (2-4 sentences): show why the belief is incomplete or wrong — one decisive piece of evidence or mechanism that cracks it open. This is the moment of break.
+4. **Rebuild** (4-8 sentences): install the new pattern — Glen's clinical paradigm on this question. Mechanism, what to do differently, what changes. Include named formulations + product links exactly as in the executive-summary rules.
+5. **Journey** (2-4 sentences): how Glen (or a representative client) discovered or lived this shift — concrete, dated, named. Anchor it in lived experience, not theory alone.
+6. **The one thing + next step** (1-2 sentences): the single take-home + action link (E4L scan or product).
+
+Voice: Glen's, not Brunson's. Practitioner-clinical, not hype. The Break & Rebuild architecture goes in; the gameshow energy stays out. Speckhart boundary: a credential is *authority*, never a treatment claim for a named disease — never let a credential or formulation imply diagnosis or cure of a named condition.
+
+Sources line at the very end, as in the executive summary.
 
 RULES:
 - Do NOT fabricate. If snippets don't answer, say "the source material doesn't address this directly."
@@ -774,6 +787,28 @@ def get_system_prompt(level: str) -> str:
 
 
 SYSTEM_PROMPT = get_system_prompt("self-healing")
+
+
+def _long_form_synth_instr(is_logged_in: bool) -> str:
+    """Pick the long-form synthesis instruction.
+
+    Logged-in users get the Break & Rebuild teaching arc described in the
+    system prompt; anonymous users keep the existing extended clinical
+    format. The default executive-summary path (mode=brief) is unchanged.
+    """
+    if is_logged_in:
+        return (
+            "Produce the BREAK & REBUILD LONG-FORM response — follow the "
+            "6-step arc described in the system prompt (Hook → Justify the "
+            "false belief → Break → Rebuild → Journey → The one thing + "
+            "next step). Glen's voice, not Brunson's; practitioner-clinical, "
+            "no hype. List sources at the end."
+        )
+    return (
+        "Produce the EXTENDED FORMAT response — full clinical depth, "
+        "mechanism, dosage ranges, supporting citations, edge cases. "
+        "List sources at the end."
+    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -977,9 +1012,7 @@ def chat():
                 messages.append({"role": turn["role"], "content": turn["content"]})
 
         synth_instr = (
-            "Produce the EXTENDED FORMAT response — full clinical depth, "
-            "mechanism, dosage ranges, supporting citations, edge cases. "
-            "List sources at the end."
+            _long_form_synth_instr(bool(auth_user))
             if mode == "full" else
             "Produce the DEFAULT EXECUTIVE SUMMARY response — Hook, Top action, "
             "2-4 bullet rationale, single action link, source line. ~200 words. "
@@ -1136,19 +1169,27 @@ def full_report():
         email = email or auth_user["email"]
         name  = name  or (auth_user.get("name") or "")
 
+    # Gate Break & Rebuild long-form on a real logged-in identity. Anonymous
+    # full-reports (rare — they require an email but no auth) keep the
+    # existing extended clinical format.
+    is_logged_in = bool(auth_user)
+
     # If email provided, send via SMTP/console (synchronous since user is waiting).
     # If no email, stream the response back as SSE for inline rendering.
     if email:
         return _full_report_send_email(
-            log_id, original_query, level, email, name, session_id
+            log_id, original_query, level, email, name, session_id, is_logged_in
         )
-    return _full_report_stream(log_id, original_query, level, session_id)
+    return _full_report_stream(log_id, original_query, level, session_id, is_logged_in)
 
 
-def _generate_full_answer(query: str, level: str):
+def _generate_full_answer(query: str, level: str, is_logged_in: bool = False):
     """Run the same retrieval + synthesis pipeline as /chat but in
     mode=full (synchronous; used when the email path needs the body
     before sending).
+
+    When is_logged_in is True the synthesis follows the Break & Rebuild
+    teaching arc; otherwise it uses the existing extended clinical format.
 
     Returns (answer_str, sources_list, chunks_retrieved_int).
     """
@@ -1163,11 +1204,7 @@ def _generate_full_answer(query: str, level: str):
     )
     product_block = f"{product_directive}\n\n" if product_directive else ""
 
-    synth_instr = (
-        "Produce the EXTENDED FORMAT response — full clinical depth, "
-        "mechanism, dosage ranges, supporting citations, edge cases. "
-        "List sources at the end."
-    )
+    synth_instr = _long_form_synth_instr(is_logged_in)
     user_msg = (
         f"USER QUESTION: {query}\n\n"
         f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
@@ -1231,9 +1268,10 @@ def _send_full_report_email(to_email: str, name: str,
     return ("console-log", "no email-send mechanism configured")
 
 
-def _full_report_send_email(log_id, query, level, email, name, session_id):
+def _full_report_send_email(log_id, query, level, email, name, session_id,
+                            is_logged_in: bool = False):
     """Synchronous full-mode regeneration → email send → GHL tag + log."""
-    full_answer, sources, chunks = _generate_full_answer(query, level)
+    full_answer, sources, chunks = _generate_full_answer(query, level, is_logged_in)
 
     subject = f"Your full report from Dr. Glen: {query[:60]}"
     body = (
@@ -1282,9 +1320,12 @@ def _full_report_send_email(log_id, query, level, email, name, session_id):
     })
 
 
-def _full_report_stream(log_id, query, level, session_id):
+def _full_report_stream(log_id, query, level, session_id,
+                        is_logged_in: bool = False):
     """Stream the full-mode regeneration via SSE, like /chat. The
     front-end replaces the brief inline body with this stream.
+    When is_logged_in is True the synthesis follows the Break & Rebuild
+    teaching arc; otherwise it uses the existing extended clinical format.
     """
     def generate():
         try:
@@ -1306,11 +1347,7 @@ def _full_report_stream(log_id, query, level, session_id):
         )
         product_block = f"{product_directive}\n\n" if product_directive else ""
 
-        synth_instr = (
-            "Produce the EXTENDED FORMAT response — full clinical depth, "
-            "mechanism, dosage ranges, supporting citations, edge cases. "
-            "List sources at the end."
-        )
+        synth_instr = _long_form_synth_instr(is_logged_in)
         user_msg = (
             f"USER QUESTION: {query}\n\n"
             f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
