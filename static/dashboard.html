@@ -961,17 +961,27 @@ function refreshAll(){
   cards.forEach(fetchCard);
 }
 
+// Refetch wipes .body innerHTML, which destroys any in-progress text
+// selection inside the card. Skip the refetch if the user has an active
+// selection anchored in this card.
+function hasActiveSelectionIn(card){
+  const sel = window.getSelection();
+  return sel && !sel.isCollapsed && sel.anchorNode && card.contains(sel.anchorNode);
+}
+
 cards.forEach(card => {
   // Tapping an item-row (or anything inside an open action panel) should
   // NOT trigger a card-level refresh — that's handled in dashboard-actions.js.
   card.addEventListener("click", (e) => {
     if(e.target.closest(".feed li.item, .action-panel")) return;
+    if(hasActiveSelectionIn(card)) return;
     fetchCard(card);
   });
   setInterval(() => {
     if(!consoleKey) return;
     // Don't refetch a card while the user is mid-edit inside an open panel.
     if(typeof window.cardHasOpenPanel === "function" && window.cardHasOpenPanel(card)) return;
+    if(hasActiveSelectionIn(card)) return;
     fetchCard(card);
   }, 60000);
 });
