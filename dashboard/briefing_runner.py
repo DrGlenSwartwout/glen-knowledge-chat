@@ -89,21 +89,25 @@ def _safe(fn, default=None, label=""):
 def gather_snapshot():
     """Pull live stats from every dashboard module. Partial failures are
     captured as `_error` markers so Claude can note 'data unavailable'
-    rather than the whole run dying."""
+    rather than the whole run dying.
+
+    KEY NAMING: use the full, unambiguous product name (e.g. `practice_better`,
+    not `pb`) so the LLM doesn't have to expand acronyms — it has historically
+    guessed wrong (e.g. "PayBlade" instead of "Practice Better")."""
     return {
         "as_of": datetime.now(timezone.utc).isoformat(),
         "money": {
-            "banks":   _safe(_money.qb_banks,      label="qb_banks"),
-            "today":   _safe(_money.today_summary, label="today_summary"),
-            "week":    _safe(_money.week_summary,  label="week_summary"),
-            "wise":    _safe(_money.wise_data,     label="wise"),
-            "pb":      _safe(lambda: _money.pb_data(days=30), label="pb_data"),
-            "an":      _safe(lambda: _money.an_data(days=30), label="an_data"),
+            "banks":           _safe(_money.qb_banks,      label="qb_banks"),
+            "today":           _safe(_money.today_summary, label="today_summary"),
+            "week":            _safe(_money.week_summary,  label="week_summary"),
+            "wise":            _safe(_money.wise_data,     label="wise"),
+            "practice_better": _safe(lambda: _money.pb_data(days=30), label="pb_data"),
+            "authorize_net":   _safe(lambda: _money.an_data(days=30), label="an_data"),
         },
-        "ghl":        _safe(_ghl.opportunities_by_stage, label="ghl"),
-        "pinecone":   _safe(_pc_stats.index_stats,       label="pinecone"),
-        "scoreapp":   _safe(lambda: _scoreapp.recent_signups(limit=20), label="scoreapp"),
-        "heygen":     _safe(lambda: _heygen.recent_videos(limit=5),     label="heygen"),
+        "gohighlevel": _safe(_ghl.opportunities_by_stage, label="ghl"),
+        "pinecone":    _safe(_pc_stats.index_stats,       label="pinecone"),
+        "scoreapp":    _safe(lambda: _scoreapp.recent_signups(limit=20), label="scoreapp"),
+        "heygen":      _safe(lambda: _heygen.recent_videos(limit=5),     label="heygen"),
     }
 
 
@@ -113,6 +117,14 @@ def _build_user_prompt(snapshot, slug):
     today = datetime.now(timezone.utc)
     return (
         f"Today is {today.strftime('%A, %B %d, %Y')} ({today.isoformat()} UTC).\n\n"
+        "Glossary (use these exact names — do NOT invent alternatives):\n"
+        "  • practice_better → Practice Better (clinical-practice billing/EHR; PB)\n"
+        "  • authorize_net   → Authorize.net (storefront card processor; AuthNet)\n"
+        "  • gohighlevel     → GoHighLevel (CRM + pipelines; GHL)\n"
+        "  • wise            → Wise (multi-currency banking)\n"
+        "  • scoreapp        → ScoreApp (quiz-funnel intake at healing.scoreapp.com)\n"
+        "  • heygen          → HeyGen (AI video renders)\n"
+        "  • pinecone        → Pinecone (vector knowledge base)\n\n"
         f"Live system snapshot (JSON):\n```json\n{json.dumps(snapshot, indent=2, default=str)}\n```\n\n"
         f"Write the {slug} briefing as markdown. Start with an H1 title and an "
         f"italic dateline. Do not wrap in code fences. Do not invent numbers "
