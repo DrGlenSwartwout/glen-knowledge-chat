@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TQM Reflection · Healing Oasis & Remedy Match — for Prof. Othon Molina</title>
+<meta name="description" content="A Total Quality Management reflection prepared for Prof. Othon Molina by Dr. Glen Swartwout — mission, team, community, and the questions a team member should be able to answer.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBF8F3;
+    --panel:#FFFFFFee;
+    --ink:#1E2A2A;
+    --muted:#5F6B6B;
+    --soft:#E8DFD3;
+    --rule:#E2D9C9;
+    --accent:#2D7A6A;
+    --accent-deep:#1F5A4D;
+    --accent-soft:#E1EEEA;
+    --gold:#B08A3E;
+    --shadow:0 1px 2px rgba(30,42,42,.04), 0 12px 40px -16px rgba(30,42,42,.18);
+    --maxw:1180px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  body{
+    font-family:'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-weight:400;
+    line-height:1.65;
+    font-size:17px;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, #EAF3F0 0%, transparent 60%),
+      radial-gradient(900px 500px at -5% 30%, #F3ECDE 0%, transparent 55%),
+      var(--bg);
+  }
+  a{color:var(--accent-deep); text-underline-offset:3px; text-decoration-thickness:.5px}
+  a:hover{color:var(--accent)}
+
+  /* ---------- header ---------- */
+  header.cover{
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:64px 40px 28px;
+  }
+  .eyebrow{
+    font-family:'Inter',sans-serif;
+    text-transform:uppercase;
+    letter-spacing:.22em;
+    font-size:11.5px;
+    color:var(--accent);
+    font-weight:500;
+    display:flex; align-items:center; gap:14px;
+  }
+  .eyebrow::after{
+    content:""; flex:1; height:1px; background:linear-gradient(to right, var(--rule), transparent);
+  }
+  h1.title{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500;
+    font-size:clamp(38px, 5.4vw, 64px);
+    line-height:1.04;
+    letter-spacing:-.01em;
+    margin:18px 0 8px;
+    max-width:18ch;
+  }
+  .subtitle{
+    font-family:'Cormorant Garamond', serif;
+    font-style:italic;
+    color:var(--muted);
+    font-size:clamp(20px, 2.1vw, 24px);
+    margin:0 0 28px;
+    max-width:60ch;
+  }
+  .meta{
+    display:flex; flex-wrap:wrap; gap:28px 44px;
+    padding:22px 0 4px;
+    border-top:1px solid var(--rule);
+    border-bottom:1px solid var(--rule);
+    margin-bottom:8px;
+  }
+  .meta div{min-width:140px}
+  .meta .k{
+    text-transform:uppercase; letter-spacing:.16em; font-size:10.5px;
+    color:var(--muted); font-weight:500; margin-bottom:6px;
+  }
+  .meta .v{font-size:15px; color:var(--ink)}
+  .meta .v strong{font-weight:600}
+
+  /* ---------- layout ---------- */
+  main.wrap{
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:36px 40px 80px;
+    display:grid;
+    grid-template-columns: 240px 1fr;
+    gap:56px;
+    align-items:start;
+  }
+  nav.toc{
+    position:sticky; top:24px;
+    align-self:start;
+    font-size:13.5px;
+    color:var(--muted);
+    line-height:1.55;
+  }
+  nav.toc .toc-label{
+    text-transform:uppercase; letter-spacing:.18em; font-size:10.5px;
+    color:var(--accent); font-weight:500; margin-bottom:14px;
+  }
+  nav.toc ol{list-style:none; padding:0; margin:0 0 26px}
+  nav.toc li{margin:0 0 8px; padding-left:0}
+  nav.toc a{
+    color:var(--muted); text-decoration:none;
+    border-left:1px solid var(--rule);
+    padding:2px 0 2px 12px;
+    display:block;
+    transition:color .15s, border-color .15s, padding-left .15s;
+  }
+  nav.toc a:hover{color:var(--accent-deep); border-left-color:var(--accent); padding-left:14px}
+  nav.toc h4{
+    font-family:'Cormorant Garamond', serif;
+    font-style:italic;
+    font-weight:500;
+    color:var(--ink);
+    font-size:18px;
+    margin:0 0 10px;
+  }
+
+  article.body section{
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-radius:18px;
+    padding:36px 40px;
+    margin-bottom:24px;
+    box-shadow:var(--shadow);
+    backdrop-filter:saturate(120%) blur(2px);
+  }
+  article.body section.heroband{
+    background:linear-gradient(180deg, var(--accent-soft) 0%, #fff 100%);
+    border-color:#cfe2dc;
+  }
+  article.body section.heroband h2{color:var(--accent-deep)}
+
+  h2{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500;
+    font-size:34px;
+    line-height:1.15;
+    letter-spacing:-.005em;
+    margin:0 0 4px;
+    color:var(--ink);
+  }
+  h2 .num{
+    color:var(--accent); font-weight:500; font-size:18px;
+    display:block; letter-spacing:.18em; text-transform:uppercase; margin-bottom:8px;
+    font-family:'Inter',sans-serif;
+  }
+  h2 + .lede{
+    color:var(--muted);
+    font-family:'Cormorant Garamond', serif;
+    font-style:italic;
+    font-size:20px;
+    line-height:1.45;
+    margin:4px 0 24px;
+    max-width:62ch;
+  }
+
+  .qa{margin:22px 0 2px; padding:22px 0 4px; border-top:1px dashed var(--rule)}
+  .qa:first-of-type{border-top:none; padding-top:6px}
+  .qa h3{
+    font-family:'Inter',sans-serif;
+    font-weight:600; font-size:17px;
+    color:var(--accent-deep);
+    margin:0 0 10px;
+    letter-spacing:-.005em;
+  }
+  .qa h3 .q-marker{
+    display:inline-block;
+    font-family:'Cormorant Garamond',serif; font-style:italic; font-weight:500;
+    color:var(--gold); margin-right:10px;
+    font-size:20px; vertical-align:-2px;
+  }
+  .qa p{margin:8px 0; color:#26312F}
+  .qa ul{margin:8px 0 8px 22px; padding:0; color:#26312F}
+  .qa li{margin:4px 0}
+  .qa em.tag{
+    font-style:normal;
+    color:var(--accent);
+    font-weight:500;
+    font-size:13px;
+    text-transform:uppercase; letter-spacing:.14em;
+  }
+  .qa .tm{font-feature-settings:"sups"; vertical-align:super; font-size:.65em; margin-left:1px}
+
+  .mission-card{
+    background:#fff;
+    border-left:3px solid var(--accent);
+    padding:22px 26px;
+    border-radius:10px;
+    margin:18px 0 6px;
+  }
+  .mission-card .label{
+    text-transform:uppercase; letter-spacing:.18em; font-size:10.5px;
+    color:var(--accent); font-weight:500; margin-bottom:6px;
+  }
+  .mission-card .stmt{
+    font-family:'Cormorant Garamond',serif;
+    font-size:24px; line-height:1.35;
+    color:var(--ink); font-weight:500;
+  }
+
+  .roles{display:grid; grid-template-columns:1fr 1fr; gap:14px 24px; margin-top:6px}
+  .role{padding:14px 16px; background:#fff; border:1px solid var(--rule); border-radius:10px}
+  .role .name{font-weight:600; color:var(--accent-deep); font-size:14.5px; margin-bottom:4px}
+  .role .desc{font-size:14px; color:#3a4544; line-height:1.55}
+
+  /* ---------- footer ---------- */
+  footer.foot{
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:24px 40px 60px;
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.6;
+    border-top:1px solid var(--rule);
+  }
+  footer.foot .row{display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px}
+  footer.foot .sig{
+    font-family:'Cormorant Garamond',serif;
+    font-style:italic; font-size:16px; color:var(--ink);
+  }
+
+  /* ---------- mobile ---------- */
+  @media (max-width: 880px){
+    header.cover{padding:42px 24px 20px}
+    main.wrap{grid-template-columns:1fr; gap:0; padding:18px 24px 60px}
+    nav.toc{position:static; margin-bottom:20px; padding:18px 20px; background:#fff; border:1px solid var(--rule); border-radius:14px}
+    article.body section{padding:26px 22px; border-radius:14px}
+    h2{font-size:28px}
+    .roles{grid-template-columns:1fr}
+    footer.foot{padding:18px 24px 48px}
+  }
+
+  /* ---------- print ---------- */
+  @media print{
+    body{background:#fff; font-size:11pt}
+    header.cover, footer.foot, main.wrap{padding:0; max-width:none}
+    nav.toc{display:none}
+    main.wrap{display:block}
+    article.body section{box-shadow:none; border:none; border-radius:0; padding:14px 0; page-break-inside:avoid}
+    section.heroband{background:none !important}
+    h1.title{font-size:30pt}
+    h2{font-size:18pt}
+    .qa h3{font-size:12pt}
+    a{color:var(--ink)}
+  }
+
+  /* gentle entrance */
+  section{opacity:0; transform:translateY(6px); animation:rise .6s ease-out forwards}
+  section:nth-of-type(1){animation-delay:.05s}
+  section:nth-of-type(2){animation-delay:.12s}
+  section:nth-of-type(3){animation-delay:.19s}
+  @keyframes rise{to{opacity:1; transform:none}}
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <div class="eyebrow">Total Quality Management · Reflection prepared for Prof. Othon Molina</div>
+  <h1 class="title">Healing Oasis &amp; Remedy Match<span style="color:var(--accent)">.</span></h1>
+  <p class="subtitle">A short, candid answer to your TQM questions — for the company and for the team member — written in one sitting so we can talk from the same page.</p>
+
+  <div class="meta">
+    <div>
+      <div class="k">Prepared for</div>
+      <div class="v"><strong>Prof. Othon Molina</strong><br><span style="color:var(--muted)">916 · 598 · 5525</span></div>
+    </div>
+    <div>
+      <div class="k">From</div>
+      <div class="v"><strong>Dr. Glen Swartwout, OD, ND</strong><br><span style="color:var(--muted)">Healing Oasis (DBA) · Remedy Match LLC</span></div>
+    </div>
+    <div>
+      <div class="k">Date</div>
+      <div class="v">25 May 2026<br><span style="color:var(--muted)">Hilo, Hawai‘i</span></div>
+    </div>
+    <div>
+      <div class="k">Format</div>
+      <div class="v">Web · Print-friendly<br><span style="color:var(--muted)">One-page consult brief</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <nav class="toc" aria-label="Contents">
+    <div class="toc-label">Contents</div>
+    <h4>For the Company</h4>
+    <ol>
+      <li><a href="#mission">Mission statement</a></li>
+      <li><a href="#purpose">Purpose &amp; goals</a></li>
+      <li><a href="#team-bg">Management team</a></li>
+      <li><a href="#alignment">Team alignment with principles</a></li>
+      <li><a href="#valuing">How we honour the team</a></li>
+      <li><a href="#community">How we add to community</a></li>
+      <li><a href="#perception">What the community thinks</a></li>
+      <li><a href="#impact">Short- &amp; long-term impact</a></li>
+    </ol>
+    <h4>For the Team Member</h4>
+    <ol>
+      <li><a href="#friendly">Is the universe friendly?</a></li>
+      <li><a href="#who">Who are you?</a></li>
+      <li><a href="#why">Why are you here?</a></li>
+      <li><a href="#purpose-life">Highest purpose</a></li>
+      <li><a href="#fulfilled">Fulfilment &amp; giving back</a></li>
+      <li><a href="#career">Job, or vocation?</a></li>
+      <li><a href="#tools">Tools you need</a></li>
+      <li><a href="#fit">Right kind of company</a></li>
+      <li><a href="#gifts">Gifts &amp; work-ons</a></li>
+      <li><a href="#path">How you know the path</a></li>
+    </ol>
+  </nav>
+
+  <article class="body">
+
+    <!-- ============== COMPANY ============== -->
+    <section class="heroband">
+      <h2><span class="num">Part One</span>For the Company</h2>
+      <p class="lede">A health company is a coherence project before it is a commercial one. Every question below comes back to the same standard: are we restoring coherence in the people we serve, in the team that serves them, and in the community around us?</p>
+
+      <div id="mission" class="qa">
+        <h3><span class="q-marker">¶</span>Mission statement — the largest picture, the highest aspiration</h3>
+        <div class="mission-card">
+          <div class="label">Mission</div>
+          <div class="stmt">To restore coherence — in the body, in the practitioner, and in the community we serve — so that healing can outpace aging.</div>
+        </div>
+        <p>The model behind the words: health emerges from coherence across systems. When the biofield is coherent, the body reverses damage faster than it accumulates. Our work is to remove obstacles, supply what is missing, and let the body — which is 85% of the healing — do what it already knows how to do.</p>
+      </div>
+
+      <div id="purpose" class="qa">
+        <h3><span class="q-marker">¶</span>Purpose &amp; goals — specifics in action</h3>
+        <p>Equip every willing person — patient and practitioner alike — with the tools to reverse degenerative disease, recover lost vision, and rejoin the body’s own intelligence.</p>
+        <ul>
+          <li><strong>12-month operating goals.</strong> Move from ~$300K/year to seven figures. Launch one new Functional Formulation<span class="tm">™</span> per month from a 150-formulation R&amp;D pipeline. Stand up a practitioner channel that multiplies one trained clinician into roughly fifty patients reached per month.</li>
+          <li><strong>Outcome standard.</strong> Measured biological-age reversal (BEV blood testing against hundreds of thousands of European data points), not symptom relief alone. If the numbers do not move, neither does the claim.</li>
+          <li><strong>Reach standard.</strong> Whole-person care available at any tier — from a low-ticket AI coaching app at the front door, through Biofield Analysis<span class="tm">™</span> consults and Remedy Match<span class="tm">™</span> formulations, up to a high-ticket Health Business AI program for practitioners.</li>
+        </ul>
+      </div>
+
+      <div id="team-bg" class="qa">
+        <h3><span class="q-marker">¶</span>Management team &amp; their backgrounds</h3>
+        <div class="roles">
+          <div class="role">
+            <div class="name">Rae (Susan Luscombe) — Owner &amp; Operator</div>
+            <div class="desc">Legal owner of Healing Oasis (DBA) and Remedy Match LLC. Esthetician background; relational center of the business. Runs fulfillment, finances, shipping, customer care.</div>
+          </div>
+          <div class="role">
+            <div class="name">Dr. Glen Swartwout, OD, ND — R&amp;D &amp; Public Face</div>
+            <div class="desc">Naturopathic Optometrist. Dartmouth (Magna Cum Laude, three years), SUNY College of Optometry, Clayton College of Natural Health, NCNM Teaching Award. Forty-plus years of clinical research since 1982 (Tokyo). Cited by James Oschman in <em>Energy Medicine: The Scientific Basis</em>.</div>
+          </div>
+          <div class="role">
+            <div class="name">Shaira — Operations &amp; Systems VA</div>
+            <div class="desc">Philippines-based, IT background. Daily systems work, CRM pipeline care, data hygiene, portal monitoring.</div>
+          </div>
+          <div class="role">
+            <div class="name">Justus van Merlin &amp; AI Integrators</div>
+            <div class="desc">The "integrator hire" — implemented as AI rather than as a single human. Connects every paid-for system into one operating picture; drafts assets; monitors the health of every pipeline. Allows a solopreneur shape to behave like a coordinated team.</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="alignment" class="qa">
+        <h3><span class="q-marker">¶</span>How the team learns the principles &amp; gets on board</h3>
+        <p>People are not hired into tasks here. They are hired into the worldview first, then trained on the tools. Onboarding always covers three anchors:</p>
+        <ul>
+          <li><strong>The foundational case.</strong> Glen’s own BEV reversal — biological age 68 to 33 in 36 months, eye pressure 28 down to 15, glaucoma reversed, 20/20 at 70 with no glasses. The proof case behind every claim we make.</li>
+          <li><strong>The model.</strong> Coherence over suppression. Terrain over pathogen. The body heals itself; we remove obstacles and supply what is missing. The 5 Phases of Remedy Match<span class="tm">™</span> — Energize, Rejuvenate, Regenerate, Cleanse, Balance — applied in order.</li>
+          <li><strong>The standard.</strong> If we would not put it into our own bodies, we do not put it into anyone else’s. If we cannot measure the change, we do not claim the change.</li>
+        </ul>
+        <p>Weekly standups re-anchor on mission before metrics. The metrics are downstream of the alignment, not a substitute for it.</p>
+      </div>
+
+      <div id="valuing" class="qa">
+        <h3><span class="q-marker">¶</span>How we show the team they are key</h3>
+        <ul>
+          <li><strong>Direct, named attribution.</strong> Wins are credited specifically — to clients, in copy, in payroll notes. No anonymous contributions.</li>
+          <li><strong>Compensation ahead of demand.</strong> We pay people up before we ask them to scale up. Burnout costs more than wages.</li>
+          <li><strong>Tools bought, not asked-for.</strong> If a person needs a piece of software, a license, a course, or an hour back on their calendar — we buy it without making them justify it twice.</li>
+          <li><strong>Calendar protection.</strong> No one is asked to drop their own healing in order to serve someone else’s. Integrity of the principle starts inside the company.</li>
+          <li><strong>Sovereignty.</strong> Each team member runs their own domain. Glen does not micromanage Rae’s books; Rae does not redesign Glen’s formulations. Trust is the operating system.</li>
+        </ul>
+      </div>
+
+      <div id="community" class="qa">
+        <h3><span class="q-marker">¶</span>How we add to team &amp; community — and how we apply our principles</h3>
+        <ul>
+          <li><strong>Education before commerce.</strong> Every new product ships paired with a free education asset — a masterclass, an article, a voice-scan-based assessment — <em>before</em> it is sold. Customers can learn the model whether or not they ever buy a bottle.</li>
+          <li><strong>The 4 C’s outreach.</strong> Caregivers, Coaches, Clinicians, Consultants — every audience gets the underlying clinical theory, not just the SKU list. One practitioner trained reaches the patients we will never personally meet.</li>
+          <li><strong>The 5 C’s applied to ourselves first.</strong> Context, Container, Contents, Connections, Communication. Before asking coherence of clients we audit our own — finances, systems, team relationships, public communications — using the same model.</li>
+          <li><strong>Free-tier access.</strong> A low-ticket AI coaching app and a public RAG chatbot let anyone meet the work at no cost. Ability to pay never gates the doorway.</li>
+        </ul>
+      </div>
+
+      <div id="perception" class="qa">
+        <h3><span class="q-marker">¶</span>What the community thinks of us — and how we know</h3>
+        <p><em class="tag">Inbound signal</em> &nbsp;&nbsp; Forty-plus client testimonials across three confidence tiers; long-term-client word-of-mouth referrals now sit as our number two acquisition channel, behind speaking. We are featured in <em>People</em>, <em>USA Today</em>, <em>The Science Times</em>, and <em>Dartmouth Alumni Magazine</em>.</p>
+        <p><em class="tag">Outbound measurement</em> &nbsp;&nbsp; Post-consult outcome tracking, BEV re-testing on long-term clients, and a dedicated public results capture at <a href="https://truly.vip/Results">truly.vip/Results</a> (written, audio, and video in one flow). A dashboard reads sentiment from inbound email, chatbot transcripts, and call notes daily.</p>
+        <p><em class="tag">The honest answer</em> &nbsp;&nbsp; Our community thinks of us as the people who did not give up on them after the conventional system did. That is not a tagline — it is what they say to us, unprompted, in their own words.</p>
+      </div>
+
+      <div id="impact" class="qa">
+        <h3><span class="q-marker">¶</span>Short-term and long-term community impact</h3>
+        <p><em class="tag">Short term (≤ 12 months)</em> &nbsp;&nbsp; Roughly ten-fold reach through the B2B practitioner channel — one optometrist or functional practitioner trained equals approximately fifty patients per month served. Vision loss reversed, not just slowed, in measurable cohorts. Hawai‘i serves as the living laboratory.</p>
+        <p><em class="tag">Long term (3–5 years)</em> &nbsp;&nbsp; Functional Formulations<span class="tm">™</span> carried on Fullscript (≈125,000 practitioners). Clinical Theory<span class="tm">™</span> of Everything taught as a full certification through Mentorship University. A documented, replicable pathway proving that biological age reversal is <em>normal</em>, not extraordinary — and that degenerative eye disease is not a life sentence.</p>
+      </div>
+    </section>
+
+    <!-- ============== TEAM MEMBER ============== -->
+    <section>
+      <h2><span class="num">Part Two</span>For the Team Member</h2>
+      <p class="lede">These are the questions every member of our team should be able to answer for themselves. Below are Glen’s own answers — written first-person — both as a model for the conversation and as an honest declaration to the people he works with.</p>
+
+      <div id="friendly" class="qa">
+        <h3><span class="q-marker">?</span>Is the universe (God) friendly?</h3>
+        <p>Yes. Consciousness is primary, and the field responds to coherent intention. The evidence is in the body itself — the body cannot lie, and it heals when given the chance. A hostile universe does not reverse thirty-five years of biological age in thirty-six months. A friendly one does.</p>
+      </div>
+
+      <div id="who" class="qa">
+        <h3><span class="q-marker">?</span>Who are you, and what do you want out of life?</h3>
+        <p>A naturopathic optometrist, a researcher, and — first — a steward of the people in front of me. What I want is that the work outlives me: that every practitioner who needs Clinical Theory has it, and that my granddaughter inherits a world where reversal is the default expectation, not the miracle.</p>
+      </div>
+
+      <div id="why" class="qa">
+        <h3><span class="q-marker">?</span>Why are you here?</h3>
+        <p>To finish what started in 1982 — the unified clinical model that connects physics, biology, and consciousness — and to put it into the hands of the practitioners who will carry it past my lifetime. Every formulation, every protocol, every book is a delivery vehicle for that single transmission.</p>
+      </div>
+
+      <div id="purpose-life" class="qa">
+        <h3><span class="q-marker">?</span>What is your highest purpose to fulfill?</h3>
+        <p>To be a transparent conduit. To let what wants to come through, come through — Functional Formulations<span class="tm">™</span>, Clinical Theory<span class="tm">™</span>, Wellness Whispering<span class="tm">®</span> — and not get in its way with ego or attachment to outcome. The work is not mine. I am one of its current vehicles.</p>
+      </div>
+
+      <div id="fulfilled" class="qa">
+        <h3><span class="q-marker">?</span>What do you need to be fulfilled, and how do you give back?</h3>
+        <p><strong>Needs.</strong> Time to think. Time to write. Time to formulate. A team that runs the systems so attention stays on the science. A pace that protects sleep, sunlight, and the body’s own coherence.</p>
+        <p><strong>Giving back.</strong> Every formulation released into the world. Every practitioner trained. Every patient who recovers vision they were told was permanently gone. The giving and the receiving are the same act — coherence flowing both directions.</p>
+      </div>
+
+      <div id="career" class="qa">
+        <h3><span class="q-marker">?</span>Is this a job — or a career and a way to happiness?</h3>
+        <p>Neither. It is a vocation. The work and the life are the same thing. Retirement is not a destination; it is a category error. Happiness is downstream of being aligned with the work; alignment is the cause, happiness the symptom.</p>
+      </div>
+
+      <div id="tools" class="qa">
+        <h3><span class="q-marker">?</span>What tools do you need to achieve these goals?</h3>
+        <ul>
+          <li>The 150-formulation pipeline manufactured reliably and at quality.</li>
+          <li>A single unified data system across formulations, clients, ingredients, and biofield scans.</li>
+          <li>AI integrators (the role Justus fills) so I am not the bottleneck on any operation.</li>
+          <li>A practitioner channel that turns one conversation into hundreds of patients reached.</li>
+          <li>Time-on-calendar protected for writing and formulation — the two highest-leverage uses of an hour.</li>
+        </ul>
+      </div>
+
+      <div id="fit" class="qa">
+        <h3><span class="q-marker">?</span>What kind of company would give you the things you need for success in life?</h3>
+        <p>This one — Healing Oasis and Remedy Match — once integration is complete. The capability is already here. Every system is identified, paid for, and ready. The constraint is connecting what is already built. The next twelve months are an integration project, not a capability project.</p>
+      </div>
+
+      <div id="gifts" class="qa">
+        <h3><span class="q-marker">?</span>Your greatest gifts — and what to work on</h3>
+        <p><strong>Gifts.</strong> Pattern recognition across decades of clinical data. Synthesis across disciplines — physics, biology, optometry, consciousness research. Calm in the presence of degenerative diagnoses other practitioners flinch from.</p>
+        <p><strong>To work on.</strong> Delegation. Narrowing focus when the pipeline tempts breadth. Allowing systems and teammates to carry weight I have historically carried personally — the same shift from "I" to "We" we ask of every client.</p>
+      </div>
+
+      <div id="path" class="qa">
+        <h3><span class="q-marker">?</span>How will you know you are on the correct path for your highest good and life?</h3>
+        <p>The body tells you. Symptoms reverse. BEV numbers move. Vision clears. Sleep deepens. The right people appear at the right time. The work is hard, but it is never depleting in the way wrong work is depleting. Coherence — internal and external — is the signal. Decoherence is the correction.</p>
+      </div>
+    </section>
+
+  </article>
+
+</main>
+
+<footer class="foot">
+  <div class="row">
+    <div>
+      <div class="sig">Prepared for our conversation. — Dr. Glen</div>
+      <div style="margin-top:6px">Healing Oasis · Remedy Match LLC · Hilo, Hawai‘i · <a href="https://remedymatch.com">remedymatch.com</a></div>
+    </div>
+    <div style="text-align:right">
+      <div>Total Quality Management reflection — single-page consult brief</div>
+      <div style="margin-top:6px">25 May 2026</div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
