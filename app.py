@@ -1768,6 +1768,42 @@ def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag=
     return contact_id, True, None
 
 
+def ghl_update_tags(email, add=None, remove=None):
+    """Find GHL contact via /contacts/lookup (the correct exact-email endpoint
+    per the 2026-05-26 fix), add and/or remove tags as set operations, PUT
+    the merged result. Returns (contact_id, error).
+
+    If no contact exists for that email, falls through to ghl_upsert_contact
+    so the contact gets created with the `add` tags. `remove` on a non-existent
+    contact is a no-op (returns (None, None))."""
+    add    = set(add or [])
+    remove = set(remove or [])
+    if not (add or remove):
+        return None, "no tags specified"
+    if not GHL_API_KEY:
+        return None, "GHL_API_KEY not set"
+
+    data, err = _ghl_get("/contacts/lookup", {"email": email})
+    if err:
+        return None, err
+    contacts = data.get("contacts", []) if isinstance(data, dict) else []
+    if not contacts:
+        if not add:
+            return None, None   # nothing to do — no contact, nothing to remove from
+        # Fall through to create — preserves first/last so the new contact has names
+        contact_id, _created, err = ghl_upsert_contact(email, extra_tags=list(add))
+        return contact_id, err
+
+    # Prefer oldest contact when multiple match (matches ghl_upsert_contact's behavior)
+    match = min(contacts, key=lambda c: c.get("dateAdded") or "9999")
+    existing = set(match.get("tags", []) or [])
+    new_tags = (existing | add) - remove
+    if new_tags == existing:
+        return match["id"], None   # nothing changed; skip the PUT
+    _, err = _ghl_put(f"/contacts/{match['id']}", {"tags": sorted(new_tags)})
+    return match["id"], err
+
+
 def ghl_add_to_pipeline(contact_id, name="", email=""):
     """Create an opportunity in the E4L Onboarding pipeline at stage 1."""
     if not contact_id:
