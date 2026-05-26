@@ -4888,6 +4888,67 @@ def list_household_candidates():
     return jsonify({"candidates": out})
 
 
+@app.route("/api/household-candidates/<int:cand_id>/confirm", methods=["POST"])
+def confirm_household_candidate(cand_id):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    body = request.get_json(force=True) or {}
+    name = (body.get("name") or "").strip()
+    head_id = body.get("head_person_id")
+    if not (name and head_id):
+        return jsonify({"error": "name + head_person_id required"}), 400
+
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT person_ids, status FROM household_candidates WHERE id=?", (cand_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "candidate not found"}), 404
+    if row[1] != "pending":
+        return jsonify({"error": f"candidate is {row[1]}, not pending"}), 409
+    try:
+        member_ids = json.loads(row[0] or "[]")
+    except Exception:
+        return jsonify({"error": "candidate has invalid person_ids"}), 500
+
+    # Delegate to create_household via internal call
+    with app.test_request_context("/api/households", method="POST",
+                                   json={"name": name, "head_person_id": head_id,
+                                         "member_person_ids": member_ids},
+                                   headers={"X-Console-Key": CONSOLE_SECRET or ""}):
+        resp = create_household()
+    if isinstance(resp, tuple):
+        body, status = resp[0], resp[1]
+        if status != 200:
+            return body, status
+        body = body.get_json()
+    else:
+        body = resp.get_json()
+
+    # Link candidate to the new household
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            UPDATE household_candidates SET status='confirmed',
+                resolved_at=?, resolved_by=?, household_id=?
+            WHERE id=?
+        """, (datetime.now(timezone.utc).isoformat(), "glen", body["household"]["id"], cand_id))
+        cx.commit()
+    return jsonify({"ok": True, "household": body["household"], "ghl_errors": body.get("ghl_errors", [])})
+
+
+@app.route("/api/household-candidates/<int:cand_id>/dismiss", methods=["POST"])
+def dismiss_household_candidate(cand_id):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        if not cx.execute("SELECT 1 FROM household_candidates WHERE id=?", (cand_id,)).fetchone():
+            return jsonify({"error": "candidate not found"}), 404
+        cx.execute("""
+            UPDATE household_candidates SET status='dismissed', resolved_at=?, resolved_by=?
+            WHERE id=?
+        """, (datetime.now(timezone.utc).isoformat(), "glen", cand_id))
+        cx.commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/households/<slug>", methods=["PATCH"])
 def update_household(slug):
     auth_err = _check_console_auth()

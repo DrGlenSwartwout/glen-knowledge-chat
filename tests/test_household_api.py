@@ -483,3 +483,45 @@ def test_resync_ghl_pushes_household_tags_to_all_members(monkeypatch, tmp_db):
     head_call = next(c for c in calls if c["email"] == "a@x.com")
     assert "household-head:smith" in head_call["add"]
     assert "household:smith" in head_call["add"]
+
+
+def test_confirm_candidate_creates_household_and_links(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="Z")
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="Z")
+    with sqlite3.connect(tmp_db) as cx:
+        cx.execute("INSERT INTO household_candidates (detected_at, signal, person_ids) VALUES (?, ?, ?)",
+                   ("2026-05-26T00:00:00", "shared-phone-lastname", json.dumps(sorted([p1, p2]))))
+        cx.commit()
+
+    client = app.app.test_client()
+    r = client.post("/api/household-candidates/1/confirm",
+                    headers={"X-Console-Key": "testkey"},
+                    json={"name": "Z Family", "head_person_id": p1})
+    assert r.status_code == 200
+    with sqlite3.connect(tmp_db) as cx:
+        status, hid = cx.execute("SELECT status, household_id FROM household_candidates WHERE id=1").fetchone()
+        assert status == "confirmed"
+        assert hid is not None
+
+
+def test_dismiss_candidate_sets_status(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    with sqlite3.connect(tmp_db) as cx:
+        cx.execute("INSERT INTO household_candidates (detected_at, signal, person_ids) VALUES (?, ?, ?)",
+                   ("2026-05-26T00:00:00", "shared-email", json.dumps([1, 2])))
+        cx.commit()
+
+    client = app.app.test_client()
+    r = client.post("/api/household-candidates/1/dismiss", headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    with sqlite3.connect(tmp_db) as cx:
+        status = cx.execute("SELECT status FROM household_candidates WHERE id=1").fetchone()[0]
+    assert status == "dismissed"
