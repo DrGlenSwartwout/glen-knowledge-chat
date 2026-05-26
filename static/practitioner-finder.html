@@ -186,15 +186,29 @@
 
     // Filter state
     const filterState = {
-      parent: null,   // 'eye_care' | 'dental' | 'holistic_health' | '__all__' | null
-      sub: '__all__', // narrowing within parent, default = all
+      parent: null,
+      sub: '__all__',
     };
+
+    // Initialize Mapbox map (centered on continental US until user searches)
+    let map;
+    const markers = [];
+    let lastSearchCenter = null;
+
+    if (MAPBOX_TOKEN) {
+      mapboxgl.accessToken = MAPBOX_TOKEN;
+      map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [-98.58, 39.83],
+        zoom: 3,
+      });
+    }
 
     // Top-level chip behavior
     document.querySelectorAll('.chip').forEach(btn => {
       btn.addEventListener('click', () => {
         const parent = btn.dataset.parent;
-        // toggle: clicking active chip clears it
         if (filterState.parent === parent) {
           filterState.parent = null;
           btn.setAttribute('aria-pressed', 'false');
@@ -206,7 +220,6 @@
           btn.setAttribute('aria-pressed', 'true');
           closeAllDrillDowns();
           if (parent !== '__all__') {
-            // Open drill-down for any parent (eye_care, dental, holistic_health)
             const drill = document.getElementById(`drill-${parent}`);
             if (drill) drill.classList.add('open');
           }
@@ -219,7 +232,6 @@
       document.querySelectorAll('.drill-down').forEach(d => d.classList.remove('open'));
     }
 
-    // Sub-chip behavior (radio within drill-down)
     document.querySelectorAll('.drill-down').forEach(drill => {
       drill.querySelectorAll('.sub-chip').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -231,9 +243,124 @@
       });
     });
 
-    // stub — wired in sub-step 11.3
-    function runSearch() {
-      console.log('runSearch called', filterState);
+    // ZIP form submission
+    document.getElementById('zip-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      runSearch();
+    });
+
+    async function runSearch() {
+      const zip = document.getElementById('zip-input').value.trim();
+      if (!zip) {
+        document.getElementById('empty-state').textContent = 'Enter a ZIP to search.';
+        return;
+      }
+      const radius = document.getElementById('radius-select').value;
+      const params = new URLSearchParams();
+      params.set('zip', zip);
+      params.set('radius_miles', radius);
+      if (filterState.parent && filterState.parent !== '__all__') {
+        if (filterState.sub === '__all__') {
+          params.append('specialties[]', filterState.parent);
+        } else {
+          params.append('specialties[]', filterState.sub);
+        }
+      }
+
+      const resp = await fetch(`/api/practitioner-finder/search?${params}`);
+      if (!resp.ok) {
+        document.getElementById('empty-state').textContent =
+          `Search failed (${resp.status}). Try a different ZIP.`;
+        document.getElementById('empty-state').style.display = '';
+        document.getElementById('results-list').innerHTML = '';
+        return;
+      }
+      const data = await resp.json();
+      renderResults(data);
+    }
+
+    function clearMarkers() {
+      markers.forEach(m => m.remove());
+      markers.length = 0;
+    }
+
+    function renderResults(data) {
+      clearMarkers();
+      const list = document.getElementById('results-list');
+      const empty = document.getElementById('empty-state');
+      list.innerHTML = '';
+
+      if (data.count === 0) {
+        empty.style.display = '';
+        empty.textContent = 'No practitioners found in this radius. Try a wider search or a different category.';
+        return;
+      }
+      empty.style.display = 'none';
+
+      if (data.search_center && map) {
+        map.flyTo({ center: [data.search_center.lng, data.search_center.lat], zoom: 9 });
+        lastSearchCenter = data.search_center;
+      }
+
+      data.practitioners.forEach((p, i) => {
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.innerHTML = `
+          <h3>${escapeHtml(p.name)}</h3>
+          <div class="meta">
+            ${p.credentials ? escapeHtml(p.credentials) + ' &middot; ' : ''}
+            ${p.city ? escapeHtml(p.city) : ''}${p.state ? ', ' + escapeHtml(p.state) : ''}
+            ${typeof p.distance_miles === 'number' ? ' &middot; ' + p.distance_miles.toFixed(1) + ' mi' : ''}
+          </div>
+        `;
+        card.addEventListener('click', () => openSidePanel(p));
+        list.appendChild(card);
+
+        if (p.lat && p.lng && map) {
+          const color = p.geocode_quality === 'full' ? '#c0392b' : '#3a78b8';
+          const marker = new mapboxgl.Marker({ color })
+            .setLngLat([p.lng, p.lat])
+            .addTo(map);
+          marker.getElement().addEventListener('click', () => openSidePanel(p));
+          markers.push(marker);
+        }
+      });
+    }
+
+    function openSidePanel(p) {
+      const panel = document.getElementById('side-panel');
+      const content = document.getElementById('side-panel-content');
+      const parts = [];
+      parts.push(`<h2 style="font-family:var(--serif);margin-top:0">${escapeHtml(p.name)}</h2>`);
+      if (p.credentials) parts.push(`<div style="color:var(--muted)">${escapeHtml(p.credentials)}</div>`);
+      if (p.practice_name) parts.push(`<div>${escapeHtml(p.practice_name)}</div>`);
+      parts.push('<hr>');
+      const addrParts = [p.address1, p.city, p.state, p.postal].filter(Boolean).map(escapeHtml);
+      if (addrParts.length) parts.push(`<div>${addrParts.join(', ')}</div>`);
+      if (p.geocode_quality && p.geocode_quality !== 'full') {
+        parts.push('<div style="color:var(--muted);font-size:0.85rem;margin-top:0.2rem">Approximate — call the practice for exact address.</div>');
+      }
+      if (p.phone) parts.push(`<div style="margin-top:0.4rem"><a href="tel:${escapeHtml(p.phone)}">${escapeHtml(p.phone)}</a></div>`);
+      if (p.email) parts.push(`<div><a href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a></div>`);
+      if (p.website) parts.push(`<div><a href="${escapeHtml(p.website)}" target="_blank" rel="noopener">${escapeHtml(p.website)}</a></div>`);
+      if (p.source_org) {
+        parts.push(`<div style="margin-top:1rem;color:var(--muted);font-size:0.85rem">Source: ${escapeHtml(p.source_org)}${p.fellowship_level ? ' (Fellow)' : ''}</div>`);
+      }
+      content.innerHTML = parts.join('');
+      panel.classList.add('open');
+      panel.setAttribute('aria-hidden', 'false');
+    }
+
+    document.querySelector('.side-panel .close').addEventListener('click', () => {
+      const panel = document.getElementById('side-panel');
+      panel.classList.remove('open');
+      panel.setAttribute('aria-hidden', 'true');
+    });
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
     }
   </script>
 </body>
