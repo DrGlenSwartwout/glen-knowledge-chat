@@ -498,6 +498,14 @@
   <div class="people-layout">
     <!-- Left: search + list -->
     <div class="people-left">
+      <div id="household-candidates-banner" style="display:none;background:#1a1410;border:1px solid #2a1f10;border-radius:5px;padding:10px 12px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleCandidatesPanel()">
+          <span style="font-size:13px;color:#f5b87a">👥 <span id="hcb-count">0</span> possible household(s) detected</span>
+          <span style="flex:1"></span>
+          <span style="font-size:11px;color:#8a93a3" id="hcb-toggle">Review →</span>
+        </div>
+        <div id="hcb-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #2a1f10"></div>
+      </div>
       <div id="people-multiselect-toolbar"
            style="display:none;gap:8px;align-items:center;padding:8px 10px;background:#1a1410;border-radius:5px;margin-bottom:10px;border:1px solid #2a1f10">
         <span id="pms-count" style="flex:1;font-size:12px;color:#f5b87a;font-weight:600">0 selected</span>
@@ -1065,7 +1073,79 @@ function switchSection(section, btn) {
   if (btn) btn.classList.add('active');
   document.querySelector('main').style.display   = section === 'inbox'  ? '' : 'none';
   document.getElementById('people-section').style.display = section === 'people' ? '' : 'none';
-  if (section === 'people') loadPeople();
+  if (section === 'people') {
+    loadPeople();
+    loadHouseholdCandidates();
+  }
+}
+
+// ── Household candidates banner ────────────────────────────────────────────────
+let _hcbCandidates = [];
+
+async function loadHouseholdCandidates() {
+  const r = await fetch(`${BASE}/api/household-candidates?status=pending`,
+                        { headers:{'X-Console-Key':consoleKey} });
+  const data = await r.json();
+  _hcbCandidates = data.candidates || [];
+  document.getElementById('hcb-count').textContent = _hcbCandidates.length;
+  document.getElementById('household-candidates-banner').style.display =
+    _hcbCandidates.length > 0 ? '' : 'none';
+}
+
+function toggleCandidatesPanel() {
+  const panel = document.getElementById('hcb-panel');
+  const toggle = document.getElementById('hcb-toggle');
+  if (panel.style.display === 'none') {
+    renderCandidatesPanel();
+    panel.style.display = '';
+    toggle.textContent = 'Hide ↑';
+  } else {
+    panel.style.display = 'none';
+    toggle.textContent = 'Review →';
+  }
+}
+
+function renderCandidatesPanel() {
+  const html = _hcbCandidates.map(c => {
+    const persons = c.persons.map(p => _esc(p.name || p.email)).join(', ');
+    const warning = c.persons.length > 5
+      ? '<div style="color:#f5d07a;font-size:11px;margin-bottom:4px">⚠ Unusually large — review carefully</div>'
+      : '';
+    return `<div style="padding:10px;margin-bottom:6px;background:#0f0c08;border:1px solid #2a1f10;border-radius:5px">
+      ${warning}
+      <div style="font-size:11px;color:#8a93a3;margin-bottom:4px">signal: ${_esc(c.signal)}</div>
+      <div style="font-size:13px;margin-bottom:6px">${persons}</div>
+      <div style="display:flex;gap:6px">
+        <button onclick="hcbConfirm(${c.id})" style="padding:5px 10px;background:#f5b87a;color:#0a0c12;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">Confirm as household</button>
+        <button onclick="hcbDismiss(${c.id})" style="padding:5px 10px;background:transparent;color:#8a93a3;border:1px solid #4a3520;border-radius:4px;font-size:11px;cursor:pointer">Dismiss</button>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('hcb-panel').innerHTML = html;
+}
+
+async function hcbConfirm(candId) {
+  const cand = _hcbCandidates.find(c => c.id === candId);
+  if (!cand) return;
+  const name = prompt('Household name?', cand.persons[0]?.name?.split(' ').pop() || '');
+  if (!name) return;
+  // For v1 simplicity: head defaults to first member; user can rotate head later via Edit
+  const r = await fetch(`${BASE}/api/household-candidates/${candId}/confirm`, {
+    method:'POST', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+    body: JSON.stringify({ name, head_person_id: cand.person_ids[0] })
+  });
+  if (r.ok) {
+    loadHouseholdCandidates();
+    loadPeople();
+  } else {
+    alert('Confirm failed: ' + (await r.json()).error);
+  }
+}
+
+async function hcbDismiss(candId) {
+  const r = await fetch(`${BASE}/api/household-candidates/${candId}/dismiss`,
+                        { method:'POST', headers:{'X-Console-Key':consoleKey} });
+  if (r.ok) loadHouseholdCandidates();
 }
 
 // ── People page ───────────────────────────────────────────────────────────────
