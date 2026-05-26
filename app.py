@@ -4380,6 +4380,71 @@ def _init_people_table():
 _init_people_table()
 
 
+# ── Households ────────────────────────────────────────────────────────────────
+def _init_households_tables():
+    """Two tables: `households` for metadata, `household_candidates` for the
+    detection-and-suggest workflow. Run at import time alongside other
+    schema initializers."""
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS households (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug            TEXT UNIQUE NOT NULL,
+                name            TEXT NOT NULL,
+                head_person_id  INTEGER,
+                address         TEXT DEFAULT '',
+                notes           TEXT DEFAULT '',
+                created_at      TEXT NOT NULL,
+                updated_at      TEXT NOT NULL,
+                created_by      TEXT NOT NULL
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS household_candidates (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                detected_at     TEXT NOT NULL,
+                signal          TEXT NOT NULL,
+                person_ids      TEXT NOT NULL,
+                status          TEXT NOT NULL DEFAULT 'pending',
+                resolved_at     TEXT DEFAULT '',
+                resolved_by     TEXT DEFAULT '',
+                household_id    INTEGER
+            )
+        """)
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_household_candidates_status ON household_candidates(status)")
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_households_head ON households(head_person_id)")
+        cx.commit()
+
+_init_households_tables()
+
+
+def _household_slug(name, head_first_name="", existing=None):
+    """URL-safe stable identifier for a household. Immutable after creation
+    (renames update name, never slug). Returns lowercase, hyphen-separated."""
+    base = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-") or "household"
+    if existing is None:
+        return base
+    if base not in existing:
+        return base
+    # Collision: try appending head's first name
+    if head_first_name:
+        candidate = f"{base}-{re.sub(r'[^a-z0-9]+', '-', head_first_name.lower()).strip('-')}"
+        if candidate and candidate not in existing:
+            return candidate
+    # Numeric suffix fallback
+    n = 2
+    while f"{base}-{n}" in existing:
+        n += 1
+    return f"{base}-{n}"
+
+
+def _candidate_dedup_key(person_ids):
+    """Stable dedup key for household_candidates rows. Sorting ensures the
+    same cluster produces the same key across detection runs regardless
+    of input ordering."""
+    return ",".join(str(i) for i in sorted(int(p) for p in person_ids))
+
+
 def _people_search_query(params):
     """Build WHERE clause from search params. Returns (where_str, args)."""
     clauses, args = [], []
