@@ -525,3 +525,122 @@ def test_dismiss_candidate_sets_status(monkeypatch, tmp_db):
     with sqlite3.connect(tmp_db) as cx:
         status = cx.execute("SELECT status FROM household_candidates WHERE id=1").fetchone()[0]
     assert status == "dismissed"
+
+
+# ---------------------------------------------------------------------------
+# Merge feature tests
+# ---------------------------------------------------------------------------
+
+def _seed_pending_merges_table(db_path):
+    with sqlite3.connect(db_path) as cx:
+        cx.execute("""
+            CREATE TABLE pending_merges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER, keeper_person_id INTEGER NOT NULL,
+                dupe_person_id INTEGER NOT NULL, queued_at TEXT NOT NULL,
+                queued_by TEXT NOT NULL, status TEXT DEFAULT 'pending',
+                applied_at TEXT DEFAULT '', notes TEXT DEFAULT ''
+            )
+        """)
+        cx.commit()
+
+
+def test_queue_merge_from_candidate_creates_pending_row(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db); _seed_pending_merges_table(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    p1 = _seed_person(tmp_db, "rob@x.com", first="Rob", last="Fox")
+    p2 = _seed_person(tmp_db, "robert@x.com", first="Robert", last="Fox")
+    with sqlite3.connect(tmp_db) as cx:
+        cx.execute("INSERT INTO household_candidates (detected_at, signal, person_ids) VALUES (?, ?, ?)",
+                   ("2026-05-26T00:00:00", "shared-phone-lastname", json.dumps(sorted([p1, p2]))))
+        cx.commit()
+
+    client = app.app.test_client()
+    r = client.post("/api/household-candidates/1/queue-merge",
+                    headers={"X-Console-Key": "testkey"},
+                    json={"keeper_person_id": p1})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["keeper_id"] == p1
+    assert body["dupe_id"] == p2
+    with sqlite3.connect(tmp_db) as cx:
+        m = cx.execute("SELECT keeper_person_id, dupe_person_id, status FROM pending_merges WHERE id=1").fetchone()
+        assert m == (p1, p2, "pending")
+        # Candidate marked dismissed (it became a pending_merge, not a household)
+        c_status = cx.execute("SELECT status FROM household_candidates WHERE id=1").fetchone()[0]
+        assert c_status == "dismissed"
+
+
+def test_queue_merge_rejects_non_two_person_candidate(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db); _seed_pending_merges_table(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="X")
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="X")
+    p3 = _seed_person(tmp_db, "c@x.com", first="C", last="X")
+    with sqlite3.connect(tmp_db) as cx:
+        cx.execute("INSERT INTO household_candidates (detected_at, signal, person_ids) VALUES (?, ?, ?)",
+                   ("2026-05-26T00:00:00", "shared-phone-lastname", json.dumps(sorted([p1, p2, p3]))))
+        cx.commit()
+
+    client = app.app.test_client()
+    r = client.post("/api/household-candidates/1/queue-merge",
+                    headers={"X-Console-Key": "testkey"},
+                    json={"keeper_person_id": p1})
+    assert r.status_code == 400
+    assert "exactly 2-person" in r.get_json()["error"]
+
+
+def test_apply_pending_merge_executes_and_deletes_dupe(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db); _seed_pending_merges_table(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    p1 = _seed_person(tmp_db, "rob@x.com", first="Rob", last="Fox", tags=["client"])
+    p2 = _seed_person(tmp_db, "robert@x.com", first="Robert", last="Fox",
+                       phone="+15551234567", tags=["doctor"])
+    with sqlite3.connect(tmp_db) as cx:
+        cx.execute("""INSERT INTO pending_merges (keeper_person_id, dupe_person_id,
+                       queued_at, queued_by, status) VALUES (?, ?, ?, ?, 'pending')""",
+                   (p1, p2, "2026-05-26T00:00:00", "glen"))
+        cx.commit()
+
+    client = app.app.test_client()
+    r = client.post("/api/pending-merges/1/apply", headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    with sqlite3.connect(tmp_db) as cx:
+        # Keeper still exists, dupe gone
+        assert cx.execute("SELECT COUNT(*) FROM people WHERE id=?", (p1,)).fetchone()[0] == 1
+        assert cx.execute("SELECT COUNT(*) FROM people WHERE id=?", (p2,)).fetchone()[0] == 0
+        # Keeper has both tags
+        row = cx.execute("SELECT tags, phone FROM people WHERE id=?", (p1,)).fetchone()
+        tags = json.loads(row[0])
+        assert "client" in tags and "doctor" in tags
+        # Keeper's empty phone filled from dupe
+        assert row[1] == "+15551234567"
+        # Pending merge marked applied
+        assert cx.execute("SELECT status FROM pending_merges WHERE id=1").fetchone()[0] == "applied"
+
+
+def test_cancel_pending_merge(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db); _seed_pending_merges_table(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="X")
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="X")
+    with sqlite3.connect(tmp_db) as cx:
+        cx.execute("""INSERT INTO pending_merges (keeper_person_id, dupe_person_id,
+                       queued_at, queued_by, status) VALUES (?, ?, ?, ?, 'pending')""",
+                   (p1, p2, "2026-05-26T00:00:00", "glen"))
+        cx.commit()
+
+    client = app.app.test_client()
+    r = client.post("/api/pending-merges/1/cancel", headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    with sqlite3.connect(tmp_db) as cx:
+        assert cx.execute("SELECT status FROM pending_merges WHERE id=1").fetchone()[0] == "cancelled"

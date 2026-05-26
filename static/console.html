@@ -506,6 +506,14 @@
         </div>
         <div id="hcb-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #2a1f10"></div>
       </div>
+      <div id="pending-merges-banner" style="display:none;background:#0e1f2e;border:1px solid #1a3450;border-radius:5px;padding:10px 12px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="togglePendingMergesPanel()">
+          <span style="font-size:13px;color:#7ab8f5">🔀 <span id="pmb-count">0</span> merge(s) queued</span>
+          <span style="flex:1"></span>
+          <span style="font-size:11px;color:#8a93a3" id="pmb-toggle">Review →</span>
+        </div>
+        <div id="pmb-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #1a3450"></div>
+      </div>
       <div id="people-multiselect-toolbar"
            style="display:none;gap:8px;align-items:center;padding:8px 10px;background:#1a1410;border-radius:5px;margin-bottom:10px;border:1px solid #2a1f10">
         <span id="pms-count" style="flex:1;font-size:12px;color:#f5b87a;font-weight:600">0 selected</span>
@@ -1076,6 +1084,7 @@ function switchSection(section, btn) {
   if (section === 'people') {
     loadPeople();
     loadHouseholdCandidates();
+    loadPendingMerges();
   }
 }
 
@@ -1088,8 +1097,18 @@ async function loadHouseholdCandidates() {
   const data = await r.json();
   _hcbCandidates = data.candidates || [];
   document.getElementById('hcb-count').textContent = _hcbCandidates.length;
-  document.getElementById('household-candidates-banner').style.display =
-    _hcbCandidates.length > 0 ? '' : 'none';
+  const banner = document.getElementById('household-candidates-banner');
+  banner.style.display = _hcbCandidates.length > 0 ? '' : 'none';
+  // If the review panel is open, re-render it so addressed cards disappear
+  const panel = document.getElementById('hcb-panel');
+  if (panel.style.display !== 'none') {
+    if (_hcbCandidates.length === 0) {
+      panel.style.display = 'none';
+      document.getElementById('hcb-toggle').textContent = 'Review →';
+    } else {
+      renderCandidatesPanel();
+    }
+  }
 }
 
 function toggleCandidatesPanel() {
@@ -1117,6 +1136,7 @@ function renderCandidatesPanel() {
       <div style="font-size:13px;margin-bottom:6px">${persons}</div>
       <div style="display:flex;gap:6px">
         <button onclick="hcbConfirm(${c.id})" style="padding:5px 10px;background:#f5b87a;color:#0a0c12;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">Confirm as household</button>
+        ${c.persons.length === 2 ? `<button onclick="hcbMerge(${c.id})" style="padding:5px 10px;background:#7ab8f5;color:#0a0c12;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">Merge as duplicate</button>` : ''}
         <button onclick="hcbDismiss(${c.id})" style="padding:5px 10px;background:transparent;color:#8a93a3;border:1px solid #4a3520;border-radius:4px;font-size:11px;cursor:pointer">Dismiss</button>
       </div>
     </div>`;
@@ -1146,6 +1166,117 @@ async function hcbDismiss(candId) {
   const r = await fetch(`${BASE}/api/household-candidates/${candId}/dismiss`,
                         { method:'POST', headers:{'X-Console-Key':consoleKey} });
   if (r.ok) loadHouseholdCandidates();
+}
+
+async function hcbMerge(candId) {
+  const cand = _hcbCandidates.find(c => c.id === candId);
+  if (!cand || cand.persons.length !== 2) return;
+  // Open the merge-keeper dialog
+  document.getElementById('mkd-cand-id').value = candId;
+  const [p1, p2] = cand.persons;
+  document.getElementById('mkd-p1-label').textContent = `${p1.name || '(no name)'} <${p1.email || 'no email'}>`;
+  document.getElementById('mkd-p2-label').textContent = `${p2.name || '(no name)'} <${p2.email || 'no email'}>`;
+  document.getElementById('mkd-p1-radio').value = p1.id;
+  document.getElementById('mkd-p2-radio').value = p2.id;
+  document.getElementById('mkd-p1-radio').checked = true;
+  document.getElementById('mkd-errors').textContent = '';
+  document.getElementById('merge-keeper-dialog').showModal();
+}
+
+async function submitMergeKeeper() {
+  const candId = parseInt(document.getElementById('mkd-cand-id').value, 10);
+  const keeperId = parseInt(document.querySelector('input[name="mkd-keeper"]:checked').value, 10);
+  document.getElementById('mkd-errors').textContent = '';
+  const r = await fetch(`${BASE}/api/household-candidates/${candId}/queue-merge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Console-Key': consoleKey },
+    body: JSON.stringify({ keeper_person_id: keeperId }),
+  });
+  if (r.ok) {
+    document.getElementById('merge-keeper-dialog').close();
+    loadHouseholdCandidates();
+    loadPendingMerges();
+  } else {
+    const data = await r.json();
+    document.getElementById('mkd-errors').textContent = data.error || 'Queue failed.';
+  }
+}
+
+// ── Pending merges banner ─────────────────────────────────────────────────────
+let _pendingMerges = [];
+
+async function loadPendingMerges() {
+  const r = await fetch(`${BASE}/api/pending-merges?status=pending`,
+                        { headers: { 'X-Console-Key': consoleKey } });
+  const data = await r.json();
+  _pendingMerges = data.merges || [];
+  document.getElementById('pmb-count').textContent = _pendingMerges.length;
+  // If the panel is open, re-render so addressed merges disappear
+  const panel = document.getElementById('pmb-panel');
+  if (panel && panel.style.display !== 'none') {
+    if (_pendingMerges.length === 0) {
+      panel.style.display = 'none';
+      document.getElementById('pmb-toggle').textContent = 'Review →';
+    } else {
+      renderPendingMergesPanel();
+    }
+  }
+  document.getElementById('pending-merges-banner').style.display =
+    _pendingMerges.length > 0 ? '' : 'none';
+}
+
+function togglePendingMergesPanel() {
+  const panel = document.getElementById('pmb-panel');
+  const toggle = document.getElementById('pmb-toggle');
+  if (panel.style.display === 'none') {
+    renderPendingMergesPanel();
+    panel.style.display = '';
+    toggle.textContent = 'Hide ↑';
+  } else {
+    panel.style.display = 'none';
+    toggle.textContent = 'Review →';
+  }
+}
+
+function renderPendingMergesPanel() {
+  const html = _pendingMerges.map(m => {
+    const keeperName = m.keeper.deleted ? `[deleted person ${m.keeper.id}]` :
+      `${m.keeper.first_name||''} ${m.keeper.last_name||''}`.trim() || m.keeper.email || `#${m.keeper.id}`;
+    const dupeName = m.dupe.deleted ? `[deleted person ${m.dupe.id}]` :
+      `${m.dupe.first_name||''} ${m.dupe.last_name||''}`.trim() || m.dupe.email || `#${m.dupe.id}`;
+    return `<div style="padding:10px;margin-bottom:6px;background:#0a1520;border:1px solid #1a3450;border-radius:5px">
+      <div style="font-size:11px;color:#8a93a3;margin-bottom:4px">queued ${m.queued_at.slice(0,10)} by ${_esc(m.queued_by)}</div>
+      <div style="font-size:13px;margin-bottom:6px">
+        <span style="color:#7ab8f5;font-weight:600">KEEP:</span> ${_esc(keeperName)} <span style="color:#8a93a3;font-size:11px">${_esc(m.keeper.email||'')}</span>
+      </div>
+      <div style="font-size:13px;margin-bottom:8px">
+        <span style="color:#f57a7a;font-weight:600">DELETE:</span> ${_esc(dupeName)} <span style="color:#8a93a3;font-size:11px">${_esc(m.dupe.email||'')}</span>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button onclick="pmbApply(${m.id})" style="padding:5px 10px;background:#7ab8f5;color:#0a0c12;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">Apply merge</button>
+        <button onclick="pmbCancel(${m.id})" style="padding:5px 10px;background:transparent;color:#8a93a3;border:1px solid #4a3520;border-radius:4px;font-size:11px;cursor:pointer">Cancel</button>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('pmb-panel').innerHTML = html;
+}
+
+async function pmbApply(mergeId) {
+  if (!confirm('Apply merge? The "DELETE" row will be permanently removed from the people table.')) return;
+  const r = await fetch(`${BASE}/api/pending-merges/${mergeId}/apply`,
+                        { method: 'POST', headers: { 'X-Console-Key': consoleKey } });
+  if (r.ok) {
+    loadPendingMerges();
+    if (typeof loadPeople === 'function') loadPeople();
+  } else {
+    alert('Apply failed: ' + ((await r.json()).error || 'unknown'));
+  }
+}
+
+async function pmbCancel(mergeId) {
+  const r = await fetch(`${BASE}/api/pending-merges/${mergeId}/cancel`,
+                        { method: 'POST', headers: { 'X-Console-Key': consoleKey } });
+  if (r.ok) loadPendingMerges();
 }
 
 // ── People page ───────────────────────────────────────────────────────────────
@@ -2399,6 +2530,31 @@ initKey();
   <div class="newtask-footer">
     <button class="btn-newtask-cancel" onclick="document.getElementById('household-dialog').close()">Cancel</button>
     <button class="btn-newtask-save" style="background:#f5b87a;color:#0a0c12" id="hh-submit" onclick="submitHousehold()">Create household</button>
+  </div>
+</dialog>
+
+<dialog id="merge-keeper-dialog">
+  <div class="newtask-header" style="border-color:#7ab8f5">
+    <h3>🔀 Queue a merge</h3>
+  </div>
+  <div class="newtask-body">
+    <input type="hidden" id="mkd-cand-id">
+    <p style="font-size:12px;color:#8a93a3;margin:0 0 12px">Which row should we keep? The other will be deleted after you apply the merge.</p>
+    <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #1c2433;border-radius:5px;margin-bottom:6px;cursor:pointer">
+      <input type="radio" name="mkd-keeper" id="mkd-p1-radio">
+      <span id="mkd-p1-label" style="flex:1;font-size:13px"></span>
+      <span style="font-size:10px;color:#7ab8f5;font-weight:600">KEEPER</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #1c2433;border-radius:5px;cursor:pointer">
+      <input type="radio" name="mkd-keeper" id="mkd-p2-radio">
+      <span id="mkd-p2-label" style="flex:1;font-size:13px"></span>
+      <span style="font-size:10px;color:#f57a7a;font-weight:600">WILL BE DELETED</span>
+    </label>
+    <div id="mkd-errors" style="color:#f57a7a;font-size:12px;margin-top:8px"></div>
+  </div>
+  <div class="newtask-footer">
+    <button class="btn-newtask-cancel" onclick="document.getElementById('merge-keeper-dialog').close()">Cancel</button>
+    <button class="btn-newtask-save" style="background:#7ab8f5;color:#0a0c12" onclick="submitMergeKeeper()">Queue merge</button>
   </div>
 </dialog>
 
