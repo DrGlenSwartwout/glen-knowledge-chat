@@ -3030,6 +3030,18 @@ def admin_sync_pb_tags():
             dry_run=dry_run,
             limit=int(limit) if limit else None,
         )
+        # After successful PB sync (not dry-run), run household-side steps:
+        # 1. Detect new candidates (new PB contacts may match existing patterns)
+        # 2. Resync household tags to GHL (drift recovery)
+        if not dry_run:
+            try:
+                summary["households"] = {
+                    "detection": detect_household_candidates(),
+                    "resync":    resync_all_households_to_ghl(),
+                }
+            except Exception as e:
+                app.logger.exception("post-pb household steps failed")
+                summary["households"] = {"error": f"{type(e).__name__}: {e}"}
         return jsonify({"ok": True, "summary": summary})
     except Exception as e:
         app.logger.exception("PB sync failed")
