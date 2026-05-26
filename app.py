@@ -4616,6 +4616,157 @@ def add_person_note(person_id):
     return jsonify({"ok": True})
 
 
+# ── Household endpoints ────────────────────────────────────────────────────────
+
+def _check_console_auth():
+    """Returns None if authorized, or a (response, status) tuple to return."""
+    if not CONSOLE_SECRET:
+        return None
+    key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+    if key != CONSOLE_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
+    return None
+
+
+def _existing_household_slugs(cx):
+    return {row[0] for row in cx.execute("SELECT slug FROM households").fetchall()}
+
+
+def _person_household_slug(cx, person_id):
+    """Returns the slug of the household this person is in, or None."""
+    row = cx.execute("SELECT tags FROM people WHERE id=?", (person_id,)).fetchone()
+    if not row:
+        return None
+    try:
+        tags = json.loads(row[0] or "[]")
+    except Exception:
+        return None
+    for t in tags:
+        if t.startswith("household:") and not t.startswith("household-head:"):
+            return t.split(":", 1)[1]
+    return None
+
+
+def _mutate_person_tags(cx, person_id, add=None, remove=None):
+    """Update a person's tags JSON additively/subtractively. Returns new tags list."""
+    add = set(add or [])
+    remove = set(remove or [])
+    row = cx.execute("SELECT tags FROM people WHERE id=?", (person_id,)).fetchone()
+    if not row:
+        return []
+    try:
+        existing = set(json.loads(row[0] or "[]"))
+    except Exception:
+        existing = set()
+    new_tags = sorted((existing | add) - remove)
+    cx.execute("UPDATE people SET tags=? WHERE id=?", (json.dumps(new_tags), person_id))
+    return new_tags
+
+
+def _push_household_tags_to_ghl(person_email, slug, is_head, action="add"):
+    """Push household and household-head tags to GHL. action='add' or 'remove'.
+    Returns (ok_bool, error_msg_or_None)."""
+    tags = {f"household:{slug}"}
+    if is_head:
+        tags.add(f"household-head:{slug}")
+    if action == "add":
+        _, err = ghl_update_tags(person_email, add=tags)
+    else:
+        _, err = ghl_update_tags(person_email, remove=tags)
+    return (err is None, err)
+
+
+@app.route("/api/households", methods=["POST"])
+def create_household():
+    """Create a household, tag members in DB + GHL.
+
+    Body: {name, head_person_id, member_person_ids[], address?, notes?, created_by?}
+    Returns 200 with the new household, 409 if any member is already in another household."""
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    body = request.get_json(force=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name required"}), 400
+    head_id = body.get("head_person_id")
+    member_ids = body.get("member_person_ids") or []
+    if not head_id or head_id not in member_ids:
+        return jsonify({"error": "head_person_id must be in member_person_ids"}), 400
+    created_by = (body.get("created_by") or "glen").strip()
+    address = (body.get("address") or "").strip()
+    notes = (body.get("notes") or "").strip()
+    ts = datetime.now(timezone.utc).isoformat()
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        # Pre-flight: ensure no member is already in a household
+        for pid in member_ids:
+            existing_slug = _person_household_slug(cx, pid)
+            if existing_slug:
+                existing_row = cx.execute(
+                    "SELECT slug, name FROM households WHERE slug=?", (existing_slug,)
+                ).fetchone()
+                return jsonify({
+                    "error": "member already in household",
+                    "person_id": pid,
+                    "current_household": {
+                        "slug": existing_slug,
+                        "name": existing_row[1] if existing_row else existing_slug,
+                    },
+                }), 409
+
+        # Resolve head's first name for slug-collision fallback
+        head_row = cx.execute(
+            "SELECT first_name, email FROM people WHERE id=?", (head_id,)
+        ).fetchone()
+        if not head_row:
+            return jsonify({"error": "head person not found"}), 400
+        head_first, head_email = head_row
+
+        slug = _household_slug(name, head_first, existing=_existing_household_slugs(cx))
+
+        cx.execute("""
+            INSERT INTO households (slug, name, head_person_id, address, notes,
+                                    created_at, updated_at, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (slug, name, head_id, address, notes, ts, ts, created_by))
+        household_id = cx.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        # Tag every member in DB. Head gets both household: and household-head:.
+        # Also strip the legacy relationship:family-shared-email tag.
+        for pid in member_ids:
+            adds = {f"household:{slug}"}
+            if pid == head_id:
+                adds.add(f"household-head:{slug}")
+            _mutate_person_tags(cx, pid, add=adds, remove={"relationship:family-shared-email"})
+        cx.commit()
+
+    # Push to GHL outside the lock. Per-member errors collected.
+    ghl_errors = []
+    with sqlite3.connect(LOG_DB) as cx:
+        members = cx.execute("""
+            SELECT id, email FROM people WHERE id IN ({})
+        """.format(",".join("?" * len(member_ids))), member_ids).fetchall()
+    for pid, email in members:
+        if not email:
+            continue
+        is_head = (pid == head_id)
+        ok, err = _push_household_tags_to_ghl(email, slug, is_head, action="add")
+        if not ok:
+            ghl_errors.append({"email": email, "error": str(err)})
+        # Also remove the legacy tag from GHL
+        try:
+            ghl_update_tags(email, remove={"relationship:family-shared-email"})
+        except Exception:
+            pass
+        _time.sleep(0.15)
+
+    return jsonify({
+        "ok": True,
+        "household": {"id": household_id, "slug": slug, "name": name, "head_person_id": head_id},
+        "ghl_errors": ghl_errors,
+    })
+
+
 # ── Console AI chat (context-aware) ───────────────────────────────────────────
 _OWNER_DESC = {
     "glen":   "Dr. Glen Swartwout, naturopathic optometrist, solopreneur — full access to all systems and data.",

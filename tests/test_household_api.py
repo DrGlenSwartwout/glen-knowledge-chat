@@ -159,3 +159,90 @@ def test_ghl_update_tags_falls_through_to_upsert_when_no_contact(monkeypatch, tm
     assert contact_id == "C789"
     assert captured["upsert_call"]["email"] == "new@x.com"
     assert "household:smith" in captured["upsert_call"]["extra_tags"]
+
+
+def test_create_household_writes_db_and_tags(monkeypatch, tmp_db):
+    """POST /api/households creates the household row, tags every member's
+    people.tags JSON, and tags the head with household-head: too."""
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db)
+    _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")   # disables GHL calls
+
+    pid_lotika = _seed_person(tmp_db, "lotika@x.com", first="Lotika", last="Savant")
+    pid_omika  = _seed_person(tmp_db, "omika@x.com",  first="Omika",  last="Savant")
+
+    client = app.app.test_client()
+    r = client.post("/api/households",
+                    headers={"X-Console-Key": "testkey"},
+                    json={"name": "Savant",
+                          "head_person_id": pid_lotika,
+                          "member_person_ids": [pid_lotika, pid_omika]})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    slug = body["household"]["slug"]
+    assert slug == "savant"
+
+    # DB row exists
+    with sqlite3.connect(tmp_db) as cx:
+        row = cx.execute("SELECT name, head_person_id FROM households WHERE slug=?", (slug,)).fetchone()
+        assert row == ("Savant", pid_lotika)
+        # Both members carry household:savant; head also has household-head:savant
+        lotika_tags = json.loads(cx.execute("SELECT tags FROM people WHERE id=?", (pid_lotika,)).fetchone()[0])
+        omika_tags  = json.loads(cx.execute("SELECT tags FROM people WHERE id=?", (pid_omika,)).fetchone()[0])
+        assert "household:savant" in lotika_tags
+        assert "household-head:savant" in lotika_tags
+        assert "household:savant" in omika_tags
+        assert "household-head:savant" not in omika_tags
+
+
+def test_create_household_rejects_member_already_in_household(monkeypatch, tmp_db):
+    """409 when a member is already in another household."""
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db)
+    _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="Smith", tags=["household:smith-old"])
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="Smith")
+
+    client = app.app.test_client()
+    r = client.post("/api/households",
+                    headers={"X-Console-Key": "testkey"},
+                    json={"name": "Smith", "head_person_id": p1, "member_person_ids": [p1, p2]})
+    assert r.status_code == 409
+    body = r.get_json()
+    assert "current_household" in body
+    assert body["current_household"]["slug"] == "smith-old"
+
+
+def test_create_household_strips_relationship_family_shared_email_tag(monkeypatch, tmp_db):
+    """Members carrying the legacy relationship:family-shared-email tag have
+    it stripped on household creation (the new household: tags supersede it)."""
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db)
+    _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="Jones", tags=["relationship:family-shared-email", "client"])
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="Jones", tags=["relationship:family-shared-email"])
+
+    client = app.app.test_client()
+    r = client.post("/api/households",
+                    headers={"X-Console-Key": "testkey"},
+                    json={"name": "Jones", "head_person_id": p1, "member_person_ids": [p1, p2]})
+    assert r.status_code == 200
+    with sqlite3.connect(tmp_db) as cx:
+        for pid in (p1, p2):
+            tags = json.loads(cx.execute("SELECT tags FROM people WHERE id=?", (pid,)).fetchone()[0])
+            assert "relationship:family-shared-email" not in tags
+        # Non-household tags preserved
+        p1_tags = json.loads(cx.execute("SELECT tags FROM people WHERE id=?", (p1,)).fetchone()[0])
+        assert "client" in p1_tags
