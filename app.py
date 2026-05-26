@@ -1736,12 +1736,16 @@ def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag=
     if extra_tags:
         all_new_tags.update(extra_tags)
 
-    # Try to find existing contact (GHL v1 email filter is fuzzy — check exact match)
-    data, err = _ghl_get("/contacts/", {"email": email, "limit": "20"})
+    # Try to find existing contact via GHL v1 /contacts/lookup?email= (the
+    # /contacts/?email= query param does NOT actually filter — it returns
+    # random contacts and silently caused duplicates). lookup returns ALL
+    # contacts matching the email; we prefer the oldest one when multiple
+    # historical entries exist for the same address.
+    data, err = _ghl_get("/contacts/lookup", {"email": email})
     if not err:
         contacts = data.get("contacts", [])
-        match = next((c for c in contacts if (c.get("email") or "").lower() == email.lower()), None)
-        if match:
+        if contacts:
+            match = min(contacts, key=lambda c: c.get("dateAdded") or "9999")
             contact_id = match["id"]
             if all_new_tags:
                 existing_tags = set(match.get("tags", []))
