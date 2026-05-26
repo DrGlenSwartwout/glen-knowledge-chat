@@ -1372,6 +1372,8 @@ function renderPersonDetail(p, household) {
     </div>`;
 }
 
+const _hhRecentErrors = new Map();   // slug -> [{email, error}]
+
 function _renderHouseholdSection(person, household) {
   if (!household) {
     return `<div class="detail-field" style="margin-top:14px">
@@ -1379,13 +1381,19 @@ function _renderHouseholdSection(person, household) {
               onclick="openHouseholdDialogForPerson(${person.id})">+ Mark as household</button>
     </div>`;
   }
+  const errors = _hhRecentErrors.get(household.slug) || [];
+  const errorBadge = errors.length > 0 ? `
+    <div style="margin:8px 0;padding:8px 10px;background:#3a2615;border:1px solid #f5d07a;border-radius:5px;color:#f5d07a;font-size:11px">
+      ⚠ GHL sync incomplete (${errors.length} member(s) failed).
+      <button onclick="hhResyncGhl('${_esc(household.slug)}')"
+              style="margin-left:8px;padding:3px 8px;background:transparent;color:#f5d07a;border:1px solid #f5d07a;border-radius:3px;font-size:10px;cursor:pointer">Retry</button>
+    </div>` : '';
   const members = household.members || [];
-  const headMember = members.find(m=>m.is_head);
-  const headBadge = headMember ? `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#4a3520;color:#f5d4a0;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-left:6px">${_esc(headMember.first_name||'')} is head</span>` : '';
+  const headBadge = `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#4a3520;color:#f5d4a0;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-left:6px">${_esc(members.find(m=>m.is_head)?.first_name||'')} is head</span>`;
   const memberCards = members.map(m => {
     const initials = ((m.first_name||'?')[0] + (m.last_name||'?')[0]).toUpperCase();
     const thisOne = m.id === person.id ? 'opacity:0.7;border-color:#f5b87a' : '';
-    return `<div class="household-member" style="display:flex;gap:10px;padding:8px 10px;margin:6px 0;background:#0f0c08;border:1px solid #2a1f10;border-radius:6px;cursor:pointer;${thisOne}"
+    return `<div style="display:flex;gap:10px;padding:8px 10px;margin:6px 0;background:#0f0c08;border:1px solid #2a1f10;border-radius:6px;cursor:pointer;${thisOne}"
             onclick="loadPersonDetail(${m.id})">
       <div style="width:28px;height:28px;border-radius:50%;background:#4a3520;color:#f5d4a0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${initials}</div>
       <div style="flex:1;min-width:0">
@@ -1396,9 +1404,10 @@ function _renderHouseholdSection(person, household) {
   }).join('');
   return `<div class="detail-field" style="margin-top:14px;background:#1a1410;border:1px solid #2a1f10;border-radius:8px;padding:12px">
     <h4 style="margin:0 0 8px;font-size:12px;color:#f5b87a;display:flex;justify-content:space-between;align-items:center">
-      <span>&#x1F465; ${_esc(household.name)} household ${headBadge}</span>
-      <button onclick="openHouseholdEditDialog('${_esc(household.slug)}')" style="background:transparent;border:none;color:#8a93a3;cursor:pointer;font-size:14px">&#x2699;</button>
+      <span>👥 ${_esc(household.name)} household ${headBadge}</span>
+      <button onclick="openHouseholdEditDialog('${_esc(household.slug)}')" style="background:transparent;border:none;color:#8a93a3;cursor:pointer;font-size:14px">⚙</button>
     </h4>
+    ${errorBadge}
     ${memberCards}
     <button class="detail-enrich-btn" style="border-color:#f5b87a;color:#f5b87a;width:100%;margin-top:6px;font-size:11px"
             onclick="openHouseholdDialogForAddMember('${_esc(household.slug)}')">+ Add member</button>
@@ -1517,6 +1526,12 @@ async function submitHousehold() {
           });
         } else { return; }
       } else if (!r.ok) { document.getElementById('hh-errors').textContent = data.error || 'Failed.'; return; }
+      // Capture ghl errors for the warning UI
+      if (data.ghl_errors && data.ghl_errors.length > 0) {
+        _hhRecentErrors.set(_hhSlug, data.ghl_errors);
+      } else {
+        _hhRecentErrors.delete(_hhSlug);
+      }
       document.getElementById('household-dialog').close();
       if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
     } finally { document.getElementById('hh-submit').disabled = false; }
@@ -1530,13 +1545,20 @@ async function submitHousehold() {
     document.getElementById('hh-submit').disabled = true;
     try {
       // PATCH name + head
-      await fetch(`${BASE}/api/households/${encodeURIComponent(_hhSlug)}`, {
+      const editR = await fetch(`${BASE}/api/households/${encodeURIComponent(_hhSlug)}`, {
         method:'PATCH', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
         body: JSON.stringify({ name, head_person_id: head.id })
       });
+      const editData = await editR.json();
       // Removed members: compare to original state would require caching;
       // for v1, edit dialog supports rename + head change only. Member add/remove
       // is via the +Add/✕ buttons on the chips and triggers separate API calls.
+      // Capture ghl errors for the warning UI
+      if (editData.ghl_errors && editData.ghl_errors.length > 0) {
+        _hhRecentErrors.set(_hhSlug, editData.ghl_errors);
+      } else {
+        _hhRecentErrors.delete(_hhSlug);
+      }
       document.getElementById('household-dialog').close();
       if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
     } finally { document.getElementById('hh-submit').disabled = false; }
@@ -1568,9 +1590,31 @@ async function submitHousehold() {
       return;
     }
     if (!r.ok) { document.getElementById('hh-errors').textContent = data.error || 'Failed.'; return; }
+    // Capture ghl errors for the warning UI
+    if (data.household) {
+      if (data.ghl_errors && data.ghl_errors.length > 0) {
+        _hhRecentErrors.set(data.household.slug, data.ghl_errors);
+      } else {
+        _hhRecentErrors.delete(data.household.slug);
+      }
+    }
     document.getElementById('household-dialog').close();
     if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
   } finally { document.getElementById('hh-submit').disabled = false; }
+}
+
+async function hhResyncGhl(slug) {
+  const r = await fetch(`${BASE}/api/households/${encodeURIComponent(slug)}/resync-ghl`,
+                        { method:'POST', headers:{'X-Console-Key':consoleKey} });
+  const data = await r.json();
+  if (data.ghl_errors && data.ghl_errors.length > 0) {
+    _hhRecentErrors.set(slug, data.ghl_errors);
+    alert(`Still ${data.ghl_errors.length} member(s) failing. Check Render logs.`);
+  } else {
+    _hhRecentErrors.delete(slug);
+    alert('Re-sync succeeded.');
+  }
+  if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
 }
 
 async function openHouseholdDialogForAddMember(slug) {
