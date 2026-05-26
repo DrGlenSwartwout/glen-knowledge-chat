@@ -1912,15 +1912,35 @@ def _init_referral_tables():
                     1)
             """)
         # Seed E4L bioenergetic wellness scan
+        E4L_INSTRUCTIONS = (
+            "New here? Get a free account at https://truly.vip/E4L\n"
+            "Already have an account? Log in at https://portal.E4L.com\n"
+            "\n"
+            "Once logged in:\n"
+            "1. Click the Scans tab\n"
+            '2. Click "Voice Scan"\n'
+            "3. Follow the prompts\n"
+            "4. Count out loud: 1 to 10\n"
+            "5. View your scan\n"
+            "\n"
+            "If you don't see 'Scans' anywhere, send us a note at support@RemedyMatch.com"
+        )
         if not cx.execute("SELECT id FROM affiliate_offers WHERE name='Free Bioenergetic Wellness Scan'").fetchone():
             cx.execute("""
                 INSERT INTO affiliate_offers (sort_order, name, description, url_template, instructions, active)
                 VALUES (2, 'Free Bioenergetic Wellness Scan',
                     'A free voice-based bioenergetic scan from E4L — reveals the body''s current wellness priorities in minutes.',
                     'https://truly.vip/E4L?utm_source={slug}&utm_medium=affiliate&utm_campaign=e4l-scan',
-                    'New here? Get a free account at https://truly.vip/E4L\nAlready have an account? Log in at https://portal.E4L.com\n\nOnce logged in:\n1. Click the Scans tab\n2. Click "Voice Scan"\n3. Follow the prompts\n4. Count out loud: 1 to 10\n5. View your scan',
+                    ?,
                     1)
-            """)
+            """, (E4L_INSTRUCTIONS,))
+        else:
+            # Keep existing prod row's instructions in sync with the canonical seed.
+            cx.execute(
+                "UPDATE affiliate_offers SET instructions=? "
+                "WHERE name='Free Bioenergetic Wellness Scan' AND instructions != ?",
+                (E4L_INSTRUCTIONS, E4L_INSTRUCTIONS),
+            )
         # Seed AllHeal as first referral source if not exists
         existing = cx.execute("SELECT id FROM referral_sources WHERE slug='allheal'").fetchone()
         if not existing:
