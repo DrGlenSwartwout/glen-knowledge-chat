@@ -182,9 +182,59 @@
 
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.js"></script>
   <script>
-    // Mapbox token injected by app.py route handler in Task 12
     const MAPBOX_TOKEN = window.__MAPBOX_TOKEN__ || '';
-    // Sub-task 11.1 ends here — visual verification of skeleton + chips.
+
+    // Filter state
+    const filterState = {
+      parent: null,   // 'eye_care' | 'dental' | 'holistic_health' | '__all__' | null
+      sub: '__all__', // narrowing within parent, default = all
+    };
+
+    // Top-level chip behavior
+    document.querySelectorAll('.chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const parent = btn.dataset.parent;
+        // toggle: clicking active chip clears it
+        if (filterState.parent === parent) {
+          filterState.parent = null;
+          btn.setAttribute('aria-pressed', 'false');
+          closeAllDrillDowns();
+        } else {
+          filterState.parent = parent;
+          filterState.sub = '__all__';
+          document.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', 'false'));
+          btn.setAttribute('aria-pressed', 'true');
+          closeAllDrillDowns();
+          if (parent !== '__all__') {
+            // Open drill-down for any parent (eye_care, dental, holistic_health)
+            const drill = document.getElementById(`drill-${parent}`);
+            if (drill) drill.classList.add('open');
+          }
+        }
+        runSearch();
+      });
+    });
+
+    function closeAllDrillDowns() {
+      document.querySelectorAll('.drill-down').forEach(d => d.classList.remove('open'));
+    }
+
+    // Sub-chip behavior (radio within drill-down)
+    document.querySelectorAll('.drill-down').forEach(drill => {
+      drill.querySelectorAll('.sub-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          drill.querySelectorAll('.sub-chip').forEach(c => c.setAttribute('aria-pressed', 'false'));
+          btn.setAttribute('aria-pressed', 'true');
+          filterState.sub = btn.dataset.sub;
+          runSearch();
+        });
+      });
+    });
+
+    // stub — wired in sub-step 11.3
+    function runSearch() {
+      console.log('runSearch called', filterState);
+    }
   </script>
 </body>
 </html>
