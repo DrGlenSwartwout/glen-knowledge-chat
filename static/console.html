@@ -1097,8 +1097,18 @@ async function loadHouseholdCandidates() {
   const data = await r.json();
   _hcbCandidates = data.candidates || [];
   document.getElementById('hcb-count').textContent = _hcbCandidates.length;
-  document.getElementById('household-candidates-banner').style.display =
-    _hcbCandidates.length > 0 ? '' : 'none';
+  const banner = document.getElementById('household-candidates-banner');
+  banner.style.display = _hcbCandidates.length > 0 ? '' : 'none';
+  // If the review panel is open, re-render it so addressed cards disappear
+  const panel = document.getElementById('hcb-panel');
+  if (panel.style.display !== 'none') {
+    if (_hcbCandidates.length === 0) {
+      panel.style.display = 'none';
+      document.getElementById('hcb-toggle').textContent = 'Review →';
+    } else {
+      renderCandidatesPanel();
+    }
+  }
 }
 
 function toggleCandidatesPanel() {
@@ -1201,6 +1211,16 @@ async function loadPendingMerges() {
   const data = await r.json();
   _pendingMerges = data.merges || [];
   document.getElementById('pmb-count').textContent = _pendingMerges.length;
+  // If the panel is open, re-render so addressed merges disappear
+  const panel = document.getElementById('pmb-panel');
+  if (panel && panel.style.display !== 'none') {
+    if (_pendingMerges.length === 0) {
+      panel.style.display = 'none';
+      document.getElementById('pmb-toggle').textContent = 'Review →';
+    } else {
+      renderPendingMergesPanel();
+    }
+  }
   document.getElementById('pending-merges-banner').style.display =
     _pendingMerges.length > 0 ? '' : 'none';
 }
