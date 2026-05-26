@@ -128,3 +128,22 @@ services:
           type: web
           name: glen-knowledge-chat
           envVarKey: CRON_SECRET
+
+  # Daily Practice Better → People DB + GHL tag sync. Pulls all PB client
+  # records (~168 today), resolves their relatedTags via /tags, upserts into
+  # the people table, and mirrors tags to GHL in the pb: namespace. Same
+  # cross-container pattern — cron curls the web service where the SQLite
+  # disk + PB OAuth credentials live. Additive-only; never removes tags.
+  - type: cron
+    name: glen-pb-tag-sync-daily
+    runtime: python
+    schedule: "0 13 * * *"     # 3 AM HST daily (HST is UTC-10)
+    buildCommand: "true"       # stdlib-only, no deps to install
+    startCommand: python scripts/run_pb_tag_sync_cron.py
+    envVars:
+      - key: WEB_URL
+        value: https://glen-knowledge-chat.onrender.com
+      - fromService:
+          type: web
+          name: glen-knowledge-chat
+          envVarKey: CRON_SECRET

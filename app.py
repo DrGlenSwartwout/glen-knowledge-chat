@@ -2611,6 +2611,87 @@ def api_lead_dismiss(lead_id):
     return jsonify({"ok": True})
 
 
+# ── Practice Better API helpers ───────────────────────────────────────────────
+import time as _pb_time
+import requests as _pb_requests
+
+PB_BASE_URL       = "https://api.practicebetter.io"
+_PB_TOKEN_CACHE   = {"token": None, "expires_at": 0.0}
+_PB_TOKEN_TTL_SEC = 3000   # 50 minutes (PB tokens last 1 hour)
+
+
+def _pb_get_token():
+    """OAuth2 client-credentials grant with in-process 50-min TTL cache."""
+    now = _pb_time.time()
+    if _PB_TOKEN_CACHE["token"] and now < _PB_TOKEN_CACHE["expires_at"]:
+        return _PB_TOKEN_CACHE["token"]
+    client_id     = os.environ.get("PRACTICE_BETTER_CLIENT_ID", "")
+    client_secret = os.environ.get("PRACTICE_BETTER_CLIENT_SECRET", "")
+    if not (client_id and client_secret):
+        raise RuntimeError("PRACTICE_BETTER_CLIENT_ID/SECRET not configured")
+    r = _pb_requests.post(
+        f"{PB_BASE_URL}/oauth2/token",
+        data={"grant_type":"client_credentials",
+              "client_id":client_id, "client_secret":client_secret},
+        headers={"Content-Type":"application/x-www-form-urlencoded"},
+        timeout=30,
+    )
+    r.raise_for_status()
+    tok = r.json()["access_token"]
+    _PB_TOKEN_CACHE["token"]      = tok
+    _PB_TOKEN_CACHE["expires_at"] = now + _PB_TOKEN_TTL_SEC
+    return tok
+
+
+def _pb_get(path, params=None):
+    """Bearer-authed GET. Retries once on 401 (token may have expired mid-cache)."""
+    for attempt in (0, 1):
+        tok = _pb_get_token()
+        r = _pb_requests.get(f"{PB_BASE_URL}{path}",
+                             headers={"Authorization": f"Bearer {tok}"},
+                             params=params or {}, timeout=30)
+        if r.status_code == 401 and attempt == 0:
+            _PB_TOKEN_CACHE["token"] = None
+            continue
+        r.raise_for_status()
+        return r.json()
+
+
+def _pb_fetch_tag_definitions():
+    """Paginate /tags → return {tag_id: tag_name}.
+    PB uses 'skip' (not 'offset') for pagination; max page size is 100."""
+    out, skip, page_size = {}, 0, 100
+    while True:
+        body = _pb_get("/tags", params={"limit": page_size, "skip": skip})
+        items = body.get("items", []) if isinstance(body, dict) else []
+        for it in items:
+            tid, name = it.get("id"), (it.get("name") or "").strip()
+            if tid and name:
+                out[tid] = name
+        if not body.get("hasMore"):
+            break
+        skip += page_size
+        if skip > 10000:   # sanity guard
+            break
+    return out
+
+
+def _pb_fetch_all_records():
+    """Paginate /consultant/records → return list of full record dicts.
+    PB uses 'skip' (not 'offset') for pagination; max page size is 100."""
+    out, skip, page_size = [], 0, 100
+    while True:
+        body = _pb_get("/consultant/records", params={"limit": page_size, "skip": skip})
+        items = body.get("items", []) if isinstance(body, dict) else []
+        out.extend(items)
+        if not body.get("hasMore"):
+            break
+        skip += page_size
+        if skip > 100000:   # sanity guard
+            break
+    return out
+
+
 # ── Practice Better Webhook ───────────────────────────────────────────────────
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
@@ -2666,6 +2747,161 @@ def pb_webhook():
         _log_inbound_lead("practice-better", pb_email, first, last, "", raw, ghl_result)
 
     return jsonify({"ok": True, "event": event_type}), 200
+
+
+# ── PB → People DB + GHL tag sync ─────────────────────────────────────────────
+def _pb_slug(name):
+    return re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+
+
+def sync_pb_to_people_and_ghl(dry_run=False, limit=None):
+    """Walk every PB client record, resolve relatedTags → names, upsert into
+    the people table (matching by email, additive tag merge), then push the
+    same tags to GHL via ghl_upsert_contact in the `pb:` namespace.
+
+    Phased to avoid holding _db_lock during HTTP work:
+      Phase 1: fetch PB tag dict + records (read-only, fast).
+      Phase 2: SQLite upsert in one transaction (holds lock briefly).
+      Phase 3: GHL upserts outside the lock, throttled.
+
+    Additive-only: tags in the pb: namespace are added but never removed.
+    """
+    started = _pb_time.time()
+    summary = {
+        "records_fetched": 0,
+        "records_skipped_no_email": 0,
+        "people_upserted": 0,
+        "ghl_synced": 0,
+        "ghl_errors": 0,
+        "total_tags_attached": 0,
+        "dry_run": bool(dry_run),
+        "elapsed_sec": 0,
+    }
+
+    # Phase 1 — read PB
+    tag_dict = _pb_fetch_tag_definitions()
+    records  = _pb_fetch_all_records()
+    summary["records_fetched"] = len(records)
+    if limit:
+        records = records[:int(limit)]
+
+    # Build normalized tuples
+    norm = []
+    for rec in records:
+        profile = rec.get("profile") or {}
+        email   = (profile.get("emailAddress") or "").strip().lower()
+        if not email:
+            summary["records_skipped_no_email"] += 1
+            continue
+        first = (profile.get("firstName") or "").strip()
+        last  = (profile.get("lastName")  or "").strip()
+        phone = (profile.get("mobilePhone") or "").strip()
+        pb_id = rec.get("id") or ""
+        tag_names = []
+        for ref in (rec.get("relatedTags") or []):
+            name = tag_dict.get(ref.get("id"))
+            if name:
+                tag_names.append(name)
+        norm.append({
+            "email": email, "first": first, "last": last, "phone": phone,
+            "pb_id": pb_id, "tag_names": tag_names,
+            "pb_tags": [f"pb:{_pb_slug(n)}" for n in tag_names if _pb_slug(n)],
+        })
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Phase 2 — SQLite upsert (one transaction)
+    if not dry_run:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            for n in norm:
+                row = cx.execute(
+                    "SELECT tags FROM people WHERE email=?", (n["email"],)
+                ).fetchone()
+                if row:
+                    try:
+                        existing = set(json.loads(row["tags"] or "[]"))
+                    except Exception:
+                        existing = set()
+                    merged = sorted(existing | set(n["pb_tags"]))
+                    cx.execute("""
+                        UPDATE people SET
+                          pb_id      = CASE WHEN pb_id='' THEN ? ELSE pb_id END,
+                          first_name = CASE WHEN first_name='' THEN ? ELSE first_name END,
+                          last_name  = CASE WHEN last_name='' THEN ? ELSE last_name END,
+                          phone      = CASE WHEN phone='' THEN ? ELSE phone END,
+                          tags       = ?,
+                          source     = CASE WHEN source='' THEN 'practice-better' ELSE source END,
+                          updated_at = ?,
+                          synced_at  = ?
+                        WHERE email=?
+                    """, (n["pb_id"], n["first"], n["last"], n["phone"],
+                          json.dumps(merged), now_iso, now_iso, n["email"]))
+                else:
+                    cx.execute("""
+                        INSERT INTO people
+                          (email, first_name, last_name, name, phone, pb_id,
+                           tags, source, created_at, updated_at, synced_at)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    """, (n["email"], n["first"], n["last"],
+                          f"{n['first']} {n['last']}".strip(),
+                          n["phone"], n["pb_id"],
+                          json.dumps(sorted(set(n["pb_tags"]))),
+                          "practice-better", now_iso, now_iso, now_iso))
+                summary["people_upserted"] += 1
+            cx.commit()
+    else:
+        summary["people_upserted"] = len(norm)   # would-have count
+
+    # Phase 3 — GHL upsert (outside lock, throttled)
+    if not dry_run:
+        for n in norm:
+            if not n["pb_tags"]:
+                continue
+            try:
+                contact_id, created, err = ghl_upsert_contact(
+                    email=n["email"], first_name=n["first"], last_name=n["last"],
+                    phone=n["phone"], source_tag="", extra_tags=n["pb_tags"],
+                )
+                if err:
+                    summary["ghl_errors"] += 1
+                    app.logger.warning("PB sync GHL error for %s: %s", n["email"], err)
+                else:
+                    summary["ghl_synced"] += 1
+                    summary["total_tags_attached"] += len(n["pb_tags"])
+            except Exception as e:
+                summary["ghl_errors"] += 1
+                app.logger.exception("PB sync GHL exception for %s: %s", n["email"], e)
+            _pb_time.sleep(0.15)   # ~7 req/sec, under GHL's ~100/10s limit
+    else:
+        summary["total_tags_attached"] = sum(len(n["pb_tags"]) for n in norm)
+
+    summary["elapsed_sec"] = round(_pb_time.time() - started, 2)
+    return summary
+
+
+@app.route("/admin/sync-pb-tags", methods=["POST"])
+def admin_sync_pb_tags():
+    """Trigger PB → People DB + GHL tag sync. Auth: X-Cron-Secret header
+    (or ?key=) matching CRON_SECRET env (falls back to CONSOLE_SECRET).
+    Query params: dry_run=1 (counts only), limit=N (process first N records)."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+    limit   = request.args.get("limit")
+    try:
+        summary = sync_pb_to_people_and_ghl(
+            dry_run=dry_run,
+            limit=int(limit) if limit else None,
+        )
+        return jsonify({"ok": True, "summary": summary})
+    except Exception as e:
+        app.logger.exception("PB sync failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
 
 
 # Maps question text fragments → GHL tag prefix
@@ -4215,15 +4451,20 @@ def _ask_justus_stream(query: str, system: str, history: list, on_complete=None,
     msgs.append({"role": "user", "content": query})
 
     parts: list[str] = []
-    with _cl.messages.stream(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=600,
-        system=system,
-        messages=msgs,
-    ) as stream:
-        for text in stream.text_stream:
-            parts.append(text)
-            yield f"data: {json.dumps({'text': text})}\n\n"
+    try:
+        with _cl.messages.stream(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=600,
+            system=system,
+            messages=msgs,
+        ) as stream:
+            for text in stream.text_stream:
+                parts.append(text)
+                yield f"data: {json.dumps({'text': text})}\n\n"
+    except Exception as e:
+        app.logger.exception("Justus stream failed")
+        yield f"data: {json.dumps({'error': f'{type(e).__name__}: {e}'})}\n\n"
+        return
     yield f"data: {json.dumps({'done': True})}\n\n"
     if on_complete:
         try:
@@ -4332,31 +4573,36 @@ def _ask_justus_stream_tools(query: str, system: str, history: list, tools: list
     msgs.append({"role": "user", "content": query})
 
     full_text: list[str] = []
-    for _ in range(max_iters):
-        with _cl.messages.stream(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=600,
-            system=system,
-            tools=tools,
-            messages=msgs,
-        ) as stream:
-            for text in stream.text_stream:
-                full_text.append(text)
-                yield f"data: {json.dumps({'text': text})}\n\n"
-            final = stream.get_final_message()
+    try:
+        for _ in range(max_iters):
+            with _cl.messages.stream(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=600,
+                system=system,
+                tools=tools,
+                messages=msgs,
+            ) as stream:
+                for text in stream.text_stream:
+                    full_text.append(text)
+                    yield f"data: {json.dumps({'text': text})}\n\n"
+                final = stream.get_final_message()
 
-        tool_uses = [b for b in final.content if getattr(b, "type", None) == "tool_use"]
-        if not tool_uses:
-            break
-        msgs.append({"role": "assistant",
-                     "content": [b.model_dump() for b in final.content]})
-        tool_results = []
-        for tu in tool_uses:
-            result = tool_dispatch(tu.name, getattr(tu, "input", {}) or {})
-            tool_results.append({"type": "tool_result",
-                                  "tool_use_id": tu.id,
-                                  "content": result})
-        msgs.append({"role": "user", "content": tool_results})
+            tool_uses = [b for b in final.content if getattr(b, "type", None) == "tool_use"]
+            if not tool_uses:
+                break
+            msgs.append({"role": "assistant",
+                         "content": [b.model_dump() for b in final.content]})
+            tool_results = []
+            for tu in tool_uses:
+                result = tool_dispatch(tu.name, getattr(tu, "input", {}) or {})
+                tool_results.append({"type": "tool_result",
+                                      "tool_use_id": tu.id,
+                                      "content": result})
+            msgs.append({"role": "user", "content": tool_results})
+    except Exception as e:
+        app.logger.exception("Justus tool-stream failed")
+        yield f"data: {json.dumps({'error': f'{type(e).__name__}: {e}'})}\n\n"
+        return
 
     yield f"data: {json.dumps({'done': True})}\n\n"
     if on_complete:
