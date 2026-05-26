@@ -1180,7 +1180,18 @@ async function hcbMerge(candId) {
   document.getElementById('mkd-p2-radio').value = p2.id;
   document.getElementById('mkd-p1-radio').checked = true;
   document.getElementById('mkd-errors').textContent = '';
+  mkdUpdateLabels();
   document.getElementById('merge-keeper-dialog').showModal();
+}
+
+function mkdUpdateLabels() {
+  const p1Selected = document.getElementById('mkd-p1-radio').checked;
+  const KEEP = '<span style="color:#7ab8f5">KEEPER</span>';
+  const DEL  = '<span style="color:#f57a7a">WILL BE DELETED</span>';
+  document.getElementById('mkd-p1-tag').innerHTML = p1Selected ? KEEP : DEL;
+  document.getElementById('mkd-p2-tag').innerHTML = p1Selected ? DEL : KEEP;
+  document.getElementById('mkd-p1-row').style.borderColor = p1Selected ? '#7ab8f5' : '#1c2433';
+  document.getElementById('mkd-p2-row').style.borderColor = p1Selected ? '#1c2433' : '#7ab8f5';
 }
 
 async function submitMergeKeeper() {
@@ -2540,15 +2551,15 @@ initKey();
   <div class="newtask-body">
     <input type="hidden" id="mkd-cand-id">
     <p style="font-size:12px;color:#8a93a3;margin:0 0 12px">Which row should we keep? The other will be deleted after you apply the merge.</p>
-    <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #1c2433;border-radius:5px;margin-bottom:6px;cursor:pointer">
-      <input type="radio" name="mkd-keeper" id="mkd-p1-radio">
+    <label id="mkd-p1-row" style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #1c2433;border-radius:5px;margin-bottom:6px;cursor:pointer">
+      <input type="radio" name="mkd-keeper" id="mkd-p1-radio" oninput="mkdUpdateLabels()">
       <span id="mkd-p1-label" style="flex:1;font-size:13px"></span>
-      <span style="font-size:10px;color:#7ab8f5;font-weight:600">KEEPER</span>
+      <span id="mkd-p1-tag" style="font-size:10px;font-weight:600"></span>
     </label>
-    <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #1c2433;border-radius:5px;cursor:pointer">
-      <input type="radio" name="mkd-keeper" id="mkd-p2-radio">
+    <label id="mkd-p2-row" style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #1c2433;border-radius:5px;cursor:pointer">
+      <input type="radio" name="mkd-keeper" id="mkd-p2-radio" oninput="mkdUpdateLabels()">
       <span id="mkd-p2-label" style="flex:1;font-size:13px"></span>
-      <span style="font-size:10px;color:#f57a7a;font-weight:600">WILL BE DELETED</span>
+      <span id="mkd-p2-tag" style="font-size:10px;font-weight:600"></span>
     </label>
     <div id="mkd-errors" style="color:#f57a7a;font-size:12px;margin-top:8px"></div>
   </div>
