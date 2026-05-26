@@ -342,3 +342,118 @@ def test_get_household_candidates_returns_pending_only(monkeypatch, tmp_db):
     body = r.get_json()
     assert len(body["candidates"]) == 1
     assert body["candidates"][0]["signal"] == "shared-email"
+
+
+def test_patch_household_renames_keeping_slug(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="Smith")
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="Smith")
+    client = app.app.test_client()
+    _create_test_household(client, "Smith", p1, [p1, p2])
+
+    r = client.patch("/api/households/smith", headers={"X-Console-Key": "testkey"},
+                     json={"name": "Smith Family"})
+    assert r.status_code == 200
+    with sqlite3.connect(tmp_db) as cx:
+        row = cx.execute("SELECT slug, name FROM households WHERE id=1").fetchone()
+        assert row == ("smith", "Smith Family")   # slug never changes
+
+
+def test_patch_household_changes_head_moves_tag(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="Smith")
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="Smith")
+    client = app.app.test_client()
+    _create_test_household(client, "Smith", p1, [p1, p2])
+
+    r = client.patch("/api/households/smith", headers={"X-Console-Key": "testkey"},
+                     json={"head_person_id": p2})
+    assert r.status_code == 200
+    with sqlite3.connect(tmp_db) as cx:
+        t1 = set(json.loads(cx.execute("SELECT tags FROM people WHERE id=?", (p1,)).fetchone()[0]))
+        t2 = set(json.loads(cx.execute("SELECT tags FROM people WHERE id=?", (p2,)).fetchone()[0]))
+    assert "household-head:smith" not in t1
+    assert "household-head:smith" in t2
+
+
+def test_add_member_with_conflict_returns_409(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="Smith")
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="Smith")
+    p3 = _seed_person(tmp_db, "c@x.com", first="C", last="Jones")
+    client = app.app.test_client()
+    _create_test_household(client, "Smith", p1, [p1])
+    _create_test_household(client, "Jones", p3, [p3])
+
+    # p3 already in jones — adding to smith must 409
+    r = client.post("/api/households/smith/members", headers={"X-Console-Key": "testkey"},
+                    json={"person_id": p3})
+    assert r.status_code == 409
+    assert r.get_json()["current_household"]["slug"] == "jones"
+
+
+def test_remove_member_strips_tag(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="Smith")
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="Smith")
+    client = app.app.test_client()
+    _create_test_household(client, "Smith", p1, [p1, p2])
+
+    r = client.delete(f"/api/households/smith/members/{p2}", headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    with sqlite3.connect(tmp_db) as cx:
+        t2 = set(json.loads(cx.execute("SELECT tags FROM people WHERE id=?", (p2,)).fetchone()[0]))
+    assert "household:smith" not in t2
+
+
+def test_remove_head_blocked_with_409(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="Smith")
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="Smith")
+    client = app.app.test_client()
+    _create_test_household(client, "Smith", p1, [p1, p2])
+
+    r = client.delete(f"/api/households/smith/members/{p1}", headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 409
+    assert "change head first" in r.get_json()["error"].lower()
+
+
+def test_disband_removes_tags_and_household_row(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="Smith")
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="Smith")
+    client = app.app.test_client()
+    _create_test_household(client, "Smith", p1, [p1, p2])
+
+    r = client.delete("/api/households/smith", headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    with sqlite3.connect(tmp_db) as cx:
+        assert cx.execute("SELECT COUNT(*) FROM households WHERE slug=?", ("smith",)).fetchone()[0] == 0
+        for pid in (p1, p2):
+            tags = set(json.loads(cx.execute("SELECT tags FROM people WHERE id=?", (pid,)).fetchone()[0]))
+            assert "household:smith" not in tags
+            assert "household-head:smith" not in tags
