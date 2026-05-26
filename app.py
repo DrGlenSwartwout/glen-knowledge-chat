@@ -5101,6 +5101,98 @@ def admin_resync_all_households():
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
 
 
+def detect_household_candidates():
+    """Run all signals against the people table, dedup against existing
+    household_candidates rows, insert new pending candidates. Returns:
+    {detected, new_pending, skipped_already_household, skipped_dedup}."""
+    summary = {"detected": 0, "new_pending": 0,
+               "skipped_already_household": 0, "skipped_dedup": 0}
+    ts = datetime.now(timezone.utc).isoformat()
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        people = cx.execute("""
+            SELECT id, LOWER(TRIM(email)) AS email_lc, LOWER(TRIM(last_name)) AS last_lc,
+                   phone, LOWER(TRIM(city)) AS city_lc, LOWER(TRIM(state)) AS state_lc, tags
+            FROM people
+        """).fetchall()
+
+        # Mark which people are already in a household
+        in_household = set()
+        for p in people:
+            try:
+                tags = json.loads(p["tags"] or "[]")
+            except Exception:
+                tags = []
+            if any(t.startswith("household:") and not t.startswith("household-head:") for t in tags):
+                in_household.add(p["id"])
+
+        # Existing dedup keys (any status — pending, confirmed, dismissed)
+        existing_keys = set()
+        for r in cx.execute("SELECT person_ids FROM household_candidates").fetchall():
+            try:
+                ids = json.loads(r[0] or "[]")
+            except Exception:
+                continue
+            existing_keys.add(_candidate_dedup_key(ids))
+
+        # ── Signal 1: shared-email ────────────────────────────────────────────
+        by_email = {}
+        for p in people:
+            if not p["email_lc"]: continue
+            by_email.setdefault(p["email_lc"], []).append(p["id"])
+        # ── Signal 2: shared-phone-lastname ───────────────────────────────────
+        by_phone_last = {}
+        for p in people:
+            if not (p["phone"] and p["last_lc"]): continue
+            by_phone_last.setdefault((p["phone"], p["last_lc"]), []).append(p["id"])
+        # ── Signal 3: shared-address-lastname ─────────────────────────────────
+        by_addr = {}
+        for p in people:
+            if not (p["city_lc"] and p["state_lc"] and p["last_lc"]): continue
+            by_addr.setdefault((p["city_lc"], p["state_lc"], p["last_lc"]), []).append(p["id"])
+
+        def _emit_signal(name, clusters):
+            for ids in clusters.values():
+                if len(ids) < 2: continue
+                summary["detected"] += 1
+                if any(i in in_household for i in ids):
+                    summary["skipped_already_household"] += 1
+                    continue
+                key = _candidate_dedup_key(ids)
+                if key in existing_keys:
+                    summary["skipped_dedup"] += 1
+                    continue
+                cx.execute("""
+                    INSERT INTO household_candidates (detected_at, signal, person_ids, status)
+                    VALUES (?, ?, ?, 'pending')
+                """, (ts, name, json.dumps(sorted(ids))))
+                existing_keys.add(key)   # avoid intra-run dups across signals
+                summary["new_pending"] += 1
+
+        _emit_signal("shared-email",            by_email)
+        _emit_signal("shared-phone-lastname",   by_phone_last)
+        _emit_signal("shared-address-lastname", by_addr)
+        cx.commit()
+    return summary
+
+
+@app.route("/admin/detect-household-candidates", methods=["POST"])
+def admin_detect_household_candidates():
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        summary = detect_household_candidates()
+        return jsonify({"ok": True, "summary": summary})
+    except Exception as e:
+        app.logger.exception("detect_household_candidates failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
 # ── Console AI chat (context-aware) ───────────────────────────────────────────
 _OWNER_DESC = {
     "glen":   "Dr. Glen Swartwout, naturopathic optometrist, solopreneur — full access to all systems and data.",
