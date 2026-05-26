@@ -4767,6 +4767,127 @@ def create_household():
     })
 
 
+@app.route("/api/households", methods=["GET"])
+def list_households():
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute("""
+            SELECT h.id, h.slug, h.name, h.head_person_id, h.updated_at,
+                   p.first_name AS head_first, p.last_name AS head_last
+            FROM households h
+            LEFT JOIN people p ON p.id = h.head_person_id
+            ORDER BY h.name
+        """).fetchall()
+        out = []
+        for r in rows:
+            count = cx.execute(
+                "SELECT COUNT(*) FROM people WHERE tags LIKE ?", (f'%"household:{r["slug"]}"%',)
+            ).fetchone()[0]
+            out.append({
+                "id": r["id"],
+                "slug": r["slug"],
+                "name": r["name"],
+                "member_count": count,
+                "head": {
+                    "id": r["head_person_id"],
+                    "name": f'{r["head_first"] or ""} {r["head_last"] or ""}'.strip(),
+                },
+                "updated_at": r["updated_at"],
+            })
+    return jsonify({"households": out})
+
+
+@app.route("/api/households/<slug>", methods=["GET"])
+def get_household(slug):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute("SELECT * FROM households WHERE slug=?", (slug,)).fetchone()
+        if not row:
+            return jsonify({"error": "not found"}), 404
+        members = cx.execute("""
+            SELECT id, email, first_name, last_name, phone, tags
+            FROM people WHERE tags LIKE ?
+            ORDER BY first_name
+        """, (f'%"household:{slug}"%',)).fetchall()
+        member_list = []
+        for m in members:
+            try:
+                tags = json.loads(m["tags"] or "[]")
+            except Exception:
+                tags = []
+            member_list.append({
+                "id": m["id"],
+                "email": m["email"],
+                "first_name": m["first_name"],
+                "last_name": m["last_name"],
+                "phone": m["phone"],
+                "name": f'{m["first_name"]} {m["last_name"]}'.strip(),
+                "is_head": f"household-head:{slug}" in tags,
+            })
+    return jsonify({
+        "id": row["id"], "slug": row["slug"], "name": row["name"],
+        "head_person_id": row["head_person_id"], "address": row["address"],
+        "notes": row["notes"], "created_at": row["created_at"],
+        "updated_at": row["updated_at"], "created_by": row["created_by"],
+        "members": member_list,
+    })
+
+
+@app.route("/api/people/<int:person_id>/household", methods=["GET"])
+def get_person_household(person_id):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    with sqlite3.connect(LOG_DB) as cx:
+        slug = _person_household_slug(cx, person_id)
+        if not slug:
+            return jsonify({"household": None})
+    # Reuse the full-household renderer, then wrap so callers get {"household": {...}}
+    resp = get_household(slug)
+    # get_household returns a Flask Response from jsonify; unwrap and re-wrap
+    if isinstance(resp, tuple):  # error case (slug somehow missing)
+        return resp
+    data = resp.get_json()
+    return jsonify({"household": data})
+
+
+@app.route("/api/household-candidates", methods=["GET"])
+def list_household_candidates():
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    status = request.args.get("status", "pending")
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute(
+            "SELECT * FROM household_candidates WHERE status=? ORDER BY detected_at DESC",
+            (status,)
+        ).fetchall()
+        out = []
+        for r in rows:
+            try:
+                pids = json.loads(r["person_ids"] or "[]")
+            except Exception:
+                pids = []
+            persons = []
+            if pids:
+                placeholders = ",".join("?" * len(pids))
+                people_rows = cx.execute(
+                    f"SELECT id, email, first_name, last_name FROM people WHERE id IN ({placeholders})",
+                    pids
+                ).fetchall()
+                persons = [{"id": p["id"], "email": p["email"],
+                            "name": f'{p["first_name"]} {p["last_name"]}'.strip()}
+                           for p in people_rows]
+            out.append({
+                "id": r["id"], "signal": r["signal"], "detected_at": r["detected_at"],
+                "person_ids": pids, "persons": persons,
+            })
+    return jsonify({"candidates": out})
+
+
 # ── Console AI chat (context-aware) ───────────────────────────────────────────
 _OWNER_DESC = {
     "glen":   "Dr. Glen Swartwout, naturopathic optometrist, solopreneur — full access to all systems and data.",

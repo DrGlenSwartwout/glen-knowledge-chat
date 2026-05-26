@@ -246,3 +246,99 @@ def test_create_household_strips_relationship_family_shared_email_tag(monkeypatc
         # Non-household tags preserved
         p1_tags = json.loads(cx.execute("SELECT tags FROM people WHERE id=?", (p1,)).fetchone()[0])
         assert "client" in p1_tags
+
+
+def _create_test_household(client, name, head_id, member_ids):
+    """Helper that POSTs and returns the parsed body."""
+    r = client.post("/api/households", headers={"X-Console-Key": "testkey"},
+                    json={"name": name, "head_person_id": head_id, "member_person_ids": member_ids})
+    assert r.status_code == 200
+    return r.get_json()
+
+
+def test_get_households_lists_all(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="Smith")
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="Smith")
+    p3 = _seed_person(tmp_db, "c@x.com", first="C", last="Jones")
+    p4 = _seed_person(tmp_db, "d@x.com", first="D", last="Jones")
+
+    client = app.app.test_client()
+    _create_test_household(client, "Smith", p1, [p1, p2])
+    _create_test_household(client, "Jones", p3, [p3, p4])
+
+    r = client.get("/api/households", headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    body = r.get_json()
+    slugs = {h["slug"] for h in body["households"]}
+    assert slugs == {"smith", "jones"}
+    smith = next(h for h in body["households"] if h["slug"] == "smith")
+    assert smith["member_count"] == 2
+    assert smith["head"]["id"] == p1
+
+
+def test_get_household_detail_returns_members(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+    p1 = _seed_person(tmp_db, "a@x.com", first="Lotika", last="Savant")
+    p2 = _seed_person(tmp_db, "b@x.com", first="Omika",  last="Savant")
+    client = app.app.test_client()
+    _create_test_household(client, "Savant", p1, [p1, p2])
+
+    r = client.get("/api/households/savant", headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["slug"] == "savant"
+    assert body["name"] == "Savant"
+    assert len(body["members"]) == 2
+    head = next(m for m in body["members"] if m["is_head"])
+    assert head["id"] == p1
+
+
+def test_get_person_household_returns_household_when_member(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="Smith")
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="Smith")
+    p3 = _seed_person(tmp_db, "c@x.com", first="C", last="Other")
+    client = app.app.test_client()
+    _create_test_household(client, "Smith", p1, [p1, p2])
+
+    r = client.get(f"/api/people/{p1}/household", headers={"X-Console-Key": "testkey"})
+    body = r.get_json()
+    assert body["household"]["slug"] == "smith"
+    r = client.get(f"/api/people/{p3}/household", headers={"X-Console-Key": "testkey"})
+    body = r.get_json()
+    assert body["household"] is None
+
+
+def test_get_household_candidates_returns_pending_only(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+
+    with sqlite3.connect(tmp_db) as cx:
+        cx.execute("INSERT INTO household_candidates (detected_at, signal, person_ids, status) VALUES (?, ?, ?, ?)",
+                   ("2026-05-26T00:00:00", "shared-email", json.dumps([1, 2]), "pending"))
+        cx.execute("INSERT INTO household_candidates (detected_at, signal, person_ids, status) VALUES (?, ?, ?, ?)",
+                   ("2026-05-26T00:00:00", "shared-email", json.dumps([3, 4]), "dismissed"))
+        cx.commit()
+
+    client = app.app.test_client()
+    r = client.get("/api/household-candidates?status=pending", headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert len(body["candidates"]) == 1
+    assert body["candidates"][0]["signal"] == "shared-email"
