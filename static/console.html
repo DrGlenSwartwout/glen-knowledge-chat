@@ -1246,8 +1246,128 @@ function _renderHouseholdSection(person, household) {
   </div>`;
 }
 
-// Stubs — fully implemented in Tasks 11-13
-function openHouseholdDialogForPerson(personId)   { alert('TODO Task 11: + Mark as household for person ' + personId); }
+// ── Household dialog state ─────────────────────────────────────────────────────
+let _hhMode = 'create';            // 'create' | 'add-member' | 'edit'
+let _hhSlug = null;
+let _hhChosen = [];                // [{id, name, email, is_head}]
+let _hhSearchTimer = null;
+
+async function openHouseholdDialogForPerson(personId) {
+  _hhMode = 'create';
+  _hhSlug = null;
+  _hhChosen = [];
+  document.getElementById('hh-dialog-title').textContent = '👥 Create household';
+  document.getElementById('hh-name').value = '';
+  document.getElementById('hh-search').value = '';
+  document.getElementById('hh-search-results').innerHTML = '';
+  document.getElementById('hh-errors').textContent = '';
+  // Fetch the person, preselect as head
+  const r = await fetch(`${BASE}/api/people/${personId}`, { headers:{'X-Console-Key':consoleKey} });
+  const p = await r.json();
+  _hhChosen = [{ id: p.id,
+                 name: p.name || `${p.first_name||''} ${p.last_name||''}`.trim() || p.email,
+                 email: p.email, is_head: true }];
+  document.getElementById('hh-name').value = p.last_name || '';
+  _renderHHChosen();
+  document.getElementById('household-dialog').showModal();
+  setTimeout(() => document.getElementById('hh-search').focus(), 50);
+}
+
+function _renderHHChosen() {
+  const html = _hhChosen.map(c => `
+    <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;margin:2px;background:#2a1f10;border-radius:12px;font-size:11px;color:#f5b87a;cursor:pointer"
+          onclick="_hhToggleHead(${c.id})">
+      ${_esc(c.name)}
+      ${c.is_head ? '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:#f5b87a;color:#0a0c12;font-weight:700;margin-left:4px">HEAD</span>' : ''}
+      <span onclick="event.stopPropagation();_hhRemove(${c.id})" style="margin-left:6px;cursor:pointer;color:#8a93a3">✕</span>
+    </span>`).join('');
+  document.getElementById('hh-members-chosen').innerHTML = html || '<span style="color:#8a93a3;font-size:11px">no members yet</span>';
+}
+
+function _hhToggleHead(id) {
+  _hhChosen = _hhChosen.map(c => ({...c, is_head: c.id === id}));
+  _renderHHChosen();
+}
+
+function _hhRemove(id) {
+  const c = _hhChosen.find(x => x.id === id);
+  if (c?.is_head && _hhChosen.length > 1) {
+    document.getElementById('hh-errors').textContent = 'Pick another head before removing the current head.';
+    return;
+  }
+  _hhChosen = _hhChosen.filter(x => x.id !== id);
+  _renderHHChosen();
+}
+
+function hhSearch() {
+  clearTimeout(_hhSearchTimer);
+  _hhSearchTimer = setTimeout(async () => {
+    const q = document.getElementById('hh-search').value.trim();
+    if (q.length < 2) {
+      document.getElementById('hh-search-results').innerHTML = '';
+      return;
+    }
+    const r = await fetch(`${BASE}/api/people?q=${encodeURIComponent(q)}&limit=10`,
+                          { headers:{'X-Console-Key':consoleKey} });
+    const data = await r.json();
+    const chosenIds = new Set(_hhChosen.map(c => c.id));
+    const html = (data.people || [])
+      .filter(p => !chosenIds.has(p.id))
+      .map(p => {
+        const name = p.name || `${p.first_name||''} ${p.last_name||''}`.trim() || p.email;
+        return `<div onclick="_hhAdd(${p.id},'${_esc(name).replace(/'/g,"\\'")}','${_esc(p.email)}')"
+                     style="padding:6px 10px;border-bottom:1px solid #1c2433;cursor:pointer">
+          <div style="font-size:12px">${_esc(name)}</div>
+          <div style="font-size:10px;color:#8a93a3">${_esc(p.email)}</div>
+        </div>`;
+      }).join('');
+    document.getElementById('hh-search-results').innerHTML = html || '<div style="padding:8px;color:#8a93a3;font-size:11px">no matches</div>';
+  }, 250);
+}
+
+function _hhAdd(id, name, email) {
+  if (_hhChosen.find(c => c.id === id)) return;
+  _hhChosen.push({ id, name, email, is_head: false });
+  document.getElementById('hh-search').value = '';
+  document.getElementById('hh-search-results').innerHTML = '';
+  _renderHHChosen();
+}
+
+async function submitHousehold() {
+  const name = document.getElementById('hh-name').value.trim();
+  if (!name) { document.getElementById('hh-errors').textContent = 'Name required.'; return; }
+  if (_hhChosen.length < 2) { document.getElementById('hh-errors').textContent = 'Need at least 2 members.'; return; }
+  const head = _hhChosen.find(c => c.is_head);
+  if (!head) { document.getElementById('hh-errors').textContent = 'Pick a head (click a chip).'; return; }
+  document.getElementById('hh-submit').disabled = true;
+  document.getElementById('hh-errors').textContent = '';
+  try {
+    const r = await fetch(`${BASE}/api/households`, {
+      method:'POST', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+      body: JSON.stringify({
+        name,
+        head_person_id: head.id,
+        member_person_ids: _hhChosen.map(c => c.id),
+      })
+    });
+    const data = await r.json();
+    if (r.status === 409) {
+      const h = data.current_household || {};
+      if (confirm(`${data.error}. They're currently in "${h.name}". Move them?`)) {
+        // TODO Task 13: implement move flow (will be wired in Task 13)
+        document.getElementById('hh-errors').textContent = 'Move flow not yet implemented.';
+      }
+      return;
+    }
+    if (!r.ok) { document.getElementById('hh-errors').textContent = data.error || 'Failed.'; return; }
+    document.getElementById('household-dialog').close();
+    if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
+  } finally {
+    document.getElementById('hh-submit').disabled = false;
+  }
+}
+
+// Stubs — fully implemented in Task 13
 function openHouseholdEditDialog(slug)            { alert('TODO Task 13: Edit household ' + slug); }
 function openHouseholdDialogForAddMember(slug)    { alert('TODO Task 13: Add member to ' + slug); }
 
@@ -1952,6 +2072,29 @@ initKey();
   <div class="newtask-footer">
     <button class="btn-newtask-cancel" onclick="document.getElementById('add-person-dialog').close()">Cancel</button>
     <button class="btn-newtask-save" onclick="submitAddPerson()">Add Person</button>
+  </div>
+</dialog>
+
+<dialog id="household-dialog">
+  <div class="newtask-header" style="border-color:#f5b87a">
+    <h3 id="hh-dialog-title">👥 Create household</h3>
+  </div>
+  <div class="newtask-body">
+    <div><label for="hh-name">Household name</label>
+      <input type="text" id="hh-name" placeholder="auto: last name of head" autocomplete="off"></div>
+    <div id="hh-members-section">
+      <label>Members</label>
+      <div id="hh-members-chosen" style="background:#0a0c12;border:1px solid #1c2433;border-radius:4px;padding:6px;min-height:32px"></div>
+    </div>
+    <div><label for="hh-search">Add member by name or email</label>
+      <input type="text" id="hh-search" oninput="hhSearch()" placeholder="start typing..." autocomplete="off">
+      <div id="hh-search-results" style="background:#0a0c12;border:1px solid #1c2433;border-radius:4px;margin-top:4px;max-height:200px;overflow-y:auto"></div>
+    </div>
+    <div id="hh-errors" style="color:#f57a7a;font-size:12px;margin-top:8px"></div>
+  </div>
+  <div class="newtask-footer">
+    <button class="btn-newtask-cancel" onclick="document.getElementById('household-dialog').close()">Cancel</button>
+    <button class="btn-newtask-save" style="background:#f5b87a;color:#0a0c12" id="hh-submit" onclick="submitHousehold()">Create household</button>
   </div>
 </dialog>
 
