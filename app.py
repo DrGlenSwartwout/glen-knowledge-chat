@@ -4466,6 +4466,148 @@ def _init_households_tables():
 _init_households_tables()
 
 
+def _init_pending_merges_table():
+    """Queued people-row merges from the candidate review flow. Apply is a
+    separate operator action — never auto-executed."""
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS pending_merges (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id      INTEGER,
+                keeper_person_id  INTEGER NOT NULL,
+                dupe_person_id    INTEGER NOT NULL,
+                queued_at         TEXT NOT NULL,
+                queued_by         TEXT NOT NULL,
+                status            TEXT NOT NULL DEFAULT 'pending',
+                applied_at        TEXT DEFAULT '',
+                notes             TEXT DEFAULT ''
+            )
+        """)
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_pending_merges_status ON pending_merges(status)")
+        cx.commit()
+
+_init_pending_merges_table()
+
+
+_PEOPLE_SCALAR_COALESCE = [
+    "phone", "dob", "birth_time", "birthplace", "gender", "city", "state",
+    "country", "island", "profession", "title", "ghl_id", "pb_id",
+    "challenges", "goals", "personal_history", "family_history",
+    "medications", "surgeries", "budget", "investment", "resources",
+    "issue_duration", "form_completed_by", "source", "notes",
+]
+_PEOPLE_JSON_UNION = [
+    "organizations", "tags", "roles", "terrain_concerns", "body_systems",
+    "conditions", "healing_response", "interests", "request",
+]
+_PEOPLE_COUNT_SUM = ["order_count", "session_count"]
+_PEOPLE_DATE_MAX = ["last_order_date", "last_session_date", "last_contact_date"]
+
+
+def _merge_two_people(cx, keeper_id, dupe_id):
+    """Merge dupe person row into keeper, then DELETE the dupe.
+    Returns {keeper_id, deleted_dupe_id, fields_filled, tags_added, counts_summed}.
+    Caller is responsible for the transaction (holds _db_lock + calls commit)."""
+    cx.row_factory = sqlite3.Row
+    keeper = cx.execute("SELECT * FROM people WHERE id=?", (keeper_id,)).fetchone()
+    dupe   = cx.execute("SELECT * FROM people WHERE id=?", (dupe_id,)).fetchone()
+    if not keeper or not dupe:
+        raise ValueError(f"merge failed: keeper={keeper_id} or dupe={dupe_id} not found")
+    if keeper_id == dupe_id:
+        raise ValueError("keeper and dupe are the same row")
+
+    updates = {}
+    fields_filled = []
+    # Coalesce empty scalar fields
+    for col in _PEOPLE_SCALAR_COALESCE:
+        try:
+            k_val = keeper[col]
+        except IndexError:
+            continue
+        try:
+            d_val = dupe[col]
+        except IndexError:
+            continue
+        if not (k_val or "").strip() and (d_val or "").strip():
+            updates[col] = d_val
+            fields_filled.append(col)
+    # Union JSON arrays
+    tags_added_count = 0
+    for col in _PEOPLE_JSON_UNION:
+        try:
+            k_raw = keeper[col]
+        except IndexError:
+            continue
+        try:
+            d_raw = dupe[col]
+        except IndexError:
+            continue
+        try:
+            k = set(json.loads(k_raw or "[]"))
+        except Exception:
+            k = set()
+        try:
+            d = set(json.loads(d_raw or "[]"))
+        except Exception:
+            d = set()
+        union = sorted(k | d)
+        if union != sorted(k):
+            updates[col] = json.dumps(union)
+            if col == "tags":
+                tags_added_count = len(union) - len(k)
+    # Sum counts
+    counts_summed = {}
+    for col in _PEOPLE_COUNT_SUM:
+        try:
+            ks = int(keeper[col] or 0)
+            ds = int(dupe[col] or 0)
+        except (IndexError, TypeError, ValueError):
+            continue
+        if ds > 0:
+            updates[col] = ks + ds
+            counts_summed[col] = ks + ds
+    # Max date fields (string compare works for YYYY-MM-DD)
+    for col in _PEOPLE_DATE_MAX:
+        try:
+            k_val = keeper[col] or ""
+            d_val = dupe[col] or ""
+        except IndexError:
+            continue
+        if d_val > k_val:
+            updates[col] = d_val
+    # Min created_at
+    try:
+        if dupe["created_at"] and keeper["created_at"]:
+            if dupe["created_at"] < keeper["created_at"]:
+                updates["created_at"] = dupe["created_at"]
+    except IndexError:
+        pass
+    # Touch updated/synced (only if the columns exist on this schema)
+    now = datetime.now(timezone.utc).isoformat()
+    updates["updated_at"] = now
+    updates["synced_at"]  = now
+
+    if updates:
+        # Filter to columns that actually exist on the people table
+        existing_cols = {row[1] for row in cx.execute("PRAGMA table_info(people)").fetchall()}
+        safe_updates = {c: v for c, v in updates.items() if c in existing_cols}
+        if safe_updates:
+            set_clause = ", ".join(f"{c}=?" for c in safe_updates)
+            cx.execute(f"UPDATE people SET {set_clause} WHERE id=?",
+                       list(safe_updates.values()) + [keeper_id])
+
+    # Delete the dupe row
+    cx.execute("DELETE FROM people WHERE id=?", (dupe_id,))
+
+    return {
+        "keeper_id": keeper_id,
+        "deleted_dupe_id": dupe_id,
+        "fields_filled": fields_filled,
+        "tags_added": tags_added_count,
+        "counts_summed": counts_summed,
+    }
+
+
 def _household_slug(name, head_first_name="", existing=None):
     """URL-safe stable identifier for a household. Immutable after creation
     (renames update name, never slug). Returns lowercase, hyphen-separated."""
@@ -4957,6 +5099,104 @@ def dismiss_household_candidate(cand_id):
             UPDATE household_candidates SET status='dismissed', resolved_at=?, resolved_by=?
             WHERE id=?
         """, (datetime.now(timezone.utc).isoformat(), "glen", cand_id))
+        cx.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/household-candidates/<int:cand_id>/queue-merge", methods=["POST"])
+def queue_merge_from_candidate(cand_id):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    body = request.get_json(force=True) or {}
+    keeper_id = body.get("keeper_person_id")
+    if not keeper_id:
+        return jsonify({"error": "keeper_person_id required"}), 400
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT person_ids, status FROM household_candidates WHERE id=?",
+                          (cand_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "candidate not found"}), 404
+        if row[1] != "pending":
+            return jsonify({"error": f"candidate is {row[1]}, not pending"}), 409
+        try:
+            person_ids = json.loads(row[0] or "[]")
+        except Exception:
+            return jsonify({"error": "candidate has invalid person_ids"}), 500
+        if len(person_ids) != 2:
+            return jsonify({"error": "merge requires exactly 2-person candidate",
+                            "actual": len(person_ids)}), 400
+        if keeper_id not in person_ids:
+            return jsonify({"error": "keeper_person_id must be one of the candidate's persons"}), 400
+        dupe_id = next(p for p in person_ids if p != keeper_id)
+
+        now = datetime.now(timezone.utc).isoformat()
+        cx.execute("""
+            INSERT INTO pending_merges (candidate_id, keeper_person_id, dupe_person_id,
+                                         queued_at, queued_by, status)
+            VALUES (?, ?, ?, ?, ?, 'pending')
+        """, (cand_id, keeper_id, dupe_id, now, "glen"))
+        merge_id = cx.execute("SELECT last_insert_rowid()").fetchone()[0]
+        # Mark candidate as dismissed (it's now a pending_merge, not a household candidate)
+        cx.execute("UPDATE household_candidates SET status='dismissed', resolved_at=?, resolved_by=? WHERE id=?",
+                   (now, "glen-merge-queue", cand_id))
+        cx.commit()
+    return jsonify({"ok": True, "merge_id": merge_id, "keeper_id": keeper_id, "dupe_id": dupe_id})
+
+
+@app.route("/api/pending-merges", methods=["GET"])
+def list_pending_merges():
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    status = request.args.get("status", "pending")
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute("SELECT * FROM pending_merges WHERE status=? ORDER BY queued_at DESC",
+                           (status,)).fetchall()
+        out = []
+        for r in rows:
+            keeper = cx.execute("SELECT id, email, first_name, last_name FROM people WHERE id=?",
+                                 (r["keeper_person_id"],)).fetchone()
+            dupe   = cx.execute("SELECT id, email, first_name, last_name FROM people WHERE id=?",
+                                 (r["dupe_person_id"],)).fetchone()
+            out.append({
+                "id": r["id"], "candidate_id": r["candidate_id"],
+                "queued_at": r["queued_at"], "queued_by": r["queued_by"],
+                "keeper": dict(keeper) if keeper else {"id": r["keeper_person_id"], "deleted": True},
+                "dupe":   dict(dupe)   if dupe   else {"id": r["dupe_person_id"], "deleted": True},
+            })
+    return jsonify({"merges": out})
+
+
+@app.route("/api/pending-merges/<int:merge_id>/apply", methods=["POST"])
+def apply_pending_merge(merge_id):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT keeper_person_id, dupe_person_id, status FROM pending_merges WHERE id=?",
+                          (merge_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "merge not found"}), 404
+        if row[2] != "pending":
+            return jsonify({"error": f"merge is {row[2]}, not pending"}), 409
+        try:
+            result = _merge_two_people(cx, row[0], row[1])
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        cx.execute("UPDATE pending_merges SET status='applied', applied_at=? WHERE id=?",
+                   (datetime.now(timezone.utc).isoformat(), merge_id))
+        cx.commit()
+    return jsonify({"ok": True, "result": result})
+
+
+@app.route("/api/pending-merges/<int:merge_id>/cancel", methods=["POST"])
+def cancel_pending_merge(merge_id):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        if not cx.execute("SELECT 1 FROM pending_merges WHERE id=?", (merge_id,)).fetchone():
+            return jsonify({"error": "merge not found"}), 404
+        cx.execute("UPDATE pending_merges SET status='cancelled' WHERE id=?", (merge_id,))
         cx.commit()
     return jsonify({"ok": True})
 
