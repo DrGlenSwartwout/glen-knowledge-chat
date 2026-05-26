@@ -39,9 +39,13 @@
       padding: 0.5rem 1rem;
     }
     .zip-search input {
-      border: 0; outline: 0; font: inherit; width: 8ch; background: transparent;
+      border: 0; outline: 0; font: inherit; width: 8ch; background: transparent; min-width: 0;
     }
-    .zip-search select { border: 0; outline: 0; font: inherit; background: transparent; }
+    .zip-search select { border: 0; outline: 0; font: inherit; background: transparent; min-width: 0; }
+    @media (max-width: 480px) {
+      .zip-search { flex-wrap: wrap; border-radius: 0.8rem; }
+      .zip-search button { flex: 1 0 100%; text-align: center; border-radius: 0.5rem; }
+    }
     .zip-search button {
       background: var(--accent); color: white; border: 0; border-radius: 999px;
       padding: 0.4rem 1rem; font: inherit; cursor: pointer;
