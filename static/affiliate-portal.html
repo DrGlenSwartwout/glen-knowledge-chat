@@ -49,6 +49,14 @@
   .how-list li { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: var(--muted); line-height: 1.6; }
   .how-list li span { font-size: 16px; flex-shrink: 0; }
 
+  .offer-block { padding: 16px 0; border-top: 1px solid var(--border); }
+  .offer-block:first-child { padding-top: 4px; border-top: none; }
+  .offer-name { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .offer-desc { font-size: 12.5px; color: var(--muted); line-height: 1.55; margin-bottom: 10px; }
+  .offer-instructions { margin-top: 10px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; font-size: 12px; color: var(--muted); line-height: 1.65; white-space: pre-wrap; }
+  .offer-instructions a { color: var(--accent-light); }
+  .offer-instructions-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+
   .leads-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .leads-table th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
   .leads-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
@@ -89,21 +97,18 @@
   </div>
 
   <div class="section">
-    <h2>Your Tracking Link</h2>
-    <div class="link-box">
-      <span class="link-text" id="tracking-url"></span>
-      <button class="btn-copy" id="copy-btn" onclick="copyLink()">Copy Link</button>
-    </div>
-    <p class="link-hint">Share this link anywhere — email, social media, your website. Every person who completes the quiz through your link is counted as your referral.</p>
+    <h2>Your Affiliate Links</h2>
+    <div id="offers-container"></div>
+    <p class="link-hint">Share any of these links anywhere — email, social media, your website. Each visitor who arrives through your link is tracked as your referral.</p>
   </div>
 
   <div class="section">
     <h2>How to Share</h2>
     <ul class="how-list">
-      <li><span>📧</span> Paste your link in emails to your list with a short note about the free quiz</li>
-      <li><span>📱</span> Share on social media: "Take this free self-healing assessment →"</li>
-      <li><span>🌐</span> Add it to your website or bio link with a brief description</li>
-      <li><span>🗣️</span> Mention it in your podcast, video, or at events — the quiz is completely free for them</li>
+      <li><span>📧</span> Paste a link in emails to your list with a short note about why it's worth their time</li>
+      <li><span>📱</span> Share on social media — these resources are free for the people who click</li>
+      <li><span>🌐</span> Add a link to your website or bio with a brief description</li>
+      <li><span>🗣️</span> Mention it in your podcast, video, or at events</li>
     </ul>
   </div>
 
@@ -151,6 +156,23 @@ function showError() {
   document.getElementById('error-view').style.display = 'block';
 }
 
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function renderInstructions(text) {
+  const safe = escHtml(text);
+  return safe.replace(/(https?:\/\/[^\s<]+)/g,
+    '<a href="$1" target="_blank" rel="noopener">$1</a>');
+}
+
+function copyToClipboard(url, btn) {
+  navigator.clipboard.writeText(url).then(() => {
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = original; }, 1800);
+  });
+}
+
 function render(d) {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('portal').style.display = 'block';
@@ -162,11 +184,34 @@ function render(d) {
   document.getElementById('stat-total').textContent = d.total_leads ?? 0;
   document.getElementById('stat-last').textContent = d.last_lead ? 'Last: ' + timeAgo(d.last_lead) : 'No referrals yet';
   document.getElementById('stat-slug').textContent = d.slug;
-  document.getElementById('tracking-url').textContent = d.tracking_url;
   document.getElementById('recruit-url').textContent  = d.recruit_url || '';
   const rc = d.recruited_count || 0;
   document.getElementById('recruited-count-text').textContent =
     rc ? `You've recruited ${rc} affiliate${rc === 1 ? '' : 's'} so far.` : '';
+
+  // Offers — driven by /affiliate/portal-data offers[]; falls back to legacy single tracking_url
+  const offersBox = document.getElementById('offers-container');
+  const offers = (d.offers && d.offers.length)
+    ? d.offers
+    : (d.tracking_url ? [{name: 'Your Tracking Link', description: '', url: d.tracking_url, instructions: ''}] : []);
+  offersBox.innerHTML = offers.map(o => `
+    <div class="offer-block">
+      <div class="offer-name">${escHtml(o.name)}</div>
+      ${o.description ? `<div class="offer-desc">${escHtml(o.description)}</div>` : ''}
+      <div class="link-box">
+        <span class="link-text">${escHtml(o.url)}</span>
+        <button class="btn-copy" data-url="${escHtml(o.url)}">Copy Link</button>
+      </div>
+      ${o.instructions ? `
+        <div class="offer-instructions">
+          <div class="offer-instructions-label">Instructions for visitors</div>
+          ${renderInstructions(o.instructions)}
+        </div>` : ''}
+    </div>
+  `).join('');
+  offersBox.querySelectorAll('.btn-copy').forEach(btn => {
+    btn.addEventListener('click', () => copyToClipboard(btn.dataset.url, btn));
+  });
 
   // Leads table
   const container = document.getElementById('leads-container');
@@ -177,8 +222,8 @@ function render(d) {
       <thead><tr><th>When</th><th>Name</th><th>Quiz Score</th></tr></thead>
       <tbody>${d.recent.map(r => `<tr>
         <td>${timeAgo(r.received_at)}</td>
-        <td>${r.name || 'Anonymous'}</td>
-        <td>${r.score ? `<span class="score-badge">${r.score}%</span>` : '—'}</td>
+        <td>${escHtml(r.name || 'Anonymous')}</td>
+        <td>${r.score ? `<span class="score-badge">${escHtml(r.score)}%</span>` : '—'}</td>
       </tr>`).join('')}</tbody>
     </table>`;
   }
@@ -188,15 +233,6 @@ function copyRecruit() {
   const url = document.getElementById('recruit-url').textContent;
   navigator.clipboard.writeText(url).then(() => {
     const btn = document.getElementById('recruit-copy-btn');
-    btn.textContent = 'Copied!';
-    setTimeout(() => btn.textContent = 'Copy Link', 1800);
-  });
-}
-
-function copyLink() {
-  const url = document.getElementById('tracking-url').textContent;
-  navigator.clipboard.writeText(url).then(() => {
-    const btn = document.getElementById('copy-btn');
     btn.textContent = 'Copied!';
     setTimeout(() => btn.textContent = 'Copy Link', 1800);
   });

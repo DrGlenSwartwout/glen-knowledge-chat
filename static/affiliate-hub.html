@@ -96,6 +96,17 @@
       transition: background .15s;
     }
     .btn-go:hover { background: #235c42; }
+    .instructions {
+      margin-top: 14px;
+      padding: 14px 16px;
+      background: #f0f7f3;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: #2d4a3d;
+      line-height: 1.65;
+      white-space: pre-wrap;
+    }
+    .instructions a { color: #2d6a4f; }
     .error { text-align: center; color: #c0392b; padding: 40px 0; }
     .loading { text-align: center; color: #999; padding: 40px 0; }
   </style>
@@ -112,6 +123,16 @@
 
   <script>
     const slug = location.pathname.split('/').pop();
+
+    function escHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function renderInstructions(text) {
+      // Escape, then linkify bare http(s) URLs.
+      const safe = escHtml(text);
+      return safe.replace(/(https?:\/\/[^\s<]+)/g,
+        '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    }
 
     function copyLink(url, btn) {
       navigator.clipboard.writeText(url).then(() => {
@@ -136,15 +157,19 @@
 
         list.innerHTML = d.offers.map((o, i) => `
           <div class="offer-card">
-            <h2>${o.name}</h2>
-            <p>${o.description}</p>
+            <h2>${escHtml(o.name)}</h2>
+            <p>${escHtml(o.description)}</p>
             <div class="offer-link-row">
-              <div class="offer-url" title="${o.url}">${o.url}</div>
-              <button class="btn-copy" onclick="copyLink('${o.url}', this)">Copy Link</button>
+              <div class="offer-url" title="${escHtml(o.url)}">${escHtml(o.url)}</div>
+              <button class="btn-copy" data-url="${escHtml(o.url)}">Copy Link</button>
             </div>
-            <a class="btn-go" href="${o.url}" target="_blank">Open →</a>
+            <a class="btn-go" href="${escHtml(o.url)}" target="_blank" rel="noopener">Open →</a>
+            ${o.instructions ? `<div class="instructions">${renderInstructions(o.instructions)}</div>` : ''}
           </div>
         `).join('');
+        list.querySelectorAll('.btn-copy').forEach(btn => {
+          btn.addEventListener('click', () => copyLink(btn.dataset.url, btn));
+        });
       } catch(e) {
         list.innerHTML = '<div class="error">Could not load resources.</div>';
       }

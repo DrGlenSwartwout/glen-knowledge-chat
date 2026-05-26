@@ -1897,6 +1897,11 @@ def _init_referral_tables():
                 active      INTEGER DEFAULT 1
             )
         """)
+        for col in ["instructions TEXT DEFAULT ''"]:
+            try:
+                cx.execute(f"ALTER TABLE affiliate_offers ADD COLUMN {col}")
+            except Exception:
+                pass
         # Seed quiz as first offer
         if not cx.execute("SELECT id FROM affiliate_offers WHERE name='Accelerate Self-Healing Quiz'").fetchone():
             cx.execute("""
@@ -1904,6 +1909,16 @@ def _init_referral_tables():
                 VALUES (1, 'Accelerate Self-Healing Quiz',
                     'Free quiz — discover your top healing opportunities. Share with anyone curious about natural healing.',
                     'https://healing.scoreapp.com?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz',
+                    1)
+            """)
+        # Seed E4L bioenergetic wellness scan
+        if not cx.execute("SELECT id FROM affiliate_offers WHERE name='Free Bioenergetic Wellness Scan'").fetchone():
+            cx.execute("""
+                INSERT INTO affiliate_offers (sort_order, name, description, url_template, instructions, active)
+                VALUES (2, 'Free Bioenergetic Wellness Scan',
+                    'A free voice-based bioenergetic scan from E4L — reveals the body''s current wellness priorities in minutes.',
+                    'https://truly.vip/E4L?utm_source={slug}&utm_medium=affiliate&utm_campaign=e4l-scan',
+                    'New here? Get a free account at https://truly.vip/E4L\nAlready have an account? Log in at https://portal.E4L.com\n\nOnce logged in:\n1. Click the Scans tab\n2. Click "Voice Scan"\n3. Follow the prompts\n4. Count out loud: 1 to 10\n5. View your scan',
                     1)
             """)
         # Seed AllHeal as first referral source if not exists
@@ -2062,7 +2077,8 @@ def affiliate_hub_data(slug):
     name, org, slug = aff
     with sqlite3.connect(LOG_DB) as cx:
         offers = cx.execute(
-            "SELECT name, description, url_template FROM affiliate_offers WHERE active=1 ORDER BY sort_order ASC"
+            "SELECT name, description, url_template, COALESCE(instructions, '') "
+            "FROM affiliate_offers WHERE active=1 ORDER BY sort_order ASC"
         ).fetchall()
     return jsonify({
         "name": name,
@@ -2073,6 +2089,7 @@ def affiliate_hub_data(slug):
                 "name": o[0],
                 "description": o[1],
                 "url": o[2].replace("{slug}", slug),
+                "instructions": o[3],
             }
             for o in offers
         ]
@@ -2253,6 +2270,10 @@ def affiliate_portal_data():
         recruited_count = cx.execute("""
             SELECT COUNT(*) FROM affiliate_signups WHERE referred_by=? AND status='approved'
         """, (slug,)).fetchone()[0]
+        offers = cx.execute(
+            "SELECT name, description, url_template, COALESCE(instructions, '') "
+            "FROM affiliate_offers WHERE active=1 ORDER BY sort_order ASC"
+        ).fetchall()
 
     return jsonify({
         "name": name,
@@ -2266,6 +2287,15 @@ def affiliate_portal_data():
         "recent": [{"received_at": r[0],
                     "name": f"{r[1] or ''} {r[2] or ''}".strip(),
                     "score": r[3]} for r in recent],
+        "offers": [
+            {
+                "name": o[0],
+                "description": o[1],
+                "url": o[2].replace("{slug}", slug),
+                "instructions": o[3],
+            }
+            for o in offers
+        ],
         "member_since": created_at,
     })
 
