@@ -1143,12 +1143,16 @@ function _esc(s) {
 async function loadPersonDetail(id) {
   _selectedPersonId = id;
   document.querySelectorAll('.person-card').forEach(c => c.classList.toggle('selected', c.id===`pcard-${id}`));
-  const res = await fetch(`${BASE}/api/people/${id}`, { headers:{'X-Console-Key':consoleKey} });
-  const p   = await res.json();
-  renderPersonDetail(p);
+  const [pRes, hRes] = await Promise.all([
+    fetch(`${BASE}/api/people/${id}`, { headers:{'X-Console-Key':consoleKey} }),
+    fetch(`${BASE}/api/people/${id}/household`, { headers:{'X-Console-Key':consoleKey} }),
+  ]);
+  const p = await pRes.json();
+  const h = await hRes.json();
+  renderPersonDetail(p, h.household);
 }
 
-function renderPersonDetail(p) {
+function renderPersonDetail(p, household) {
   const tags  = _parseTags(p.tags);
   const loc   = [p.island, p.city, p.state, p.country].filter(Boolean).join(', ');
   const orgs  = (() => { try { return JSON.parse(p.organizations||'[]'); } catch { return p.organizations ? [p.organizations] : []; } })();
@@ -1176,6 +1180,7 @@ function renderPersonDetail(p) {
       ${field('Profession', p.profession)} ${field('Title', p.title)}
       ${orgs.length ? `<div class="detail-field"><label>Organizations</label><p>${orgs.map(_esc).join(', ')}</p></div>` : ''}
       ${field('Source', p.source)} ${field('GHL ID', p.ghl_id)}
+      ${_renderHouseholdSection(p, household)}
       ${field('Date of Birth', p.dob)} ${field('Birthplace', p.birthplace)} ${field('Gender', p.gender)}
       ${listField('Roles', p.roles)}
       <button class="detail-enrich-btn" onclick="enrichPerson(${p.id}, '${_esc(p.name||(p.first_name+' '+p.last_name).trim())}')">✦ Research &amp; Enrich with AI</button>
@@ -1207,6 +1212,44 @@ function renderPersonDetail(p) {
       </div>
     </div>`;
 }
+
+function _renderHouseholdSection(person, household) {
+  if (!household) {
+    return `<div class="detail-field" style="margin-top:14px">
+      <button class="detail-enrich-btn" style="border-color:var(--justus);color:var(--justus)"
+              onclick="openHouseholdDialogForPerson(${person.id})">+ Mark as household</button>
+    </div>`;
+  }
+  const members = household.members || [];
+  const headMember = members.find(m=>m.is_head);
+  const headBadge = headMember ? `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#4a3520;color:#f5d4a0;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-left:6px">${_esc(headMember.first_name||'')} is head</span>` : '';
+  const memberCards = members.map(m => {
+    const initials = ((m.first_name||'?')[0] + (m.last_name||'?')[0]).toUpperCase();
+    const thisOne = m.id === person.id ? 'opacity:0.7;border-color:#f5b87a' : '';
+    return `<div class="household-member" style="display:flex;gap:10px;padding:8px 10px;margin:6px 0;background:#0f0c08;border:1px solid #2a1f10;border-radius:6px;cursor:pointer;${thisOne}"
+            onclick="loadPersonDetail(${m.id})">
+      <div style="width:28px;height:28px;border-radius:50%;background:#4a3520;color:#f5d4a0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${initials}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600">${_esc(m.name)} ${m.is_head ? '<span style="font-size:9px;padding:2px 5px;border-radius:4px;background:#4a3520;color:#f5d4a0;text-transform:uppercase;letter-spacing:0.05em">Head</span>' : ''}</div>
+        <div style="font-size:11px;color:#8a93a3">${_esc(m.email||'')}</div>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="detail-field" style="margin-top:14px;background:#1a1410;border:1px solid #2a1f10;border-radius:8px;padding:12px">
+    <h4 style="margin:0 0 8px;font-size:12px;color:#f5b87a;display:flex;justify-content:space-between;align-items:center">
+      <span>&#x1F465; ${_esc(household.name)} household ${headBadge}</span>
+      <button onclick="openHouseholdEditDialog('${_esc(household.slug)}')" style="background:transparent;border:none;color:#8a93a3;cursor:pointer;font-size:14px">&#x2699;</button>
+    </h4>
+    ${memberCards}
+    <button class="detail-enrich-btn" style="border-color:#f5b87a;color:#f5b87a;width:100%;margin-top:6px;font-size:11px"
+            onclick="openHouseholdDialogForAddMember('${_esc(household.slug)}')">+ Add member</button>
+  </div>`;
+}
+
+// Stubs — fully implemented in Tasks 11-13
+function openHouseholdDialogForPerson(personId)   { alert('TODO Task 11: + Mark as household for person ' + personId); }
+function openHouseholdEditDialog(slug)            { alert('TODO Task 13: Edit household ' + slug); }
+function openHouseholdDialogForAddMember(slug)    { alert('TODO Task 13: Add member to ' + slug); }
 
 function showDetailPane(name, btn) {
   document.querySelectorAll('.detail-pane').forEach(p => p.classList.remove('active'));
