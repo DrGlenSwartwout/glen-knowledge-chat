@@ -1768,6 +1768,42 @@ def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag=
     return contact_id, True, None
 
 
+def ghl_update_tags(email, add=None, remove=None):
+    """Find GHL contact via /contacts/lookup (the correct exact-email endpoint
+    per the 2026-05-26 fix), add and/or remove tags as set operations, PUT
+    the merged result. Returns (contact_id, error).
+
+    If no contact exists for that email, falls through to ghl_upsert_contact
+    so the contact gets created with the `add` tags. `remove` on a non-existent
+    contact is a no-op (returns (None, None))."""
+    add    = set(add or [])
+    remove = set(remove or [])
+    if not (add or remove):
+        return None, "no tags specified"
+    if not GHL_API_KEY:
+        return None, "GHL_API_KEY not set"
+
+    data, err = _ghl_get("/contacts/lookup", {"email": email})
+    if err:
+        return None, err
+    contacts = data.get("contacts", []) if isinstance(data, dict) else []
+    if not contacts:
+        if not add:
+            return None, None   # nothing to do — no contact, nothing to remove from
+        # Fall through to create — preserves first/last so the new contact has names
+        contact_id, _created, err = ghl_upsert_contact(email, extra_tags=list(add))
+        return contact_id, err
+
+    # Prefer oldest contact when multiple match (matches ghl_upsert_contact's behavior)
+    match = min(contacts, key=lambda c: c.get("dateAdded") or "9999")
+    existing = set(match.get("tags", []) or [])
+    new_tags = (existing | add) - remove
+    if new_tags == existing:
+        return match["id"], None   # nothing changed; skip the PUT
+    _, err = _ghl_put(f"/contacts/{match['id']}", {"tags": sorted(new_tags)})
+    return match["id"], err
+
+
 def ghl_add_to_pipeline(contact_id, name="", email=""):
     """Create an opportunity in the E4L Onboarding pipeline at stage 1."""
     if not contact_id:
@@ -2994,6 +3030,18 @@ def admin_sync_pb_tags():
             dry_run=dry_run,
             limit=int(limit) if limit else None,
         )
+        # After successful PB sync (not dry-run), run household-side steps:
+        # 1. Detect new candidates (new PB contacts may match existing patterns)
+        # 2. Resync household tags to GHL (drift recovery)
+        if not dry_run:
+            try:
+                summary["households"] = {
+                    "detection": detect_household_candidates(),
+                    "resync":    resync_all_households_to_ghl(),
+                }
+            except Exception as e:
+                app.logger.exception("post-pb household steps failed")
+                summary["households"] = {"error": f"{type(e).__name__}: {e}"}
         return jsonify({"ok": True, "summary": summary})
     except Exception as e:
         app.logger.exception("PB sync failed")
@@ -4380,6 +4428,71 @@ def _init_people_table():
 _init_people_table()
 
 
+# ── Households ────────────────────────────────────────────────────────────────
+def _init_households_tables():
+    """Two tables: `households` for metadata, `household_candidates` for the
+    detection-and-suggest workflow. Run at import time alongside other
+    schema initializers."""
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS households (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug            TEXT UNIQUE NOT NULL,
+                name            TEXT NOT NULL,
+                head_person_id  INTEGER,
+                address         TEXT DEFAULT '',
+                notes           TEXT DEFAULT '',
+                created_at      TEXT NOT NULL,
+                updated_at      TEXT NOT NULL,
+                created_by      TEXT NOT NULL
+            )
+        """)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS household_candidates (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                detected_at     TEXT NOT NULL,
+                signal          TEXT NOT NULL,
+                person_ids      TEXT NOT NULL,
+                status          TEXT NOT NULL DEFAULT 'pending',
+                resolved_at     TEXT DEFAULT '',
+                resolved_by     TEXT DEFAULT '',
+                household_id    INTEGER
+            )
+        """)
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_household_candidates_status ON household_candidates(status)")
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_households_head ON households(head_person_id)")
+        cx.commit()
+
+_init_households_tables()
+
+
+def _household_slug(name, head_first_name="", existing=None):
+    """URL-safe stable identifier for a household. Immutable after creation
+    (renames update name, never slug). Returns lowercase, hyphen-separated."""
+    base = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-") or "household"
+    if existing is None:
+        return base
+    if base not in existing:
+        return base
+    # Collision: try appending head's first name
+    if head_first_name:
+        candidate = f"{base}-{re.sub(r'[^a-z0-9]+', '-', head_first_name.lower()).strip('-')}"
+        if candidate and candidate not in existing:
+            return candidate
+    # Numeric suffix fallback
+    n = 2
+    while f"{base}-{n}" in existing:
+        n += 1
+    return f"{base}-{n}"
+
+
+def _candidate_dedup_key(person_ids):
+    """Stable dedup key for household_candidates rows. Sorting ensures the
+    same cluster produces the same key across detection runs regardless
+    of input ordering."""
+    return ",".join(str(i) for i in sorted(int(p) for p in person_ids))
+
+
 def _people_search_query(params):
     """Build WHERE clause from search params. Returns (where_str, args)."""
     clauses, args = [], []
@@ -4513,6 +4626,644 @@ def add_person_note(person_id):
         """, (f"[{ts}] {note}", f"[{ts}] {note}", person_id))
         cx.commit()
     return jsonify({"ok": True})
+
+
+# ── Household endpoints ────────────────────────────────────────────────────────
+
+def _check_console_auth():
+    """Returns None if authorized, or a (response, status) tuple to return."""
+    if not CONSOLE_SECRET:
+        return None
+    key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+    if key != CONSOLE_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
+    return None
+
+
+def _existing_household_slugs(cx):
+    return {row[0] for row in cx.execute("SELECT slug FROM households").fetchall()}
+
+
+def _person_household_slug(cx, person_id):
+    """Returns the slug of the household this person is in, or None."""
+    row = cx.execute("SELECT tags FROM people WHERE id=?", (person_id,)).fetchone()
+    if not row:
+        return None
+    try:
+        tags = json.loads(row[0] or "[]")
+    except Exception:
+        return None
+    for t in tags:
+        if t.startswith("household:") and not t.startswith("household-head:"):
+            return t.split(":", 1)[1]
+    return None
+
+
+def _mutate_person_tags(cx, person_id, add=None, remove=None):
+    """Update a person's tags JSON additively/subtractively. Returns new tags list."""
+    add = set(add or [])
+    remove = set(remove or [])
+    row = cx.execute("SELECT tags FROM people WHERE id=?", (person_id,)).fetchone()
+    if not row:
+        return []
+    try:
+        existing = set(json.loads(row[0] or "[]"))
+    except Exception:
+        existing = set()
+    new_tags = sorted((existing | add) - remove)
+    cx.execute("UPDATE people SET tags=? WHERE id=?", (json.dumps(new_tags), person_id))
+    return new_tags
+
+
+def _push_household_tags_to_ghl(person_email, slug, is_head, action="add"):
+    """Push household and household-head tags to GHL. action='add' or 'remove'.
+    Returns (ok_bool, error_msg_or_None)."""
+    tags = {f"household:{slug}"}
+    if is_head:
+        tags.add(f"household-head:{slug}")
+    if action == "add":
+        _, err = ghl_update_tags(person_email, add=tags)
+    else:
+        _, err = ghl_update_tags(person_email, remove=tags)
+    return (err is None, err)
+
+
+@app.route("/api/households", methods=["POST"])
+def create_household():
+    """Create a household, tag members in DB + GHL.
+
+    Body: {name, head_person_id, member_person_ids[], address?, notes?, created_by?}
+    Returns 200 with the new household, 409 if any member is already in another household."""
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    body = request.get_json(force=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name required"}), 400
+    head_id = body.get("head_person_id")
+    member_ids = body.get("member_person_ids") or []
+    if not head_id or head_id not in member_ids:
+        return jsonify({"error": "head_person_id must be in member_person_ids"}), 400
+    created_by = (body.get("created_by") or "glen").strip()
+    address = (body.get("address") or "").strip()
+    notes = (body.get("notes") or "").strip()
+    ts = datetime.now(timezone.utc).isoformat()
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        # Pre-flight: ensure no member is already in a household
+        for pid in member_ids:
+            existing_slug = _person_household_slug(cx, pid)
+            if existing_slug:
+                existing_row = cx.execute(
+                    "SELECT slug, name FROM households WHERE slug=?", (existing_slug,)
+                ).fetchone()
+                return jsonify({
+                    "error": "member already in household",
+                    "person_id": pid,
+                    "current_household": {
+                        "slug": existing_slug,
+                        "name": existing_row[1] if existing_row else existing_slug,
+                    },
+                }), 409
+
+        # Resolve head's first name for slug-collision fallback
+        head_row = cx.execute(
+            "SELECT first_name, email FROM people WHERE id=?", (head_id,)
+        ).fetchone()
+        if not head_row:
+            return jsonify({"error": "head person not found"}), 400
+        head_first, head_email = head_row
+
+        slug = _household_slug(name, head_first, existing=_existing_household_slugs(cx))
+
+        cx.execute("""
+            INSERT INTO households (slug, name, head_person_id, address, notes,
+                                    created_at, updated_at, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (slug, name, head_id, address, notes, ts, ts, created_by))
+        household_id = cx.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        # Tag every member in DB. Head gets both household: and household-head:.
+        # Also strip the legacy relationship:family-shared-email tag.
+        for pid in member_ids:
+            adds = {f"household:{slug}"}
+            if pid == head_id:
+                adds.add(f"household-head:{slug}")
+            _mutate_person_tags(cx, pid, add=adds, remove={"relationship:family-shared-email"})
+        cx.commit()
+
+    # Push to GHL outside the lock. Per-member errors collected.
+    ghl_errors = []
+    with sqlite3.connect(LOG_DB) as cx:
+        members = cx.execute("""
+            SELECT id, email FROM people WHERE id IN ({})
+        """.format(",".join("?" * len(member_ids))), member_ids).fetchall()
+    for pid, email in members:
+        if not email:
+            continue
+        is_head = (pid == head_id)
+        ok, err = _push_household_tags_to_ghl(email, slug, is_head, action="add")
+        if not ok:
+            ghl_errors.append({"email": email, "error": str(err)})
+        # Also remove the legacy tag from GHL
+        try:
+            ghl_update_tags(email, remove={"relationship:family-shared-email"})
+        except Exception:
+            pass
+        _time.sleep(0.15)
+
+    return jsonify({
+        "ok": True,
+        "household": {"id": household_id, "slug": slug, "name": name, "head_person_id": head_id},
+        "ghl_errors": ghl_errors,
+    })
+
+
+@app.route("/api/households", methods=["GET"])
+def list_households():
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute("""
+            SELECT h.id, h.slug, h.name, h.head_person_id, h.updated_at,
+                   p.first_name AS head_first, p.last_name AS head_last
+            FROM households h
+            LEFT JOIN people p ON p.id = h.head_person_id
+            ORDER BY h.name
+        """).fetchall()
+        out = []
+        for r in rows:
+            count = cx.execute(
+                "SELECT COUNT(*) FROM people WHERE tags LIKE ?", (f'%"household:{r["slug"]}"%',)
+            ).fetchone()[0]
+            out.append({
+                "id": r["id"],
+                "slug": r["slug"],
+                "name": r["name"],
+                "member_count": count,
+                "head": {
+                    "id": r["head_person_id"],
+                    "name": f'{r["head_first"] or ""} {r["head_last"] or ""}'.strip(),
+                },
+                "updated_at": r["updated_at"],
+            })
+    return jsonify({"households": out})
+
+
+@app.route("/api/households/<slug>", methods=["GET"])
+def get_household(slug):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute("SELECT * FROM households WHERE slug=?", (slug,)).fetchone()
+        if not row:
+            return jsonify({"error": "not found"}), 404
+        members = cx.execute("""
+            SELECT id, email, first_name, last_name, phone, tags
+            FROM people WHERE tags LIKE ?
+            ORDER BY first_name
+        """, (f'%"household:{slug}"%',)).fetchall()
+        member_list = []
+        for m in members:
+            try:
+                tags = json.loads(m["tags"] or "[]")
+            except Exception:
+                tags = []
+            member_list.append({
+                "id": m["id"],
+                "email": m["email"],
+                "first_name": m["first_name"],
+                "last_name": m["last_name"],
+                "phone": m["phone"],
+                "name": f'{m["first_name"]} {m["last_name"]}'.strip(),
+                "is_head": f"household-head:{slug}" in tags,
+            })
+    return jsonify({
+        "id": row["id"], "slug": row["slug"], "name": row["name"],
+        "head_person_id": row["head_person_id"], "address": row["address"],
+        "notes": row["notes"], "created_at": row["created_at"],
+        "updated_at": row["updated_at"], "created_by": row["created_by"],
+        "members": member_list,
+    })
+
+
+@app.route("/api/people/<int:person_id>/household", methods=["GET"])
+def get_person_household(person_id):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    with sqlite3.connect(LOG_DB) as cx:
+        slug = _person_household_slug(cx, person_id)
+        if not slug:
+            return jsonify({"household": None})
+    # Reuse the full-household renderer, then wrap so callers get {"household": {...}}
+    resp = get_household(slug)
+    # get_household returns a Flask Response from jsonify; unwrap and re-wrap
+    if isinstance(resp, tuple):  # error case (slug somehow missing)
+        return resp
+    data = resp.get_json()
+    return jsonify({"household": data})
+
+
+@app.route("/api/household-candidates", methods=["GET"])
+def list_household_candidates():
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    status = request.args.get("status", "pending")
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute(
+            "SELECT * FROM household_candidates WHERE status=? ORDER BY detected_at DESC",
+            (status,)
+        ).fetchall()
+        out = []
+        for r in rows:
+            try:
+                pids = json.loads(r["person_ids"] or "[]")
+            except Exception:
+                pids = []
+            persons = []
+            if pids:
+                placeholders = ",".join("?" * len(pids))
+                people_rows = cx.execute(
+                    f"SELECT id, email, first_name, last_name FROM people WHERE id IN ({placeholders})",
+                    pids
+                ).fetchall()
+                persons = [{"id": p["id"], "email": p["email"],
+                            "name": f'{p["first_name"]} {p["last_name"]}'.strip()}
+                           for p in people_rows]
+            out.append({
+                "id": r["id"], "signal": r["signal"], "detected_at": r["detected_at"],
+                "person_ids": pids, "persons": persons,
+            })
+    return jsonify({"candidates": out})
+
+
+@app.route("/api/household-candidates/<int:cand_id>/confirm", methods=["POST"])
+def confirm_household_candidate(cand_id):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    body = request.get_json(force=True) or {}
+    name = (body.get("name") or "").strip()
+    head_id = body.get("head_person_id")
+    if not (name and head_id):
+        return jsonify({"error": "name + head_person_id required"}), 400
+
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT person_ids, status FROM household_candidates WHERE id=?", (cand_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "candidate not found"}), 404
+    if row[1] != "pending":
+        return jsonify({"error": f"candidate is {row[1]}, not pending"}), 409
+    try:
+        member_ids = json.loads(row[0] or "[]")
+    except Exception:
+        return jsonify({"error": "candidate has invalid person_ids"}), 500
+
+    # Delegate to create_household via internal call
+    with app.test_request_context("/api/households", method="POST",
+                                   json={"name": name, "head_person_id": head_id,
+                                         "member_person_ids": member_ids},
+                                   headers={"X-Console-Key": CONSOLE_SECRET or ""}):
+        resp = create_household()
+    if isinstance(resp, tuple):
+        body, status = resp[0], resp[1]
+        if status != 200:
+            return body, status
+        body = body.get_json()
+    else:
+        body = resp.get_json()
+
+    # Link candidate to the new household
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            UPDATE household_candidates SET status='confirmed',
+                resolved_at=?, resolved_by=?, household_id=?
+            WHERE id=?
+        """, (datetime.now(timezone.utc).isoformat(), "glen", body["household"]["id"], cand_id))
+        cx.commit()
+    return jsonify({"ok": True, "household": body["household"], "ghl_errors": body.get("ghl_errors", [])})
+
+
+@app.route("/api/household-candidates/<int:cand_id>/dismiss", methods=["POST"])
+def dismiss_household_candidate(cand_id):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        if not cx.execute("SELECT 1 FROM household_candidates WHERE id=?", (cand_id,)).fetchone():
+            return jsonify({"error": "candidate not found"}), 404
+        cx.execute("""
+            UPDATE household_candidates SET status='dismissed', resolved_at=?, resolved_by=?
+            WHERE id=?
+        """, (datetime.now(timezone.utc).isoformat(), "glen", cand_id))
+        cx.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/households/<slug>", methods=["PATCH"])
+def update_household(slug):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    body = request.get_json(force=True) or {}
+    ts = datetime.now(timezone.utc).isoformat()
+
+    ghl_errors = []
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute("SELECT * FROM households WHERE slug=?", (slug,)).fetchone()
+        if not row:
+            return jsonify({"error": "not found"}), 404
+
+        new_name    = body.get("name", row["name"])
+        new_address = body.get("address", row["address"])
+        new_notes   = body.get("notes", row["notes"])
+        new_head    = body.get("head_person_id", row["head_person_id"])
+
+        # Head change requires moving the household-head: tag
+        old_head = row["head_person_id"]
+        head_changed = new_head != old_head
+        old_head_email = new_head_email = None
+        if head_changed:
+            # Validate new head is in this household
+            new_head_slug = _person_household_slug(cx, new_head)
+            if new_head_slug != slug:
+                return jsonify({"error": "new head must be a current member"}), 400
+            _mutate_person_tags(cx, old_head, remove={f"household-head:{slug}"})
+            _mutate_person_tags(cx, new_head, add={f"household-head:{slug}"})
+            r = cx.execute("SELECT email FROM people WHERE id=?", (old_head,)).fetchone()
+            old_head_email = r[0] if r else None
+            r = cx.execute("SELECT email FROM people WHERE id=?", (new_head,)).fetchone()
+            new_head_email = r[0] if r else None
+
+        cx.execute("""
+            UPDATE households SET name=?, address=?, notes=?, head_person_id=?, updated_at=?
+            WHERE slug=?
+        """, (new_name, new_address, new_notes, new_head, ts, slug))
+        cx.commit()
+
+    # GHL sync outside lock
+    if head_changed:
+        if old_head_email:
+            _, err = ghl_update_tags(old_head_email, remove={f"household-head:{slug}"})
+            if err: ghl_errors.append({"email": old_head_email, "error": str(err)})
+            _time.sleep(0.15)
+        if new_head_email:
+            _, err = ghl_update_tags(new_head_email, add={f"household-head:{slug}"})
+            if err: ghl_errors.append({"email": new_head_email, "error": str(err)})
+            _time.sleep(0.15)
+
+    return jsonify({"ok": True, "ghl_errors": ghl_errors})
+
+
+@app.route("/api/households/<slug>/members", methods=["POST"])
+def add_household_member(slug):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    body = request.get_json(force=True) or {}
+    person_id = body.get("person_id")
+    if not person_id:
+        return jsonify({"error": "person_id required"}), 400
+
+    ghl_errors = []
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        if not cx.execute("SELECT 1 FROM households WHERE slug=?", (slug,)).fetchone():
+            return jsonify({"error": "household not found"}), 404
+        existing_slug = _person_household_slug(cx, person_id)
+        if existing_slug == slug:
+            return jsonify({"ok": True, "already_member": True})
+        if existing_slug:
+            existing_row = cx.execute(
+                "SELECT slug, name FROM households WHERE slug=?", (existing_slug,)
+            ).fetchone()
+            return jsonify({
+                "error": "person already in household",
+                "current_household": {"slug": existing_slug,
+                                       "name": existing_row["name"] if existing_row else existing_slug},
+            }), 409
+        person_row = cx.execute("SELECT email FROM people WHERE id=?", (person_id,)).fetchone()
+        if not person_row:
+            return jsonify({"error": "person not found"}), 404
+        email = person_row["email"]
+        _mutate_person_tags(cx, person_id, add={f"household:{slug}"},
+                            remove={"relationship:family-shared-email"})
+        cx.commit()
+
+    if email:
+        ok, err = _push_household_tags_to_ghl(email, slug, is_head=False, action="add")
+        if not ok: ghl_errors.append({"email": email, "error": str(err)})
+        try: ghl_update_tags(email, remove={"relationship:family-shared-email"})
+        except Exception: pass
+    return jsonify({"ok": True, "ghl_errors": ghl_errors})
+
+
+@app.route("/api/households/<slug>/members/<int:person_id>", methods=["DELETE"])
+def remove_household_member(slug, person_id):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+
+    ghl_errors = []
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        h_row = cx.execute("SELECT head_person_id FROM households WHERE slug=?", (slug,)).fetchone()
+        if not h_row:
+            return jsonify({"error": "household not found"}), 404
+        if h_row["head_person_id"] == person_id:
+            return jsonify({"error": "Cannot remove head — change head first"}), 409
+        person_row = cx.execute("SELECT email FROM people WHERE id=?", (person_id,)).fetchone()
+        if not person_row:
+            return jsonify({"error": "person not found"}), 404
+        email = person_row["email"]
+        _mutate_person_tags(cx, person_id, remove={f"household:{slug}", f"household-head:{slug}"})
+        cx.commit()
+
+    if email:
+        ok, err = _push_household_tags_to_ghl(email, slug, is_head=False, action="remove")
+        if not ok: ghl_errors.append({"email": email, "error": str(err)})
+    return jsonify({"ok": True, "ghl_errors": ghl_errors})
+
+
+@app.route("/api/households/<slug>", methods=["DELETE"])
+def disband_household(slug):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+
+    ghl_errors = []
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        if not cx.execute("SELECT 1 FROM households WHERE slug=?", (slug,)).fetchone():
+            return jsonify({"error": "household not found"}), 404
+        members = cx.execute("""
+            SELECT id, email FROM people WHERE tags LIKE ?
+        """, (f'%"household:{slug}"%',)).fetchall()
+        for m in members:
+            _mutate_person_tags(cx, m["id"],
+                                remove={f"household:{slug}", f"household-head:{slug}"})
+        # Mark related candidates resolved
+        cx.execute("""
+            UPDATE household_candidates SET status='dismissed', resolved_at=?
+            WHERE household_id=(SELECT id FROM households WHERE slug=?)
+        """, (datetime.now(timezone.utc).isoformat(), slug))
+        cx.execute("DELETE FROM households WHERE slug=?", (slug,))
+        cx.commit()
+
+    for m in members:
+        if not m["email"]: continue
+        _, err = ghl_update_tags(m["email"],
+                                  remove={f"household:{slug}", f"household-head:{slug}"})
+        if err: ghl_errors.append({"email": m["email"], "error": str(err)})
+        _time.sleep(0.15)
+    return jsonify({"ok": True, "ghl_errors": ghl_errors})
+
+
+def _resync_household_to_ghl(slug):
+    """Re-push the household tags for every member to GHL. Returns ghl_errors list."""
+    ghl_errors = []
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        h_row = cx.execute("SELECT head_person_id FROM households WHERE slug=?", (slug,)).fetchone()
+        if not h_row:
+            return [{"error": "household not found"}]
+        head_id = h_row["head_person_id"]
+        members = cx.execute("""
+            SELECT id, email FROM people WHERE tags LIKE ?
+        """, (f'%"household:{slug}"%',)).fetchall()
+    for m in members:
+        if not m["email"]: continue
+        is_head = (m["id"] == head_id)
+        ok, err = _push_household_tags_to_ghl(m["email"], slug, is_head, action="add")
+        if not ok: ghl_errors.append({"email": m["email"], "error": str(err)})
+        _time.sleep(0.15)
+    return ghl_errors
+
+
+@app.route("/api/households/<slug>/resync-ghl", methods=["POST"])
+def resync_household_ghl(slug):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    errors = _resync_household_to_ghl(slug)
+    return jsonify({"ok": True, "ghl_errors": errors})
+
+
+def resync_all_households_to_ghl():
+    """Iterate every household and push its tags to GHL. Used by daily cron
+    for drift recovery. Returns {households_synced, ghl_errors_total}."""
+    with sqlite3.connect(LOG_DB) as cx:
+        slugs = [r[0] for r in cx.execute("SELECT slug FROM households").fetchall()]
+    total_errors = 0
+    for slug in slugs:
+        errors = _resync_household_to_ghl(slug)
+        total_errors += len(errors)
+    return {"households_synced": len(slugs), "ghl_errors_total": total_errors}
+
+
+@app.route("/admin/resync-all-households", methods=["POST"])
+def admin_resync_all_households():
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        summary = resync_all_households_to_ghl()
+        return jsonify({"ok": True, "summary": summary})
+    except Exception as e:
+        app.logger.exception("resync-all-households failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
+def detect_household_candidates():
+    """Run all signals against the people table, dedup against existing
+    household_candidates rows, insert new pending candidates. Returns:
+    {detected, new_pending, skipped_already_household, skipped_dedup}."""
+    summary = {"detected": 0, "new_pending": 0,
+               "skipped_already_household": 0, "skipped_dedup": 0}
+    ts = datetime.now(timezone.utc).isoformat()
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        people = cx.execute("""
+            SELECT id, LOWER(TRIM(email)) AS email_lc, LOWER(TRIM(last_name)) AS last_lc,
+                   phone, LOWER(TRIM(city)) AS city_lc, LOWER(TRIM(state)) AS state_lc, tags
+            FROM people
+        """).fetchall()
+
+        # Mark which people are already in a household
+        in_household = set()
+        for p in people:
+            try:
+                tags = json.loads(p["tags"] or "[]")
+            except Exception:
+                tags = []
+            if any(t.startswith("household:") and not t.startswith("household-head:") for t in tags):
+                in_household.add(p["id"])
+
+        # Existing dedup keys (any status — pending, confirmed, dismissed)
+        existing_keys = set()
+        for r in cx.execute("SELECT person_ids FROM household_candidates").fetchall():
+            try:
+                ids = json.loads(r[0] or "[]")
+            except Exception:
+                continue
+            existing_keys.add(_candidate_dedup_key(ids))
+
+        # ── Signal 1: shared-email ────────────────────────────────────────────
+        by_email = {}
+        for p in people:
+            if not p["email_lc"]: continue
+            by_email.setdefault(p["email_lc"], []).append(p["id"])
+        # ── Signal 2: shared-phone-lastname ───────────────────────────────────
+        by_phone_last = {}
+        for p in people:
+            if not (p["phone"] and p["last_lc"]): continue
+            by_phone_last.setdefault((p["phone"], p["last_lc"]), []).append(p["id"])
+        # ── Signal 3: shared-address-lastname ─────────────────────────────────
+        by_addr = {}
+        for p in people:
+            if not (p["city_lc"] and p["state_lc"] and p["last_lc"]): continue
+            by_addr.setdefault((p["city_lc"], p["state_lc"], p["last_lc"]), []).append(p["id"])
+
+        def _emit_signal(name, clusters):
+            for ids in clusters.values():
+                if len(ids) < 2: continue
+                summary["detected"] += 1
+                if any(i in in_household for i in ids):
+                    summary["skipped_already_household"] += 1
+                    continue
+                key = _candidate_dedup_key(ids)
+                if key in existing_keys:
+                    summary["skipped_dedup"] += 1
+                    continue
+                cx.execute("""
+                    INSERT INTO household_candidates (detected_at, signal, person_ids, status)
+                    VALUES (?, ?, ?, 'pending')
+                """, (ts, name, json.dumps(sorted(ids))))
+                existing_keys.add(key)   # avoid intra-run dups across signals
+                summary["new_pending"] += 1
+
+        _emit_signal("shared-email",            by_email)
+        _emit_signal("shared-phone-lastname",   by_phone_last)
+        _emit_signal("shared-address-lastname", by_addr)
+        cx.commit()
+    return summary
+
+
+@app.route("/admin/detect-household-candidates", methods=["POST"])
+def admin_detect_household_candidates():
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        summary = detect_household_candidates()
+        return jsonify({"ok": True, "summary": summary})
+    except Exception as e:
+        app.logger.exception("detect_household_candidates failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
 
 
 # ── Console AI chat (context-aware) ───────────────────────────────────────────

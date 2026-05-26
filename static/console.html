@@ -498,6 +498,20 @@
   <div class="people-layout">
     <!-- Left: search + list -->
     <div class="people-left">
+      <div id="household-candidates-banner" style="display:none;background:#1a1410;border:1px solid #2a1f10;border-radius:5px;padding:10px 12px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleCandidatesPanel()">
+          <span style="font-size:13px;color:#f5b87a">👥 <span id="hcb-count">0</span> possible household(s) detected</span>
+          <span style="flex:1"></span>
+          <span style="font-size:11px;color:#8a93a3" id="hcb-toggle">Review →</span>
+        </div>
+        <div id="hcb-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #2a1f10"></div>
+      </div>
+      <div id="people-multiselect-toolbar"
+           style="display:none;gap:8px;align-items:center;padding:8px 10px;background:#1a1410;border-radius:5px;margin-bottom:10px;border:1px solid #2a1f10">
+        <span id="pms-count" style="flex:1;font-size:12px;color:#f5b87a;font-weight:600">0 selected</span>
+        <button onclick="openHouseholdDialogForMultiSelect()" style="padding:6px 12px;background:#f5b87a;color:#0a0c12;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">Group as household</button>
+        <button onclick="pmsClear()" style="padding:6px 12px;background:transparent;color:#f5b87a;border:1px solid #4a3520;border-radius:5px;font-size:12px;cursor:pointer">Clear</button>
+      </div>
       <div class="people-search-bar">
         <input type="text" id="people-q" placeholder="Search by name or email…" oninput="peopleDebouncedSearch()" autocomplete="off">
         <button class="btn-add-person" onclick="openAddPersonDialog()">+ Person</button>
@@ -1059,11 +1073,147 @@ function switchSection(section, btn) {
   if (btn) btn.classList.add('active');
   document.querySelector('main').style.display   = section === 'inbox'  ? '' : 'none';
   document.getElementById('people-section').style.display = section === 'people' ? '' : 'none';
-  if (section === 'people') loadPeople();
+  if (section === 'people') {
+    loadPeople();
+    loadHouseholdCandidates();
+  }
+}
+
+// ── Household candidates banner ────────────────────────────────────────────────
+let _hcbCandidates = [];
+
+async function loadHouseholdCandidates() {
+  const r = await fetch(`${BASE}/api/household-candidates?status=pending`,
+                        { headers:{'X-Console-Key':consoleKey} });
+  const data = await r.json();
+  _hcbCandidates = data.candidates || [];
+  document.getElementById('hcb-count').textContent = _hcbCandidates.length;
+  document.getElementById('household-candidates-banner').style.display =
+    _hcbCandidates.length > 0 ? '' : 'none';
+}
+
+function toggleCandidatesPanel() {
+  const panel = document.getElementById('hcb-panel');
+  const toggle = document.getElementById('hcb-toggle');
+  if (panel.style.display === 'none') {
+    renderCandidatesPanel();
+    panel.style.display = '';
+    toggle.textContent = 'Hide ↑';
+  } else {
+    panel.style.display = 'none';
+    toggle.textContent = 'Review →';
+  }
+}
+
+function renderCandidatesPanel() {
+  const html = _hcbCandidates.map(c => {
+    const persons = c.persons.map(p => _esc(p.name || p.email)).join(', ');
+    const warning = c.persons.length > 5
+      ? '<div style="color:#f5d07a;font-size:11px;margin-bottom:4px">⚠ Unusually large — review carefully</div>'
+      : '';
+    return `<div style="padding:10px;margin-bottom:6px;background:#0f0c08;border:1px solid #2a1f10;border-radius:5px">
+      ${warning}
+      <div style="font-size:11px;color:#8a93a3;margin-bottom:4px">signal: ${_esc(c.signal)}</div>
+      <div style="font-size:13px;margin-bottom:6px">${persons}</div>
+      <div style="display:flex;gap:6px">
+        <button onclick="hcbConfirm(${c.id})" style="padding:5px 10px;background:#f5b87a;color:#0a0c12;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">Confirm as household</button>
+        <button onclick="hcbDismiss(${c.id})" style="padding:5px 10px;background:transparent;color:#8a93a3;border:1px solid #4a3520;border-radius:4px;font-size:11px;cursor:pointer">Dismiss</button>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('hcb-panel').innerHTML = html;
+}
+
+async function hcbConfirm(candId) {
+  const cand = _hcbCandidates.find(c => c.id === candId);
+  if (!cand) return;
+  const name = prompt('Household name?', cand.persons[0]?.name?.split(' ').pop() || '');
+  if (!name) return;
+  // For v1 simplicity: head defaults to first member; user can rotate head later via Edit
+  const r = await fetch(`${BASE}/api/household-candidates/${candId}/confirm`, {
+    method:'POST', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+    body: JSON.stringify({ name, head_person_id: cand.person_ids[0] })
+  });
+  if (r.ok) {
+    loadHouseholdCandidates();
+    loadPeople();
+  } else {
+    alert('Confirm failed: ' + (await r.json()).error);
+  }
+}
+
+async function hcbDismiss(candId) {
+  const r = await fetch(`${BASE}/api/household-candidates/${candId}/dismiss`,
+                        { method:'POST', headers:{'X-Console-Key':consoleKey} });
+  if (r.ok) loadHouseholdCandidates();
 }
 
 // ── People page ───────────────────────────────────────────────────────────────
 let _peopleOffset = 0, _peopleTotal = 0, _selectedPersonId = null;
+
+// ── Multi-select for household creation ────────────────────────────────────────
+const _pmsSelected = new Set();
+const _pmsCache = new Map();   // id -> {name, email}
+
+function pmsToggle(id) {
+  if (_pmsSelected.has(id)) _pmsSelected.delete(id);
+  else _pmsSelected.add(id);
+  pmsRender();
+  // Re-render only the affected card's check state (cheap full re-render fallback)
+  loadPeople();
+}
+
+function pmsClear() {
+  _pmsSelected.clear();
+  pmsRender();
+  loadPeople();
+}
+
+function pmsRender() {
+  const tb = document.getElementById('people-multiselect-toolbar');
+  if (_pmsSelected.size === 0) {
+    tb.style.display = 'none';
+  } else {
+    tb.style.display = 'flex';
+    document.getElementById('pms-count').textContent = `${_pmsSelected.size} selected`;
+  }
+}
+
+async function openHouseholdDialogForMultiSelect() {
+  if (_pmsSelected.size < 2) {
+    alert('Pick at least 2 people first.');
+    return;
+  }
+  _hhMode = 'create';
+  _hhSlug = null;
+  _hhChosen = [];
+  document.getElementById('hh-dialog-title').textContent = '👥 Create household';
+  document.getElementById('hh-name').value = '';
+  document.getElementById('hh-search').value = '';
+  document.getElementById('hh-search-results').innerHTML = '';
+  document.getElementById('hh-errors').textContent = '';
+
+  // Fetch all selected people in parallel
+  const ids = Array.from(_pmsSelected);
+  const people = await Promise.all(ids.map(id =>
+    fetch(`${BASE}/api/people/${id}`, { headers:{'X-Console-Key':consoleKey} }).then(r => r.json())
+  ));
+  _hhChosen = people.map((p, i) => ({
+    id: p.id,
+    name: p.name || `${p.first_name||''} ${p.last_name||''}`.trim() || p.email,
+    email: p.email,
+    is_head: i === 0,   // first one defaults to head
+  }));
+  // Pre-fill household name with the most common last name in the selection
+  const lastNames = people.map(p => p.last_name).filter(Boolean);
+  if (lastNames.length) {
+    document.getElementById('hh-name').value = lastNames.sort((a,b) =>
+      lastNames.filter(v => v===a).length - lastNames.filter(v => v===b).length
+    ).pop();
+  }
+  _renderHHChosen();
+  document.getElementById('household-dialog').showModal();
+}
 let _peopleTimer = null;
 function peopleDebouncedSearch() {
   clearTimeout(_peopleTimer);
@@ -1121,11 +1271,20 @@ function _personCard(p) {
   const tags = _parseTags(p.tags);
   const loc = [p.island||p.city, p.state].filter(Boolean).join(', ');
   const activity = p.last_contact_date ? p.last_contact_date.slice(0,10) : '';
+  const checked = _pmsSelected.has(p.id) ? 'background:#f5b87a;border-color:#f5b87a;color:#0a0c12' : '';
+  const checkmark = _pmsSelected.has(p.id) ? '✓' : '';
   div.innerHTML = `
-    <div class="person-card-name">${_esc(p.name || (p.first_name+' '+p.last_name).trim() || p.email)}</div>
-    <div class="person-card-email">${_esc(p.email)}${p.profession ? ' · '+_esc(p.profession) : ''}</div>
-    <div class="person-card-tags">${tags.map(_renderPtag).join('')}</div>
-    <div class="person-card-meta">${loc ? loc+' · ' : ''}${p.order_count>0?p.order_count+' order(s) · ':''}${activity}</div>`;
+    <div style="display:flex;align-items:flex-start;gap:8px">
+      <div onclick="event.stopPropagation();pmsToggle(${p.id})"
+           class="pms-check"
+           style="flex-shrink:0;width:16px;height:16px;border:1px solid #4a3520;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;background:#0a0c12;font-size:11px;font-weight:700;margin-top:1px;${checked}">${checkmark}</div>
+      <div style="flex:1;min-width:0">
+        <div class="person-card-name">${_esc(p.name || (p.first_name+' '+p.last_name).trim() || p.email)}</div>
+        <div class="person-card-email">${_esc(p.email)}${p.profession ? ' · '+_esc(p.profession) : ''}</div>
+        <div class="person-card-tags">${tags.map(_renderPtag).join('')}</div>
+        <div class="person-card-meta">${loc ? loc+' · ' : ''}${p.order_count>0?p.order_count+' order(s) · ':''}${activity}</div>
+      </div>
+    </div>`;
   return div;
 }
 function _parseTags(raw) {
@@ -1143,12 +1302,16 @@ function _esc(s) {
 async function loadPersonDetail(id) {
   _selectedPersonId = id;
   document.querySelectorAll('.person-card').forEach(c => c.classList.toggle('selected', c.id===`pcard-${id}`));
-  const res = await fetch(`${BASE}/api/people/${id}`, { headers:{'X-Console-Key':consoleKey} });
-  const p   = await res.json();
-  renderPersonDetail(p);
+  const [pRes, hRes] = await Promise.all([
+    fetch(`${BASE}/api/people/${id}`, { headers:{'X-Console-Key':consoleKey} }),
+    fetch(`${BASE}/api/people/${id}/household`, { headers:{'X-Console-Key':consoleKey} }),
+  ]);
+  const p = await pRes.json();
+  const h = await hRes.json();
+  renderPersonDetail(p, h.household);
 }
 
-function renderPersonDetail(p) {
+function renderPersonDetail(p, household) {
   const tags  = _parseTags(p.tags);
   const loc   = [p.island, p.city, p.state, p.country].filter(Boolean).join(', ');
   const orgs  = (() => { try { return JSON.parse(p.organizations||'[]'); } catch { return p.organizations ? [p.organizations] : []; } })();
@@ -1176,6 +1339,7 @@ function renderPersonDetail(p) {
       ${field('Profession', p.profession)} ${field('Title', p.title)}
       ${orgs.length ? `<div class="detail-field"><label>Organizations</label><p>${orgs.map(_esc).join(', ')}</p></div>` : ''}
       ${field('Source', p.source)} ${field('GHL ID', p.ghl_id)}
+      ${_renderHouseholdSection(p, household)}
       ${field('Date of Birth', p.dob)} ${field('Birthplace', p.birthplace)} ${field('Gender', p.gender)}
       ${listField('Roles', p.roles)}
       <button class="detail-enrich-btn" onclick="enrichPerson(${p.id}, '${_esc(p.name||(p.first_name+' '+p.last_name).trim())}')">✦ Research &amp; Enrich with AI</button>
@@ -1206,6 +1370,309 @@ function renderPersonDetail(p) {
         <button onclick="addPersonNote(${p.id})">Add</button>
       </div>
     </div>`;
+}
+
+const _hhRecentErrors = new Map();   // slug -> [{email, error}]
+
+function _renderHouseholdSection(person, household) {
+  if (!household) {
+    return `<div class="detail-field" style="margin-top:14px">
+      <button class="detail-enrich-btn" style="border-color:var(--justus);color:var(--justus)"
+              onclick="openHouseholdDialogForPerson(${person.id})">+ Mark as household</button>
+    </div>`;
+  }
+  const errors = _hhRecentErrors.get(household.slug) || [];
+  const errorBadge = errors.length > 0 ? `
+    <div style="margin:8px 0;padding:8px 10px;background:#3a2615;border:1px solid #f5d07a;border-radius:5px;color:#f5d07a;font-size:11px">
+      ⚠ GHL sync incomplete (${errors.length} member(s) failed).
+      <button onclick="hhResyncGhl('${_esc(household.slug)}')"
+              style="margin-left:8px;padding:3px 8px;background:transparent;color:#f5d07a;border:1px solid #f5d07a;border-radius:3px;font-size:10px;cursor:pointer">Retry</button>
+    </div>` : '';
+  const members = household.members || [];
+  const headBadge = `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#4a3520;color:#f5d4a0;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-left:6px">${_esc(members.find(m=>m.is_head)?.first_name||'')} is head</span>`;
+  const memberCards = members.map(m => {
+    const initials = ((m.first_name||'?')[0] + (m.last_name||'?')[0]).toUpperCase();
+    const thisOne = m.id === person.id ? 'opacity:0.7;border-color:#f5b87a' : '';
+    return `<div style="display:flex;gap:10px;padding:8px 10px;margin:6px 0;background:#0f0c08;border:1px solid #2a1f10;border-radius:6px;cursor:pointer;${thisOne}"
+            onclick="loadPersonDetail(${m.id})">
+      <div style="width:28px;height:28px;border-radius:50%;background:#4a3520;color:#f5d4a0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${initials}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600">${_esc(m.name)} ${m.is_head ? '<span style="font-size:9px;padding:2px 5px;border-radius:4px;background:#4a3520;color:#f5d4a0;text-transform:uppercase;letter-spacing:0.05em">Head</span>' : ''}</div>
+        <div style="font-size:11px;color:#8a93a3">${_esc(m.email||'')}</div>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="detail-field" style="margin-top:14px;background:#1a1410;border:1px solid #2a1f10;border-radius:8px;padding:12px">
+    <h4 style="margin:0 0 8px;font-size:12px;color:#f5b87a;display:flex;justify-content:space-between;align-items:center">
+      <span>👥 ${_esc(household.name)} household ${headBadge}</span>
+      <button onclick="openHouseholdEditDialog('${_esc(household.slug)}')" style="background:transparent;border:none;color:#8a93a3;cursor:pointer;font-size:14px">⚙</button>
+    </h4>
+    ${errorBadge}
+    ${memberCards}
+    <button class="detail-enrich-btn" style="border-color:#f5b87a;color:#f5b87a;width:100%;margin-top:6px;font-size:11px"
+            onclick="openHouseholdDialogForAddMember('${_esc(household.slug)}')">+ Add member</button>
+  </div>`;
+}
+
+// ── Household dialog state ─────────────────────────────────────────────────────
+let _hhMode = 'create';            // 'create' | 'add-member' | 'edit'
+let _hhSlug = null;
+let _hhChosen = [];                // [{id, name, email, is_head}]
+let _hhSearchTimer = null;
+
+async function openHouseholdDialogForPerson(personId) {
+  _hhMode = 'create';
+  _hhSlug = null;
+  _hhChosen = [];
+  document.getElementById('hh-dialog-title').textContent = '👥 Create household';
+  document.getElementById('hh-name').value = '';
+  document.getElementById('hh-search').value = '';
+  document.getElementById('hh-search-results').innerHTML = '';
+  document.getElementById('hh-errors').textContent = '';
+  // Fetch the person, preselect as head
+  const r = await fetch(`${BASE}/api/people/${personId}`, { headers:{'X-Console-Key':consoleKey} });
+  const p = await r.json();
+  _hhChosen = [{ id: p.id,
+                 name: p.name || `${p.first_name||''} ${p.last_name||''}`.trim() || p.email,
+                 email: p.email, is_head: true }];
+  document.getElementById('hh-name').value = p.last_name || '';
+  _renderHHChosen();
+  document.getElementById('household-dialog').showModal();
+  setTimeout(() => document.getElementById('hh-search').focus(), 50);
+}
+
+function _renderHHChosen() {
+  const html = _hhChosen.map(c => `
+    <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;margin:2px;background:#2a1f10;border-radius:12px;font-size:11px;color:#f5b87a;cursor:pointer"
+          onclick="_hhToggleHead(${c.id})">
+      ${_esc(c.name)}
+      ${c.is_head ? '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:#f5b87a;color:#0a0c12;font-weight:700;margin-left:4px">HEAD</span>' : ''}
+      <span onclick="event.stopPropagation();_hhRemove(${c.id})" style="margin-left:6px;cursor:pointer;color:#8a93a3">✕</span>
+    </span>`).join('');
+  document.getElementById('hh-members-chosen').innerHTML = html || '<span style="color:#8a93a3;font-size:11px">no members yet</span>';
+}
+
+function _hhToggleHead(id) {
+  _hhChosen = _hhChosen.map(c => ({...c, is_head: c.id === id}));
+  _renderHHChosen();
+}
+
+function _hhRemove(id) {
+  const c = _hhChosen.find(x => x.id === id);
+  if (c?.is_head && _hhChosen.length > 1) {
+    document.getElementById('hh-errors').textContent = 'Pick another head before removing the current head.';
+    return;
+  }
+  _hhChosen = _hhChosen.filter(x => x.id !== id);
+  _renderHHChosen();
+}
+
+function hhSearch() {
+  clearTimeout(_hhSearchTimer);
+  _hhSearchTimer = setTimeout(async () => {
+    const q = document.getElementById('hh-search').value.trim();
+    if (q.length < 2) {
+      document.getElementById('hh-search-results').innerHTML = '';
+      return;
+    }
+    const r = await fetch(`${BASE}/api/people?q=${encodeURIComponent(q)}&limit=10`,
+                          { headers:{'X-Console-Key':consoleKey} });
+    const data = await r.json();
+    const chosenIds = new Set(_hhChosen.map(c => c.id));
+    const html = (data.people || [])
+      .filter(p => !chosenIds.has(p.id))
+      .map(p => {
+        const name = p.name || `${p.first_name||''} ${p.last_name||''}`.trim() || p.email;
+        return `<div onclick="_hhAdd(${p.id},'${_esc(name).replace(/'/g,"\\'")}','${_esc(p.email)}')"
+                     style="padding:6px 10px;border-bottom:1px solid #1c2433;cursor:pointer">
+          <div style="font-size:12px">${_esc(name)}</div>
+          <div style="font-size:10px;color:#8a93a3">${_esc(p.email)}</div>
+        </div>`;
+      }).join('');
+    document.getElementById('hh-search-results').innerHTML = html || '<div style="padding:8px;color:#8a93a3;font-size:11px">no matches</div>';
+  }, 250);
+}
+
+function _hhAdd(id, name, email) {
+  if (_hhChosen.find(c => c.id === id)) return;
+  _hhChosen.push({ id, name, email, is_head: false });
+  document.getElementById('hh-search').value = '';
+  document.getElementById('hh-search-results').innerHTML = '';
+  _renderHHChosen();
+}
+
+async function submitHousehold() {
+  document.getElementById('hh-errors').textContent = '';
+
+  if (_hhMode === 'add-member') {
+    if (_hhChosen.length === 0) { document.getElementById('hh-errors').textContent = 'Pick a person to add.'; return; }
+    const member = _hhChosen[0];
+    document.getElementById('hh-submit').disabled = true;
+    try {
+      const r = await fetch(`${BASE}/api/households/${encodeURIComponent(_hhSlug)}/members`, {
+        method:'POST', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+        body: JSON.stringify({ person_id: member.id })
+      });
+      const data = await r.json();
+      if (r.status === 409) {
+        const h = data.current_household || {};
+        if (confirm(`${member.name} is in "${h.name}" household. Move them to ${_hhSlug}?`)) {
+          // Remove from old, add to new
+          await fetch(`${BASE}/api/households/${encodeURIComponent(h.slug)}/members/${member.id}`,
+                      { method:'DELETE', headers:{'X-Console-Key':consoleKey} });
+          await fetch(`${BASE}/api/households/${encodeURIComponent(_hhSlug)}/members`, {
+            method:'POST', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+            body: JSON.stringify({ person_id: member.id })
+          });
+        } else { return; }
+      } else if (!r.ok) { document.getElementById('hh-errors').textContent = data.error || 'Failed.'; return; }
+      // Capture ghl errors for the warning UI
+      if (data.ghl_errors && data.ghl_errors.length > 0) {
+        _hhRecentErrors.set(_hhSlug, data.ghl_errors);
+      } else {
+        _hhRecentErrors.delete(_hhSlug);
+      }
+      document.getElementById('household-dialog').close();
+      if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
+    } finally { document.getElementById('hh-submit').disabled = false; }
+    return;
+  }
+
+  if (_hhMode === 'edit') {
+    const name = document.getElementById('hh-name').value.trim();
+    const head = _hhChosen.find(c => c.is_head);
+    if (!name || !head) { document.getElementById('hh-errors').textContent = 'Name + head required.'; return; }
+    document.getElementById('hh-submit').disabled = true;
+    try {
+      // PATCH name + head
+      const editR = await fetch(`${BASE}/api/households/${encodeURIComponent(_hhSlug)}`, {
+        method:'PATCH', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+        body: JSON.stringify({ name, head_person_id: head.id })
+      });
+      const editData = await editR.json();
+      // Removed members: compare to original state would require caching;
+      // for v1, edit dialog supports rename + head change only. Member add/remove
+      // is via the +Add/✕ buttons on the chips and triggers separate API calls.
+      // Capture ghl errors for the warning UI
+      if (editData.ghl_errors && editData.ghl_errors.length > 0) {
+        _hhRecentErrors.set(_hhSlug, editData.ghl_errors);
+      } else {
+        _hhRecentErrors.delete(_hhSlug);
+      }
+      document.getElementById('household-dialog').close();
+      if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
+    } finally { document.getElementById('hh-submit').disabled = false; }
+    return;
+  }
+
+  // _hhMode === 'create' (original behavior)
+  const name = document.getElementById('hh-name').value.trim();
+  if (!name) { document.getElementById('hh-errors').textContent = 'Name required.'; return; }
+  if (_hhChosen.length < 2) { document.getElementById('hh-errors').textContent = 'Need at least 2 members.'; return; }
+  const head = _hhChosen.find(c => c.is_head);
+  if (!head) { document.getElementById('hh-errors').textContent = 'Pick a head (click a chip).'; return; }
+  document.getElementById('hh-submit').disabled = true;
+  try {
+    const r = await fetch(`${BASE}/api/households`, {
+      method:'POST', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+      body: JSON.stringify({ name, head_person_id: head.id, member_person_ids: _hhChosen.map(c => c.id) })
+    });
+    const data = await r.json();
+    if (r.status === 409) {
+      const h = data.current_household || {};
+      const pname = (_hhChosen.find(c => c.id === data.person_id) || {}).name || 'this person';
+      if (confirm(`${pname} is already in "${h.name}". Move them?`)) {
+        await fetch(`${BASE}/api/households/${encodeURIComponent(h.slug)}/members/${data.person_id}`,
+                    { method:'DELETE', headers:{'X-Console-Key':consoleKey} });
+        // Retry the create
+        return submitHousehold();
+      }
+      return;
+    }
+    if (!r.ok) { document.getElementById('hh-errors').textContent = data.error || 'Failed.'; return; }
+    // Capture ghl errors for the warning UI
+    if (data.household) {
+      if (data.ghl_errors && data.ghl_errors.length > 0) {
+        _hhRecentErrors.set(data.household.slug, data.ghl_errors);
+      } else {
+        _hhRecentErrors.delete(data.household.slug);
+      }
+    }
+    document.getElementById('household-dialog').close();
+    if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
+  } finally { document.getElementById('hh-submit').disabled = false; }
+}
+
+async function hhResyncGhl(slug) {
+  const r = await fetch(`${BASE}/api/households/${encodeURIComponent(slug)}/resync-ghl`,
+                        { method:'POST', headers:{'X-Console-Key':consoleKey} });
+  const data = await r.json();
+  if (data.ghl_errors && data.ghl_errors.length > 0) {
+    _hhRecentErrors.set(slug, data.ghl_errors);
+    alert(`Still ${data.ghl_errors.length} member(s) failing. Check Render logs.`);
+  } else {
+    _hhRecentErrors.delete(slug);
+    alert('Re-sync succeeded.');
+  }
+  if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
+}
+
+async function openHouseholdDialogForAddMember(slug) {
+  _hhMode = 'add-member';
+  _hhSlug = slug;
+  _hhChosen = [];
+  document.getElementById('hh-dialog-title').textContent = `👥 Add member to ${slug}`;
+  document.getElementById('hh-name').value = '';
+  document.getElementById('hh-name').disabled = true;   // can't rename in this mode
+  document.getElementById('hh-members-section').style.display = 'none';
+  document.getElementById('hh-search').value = '';
+  document.getElementById('hh-search-results').innerHTML = '';
+  document.getElementById('hh-errors').textContent = '';
+  // Override submit behavior
+  document.getElementById('hh-submit').textContent = 'Add member';
+  document.getElementById('household-dialog').showModal();
+}
+
+async function openHouseholdEditDialog(slug) {
+  _hhMode = 'edit';
+  _hhSlug = slug;
+  const r = await fetch(`${BASE}/api/households/${encodeURIComponent(slug)}`,
+                        { headers:{'X-Console-Key':consoleKey} });
+  const h = await r.json();
+  document.getElementById('hh-dialog-title').textContent = `✏ Edit ${h.name} household`;
+  document.getElementById('hh-name').value = h.name;
+  document.getElementById('hh-name').disabled = false;
+  document.getElementById('hh-members-section').style.display = '';
+  _hhChosen = (h.members || []).map(m => ({
+    id: m.id, name: m.name, email: m.email, is_head: m.is_head
+  }));
+  _renderHHChosen();
+  document.getElementById('hh-search').value = '';
+  document.getElementById('hh-search-results').innerHTML = '';
+  document.getElementById('hh-errors').textContent = '';
+  document.getElementById('hh-submit').textContent = 'Save changes';
+
+  // Add a disband button below cancel/save
+  let disband = document.getElementById('hh-disband-btn');
+  if (!disband) {
+    disband = document.createElement('button');
+    disband.id = 'hh-disband-btn';
+    disband.style.cssText = 'margin-right:auto;padding:9px 16px;background:transparent;border:1px solid #f57a7a;border-radius:6px;color:#f57a7a;font-size:13px;cursor:pointer';
+    disband.textContent = 'Disband household';
+    document.querySelector('#household-dialog .newtask-footer').prepend(disband);
+  }
+  disband.onclick = async () => {
+    if (!confirm(`Disband ${h.name} household? Members will remain as individuals; all household tags will be removed (DB + GHL).`)) return;
+    const r = await fetch(`${BASE}/api/households/${encodeURIComponent(slug)}`,
+                          { method:'DELETE', headers:{'X-Console-Key':consoleKey} });
+    if (r.ok) {
+      document.getElementById('household-dialog').close();
+      if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
+    } else {
+      document.getElementById('hh-errors').textContent = 'Disband failed.';
+    }
+  };
+  document.getElementById('household-dialog').showModal();
 }
 
 function showDetailPane(name, btn) {
@@ -1909,6 +2376,29 @@ initKey();
   <div class="newtask-footer">
     <button class="btn-newtask-cancel" onclick="document.getElementById('add-person-dialog').close()">Cancel</button>
     <button class="btn-newtask-save" onclick="submitAddPerson()">Add Person</button>
+  </div>
+</dialog>
+
+<dialog id="household-dialog">
+  <div class="newtask-header" style="border-color:#f5b87a">
+    <h3 id="hh-dialog-title">👥 Create household</h3>
+  </div>
+  <div class="newtask-body">
+    <div><label for="hh-name">Household name</label>
+      <input type="text" id="hh-name" placeholder="auto: last name of head" autocomplete="off"></div>
+    <div id="hh-members-section">
+      <label>Members</label>
+      <div id="hh-members-chosen" style="background:#0a0c12;border:1px solid #1c2433;border-radius:4px;padding:6px;min-height:32px"></div>
+    </div>
+    <div><label for="hh-search">Add member by name or email</label>
+      <input type="text" id="hh-search" oninput="hhSearch()" placeholder="start typing..." autocomplete="off">
+      <div id="hh-search-results" style="background:#0a0c12;border:1px solid #1c2433;border-radius:4px;margin-top:4px;max-height:200px;overflow-y:auto"></div>
+    </div>
+    <div id="hh-errors" style="color:#f57a7a;font-size:12px;margin-top:8px"></div>
+  </div>
+  <div class="newtask-footer">
+    <button class="btn-newtask-cancel" onclick="document.getElementById('household-dialog').close()">Cancel</button>
+    <button class="btn-newtask-save" style="background:#f5b87a;color:#0a0c12" id="hh-submit" onclick="submitHousehold()">Create household</button>
   </div>
 </dialog>
 
