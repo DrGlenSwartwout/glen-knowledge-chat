@@ -1413,42 +1413,143 @@ function _hhAdd(id, name, email) {
 }
 
 async function submitHousehold() {
+  document.getElementById('hh-errors').textContent = '';
+
+  if (_hhMode === 'add-member') {
+    if (_hhChosen.length === 0) { document.getElementById('hh-errors').textContent = 'Pick a person to add.'; return; }
+    const member = _hhChosen[0];
+    document.getElementById('hh-submit').disabled = true;
+    try {
+      const r = await fetch(`${BASE}/api/households/${encodeURIComponent(_hhSlug)}/members`, {
+        method:'POST', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+        body: JSON.stringify({ person_id: member.id })
+      });
+      const data = await r.json();
+      if (r.status === 409) {
+        const h = data.current_household || {};
+        if (confirm(`${member.name} is in "${h.name}" household. Move them to ${_hhSlug}?`)) {
+          // Remove from old, add to new
+          await fetch(`${BASE}/api/households/${encodeURIComponent(h.slug)}/members/${member.id}`,
+                      { method:'DELETE', headers:{'X-Console-Key':consoleKey} });
+          await fetch(`${BASE}/api/households/${encodeURIComponent(_hhSlug)}/members`, {
+            method:'POST', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+            body: JSON.stringify({ person_id: member.id })
+          });
+        } else { return; }
+      } else if (!r.ok) { document.getElementById('hh-errors').textContent = data.error || 'Failed.'; return; }
+      document.getElementById('household-dialog').close();
+      if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
+    } finally { document.getElementById('hh-submit').disabled = false; }
+    return;
+  }
+
+  if (_hhMode === 'edit') {
+    const name = document.getElementById('hh-name').value.trim();
+    const head = _hhChosen.find(c => c.is_head);
+    if (!name || !head) { document.getElementById('hh-errors').textContent = 'Name + head required.'; return; }
+    document.getElementById('hh-submit').disabled = true;
+    try {
+      // PATCH name + head
+      await fetch(`${BASE}/api/households/${encodeURIComponent(_hhSlug)}`, {
+        method:'PATCH', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+        body: JSON.stringify({ name, head_person_id: head.id })
+      });
+      // Removed members: compare to original state would require caching;
+      // for v1, edit dialog supports rename + head change only. Member add/remove
+      // is via the +Add/✕ buttons on the chips and triggers separate API calls.
+      document.getElementById('household-dialog').close();
+      if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
+    } finally { document.getElementById('hh-submit').disabled = false; }
+    return;
+  }
+
+  // _hhMode === 'create' (original behavior)
   const name = document.getElementById('hh-name').value.trim();
   if (!name) { document.getElementById('hh-errors').textContent = 'Name required.'; return; }
   if (_hhChosen.length < 2) { document.getElementById('hh-errors').textContent = 'Need at least 2 members.'; return; }
   const head = _hhChosen.find(c => c.is_head);
   if (!head) { document.getElementById('hh-errors').textContent = 'Pick a head (click a chip).'; return; }
   document.getElementById('hh-submit').disabled = true;
-  document.getElementById('hh-errors').textContent = '';
   try {
     const r = await fetch(`${BASE}/api/households`, {
       method:'POST', headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
-      body: JSON.stringify({
-        name,
-        head_person_id: head.id,
-        member_person_ids: _hhChosen.map(c => c.id),
-      })
+      body: JSON.stringify({ name, head_person_id: head.id, member_person_ids: _hhChosen.map(c => c.id) })
     });
     const data = await r.json();
     if (r.status === 409) {
       const h = data.current_household || {};
-      if (confirm(`${data.error}. They're currently in "${h.name}". Move them?`)) {
-        // TODO Task 13: implement move flow (will be wired in Task 13)
-        document.getElementById('hh-errors').textContent = 'Move flow not yet implemented.';
+      const pname = (_hhChosen.find(c => c.id === data.person_id) || {}).name || 'this person';
+      if (confirm(`${pname} is already in "${h.name}". Move them?`)) {
+        await fetch(`${BASE}/api/households/${encodeURIComponent(h.slug)}/members/${data.person_id}`,
+                    { method:'DELETE', headers:{'X-Console-Key':consoleKey} });
+        // Retry the create
+        return submitHousehold();
       }
       return;
     }
     if (!r.ok) { document.getElementById('hh-errors').textContent = data.error || 'Failed.'; return; }
     document.getElementById('household-dialog').close();
     if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
-  } finally {
-    document.getElementById('hh-submit').disabled = false;
-  }
+  } finally { document.getElementById('hh-submit').disabled = false; }
 }
 
-// Stubs — fully implemented in Task 13
-function openHouseholdEditDialog(slug)            { alert('TODO Task 13: Edit household ' + slug); }
-function openHouseholdDialogForAddMember(slug)    { alert('TODO Task 13: Add member to ' + slug); }
+async function openHouseholdDialogForAddMember(slug) {
+  _hhMode = 'add-member';
+  _hhSlug = slug;
+  _hhChosen = [];
+  document.getElementById('hh-dialog-title').textContent = `👥 Add member to ${slug}`;
+  document.getElementById('hh-name').value = '';
+  document.getElementById('hh-name').disabled = true;   // can't rename in this mode
+  document.getElementById('hh-members-section').style.display = 'none';
+  document.getElementById('hh-search').value = '';
+  document.getElementById('hh-search-results').innerHTML = '';
+  document.getElementById('hh-errors').textContent = '';
+  // Override submit behavior
+  document.getElementById('hh-submit').textContent = 'Add member';
+  document.getElementById('household-dialog').showModal();
+}
+
+async function openHouseholdEditDialog(slug) {
+  _hhMode = 'edit';
+  _hhSlug = slug;
+  const r = await fetch(`${BASE}/api/households/${encodeURIComponent(slug)}`,
+                        { headers:{'X-Console-Key':consoleKey} });
+  const h = await r.json();
+  document.getElementById('hh-dialog-title').textContent = `✏ Edit ${h.name} household`;
+  document.getElementById('hh-name').value = h.name;
+  document.getElementById('hh-name').disabled = false;
+  document.getElementById('hh-members-section').style.display = '';
+  _hhChosen = (h.members || []).map(m => ({
+    id: m.id, name: m.name, email: m.email, is_head: m.is_head
+  }));
+  _renderHHChosen();
+  document.getElementById('hh-search').value = '';
+  document.getElementById('hh-search-results').innerHTML = '';
+  document.getElementById('hh-errors').textContent = '';
+  document.getElementById('hh-submit').textContent = 'Save changes';
+
+  // Add a disband button below cancel/save
+  let disband = document.getElementById('hh-disband-btn');
+  if (!disband) {
+    disband = document.createElement('button');
+    disband.id = 'hh-disband-btn';
+    disband.style.cssText = 'margin-right:auto;padding:9px 16px;background:transparent;border:1px solid #f57a7a;border-radius:6px;color:#f57a7a;font-size:13px;cursor:pointer';
+    disband.textContent = 'Disband household';
+    document.querySelector('#household-dialog .newtask-footer').prepend(disband);
+  }
+  disband.onclick = async () => {
+    if (!confirm(`Disband ${h.name} household? Members will remain as individuals; all household tags will be removed (DB + GHL).`)) return;
+    const r = await fetch(`${BASE}/api/households/${encodeURIComponent(slug)}`,
+                          { method:'DELETE', headers:{'X-Console-Key':consoleKey} });
+    if (r.ok) {
+      document.getElementById('household-dialog').close();
+      if (_selectedPersonId) loadPersonDetail(_selectedPersonId);
+    } else {
+      document.getElementById('hh-errors').textContent = 'Disband failed.';
+    }
+  };
+  document.getElementById('household-dialog').showModal();
+}
 
 function showDetailPane(name, btn) {
   document.querySelectorAll('.detail-pane').forEach(p => p.classList.remove('active'));
