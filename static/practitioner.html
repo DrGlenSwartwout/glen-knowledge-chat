@@ -280,15 +280,18 @@
     padding:0;
     box-shadow:var(--shadow-card);
     overflow:hidden;
-    display:flex; flex-direction:column;
+    display:flex; flex-direction:row;
+    align-items:stretch;
   }
   .tool-img{
-    aspect-ratio:1.6/1;
+    flex:0 0 150px;
+    align-self:stretch;
     background:#F7F2E8;
-    background-size:cover; background-position:center;
-    border-bottom:1px solid var(--rule-soft);
+    background-size:contain; background-position:center; background-repeat:no-repeat;
+    border-right:1px solid var(--rule-soft);
+    min-height:170px;
   }
-  .tool-body{padding:22px 24px 24px; display:flex; flex-direction:column; flex:1}
+  .tool-body{padding:20px 22px 20px; display:flex; flex-direction:column; flex:1; min-width:0}
   .tool-name{
     font-family:'Cormorant Garamond', serif;
     font-weight:500;
@@ -556,6 +559,11 @@
     header.cover{padding-top:40px}
     .btn{width:100%}
     .hero-cta{flex-direction:column; align-items:stretch}
+    .tool-img{flex:0 0 130px; min-height:150px}
+  }
+  @media (max-width:520px){
+    .tool-card{flex-direction:column}
+    .tool-img{flex:0 0 140px; height:140px; width:100%; border-right:0; border-bottom:1px solid var(--rule-soft)}
   }
 </style>
 </head>
@@ -680,8 +688,8 @@
       <div class="tool-img" style="background-image:url('/static/img/tools/nightlight-biocompatible.jpg')"></div>
       <div class="tool-body">
         <h3 class="tool-name">Biocompatible Nightlight</h3>
-        <p class="tool-spec">Sleep-supportive spectrum · low blue load</p>
-        <p class="tool-desc">An accessible entry-point bedside light tuned to protect circadian rhythm and pineal function — small cost, broad impact on sleep architecture.</p>
+        <p class="tool-spec">Red-filtered LED · auto-on · pineal-sparing</p>
+        <p class="tool-desc">White LED filtered through a red lens — lets your patient navigate the bathroom or hallway at night without shutting off pineal melatonin production. Auto-on in low light, less than $1 a year of electricity, plug-and-leave. The entry-point recommendation for any patient working on sleep architecture or circadian repair.</p>
         <div class="tool-pricing">
           <div class="srp">SRP <s>$49.97</s></div>
           <div class="wholesale">$24.99</div>
@@ -694,8 +702,8 @@
       <div class="tool-img" style="background-image:url('/static/img/tools/nightlight-therapeutic.jpg')"></div>
       <div class="tool-body">
         <h3 class="tool-name">Therapeutic Nightlight</h3>
-        <p class="tool-spec">Full-spectrum biofield light therapy</p>
-        <p class="tool-desc">A step up from the biocompatible model — therapeutic-grade light tuning for clinical settings and discerning home use.</p>
+        <p class="tool-spec">Soft-laser nightlight · face + eye rejuvenation</p>
+        <p class="tool-desc">A step up from the Biocompatible model — soft-laser nightlight that rejuvenates the face and eyes while the patient sleeps. Auto-on in low light, red-only spectrum that preserves pineal function. Designed by Dr. Glen drawing on Prof. Russel Reiter's pineal-and-melatonin research. Plug it in once; it works every night, passively.</p>
         <div class="tool-pricing">
           <div class="srp">SRP <s>$199.97</s></div>
           <div class="wholesale">$99.99</div>
@@ -708,8 +716,8 @@
       <div class="tool-img" style="background-image:url('/static/img/tools/harmony-soft-laser.jpg')"></div>
       <div class="tool-body">
         <h3 class="tool-name">Harmony Soft Laser</h3>
-        <p class="tool-spec">Red · Infrared · 172 Hz frequency modulation</p>
-        <p class="tool-desc">Soft laser therapy with red, infrared, and 172 Hz frequency capability — Dr. Glen's primary handheld light/sound tool for clinical sessions.</p>
+        <p class="tool-spec">650 nm Red (60 mW) · 808 nm NIR (450 mW) · 172 Hz</p>
+        <p class="tool-desc">Hand-held, rechargeable soft laser. Red 650 nm (12 diodes, 60 mW total) plus NIR 808 nm (450 mW) — tuned to the Cytochrome C absorption frequency to activate mitochondrial respiration in the tissues you treat. Coherent light modulated at 172 Hz, the Dominant Harmonic Frequency of Nature, to attract ORMUS / spirit minerals for accelerated healing. Optional 5 Hz pulse for symptomatic pain relief.</p>
         <div class="tool-pricing">
           <div class="srp">SRP <s>$999.97</s></div>
           <div class="wholesale">$499.99</div>
@@ -722,8 +730,8 @@
       <div class="tool-img" style="background-image:url('/static/img/tools/brain-frequency-helmet.jpg')"></div>
       <div class="tool-body">
         <h3 class="tool-name">Brain Frequency Helmet</h3>
-        <p class="tool-spec">Red · transcranial IR · 172 Hz capable</p>
-        <p class="tool-desc">Transcranial red and infrared photobiomodulation with 172 Hz frequency capability. Premier neuro-supportive instrument for the most clinically committed practitioners.</p>
+        <p class="tool-spec">Transcranial NIR · selectable 11 / 43 / 172 Hz</p>
+        <p class="tool-desc">Transcranial near-infrared photobiomodulation. Activates Cytochrome C Oxidase in the electron transport chain — the source of 90% of cellular ATP. Selectable frequencies: 11 Hz for physical brain repair (Parkinson's), 43 Hz Gamma for memory (Alzheimer's), 172 Hz for higher-order consciousness work. Expands the structured-water layer around cells, flushing toxins into glymph drainage. 20-minute sessions, every other day.</p>
         <div class="tool-pricing">
           <div class="srp">SRP <s>$4,999.97</s></div>
           <div class="wholesale">$2,499.99</div>
