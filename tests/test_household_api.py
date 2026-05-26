@@ -457,3 +457,29 @@ def test_disband_removes_tags_and_household_row(monkeypatch, tmp_db):
             tags = set(json.loads(cx.execute("SELECT tags FROM people WHERE id=?", (pid,)).fetchone()[0]))
             assert "household:smith" not in tags
             assert "household-head:smith" not in tags
+
+
+def test_resync_ghl_pushes_household_tags_to_all_members(monkeypatch, tmp_db):
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", tmp_db)
+    _seed_people_schema(tmp_db); _seed_household_tables(tmp_db)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    monkeypatch.setattr(app, "GHL_API_KEY", "")
+    p1 = _seed_person(tmp_db, "a@x.com", first="A", last="Smith")
+    p2 = _seed_person(tmp_db, "b@x.com", first="B", last="Smith")
+    client = app.app.test_client()
+    _create_test_household(client, "Smith", p1, [p1, p2])
+
+    calls = []
+    def fake_update(email, add=None, remove=None):
+        calls.append({"email": email, "add": sorted(add or []), "remove": sorted(remove or [])})
+        return "C", None
+    monkeypatch.setattr(app, "ghl_update_tags", fake_update)
+
+    r = client.post("/api/households/smith/resync-ghl", headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    emails = {c["email"] for c in calls}
+    assert emails == {"a@x.com", "b@x.com"}
+    head_call = next(c for c in calls if c["email"] == "a@x.com")
+    assert "household-head:smith" in head_call["add"]
+    assert "household:smith" in head_call["add"]

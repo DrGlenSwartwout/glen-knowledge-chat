@@ -5044,6 +5044,63 @@ def disband_household(slug):
     return jsonify({"ok": True, "ghl_errors": ghl_errors})
 
 
+def _resync_household_to_ghl(slug):
+    """Re-push the household tags for every member to GHL. Returns ghl_errors list."""
+    ghl_errors = []
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        h_row = cx.execute("SELECT head_person_id FROM households WHERE slug=?", (slug,)).fetchone()
+        if not h_row:
+            return [{"error": "household not found"}]
+        head_id = h_row["head_person_id"]
+        members = cx.execute("""
+            SELECT id, email FROM people WHERE tags LIKE ?
+        """, (f'%"household:{slug}"%',)).fetchall()
+    for m in members:
+        if not m["email"]: continue
+        is_head = (m["id"] == head_id)
+        ok, err = _push_household_tags_to_ghl(m["email"], slug, is_head, action="add")
+        if not ok: ghl_errors.append({"email": m["email"], "error": str(err)})
+        _time.sleep(0.15)
+    return ghl_errors
+
+
+@app.route("/api/households/<slug>/resync-ghl", methods=["POST"])
+def resync_household_ghl(slug):
+    auth_err = _check_console_auth()
+    if auth_err: return auth_err
+    errors = _resync_household_to_ghl(slug)
+    return jsonify({"ok": True, "ghl_errors": errors})
+
+
+def resync_all_households_to_ghl():
+    """Iterate every household and push its tags to GHL. Used by daily cron
+    for drift recovery. Returns {households_synced, ghl_errors_total}."""
+    with sqlite3.connect(LOG_DB) as cx:
+        slugs = [r[0] for r in cx.execute("SELECT slug FROM households").fetchall()]
+    total_errors = 0
+    for slug in slugs:
+        errors = _resync_household_to_ghl(slug)
+        total_errors += len(errors)
+    return {"households_synced": len(slugs), "ghl_errors_total": total_errors}
+
+
+@app.route("/admin/resync-all-households", methods=["POST"])
+def admin_resync_all_households():
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        summary = resync_all_households_to_ghl()
+        return jsonify({"ok": True, "summary": summary})
+    except Exception as e:
+        app.logger.exception("resync-all-households failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
 # ── Console AI chat (context-aware) ───────────────────────────────────────────
 _OWNER_DESC = {
     "glen":   "Dr. Glen Swartwout, naturopathic optometrist, solopreneur — full access to all systems and data.",
