@@ -498,6 +498,12 @@
   <div class="people-layout">
     <!-- Left: search + list -->
     <div class="people-left">
+      <div id="people-multiselect-toolbar"
+           style="display:none;gap:8px;align-items:center;padding:8px 10px;background:#1a1410;border-radius:5px;margin-bottom:10px;border:1px solid #2a1f10">
+        <span id="pms-count" style="flex:1;font-size:12px;color:#f5b87a;font-weight:600">0 selected</span>
+        <button onclick="openHouseholdDialogForMultiSelect()" style="padding:6px 12px;background:#f5b87a;color:#0a0c12;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">Group as household</button>
+        <button onclick="pmsClear()" style="padding:6px 12px;background:transparent;color:#f5b87a;border:1px solid #4a3520;border-radius:5px;font-size:12px;cursor:pointer">Clear</button>
+      </div>
       <div class="people-search-bar">
         <input type="text" id="people-q" placeholder="Search by name or email…" oninput="peopleDebouncedSearch()" autocomplete="off">
         <button class="btn-add-person" onclick="openAddPersonDialog()">+ Person</button>
@@ -1064,6 +1070,70 @@ function switchSection(section, btn) {
 
 // ── People page ───────────────────────────────────────────────────────────────
 let _peopleOffset = 0, _peopleTotal = 0, _selectedPersonId = null;
+
+// ── Multi-select for household creation ────────────────────────────────────────
+const _pmsSelected = new Set();
+const _pmsCache = new Map();   // id -> {name, email}
+
+function pmsToggle(id) {
+  if (_pmsSelected.has(id)) _pmsSelected.delete(id);
+  else _pmsSelected.add(id);
+  pmsRender();
+  // Re-render only the affected card's check state (cheap full re-render fallback)
+  loadPeople();
+}
+
+function pmsClear() {
+  _pmsSelected.clear();
+  pmsRender();
+  loadPeople();
+}
+
+function pmsRender() {
+  const tb = document.getElementById('people-multiselect-toolbar');
+  if (_pmsSelected.size === 0) {
+    tb.style.display = 'none';
+  } else {
+    tb.style.display = 'flex';
+    document.getElementById('pms-count').textContent = `${_pmsSelected.size} selected`;
+  }
+}
+
+async function openHouseholdDialogForMultiSelect() {
+  if (_pmsSelected.size < 2) {
+    alert('Pick at least 2 people first.');
+    return;
+  }
+  _hhMode = 'create';
+  _hhSlug = null;
+  _hhChosen = [];
+  document.getElementById('hh-dialog-title').textContent = '👥 Create household';
+  document.getElementById('hh-name').value = '';
+  document.getElementById('hh-search').value = '';
+  document.getElementById('hh-search-results').innerHTML = '';
+  document.getElementById('hh-errors').textContent = '';
+
+  // Fetch all selected people in parallel
+  const ids = Array.from(_pmsSelected);
+  const people = await Promise.all(ids.map(id =>
+    fetch(`${BASE}/api/people/${id}`, { headers:{'X-Console-Key':consoleKey} }).then(r => r.json())
+  ));
+  _hhChosen = people.map((p, i) => ({
+    id: p.id,
+    name: p.name || `${p.first_name||''} ${p.last_name||''}`.trim() || p.email,
+    email: p.email,
+    is_head: i === 0,   // first one defaults to head
+  }));
+  // Pre-fill household name with the most common last name in the selection
+  const lastNames = people.map(p => p.last_name).filter(Boolean);
+  if (lastNames.length) {
+    document.getElementById('hh-name').value = lastNames.sort((a,b) =>
+      lastNames.filter(v => v===a).length - lastNames.filter(v => v===b).length
+    ).pop();
+  }
+  _renderHHChosen();
+  document.getElementById('household-dialog').showModal();
+}
 let _peopleTimer = null;
 function peopleDebouncedSearch() {
   clearTimeout(_peopleTimer);
@@ -1121,11 +1191,20 @@ function _personCard(p) {
   const tags = _parseTags(p.tags);
   const loc = [p.island||p.city, p.state].filter(Boolean).join(', ');
   const activity = p.last_contact_date ? p.last_contact_date.slice(0,10) : '';
+  const checked = _pmsSelected.has(p.id) ? 'background:#f5b87a;border-color:#f5b87a;color:#0a0c12' : '';
+  const checkmark = _pmsSelected.has(p.id) ? '✓' : '';
   div.innerHTML = `
-    <div class="person-card-name">${_esc(p.name || (p.first_name+' '+p.last_name).trim() || p.email)}</div>
-    <div class="person-card-email">${_esc(p.email)}${p.profession ? ' · '+_esc(p.profession) : ''}</div>
-    <div class="person-card-tags">${tags.map(_renderPtag).join('')}</div>
-    <div class="person-card-meta">${loc ? loc+' · ' : ''}${p.order_count>0?p.order_count+' order(s) · ':''}${activity}</div>`;
+    <div style="display:flex;align-items:flex-start;gap:8px">
+      <div onclick="event.stopPropagation();pmsToggle(${p.id})"
+           class="pms-check"
+           style="flex-shrink:0;width:16px;height:16px;border:1px solid #4a3520;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;background:#0a0c12;font-size:11px;font-weight:700;margin-top:1px;${checked}">${checkmark}</div>
+      <div style="flex:1;min-width:0">
+        <div class="person-card-name">${_esc(p.name || (p.first_name+' '+p.last_name).trim() || p.email)}</div>
+        <div class="person-card-email">${_esc(p.email)}${p.profession ? ' · '+_esc(p.profession) : ''}</div>
+        <div class="person-card-tags">${tags.map(_renderPtag).join('')}</div>
+        <div class="person-card-meta">${loc ? loc+' · ' : ''}${p.order_count>0?p.order_count+' order(s) · ':''}${activity}</div>
+      </div>
+    </div>`;
   return div;
 }
 function _parseTags(raw) {
