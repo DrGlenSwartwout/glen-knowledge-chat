@@ -12,3 +12,4 @@ venv/
 # Local SQLite databases (chat log, etc.) are runtime data, not source.
 *.db
 .pytest_cache/
+.superpowers/

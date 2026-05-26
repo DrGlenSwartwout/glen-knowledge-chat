@@ -1,0 +1,1056 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Practitioner Panel · Functional Formulations® · Remedy Match</title>
+<meta name="description" content="Join the Functional Formulations® Practitioner Panel. Wholesale pricing on 150+ formulations, healing tools at 50% off with ASH Certification, and patient referrals from our commercial advertising — by application.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBF8F3;
+    --panel:#FFFFFFee;
+    --panel-solid:#FFFFFF;
+    --ink:#1E2A2A;
+    --muted:#5F6B6B;
+    --soft:#E8DFD3;
+    --rule:#E2D9C9;
+    --rule-soft:#EFE7D9;
+    --accent:#2D7A6A;
+    --accent-deep:#1F5A4D;
+    --accent-soft:#E1EEEA;
+    --gold:#B08A3E;
+    --gold-soft:#F4ECD7;
+    --shadow:0 1px 2px rgba(30,42,42,.04), 0 12px 40px -16px rgba(30,42,42,.18);
+    --shadow-card:0 1px 2px rgba(30,42,42,.05), 0 18px 50px -22px rgba(30,42,42,.22);
+    --maxw:1180px;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  body{
+    font-family:'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-weight:400;
+    line-height:1.65;
+    font-size:17px;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, #EAF3F0 0%, transparent 60%),
+      radial-gradient(900px 500px at -5% 30%, #F3ECDE 0%, transparent 55%),
+      var(--bg);
+  }
+  a{color:var(--accent-deep); text-underline-offset:3px; text-decoration-thickness:.5px}
+  a:hover{color:var(--accent)}
+  img{max-width:100%; height:auto; display:block}
+
+  /* ---------- shared ---------- */
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 40px}
+  .eyebrow{
+    font-family:'Inter',sans-serif;
+    text-transform:uppercase;
+    letter-spacing:.22em;
+    font-size:11.5px;
+    color:var(--accent);
+    font-weight:500;
+    display:flex; align-items:center; gap:14px;
+  }
+  .eyebrow::after{
+    content:""; flex:1; height:1px; background:linear-gradient(to right, var(--rule), transparent);
+  }
+  h2.section-title{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500;
+    font-size:clamp(28px, 3.4vw, 42px);
+    line-height:1.1;
+    letter-spacing:-.005em;
+    margin:18px 0 12px;
+    color:var(--ink);
+  }
+  .section-sub{
+    font-family:'Cormorant Garamond', serif;
+    font-style:italic;
+    color:var(--muted);
+    font-size:clamp(17px, 1.8vw, 20px);
+    margin:0 0 32px;
+    max-width:60ch;
+  }
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    padding:14px 28px;
+    background:var(--accent-deep); color:#fff;
+    border:0; border-radius:999px;
+    font-family:'Inter',sans-serif; font-weight:500; font-size:15px;
+    letter-spacing:.02em;
+    text-decoration:none; cursor:pointer;
+    transition:background .18s ease, transform .18s ease;
+    box-shadow:0 6px 24px -10px rgba(31,90,77,.55);
+  }
+  .btn:hover{background:var(--accent); color:#fff; transform:translateY(-1px)}
+  .btn-secondary{
+    background:transparent; color:var(--accent-deep);
+    border:1px solid var(--accent-deep);
+    box-shadow:none;
+  }
+  .btn-secondary:hover{background:var(--accent-soft); color:var(--accent-deep)}
+
+  /* ---------- header / hero ---------- */
+  header.cover{
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:64px 40px 28px;
+  }
+  h1.title{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500;
+    font-size:clamp(40px, 5.6vw, 68px);
+    line-height:1.04;
+    letter-spacing:-.012em;
+    margin:18px 0 14px;
+    max-width:18ch;
+  }
+  .subtitle{
+    font-family:'Cormorant Garamond', serif;
+    font-style:italic;
+    color:var(--muted);
+    font-size:clamp(20px, 2.2vw, 25px);
+    margin:0 0 32px;
+    max-width:64ch;
+    line-height:1.35;
+  }
+  .hero-strip{
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:14px;
+    margin:28px 0 36px;
+    padding:22px 0;
+    border-top:1px solid var(--rule);
+    border-bottom:1px solid var(--rule);
+  }
+  .hero-pill{
+    display:flex; align-items:center; gap:14px;
+    font-size:14.5px; color:var(--ink); font-weight:500;
+  }
+  .hero-pill .dot{
+    width:10px; height:10px; border-radius:50%;
+    background:var(--accent);
+    box-shadow:0 0 0 4px var(--accent-soft);
+    flex:0 0 auto;
+  }
+  .hero-pill .tier-num{
+    font-family:'Cormorant Garamond', serif;
+    font-style:italic; color:var(--muted);
+    margin-right:4px; font-size:18px;
+  }
+  .hero-cta{display:flex; flex-wrap:wrap; gap:14px; align-items:center}
+
+  /* ---------- value ladder ---------- */
+  section.ladder{padding:48px 0 24px}
+  .ladder-grid{
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:20px;
+    margin-top:8px;
+  }
+  .tier-card{
+    position:relative;
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-radius:var(--radius);
+    padding:28px 26px 30px;
+    box-shadow:var(--shadow-card);
+    backdrop-filter: blur(6px);
+    display:flex; flex-direction:column;
+  }
+  .tier-card.locked-1{border-top:3px solid var(--accent)}
+  .tier-card.locked-2{border-top:3px solid var(--gold)}
+  .tier-card.locked-3{border-top:3px solid var(--accent-deep)}
+  .tier-badge{
+    display:inline-block;
+    font-size:11px; font-weight:600;
+    letter-spacing:.16em; text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:8px;
+  }
+  .tier-name{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500;
+    font-size:24px; line-height:1.15;
+    margin:0 0 6px; color:var(--ink);
+  }
+  .tier-gate{
+    font-size:13.5px; color:var(--muted);
+    margin:0 0 18px; font-style:italic;
+  }
+  .tier-list{list-style:none; padding:0; margin:0; flex:1}
+  .tier-list li{
+    position:relative;
+    padding:8px 0 8px 22px;
+    font-size:14.5px;
+    border-bottom:1px dashed var(--rule-soft);
+  }
+  .tier-list li:last-child{border-bottom:0}
+  .tier-list li::before{
+    content:"›";
+    position:absolute; left:0; top:7px;
+    color:var(--accent); font-weight:600; font-size:16px;
+  }
+
+  /* ---------- benefit sections ---------- */
+  section.benefit{padding:56px 0 32px}
+  .benefit-head{display:flex; align-items:baseline; flex-wrap:wrap; gap:14px; margin-bottom:8px}
+  .benefit-tag{
+    font-size:11px; font-weight:600; letter-spacing:.16em; text-transform:uppercase;
+    color:#fff; background:var(--accent); padding:5px 11px; border-radius:999px;
+  }
+  .benefit-tag.gold{background:var(--gold)}
+  .benefit-tag.deep{background:var(--accent-deep)}
+
+  /* pricing card */
+  .pricing-row{
+    display:grid;
+    grid-template-columns:1.1fr 1fr;
+    gap:24px;
+    align-items:stretch;
+  }
+  .price-card{
+    background:var(--panel-solid);
+    border:1px solid var(--rule);
+    border-radius:var(--radius);
+    padding:30px 30px 28px;
+    box-shadow:var(--shadow-card);
+  }
+  .price-card.feature{
+    background:linear-gradient(180deg, var(--accent-soft) 0%, var(--panel-solid) 60%);
+    border-color:var(--accent);
+  }
+  .price-card .label{
+    font-size:12px; font-weight:600; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 6px;
+  }
+  .price-card h3{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500;
+    font-size:26px; margin:0 0 6px; color:var(--ink);
+  }
+  .price-card .price-big{
+    font-family:'Cormorant Garamond', serif;
+    font-size:54px; font-weight:500;
+    color:var(--accent-deep);
+    line-height:1; letter-spacing:-.02em;
+    margin:14px 0 4px;
+  }
+  .price-card .price-unit{font-size:18px; color:var(--muted); font-style:italic}
+  .price-card .price-strike{
+    display:inline-block; margin-top:8px;
+    color:var(--muted); font-size:14px;
+  }
+  .price-card .price-strike s{color:#a4aeae}
+  .price-card .note{
+    margin-top:18px;
+    font-size:14px; color:var(--muted); line-height:1.55;
+  }
+  .tier-table{
+    width:100%; border-collapse:collapse; margin-top:8px;
+  }
+  .tier-table th,.tier-table td{
+    padding:11px 6px;
+    text-align:left;
+    border-bottom:1px solid var(--rule-soft);
+    font-size:14.5px;
+  }
+  .tier-table thead th{
+    font-size:11px; font-weight:600; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--muted); border-bottom:1px solid var(--rule);
+  }
+  .tier-table .qty{font-family:'Cormorant Garamond',serif; font-size:19px; color:var(--ink)}
+  .tier-table .ppb{font-weight:600; color:var(--accent-deep); font-size:16px}
+
+  /* tools grid */
+  .tools-grid{
+    display:grid;
+    grid-template-columns:repeat(2, 1fr);
+    gap:22px;
+    margin-top:8px;
+  }
+  .tool-card{
+    background:var(--panel-solid);
+    border:1px solid var(--rule);
+    border-radius:var(--radius);
+    padding:0;
+    box-shadow:var(--shadow-card);
+    overflow:hidden;
+    display:flex; flex-direction:column;
+  }
+  .tool-img{
+    aspect-ratio:1.6/1;
+    background:#F7F2E8;
+    background-size:cover; background-position:center;
+    border-bottom:1px solid var(--rule-soft);
+  }
+  .tool-body{padding:22px 24px 24px; display:flex; flex-direction:column; flex:1}
+  .tool-name{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500;
+    font-size:22px; margin:0 0 4px; color:var(--ink);
+  }
+  .tool-spec{
+    font-size:13px; color:var(--accent-deep);
+    letter-spacing:.04em; font-weight:500;
+    margin:0 0 12px;
+  }
+  .tool-desc{font-size:14.5px; color:var(--muted); line-height:1.55; margin:0 0 16px; flex:1}
+  .tool-pricing{
+    display:flex; align-items:baseline; gap:14px;
+    padding-top:14px; border-top:1px dashed var(--rule);
+  }
+  .tool-pricing .srp{font-size:13px; color:var(--muted)}
+  .tool-pricing .srp s{color:#a4aeae}
+  .tool-pricing .wholesale{
+    font-family:'Cormorant Garamond', serif;
+    font-size:26px; font-weight:500;
+    color:var(--accent-deep);
+  }
+  .tool-pricing .save{
+    font-size:12px; color:var(--gold); font-weight:600;
+    letter-spacing:.06em; text-transform:uppercase;
+  }
+  .tools-footer{
+    margin-top:22px;
+    padding:18px 22px;
+    background:var(--gold-soft);
+    border:1px solid #E8D9B3;
+    border-radius:var(--radius);
+    font-size:14.5px;
+    display:flex; flex-wrap:wrap; align-items:center; gap:14px;
+  }
+  .tools-footer strong{color:var(--ink)}
+
+  /* referrals block */
+  .referrals-card{
+    background:linear-gradient(180deg, #F4F0E5 0%, var(--panel-solid) 100%);
+    border:1px solid var(--rule);
+    border-radius:var(--radius);
+    padding:36px 36px;
+    box-shadow:var(--shadow-card);
+  }
+  .referrals-card .lead{
+    font-family:'Cormorant Garamond', serif;
+    font-size:24px; font-style:italic;
+    color:var(--ink); line-height:1.35;
+    margin:0 0 18px; max-width:60ch;
+  }
+  .referrals-points{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin:18px 0 8px;
+  }
+  .referrals-points div{
+    font-size:14.5px; color:var(--muted);
+    padding-left:14px; border-left:2px solid var(--accent);
+  }
+  .referrals-points strong{color:var(--ink); display:block; margin-bottom:4px}
+
+  /* authority block */
+  .authority{
+    background:var(--ink); color:#F4EFE5;
+    border-radius:var(--radius);
+    padding:48px 44px;
+    margin:24px 0 0;
+    box-shadow:var(--shadow-card);
+  }
+  .authority h2{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500; font-size:clamp(26px, 3vw, 36px);
+    margin:0 0 22px; color:#fff; line-height:1.15;
+  }
+  .authority-grid{
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:22px;
+  }
+  .authority-grid div .num{
+    font-family:'Cormorant Garamond', serif;
+    font-size:44px; font-weight:500; color:#E8D7A7;
+    line-height:1; margin-bottom:8px;
+  }
+  .authority-grid div .lbl{
+    font-size:13.5px; color:#C8C3B8; line-height:1.45;
+  }
+
+  /* logistics */
+  .logistics-grid{
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:22px; margin-top:8px;
+  }
+  .logistics-card{
+    background:var(--panel-solid);
+    border:1px solid var(--rule);
+    border-radius:var(--radius);
+    padding:26px 24px;
+  }
+  .logistics-card h3{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500; font-size:22px; margin:0 0 12px; color:var(--ink);
+  }
+  .logistics-card ul{list-style:none; padding:0; margin:0}
+  .logistics-card li{
+    padding:7px 0;
+    font-size:14.5px; color:var(--ink);
+    border-bottom:1px dashed var(--rule-soft);
+  }
+  .logistics-card li:last-child{border-bottom:0}
+  .logistics-card li .k{color:var(--muted); margin-right:8px}
+
+  /* application form */
+  section.apply{padding:64px 0 24px}
+  .apply-grid{
+    display:grid; grid-template-columns:1fr 1.4fr; gap:36px;
+    align-items:start;
+  }
+  .apply-intro h2{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500; font-size:clamp(28px, 3.4vw, 40px);
+    line-height:1.08; margin:8px 0 14px; color:var(--ink);
+  }
+  .apply-intro p{color:var(--muted); margin:0 0 14px}
+  .apply-form{
+    background:var(--panel-solid);
+    border:1px solid var(--rule);
+    border-radius:var(--radius);
+    padding:32px 32px 28px;
+    box-shadow:var(--shadow-card);
+  }
+  .apply-form .field{margin-bottom:14px}
+  .apply-form label{
+    display:block;
+    font-size:12.5px; font-weight:500;
+    letter-spacing:.06em; text-transform:uppercase;
+    color:var(--muted); margin-bottom:5px;
+  }
+  .apply-form label .req{color:var(--accent); margin-left:3px}
+  .apply-form input[type=text],
+  .apply-form input[type=email],
+  .apply-form input[type=tel],
+  .apply-form input[type=url],
+  .apply-form select,
+  .apply-form textarea{
+    width:100%;
+    padding:11px 14px;
+    font-family:'Inter',sans-serif;
+    font-size:15px;
+    background:#fff;
+    color:var(--ink);
+    border:1px solid var(--rule);
+    border-radius:8px;
+    transition:border-color .15s ease, box-shadow .15s ease;
+  }
+  .apply-form input:focus,
+  .apply-form select:focus,
+  .apply-form textarea:focus{
+    outline:none;
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  .apply-form textarea{min-height:90px; resize:vertical; line-height:1.5}
+  .apply-form .row2{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+  .apply-form .tools-checks{
+    display:grid; grid-template-columns:1fr 1fr; gap:8px 14px;
+    padding:8px 0 4px;
+  }
+  .apply-form .tools-checks label{
+    display:flex; align-items:center; gap:8px;
+    text-transform:none; letter-spacing:0;
+    font-size:14px; font-weight:400; color:var(--ink);
+    cursor:pointer; padding:6px 0;
+  }
+  .apply-form .tools-checks input{margin:0}
+  .apply-form .submit-row{
+    display:flex; align-items:center; gap:16px;
+    padding-top:12px;
+    border-top:1px solid var(--rule-soft);
+    margin-top:8px;
+  }
+  .apply-form .status-msg{font-size:13.5px; color:var(--muted)}
+  .apply-form .status-msg.error{color:#a4451f}
+  .apply-form-success{
+    padding:36px 32px;
+    text-align:center;
+  }
+  .apply-form-success h3{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500; font-size:28px; color:var(--accent-deep);
+    margin:0 0 10px;
+  }
+  .apply-form-success p{color:var(--muted); margin:0 0 6px}
+
+  /* cert CTA strip */
+  .cert-strip{
+    margin-top:36px;
+    padding:24px 28px;
+    background:var(--accent-deep); color:#F4EFE5;
+    border-radius:var(--radius);
+    display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:18px;
+  }
+  .cert-strip p{
+    margin:0;
+    font-family:'Cormorant Garamond', serif;
+    font-size:21px; font-style:italic; color:#fff;
+    max-width:62ch; line-height:1.35;
+  }
+  .cert-strip .btn{background:#fff; color:var(--accent-deep)}
+  .cert-strip .btn:hover{background:var(--gold-soft)}
+
+  /* FAQ */
+  section.faq{padding:56px 0 24px}
+  .faq-list details{
+    border-bottom:1px solid var(--rule);
+    padding:18px 0;
+  }
+  .faq-list details[open] summary{color:var(--accent-deep)}
+  .faq-list summary{
+    cursor:pointer;
+    list-style:none;
+    font-family:'Cormorant Garamond', serif;
+    font-size:21px; font-weight:500;
+    color:var(--ink);
+    display:flex; align-items:center; justify-content:space-between; gap:14px;
+  }
+  .faq-list summary::-webkit-details-marker{display:none}
+  .faq-list summary::after{
+    content:"+"; font-size:24px; color:var(--accent);
+    transition:transform .2s ease; font-weight:300;
+  }
+  .faq-list details[open] summary::after{transform:rotate(45deg)}
+  .faq-list .faq-body{
+    padding:12px 0 4px;
+    font-size:15.5px; color:var(--muted); line-height:1.65;
+    max-width:72ch;
+  }
+
+  /* footer */
+  footer.foot{
+    margin-top:64px;
+    padding:36px 40px 64px;
+    border-top:1px solid var(--rule);
+    color:var(--muted);
+    font-size:13.5px;
+    text-align:center;
+  }
+  footer.foot .syntropy{
+    font-family:'Cormorant Garamond', serif;
+    font-style:italic;
+    font-size:17px; color:var(--accent-deep);
+    margin-bottom:14px; display:block;
+  }
+
+  /* responsive */
+  @media (max-width:900px){
+    .ladder-grid, .tools-grid, .logistics-grid, .authority-grid,
+    .pricing-row, .apply-grid, .referrals-points, .hero-strip{
+      grid-template-columns:1fr; gap:14px;
+    }
+    .authority-grid{grid-template-columns:1fr 1fr}
+    .apply-form .row2{grid-template-columns:1fr}
+    .apply-form .tools-checks{grid-template-columns:1fr}
+    .authority{padding:32px 26px}
+    .referrals-card, .price-card, .logistics-card{padding:24px 22px}
+    .apply-form{padding:24px 22px}
+    .cert-strip{flex-direction:column; align-items:flex-start}
+    header.cover, .wrap{padding-left:22px; padding-right:22px}
+    header.cover{padding-top:40px}
+    .btn{width:100%}
+    .hero-cta{flex-direction:column; align-items:stretch}
+  }
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <div class="eyebrow">Functional Formulations® · Practitioner Panel</div>
+  <h1 class="title">Practice-grade pricing for clinicians who already know what works.</h1>
+  <p class="subtitle">Forty years of clinical iteration. One hundred and fifty individualized formulations. A protocol your most complex cases have been waiting for — now available wholesale, with healing tools and patient referrals as you go deeper.</p>
+
+  <div class="hero-strip">
+    <div class="hero-pill"><span class="dot"></span><span class="tier-num">i.</span>Formulations wholesale, by application</div>
+    <div class="hero-pill"><span class="dot"></span><span class="tier-num">ii.</span>Healing tools at 50% with certification</div>
+    <div class="hero-pill"><span class="dot"></span><span class="tier-num">iii.</span>Patient referrals as the panel grows</div>
+  </div>
+
+  <div class="hero-cta">
+    <a href="#apply" class="btn">Apply for Practitioner Access</a>
+    <a href="#ladder" class="btn btn-secondary">See what unlocks at each tier</a>
+  </div>
+</header>
+
+
+<section class="ladder wrap" id="ladder">
+  <div class="eyebrow">The value ladder</div>
+  <h2 class="section-title">Three tiers. Three commitments. Three sets of unlocks.</h2>
+  <p class="section-sub">Open access on the formulations. Tools and referrals open as your commitment to the work deepens — so the people we route patients to are the people actually trained to receive them.</p>
+
+  <div class="ladder-grid">
+
+    <div class="tier-card locked-1">
+      <span class="tier-badge">Tier I · Open</span>
+      <h3 class="tier-name">Approved Practitioner</h3>
+      <p class="tier-gate">Unlocks on application approval. No minimum order.</p>
+      <ul class="tier-list">
+        <li>Functional Formulations® wholesale at $40/bottle</li>
+        <li>Access to the full library of 150+ formulations</li>
+        <li>Clinical reference materials and dosing guidance</li>
+        <li>Direct fulfillment line to Rae</li>
+      </ul>
+    </div>
+
+    <div class="tier-card locked-2">
+      <span class="tier-badge">Tier II · Cert Initiated</span>
+      <h3 class="tier-name">Certification in Progress</h3>
+      <p class="tier-gate">Unlocks when ASH Certification training is initiated.</p>
+      <ul class="tier-list">
+        <li>Deeper mix-and-match tiers: $35 / $30 / $25</li>
+        <li><strong>Healing tools at 50% off retail</strong></li>
+        <li>Priority practitioner support</li>
+        <li>Training office hours with Dr. Glen</li>
+      </ul>
+    </div>
+
+    <div class="tier-card locked-3">
+      <span class="tier-badge">Tier III · Active Panel</span>
+      <h3 class="tier-name">Certified · On the Panel</h3>
+      <p class="tier-gate">Unlocks when certification is complete and practice is active.</p>
+      <ul class="tier-list">
+        <li>Geo-matched patient referrals from our advertising</li>
+        <li>Listing in the Practitioner Directory</li>
+        <li>Co-marketing as new products launch</li>
+        <li>First look at upcoming formulations and tools</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+
+<section class="benefit wrap">
+  <div class="benefit-head">
+    <span class="benefit-tag">Benefit One</span>
+    <span class="eyebrow" style="margin:0">Functional Formulations® wholesale</span>
+  </div>
+  <h2 class="section-title">The same individualized formulations dispensed in clinical practice — at practitioner pricing.</h2>
+  <p class="section-sub">A protocol Dr. Glen has iterated over forty years, roughly ten times the iteration cycle behind AREDS-class formulations — matched to each client through the individualized 5 Phases sequence rather than a fixed regimen.</p>
+
+  <div class="pricing-row">
+
+    <div class="price-card feature">
+      <p class="label">Tier I · open by application</p>
+      <h3>Wholesale</h3>
+      <div class="price-big">$40<span class="price-unit"> /bottle</span></div>
+      <div class="price-strike">vs. <s>$79.97 SRP</s> &nbsp;·&nbsp; <s>$69.97 online</s></div>
+      <p class="note">Save $30–$40 per bottle. No minimum order. Mix and match across all 150+ formulations. Fulfillment in 1–2 days, USPS 3–5 days nationwide.</p>
+    </div>
+
+    <div class="price-card">
+      <p class="label">Tier II · with ASH Certification</p>
+      <h3>Mix-and-match volume tiers</h3>
+      <table class="tier-table">
+        <thead><tr><th>Quantity</th><th>Per bottle</th><th>Saved /bottle</th></tr></thead>
+        <tbody>
+          <tr><td class="qty">12 bottles</td><td class="ppb">$35</td><td>$45 off SRP</td></tr>
+          <tr><td class="qty">24 bottles</td><td class="ppb">$30</td><td>$50 off SRP</td></tr>
+          <tr><td class="qty">48 bottles</td><td class="ppb">$25</td><td>$55 off SRP</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Active practitioners typically place a monthly order of 50–100+ bottles — mix-and-match across the full catalog.</p>
+    </div>
+
+  </div>
+</section>
+
+
+<section class="benefit wrap">
+  <div class="benefit-head">
+    <span class="benefit-tag gold">Benefit Two</span>
+    <span class="eyebrow" style="margin:0">Healing tools · 50% off · with certification</span>
+  </div>
+  <h2 class="section-title">The four practice tools — at half retail when you begin ASH Certification.</h2>
+  <p class="section-sub">Light, sound, and frequency instruments developed alongside the formulations. These are the same devices Dr. Glen reaches for in his own clinical work.</p>
+
+  <div class="tools-grid">
+
+    <div class="tool-card">
+      <div class="tool-img" style="background-image:url('/static/img/tools/nightlight-biocompatible.jpg')"></div>
+      <div class="tool-body">
+        <h3 class="tool-name">Biocompatible Nightlight</h3>
+        <p class="tool-spec">Sleep-supportive spectrum · low blue load</p>
+        <p class="tool-desc">An accessible entry-point bedside light tuned to protect circadian rhythm and pineal function — small cost, broad impact on sleep architecture.</p>
+        <div class="tool-pricing">
+          <div class="srp">SRP <s>$49.97</s></div>
+          <div class="wholesale">$24.99</div>
+          <div class="save">50% off</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-card">
+      <div class="tool-img" style="background-image:url('/static/img/tools/nightlight-therapeutic.jpg')"></div>
+      <div class="tool-body">
+        <h3 class="tool-name">Therapeutic Nightlight</h3>
+        <p class="tool-spec">Full-spectrum biofield light therapy</p>
+        <p class="tool-desc">A step up from the biocompatible model — therapeutic-grade light tuning for clinical settings and discerning home use.</p>
+        <div class="tool-pricing">
+          <div class="srp">SRP <s>$199.97</s></div>
+          <div class="wholesale">$99.99</div>
+          <div class="save">50% off</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-card">
+      <div class="tool-img" style="background-image:url('/static/img/tools/harmony-soft-laser.jpg')"></div>
+      <div class="tool-body">
+        <h3 class="tool-name">Harmony Soft Laser</h3>
+        <p class="tool-spec">Red · Infrared · 172 Hz frequency modulation</p>
+        <p class="tool-desc">Soft laser therapy with red, infrared, and 172 Hz frequency capability — Dr. Glen's primary handheld light/sound tool for clinical sessions.</p>
+        <div class="tool-pricing">
+          <div class="srp">SRP <s>$999.97</s></div>
+          <div class="wholesale">$499.99</div>
+          <div class="save">50% off</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-card">
+      <div class="tool-img" style="background-image:url('/static/img/tools/brain-frequency-helmet.jpg')"></div>
+      <div class="tool-body">
+        <h3 class="tool-name">Brain Frequency Helmet</h3>
+        <p class="tool-spec">Red · transcranial IR · 172 Hz capable</p>
+        <p class="tool-desc">Transcranial red and infrared photobiomodulation with 172 Hz frequency capability. Premier neuro-supportive instrument for the most clinically committed practitioners.</p>
+        <div class="tool-pricing">
+          <div class="srp">SRP <s>$4,999.97</s></div>
+          <div class="wholesale">$2,499.99</div>
+          <div class="save">50% off</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="tools-footer">
+    <strong>Full tool stack value:</strong>
+    <span>$6,249.88 SRP · <strong style="color:var(--accent-deep)">$3,124.96 wholesale</strong> · save ~$3,125 with certification</span>
+  </div>
+</section>
+
+
+<section class="benefit wrap">
+  <div class="benefit-head">
+    <span class="benefit-tag deep">Benefit Three</span>
+    <span class="eyebrow" style="margin:0">Patient referrals · active panel</span>
+  </div>
+  <h2 class="section-title">As our commercial advertising scales, we route patients to the practitioners who can actually help them.</h2>
+
+  <div class="referrals-card">
+    <p class="lead">When someone finds Functional Formulations® through our advertising and asks "who do I see in my area?" — we route them to active panel practitioners, by geography and modality.</p>
+    <div class="referrals-points">
+      <div><strong>Directory listing</strong>Your practice appears in the Practitioner Directory used by our customer service team and incoming leads.</div>
+      <div><strong>Geo-matched routing</strong>Warm leads from our ad spend, matched to the closest qualified practitioner in their state or region.</div>
+      <div><strong>Co-marketing</strong>First look at upcoming product launches and joint promotion opportunities as the panel grows.</div>
+    </div>
+    <p style="margin:22px 0 0; padding-top:18px; border-top:1px dashed var(--rule); font-size:14px; color:var(--muted); font-style:italic">
+      <strong style="font-style:normal; color:var(--accent-deep)">Coming soon:</strong>
+      an interactive <em>Practitioner Finder</em> — patients searching by zip code will see active panel practitioners on a map of their area.
+    </p>
+  </div>
+</section>
+
+
+<section class="wrap">
+  <div class="authority">
+    <h2>What you're actually dispensing.</h2>
+    <div class="authority-grid">
+      <div><div class="num">40+</div><div class="lbl">Years of clinical research and formulation iteration</div></div>
+      <div><div class="num">150+</div><div class="lbl">Functional Formulations® in the active catalog</div></div>
+      <div><div class="num">~10×</div><div class="lbl">The iteration cycle behind AREDS-class formulations</div></div>
+      <div><div class="num">5</div><div class="lbl">Individualized Phases — sequence matched to the client's progress healing biological terrain, not just symptoms and conditions</div></div>
+    </div>
+  </div>
+</section>
+
+
+<section class="benefit wrap">
+  <div class="eyebrow">Logistics</div>
+  <h2 class="section-title">Shipping, payment, and support — the practical details.</h2>
+
+  <div class="logistics-grid">
+
+    <div class="logistics-card">
+      <h3>Shipping</h3>
+      <ul>
+        <li><span class="k">Carrier:</span> USPS · US addresses</li>
+        <li><span class="k">Fulfillment:</span> 1–2 business days</li>
+        <li><span class="k">Delivery:</span> 3–5 days nationwide</li>
+        <li><span class="k">International:</span> Forwarding services recommended on application reply</li>
+      </ul>
+    </div>
+
+    <div class="logistics-card">
+      <h3>Payment</h3>
+      <ul>
+        <li><span class="k">Zelle:</span> Free (no processing fee)</li>
+        <li><span class="k">Card:</span> 3.5% processing</li>
+        <li><span class="k">International:</span> Wise recommended</li>
+        <li><span class="k">Terms:</span> Net on each order</li>
+      </ul>
+    </div>
+
+    <div class="logistics-card">
+      <h3>Support</h3>
+      <ul>
+        <li><span class="k">Fulfillment:</span> Rae directly</li>
+        <li><span class="k">Clinical:</span> Reference materials + office hours (Tier II+)</li>
+        <li><span class="k">Response:</span> 1–2 business days</li>
+        <li><span class="k">Approval:</span> Application reviewed in 1–2 days</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+
+<section class="apply wrap" id="apply">
+  <div class="apply-grid">
+
+    <div class="apply-intro">
+      <div class="eyebrow">Apply</div>
+      <h2>A short application. A real conversation.</h2>
+      <p>Rae reviews each application personally. Most approvals come back within one to two business days, with a welcome note covering ordering, shipping, and — if you're interested — the next ASH Certification training cohort.</p>
+      <p style="font-size:14px">Required fields are marked. Everything else just helps Rae prepare a better welcome.</p>
+    </div>
+
+    <form class="apply-form" id="practitioner-apply-form" autocomplete="on" novalidate>
+
+      <div class="field">
+        <label for="f_name">Full name<span class="req">*</span></label>
+        <input id="f_name" name="full_name" type="text" required>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="f_email">Email<span class="req">*</span></label>
+          <input id="f_email" name="email" type="email" required>
+        </div>
+        <div class="field">
+          <label for="f_phone">Phone<span class="req">*</span></label>
+          <input id="f_phone" name="phone" type="tel" required>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f_practice">Practice name<span class="req">*</span></label>
+        <input id="f_practice" name="practice_name" type="text" required>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="f_type">Practice type<span class="req">*</span></label>
+          <select id="f_type" name="practice_type" required>
+            <option value="">Select…</option>
+            <option>Chiropractic</option>
+            <option>Naturopathic (ND)</option>
+            <option>Medical Doctor (MD/DO)</option>
+            <option>Optometric (OD)</option>
+            <option>Acupuncture / TCM</option>
+            <option>Esthetician / Skin therapy</option>
+            <option>Energy practitioner</option>
+            <option>Functional medicine</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f_license">License # / state</label>
+          <input id="f_license" name="license_info" type="text" placeholder="Optional · for verification">
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="f_site">Practice website</label>
+          <input id="f_site" name="website" type="url" placeholder="Optional">
+        </div>
+        <div class="field">
+          <label for="f_volume">Estimated monthly volume</label>
+          <select id="f_volume" name="monthly_volume">
+            <option value="">Not sure yet</option>
+            <option>Under 12 bottles</option>
+            <option>12–24 bottles</option>
+            <option>24–48 bottles</option>
+            <option>48+ bottles</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f_cert">Interested in ASH Certification?</label>
+        <select id="f_cert" name="cert_interest">
+          <option value="">Not sure yet</option>
+          <option value="yes">Yes — tell me about the next cohort</option>
+          <option value="not yet">Not yet — start with wholesale first</option>
+          <option value="tell me more">I'd like to know more</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Healing tools you'd want to explore</label>
+        <div class="tools-checks">
+          <label><input type="checkbox" name="tools_interest" value="Biocompatible Nightlight"> Biocompatible Nightlight</label>
+          <label><input type="checkbox" name="tools_interest" value="Therapeutic Nightlight"> Therapeutic Nightlight</label>
+          <label><input type="checkbox" name="tools_interest" value="Harmony Soft Laser"> Harmony Soft Laser</label>
+          <label><input type="checkbox" name="tools_interest" value="Brain Frequency Helmet"> Brain Frequency Helmet</label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f_notes">Anything you'd like Rae to know</label>
+        <textarea id="f_notes" name="notes" placeholder="Your typical case load, specific conditions you focus on, or questions about the program."></textarea>
+      </div>
+
+      <div class="submit-row">
+        <button type="submit" class="btn" id="submit-btn">Submit application</button>
+        <span class="status-msg" id="status-msg"></span>
+      </div>
+
+    </form>
+
+  </div>
+
+  <div class="cert-strip">
+    <p>"The deepest pricing — and the patient referrals — unlock when you finish ASH Certification. If you're already drawn to the work, start there."</p>
+    <a href="https://healingoasis.com" class="btn">Learn about ASH Certification</a>
+  </div>
+
+</section>
+
+
+<section class="faq wrap">
+  <div class="eyebrow">Frequently asked</div>
+  <h2 class="section-title">Quick answers.</h2>
+  <div class="faq-list">
+
+    <details>
+      <summary>Is there a minimum order?</summary>
+      <div class="faq-body">No. Once your application is approved, you can order any quantity at $40/bottle. The deeper mix-and-match tiers ($35 / $30 / $25) require ASH Certification initiation and a minimum of 12, 24, or 48 bottles respectively — mix-and-match across the full 150+ formulation catalog.</div>
+    </details>
+
+    <details>
+      <summary>How do I unlock the healing tools at 50% off?</summary>
+      <div class="faq-body">Tool pricing unlocks when you initiate ASH Certification training. Initiation — not completion — is the threshold, because the training itself is what makes the tools clinically useful in your practice.</div>
+    </details>
+
+    <details>
+      <summary>Can you drop-ship to my clients?</summary>
+      <div class="faq-body">Yes — once approved, drop-ship to client addresses is supported. Rae will walk you through the order workflow during your welcome conversation.</div>
+    </details>
+
+    <details>
+      <summary>What about international orders?</summary>
+      <div class="faq-body">USPS ships to US addresses only. For international practitioners, we recommend a US-based shipping forwarder; the specific service we suggest depends on your country. Rae will recommend a forwarder in her welcome reply, and Wise is our recommended payment rail for international transfers.</div>
+    </details>
+
+    <details>
+      <summary>How do the referrals actually work?</summary>
+      <div class="faq-body">As we expand commercial advertising, inbound consumer leads who ask "where do I find this in my area?" are routed to active panel practitioners — matched by geography and, where relevant, modality. Practitioners on the panel are also listed in the Practitioner Directory used by our customer service team.</div>
+    </details>
+
+    <details>
+      <summary>What's the return policy on tools and formulations?</summary>
+      <div class="faq-body">Formulations are non-returnable once shipped (consumable products). Tools come with the manufacturer's warranty and a 30-day functional defect return window — Rae will walk through specifics when an order is placed.</div>
+    </details>
+
+    <details>
+      <summary>How long does application review take?</summary>
+      <div class="faq-body">One to two business days, typically. Rae reviews each application personally, replies with a welcome note covering ordering, shipping, and (if you're interested) ASH Certification next steps.</div>
+    </details>
+
+  </div>
+</section>
+
+
+<footer class="foot">
+  <span class="syntropy">Toward syntropy — wholeness becoming more whole.</span>
+  Remedy Match LLC · A practitioner-supply line of Healing Oasis<br>
+  © 2026 Remedy Match LLC · All rights reserved · Functional Formulations® and Wellness Whispering® are registered marks of Remedy Match LLC.
+</footer>
+
+
+<script>
+(function(){
+  const form = document.getElementById("practitioner-apply-form");
+  const status = document.getElementById("status-msg");
+  const submitBtn = document.getElementById("submit-btn");
+  if (!form) return;
+
+  form.addEventListener("submit", async function(ev){
+    ev.preventDefault();
+
+    const required = ["full_name","email","phone","practice_name","practice_type"];
+    for (const k of required){
+      const v = (form[k] && form[k].value || "").trim();
+      if (!v){
+        status.textContent = "Please fill in all required fields.";
+        status.classList.add("error");
+        return;
+      }
+    }
+    status.textContent = ""; status.classList.remove("error");
+
+    const tools = Array.from(form.querySelectorAll('input[name="tools_interest"]:checked'))
+      .map(el => el.value);
+
+    const payload = {
+      full_name:      form.full_name.value.trim(),
+      email:          form.email.value.trim(),
+      phone:          form.phone.value.trim(),
+      practice_name:  form.practice_name.value.trim(),
+      practice_type:  form.practice_type.value.trim(),
+      license_info:   form.license_info.value.trim(),
+      website:        form.website.value.trim(),
+      monthly_volume: form.monthly_volume.value.trim(),
+      cert_interest:  form.cert_interest.value.trim(),
+      tools_interest: tools,
+      notes:          form.notes.value.trim(),
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Submitting…";
+    status.textContent = "";
+
+    try {
+      const r = await fetch("/api/practitioner-application", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok){
+        status.textContent = (d && d.error) || "Submission failed. Please try again, or email Rae directly.";
+        status.classList.add("error");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Submit application";
+        return;
+      }
+      const wrap = form.parentElement;
+      const success = document.createElement("div");
+      success.className = "apply-form-success";
+      success.innerHTML = `
+        <h3>Application received.</h3>
+        <p>Rae will be in touch within 1–2 business days with your welcome note,</p>
+        <p>ordering details, and — if you're interested — ASH Certification next steps.</p>
+      `;
+      form.replaceWith(success);
+    } catch(e) {
+      status.textContent = "Network error. Please try again, or email Rae directly.";
+      status.classList.add("error");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit application";
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

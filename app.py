@@ -2396,6 +2396,98 @@ def backfill_affiliate_links():
     return jsonify({"backfilled": len(results), "results": results})
 
 
+@app.route("/practitioner")
+def practitioner_page():
+    resp = send_from_directory(STATIC, "practitioner.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/practitioner-application", methods=["POST", "OPTIONS"])
+def practitioner_application():
+    """Practitioner Panel application.
+    Upserts GHL contact with practitioner-application tags + emails Rae.
+    """
+    if request.method == "OPTIONS":
+        return "", 200
+
+    data = request.get_json(force=True) or {}
+
+    full_name      = (data.get("full_name") or "").strip()
+    email          = (data.get("email") or "").strip().lower()
+    phone          = (data.get("phone") or "").strip()
+    practice_name  = (data.get("practice_name") or "").strip()
+    practice_type  = (data.get("practice_type") or "").strip()
+    license_info   = (data.get("license_info") or "").strip()
+    website        = (data.get("website") or "").strip()
+    monthly_volume = (data.get("monthly_volume") or "").strip()
+    cert_interest  = (data.get("cert_interest") or "").strip()
+    tools_interest = data.get("tools_interest") or []
+    notes          = (data.get("notes") or "").strip()
+
+    if not full_name or not email or not phone or not practice_name or not practice_type:
+        return jsonify({
+            "error": "Name, email, phone, practice name, and practice type are required"
+        }), 400
+
+    if website and not website.startswith(("http://", "https://")):
+        website = "https://" + website
+
+    parts = full_name.split(None, 1)
+    first_name = parts[0]
+    last_name = parts[1] if len(parts) > 1 else ""
+
+    tags = ["practitioner-application", f"practice-type-{re.sub(r'[^a-z0-9]+', '-', practice_type.lower()).strip('-')}"]
+    if cert_interest.lower() == "yes":
+        tags.append("practitioner-cert-interested")
+    if tools_interest:
+        tags.append("practitioner-tools-interested")
+
+    contact_id, created, err = ghl_upsert_contact(
+        email, first_name, last_name, phone,
+        source_tag="practitioner-application",
+        extra_tags=tags,
+    )
+    if err:
+        print(f"[practitioner-application] GHL upsert failed: {err}", flush=True)
+
+    tools_str = ", ".join(tools_interest) if tools_interest else "(none selected)"
+    body = (
+        f"New Practitioner Panel application — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
+        f"{'=' * 60}\n\n"
+        f"Name:            {full_name}\n"
+        f"Email:           {email}\n"
+        f"Phone:           {phone}\n"
+        f"Practice:        {practice_name}\n"
+        f"Practice type:   {practice_type}\n"
+        f"License / state: {license_info or '(not provided)'}\n"
+        f"Website:         {website or '(not provided)'}\n"
+        f"Monthly volume:  {monthly_volume or '(not provided)'}\n"
+        f"Cert interest:   {cert_interest or '(not provided)'}\n"
+        f"Tools interest:  {tools_str}\n\n"
+        f"Notes:\n{notes or '(none)'}\n\n"
+        f"{'=' * 60}\n"
+        f"GHL contact: {contact_id or '(upsert failed — check logs)'}\n"
+        f"Tags applied: {', '.join(tags)}\n"
+    )
+
+    rae_email = os.environ.get("RAE_EMAIL", "suerae1111@gmail.com")
+    glen_email = os.environ.get("GLEN_EMAIL", "drglenswartwout@gmail.com")
+    subject = f"Practitioner Panel application: {full_name} — {practice_name}"
+
+    sent_via_rae, rae_err = _send_full_report_email(rae_email, "Rae", subject, body)
+    sent_via_glen, _ = _send_full_report_email(glen_email, "Glen", f"[cc] {subject}", body)
+    if rae_err and sent_via_rae == "console-log":
+        print(f"[practitioner-application] Rae email fell back to console: {rae_err}", flush=True)
+
+    return jsonify({
+        "ok": True,
+        "contact_id": contact_id,
+        "contact_created": created,
+        "rae_notified_via": sent_via_rae,
+    }), 201
+
+
 def _log_referral_event(lead_id, email, first_name, last_name, utm_source, utm_medium,
                         utm_campaign, utm_content, utm_term, quiz_score, raw):
     if not utm_source:
