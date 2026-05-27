@@ -57,7 +57,12 @@ CREATE INDEX IF NOT EXISTS practitioners_tier
 CREATE UNIQUE INDEX IF NOT EXISTS practitioners_source_url
   ON practitioners (source_url) WHERE source_url IS NOT NULL;
 
-CREATE OR REPLACE VIEW v_practitioners_public AS
+-- security_invoker=on so the view enforces RLS as the calling user, not the
+-- definer (matches Supabase advisor guidance; future-proofs in case we add
+-- RLS policies to practitioners later).
+CREATE OR REPLACE VIEW v_practitioners_public
+WITH (security_invoker = on)
+AS
 SELECT * FROM practitioners
 WHERE removal_requested = false
   AND lat IS NOT NULL;
