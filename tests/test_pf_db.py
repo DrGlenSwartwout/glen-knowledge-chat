@@ -13,9 +13,9 @@ def test_search_sql_with_specialties_and_radius():
         lat=21.3099, lng=-157.8581, radius_miles=25,
         specialties=["eye_care", "syntonic"], tiers=None, limit=200,
     )
-    # Earthdistance query
+    # earth_box pre-filter (GiST-indexable) + precise earth_distance circle
+    assert "earth_box(ll_to_earth(%s, %s), %s) @> ll_to_earth(lat, lng)" in sql
     assert "earth_distance" in sql
-    assert "ll_to_earth" in sql
     assert "%s" in sql  # parameterized
     # Specialty filter using && (array overlap)
     assert "specialties && %s" in sql
@@ -24,13 +24,18 @@ def test_search_sql_with_specialties_and_radius():
     # Limit applied
     assert "LIMIT 200" in sql
     # Params in SQL-text order: SELECT lat, lng (for distance display),
-    # then WHERE lat, lng, radius_meters, then filter values.
+    # then earth_box (lat, lng, radius), then earth_distance (lat, lng, radius),
+    # then filter values.
+    radius_meters = 25 * 1609.344
     assert params[0] == 21.3099       # SELECT lat
     assert params[1] == -157.8581     # SELECT lng
-    assert params[2] == 21.3099       # WHERE lat
-    assert params[3] == -157.8581     # WHERE lng
-    assert abs(params[4] - 25 * 1609.344) < 0.01  # radius in meters
-    assert params[5] == ["eye_care", "syntonic"]  # specialty filter
+    assert params[2] == 21.3099       # earth_box lat
+    assert params[3] == -157.8581     # earth_box lng
+    assert abs(params[4] - radius_meters) < 0.01  # earth_box radius
+    assert params[5] == 21.3099       # earth_distance lat
+    assert params[6] == -157.8581     # earth_distance lng
+    assert abs(params[7] - radius_meters) < 0.01  # earth_distance radius
+    assert params[8] == ["eye_care", "syntonic"]  # specialty filter
 
 
 def test_search_sql_no_specialties_no_filter():

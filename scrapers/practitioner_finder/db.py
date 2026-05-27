@@ -34,11 +34,23 @@ def build_search_sql(
 
     fellowship_only=True narrows to rows where fellowship_level = true. Used
     by the UI's "Fellows Only" toggle to surface top-tier credentialed
-    practitioners (FCOVD, MIAOMT, MIABDM, FOWNS, etc.)."""
+    practitioners (FCOVD, MIAOMT, MIABDM, FOWNS, etc.).
+
+    The WHERE pair `earth_box(...) @> ll_to_earth(lat, lng)` + the precise
+    `earth_distance(...) < radius` is the canonical earthdistance pattern.
+    earth_box yields a cube the GiST index on `ll_to_earth(lat, lng)` can
+    accelerate via the @> operator (bounding-box pre-filter); the precise
+    earth_distance clause then narrows to a true circle. Without the earth_box
+    half, the planner does a Seq Scan even with the GiST index present."""
+    radius_meters = radius_miles * MILES_TO_METERS
     where_clauses = [
+        "earth_box(ll_to_earth(%s, %s), %s) @> ll_to_earth(lat, lng)",
         "earth_distance(ll_to_earth(%s, %s), ll_to_earth(lat, lng)) < %s",
     ]
-    where_params: list = [lat, lng, radius_miles * MILES_TO_METERS]
+    where_params: list = [
+        lat, lng, radius_meters,   # earth_box bounding-box (GiST-accelerated)
+        lat, lng, radius_meters,   # earth_distance precise circle
+    ]
 
     if specialties:
         where_clauses.append("specialties && %s")
