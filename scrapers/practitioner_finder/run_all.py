@@ -149,6 +149,47 @@ def _run_aanp_scrape() -> tuple[int, int, int]:
     return len(all_rows), len(all_rows), 0
 
 
+def _run_acam_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.acam import (
+        fetch_all_directory_records, parse_directory_json,
+    )
+    records = fetch_all_directory_records()
+    rows = parse_directory_json(records)
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
+def _run_abfm_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.abfm import (
+        fetch_all_directory_records, parse_directory_json,
+    )
+    records = fetch_all_directory_records()
+    rows = parse_directory_json(records)
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
+def _run_aama_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.aama import (
+        fetch_all_directory_records, parse_directory_json,
+    )
+    records = fetch_all_directory_records()
+    rows = parse_directory_json(records)
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
+def _run_nanp_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.nanp import fetch_all_records
+    rows = fetch_all_records()
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
 ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("oepf", _run_oepf_scrape),
     ("iaomt", _run_iaomt_scrape),
@@ -158,6 +199,10 @@ ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("nora", _run_nora_scrape),
     ("ovdr", _run_ovdr_scrape),
     ("aanp", _run_aanp_scrape),
+    ("acam", _run_acam_scrape),
+    ("abfm", _run_abfm_scrape),
+    ("aama", _run_aama_scrape),
+    ("nanp", _run_nanp_scrape),
 ]
 
 
