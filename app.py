@@ -2318,6 +2318,23 @@ def affiliate_smtp_debug():
     return jsonify(report)
 
 
+@app.route("/affiliate/smtp-test", methods=["GET"])
+def affiliate_smtp_test():
+    """Diagnostic: call _send_affiliate_magic_link directly with a dummy
+    URL and return the (sent_via, err) tuple as JSON. Bypasses log
+    viewing entirely — the HTTP response itself reveals SMTP status.
+    """
+    to = (request.args.get("to") or "").strip().lower()
+    if not to or "@" not in to:
+        return jsonify({"error": "?to=<email> required"}), 400
+    test_url = f"{PUBLIC_BASE_URL}/affiliate/login-verify?token=TEST_NO_DB_ROW"
+    try:
+        sent_via, err = _send_affiliate_magic_link(to, "Test", test_url)
+        return jsonify({"sent_via": sent_via, "err": err})
+    except Exception as e:
+        return jsonify({"sent_via": "exception-outside-helper", "err": repr(e)}), 500
+
+
 @app.route("/affiliate/apply-form", methods=["POST"])
 def affiliate_apply_form():
     """HTML form POST — processes signup and does a 302 redirect to the portal."""
