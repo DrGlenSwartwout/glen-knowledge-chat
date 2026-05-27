@@ -10,9 +10,7 @@ import sys
 
 from scrapers.practitioner_finder.eyehealingcenter import (
     fetch_by_state_html,
-    fetch_by_city_html,
     parse_by_state_html,
-    parse_by_city_html,
 )
 from scrapers.practitioner_finder.geocode import geocode_row, MapboxError
 from scrapers.practitioner_finder.db import (
@@ -29,14 +27,8 @@ def main() -> int:
     state_rows = parse_by_state_html(state_html)
     print(f"  parsed {len(state_rows)} rows")
 
-    print("Fetching by-city page...")
-    city_html = fetch_by_city_html()
-    city_rows = parse_by_city_html(city_html)
-    print(f"  parsed {len(city_rows)} rows")
-
-    all_rows = state_rows + city_rows
-    print(f"\nUpserting {len(all_rows)} rows...")
-    for row in all_rows:
+    print(f"\nUpserting {len(state_rows)} rows...")
+    for row in state_rows:
         run_upsert(row.to_dict())
     print("  upsert complete")
 
