@@ -72,6 +72,16 @@
   .refresh-all:hover{border-color:var(--gold); color:var(--gold)}
   .refresh-all:active{transform:translateY(1px)}
 
+  /* Section-scoped regen button (e.g. "Regenerate" next to Intelligence) */
+  .row-action{
+    background:transparent; border:1px solid var(--rule); color:var(--ink-2);
+    font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase;
+    padding:4px 9px; cursor:pointer; transition:.18s ease;
+  }
+  .row-action:hover{border-color:var(--gold); color:var(--gold)}
+  .row-action:active{transform:translateY(1px)}
+  .row-action:disabled{opacity:.5; cursor:wait; border-color:var(--rule); color:var(--ink-3)}
+
   /* section row */
   section.row{margin-bottom:36px}
   .row-head{
@@ -328,6 +338,7 @@
       <span class="num">0</span>
       <h2>Intelligence</h2>
       <span class="rule"></span>
+      <button class="row-action" id="regenIntel" title="Regenerate all 5 briefings via Claude (takes ~15s)">Regenerate</button>
     </div>
     <div class="grid">
       <article class="card intel-card" data-endpoint="/api/intelligence/daily-briefing" data-render="briefing">
@@ -987,6 +998,34 @@ cards.forEach(card => {
 });
 
 document.getElementById("refreshAll").addEventListener("click", refreshAll);
+
+// Manual briefings regen — POSTs /api/regenerate-briefings, then refetches
+// the intelligence cards so the new markdown shows immediately.
+document.getElementById("regenIntel").addEventListener("click", async () => {
+  if(!consoleKey){ showLockout(); return; }
+  const btn = document.getElementById("regenIntel");
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Regenerating…";
+  try{
+    const res = await fetch("/api/regenerate-briefings", {
+      method: "POST",
+      headers: {"X-Console-Key": consoleKey, "Content-Type": "application/json"},
+      cache: "no-store",
+    });
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const json = await res.json();
+    const okN = json?.data?.summary?.ok_count ?? "?";
+    btn.textContent = `✓ ${okN}/5 briefings`;
+    // Refetch only the Intelligence row cards.
+    document.querySelectorAll("article.intel-card").forEach(fetchCard);
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+  } catch(err){
+    btn.textContent = "Error — see console";
+    console.error("regen-briefings failed:", err);
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 4000);
+  }
+});
 
 // Expose for dashboard-actions.js (per-item action panels).
 window.fetchCard = fetchCard;

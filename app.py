@@ -6999,6 +6999,18 @@ def cron_regenerate_briefings():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/regenerate-briefings", methods=["POST"])
+@require_console_key
+def api_regenerate_briefings():
+    """User-triggered briefings regen — same payload as the cron endpoint
+    but auth via console-key (the dashboard button uses this)."""
+    try:
+        from dashboard.briefing_runner import regenerate_all
+        return ok({"summary": regenerate_all()})
+    except Exception as e:
+        return fail(e, status=500)
+
+
 # ── One-time Gmail token upload (helper for first-time setup on Render) ───────
 # Local token at ~/.config/google/token.json gets POSTed here once and
 # persisted to /data/google-token.json on the web service's disk.
