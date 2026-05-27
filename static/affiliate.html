@@ -78,6 +78,7 @@
   .login-form button { padding: 9px 18px; background: var(--accent); border: none; border-radius: 7px; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
   .login-form button:hover { background: #6a4db0; }
   .page-error { display: none; background: rgba(248,81,73,.1); border: 1px solid rgba(248,81,73,.35); color: #f85149; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; line-height: 1.5; }
+  .page-info  { display: none; background: rgba(63,185,80,.1);  border: 1px solid rgba(63,185,80,.35);  color: #3fb950; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -85,12 +86,13 @@
 
   <div class="returning-bar">
     <a href="#" class="login-toggle" id="login-toggle">Already an affiliate? Log in →</a>
-    <form class="login-form" id="login-form" action="/affiliate/portal" method="GET">
+    <form class="login-form" id="login-form" action="/affiliate/login-request" method="POST">
       <input type="email" name="email" placeholder="your@email.com" required autocomplete="email">
-      <button type="submit">Go →</button>
+      <button type="submit">Email me a link →</button>
     </form>
   </div>
 
+  <div class="page-info" id="page-info"></div>
   <div class="page-error" id="page-error"></div>
 
   <div class="hero">
@@ -163,6 +165,13 @@ if (_err) {
   banner.textContent = _err;
   banner.style.display = 'block';
 }
+// Show info (e.g. "Check your email") after magic-link request
+const _info = _params.get('info');
+if (_info) {
+  const banner = document.getElementById('page-info');
+  banner.textContent = _info;
+  banner.style.display = 'block';
+}
 // Pass recruiter slug through the form as hidden field
 const _ref = _params.get('ref');
 if (_ref) document.getElementById('referred_by_field').value = _ref;
@@ -176,8 +185,8 @@ function _showLogin() {
   _loginForm.querySelector('input').focus();
 }
 _toggle.addEventListener('click', (e) => { e.preventDefault(); _showLogin(); });
-// Auto-expand login if redirected back with a login-related error
-if (_err && /affiliate account|email/i.test(_err)) _showLogin();
+// Auto-expand login if the page returned with a login-related error or info banner
+if ((_err && /sign-in|affiliate account|email/i.test(_err)) || _info) _showLogin();
 </script>
 </body>
 </html>

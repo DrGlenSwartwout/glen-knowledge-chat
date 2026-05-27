@@ -2172,19 +2172,136 @@ def affiliate_hub_data(slug):
 
 @app.route("/affiliate/portal")
 def affiliate_portal_page():
-    from flask import redirect as _redir
-    import urllib.parse as _up
-    # Allow ?email= as a convenience — look up token and redirect
-    email = request.args.get("email", "").strip().lower()
-    if email and not request.args.get("token"):
-        with sqlite3.connect(LOG_DB) as cx:
-            row = cx.execute("SELECT token FROM affiliate_signups WHERE LOWER(email)=?", (email,)).fetchone()
-        if row:
-            return _redir(f"/affiliate/portal?token={row[0]}")
-        return _redir("/affiliate?error=" + _up.quote("No affiliate account found for that email. Apply below."))
+    # Token-only access. Email-based instant-redirect was removed in favor of
+    # /affiliate/login-request → email magic-link → /affiliate/login-verify.
     resp = send_from_directory(STATIC, "affiliate-portal.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+def _send_affiliate_magic_link(to_email: str, name: str, magic_url: str) -> tuple:
+    """Send the affiliate-portal magic-link email. SMTP first, console-log fallback.
+    Returns (sent_via, error_or_none). Mirrors send_magic_link_email but with
+    affiliate-specific copy and without the chat-auth GHL workflow path.
+    """
+    subject = "Your affiliate-portal sign-in link"
+    body = (
+        f"Hi {name or 'there'},\n\n"
+        f"Click the link below to access your affiliate portal. The link is "
+        f"single-use and expires in {AUTH_TOKEN_TTL_MIN} minutes.\n\n"
+        f"{magic_url}\n\n"
+        f"If you didn't request this, you can ignore this email.\n\n"
+        f"— Remedy Match Affiliate Team\n"
+    )
+    html_body = (
+        f"<p>Hi {name or 'there'},</p>"
+        f"<p>Click the link below to access your affiliate portal. The link is "
+        f"single-use and expires in {AUTH_TOKEN_TTL_MIN} minutes.</p>"
+        f"<p><a href=\"{magic_url}\">Open my affiliate portal</a></p>"
+        f"<p style=\"color:#666;font-size:12px;\">Or paste this URL into your browser: {magic_url}</p>"
+        f"<p>If you didn't request this, you can ignore this email.</p>"
+        f"<p>— Remedy Match Affiliate Team</p>"
+    )
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    if smtp_host and smtp_user and smtp_pass:
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = smtp_from
+            msg["To"]      = to_email
+            msg.attach(MIMEText(body, "plain"))
+            msg.attach(MIMEText(html_body, "html"))
+            port = int(os.environ.get("SMTP_PORT", "587"))
+            with smtplib.SMTP(smtp_host, port, timeout=10) as s:
+                s.starttls()
+                s.login(smtp_user, smtp_pass)
+                s.sendmail(smtp_from, [to_email], msg.as_string())
+            return "smtp", None
+        except Exception as e:
+            print(f"[affiliate-magic] SMTP send failed: {e}", flush=True)
+            return "smtp-failed", str(e)
+    print(f"\n[affiliate-magic] MAGIC LINK for {to_email}: {magic_url}\n", flush=True)
+    return "console-log", "no SMTP configured"
+
+
+@app.route("/affiliate/login-request", methods=["POST"])
+def affiliate_login_request():
+    """Email-based sign-in. Always redirects to /affiliate?info=... — never
+    leaks whether the email is registered (prevents enumeration). If the
+    email matches an approved affiliate, a single-use magic-link is emailed.
+    """
+    from flask import redirect as _redir
+    import urllib.parse as _up
+    email = (request.form.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        return _redir("/affiliate?error=" + _up.quote("Valid email required"))
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT name FROM affiliate_signups WHERE LOWER(email)=? AND status='approved'",
+            (email,)
+        ).fetchone()
+        if row:
+            magic = secrets.token_urlsafe(32)
+            th    = _hash_token(magic)
+            now   = _now_utc()
+            expires = now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)
+            cx.execute(
+                """INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at)
+                   VALUES (?,?,?,?,?)""",
+                (th, email, "affiliate_magic_link", now.isoformat(), expires.isoformat())
+            )
+            cx.commit()
+            magic_url = f"{PUBLIC_BASE_URL}/affiliate/login-verify?token={magic}"
+            _send_affiliate_magic_link(email, row[0] or "", magic_url)
+
+    return _redir("/affiliate?info=" + _up.quote(
+        f"If that email matches an approved affiliate, we just sent a sign-in link. "
+        f"Check your inbox — the link expires in {AUTH_TOKEN_TTL_MIN} minutes."
+    ))
+
+
+@app.route("/affiliate/login-verify", methods=["GET"])
+def affiliate_login_verify():
+    """Consume the magic-link token and 302 to the affiliate's portal."""
+    from flask import redirect as _redir
+    import urllib.parse as _up
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        return _redir("/affiliate?error=" + _up.quote("Missing sign-in token"))
+    th = _hash_token(token)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            """SELECT email, expires_at, consumed_at FROM auth_tokens
+               WHERE token_hash=? AND purpose='affiliate_magic_link'""",
+            (th,)
+        ).fetchone()
+        if not row:
+            return _redir("/affiliate?error=" + _up.quote("Sign-in link invalid or already used. Request a new one."))
+        if row["consumed_at"]:
+            return _redir("/affiliate?error=" + _up.quote("Sign-in link already used. Request a new one."))
+        try:
+            if datetime.fromisoformat(row["expires_at"]) < _now_utc():
+                return _redir("/affiliate?error=" + _up.quote("Sign-in link expired. Request a new one."))
+        except Exception:
+            return _redir("/affiliate?error=" + _up.quote("Sign-in link corrupted. Request a new one."))
+        cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
+                   (_now_utc().isoformat(), th))
+        aff = cx.execute(
+            "SELECT token FROM affiliate_signups WHERE LOWER(email)=? AND status='approved'",
+            (row["email"],)
+        ).fetchone()
+        cx.commit()
+    if not aff:
+        return _redir("/affiliate?error=" + _up.quote("Affiliate account no longer active. Apply below."))
+    return _redir(f"/affiliate/portal?token={aff[0]}")
 
 
 @app.route("/affiliate/apply-form", methods=["POST"])
@@ -2311,6 +2428,17 @@ def affiliate_apply():
     }), 201
 
 
+def _mask_lead_name(first: str, last: str) -> str:
+    """'Mary', 'Johnson' -> 'Mary J.' — preserves first name, masks last to initial.
+    Both fields are tolerant of None and whitespace.
+    """
+    fn = (first or "").strip()
+    ln = (last or "").strip()
+    if ln:
+        return f"{fn} {ln[0]}.".strip()
+    return fn
+
+
 @app.route("/affiliate/portal-data", methods=["GET"])
 def affiliate_portal_data():
     token = request.args.get("token", "").strip()
@@ -2359,7 +2487,7 @@ def affiliate_portal_data():
         "last_lead": stats[1] if stats else None,
         "recruited_count": recruited_count,
         "recent": [{"received_at": r[0],
-                    "name": f"{r[1] or ''} {r[2] or ''}".strip(),
+                    "name": _mask_lead_name(r[1], r[2]),
                     "score": r[3]} for r in recent],
         "offers": [
             {
