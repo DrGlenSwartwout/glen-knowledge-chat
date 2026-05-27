@@ -326,7 +326,7 @@ def parse_by_state_html(html: str) -> list[NormalizedPractitionerRow]:
             # Flush any pending data before state transition
             flush_block(pending_data)
             pending_data = []
-            current_state = state_name
+            current_state = _STATE_ABBR.get(state_name, state_name)
             current_city = None
             continue
 

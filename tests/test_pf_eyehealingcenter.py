@@ -35,3 +35,13 @@ def test_parse_by_city_returns_normalized_rows():
     assert len(rows) > 0
     assert all(r.tier == "eyehealing" for r in rows)
     assert all(r.specialties == ["eye_care"] for r in rows)
+
+
+def test_parse_by_state_returns_two_letter_state_codes():
+    html = (FIXTURE_DIR / "eyehealingcenter_by_state.html").read_text()
+    rows = parse_by_state_html(html)
+    states_present = {r.state for r in rows if r.state}
+    # All state values must be 2-letter codes (or None)
+    for s in states_present:
+        assert len(s) == 2, f"non-abbreviated state: {s!r}"
+        assert s.isupper(), f"state not uppercase: {s!r}"
