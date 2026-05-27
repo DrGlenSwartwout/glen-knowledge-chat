@@ -4,26 +4,36 @@ adapter.
 AANP publishes its public "Find an ND" directory through a YourMembership
 / AssociationVoice CMS. The search form at /search/custom.asp?id=5613 hits
 /search/search.asp which returns a shell with an iframe pointing at
-/searchserver/people.aspx?id=<one-shot-session-uuid>. The iframe response
-carries the paginated list-grid; each row holds the practitioner name,
-detail-page URL (``/members/?id=<id>``), and the address columns. Detail
-pages carry the credentials, phone, website, email, and practice name.
+/searchserver/people2.aspx?id=<one-shot-session-uuid>. The iframe response
+carries a paginated card list (``<ul id="search-results">`` of
+``<li><div class="memb-result-item">`` cards). Each card carries only
+the name, member_id, and a city/state/postal snippet — street, phone,
+email, website, credentials, practice_name all live on the per-member
+profile page at ``/members/?id=<id>`` and are merged in by the migrate
+runner.
 
 The site is Cloudflare-protected (HTTP 403 for static-UA clients), so
-fixtures here were captured 2026-05-27 via the Internet Archive Wayback
-Machine — the wayback URL-rewrites were stripped during capture so the
-fixtures look like real production HTML.
+the live migrate runner uses Playwright. Fixtures here are real captures
+taken 2026-05-27 against the live site through Playwright.
 
-Fixtures:
+Live fixtures (the new canonical set, post-2024 site migration):
 
-- aanp_search_page_1.html  — 281-result search, page 1 of 12 (25 rows;
-                             US-centric mix incl. 2 privacy-suppressed
-                             entries that lack any address divs).
-- aanp_search_page_2.html  — 117-result search, page 1 of 5 (25 rows;
-                             includes Sarah Abel with full address).
-- aanp_search_page_3.html  — 255-result search, page 1 of 11 (25 rows;
-                             every row has full address; no
-                             privacy-suppressed entries).
+- aanp_search_iframe_live.html — real /searchserver/people2.aspx page 1
+                                  (24 cards, "1000+" record count,
+                                   "Page 1 of 46").
+- aanp_profile_60515743_live.html — Dr. Nancy Aagenes (mostly empty
+                                     profile — name only, no phone /
+                                     address / credentials).
+- aanp_profile_60515403_live.html — Dr. Lise Alschuler (FABNO, ND;
+                                     Tempe AZ; phone + website + email
+                                     + practice name; fellowship=True).
+- aanp_profile_60520396_live.html — Dr. Dawn Alden (ND; Sacramento CA;
+                                     website + email, no phone, no
+                                     practice anchor).
+
+Legacy fixtures (kept for the profile-parser regression suite — the
+profile-page structure tdEmployerName / tdWorkPhone / CstmFldLbl is
+unchanged across the migration so these still apply):
 
 - aanp_profile_60515148.html — Dr. Joshua Levitt (ND, Hamden CT, phone-
                                only, solo practice = employer link
@@ -37,6 +47,12 @@ Fixtures:
                                "Bloom Natural Health" practice name +
                                2-line street; tests genuine practice
                                name + multi-line address pickup).
+
+The legacy aanp_search_page_*.html table-grid fixtures captured the
+pre-migration layout; they no longer match the live HTML and the list-
+page tests against them were removed when the parser was rewritten.
+The fixture files are retained as historical reference but are not
+exercised by this suite.
 """
 import sys
 from pathlib import Path
@@ -66,26 +82,21 @@ def _load(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Search-grid (list page) tests
+# Search-results (list page) tests — live ``ul#search-results`` card layout
 # ---------------------------------------------------------------------------
 
-def test_parse_page_1_returns_25_rows():
-    """Each iframe response page holds up to 25 lineitem rows. Page 1
-    fixtures all carry exactly 25 (the YourMembership default page size)."""
-    rows = parse_search_results_html(_load("aanp_search_page_1.html"))
-    assert len(rows) == 25
+def test_parse_iframe_live_returns_24_cards():
+    """The live ``/searchserver/people2.aspx`` iframe page packs 24
+    ``memb-result-item`` cards per page (down from the 25-row table-grid
+    page that the original layout used)."""
+    rows = parse_search_results_html(_load("aanp_search_iframe_live.html"))
+    assert len(rows) == 24
 
 
 def test_all_rows_carry_locked_invariants():
     """tier / source_org / specialties / source_url are constant per spec
-    across every parsed row from every fixture page."""
-    rows = []
-    for fixture in (
-        "aanp_search_page_1.html",
-        "aanp_search_page_2.html",
-        "aanp_search_page_3.html",
-    ):
-        rows += parse_search_results_html(_load(fixture))
+    across every parsed row."""
+    rows = parse_search_results_html(_load("aanp_search_iframe_live.html"))
     assert rows
     for r in rows:
         assert r.tier == "org_member"
@@ -95,70 +106,58 @@ def test_all_rows_carry_locked_invariants():
         assert r.source_url.startswith("https://naturopathic.org/members/?id=")
 
 
-def test_full_row_with_address_lee_aberle():
-    """Page 1's first row is Dr. Lee Aberle — full US address with
-    suite line. Validates name + 2-line address + city/state/postal
-    extraction."""
-    rows = parse_search_results_html(_load("aanp_search_page_1.html"))
-    aberle = next(r for r in rows if "Lee Aberle" in r.name)
-    assert aberle.name == "Dr. Lee Aberle"
-    assert aberle.address1 == "22 Wilson Ave NE, Ste 205"
-    assert aberle.city == "Saint Cloud"
-    assert aberle.state == "Minnesota"
-    assert aberle.postal == "56304-0440"
-    assert aberle.country == "US"
-    assert aberle.source_url == "https://naturopathic.org/members/?id=60516495"
+def test_card_with_full_address_hilliary_abbott():
+    """Card 2 on the iframe page is Dr. Hilliary Abbott — full US city /
+    state / postal triple. Validates city + state + postal extraction
+    from the ``<p class="address">`` br-delimited token list."""
+    rows = parse_search_results_html(_load("aanp_search_iframe_live.html"))
+    abbott = next(r for r in rows if "Hilliary Abbott" in r.name)
+    assert abbott.name == "Dr. Hilliary Abbott"
+    assert abbott.city == "Lynnwood"
+    assert abbott.state == "Washington"
+    assert abbott.postal == "98036-6921"
+    assert abbott.country == "US"
+    # Street is profile-only on the new layout — list-page card never
+    # carries it.
+    assert abbott.address1 is None
+    assert abbott.source_url == "https://naturopathic.org/members/?id=74147396"
 
 
-def test_row_with_only_city_no_street():
-    """Some directory entries list a city + state but no street address
-    (Dr. Ezenwanyi Ahaghotu — Katy, Texas only). The parser must still
-    populate city/state/postal and leave address1=None rather than
-    pushing the city into address1."""
-    rows = parse_search_results_html(_load("aanp_search_page_2.html"))
-    ah = next(r for r in rows if "Ahaghotu" in r.name)
-    assert ah.address1 is None
-    assert ah.city == "Katy"
-    assert ah.state == "Texas"
-    assert ah.postal == "77494-7823"
-
-
-def test_row_with_privacy_suppressed_address_keeps_name_only():
-    """Privacy-suppressed entries have all 7 address divs empty. The
-    parser must still emit the row (it has a name + member_id, which
-    is enough for the org-member tier) with address1/city/state all
-    None. Melissa Barber on page 1 is the canonical no-address case."""
-    rows = parse_search_results_html(_load("aanp_search_page_1.html"))
-    barber = next(r for r in rows if "Melissa Barber" in r.name)
-    assert barber.name == "Melissa Barber"
-    assert barber.source_url == "https://naturopathic.org/members/?id=68162190"
-    assert barber.address1 is None
-    assert barber.city is None
-    assert barber.state is None
-    assert barber.postal is None
+def test_card_with_empty_address_keeps_name_only():
+    """Some live cards have ``<p class="address"></p>`` (privacy-suppressed
+    or empty member profiles). The parser must still emit the row (name +
+    member_id are enough for the org-member tier) with city/state/postal
+    all None. Dr. Nancy Aagenes is the canonical no-address case in the
+    live iframe page (the first card on page 1 of an A-Z sorted query)."""
+    rows = parse_search_results_html(_load("aanp_search_iframe_live.html"))
+    aagenes = next(r for r in rows if "Nancy Aagenes" in r.name)
+    assert aagenes.name == "Dr. Nancy Aagenes"
+    assert aagenes.source_url == "https://naturopathic.org/members/?id=60515743"
+    assert aagenes.address1 is None
+    assert aagenes.city is None
+    assert aagenes.state is None
+    assert aagenes.postal is None
     # Country still defaults to US even without state.
-    assert barber.country == "US"
+    assert aagenes.country == "US"
 
 
-def test_record_count_extracted():
-    """The DocCount span at the top of the result grid carries the total
-    matching practitioners across all pages."""
-    assert parse_record_count(_load("aanp_search_page_1.html")) == 281
-    assert parse_record_count(_load("aanp_search_page_2.html")) == 117
-    assert parse_record_count(_load("aanp_search_page_3.html")) == 255
+def test_record_count_extracted_from_live_iframe():
+    """The DocCount span on the live iframe page renders ``1000+`` for
+    unbounded queries — the parser strips the ``+`` and returns 1000.
+    The true total is established by walking pages until exhausted."""
+    assert parse_record_count(_load("aanp_search_iframe_live.html")) == 1000
 
 
-def test_page_info_extracted():
-    """The 'Page X of Y' text gives us pagination bounds."""
-    assert parse_page_info(_load("aanp_search_page_1.html")) == (1, 12)
-    assert parse_page_info(_load("aanp_search_page_2.html")) == (1, 5)
-    assert parse_page_info(_load("aanp_search_page_3.html")) == (1, 11)
+def test_page_info_extracted_from_live_iframe():
+    """The 'Page X of Y' text gives us pagination bounds (page 1 of 46
+    on the live capture)."""
+    assert parse_page_info(_load("aanp_search_iframe_live.html")) == (1, 46)
 
 
 def test_source_url_stable_across_reruns():
     """Re-parsing the same fixture twice must yield identical source_urls
     in identical order — source_url is the upsert dedup key."""
-    payload = _load("aanp_search_page_1.html")
+    payload = _load("aanp_search_iframe_live.html")
     a = parse_search_results_html(payload)
     b = parse_search_results_html(payload)
     assert [r.source_url for r in a] == [r.source_url for r in b]
@@ -167,9 +166,8 @@ def test_source_url_stable_across_reruns():
 def test_source_url_uses_member_id():
     """The canonical detail URL is built from the numeric member id, which
     is the YourMembership account id and is stable across re-runs."""
-    rows = parse_search_results_html(_load("aanp_search_page_1.html"))
+    rows = parse_search_results_html(_load("aanp_search_iframe_live.html"))
     for r in rows:
-        # Every URL ends with the numeric id pattern.
         assert r.source_url.startswith(f"{BASE}/members/?id=")
         # No trailing fragment / query slug.
         tail = r.source_url.split("?id=", 1)[1]
@@ -183,23 +181,24 @@ def test_search_parser_skips_non_string_input():
     assert parse_search_results_html(12345) == []
 
 
-def test_search_parser_skips_missing_grid():
-    """An HTML doc without ``id="SearchResultsGrid"`` (e.g. a login wall
-    or a Cloudflare challenge) must return [] not raise."""
+def test_search_parser_skips_missing_list():
+    """An HTML doc without ``id="search-results"`` (e.g. a login wall,
+    a Cloudflare challenge, or the pre-migration table-grid page) must
+    return [] not raise."""
     assert parse_search_results_html("<html><body>blocked</body></html>") == []
     assert parse_search_results_html("") == []
 
 
-def test_search_parser_ignores_featured_member_sidebar():
-    """The search shell page (custom.asp / search.asp) carries a
-    ``Featured Members`` sidebar with 2 member-id links that are NOT
-    search results. The parser must ignore them because they aren't
-    inside ``id="SearchResultsGrid"``."""
-    # Synthetic page with the sidebar but no grid — adapter must return [].
+def test_search_parser_ignores_member_links_outside_search_results():
+    """Member-id anchors that live OUTSIDE the ``<ul id="search-results">``
+    list (sidebar widgets, featured member tiles, footer breadcrumbs) must
+    NOT be parsed as search results."""
+    # Synthetic page with a stray member link but no search-results ul —
+    # adapter must return [].
     html = (
         "<html><body>"
         '<div id="featured">'
-        '  <a href="/members/?id=99999999">Fake Featured Member</a>'
+        '  <a href="/members/?id=99999999" class="normalName">Fake</a>'
         "</div>"
         "</body></html>"
     )
@@ -279,6 +278,98 @@ def test_profile_parser_handles_empty_input():
     """An empty/blocked profile page returns None (no title -> no name)."""
     assert parse_profile_html("") is None
     assert parse_profile_html("<html><body>blocked</body></html>") is None
+
+
+# ---------------------------------------------------------------------------
+# Live profile-page tests (post-migration captures, with caller-supplied
+# member_id since the live page body no longer carries the id in an
+# in-page anchor)
+# ---------------------------------------------------------------------------
+
+def test_profile_live_minimal_aagenes():
+    """Dr. Nancy Aagenes — a near-empty live profile (name only, no phone,
+    no address, no credentials, no email). Validates that the parser still
+    emits a row carrying the locked invariants when contact fields are
+    blank, and that the caller-supplied member_id is reflected in the
+    source_url."""
+    row = parse_profile_html(
+        _load("aanp_profile_60515743_live.html"), member_id="60515743"
+    )
+    assert row is not None
+    assert row.name == "Dr. Nancy Aagenes"
+    assert row.practice_name is None
+    assert row.credentials is None
+    assert row.phone is None
+    assert row.email is None
+    assert row.website is None
+    assert row.address1 is None
+    assert row.city is None
+    assert row.state is None
+    assert row.postal is None
+    assert row.country == "US"
+    assert row.source_url == "https://naturopathic.org/members/?id=60515743"
+    # Locked invariants
+    assert row.tier == "org_member"
+    assert row.source_org == "AANP"
+    assert row.specialties == ["naturopathy", "holistic_health"]
+    assert row.fellowship_level is False
+
+
+def test_profile_live_full_alschuler_fellowship_true():
+    """Dr. Lise Alschuler — full live profile with FABNO credential
+    (fellowship-qualifying), real practice name, phone + website + email,
+    and a single-line street address."""
+    row = parse_profile_html(
+        _load("aanp_profile_60515403_live.html"), member_id="60515403"
+    )
+    assert row is not None
+    assert row.name == "Dr. Lise Alschuler"
+    assert row.practice_name == "Naturopathic Specialists"
+    assert row.credentials == "FABNO, ND"
+    assert row.phone == "480 990-1111"
+    assert row.email == "lnalschuler@comcast.net"
+    assert row.website == "http://www.listenandcare.com"
+    assert row.address1 == "2140 E Broadway Rd"
+    assert row.city == "Tempe"
+    assert row.state == "Arizona"
+    assert row.postal == "85282"
+    assert row.country == "US"
+    assert row.source_url == "https://naturopathic.org/members/?id=60515403"
+    # FABNO is a vetted specialty-board fellow credential.
+    assert row.fellowship_level is True
+
+
+def test_profile_live_website_only_alden():
+    """Dr. Dawn Alden — live profile with website + email but no phone,
+    no practice-name anchor (employer block opens with a bare street),
+    and an extended postal (ZIP+4)."""
+    row = parse_profile_html(
+        _load("aanp_profile_60520396_live.html"), member_id="60520396"
+    )
+    assert row is not None
+    assert row.name == "Dr. Dawn Alden"
+    assert row.practice_name is None
+    assert row.credentials == "ND"
+    assert row.phone is None
+    assert row.email == "info@eastsacramentoconcierge.com"
+    assert row.website == "https://www.aldennd.com/"
+    assert row.address1 == "3800 J St"
+    assert row.city == "Sacramento"
+    assert row.state == "California"
+    assert row.postal == "95816-5551"
+    assert row.country == "US"
+    assert row.source_url == "https://naturopathic.org/members/?id=60520396"
+    assert row.fellowship_level is False
+
+
+def test_profile_member_id_fallback_to_in_page_anchor():
+    """When ``member_id`` is omitted, the parser falls back to scraping
+    a ``/members/?id=NNN`` anchor from the page body. The legacy fixture
+    aanp_profile_60515148.html carries such an anchor in the edit-profile
+    link, so source_url still resolves without a caller-supplied id."""
+    row = parse_profile_html(_load("aanp_profile_60515148.html"))
+    assert row is not None
+    assert row.source_url == "https://naturopathic.org/members/?id=60515148"
 
 
 # ---------------------------------------------------------------------------

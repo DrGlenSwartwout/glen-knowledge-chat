@@ -3,48 +3,56 @@
 AANP (naturopathic.org — NOT to be confused with the unrelated American
 Association of *Nurse* Practitioners at aanp.org) publishes its public
 "Find an ND" directory through a YourMembership / AssociationVoice CMS.
-Discovery 2026-05-27:
+
+Live structure (re-discovered 2026-05-27 after the site migrated off
+the original table-grid layout some time after the 2022 Wayback
+captures):
 
 - The public search form at ``/search/custom.asp?id=5613`` POSTs into
   ``/search/search.asp`` (or accepts the same params as GET, e.g.
   ``?txt_state=California``).
 - ``/search/search.asp`` returns a shell page that embeds an iframe
-  pointing at ``/searchserver/people.aspx?id=<session-uuid>``. The
-  iframe URL carries the actual paginated practitioner grid. The
-  session UUID is one-shot per search; a live scraper either follows
-  the iframe each time or short-circuits with a stable browse query
-  per state.
-- The whole site is behind Cloudflare bot mitigation. Direct curl
-  with a static UA hits HTTP 403 — a live run will need either a
-  recycled browser session or a Playwright fallback. Fixtures here
-  are real responses, captured 2026-05-27 via the Internet Archive
-  Wayback Machine (2022 captures of the iframe page, before the
-  iframe wrapper started gating non-browser clients in late 2024).
+  pointing at ``/searchserver/people2.aspx?id=<session-uuid>``. The
+  iframe URL carries the actual paginated practitioner card list. The
+  session UUID is one-shot per search.
+- The whole site is behind Cloudflare bot mitigation, so the live
+  migrate runner uses Playwright (see ``migrate_aanp.py``).
 
 Each iframe response page contains:
 
-  <span id="DocCount">N</span> Records Found
-  Page 1 of M
-  <table id="SearchResultsGrid">
-    <tr class="lineitem">
-      <td>
-        <a href="/members/?id=NNNN">Name (e.g. "Dr. Lee Aberle")</a>
-        <div>street_line_1</div>
-        <div>street_line_2</div>   <- often "Ste 205", may be blank
-        <div>city</div>
-        <div>state (full name)</div>
-        <div>postal</div>
-        <div>country (often blank — defaults to United States)</div>
-      </td>
-    </tr>
-    ... (up to 25 rows / page) ...
-  </table>
+  <span id="DocCount">N</span> Records Found     # may be "1000+" for unbounded queries
+  <ul id="search-results">
+    <li>
+      <div class="memb-result-item">
+        <div class="memb-img-wrap">
+          <a href="/members/?id=NNNN">...</a>
+        </div>
+        <div class="memb-info-wrap">
+          <p class="name">
+            <span><a href="/members/?id=NNNN" class="normalName">Dr. First Last</a></span>
+          </p>
+          <p class="address">City<br>State<br>Postal<br></p>
+          <p class="distance_radius"></p>
+        </div>
+      </div>
+    </li>
+    ... (24 cards / page in production) ...
+  </ul>
 
-The per-practitioner detail page at ``/members/?id=<id>`` carries the
-custom fields (Credentials, Practice Focus, Treatment Modalities, etc.)
-and the work phone + website. The list rows are enough for our
-NormalizedPractitionerRow — name + address + state — and the per-row
-``source_url`` is the detail page.
+  Page <current> of <total>
+
+The list page is sparse — only name + member_id + (city, state, postal).
+Street, phone, email, website, credentials, practice_name all live on
+the per-member profile page at ``/members/?id=<numeric>``. So this is
+a two-stage scrape pattern: list-page card -> per-row profile fetch.
+The profile page structure (``tdEmployerName`` + ``tdWorkPhone`` +
+``CstmFldLbl/CstmFldVal`` custom field rows) is unchanged from the
+original layout and ``parse_profile_html`` continues to work against it.
+
+Pagination on the live iframe is ASP.NET WebForms ``__doPostBack``
+targeted at ``SearchResultsGrid$ctlNN$ctlMM`` (NOT the older
+``Page$N`` event-argument style). The migrate runner replays the
+__VIEWSTATE / __EVENTVALIDATION hidden fields to walk the page set.
 
 Fellowship rule
 ---------------
@@ -187,12 +195,12 @@ def fetch_iframe_results_html(session_uuid: str) -> str:
     """Fetch the iframe results page for a previously-issued search session.
 
     The YourMembership search splits the form (``/search/search.asp``)
-    from the results grid (``/searchserver/people.aspx?id=<uuid>``).
+    from the results grid (``/searchserver/people2.aspx?id=<uuid>``).
     The uuid is one-shot per search submission — extracted from the
     iframe ``src`` attribute on the search.asp response page.
     """
     s = _session()
-    url = f"{BASE}/searchserver/people.aspx"
+    url = f"{BASE}/searchserver/people2.aspx"
     r = s.get(
         url,
         params={
@@ -339,78 +347,66 @@ def _build_source_url(member_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# List-grid row extraction
+# Search-results card extraction (live ul#search-results layout)
 # ---------------------------------------------------------------------------
 
-# Robust member-id link matcher: accepts both relative and absolute hrefs.
-# Captures (1) member id, (2) raw inner anchor HTML for the name (which
-# may include trailing icons like the "Photos in Profile" picture.gif).
-_MEMBER_ANCHOR_RE = re.compile(
+# Card-name anchor: <a href="/members/?id=NNN" ... class="normalName">Name</a>.
+# Accepts both relative and (defensively) absolute hrefs.
+_CARD_NAME_ANCHOR_RE = re.compile(
     r'<a\s+href="(?:https?://[^"]*naturopathic\.org)?/members/\?id=(\d+)"'
-    r'[^>]*>(.*?)</a>',
-    re.S,
+    r'[^>]*class="normalName"[^>]*>(.*?)</a>',
+    re.S | re.I,
+)
+
+# Card address paragraph: <p class="address">City<br>State<br>Postal<br></p>.
+# Captures the inner HTML (whose <br>-delimited tokens we split on).
+_CARD_ADDRESS_RE = re.compile(
+    r'<p\s+class="address"[^>]*>(.*?)</p>',
+    re.S | re.I,
 )
 
 
-def _parse_lineitem(row_html: str) -> Optional[dict]:
-    """Pull a single member's grid-row data out of one ``<tr class="lineitem">`` block.
+def _parse_card(card_html: str) -> Optional[dict]:
+    """Pull a single member's data out of one ``<li>`` / ``memb-result-item`` card.
 
-    Returns a dict with keys ``id``, ``name``, ``divs`` (the list of
-    raw inner div texts, in document order) or None if no member link
-    can be found in the block.
+    Returns a dict with keys ``id``, ``name``, ``addr_tokens`` (the
+    list of address-line tokens lifted from ``<p class="address">``,
+    in document order) or None if no name anchor is present.
     """
-    anchor_m = _MEMBER_ANCHOR_RE.search(row_html)
-    if not anchor_m:
+    name_m = _CARD_NAME_ANCHOR_RE.search(card_html)
+    if not name_m:
         return None
-    member_id = anchor_m.group(1)
-    # Inner anchor body may contain a trailing decoration like the
-    # "Photos in Profile" link — strip those before lifting the name.
-    inner = anchor_m.group(2)
-    name_raw = _strip_html_tags(inner)
+    member_id = name_m.group(1)
+    name_raw = _strip_html_tags(name_m.group(2))
     if not name_raw:
         return None
 
-    # The address divs come from the SAME <td> that holds the anchor.
-    # The lineitem block has the structure:
-    #   <td ...><div><a ...>Name</a></div><div>line1</div>...<div>country</div></td>
-    # The anchor itself is wrapped in its own <div>. Pull all <div>...</div>
-    # blocks AFTER the anchor end position.
-    after = row_html[anchor_m.end():]
-    div_texts = re.findall(r"<div[^>]*>(.*?)</div>", after, re.S)
-    # Strip any nested anchor decoration tags out (e.g. <a title="Photos in Profile">
-    # may live in the same outer div as the name link — handled above by
-    # taking text after the anchor end; the next divs are the address).
-    divs: list[str] = []
-    for d in div_texts:
-        text = _strip_html_tags(d)
-        # The map link / photo icon divs are typically empty; keep empties
-        # so positional indexing works.
-        divs.append(text)
-    return {"id": member_id, "name": name_raw, "divs": divs}
+    addr_tokens: list[str] = []
+    addr_m = _CARD_ADDRESS_RE.search(card_html)
+    if addr_m:
+        addr_inner = addr_m.group(1)
+        # Split on <br> tags; each fragment becomes a stripped token.
+        for piece in re.split(r"<br\s*/?>", addr_inner, flags=re.I):
+            text = _strip_html_tags(piece)
+            if text:
+                addr_tokens.append(text)
+
+    return {"id": member_id, "name": name_raw, "addr_tokens": addr_tokens}
 
 
-def _row_to_normalized_row(row: dict, source_state_hint: Optional[str] = None) -> Optional[NormalizedPractitionerRow]:
-    """Pure transformation: parsed lineitem dict -> NormalizedPractitionerRow.
+def _card_to_normalized_row(card: dict) -> Optional[NormalizedPractitionerRow]:
+    """Pure transformation: parsed card dict -> NormalizedPractitionerRow stub.
 
-    Returns None when no usable name is recovered.
+    The list-page card carries ONLY name + member_id + (city, state, postal).
+    Street, country, phone, email, website, credentials, practice_name all
+    live on the profile page and are filled in by ``parse_profile_html``
+    when the migrate runner does the per-row enrichment fetch.
 
-    The grid-row div layout (positional, 7 slots in production):
-
-        [0] address line 1   (street; may be empty if practitioner only listed city)
-        [1] address line 2   (suite/floor; often empty)
-        [2] city
-        [3] state            (full name, e.g. "California")
-        [4] postal           (US ZIP, ZIP+4, or Canadian postcode)
-        [5] country          (often empty — defaults to US)
-        [6] extra            (always empty; trailing 25%-width column)
-
-    The address-line slots collapse upward when blank: a row whose
-    address1 is missing has [city, state, postal, ...] starting at
-    index 0. So we identify the slots by content type rather than
-    by index — find the state in the divs first, then the postal next
-    to it.
+    Returns None when no usable name is recovered. Address tokens are
+    matched by content type (state-name match wins) so missing fields
+    don't shift positional indexing.
     """
-    name_raw = row.get("name")
+    name_raw = card.get("name")
     if not name_raw:
         return None
 
@@ -418,59 +414,49 @@ def _row_to_normalized_row(row: dict, source_state_hint: Optional[str] = None) -
     if not clean_name:
         return None
 
-    divs = list(row.get("divs", []))
-    # Trim trailing all-blank divs.
-    while divs and not divs[-1].strip():
-        divs.pop()
+    tokens = list(card.get("addr_tokens", []))
 
-    # Walk divs and find the (state, postal, country) trio. The state
-    # is the FULL US state name (or Canadian province), the postal is
-    # a digits-and-dashes token, and the country (if present) is a
-    # country name. The address lines are everything BEFORE the city.
-    # Strategy: find the state index, then city = state_idx - 1,
-    # postal = state_idx + 1, country = state_idx + 2.
-    state_idx = None
-    for i, d in enumerate(divs):
-        if d in _US_STATES or d in _CA_PROVINCES:
+    # Find the state token (full US state name OR Canadian province);
+    # then the city is whatever comes before it and the postal is
+    # whatever comes after. Postal must match a US ZIP / Canadian
+    # postcode shape; anything else trailing the state is discarded.
+    state_idx: Optional[int] = None
+    for i, t in enumerate(tokens):
+        if t in _US_STATES or t in _CA_PROVINCES:
             state_idx = i
             break
 
-    city = state = postal = country = None
-    addr_divs: list[str] = []
+    city = state = postal = None
     if state_idx is not None:
-        state = divs[state_idx] or None
+        state = tokens[state_idx] or None
         if state_idx >= 1:
-            city = divs[state_idx - 1] or None
-        if state_idx + 1 < len(divs):
-            postal = divs[state_idx + 1] or None
-        if state_idx + 2 < len(divs):
-            country = divs[state_idx + 2] or None
-        addr_divs = [d for d in divs[: max(0, state_idx - 1)] if d]
-    else:
-        # No state found — pack whatever we have into address1.
-        addr_divs = [d for d in divs if d]
+            city = tokens[state_idx - 1] or None
+        # Postal: next token after the state, if it shape-matches.
+        if state_idx + 1 < len(tokens):
+            cand = tokens[state_idx + 1]
+            cand_compact = cand.replace(" ", "")
+            if (
+                re.match(r"^\d{5}(?:-\d{4})?$", cand)
+                or re.match(r"^[A-Z]\d[A-Z]\s?\d[A-Z]\d$", cand, re.I)
+                or re.match(r"^[A-Z]\d[A-Z]\d[A-Z]\d$", cand_compact, re.I)
+            ):
+                postal = cand
 
-    # Join non-empty address lines.
-    address1 = ", ".join(addr_divs) if addr_divs else None
-
-    # Country: use the explicit country if present, else infer from state.
-    country_iso = (
-        _country_iso2_from_name(country) if country else None
-    ) or _infer_country_from_state(state) or (source_state_hint and "US") or "US"
+    country_iso = _infer_country_from_state(state) or "US"
 
     return NormalizedPractitionerRow(
         tier="org_member",
         name=clean_name,
         specialties=list(LOCKED_SPECIALTIES),
         source_org="AANP",
-        source_url=_build_source_url(row["id"]),
+        source_url=_build_source_url(card["id"]),
         fellowship_level=_detect_fellowship_creds(credentials),
-        practice_name=None,  # not in grid rows; only in detail page
+        practice_name=None,
         credentials=credentials,
-        phone=None,           # not in grid rows
-        email=None,           # not in grid rows
-        website=None,         # not in grid rows
-        address1=address1,
+        phone=None,
+        email=None,
+        website=None,
+        address1=None,   # street is profile-only
         city=city,
         state=state,
         postal=postal,
@@ -483,36 +469,46 @@ def _row_to_normalized_row(row: dict, source_state_hint: Optional[str] = None) -
 # ---------------------------------------------------------------------------
 
 def parse_search_results_html(html: str) -> list[NormalizedPractitionerRow]:
-    """Pure parser: takes a ``/searchserver/people.aspx`` response HTML
-    (the iframe page) and returns one NormalizedPractitionerRow per
-    ``<tr class="lineitem">`` row in the SearchResultsGrid. No I/O.
+    """Pure parser: takes a ``/searchserver/people2.aspx`` response HTML
+    (the iframe page) and returns one NormalizedPractitionerRow stub per
+    ``<li><div class="memb-result-item">`` card. No I/O.
 
-    The lineitem markup is stable across page-1..N — pagination is
-    handled by the caller (issue a new search or follow the next-page
-    POST). This parser is page-scoped: it returns whatever is on the
-    page handed to it.
+    The card markup is stable across page-1..N — pagination is handled
+    by the caller (``__doPostBack`` replay against the iframe URL).
+    This parser is page-scoped: it returns whatever is on the page handed
+    to it.
+
+    The list-page rows are stubs: only ``name``, ``source_url``, and
+    (when present) ``city``/``state``/``postal`` are populated. The
+    migrate runner enriches each stub by fetching the corresponding
+    profile page and merging fields.
     """
     if not isinstance(html, str):
         return []
 
-    # Isolate the result grid section so we don't accidentally pull
-    # member IDs from the Google Maps marker JS or the "Featured Members"
-    # sidebar widget.
-    grid_marker = 'id="SearchResultsGrid"'
-    g_idx = html.find(grid_marker)
-    if g_idx < 0:
+    # Isolate the search-results UL so we don't accidentally pull member
+    # IDs from the Google Maps marker JS, the "Featured Members" sidebar,
+    # or the original ``<table id="SearchResultsGrid">`` (the live JS
+    # transforms the table into the UL on render, but the server-side
+    # HTML always carries the UL).
+    ul_marker = 'id="search-results"'
+    u_idx = html.find(ul_marker)
+    if u_idx < 0:
         return []
-    grid_html = html[g_idx:]
+    # Walk forward to the closing </ul> tag so we don't accidentally
+    # consume the next UL after this one.
+    end_idx = html.find("</ul>", u_idx)
+    list_html = html[u_idx : end_idx if end_idx > u_idx else len(html)]
 
     rows: list[NormalizedPractitionerRow] = []
-    # Split on lineitem-tr open tag; skip the first split (header before
-    # first lineitem).
-    parts = grid_html.split('<tr class="lineitem"')
+    # Split on the start of each memb-result-item card; skip the first
+    # split (preamble before first card).
+    parts = list_html.split('<div class="memb-result-item"')
     for chunk in parts[1:]:
-        row = _parse_lineitem(chunk)
-        if row is None:
+        card = _parse_card(chunk)
+        if card is None:
             continue
-        normalized = _row_to_normalized_row(row)
+        normalized = _card_to_normalized_row(card)
         if normalized is not None:
             rows.append(normalized)
     return rows
@@ -520,10 +516,15 @@ def parse_search_results_html(html: str) -> list[NormalizedPractitionerRow]:
 
 def parse_record_count(html: str) -> Optional[int]:
     """Extract the ``DocCount`` (total results across all pages) from a
-    search-result page. Returns None if not found."""
+    search-result page. Returns None if not found.
+
+    The live site renders ``1000+`` as a soft cap for unbounded queries;
+    we strip the trailing ``+`` and return the numeric portion (the
+    actual total is then established by walking pages until exhausted).
+    """
     if not isinstance(html, str):
         return None
-    m = re.search(r'<span\s+id="DocCount"[^>]*>(\d+)</span>', html)
+    m = re.search(r'<span\s+id="DocCount"[^>]*>(\d+)\+?</span>', html)
     if not m:
         return None
     try:
@@ -694,7 +695,9 @@ def _parse_custom_fields(html: str) -> dict:
     return out
 
 
-def parse_profile_html(html: str) -> Optional[NormalizedPractitionerRow]:
+def parse_profile_html(
+    html: str, member_id: Optional[str] = None
+) -> Optional[NormalizedPractitionerRow]:
     """Pure parser: takes a ``/members/?id=<id>`` detail page HTML and
     returns a fully-populated NormalizedPractitionerRow. Returns None
     if no usable name is found.
@@ -703,6 +706,12 @@ def parse_profile_html(html: str) -> Optional[NormalizedPractitionerRow]:
     address (from tdEmployerName), phone + website (from tdWorkPhone),
     and Credentials / Clinic Email / Practice Focus / Treatment Modalities
     (from the CstmFld custom-field table).
+
+    ``member_id`` (optional) is used to construct ``source_url``. The
+    live profile pages no longer carry a ``/members/?id=<n>`` anchor in
+    the body, so the migrate runner must pass the id it used to fetch
+    the page. If omitted we still try to recover one from any in-page
+    anchor for backwards compatibility with the older fixtures.
     """
     if not isinstance(html, str):
         return None
@@ -714,11 +723,11 @@ def parse_profile_html(html: str) -> Optional[NormalizedPractitionerRow]:
     if not clean_name:
         return None
 
-    # The member id is in any /members/?id=NNN anchor on the page (e.g.
-    # the "Edit profile" link, or the canonical link header). Find the
-    # first one.
-    id_m = re.search(r'/members/\?id=(\d+)', html)
-    member_id = id_m.group(1) if id_m else None
+    # Caller-supplied id wins; else look for any /members/?id=NNN anchor
+    # on the page (the older fixtures carry one in the edit-profile link).
+    if member_id is None:
+        id_m = re.search(r'/members/\?id=(\d+)', html)
+        member_id = id_m.group(1) if id_m else None
 
     employer_m = _EMPLOYER_TD_RE.search(html)
     employer = _parse_employer_block(employer_m.group(1) if employer_m else "")

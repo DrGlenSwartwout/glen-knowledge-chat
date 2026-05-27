@@ -8,10 +8,14 @@ AANP (naturopathic.org) uses a YourMembership / AssociationVoice CMS:
 
   1. The form at /search/custom.asp?id=5613 POSTs to /search/search.asp,
      which returns a shell with an iframe pointing at
-     /searchserver/people.aspx?id=<one-shot-session-uuid>.
-  2. The iframe page paginates ~25 rows per page, with the total in
-     <span id="DocCount">N</span> and pagination via JS __doPostBack.
-  3. Each row has /members/?id=<numeric_id> as the canonical detail URL.
+     /searchserver/people2.aspx?id=<one-shot-session-uuid>.
+  2. The iframe page paginates ~24 cards per page (live layout), with
+     the total record count in <span id="DocCount">N</span> (or
+     "1000+" for unbounded queries) and pagination via JS __doPostBack.
+  3. Each card has /members/?id=<numeric_id> as the canonical detail URL.
+     The card itself carries only name + city/state/postal — street,
+     phone, email, website, credentials, practice_name all live on the
+     /members/?id=<id> profile page and are merged in below.
 
 Because the directory is state-partitioned (national search returns 5,000+
 results that the public-facing grid would never paginate through cleanly),
@@ -20,13 +24,18 @@ have ND licensure, issuing a separate search per state. For each state we:
 
   a) GET /search/search.asp?txt_state=<State> via Playwright
   b) Extract the iframe session UUID from the returned shell HTML
-  c) GET /searchserver/people.aspx?id=<uuid>&... for page 1
+  c) GET /searchserver/people2.aspx?id=<uuid>&... for page 1
   d) For page 2+, scrape __VIEWSTATE + __EVENTVALIDATION out of the
      prior response and POST them back to the same iframe URL with
-     __EVENTTARGET set to the pagination control. This is the
-     ``__doPostBack`` continuation pattern ASP.NET WebForms uses.
-  e) Per-row optionally fetch the detail page (we don't here — the list-
-     grid rows are sufficient for the NormalizedPractitionerRow contract).
+     __EVENTTARGET set to the pagination control whose rendered button
+     text matches the desired page number. The live layout uses
+     ``SearchResultsGrid$ctlNN$ctlMM`` event-target names (NOT the
+     older ``Page$N`` event-argument style) — we match by button text
+     to stay robust against the ctl-index numbering.
+  e) For each unique member_id collected across all pages, fetch the
+     /members/?id=<id> profile page and merge the profile fields
+     (street, phone, email, website, credentials, practice_name) into
+     the stub row from the list page.
 
 The site is Cloudflare-protected. All HTTP goes through Playwright so
 the cf_clearance cookie is granted once and reused across the whole run.
@@ -41,7 +50,9 @@ from urllib.parse import urlencode
 
 from scrapers.practitioner_finder.aanp import (
     BASE,
+    DIRECTORY_FORM_URL,
     SEARCH_URL,
+    parse_profile_html,
     parse_search_results_html,
     parse_record_count,
     parse_page_info,
@@ -81,7 +92,7 @@ CA_PROVINCES = [
 
 
 _IFRAME_UUID_RE = re.compile(
-    r'/searchserver/people\.aspx\?id=([0-9A-Fa-f-]+)', re.I
+    r'/searchserver/people2\.aspx\?id=([0-9A-Fa-f-]+)', re.I
 )
 
 # ASP.NET WebForms hidden-field extractors.
@@ -94,12 +105,27 @@ _VIEWSTATEGENERATOR_RE = re.compile(
 _EVENTVALIDATION_RE = re.compile(
     r'<input[^>]*\bname="__EVENTVALIDATION"[^>]*\bvalue="([^"]*)"', re.I
 )
-# YourMembership renders the page-number pagination as
-# <a href="javascript:__doPostBack('ctl00$ContentPlaceHolder1$gvPeople','Page$2')">2</a>
+# Live YourMembership renders the page-number pagination as
+# <button onclick="javascript:__doPostBack('SearchResultsGrid$ctl28$ctl02','')">2</button>
 # (the control name varies across deployments — capture the full target).
-_DOPOSTBACK_RE = re.compile(
-    r"javascript:__doPostBack\(\s*'([^']+)'\s*,\s*'(Page\$\d+)'\s*\)",
-    re.I,
+# The event argument is empty on the live layout; the rendered button
+# TEXT is the page number we match against.
+_DOPOSTBACK_BUTTON_RE = re.compile(
+    r"""<button[^>]*onclick=["']javascript:__doPostBack\(\s*&#39;([^&]+)&#39;\s*,\s*&#39;([^&]*)&#39;\s*\)["'][^>]*>(.*?)</button>""",
+    re.I | re.S,
+)
+# Same pattern but with raw single-quotes (the live HTML uses raw quotes
+# inside double-quoted onclick attrs, not HTML-encoded entities).
+_DOPOSTBACK_BUTTON_RAW_RE = re.compile(
+    r"""<button[^>]*onclick=["']javascript:__doPostBack\(\s*'([^']+)'\s*,\s*'([^']*)'\s*\)["'][^>]*>(.*?)</button>""",
+    re.I | re.S,
+)
+# Legacy anchor-based pagination (kept as a fallback for the pre-migration
+# layout in case the site ever serves a mixed/cached response):
+#   <a href="javascript:__doPostBack('ctl00...','Page$2')">2</a>
+_DOPOSTBACK_ANCHOR_RE = re.compile(
+    r"""<a[^>]*href=["']javascript:__doPostBack\(\s*'([^']+)'\s*,\s*'([^']*)'\s*\)["'][^>]*>(.*?)</a>""",
+    re.I | re.S,
 )
 
 
@@ -129,18 +155,65 @@ def _iframe_results_url(session_uuid: str) -> str:
             "hhSearchTerms": "",
         }
     )
-    return f"{BASE}/searchserver/people.aspx?{qs}"
+    return f"{BASE}/searchserver/people2.aspx?{qs}"
+
+
+def _strip_button_text(raw: str) -> str:
+    """Strip inner <i>...</i> / whitespace from a button label so we can
+    match the visible page-number text."""
+    s = re.sub(r"<[^>]+>", "", raw or "")
+    return s.strip()
+
+
+def _is_next_arrow_html(raw: str) -> bool:
+    """Detect the right-arrow forward-paging button (rendered as
+    ``<i class="fa fa-arrow-right">``)."""
+    return "fa-arrow-right" in (raw or "").lower()
 
 
 def _find_doPostBack_target_for_page(
     html: str, page_number: int
 ) -> Optional[tuple[str, str]]:
-    """Locate the (control_name, event_argument) for the link that pages to
-    ``page_number`` on the current results page. None if absent."""
-    want = f"Page${page_number}"
-    for m in _DOPOSTBACK_RE.finditer(html):
-        if m.group(2) == want:
-            return m.group(1), m.group(2)
+    """Locate the (control_name, event_argument) for the pagination
+    control whose rendered button text matches ``page_number`` on the
+    current results page. None if absent.
+
+    The live layout uses ``<button>`` controls with raw single-quoted
+    onclick attrs and an empty event-argument (the second __doPostBack
+    arg). The legacy layout used ``<a>`` controls with a ``Page$N``
+    event-argument. We try buttons first (live), then anchors (legacy),
+    then HTML-entity-encoded buttons (defensive — in case the response
+    is ever served through an entity-encoding proxy).
+
+    Note: only ~10 page-number buttons render at once on the live
+    layout. For pages outside the visible numeric window, use
+    ``_find_next_arrow_target`` to step forward one page at a time."""
+    want = str(page_number)
+
+    for pattern in (_DOPOSTBACK_BUTTON_RAW_RE, _DOPOSTBACK_BUTTON_RE, _DOPOSTBACK_ANCHOR_RE):
+        for m in pattern.finditer(html):
+            control = m.group(1)
+            argument = m.group(2)
+            text = _strip_button_text(m.group(3))
+            # Live form: text is the page number.
+            if text == want:
+                return control, argument
+            # Legacy form: event argument is 'Page$N'.
+            if argument == f"Page${page_number}":
+                return control, argument
+    return None
+
+
+def _find_next_arrow_target(html: str) -> Optional[tuple[str, str]]:
+    """Locate the (control_name, event_argument) for the forward-arrow
+    pagination button. None if absent (e.g. on the last page).
+
+    The forward arrow renders as ``<button ...><i class="fa fa-arrow-right">``
+    on the live layout."""
+    for pattern in (_DOPOSTBACK_BUTTON_RAW_RE, _DOPOSTBACK_BUTTON_RE):
+        for m in pattern.finditer(html):
+            if _is_next_arrow_html(m.group(3)):
+                return m.group(1), m.group(2)
     return None
 
 
@@ -192,12 +265,29 @@ def fetch_state_directory_html(
 def fetch_iframe_results_html(
     session_uuid: str, fetcher: Optional[PlaywrightFetcher] = None
 ) -> str:
-    """Fetch the page-1 iframe results page for a previously-issued search."""
+    """Fetch the page-1 iframe results page for a previously-issued search.
+
+    The live layout renders results into ``<ul id="search-results">``;
+    the legacy layout used ``<table id="SearchResultsGrid">``. We wait
+    for whichever exists — Playwright's selector engine accepts the
+    comma-joined OR form for this."""
     url = _iframe_results_url(session_uuid)
+    selector = "ul#search-results, table#SearchResultsGrid"
     if fetcher is not None:
-        return fetcher.get(url, wait_for_selector="#SearchResultsGrid")
+        return fetcher.get(url, wait_for_selector=selector)
     with playwright_session() as f:
-        return f.get(url, wait_for_selector="#SearchResultsGrid")
+        return f.get(url, wait_for_selector=selector)
+
+
+def fetch_profile_html(
+    member_id: str, fetcher: Optional[PlaywrightFetcher] = None
+) -> str:
+    """Fetch a single member's /members/?id=<id> profile page via Playwright."""
+    url = f"{BASE}/members/?id={member_id}"
+    if fetcher is not None:
+        return fetcher.get(url, wait_for_selector="#tdEmployerName")
+    with playwright_session() as f:
+        return f.get(url, wait_for_selector="#tdEmployerName")
 
 
 # ---------------------------------------------------------------------------
@@ -245,15 +335,21 @@ def fetch_rows_for_state(
     page_info = parse_page_info(page_html)
     total_pages = page_info[1] if page_info else 1
 
-    # __doPostBack replay for pages 2..total_pages.
+    # __doPostBack replay for pages 2..total_pages. The live layout only
+    # renders ~10 page-number buttons at a time — for page numbers outside
+    # that visible window we fall back to the right-arrow control which
+    # advances exactly one page per click.
     iframe_url = _iframe_results_url(uuid)
     current_html = page_html
     for page_num in range(2, total_pages + 1):
         target = _find_doPostBack_target_for_page(current_html, page_num)
         if target is None:
+            target = _find_next_arrow_target(current_html)
+        if target is None:
             print(
                 f"  WARN: {state!r} page {page_num} pagination target not "
-                f"found; stopping at page {page_num - 1}"
+                f"found (no number button and no next-arrow); stopping at "
+                f"page {page_num - 1}"
             )
             break
         form = _build_postback_form(current_html, target[0], target[1])
@@ -267,7 +363,7 @@ def fetch_rows_for_state(
             current_html = fetcher.post(
                 iframe_url,
                 form_data=form,
-                wait_for_selector="#SearchResultsGrid",
+                wait_for_selector="ul#search-results, table#SearchResultsGrid",
             )
         except Exception as e:  # pragma: no cover - live IO
             print(
@@ -288,23 +384,104 @@ def fetch_rows_for_state(
     return out
 
 
+_MEMBER_ID_FROM_URL_RE = re.compile(r"/members/\?id=(\d+)")
+
+
+def _member_id_from_url(source_url: Optional[str]) -> Optional[str]:
+    if not source_url:
+        return None
+    m = _MEMBER_ID_FROM_URL_RE.search(source_url)
+    return m.group(1) if m else None
+
+
+def _merge_profile_into_stub(
+    stub: NormalizedPractitionerRow,
+    profile: NormalizedPractitionerRow,
+) -> NormalizedPractitionerRow:
+    """Layer a profile-page row over a list-page stub, taking profile-
+    derived fields as authoritative when present.
+
+    Locked invariants (tier, source_org, specialties, source_url) are
+    fixed by the stub. fellowship_level is taken from the profile (which
+    has access to the Credentials custom field). Other fields fall back
+    to the stub when the profile field is None — this lets the list-page
+    city/state/postal cover cases where the profile employer block is
+    blank but the card still has location info."""
+    def _pick(profile_v, stub_v):
+        return profile_v if profile_v is not None else stub_v
+
+    return NormalizedPractitionerRow(
+        tier=stub.tier,
+        name=profile.name or stub.name,
+        specialties=list(stub.specialties),
+        source_org=stub.source_org,
+        source_url=stub.source_url,
+        fellowship_level=profile.fellowship_level or stub.fellowship_level,
+        practice_name=_pick(profile.practice_name, stub.practice_name),
+        credentials=_pick(profile.credentials, stub.credentials),
+        phone=_pick(profile.phone, stub.phone),
+        email=_pick(profile.email, stub.email),
+        website=_pick(profile.website, stub.website),
+        address1=_pick(profile.address1, stub.address1),
+        city=_pick(profile.city, stub.city),
+        state=_pick(profile.state, stub.state),
+        postal=_pick(profile.postal, stub.postal),
+        country=profile.country or stub.country or "US",
+    )
+
+
 def main() -> int:
-    print("Fetching AANP directory state-by-state (Playwright-backed)...")
-    all_rows: list[NormalizedPractitionerRow] = []
-    seen_urls: set[str] = set()
+    print("Fetching AANP directory (Playwright-backed, single unfiltered walk)...")
+    stubs_by_url: dict[str, NormalizedPractitionerRow] = {}
     with playwright_session() as fetcher:
-        for state in US_STATES + CA_PROVINCES:
-            print(f"  state={state!r}")
-            try:
-                rows = fetch_rows_for_state(state, fetcher=fetcher)
-            except Exception as e:  # pragma: no cover - live IO
-                print(f"  ERROR fetching {state!r}: {e}")
+        # Warm-up: the /search/search.asp endpoint returns an empty body
+        # on the first hit of a fresh session — it requires the search-form
+        # session cookie set by visiting /search/custom.asp first.
+        print("  warm-up: /search/custom.asp?id=5613")
+        try:
+            fetcher.get(DIRECTORY_FORM_URL)
+        except Exception as e:  # pragma: no cover - live IO
+            print(f"  WARN: warm-up failed: {e}")
+
+        # Single unfiltered walk — the txt_state URL param doesn't actually
+        # filter on the live site (the form fills it via JS at submission
+        # time), so any state value walks the full ~46 pages of results.
+        # 1 state iteration is enough; the per-state loop just re-walks
+        # the same ~1,100 rows.
+        try:
+            rows = fetch_rows_for_state("OR", fetcher=fetcher)
+        except Exception as e:  # pragma: no cover - live IO
+            print(f"  ERROR fetching directory: {e}")
+            rows = []
+        for r in rows:
+            if r.source_url and r.source_url not in stubs_by_url:
+                stubs_by_url[r.source_url] = r
+        print(f"    +{len(rows)} stubs collected ({len(stubs_by_url)} unique)")
+
+        print(
+            f"\nEnriching {len(stubs_by_url)} stub rows with per-member "
+            f"profile pages..."
+        )
+        all_rows: list[NormalizedPractitionerRow] = []
+        for i, (url, stub) in enumerate(stubs_by_url.items(), start=1):
+            member_id = _member_id_from_url(url)
+            if member_id is None:
+                # No id to fetch — keep the stub as-is.
+                all_rows.append(stub)
                 continue
-            for r in rows:
-                if r.source_url and r.source_url not in seen_urls:
-                    seen_urls.add(r.source_url)
-                    all_rows.append(r)
-            print(f"    +{len(rows)} rows  (total unique: {len(all_rows)})")
+            try:
+                profile_html = fetch_profile_html(member_id, fetcher=fetcher)
+            except Exception as e:  # pragma: no cover - live IO
+                print(f"  WARN: profile fetch failed for {member_id}: {e}")
+                all_rows.append(stub)
+                continue
+            profile_row = parse_profile_html(profile_html, member_id=member_id)
+            if profile_row is None:
+                all_rows.append(stub)
+                continue
+            all_rows.append(_merge_profile_into_stub(stub, profile_row))
+            if i % 50 == 0:
+                print(f"    enriched {i}/{len(stubs_by_url)}")
 
     print(f"\nUpserting {len(all_rows)} rows...")
     for row in all_rows:
