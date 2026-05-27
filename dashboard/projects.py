@@ -68,6 +68,25 @@ def _write_pending(items: list) -> None:
 _VALID_SECTIONS = ("in_process", "queued", "planning", "ideas", "completed")
 
 
+def _normalize_effort(raw: str) -> str:
+    """Accept S/M/L/XL, 1–5, '3 stars', '★★★' — return canonical star string."""
+    s = (raw or "").strip()
+    if not s:
+        return s
+    legacy = {"S": "★★", "M": "★★★", "L": "★★★★", "XL": "★★★★★"}
+    if s.upper() in legacy:
+        return legacy[s.upper()]
+    # Already stars
+    stars = s.count("★")
+    if stars and stars <= 5 and set(s) <= {"★", "☆", " "}:
+        return "★" * stars
+    # Numeric: "3", "4 stars", "5★"
+    m = re.match(r"^\s*([1-5])\b", s)
+    if m:
+        return "★" * int(m.group(1))
+    return s  # let it through; sync layer will write it verbatim
+
+
 def _enqueue(edit: dict) -> dict:
     """Validate + queue any typed edit (add_idea / move / set / drop)."""
     t = edit.get("type")
@@ -89,6 +108,8 @@ def _enqueue(edit: dict) -> dict:
         value = str(edit.get("value") or "").strip()
         if not (name and field and value):
             raise ValueError("missing name / field / value")
+        if field == "effort":
+            value = _normalize_effort(value)
         item = {"type": "set", "name": name, "field": field, "value": value}
     elif t == "drop":
         name = (edit.get("name") or "").strip()

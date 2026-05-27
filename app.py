@@ -5630,7 +5630,7 @@ TRACKER_DIRECTIVES = (
     "You can edit the projects tracker. When the user wants to add an idea, move a project, "
     "set a field, or drop a project, call the matching tool. "
     "Sections: in_process / queued / planning / ideas / completed. "
-    "Fields on each project: status, where, eta, blockers, effort (S/M/L/XL), "
+    "Fields on each project: status, where, eta, blockers, effort (1-5 stars; pass '1'–'5' or '★★★'), "
     "value ($/$$/$$$/$$$$), sessions. "
     "After a tool call, confirm what you did in one short line. "
     "Edits queue immediately; PROJECTS.md updates within ~10 minutes via the Mac sync job."
@@ -5730,14 +5730,13 @@ def console_ask():
     page    = (data.get("page") or "")
     if not query:
         return jsonify({"error":"No query"}), 400
-    # On /console/projects, give Justus the tracker tools so he can execute edits.
-    if page == "/console/projects":
-        system = _justus_system_prompt(owner, context, TRACKER_DIRECTIVES)
-        gen = _ask_justus_stream_tools(query, system, history, PROJECT_TOOLS,
-                                        _execute_project_tool, history_n=6)
-    else:
-        system = _justus_system_prompt(owner, context)
-        gen = _ask_justus_stream(query, system, history, history_n=6)
+    # Always enable tracker tools — Justus follows user intent, not the URL.
+    # Pass the current page in the context so Justus can reason about what
+    # actions are most relevant from where the user is.
+    page_ctx = f"\nCurrent page: {page}" if page else ""
+    system = _justus_system_prompt(owner, (context + page_ctx).strip(), TRACKER_DIRECTIVES)
+    gen = _ask_justus_stream_tools(query, system, history, PROJECT_TOOLS,
+                                    _execute_project_tool, history_n=6)
     return Response(stream_with_context(gen),
                     mimetype="text/event-stream",
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})

@@ -419,6 +419,21 @@ function escapeHtml(s) {
   ));
 }
 
+// Render effort value as 5-star badge. Accepts canonical "★★★", legacy "S/M/L/XL",
+// or numeric "3". Returns escaped "★★★☆☆"-style label.
+function renderEffortStars(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  let n = 0;
+  const legacy = { "S": 2, "M": 3, "L": 4, "XL": 5 };
+  if (legacy[s.toUpperCase()] != null) n = legacy[s.toUpperCase()];
+  else if (/^[1-5]$/.test(s)) n = parseInt(s, 10);
+  else n = (s.match(/★/g) || []).length;
+  n = Math.max(0, Math.min(5, n));
+  if (!n) return escapeHtml(s);
+  return "★".repeat(n) + "☆".repeat(5 - n);
+}
+
 let _byId = {};
 
 function render(data) {
@@ -478,7 +493,7 @@ function card(entry, id) {
 
   const chips = [];
   if (entry.pending) chips.push(`<span class="chip chip-pending">pending sync</span>`);
-  if (effort) chips.push(`<span class="chip chip-effort">effort ${escapeHtml(effort)}</span>`);
+  if (effort) chips.push(`<span class="chip chip-effort">${renderEffortStars(effort)}</span>`);
   if (value) chips.push(`<span class="chip chip-value">value ${escapeHtml(value)}</span>`);
   if (eta) chips.push(`<span class="chip chip-eta">ETA: ${escapeHtml(eta)}</span>`);
   if (blockers && blockers.toLowerCase() !== "none")
