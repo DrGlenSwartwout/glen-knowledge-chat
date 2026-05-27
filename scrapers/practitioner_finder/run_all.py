@@ -98,11 +98,66 @@ def _run_owns_scrape() -> tuple[int, int, int]:
     return len(rows), len(rows), 0
 
 
+def _run_cso_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.cso import (
+        fetch_all_directory_records, parse_directory_json,
+    )
+    records = fetch_all_directory_records()
+    rows = parse_directory_json(records)
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
+def _run_nora_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.nora import (
+        fetch_all_directory_records, parse_directory_json,
+    )
+    records = fetch_all_directory_records()
+    rows = parse_directory_json(records)
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
+def _run_ovdr_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.ovdr import fetch_all_records
+    rows = fetch_all_records()
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
+def _run_aanp_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.migrate_aanp import (
+        US_STATES, CA_PROVINCES, fetch_rows_for_state,
+    )
+    seen: set[str] = set()
+    all_rows = []
+    for state in US_STATES + CA_PROVINCES:
+        try:
+            rows = fetch_rows_for_state(state)
+        except Exception as e:
+            print(f"  WARN: AANP state={state!r} fetch failed: {e}", file=sys.stderr)
+            continue
+        for r in rows:
+            if r.source_url and r.source_url not in seen:
+                seen.add(r.source_url)
+                all_rows.append(r)
+    for row in all_rows:
+        run_upsert(row.to_dict())
+    return len(all_rows), len(all_rows), 0
+
+
 ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("oepf", _run_oepf_scrape),
     ("iaomt", _run_iaomt_scrape),
     ("iabdm", _run_iabdm_scrape),
     ("owns", _run_owns_scrape),
+    ("cso", _run_cso_scrape),
+    ("nora", _run_nora_scrape),
+    ("ovdr", _run_ovdr_scrape),
+    ("aanp", _run_aanp_scrape),
 ]
 
 
