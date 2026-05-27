@@ -843,8 +843,8 @@ def build_context(matches):
         text = meta.get("text", "").strip()
         if not text or total + len(text) > MAX_CONTEXT_CHARS:
             continue
-        name  = meta.get("name", "Unknown")
-        field = meta.get("field", "")
+        name  = meta.get("name") or meta.get("book") or meta.get("source") or "Unknown"
+        field = meta.get("field") or meta.get("source_type") or ""
         score = round(m.score, 3)
         if name not in sources:
             sources[name] = {"name": name, "field": field,
