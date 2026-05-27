@@ -29,10 +29,81 @@ from db_supabase import supabase_cursor
 
 # ---------------------------------------------------------------------------
 # Adapter registry — populated as adapters land in waves A–D.
-# Each entry: (adapter_name, callable that runs the migration end-to-end and
-# returns (rows_scraped, rows_inserted, rows_updated)).
+# Each entry: (adapter_name, callable that runs the adapter's scrape + upsert
+# and returns (rows_scraped, rows_inserted, rows_updated)). The wrappers SKIP
+# inline geocoding — the orchestrator does one global sweep at the end via
+# _global_geocode_sweep() to avoid double-paying Mapbox quota.
+#
+# rows_inserted / rows_updated cannot be cheaply distinguished given the
+# ON CONFLICT (source_url) DO UPDATE upsert. We report scraped count in
+# both fields; refinement is a future enhancement.
 # ---------------------------------------------------------------------------
-ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = []
+from scrapers.practitioner_finder.db import run_upsert
+
+
+def _run_oepf_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.oepf import (
+        fetch_listing_index, fetch_directory_listing_html,
+        parse_directory_listing_html,
+    )
+    index = fetch_listing_index()
+    rows_total = 0
+    for entry in index:
+        url = entry.get("link")
+        if not url:
+            continue
+        try:
+            html = fetch_directory_listing_html(url)
+        except Exception as e:
+            print(f"  WARN: fetch failed for {url}: {e}", file=sys.stderr)
+            continue
+        for row in parse_directory_listing_html(html, source_url=url):
+            run_upsert(row.to_dict())
+            rows_total += 1
+    return rows_total, rows_total, 0
+
+
+def _run_iaomt_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.iaomt import (
+        fetch_all_directory_records, parse_directory_json,
+    )
+    records = fetch_all_directory_records()
+    rows = parse_directory_json(records)
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
+def _run_iabdm_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.iabdm import (
+        fetch_all_directory_records, parse_directory_json,
+    )
+    records = fetch_all_directory_records()
+    rows = parse_directory_json(records)
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
+def _run_owns_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.owns import (
+        build_category_country_map, fetch_categories,
+        fetch_all_directory_records, parse_directory_json,
+    )
+    cat_country = build_category_country_map(fetch_categories())
+    records = fetch_all_directory_records()
+    rows = parse_directory_json(records, category_country=cat_country)
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
+ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
+    ("oepf", _run_oepf_scrape),
+    ("iaomt", _run_iaomt_scrape),
+    ("iabdm", _run_iabdm_scrape),
+    ("owns", _run_owns_scrape),
+]
 
 
 # ---------------------------------------------------------------------------
