@@ -29,6 +29,7 @@ from contextlib import contextmanager
 from typing import Iterator, Optional
 
 from playwright.sync_api import sync_playwright, Page
+from playwright_stealth import Stealth
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -170,6 +171,10 @@ def playwright_session(headless: bool = True) -> Iterator[PlaywrightFetcher]:
         context = browser.new_context(user_agent=USER_AGENT)
         page = context.new_page()
         page.set_default_timeout(DEFAULT_TIMEOUT_MS)
+        try:
+            Stealth().apply_stealth_sync(page)
+        except Exception:  # noqa: BLE001 - stealth is best-effort
+            pass
         yield PlaywrightFetcher(page)
     finally:
         try:
