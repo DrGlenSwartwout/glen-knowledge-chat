@@ -2304,6 +2304,19 @@ def affiliate_login_verify():
     return _redir(f"/affiliate/portal?token={aff[0]}")
 
 
+@app.route("/affiliate/smtp-debug", methods=["GET"])
+def affiliate_smtp_debug():
+    """Diagnostic: reports presence (not values) of the env vars the
+    affiliate magic-link helper reads. Safe to expose — no secrets leaked.
+    """
+    keys = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"]
+    report = {}
+    for k in keys:
+        v = os.environ.get(k, "")
+        report[k] = {"set": bool(v), "length": len(v)}
+    return jsonify(report)
+
+
 @app.route("/affiliate/apply-form", methods=["POST"])
 def affiliate_apply_form():
     """HTML form POST — processes signup and does a 302 redirect to the portal."""
