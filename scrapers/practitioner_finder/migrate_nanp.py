@@ -1,39 +1,51 @@
-"""One-shot migration: scrape NANP (National Association of Nutrition
-Professionals) directory and load into the practitioners table.
+"""One-shot migration: scrape NANP directory and load into practitioners table.
 
 Run via:
   doppler run --project remedy-match --config prd -- \\
     python3 -m scrapers.practitioner_finder.migrate_nanp
 
-Two-stage scrape (mirrors OEPF):
-  Stage 1: walk every results page at
-    GET https://mynanp.nanp.org/search/newsearch.asp?cdlMemberTypeID=1705148&...&page=N
-    Each page is up to 20 rows of (profile_id, name, city, state, country).
-  Stage 2: fetch each
-    GET https://mynanp.nanp.org/profile/?ID=<numeric>
-    and parse the full practitioner row (practice, address, phone, email,
-    website, BCHN credential flag).
+NANP (mynanp.nanp.org) uses the SAME YourMembership / AssociationVoice CMS
+as AANP (naturopathic.org). The two are sister deployments on the same
+vendor and the iframe-card scrape pattern is byte-for-byte identical:
 
-mynanp.nanp.org is Cloudflare-protected — every HTTP request goes through
-the shared Playwright fetcher so the cf_clearance cookie is granted once
-and reused across the whole run.
+  1. Warm-up GET ``/search/`` to set the session cookies. (NANP's
+     warm-up URL is the bare ``/search/`` path, not the AANP-style
+     ``/search/custom.asp?id=NNN`` form.)
+  2. GET ``/search/newsearch.asp`` which returns a shell with an iframe
+     pointing at ``/searchserver/people2.aspx?id=<one-shot-session-uuid>``.
+  3. GET the iframe URL: 24 cards / page, ``<span id="DocCount">N</span>``
+     total, ``Page X of Y`` pagination, ASP.NET WebForms ``__doPostBack``
+     replay for pages 2..N. The pagination control names are the same
+     ``SearchResultsGrid$ctlNN$ctlMM`` form as AANP.
+  4. For each unique ``/members/?id=<numeric>`` URL collected across all
+     pages, fetch the profile page and merge profile fields (street,
+     phone, email, website, credentials, BCHN, practice_name) into the
+     stub row from the list page.
 
-Idempotent — re-running upserts by source_url (the bare
-``/profile/?ID=<numeric>`` URL is stable across re-runs). After load,
-runs the shared geocoder over any rows still lacking lat/lng.
+The mynanp.nanp.org subdomain is Cloudflare-protected. All HTTP goes
+through Playwright so the cf_clearance cookie is granted once and reused
+across the whole run.
+
+The live NANP form doesn't filter by state via URL params either — the
+``txt_state`` query param is a no-op (same as AANP). We do a single
+unfiltered walk that returns all ~673 active practitioners.
+
+Idempotent — re-running upserts by source_url. After load, runs the
+shared geocoder over any rows still lacking lat/lng.
 """
+import re
 import sys
 from typing import Optional
 from urllib.parse import urlencode
 
 from scrapers.practitioner_finder.nanp import (
-    PROFILE_URL,
-    SEARCH_PUBLIC_DIRECTORY_PIN,
-    SEARCH_MEMBER_TYPE_ID,
-    SEARCH_RESULTS_URL,
-    parse_member_profile_html,
+    BASE,
+    DIRECTORY_FORM_URL,
+    SEARCH_URL,
+    parse_profile_html,
     parse_search_results_html,
-    parse_total_pages,
+    parse_record_count,
+    parse_page_info,
 )
 from scrapers.practitioner_finder.geocode import geocode_row, MapboxError
 from scrapers.practitioner_finder.db import (
@@ -48,99 +60,352 @@ from scrapers.practitioner_finder.playwright_fetch import (
 )
 
 
-def _search_results_url(page: int) -> str:
+_IFRAME_UUID_RE = re.compile(
+    r'/searchserver/people2\.aspx\?id=([0-9A-Fa-f-]+)', re.I
+)
+
+_VIEWSTATE_RE = re.compile(
+    r'<input[^>]*\bname="__VIEWSTATE"[^>]*\bvalue="([^"]*)"', re.I
+)
+_VIEWSTATEGENERATOR_RE = re.compile(
+    r'<input[^>]*\bname="__VIEWSTATEGENERATOR"[^>]*\bvalue="([^"]*)"', re.I
+)
+_EVENTVALIDATION_RE = re.compile(
+    r'<input[^>]*\bname="__EVENTVALIDATION"[^>]*\bvalue="([^"]*)"', re.I
+)
+# Live YourMembership renders the page-number pagination as
+# <button onclick="javascript:__doPostBack('SearchResultsGrid$ctl28$ctl02','')">2</button>
+_DOPOSTBACK_BUTTON_RE = re.compile(
+    r"""<button[^>]*onclick=["']javascript:__doPostBack\(\s*&#39;([^&]+)&#39;\s*,\s*&#39;([^&]*)&#39;\s*\)["'][^>]*>(.*?)</button>""",
+    re.I | re.S,
+)
+_DOPOSTBACK_BUTTON_RAW_RE = re.compile(
+    r"""<button[^>]*onclick=["']javascript:__doPostBack\(\s*'([^']+)'\s*,\s*'([^']*)'\s*\)["'][^>]*>(.*?)</button>""",
+    re.I | re.S,
+)
+_DOPOSTBACK_ANCHOR_RE = re.compile(
+    r"""<a[^>]*href=["']javascript:__doPostBack\(\s*'([^']+)'\s*,\s*'([^']*)'\s*\)["'][^>]*>(.*?)</a>""",
+    re.I | re.S,
+)
+
+
+def _extract_iframe_uuid(shell_html: str) -> Optional[str]:
+    """Pull the session UUID out of the iframe ``src`` on a search shell page."""
+    m = _IFRAME_UUID_RE.search(shell_html)
+    if not m:
+        return None
+    return m.group(1)
+
+
+def _extract_hidden_field(pattern: re.Pattern, html: str) -> Optional[str]:
+    m = pattern.search(html)
+    return m.group(1) if m else None
+
+
+def _iframe_results_url(session_uuid: str) -> str:
+    """First-page GET URL for a freshly-issued iframe session."""
     qs = urlencode(
         {
-            "cdlMemberTypeID": SEARCH_MEMBER_TYPE_ID,
-            "cdlCustomFieldValueIDPublicDirectoriesSelection": SEARCH_PUBLIC_DIRECTORY_PIN,
-            "page": str(page),
+            "id": session_uuid,
+            "cdbid": "",
+            "canconnect": "0",
+            "canmessage": "0",
+            "map": "True",
+            "toggle": "True",
+            "hhSearchTerms": "",
         }
     )
-    return f"{SEARCH_RESULTS_URL}?{qs}"
+    return f"{BASE}/searchserver/people2.aspx?{qs}"
 
 
-def _profile_url(profile_id: str) -> str:
-    return f"{PROFILE_URL}?{urlencode({'ID': profile_id})}"
+def _strip_button_text(raw: str) -> str:
+    """Strip inner <i>...</i> / whitespace from a button label."""
+    s = re.sub(r"<[^>]+>", "", raw or "")
+    return s.strip()
 
 
-def fetch_search_results_page(
-    page: int, fetcher: Optional[PlaywrightFetcher] = None
-) -> str:
-    """Hit one page of /search/newsearch.asp via Playwright and return HTML."""
-    url = _search_results_url(page)
-    if fetcher is not None:
-        return fetcher.get(url, wait_for_selector="table")
-    with playwright_session() as f:
-        return f.get(url, wait_for_selector="table")
+def _is_next_arrow_html(raw: str) -> bool:
+    """Detect the right-arrow forward-paging button."""
+    return "fa-arrow-right" in (raw or "").lower()
 
 
-def fetch_member_profile_html(
-    profile_id: str, fetcher: Optional[PlaywrightFetcher] = None
-) -> str:
-    """Hit a single /profile/?ID=<n> page via Playwright and return HTML."""
-    url = _profile_url(profile_id)
-    if fetcher is not None:
-        return fetcher.get(url, wait_for_selector="h1")
-    with playwright_session() as f:
-        return f.get(url, wait_for_selector="h1")
+def _find_doPostBack_target_for_page(
+    html: str, page_number: int
+) -> Optional[tuple[str, str]]:
+    """Locate the (control_name, event_argument) for the page-number
+    pagination control whose rendered button text matches ``page_number``.
 
-
-def fetch_all_records() -> list[NormalizedPractitionerRow]:
-    """Walk every results page through Playwright, then fetch + parse each
-    member profile. Returns a flat list of NormalizedPractitionerRow,
-    dedup'd by profile_id within the run.
-
-    A single Playwright session wraps the entire walk so the cf_clearance
-    cookie is granted once and reused across stage 1 + stage 2.
-
-    Profiles that fail to render (network blip, missing page, etc.) are
-    logged + skipped — sibling profiles are independent.
+    Only ~10 page-number buttons render at once on the live layout. For
+    pages outside the visible numeric window, use the right-arrow control
+    (``_find_next_arrow_target``) to step forward one page at a time.
     """
-    seen: set[str] = set()
-    stubs: list[dict] = []
+    want = str(page_number)
+
+    for pattern in (_DOPOSTBACK_BUTTON_RAW_RE, _DOPOSTBACK_BUTTON_RE, _DOPOSTBACK_ANCHOR_RE):
+        for m in pattern.finditer(html):
+            control = m.group(1)
+            argument = m.group(2)
+            text = _strip_button_text(m.group(3))
+            if text == want:
+                return control, argument
+            if argument == f"Page${page_number}":
+                return control, argument
+    return None
+
+
+def _find_next_arrow_target(html: str) -> Optional[tuple[str, str]]:
+    """Locate the (control_name, event_argument) for the forward-arrow
+    pagination button. None if absent (e.g. on the last page)."""
+    for pattern in (_DOPOSTBACK_BUTTON_RAW_RE, _DOPOSTBACK_BUTTON_RE):
+        for m in pattern.finditer(html):
+            if _is_next_arrow_html(m.group(3)):
+                return m.group(1), m.group(2)
+    return None
+
+
+def _build_postback_form(html: str, control: str, argument: str) -> Optional[dict]:
+    """Build the form_data payload for a __doPostBack continuation.
+
+    Returns None if any of the three required ASP.NET hidden fields are
+    missing (in which case the caller should abort the pagination walk —
+    the page can't be replayed without them)."""
+    vs = _extract_hidden_field(_VIEWSTATE_RE, html)
+    ev = _extract_hidden_field(_EVENTVALIDATION_RE, html)
+    if vs is None or ev is None:
+        return None
+    vsg = _extract_hidden_field(_VIEWSTATEGENERATOR_RE, html) or ""
+    return {
+        "__EVENTTARGET": control,
+        "__EVENTARGUMENT": argument,
+        "__VIEWSTATE": vs,
+        "__VIEWSTATEGENERATOR": vsg,
+        "__EVENTVALIDATION": ev,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Live fetch helpers (Playwright-backed)
+# ---------------------------------------------------------------------------
+
+def fetch_search_shell_html(
+    fetcher: Optional[PlaywrightFetcher] = None,
+) -> str:
+    """Fetch the rendered search-shell HTML via Playwright.
+
+    Hits ``/search/newsearch.asp`` so the Cloudflare challenge is solved
+    once and the cookie persists. Returns the raw rendered HTML body —
+    the iframe-uuid extractor reads the iframe src out of this page.
+    """
+    if fetcher is not None:
+        return fetcher.get(SEARCH_URL)
+    with playwright_session() as f:
+        return f.get(SEARCH_URL)
+
+
+def fetch_iframe_results_html(
+    session_uuid: str, fetcher: Optional[PlaywrightFetcher] = None
+) -> str:
+    """Fetch the page-1 iframe results page for a previously-issued search."""
+    url = _iframe_results_url(session_uuid)
+    selector = "ul#search-results, table#SearchResultsGrid"
+    if fetcher is not None:
+        return fetcher.get(url, wait_for_selector=selector)
+    with playwright_session() as f:
+        return f.get(url, wait_for_selector=selector)
+
+
+def fetch_profile_html(
+    member_id: str, fetcher: Optional[PlaywrightFetcher] = None
+) -> str:
+    """Fetch a single member's /members/?id=<id> profile page via Playwright."""
+    url = f"{BASE}/members/?id={member_id}"
+    if fetcher is not None:
+        return fetcher.get(url, wait_for_selector="#tdEmployerName")
+    with playwright_session() as f:
+        return f.get(url, wait_for_selector="#tdEmployerName")
+
+
+# ---------------------------------------------------------------------------
+# Single-walk pagination walker with multi-page __doPostBack replay
+# ---------------------------------------------------------------------------
+
+def fetch_all_stubs(
+    fetcher: Optional[PlaywrightFetcher] = None,
+) -> list[NormalizedPractitionerRow]:
+    """Walk all pages of the NANP directory in a single unfiltered pass.
+
+    Returns the deduplicated list of NormalizedPractitionerRow records
+    (deduplication by source_url). The NANP form doesn't filter by state
+    via URL params — a single unfiltered walk yields the full ~673-row
+    directory across ~29 pages.
+
+    Page 2..N use ``__doPostBack`` POST replay: scrape ``__VIEWSTATE`` +
+    ``__EVENTVALIDATION`` from page N-1 and POST them back to the same
+    iframe URL with ``__EVENTTARGET`` set to the page-N pagination
+    control. The Playwright session keeps cf_clearance warm across all
+    of these requests.
+    """
+    if fetcher is None:
+        with playwright_session() as f:
+            return fetch_all_stubs(fetcher=f)
+
+    shell_html = fetch_search_shell_html(fetcher=fetcher)
+    uuid = _extract_iframe_uuid(shell_html)
+    if uuid is None:
+        print("  WARN: no iframe uuid found in NANP search shell, skipping")
+        return []
+
+    seen_urls: set[str] = set()
     out: list[NormalizedPractitionerRow] = []
+    page_html = fetch_iframe_results_html(uuid, fetcher=fetcher)
+    for r in parse_search_results_html(page_html):
+        if r.source_url and r.source_url not in seen_urls:
+            seen_urls.add(r.source_url)
+            out.append(r)
 
-    with playwright_session() as fetcher:
-        # Stage 1: walk results pages.
-        page = 1
-        while True:
-            html = fetch_search_results_page(page, fetcher=fetcher)
-            page_stubs = parse_search_results_html(html)
-            if not page_stubs:
-                break
-            for s in page_stubs:
-                pid = s.get("profile_id")
-                if pid and pid not in seen:
-                    seen.add(pid)
-                    stubs.append(s)
-            total = parse_total_pages(html)
-            if page >= total:
-                break
-            page += 1
+    page_info = parse_page_info(page_html)
+    total_pages = page_info[1] if page_info else 1
+    record_count = parse_record_count(page_html)
+    if record_count is not None:
+        print(f"  DocCount: {record_count} record(s) across {total_pages} pages")
 
-        # Stage 2: fetch + parse each profile.
-        for stub in stubs:
-            pid = stub["profile_id"]
-            try:
-                profile_html = fetch_member_profile_html(pid, fetcher=fetcher)
-            except Exception as e:  # pragma: no cover - live IO
-                print(f"  WARN: NANP profile {pid} fetch failed: {e}")
-                continue
-            row = parse_member_profile_html(
-                profile_html, profile_id=pid, stub=stub
+    iframe_url = _iframe_results_url(uuid)
+    current_html = page_html
+    for page_num in range(2, total_pages + 1):
+        target = _find_doPostBack_target_for_page(current_html, page_num)
+        if target is None:
+            target = _find_next_arrow_target(current_html)
+        if target is None:
+            print(
+                f"  WARN: page {page_num} pagination target not found "
+                f"(no number button and no next-arrow); stopping at "
+                f"page {page_num - 1}"
             )
-            if row is not None:
-                out.append(row)
+            break
+        form = _build_postback_form(current_html, target[0], target[1])
+        if form is None:
+            print(
+                f"  WARN: page {page_num} missing __VIEWSTATE / "
+                f"__EVENTVALIDATION; stopping at page {page_num - 1}"
+            )
+            break
+        try:
+            current_html = fetcher.post(
+                iframe_url,
+                form_data=form,
+                wait_for_selector="ul#search-results, table#SearchResultsGrid",
+            )
+        except Exception as e:  # pragma: no cover - live IO
+            print(f"  WARN: page {page_num} POST replay failed: {e}")
+            break
+        rows = parse_search_results_html(current_html)
+        added = 0
+        for r in rows:
+            if r.source_url and r.source_url not in seen_urls:
+                seen_urls.add(r.source_url)
+                out.append(r)
+                added += 1
+        if added == 0:
+            break
     return out
 
 
-def main() -> int:
-    print("Fetching NANP directory via mynanp.nanp.org (Playwright-backed)...")
-    rows = fetch_all_records()
-    print(f"  parsed {len(rows)} rows")
+_MEMBER_ID_FROM_URL_RE = re.compile(r"/members/\?id=(\d+)")
 
-    print(f"\nUpserting {len(rows)} rows...")
-    for row in rows:
+
+def _member_id_from_url(source_url: Optional[str]) -> Optional[str]:
+    if not source_url:
+        return None
+    m = _MEMBER_ID_FROM_URL_RE.search(source_url)
+    return m.group(1) if m else None
+
+
+def _merge_profile_into_stub(
+    stub: NormalizedPractitionerRow,
+    profile: NormalizedPractitionerRow,
+) -> NormalizedPractitionerRow:
+    """Layer a profile-page row over a list-page stub, taking profile-
+    derived fields as authoritative when present.
+
+    Locked invariants (tier, source_org, specialties, source_url) are
+    fixed by the stub. fellowship_level is taken from the profile (which
+    has access to the BCHN custom field). Other fields fall back to the
+    stub when the profile field is None — this lets the list-page
+    city/state cover cases where the profile employer block is blank.
+    """
+    def _pick(profile_v, stub_v):
+        return profile_v if profile_v is not None else stub_v
+
+    return NormalizedPractitionerRow(
+        tier=stub.tier,
+        name=profile.name or stub.name,
+        specialties=list(stub.specialties),
+        source_org=stub.source_org,
+        source_url=stub.source_url,
+        fellowship_level=profile.fellowship_level or stub.fellowship_level,
+        practice_name=_pick(profile.practice_name, stub.practice_name),
+        credentials=_pick(profile.credentials, stub.credentials),
+        phone=_pick(profile.phone, stub.phone),
+        email=_pick(profile.email, stub.email),
+        website=_pick(profile.website, stub.website),
+        address1=_pick(profile.address1, stub.address1),
+        city=_pick(profile.city, stub.city),
+        state=_pick(profile.state, stub.state),
+        postal=_pick(profile.postal, stub.postal),
+        country=profile.country or stub.country or "US",
+    )
+
+
+def main() -> int:
+    print("Fetching NANP directory (Playwright-backed, single unfiltered walk)...")
+    stubs_by_url: dict[str, NormalizedPractitionerRow] = {}
+    with playwright_session() as fetcher:
+        # Warm-up: the live NANP search shell needs the search-form
+        # session cookie set by visiting /search/ first; without this
+        # /search/newsearch.asp returns an empty body on the first hit
+        # of a fresh Playwright session.
+        print(f"  warm-up: {DIRECTORY_FORM_URL}")
+        try:
+            fetcher.get(DIRECTORY_FORM_URL)
+        except Exception as e:  # pragma: no cover - live IO
+            print(f"  WARN: warm-up failed: {e}")
+
+        try:
+            rows = fetch_all_stubs(fetcher=fetcher)
+        except Exception as e:  # pragma: no cover - live IO
+            print(f"  ERROR fetching directory: {e}")
+            rows = []
+        for r in rows:
+            if r.source_url and r.source_url not in stubs_by_url:
+                stubs_by_url[r.source_url] = r
+        print(f"    +{len(rows)} stubs collected ({len(stubs_by_url)} unique)")
+
+        print(
+            f"\nEnriching {len(stubs_by_url)} stub rows with per-member "
+            f"profile pages..."
+        )
+        all_rows: list[NormalizedPractitionerRow] = []
+        for i, (url, stub) in enumerate(stubs_by_url.items(), start=1):
+            member_id = _member_id_from_url(url)
+            if member_id is None:
+                all_rows.append(stub)
+                continue
+            try:
+                profile_html = fetch_profile_html(member_id, fetcher=fetcher)
+            except Exception as e:  # pragma: no cover - live IO
+                print(f"  WARN: profile fetch failed for {member_id}: {e}")
+                all_rows.append(stub)
+                continue
+            profile_row = parse_profile_html(profile_html, member_id=member_id)
+            if profile_row is None:
+                all_rows.append(stub)
+                continue
+            all_rows.append(_merge_profile_into_stub(stub, profile_row))
+            if i % 50 == 0:
+                print(f"    enriched {i}/{len(stubs_by_url)}")
+
+    print(f"\nUpserting {len(all_rows)} rows...")
+    for row in all_rows:
         run_upsert(row.to_dict())
     print("  upsert complete")
 

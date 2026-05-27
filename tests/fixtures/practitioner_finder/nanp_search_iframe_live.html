@@ -1,0 +1,766 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head>
+    <title></title>
+
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="ROBOTS" content="NOINDEX, FOLLOW">
+
+    <link href="https://cdn.ymaws.com/global/css/bootstrap.min.css" rel="stylesheet">
+    <link id="lnkSSCombinedCSS" rel="stylesheet" type="text/css" href="/combined.css?context=sp">
+    <link rel="stylesheet" type="text/css" href="https://ajax.googleapis.com/ajax/libs/yui/2.9.0/build/container/assets/skins/sam/container.css">
+    <link rel="stylesheet" type="text/css" href="//maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+
+    <link rel="stylesheet" type="text/css" href="/global_inc/directory-search-results/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="/global_inc/member_engagement/css/animate-custom.css">
+	<link rel="stylesheet" type="text/css" href="/global_inc/member_engagement/css/material-design-iconic-font.css">
+    <link rel="stylesheet" type="text/css" href="/global_inc/member_engagement/css/custom.css">
+
+
+	<style type="text/css">
+		#SpMain, body {
+			background-color: white!important;
+		}
+	</style>
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/yui/2.9.0/build/yahoo/yahoo-min.js"></script>
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/yui/2.9.0/build/dom/dom-min.js"></script>
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/yui/2.9.0/build/event/event-min.js"></script>
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/yui/2.9.0/build/container/container-min.js"></script>
+    <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.3/jquery.min.js"></script>
+    
+	<script type="text/javascript" src="/global_inc/js/AC_RunActiveContent.js"></script>
+	<script type="text/javascript" src="/global_inc/js/AC_ActiveX.js"></script>
+	<script type="text/javascript" src="/global_inc/javascript_library.js"></script>
+	<script type="text/javascript" src="/global_inc/js/ajax_functions.js"></script>
+	<script type="text/javascript" src="/global_inc/js/xml_helpers.js"></script>
+	<script type="text/javascript" src="/global_inc/js/site_help.js"></script>
+	<script language="javascript" type="text/javascript" src="/maps.js?_v=1.18"></script>
+
+	<style type="text/css" media="print">
+		#PRINT, #CLOSE { display:none; }
+		#SpContent { height:100% !important; width:100% !important; }
+		#CustomPageBody { overflow: visible !important; overflow-y: visible !important; overflow-x: visible !important; width:100% !important; }
+		.YMPrintMe { display: table-cell !important; }
+	</style>
+
+	<script type="text/javascript">
+		function printthis() {
+			location.reload();
+			try {
+				window.print();
+			} catch(e) {
+			    window.print();
+			}			
+		}
+	</script>	
+	<script type="text/javascript" language="javascript">
+	    var mapInitialized = false;
+	    var mapDisplayed = false;
+	    
+	    function showHideMap() {	        
+	        if (mapDisplayed) {
+	            $("#map_parent").fadeOut();
+	            mapDisplayed = false;
+	        }
+	        else {
+	            $("#map_parent").fadeIn();
+	            mapDisplayed = true;
+	            $('#SearchResultsFrame').css('cssText', 'height: 1500px !important;');
+	        }
+
+	        resizeSearchResultsFrame(10);
+
+	        if (document.initmap1 && !mapInitialized) {
+	            document.initmap1();
+	            mapInitialized = true;
+	        } 
+	    }
+
+	    function getMapLink(id) {
+	    	var cb = Math.round(new Date().getTime());
+
+	    	var url = $("#lnkMap1-" + id).attr("wizzy");
+
+	    	if (typeof url == 'undefined') {
+	    		$.ajax({
+	    			url: "/members/MapMember.aspx?CdbID=" + id + "&cb=" + cb,
+	    			async: false,
+	    			dataType: 'json',
+	    			success: function(json) {
+	    				getMapLinkSuccess(json, id);
+	    			},
+	    			complete: function() {
+	    				return false;
+	    			}
+	    		});
+	    	}
+	    	else {
+	    		if (url == "0") {
+	    			NoAccess();
+	    		}
+	    		else {
+	    			showMap(url);
+	    		}
+	    	}
+	    }
+
+	    function showMap(url) {
+	    	openPopup(url, 'MapSearch', 'toolbar=false,scrollbars,resizable', 900, 650);
+	    }
+		
+	    function getMapLinkSuccess(data, cdbid) {
+	    	if (data.ok && data.ok == "true") {
+	    		$("#lnkMap1-" + cdbid).attr("wizzy", data.url);
+	    		$("#lnkMap2-" + cdbid).attr("wizzy", data.url);
+	    		showMap(data.url);
+	    	}
+	    	else {
+	    		$("#lnkMap1-" + cdbid).attr("wizzy", "0");
+	    		$("#lnkMap2-" + cdbid).attr("wizzy", "0");
+	    		NoAccess();
+	    	}
+		}
+
+	    function NoAccess() {
+	    	window.alert("You do not have access to this member's profile.");
+	    }
+
+	</script>
+	
+	<style type="text/css">
+		body,
+		#PageContainer,
+		#SpMain,
+		#SpContent_Container
+		{
+			border:0px none;
+			margin:0px 0px 0px 0px;
+			padding:0px 0px 0px 0px;
+			width:auto;
+		}
+		body
+		{
+			background:transparent;
+		}
+		#SpContent_Container
+		{
+			height:300px;
+		}
+	</style>
+
+    <style type="text/css">
+        /* Internal styles for custom page only */
+        #sp-main #SpContent_Container {
+                    padding: 0;
+                }
+        #sp-main #CustomPageBody {
+                overflow-x: hidden;
+        }
+        .calloutbox {
+            display: none;
+        }
+        #SpTitleBar {
+        padding-top: 30px;
+        }
+
+        font-family: Arial,Helvetica,Verdana,sans-serif;
+    </style>
+</head>
+
+<body id="" class="results"><iframe id="_yuiResizeMonitor" title="Text Resize Monitor" tabindex="-1" role="presentation" style="position: absolute; visibility: visible; background-color: transparent; border-width: 0px; width: 2em; height: 2em; left: 0px; top: -33px;"></iframe>
+    		
+	
+	<script type="text/javascript" src="/global_inc/js/mini_profile.js"></script>
+
+	<div class="yui-skin-sam">
+	    <div class="yui-panel-container shadow yui-overlay-hidden" id="MiniProfile_c" style="z-index: 2; visibility: hidden;"><div id="MiniProfile" style="visibility: inherit; width: 350px;" onmouseover="MiniProfile_OnMouseOver();" onmouseout="HideMiniProfile();" class="yui-module yui-overlay yui-panel">
+		    <div id="MiniProfileBody" class="bd" style="background:#ffffff"></div>
+	    </div></div>
+	</div>
+	
+	
+			<link href="/global_inc/jquery-ui-custom.css" rel="stylesheet" type="text/css">
+			<script language="javascript" type="text/javascript">
+				YAHOO.namespace("container");
+
+				function YAHOOinitConnectionRequestForm(){
+					YAHOO.container.ConnectionRequestForm =
+						new YAHOO.widget.Panel("ConnectionRequestFormPanel", { width: '350px',
+							underlay: 'shadow',
+							close: true,
+							visible: false,
+							draggable: false
+						});
+						YAHOO.container.ConnectionRequestForm.render();
+                        $('#ConnectionRequestFormPanel_c').css('z-index', 100);
+						initCxDiagDefaults();
+				}
+
+				YAHOO.util.Event.onDOMReady(YAHOOinitConnectionRequestForm);
+
+				function initCxDiagDefaults() {
+					$(".YmDefaultValue").each(function() {
+						if ($(this).val() != $(this).attr('DefaultValue')) {
+							$(this).removeClass('DefaultValue');
+							$(this).addClass('deemphasize');
+						}
+					});
+
+					$(".YmDefaultValue").focus(function() {
+						if ($(this).val() == $(this).attr('DefaultValue')) {
+							$(this).val('');
+							$(this).removeClass('DefaultValue');
+							$(this).removeClass('deemphasize');
+						}
+					});
+
+					$(".YmDefaultValue").blur(function() {
+						if ($(this).val().length == 0) {
+							$(this).val($(this).attr('DefaultValue'));
+							$(this).addClass('DefaultValue');
+							$(this).addClass('deemphasize');
+						}
+					});
+				}
+
+				function ShowConnectionRequestForm2(CdbID1, CdbID2, FriendlyName, ContextID) {
+					ShowConnectionRequestForm3(CdbID1, CdbID2, FriendlyName, ContextID, "tr", "br");
+				}
+
+				function ShowConnectionRequestForm3(CdbID1, CdbID2, FriendlyName, ContextID, DiagCorner, ContextCorner) {
+					YAHOO.container.ConnectionRequestForm.cfg.setProperty("context", [ContextID, DiagCorner, ContextCorner, ["beforeShow", "windowResize"]]);
+					ShowConnectionRequestForm(CdbID1, CdbID2, FriendlyName);
+				}
+
+				function ShowConnectionRequestForm(CdbID1, CdbID2, FriendlyName) {
+					//Reset a few things
+					$("#ConnectionRequestWrapper").show();
+					$("#ConnectionRequestError").html('');
+					$("#ConnectionRequestStatus").html('');
+					$("#txtConnReqMsg").show();
+					$("#ConnectionRequestBtns").show();
+					$("#ConnectionRequestButton").show();
+					$("#ConnectionRequestButton").removeAttr('disabled');
+
+					//Set new values
+					$("#hidCdbID1").val(CdbID1);
+					$("#hidCdbID2").val(CdbID2);
+					$("#ConnectionRequestTargetName").html(FriendlyName);
+					
+					CheckIsConnected();
+				}
+
+				function HideConnectionRequestForm() {
+					//IE hack: underlay size does not change with panel size; resize it now
+					if (document.all) YAHOO.container.ConnectionRequestForm.sizeUnderlay();
+					YAHOO.container.ConnectionRequestForm.hide();
+				}
+
+				function handleConnectionRequestResponse(data) {
+					if (data)  {
+						if (data.status) {
+							$('#ConnectionRequestStatus').html('Connection request has been sent!<br/><br/><a href="javascript:HideConnectionRequestForm();">Close this window</a>');
+							$("#txtConnReqMsg").val('');							
+							$('#ConnectionRequestWrapper').hide();
+							if (document.all) YAHOO.container.ConnectionRequestForm.sizeUnderlay();
+						}
+						else {
+							$('#ConnectionRequestError').html(data.errormsg);
+							$('#ConnectionRequestButton').removeAttr('disabled');
+						}
+					}
+					$("#ConnectionRequestWorking").hide();
+				}
+
+				function SendConnectionRequest() {
+					var cdbid1 = $("#hidCdbID1").val();
+					var cdbid2 = $("#hidCdbID2").val();
+					var clientid = $("#hidClientAppID").val();
+					var msg = $("#txtConnReqMsg").val();
+					msg = replaceReturns(stripHtml(msg));
+					$("#ConnectionRequestWorking").show();
+					$('#ConnectionRequestButton').attr('disabled', 'disabled');
+					$.ajax({
+						url: '/global_engine/ajax/ConnectionRequest.aspx',
+						data: 'CdbID=' + cdbid1 + '&CDbID2=' + cdbid2 + '&message=' + msg + '&cb=' + Math.round(new Date().getTime()),
+						dataType: 'json',
+						success: function(data) { handleConnectionRequestResponse(data); },
+						error: function(xhr,msg) { $("#ConnectionRequestWorking").hide(); $('#ConnectionRequestError').html('Unable to process connection request. ' + msg); $('#ConnectionRequestButton').removeAttr('disabled'); }
+					});
+				}
+
+				function handleIsConnectedResponse(data) {
+					var canConnect = true;
+					var msg = 'You may already be connected or have a pending connection request.';
+
+					if (data) {
+						if (data.isconnected) {
+							canConnect = false;
+							msg = 'You are already connected to this member.';
+						}
+
+						if (data.ispending) {
+							canConnect = false;
+							msg = 'Your connection with this member is pending.';
+						}
+
+						if (!data.mtallowed) {
+							canConnect = false;
+							msg = 'You are not allowed to connect to members of this type.';
+						}
+					}
+					if (canConnect) {
+						$("#ConnectionRequestWrapper").show();
+					}
+					else {
+						//Either already connected or an error occured.
+						$("#ConnectionRequestWrapper").hide();
+						$('#ConnectionRequestError').html(msg + '<br/><br/><a href="javascript:HideConnectionRequestForm();">Close this window</a>');
+					}
+
+					//IE hack: underlay size does not change with panel size; resize it now
+					if (document.all) YAHOO.container.ConnectionRequestForm.sizeUnderlay();
+
+					YAHOO.container.ConnectionRequestForm.show();
+
+					//Focus Daniel-san
+					//window.setTimeout('$("#ConnectionRequestButton").focus();', 200);
+					window.setTimeout('$("#txtConnReqMsg").blur();', 200);
+				}
+
+				function CheckIsConnected() {
+					var cdbid1 = $("#hidCdbID1").val();
+					var cdbid2 = $("#hidCdbID2").val();
+
+					$.ajax({
+						url: '/global_engine/ajax/ConnectionRequest.aspx',
+						data: 'CdbID=' + cdbid1 + '&CDbID2=' + cdbid2 + '&IsConnected=true&cb=' + Math.round(new Date().getTime()),
+						dataType: 'json',
+						success: function(data) { handleIsConnectedResponse(data); },
+						error: function(xhr,msg) { handleIsConnectedResponse(null); }
+					});
+				}
+			</script>
+
+			<div class="yui-skin-sam">
+				<div class="yui-panel-container shadow yui-overlay-hidden" id="ConnectionRequestFormPanel_c" style="z-index: 100; visibility: hidden;"><div id="ConnectionRequestFormPanel" style="visibility: inherit; width: 350px;" class="yui-module yui-overlay yui-panel"><a class="container-close" href="#">Close</a>
+					<div class="hd" style="cursor: auto;">Connect to <b><span id="ConnectionRequestTargetName"></span></b></div>
+					<div id="ConnectionRequestFormPanelBody" class="bd" style="background-color:#FFFFFF;">
+						<input type="hidden" id="hidCdbID1" name="hidCdbID1" value="">
+						<input type="hidden" id="hidCdbID2" name="hidCdbID2" value="">
+						<input type="hidden" id="hidClientAppID" name="hidClientAppID" value="">
+						<div id="ConnectionRequestWrapper">
+							<div>
+								<textarea id="txtConnReqMsg" name="txtConnReqMsg" rows="3" cols="50" style="width:100%" class="YmDefaultValue" defaultvalue="Enter a short message (optional)...">Enter a short message (optional)...</textarea>
+							</div>
+							<div>&nbsp;</div>
+							
+							<div><input id="ConnectionRequestButton" type="button" name="btnConnReqSend" onclick="SendConnectionRequest()" value="Send Request" class="formbutton btn btn-primary">
+								<img id="ConnectionRequestWorking" src="/global_graphics/icons/working.ani.gif" alt="Please wait..." style="display: none;">
+							</div>
+						</div>
+						<span id="ConnectionRequestStatus" xstyle="font-size: larger; font-weight: bold; color: green;"></span>
+						<span id="ConnectionRequestError" xstyle="font-size: larger; font-weight: bold; color: #cc0000;"></span>
+					</div>
+				</div></div>
+			</div>
+
+	<div id="directory-wrapper" class="list-view">
+
+	    <form name="SearchResultsForm" method="post" action="./people2.aspx?id=10A0E54D-4CED-4731-B025-5B48C9592779" id="SearchResultsForm">
+<div>
+<input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="">
+<input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="">
+<input type="hidden" name="__LASTFOCUS" id="__LASTFOCUS" value="">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="/wEPDwUHMTA3NDc5Nw8WFB4WeW1TZWFyY2hWaWV3UHJlZmVyZW5jZQspWlltU2VhcmNoLnBlb3BsZTIrVmlld1R5cGUsIFltU2VhcmNoLCBWZXJzaW9uPTEuMC4wLjAsIEN1bHR1cmU9bmV1dHJhbCwgUHVibGljS2V5VG9rZW49bnVsbAAeFnltU2VhcmNoU29ydFByZWZlcmVuY2UFB05hbWVBc2MeCUluZGV4TmFtZQUMMTM5MzY1cHVibGljHhJibG5FbmFibGVTcG90bGlnaHRnHgdJbmRleElEAuXACB4IQ2xpZW50SURmHhVoaFNlYXJjaFRlcm1zX2VuY29kZWRkHgxTZWFyY2hGb3JtSURkHhpTZWFyY2hSZXN1bHRMYXlvdXRUZW1wbGF0ZQXJAjx0YWJsZSBjZWxsc3BhY2luZz0iMCIgY2VsbHBhZGRpbmc9IjAiIGJvcmRlcj0iMCIgc3R5bGU9IndpZHRoOjEwMCU7Ym9yZGVyLWNvbGxhcHNlOmNvbGxhcHNlO2JvcmRlcjpub25lOyI+DQoJPHRyPg0KCQk8dGQgdmFsaWduPSJ0b3AiIHN0eWxlPSJ3aWR0aDo3NSU7Ym9yZGVyOm5vbmU7Ij48ZGl2PkBAbm9ybWFsX25hbWVAQDwvZGl2PjxkaXY+QEBjaXR5QEA8L2Rpdj48ZGl2PkBAbG9jYXRpb25AQDwvZGl2PjwvdGQ+PHRkIHZhbGlnbj0idG9wIiBzdHlsZT0id2lkdGg6MjUlO2JvcmRlcjpub25lOyI+QEBub25fbWVtYmVyX2luZm9AQDwvdGQ+DQoJPC90cj4NCjwvdGFibGU+HhBGaWx0ZXJCeUNhdGVnb3J5ZhYGZg8WAh4EaHJlZgUYL2NvbWJpbmVkLmNzcz9jb250ZXh0PXNwZAICDxYCHgRUZXh0Bbw7DQoJCQk8bGluayBocmVmPSIvZ2xvYmFsX2luYy9qcXVlcnktdWktY3VzdG9tLmNzcyIgcmVsPSJzdHlsZXNoZWV0IiB0eXBlPSJ0ZXh0L2NzcyIgLz4NCgkJCTxzY3JpcHQgbGFuZ3VhZ2U9ImphdmFzY3JpcHQiIHR5cGU9InRleHQvamF2YXNjcmlwdCI+DQoJCQkJWUFIT08ubmFtZXNwYWNlKCJjb250YWluZXIiKTsNCg0KCQkJCWZ1bmN0aW9uIFlBSE9PaW5pdENvbm5lY3Rpb25SZXF1ZXN0Rm9ybSgpew0KCQkJCQlZQUhPTy5jb250YWluZXIuQ29ubmVjdGlvblJlcXVlc3RGb3JtID0NCgkJCQkJCW5ldyBZQUhPTy53aWRnZXQuUGFuZWwoIkNvbm5lY3Rpb25SZXF1ZXN0Rm9ybVBhbmVsIiwgeyB3aWR0aDogJzM1MHB4JywNCgkJCQkJCQl1bmRlcmxheTogJ3NoYWRvdycsDQoJCQkJCQkJY2xvc2U6IHRydWUsDQoJCQkJCQkJdmlzaWJsZTogZmFsc2UsDQoJCQkJCQkJZHJhZ2dhYmxlOiBmYWxzZQ0KCQkJCQkJfSk7DQoJCQkJCQlZQUhPTy5jb250YWluZXIuQ29ubmVjdGlvblJlcXVlc3RGb3JtLnJlbmRlcigpOw0KICAgICAgICAgICAgICAgICAgICAgICAgJCgnI0Nvbm5lY3Rpb25SZXF1ZXN0Rm9ybVBhbmVsX2MnKS5jc3MoJ3otaW5kZXgnLCAxMDApOw0KCQkJCQkJaW5pdEN4RGlhZ0RlZmF1bHRzKCk7DQoJCQkJfQ0KDQoJCQkJWUFIT08udXRpbC5FdmVudC5vbkRPTVJlYWR5KFlBSE9PaW5pdENvbm5lY3Rpb25SZXF1ZXN0Rm9ybSk7DQoNCgkJCQlmdW5jdGlvbiBpbml0Q3hEaWFnRGVmYXVsdHMoKSB7DQoJCQkJCSQoIi5ZbURlZmF1bHRWYWx1ZSIpLmVhY2goZnVuY3Rpb24oKSB7DQoJCQkJCQlpZiAoJCh0aGlzKS52YWwoKSAhPSAkKHRoaXMpLmF0dHIoJ0RlZmF1bHRWYWx1ZScpKSB7DQoJCQkJCQkJJCh0aGlzKS5yZW1vdmVDbGFzcygnRGVmYXVsdFZhbHVlJyk7DQoJCQkJCQkJJCh0aGlzKS5hZGRDbGFzcygnZGVlbXBoYXNpemUnKTsNCgkJCQkJCX0NCgkJCQkJfSk7DQoNCgkJCQkJJCgiLlltRGVmYXVsdFZhbHVlIikuZm9jdXMoZnVuY3Rpb24oKSB7DQoJCQkJCQlpZiAoJCh0aGlzKS52YWwoKSA9PSAkKHRoaXMpLmF0dHIoJ0RlZmF1bHRWYWx1ZScpKSB7DQoJCQkJCQkJJCh0aGlzKS52YWwoJycpOw0KCQkJCQkJCSQodGhpcykucmVtb3ZlQ2xhc3MoJ0RlZmF1bHRWYWx1ZScpOw0KCQkJCQkJCSQodGhpcykucmVtb3ZlQ2xhc3MoJ2RlZW1waGFzaXplJyk7DQoJCQkJCQl9DQoJCQkJCX0pOw0KDQoJCQkJCSQoIi5ZbURlZmF1bHRWYWx1ZSIpLmJsdXIoZnVuY3Rpb24oKSB7DQoJCQkJCQlpZiAoJCh0aGlzKS52YWwoKS5sZW5ndGggPT0gMCkgew0KCQkJCQkJCSQodGhpcykudmFsKCQodGhpcykuYXR0cignRGVmYXVsdFZhbHVlJykpOw0KCQkJCQkJCSQodGhpcykuYWRkQ2xhc3MoJ0RlZmF1bHRWYWx1ZScpOw0KCQkJCQkJCSQodGhpcykuYWRkQ2xhc3MoJ2RlZW1waGFzaXplJyk7DQoJCQkJCQl9DQoJCQkJCX0pOw0KCQkJCX0NCg0KCQkJCWZ1bmN0aW9uIFNob3dDb25uZWN0aW9uUmVxdWVzdEZvcm0yKENkYklEMSwgQ2RiSUQyLCBGcmllbmRseU5hbWUsIENvbnRleHRJRCkgew0KCQkJCQlTaG93Q29ubmVjdGlvblJlcXVlc3RGb3JtMyhDZGJJRDEsIENkYklEMiwgRnJpZW5kbHlOYW1lLCBDb250ZXh0SUQsICJ0ciIsICJiciIpOw0KCQkJCX0NCg0KCQkJCWZ1bmN0aW9uIFNob3dDb25uZWN0aW9uUmVxdWVzdEZvcm0zKENkYklEMSwgQ2RiSUQyLCBGcmllbmRseU5hbWUsIENvbnRleHRJRCwgRGlhZ0Nvcm5lciwgQ29udGV4dENvcm5lcikgew0KCQkJCQlZQUhPTy5jb250YWluZXIuQ29ubmVjdGlvblJlcXVlc3RGb3JtLmNmZy5zZXRQcm9wZXJ0eSgiY29udGV4dCIsIFtDb250ZXh0SUQsIERpYWdDb3JuZXIsIENvbnRleHRDb3JuZXIsIFsiYmVmb3JlU2hvdyIsICJ3aW5kb3dSZXNpemUiXV0pOw0KCQkJCQlTaG93Q29ubmVjdGlvblJlcXVlc3RGb3JtKENkYklEMSwgQ2RiSUQyLCBGcmllbmRseU5hbWUpOw0KCQkJCX0NCg0KCQkJCWZ1bmN0aW9uIFNob3dDb25uZWN0aW9uUmVxdWVzdEZvcm0oQ2RiSUQxLCBDZGJJRDIsIEZyaWVuZGx5TmFtZSkgew0KCQkJCQkvL1Jlc2V0IGEgZmV3IHRoaW5ncw0KCQkJCQkkKCIjQ29ubmVjdGlvblJlcXVlc3RXcmFwcGVyIikuc2hvdygpOw0KCQkJCQkkKCIjQ29ubmVjdGlvblJlcXVlc3RFcnJvciIpLmh0bWwoJycpOw0KCQkJCQkkKCIjQ29ubmVjdGlvblJlcXVlc3RTdGF0dXMiKS5odG1sKCcnKTsNCgkJCQkJJCgiI3R4dENvbm5SZXFNc2ciKS5zaG93KCk7DQoJCQkJCSQoIiNDb25uZWN0aW9uUmVxdWVzdEJ0bnMiKS5zaG93KCk7DQoJCQkJCSQoIiNDb25uZWN0aW9uUmVxdWVzdEJ1dHRvbiIpLnNob3coKTsNCgkJCQkJJCgiI0Nvbm5lY3Rpb25SZXF1ZXN0QnV0dG9uIikucmVtb3ZlQXR0cignZGlzYWJsZWQnKTsNCg0KCQkJCQkvL1NldCBuZXcgdmFsdWVzDQoJCQkJCSQoIiNoaWRDZGJJRDEiKS52YWwoQ2RiSUQxKTsNCgkJCQkJJCgiI2hpZENkYklEMiIpLnZhbChDZGJJRDIpOw0KCQkJCQkkKCIjQ29ubmVjdGlvblJlcXVlc3RUYXJnZXROYW1lIikuaHRtbChGcmllbmRseU5hbWUpOw0KCQkJCQkNCgkJCQkJQ2hlY2tJc0Nvbm5lY3RlZCgpOw0KCQkJCX0NCg0KCQkJCWZ1bmN0aW9uIEhpZGVDb25uZWN0aW9uUmVxdWVzdEZvcm0oKSB7DQoJCQkJCS8vSUUgaGFjazogdW5kZXJsYXkgc2l6ZSBkb2VzIG5vdCBjaGFuZ2Ugd2l0aCBwYW5lbCBzaXplOyByZXNpemUgaXQgbm93DQoJCQkJCWlmIChkb2N1bWVudC5hbGwpIFlBSE9PLmNvbnRhaW5lci5Db25uZWN0aW9uUmVxdWVzdEZvcm0uc2l6ZVVuZGVybGF5KCk7DQoJCQkJCVlBSE9PLmNvbnRhaW5lci5Db25uZWN0aW9uUmVxdWVzdEZvcm0uaGlkZSgpOw0KCQkJCX0NCg0KCQkJCWZ1bmN0aW9uIGhhbmRsZUNvbm5lY3Rpb25SZXF1ZXN0UmVzcG9uc2UoZGF0YSkgew0KCQkJCQlpZiAoZGF0YSkgIHsNCgkJCQkJCWlmIChkYXRhLnN0YXR1cykgew0KCQkJCQkJCSQoJyNDb25uZWN0aW9uUmVxdWVzdFN0YXR1cycpLmh0bWwoJ0Nvbm5lY3Rpb24gcmVxdWVzdCBoYXMgYmVlbiBzZW50ITxici8+PGJyLz48YSBocmVmPSJqYXZhc2NyaXB0OkhpZGVDb25uZWN0aW9uUmVxdWVzdEZvcm0oKTsiPkNsb3NlIHRoaXMgd2luZG93PC9hPicpOw0KCQkJCQkJCSQoIiN0eHRDb25uUmVxTXNnIikudmFsKCcnKTsJCQkJCQkJDQoJCQkJCQkJJCgnI0Nvbm5lY3Rpb25SZXF1ZXN0V3JhcHBlcicpLmhpZGUoKTsNCgkJCQkJCQlpZiAoZG9jdW1lbnQuYWxsKSBZQUhPTy5jb250YWluZXIuQ29ubmVjdGlvblJlcXVlc3RGb3JtLnNpemVVbmRlcmxheSgpOw0KCQkJCQkJfQ0KCQkJCQkJZWxzZSB7DQoJCQkJCQkJJCgnI0Nvbm5lY3Rpb25SZXF1ZXN0RXJyb3InKS5odG1sKGRhdGEuZXJyb3Jtc2cpOw0KCQkJCQkJCSQoJyNDb25uZWN0aW9uUmVxdWVzdEJ1dHRvbicpLnJlbW92ZUF0dHIoJ2Rpc2FibGVkJyk7DQoJCQkJCQl9DQoJCQkJCX0NCgkJCQkJJCgiI0Nvbm5lY3Rpb25SZXF1ZXN0V29ya2luZyIpLmhpZGUoKTsNCgkJCQl9DQoNCgkJCQlmdW5jdGlvbiBTZW5kQ29ubmVjdGlvblJlcXVlc3QoKSB7DQoJCQkJCXZhciBjZGJpZDEgPSAkKCIjaGlkQ2RiSUQxIikudmFsKCk7DQoJCQkJCXZhciBjZGJpZDIgPSAkKCIjaGlkQ2RiSUQyIikudmFsKCk7DQoJCQkJCXZhciBjbGllbnRpZCA9ICQoIiNoaWRDbGllbnRBcHBJRCIpLnZhbCgpOw0KCQkJCQl2YXIgbXNnID0gJCgiI3R4dENvbm5SZXFNc2ciKS52YWwoKTsNCgkJCQkJbXNnID0gcmVwbGFjZVJldHVybnMoc3RyaXBIdG1sKG1zZykpOw0KCQkJCQkkKCIjQ29ubmVjdGlvblJlcXVlc3RXb3JraW5nIikuc2hvdygpOw0KCQkJCQkkKCcjQ29ubmVjdGlvblJlcXVlc3RCdXR0b24nKS5hdHRyKCdkaXNhYmxlZCcsICdkaXNhYmxlZCcpOw0KCQkJCQkkLmFqYXgoew0KCQkJCQkJdXJsOiAnL2dsb2JhbF9lbmdpbmUvYWpheC9Db25uZWN0aW9uUmVxdWVzdC5hc3B4JywNCgkJCQkJCWRhdGE6ICdDZGJJRD0nICsgY2RiaWQxICsgJyZDRGJJRDI9JyArIGNkYmlkMiArICcmbWVzc2FnZT0nICsgbXNnICsgJyZjYj0nICsgTWF0aC5yb3VuZChuZXcgRGF0ZSgpLmdldFRpbWUoKSksDQoJCQkJCQlkYXRhVHlwZTogJ2pzb24nLA0KCQkJCQkJc3VjY2VzczogZnVuY3Rpb24oZGF0YSkgeyBoYW5kbGVDb25uZWN0aW9uUmVxdWVzdFJlc3BvbnNlKGRhdGEpOyB9LA0KCQkJCQkJZXJyb3I6IGZ1bmN0aW9uKHhocixtc2cpIHsgJCgiI0Nvbm5lY3Rpb25SZXF1ZXN0V29ya2luZyIpLmhpZGUoKTsgJCgnI0Nvbm5lY3Rpb25SZXF1ZXN0RXJyb3InKS5odG1sKCdVbmFibGUgdG8gcHJvY2VzcyBjb25uZWN0aW9uIHJlcXVlc3QuICcgKyBtc2cpOyAkKCcjQ29ubmVjdGlvblJlcXVlc3RCdXR0b24nKS5yZW1vdmVBdHRyKCdkaXNhYmxlZCcpOyB9DQoJCQkJCX0pOw0KCQkJCX0NCg0KCQkJCWZ1bmN0aW9uIGhhbmRsZUlzQ29ubmVjdGVkUmVzcG9uc2UoZGF0YSkgew0KCQkJCQl2YXIgY2FuQ29ubmVjdCA9IHRydWU7DQoJCQkJCXZhciBtc2cgPSAnWW91IG1heSBhbHJlYWR5IGJlIGNvbm5lY3RlZCBvciBoYXZlIGEgcGVuZGluZyBjb25uZWN0aW9uIHJlcXVlc3QuJzsNCg0KCQkJCQlpZiAoZGF0YSkgew0KCQkJCQkJaWYgKGRhdGEuaXNjb25uZWN0ZWQpIHsNCgkJCQkJCQljYW5Db25uZWN0ID0gZmFsc2U7DQoJCQkJCQkJbXNnID0gJ1lvdSBhcmUgYWxyZWFkeSBjb25uZWN0ZWQgdG8gdGhpcyBtZW1iZXIuJzsNCgkJCQkJCX0NCg0KCQkJCQkJaWYgKGRhdGEuaXNwZW5kaW5nKSB7DQoJCQkJCQkJY2FuQ29ubmVjdCA9IGZhbHNlOw0KCQkJCQkJCW1zZyA9ICdZb3VyIGNvbm5lY3Rpb24gd2l0aCB0aGlzIG1lbWJlciBpcyBwZW5kaW5nLic7DQoJCQkJCQl9DQoNCgkJCQkJCWlmICghZGF0YS5tdGFsbG93ZWQpIHsNCgkJCQkJCQljYW5Db25uZWN0ID0gZmFsc2U7DQoJCQkJCQkJbXNnID0gJ1lvdSBhcmUgbm90IGFsbG93ZWQgdG8gY29ubmVjdCB0byBtZW1iZXJzIG9mIHRoaXMgdHlwZS4nOw0KCQkJCQkJfQ0KCQkJCQl9DQoJCQkJCWlmIChjYW5Db25uZWN0KSB7DQoJCQkJCQkkKCIjQ29ubmVjdGlvblJlcXVlc3RXcmFwcGVyIikuc2hvdygpOw0KCQkJCQl9DQoJCQkJCWVsc2Ugew0KCQkJCQkJLy9FaXRoZXIgYWxyZWFkeSBjb25uZWN0ZWQgb3IgYW4gZXJyb3Igb2NjdXJlZC4NCgkJCQkJCSQoIiNDb25uZWN0aW9uUmVxdWVzdFdyYXBwZXIiKS5oaWRlKCk7DQoJCQkJCQkkKCcjQ29ubmVjdGlvblJlcXVlc3RFcnJvcicpLmh0bWwobXNnICsgJzxici8+PGJyLz48YSBocmVmPSJqYXZhc2NyaXB0OkhpZGVDb25uZWN0aW9uUmVxdWVzdEZvcm0oKTsiPkNsb3NlIHRoaXMgd2luZG93PC9hPicpOw0KCQkJCQl9DQoNCgkJCQkJLy9JRSBoYWNrOiB1bmRlcmxheSBzaXplIGRvZXMgbm90IGNoYW5nZSB3aXRoIHBhbmVsIHNpemU7IHJlc2l6ZSBpdCBub3cNCgkJCQkJaWYgKGRvY3VtZW50LmFsbCkgWUFIT08uY29udGFpbmVyLkNvbm5lY3Rpb25SZXF1ZXN0Rm9ybS5zaXplVW5kZXJsYXkoKTsNCg0KCQkJCQlZQUhPTy5jb250YWluZXIuQ29ubmVjdGlvblJlcXVlc3RGb3JtLnNob3coKTsNCg0KCQkJCQkvL0ZvY3VzIERhbmllbC1zYW4NCgkJCQkJLy93aW5kb3cuc2V0VGltZW91dCgnJCgiI0Nvbm5lY3Rpb25SZXF1ZXN0QnV0dG9uIikuZm9jdXMoKTsnLCAyMDApOw0KCQkJCQl3aW5kb3cuc2V0VGltZW91dCgnJCgiI3R4dENvbm5SZXFNc2ciKS5ibHVyKCk7JywgMjAwKTsNCgkJCQl9DQoNCgkJCQlmdW5jdGlvbiBDaGVja0lzQ29ubmVjdGVkKCkgew0KCQkJCQl2YXIgY2RiaWQxID0gJCgiI2hpZENkYklEMSIpLnZhbCgpOw0KCQkJCQl2YXIgY2RiaWQyID0gJCgiI2hpZENkYklEMiIpLnZhbCgpOw0KDQoJCQkJCSQuYWpheCh7DQoJCQkJCQl1cmw6ICcvZ2xvYmFsX2VuZ2luZS9hamF4L0Nvbm5lY3Rpb25SZXF1ZXN0LmFzcHgnLA0KCQkJCQkJZGF0YTogJ0NkYklEPScgKyBjZGJpZDEgKyAnJkNEYklEMj0nICsgY2RiaWQyICsgJyZJc0Nvbm5lY3RlZD10cnVlJmNiPScgKyBNYXRoLnJvdW5kKG5ldyBEYXRlKCkuZ2V0VGltZSgpKSwNCgkJCQkJCWRhdGFUeXBlOiAnanNvbicsDQoJCQkJCQlzdWNjZXNzOiBmdW5jdGlvbihkYXRhKSB7IGhhbmRsZUlzQ29ubmVjdGVkUmVzcG9uc2UoZGF0YSk7IH0sDQoJCQkJCQllcnJvcjogZnVuY3Rpb24oeGhyLG1zZykgeyBoYW5kbGVJc0Nvbm5lY3RlZFJlc3BvbnNlKG51bGwpOyB9DQoJCQkJCX0pOw0KCQkJCX0NCgkJCTwvc2NyaXB0Pg0KDQoJCQk8ZGl2IGNsYXNzPSJ5dWktc2tpbi1zYW0iPg0KCQkJCTxkaXYgaWQ9IkNvbm5lY3Rpb25SZXF1ZXN0Rm9ybVBhbmVsIiBzdHlsZT0idmlzaWJpbGl0eTogaGlkZGVuOyI+DQoJCQkJCTxkaXYgY2xhc3M9ImhkIj5Db25uZWN0IHRvIDxiPjxzcGFuIGlkPSJDb25uZWN0aW9uUmVxdWVzdFRhcmdldE5hbWUiPjwvc3Bhbj48L2I+PC9kaXY+DQoJCQkJCTxkaXYgaWQ9IkNvbm5lY3Rpb25SZXF1ZXN0Rm9ybVBhbmVsQm9keSIgY2xhc3M9ImJkIiBzdHlsZT0iYmFja2dyb3VuZC1jb2xvcjojRkZGRkZGOyI+DQoJCQkJCQk8aW5wdXQgdHlwZT0iaGlkZGVuIiBpZD0iaGlkQ2RiSUQxIiBuYW1lPSJoaWRDZGJJRDEiIHZhbHVlPSIiIC8+DQoJCQkJCQk8aW5wdXQgdHlwZT0iaGlkZGVuIiBpZD0iaGlkQ2RiSUQyIiBuYW1lPSJoaWRDZGJJRDIiIHZhbHVlPSIiIC8+DQoJCQkJCQk8aW5wdXQgdHlwZT0iaGlkZGVuIiBpZD0iaGlkQ2xpZW50QXBwSUQiIG5hbWU9ImhpZENsaWVudEFwcElEIiB2YWx1ZT0iIiAvPg0KCQkJCQkJPGRpdiBpZD0iQ29ubmVjdGlvblJlcXVlc3RXcmFwcGVyIj4NCgkJCQkJCQk8ZGl2Pg0KCQkJCQkJCQk8dGV4dGFyZWEgaWQ9InR4dENvbm5SZXFNc2ciIG5hbWU9InR4dENvbm5SZXFNc2ciIHJvd3M9IjMiIGNvbHM9IjUwIiBzdHlsZT0id2lkdGg6MTAwJSIgY2xhc3M9IlltRGVmYXVsdFZhbHVlIiBEZWZhdWx0VmFsdWU9IkVudGVyIGEgc2hvcnQgbWVzc2FnZSAob3B0aW9uYWwpLi4uIj5FbnRlciBhIHNob3J0IG1lc3NhZ2UgKG9wdGlvbmFsKS4uLjwvdGV4dGFyZWE+DQoJCQkJCQkJPC9kaXY+DQoJCQkJCQkJPGRpdj4mbmJzcDs8L2Rpdj4NCgkJCQkJCQkNCgkJCQkJCQk8ZGl2PjxpbnB1dCBpZD0iQ29ubmVjdGlvblJlcXVlc3RCdXR0b24iIHR5cGU9ImJ1dHRvbiIgbmFtZT0iYnRuQ29ublJlcVNlbmQiIE9uQ2xpY2s9IlNlbmRDb25uZWN0aW9uUmVxdWVzdCgpIiB2YWx1ZT0iU2VuZCBSZXF1ZXN0IiBjbGFzcz0iZm9ybWJ1dHRvbiBidG4gYnRuLXByaW1hcnkiIC8+DQoJCQkJCQkJCTxpbWcgaWQ9IkNvbm5lY3Rpb25SZXF1ZXN0V29ya2luZyIgc3JjPSIvZ2xvYmFsX2dyYXBoaWNzL2ljb25zL3dvcmtpbmcuYW5pLmdpZiIgYWx0PSJQbGVhc2Ugd2FpdC4uLiIgc3R5bGU9ImRpc3BsYXk6IG5vbmU7IiAvPg0KCQkJCQkJCTwvZGl2Pg0KCQkJCQkJPC9kaXY+DQoJCQkJCQk8c3BhbiBpZD0iQ29ubmVjdGlvblJlcXVlc3RTdGF0dXMiIHhzdHlsZT0iZm9udC1zaXplOiBsYXJnZXI7IGZvbnQtd2VpZ2h0OiBib2xkOyBjb2xvcjogZ3JlZW47Ij48L3NwYW4+DQoJCQkJCQk8c3BhbiBpZD0iQ29ubmVjdGlvblJlcXVlc3RFcnJvciIgeHN0eWxlPSJmb250LXNpemU6IGxhcmdlcjsgZm9udC13ZWlnaHQ6IGJvbGQ7IGNvbG9yOiAjY2MwMDAwOyI+PC9zcGFuPg0KCQkJCQk8L2Rpdj4NCgkJCQk8L2Rpdj4NCgkJCTwvZGl2PmQCAw9kFgYCAQ9kFgICAQ8PFgIfC2RkZAIDDw8WAh4HVmlzaWJsZWdkFgoCAQ8PFgIfCwUDNjczZGQCAw8QZA8WAgIEAgUWAhBkZGgQZGRoFgFmZAIFDxYCHwxoZAIHDxYCHwxoZAIJDzwrAAsBAA8WDB4LXyFJdGVtQ291bnQCGB4IRGF0YUtleXMWAB4STGFzdFNvcnRFeHByZXNzaW9uBSNJc1Nwb3RsaWdodGVkIGRlc2MsIHN0clNvcnROYW1lIEFTQx4JUGFnZUNvdW50Ah0eFV8hRGF0YVNvdXJjZUl0ZW1Db3VudAKhBR4QQ3VycmVudFBhZ2VJbmRleGZkFgJmD2QWMAICD2QWAmYPDxYCHwsFiwQ8ZGl2IGNsYXNzPSJtZW1iLXJlc3VsdC1pdGVtIj48ZGl2IGNsYXNzPSJtZW1iLWltZy13cmFwIj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODAxNzY1NzciIHN0eWxlPSJjb2xvcjogdHJhbnNwYXJlbnQ7IiB0YXJnZXQ9Il90b3AiID48c3Bhbj48aSBjbGFzcz0iZmEgZmEtc2VhcmNoIiBhcmlhLWhpZGRlbj0idHJ1ZSI+PC9pPiBWaWV3IFByb2ZpbGU8L3NwYW4+PGltZyBzcmM9Ii9waG90b3MvYWx1bW5pL21lZF9lZTVkYWE3Yi05MTNhLTRiMGUtYWJjZC00OGEwODI5OGI1YWEuanBlZyIgYXQ9Ii8iPjwvYT48L2ltZz48L3NwYW4+PC9kaXY+PGRpdiBjbGFzcz0ibWVtYi1pbmZvLXdyYXAiPg0KCQ0KCQk8cCBjbGFzcz0ibmFtZSI+PHNwYW4+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTc2NTc3IiB0YXJnZXQ9Il90b3AiIGNsYXNzPSJub3JtYWxOYW1lIj5DYXJsYSBBYmF0ZSA8L2E+PC9zcGFuPjxicj4gPHAgY2xhc3M9ImFkZHJlc3MiPkdvbGRlbjwvYnI+IENvbG9yYWRvIDxicj48L3A+DQoJDQo8cD48L3A+PC9kaXY+ZGQCAw9kFgJmDw8WAh8LBZkEPGRpdiBjbGFzcz0ibWVtYi1yZXN1bHQtaXRlbSI+PGRpdiBjbGFzcz0ibWVtYi1pbWctd3JhcCI+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTc2NTc5IiBzdHlsZT0iY29sb3I6IHRyYW5zcGFyZW50OyIgdGFyZ2V0PSJfdG9wIiA+PHNwYW4+PGkgY2xhc3M9ImZhIGZhLXNlYXJjaCIgYXJpYS1oaWRkZW49InRydWUiPjwvaT4gVmlldyBQcm9maWxlPC9zcGFuPjxpbWcgc3JjPSIvcGhvdG9zL2FsdW1uaS9tZWRfZDIzNmRmM2EtNDJlNC00N2NhLTkwODEtZTYzMWJlMGI4MTUwLmpwZWciIGF0PSIvIj48L2E+PC9pbWc+PC9zcGFuPjwvZGl2PjxkaXYgY2xhc3M9Im1lbWItaW5mby13cmFwIj4NCgkNCgkJPHAgY2xhc3M9Im5hbWUiPjxzcGFuPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDE3NjU3OSIgdGFyZ2V0PSJfdG9wIiBjbGFzcz0ibm9ybWFsTmFtZSI+TWVsaXNzYSBDLiBBYmJvdHQgPC9hPjwvc3Bhbj48YnI+IDxwIGNsYXNzPSJhZGRyZXNzIj5TdHJhZmZvcmQ8L2JyPiBOZXcgSGFtcHNoaXJlIDxicj48L3A+DQoJDQo8cD48L3A+PC9kaXY+ZGQCBA9kFgJmDw8WAh8LBfMDPGRpdiBjbGFzcz0ibWVtYi1yZXN1bHQtaXRlbSI+PGRpdiBjbGFzcz0ibWVtYi1pbWctd3JhcCI+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTIyMDI2IiBzdHlsZT0iY29sb3I6IHRyYW5zcGFyZW50OyIgdGFyZ2V0PSJfdG9wIiA+PHNwYW4+PGkgY2xhc3M9ImZhIGZhLXNlYXJjaCIgYXJpYS1oaWRkZW49InRydWUiPjwvaT4gVmlldyBQcm9maWxlPC9zcGFuPjxpbWcgc3JjPSIvZ2xvYmFsX2dyYXBoaWNzL211Z3Nob3QxLmdpZiIgYXQ9Ii8iPjwvYT48L2ltZz48L3NwYW4+PC9kaXY+PGRpdiBjbGFzcz0ibWVtYi1pbmZvLXdyYXAiPg0KCQ0KCQk8cCBjbGFzcz0ibmFtZSI+PHNwYW4+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTIyMDI2IiB0YXJnZXQ9Il90b3AiIGNsYXNzPSJub3JtYWxOYW1lIj5BZm5hbiBNLiBBYmRlbHdhaGVkIDwvYT48L3NwYW4+PGJyPiA8cCBjbGFzcz0iYWRkcmVzcyI+TG9uZG9uPC9icj4gT250YXJpbyA8YnI+PC9wPg0KCQ0KPHA+PC9wPjwvZGl2PmRkAgUPZBYCZg8PFgIfCwX2AzxkaXYgY2xhc3M9Im1lbWItcmVzdWx0LWl0ZW0iPjxkaXYgY2xhc3M9Im1lbWItaW1nLXdyYXAiPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDE3NjQzMiIgc3R5bGU9ImNvbG9yOiB0cmFuc3BhcmVudDsiIHRhcmdldD0iX3RvcCIgPjxzcGFuPjxpIGNsYXNzPSJmYSBmYS1zZWFyY2giIGFyaWEtaGlkZGVuPSJ0cnVlIj48L2k+IFZpZXcgUHJvZmlsZTwvc3Bhbj48aW1nIHNyYz0iL2dsb2JhbF9ncmFwaGljcy9tdWdzaG90MS5naWYiIGF0PSIvIj48L2E+PC9pbWc+PC9zcGFuPjwvZGl2PjxkaXYgY2xhc3M9Im1lbWItaW5mby13cmFwIj4NCgkNCgkJPHAgY2xhc3M9Im5hbWUiPjxzcGFuPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDE3NjQzMiIgdGFyZ2V0PSJfdG9wIiBjbGFzcz0ibm9ybWFsTmFtZSI+TWlsbGllIEguIEFicGxhbmFscCA8L2E+PC9zcGFuPjxicj4gPHAgY2xhc3M9ImFkZHJlc3MiPlNwYW5pc2ggRm9yazwvYnI+IFV0YWggPGJyPjwvcD4NCgkNCjxwPjwvcD48L2Rpdj5kZAIGD2QWAmYPDxYCHwsFjQQ8ZGl2IGNsYXNzPSJtZW1iLXJlc3VsdC1pdGVtIj48ZGl2IGNsYXNzPSJtZW1iLWltZy13cmFwIj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODAxMjIzNzgiIHN0eWxlPSJjb2xvcjogdHJhbnNwYXJlbnQ7IiB0YXJnZXQ9Il90b3AiID48c3Bhbj48aSBjbGFzcz0iZmEgZmEtc2VhcmNoIiBhcmlhLWhpZGRlbj0idHJ1ZSI+PC9pPiBWaWV3IFByb2ZpbGU8L3NwYW4+PGltZyBzcmM9Ii9waG90b3MvYWx1bW5pL21lZF83ZDIxNzViMi04YjRkLTQ0YjctYmZlNi03NWM1ZGUyZGQ5NzYuanBlZyIgYXQ9Ii8iPjwvYT48L2ltZz48L3NwYW4+PC9kaXY+PGRpdiBjbGFzcz0ibWVtYi1pbmZvLXdyYXAiPg0KCQ0KCQk8cCBjbGFzcz0ibmFtZSI+PHNwYW4+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTIyMzc4IiB0YXJnZXQ9Il90b3AiIGNsYXNzPSJub3JtYWxOYW1lIj5TaXJhbm9vc2ggQWJ0aW4gPC9hPjwvc3Bhbj48YnI+IDxwIGNsYXNzPSJhZGRyZXNzIj5UaWdhcmQ8L2JyPiBPcmVnb24gPGJyPjwvcD4NCgkNCjxwPjwvcD48L2Rpdj5kZAIHD2QWAmYPDxYCHwsFlAQ8ZGl2IGNsYXNzPSJtZW1iLXJlc3VsdC1pdGVtIj48ZGl2IGNsYXNzPSJtZW1iLWltZy13cmFwIj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODAxNzY3NjUiIHN0eWxlPSJjb2xvcjogdHJhbnNwYXJlbnQ7IiB0YXJnZXQ9Il90b3AiID48c3Bhbj48aSBjbGFzcz0iZmEgZmEtc2VhcmNoIiBhcmlhLWhpZGRlbj0idHJ1ZSI+PC9pPiBWaWV3IFByb2ZpbGU8L3NwYW4+PGltZyBzcmM9Ii9waG90b3MvYWx1bW5pL21lZF9kMThiYzg0MS04M2ZhLTRiYTItODc4Yy1iYjNjNTE3OGZlMTUuanBlZyIgYXQ9Ii8iPjwvYT48L2ltZz48L3NwYW4+PC9kaXY+PGRpdiBjbGFzcz0ibWVtYi1pbmZvLXdyYXAiPg0KCQ0KCQk8cCBjbGFzcz0ibmFtZSI+PHNwYW4+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTc2NzY1IiB0YXJnZXQ9Il90b3AiIGNsYXNzPSJub3JtYWxOYW1lIj5QYXRyaWNpYSBBZGFtcyA8L2E+PC9zcGFuPjxicj4gPHAgY2xhc3M9ImFkZHJlc3MiPlNhbnRhIENydXo8L2JyPiBDYWxpZm9ybmlhIDxicj48L3A+DQoJDQo8cD48L3A+PC9kaXY+ZGQCCA9kFgJmDw8WAh8LBZIEPGRpdiBjbGFzcz0ibWVtYi1yZXN1bHQtaXRlbSI+PGRpdiBjbGFzcz0ibWVtYi1pbWctd3JhcCI+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTc4NDU3Njg2IiBzdHlsZT0iY29sb3I6IHRyYW5zcGFyZW50OyIgdGFyZ2V0PSJfdG9wIiA+PHNwYW4+PGkgY2xhc3M9ImZhIGZhLXNlYXJjaCIgYXJpYS1oaWRkZW49InRydWUiPjwvaT4gVmlldyBQcm9maWxlPC9zcGFuPjxpbWcgc3JjPSIvcGhvdG9zL2FsdW1uaS9tZWRfYWQzYmM4MzgtZTA4OS00ZWEyLTlmMDQtZTQ5ZTFlZWQ4MzY1LmpwZWciIGF0PSIvIj48L2E+PC9pbWc+PC9zcGFuPjwvZGl2PjxkaXYgY2xhc3M9Im1lbWItaW5mby13cmFwIj4NCgkNCgkJPHAgY2xhc3M9Im5hbWUiPjxzcGFuPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD03ODQ1NzY4NiIgdGFyZ2V0PSJfdG9wIiBjbGFzcz0ibm9ybWFsTmFtZSI+WU0gQWRtaW5pc3RyYXRvciA8L2E+PC9zcGFuPjxicj4gPHAgY2xhc3M9ImFkZHJlc3MiPlRlc3QgVG93bjwvYnI+IEZsb3JpZGEgPGJyPjwvcD4NCgkNCjxwPjwvcD48L2Rpdj5kZAIJD2QWAmYPDxYCHwsF+QM8ZGl2IGNsYXNzPSJtZW1iLXJlc3VsdC1pdGVtIj48ZGl2IGNsYXNzPSJtZW1iLWltZy13cmFwIj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODAxNzY2OTYiIHN0eWxlPSJjb2xvcjogdHJhbnNwYXJlbnQ7IiB0YXJnZXQ9Il90b3AiID48c3Bhbj48aSBjbGFzcz0iZmEgZmEtc2VhcmNoIiBhcmlhLWhpZGRlbj0idHJ1ZSI+PC9pPiBWaWV3IFByb2ZpbGU8L3NwYW4+PGltZyBzcmM9Ii9nbG9iYWxfZ3JhcGhpY3MvbXVnc2hvdDEuZ2lmIiBhdD0iLyI+PC9hPjwvaW1nPjwvc3Bhbj48L2Rpdj48ZGl2IGNsYXNzPSJtZW1iLWluZm8td3JhcCI+DQoJDQoJCTxwIGNsYXNzPSJuYW1lIj48c3Bhbj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODAxNzY2OTYiIHRhcmdldD0iX3RvcCIgY2xhc3M9Im5vcm1hbE5hbWUiPkthcmkgTS4gQWd1aW5hbGRvIDwvYT48L3NwYW4+PGJyPiA8cCBjbGFzcz0iYWRkcmVzcyI+U2FudGEgQ2xhcmE8L2JyPiBDYWxpZm9ybmlhIDxicj48L3A+DQoJDQo8cD48L3A+PC9kaXY+ZGQCCg9kFgJmDw8WAh8LBdIDPGRpdiBjbGFzcz0ibWVtYi1yZXN1bHQtaXRlbSI+PGRpdiBjbGFzcz0ibWVtYi1pbWctd3JhcCI+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgxMjU1Mzg3IiBzdHlsZT0iY29sb3I6IHRyYW5zcGFyZW50OyIgdGFyZ2V0PSJfdG9wIiA+PHNwYW4+PGkgY2xhc3M9ImZhIGZhLXNlYXJjaCIgYXJpYS1oaWRkZW49InRydWUiPjwvaT4gVmlldyBQcm9maWxlPC9zcGFuPjxpbWcgc3JjPSIvZ2xvYmFsX2dyYXBoaWNzL211Z3Nob3QxLmdpZiIgYXQ9Ii8iPjwvYT48L2ltZz48L3NwYW4+PC9kaXY+PGRpdiBjbGFzcz0ibWVtYi1pbmZvLXdyYXAiPg0KCQ0KCQk8cCBjbGFzcz0ibmFtZSI+PHNwYW4+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgxMjU1Mzg3IiB0YXJnZXQ9Il90b3AiIGNsYXNzPSJub3JtYWxOYW1lIj5BbXkgQWllbGxvIDwvYT48L3NwYW4+PGJyPiA8cCBjbGFzcz0iYWRkcmVzcyI+PC9wPg0KCQ0KPHA+PC9wPjwvZGl2PmRkAgsPZBYCZg8PFgIfCwWRBDxkaXYgY2xhc3M9Im1lbWItcmVzdWx0LWl0ZW0iPjxkaXYgY2xhc3M9Im1lbWItaW1nLXdyYXAiPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDE3NjcwMiIgc3R5bGU9ImNvbG9yOiB0cmFuc3BhcmVudDsiIHRhcmdldD0iX3RvcCIgPjxzcGFuPjxpIGNsYXNzPSJmYSBmYS1zZWFyY2giIGFyaWEtaGlkZGVuPSJ0cnVlIj48L2k+IFZpZXcgUHJvZmlsZTwvc3Bhbj48aW1nIHNyYz0iL3Bob3Rvcy9hbHVtbmkvbWVkXzc3NzRmM2U0LTBjMGUtNDc0OC1iNDRkLTk3Yzg2YmU0ODNlZC5qcGVnIiBhdD0iLyI+PC9hPjwvaW1nPjwvc3Bhbj48L2Rpdj48ZGl2IGNsYXNzPSJtZW1iLWluZm8td3JhcCI+DQoJDQoJCTxwIGNsYXNzPSJuYW1lIj48c3Bhbj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODAxNzY3MDIiIHRhcmdldD0iX3RvcCIgY2xhc3M9Im5vcm1hbE5hbWUiPktlbHNleSBBbGUgPC9hPjwvc3Bhbj48YnI+IDxwIGNsYXNzPSJhZGRyZXNzIj5Mb3MgQW5nZWxlczwvYnI+IENhbGlmb3JuaWEgPGJyPjwvcD4NCgkNCjxwPjwvcD48L2Rpdj5kZAIMD2QWAmYPDxYCHwsF9AM8ZGl2IGNsYXNzPSJtZW1iLXJlc3VsdC1pdGVtIj48ZGl2IGNsYXNzPSJtZW1iLWltZy13cmFwIj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODE0Nzc2MTAiIHN0eWxlPSJjb2xvcjogdHJhbnNwYXJlbnQ7IiB0YXJnZXQ9Il90b3AiID48c3Bhbj48aSBjbGFzcz0iZmEgZmEtc2VhcmNoIiBhcmlhLWhpZGRlbj0idHJ1ZSI+PC9pPiBWaWV3IFByb2ZpbGU8L3NwYW4+PGltZyBzcmM9Ii9waG90b3MvYWx1bW5pL21lZF8xMzJkNmZhMy1kZGQ3LTQzY2EtOWZjNC02NjgyZWRkOTUxMGYuanBlZyIgYXQ9Ii8iPjwvYT48L2ltZz48L3NwYW4+PC9kaXY+PGRpdiBjbGFzcz0ibWVtYi1pbmZvLXdyYXAiPg0KCQ0KCQk8cCBjbGFzcz0ibmFtZSI+PHNwYW4+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgxNDc3NjEwIiB0YXJnZXQ9Il90b3AiIGNsYXNzPSJub3JtYWxOYW1lIj5DaGFyaXR5IEFsbGVuIDwvYT48L3NwYW4+PGJyPiA8cCBjbGFzcz0iYWRkcmVzcyI+PC9wPg0KCQ0KPHA+PC9wPjwvZGl2PmRkAg0PZBYCZg8PFgIfCwWRBDxkaXYgY2xhc3M9Im1lbWItcmVzdWx0LWl0ZW0iPjxkaXYgY2xhc3M9Im1lbWItaW1nLXdyYXAiPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDEyMTg3NiIgc3R5bGU9ImNvbG9yOiB0cmFuc3BhcmVudDsiIHRhcmdldD0iX3RvcCIgPjxzcGFuPjxpIGNsYXNzPSJmYSBmYS1zZWFyY2giIGFyaWEtaGlkZGVuPSJ0cnVlIj48L2k+IFZpZXcgUHJvZmlsZTwvc3Bhbj48aW1nIHNyYz0iL3Bob3Rvcy9hbHVtbmkvbWVkXzczYjUyZWQwLTMxNzItNDhiZi1iZmUzLWRjMDM0OTdkNWVlNC5wbmciIGF0PSIvIj48L2E+PC9pbWc+PC9zcGFuPjwvZGl2PjxkaXYgY2xhc3M9Im1lbWItaW5mby13cmFwIj4NCgkNCgkJPHAgY2xhc3M9Im5hbWUiPjxzcGFuPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDEyMTg3NiIgdGFyZ2V0PSJfdG9wIiBjbGFzcz0ibm9ybWFsTmFtZSI+Um9kaGEgQWxtYWxpayA8L2E+PC9zcGFuPjxicj4gPHAgY2xhc3M9ImFkZHJlc3MiPk5hc2hhdTwvYnI+IE5ldyBIYW1wc2hpcmUgPGJyPjwvcD4NCgkNCjxwPjwvcD48L2Rpdj5kZAIOD2QWAmYPDxYCHwsF/AM8ZGl2IGNsYXNzPSJtZW1iLXJlc3VsdC1pdGVtIj48ZGl2IGNsYXNzPSJtZW1iLWltZy13cmFwIj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODAxNzY1NzUiIHN0eWxlPSJjb2xvcjogdHJhbnNwYXJlbnQ7IiB0YXJnZXQ9Il90b3AiID48c3Bhbj48aSBjbGFzcz0iZmEgZmEtc2VhcmNoIiBhcmlhLWhpZGRlbj0idHJ1ZSI+PC9pPiBWaWV3IFByb2ZpbGU8L3NwYW4+PGltZyBzcmM9Ii9nbG9iYWxfZ3JhcGhpY3MvbXVnc2hvdDEuZ2lmIiBhdD0iLyI+PC9hPjwvaW1nPjwvc3Bhbj48L2Rpdj48ZGl2IGNsYXNzPSJtZW1iLWluZm8td3JhcCI+DQoJDQoJCTxwIGNsYXNzPSJuYW1lIj48c3Bhbj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODAxNzY1NzUiIHRhcmdldD0iX3RvcCIgY2xhc3M9Im5vcm1hbE5hbWUiPktlbGx5IEFtb3Jvc28gPC9hPjwvc3Bhbj48YnI+IDxwIGNsYXNzPSJhZGRyZXNzIj5BdGxhbnRpYyBIaWdobGFuZHM8L2JyPiBOZXcgSmVyc2V5IDxicj48L3A+DQoJDQo8cD48L3A+PC9kaXY+ZGQCDw9kFgJmDw8WAh8LBfIDPGRpdiBjbGFzcz0ibWVtYi1yZXN1bHQtaXRlbSI+PGRpdiBjbGFzcz0ibWVtYi1pbWctd3JhcCI+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwOTgzMzM3IiBzdHlsZT0iY29sb3I6IHRyYW5zcGFyZW50OyIgdGFyZ2V0PSJfdG9wIiA+PHNwYW4+PGkgY2xhc3M9ImZhIGZhLXNlYXJjaCIgYXJpYS1oaWRkZW49InRydWUiPjwvaT4gVmlldyBQcm9maWxlPC9zcGFuPjxpbWcgc3JjPSIvZ2xvYmFsX2dyYXBoaWNzL211Z3Nob3QxLmdpZiIgYXQ9Ii8iPjwvYT48L2ltZz48L3NwYW4+PC9kaXY+PGRpdiBjbGFzcz0ibWVtYi1pbmZvLXdyYXAiPg0KCQ0KCQk8cCBjbGFzcz0ibmFtZSI+PHNwYW4+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwOTgzMzM3IiB0YXJnZXQ9Il90b3AiIGNsYXNzPSJub3JtYWxOYW1lIj5MYXVyYSBBbmRyZXdzIDwvYT48L3NwYW4+PGJyPiA8cCBjbGFzcz0iYWRkcmVzcyI+R2VvcmdldG93bjwvYnI+IEtlbnR1Y2t5IDxicj48L3A+DQoJDQo8cD48L3A+PC9kaXY+ZGQCEA9kFgJmDw8WAh8LBfwDPGRpdiBjbGFzcz0ibWVtYi1yZXN1bHQtaXRlbSI+PGRpdiBjbGFzcz0ibWVtYi1pbWctd3JhcCI+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTIxOTM3IiBzdHlsZT0iY29sb3I6IHRyYW5zcGFyZW50OyIgdGFyZ2V0PSJfdG9wIiA+PHNwYW4+PGkgY2xhc3M9ImZhIGZhLXNlYXJjaCIgYXJpYS1oaWRkZW49InRydWUiPjwvaT4gVmlldyBQcm9maWxlPC9zcGFuPjxpbWcgc3JjPSIvZ2xvYmFsX2dyYXBoaWNzL211Z3Nob3QxLmdpZiIgYXQ9Ii8iPjwvYT48L2ltZz48L3NwYW4+PC9kaXY+PGRpdiBjbGFzcz0ibWVtYi1pbmZvLXdyYXAiPg0KCQ0KCQk8cCBjbGFzcz0ibmFtZSI+PHNwYW4+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTIxOTM3IiB0YXJnZXQ9Il90b3AiIGNsYXNzPSJub3JtYWxOYW1lIj5KZW5ueSBLLiBBbmdlbGlsbG8gPC9hPjwvc3Bhbj48YnI+IDxwIGNsYXNzPSJhZGRyZXNzIj5TYW4gRnJhbmNpc2NvPC9icj4gQ2FsaWZvcm5pYSA8YnI+PC9wPg0KCQ0KPHA+PC9wPjwvZGl2PmRkAhEPZBYCZg8PFgIfCwXyAzxkaXYgY2xhc3M9Im1lbWItcmVzdWx0LWl0ZW0iPjxkaXYgY2xhc3M9Im1lbWItaW1nLXdyYXAiPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDEyMTgxMCIgc3R5bGU9ImNvbG9yOiB0cmFuc3BhcmVudDsiIHRhcmdldD0iX3RvcCIgPjxzcGFuPjxpIGNsYXNzPSJmYSBmYS1zZWFyY2giIGFyaWEtaGlkZGVuPSJ0cnVlIj48L2k+IFZpZXcgUHJvZmlsZTwvc3Bhbj48aW1nIHNyYz0iL2dsb2JhbF9ncmFwaGljcy9tdWdzaG90MS5naWYiIGF0PSIvIj48L2E+PC9pbWc+PC9zcGFuPjwvZGl2PjxkaXYgY2xhc3M9Im1lbWItaW5mby13cmFwIj4NCgkNCgkJPHAgY2xhc3M9Im5hbWUiPjxzcGFuPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDEyMTgxMCIgdGFyZ2V0PSJfdG9wIiBjbGFzcz0ibm9ybWFsTmFtZSI+SnVsaWUgQW5uZW4gPC9hPjwvc3Bhbj48YnI+IDxwIGNsYXNzPSJhZGRyZXNzIj5NaW5uZWFwb2xpczwvYnI+IE1pbm5lc290YSA8YnI+PC9wPg0KCQ0KPHA+PC9wPjwvZGl2PmRkAhIPZBYCZg8PFgIfCwX6AzxkaXYgY2xhc3M9Im1lbWItcmVzdWx0LWl0ZW0iPjxkaXYgY2xhc3M9Im1lbWItaW1nLXdyYXAiPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDE3NjQzNSIgc3R5bGU9ImNvbG9yOiB0cmFuc3BhcmVudDsiIHRhcmdldD0iX3RvcCIgPjxzcGFuPjxpIGNsYXNzPSJmYSBmYS1zZWFyY2giIGFyaWEtaGlkZGVuPSJ0cnVlIj48L2k+IFZpZXcgUHJvZmlsZTwvc3Bhbj48aW1nIHNyYz0iL2dsb2JhbF9ncmFwaGljcy9tdWdzaG90MS5naWYiIGF0PSIvIj48L2E+PC9pbWc+PC9zcGFuPjwvZGl2PjxkaXYgY2xhc3M9Im1lbWItaW5mby13cmFwIj4NCgkNCgkJPHAgY2xhc3M9Im5hbWUiPjxzcGFuPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDE3NjQzNSIgdGFyZ2V0PSJfdG9wIiBjbGFzcz0ibm9ybWFsTmFtZSI+VmVyb25pa2EgQXNsYW5pYW4gPC9hPjwvc3Bhbj48YnI+IDxwIGNsYXNzPSJhZGRyZXNzIj5QYXJhZGlzZSBWYWxsZXk8L2JyPiBBcml6b25hIDxicj48L3A+DQoJDQo8cD48L3A+PC9kaXY+ZGQCEw9kFgJmDw8WAh8LBe0DPGRpdiBjbGFzcz0ibWVtYi1yZXN1bHQtaXRlbSI+PGRpdiBjbGFzcz0ibWVtYi1pbWctd3JhcCI+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTc2NzM5IiBzdHlsZT0iY29sb3I6IHRyYW5zcGFyZW50OyIgdGFyZ2V0PSJfdG9wIiA+PHNwYW4+PGkgY2xhc3M9ImZhIGZhLXNlYXJjaCIgYXJpYS1oaWRkZW49InRydWUiPjwvaT4gVmlldyBQcm9maWxlPC9zcGFuPjxpbWcgc3JjPSIvZ2xvYmFsX2dyYXBoaWNzL211Z3Nob3QxLmdpZiIgYXQ9Ii8iPjwvYT48L2ltZz48L3NwYW4+PC9kaXY+PGRpdiBjbGFzcz0ibWVtYi1pbmZvLXdyYXAiPg0KCQ0KCQk8cCBjbGFzcz0ibmFtZSI+PHNwYW4+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTc2NzM5IiB0YXJnZXQ9Il90b3AiIGNsYXNzPSJub3JtYWxOYW1lIj5TdGFjZXkgQmFnYW56IDwvYT48L3NwYW4+PGJyPiA8cCBjbGFzcz0iYWRkcmVzcyI+UGFyayBDaXR5PC9icj4gVXRhaCA8YnI+PC9wPg0KCQ0KPHA+PC9wPjwvZGl2PmRkAhQPZBYCZg8PFgIfCwWSBDxkaXYgY2xhc3M9Im1lbWItcmVzdWx0LWl0ZW0iPjxkaXYgY2xhc3M9Im1lbWItaW1nLXdyYXAiPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDEyMTc3NyIgc3R5bGU9ImNvbG9yOiB0cmFuc3BhcmVudDsiIHRhcmdldD0iX3RvcCIgPjxzcGFuPjxpIGNsYXNzPSJmYSBmYS1zZWFyY2giIGFyaWEtaGlkZGVuPSJ0cnVlIj48L2k+IFZpZXcgUHJvZmlsZTwvc3Bhbj48aW1nIHNyYz0iL3Bob3Rvcy9hbHVtbmkvbWVkX2NiZmQzYjViLTAxNzEtNDIyNy1hZWQxLTY3OTE0YmY0MjlkZS5qcGVnIiBhdD0iLyI+PC9hPjwvaW1nPjwvc3Bhbj48L2Rpdj48ZGl2IGNsYXNzPSJtZW1iLWluZm8td3JhcCI+DQoJDQoJCTxwIGNsYXNzPSJuYW1lIj48c3Bhbj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODAxMjE3NzciIHRhcmdldD0iX3RvcCIgY2xhc3M9Im5vcm1hbE5hbWUiPlN0ZXBoYW5pZSBCYWdnZXR0IDwvYT48L3NwYW4+PGJyPiA8cCBjbGFzcz0iYWRkcmVzcyI+UmljaGFyZHNvbjwvYnI+IFRleGFzIDxicj48L3A+DQoJDQo8cD48L3A+PC9kaXY+ZGQCFQ9kFgJmDw8WAh8LBfMDPGRpdiBjbGFzcz0ibWVtYi1yZXN1bHQtaXRlbSI+PGRpdiBjbGFzcz0ibWVtYi1pbWctd3JhcCI+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTc2NjUzIiBzdHlsZT0iY29sb3I6IHRyYW5zcGFyZW50OyIgdGFyZ2V0PSJfdG9wIiA+PHNwYW4+PGkgY2xhc3M9ImZhIGZhLXNlYXJjaCIgYXJpYS1oaWRkZW49InRydWUiPjwvaT4gVmlldyBQcm9maWxlPC9zcGFuPjxpbWcgc3JjPSIvZ2xvYmFsX2dyYXBoaWNzL211Z3Nob3QxLmdpZiIgYXQ9Ii8iPjwvYT48L2ltZz48L3NwYW4+PC9kaXY+PGRpdiBjbGFzcz0ibWVtYi1pbmZvLXdyYXAiPg0KCQ0KCQk8cCBjbGFzcz0ibmFtZSI+PHNwYW4+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTc2NjUzIiB0YXJnZXQ9Il90b3AiIGNsYXNzPSJub3JtYWxOYW1lIj5MaXNhIEsuIEJhaWxleSA8L2E+PC9zcGFuPjxicj4gPHAgY2xhc3M9ImFkZHJlc3MiPkZvcnQgU21pdGg8L2JyPiBBcmthbnNhcyA8YnI+PC9wPg0KCQ0KPHA+PC9wPjwvZGl2PmRkAhYPZBYCZg8PFgIfCwWSBDxkaXYgY2xhc3M9Im1lbWItcmVzdWx0LWl0ZW0iPjxkaXYgY2xhc3M9Im1lbWItaW1nLXdyYXAiPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDE3NjU3MSIgc3R5bGU9ImNvbG9yOiB0cmFuc3BhcmVudDsiIHRhcmdldD0iX3RvcCIgPjxzcGFuPjxpIGNsYXNzPSJmYSBmYS1zZWFyY2giIGFyaWEtaGlkZGVuPSJ0cnVlIj48L2k+IFZpZXcgUHJvZmlsZTwvc3Bhbj48aW1nIHNyYz0iL3Bob3Rvcy9hbHVtbmkvbWVkXzZkYzE2ZDYwLWM0N2MtNGYxNy1iYzNiLTlkYjYwYTlkMzczYy5qcGVnIiBhdD0iLyI+PC9hPjwvaW1nPjwvc3Bhbj48L2Rpdj48ZGl2IGNsYXNzPSJtZW1iLWluZm8td3JhcCI+DQoJDQoJCTxwIGNsYXNzPSJuYW1lIj48c3Bhbj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODAxNzY1NzEiIHRhcmdldD0iX3RvcCIgY2xhc3M9Im5vcm1hbE5hbWUiPkFuZ2VsYSBNLiBCYXB0aXN0ZSA8L2E+PC9zcGFuPjxicj4gPHAgY2xhc3M9ImFkZHJlc3MiPkJyYW5kb248L2JyPiBGbG9yaWRhIDxicj48L3A+DQoJDQo8cD48L3A+PC9kaXY+ZGQCFw9kFgJmDw8WAh8LBfQDPGRpdiBjbGFzcz0ibWVtYi1yZXN1bHQtaXRlbSI+PGRpdiBjbGFzcz0ibWVtYi1pbWctd3JhcCI+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTIyNTI5IiBzdHlsZT0iY29sb3I6IHRyYW5zcGFyZW50OyIgdGFyZ2V0PSJfdG9wIiA+PHNwYW4+PGkgY2xhc3M9ImZhIGZhLXNlYXJjaCIgYXJpYS1oaWRkZW49InRydWUiPjwvaT4gVmlldyBQcm9maWxlPC9zcGFuPjxpbWcgc3JjPSIvZ2xvYmFsX2dyYXBoaWNzL211Z3Nob3QxLmdpZiIgYXQ9Ii8iPjwvYT48L2ltZz48L3NwYW4+PC9kaXY+PGRpdiBjbGFzcz0ibWVtYi1pbmZvLXdyYXAiPg0KCQ0KCQk8cCBjbGFzcz0ibmFtZSI+PHNwYW4+PGEgaHJlZj0iL21lbWJlcnMvP2lkPTgwMTIyNTI5IiB0YXJnZXQ9Il90b3AiIGNsYXNzPSJub3JtYWxOYW1lIj5SdXRoIEJhcmFqYXMgPC9hPjwvc3Bhbj48YnI+IDxwIGNsYXNzPSJhZGRyZXNzIj5Mb3MgQW5nZWxlczwvYnI+IENhbGlmb3JuaWEgPGJyPjwvcD4NCgkNCjxwPjwvcD48L2Rpdj5kZAIYD2QWAmYPDxYCHwsF8QM8ZGl2IGNsYXNzPSJtZW1iLXJlc3VsdC1pdGVtIj48ZGl2IGNsYXNzPSJtZW1iLWltZy13cmFwIj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODAxMjE5NjUiIHN0eWxlPSJjb2xvcjogdHJhbnNwYXJlbnQ7IiB0YXJnZXQ9Il90b3AiID48c3Bhbj48aSBjbGFzcz0iZmEgZmEtc2VhcmNoIiBhcmlhLWhpZGRlbj0idHJ1ZSI+PC9pPiBWaWV3IFByb2ZpbGU8L3NwYW4+PGltZyBzcmM9Ii9nbG9iYWxfZ3JhcGhpY3MvbXVnc2hvdDEuZ2lmIiBhdD0iLyI+PC9hPjwvaW1nPjwvc3Bhbj48L2Rpdj48ZGl2IGNsYXNzPSJtZW1iLWluZm8td3JhcCI+DQoJDQoJCTxwIGNsYXNzPSJuYW1lIj48c3Bhbj48YSBocmVmPSIvbWVtYmVycy8/aWQ9ODAxMjE5NjUiIHRhcmdldD0iX3RvcCIgY2xhc3M9Im5vcm1hbE5hbWUiPk5pY29sZSBBLiBCYXJ0aCA8L2E+PC9zcGFuPjxicj4gPHAgY2xhc3M9ImFkZHJlc3MiPkhlbmRlcnNvbjwvYnI+IE5ldmFkYSA8YnI+PC9wPg0KCQ0KPHA+PC9wPjwvZGl2PmRkAhkPZBYCZg8PFgIfCwX0AzxkaXYgY2xhc3M9Im1lbWItcmVzdWx0LWl0ZW0iPjxkaXYgY2xhc3M9Im1lbWItaW1nLXdyYXAiPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDEyMjA2NiIgc3R5bGU9ImNvbG9yOiB0cmFuc3BhcmVudDsiIHRhcmdldD0iX3RvcCIgPjxzcGFuPjxpIGNsYXNzPSJmYSBmYS1zZWFyY2giIGFyaWEtaGlkZGVuPSJ0cnVlIj48L2k+IFZpZXcgUHJvZmlsZTwvc3Bhbj48aW1nIHNyYz0iL2dsb2JhbF9ncmFwaGljcy9tdWdzaG90MS5naWYiIGF0PSIvIj48L2E+PC9pbWc+PC9zcGFuPjwvZGl2PjxkaXYgY2xhc3M9Im1lbWItaW5mby13cmFwIj4NCgkNCgkJPHAgY2xhc3M9Im5hbWUiPjxzcGFuPjxhIGhyZWY9Ii9tZW1iZXJzLz9pZD04MDEyMjA2NiIgdGFyZ2V0PSJfdG9wIiBjbGFzcz0ibm9ybWFsTmFtZSI+RWR3YXJkIEJhdW1hbiA8L2E+PC9zcGFuPjxicj4gPHAgY2xhc3M9ImFkZHJlc3MiPlNlYmFzdG9wb2w8L2JyPiBDYWxpZm9ybmlhIDxicj48L3A+DQoJDQo8cD48L3A+PC9kaXY+ZGQCBQ8PFgIfCwUcPCEtLSBCdWlsZCA4MDI1ICg3LjY4KSAtLT4NCmRkZCVOIQkbd/Ux3sgEO0/hRTpIPjGQw58Azwpk89VVGflt">
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+var theForm = document.forms['SearchResultsForm'];
+if (!theForm) {
+    theForm = document.SearchResultsForm;
+}
+function __doPostBack(eventTarget, eventArgument) {
+    if (!theForm.onsubmit || (theForm.onsubmit() != false)) {
+        theForm.__EVENTTARGET.value = eventTarget;
+        theForm.__EVENTARGUMENT.value = eventArgument;
+        theForm.submit();
+    }
+}
+//]]>
+</script>
+
+
+
+<script src="https://maps.google.com/maps/api/js?" type="text/javascript"></script>
+<div>
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="CE9E30CB">
+	<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="/wEdABFevJDtXikA5dQvs+pQbnqtzB3wSQ9bntc/1sMqFiDPoCo3umNkRM71css4IF1L3E1zC03lAjCj5ntFSLaJe+JrdxJPkWSMOZRY5pIID0tfwSLB2OZT5Olq69AE+X12ooWanrbHu6mLbz7U0V/kpGfkKEPtqlFnqwtEvQJN+TjGZ3beZfNbr3sREHmRF1RXe9+8IIlYbUo79Hhyi5prtiLK1ZwM/X4twnvl11kqjc+46GoadpFl3ED5uuiW+fzxTNokwK3OB9d+lU4j0FlkfsV9B5quLUb7dbZpxLryx75FzhWLman0Zg7T7t/GzfCRFZLhmb8UVMVIkdW1d5s8jkleqiIKEKG5mZbNv0ERS/fOuFfYnZ+sG+C75fhI3T+TpVupv+JOb2tCYweQDq0/8Otj">
+</div>
+	
+	        <div id="PageContainer">
+                <div id="SpMain">
+		            <table id="SpContent" border="0" cellpadding="0" cellspacing="0">
+			            <tbody><tr>
+				            <td id="SpContent_Container" style="font-family:'Roboto', sans-serif">
+
+                                
+					
+					            <div id="GridPanel">
+	
+                                    <div id="directories-toolbar">
+                                        <div class="row">
+                                            <div class="col-sm-12" style="padding-left:15px; padding-bottom:7px;font-weight:bold;">
+                                                <span class="sm-text"><span id="DocCount">673</span> Record(s) Found</span>
+                                            </div>
+						                    <div class="col-md-6 col-xs-6">
+								                <button class="btn btn-primary tile-view-btn-font-size" type="button" id="trigger-tile-view"><i class="fa fa-th" aria-hidden="true"></i> Tile View</button>
+								                <button class="btn btn-primary tile-view-btn-font-size" type="button" id="trigger-list-view"><i class="fa fa-list" aria-hidden="true"></i> List View</button>
+                                            </div>
+						                    <div class="col-md-6 col-xs-6 text-right sort-by-text-align">
+								                <div class="tool-item" id="tool-sort">
+										            <span>Sort by:</span>
+                                                    <select name="ddl_SortList" onchange="javascript:setTimeout('__doPostBack(\'ddl_SortList\',\'\')', 0)" id="ddl_SortList">
+		<option selected="selected" value="NameAsc">Name: A-Z</option>
+		<option value="NameDesc">Name: Z-A </option>
+		<option value="GroupAsc">Group: A-Z</option>
+		<option value="GroupDesc">Group: Z-A</option>
+
+	</select>
+								                </div>
+								                
+						                    </div>
+				                        </div>
+	                    	            </div>
+
+                                    
+						
+						            <div id="directories-list">
+						                <ul id="search-results"><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80176577" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/photos/alumni/med_ee5daa7b-913a-4b0e-abcd-48a08298b5aa.jpeg" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80176577" target="_top" class="normalName">Carla Abate </a></span><br> </p><p class="address">Golden<br> Colorado <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80176579" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/photos/alumni/med_d236df3a-42e4-47ca-9081-e631be0b8150.jpeg" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80176579" target="_top" class="normalName">Melissa C. Abbott </a></span><br> </p><p class="address">Strafford<br> New Hampshire <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80122026" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80122026" target="_top" class="normalName">Afnan M. Abdelwahed </a></span><br> </p><p class="address">London<br> Ontario <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80176432" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80176432" target="_top" class="normalName">Millie H. Abplanalp </a></span><br> </p><p class="address">Spanish Fork<br> Utah <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80122378" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/photos/alumni/med_7d2175b2-8b4d-44b7-bfe6-75c5de2dd976.jpeg" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80122378" target="_top" class="normalName">Siranoosh Abtin </a></span><br> </p><p class="address">Tigard<br> Oregon <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80176765" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/photos/alumni/med_d18bc841-83fa-4ba2-878c-bb3c5178fe15.jpeg" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80176765" target="_top" class="normalName">Patricia Adams </a></span><br> </p><p class="address">Santa Cruz<br> California <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=78457686" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/photos/alumni/med_ad3bc838-e089-4ea2-9f04-e49e1eed8365.jpeg" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=78457686" target="_top" class="normalName">YM Administrator </a></span><br> </p><p class="address">Test Town<br> Florida <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80176696" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80176696" target="_top" class="normalName">Kari M. Aguinaldo </a></span><br> </p><p class="address">Santa Clara<br> California <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=81255387" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=81255387" target="_top" class="normalName">Amy Aiello </a></span><br> </p><p class="address"></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80176702" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/photos/alumni/med_7774f3e4-0c0e-4748-b44d-97c86be483ed.jpeg" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80176702" target="_top" class="normalName">Kelsey Ale </a></span><br> </p><p class="address">Los Angeles<br> California <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=81477610" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/photos/alumni/med_132d6fa3-ddd7-43ca-9fc4-6682edd9510f.jpeg" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=81477610" target="_top" class="normalName">Charity Allen </a></span><br> </p><p class="address"></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80121876" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/photos/alumni/med_73b52ed0-3172-48bf-bfe3-dc03497d5ee4.png" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80121876" target="_top" class="normalName">Rodha Almalik </a></span><br> </p><p class="address">Nashau<br> New Hampshire <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80176575" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80176575" target="_top" class="normalName">Kelly Amoroso </a></span><br> </p><p class="address">Atlantic Highlands<br> New Jersey <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80983337" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80983337" target="_top" class="normalName">Laura Andrews </a></span><br> </p><p class="address">Georgetown<br> Kentucky <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80121937" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80121937" target="_top" class="normalName">Jenny K. Angelillo </a></span><br> </p><p class="address">San Francisco<br> California <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80121810" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80121810" target="_top" class="normalName">Julie Annen </a></span><br> </p><p class="address">Minneapolis<br> Minnesota <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80176435" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80176435" target="_top" class="normalName">Veronika Aslanian </a></span><br> </p><p class="address">Paradise Valley<br> Arizona <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80176739" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80176739" target="_top" class="normalName">Stacey Baganz </a></span><br> </p><p class="address">Park City<br> Utah <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80121777" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/photos/alumni/med_cbfd3b5b-0171-4227-aed1-67914bf429de.jpeg" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80121777" target="_top" class="normalName">Stephanie Baggett </a></span><br> </p><p class="address">Richardson<br> Texas <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80176653" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80176653" target="_top" class="normalName">Lisa K. Bailey </a></span><br> </p><p class="address">Fort Smith<br> Arkansas <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80176571" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/photos/alumni/med_6dc16d60-c47c-4f17-bc3b-9db60a9d373c.jpeg" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80176571" target="_top" class="normalName">Angela M. Baptiste </a></span><br> </p><p class="address">Brandon<br> Florida <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80122529" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80122529" target="_top" class="normalName">Ruth Barajas </a></span><br> </p><p class="address">Los Angeles<br> California <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80121965" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80121965" target="_top" class="normalName">Nicole A. Barth </a></span><br> </p><p class="address">Henderson<br> Nevada <br></p>
+	
+<p></p></div></div></li><li><div class="memb-result-item"><div class="memb-img-wrap"><a href="/members/?id=80122066" style="color: transparent;" target="_top"><span><i class="fa fa-search" aria-hidden="true"></i> View Profile</span><img src="/global_graphics/mugshot1.gif" at="/"></a></div><div class="memb-info-wrap">
+	
+		<p class="name"><span><a href="/members/?id=80122066" target="_top" class="normalName">Edward Bauman </a></span><br> </p><p class="address">Sebastopol<br> California <br></p>
+	
+<p></p></div></div></li></ul>
+                                    </div>
+						
+                                    
+
+<div class="text-center">
+<div class="pagination justify-content-center">
+	<div class="btn-group" style="width:auto">
+		<!-- paging buttons go here -->
+	<button class="btn btn-primary" type="button">1</button><button class="btn btn-default" type="button" onclick="javascript:__doPostBack('SearchResultsGrid$ctl28$ctl02','')" style="min-height: 34px;">2</button><button class="btn btn-default" type="button" onclick="javascript:__doPostBack('SearchResultsGrid$ctl28$ctl03','')" style="min-height: 34px;">3</button><button class="btn btn-default" type="button" onclick="javascript:__doPostBack('SearchResultsGrid$ctl28$ctl04','')" style="min-height: 34px;">4</button><button class="btn btn-default" type="button" onclick="javascript:__doPostBack('SearchResultsGrid$ctl28$ctl05','')" style="min-height: 34px;">5</button><button class="btn btn-default" type="button" onclick="javascript:__doPostBack('SearchResultsGrid$ctl28$ctl06','')" style="min-height: 34px;">6</button><button class="btn btn-default" type="button" onclick="javascript:__doPostBack('SearchResultsGrid$ctl28$ctl07','')" style="min-height: 34px;">7</button><button class="btn btn-default" type="button" onclick="javascript:__doPostBack('SearchResultsGrid$ctl28$ctl08','')" style="min-height: 34px;">8</button><button class="btn btn-default" type="button" onclick="javascript:__doPostBack('SearchResultsGrid$ctl28$ctl09','')" style="min-height: 34px;">9</button><button class="btn btn-default" type="button" onclick="javascript:__doPostBack('SearchResultsGrid$ctl28$ctl10','')" style="min-height: 34px;">10</button><button class="btn btn-default" type="button" onclick="javascript:__doPostBack('SearchResultsGrid$ctl28$ctl11','')" style="min-height: 34px;"><i class="fa fa-arrow-right"></i></button></div>
+	<br>
+</div>
+<div id="page-counter"><span><br>Page 1 of 29</span></div>
+</div>
+
+<script type="text/javascript">
+	$(document).ready(function () {
+		// convert paging control for responsive layout
+		var blnFirstPagingButton = true;
+		var blnCurrentPageNumberFound = false;
+		var $tdPager = $('tr.DotNetPager td');
+
+		var elements = $tdPager.children();
+
+		for (var i = 0; i < elements.length; i++) {
+			var $element = $(elements[i]);
+
+			if ($element.is('a')) {
+				var text;
+
+				// this is a link so it is either a page number button or a forward/back button
+				if ($element.find('img').length > 0) {
+					// this is a forward or back button
+					if (blnFirstPagingButton) {
+						text = '<i class="fa fa-arrow-left"></i>';
+					}
+					else {
+						text = '<i class="fa fa-arrow-right"></i>';
+					}
+				}
+				else {
+					text = $element.text();
+				}
+
+				var onclick = $element.attr('href').replace('javascript: ', '');
+
+				$('div.pagination > div.btn-group').append('<button class="btn btn-default" type="button" onclick="' + onclick + '" style="min-height: 34px;">' + text + '</button>');
+			}
+			else if ($element.is('span')) {
+				// this is either the current page number or the page counter
+				if (!blnCurrentPageNumberFound) {
+					// this is the current page number
+					$('div.pagination > div.btn-group').append('<button class="btn btn-primary" type="button">' + $element.text() + '</button>');
+
+					blnCurrentPageNumberFound = true;
+				}
+				else {
+					// this is the page counter
+				    $('#page-counter').append($element);
+				}
+			}
+
+			blnFirstPagingButton = false;
+		}
+
+		$tdPager.remove();
+	});
+</script>
+
+					            
+</div>
+				            </td>
+			            </tr>
+		            </tbody></table>
+                </div>
+	        </div>
+
+            <span id="lblVersion"><!-- Build 8025 (7.68) -->
+</span>
+
+            <input name="prefs_store" type="hidden" id="prefs_store" value="view=list,sort=NameAsc">
+	    </form>
+
+    </div>
+	
+	<script type="text/javascript">
+	    var prefs_store;
+	    var triggerTileView;
+	    var triggerListView;
+	    var wrapper;
+
+	    $(document).ready(function () {
+	        resetColoumnSize('name');
+	        resetColoumnSize('address');
+	        resetColoumnSize('distance');
+	        resetColoumnSize('pri_grp');
+	        resetColoumnSize('typ_badge');
+	        resetColoumnSize('game_level');
+	        resetColoumnSize('distance_radius');
+
+	        function resetColoumnSize(className) {
+	            var boolColumn = true;
+	            $("." + className).each(function (index) {
+	                var value = $(this).html();
+	                // console.log(className + " bool3 " + boolBadgeColumn + " updated3 : " + value);
+	                if (value !== '')
+	                { boolColumn = false; }
+
+	            });
+	            if (boolColumn) {
+	                $("." + className).each(function (index) {
+	                    var boolColumn = "";
+	                    //console.log(className+" bool "+boolBadgeColumn + " updated : " + $(this).text());
+	                    $(this).attr('style', 'width: 0% !important');
+	                });
+	            }
+	        }
+
+	        prefs_store = $("input#prefs_store");
+	        var blnMapDisplayed = (getFromPrefsStore('map_displayed') == 'true');
+		    if (blnMapDisplayed) {
+		        $("#cbShowMap").attr('checked', true);
+		        setTimeout(function () { showHideMap(); }, 1000);
+	        }
+
+		    wrapper = document.getElementById('directory-wrapper');
+		    triggerTileView = document.getElementById('trigger-tile-view');
+		    triggerListView = document.getElementById('trigger-list-view');
+		    toggleView(triggerTileView, 'list-view', 'tile-view');
+		    toggleView(triggerListView, 'tile-view', 'list-view');
+
+		    triggerView(getFromPrefsStore('view'));
+		    savePref('sort', 'NameAsc');
+		});
+	
+	    function savePref(prefName, prefValue) {
+	        const response = {
+	            callback: '',
+	            pref: prefName.concat("=", prefValue)
+	        };
+	        window.parent.postMessage(response);
+	       
+	        updatePrefsStore(prefName, prefValue);
+	        return true;
+	    };
+
+	    function updatePrefsStore(prefName, prefValue) {
+	        var arrPrefs;
+	        //console.log("updatePrefsStore for " + prefName + " with value " + prefValue + ": prefs_store = " + prefs_store.val());
+	        if (prefs_store.val() == '') {
+	            arrPrefs = new Array();
+	        } else {
+	            arrPrefs = prefs_store.val().split(',');
+	        };
+
+	        var prefIndex = arrPrefs.findIndex((item) => item.split('=')[0] == prefName)
+	        if (prefIndex == -1) {
+	            arrPrefs.push(prefName.concat('=', prefValue));
+            } else {
+	            arrPrefs[prefIndex] = prefName.concat('=', prefValue);
+            };
+
+	        prefs_store.val(arrPrefs.join(','));
+        };
+
+	    function getFromPrefsStore(prefName) {
+	        var prefValue = '';
+	        var arrPrefs;
+	        //console.log("getFromPrefsStore for " + prefName + ": prefs_store = " + prefs_store.val());
+	        if (prefs_store.val() != '') {
+	            arrPrefs = prefs_store.val().split(',');
+	            var pref = arrPrefs.find((item) => (item.split('=')[0]) == prefName);
+	            if (pref) {
+	                prefValue = pref.split('=')[1];
+	            };
+	        };
+	        return prefValue;
+	    };
+
+	    function toggleView(element, removeClass, addClass) {
+	        element.addEventListener('click', () => {
+	            wrapper.classList.remove(removeClass);
+	            wrapper.classList.add(addClass);
+	            savePref('view', (addClass == 'tile-view' ? 'tile' : 'list'));
+	            resizeSearchResultsFrame();
+	        });
+	    };
+
+	    function resizeSearchResultsFrame() {
+	        const response = {
+	            callback: 'ResizeSearchResultsFrame'
+	        };
+	        window.parent.postMessage(response);
+	    };
+
+	    function triggerView(view) {
+	        switch (view) {
+	            case 'list':
+	                triggerListView.click();
+	                break;
+	            case 'tile':
+	            default:
+	                triggerTileView.click();
+	        };
+	    };
+	</script>
+
+	<script type="text/javascript">
+	    $(document).ready(function () {
+
+			// now we have to move all the results out of the table and into a UL
+			var $searchResultsTable = $('table#SearchResultsGrid');
+
+			$searchResultsTable.after('<ul id="search-results"></ul>');
+
+			var $searchResultsList = $('ul#search-results');
+
+			$searchResultsTable.find('tr.lineitem > td').each(function () {
+				var contents = $(this).html();
+
+				$(this).remove();
+
+				$searchResultsList.append('<li>' + contents + '</li>');
+			});
+
+			$searchResultsTable.remove();
+		});
+	</script>
+
+
+</body></html>

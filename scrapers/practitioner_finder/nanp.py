@@ -1,97 +1,91 @@
-"""National Association of Nutrition Professionals (NANP) directory scraper.
+"""National Association of Nutrition Professionals (NANP) scraper.
 
-NANP runs its public-facing site on WordPress at nanp.org but the member
-directory is hosted on a separate YourMembership Classic AMS subdomain at
-``mynanp.nanp.org``. The "Find a Practitioner" button on
-``https://nanp.org/find-a-practitioner/`` simply links to:
+NANP publishes its public "Find a Practitioner" directory through the same
+YourMembership / AssociationVoice CMS as AANP (naturopathic.org). NANP and
+AANP are sister deployments on the same vendor — the iframe-card pattern,
+the profile-page selectors, and the ASP.NET ``__doPostBack`` pagination
+are all identical. This adapter is a near-mirror of ``aanp.py`` with the
+NANP-specific URLs / source_org / specialties / fellowship rule swapped in.
 
-    https://mynanp.nanp.org/search/custom.asp?id=7551
+Live structure (re-discovered 2026-05-27 against ``mynanp.nanp.org``):
 
-That URL is the public search FORM. The form POSTs (or GETs) to
-``/search/newsearch.asp`` and the response is an HTML table of matching
-members. Each result links to a member profile at
-``/profile/?ID=<numeric>`` (numeric ID = YM-assigned, stable across re-runs).
+- The public search form at ``/search/`` is the warm-up GET. The actual
+  search-shell endpoint is ``/search/newsearch.asp`` (NOT
+  ``/search/search.asp`` — that's the AANP path). Both paths return a
+  shell page that embeds an iframe pointing at
+  ``/searchserver/people2.aspx?id=<session-uuid>``.
+- ``/searchserver/people2.aspx?id=<uuid>`` returns the paginated
+  practitioner card list — ``<ul id="search-results">`` of
+  ``<li><div class="memb-result-item">`` cards (24 per page on the live
+  capture, DocCount=673 total, page 1 of 29).
+- The whole site is behind Cloudflare bot mitigation, so the live migrate
+  runner uses Playwright (see ``migrate_nanp.py``).
+- The iframe response page is structurally IDENTICAL to AANP — the same
+  card markup, the same ``<span id="DocCount">N</span>`` total, the same
+  ``Page X of Y`` text. The list-page parser is byte-for-byte the same as
+  the AANP parser; only the locked-invariant constants change.
 
-Discovery 2026-05-27 (vault-internal Wave C build):
+Each iframe card carries only: name + member_id + (city, state). The
+postal column is empty on NANP's live capture (the synthesized fixture
+included postal in the card, but live cards do not). Street, country,
+phone, email, website, credentials, practice_name all live on the
+per-member profile page at ``/members/?id=<numeric>``.
 
-    GET https://mynanp.nanp.org/search/custom.asp?id=7551
-        -> 24kB HTML form. Filters: txt_name / txt_city / txt_country /
-           txt_state / txt_postalcode plus two custom-field flags:
-             cdlCustomFieldValueIDBCHN-SINGLE  in {'', 'Yes', 'No'}
-             cdlCustomFieldValueIDCDSP-SINGLE  in {'', 'Yes', 'No'}
-           Hidden field cdlMemberTypeID=1705148 scopes to the practitioner
-           member type (also pinned: cdlCustomFieldValueIDPublicDirectoriesSelection=
-           'Include profile in Find a Practitioner Directory').
+The profile page structure (``tdEmployerName`` + ``tdWorkPhone`` +
+``CstmFldLbl/CstmFldVal`` custom field rows) is the standard YourMembership
+template — same as AANP. Two NANP-specific differences worth flagging:
 
-    POST https://mynanp.nanp.org/search/newsearch.asp
-        with the form fields above; returns the paginated results page.
-        Default 20 results / page; pagination links are
-        ``/search/newsearch.asp?...&page=N``.
+  - NANP profiles often expose the phone via ``tdHomePhone`` instead of
+    (or in addition to) ``tdWorkPhone``. We accept either.
+  - NANP profiles do NOT use the ``txt_employName=`` anchor for the
+    practice-name link. Instead the practice name (when present) is the
+    first plain-text fragment inside ``tdEmployerName``, ABOVE the city
+    anchor. We treat the first non-postal text fragment that doesn't
+    start with a digit as the practice name; numeric-leading fragments
+    are treated as a street line (per AANP behaviour). This also
+    correctly handles the (common) case where the employer block opens
+    with a bare city anchor (no practice, no street).
+  - NANP renders the practitioner email via a JS-decrypted ``mailto:``
+    anchor in the right-column header (not via the AANP "Clinic Email"
+    custom field). We pick the first non-empty mailto whose value is a
+    real email and isn't the ``info@nanp.org`` site-footer link.
 
-    GET https://mynanp.nanp.org/profile/?ID=<numeric>
-        -> the per-member profile page (practice, address, phone,
-           email, website, BCHN/CDSP custom-field block).
+Fellowship rule (NANP-specific)
+-------------------------------
+NANP publishes a tiered membership ladder:
 
-Two-stage scrape pattern (mirrors OEPF):
+    Student Member
+    Associate Member        (in school, no degree yet)
+    Professional Member     (degree from a NANP-approved school)
+    BCHN(R) Credentialed    (Board Certified Holistic Nutritionist —
+                             exam-vetted board certification, the elite
+                             tier of the Professional Member ladder)
+    CDSP(TM) Credentialed   (Certified Dietary Supplement Professional —
+                             a narrower certificate, NOT a higher tier)
 
-    1. Walk every results page (no filters set -> all directory-listable
-       practitioners). Per page, capture (profile_id, name, city, state,
-       country) for each <tr> in the result table. Pagination from the
-       block of ``<a class="page">N</a>`` anchors at page bottom.
-    2. Fetch each ``/profile/?ID=<id>`` page individually and extract the
-       full row (practice / address / phone / email / website / BCHN flag).
+BCHN is the elite, exam-vetted Board Certified Holistic Nutritionist
+credential. ``fellowship_level=True`` iff one of the following signals
+fires (in precedence order):
 
-Row contract:
-    tier             = 'org_member'
-    source_org       = 'NANP'
-    specialties      = ['nutrition', 'holistic_health']      # locked
-    source_url       = 'https://mynanp.nanp.org/profile/?ID=<numeric>'
-                       (stable across re-runs; ID is the YM-assigned
-                       internal profile id)
-    fellowship_level = True when the member carries the BCHN&reg; (Board
-                       Certified Holistic Nutritionist) credential. NANP
-                       publishes a tiered membership ladder:
-                           Student Member
-                           Associate Member       (in school, no degree yet)
-                           Professional Member    (degree from a NANP-approved school)
-                           BCHN&reg; Credentialed (exam-vetted board cert)
-                           CDSP&trade; Credentialed (exam-vetted, narrower scope
-                                                     than BCHN — dietary supplement
-                                                     specialty only)
-                       BCHN is the elite, exam-vetted tier of the
-                       Profession Member ladder; the spec calls it out
-                       explicitly as the True trigger ("anything below
-                       BCHN as False"). CDSP alone does NOT qualify —
-                       it's a separate certificate (dietary-supplement
-                       specialty) that runs alongside the membership
-                       ladder, not above it; per spec, only BCHN flips
-                       fellowship_level to True. A member with BOTH
-                       BCHN and CDSP qualifies (BCHN wins).
+    1. The profile's ``CstmFldLbl`` / ``CstmFldVal`` block carries a row
+       labelled ``BCHN`` (with optional (R) glyph or HTML entity) whose
+       value reads ``Yes`` — the canonical signal from the
+       ``cdlCustomFieldValueIDBCHN`` field on the live YM form. This is
+       the highest-confidence signal and dominates.
+    2. The credential string (from the title's trailing post-nominals or
+       the ``Credentials`` custom field) contains the ``BCHN`` token,
+       matched case-insensitively, with the (R) trademark glyph /
+       ``&reg;`` entity / interspersed dots all collapsed before
+       comparison. This catches profiles where the custom-field block is
+       missing/empty but the credential is still in the title.
 
-Field-level BCHN detection precedence:
-    1. Profile page custom-field row labelled "BCHN" (with optional
-       &reg;) with value 'Yes' — the canonical signal from the
-       cdlCustomFieldValueIDBCHN-SINGLE field.
-    2. Fallback: 'BCHN' (with optional &reg;) appears as a credential
-       token in the H1 display name (e.g. "Jane Doe, BCHN®" or
-       "Jane Doe, MS, BCHN, CDSP"). This is a defensive fallback for
-       profile pages where the custom-field block is missing/empty but
-       the credential is still in the display name.
+CDSP alone does NOT qualify — it's a separate certificate that runs
+alongside the membership ladder, not above it. A member with BOTH BCHN
+and CDSP qualifies (BCHN wins).
 
-NANP membership data is small (~hundreds, not thousands) so the
-two-stage fetch is bounded and cheap. Static UA + 0.5s sleep + 20s
-timeout per request (rate-friendly, single-threaded; matches the rest
-of the practitioner-finder cohort).
-
-NOTE on Cloudflare: As of 2026-05-27 the ``mynanp.nanp.org`` subdomain
-returns 403 to plain requests (Cloudflare managed-challenge mode). The
-parser here is built off the YM Classic AMS HTML templates that NANP has
-deployed since at least 2020 (Wayback-confirmed structure for the search
-form). The two-stage shape is canonical for the platform — same shape
-the OVDR adapter handles for the newer YM MVC variant. If the
-Cloudflare gate persists at live-scrape time the migrate runner needs a
-Playwright shim (mirrors the eyehealingcenter pattern); the pure parser
-defined here is unaffected.
+The per-practitioner ``source_url`` is the canonical member-detail URL
+``https://mynanp.nanp.org/members/?id=<id>`` and is stable across re-runs
+(the numeric ``id`` is the YourMembership account id).
 """
 import html as html_module
 import re
@@ -99,32 +93,51 @@ import time
 from typing import Optional
 
 import requests
-from bs4 import BeautifulSoup
 
 from scrapers.practitioner_finder.models import NormalizedPractitionerRow
 
 
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605"
 BASE = "https://mynanp.nanp.org"
-SEARCH_FORM_URL = f"{BASE}/search/custom.asp?id=7551"
-SEARCH_RESULTS_URL = f"{BASE}/search/newsearch.asp"
-PROFILE_URL = f"{BASE}/profile/"
+# Warm-up GET: the live NANP search-form page lives at the bare
+# ``/search/`` path (no ``?id=NNN`` query param, unlike AANP). Hitting
+# this once at the start of a Playwright session primes the session
+# cookies so the iframe-extraction GET on ``/search/newsearch.asp``
+# returns a populated shell.
+DIRECTORY_FORM_URL = f"{BASE}/search/"
+# Shell page that embeds the iframe. NANP uses ``newsearch.asp`` where
+# AANP uses ``search.asp``; otherwise identical.
+SEARCH_URL = f"{BASE}/search/newsearch.asp"
 
 LOCKED_SPECIALTIES = ["nutrition", "holistic_health"]
 
-# Member-type hidden field: 1705148 scopes the search to the practitioner
-# member type (i.e. NOT student / sustaining-org / school memberships).
-# Captured from the live search form 2026-05-27.
-SEARCH_MEMBER_TYPE_ID = "1705148"
+# US state full-name set used as a *signal*: when a row's address-token
+# sequence has fewer than 3 trailing tokens, city/state mapping needs to
+# fall back to inference. Same list shape as AANP — NANP's directory is
+# similarly US-dominant with a small Canadian / international fringe.
+_US_STATES = {
+    "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
+    "Connecticut", "Delaware", "District of Columbia", "Florida", "Georgia",
+    "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky",
+    "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan",
+    "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska",
+    "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York",
+    "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon",
+    "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
+    "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
+    "West Virginia", "Wisconsin", "Wyoming",
+    "Puerto Rico", "U.S. Virgin Islands", "Guam",
+}
 
-# The other always-on pin from the search form — limits to members who
-# opted into the public Find a Practitioner Directory listing. Without
-# this every active member would surface, including those who opted out.
-SEARCH_PUBLIC_DIRECTORY_PIN = "Include profile in Find a Practitioner Directory"
+_CA_PROVINCES = {
+    "Alberta", "British Columbia", "Manitoba", "New Brunswick",
+    "Newfoundland and Labrador", "Nova Scotia", "Ontario",
+    "Prince Edward Island", "Quebec", "Saskatchewan",
+    "Northwest Territories", "Nunavut", "Yukon",
+}
 
-# Country-name -> ISO2 (same convention as iabdm.py / iaomt.py). NANP
-# is global-ish — most US-heavy, with practitioners in Canada, UK, EU,
-# Australia, NZ, Brazil, etc.
+# Country-name -> ISO2. NANP has more international reach than AANP so
+# the table is broader.
 _COUNTRY_NAME_TO_ISO2 = {
     "united states": "US",
     "united states of america": "US",
@@ -189,38 +202,8 @@ _COUNTRY_NAME_TO_ISO2 = {
     "united arab emirates": "AE",
     "uae": "AE",
     "saudi arabia": "SA",
-    "qatar": "QA",
-    "kuwait": "KW",
-    "bahrain": "BH",
     "israel": "IL",
-    "turkey": "TR",
-    "egypt": "EG",
     "south africa": "ZA",
-    "morocco": "MA",
-    "kenya": "KE",
-    "russia": "RU",
-}
-
-# Canadian postal codes: A1A 1A1 (with optional space).
-_CA_POSTAL_RE = re.compile(r"\b([A-Z]\d[A-Z])\s*(\d[A-Z]\d)\b")
-# US ZIP at end of a 'City, ST 12345' tail.
-_US_POSTAL_RE = re.compile(r"\b(\d{5}(?:-\d{4})?)\s*$")
-# UK postcode at end: SW1A 1AA.
-_UK_POSTAL_RE = re.compile(r"\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\s*$")
-
-# BCHN credential token. Matches BCHN, BCHN®, BCHN&reg;, B.C.H.N. — case
-# insensitive. The registered-trademark glyph (U+00AE) and the HTML
-# entity &reg; are both stripped before testing so we just look for the
-# letter run.
-_BCHN_TOKEN_RE = re.compile(r"\bB\.?C\.?H\.?N\.?\b", re.IGNORECASE)
-
-# US state codes (used to detect 'City, ST 12345' tails).
-_US_STATE_ABBR_SET = {
-    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA",
-    "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA",
-    "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY",
-    "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX",
-    "UT", "VT", "VA", "WA", "WV", "WI", "WY",
 }
 
 
@@ -229,171 +212,58 @@ def _session() -> requests.Session:
     s.headers.update(
         {
             "User-Agent": USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
         }
     )
     return s
 
 
 # ---------------------------------------------------------------------------
-# Stage 1: results-page fetch + parse (per-page list of practitioner stubs)
+# Stage 1: live fetch helpers (kept for parity with AANP; the migrate
+# runner does the Cloudflare-clearing fetches through Playwright)
 # ---------------------------------------------------------------------------
 
-def fetch_search_results_page(page: int = 1) -> str:
-    """Hit one page of /search/newsearch.asp and return the raw HTML body.
+def fetch_search_shell_html() -> str:
+    """Fetch the rendered search-shell HTML (a single unfiltered walk).
 
-    Default form values mirror the live search form: scope to the
-    practitioner member type and to the 'public directory' opt-in subset.
-    Static UA + 20s timeout + 0.5s sleep (rate-friendly).
+    Hits ``/search/newsearch.asp`` with a static Mozilla UA, 20s timeout,
+    0.5s polite sleep. Returns the raw HTML body. ``mynanp.nanp.org`` is
+    Cloudflare-protected so static-UA requests may return HTTP 403 —
+    callers should handle ``requests.HTTPError`` and fall back to a
+    Playwright session if needed. The fixture-driven parser doesn't
+    touch this function.
     """
-    params = {
-        "cdlMemberTypeID": SEARCH_MEMBER_TYPE_ID,
-        "cdlCustomFieldValueIDPublicDirectoriesSelection": SEARCH_PUBLIC_DIRECTORY_PIN,
-        "page": str(page),
-    }
     s = _session()
-    r = s.get(SEARCH_RESULTS_URL, params=params, timeout=20)
+    r = s.get(SEARCH_URL, timeout=20)
     r.raise_for_status()
     time.sleep(0.5)
     return r.text
 
 
-def parse_total_pages(html: str) -> int:
-    """Extract total page count from the result page's pagination block.
+def fetch_iframe_results_html(session_uuid: str) -> str:
+    """Fetch the iframe results page for a previously-issued search session.
 
-    YM Classic renders ``<a class="page">N</a>`` for every page anchor;
-    the current page is marked ``<a class="page current">``. Returns the
-    max page number seen, or 1 if no pagination block (single-page
-    result set).
-    """
-    soup = BeautifulSoup(html, "html.parser")
-    max_page = 1
-    for a in soup.find_all("a", class_="page"):
-        try:
-            n = int(a.get_text(strip=True))
-            if n > max_page:
-                max_page = n
-        except (TypeError, ValueError):
-            continue
-    return max_page
-
-
-_PROFILE_ID_RE = re.compile(r"[?&]ID=(\d+)", re.IGNORECASE)
-
-
-def _extract_profile_id(href: str) -> Optional[str]:
-    """Pull the ``ID=`` numeric out of a ``/profile/?ID=<n>`` href.
-
-    Returns the numeric string (preserves leading zeros if any) or None
-    when the href doesn't carry an ID.
-    """
-    if not href:
-        return None
-    m = _PROFILE_ID_RE.search(href)
-    return m.group(1) if m else None
-
-
-def _build_source_url(profile_id: str) -> str:
-    """Stable per-practitioner URL — bare ``/profile/?ID=<numeric>``.
-
-    Search results may carry additional context params (search refinement
-    breadcrumbs); we strip those so re-runs from different filter slices
-    produce identical upsert keys. This is the same canonicalization the
-    OVDR adapter applies to its profileId URLs.
-    """
-    return f"{PROFILE_URL}?ID={profile_id}"
-
-
-def parse_search_results_html(html: str) -> list[dict]:
-    """Parse a /search/newsearch.asp results HTML page into a list of
-    stubs (one per result row). Each stub is::
-
-        {
-            "profile_id": "12345678",
-            "source_url": "https://mynanp.nanp.org/profile/?ID=12345678",
-            "name": "Sarah Henderson, BCHN®",
-            "city": "Boulder",
-            "state": "CO",
-            "country_raw": "United States",
-        }
-
-    Pure: no I/O. Stubs are the input to stage 2 (per-profile fetch +
-    parse_member_profile_html). Empty rows / non-result table rows are
-    silently skipped. Duplicates (same profile_id appearing twice on the
-    same page) are dedup'd to the first occurrence.
-    """
-    soup = BeautifulSoup(html, "html.parser")
-    out: list[dict] = []
-    seen_ids: set[str] = set()
-
-    # The results live in <table class="search-results">. Defensively
-    # also accept the older 'results' class name used elsewhere on the
-    # platform, and the SpContent_Container wrapper that always exists.
-    table = (
-        soup.find("table", class_="search-results")
-        or soup.find("table", class_="results")
-    )
-    if not table:
-        return out
-
-    for tr in table.find_all("tr"):
-        # Skip table header rows
-        if tr.find("th") and not tr.find("td"):
-            continue
-        a = tr.find("a", href=True)
-        if not a:
-            continue
-        href = a.get("href") or ""
-        profile_id = _extract_profile_id(href)
-        if not profile_id:
-            continue
-        if profile_id in seen_ids:
-            continue
-        # Name is the anchor's text (may contain credential tokens like
-        # 'Sarah Henderson, BCHN®'). Empty / whitespace-only names mean
-        # an opt-out row or a profile-photo-only anchor — skip.
-        name_raw = html_module.unescape(a.get_text(strip=True))
-        if not name_raw:
-            continue
-        seen_ids.add(profile_id)
-
-        # Pull the remaining <td>s after the name cell. Their order on
-        # the YM Classic results template is City / State / Country.
-        tds = tr.find_all("td")
-        city = state = country_raw = None
-        # td[0] is the name cell (contains the <a>). td[1..3] are the
-        # geo cells when present.
-        geo_cells = tds[1:] if len(tds) > 1 else []
-        if len(geo_cells) >= 1:
-            city = geo_cells[0].get_text(strip=True) or None
-        if len(geo_cells) >= 2:
-            state = geo_cells[1].get_text(strip=True) or None
-        if len(geo_cells) >= 3:
-            country_raw = geo_cells[2].get_text(strip=True) or None
-
-        out.append(
-            {
-                "profile_id": profile_id,
-                "source_url": _build_source_url(profile_id),
-                "name": name_raw,
-                "city": city,
-                "state": state,
-                "country_raw": country_raw,
-            }
-        )
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Stage 2: per-profile fetch + parse
-# ---------------------------------------------------------------------------
-
-def fetch_member_profile_html(profile_id: str) -> str:
-    """Hit a single ``/profile/?ID=<n>`` page and return the raw HTML.
-    Static UA + 20s timeout + 0.5s sleep (rate-friendly).
+    The YourMembership search splits the form shell (``/search/newsearch.asp``)
+    from the results grid (``/searchserver/people2.aspx?id=<uuid>``).
+    The uuid is one-shot per search submission — extracted from the
+    iframe ``src`` attribute on the search shell response page.
     """
     s = _session()
-    r = s.get(PROFILE_URL, params={"ID": profile_id}, timeout=20)
+    url = f"{BASE}/searchserver/people2.aspx"
+    r = s.get(
+        url,
+        params={
+            "id": session_uuid,
+            "cdbid": "",
+            "canconnect": "0",
+            "canmessage": "0",
+            "map": "True",
+            "toggle": "True",
+            "hhSearchTerms": "",
+        },
+        timeout=20,
+    )
     r.raise_for_status()
     time.sleep(0.5)
     return r.text
@@ -409,55 +279,72 @@ def _coerce_str(val) -> Optional[str]:
         return None
     if isinstance(val, str):
         s = val.strip()
+        s = s.replace("\xa0", " ").strip()
         return s or None
     s = str(val).strip()
     return s or None
 
 
-def _normalize_credential_chunk(s: str) -> str:
-    """Strip the &reg; / &trade; entity-or-glyph from a credential token
-    so 'BCHN®' / 'BCHN&reg;' / 'BCHN' all compare equal."""
+def _strip_html_tags(s: str) -> str:
+    """Drop all HTML tags from a snippet; collapse whitespace.
+
+    Block-level tags become a single space so adjacent block contents
+    don't smash together; inline tags vanish so anchor-delimited
+    comma lists yield clean comma-separated values.
+    """
     if not s:
         return ""
-    out = html_module.unescape(s)
-    # Strip registered/trademark glyphs and entities.
-    out = out.replace("®", "").replace("™", "")
+    out = re.sub(r"<(br|p|div|td|tr|li|ul|ol|h\d)[^>]*>", " ", s, flags=re.I)
+    out = re.sub(r"</(br|p|div|td|tr|li|ul|ol|h\d)>", " ", out, flags=re.I)
+    out = re.sub(r"<[^>]+>", "", out)
+    out = html_module.unescape(out)
+    out = re.sub(r"\s*,\s*", ", ", out)
+    out = re.sub(r"\s+", " ", out)
     return out.strip()
 
 
-def _strip_credentials(name_and_creds: str) -> tuple[str, Optional[str]]:
-    """Split 'Sarah Henderson, MS, BCHN®, CDSP™' ->
-    ('Sarah Henderson', 'MS, BCHN, CDSP'). Trademark glyphs are stripped
-    so credentials compare cleanly downstream.
+def _strip_credentials(name: str) -> tuple[str, Optional[str]]:
+    """Split 'Sarah Henderson, MS, BCHN' into (clean_name, credentials).
 
-    The name retains 'Dr.' / 'Dr' honorifics if present.
-    """
-    if not name_and_creds:
+    Mirrors AANP's helper. NANP credential strings can carry (R)/(TM)
+    trademark glyphs (``BCHN(R)``, ``CDSP(TM)``); ``_normalize_credential_chunk``
+    strips those at compare time, but they're left in place on the
+    credentials string itself so downstream consumers see the original
+    decoration."""
+    if not name:
         return "", None
-    s = html_module.unescape(name_and_creds).strip()
-    # Strip ® and ™ from the whole string for cleaner credential tokens.
+    s = name.strip()
+    # Strip ® / ™ glyphs and entities up front so the credential split
+    # is clean. We compare on letter-only tokens later.
     s = s.replace("®", "").replace("™", "")
+    s = re.sub(r"&reg;|&trade;", "", s, flags=re.I)
 
-    cred_pat = re.compile(r",\s*([A-Z][A-Za-z./\-]{0,15})")
+    paren = re.match(r"^(.*?)\s*\(([A-Za-z][A-Za-z.,\s/-]*)\)\s*$", s)
+    if paren:
+        s = f"{paren.group(1).strip()}, {paren.group(2).strip()}"
+
+    cred_pat = re.compile(r",\s*([A-Za-z][A-Za-z./]*[A-Za-z])")
     m = cred_pat.search(s)
     if not m:
-        return s.rstrip(", ").strip(), None
-
+        return s.rstrip(", "), None
     clean = s[: m.start()].strip().rstrip(",")
     creds = s[m.start():].lstrip(", ").strip().rstrip(",").rstrip()
     return clean, creds or None
 
 
-def _has_bchn(s: Optional[str]) -> bool:
-    """True when 'BCHN' (in any spacing/case, with or without dots) appears
-    in a string. Trademark glyphs are stripped first so 'BCHN®' matches."""
+def _normalize_website(raw: Optional[str]) -> Optional[str]:
+    """Add an https:// scheme to a bare domain; reject obviously bad URLs."""
+    s = _coerce_str(raw)
     if not s:
-        return False
-    cleaned = _normalize_credential_chunk(s)
-    return bool(_BCHN_TOKEN_RE.search(cleaned))
+        return None
+    if s.startswith("http://") or s.startswith("https://"):
+        return s
+    if s.startswith("mailto:") or s.startswith("javascript:") or s.startswith("#"):
+        return None
+    return f"https://{s}"
 
 
-def _country_iso2(raw: Optional[str]) -> Optional[str]:
+def _country_iso2_from_name(raw: Optional[str]) -> Optional[str]:
     """Map a free-text country name to ISO2; None if unrecognized."""
     s = _coerce_str(raw)
     if not s:
@@ -465,319 +352,594 @@ def _country_iso2(raw: Optional[str]) -> Optional[str]:
     return _COUNTRY_NAME_TO_ISO2.get(s.lower())
 
 
-def _normalize_website(raw: Optional[str]) -> Optional[str]:
-    """Add an https:// scheme to a bare domain."""
-    s = _coerce_str(raw)
+def _infer_country_from_state(state: Optional[str]) -> str:
+    """When the row doesn't include an explicit country, infer from state.
+
+    US states + territories -> ``US``; Canadian provinces -> ``CA``;
+    everything else -> ``US`` (the NANP directory is US-dominant; this is
+    the safe default).
+    """
+    s = _coerce_str(state)
     if not s:
+        return "US"
+    if s in _US_STATES:
+        return "US"
+    if s in _CA_PROVINCES:
+        return "CA"
+    return "US"
+
+
+# BCHN credential token — matches BCHN with optional dots between letters,
+# case-insensitively. The trademark glyph (U+00AE) and the HTML entity
+# &reg; are stripped before this regex runs so we just look for the
+# letter run. Word boundaries prevent false matches on tokens like
+# ``ABCHNYZ``.
+_BCHN_TOKEN_RE = re.compile(r"\bB\.?C\.?H\.?N\.?\b", re.IGNORECASE)
+
+
+def _normalize_credential_chunk(s: str) -> str:
+    """Strip the (R) / (TM) entity-or-glyph from a credential token so
+    ``BCHN(R)`` / ``BCHN&reg;`` / ``BCHN`` all compare equal."""
+    if not s:
+        return ""
+    out = html_module.unescape(s)
+    out = out.replace("®", "").replace("™", "")
+    return out.strip()
+
+
+def _detect_fellowship_creds(credentials: Optional[str]) -> bool:
+    """True when the credential string contains the BCHN token.
+
+    Trademark decorations are stripped before the test so ``BCHN(R)``,
+    ``BCHN&reg;``, ``B.C.H.N.``, ``bchn`` all match. The credential
+    string can be a comma-separated list (``ND, BCHN, MS``) or a free
+    text run (``Sarah Henderson, MS, BCHN, CDSP``)."""
+    s = _coerce_str(credentials)
+    if not s:
+        return False
+    cleaned = _normalize_credential_chunk(s)
+    return bool(_BCHN_TOKEN_RE.search(cleaned))
+
+
+def _build_source_url(member_id: str) -> str:
+    """Canonical detail-page URL for a member id."""
+    return f"{BASE}/members/?id={member_id}"
+
+
+# ---------------------------------------------------------------------------
+# Search-results card extraction (live ul#search-results layout)
+# ---------------------------------------------------------------------------
+
+# Card-name anchor: <a href="/members/?id=NNN" ... class="normalName">Name</a>.
+# Accepts both relative and (defensively) absolute hrefs against either
+# nanp.org or mynanp.nanp.org.
+_CARD_NAME_ANCHOR_RE = re.compile(
+    r'<a\s+href="(?:https?://[^"]*nanp\.org)?/members/\?id=(\d+)"'
+    r'[^>]*class="normalName"[^>]*>(.*?)</a>',
+    re.S | re.I,
+)
+
+# Card address paragraph: <p class="address">City<br>State<br>...<br></p>.
+_CARD_ADDRESS_RE = re.compile(
+    r'<p\s+class="address"[^>]*>(.*?)</p>',
+    re.S | re.I,
+)
+
+
+def _parse_card(card_html: str) -> Optional[dict]:
+    """Pull a single member's data out of one ``<li>`` / ``memb-result-item`` card.
+
+    Returns a dict with keys ``id``, ``name``, ``addr_tokens`` (the list
+    of address-line tokens lifted from ``<p class="address">``, in
+    document order) or None if no name anchor is present.
+    """
+    name_m = _CARD_NAME_ANCHOR_RE.search(card_html)
+    if not name_m:
         return None
-    if s.startswith("http://") or s.startswith("https://"):
-        return s
-    # Strip a leading 'www.' artifact from anchor text — adding the
-    # scheme implicitly preserves www.
-    return f"https://{s}"
+    member_id = name_m.group(1)
+    name_raw = _strip_html_tags(name_m.group(2))
+    if not name_raw:
+        return None
+
+    addr_tokens: list[str] = []
+    addr_m = _CARD_ADDRESS_RE.search(card_html)
+    if addr_m:
+        addr_inner = addr_m.group(1)
+        for piece in re.split(r"<br\s*/?>", addr_inner, flags=re.I):
+            text = _strip_html_tags(piece)
+            if text:
+                addr_tokens.append(text)
+
+    return {"id": member_id, "name": name_raw, "addr_tokens": addr_tokens}
 
 
-def _parse_address_block(block_text: str) -> tuple[
-    Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]
-]:
-    """Parse a multi-line address into (address1, city, state, postal, country).
+def _card_to_normalized_row(card: dict) -> Optional[NormalizedPractitionerRow]:
+    """Pure transformation: parsed card dict -> NormalizedPractitionerRow stub.
 
-    Accepts the canonical three-line YM profile address block::
-
-        1234 Pearl Street, Suite 200
-        Boulder, CO 80302
-        United States
-
-    Two-line variants (no explicit country line) are also handled — the
-    country is then ``None`` and the caller derives it from the list-page
-    country stub. Single-line addresses fall through with most fields
-    None.
+    NANP list-page cards carry name + member_id + (city, state). Unlike
+    AANP, the live capture's ``<p class="address">`` cards do NOT include
+    a postal token — postal is profile-only on NANP. Street, country,
+    phone, email, website, credentials, practice_name are all profile-
+    only and merged in by the migrate runner.
     """
-    if not block_text:
-        return None, None, None, None, None
-    lines = [ln.strip() for ln in block_text.split("\n") if ln.strip()]
-    if not lines:
-        return None, None, None, None, None
+    name_raw = card.get("name")
+    if not name_raw:
+        return None
 
-    address1 = lines[0] or None
-    country_raw = None
-    middle_line = None
-    if len(lines) == 1:
-        return address1, None, None, None, None
-    if len(lines) >= 3:
-        # Standard 3-line block: street / city-state-postal / country
-        middle_line = lines[1]
-        country_raw = lines[-1]
-    else:
-        # 2-line block: just street / city-state-postal
-        middle_line = lines[1]
+    clean_name, credentials = _strip_credentials(name_raw)
+    if not clean_name:
+        return None
 
-    # Parse the city/state/postal middle line.
+    tokens = list(card.get("addr_tokens", []))
+
+    state_idx: Optional[int] = None
+    for i, t in enumerate(tokens):
+        if t in _US_STATES or t in _CA_PROVINCES:
+            state_idx = i
+            break
+
     city = state = postal = None
-    if middle_line:
-        s = re.sub(r"\s+", " ", middle_line)
-        if "," in s:
-            city_part, rest = s.rsplit(",", 1)
-            city = city_part.strip() or None
-            rest = rest.strip()
+    if state_idx is not None:
+        state = tokens[state_idx] or None
+        if state_idx >= 1:
+            city = tokens[state_idx - 1] or None
+        if state_idx + 1 < len(tokens):
+            cand = tokens[state_idx + 1]
+            cand_compact = cand.replace(" ", "")
+            if (
+                re.match(r"^\d{5}(?:-\d{4})?$", cand)
+                or re.match(r"^[A-Z]\d[A-Z]\s?\d[A-Z]\d$", cand, re.I)
+                or re.match(r"^[A-Z]\d[A-Z]\d[A-Z]\d$", cand_compact, re.I)
+            ):
+                postal = cand
 
-            # Country-specific postal patterns first so multi-word states
-            # (Ontario, British Columbia, New York) survive.
-            m_ca = _CA_POSTAL_RE.search(rest)
-            if m_ca:
-                raw_segment = rest[m_ca.start():m_ca.end()]
-                if " " in raw_segment:
-                    postal = f"{m_ca.group(1)} {m_ca.group(2)}"
-                else:
-                    postal = f"{m_ca.group(1)}{m_ca.group(2)}"
-                state = rest[: m_ca.start()].strip() or None
-            else:
-                m_uk = _UK_POSTAL_RE.search(rest)
-                if m_uk:
-                    postal = m_uk.group(1).strip()
-                    state = rest[: m_uk.start()].strip() or None
-                else:
-                    m_us = _US_POSTAL_RE.search(rest)
-                    if m_us:
-                        postal = m_us.group(1).strip()
-                        state = rest[: m_us.start()].strip() or None
-                    else:
-                        state = rest or None
-        else:
-            # No comma — treat as just the city.
-            city = s or None
+    country_iso = _infer_country_from_state(state) or "US"
 
-    country = _country_iso2(country_raw) if country_raw else None
-    return address1, city, state, postal, country or country_raw
+    return NormalizedPractitionerRow(
+        tier="org_member",
+        name=clean_name,
+        specialties=list(LOCKED_SPECIALTIES),
+        source_org="NANP",
+        source_url=_build_source_url(card["id"]),
+        fellowship_level=_detect_fellowship_creds(credentials),
+        practice_name=None,
+        credentials=credentials,
+        phone=None,
+        email=None,
+        website=None,
+        address1=None,
+        city=city,
+        state=state,
+        postal=postal,
+        country=country_iso,
+    )
 
 
-def _profile_field_map(soup: BeautifulSoup) -> dict[str, str]:
-    """Pull every <table>-based profile field block into a flat dict
-    keyed by lowercased label (colon stripped, trademark glyphs removed).
+# ---------------------------------------------------------------------------
+# Public parsers
+# ---------------------------------------------------------------------------
 
-    Both the main profile-info table and the custom-info table share
-    the same <th>label</th><td>value</td> structure so we sweep all
-    rows in any table inside the ``SpContent_Container`` wrapper.
+def parse_search_results_html(html: str) -> list[NormalizedPractitionerRow]:
+    """Pure parser: takes a ``/searchserver/people2.aspx`` response HTML
+    (the iframe page) and returns one NormalizedPractitionerRow stub per
+    ``<li><div class="memb-result-item">`` card. No I/O.
 
-    Anchor-aware fields:
-      - 'website'  -> prefer the <a href="..."> value over anchor text
-                       (anchor text often drops the scheme).
-      - 'email'    -> strip the 'mailto:' prefix from anchor hrefs.
-      - 'phone'    -> strip the 'tel:' prefix from anchor hrefs and
-                       trust the href over text (which sometimes carries
-                       formatting characters like '(512) 555-0199').
+    Identical card markup to AANP — see the AANP module docstring for the
+    full structural notes. The migrate runner enriches each stub by
+    fetching the corresponding ``/members/?id=<id>`` profile page and
+    merging fields.
     """
-    out: dict[str, str] = {}
-    root = soup.find(id="SpContent_Container") or soup
-    for tr in root.find_all("tr"):
-        th = tr.find("th")
-        td = tr.find("td")
-        if not th or not td:
+    if not isinstance(html, str):
+        return []
+
+    ul_marker = 'id="search-results"'
+    u_idx = html.find(ul_marker)
+    if u_idx < 0:
+        return []
+    end_idx = html.find("</ul>", u_idx)
+    list_html = html[u_idx : end_idx if end_idx > u_idx else len(html)]
+
+    rows: list[NormalizedPractitionerRow] = []
+    parts = list_html.split('<div class="memb-result-item"')
+    for chunk in parts[1:]:
+        card = _parse_card(chunk)
+        if card is None:
             continue
-        label_raw = th.get_text(strip=True)
-        label = _normalize_credential_chunk(label_raw).rstrip(":").lower()
-        if not label:
+        normalized = _card_to_normalized_row(card)
+        if normalized is not None:
+            rows.append(normalized)
+    return rows
+
+
+def parse_record_count(html: str) -> Optional[int]:
+    """Extract the ``DocCount`` (total results across all pages) from a
+    search-result page. Returns None if not found.
+
+    The live NANP iframe renders the exact count (e.g. ``673``) without a
+    trailing ``+``; the regex defensively accepts the trailing ``+`` form
+    (which the platform uses on truly-unbounded queries elsewhere) so the
+    parser stays portable across sister deployments.
+    """
+    if not isinstance(html, str):
+        return None
+    m = re.search(r'<span\s+id="DocCount"[^>]*>(\d+)\+?</span>', html)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_page_info(html: str) -> Optional[tuple[int, int]]:
+    """Extract ``(current_page, total_pages)`` from the result page.
+
+    Returns None if the ``Page X of Y`` text isn't present.
+    """
+    if not isinstance(html, str):
+        return None
+    m = re.search(r'Page\s+(\d+)\s+of\s+(\d+)', html)
+    if not m:
+        return None
+    try:
+        return int(m.group(1)), int(m.group(2))
+    except (TypeError, ValueError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Profile-page parser (used to enrich list-grid rows with phone / website /
+# credentials / practice_name)
+# ---------------------------------------------------------------------------
+
+def _extract_title_name(html: str) -> Optional[str]:
+    """Pull the practitioner name from the <title> tag.
+
+    NANP profile titles are consistently ``First Last - National Association
+    of Nutrition Professionals (NANP)``. We strip the trailing suffix.
+    """
+    m = re.search(r"<title>([^<]+)</title>", html, re.I)
+    if not m:
+        return None
+    t = html_module.unescape(m.group(1)).strip()
+    t = re.sub(
+        r"\s*-\s*National Association of Nutrition Professionals.*$",
+        "",
+        t,
+    ).strip()
+    return t or None
+
+
+_EMPLOYER_TD_RE = re.compile(r'id="tdEmployerName"[^>]*>(.*?)</td>', re.S | re.I)
+_WORKPHONE_TD_RE = re.compile(r'id="tdWorkPhone"[^>]*>(.*?)</td>', re.S | re.I)
+_HOMEPHONE_TD_RE = re.compile(r'id="tdHomePhone"[^>]*>(.*?)</td>', re.S | re.I)
+_CUSTOM_FIELD_RE = re.compile(
+    r'class="CstmFldLbl"[^>]*>([^<:]+?)\s*:\s*</label>'
+    r'[^<]*</td>\s*<td[^>]*class="CstmFldVal"[^>]*>(.*?)</td>',
+    re.S,
+)
+# Catches any non-empty mailto: anchor in the page body. We filter out
+# the NANP site-footer ``info@nanp.org`` link and the JS-template
+# ``'+ strEmail + '`` placeholders in the consumer.
+_MAILTO_ANCHOR_RE = re.compile(
+    r'<a\s+href="mailto:([^"]+)"', re.I
+)
+_EMAIL_SHAPE_RE = re.compile(
+    r'^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$'
+)
+
+
+def _parse_employer_block(td_html: str) -> dict:
+    """Pull (practice_name, address1, city, state, postal, country) out of
+    the ``tdEmployerName`` cell.
+
+    NANP differs from AANP here: AANP renders the practice name as the
+    first anchor with a ``txt_employName=`` href; NANP NEVER uses that
+    anchor. Instead, the first plain-text fragment INSIDE the cell is
+    the practice name (if it doesn't start with a digit and doesn't
+    match a postal pattern). Numeric-leading fragments are treated as
+    street lines (the canonical case for Charity Allen's profile, where
+    the cell opens with ``424 Breckenridge Way``).
+
+    Subsequent anchors carry the city / state / country (each pointed at
+    ``/search/search.asp?txt_city=...`` etc).
+    """
+    out: dict = {}
+    if not td_html:
+        return out
+
+    pieces: list[tuple[str, str, Optional[str]]] = []
+    for chunk in re.split(r'(<a[^>]*>.*?</a>|<br[^>]*/?>|<[^>]+>)', td_html, flags=re.S | re.I):
+        chunk = chunk or ""
+        if not chunk.strip():
             continue
-        # Anchor-bearing fields: use the href when present + scheme'd.
-        a = td.find("a")
-        href = (a.get("href") if a else None) or ""
-        href = href.strip()
-        if label == "website":
-            if href and (href.startswith("http://") or href.startswith("https://")):
-                out[label] = href
-                continue
-            # Anchor missing/relative — fall through to text-content.
-        elif label == "email":
-            if href.lower().startswith("mailto:"):
-                out[label] = href[len("mailto:"):].strip()
-                continue
-        elif label == "phone":
-            if href.lower().startswith("tel:"):
-                out[label] = href[len("tel:"):].strip()
-                continue
-        # Default: multiline-preserving text content (lets the address
-        # block parser see the <br>-separated lines).
-        value = td.get_text(separator="\n", strip=True)
+        if chunk.startswith("<a"):
+            m = re.search(r'href="([^"]+)"[^>]*>(.*?)</a>', chunk, re.S | re.I)
+            if m:
+                pieces.append(("a", _strip_html_tags(m.group(2)), m.group(1)))
+        elif chunk.startswith("<"):
+            continue
+        else:
+            txt = _strip_html_tags(chunk).replace("[", "").replace("]", "").strip()
+            if txt and txt != "Map":
+                pieces.append(("text", txt, None))
+
+    practice_name = None
+    address_lines: list[str] = []
+    city = state = postal = country = None
+    seen_first_geo_anchor = False
+
+    for kind, val, href in pieces:
+        if val == "Map":
+            continue
+        if kind == "a":
+            href_l = (href or "").lower()
+            # AANP-style txt_employName= practice anchor (rare on NANP
+            # but kept for robustness — sister deployments may use it).
+            if "txt_employname=" in href_l:
+                practice_name = val
+            elif "txt_city=" in href_l:
+                city = val
+                seen_first_geo_anchor = True
+            elif "txt_state=" in href_l:
+                state = val
+                seen_first_geo_anchor = True
+            elif "txt_country=" in href_l:
+                country = val
+                seen_first_geo_anchor = True
+        else:
+            postal_token = val.replace(" ", "")
+            if (
+                re.match(r"^\d{5}(?:-\d{4})?$", val)
+                or re.match(r"^[A-Z]\d[A-Z]\s?\d[A-Z]\d$", val, re.I)
+                or re.match(r"^[A-Z]\d[A-Z]\d[A-Z]\d$", postal_token, re.I)
+            ):
+                postal = val
+            elif val:
+                # NANP-specific heuristic: text fragments before any geo
+                # anchor that DON'T start with a digit are practice names
+                # (e.g. "Certified Holistic Nutrition Consultant"). Text
+                # fragments that DO start with a digit are street lines
+                # ("424 Breckenridge Way"). After the first geo anchor,
+                # everything else is street/extra address detail.
+                if (
+                    not seen_first_geo_anchor
+                    and practice_name is None
+                    and not re.match(r"^\d", val)
+                ):
+                    practice_name = val
+                else:
+                    address_lines.append(val)
+
+    out["practice_name"] = practice_name
+    if address_lines:
+        out["address1"] = ", ".join(address_lines)
+    if city:
+        out["city"] = city
+    if state:
+        out["state"] = state
+    if postal:
+        out["postal"] = postal
+    if country:
+        out["country"] = country
+    return out
+
+
+def _parse_phone_block(td_html: str) -> dict:
+    """Pull phone + website out of a phone-cell (tdWorkPhone or
+    tdHomePhone).
+
+    Structure varies: ``931 2205391 (Phone)`` for offices with a phone,
+    or a ``Visit Website`` anchor (or both, or neither). We pick the
+    first ``(Phone)``-tagged number and the first http anchor labeled
+    ``Visit Website``. Same shape as AANP — NANP just sometimes puts the
+    phone in ``tdHomePhone`` instead of (or in addition to) ``tdWorkPhone``.
+    """
+    out: dict = {}
+    if not td_html:
+        return out
+    phone_m = re.search(r"([\d\.\-\(\)\s]{7,})\s*<span[^>]*>\(Phone\)</span>", td_html, re.I)
+    if phone_m:
+        ph = _strip_html_tags(phone_m.group(1))
+        ph = re.sub(r"\s+", " ", ph).strip()
+        if ph:
+            out["phone"] = ph
+    site_m = re.search(r'<a\s+href="(https?://[^"]+)"[^>]*>\s*Visit Website', td_html, re.I)
+    if site_m:
+        out["website"] = site_m.group(1)
+    return out
+
+
+def _parse_custom_fields(html: str) -> dict:
+    """Pull the labeled custom fields (BCHN, CDSP, Area of Expertise, ...)
+    out of a member profile page."""
+    out: dict = {}
+    for m in _CUSTOM_FIELD_RE.finditer(html):
+        label_raw = m.group(1).strip()
+        # Normalize the label (strip ® / ™ / &reg; / &trade;) so callers
+        # can look up by 'BCHN' / 'CDSP' regardless of trademark glyph.
+        label = _normalize_credential_chunk(label_raw)
+        value_html = m.group(2)
+        value = _strip_html_tags(value_html)
+        if not value:
+            continue
         out[label] = value
     return out
 
 
-def _extract_canonical_url(soup: BeautifulSoup, fallback: Optional[str]) -> Optional[str]:
-    """Prefer <meta property="og:url"> / <link rel="canonical"> for the
-    canonical profile URL. Falls back to the caller-supplied URL."""
-    og = soup.find("meta", attrs={"property": "og:url"})
-    if og and og.get("content"):
-        return og["content"].strip()
-    can = soup.find("link", rel="canonical")
-    if can and can.get("href"):
-        return can["href"].strip()
-    return fallback
+def _extract_practitioner_email(html: str) -> Optional[str]:
+    """Pick the practitioner's email out of the page.
 
+    NANP profiles render the practitioner email via a JS-decrypted
+    ``mailto:`` anchor in the right-column header. The static HTML has
+    BOTH the rendered ``<a href="mailto:real@addr">`` (when Playwright
+    has run the JS) AND a JS-template placeholder ``<a href="mailto:'+
+    strEmail + '">``. We accept only mailto values that:
 
-# ---------------------------------------------------------------------------
-# Public profile parser
-# ---------------------------------------------------------------------------
-
-def parse_member_profile_html(
-    html: str,
-    *,
-    profile_id: Optional[str] = None,
-    stub: Optional[dict] = None,
-) -> Optional[NormalizedPractitionerRow]:
-    """Parse one /profile/?ID=<n> page into a NormalizedPractitionerRow.
-
-    ``profile_id`` is the YM-assigned numeric — the row's stable dedup
-    key. If omitted, it's pulled from the canonical/og:url meta on the
-    page. ``stub`` is the list-page stub for this practitioner (used as
-    a fallback for city/state/country when the profile page's address
-    block omits the country line, and for the BCHN credential token in
-    the display name when the profile body doesn't render a custom-field
-    table).
-
-    Returns None when the page lacks a usable name AND profile_id is
-    missing (defensive — both shouldn't happen on a real profile).
+      - shape-match an email (single @, valid TLD), AND
+      - are NOT the ``info@nanp.org`` site-footer link.
     """
-    soup = BeautifulSoup(html, "html.parser")
-    canonical = _extract_canonical_url(soup, fallback=None)
+    if not isinstance(html, str):
+        return None
+    for m in _MAILTO_ANCHOR_RE.finditer(html):
+        raw = m.group(1).strip()
+        if not raw or raw.lower() == "info@nanp.org":
+            continue
+        if not _EMAIL_SHAPE_RE.match(raw):
+            continue
+        return raw
+    return None
 
-    # Resolve profile_id from canonical URL when not passed in.
-    if not profile_id and canonical:
-        profile_id = _extract_profile_id(canonical)
-    if not profile_id and stub:
-        profile_id = stub.get("profile_id")
 
-    # Display name comes from the H1.
-    h1 = soup.find("h1")
-    display = h1.get_text(strip=True) if h1 else ""
-    name, credentials = _strip_credentials(display)
+def parse_profile_html(
+    html: str, member_id: Optional[str] = None
+) -> Optional[NormalizedPractitionerRow]:
+    """Pure parser: takes a ``/members/?id=<id>`` detail page HTML and
+    returns a fully-populated NormalizedPractitionerRow. Returns None
+    if no usable name is found.
 
-    if not name and stub:
-        # Fallback to the list-page name (also gets credential-stripped).
-        stub_name, stub_creds = _strip_credentials(stub.get("name") or "")
-        name = stub_name
-        credentials = credentials or stub_creds
+    The detail page carries: name (from <title>), optional practice name
+    + address (from tdEmployerName), optional phone (from tdWorkPhone or
+    tdHomePhone), website (from either phone cell's Visit-Website
+    anchor), email (from the JS-decrypted mailto anchor in the right
+    column), and credentials / BCHN / CDSP / etc (from the CstmFld
+    custom-field table).
 
-    if not name or not profile_id:
+    ``member_id`` (optional) is used to construct ``source_url``. The live
+    profile pages no longer carry a ``/members/?id=<n>`` anchor in the
+    body, so the migrate runner must pass the id it used to fetch the
+    page. If omitted we try to recover one from any in-page anchor.
+    """
+    if not isinstance(html, str):
         return None
 
-    # Field map from the profile tables.
-    fields = _profile_field_map(soup)
+    name_raw = _extract_title_name(html)
+    if not name_raw:
+        return None
+    clean_name, title_creds = _strip_credentials(name_raw)
+    if not clean_name:
+        return None
 
-    practice = (
-        fields.get("practice / organization")
-        or fields.get("practice/organization")
-        or fields.get("practice")
-        or fields.get("organization")
+    if member_id is None:
+        id_m = re.search(r'/members/\?id=(\d+)', html)
+        member_id = id_m.group(1) if id_m else None
+
+    employer_m = _EMPLOYER_TD_RE.search(html)
+    employer = _parse_employer_block(employer_m.group(1) if employer_m else "")
+
+    # Phone + website come from EITHER tdWorkPhone OR tdHomePhone (NANP
+    # sometimes only populates one). Work takes precedence when both
+    # carry data; we merge website + phone with work winning.
+    work_m = _WORKPHONE_TD_RE.search(html)
+    work = _parse_phone_block(work_m.group(1) if work_m else "")
+    home_m = _HOMEPHONE_TD_RE.search(html)
+    home = _parse_phone_block(home_m.group(1) if home_m else "")
+    phone_val = work.get("phone") or home.get("phone")
+    website_val = work.get("website") or home.get("website")
+
+    fields = _parse_custom_fields(html)
+
+    # Credentials: prefer the explicit Credentials custom field (rare on
+    # NANP — most members have no such row); fall back to the title's
+    # post-nominals.
+    credentials = _coerce_str(fields.get("Credentials")) or title_creds
+
+    # Email: prefer the body-decrypted mailto; fall back to a Clinic
+    # Email custom field if present.
+    email = _extract_practitioner_email(html) or _coerce_str(fields.get("Clinic Email"))
+
+    practice_name = _coerce_str(employer.get("practice_name"))
+    if practice_name:
+        bare_name = re.sub(r"^(?:Dr|Dra|Mr|Mrs|Ms|Mx)\.?\s+", "", clean_name, flags=re.I).strip()
+        if (
+            practice_name.lower() == clean_name.lower()
+            or practice_name.lower() == bare_name.lower()
+        ):
+            practice_name = None
+
+    state = _coerce_str(employer.get("state"))
+    country_iso = (
+        _country_iso2_from_name(employer.get("country"))
+        or _infer_country_from_state(state)
+        or "US"
     )
-    practice = _coerce_str(practice)
-    if practice and practice.lower() == name.lower():
-        # Suppress duplicate when 'practice' field just echoes the name.
-        practice = None
 
-    phone = _coerce_str(fields.get("phone"))
-    email = _coerce_str(fields.get("email"))
-    website = _normalize_website(fields.get("website"))
-
-    address_raw = fields.get("address") or ""
-    address1, city, state, postal, country = _parse_address_block(address_raw)
-
-    # Backfill geo from the list-page stub when the profile block was
-    # sparse. Country is the most common gap — many 2-line address
-    # blocks omit it.
-    if stub:
-        if not city:
-            city = _coerce_str(stub.get("city"))
-        if not state:
-            state = _coerce_str(stub.get("state"))
-        if not country:
-            country = _country_iso2(stub.get("country_raw"))
-
-    # BCHN detection — three signals, in precedence order:
-    #   1. Custom-field row "BCHN" with value "Yes"
-    #   2. Credential token "BCHN" present in the post-comma credentials
-    #      block of the H1.
-    #   3. Credential token "BCHN" present in the list-page name (stub),
-    #      which carries the full display-name including credentials.
-    bchn_field = _coerce_str(fields.get("bchn"))
+    # Fellowship: precedence is (1) custom-field "BCHN" == "Yes", then
+    # (2) BCHN token in credentials/title.
+    bchn_field = _coerce_str(fields.get("BCHN"))
     bchn_yes_from_field = bchn_field is not None and bchn_field.lower() == "yes"
-    bchn_from_creds = _has_bchn(credentials)
-    bchn_from_stub_name = bool(stub and _has_bchn(stub.get("name")))
-    fellowship_level = bchn_yes_from_field or bchn_from_creds or bchn_from_stub_name
-
-    # If the profile page's address block lacked an explicit country and
-    # the stub didn't help either, default to US (the dominant geo for
-    # the NANP directory).
-    country_final = country or "US"
+    fellowship_level = bchn_yes_from_field or _detect_fellowship_creds(credentials)
 
     return NormalizedPractitionerRow(
         tier="org_member",
-        name=name,
+        name=clean_name,
         specialties=list(LOCKED_SPECIALTIES),
         source_org="NANP",
-        source_url=_build_source_url(profile_id),
+        source_url=_build_source_url(member_id) if member_id else None,
         fellowship_level=fellowship_level,
-        practice_name=practice,
+        practice_name=practice_name,
         credentials=credentials,
-        phone=phone,
+        phone=_coerce_str(phone_val),
         email=email,
-        website=website,
-        address1=address1,
-        city=city,
+        website=_normalize_website(website_val),
+        address1=_coerce_str(employer.get("address1")),
+        city=_coerce_str(employer.get("city")),
         state=state,
-        postal=postal,
-        country=country_final,
+        postal=_coerce_str(employer.get("postal")),
+        country=country_iso,
     )
 
 
 # ---------------------------------------------------------------------------
-# Stage 1+2 orchestrator (used by migrate_nanp.py)
+# Public orchestrator (used by run_all._run_nanp_scrape and migrate_nanp)
 # ---------------------------------------------------------------------------
 
 def fetch_all_records() -> list[NormalizedPractitionerRow]:
-    """Walk every results page, then fetch + parse each member profile.
+    """Walk the NANP iframe directory and enrich every stub with its
+    profile page. Returns the merged NormalizedPractitionerRow list.
 
-    Returns a flat list of NormalizedPractitionerRow, dedup'd by
-    profile_id within the run. 0.5s sleep between every HTTP call
-    (the inner fetch helpers already sleep, so the loop body just
-    chains them).
-
-    Profiles that 404 or return non-200 are logged + skipped — the
-    rest of the run continues. This is the public entry point that
-    ``migrate_nanp.main()`` and ``run_all._run_nanp_scrape()`` call.
+    Thin wrapper around the migrate_nanp helpers: keeps the public
+    ``fetch_all_records`` import compatible with the
+    ``run_all._run_nanp_scrape`` invocation pattern (every adapter in
+    the cohort exposes this name).
     """
-    seen: set[str] = set()
-    stubs: list[dict] = []
+    # Import lazily so the pure parser module doesn't drag Playwright in
+    # at import time (the test suite parses fixtures without a browser).
+    from scrapers.practitioner_finder.migrate_nanp import (
+        fetch_all_stubs,
+        fetch_profile_html,
+        _member_id_from_url,
+        _merge_profile_into_stub,
+    )
+    from scrapers.practitioner_finder.playwright_fetch import playwright_session
 
-    # Stage 1: walk results pages.
-    page = 1
-    while True:
-        html = fetch_search_results_page(page=page)
-        page_stubs = parse_search_results_html(html)
-        if not page_stubs:
-            break
-        for s in page_stubs:
-            pid = s.get("profile_id")
-            if pid and pid not in seen:
-                seen.add(pid)
-                stubs.append(s)
-        total = parse_total_pages(html)
-        if page >= total:
-            break
-        page += 1
-
-    # Stage 2: fetch + parse each profile.
     out: list[NormalizedPractitionerRow] = []
-    for stub in stubs:
-        pid = stub["profile_id"]
+    with playwright_session() as fetcher:
         try:
-            profile_html = fetch_member_profile_html(pid)
-        except requests.HTTPError as e:
-            # Log + skip — sibling profiles are independent.
-            print(f"  WARN: NANP profile {pid} fetch failed: {e}")
-            continue
-        row = parse_member_profile_html(
-            profile_html, profile_id=pid, stub=stub
-        )
-        if row is not None:
-            out.append(row)
+            fetcher.get(DIRECTORY_FORM_URL)
+        except Exception as e:  # pragma: no cover - live IO
+            print(f"  WARN: NANP warm-up failed: {e}")
+
+        try:
+            stubs = fetch_all_stubs(fetcher=fetcher)
+        except Exception as e:  # pragma: no cover - live IO
+            print(f"  ERROR fetching NANP directory: {e}")
+            stubs = []
+
+        for stub in stubs:
+            member_id = _member_id_from_url(stub.source_url)
+            if member_id is None:
+                out.append(stub)
+                continue
+            try:
+                profile_html = fetch_profile_html(member_id, fetcher=fetcher)
+            except Exception as e:  # pragma: no cover - live IO
+                print(f"  WARN: NANP profile {member_id} fetch failed: {e}")
+                out.append(stub)
+                continue
+            profile_row = parse_profile_html(profile_html, member_id=member_id)
+            if profile_row is None:
+                out.append(stub)
+                continue
+            out.append(_merge_profile_into_stub(stub, profile_row))
     return out
