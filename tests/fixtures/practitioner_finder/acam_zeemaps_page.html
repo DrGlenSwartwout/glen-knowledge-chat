@@ -1,0 +1,160 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en">
+<head>
+	<meta name="viewport" content="initial-scale=1.0,user-scalable=yes" />
+	<meta name="robots" content="noodp,noydir">
+	<meta name="csrf-token" content="4701907d-c066-4204-a046-53aca15b8451">
+	<link rel="preconnect" href="https://zeemapsvisitors.s3.amazonaws.com">
+	<link rel="preconnect" href="https://maps.gstatic.com">
+	<link rel="preconnect" href="https://maps.googleapis.com">
+	<link rel="preconnect" href="https://cdn.zeemaps.com">
+    
+<!-- Google Tag Manager -->
+<script>
+ (function(w,d,s,l,i){
+  w[l]=w[l]||[];
+  w[l].push({'gtm.start': new Date().getTime(), event:'gtm.js'});
+  var f=d.getElementsByTagName(s)[0],
+      j=d.createElement(s),
+	  dl= l!='dataLayer'?'&l='+l:'';
+	  j.async=true;
+	  j.src= 'https://www.googletagmanager.com/gtm.js?id='+i+dl;
+	  f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-MWZVSRW');
+</script>
+<!-- End Google Tag Manager -->
+
+
+	<title>ACAMmap map</title>
+	
+	 
+	 
+	  <meta name="description" content="ACAM Members - Embed" />
+	 
+	
+	<link rel="stylesheet" href="//cdn.zeemaps.com/resources/v61c/pub.css" type="text/css" media="screen" />
+</head>
+<body>
+ 
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-MWZVSRW"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+
+
+ <iframe title="ajaxframe" src='about:blank' frameborder='0' name='zee_map' width='0' height='0'></iframe>
+<div class="primary ui-layout-center" id="map_container">
+ <div class="initialmessage">Map loading</div>
+</div>
+
+
+
+
+<div class="primary ui-layout-east">
+
+
+ <table class="ui-grid-header">
+	<tr><th>Name</th> </tr>
+ </table>
+ <div class="ui-grid">
+  <table cellspacing="0" id="listofentries">
+ </table>
+</div>
+<table class="ui-grid-footer">
+	<tr>
+	 <th class="ui-grid-col-small left"><span class="listactions" id="listrefresh">&nbsp;</span>
+	 </th>
+	 <th class="left">
+	  <span class="listactions" id="listfirst">&nbsp;</span>
+	  <span class="listactions" id="listprev">&nbsp;</span>
+	 </th>
+	 <th class="center">
+	  Page <span id="page_this">0</span> of <span id="page_total">0</span>
+	 </th>
+	 <th class="right">
+	  <span class="listactions" id="listnext">&nbsp;</span>
+	  <span class="listactions" id="listlast">&nbsp;</span>
+	 </th>
+	</tr>
+ </table>
+</div>
+
+
+
+
+ <!-- Layers on the opposite side (west) when list is on east -->
+ <div class="primary ui-layout-west" id="layers-pane">
+  <table class="ui-grid-header">
+   <tr><th>Layers</th></tr>
+  </table>
+  <div class="ui-grid layers-grid">
+   <div id="layers-body"></div>
+  </div>
+ </div>
+
+
+
+ 
+  
+  
+   <div class="mapfooter primary ui-layout-south">
+  
+ 
+ 
+  
+ 
+ <div class="legend ui-layout-center">
+ <label class="legendall"><input type="checkbox" checked="true" />All</label>
+ <ul class="legenditems"></ul>
+</div>
+
+<div class="filter ui-layout-east">
+ <span class="controls showlegend">
+  <span id="scrollleft">
+   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+	 fill="currentColor" class="bi bi-caret-left-fill" viewBox="0 0 16 16">
+	<path d="m3.86 8.753 5.482 4.796c.646.566 1.658.106 1.658-.753V3.204a1 1 0 0 0-1.659-.753l-5.48 4.796a1 1 0 0 0 0 1.506z"/>
+	</svg>
+  </span>
+  <span id="showdialog">
+	<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+	 class="bi bi-three-dots" viewBox="0 0 16 16">
+	 <path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
+	</svg>
+  </span>
+  <span id="scrollright">
+   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+	 fill="currentColor" class="bi bi-caret-right-fill" viewBox="0 0 16 16">
+	<path d="m12.14 8.753-5.482 4.796c-.646.566-1.658.106-1.658-.753V3.204a1 1 0 0 1 1.659-.753l5.48 4.796a1 1 0 0 1 0 1.506z"/>
+	</svg>
+  </span>
+ </span>
+ 
+ 
+ 
+  
+  <div class="locate">
+   
+    
+    
+	 <input class="namegeocomplete" type="search" size="20" id="filterText"
+	  placeholder="Name or Location" />
+    
+   
+  </div>
+ 
+</div>
+
+
+
+
+ <script src="//cdn.zeemaps.com/resources/v61c/pub.bundle.js" type="text/javascript"></script>
+
+ 
+
+
+</body>
+</html>
