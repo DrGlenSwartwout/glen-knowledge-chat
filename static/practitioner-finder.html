@@ -51,12 +51,41 @@
       padding: 0.4rem 1rem; font: inherit; cursor: pointer;
     }
 
-    .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
     .chip {
       background: white; border: 1px solid var(--border); border-radius: 999px;
       padding: 0.5rem 1rem; cursor: pointer; font: inherit; white-space: nowrap;
     }
     .chip[aria-pressed="true"] { background: var(--accent); color: white; border-color: var(--accent); }
+
+    /* Fellowship toggle — gold accent so it visually differs from category chips */
+    .chip.fellow-toggle {
+      border-color: #b8860b;
+      color: #8a6508;
+    }
+    .chip.fellow-toggle[aria-pressed="true"] {
+      background: #b8860b;
+      color: white;
+      border-color: #b8860b;
+    }
+    .chip.fellow-toggle::before {
+      content: "★ ";
+    }
+
+    /* Fellowship badge on result cards + side panel */
+    .fellow-badge {
+      display: inline-block;
+      background: #b8860b;
+      color: white;
+      padding: 0.1rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      vertical-align: middle;
+      margin-left: 0.4rem;
+    }
+    .fellow-badge::before { content: "★ "; }
 
     .drill-down {
       display: none;
@@ -137,6 +166,10 @@
       <button class="chip" data-parent="dental" aria-pressed="false">Dental</button>
       <button class="chip" data-parent="holistic_health" aria-pressed="false">Holistic Health</button>
       <button class="chip" data-parent="__all__" aria-pressed="false">Show All</button>
+      <button class="chip fellow-toggle" id="fellow-toggle" aria-pressed="false"
+              title="Show only practitioners with org-vetted fellowship credentials (FCOVD, MIAOMT, MIABDM, FOWNS, etc.)">
+        Fellows Only
+      </button>
     </div>
   </div>
 
@@ -192,7 +225,15 @@
     const filterState = {
       parent: null,
       sub: '__all__',
+      fellowsOnly: false,
     };
+
+    // Fellowship toggle behavior — independent of category chips
+    document.getElementById('fellow-toggle').addEventListener('click', (e) => {
+      filterState.fellowsOnly = !filterState.fellowsOnly;
+      e.currentTarget.setAttribute('aria-pressed', filterState.fellowsOnly ? 'true' : 'false');
+      runSearch();
+    });
 
     // Initialize Mapbox map (centered on continental US until user searches)
     let map;
@@ -270,6 +311,9 @@
           params.append('specialties[]', filterState.sub);
         }
       }
+      if (filterState.fellowsOnly) {
+        params.set('fellowship_only', 'true');
+      }
 
       const resp = await fetch(`/api/practitioner-finder/search?${params}`);
       if (!resp.ok) {
@@ -309,8 +353,11 @@
       data.practitioners.forEach((p, i) => {
         const card = document.createElement('div');
         card.className = 'result-card';
+        const fellowBadge = p.fellowship_level
+          ? `<span class="fellow-badge" title="Org-vetted fellowship credential">Fellow</span>`
+          : '';
         card.innerHTML = `
-          <h3>${escapeHtml(p.name)}</h3>
+          <h3>${escapeHtml(p.name)}${fellowBadge}</h3>
           <div class="meta">
             ${p.credentials ? escapeHtml(p.credentials) + ' &middot; ' : ''}
             ${p.city ? escapeHtml(p.city) : ''}${p.state ? ', ' + escapeHtml(p.state) : ''}
@@ -335,7 +382,10 @@
       const panel = document.getElementById('side-panel');
       const content = document.getElementById('side-panel-content');
       const parts = [];
-      parts.push(`<h2 style="font-family:var(--serif);margin-top:0">${escapeHtml(p.name)}</h2>`);
+      const fellowBadge = p.fellowship_level
+        ? `<span class="fellow-badge" title="Org-vetted fellowship credential">Fellow</span>`
+        : '';
+      parts.push(`<h2 style="font-family:var(--serif);margin-top:0">${escapeHtml(p.name)}${fellowBadge}</h2>`);
       if (p.credentials) parts.push(`<div style="color:var(--muted)">${escapeHtml(p.credentials)}</div>`);
       if (p.practice_name) parts.push(`<div>${escapeHtml(p.practice_name)}</div>`);
       parts.push('<hr>');
@@ -348,7 +398,7 @@
       if (p.email) parts.push(`<div><a href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a></div>`);
       if (p.website) parts.push(`<div><a href="${escapeHtml(p.website)}" target="_blank" rel="noopener">${escapeHtml(p.website)}</a></div>`);
       if (p.source_org) {
-        parts.push(`<div style="margin-top:1rem;color:var(--muted);font-size:0.85rem">Source: ${escapeHtml(p.source_org)}${p.fellowship_level ? ' (Fellow)' : ''}</div>`);
+        parts.push(`<div style="margin-top:1rem;color:var(--muted);font-size:0.85rem">Source: ${escapeHtml(p.source_org)}</div>`);
       }
       content.innerHTML = parts.join('');
       panel.classList.add('open');

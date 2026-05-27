@@ -51,6 +51,25 @@ def test_search_sql_with_tier_filter():
     assert ["eyehealing"] in params
 
 
+def test_search_sql_fellowship_only_adds_clause():
+    sql, params = build_search_sql(
+        lat=21.0, lng=-157.0, radius_miles=50,
+        specialties=None, tiers=None, limit=200,
+        fellowship_only=True,
+    )
+    assert "fellowship_level = true" in sql
+
+
+def test_search_sql_fellowship_only_default_false_omits_clause():
+    sql, _ = build_search_sql(
+        lat=21.0, lng=-157.0, radius_miles=50,
+        specialties=None, tiers=None, limit=200,
+    )
+    # `fellowship_level` appears in the SELECT clause (always returned),
+    # but the WHERE-clause filter `= true` should only appear when fellowship_only=True
+    assert "fellowship_level = true" not in sql
+
+
 def test_upsert_sql_params_match_dict():
     row_dict = {
         "tier": "eyehealing",

@@ -7519,6 +7519,7 @@ def practitioner_finder_search():
 
     specialties = request.args.getlist("specialties[]") or None
     tiers = request.args.getlist("tier[]") or None
+    fellowship_only = request.args.get("fellowship_only", "").lower() in ("1", "true", "yes")
 
     # Geocode patient's ZIP to centroid
     zip_row = PfRow(tier="eyehealing", name="patient", specialties=[], postal=zip_code)
@@ -7532,6 +7533,7 @@ def practitioner_finder_search():
     results = pf_db.run_search(
         lat=lat, lng=lng, radius_miles=radius_miles,
         specialties=specialties, tiers=tiers, limit=200,
+        fellowship_only=fellowship_only,
     )
     return jsonify({"count": len(results), "practitioners": results,
                     "search_center": {"lat": lat, "lng": lng}})

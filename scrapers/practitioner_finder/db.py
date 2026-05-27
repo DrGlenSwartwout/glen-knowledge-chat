@@ -20,6 +20,7 @@ def build_search_sql(
     specialties: Optional[list[str]],
     tiers: Optional[list[str]],
     limit: int,
+    fellowship_only: bool = False,
 ) -> Tuple[str, list]:
     """Build the search SQL string and parameter tuple.
 
@@ -29,7 +30,11 @@ def build_search_sql(
         [select_lat, select_lng,
          where_lat, where_lng, radius_meters,
          specialties? (if filtered),
-         tiers? (if filtered)]"""
+         tiers? (if filtered)]
+
+    fellowship_only=True narrows to rows where fellowship_level = true. Used
+    by the UI's "Fellows Only" toggle to surface top-tier credentialed
+    practitioners (FCOVD, MIAOMT, MIABDM, FOWNS, etc.)."""
     where_clauses = [
         "earth_distance(ll_to_earth(%s, %s), ll_to_earth(lat, lng)) < %s",
     ]
@@ -42,6 +47,9 @@ def build_search_sql(
     if tiers:
         where_clauses.append("tier = ANY(%s)")
         where_params.append(tiers)
+
+    if fellowship_only:
+        where_clauses.append("fellowship_level = true")
 
     sql = f"""
         SELECT id, tier, source_org, fellowship_level, specialties,
@@ -98,10 +106,12 @@ def run_search(
     specialties: Optional[list[str]],
     tiers: Optional[list[str]],
     limit: int = 200,
+    fellowship_only: bool = False,
 ) -> list[dict]:
     sql, params = build_search_sql(
         lat=lat, lng=lng, radius_miles=radius_miles,
         specialties=specialties, tiers=tiers, limit=limit,
+        fellowship_only=fellowship_only,
     )
     with supabase_cursor() as cur:
         cur.execute(sql, params)
