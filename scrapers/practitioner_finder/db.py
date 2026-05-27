@@ -69,10 +69,13 @@ def upsert_sql_and_params(row_dict: dict) -> Tuple[str, list]:
     placeholder_sql = ", ".join(["%s"] * len(cols))
     update_sql = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c != "source_url")
 
+    # The unique index on source_url is partial (WHERE source_url IS NOT NULL),
+    # so ON CONFLICT must repeat that predicate for Postgres to match it.
+    # Otherwise: "no unique or exclusion constraint matching the ON CONFLICT specification".
     sql = f"""
         INSERT INTO practitioners ({col_sql}, last_scraped_at)
         VALUES ({placeholder_sql}, now())
-        ON CONFLICT (source_url)
+        ON CONFLICT (source_url) WHERE source_url IS NOT NULL
         DO UPDATE SET {update_sql}, last_scraped_at = now(), updated_at = now()
     """
     return sql, params
