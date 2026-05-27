@@ -43,6 +43,18 @@
     '.jw-msg.assistant .jw-bubble{background:#0a150d;border:1px solid #21472d;color:#fdf4d8;' +
       'border-radius:10px 10px 10px 2px;max-width:96%;}' +
     '.jw-msg.assistant .jw-bubble strong{color:#fff;}' +
+    /* Verbatim tool result (e.g. drafted email) — shown above the summary bubble */
+    '.jw-tool-result{background:#0a150d;border:1px solid #3d8a52;color:#fdf4d8;' +
+      'border-radius:10px;padding:10px 12px;margin-bottom:6px;max-width:96%;' +
+      'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;' +
+      'line-height:1.5;white-space:pre-wrap;word-wrap:break-word;}' +
+    '.jw-tool-result-head{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;' +
+      'font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;' +
+      'color:#b8a3d4;margin-bottom:6px;}' +
+    '.jw-tool-result-copy{float:right;background:transparent;border:1px solid #21472d;' +
+      'color:#a89870;border-radius:4px;padding:1px 7px;cursor:pointer;font-size:10px;' +
+      'font-family:inherit;letter-spacing:.04em;}' +
+    '.jw-tool-result-copy:hover{color:#fdf4d8;border-color:#fdf4d8;}' +
     '#jw-input-row{padding:12px 14px;border-top:1px solid #21472d;display:flex;gap:8px;background:#0a150d;}' +
     '#jw-input{flex:1;padding:9px 11px;background:#111f16;border:1px solid #21472d;border-radius:6px;' +
       'color:#fdf4d8;font-size:13px;font-family:inherit;resize:none;height:38px;max-height:120px;overflow-y:auto;}' +
@@ -184,6 +196,32 @@
               if (evt.text) {
                 acc += evt.text;
                 bubble.innerHTML = md(acc);
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+              } else if (evt.tool_result) {
+                // Verbatim tool output (e.g. drafted email body) — inserted
+                // above the summary bubble so the user sees the actual content,
+                // not just Justus's "draft ready" recap.
+                var tr = document.createElement('div');
+                tr.className = 'jw-tool-result';
+                var head = document.createElement('div');
+                head.className = 'jw-tool-result-head';
+                head.textContent = (evt.tool_result.name || 'Tool result').replace(/_/g, ' ');
+                var copyBtn = document.createElement('button');
+                copyBtn.className = 'jw-tool-result-copy';
+                copyBtn.textContent = 'Copy';
+                copyBtn.addEventListener('click', function () {
+                  try {
+                    navigator.clipboard.writeText(evt.tool_result.content || '');
+                    copyBtn.textContent = 'Copied';
+                    setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1500);
+                  } catch (e) { /* clipboard blocked */ }
+                });
+                head.appendChild(copyBtn);
+                tr.appendChild(head);
+                var body = document.createElement('div');
+                body.textContent = evt.tool_result.content || '';
+                tr.appendChild(body);
+                resp.insertBefore(tr, bubble);
                 messagesEl.scrollTop = messagesEl.scrollHeight;
               }
             } catch (e) { /* ignore partial */ }

@@ -6027,12 +6027,19 @@ def _execute_console_tool(name: str, inp: dict) -> str:
     return _execute_todo_tool(name, inp)
 
 
+# Tools whose result text should be shown to the user inline (Justus's natural-
+# language reply alone would hide the actual value — e.g. a drafted email body).
+_VISIBLE_TOOL_RESULTS = {"draft_todo_reply"}
+
+
 def _ask_justus_stream_tools(query: str, system: str, history: list, tools: list,
                               tool_dispatch, on_complete=None,
                               history_n: int = 6, max_iters: int = 4):
     """SSE generator with a multi-iteration tool-use loop. Streams text from
     each model turn; when a turn ends with tool_use blocks, executes them and
-    starts the next turn with the tool_results appended."""
+    starts the next turn with the tool_results appended. Tools in
+    _VISIBLE_TOOL_RESULTS also emit a `tool_result` SSE event so the widget
+    can render their output verbatim (not just Justus's summary)."""
     msgs = []
     for h in (history or [])[-history_n:]:
         msgs.append({"role": h.get("role", "user"), "content": h.get("content", "")})
@@ -6061,6 +6068,10 @@ def _ask_justus_stream_tools(query: str, system: str, history: list, tools: list
             tool_results = []
             for tu in tool_uses:
                 result = tool_dispatch(tu.name, getattr(tu, "input", {}) or {})
+                if tu.name in _VISIBLE_TOOL_RESULTS:
+                    yield ("data: " + json.dumps(
+                        {"tool_result": {"name": tu.name, "content": result}}
+                    ) + "\n\n")
                 tool_results.append({"type": "tool_result",
                                       "tool_use_id": tu.id,
                                       "content": result})
