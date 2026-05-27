@@ -23,11 +23,14 @@ def test_search_sql_with_specialties_and_radius():
     assert "tier = ANY" not in sql
     # Limit applied
     assert "LIMIT 200" in sql
-    # Params include radius in METERS (25 mi * 1609.344)
-    assert params[0] == 21.3099
-    assert params[1] == -157.8581
-    assert abs(params[2] - 25 * 1609.344) < 0.01
-    assert params[3] == ["eye_care", "syntonic"]
+    # Params in SQL-text order: SELECT lat, lng (for distance display),
+    # then WHERE lat, lng, radius_meters, then filter values.
+    assert params[0] == 21.3099       # SELECT lat
+    assert params[1] == -157.8581     # SELECT lng
+    assert params[2] == 21.3099       # WHERE lat
+    assert params[3] == -157.8581     # WHERE lng
+    assert abs(params[4] - 25 * 1609.344) < 0.01  # radius in meters
+    assert params[5] == ["eye_care", "syntonic"]  # specialty filter
 
 
 def test_search_sql_no_specialties_no_filter():

@@ -23,24 +23,25 @@ def build_search_sql(
 ) -> Tuple[str, list]:
     """Build the search SQL string and parameter tuple.
 
-    Parameter order: lat, lng, radius_meters [, specialties] [, tiers], lat, lng
-    The trailing lat/lng feed the SELECT distance expression; all WHERE params
-    come first so params[0..2] are always lat, lng, radius_meters."""
+    psycopg2 substitutes %s in SQL-text order. SELECT appears before WHERE in
+    the string, so its lat/lng come FIRST in params, then WHERE's lat/lng/radius,
+    then optional filters. Param layout:
+        [select_lat, select_lng,
+         where_lat, where_lng, radius_meters,
+         specialties? (if filtered),
+         tiers? (if filtered)]"""
     where_clauses = [
         "earth_distance(ll_to_earth(%s, %s), ll_to_earth(lat, lng)) < %s",
     ]
-    params: list = [lat, lng, radius_miles * MILES_TO_METERS]
+    where_params: list = [lat, lng, radius_miles * MILES_TO_METERS]
 
     if specialties:
         where_clauses.append("specialties && %s")
-        params.append(specialties)
+        where_params.append(specialties)
 
     if tiers:
         where_clauses.append("tier = ANY(%s)")
-        params.append(tiers)
-
-    # Append lat/lng for the SELECT distance expression (after all WHERE params)
-    params.extend([lat, lng])
+        where_params.append(tiers)
 
     sql = f"""
         SELECT id, tier, source_org, fellowship_level, specialties,
@@ -56,6 +57,8 @@ def build_search_sql(
         ORDER BY distance_miles ASC
         LIMIT {int(limit)}
     """
+    # SELECT params (consumed first by psycopg2) come before WHERE params.
+    params = [lat, lng] + where_params
     return sql, params
 
 
