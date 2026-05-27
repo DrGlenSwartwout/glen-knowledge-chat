@@ -7523,6 +7523,19 @@ def practitioner_finder_search():
                     "search_center": {"lat": lat, "lng": lng}})
 
 
+@app.route("/practitioner-finder", methods=["GET"])
+def practitioner_finder_page():
+    """Serve the finder page with Mapbox public token injected."""
+    token = os.environ.get("MAPBOX_PUBLIC_TOKEN", "")
+    html_path = Path(__file__).parent / "static" / "practitioner-finder.html"
+    html = html_path.read_text()
+    # Inject token via window global — searched in <script> by the page
+    # Token is a Mapbox public pk.* — safe to expose to browser
+    injection = f"<script>window.__MAPBOX_TOKEN__ = {token!r};</script>"
+    html = html.replace("</head>", injection + "\n</head>")
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Cache pre-warm — runs per gunicorn worker boot.
 # QB banks has a 5-min in-memory cache; on a cold dyno the first request must
