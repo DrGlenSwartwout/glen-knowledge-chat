@@ -7481,6 +7481,62 @@ def api_projects_pending_edits():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Practitioner Finder
+# ─────────────────────────────────────────────────────────────────────────────
+import scrapers.practitioner_finder.db as pf_db
+import scrapers.practitioner_finder.geocode as pf_geocode
+from scrapers.practitioner_finder.geocode import MapboxError as PfMapboxError
+from scrapers.practitioner_finder.models import NormalizedPractitionerRow as PfRow
+
+
+@app.route("/api/practitioner-finder/search", methods=["GET", "OPTIONS"])
+def practitioner_finder_search():
+    if request.method == "OPTIONS":
+        return "", 200
+
+    zip_code = request.args.get("zip", "").strip()
+    if not zip_code:
+        return jsonify({"error": "zip query param is required"}), 400
+
+    try:
+        radius_miles = float(request.args.get("radius_miles", "25"))
+    except ValueError:
+        return jsonify({"error": "radius_miles must be a number"}), 400
+
+    specialties = request.args.getlist("specialties[]") or None
+    tiers = request.args.getlist("tier[]") or None
+
+    # Geocode patient's ZIP to centroid
+    zip_row = PfRow(tier="eyehealing", name="patient", specialties=[], postal=zip_code)
+    try:
+        lat, lng, _ = pf_geocode.geocode_row(zip_row)
+    except PfMapboxError as e:
+        return jsonify({"error": f"geocoding failed: {e}"}), 502
+    if lat is None or lng is None:
+        return jsonify({"error": f"could not locate zip {zip_code}"}), 404
+
+    results = pf_db.run_search(
+        lat=lat, lng=lng, radius_miles=radius_miles,
+        specialties=specialties, tiers=tiers, limit=200,
+    )
+    return jsonify({"count": len(results), "practitioners": results,
+                    "search_center": {"lat": lat, "lng": lng}})
+
+
+@app.route("/practitioner-finder", methods=["GET"])
+def practitioner_finder_page():
+    """Serve the finder page with Mapbox public token injected."""
+    token = os.environ.get("MAPBOX_PUBLIC_TOKEN", "")
+    html_path = Path(__file__).parent / "static" / "practitioner-finder.html"
+    html = html_path.read_text()
+    # Inject token via window global — searched in <script> by the page
+    # Token is a Mapbox public pk.* — safe to expose to browser
+    injection = f"<script>window.__MAPBOX_TOKEN__ = {token!r};</script>"
+    html = html.replace("</head>", injection + "\n</head>")
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Cache pre-warm — runs per gunicorn worker boot.
 # QB banks has a 5-min in-memory cache; on a cold dyno the first request must
 # succeed or the dashboard card 500s. Warm it in the background so the user

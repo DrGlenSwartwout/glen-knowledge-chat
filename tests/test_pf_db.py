@@ -1,0 +1,71 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from scrapers.practitioner_finder.db import (
+    build_search_sql,
+    upsert_sql_and_params,
+)
+
+
+def test_search_sql_with_specialties_and_radius():
+    sql, params = build_search_sql(
+        lat=21.3099, lng=-157.8581, radius_miles=25,
+        specialties=["eye_care", "syntonic"], tiers=None, limit=200,
+    )
+    # Earthdistance query
+    assert "earth_distance" in sql
+    assert "ll_to_earth" in sql
+    assert "%s" in sql  # parameterized
+    # Specialty filter using && (array overlap)
+    assert "specialties && %s" in sql
+    # Tier filter NOT applied when tiers is None
+    assert "tier = ANY" not in sql
+    # Limit applied
+    assert "LIMIT 200" in sql
+    # Params in SQL-text order: SELECT lat, lng (for distance display),
+    # then WHERE lat, lng, radius_meters, then filter values.
+    assert params[0] == 21.3099       # SELECT lat
+    assert params[1] == -157.8581     # SELECT lng
+    assert params[2] == 21.3099       # WHERE lat
+    assert params[3] == -157.8581     # WHERE lng
+    assert abs(params[4] - 25 * 1609.344) < 0.01  # radius in meters
+    assert params[5] == ["eye_care", "syntonic"]  # specialty filter
+
+
+def test_search_sql_no_specialties_no_filter():
+    sql, params = build_search_sql(
+        lat=21.0, lng=-157.0, radius_miles=50,
+        specialties=None, tiers=None, limit=200,
+    )
+    assert "specialties &&" not in sql
+    assert ["eye_care"] not in params
+
+
+def test_search_sql_with_tier_filter():
+    sql, params = build_search_sql(
+        lat=21.0, lng=-157.0, radius_miles=50,
+        specialties=None, tiers=["eyehealing"], limit=200,
+    )
+    assert "tier = ANY(%s)" in sql
+    assert ["eyehealing"] in params
+
+
+def test_upsert_sql_params_match_dict():
+    row_dict = {
+        "tier": "eyehealing",
+        "name": "Dr. Jane Doe",
+        "specialties": ["eye_care"],
+        "source_url": "https://eyehealingcenter.com/some-id",
+        "city": "Honolulu",
+        "state": "HI",
+    }
+    sql, params = upsert_sql_and_params(row_dict)
+    # ON CONFLICT clause for idempotency
+    assert "ON CONFLICT (source_url)" in sql
+    assert "DO UPDATE SET" in sql
+    # All columns in row_dict appear in params
+    for key in row_dict.keys():
+        assert key in sql, f"missing column {key}"
+    # updated_at is appended automatically
+    assert "updated_at = now()" in sql
