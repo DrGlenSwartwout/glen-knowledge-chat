@@ -5754,14 +5754,112 @@ PROJECT_TOOLS = [
     },
 ]
 
+TODO_TOOLS = [
+    {
+        "name": "list_todos",
+        "description": (
+            "List OPEN todos for an owner so you can find the numeric id of one "
+            "the user wants to act on. ALWAYS call this first when the user "
+            "refers to a todo by description (e.g. 'the Lotika one') rather than "
+            "by id. Returns lines like '#42 [high] E4L — Client Messages: title…'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "owner":    {"type": "string", "enum": ["glen", "rae", "shaira"]},
+                "category": {"type": "string",
+                             "description": "Optional category substring filter, e.g. 'E4L' or 'Payments'."},
+                "limit":    {"type": "integer", "default": 20},
+            },
+            "required": ["owner"],
+        },
+    },
+    {
+        "name": "complete_todo",
+        "description": "Mark a todo as done (status='done'). Reversible.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "integer"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "delegate_todo",
+        "description": (
+            "Delegate a todo to another team member. Creates a copy on the "
+            "delegate's tab and marks the original as 'delegated'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id":   {"type": "integer"},
+                "to":   {"type": "string", "enum": ["glen", "rae", "shaira", "justus"]},
+                "note": {"type": "string",
+                          "description": "Optional context note appended to the delegate's copy."},
+            },
+            "required": ["id", "to"],
+        },
+    },
+    {
+        "name": "dismiss_todo",
+        "description": (
+            "Dismiss a todo (status='dismissed'). Use for items that aren't "
+            "actionable — spam, duplicates, no-longer-relevant."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "integer"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "draft_todo_reply",
+        "description": (
+            "Generate a draft reply (via Claude) for an actionable email-derived "
+            "todo, typically E4L client messages. Returns the draft text — the "
+            "user still has to send it via the original channel (Practice Better, "
+            "Gmail, etc.)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id":       {"type": "integer"},
+                "guidance": {"type": "string",
+                              "description": "Optional steering text for the draft."},
+            },
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "add_todo",
+        "description": "Create a new todo to capture a follow-up without going through Gmail.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title":    {"type": "string"},
+                "owner":    {"type": "string", "enum": ["glen", "rae", "shaira"]},
+                "priority": {"type": "string", "enum": ["high", "normal", "low"]},
+                "category": {"type": "string"},
+                "body":     {"type": "string"},
+            },
+            "required": ["title"],
+        },
+    },
+]
+
 TRACKER_DIRECTIVES = (
-    "You can edit the projects tracker. When the user wants to add an idea, move a project, "
-    "set a field, or drop a project, call the matching tool. "
-    "Sections: in_process / queued / planning / ideas / completed. "
-    "Fields on each project: status, where, eta, blockers, effort (1-5 stars; pass '1'–'5' or '★★★'), "
-    "value ($/$$/$$$/$$$$), sessions. "
-    "After a tool call, confirm what you did in one short line. "
-    "Edits queue immediately; PROJECTS.md updates within ~10 minutes via the Mac sync job."
+    "TOOLS available — call when the user asks for an action:\n"
+    "\nPROJECTS tracker:\n"
+    "  add_idea / move_project / set_project_field / drop_project\n"
+    "  Sections: in_process / queued / planning / ideas / completed.\n"
+    "  Fields: status, where, eta, blockers, effort (1-5 stars; pass '1'–'5' or '★★★'), "
+    "value ($/$$/$$$/$$$$), sessions.\n"
+    "  Project edits queue and apply within ~10 min via the Mac sync.\n"
+    "\nTODOS (the /console tabs):\n"
+    "  list_todos (call FIRST to find an id when the user names a todo by description)\n"
+    "  complete_todo / delegate_todo / dismiss_todo / draft_todo_reply / add_todo\n"
+    "  Owners: glen / rae / shaira. Todo actions apply immediately to the DB.\n"
+    "\nAfter a tool call, confirm what you did in one short line."
 )
 
 
@@ -5788,6 +5886,145 @@ def _execute_project_tool(name: str, inp: dict) -> str:
         return f"Unknown tool: {name}"
     except Exception as e:
         return f"Error: {e}"
+
+
+_PROJECT_TOOL_NAMES = {"add_idea", "move_project", "set_project_field", "drop_project"}
+
+
+def _execute_todo_tool(name: str, inp: dict) -> str:
+    """Direct in-process SQL — mirrors the same writes the REST handlers use."""
+    try:
+        if name == "list_todos":
+            owner    = (inp.get("owner") or "glen").lower()
+            category = (inp.get("category") or "").strip()
+            limit    = max(1, min(int(inp.get("limit") or 20), 50))
+            with sqlite3.connect(LOG_DB) as cx:
+                rows = cx.execute("""
+                    SELECT id, title, priority, category, created_at
+                    FROM todos
+                    WHERE owner=? AND status='open'
+                    ORDER BY
+                        CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
+                        created_at DESC
+                """, (owner,)).fetchall()
+            if category:
+                needle = category.lower()
+                rows = [r for r in rows if needle in (r[3] or "").lower()]
+            rows = rows[:limit]
+            if not rows:
+                hint = f" matching '{category}'" if category else ""
+                return f"No open todos for {owner}{hint}."
+            lines = [f"#{r[0]} [{r[2] or 'normal'}] {r[3] or 'General'}: {r[1]}" for r in rows]
+            return "Open todos:\n" + "\n".join(lines)
+
+        if name == "complete_todo":
+            tid = int(inp["id"])
+            ts  = datetime.now(timezone.utc).isoformat()
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                row = cx.execute("SELECT title FROM todos WHERE id=?", (tid,)).fetchone()
+                if not row:
+                    return f"No todo with id {tid}."
+                cx.execute("UPDATE todos SET status='done', done_at=? WHERE id=?", (ts, tid))
+                cx.commit()
+            return f"Completed #{tid}: {row[0]}"
+
+        if name == "delegate_todo":
+            tid  = int(inp["id"])
+            to   = (inp.get("to") or "").lower()
+            note = (inp.get("note") or "").strip()
+            if to not in ("glen", "rae", "shaira", "justus"):
+                return f"Invalid delegate target: {to!r}"
+            ts = datetime.now(timezone.utc).isoformat()
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                row = cx.execute(
+                    "SELECT owner, category, title, body, priority, source, ai_summary, suggested_reply "
+                    "FROM todos WHERE id=?", (tid,)
+                ).fetchone()
+                if not row:
+                    return f"No todo with id {tid}."
+                cx.execute(
+                    "UPDATE todos SET status='delegated', delegated_to=?, delegated_at=? WHERE id=?",
+                    (to, ts, tid)
+                )
+                new_title = f"[From {row[0].title()}] {row[2]}"
+                extra_body = f"\n\n📝 Note: {note}" if note else ""
+                cx.execute("""
+                    INSERT INTO todos (created_at, owner, category, title, body, priority, source,
+                                       ai_summary, suggested_reply)
+                    VALUES (?,?,?,?,?,?,?,?,?)
+                """, (ts, to, row[1], new_title, (row[3] or "") + extra_body, row[4],
+                      row[5], row[6], row[7]))
+                cx.commit()
+            return f"Delegated #{tid} to {to}: {row[2]}"
+
+        if name == "dismiss_todo":
+            tid = int(inp["id"])
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                row = cx.execute("SELECT title FROM todos WHERE id=?", (tid,)).fetchone()
+                if not row:
+                    return f"No todo with id {tid}."
+                cx.execute("UPDATE todos SET status='dismissed' WHERE id=?", (tid,))
+                cx.commit()
+            return f"Dismissed #{tid}: {row[0]}"
+
+        if name == "draft_todo_reply":
+            tid      = int(inp["id"])
+            guidance = (inp.get("guidance") or "").strip()
+            with sqlite3.connect(LOG_DB) as cx:
+                row = cx.execute("SELECT title, body, category FROM todos WHERE id=?",
+                                 (tid,)).fetchone()
+            if not row:
+                return f"No todo with id {tid}."
+            title, body, _category = row
+            guidance_block = f"\n\nGlen's guidance: {guidance}" if guidance else ""
+            prompt = (
+                "You are drafting a reply on behalf of Dr. Glen Swartwout, naturopathic "
+                "physician and biofield scientist in Hilo, Hawaiʻi. Be warm, concise, and "
+                "professional. Sign off naturally as Dr. Glen.\n\n"
+                f"Email subject: {title}\n"
+                f"Email content:\n{(body or '')[:2000]}"
+                f"{guidance_block}\n\n"
+                "Draft the reply now:"
+            )
+            try:
+                msg = _cl.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=600,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                draft = msg.content[0].text
+            except Exception as e:
+                return f"Draft generation failed: {e}"
+            return f"Draft for #{tid}:\n\n{draft}"
+
+        if name == "add_todo":
+            title = (inp.get("title") or "").strip()
+            if not title:
+                return "Title required."
+            owner    = (inp.get("owner") or "glen").lower()
+            category = (inp.get("category") or "General")
+            priority = (inp.get("priority") or "normal")
+            body     = (inp.get("body") or "")
+            ts = datetime.now(timezone.utc).isoformat()
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cur = cx.execute("""
+                    INSERT INTO todos (created_at, owner, category, title, body, priority, source)
+                    VALUES (?,?,?,?,?,?,?)
+                """, (ts, owner, category, title, body, priority, "justus"))
+                cx.commit()
+                new_id = cur.lastrowid
+            return f"Added #{new_id} ({owner}, {priority}): {title}"
+
+        return f"Unknown tool: {name}"
+    except Exception as e:
+        return f"Error in {name}: {e}"
+
+
+def _execute_console_tool(name: str, inp: dict) -> str:
+    """Dispatch to projects or todos based on tool name."""
+    if name in _PROJECT_TOOL_NAMES:
+        return _execute_project_tool(name, inp)
+    return _execute_todo_tool(name, inp)
 
 
 def _ask_justus_stream_tools(query: str, system: str, history: list, tools: list,
@@ -5858,13 +6095,13 @@ def console_ask():
     page    = (data.get("page") or "")
     if not query:
         return jsonify({"error":"No query"}), 400
-    # Always enable tracker tools — Justus follows user intent, not the URL.
-    # Pass the current page in the context so Justus can reason about what
-    # actions are most relevant from where the user is.
+    # Always enable tracker + todo tools — Justus follows intent, not URL.
+    # Pass the current page so Justus can reason about what's most relevant.
     page_ctx = f"\nCurrent page: {page}" if page else ""
     system = _justus_system_prompt(owner, (context + page_ctx).strip(), TRACKER_DIRECTIVES)
-    gen = _ask_justus_stream_tools(query, system, history, PROJECT_TOOLS,
-                                    _execute_project_tool, history_n=6)
+    gen = _ask_justus_stream_tools(query, system, history,
+                                    PROJECT_TOOLS + TODO_TOOLS,
+                                    _execute_console_tool, history_n=6)
     return Response(stream_with_context(gen),
                     mimetype="text/event-stream",
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
