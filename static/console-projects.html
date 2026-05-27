@@ -431,7 +431,7 @@ function renderEffortStars(raw) {
   else n = (s.match(/★/g) || []).length;
   n = Math.max(0, Math.min(5, n));
   if (!n) return escapeHtml(s);
-  return "★".repeat(n) + "☆".repeat(5 - n);
+  return "★".repeat(n);
 }
 
 let _byId = {};
