@@ -1725,8 +1725,12 @@ def _ghl_get(path, params=None):
         return None, str(e)
 
 
-def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag="", extra_tags=None):
-    """Find or create a GHL contact. Returns (contact_id, created_bool, error)."""
+def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag="", extra_tags=None, custom_fields=None):
+    """Find or create a GHL contact. Returns (contact_id, created_bool, error).
+
+    custom_fields: optional dict of {field_key: value} pairs sent as GHL
+    customField array. Applied after the tag-merge PUT for existing contacts,
+    or via a separate PUT after creation for new contacts."""
     if not GHL_API_KEY:
         return None, False, "GHL_API_KEY not set"
 
@@ -1735,6 +1739,12 @@ def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag=
         all_new_tags.add(source_tag)
     if extra_tags:
         all_new_tags.update(extra_tags)
+
+    custom_field_payload = None
+    if custom_fields:
+        custom_field_payload = [
+            {"key": k, "field_value": v} for k, v in custom_fields.items()
+        ]
 
     # Try to find existing contact via GHL v1 /contacts/lookup?email= (the
     # /contacts/?email= query param does NOT actually filter — it returns
@@ -1751,6 +1761,8 @@ def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag=
                 existing_tags = set(match.get("tags", []))
                 existing_tags.update(all_new_tags)
                 _ghl_put(f"/contacts/{contact_id}", {"tags": list(existing_tags)})
+            if custom_field_payload:
+                _ghl_put(f"/contacts/{contact_id}", {"customField": custom_field_payload})
             return contact_id, False, None
 
     # Create new contact
@@ -1759,6 +1771,8 @@ def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag=
         payload["phone"] = phone
     if all_new_tags:
         payload["tags"] = list(all_new_tags)
+    if custom_field_payload:
+        payload["customField"] = custom_field_payload
 
     data, err = _ghl_post("/contacts/", payload)
     if err:
