@@ -190,6 +190,14 @@ def _run_nanp_scrape() -> tuple[int, int, int]:
     return len(rows), len(rows), 0
 
 
+def _run_nccaom_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.nccaom import fetch_all_records
+    rows = fetch_all_records()
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
 ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("oepf", _run_oepf_scrape),
     ("iaomt", _run_iaomt_scrape),
@@ -203,6 +211,7 @@ ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("abfm", _run_abfm_scrape),
     ("aama", _run_aama_scrape),
     ("nanp", _run_nanp_scrape),
+    ("nccaom", _run_nccaom_scrape),
 ]
 
 
