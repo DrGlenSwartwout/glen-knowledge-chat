@@ -1,7 +1,13 @@
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import pytest
+
+if not os.environ.get("PINECONE_API_KEY"):
+    pytest.skip("requires PINECONE_API_KEY in env (use doppler run)", allow_module_level=True)
 
 import app  # noqa: E402
 
