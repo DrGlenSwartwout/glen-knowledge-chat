@@ -43,9 +43,9 @@ def geocode_row(
     if quality is None:
         return None, None, None
 
-    token = os.environ.get("MAPBOX_SECRET_TOKEN")
+    token = os.environ.get("MAPBOX_PUBLIC_TOKEN") or os.environ.get("MAPBOX_SECRET_TOKEN")
     if not token:
-        raise MapboxError("MAPBOX_SECRET_TOKEN env var not set")
+        raise MapboxError("MAPBOX_PUBLIC_TOKEN (or MAPBOX_SECRET_TOKEN) env var not set")
 
     query = requests.utils.quote(geocode_input_string(row), safe="")
     _throttle()

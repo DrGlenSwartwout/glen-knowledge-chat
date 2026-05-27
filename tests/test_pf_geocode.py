@@ -12,7 +12,7 @@ def _row(**kw):
 
 
 @patch("scrapers.practitioner_finder.geocode.requests.get")
-@patch.dict("os.environ", {"MAPBOX_SECRET_TOKEN": "sk.fake"})
+@patch.dict("os.environ", {"MAPBOX_PUBLIC_TOKEN": "pk.fake"})
 def test_geocode_full_address_success(mock_get):
     mock_get.return_value = MagicMock(
         status_code=200,
@@ -26,7 +26,7 @@ def test_geocode_full_address_success(mock_get):
 
 
 @patch("scrapers.practitioner_finder.geocode.requests.get")
-@patch.dict("os.environ", {"MAPBOX_SECRET_TOKEN": "sk.fake"})
+@patch.dict("os.environ", {"MAPBOX_PUBLIC_TOKEN": "pk.fake"})
 def test_geocode_no_features_returns_none(mock_get):
     mock_get.return_value = MagicMock(status_code=200, json=lambda: {"features": []})
     row = _row(address1="999 Nowhere Ln", city="Nowheresville", state="XX")
@@ -37,7 +37,7 @@ def test_geocode_no_features_returns_none(mock_get):
 
 
 @patch("scrapers.practitioner_finder.geocode.requests.get")
-@patch.dict("os.environ", {"MAPBOX_SECRET_TOKEN": "sk.fake"})
+@patch.dict("os.environ", {"MAPBOX_PUBLIC_TOKEN": "pk.fake"})
 def test_geocode_http_error_raises(mock_get):
     mock_get.return_value = MagicMock(status_code=429, text="rate limited")
     row = _row(address1="123 Main St", city="Honolulu", state="HI")
