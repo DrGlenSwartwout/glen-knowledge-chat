@@ -2222,9 +2222,10 @@ def _send_affiliate_magic_link(to_email: str, name: str, magic_url: str) -> tupl
                 s.starttls()
                 s.login(smtp_user, smtp_pass)
                 s.sendmail(smtp_from, [to_email], msg.as_string())
+            print(f"[affiliate-magic] SMTP send OK: from={smtp_from} to={to_email}", flush=True)
             return "smtp", None
         except Exception as e:
-            print(f"[affiliate-magic] SMTP send failed: {e}", flush=True)
+            print(f"[affiliate-magic] SMTP send failed: from={smtp_from} to={to_email} err={e!r}", flush=True)
             return "smtp-failed", str(e)
     print(f"\n[affiliate-magic] MAGIC LINK for {to_email}: {magic_url}\n", flush=True)
     return "console-log", "no SMTP configured"
