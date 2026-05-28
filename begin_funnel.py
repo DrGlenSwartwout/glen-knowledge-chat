@@ -413,9 +413,11 @@ _VOICE_KEYWORDS = ["voice", "frequency", "evox", "toning", "vibration",
                    "5-element", "5 element", "scan"]
 _LEARN_KEYWORDS = ["learn", "understand", "course", "how do i", "study", "diy", "myself"]
 _SHARE_KEYWORDS = ["share", "refer", "affiliate", "help others", "testimonial"]
+# Seed list — substring match; deliberately minimal, refined from data over time.
 _PRACTITIONER_KEYWORDS = ["practitioner", "dentist", "doctor", "chiropractor",
-                          "find someone", "near me", "local", "not happy with",
-                          "second opinion", "my doctor", "unhappy", "frustrated with my"]
+                          "find someone", "near me", "local practitioner",
+                          "local doctor", "not happy with", "second opinion",
+                          "my doctor", "unhappy", "frustrated with my"]
 _DEFAULT_TRIO = ["quiz", "e4l_scan", "intake"]
 
 
