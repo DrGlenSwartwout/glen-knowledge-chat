@@ -887,6 +887,20 @@ def concierge_page():
     return resp
 
 
+@app.route("/begin")
+def begin_page():
+    resp = send_from_directory(STATIC, "begin.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie(
+            "amg_session", uuid.uuid4().hex,
+            max_age=60 * 60 * 24 * 365,
+            httponly=True, samesite="Lax", secure=request.is_secure,
+        )
+    return resp
+
+
 @app.route("/concierge/capture", methods=["POST", "OPTIONS"])
 def concierge_capture():
     """Concierge email capture — records the contact immediately (GHL + concierge
