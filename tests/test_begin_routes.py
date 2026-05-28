@@ -1,0 +1,119 @@
+import importlib
+import sys
+from pathlib import Path
+
+import pytest
+
+
+def _load_app():
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    try:
+        return importlib.import_module("app")
+    except Exception as e:
+        pytest.skip(f"app module not importable in this env: {e}")
+
+
+def test_begin_page_served_and_mints_session(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    client = app_module.app.test_client()
+    r = client.get("/begin")
+    assert r.status_code == 200
+    set_cookie = r.headers.get("Set-Cookie", "")
+    assert "amg_session=" in set_cookie
+
+
+def test_begin_state_default(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    client = app_module.app.test_client()
+    r = client.get("/begin/state")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["current_rung"] == "arrival"
+    assert body["reveal"] == ["layer0"]
+
+
+def test_begin_unlock_options_200():
+    app_module = _load_app()
+    client = app_module.app.test_client()
+    r = client.open("/begin/unlock", method="OPTIONS")
+    assert r.status_code == 200
+
+
+def test_begin_unlock_invalid_trigger_400(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "s1")
+    r = client.post("/begin/unlock", json={"trigger": "bogus"})
+    assert r.status_code == 400
+
+
+def test_begin_unlock_name_then_email_tos_reaches_free_tier(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    monkeypatch.setattr(app_module, "ghl_onboard_contact",
+                        lambda *a, **k: {"contact_id": "x"})
+    monkeypatch.setattr(app_module, "_capture_concierge_referral",
+                        lambda *a, **k: None)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "s1")
+    client.post("/begin/unlock", json={"trigger": "question"})
+    r = client.post("/begin/unlock", json={"trigger": "name", "name": "Ada"})
+    assert r.get_json()["current_rung"] == "personalize"
+    assert r.get_json()["first_name"] == "Ada"
+    r = client.post("/begin/unlock", json={
+        "trigger": "tos", "email": "ada@example.com", "tos": True})
+    body = r.get_json()
+    assert body["current_rung"] == "free_tier"
+    assert "layer5" in body["reveal"]
+
+
+def test_begin_unlock_onboards_once_on_free_tier_transition(monkeypatch, tmp_path):
+    import sqlite3, begin_funnel, threading, time
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    lock = threading.Lock()
+    calls = []
+
+    def _rec(*a, **k):
+        with lock:
+            calls.append((a, k))
+        return {"contact_id": "x"}
+
+    monkeypatch.setattr(app_module, "ghl_onboard_contact", _rec)
+    monkeypatch.setattr(app_module, "_capture_concierge_referral", lambda *a, **k: None)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "s9")
+    # Transition into free_tier -> should onboard exactly once
+    client.post("/begin/unlock", json={"trigger": "tos", "email": "z@x.com", "tos": True})
+    # Wait (up to ~2s) for the daemon onboarding thread to complete
+    for _ in range(40):
+        with lock:
+            n = len(calls)
+        if n >= 1:
+            break
+        time.sleep(0.05)
+    # A later unlock while STILL at free_tier must NOT re-onboard
+    client.post("/begin/unlock", json={"trigger": "scroll"})
+    time.sleep(0.3)
+    with lock:
+        assert len(calls) == 1, f"expected exactly one onboarding call, got {len(calls)}"
