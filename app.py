@@ -5867,6 +5867,114 @@ TODO_TOOLS = [
     },
 ]
 
+HOUSEHOLD_TOOLS = [
+    {
+        "name": "list_household_candidates",
+        "description": (
+            "List PENDING household candidates — auto-detected clusters of "
+            "people that might live together (same last name + address, or "
+            "shared email). Each candidate has a numeric id and a list of "
+            "person objects {id, name, email}. Call FIRST before "
+            "confirm/dismiss/queue_household_merge."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "default": 20},
+            },
+        },
+    },
+    {
+        "name": "confirm_household_candidate",
+        "description": (
+            "Confirm a candidate as a real household — creates a `households` "
+            "row + tags all members in DB and GHL. Requires the household "
+            "name (e.g. 'Savant Family') and which person is the head "
+            "(head_person_id, must be one of the candidate's persons)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "candidate_id":   {"type": "integer"},
+                "name":           {"type": "string",
+                                    "description": "Household name, e.g. 'Savant Family'."},
+                "head_person_id": {"type": "integer",
+                                    "description": "Numeric id of the person to designate as household head."},
+            },
+            "required": ["candidate_id", "name", "head_person_id"],
+        },
+    },
+    {
+        "name": "dismiss_household_candidate",
+        "description": (
+            "Dismiss a household candidate (not actually a household — e.g. "
+            "two unrelated people who happen to share a feature). Use when "
+            "the candidate is neither a household nor a duplicate."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"candidate_id": {"type": "integer"}},
+            "required": ["candidate_id"],
+        },
+    },
+    {
+        "name": "queue_household_merge",
+        "description": (
+            "Convert a 2-person household candidate into a pending_merge "
+            "(they're actually duplicates of the same person, not a "
+            "household). Requires keeper_person_id (which person record to "
+            "preserve). Goes to the pending-merges queue for review — does "
+            "NOT immediately merge."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "candidate_id":     {"type": "integer"},
+                "keeper_person_id": {"type": "integer",
+                                      "description": "Which person record to preserve (the other gets merged into it)."},
+            },
+            "required": ["candidate_id", "keeper_person_id"],
+        },
+    },
+    {
+        "name": "list_pending_merges",
+        "description": (
+            "List queued duplicate-person merges awaiting apply or cancel. "
+            "Each merge has keeper + dupe person details. Call FIRST before "
+            "apply_pending_merge or cancel_pending_merge."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "default": 20},
+            },
+        },
+    },
+    {
+        "name": "apply_pending_merge",
+        "description": (
+            "EXECUTE a queued merge — coalesces dupe's fields into keeper, "
+            "unions JSON arrays (tags etc.), sums counts (orders, sessions), "
+            "then DELETES the dupe person row. Irreversible. Call only after "
+            "the user has explicitly confirmed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"merge_id": {"type": "integer"}},
+            "required": ["merge_id"],
+        },
+    },
+    {
+        "name": "cancel_pending_merge",
+        "description": "Cancel a queued merge (don't apply it). Reversible — does not touch person rows.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"merge_id": {"type": "integer"}},
+            "required": ["merge_id"],
+        },
+    },
+]
+
 TRACKER_DIRECTIVES = (
     "TOOLS available — call when the user asks for an action:\n"
     "\nPROJECTS tracker:\n"
@@ -5881,6 +5989,11 @@ TRACKER_DIRECTIVES = (
     "  split_capture (for [capture]-prefixed dumps or any unstructured multi-item input — "
     "don't parse manually, hand the whole text to this tool)\n"
     "  Owners: glen / rae / shaira. Todo actions apply immediately to the DB.\n"
+    "\nHOUSEHOLDS + PEOPLE-MERGES (the /console people-merge queue):\n"
+    "  list_household_candidates / confirm_household_candidate / dismiss_household_candidate /\n"
+    "  queue_household_merge / list_pending_merges / apply_pending_merge / cancel_pending_merge\n"
+    "  Two-stage: candidates → (confirm as household | dismiss | queue_household_merge → pending_merges → apply).\n"
+    "  apply_pending_merge is IRREVERSIBLE — confirm with the user before calling.\n"
     "\nAfter a tool call, confirm what you did in one short line."
 )
 
@@ -5911,6 +6024,138 @@ def _execute_project_tool(name: str, inp: dict) -> str:
 
 
 _PROJECT_TOOL_NAMES = {"add_idea", "move_project", "set_project_field", "drop_project"}
+_HOUSEHOLD_TOOL_NAMES = {
+    "list_household_candidates", "confirm_household_candidate",
+    "dismiss_household_candidate", "queue_household_merge",
+    "list_pending_merges", "apply_pending_merge", "cancel_pending_merge",
+}
+
+
+def _call_route(route_fn, path: str, method: str = "POST",
+                json_body: dict | None = None, **kwargs):
+    """Invoke an existing Flask route handler via test_request_context.
+    Returns (json_dict, status_code). kwargs are passed to the handler call."""
+    with app.test_request_context(
+        path, method=method,
+        json=json_body or {},
+        headers={"X-Console-Key": CONSOLE_SECRET or ""},
+    ):
+        resp = route_fn(**kwargs)
+    # Flask handlers return either Response or (Response, status) tuple
+    if isinstance(resp, tuple):
+        body, status = resp[0], resp[1]
+    else:
+        body, status = resp, 200
+    try:
+        return body.get_json(), status
+    except Exception:
+        return {"raw": str(body)}, status
+
+
+def _execute_household_tool(name: str, inp: dict) -> str:
+    """Map a household/merge tool call to the existing route handlers."""
+    try:
+        if name == "list_household_candidates":
+            limit = max(1, min(int(inp.get("limit") or 20), 50))
+            data, _ = _call_route(list_household_candidates,
+                                   "/api/household-candidates", method="GET")
+            cands = (data.get("candidates") or [])[:limit]
+            if not cands:
+                return "No pending household candidates."
+            lines = []
+            for c in cands:
+                persons = ", ".join(f"{p['name']} (#{p['id']}, {p.get('email','-')})"
+                                    for p in c["persons"])
+                lines.append(f"#{c['id']} signal='{c['signal']}' detected={c['detected_at'][:10]} "
+                             f"persons=[{persons}]")
+            return f"{len(cands)} pending household candidate(s):\n" + "\n".join(lines)
+
+        if name == "confirm_household_candidate":
+            cid = int(inp["candidate_id"])
+            data, status = _call_route(
+                confirm_household_candidate,
+                f"/api/household-candidates/{cid}/confirm", method="POST",
+                json_body={"name": inp["name"], "head_person_id": int(inp["head_person_id"])},
+                cand_id=cid,
+            )
+            if status != 200:
+                return f"Confirm failed (HTTP {status}): {data.get('error','?')}"
+            hh = data.get("household", {})
+            ghl_errs = data.get("ghl_errors", []) or []
+            extra = f" (GHL errors: {ghl_errs})" if ghl_errs else ""
+            return f"Confirmed candidate #{cid} → household '{hh.get('name')}' (slug={hh.get('slug')}){extra}"
+
+        if name == "dismiss_household_candidate":
+            cid = int(inp["candidate_id"])
+            data, status = _call_route(
+                dismiss_household_candidate,
+                f"/api/household-candidates/{cid}/dismiss", method="POST",
+                cand_id=cid,
+            )
+            if status != 200:
+                return f"Dismiss failed (HTTP {status}): {data.get('error','?')}"
+            return f"Dismissed candidate #{cid}."
+
+        if name == "queue_household_merge":
+            cid    = int(inp["candidate_id"])
+            keeper = int(inp["keeper_person_id"])
+            data, status = _call_route(
+                queue_merge_from_candidate,
+                f"/api/household-candidates/{cid}/queue-merge", method="POST",
+                json_body={"keeper_person_id": keeper},
+                cand_id=cid,
+            )
+            if status != 200:
+                return f"Queue-merge failed (HTTP {status}): {data.get('error','?')}"
+            return (f"Queued merge #{data.get('merge_id')} from candidate #{cid} "
+                    f"(keeper #{data.get('keeper_id')}, dupe #{data.get('dupe_id')}).")
+
+        if name == "list_pending_merges":
+            limit = max(1, min(int(inp.get("limit") or 20), 50))
+            data, _ = _call_route(list_pending_merges, "/api/pending-merges", method="GET")
+            merges = (data.get("merges") or [])[:limit]
+            if not merges:
+                return "No pending merges."
+            lines = []
+            for m in merges:
+                k = m["keeper"]; d = m["dupe"]
+                k_name = f"{k.get('first_name','')} {k.get('last_name','')}".strip() or k.get("email","?")
+                d_name = f"{d.get('first_name','')} {d.get('last_name','')}".strip() or d.get("email","?")
+                lines.append(f"#{m['id']} keeper=#{k['id']} {k_name} ({k.get('email','-')}) "
+                             f"← dupe=#{d['id']} {d_name} ({d.get('email','-')}) "
+                             f"queued={m['queued_at'][:10]}")
+            return f"{len(merges)} pending merge(s):\n" + "\n".join(lines)
+
+        if name == "apply_pending_merge":
+            mid = int(inp["merge_id"])
+            data, status = _call_route(
+                apply_pending_merge,
+                f"/api/pending-merges/{mid}/apply", method="POST",
+                merge_id=mid,
+            )
+            if status != 200:
+                return f"Apply failed (HTTP {status}): {data.get('error','?')}"
+            r = data.get("result", {})
+            return (f"Applied merge #{mid}: kept person #{r.get('keeper_id')}, "
+                    f"deleted dupe #{r.get('deleted_dupe_id')}. "
+                    f"fields_filled={r.get('fields_filled',[])}, "
+                    f"tags_added={r.get('tags_added',0)}, "
+                    f"counts_summed={r.get('counts_summed',{})}.")
+
+        if name == "cancel_pending_merge":
+            mid = int(inp["merge_id"])
+            data, status = _call_route(
+                cancel_pending_merge,
+                f"/api/pending-merges/{mid}/cancel", method="POST",
+                merge_id=mid,
+            )
+            if status != 200:
+                return f"Cancel failed (HTTP {status}): {data.get('error','?')}"
+            return f"Cancelled merge #{mid}."
+
+        return f"Unknown tool: {name}"
+    except Exception as e:
+        return f"Error in {name}: {type(e).__name__}: {e}"
 
 
 def _execute_todo_tool(name: str, inp: dict) -> str:
@@ -6060,15 +6305,17 @@ def _execute_todo_tool(name: str, inp: dict) -> str:
 
 
 def _execute_console_tool(name: str, inp: dict) -> str:
-    """Dispatch to projects or todos based on tool name."""
+    """Dispatch to projects / households-merges / todos based on tool name."""
     if name in _PROJECT_TOOL_NAMES:
         return _execute_project_tool(name, inp)
+    if name in _HOUSEHOLD_TOOL_NAMES:
+        return _execute_household_tool(name, inp)
     return _execute_todo_tool(name, inp)
 
 
 # Tools whose result text should be shown to the user inline (Justus's natural-
 # language reply alone would hide the actual value — e.g. a drafted email body).
-_VISIBLE_TOOL_RESULTS = {"draft_todo_reply", "split_capture"}
+_VISIBLE_TOOL_RESULTS = {"draft_todo_reply", "split_capture", "apply_pending_merge"}
 
 
 def _ask_justus_stream_tools(query: str, system: str, history: list, tools: list,
@@ -6167,7 +6414,7 @@ def console_ask():
     page_ctx = f"\nCurrent page: {page}" if page else ""
     system = _justus_system_prompt(owner, (context + page_ctx).strip(), TRACKER_DIRECTIVES)
     gen = _ask_justus_stream_tools(query, system, history,
-                                    PROJECT_TOOLS + TODO_TOOLS,
+                                    PROJECT_TOOLS + TODO_TOOLS + HOUSEHOLD_TOOLS,
                                     _execute_console_tool, history_n=6)
     return Response(stream_with_context(gen),
                     mimetype="text/event-stream",
