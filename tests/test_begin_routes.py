@@ -23,3 +23,18 @@ def test_begin_page_served_and_mints_session(monkeypatch, tmp_path):
     assert r.status_code == 200
     set_cookie = r.headers.get("Set-Cookie", "")
     assert "amg_session=" in set_cookie
+
+
+def test_begin_state_default(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    client = app_module.app.test_client()
+    r = client.get("/begin/state")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["current_rung"] == "arrival"
+    assert body["reveal"] == ["layer0"]

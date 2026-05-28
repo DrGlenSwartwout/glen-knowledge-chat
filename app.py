@@ -901,6 +901,16 @@ def begin_page():
     return resp
 
 
+@app.route("/begin/state", methods=["GET"])
+def begin_state():
+    session_id = (request.cookies.get("amg_session") or "").strip()
+    auth_user = get_authenticated_user(request)
+    email = auth_user["email"] if auth_user else ""
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.get_state(cx, session_id=session_id, email=email)
+    return jsonify(state)
+
+
 @app.route("/concierge/capture", methods=["POST", "OPTIONS"])
 def concierge_capture():
     """Concierge email capture — records the contact immediately (GHL + concierge
