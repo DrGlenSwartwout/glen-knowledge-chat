@@ -1001,6 +1001,16 @@
     });
     restoreContactFromLocalStorage();
     renderConciergeCTAs();
+    // Concierge hand-off — arrived from /concierge with ?ask=<question>: prefill + auto-send
+    try {
+      const _askQ = new URLSearchParams(location.search).get('ask');
+      if (_askQ) {
+        const _qi = document.getElementById('query-input');
+        if (_qi) _qi.value = _askQ;
+        history.replaceState({}, '', location.pathname);
+        setTimeout(() => { try { sendQuery(); } catch (_) {} }, 350);
+      }
+    } catch (_) {}
     // Server-side autofill — if the session cookie identifies a returning
     // visitor whose email/name we already have in query_log, prefer that
     // (newer or more authoritative than stale localStorage).

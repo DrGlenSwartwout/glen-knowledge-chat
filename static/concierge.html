@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dr. Glen Swartwout — A Place That Understands</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a150d;
+    --surface: #111f16;
+    --surface-2: #162318;
+    --border: #21472d;
+    --cream: #fdf4d8;
+    --muted: #a89870;
+    --gold: #d4a843;
+    --green: #3d8a52;
+
+    --maxw: 760px;
+    --radius: 14px;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--cream);
+    font-family: "Open Sans", system-ui, sans-serif;
+    font-weight: 400;
+    line-height: 1.7;
+    font-size: 17px;
+    letter-spacing: 0.01em;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* a near-imperceptible vertical breath of light from above */
+    background-image:
+      radial-gradient(120% 80% at 50% -10%, rgba(212, 168, 67, 0.07), transparent 60%),
+      radial-gradient(100% 60% at 50% 110%, rgba(61, 138, 82, 0.05), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  ::selection { background: rgba(212, 168, 67, 0.25); color: var(--cream); }
+
+  h1, h2, h3 {
+    font-family: "Raleway", system-ui, sans-serif;
+    font-weight: 600;
+    line-height: 1.22;
+    letter-spacing: -0.01em;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  .shell {
+    max-width: var(--maxw);
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* ---------- Top hairline brand row ---------- */
+  .brandbar {
+    max-width: var(--maxw);
+    margin: 0 auto;
+    padding: 30px 24px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+  .brand-mark {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 0 0 0 4px rgba(212, 168, 67, 0.12);
+    flex: none;
+  }
+  .brand-name {
+    font-family: "Raleway", sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ---------- Section rhythm ---------- */
+  section { padding: 0; }
+  .pad-y { padding-top: 64px; }
+
+  /* ---------- HERO VIDEO ---------- */
+  .video-wrap {
+    margin-top: 38px;
+  }
+  .video {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background:
+      radial-gradient(90% 120% at 50% 18%, #1a2c1f 0%, #0c1610 70%, #081109 100%);
+    border: 1px solid var(--border);
+    box-shadow:
+      0 1px 0 rgba(253, 244, 216, 0.04) inset,
+      0 30px 70px -40px rgba(0, 0, 0, 0.9);
+    cursor: pointer;
+  }
+  /* faint film-grain / soft vignette so the frame reads as footage, not a void */
+  .video::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(60% 60% at 50% 45%, transparent 40%, rgba(0,0,0,0.35) 100%);
+    pointer-events: none;
+  }
+
+  .play {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 78px; height: 78px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: rgba(10, 21, 13, 0.55);
+    border: 1px solid rgba(212, 168, 67, 0.55);
+    backdrop-filter: blur(2px);
+    transition: transform 0.5s var(--ease), background 0.4s var(--ease), border-color 0.4s var(--ease);
+  }
+  .play::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: 50%;
+    border: 1px solid rgba(212, 168, 67, 0.35);
+    animation: pulse 3.4s var(--ease) infinite;
+  }
+  @keyframes pulse {
+    0%   { transform: scale(1);    opacity: 0.55; }
+    70%  { transform: scale(1.5);  opacity: 0; }
+    100% { transform: scale(1.5);  opacity: 0; }
+  }
+  .play svg { width: 26px; height: 26px; margin-left: 4px; fill: var(--gold); }
+  .video:hover .play {
+    transform: translate(-50%, -50%) scale(1.06);
+    background: rgba(212, 168, 67, 0.16);
+    border-color: var(--gold);
+  }
+
+  /* lower-third caption */
+  .lower-third {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 44px 22px 18px;
+    background: linear-gradient(to top, rgba(8, 17, 9, 0.92), transparent);
+  }
+  .lt-rule {
+    width: 30px; height: 2px;
+    background: var(--gold);
+    margin-bottom: 10px;
+  }
+  .lt-text {
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--cream);
+    max-width: 560px;
+    letter-spacing: 0.005em;
+  }
+  .lt-text em { color: var(--muted); font-style: italic; }
+
+  /* video chrome: a discreet timeline bar to sell "real player" */
+  .scrub {
+    position: absolute;
+    left: 18px; right: 18px; bottom: 12px;
+    height: 3px;
+    border-radius: 3px;
+    background: rgba(253, 244, 216, 0.14);
+    overflow: hidden;
+  }
+  .scrub > i {
+    display: block;
+    height: 100%;
+    width: 22%;
+    border-radius: 3px;
+    background: var(--gold);
+  }
+
+  /* ---------- HERO TEXT ---------- */
+  .eyebrow {
+    font-family: "Raleway", sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: var(--green);
+    text-align: center;
+    margin-bottom: 22px;
+  }
+  .hero-greeting {
+    font-family: "Raleway", sans-serif;
+    font-weight: 600;
+    font-size: clamp(23px, 5vw, 33px);
+    line-height: 1.34;
+    text-align: center;
+    color: var(--cream);
+    letter-spacing: -0.012em;
+    max-width: 660px;
+    margin: 0 auto;
+  }
+  .hero-greeting .soft { color: var(--muted); }
+
+  .byline {
+    margin: 26px auto 0;
+    max-width: 580px;
+    text-align: center;
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+  .byline .name { color: var(--cream); font-weight: 600; }
+  .byline .quote {
+    color: var(--gold);
+    font-style: italic;
+  }
+
+  /* ---------- ASK A QUESTION ---------- */
+  .ask {
+    margin: 44px auto 0;
+    max-width: 640px;
+  }
+  .ask-label {
+    text-align: center;
+    font-family: "Raleway", sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+  .ask-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 7px 7px 7px 22px;
+    transition: border-color 0.35s var(--ease), box-shadow 0.35s var(--ease), background 0.35s var(--ease);
+  }
+  .ask-field:focus-within {
+    border-color: var(--gold);
+    background: var(--surface-2);
+    box-shadow: 0 0 0 4px rgba(212, 168, 67, 0.1);
+  }
+  .ask-field input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--cream);
+    font-family: "Open Sans", sans-serif;
+    font-size: 16px;
+    padding: 12px 0;
+  }
+  .ask-field input::placeholder { color: var(--muted); opacity: 0.85; }
+
+  .send-btn {
+    flex: none;
+    height: 46px;
+    padding: 0 22px;
+    border: none;
+    border-radius: 999px;
+    background: var(--gold);
+    color: #0a150d;
+    font-family: "Raleway", sans-serif;
+    font-weight: 600;
+    font-size: 14.5px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: transform 0.3s var(--ease), background 0.3s var(--ease), box-shadow 0.3s var(--ease);
+  }
+  .send-btn svg { width: 16px; height: 16px; fill: currentColor; transition: transform 0.3s var(--ease); }
+  .send-btn:hover { background: #e2ba5c; box-shadow: 0 8px 24px -12px rgba(212, 168, 67, 0.7); }
+  .send-btn:hover svg { transform: translateX(3px); }
+  .send-btn:active { transform: translateY(1px); }
+
+  .ask-hint {
+    text-align: center;
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 14px;
+    opacity: 0.85;
+  }
+
+  /* ---------- DELICATE DIVIDER ---------- */
+  .divider {
+    max-width: 60px;
+    margin: 72px auto;
+    border: none;
+    border-top: 1px solid var(--border);
+    position: relative;
+  }
+  .divider::after {
+    content: "";
+    position: absolute;
+    top: -3px; left: 50%;
+    transform: translateX(-50%);
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--gold);
+  }
+
+  /* ---------- CTA CARDS ---------- */
+  .cards-intro {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+  .cards-intro h2 {
+    font-size: clamp(20px, 4vw, 24px);
+    color: var(--cream);
+    font-weight: 600;
+  }
+  .cards-intro p {
+    color: var(--muted);
+    font-size: 15px;
+    margin-top: 8px;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 26px 26px;
+    cursor: pointer;
+    overflow: hidden;
+    transition: transform 0.4s var(--ease), border-color 0.4s var(--ease), background 0.4s var(--ease);
+  }
+  /* gold whisper that slides in from the left edge on hover */
+  .card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--gold);
+    transform: scaleY(0);
+    transform-origin: top;
+    transition: transform 0.45s var(--ease);
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(212, 168, 67, 0.45);
+    background: var(--surface-2);
+  }
+  .card:hover::before { transform: scaleY(1); }
+
+  .card-num {
+    flex: none;
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    color: var(--gold);
+    font-family: "Raleway", sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    transition: border-color 0.4s var(--ease), background 0.4s var(--ease);
+  }
+  .card:hover .card-num {
+    border-color: var(--gold);
+    background: rgba(212, 168, 67, 0.1);
+  }
+
+  .card-body { flex: 1; min-width: 0; }
+  .card-title {
+    font-family: "Raleway", sans-serif;
+    font-weight: 600;
+    font-size: 17.5px;
+    color: var(--cream);
+    line-height: 1.3;
+  }
+  .card-sub {
+    font-size: 14px;
+    color: var(--muted);
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+  .card-arrow {
+    flex: none;
+    color: var(--muted);
+    transition: transform 0.4s var(--ease), color 0.4s var(--ease);
+  }
+  .card-arrow svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+  .card:hover .card-arrow { color: var(--gold); transform: translateX(4px); }
+
+  /* ---------- EMAIL CAPTURE ---------- */
+  .capture {
+    margin-top: 18px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 38px 32px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .capture::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 100% at 50% 0%, rgba(212, 168, 67, 0.08), transparent 60%);
+    pointer-events: none;
+  }
+  .capture-icon {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    margin: 0 auto 18px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .capture-icon svg { width: 20px; height: 20px; fill: none; stroke: var(--gold); stroke-width: 1.5; }
+
+  .capture h3 {
+    font-size: 18px;
+    color: var(--cream);
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .capture p {
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.65;
+    max-width: 460px;
+    margin: 0 auto 24px;
+    position: relative;
+  }
+  .capture-form {
+    display: flex;
+    gap: 10px;
+    max-width: 470px;
+    margin: 0 auto;
+    position: relative;
+  }
+  .capture-form input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--cream);
+    font-family: "Open Sans", sans-serif;
+    font-size: 15px;
+    padding: 14px 20px;
+    outline: none;
+    transition: border-color 0.35s var(--ease), box-shadow 0.35s var(--ease);
+  }
+  .capture-form input::placeholder { color: var(--muted); opacity: 0.8; }
+  .capture-form input:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 4px rgba(212, 168, 67, 0.1);
+  }
+  .capture-form button {
+    flex: none;
+    border: none;
+    border-radius: 999px;
+    padding: 0 26px;
+    background: var(--green);
+    color: var(--cream);
+    font-family: "Raleway", sans-serif;
+    font-weight: 600;
+    font-size: 14.5px;
+    cursor: pointer;
+    transition: transform 0.3s var(--ease), background 0.3s var(--ease), box-shadow 0.3s var(--ease);
+  }
+  .capture-form button:hover {
+    background: #489a5e;
+    box-shadow: 0 8px 24px -12px rgba(61, 138, 82, 0.8);
+  }
+  .capture-form button:active { transform: translateY(1px); }
+
+  .capture-fine {
+    margin-top: 16px;
+    font-size: 12.5px;
+    color: var(--muted);
+    opacity: 0.7;
+    position: relative;
+  }
+
+  /* ---------- FOOTER ---------- */
+  footer {
+    margin-top: 78px;
+    padding: 30px 24px 48px;
+    text-align: center;
+    border-top: 1px solid rgba(33, 71, 45, 0.5);
+  }
+  .foot-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .foot-mark .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
+  .foot-mark span {
+    font-family: "Raleway", sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .foot-note {
+    font-size: 12.5px;
+    color: var(--muted);
+    opacity: 0.7;
+    max-width: 520px;
+    margin: 0 auto;
+    line-height: 1.7;
+  }
+
+  /* ---------- reveal on load ---------- */
+  .reveal { opacity: 0; transform: translateY(14px); }
+  .reveal.in { opacity: 1; transform: none; transition: opacity 0.9s var(--ease), transform 0.9s var(--ease); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .reveal { opacity: 1; transform: none; }
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    .shell { padding: 0 18px; }
+    .brandbar { padding-top: 24px; }
+    .video-wrap { margin-top: 26px; }
+    .play { width: 62px; height: 62px; }
+    .play svg { width: 21px; height: 21px; }
+    .lower-third { padding: 36px 16px 14px; }
+    .lt-text { font-size: 12px; }
+    .ask-field {
+      flex-direction: column;
+      border-radius: var(--radius);
+      padding: 8px;
+      gap: 8px;
+    }
+    .ask-field input { width: 100%; padding: 12px 14px; }
+    .send-btn { width: 100%; justify-content: center; height: 50px; }
+    .card { padding: 22px 18px; gap: 15px; }
+    .card-num { width: 38px; height: 38px; font-size: 14px; }
+    .card-title { font-size: 16px; }
+    .capture { padding: 30px 20px; }
+    .capture-form { flex-direction: column; }
+    .capture-form button { width: 100%; padding: 14px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- Brand hairline -->
+  <div class="brandbar reveal">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;·&nbsp; Healing&nbsp;Oasis</span>
+  </div>
+
+  <!-- HERO VIDEO -->
+  <section class="shell">
+    <div class="video-wrap reveal">
+      <div class="video" role="button" aria-label="Play introduction video from Dr. Glen Swartwout">
+        <div class="play" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        </div>
+
+        <div class="lower-third">
+          <div class="lt-rule" aria-hidden="true"></div>
+          <p class="lt-text">
+            Guided by the lifework of <strong>Dr. Glen Swartwout, O.D., N.D.</strong> — featured in USA&nbsp;Today:
+            <em>&ldquo;Revolutionizing the World of Medicine with Natural Therapies.&rdquo;</em>
+          </p>
+        </div>
+
+        <div class="scrub" aria-hidden="true"><i></i></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HERO TEXT -->
+  <section class="shell pad-y">
+    <p class="eyebrow reveal">A consultative welcome</p>
+    <h1 class="hero-greeting reveal">
+      You&rsquo;ve found a place that understands — healing isn&rsquo;t one-size-fits-all,
+      and you know your body better than anyone.
+      <span class="soft">Share what&rsquo;s on your mind, or let&rsquo;s begin with listening to what your body needs right now.</span>
+    </h1>
+
+    <p class="byline reveal">
+      <span class="name">Guided by the lifework of Dr. Glen Swartwout, O.D., N.D.</span> — featured in USA&nbsp;Today:
+      <span class="quote">&ldquo;Revolutionizing the World of Medicine with Natural Therapies.&rdquo;</span>
+    </p>
+
+    <!-- ASK A QUESTION -->
+    <div class="ask reveal">
+      <p class="ask-label">Ask a question</p>
+      <form class="ask-field" id="ask-form" onsubmit="return false;">
+        <label for="ask-input" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">Ask a question</label>
+        <input id="ask-input" type="text" placeholder="What's been on your mind lately? Ask anything…" autocomplete="off" />
+        <button class="send-btn" type="submit">
+          Send
+          <svg viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-7-8-3z" opacity="0.9"/></svg>
+        </button>
+      </form>
+      <p class="ask-hint">Your conversation is private. Begin wherever feels right.</p>
+    </div>
+  </section>
+
+  <hr class="divider reveal" aria-hidden="true" />
+
+  <!-- CTA CARDS -->
+  <section class="shell">
+    <div class="cards-intro reveal">
+      <h2>Three quiet ways to begin</h2>
+      <p>Each one a doorway — choose the one that meets you where you are.</p>
+    </div>
+
+    <div class="cards">
+      <a class="card reveal" id="cta-quiz" href="#" target="_blank" rel="noopener">
+        <span class="card-num">01</span>
+        <span class="card-body">
+          <span class="card-title">Discover Your Healing Path</span>
+          <span class="card-sub">Uncover your top wellness opportunities in 3 minutes</span>
+        </span>
+        <span class="card-arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </span>
+      </a>
+
+      <a class="card reveal" id="cta-scan" href="#" target="_blank" rel="noopener">
+        <span class="card-num">02</span>
+        <span class="card-body">
+          <span class="card-title">Your Voice Reveals What Your Body Knows</span>
+          <span class="card-sub">10-second scan shows your body&rsquo;s current priorities</span>
+        </span>
+        <span class="card-arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </span>
+      </a>
+
+      <a class="card reveal" id="cta-intake" href="#" target="_blank" rel="noopener">
+        <span class="card-num">03</span>
+        <span class="card-body">
+          <span class="card-title">Begin Your Journey</span>
+          <span class="card-sub">Personalized guidance starts with understanding your story</span>
+        </span>
+        <span class="card-arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </span>
+      </a>
+    </div>
+
+    <!-- EMAIL CAPTURE -->
+    <div class="capture reveal">
+      <div class="capture-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M3 6.5l9 6 9-6M3 6.5h18v11H3z" stroke-linejoin="round"/></svg>
+      </div>
+      <h3>Stay close to your results</h3>
+      <p>Enter your email to receive your personalized results and follow-up guidance tailored to your body&rsquo;s wisdom.</p>
+      <form class="capture-form" id="capture-form" onsubmit="return false;">
+        <label for="email-input" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">Email address</label>
+        <input id="email-input" type="email" placeholder="you@example.com" autocomplete="email" />
+        <button type="submit">Send My Guidance</button>
+      </form>
+      <p class="capture-fine">No spam — only your results and gentle, relevant guidance. Wellness and educational support only.</p>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="foot-mark">
+      <span class="dot" aria-hidden="true"></span>
+      <span>Remedy Match</span>
+    </div>
+    <p class="foot-note">
+      Shared in the spirit of education and self-understanding. This space offers wellness and
+      educational guidance — it is not a substitute for diagnosis or medical care from your own provider.
+    </p>
+  </footer>
+
+  <script>
+    // ---- Concierge wiring ----
+    // Capture affiliate ref slug → 90-day cookie (+ localStorage)
+    (function captureRef() {
+      try {
+        var ref = (new URLSearchParams(location.search).get('ref') || '').trim();
+        if (ref && /^[A-Za-z0-9_-]{1,64}$/.test(ref)) {
+          document.cookie = 'rm_ref=' + encodeURIComponent(ref) +
+                            ';path=/;max-age=' + (90 * 24 * 3600) + ';SameSite=Lax';
+          localStorage.setItem('rm_ref', ref);
+        }
+      } catch (_) {}
+    })();
+    function getRef() {
+      try {
+        var m = document.cookie.match(/(?:^|;\s*)rm_ref=([^;]+)/);
+        if (m) return decodeURIComponent(m[1]);
+        return localStorage.getItem('rm_ref') || '';
+      } catch (_) { return ''; }
+    }
+    // Slug-substituted CTA links
+    (function wireCTAs() {
+      var slug = getRef() || 'remedy-match';
+      var s = encodeURIComponent(slug);
+      var map = {
+        'cta-quiz':   'https://healing.scoreapp.com?utm_source=' + s + '&utm_medium=affiliate&utm_campaign=scoreapp-quiz',
+        'cta-scan':   'https://truly.vip/E4L?utm_source=' + s + '&utm_medium=affiliate&utm_campaign=e4l-scan',
+        'cta-intake': 'https://truly.vip/Join?utm_source=' + s + '&utm_medium=affiliate&utm_campaign=pb-intake'
+      };
+      Object.keys(map).forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.setAttribute('href', map[id]);
+      });
+    })();
+    // Ask a question → hand off to the live chat at / with the question prefilled
+    (function wireAsk() {
+      var form = document.getElementById('ask-form');
+      var input = document.getElementById('ask-input');
+      if (!form || !input) return;
+      form.addEventListener('submit', function () {
+        var q = (input.value || '').trim();
+        location.href = '/' + (q ? ('?ask=' + encodeURIComponent(q)) : '');
+      });
+    })();
+    // Email capture → record immediately (GHL + concierge attribution), then confirm
+    (function wireCapture() {
+      var form = document.getElementById('capture-form');
+      var input = document.getElementById('email-input');
+      if (!form || !input) return;
+      form.addEventListener('submit', function () {
+        var email = (input.value || '').trim();
+        if (!email || email.indexOf('@') < 0) { input.focus(); return; }
+        var btn = form.querySelector('button');
+        if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+        fetch('/concierge/capture', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ email: email, ref: getRef() })
+        }).then(function () {
+          form.outerHTML = '<p style="color:var(--gold);font-family:Raleway,sans-serif;font-weight:600;">Thank you — your guidance is on its way. Open the conversation whenever you’re ready.</p>';
+        }).catch(function () {
+          if (btn) { btn.disabled = false; btn.textContent = 'Send My Guidance'; }
+        });
+      });
+    })();
+
+    // Gentle staggered reveal — purely presentational, no deps.
+    (function () {
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var items = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+      if (reduce || !('IntersectionObserver' in window)) {
+        items.forEach(function (el) { el.classList.add('in'); });
+        return;
+      }
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry, i) {
+          if (entry.isIntersecting) {
+            var el = entry.target;
+            setTimeout(function () { el.classList.add('in'); }, 60);
+            io.unobserve(el);
+          }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+      items.forEach(function (el) { io.observe(el); });
+    })();
+  </script>
+
+</body>
+</html>

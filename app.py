@@ -879,6 +879,37 @@ def index():
     return resp
 
 
+@app.route("/concierge")
+def concierge_page():
+    resp = send_from_directory(STATIC, "concierge.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/concierge/capture", methods=["POST", "OPTIONS"])
+def concierge_capture():
+    """Concierge email capture — records the contact immediately (GHL + concierge
+    referral attribution) without requiring them to send a chat message first."""
+    if request.method == "OPTIONS":
+        return "", 200
+    data  = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        return jsonify({"error": "valid email required"}), 400
+    ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
+    try:
+        if ref_slug:
+            _capture_concierge_referral(email, "", "", ref_slug)
+        tags = ["concierge"]
+        if ref_slug:
+            tags.append(f"ref:{ref_slug}")
+        ghl_onboard_contact(email, "", "", source_tag="concierge", extra_tags=tags)
+    except Exception as e:
+        print(f"[concierge-capture] {e!r}", flush=True)
+    return jsonify({"ok": True})
+
+
 @app.route("/embed")
 def embed_page():
     resp = send_from_directory(STATIC, "embed.html")
