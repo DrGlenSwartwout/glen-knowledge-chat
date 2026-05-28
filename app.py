@@ -6102,8 +6102,25 @@ def _ask_justus_stream_tools(query: str, system: str, history: list, tools: list
             tool_uses = [b for b in final.content if getattr(b, "type", None) == "tool_use"]
             if not tool_uses:
                 break
-            msgs.append({"role": "assistant",
-                         "content": [b.model_dump() for b in final.content]})
+            # Build clean content blocks for the assistant turn we're echoing
+            # back. `b.model_dump()` on a text block includes SDK-side fields
+            # (e.g. parsed_output) that the API rejects on input, so build
+            # minimal dicts per block type.
+            assistant_content = []
+            for b in final.content:
+                bt = getattr(b, "type", None)
+                if bt == "text":
+                    assistant_content.append({"type": "text", "text": b.text})
+                elif bt == "tool_use":
+                    assistant_content.append({
+                        "type": "tool_use",
+                        "id":   b.id,
+                        "name": b.name,
+                        "input": getattr(b, "input", {}) or {},
+                    })
+                else:
+                    assistant_content.append(b.model_dump())
+            msgs.append({"role": "assistant", "content": assistant_content})
             tool_results = []
             for tu in tool_uses:
                 result = tool_dispatch(tu.name, getattr(tu, "input", {}) or {})
