@@ -908,6 +908,37 @@ def _recent_query_texts(session_id, email, limit=8):
     return out
 
 
+def _classify_awareness_haiku(session_id, query_texts, heuristic_stage):
+    """Background: ask Haiku to classify Schwartz awareness stage, persist it
+    upward, and log the heuristic-vs-haiku divergence for the learning loop."""
+    try:
+        joined = "\n".join(f"- {q}" for q in query_texts[:8])
+        msg = _cl.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=10,
+            system=("Classify the person's marketing awareness stage from their "
+                    "questions. Reply with EXACTLY one word: problem, solution, "
+                    "product, or most. problem=aware of a symptom only; "
+                    "solution=knows solution categories exist; product=names a "
+                    "specific product/tool; most=ready to act/buy."),
+            messages=[{"role": "user", "content": f"Questions:\n{joined}"}],
+        )
+        haiku_stage = (msg.content[0].text or "").strip().lower()
+        if haiku_stage not in ("problem", "solution", "product", "most"):
+            return
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            begin_funnel.set_awareness(cx, session_id, haiku_stage)
+            cx.execute(
+                "INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (begin_funnel._now(), session_id, "", "awareness_classified",
+                 json.dumps({"heuristic": heuristic_stage, "haiku": haiku_stage}),
+                 "", ""))
+            cx.commit()
+    except Exception as e:
+        print(f"[begin-awareness] {e!r}", flush=True)
+
+
 @app.route("/begin")
 def begin_page():
     resp = send_from_directory(STATIC, "begin.html")
@@ -994,6 +1025,22 @@ def begin_unlock():
                 print(f"[begin-onboard] {e!r}", flush=True)
 
         _threading.Thread(target=_onboard, daemon=True).start()
+
+    # Background awareness classification once enough chat has accrued.
+    try:
+        already = False
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute(
+                "SELECT awareness_classified_at FROM journey_state WHERE session_id=? "
+                "ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
+            already = bool(row and row[0])
+        if not already and len(query_texts) >= 3:
+            import threading as _t
+            _t.Thread(target=_classify_awareness_haiku,
+                      args=(session_id, list(query_texts), state["awareness_stage"]),
+                      daemon=True).start()
+    except Exception:
+        pass
 
     redirect = begin_funnel.resolve_want(want, ref_slug) if want else None
     payload = dict(state)

@@ -149,3 +149,21 @@ def test_begin_unlock_deep_link_unbuilt_target_no_redirect(monkeypatch, tmp_path
     assert body["awareness_stage"] == "most"
     assert "redirect" not in body or body.get("redirect") in (None, "")
     assert "layer5" in body["reveal"]
+
+
+def test_haiku_classification_guarded_below_threshold(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    calls = []
+    monkeypatch.setattr(app_module, "_classify_awareness_haiku",
+                        lambda *a, **k: calls.append(1))
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "sh")
+    # no questions logged yet → below the >=3 threshold → no classify
+    client.post("/begin/unlock", json={"trigger": "question"})
+    import time; time.sleep(0.2)
+    assert len(calls) == 0
