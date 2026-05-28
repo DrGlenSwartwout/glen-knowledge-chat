@@ -166,7 +166,10 @@ _RUNG_LAYERS = {
 _ALL_LAYERS = ["layer0", "layer1", "layer2", "layer3", "layer4", "layer5"]
 
 
-def reveal_for(rung):
+def reveal_for(rung, awareness="unknown"):
+    # gate-skip: product/most-aware visitors see the full unfolding surface
+    if AWARENESS_RANK.get(awareness, 0) >= AWARENESS_RANK["product"]:
+        return list(_ALL_LAYERS)
     if RUNG_INDEX.get(rung, 0) >= RUNG_INDEX["free_tier"]:
         return list(_ALL_LAYERS)
     return list(_RUNG_LAYERS.get(rung, ["layer0"]))

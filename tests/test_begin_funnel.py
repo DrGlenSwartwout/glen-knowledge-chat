@@ -187,3 +187,12 @@ def test_resolve_want_unknown_or_unbuilt_returns_none():
     assert bf.resolve_want("ash", "x") is None
     assert bf.resolve_want("", "x") is None
     assert bf.resolve_want("bogus", "x") is None
+
+
+def test_reveal_for_gate_skip_for_aware():
+    import begin_funnel as bf
+    assert bf.reveal_for("arrival", "product") == bf._ALL_LAYERS
+    assert bf.reveal_for("arrival", "most") == bf._ALL_LAYERS
+    assert bf.reveal_for("arrival", "solution") == ["layer0"]
+    assert bf.reveal_for("listening", "problem") == ["layer0", "layer1"]
+    assert bf.reveal_for("arrival") == ["layer0"]   # default awareness preserves old behavior
