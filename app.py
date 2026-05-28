@@ -911,6 +911,70 @@ def begin_state():
     return jsonify(state)
 
 
+# ToS version stamp for the /begin free-tier gate. The live T&C page at
+# remedymatch.com/info/terms-and-conditions carries no version string, so we
+# date-stamp agreement here. Bump when the T&C content materially changes.
+BEGIN_TOS_VERSION = "rm-tc-2026-05-28"
+
+
+@app.route("/begin/unlock", methods=["POST", "OPTIONS"])
+def begin_unlock():
+    if request.method == "OPTIONS":
+        return "", 200
+    data = request.get_json() or {}
+    trigger = (data.get("trigger") or "").strip()
+    session_id = (
+        request.cookies.get("amg_session")
+        or (data.get("session_id") or "").strip()
+        or uuid.uuid4().hex
+    )
+    name = (data.get("name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    tos = bool(data.get("tos"))
+    detail = (data.get("detail") or "").strip()
+    ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
+
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            state = begin_funnel.record_unlock(
+                cx, session_id=session_id, trigger=trigger,
+                email=email, detail=detail, first_name=name, tos=tos,
+                ref_slug=ref_slug,
+                tos_version=BEGIN_TOS_VERSION if (tos or trigger == "tos") else "",
+            )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    # Free-tier transition (email + ToS): onboard to GHL + concierge referral,
+    # non-blocking — same pattern as /chat.
+    if state["current_rung"] == "free_tier" and state.get("email"):
+        import threading as _threading
+
+        def _onboard():
+            try:
+                parts = (state.get("first_name") or "").split(None, 1)
+                first = parts[0] if parts else ""
+                last = parts[1] if len(parts) > 1 else ""
+                tags = ["begin", "concierge"]
+                if ref_slug:
+                    tags.append(f"ref:{ref_slug}")
+                    _capture_concierge_referral(state["email"], first, last, ref_slug)
+                ghl_onboard_contact(state["email"], first, last,
+                                    source_tag="begin", extra_tags=tags)
+            except Exception:
+                pass
+
+        _threading.Thread(target=_onboard, daemon=True).start()
+
+    resp = jsonify(state)
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie(
+            "amg_session", session_id, max_age=60 * 60 * 24 * 365,
+            httponly=True, samesite="Lax", secure=request.is_secure,
+        )
+    return resp
+
+
 @app.route("/concierge/capture", methods=["POST", "OPTIONS"])
 def concierge_capture():
     """Concierge email capture — records the contact immediately (GHL + concierge

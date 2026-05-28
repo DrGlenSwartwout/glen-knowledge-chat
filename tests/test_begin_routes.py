@@ -38,3 +38,47 @@ def test_begin_state_default(monkeypatch, tmp_path):
     body = r.get_json()
     assert body["current_rung"] == "arrival"
     assert body["reveal"] == ["layer0"]
+
+
+def test_begin_unlock_options_200():
+    app_module = _load_app()
+    client = app_module.app.test_client()
+    r = client.open("/begin/unlock", method="OPTIONS")
+    assert r.status_code == 200
+
+
+def test_begin_unlock_invalid_trigger_400(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "s1")
+    r = client.post("/begin/unlock", json={"trigger": "bogus"})
+    assert r.status_code == 400
+
+
+def test_begin_unlock_name_then_email_tos_reaches_free_tier(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    monkeypatch.setattr(app_module, "ghl_onboard_contact",
+                        lambda *a, **k: {"contact_id": "x"})
+    monkeypatch.setattr(app_module, "_capture_concierge_referral",
+                        lambda *a, **k: None)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "s1")
+    client.post("/begin/unlock", json={"trigger": "question"})
+    r = client.post("/begin/unlock", json={"trigger": "name", "name": "Ada"})
+    assert r.get_json()["current_rung"] == "personalize"
+    assert r.get_json()["first_name"] == "Ada"
+    r = client.post("/begin/unlock", json={
+        "trigger": "tos", "email": "ada@example.com", "tos": True})
+    body = r.get_json()
+    assert body["current_rung"] == "free_tier"
+    assert "layer5" in body["reveal"]
