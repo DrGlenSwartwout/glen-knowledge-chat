@@ -89,3 +89,20 @@ def compute_rung(gates, email, tos_agreed):
     if "share_video" in gates:
         rung = "advocate"
     return rung
+
+
+_RUNG_LAYERS = {
+    "arrival":      ["layer0"],
+    "listening":    ["layer0", "layer1"],
+    "inquire":      ["layer0", "layer1", "layer2"],
+    "personalize":  ["layer0", "layer1", "layer2", "layer3"],
+    "free_tier":    ["layer0", "layer1", "layer2", "layer3", "layer4", "layer5"],
+}
+# Full unfolding surface (layer0-5) stays visible at every rung at/above free_tier.
+_ALL_LAYERS = ["layer0", "layer1", "layer2", "layer3", "layer4", "layer5"]
+
+
+def reveal_for(rung):
+    if RUNG_INDEX.get(rung, 0) >= RUNG_INDEX["free_tier"]:
+        return list(_ALL_LAYERS)
+    return list(_RUNG_LAYERS.get(rung, ["layer0"]))

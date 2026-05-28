@@ -59,3 +59,15 @@ def test_valid_triggers_set():
     for t in ("load", "video", "scroll", "question", "name", "email", "tos",
               "voice", "scan", "quiz", "paid_fork", "purchase", "share_video"):
         assert t in bf.VALID_TRIGGERS
+
+
+def test_reveal_for_layers():
+    import begin_funnel as bf
+    assert bf.reveal_for("arrival") == ["layer0"]
+    assert bf.reveal_for("listening") == ["layer0", "layer1"]
+    assert bf.reveal_for("inquire") == ["layer0", "layer1", "layer2"]
+    assert bf.reveal_for("personalize") == ["layer0", "layer1", "layer2", "layer3"]
+    assert bf.reveal_for("free_tier") == [
+        "layer0", "layer1", "layer2", "layer3", "layer4", "layer5"]
+    # rungs beyond free_tier still expose the full unfolding surface
+    assert "layer5" in bf.reveal_for("assess")
