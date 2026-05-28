@@ -5846,6 +5846,25 @@ TODO_TOOLS = [
             "required": ["title"],
         },
     },
+    {
+        "name": "split_capture",
+        "description": (
+            "Split a free-form brain-dump into N discrete todos and insert them. "
+            "Use when the user gives a long unstructured message — especially "
+            "anything starting with [capture] — instead of trying to manually "
+            "parse it into items yourself. Returns the count + titles + "
+            "priorities. Todos land in category='Idea', source='capture'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text":  {"type": "string",
+                          "description": "The free-form capture text. [capture] prefix is optional."},
+                "owner": {"type": "string", "enum": ["glen", "rae", "shaira"]},
+            },
+            "required": ["text"],
+        },
+    },
 ]
 
 TRACKER_DIRECTIVES = (
@@ -5859,6 +5878,8 @@ TRACKER_DIRECTIVES = (
     "\nTODOS (the /console tabs):\n"
     "  list_todos (call FIRST to find an id when the user names a todo by description)\n"
     "  complete_todo / delegate_todo / dismiss_todo / draft_todo_reply / add_todo\n"
+    "  split_capture (for [capture]-prefixed dumps or any unstructured multi-item input — "
+    "don't parse manually, hand the whole text to this tool)\n"
     "  Owners: glen / rae / shaira. Todo actions apply immediately to the DB.\n"
     "\nAfter a tool call, confirm what you did in one short line."
 )
@@ -6016,6 +6037,23 @@ def _execute_todo_tool(name: str, inp: dict) -> str:
                 new_id = cur.lastrowid
             return f"Added #{new_id} ({owner}, {priority}): {title}"
 
+        if name == "split_capture":
+            text  = (inp.get("text") or "").strip()
+            owner = (inp.get("owner") or "glen").lower()
+            if not text:
+                return "Capture text required."
+            try:
+                result = _do_capture_split(text, owner)
+            except ValueError as e:
+                return f"Split failed: {e}"
+            except Exception as e:
+                return f"Split failed: {type(e).__name__}: {e}"
+            items = result.get("items", [])
+            if not items:
+                return "Split produced no items (capture may have been too short or duplicated)."
+            lines = [f"  • [{it['priority']}] {it['title']}" for it in items]
+            return f"Split into {result['count']} todos ({owner}):\n" + "\n".join(lines)
+
         return f"Unknown tool: {name}"
     except Exception as e:
         return f"Error in {name}: {e}"
@@ -6030,7 +6068,7 @@ def _execute_console_tool(name: str, inp: dict) -> str:
 
 # Tools whose result text should be shown to the user inline (Justus's natural-
 # language reply alone would hide the actual value — e.g. a drafted email body).
-_VISIBLE_TOOL_RESULTS = {"draft_todo_reply"}
+_VISIBLE_TOOL_RESULTS = {"draft_todo_reply", "split_capture"}
 
 
 def _ask_justus_stream_tools(query: str, system: str, history: list, tools: list,
@@ -6130,42 +6168,28 @@ _CAPTURE_SPLIT_SYSTEM = (
 )
 
 
-@app.route("/api/capture-split", methods=["POST"])
-def capture_split():
-    if CONSOLE_SECRET:
-        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
-            return jsonify({"error": "Unauthorized"}), 401
-    data  = request.get_json(force=True) or {}
-    text  = (data.get("text") or "").strip()
-    owner = (data.get("owner") or "glen").lower()
-    if not text:
-        return jsonify({"error": "No text"}), 400
-
-    # Strip the [capture] prefix (case-insensitive) if present.
-    stripped = text
+def _do_capture_split(text: str, owner: str) -> dict:
+    """Split free-form text into todos and insert them under `owner`.
+    Used by /api/capture-split (HTTP) and the split_capture Justus tool.
+    Returns {"items": [...], "count": N}; raises ValueError on bad input."""
+    stripped = (text or "").strip()
     if stripped.lower().startswith("[capture]"):
         stripped = stripped[len("[capture]"):].strip()
     if not stripped:
-        return jsonify({"error": "Capture body empty after stripping prefix"}), 400
+        raise ValueError("Capture body empty")
 
-    try:
-        resp = _cl.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=800,
-            system=_CAPTURE_SPLIT_SYSTEM,
-            messages=[{"role": "user", "content": stripped}],
-        )
-        raw = "".join(b.text for b in resp.content if b.type == "text").strip()
-        # Tolerate accidental code fences.
-        if raw.startswith("```"):
-            raw = raw.strip("`").lstrip("json").strip()
-        items = json.loads(raw)
-        if not isinstance(items, list) or not items:
-            raise ValueError("Splitter returned no items")
-    except Exception as e:
-        app.logger.exception("capture_split LLM/parse failed")
-        return jsonify({"ok": False, "error": f"split failed: {type(e).__name__}: {e}"}), 500
+    resp = _cl.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=800,
+        system=_CAPTURE_SPLIT_SYSTEM,
+        messages=[{"role": "user", "content": stripped}],
+    )
+    raw = "".join(b.text for b in resp.content if b.type == "text").strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`").lstrip("json").strip()
+    items = json.loads(raw)
+    if not isinstance(items, list) or not items:
+        raise ValueError("Splitter returned no items")
 
     ts = datetime.now(timezone.utc).isoformat()
     ts_epoch = int(_time.time())
@@ -6192,8 +6216,28 @@ def capture_split():
             except Exception:
                 app.logger.exception("capture_split insert failed for item %s", i)
         cx.commit()
+    return {"items": inserted, "count": len(inserted)}
 
-    return jsonify({"ok": True, "items": inserted, "count": len(inserted)}), 201
+
+@app.route("/api/capture-split", methods=["POST"])
+def capture_split():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    data  = request.get_json(force=True) or {}
+    text  = (data.get("text") or "").strip()
+    owner = (data.get("owner") or "glen").lower()
+    if not text:
+        return jsonify({"error": "No text"}), 400
+    try:
+        result = _do_capture_split(text, owner)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        app.logger.exception("capture_split failed")
+        return jsonify({"ok": False, "error": f"split failed: {type(e).__name__}: {e}"}), 500
+    return jsonify({"ok": True, **result}), 201
 
 
 # ── Workspace (per-owner focused-item page) ───────────────────────────────────
