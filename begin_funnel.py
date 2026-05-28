@@ -399,3 +399,59 @@ def card_href(key, ref=""):
 def _card(key, ref=""):
     c = CARD_CATALOG[key]
     return {"key": key, "title": c["title"], "sub": c["sub"], "href": card_href(key, ref)}
+
+
+# ---------------------------------------------------------------------------
+# Slice 3 Task 2 — surface()
+# ---------------------------------------------------------------------------
+
+_REMEDY_MATCH_CUES = ["remedy for", "what helps", "support for", "what should i take",
+                      "what should i use", "help with my"]
+_GENERIC_PRODUCT_CUES = ["products", "supplements", "what do you sell",
+                         "what do you have", "browse", "store", "shop"]
+_VOICE_KEYWORDS = ["voice", "frequency", "evox", "toning", "vibration",
+                   "5-element", "5 element", "scan"]
+_LEARN_KEYWORDS = ["learn", "understand", "course", "how do i", "study", "diy", "myself"]
+_SHARE_KEYWORDS = ["share", "refer", "affiliate", "help others", "testimonial"]
+_PRACTITIONER_KEYWORDS = ["practitioner", "dentist", "doctor", "chiropractor",
+                          "find someone", "near me", "local", "not happy with",
+                          "second opinion", "my doctor", "unhappy", "frustrated with my"]
+_DEFAULT_TRIO = ["quiz", "e4l_scan", "intake"]
+
+
+def surface(state, query_texts, ref=""):
+    """Return an ordered, deduped, capped-at-3 list of card dicts for the visitor's
+    signals. Falls back to the default trio when no contextual signal fires."""
+    state = state or {}
+    text = " ".join(query_texts or []).lower()
+    aw = state.get("awareness_stage", "unknown")
+    rung = state.get("current_rung", "arrival")
+    gates = set(state.get("unlocked_gates") or [])
+
+    keys = []
+    def add(k):
+        if k not in keys:
+            keys.append(k)
+
+    if any(k in text for k in _PRACTITIONER_KEYWORDS):
+        add("practitioner")
+    specific_product = (any(k in text for k in _PRODUCT_KEYWORDS)
+                        or any(c in text for c in _REMEDY_MATCH_CUES))
+    if specific_product:
+        add("product")
+    generic_product = (not specific_product
+                       and any(c in text for c in _GENERIC_PRODUCT_CUES))
+    if any(k in text for k in _VOICE_KEYWORDS) or generic_product:
+        add("voice_distinctions")
+    if any(k in text for k in _LEARN_KEYWORDS):
+        add("ash_course")
+    if any(k in text for k in _SHARE_KEYWORDS):
+        add("pay_forward")
+    if (AWARENESS_RANK.get(aw, 0) >= AWARENESS_RANK["most"]
+            or RUNG_INDEX.get(rung, 0) >= RUNG_INDEX["assess"]
+            or len(gates) >= 5):
+        add("ash_masterclass")
+
+    if not keys:
+        keys = list(_DEFAULT_TRIO)
+    return [_card(k, ref) for k in keys[:3]]

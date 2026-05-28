@@ -300,3 +300,58 @@ def test_card_builds_full_dict():
     assert c["key"] == "product"
     assert c["title"] and c["sub"]
     assert c["href"].startswith("https://remedymatch.com")
+
+
+# ---------------------------------------------------------------------------
+# Slice 3 Task 2 — surface()
+# ---------------------------------------------------------------------------
+
+def _keys(cards):
+    return [c["key"] for c in cards]
+
+
+def test_surface_default_trio_when_no_signal():
+    import begin_funnel as bf
+    st = {"awareness_stage": "unknown", "current_rung": "arrival", "unlocked_gates": []}
+    assert _keys(bf.surface(st, ["hello there"], "")) == ["quiz", "e4l_scan", "intake"]
+
+
+def test_surface_specific_product_outranks_voice():
+    import begin_funnel as bf
+    st = {"awareness_stage": "unknown", "current_rung": "inquire", "unlocked_gates": []}
+    cards = bf.surface(st, ["does EVOX help — also tell me about voice frequency"], "")
+    assert _keys(cards)[0] == "product"
+
+
+def test_surface_remedy_match_is_product():
+    import begin_funnel as bf
+    st = {"awareness_stage": "unknown", "current_rung": "inquire", "unlocked_gates": []}
+    assert "product" in _keys(bf.surface(st, ["what helps with my insomnia"], ""))
+
+
+def test_surface_generic_product_routes_to_voice():
+    import begin_funnel as bf
+    st = {"awareness_stage": "unknown", "current_rung": "inquire", "unlocked_gates": []}
+    cards = bf.surface(st, ["what products do you have"], "")
+    assert "voice_distinctions" in _keys(cards)
+    assert "product" not in _keys(cards)
+
+
+def test_surface_practitioner_signal_top():
+    import begin_funnel as bf
+    st = {"awareness_stage": "unknown", "current_rung": "inquire", "unlocked_gates": []}
+    cards = bf.surface(st, ["I'm not happy with my dentist, anyone near me?"], "")
+    assert _keys(cards)[0] == "practitioner"
+
+
+def test_surface_caps_at_three():
+    import begin_funnel as bf
+    st = {"awareness_stage": "most", "current_rung": "assess", "unlocked_gates": []}
+    cards = bf.surface(st, ["dentist near me, EVOX voice, learn a course, refer a friend"], "")
+    assert len(cards) <= 3
+
+
+def test_surface_most_aware_masterclass_when_no_specific():
+    import begin_funnel as bf
+    st = {"awareness_stage": "most", "current_rung": "arrival", "unlocked_gates": []}
+    assert _keys(bf.surface(st, ["hello"], "")) == ["ash_masterclass"]
