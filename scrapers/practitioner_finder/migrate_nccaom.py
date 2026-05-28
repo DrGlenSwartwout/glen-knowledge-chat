@@ -123,6 +123,25 @@ def _looks_like_challenge(html: str) -> bool:
     return len(html) < 2000
 
 
+# Big-state result pages (CA=2007, FL=1018) render slowly — 20s is too
+# tight and caused whole-state aborts on the first run. 60s gives the
+# heavy pages room while still bounding a genuinely hung navigation.
+_PAGE_TIMEOUT_MS = 60_000
+_ROOT_URL = "https://directory.ncbahm.org/"
+
+
+def _rewarm(fetcher: PlaywrightFetcher) -> None:
+    """Re-navigate to the directory root to refresh the cf_clearance
+    cookie. Cloudflare Turnstile clearance decays over a long run (the
+    first scrape lost the session after ~15 states); re-warming restores
+    it. Best-effort — swallows any error."""
+    try:
+        fetcher.get(_ROOT_URL, wait_for_selector="body", sleep_s=3.0,
+                    timeout_ms=_PAGE_TIMEOUT_MS)
+    except Exception as e:  # pragma: no cover - live IO
+        print(f"    WARN: re-warm failed: {e}")
+
+
 def fetch_search_page(
     *,
     state: str,
@@ -131,25 +150,38 @@ def fetch_search_page(
 ) -> str:
     """Fetch one page of /FAP/SearchResultWithoutMap via Playwright.
 
-    If the response looks like a Turnstile/Cloudflare challenge, sleep
-    briefly and retry once with a fresh navigation. Returns whatever HTML
-    the second attempt produced (caller is responsible for parsing — if
-    the retry also fails, ``parse_search_html`` will simply return [])."""
+    Robust against two failure modes seen on the first full run:
+      1. Big-state pages exceeding the default 20s timeout (now 60s).
+      2. Cloudflare session decay over a long run — on a challenge or a
+         navigation timeout we re-warm (re-solve Turnstile at the root)
+         then retry once.
+
+    Returns whatever HTML the final attempt produced (caller parses — if
+    the retry also fails, ``parse_search_html`` returns [])."""
     url = _search_url(state, page)
-    html = fetcher.get(
-        url,
-        wait_for_selector=".result-card__item, .result-info, body",
-        sleep_s=_PER_PAGE_SLEEP_S,
-    )
-    if _looks_like_challenge(html):
-        # Brief pause then retry once — Turnstile's automatic re-issue
-        # tends to grant clearance on the second navigation in the same
-        # session.
-        time.sleep(3.0)
+    try:
         html = fetcher.get(
             url,
             wait_for_selector=".result-card__item, .result-info, body",
             sleep_s=_PER_PAGE_SLEEP_S,
+            timeout_ms=_PAGE_TIMEOUT_MS,
+        )
+    except Exception:  # navigation timeout — re-warm + retry
+        _rewarm(fetcher)
+        html = fetcher.get(
+            url,
+            wait_for_selector=".result-card__item, .result-info, body",
+            sleep_s=_PER_PAGE_SLEEP_S,
+            timeout_ms=_PAGE_TIMEOUT_MS,
+        )
+    if _looks_like_challenge(html):
+        # Cookie decayed — re-solve Turnstile at the root, then retry.
+        _rewarm(fetcher)
+        html = fetcher.get(
+            url,
+            wait_for_selector=".result-card__item, .result-info, body",
+            sleep_s=_PER_PAGE_SLEEP_S,
+            timeout_ms=_PAGE_TIMEOUT_MS,
         )
     return html
 
@@ -245,7 +277,20 @@ def main() -> int:
                 rows, pages = walk_state(state, fetcher=fetcher)
             except Exception as e:  # pragma: no cover - live IO
                 print(f"  ERROR fetching {state}: {e}")
-                continue
+                rows, pages = 0, 0
+            # A 0-row state is ambiguous: genuinely empty (small territory)
+            # OR the Cloudflare session decayed mid-run. Re-warm and retry
+            # once — if it's truly empty the retry is cheap; if the session
+            # died this recovers it (the first run lost everything after
+            # ~15 states this way).
+            if rows == 0:
+                print(f"  {state}: 0 rows — re-warming + retrying once")
+                _rewarm(fetcher)
+                try:
+                    rows, pages2 = walk_state(state, fetcher=fetcher)
+                    pages += pages2
+                except Exception as e:  # pragma: no cover - live IO
+                    print(f"  ERROR on {state} retry: {e}")
             total_rows += rows
             total_pages += pages
             print(
