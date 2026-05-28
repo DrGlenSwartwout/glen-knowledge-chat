@@ -564,8 +564,10 @@
     </div>
   </section>
 
-  <!-- LAYER 2: Hero text, ask form, inline name field, gate, answer hook + full -->
-  <section class="shell pad-y locked" data-layer="layer2">
+  <!-- LISTENING layer (with the video above): hero text + ask form. The hook,
+       inline name field, gate, and full-answer below are shown by JS after the
+       question (they keep their own display:none until then). -->
+  <section class="shell pad-y locked" data-layer="layer1">
     <p class="eyebrow reveal">A consultative welcome</p>
     <h1 class="hero-greeting reveal">
       Hello, <span data-name>there</span> &mdash; you&rsquo;ve found a place that understands.
@@ -693,8 +695,9 @@
 
   function applyReveal(reveal){
     (reveal||[]).forEach(function(key){
-      var el = document.querySelector('[data-layer="'+key+'"]');
-      if(el){ el.classList.remove('locked'); el.classList.add('reveal','in'); }
+      document.querySelectorAll('[data-layer="'+key+'"]').forEach(function(el){
+        el.classList.remove('locked'); el.classList.add('reveal','in');
+      });
     });
   }
   function personalize(name){
