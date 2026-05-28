@@ -2553,6 +2553,39 @@ def affiliate_portal_data():
     })
 
 
+@app.route("/affiliate/payload-peek", methods=["GET"])
+def affiliate_payload_peek():
+    """Console-gated diagnostic: return the most recent stored webhook payloads
+    so we can confirm field shapes (GrooveKart order total key, whether Practice
+    Better forwards utm). Payloads contain customer PII — console key required."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    source = (request.args.get("source") or "").strip().lower()
+    try:
+        limit = max(1, min(int(request.args.get("limit", "3")), 20))
+    except ValueError:
+        limit = 3
+    if source in ("groovekart", "gk", "store"):
+        sql = "SELECT received_at, raw_json FROM inbound_leads WHERE source='groovekart' ORDER BY id DESC LIMIT ?"
+    elif source in ("practice-better", "pb", "practicebetter"):
+        sql = "SELECT received_at, raw_json FROM pb_events ORDER BY id DESC LIMIT ?"
+    else:
+        return jsonify({"error": "source must be 'groovekart' or 'practice-better'"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute(sql, (limit,)).fetchall()
+    out = []
+    for received_at, raw in rows:
+        try:
+            parsed = json.loads(raw) if raw else None
+            top_keys = sorted(parsed.keys()) if isinstance(parsed, dict) else None
+        except Exception:
+            parsed, top_keys = None, None
+        out.append({"received_at": received_at, "top_keys": top_keys, "payload": parsed})
+    return jsonify({"source": source, "count": len(out), "rows": out})
+
+
 @app.route("/api/affiliates", methods=["GET"])
 def get_affiliates():
     if CONSOLE_SECRET:
