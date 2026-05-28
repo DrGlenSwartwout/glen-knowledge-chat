@@ -1995,6 +1995,26 @@ def _init_referral_tables():
                 "WHERE name='Free Bioenergetic Wellness Scan' AND instructions != ?",
                 (E4L_INSTRUCTIONS, E4L_INSTRUCTIONS),
             )
+        # Seed ASH MasterClass (free evergreen intro on Practice Better)
+        if not cx.execute("SELECT id FROM affiliate_offers WHERE name='Free ASH MasterClass'").fetchone():
+            cx.execute("""
+                INSERT INTO affiliate_offers (sort_order, name, description, url_template, instructions, active)
+                VALUES (3, 'Free ASH MasterClass',
+                    'Dr. Glen''s evergreen introduction to the Accelerated Self Healing™ method. Free MasterClass on Practice Better — always available.',
+                    'https://truly.vip/Intro?utm_source={slug}&utm_medium=affiliate&utm_campaign=ash-masterclass',
+                    'Free on Practice Better — students create a free account to access. Affiliates can share the link as-is.',
+                    1)
+            """)
+        # Seed DIY ASH Course — Heal Yourself (free self-paced on Practice Better)
+        if not cx.execute("SELECT id FROM affiliate_offers WHERE name='Free DIY Accelerated Self Healing Course — Heal Yourself'").fetchone():
+            cx.execute("""
+                INSERT INTO affiliate_offers (sort_order, name, description, url_template, instructions, active)
+                VALUES (4, 'Free DIY Accelerated Self Healing Course — Heal Yourself',
+                    'The full DIY protocol for Accelerated Self Healing™. Free self-paced course on Practice Better — work through the modules at your own pace.',
+                    'https://truly.vip/GetWell?utm_source={slug}&utm_medium=affiliate&utm_campaign=ash-diy-course',
+                    'Free on Practice Better — students create a free account to access. Affiliates can share the link as-is.',
+                    1)
+            """)
         # Seed AllHeal as first referral source if not exists
         existing = cx.execute("SELECT id FROM referral_sources WHERE slug='allheal'").fetchone()
         if not existing:
