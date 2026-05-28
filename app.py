@@ -2093,6 +2093,16 @@ def _init_referral_tables():
 _init_referral_tables()
 
 
+# ── /begin funnel journey-state engine ───────────────────────────────────────
+import begin_funnel
+
+def _init_journey_tables():
+    with sqlite3.connect(LOG_DB) as cx:
+        begin_funnel.init_journey_tables(cx)
+
+_init_journey_tables()
+
+
 @app.route("/api/referral-sources", methods=["GET"])
 def get_referral_sources():
     if CONSOLE_SECRET:
