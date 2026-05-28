@@ -1038,9 +1038,11 @@ def begin_unlock():
                 "ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
             already = bool(row and row[0])
         if not already and len(query_texts) >= 3:
+            _heur = begin_funnel.infer_awareness_heuristic(
+                want, set(state.get("unlocked_gates") or []), query_texts)
             import threading as _t
             _t.Thread(target=_classify_awareness_haiku,
-                      args=(session_id, list(query_texts), state["awareness_stage"]),
+                      args=(session_id, list(query_texts), _heur),
                       daemon=True).start()
     except Exception:
         pass
