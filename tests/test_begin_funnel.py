@@ -167,3 +167,23 @@ def test_max_awareness_monotonic():
     assert bf._max_awareness("problem", "product") == "product"
     assert bf._max_awareness("most", "solution") == "most"
     assert bf._max_awareness("unknown", "unknown") == "unknown"
+
+
+def test_resolve_want_live_targets():
+    import begin_funnel as bf
+    url = bf.resolve_want("e4l", "Jane")
+    assert url.startswith("https://truly.vip/E4L")
+    assert "utm_source=Jane" in url
+    assert "utm_campaign=begin-deeplink-e4l" in url
+    assert bf.resolve_want("quiz", "").startswith("https://healing.scoreapp.com")
+    assert "utm_source=remedy-match" in bf.resolve_want("quiz", "")
+    assert bf.resolve_want("join", "x").startswith("https://truly.vip/Join")
+    assert bf.resolve_want("results", "x").startswith("https://truly.vip/Results")
+
+
+def test_resolve_want_unknown_or_unbuilt_returns_none():
+    import begin_funnel as bf
+    assert bf.resolve_want("voice", "x") is None
+    assert bf.resolve_want("ash", "x") is None
+    assert bf.resolve_want("", "x") is None
+    assert bf.resolve_want("bogus", "x") is None

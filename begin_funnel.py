@@ -7,6 +7,7 @@ docs/superpowers/specs/2026-05-28-progressive-disclosure-funnel-design.md
 
 import json
 import sqlite3
+import urllib.parse
 
 from datetime import datetime, timezone
 
@@ -105,6 +106,27 @@ def infer_awareness_heuristic(want, gates, query_texts):
     if any(k in text for k in _PROBLEM_KEYWORDS):
         return "problem"
     return "unknown"
+
+
+WANT_TARGETS = {
+    "e4l":     "https://truly.vip/E4L",
+    "quiz":    "https://healing.scoreapp.com",
+    "join":    "https://truly.vip/Join",
+    "results": "https://truly.vip/Results",
+}
+# not-yet-built rooms (no Slice 2 redirect): "voice", "path", "ash"
+
+
+def resolve_want(want, ref=""):
+    """Return the threaded external URL for a live ?want= target, else None."""
+    key = (want or "").strip().lower()
+    base = WANT_TARGETS.get(key)
+    if not base:
+        return None
+    slug = (ref or "remedy-match").strip() or "remedy-match"
+    sep = "&" if "?" in base else "?"
+    return (f"{base}{sep}utm_source={urllib.parse.quote(slug)}"
+            f"&utm_medium=affiliate&utm_campaign=begin-deeplink-{key}")
 
 
 def compute_rung(gates, email, tos_agreed):
