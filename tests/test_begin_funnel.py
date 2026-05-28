@@ -270,3 +270,33 @@ def test_record_unlock_awareness_never_regresses_on_update():
     st = bf.record_unlock(cx, session_id="s1", trigger="scroll",
                           query_texts=["hi"])
     assert st["awareness_stage"] == "product"
+
+
+def test_card_catalog_has_core_keys():
+    import begin_funnel as bf
+    for k in ("quiz", "e4l_scan", "intake", "voice_distinctions", "product",
+              "ash_course", "ash_masterclass", "pay_forward", "practitioner"):
+        assert k in bf.CARD_CATALOG
+        assert bf.CARD_CATALOG[k]["title"] and bf.CARD_CATALOG[k]["sub"]
+
+
+def test_card_href_external_threads_utm():
+    import begin_funnel as bf
+    h = bf.card_href("e4l_scan", "Jane")
+    assert h.startswith("https://truly.vip/E4L")
+    assert "utm_source=Jane" in h
+    assert "utm_campaign=begin-card-e4l_scan" in h
+    assert "utm_source=remedy-match" in bf.card_href("quiz", "")
+
+
+def test_card_href_internal_as_is():
+    import begin_funnel as bf
+    assert bf.card_href("practitioner", "Jane") == "/practitioner"
+
+
+def test_card_builds_full_dict():
+    import begin_funnel as bf
+    c = bf._card("product", "Jane")
+    assert c["key"] == "product"
+    assert c["title"] and c["sub"]
+    assert c["href"].startswith("https://remedymatch.com")

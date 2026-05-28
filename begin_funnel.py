@@ -349,3 +349,53 @@ def set_awareness(cx, session_id, stage):
             "updated_at=? WHERE id=?",
             (merged, now, now, r["id"]))
     cx.commit()
+
+
+# ---------------------------------------------------------------------------
+# Slice 3 — CARD_CATALOG + card_href + _card
+# ---------------------------------------------------------------------------
+
+CARD_CATALOG = {
+    "quiz":               {"title": "Discover Your Healing Path",
+                           "sub": "Uncover your top wellness opportunities in 3 minutes",
+                           "base_url": "https://healing.scoreapp.com", "internal": False},
+    "e4l_scan":           {"title": "Your Voice Reveals What Your Body Knows",
+                           "sub": "A 10-second scan shows your body's current priorities",
+                           "base_url": "https://truly.vip/E4L", "internal": False},
+    "intake":             {"title": "Begin Your Journey",
+                           "sub": "Personalized guidance starts with understanding your story",
+                           "base_url": "https://truly.vip/Join", "internal": False},
+    "voice_distinctions": {"title": "Listen Deeper — Your Voice & Frequencies",
+                           "sub": "5-Element toning · voice-sample analysis · Bioenergetic Wellness Scan · EVOX",
+                           "base_url": "https://truly.vip/E4L", "internal": False},
+    "product":            {"title": "Formulations Matched to You",
+                           "sub": "Explore remedies suited to what your body needs",
+                           "base_url": "https://remedymatch.com", "internal": False},
+    "ash_course":         {"title": "Learn to Heal Yourself",
+                           "sub": "The Accelerated Self-Healing approach, step by step",
+                           "base_url": "https://truly.vip/GetWell", "internal": False},
+    "ash_masterclass":    {"title": "Accelerate Self-Healing — Go Deeper",
+                           "sub": "The masterclass for those ready to fully begin",
+                           "base_url": "https://truly.vip/Intro", "internal": False},
+    "pay_forward":        {"title": "Share Your Results, Lift Others",
+                           "sub": "Pass your healing forward — and earn as you do",
+                           "base_url": "https://truly.vip/Results", "internal": False},
+    "practitioner":       {"title": "Find a Practitioner Near You",
+                           "sub": "Connect with a practitioner who fits your path",
+                           "base_url": "/practitioner", "internal": True},
+}
+
+
+def card_href(key, ref=""):
+    c = CARD_CATALOG[key]
+    if c["internal"]:
+        return c["base_url"]
+    slug = (ref or "remedy-match").strip() or "remedy-match"
+    sep = "&" if "?" in c["base_url"] else "?"
+    return (f"{c['base_url']}{sep}utm_source={urllib.parse.quote(slug)}"
+            f"&utm_medium=affiliate&utm_campaign=begin-card-{key}")
+
+
+def _card(key, ref=""):
+    c = CARD_CATALOG[key]
+    return {"key": key, "title": c["title"], "sub": c["sub"], "href": card_href(key, ref)}
