@@ -256,3 +256,17 @@ def test_get_state_reveal_uses_awareness():
     st = bf.get_state(cx, session_id="s1")
     assert st["awareness_stage"] == "most"
     assert "layer5" in st["reveal"]
+
+
+def test_record_unlock_awareness_never_regresses_on_update():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    # first call infers product-aware from the chat text
+    st = bf.record_unlock(cx, session_id="s1", trigger="question",
+                          query_texts=["how do I use EVOX"])
+    assert st["awareness_stage"] == "product"
+    # a later call with a plain, signal-free question must NOT drop awareness
+    st = bf.record_unlock(cx, session_id="s1", trigger="scroll",
+                          query_texts=["hi"])
+    assert st["awareness_stage"] == "product"

@@ -233,6 +233,8 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
     gates_json = json.dumps(sorted(gates))
 
     _persisted_aw = (existing.get("awareness_stage") if row is not None else "unknown") or "unknown"
+    # awareness is inferred from the POST-add gate set (a just-opened
+    # product/assessment gate immediately implies product-awareness)
     _new_aw = _max_awareness(_persisted_aw, infer_awareness_heuristic(want, gates, query_texts))
 
     if row is None:
