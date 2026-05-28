@@ -71,3 +71,74 @@ def test_reveal_for_layers():
         "layer0", "layer1", "layer2", "layer3", "layer4", "layer5"]
     # rungs beyond free_tier still expose the full unfolding surface
     assert "layer5" in bf.reveal_for("assess")
+
+
+def _seeded():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    return bf, cx
+
+
+def test_record_unlock_invalid_trigger_raises():
+    bf, cx = _seeded()
+    with pytest.raises(ValueError):
+        bf.record_unlock(cx, session_id="s1", trigger="bogus")
+
+
+def test_record_unlock_progresses_rung_and_logs_event():
+    bf, cx = _seeded()
+    st = bf.record_unlock(cx, session_id="s1", trigger="question")
+    assert st["current_rung"] == "inquire"
+    assert "question" in st["unlocked_gates"]
+    st = bf.record_unlock(cx, session_id="s1", trigger="name", first_name="Ada")
+    assert st["current_rung"] == "personalize"
+    assert st["first_name"] == "Ada"
+    assert cx.execute("SELECT COUNT(*) FROM journey_state").fetchone()[0] == 1
+    assert cx.execute("SELECT COUNT(*) FROM journey_events").fetchone()[0] == 2
+    last = cx.execute(
+        "SELECT trigger, rung_before, rung_after FROM journey_events "
+        "ORDER BY id DESC LIMIT 1").fetchone()
+    assert last["trigger"] == "name"
+    assert last["rung_before"] == "inquire"
+    assert last["rung_after"] == "personalize"
+
+
+def test_record_unlock_email_then_tos_reaches_free_tier_and_stamps():
+    bf, cx = _seeded()
+    bf.record_unlock(cx, session_id="s1", trigger="question")
+    bf.record_unlock(cx, session_id="s1", trigger="name", first_name="Ada")
+    st = bf.record_unlock(cx, session_id="s1", trigger="email",
+                          email="ada@example.com")
+    assert st["current_rung"] == "personalize"
+    assert st["tos_agreed_at"] is None
+    st = bf.record_unlock(cx, session_id="s1", trigger="tos", tos=True,
+                          tos_version="rm-tc-2026-05-28")
+    assert st["current_rung"] == "free_tier"
+    assert st["email"] == "ada@example.com"
+    assert st["tos_agreed_at"] is not None
+    assert st["tos_version"] == "rm-tc-2026-05-28"
+
+
+def test_get_state_default_for_unknown_session():
+    bf, cx = _seeded()
+    st = bf.get_state(cx, session_id="nope")
+    assert st["current_rung"] == "arrival"
+    assert st["unlocked_gates"] == []
+    assert st["reveal"] == ["layer0"]
+    assert st["surfaced_cards"] == []
+
+
+def test_get_state_aggregates_across_sessions_by_email():
+    bf, cx = _seeded()
+    bf.record_unlock(cx, session_id="A", trigger="question")
+    bf.record_unlock(cx, session_id="A", trigger="name", first_name="Ada")
+    bf.record_unlock(cx, session_id="A", trigger="email", email="ada@x.com")
+    bf.record_unlock(cx, session_id="A", trigger="tos", tos=True)
+    bf.record_unlock(cx, session_id="B", trigger="video")
+    bf.record_unlock(cx, session_id="B", trigger="email", email="ada@x.com")
+    st = bf.get_state(cx, session_id="B", email="ada@x.com")
+    assert st["current_rung"] == "free_tier"
+    assert set(st["unlocked_gates"]) >= {"question", "name", "video"}
+    assert st["first_name"] == "Ada"
+    assert "layer5" in st["reveal"]
