@@ -728,8 +728,10 @@
     targetEl.textContent = '';
     return fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},
       credentials:'same-origin',
+      // email intentionally omitted: /begin/unlock owns GHL onboarding;
+      // passing it here would double-onboard and risk duplicate contacts
       body:JSON.stringify({query:question, mode:mode, level:'self-healing',
-        name:STATE.first_name||'', email:STATE.email||''})})
+        name:STATE.first_name||'', email:''})})
       .then(function(resp){
         var reader=resp.body.getReader(), dec=new TextDecoder(), buf='';
         function pump(){return reader.read().then(function(res){

@@ -26,6 +26,7 @@ from flask_cors import CORS
 from pinecone import Pinecone
 from openai import OpenAI
 import anthropic
+import begin_funnel
 
 # ── Load .env if present ──────────────────────────────────────────────────────
 _env = Path(__file__).parent / ".env"
@@ -963,8 +964,8 @@ def begin_unlock():
                     _capture_concierge_referral(state["email"], first, last, ref_slug)
                 ghl_onboard_contact(state["email"], first, last,
                                     source_tag="begin", extra_tags=tags)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[begin-onboard] {e!r}", flush=True)
 
         _threading.Thread(target=_onboard, daemon=True).start()
 
@@ -2184,7 +2185,6 @@ _init_referral_tables()
 
 
 # ── /begin funnel journey-state engine ───────────────────────────────────────
-import begin_funnel
 
 def _init_journey_tables():
     with sqlite3.connect(LOG_DB) as cx:
