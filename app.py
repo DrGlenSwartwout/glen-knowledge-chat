@@ -4916,12 +4916,22 @@ def add_person_note(person_id):
 # ── Household endpoints ────────────────────────────────────────────────────────
 
 def _check_console_auth():
-    """Returns None if authorized, or a (response, status) tuple to return."""
+    """Admin-only — returns None if authorized, or a (response, status) tuple."""
     if not CONSOLE_SECRET:
         return None
     key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
     if key != CONSOLE_SECRET:
         return jsonify({"error": "Unauthorized"}), 401
+    return None
+
+
+def _check_console_or_scoped_auth():
+    """Like _check_console_auth but also accepts workspace-scoped tokens
+    (e.g. workspace:shaira). Used by routes that should be reachable by
+    Shaira via /workspace/shaira as well as Glen/Rae via /console."""
+    ok, _ctx, code = _auth()
+    if not ok:
+        return jsonify({"error": "Unauthorized" if code == 401 else "Forbidden"}), code
     return None
 
 
@@ -4979,7 +4989,7 @@ def create_household():
 
     Body: {name, head_person_id, member_person_ids[], address?, notes?, created_by?}
     Returns 200 with the new household, 409 if any member is already in another household."""
-    auth_err = _check_console_auth()
+    auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
     body = request.get_json(force=True) or {}
     name = (body.get("name") or "").strip()
@@ -5153,7 +5163,7 @@ def get_person_household(person_id):
 
 @app.route("/api/household-candidates", methods=["GET"])
 def list_household_candidates():
-    auth_err = _check_console_auth()
+    auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
     status = request.args.get("status", "pending")
     with sqlite3.connect(LOG_DB) as cx:
@@ -5187,7 +5197,7 @@ def list_household_candidates():
 
 @app.route("/api/household-candidates/<int:cand_id>/confirm", methods=["POST"])
 def confirm_household_candidate(cand_id):
-    auth_err = _check_console_auth()
+    auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
     body = request.get_json(force=True) or {}
     name = (body.get("name") or "").strip()
@@ -5233,7 +5243,7 @@ def confirm_household_candidate(cand_id):
 
 @app.route("/api/household-candidates/<int:cand_id>/dismiss", methods=["POST"])
 def dismiss_household_candidate(cand_id):
-    auth_err = _check_console_auth()
+    auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         if not cx.execute("SELECT 1 FROM household_candidates WHERE id=?", (cand_id,)).fetchone():
@@ -5248,7 +5258,7 @@ def dismiss_household_candidate(cand_id):
 
 @app.route("/api/household-candidates/<int:cand_id>/queue-merge", methods=["POST"])
 def queue_merge_from_candidate(cand_id):
-    auth_err = _check_console_auth()
+    auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
     body = request.get_json(force=True) or {}
     keeper_id = body.get("keeper_person_id")
@@ -5289,7 +5299,7 @@ def queue_merge_from_candidate(cand_id):
 
 @app.route("/api/pending-merges", methods=["GET"])
 def list_pending_merges():
-    auth_err = _check_console_auth()
+    auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
     status = request.args.get("status", "pending")
     with sqlite3.connect(LOG_DB) as cx:
@@ -5313,7 +5323,7 @@ def list_pending_merges():
 
 @app.route("/api/pending-merges/<int:merge_id>/apply", methods=["POST"])
 def apply_pending_merge(merge_id):
-    auth_err = _check_console_auth()
+    auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         row = cx.execute("SELECT keeper_person_id, dupe_person_id, status FROM pending_merges WHERE id=?",
@@ -5334,7 +5344,7 @@ def apply_pending_merge(merge_id):
 
 @app.route("/api/pending-merges/<int:merge_id>/cancel", methods=["POST"])
 def cancel_pending_merge(merge_id):
-    auth_err = _check_console_auth()
+    auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         if not cx.execute("SELECT 1 FROM pending_merges WHERE id=?", (merge_id,)).fetchone():
@@ -5346,7 +5356,7 @@ def cancel_pending_merge(merge_id):
 
 @app.route("/api/households/<slug>", methods=["PATCH"])
 def update_household(slug):
-    auth_err = _check_console_auth()
+    auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
     body = request.get_json(force=True) or {}
     ts = datetime.now(timezone.utc).isoformat()
@@ -6034,11 +6044,21 @@ _HOUSEHOLD_TOOL_NAMES = {
 def _call_route(route_fn, path: str, method: str = "POST",
                 json_body: dict | None = None, **kwargs):
     """Invoke an existing Flask route handler via test_request_context.
-    Returns (json_dict, status_code). kwargs are passed to the handler call."""
+    Returns (json_dict, status_code). kwargs are passed to the handler call.
+
+    Pass the CURRENT caller's X-Console-Key through to the nested handler so
+    workspace-scoped tokens (e.g. Shaira) keep their identity rather than
+    silently escalating to admin. Falls back to CONSOLE_SECRET only when
+    invoked outside an HTTP request context."""
+    try:
+        caller_key = request.headers.get("X-Console-Key", "")
+    except RuntimeError:
+        caller_key = ""
+    caller_key = caller_key or CONSOLE_SECRET or ""
     with app.test_request_context(
         path, method=method,
         json=json_body or {},
-        headers={"X-Console-Key": CONSOLE_SECRET or ""},
+        headers={"X-Console-Key": caller_key},
     ):
         resp = route_fn(**kwargs)
     # Flask handlers return either Response or (Response, status) tuple

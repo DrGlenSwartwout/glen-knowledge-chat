@@ -42,6 +42,34 @@
   .ai-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; background: var(--justus-dim); border: 1px solid var(--justus); color: var(--justus); font-size: 13px; font-weight: 600; cursor: pointer; }
   .ai-pill:hover { background: var(--justus); color: #0e1410; }
 
+  /* Tabs */
+  .tab-nav { display: flex; gap: 6px; max-width: 980px; margin: 18px auto -8px; padding: 0 24px; }
+  .tab-tab { padding: 8px 18px; border-radius: 8px 8px 0 0; border: 1px solid var(--border); border-bottom: none;
+             background: var(--surface); color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 600;
+             transition: all .15s; }
+  .tab-tab:hover { color: var(--text); }
+  .tab-tab.active { background: var(--surface-2); color: var(--text); border-color: var(--shaira); }
+
+  /* Household cleanup cards */
+  .hh-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+             margin-bottom: 10px; }
+  .hh-card .hh-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .hh-card .hh-id { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted); }
+  .hh-card .hh-title { font-size: 14px; font-weight: 600; }
+  .hh-card .hh-signal { font-size: 11px; color: var(--muted); margin-left: auto; }
+  .hh-persons { list-style: none; padding: 0; margin: 0 0 10px; font-size: 13px; }
+  .hh-persons li { padding: 3px 0; color: var(--text); font-family: ui-monospace, Menlo, monospace; }
+  .hh-persons li .pid { color: var(--shaira); }
+  .hh-persons li .email { color: var(--muted); }
+  .hh-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hh-actions .btn { font-size: 12px; padding: 5px 10px; }
+  .hh-merge .hh-keeper { color: var(--shaira); }
+  .hh-merge .hh-dupe   { color: var(--danger); text-decoration: line-through; }
+  .hh-empty { color: var(--muted); font-style: italic; padding: 20px 0; text-align: center; }
+  .hh-flash { padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; }
+  .hh-flash.ok   { background: var(--shaira-dim); color: var(--shaira); border: 1px solid var(--shaira); }
+  .hh-flash.err  { background: rgba(214,109,109,.15); color: var(--danger); border: 1px solid var(--danger); }
+
   /* Layout */
   main { max-width: 980px; margin: 0 auto; padding: 24px; }
   section { margin-bottom: 32px; }
@@ -200,11 +228,20 @@
   <h1>Aloha <span class="accent">Shaira</span> ✨</h1>
   <div class="header-right">
     <span class="ai-pill" onclick="openGeneralAsk()" title="Ask Justus anything">✦ Ask Justus</span>
-    <button class="btn" onclick="loadState()">Refresh</button>
+    <button class="btn" id="hdr-refresh-btn" onclick="loadState()">Refresh</button>
   </div>
 </header>
 
+<nav class="tab-nav">
+  <button class="tab-tab active" id="tab-btn-tasks"     onclick="switchTab('tasks')">Tasks</button>
+  <button class="tab-tab"        id="tab-btn-household" onclick="switchTab('household')">Household Cleanup</button>
+</nav>
+
 <main>
+
+  <div id="hh-flash"></div>
+
+  <div id="tab-tasks">
 
   <div id="soft-banner" class="soft-banner hidden">
     ⚠️ <span id="soft-banner-text">You have 2 projects in process — want to focus on one before starting another?</span>
@@ -248,6 +285,27 @@
     </div>
     <div id="complete-container" style="display:none;"></div>
   </section>
+
+  </div><!-- /#tab-tasks -->
+
+  <div id="tab-household" style="display:none;">
+    <section>
+      <div class="section-header">
+        <span class="section-title">Household Candidates</span>
+        <span class="section-count" id="hh-cand-count"></span>
+        <button class="section-action" onclick="loadHousehold()">refresh</button>
+      </div>
+      <div id="hh-cand-container"><div class="hh-empty">Loading…</div></div>
+    </section>
+
+    <section>
+      <div class="section-header">
+        <span class="section-title">Pending Merges</span>
+        <span class="section-count" id="hh-merge-count"></span>
+      </div>
+      <div id="hh-merge-container"><div class="hh-empty">Loading…</div></div>
+    </section>
+  </div>
 
 </main>
 
@@ -936,6 +994,166 @@ async function sendGeneralAsk() {
   }
   input.disabled = false;
   input.focus();
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+let currentTab = 'tasks';
+
+function switchTab(name) {
+  currentTab = name;
+  document.getElementById('tab-tasks').style.display     = (name === 'tasks')     ? '' : 'none';
+  document.getElementById('tab-household').style.display = (name === 'household') ? '' : 'none';
+  document.getElementById('tab-btn-tasks').classList.toggle('active',     name === 'tasks');
+  document.getElementById('tab-btn-household').classList.toggle('active', name === 'household');
+  // Header Refresh button retargets per tab
+  const btn = document.getElementById('hdr-refresh-btn');
+  if (btn) btn.onclick = (name === 'household') ? loadHousehold : loadState;
+  if (name === 'household') loadHousehold();
+}
+
+// ── Household Cleanup ────────────────────────────────────────────────────────
+function hhFlash(msg, isError) {
+  const el = document.getElementById('hh-flash');
+  el.innerHTML = `<div class="hh-flash ${isError ? 'err' : 'ok'}">${escapeHtml(msg)}</div>`;
+  setTimeout(() => { el.innerHTML = ''; }, isError ? 6000 : 3500);
+}
+
+async function loadHousehold() {
+  const candC = document.getElementById('hh-cand-container');
+  const mergeC = document.getElementById('hh-merge-container');
+  candC.innerHTML = '<div class="hh-empty">Loading…</div>';
+  mergeC.innerHTML = '<div class="hh-empty">Loading…</div>';
+  try {
+    const [candResp, mergeResp] = await Promise.all([
+      api('/api/household-candidates?status=pending'),
+      api('/api/pending-merges?status=pending'),
+    ]);
+    const candData  = await candResp.json();
+    const mergeData = await mergeResp.json();
+    renderHHCandidates(candData.candidates || []);
+    renderHHMerges(mergeData.merges || []);
+  } catch (e) {
+    candC.innerHTML  = `<div class="hh-empty">Error: ${escapeHtml(e.message)}</div>`;
+    mergeC.innerHTML = '';
+  }
+}
+
+function renderHHCandidates(list) {
+  document.getElementById('hh-cand-count').textContent = list.length ? `(${list.length})` : '';
+  const c = document.getElementById('hh-cand-container');
+  if (!list.length) { c.innerHTML = '<div class="hh-empty">No pending candidates.</div>'; return; }
+  c.innerHTML = list.map(cand => {
+    const persons = (cand.persons || []).map(p =>
+      `<li><span class="pid">#${p.id}</span> ${escapeHtml(p.name || '?')} ` +
+      `<span class="email">${escapeHtml(p.email || '')}</span></li>`
+    ).join('');
+    const canQueueMerge = (cand.person_ids || []).length === 2;
+    return `
+      <div class="hh-card" data-cand-id="${cand.id}">
+        <div class="hh-head">
+          <span class="hh-id">#${cand.id}</span>
+          <span class="hh-title">${(cand.persons||[]).length} persons</span>
+          <span class="hh-signal">${escapeHtml(cand.signal || '')} · ${(cand.detected_at||'').slice(0,10)}</span>
+        </div>
+        <ul class="hh-persons">${persons}</ul>
+        <div class="hh-actions">
+          <button class="btn btn-primary" onclick="hhConfirm(${cand.id})">Confirm as household</button>
+          <button class="btn" onclick="hhDismiss(${cand.id})">Dismiss</button>
+          ${canQueueMerge ? `<button class="btn btn-danger" onclick="hhQueueMerge(${cand.id})">These are duplicates → queue merge</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderHHMerges(list) {
+  document.getElementById('hh-merge-count').textContent = list.length ? `(${list.length})` : '';
+  const c = document.getElementById('hh-merge-container');
+  if (!list.length) { c.innerHTML = '<div class="hh-empty">No pending merges.</div>'; return; }
+  c.innerHTML = list.map(m => {
+    const k = m.keeper || {}; const d = m.dupe || {};
+    const kName = ((k.first_name||'') + ' ' + (k.last_name||'')).trim() || k.email || '?';
+    const dName = ((d.first_name||'') + ' ' + (d.last_name||'')).trim() || d.email || '?';
+    return `
+      <div class="hh-card hh-merge" data-merge-id="${m.id}">
+        <div class="hh-head">
+          <span class="hh-id">#${m.id}</span>
+          <span class="hh-title">${escapeHtml(kName)}</span>
+          <span class="hh-signal">queued ${(m.queued_at||'').slice(0,10)}</span>
+        </div>
+        <ul class="hh-persons">
+          <li class="hh-keeper"><span class="pid">keep #${k.id||'?'}</span> ${escapeHtml(kName)} <span class="email">${escapeHtml(k.email||'')}</span></li>
+          <li class="hh-dupe"><span class="pid">drop #${d.id||'?'}</span> ${escapeHtml(dName)} <span class="email">${escapeHtml(d.email||'')}</span></li>
+        </ul>
+        <div class="hh-actions">
+          <button class="btn btn-danger" onclick="hhApplyMerge(${m.id})">Apply merge (irreversible)</button>
+          <button class="btn" onclick="hhCancelMerge(${m.id})">Cancel</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function hhConfirm(candId) {
+  const name = prompt(`Household name for candidate #${candId} (e.g. "Bacon Family"):`);
+  if (!name) return;
+  const headStr = prompt(`Head person id? (the number after "#" in the list above):`);
+  const head = parseInt(headStr, 10);
+  if (!Number.isFinite(head)) { hhFlash('Need a valid person id.', true); return; }
+  try {
+    const r = await api(`/api/household-candidates/${candId}/confirm`, {
+      method: 'POST', body: { name, head_person_id: head },
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    hhFlash(`Confirmed: ${j.household && j.household.name} (slug=${j.household && j.household.slug})`);
+    loadHousehold();
+  } catch (e) { hhFlash('Confirm failed: ' + e.message, true); }
+}
+
+async function hhDismiss(candId) {
+  if (!confirm(`Dismiss candidate #${candId}? (not a household, not duplicates)`)) return;
+  try {
+    const r = await api(`/api/household-candidates/${candId}/dismiss`, { method: 'POST', body: {} });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    hhFlash(`Dismissed #${candId}.`);
+    loadHousehold();
+  } catch (e) { hhFlash('Dismiss failed: ' + e.message, true); }
+}
+
+async function hhQueueMerge(candId) {
+  const keeperStr = prompt(`Keeper person id for candidate #${candId}? (the record to PRESERVE):`);
+  const keeper = parseInt(keeperStr, 10);
+  if (!Number.isFinite(keeper)) { hhFlash('Need a valid person id.', true); return; }
+  try {
+    const r = await api(`/api/household-candidates/${candId}/queue-merge`, {
+      method: 'POST', body: { keeper_person_id: keeper },
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    hhFlash(`Queued merge #${j.merge_id} (keep #${j.keeper_id}, drop #${j.dupe_id}).`);
+    loadHousehold();
+  } catch (e) { hhFlash('Queue-merge failed: ' + e.message, true); }
+}
+
+async function hhApplyMerge(mergeId) {
+  if (!confirm(`Apply merge #${mergeId}? This will permanently delete the dupe person row. Cannot be undone.`)) return;
+  try {
+    const r = await api(`/api/pending-merges/${mergeId}/apply`, { method: 'POST', body: {} });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    const res = j.result || {};
+    hhFlash(`Merged: kept #${res.keeper_id}, deleted #${res.deleted_dupe_id}. Fields filled: ${(res.fields_filled||[]).length}, tags added: ${res.tags_added||0}.`);
+    loadHousehold();
+  } catch (e) { hhFlash('Apply failed: ' + e.message, true); }
+}
+
+async function hhCancelMerge(mergeId) {
+  if (!confirm(`Cancel pending merge #${mergeId}?`)) return;
+  try {
+    const r = await api(`/api/pending-merges/${mergeId}/cancel`, { method: 'POST', body: {} });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    hhFlash(`Cancelled merge #${mergeId}.`);
+    loadHousehold();
+  } catch (e) { hhFlash('Cancel failed: ' + e.message, true); }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
