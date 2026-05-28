@@ -220,3 +220,39 @@ def test_set_awareness_persists_upward_and_stamps():
     bf.set_awareness(cx, "s1", "problem")
     st = bf.get_state(cx, session_id="s1")
     assert st["awareness_stage"] == "product"
+
+
+def test_deep_link_trigger_valid_but_not_a_gate():
+    import begin_funnel as bf
+    assert "deep_link" in bf.VALID_TRIGGERS
+    assert "deep_link" not in bf.GATE_TRIGGERS
+
+
+def test_record_unlock_persists_awareness_from_query_texts():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    st = bf.record_unlock(cx, session_id="s1", trigger="question",
+                          query_texts=["tell me about EVOX dosing"])
+    assert st["awareness_stage"] == "product"
+    assert "layer5" in st["reveal"]   # product-aware gate-skip even at 'inquire' rung
+
+
+def test_record_unlock_deep_link_sets_most_aware():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    st = bf.record_unlock(cx, session_id="s1", trigger="deep_link", want="e4l")
+    assert st["awareness_stage"] == "most"
+    assert st["current_rung"] == "arrival"   # deep_link is NOT a commitment gate
+    assert "layer5" in st["reveal"]
+
+
+def test_get_state_reveal_uses_awareness():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    bf.record_unlock(cx, session_id="s1", trigger="deep_link", want="voice")
+    st = bf.get_state(cx, session_id="s1")
+    assert st["awareness_stage"] == "most"
+    assert "layer5" in st["reveal"]

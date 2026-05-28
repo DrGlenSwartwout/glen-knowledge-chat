@@ -67,11 +67,12 @@ RUNG_INDEX = {r: i for i, r in enumerate(RUNGS)}
 VALID_TRIGGERS = {
     "load", "video", "scroll", "question", "name", "email", "tos",
     "voice", "scan", "quiz", "paid_fork", "purchase", "share_video",
+    "deep_link",
 }
 
 # Gate keys stored in unlocked_gates (email/tos drive their own columns, but
 # are still recorded as gates for completeness).
-GATE_TRIGGERS = VALID_TRIGGERS - {"load"}
+GATE_TRIGGERS = VALID_TRIGGERS - {"load", "deep_link"}
 
 # ---------------------------------------------------------------------------
 # Awareness-stage inference (Slice 2)
@@ -196,7 +197,8 @@ def _row_for_session(cx, session_id):
 # ---------------------------------------------------------------------------
 
 def record_unlock(cx, *, session_id, trigger, email="", detail="",
-                  first_name="", tos=False, ref_slug="", tos_version=""):
+                  first_name="", tos=False, ref_slug="", tos_version="",
+                  want="", query_texts=None):
     if trigger not in VALID_TRIGGERS:
         raise ValueError(f"invalid trigger: {trigger!r}")
     cx.row_factory = sqlite3.Row
@@ -230,6 +232,9 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
     rung_after = compute_rung(gates, new_email, bool(tos_at))
     gates_json = json.dumps(sorted(gates))
 
+    _persisted_aw = (existing.get("awareness_stage") if row is not None else "unknown") or "unknown"
+    _new_aw = _max_awareness(_persisted_aw, infer_awareness_heuristic(want, gates, query_texts))
+
     if row is None:
         cx.execute("""
             INSERT INTO journey_state
@@ -238,17 +243,17 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
                tos_version, last_signal, created_at, updated_at)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (session_id, new_email, new_first, new_ref, rung_after,
-              gates_json, "unknown", "none", tos_at, tos_ver, trigger,
+              gates_json, _new_aw, "none", tos_at, tos_ver, trigger,
               now, now))
     else:
         cx.execute("""
             UPDATE journey_state SET
               email=?, first_name=?, ref_slug=?, current_rung=?,
-              unlocked_gates=?, tos_agreed_at=?, tos_version=?,
-              last_signal=?, updated_at=?
+              unlocked_gates=?, awareness_stage=?, tos_agreed_at=?,
+              tos_version=?, last_signal=?, updated_at=?
             WHERE id=?
         """, (new_email, new_first, new_ref, rung_after, gates_json,
-              tos_at, tos_ver, trigger, now, row["id"]))
+              _new_aw, tos_at, tos_ver, trigger, now, row["id"]))
 
     cx.execute("""
         INSERT INTO journey_events
@@ -313,8 +318,7 @@ def get_state(cx, session_id="", email=""):
         tos_ver = tos_ver or r["tos_version"]
         if (r["path"] or "none") != "none":
             path = r["path"]
-        if (r["awareness_stage"] or "unknown") != "unknown":
-            awareness = r["awareness_stage"]
+        awareness = _max_awareness(awareness, r["awareness_stage"] or "unknown")
         if created_at is None or (r["created_at"] and r["created_at"] < created_at):
             created_at = r["created_at"]
 
@@ -324,7 +328,7 @@ def get_state(cx, session_id="", email=""):
         "ref_slug": ref_slug, "current_rung": rung,
         "unlocked_gates": sorted(gates), "awareness_stage": awareness,
         "path": path, "tos_agreed_at": tos_at, "tos_version": tos_ver,
-        "reveal": reveal_for(rung), "surfaced_cards": [],
+        "reveal": reveal_for(rung, awareness), "surfaced_cards": [],
     }
 
 
