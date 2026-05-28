@@ -888,6 +888,26 @@ def concierge_page():
     return resp
 
 
+def _recent_query_texts(session_id, email, limit=8):
+    """Most-recent chat questions for this visitor (for awareness inference)."""
+    out = []
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            if email:
+                rows = cx.execute(
+                    "SELECT query FROM query_log WHERE email=? OR session_id=? "
+                    "ORDER BY id DESC LIMIT ?", (email, session_id, limit)).fetchall()
+            else:
+                rows = cx.execute(
+                    "SELECT query FROM query_log WHERE session_id=? "
+                    "ORDER BY id DESC LIMIT ?", (session_id, limit)).fetchall()
+            out = [r["query"] for r in rows if r["query"]]
+    except Exception:
+        pass
+    return out
+
+
 @app.route("/begin")
 def begin_page():
     resp = send_from_directory(STATIC, "begin.html")
@@ -934,6 +954,11 @@ def begin_unlock():
     tos = bool(data.get("tos"))
     detail = (data.get("detail") or "").strip()
     ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
+    want = (data.get("want") or "").strip().lower()
+
+    # Fetch recent chat queries OUTSIDE the lock block (_recent_query_texts
+    # acquires _db_lock itself; _db_lock is not reentrant).
+    query_texts = _recent_query_texts(session_id, email)
 
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -942,6 +967,7 @@ def begin_unlock():
                 email=email, detail=detail, first_name=name, tos=tos,
                 ref_slug=ref_slug,
                 tos_version=BEGIN_TOS_VERSION if (tos or trigger == "tos") else "",
+                want=want, query_texts=query_texts,
             )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -969,7 +995,11 @@ def begin_unlock():
 
         _threading.Thread(target=_onboard, daemon=True).start()
 
-    resp = jsonify(state)
+    redirect = begin_funnel.resolve_want(want, ref_slug) if want else None
+    payload = dict(state)
+    if redirect:
+        payload["redirect"] = redirect
+    resp = jsonify(payload)
     if not request.cookies.get("amg_session"):
         resp.set_cookie(
             "amg_session", session_id, max_age=60 * 60 * 24 * 365,

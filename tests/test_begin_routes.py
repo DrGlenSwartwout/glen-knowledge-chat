@@ -117,3 +117,35 @@ def test_begin_unlock_onboards_once_on_free_tier_transition(monkeypatch, tmp_pat
     time.sleep(0.3)
     with lock:
         assert len(calls) == 1, f"expected exactly one onboarding call, got {len(calls)}"
+
+
+def test_begin_unlock_deep_link_returns_redirect(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "sdl")
+    r = client.post("/begin/unlock", json={"trigger": "deep_link", "want": "e4l", "ref": "Jane"})
+    body = r.get_json()
+    assert body["awareness_stage"] == "most"
+    assert body["redirect"].startswith("https://truly.vip/E4L")
+    assert "utm_source=Jane" in body["redirect"]
+
+
+def test_begin_unlock_deep_link_unbuilt_target_no_redirect(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "sdl2")
+    r = client.post("/begin/unlock", json={"trigger": "deep_link", "want": "voice"})
+    body = r.get_json()
+    assert body["awareness_stage"] == "most"
+    assert "redirect" not in body or body.get("redirect") in (None, "")
+    assert "layer5" in body["reveal"]
