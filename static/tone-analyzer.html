@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Vocal Tone Analyzer — Cosmic Octave Reference</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #1a1d24;
+    --panel-2: #11141a;
+    --ink: #e8ecf1;
+    --dim: #8a93a3;
+    --hair: #232733;
+    --accent: #7ad7c5;
+    --warn: #f0b66b;
+    --bad: #e07a7a;
+    --good: #7ad79a;
+    /* Five-element palette — voice quality metrics inherit these */
+    --wood:  #5fd97a;   /* Brightness · Chakras 2 & 6 */
+    --fire:  #d8324a;   /* Harmonics-to-Noise · Chakra 4 */
+    --earth: #f0b66b;   /* Jitter · Chakra 5 */
+    --metal: #d6dde6;   /* Frequency · Chakras 1 & 7 */
+    --water: #6aa8e8;   /* Shimmer · Chakra 3 */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .app {
+    width: 100%;
+    max-width: 640px;
+    background: var(--panel);
+    border-radius: 18px;
+    padding: 28px 32px 24px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+  }
+  .head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 6px;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.2px;
+  }
+  select#refPicker {
+    background: var(--panel-2);
+    color: var(--ink);
+    border: 1px solid var(--hair);
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .ref {
+    color: var(--dim);
+    font-size: 13px;
+    margin-bottom: 22px;
+  }
+  .freq {
+    font-variant-numeric: tabular-nums;
+    font-size: 64px;
+    font-weight: 200;
+    text-align: center;
+    margin: 4px 0 2px;
+    letter-spacing: -1px;
+  }
+  .freq-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0 2px;
+  }
+  .freq-row .freq {
+    flex: 1;
+    margin: 0;
+  }
+  .freq-row button {
+    flex: 0 0 auto;
+    padding: 8px 14px;
+    font-size: 12px;
+    border-radius: 8px;
+    min-width: 76px;
+  }
+  .freq .unit {
+    font-size: 24px;
+    color: var(--dim);
+    margin-left: 8px;
+    font-weight: 300;
+  }
+  .cents {
+    text-align: center;
+    color: var(--dim);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 14px;
+    height: 18px;
+  }
+
+  /* Harmonic ladder */
+  .harmonics {
+    background: var(--panel-2);
+    border: 1px solid #ffffff;
+    border-radius: 12px;
+    padding: 12px 14px 10px;
+    margin-bottom: 18px;
+    position: relative;
+    cursor: help;
+  }
+  .harmonics-label {
+    color: #ffffff;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 8px;
+  }
+  .harmonics .q-popup-harmonics { color: var(--ink); }
+  .harmonics:hover .q-popup-harmonics,
+  .harmonics:focus-within .q-popup-harmonics,
+  .q-popup-harmonics:hover { opacity: 1; pointer-events: auto; }
+  .harmonics .q-popup-meta { color: var(--metal); }
+  canvas#harmonics {
+    display: block;
+    width: 100%;
+    height: 110px;
+  }
+
+  .meter {
+    height: 6px;
+    background: var(--hair);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 0 0 18px;
+  }
+  .meter-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--bad), var(--warn), var(--good));
+    transition: width 80ms linear;
+  }
+
+  .score-card {
+    background: var(--panel-2);
+    border-radius: 14px;
+    padding: 22px 20px 20px;
+    text-align: center;
+    margin-bottom: 14px;
+    border: 1px solid #ffffff;
+  }
+  .score-label {
+    color: #ffffff;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+  }
+  .score {
+    font-size: 80px;
+    font-weight: 200;
+    line-height: 1;
+    margin: 0;
+    letter-spacing: -2px;
+  }
+  .score-detail {
+    color: var(--dim);
+    font-size: 14px;
+    margin-top: 8px;
+    min-height: 20px;
+  }
+  /* Softer Five-Phase score palette */
+  .score.s5p { color: #e0e6ed; }  /* Metal-soft   — Perfect Pitch, ±10¢ */
+  .score.s5  { color: #9bcfa8; }  /* Wood-soft    — slight sharp/flat, ±10–50¢ */
+  .score.s4  { color: #e8c992; }  /* Earth-soft   — semitone, ±50–150¢ */
+  .score.s3  { color: #a8c0d9; }  /* Water-soft   — whole tone, ±150–300¢ */
+  .score.s2  { color: #d49a9a; }  /* Fire-soft    — major third, ±300–550¢ */
+  .score.s1  { color: #b09bc9; }  /* Shen-shadow  — fifth or beyond, >±550¢ */
+  .score.idle { color: var(--dim); font-size: 56px; }
+
+  /* Voice quality panel */
+  .quality {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .q-cell {
+    background: var(--panel-2);
+    border: 1px solid var(--hair);
+    border-radius: 10px;
+    padding: 10px 12px;
+    position: relative;
+  }
+  .q-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: help;
+  }
+  .q-name { font-weight: 600; }
+  /* Element-tinted titles */
+  .qe-earth .q-name { color: var(--earth); }
+  .qe-water .q-name { color: var(--water); }
+  .qe-fire  .q-name { color: var(--fire); }
+  .qe-wood  .q-name { color: var(--wood); }
+  /* Subtle element-tinted top edge on each cell */
+  .qe-earth { box-shadow: inset 0 2px 0 0 var(--earth); }
+  .qe-water { box-shadow: inset 0 2px 0 0 var(--water); }
+  .qe-fire  { box-shadow: inset 0 2px 0 0 var(--fire); }
+  .qe-wood  { box-shadow: inset 0 2px 0 0 var(--wood); }
+  .q-tag {
+    font-size: 9px;
+    color: var(--dim);
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0.3px;
+  }
+  .q-tag.ok   { color: #7ad79a; }
+  .q-tag.warn { color: #f0b66b; }
+  .q-tag.bad  { color: #e07a7a; }
+  .q-value {
+    font-variant-numeric: tabular-nums;
+    font-size: 20px;
+    font-weight: 300;
+    margin-top: 4px;
+    letter-spacing: -0.3px;
+  }
+  .q-value .unit {
+    font-size: 11px;
+    color: var(--dim);
+    margin-left: 4px;
+  }
+
+  /* Hover popup with element + chakra + interpretation */
+  .q-popup {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 280px;
+    max-width: calc(100vw - 48px);
+    background: #0c0e13;
+    border: 1px solid var(--hair);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--ink);
+    z-index: 20;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+    text-align: left;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+  }
+  .q-cell:hover .q-popup,
+  .q-cell:focus-within .q-popup,
+  .freq-meta:hover + .q-popup-freq,
+  .freq-meta:focus + .q-popup-freq,
+  .q-popup-freq:hover { opacity: 1; pointer-events: auto; }
+  .q-popup::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 7px solid transparent;
+    border-top-color: var(--hair);
+  }
+  .q-popup-meta {
+    color: var(--dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.1px;
+    margin-bottom: 6px;
+  }
+  .qe-earth .q-popup-meta { color: var(--earth); }
+  .qe-water .q-popup-meta { color: var(--water); }
+  .qe-fire  .q-popup-meta { color: var(--fire); }
+  .qe-wood  .q-popup-meta { color: var(--wood); }
+  .freq-section .q-popup-meta { color: var(--metal); }
+  .q-popup-thr {
+    color: var(--dim);
+    font-size: 11px;
+    margin-top: 6px;
+  }
+
+  /* Resonance Report — appears after Stop if any stressed areas */
+  .report {
+    background: var(--panel-2);
+    border: 1px solid var(--hair);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .report-header {
+    color: var(--dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 12px;
+  }
+  .report-area + .report-area {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--hair);
+  }
+  .report-area-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .report-area-meta {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.1px;
+    color: var(--dim);
+    margin-bottom: 8px;
+  }
+  .report-area-sig {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--ink);
+    margin-bottom: 10px;
+  }
+  .report-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .report-col-label {
+    color: var(--dim);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 4px;
+  }
+  .report-list {
+    margin: 0;
+    padding-left: 16px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--ink);
+  }
+  .report-list li { margin-bottom: 2px; }
+  .report-coherent {
+    font-size: 13px;
+    color: var(--good);
+    line-height: 1.5;
+  }
+  @media (max-width: 480px) {
+    .report-cols { grid-template-columns: 1fr; }
+  }
+
+  /* Resonance Report — opt-in gate */
+  .report-optin {
+    background: var(--panel-2);
+    border: 1px solid var(--hair);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .report-optin-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .report-optin-body {
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--ink);
+    margin-bottom: 12px;
+  }
+  .report-optin-body .muted { color: var(--dim); }
+  .report-optin .controls button {
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+
+  /* Resonance Report — trend strip (shown when 2+ saved sessions) */
+  .report-trend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    align-items: baseline;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    border: 1px solid var(--hair);
+    border-radius: 10px;
+    background: var(--panel);
+    font-size: 11px;
+  }
+  .trend-label {
+    color: var(--dim);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+  }
+  .trend-chip { color: var(--ink); font-size: 11px; }
+  .trend-chip .arrow { font-weight: 700; padding: 0 1px; }
+  .trend-chip .arrow.good { color: var(--good); }
+  .trend-chip .arrow.bad { color: #e25555; }
+  .trend-chip .arrow.neutral { color: var(--dim); }
+  .trend-meta { color: var(--dim); font-size: 11px; margin-left: auto; }
+
+  .report-actions {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--hair);
+    font-size: 11px;
+    color: var(--dim);
+  }
+  .report-actions a {
+    color: var(--dim);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .report-actions a:hover { color: var(--ink); }
+
+  /* Frequency section (upper portion) — Metal · Chakras 1 & 7 */
+  .freq-section { position: relative; }
+  .freq-meta {
+    text-align: center;
+    color: var(--metal);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 6px;
+    opacity: 0.75;
+    cursor: help;
+    display: inline-block;
+    width: 100%;
+    padding: 4px 0;
+  }
+  .q-popup-freq {
+    /* Position below the meta label, anchored to the section */
+    top: 30px;
+    bottom: auto;
+  }
+  .q-popup-freq::after {
+    /* Arrow points UP (popup is below the trigger) */
+    top: auto;
+    bottom: 100%;
+    border-top-color: transparent;
+    border-bottom-color: var(--hair);
+  }
+
+  .controls {
+    display: flex;
+    gap: 12px;
+  }
+  button {
+    flex: 1;
+    background: var(--accent);
+    color: #0f1115;
+    border: 0;
+    padding: 16px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.06s, opacity 0.2s;
+    font-family: inherit;
+  }
+  button.secondary {
+    background: #2a2f3a;
+    color: var(--ink);
+  }
+  button:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  .status {
+    color: var(--dim);
+    font-size: 12px;
+    text-align: center;
+    margin-top: 14px;
+    min-height: 16px;
+  }
+
+  /* Playback comparison panel — appears after Stop */
+  .playback {
+    margin-top: 16px;
+    padding: 14px 16px;
+    background: var(--panel-2, #11141a);
+    border: 1px solid var(--hair, #232733);
+    border-radius: 12px;
+    display: none;
+  }
+  .playback.show { display: block; }
+  .playback-meta {
+    color: var(--dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+  .playback-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .playback-row button {
+    flex: 1;
+    padding: 12px 10px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .playback-row button.primary {
+    background: linear-gradient(135deg, var(--accent, #7ad7c5), #b06bd8);
+    color: #0f1115;
+  }
+  .playback-row button.playing {
+    background: var(--good, #7ad79a);
+  }
+  .playback-status {
+    color: var(--dim);
+    font-size: 11px;
+    text-align: center;
+    margin-top: 4px;
+    min-height: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+  details {
+    margin-top: 16px;
+    color: var(--dim);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  details summary { cursor: pointer; }
+  details + details { margin-top: 6px; }
+  table { border-collapse: collapse; margin-top: 8px; }
+  td { padding: 2px 12px 2px 0; font-variant-numeric: tabular-nums; vertical-align: top; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="head">
+    <h1>Vocal Tone Analyzer</h1>
+    <select id="refPicker" title="Cosmic Octave reference">
+      <option value="172.06">172.06 Hz · Earth Day</option>
+      <option value="136.10">136.10 Hz · OM / Earth Year</option>
+      <option value="126.22">126.22 Hz · Sun</option>
+      <option value="210.42">210.42 Hz · Synodic Moon</option>
+      <option value="194.18">194.18 Hz · Mars</option>
+    </select>
+  </div>
+  <div class="ref">Reference: <strong id="refText" style="color: var(--ink);">172.06 Hz</strong> &middot; sustain a steady "aaah" for 2–3 seconds</div>
+
+  <div class="freq-section" tabindex="0">
+    <div class="freq-meta">Frequency · Metal · Chakras 1 &amp; 7</div>
+    <div class="freq-row">
+      <button id="startBtn">Start</button>
+      <div class="freq" id="freq">— <span class="unit">Hz</span></div>
+      <button id="stopBtn" class="secondary" disabled>Stop</button>
+    </div>
+    <div class="cents" id="cents">&nbsp;</div>
+
+    <div class="harmonics" tabindex="0">
+      <div class="harmonics-label">Harmonic Ladder</div>
+      <canvas id="harmonics"></canvas>
+      <div class="q-popup q-popup-harmonics">
+        <div class="q-popup-meta">Overtone Series · Music of the Spheres</div>
+        <div>The fundamental's <b>natural overtone series</b> — partials at f₀, 2f₀, 3f₀ … 8f₀. Each rung's height is the FFT magnitude at that harmonic. A clean, well-supported voice shows a tall ladder with strong upper harmonics; a tight, breathy, or fatigued voice flattens above the 3rd or 4th rung.</div>
+        <div class="q-popup-thr">The ladder is the Pythagorean architecture inside every sustained tone — octave (2:1), fifth (3:2), fourth (4:3), major third (5:4) unfold automatically from a single fundamental. Watching the upper rungs rise and fall is watching the <em>coherence</em> of your voice in real time. Spirit mineral: <b>Gold</b> (the noble center, shared with Fire and Metal — the integrating principle).</div>
+      </div>
+    </div>
+
+    <div class="meter"><div class="meter-fill" id="vol"></div></div>
+
+    <div class="score-card">
+      <div class="score-label" id="scoreLabel">Score</div>
+      <div class="score idle" id="score">—</div>
+      <div class="score-detail" id="detail">Press Start and sing a steady tone</div>
+    </div>
+
+    <div class="q-popup q-popup-freq">
+      <div class="q-popup-meta">Metal element · Chakras 1 &amp; 7 · Gold</div>
+      <div>The fundamental tone scored against the cosmic-octave reference. Color tiers (green → teal → yellow → blue → red → violet) mark the <em>phase</em> of musical interval distance from reference: perfect, very slight, half-tone, full-tone, third, fifth-or-beyond.</div>
+      <div class="q-popup-thr">Metal: distillation, refinement, the essential tone. Chakras 1 &amp; 7: the root-to-crown axis the fundamental literally spans. Spirit mineral: <b>Gold</b> (shared with Fire — the noble, incorruptible center).</div>
+    </div>
+  </div>
+
+  <div class="quality">
+    <div class="q-cell qe-earth" tabindex="0">
+      <div class="q-label"><span class="q-name">Jitter</span> <span class="q-tag" id="jitTag">—</span></div>
+      <div class="q-value" id="jitVal">— <span class="unit">%</span></div>
+      <div class="q-popup">
+        <div class="q-popup-meta">Earth element · Chakra 5 · Rhodium</div>
+        <div><b>Cycle-to-cycle pitch variation.</b> Healthy &lt; 1.04% / borderline &lt; 2.0% / elevated above. Elevated = laryngeal stress, vocal fatigue, autonomic dysregulation, early neurological-tremor marker.</div>
+        <div class="q-popup-thr">Earth: groundedness &amp; stability of the sustained tone. Chakra 5 (throat): expression-gateway — when grounding wavers, pitch micro-instability shows here first. Spirit mineral: <b>Rhodium</b> (shared with Water — the immutable substrate of stability and flow).</div>
+      </div>
+    </div>
+    <div class="q-cell qe-water" tabindex="0">
+      <div class="q-label"><span class="q-name">Shimmer</span> <span class="q-tag" id="shimTag">—</span></div>
+      <div class="q-value" id="shimVal">— <span class="unit">%</span></div>
+      <div class="q-popup">
+        <div class="q-popup-meta">Water element · Chakra 3 · Rhodium</div>
+        <div><b>Cycle-to-cycle amplitude variation.</b> Healthy &lt; 3.81% / borderline &lt; 7.0% / elevated above. Elevated = breathy voice, incomplete vocal-fold closure, dysphonia. Same vocal-pathology family as jitter.</div>
+        <div class="q-popup-thr">Water: flow and adaptive amplitude. Chakra 3 (solar plexus): seat of breath support and vital power that drives loudness — shimmer reflects the steadiness of that power. Spirit mineral: <b>Rhodium</b> (shared with Earth — the immutable substrate of stability and flow).</div>
+      </div>
+    </div>
+    <div class="q-cell qe-fire" tabindex="0">
+      <div class="q-label"><span class="q-name">Harmonics-to-Noise</span> <span class="q-tag" id="hnrTag">—</span></div>
+      <div class="q-value" id="hnrVal">— <span class="unit">dB</span></div>
+      <div class="q-popup">
+        <div class="q-popup-meta">Fire element · Chakra 4 · Gold</div>
+        <div><b>Harmonics-to-Noise Ratio (HNR)</b> — clean periodic vibration vs aperiodic noise (turbulent airflow, breathiness). Healthy &gt; 20 dB / borderline &gt; 12 dB / lower = elevated noise. Drops early in illness, exhaustion, dehydration, laryngeal inflammation — often before you'd consciously notice.</div>
+        <div class="q-popup-thr">Fire: warmth, coherence, illumination. Chakra 4 (heart): the resonant center — high HNR is heart-sourced clarity; noise creeps in as fire dims. Spirit mineral: <b>Gold</b> (shared with Metal — the noble, incorruptible center).</div>
+      </div>
+    </div>
+    <div class="q-cell qe-wood" tabindex="0">
+      <div class="q-label"><span class="q-name">Brightness</span> <span class="q-tag" id="centTag">—</span></div>
+      <div class="q-value" id="centVal">— <span class="unit">Hz</span></div>
+      <div class="q-popup">
+        <div class="q-popup-meta">Wood element · Chakras 2 &amp; 6 · Iridium</div>
+        <div><b>Spectral centroid</b> — weighted-mean frequency across 80–8000 Hz. No fixed clinical threshold; track your own baseline. Drops in fatigue, depression, low energy. Higher = more engaged, energetic speech.</div>
+        <div class="q-popup-thr">Wood: growth, upward energy, creative spark. Chakra 2 (sacral, creative flow) &amp; Chakra 6 (third eye, vision &amp; insight) — brightness is the upward-reaching life-force in the voice. Spirit mineral: <b>Iridium</b> (the singular catalyst of growth and emergence).</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="status">&nbsp;</div>
+
+  <div class="playback" id="playback">
+    <div class="playback-meta">Listen Back · Compare Your Tone to the Reference</div>
+    <div class="playback-row">
+      <button id="playUserBtn" class="secondary">▶ Your tone</button>
+      <button id="playRefBtn" class="secondary">▶ <span id="playRefLabel">172.06 Hz</span> bowl</button>
+      <button id="playCompareBtn" class="primary">⏵ Compare</button>
+    </div>
+    <div class="playback-status" id="playbackStatus">&nbsp;</div>
+  </div>
+
+  <div class="report-optin" id="reportOptin" hidden>
+    <div class="report-optin-title">Track your resonance over time?</div>
+    <div class="report-optin-body">
+      Generate a Resonance Report for any stressed areas — and save this session so the next one can show what's shifted.
+      <span class="muted">Stored only in this browser. No upload.</span>
+    </div>
+    <div class="controls">
+      <button id="optinBtn">Generate &amp; Save Report</button>
+      <button id="optoutBtn" class="secondary">Skip</button>
+    </div>
+  </div>
+
+  <div class="report" id="report" hidden>
+    <div class="report-header">Resonance Report</div>
+    <div id="reportTrend" class="report-trend" hidden></div>
+    <div id="reportAreas"></div>
+    <div class="report-actions"><a id="resetHistoryLink">Reset history</a></div>
+  </div>
+
+  <details>
+    <summary>Scoring scale — Frequency · Metal · Chakras 1 &amp; 7 · Gold</summary>
+    <table>
+      <tr><td><b>5</b></td><td>Perfect Pitch</td><td>±10 cents</td><td>green</td></tr>
+      <tr><td><b>5±</b></td><td>very slight</td><td>±10 – ±50¢</td><td>teal</td></tr>
+      <tr><td><b>4±</b></td><td>½ tone</td><td>±50 – ±150¢</td><td>yellow</td></tr>
+      <tr><td><b>3±</b></td><td>full tone</td><td>±150 – ±300¢</td><td>blue</td></tr>
+      <tr><td><b>2±</b></td><td>third</td><td>±300 – ±550¢</td><td>red</td></tr>
+      <tr><td><b>1±</b></td><td>fifth or beyond</td><td>&gt; ±550¢</td><td>violet</td></tr>
+    </table>
+    <p>cents = 1200 &times; log<sub>2</sub>(f / ref). Sign of cents → + (sharp) or − (flat). The six color tiers are <em>phase</em> colors marking interval distance from reference. Spirit mineral: <b>Gold</b> (shared with Fire).</p>
+  </details>
+
+  <details>
+    <summary>Voice quality — element, chakra &amp; mineral map</summary>
+    <p><b style="color: var(--earth);">Jitter</b> · Earth · Chakra 5 · <b>Rhodium</b> — cycle-to-cycle pitch variation. Healthy &lt; 1.04% / borderline &lt; 2.0% / elevated above. Elevated = laryngeal stress, vocal fatigue, autonomic dysregulation, early neurological-tremor marker. Earth grounds the throat; jitter rises when grounding wavers.</p>
+    <p><b style="color: var(--water);">Shimmer</b> · Water · Chakra 3 · <b>Rhodium</b> — cycle-to-cycle amplitude variation. Healthy &lt; 3.81% / borderline &lt; 7.0% / elevated above. Elevated = breathy voice, incomplete vocal-fold closure, dysphonia. Water-flow at the solar plexus drives breath support; shimmer reflects its steadiness.</p>
+    <p><b style="color: var(--fire);">Harmonics-to-Noise Ratio (HNR)</b> · Fire · Chakra 4 · <b>Gold</b> — clean periodic vibration vs aperiodic noise. Healthy &gt; 20 dB / borderline &gt; 12 dB / lower = elevated noise. Drops early in illness, exhaustion, dehydration, laryngeal inflammation. Fire at the heart is the resonant center; noise rises as fire dims.</p>
+    <p><b style="color: var(--wood);">Brightness</b> · Wood · Chakras 2 &amp; 6 · <b>Iridium</b> — spectral centroid (weighted-mean frequency, 80–8000 Hz). No fixed clinical threshold; track your own baseline. Drops in fatigue, depression, low energy. Wood is the upward-reaching creative spark; brightness ties sacral creative flow (2) to vision/insight (6).</p>
+    <p style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--hair);"><em>Spirit mineral pairings: Fire &amp; Metal share <b>Gold</b> (noble, incorruptible center). Earth &amp; Water share <b>Rhodium</b> (immutable substrate of stability and flow). Wood stands alone with <b>Iridium</b> (singular catalyst of growth and emergence).</em></p>
+  </details>
+</div>
+
+<script>
+// ---------- Configuration ----------
+const FREQ_MIN = 60;
+const FREQ_MAX = 600;
+let REF_HZ = 172.06;
+
+// Voice quality thresholds (Praat / clinical norms)
+const JITTER_OK = 1.04;     // %
+const JITTER_WARN = 2.0;
+const SHIMMER_OK = 3.81;    // %
+const SHIMMER_WARN = 7.0;
+const HNR_OK = 20;          // dB
+const HNR_WARN = 12;
+
+// ---------- Element refs ----------
+const els = {
+  freq: document.getElementById('freq'),
+  cents: document.getElementById('cents'),
+  vol: document.getElementById('vol'),
+  score: document.getElementById('score'),
+  scoreLabel: document.getElementById('scoreLabel'),
+  detail: document.getElementById('detail'),
+  startBtn: document.getElementById('startBtn'),
+  stopBtn: document.getElementById('stopBtn'),
+  status: document.getElementById('status'),
+  refPicker: document.getElementById('refPicker'),
+  refText: document.getElementById('refText'),
+  jitVal: document.getElementById('jitVal'),
+  jitTag: document.getElementById('jitTag'),
+  shimVal: document.getElementById('shimVal'),
+  shimTag: document.getElementById('shimTag'),
+  hnrVal: document.getElementById('hnrVal'),
+  hnrTag: document.getElementById('hnrTag'),
+  centVal: document.getElementById('centVal'),
+  centTag: document.getElementById('centTag'),
+  harmonics: document.getElementById('harmonics'),
+  report:        document.getElementById('report'),
+  reportAreas:   document.getElementById('reportAreas'),
+  reportOptin:   document.getElementById('reportOptin'),
+  reportTrend:   document.getElementById('reportTrend'),
+  optinBtn:      document.getElementById('optinBtn'),
+  optoutBtn:     document.getElementById('optoutBtn'),
+  resetHistoryLink: document.getElementById('resetHistoryLink'),
+  playback:       document.getElementById('playback'),
+  playUserBtn:    document.getElementById('playUserBtn'),
+  playRefBtn:     document.getElementById('playRefBtn'),
+  playCompareBtn: document.getElementById('playCompareBtn'),
+  playRefLabel:   document.getElementById('playRefLabel'),
+  playbackStatus: document.getElementById('playbackStatus'),
+};
+
+// ---------- Resonance Report — recommendations bank ----------
+// Each area carries the stress signature and grouped Support / Stimulation
+// avenues. Support = nourish/ground/yin; Stimulation = activate/exercise/yang.
+const RECS = {
+  frequency: {
+    title: 'Frequency Off-Reference',
+    meta: 'Metal · Chakras 1 & 7 · Gold',
+    color: 'var(--metal)',
+    signature: 'Fundamental tone outside ±150¢ of the cosmic-octave reference — root-to-crown axis perturbed.',
+    support: [
+      'Periods of silence; protect the auditory field',
+      'Pungent / white foods (radish, garlic, onion family)',
+      'Lung-supportive herbs (mullein, marshmallow, elecampane)',
+      'Diaphragmatic breathing with extended exhale',
+      'Gold mineral support',
+    ],
+    stimulation: [
+      'Listen to the reference frequency in headphones, then re-tone',
+      'Repeat-toning practice — match the reference 5 cycles in a row',
+      'Alternate LAM (root) and silence/NG (crown)',
+      'Grounding cord + crown-light visualization',
+    ],
+  },
+  jitter: {
+    title: 'Jitter Elevated',
+    meta: 'Earth · Chakra 5 · Rhodium',
+    color: 'var(--earth)',
+    signature: 'Cycle-to-cycle pitch instability — laryngeal stress, vocal fatigue, autonomic dysregulation.',
+    support: [
+      'Earthing — barefoot on ground 10–20 min',
+      'Warm soups, root vegetables, yellow/orange foods',
+      'Throat compress; chamomile or marshmallow tea',
+      'Restorative sleep; protect the voice from over-use',
+      'Rhodium mineral support',
+    ],
+    stimulation: [
+      'Toning practice — sustained "aaah" on a single pitch',
+      'HAM mantra (throat chakra) chanting',
+      'Singing scales gently, daily',
+      'Speak commitments and intentions aloud',
+    ],
+  },
+  shimmer: {
+    title: 'Shimmer Elevated',
+    meta: 'Water · Chakra 3 · Rhodium',
+    color: 'var(--water)',
+    signature: 'Cycle-to-cycle amplitude instability — breath support and vital power compromised.',
+    support: [
+      'Hydration with mineral salts; bone broth',
+      'Diaphragmatic belly breathing — slow & deep',
+      'Solar plexus warmth (sunlight, heat pad)',
+      'Restorative yoga; core-supportive postures',
+      'Rhodium mineral support',
+    ],
+    stimulation: [
+      'Resonant breathing at 5.5 breaths/min (HRV coherence)',
+      'RAM mantra (solar plexus) chanting',
+      'Power posture + declarative speech practice',
+      'Bellows breath / kapalabhati — short controlled bursts',
+    ],
+  },
+  hnr: {
+    title: 'Harmonics-to-Noise Low',
+    meta: 'Fire · Chakra 4 · Gold',
+    color: 'var(--fire)',
+    signature: 'Heart-coherence dimming — breathiness or hoarseness; an early illness, dehydration, or exhaustion marker.',
+    support: [
+      'Hydration with electrolytes; warm liquids',
+      'Prioritize sleep; reduce inflammatory load',
+      'Cardio-supportive nutrients — CoQ10, magnesium, taurine',
+      'Heart-opening yoga (gentle backbends)',
+      'Gold mineral support',
+    ],
+    stimulation: [
+      'HeartMath / heart-resonance HRV biofeedback',
+      'Loving-kindness meditation',
+      'YAM mantra (heart chakra) chanting',
+      'Group singing or chanting',
+    ],
+  },
+  brightness: {
+    title: 'Brightness Low',
+    meta: 'Wood · Chakras 2 & 6 · Iridium',
+    color: 'var(--wood)',
+    signature: 'Spectral life-force dim — fatigue, low engagement, possible depressive flatness or vision/inspiration constriction.',
+    support: [
+      'Greens, leafy vegetables, sour foods (lemon, apple cider vinegar)',
+      'Liver-supportive herbs (milk thistle, dandelion, schisandra)',
+      'Morning light + fresh air on waking',
+      'Sleep on a regular cycle to reset circadian',
+      'Iridium mineral support',
+    ],
+    stimulation: [
+      'Walking, qi gong (especially "spring-rising" forms)',
+      'VAM mantra (sacral) + AUM (third eye)',
+      'Free creative output — write, draw, sing without judgment',
+      'Bright-light exposure within 30 min of waking',
+    ],
+  },
+};
+
+const BRIGHTNESS_LOW_HZ = 1200;        // Heuristic; refine once baseline tracking lands
+const FREQ_STRESS_CLASSES = ['s3', 's2', 's1'];   // > ±150¢ from reference
+
+// ---------- State ----------
+let audioCtx, analyser, source, stream, rafId;
+let sampleRate = 44100;
+let timeBuf, freqBuf;
+let frames = [];   // per-frame { hz, jitter, shimmer, hnr, centroid }
+
+// ---------- Reference picker ----------
+els.refPicker.addEventListener('change', (e) => {
+  REF_HZ = parseFloat(e.target.value);
+  els.refText.textContent = REF_HZ.toFixed(2) + ' Hz';
+  els.cents.innerHTML = '&nbsp;';
+  if (els.playRefLabel) els.playRefLabel.textContent = REF_HZ.toFixed(2) + ' Hz';
+});
+
+// ---------- Math helpers ----------
+function centsFromRef(hz) {
+  return 1200 * Math.log2(hz / REF_HZ);
+}
+
+function classifyCents(cents) {
+  const a = Math.abs(cents);
+  const sign = cents > 0 ? '+' : (cents < 0 ? '-' : '');
+  if (a <= 10) return { tier: 5, sign: '', label: 'Perfect Pitch', cls: 's5p' };
+  let n;
+  if      (a <= 50)  n = 5;
+  else if (a <= 150) n = 4;
+  else if (a <= 300) n = 3;
+  else if (a <= 550) n = 2;
+  else               n = 1;
+  const labels = {
+    5: cents > 0 ? 'very slightly sharp' : 'very slightly flat',
+    4: cents > 0 ? 'about a half-tone sharp' : 'about a half-tone flat',
+    3: cents > 0 ? 'a full tone sharp' : 'a full tone flat',
+    2: cents > 0 ? 'about a third sharp' : 'about a third flat',
+    1: cents > 0 ? 'a fifth (or more) sharp' : 'a fifth (or more) flat',
+  };
+  return { tier: n, sign, label: labels[n], cls: 's' + n };
+}
+
+function median(arr) {
+  if (arr.length === 0) return NaN;
+  const s = [...arr].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+function mean(arr) {
+  if (arr.length === 0) return NaN;
+  let s = 0;
+  for (let i = 0; i < arr.length; i++) s += arr[i];
+  return s / arr.length;
+}
+
+// ---------- Pitch detection (ACF2+) ----------
+// Returns { hz, rms, hnr, lag } — lag in samples for downstream period analysis.
+function autoCorrelate(buf, sr) {
+  const SIZE = buf.length;
+  let rms = 0;
+  for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+  const r0 = rms;             // sum of squares (= R(0))
+  rms = Math.sqrt(rms / SIZE);
+  if (rms < 0.01) return { hz: -1, rms, hnr: NaN, lag: -1 };
+
+  let r1 = 0, r2 = SIZE - 1, thr = 0.2;
+  for (let i = 0; i < SIZE / 2; i++) if (Math.abs(buf[i]) < thr) { r1 = i; break; }
+  for (let i = 1; i < SIZE / 2; i++) if (Math.abs(buf[SIZE - i]) < thr) { r2 = SIZE - i; break; }
+  const trimmed = buf.slice(r1, r2);
+  const N = trimmed.length;
+  if (N < 32) return { hz: -1, rms, hnr: NaN, lag: -1 };
+
+  // R_trim(0) for HNR normalization on the trimmed window
+  let r0Trim = 0;
+  for (let i = 0; i < N; i++) r0Trim += trimmed[i] * trimmed[i];
+
+  const minLag = Math.floor(sr / FREQ_MAX);
+  const maxLag = Math.floor(sr / FREQ_MIN);
+  let bestLag = -1, bestVal = 0;
+  for (let lag = minLag; lag <= Math.min(maxLag, N - 1); lag++) {
+    let sum = 0;
+    for (let i = 0; i < N - lag; i++) sum += trimmed[i] * trimmed[i + lag];
+    if (sum > bestVal) { bestVal = sum; bestLag = lag; }
+  }
+  if (bestLag < 1) return { hz: -1, rms, hnr: NaN, lag: -1 };
+
+  // Parabolic interpolation for sub-sample lag
+  const x0 = bestLag > 0 ? acfAt(trimmed, bestLag - 1) : bestVal;
+  const x1 = bestVal;
+  const x2 = bestLag < N - 1 ? acfAt(trimmed, bestLag + 1) : bestVal;
+  const denom = (x0 + x2 - 2 * x1);
+  const shift = denom !== 0 ? 0.5 * (x0 - x2) / denom : 0;
+  const lagF = bestLag + shift;
+
+  // HNR (dB): r = R(τ_peak) / R(0), normalized; clamp to (0,1) to avoid log(0/neg)
+  const r = Math.max(0, Math.min(0.9999, bestVal / r0Trim));
+  const hnr = (r > 0 && r < 1) ? 10 * Math.log10(r / (1 - r)) : NaN;
+
+  return { hz: sr / lagF, rms, hnr, lag: lagF };
+}
+
+function acfAt(arr, lag) {
+  let sum = 0;
+  for (let i = 0; i < arr.length - lag; i++) sum += arr[i] * arr[i + lag];
+  return sum;
+}
+
+// ---------- Local jitter & shimmer (Praat-style) ----------
+// Uses peak-based period detection within a single frame.
+// Looks for positive peaks separated by ~T0 samples; computes successive period
+// and amplitude differences.
+function jitterShimmer(buf, period) {
+  if (period < 4 || period > buf.length / 2) return { jitter: NaN, shimmer: NaN };
+  const T0 = period;
+  const win = Math.floor(T0 * 0.4);  // search window around expected next peak
+  const peaks = [];
+  // Find first peak in initial period worth of samples
+  let firstPeakIdx = -1, firstPeakVal = -Infinity;
+  const initEnd = Math.min(buf.length - 1, Math.floor(T0 * 1.2));
+  for (let i = 1; i < initEnd - 1; i++) {
+    if (buf[i] > buf[i - 1] && buf[i] >= buf[i + 1] && buf[i] > 0) {
+      if (buf[i] > firstPeakVal) { firstPeakVal = buf[i]; firstPeakIdx = i; }
+    }
+  }
+  if (firstPeakIdx < 0) return { jitter: NaN, shimmer: NaN };
+  peaks.push({ idx: firstPeakIdx, amp: buf[firstPeakIdx] });
+
+  // Walk forward, finding each next peak inside ±win of expected position
+  let expected = firstPeakIdx + T0;
+  while (expected + win < buf.length) {
+    const lo = Math.max(1, Math.floor(expected - win));
+    const hi = Math.min(buf.length - 2, Math.floor(expected + win));
+    let bestIdx = -1, bestVal = -Infinity;
+    for (let i = lo; i <= hi; i++) {
+      if (buf[i] > buf[i - 1] && buf[i] >= buf[i + 1] && buf[i] > 0) {
+        if (buf[i] > bestVal) { bestVal = buf[i]; bestIdx = i; }
+      }
+    }
+    if (bestIdx < 0) break;
+    peaks.push({ idx: bestIdx, amp: buf[bestIdx] });
+    expected = bestIdx + T0;
+  }
+
+  if (peaks.length < 4) return { jitter: NaN, shimmer: NaN };
+
+  // Period series and amplitude series
+  const periods = [];
+  const amps = [];
+  for (let i = 1; i < peaks.length; i++) {
+    periods.push(peaks[i].idx - peaks[i - 1].idx);
+    amps.push(peaks[i].amp);
+  }
+  amps.unshift(peaks[0].amp);
+
+  // Local jitter (%) = mean(|T_i - T_{i-1}|) / mean(T_i) × 100
+  let jitSum = 0;
+  for (let i = 1; i < periods.length; i++) jitSum += Math.abs(periods[i] - periods[i - 1]);
+  const jitter = (jitSum / (periods.length - 1)) / mean(periods) * 100;
+
+  // Local shimmer (%) = mean(|A_i - A_{i-1}|) / mean(A_i) × 100
+  let shimSum = 0;
+  for (let i = 1; i < amps.length; i++) shimSum += Math.abs(amps[i] - amps[i - 1]);
+  const shimmer = (shimSum / (amps.length - 1)) / mean(amps) * 100;
+
+  return { jitter, shimmer };
+}
+
+// ---------- Spectral centroid ----------
+// Weighted mean frequency from FFT magnitude spectrum.
+function spectralCentroid(magsDb, sr, fftSize) {
+  // Convert dB → linear magnitude
+  let weighted = 0, total = 0;
+  const binHz = sr / fftSize;
+  // Restrict to vocal range to avoid mic hiss/rumble dominating
+  const startBin = Math.max(1, Math.floor(80 / binHz));
+  const endBin = Math.min(magsDb.length - 1, Math.floor(8000 / binHz));
+  for (let i = startBin; i <= endBin; i++) {
+    const lin = Math.pow(10, magsDb[i] / 20);
+    weighted += i * binHz * lin;
+    total += lin;
+  }
+  return total > 0 ? weighted / total : NaN;
+}
+
+// ---------- Harmonic ladder rendering ----------
+const HARMONIC_COUNT = 8;
+const harmCanvas = els.harmonics;
+const hctx = harmCanvas.getContext('2d');
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = harmCanvas.clientWidth;
+  const h = harmCanvas.clientHeight;
+  harmCanvas.width = w * dpr;
+  harmCanvas.height = h * dpr;
+  hctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resizeCanvas);
+// Initial sizing after layout
+requestAnimationFrame(resizeCanvas);
+
+function drawHarmonics(magsDb, f0, sr, fftSize) {
+  const w = harmCanvas.clientWidth;
+  const h = harmCanvas.clientHeight;
+  hctx.clearRect(0, 0, w, h);
+  if (!magsDb || f0 <= 0) {
+    hctx.fillStyle = '#3a4250';
+    hctx.font = '11px -apple-system, system-ui, sans-serif';
+    hctx.textAlign = 'center';
+    hctx.fillText('— awaiting tone —', w / 2, h / 2);
+    return;
+  }
+  const binHz = sr / fftSize;
+  // Sample magnitude near each kf0 — pick max in ±half-bin window
+  const lin = [];
+  for (let k = 1; k <= HARMONIC_COUNT; k++) {
+    const target = k * f0;
+    if (target > sr / 2) { lin.push(0); continue; }
+    const bin = target / binHz;
+    const lo = Math.max(0, Math.floor(bin - 1));
+    const hi = Math.min(magsDb.length - 1, Math.ceil(bin + 1));
+    let bestDb = -Infinity;
+    for (let i = lo; i <= hi; i++) if (magsDb[i] > bestDb) bestDb = magsDb[i];
+    lin.push(Math.pow(10, bestDb / 20));
+  }
+  const maxLin = Math.max(...lin, 1e-9);
+
+  // Layout: HARMONIC_COUNT vertical bars across width, each bar height ∝ magnitude
+  const padX = 6, padY = 6;
+  const slotW = (w - padX * 2) / HARMONIC_COUNT;
+  const barW = slotW * 0.7;
+  const colors = ['#5fd97a','#4ec9b8','#7ad7c5','#6aa8e8','#9b8be8','#b06bd8','#d8649a','#f0b66b'];
+  for (let k = 0; k < HARMONIC_COUNT; k++) {
+    const norm = lin[k] / maxLin;
+    const barH = Math.max(2, norm * (h - padY * 2 - 14));
+    const x = padX + k * slotW + (slotW - barW) / 2;
+    const y = h - padY - 14 - barH;
+    hctx.fillStyle = colors[k];
+    hctx.globalAlpha = 0.85;
+    hctx.fillRect(x, y, barW, barH);
+    hctx.globalAlpha = 1;
+    // partial label
+    hctx.fillStyle = '#8a93a3';
+    hctx.font = '10px -apple-system, system-ui, sans-serif';
+    hctx.textAlign = 'center';
+    hctx.fillText((k + 1) + 'f', x + barW / 2, h - 2);
+  }
+  // Fundamental frequency label, top-left
+  hctx.fillStyle = '#8a93a3';
+  hctx.font = '10px -apple-system, system-ui, sans-serif';
+  hctx.textAlign = 'left';
+  hctx.fillText('f₀ ≈ ' + f0.toFixed(1) + ' Hz', padX, 12);
+}
+
+// ---------- Voice-quality UI updates ----------
+function tag(el, val, okMax, warnMax, lowerIsBetter = true) {
+  if (Number.isNaN(val) || val === undefined || val === null) {
+    el.textContent = '—';
+    el.className = 'q-tag';
+    return;
+  }
+  const ok = lowerIsBetter ? val <= okMax : val >= okMax;
+  const warn = lowerIsBetter ? val <= warnMax : val >= warnMax;
+  if (ok) { el.textContent = 'healthy'; el.className = 'q-tag ok'; }
+  else if (warn) { el.textContent = 'borderline'; el.className = 'q-tag warn'; }
+  else { el.textContent = 'elevated'; el.className = 'q-tag bad'; }
+}
+
+function updateQuality({ jitter, shimmer, hnr, centroid }) {
+  if (Number.isFinite(jitter)) {
+    els.jitVal.innerHTML = jitter.toFixed(2) + ' <span class="unit">%</span>';
+    tag(els.jitTag, jitter, JITTER_OK, JITTER_WARN, true);
+  }
+  if (Number.isFinite(shimmer)) {
+    els.shimVal.innerHTML = shimmer.toFixed(2) + ' <span class="unit">%</span>';
+    tag(els.shimTag, shimmer, SHIMMER_OK, SHIMMER_WARN, true);
+  }
+  if (Number.isFinite(hnr)) {
+    els.hnrVal.innerHTML = hnr.toFixed(1) + ' <span class="unit">dB</span>';
+    tag(els.hnrTag, hnr, HNR_OK, HNR_WARN, false);
+  }
+  if (Number.isFinite(centroid)) {
+    els.centVal.innerHTML = centroid.toFixed(0) + ' <span class="unit">Hz</span>';
+    // Brightness is a baseline metric — no clinical threshold; just show value
+    els.centTag.textContent = '';
+    els.centTag.className = 'q-tag';
+  }
+}
+
+// ---------- Main per-frame tick ----------
+// Pitch detection uses a 2048-sample slice of the larger time buffer to keep
+// the O(N · lagRange) autocorrelation loop responsive at 60fps. Spectrum
+// (FFT) uses the full fftSize=8192 buffer for clean harmonic bin resolution.
+const PITCH_WIN = 2048;
+let pitchSlice;
+function tick() {
+  analyser.getFloatTimeDomainData(timeBuf);
+  analyser.getFloatFrequencyData(freqBuf);
+
+  if (!pitchSlice || pitchSlice.length !== PITCH_WIN) pitchSlice = new Float32Array(PITCH_WIN);
+  // Take the most recent PITCH_WIN samples for pitch analysis
+  const offset = timeBuf.length - PITCH_WIN;
+  for (let i = 0; i < PITCH_WIN; i++) pitchSlice[i] = timeBuf[offset + i];
+
+  const { hz, rms, hnr, lag } = autoCorrelate(pitchSlice, sampleRate);
+  els.vol.style.width = Math.min(100, rms * 400) + '%';
+
+  if (hz > 0) {
+    const c = centsFromRef(hz);
+    els.freq.innerHTML = hz.toFixed(1) + ' <span class="unit">Hz</span>';
+    els.cents.textContent = (c >= 0 ? '+' : '') + c.toFixed(0) + ' cents from ' + REF_HZ.toFixed(2) + ' Hz';
+    const cls = classifyCents(c);
+    updateLiveScore(cls);
+
+    // Per-frame voice quality
+    const { jitter, shimmer } = jitterShimmer(pitchSlice, lag);
+    const centroid = spectralCentroid(freqBuf, sampleRate, analyser.fftSize);
+    updateQuality({ jitter, shimmer, hnr, centroid });
+
+    // Harmonic ladder
+    drawHarmonics(freqBuf, hz, sampleRate, analyser.fftSize);
+
+    // Record frame for final aggregation
+    frames.push({ hz, jitter, shimmer, hnr, centroid });
+  } else {
+    els.cents.textContent = rms < 0.01 ? '(too quiet)' : '(no clear pitch)';
+    drawHarmonics(null, -1, sampleRate, analyser.fftSize);
+  }
+  rafId = requestAnimationFrame(tick);
+}
+
+function updateLiveScore(cls) {
+  els.scoreLabel.textContent = 'Live Score';
+  els.score.className = 'score ' + cls.cls;
+  els.score.textContent = cls.tier + cls.sign;
+  els.detail.textContent = cls.label;
+}
+
+// ---------- Resonance Report — generation & rendering ----------
+function generateReport(snap) {
+  const areas = [];
+  if (snap.freqCls && FREQ_STRESS_CLASSES.includes(snap.freqCls)) areas.push(RECS.frequency);
+  if (Number.isFinite(snap.jitter)  && snap.jitter  > JITTER_OK)  areas.push(RECS.jitter);
+  if (Number.isFinite(snap.shimmer) && snap.shimmer > SHIMMER_OK) areas.push(RECS.shimmer);
+  if (Number.isFinite(snap.hnr)     && snap.hnr     < HNR_OK)     areas.push(RECS.hnr);
+  if (Number.isFinite(snap.centroid) && snap.centroid < BRIGHTNESS_LOW_HZ) areas.push(RECS.brightness);
+  return areas;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+function renderReport(areas) {
+  const c = els.reportAreas;
+  c.innerHTML = '';
+  if (areas.length === 0) {
+    c.innerHTML = '<div class="report-coherent">All systems coherent — well-tuned across frequency, jitter, shimmer, harmonic clarity, and brightness.</div>';
+  } else {
+    areas.forEach(a => {
+      const div = document.createElement('div');
+      div.className = 'report-area';
+      const supList  = a.support.map(s => '<li>' + escapeHtml(s) + '</li>').join('');
+      const stimList = a.stimulation.map(s => '<li>' + escapeHtml(s) + '</li>').join('');
+      div.innerHTML =
+        '<div class="report-area-title" style="color: ' + a.color + ';">' + escapeHtml(a.title) + '</div>' +
+        '<div class="report-area-meta">' + escapeHtml(a.meta) + '</div>' +
+        '<div class="report-area-sig">' + escapeHtml(a.signature) + '</div>' +
+        '<div class="report-cols">' +
+          '<div><div class="report-col-label">Support</div><ul class="report-list">' + supList + '</ul></div>' +
+          '<div><div class="report-col-label">Stimulation</div><ul class="report-list">' + stimList + '</ul></div>' +
+        '</div>';
+      c.appendChild(div);
+    });
+  }
+  els.report.hidden = false;
+}
+
+// ---------- Session tracking (opt-in, device-only) ----------
+const STORAGE_OPTIN    = 'tone-analyzer:opted-in';
+const STORAGE_SESSIONS = 'tone-analyzer:sessions';
+const MAX_SESSIONS     = 200;
+
+// Pending snapshot held between Stop and opt-in decision
+let pendingSnap = null;
+
+function isOptedIn() {
+  try { return localStorage.getItem(STORAGE_OPTIN) === '1'; }
+  catch { return false; }
+}
+function setOptedIn(v) {
+  try {
+    if (v) localStorage.setItem(STORAGE_OPTIN, '1');
+    else localStorage.removeItem(STORAGE_OPTIN);
+  } catch {}
+}
+function loadSessions() {
+  try {
+    const raw = localStorage.getItem(STORAGE_SESSIONS);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+function saveSessionSnap(snap) {
+  const all = loadSessions();
+  all.push({ ...snap, t: Date.now() });
+  if (all.length > MAX_SESSIONS) all.splice(0, all.length - MAX_SESSIONS);
+  try { localStorage.setItem(STORAGE_SESSIONS, JSON.stringify(all)); } catch {}
+  return all;
+}
+function clearAllHistory() {
+  try {
+    localStorage.removeItem(STORAGE_SESSIONS);
+    localStorage.removeItem(STORAGE_OPTIN);
+  } catch {}
+}
+
+// Direction semantics for trend arrows.
+//   upGood = true  → ↑ is good (e.g. HNR, brightness, freq tier)
+//   upGood = false → ↓ is good (e.g. |cents|, jitter, shimmer)
+const TREND_METRICS = [
+  { name: 'Frequency',  key: 'tier',     upGood: true,  eps: 0.5 },
+  { name: 'Cents',      key: 'centsAbs', upGood: false, eps: 8   },
+  { name: 'Jitter',     key: 'jitter',   upGood: false, eps: 0.05 },
+  { name: 'Shimmer',    key: 'shimmer',  upGood: false, eps: 0.2 },
+  { name: 'HNR',        key: 'hnr',      upGood: true,  eps: 0.5 },
+  { name: 'Brightness', key: 'centroid', upGood: true,  eps: 30  },
+];
+
+function chipFor(curr, prev, m) {
+  if (prev == null || curr == null || !Number.isFinite(prev) || !Number.isFinite(curr)) return '';
+  const diff = curr - prev;
+  let arrow, klass;
+  if (Math.abs(diff) < m.eps) { arrow = '→'; klass = 'neutral'; }
+  else if (diff > 0)          { arrow = '↑'; klass = m.upGood ? 'good' : 'bad'; }
+  else                        { arrow = '↓'; klass = m.upGood ? 'bad'  : 'good'; }
+  return '<span class="trend-chip">' + m.name +
+         ' <span class="arrow ' + klass + '">' + arrow + '</span></span>';
+}
+
+function renderTrend(snap, allSessions) {
+  // allSessions already includes the just-saved snap
+  if (!allSessions || allSessions.length < 2) {
+    els.reportTrend.hidden = true;
+    return;
+  }
+  const prev     = allSessions[allSessions.length - 2];
+  const baseline = allSessions[0];
+  let html = '<span class="trend-label">vs last</span>';
+  TREND_METRICS.forEach(m => { html += chipFor(snap[m.key], prev[m.key], m); });
+  if (allSessions.length >= 3) {
+    html += '<span class="trend-label" style="margin-left:6px;">vs baseline</span>';
+    TREND_METRICS.forEach(m => { html += chipFor(snap[m.key], baseline[m.key], m); });
+  }
+  html += '<span class="trend-meta">session #' + allSessions.length + '</span>';
+  els.reportTrend.innerHTML = html;
+  els.reportTrend.hidden = false;
+}
+
+function commitAndShowReport(snap) {
+  setOptedIn(true);
+  const all = saveSessionSnap(snap);
+  renderTrend(snap, all);
+  renderReport(generateReport(snap));
+  els.reportOptin.hidden = true;
+}
+
+function presentReport(snap) {
+  // Hide both panels first so re-recording starts clean
+  els.report.hidden = true;
+  els.reportTrend.hidden = true;
+  els.reportOptin.hidden = true;
+  pendingSnap = snap;
+
+  if (isOptedIn()) {
+    // Already consented — auto-save and show
+    commitAndShowReport(snap);
+  } else {
+    // First time: ask
+    els.reportOptin.hidden = false;
+  }
+}
+
+// ---------- Playback state ----------
+let userMediaRecorder = null;
+let userAudioChunks = [];
+let userAudioBlobUrl = null;
+let userAudioElement = null;
+let referenceCtx = null;            // playback-only AudioContext (separate from analysis)
+let referenceNodes = [];
+
+// ---------- Start / stop ----------
+async function start() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (e) {
+    els.status.textContent = 'Mic blocked: ' + e.message;
+    return;
+  }
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  sampleRate = audioCtx.sampleRate;
+  source = audioCtx.createMediaStreamSource(stream);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 8192;          // 5.4 Hz/bin @ 44.1k — clean partials
+  analyser.smoothingTimeConstant = 0.5;
+  timeBuf = new Float32Array(analyser.fftSize);
+  freqBuf = new Float32Array(analyser.frequencyBinCount);
+  source.connect(analyser);
+  frames = [];
+
+  // Capture playable audio in parallel with analysis
+  userAudioChunks = [];
+  if (userAudioBlobUrl) { URL.revokeObjectURL(userAudioBlobUrl); userAudioBlobUrl = null; }
+  try {
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+    userMediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    userMediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) userAudioChunks.push(e.data); };
+    userMediaRecorder.onstop = finalizeUserRecording;
+    userMediaRecorder.start();
+  } catch (e) {
+    userMediaRecorder = null;   // playback feature degrades silently if recorder unavailable
+  }
+
+  els.startBtn.disabled = true;
+  els.stopBtn.disabled = false;
+  els.status.textContent = 'Listening… sing a steady tone';
+  els.report.hidden = true;
+  els.reportOptin.hidden = true;
+  els.reportTrend.hidden = true;
+  els.playback.classList.remove('show');
+  resizeCanvas();
+  tick();
+}
+
+function finalizeUserRecording() {
+  if (!userAudioChunks.length) return;
+  const mime = (userMediaRecorder && userMediaRecorder.mimeType) || 'audio/webm';
+  const blob = new Blob(userAudioChunks, { type: mime });
+  userAudioBlobUrl = URL.createObjectURL(blob);
+  if (!userAudioElement) {
+    userAudioElement = new Audio();
+    userAudioElement.addEventListener('ended', () => updatePlaybackUI(null));
+  }
+  userAudioElement.src = userAudioBlobUrl;
+  // Show the playback panel only once we have a usable recording
+  els.playback.classList.add('show');
+  els.playRefLabel.textContent = REF_HZ.toFixed(2) + ' Hz';
+}
+
+// ---------- Reference tone synthesis (Tibetan-bowl character) ----------
+// Synthesizes a bowl-like tone at the currently-selected reference frequency.
+// When Glen drops a real recording at './bowl-{REF_HZ}.mp3' we'll prefer that;
+// for now this function is the source-of-truth.
+async function playReferenceTone(durationSec = 4) {
+  stopReferenceTone();   // safety
+  referenceCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const ctx = referenceCtx;
+  const now = ctx.currentTime;
+
+  // Master gain with envelope (slow attack, long sustain, soft release)
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.0001, now);
+  master.gain.exponentialRampToValueAtTime(0.45, now + 0.35);     // ~350ms attack
+  master.gain.setValueAtTime(0.45, now + durationSec - 0.6);
+  master.gain.exponentialRampToValueAtTime(0.0001, now + durationSec);  // soft release
+  master.connect(ctx.destination);
+
+  // Bowl-like partials: f, 2f, 3f (octave + perfect fifth-above-octave),
+  // plus a slight detune on each for the natural beat-frequency shimmer.
+  const partials = [
+    { ratio: 1.0, gain: 1.00, detune:  0  },
+    { ratio: 2.0, gain: 0.45, detune: +6  },   // octave, slightly sharp
+    { ratio: 3.0, gain: 0.22, detune: -8  },   // perfect fifth above octave
+    { ratio: 4.0, gain: 0.10, detune: +4  },   // double octave
+  ];
+  partials.forEach(p => {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = REF_HZ * p.ratio;
+    osc.detune.value = p.detune;
+    const g = ctx.createGain();
+    g.gain.value = p.gain;
+    osc.connect(g).connect(master);
+    osc.start(now);
+    osc.stop(now + durationSec + 0.05);
+    referenceNodes.push(osc);
+  });
+
+  // Subtle amplitude shimmer (LFO at ~5 Hz, ±4%) for living-bowl quality
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 5;
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = 0.04 * 0.45;   // 4% of master sustain
+  lfo.connect(lfoGain).connect(master.gain);
+  lfo.start(now);
+  lfo.stop(now + durationSec + 0.05);
+  referenceNodes.push(lfo);
+
+  return new Promise(resolve => {
+    setTimeout(() => { stopReferenceTone(); resolve(); }, durationSec * 1000 + 100);
+  });
+}
+
+function stopReferenceTone() {
+  referenceNodes.forEach(n => { try { n.stop(); } catch {} try { n.disconnect(); } catch {} });
+  referenceNodes = [];
+  if (referenceCtx) { try { referenceCtx.close(); } catch {} referenceCtx = null; }
+}
+
+function updatePlaybackUI(activeBtn) {
+  [els.playUserBtn, els.playRefBtn, els.playCompareBtn].forEach(b => b.classList.remove('playing'));
+  if (activeBtn) activeBtn.classList.add('playing');
+  if (!activeBtn) els.playbackStatus.textContent = '';
+}
+
+async function playUserTone() {
+  if (!userAudioElement || !userAudioBlobUrl) return;
+  stopReferenceTone();
+  if (userAudioElement && !userAudioElement.paused) userAudioElement.pause();
+  updatePlaybackUI(els.playUserBtn);
+  els.playbackStatus.textContent = 'Playing your tone…';
+  userAudioElement.currentTime = 0;
+  try { await userAudioElement.play(); } catch (e) { updatePlaybackUI(null); }
+}
+
+async function playRefTone() {
+  if (userAudioElement && !userAudioElement.paused) userAudioElement.pause();
+  updatePlaybackUI(els.playRefBtn);
+  els.playbackStatus.textContent = 'Playing ' + REF_HZ.toFixed(2) + ' Hz reference bowl…';
+  await playReferenceTone(4);
+  updatePlaybackUI(null);
+}
+
+async function playCompare() {
+  if (!userAudioElement || !userAudioBlobUrl) return;
+  updatePlaybackUI(els.playCompareBtn);
+  els.playbackStatus.textContent = 'Your tone first…';
+  userAudioElement.currentTime = 0;
+  await new Promise(resolve => {
+    const onEnd = () => { userAudioElement.removeEventListener('ended', onEnd); resolve(); };
+    userAudioElement.addEventListener('ended', onEnd);
+    userAudioElement.play().catch(() => resolve());
+  });
+  await new Promise(r => setTimeout(r, 500));   // brief silence between
+  els.playbackStatus.textContent = 'Now ' + REF_HZ.toFixed(2) + ' Hz reference…';
+  await playReferenceTone(4);
+  updatePlaybackUI(null);
+  els.playbackStatus.textContent = 'Compare again? Re-listen any side.';
+}
+
+function stop() {
+  cancelAnimationFrame(rafId);
+  // Stop the recorder BEFORE killing the stream so the final dataavailable
+  // event fires with all captured chunks.
+  if (userMediaRecorder && userMediaRecorder.state !== 'inactive') {
+    try { userMediaRecorder.stop(); } catch {}
+  }
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (audioCtx) audioCtx.close();
+  els.startBtn.disabled = false;
+  els.stopBtn.disabled = true;
+
+  if (frames.length < 5) {
+    els.status.textContent = 'Not enough signal — try again louder/longer';
+    return;
+  }
+
+  // Stable middle window: drop first 30% / last 10%
+  const a = Math.floor(frames.length * 0.3);
+  const b = Math.floor(frames.length * 0.9);
+  const stable = frames.slice(a, b);
+
+  const hzMed = median(stable.map(f => f.hz));
+  const c = centsFromRef(hzMed);
+  const cls = classifyCents(c);
+
+  els.freq.innerHTML = hzMed.toFixed(1) + ' <span class="unit">Hz</span>';
+  els.cents.textContent = (c >= 0 ? '+' : '') + c.toFixed(0) + ' cents from ' + REF_HZ.toFixed(2) + ' Hz';
+  els.scoreLabel.textContent = 'Final Score (median)';
+  els.score.className = 'score ' + cls.cls;
+  els.score.textContent = cls.tier + cls.sign;
+  els.detail.textContent = cls.label + ' — ' + frames.length + ' frames analyzed';
+
+  // Aggregate voice quality from valid frames (medians robust to outliers)
+  const jitVals = stable.map(f => f.jitter).filter(Number.isFinite);
+  const shimVals = stable.map(f => f.shimmer).filter(Number.isFinite);
+  const hnrVals = stable.map(f => f.hnr).filter(Number.isFinite);
+  const centVals = stable.map(f => f.centroid).filter(Number.isFinite);
+  const finalSnap = {
+    jitter:   median(jitVals),
+    shimmer:  median(shimVals),
+    hnr:      median(hnrVals),
+    centroid: median(centVals),
+    freqCls:  cls.cls,
+    tier:     cls.tier,
+    centsAbs: Math.abs(c),
+    hz:       hzMed,
+  };
+  updateQuality(finalSnap);
+  presentReport(finalSnap);
+
+  els.status.textContent = 'Done. Press Start to record again.';
+}
+
+els.startBtn.addEventListener('click', start);
+els.stopBtn.addEventListener('click', stop);
+els.playUserBtn.addEventListener('click', playUserTone);
+els.playRefBtn.addEventListener('click', playRefTone);
+els.playCompareBtn.addEventListener('click', playCompare);
+
+els.optinBtn.addEventListener('click', () => {
+  if (pendingSnap) commitAndShowReport(pendingSnap);
+});
+els.optoutBtn.addEventListener('click', () => {
+  pendingSnap = null;
+  els.reportOptin.hidden = true;
+});
+els.resetHistoryLink.addEventListener('click', () => {
+  if (!confirm('Clear all saved sessions and revoke tracking opt-in?')) return;
+  clearAllHistory();
+  els.report.hidden = true;
+  els.reportTrend.hidden = true;
+  els.reportOptin.hidden = true;
+  els.status.textContent = 'History cleared.';
+});
+
+// Paint placeholder ladder on load
+requestAnimationFrame(() => { resizeCanvas(); drawHarmonics(null, -1, 44100, 8192); });
+</script>
+</body>
+</html>

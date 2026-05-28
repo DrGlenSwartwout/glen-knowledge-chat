@@ -953,6 +953,14 @@ def begin_page():
     return resp
 
 
+@app.route("/begin/tone")
+def begin_tone():
+    resp = send_from_directory(STATIC, "tone-analyzer.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/begin/state", methods=["GET"])
 def begin_state():
     session_id = (request.cookies.get("amg_session") or "").strip()

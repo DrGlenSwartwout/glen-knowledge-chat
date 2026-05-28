@@ -180,6 +180,15 @@ def test_begin_unlock_returns_surfaced_cards(monkeypatch, tmp_path):
     assert all(c.get("key") and c.get("href") for c in cards)
 
 
+def test_begin_tone_serves(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    client = app_module.app.test_client()
+    r = client.get("/begin/tone")
+    assert r.status_code == 200
+    assert b"<html" in r.data.lower() or b"<!doctype" in r.data.lower()
+
+
 def test_haiku_classification_guarded_below_threshold(monkeypatch, tmp_path):
     app_module = _load_app()
     db = str(tmp_path / "chat_log.db")
