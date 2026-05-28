@@ -151,6 +151,35 @@ def test_begin_unlock_deep_link_unbuilt_target_no_redirect(monkeypatch, tmp_path
     assert "layer5" in body["reveal"]
 
 
+def test_begin_state_returns_default_trio(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    client = app_module.app.test_client()
+    r = client.get("/begin/state")
+    cards = r.get_json()["surfaced_cards"]
+    assert [c["key"] for c in cards] == ["quiz", "e4l_scan", "intake"]
+    assert all(c.get("href") for c in cards)
+
+
+def test_begin_unlock_returns_surfaced_cards(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "scards")
+    r = client.post("/begin/unlock", json={"trigger": "question"})
+    cards = r.get_json()["surfaced_cards"]
+    assert isinstance(cards, list) and len(cards) >= 1
+    assert all(c.get("key") and c.get("href") for c in cards)
+
+
 def test_haiku_classification_guarded_below_threshold(monkeypatch, tmp_path):
     app_module = _load_app()
     db = str(tmp_path / "chat_log.db")

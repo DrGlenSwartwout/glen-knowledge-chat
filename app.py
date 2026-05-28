@@ -960,7 +960,11 @@ def begin_state():
     email = auth_user["email"] if auth_user else ""
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         state = begin_funnel.get_state(cx, session_id=session_id, email=email)
-    return jsonify(state)
+    ref_slug = (request.cookies.get("rm_ref") or "").strip()
+    query_texts = _recent_query_texts(session_id, email)
+    payload = dict(state)
+    payload["surfaced_cards"] = begin_funnel.surface(state, query_texts, ref_slug)
+    return jsonify(payload)
 
 
 # ToS version stamp for the /begin free-tier gate. The live T&C page at
@@ -1049,6 +1053,7 @@ def begin_unlock():
 
     redirect = begin_funnel.resolve_want(want, ref_slug) if want else None
     payload = dict(state)
+    payload["surfaced_cards"] = begin_funnel.surface(state, query_texts, ref_slug)
     if redirect:
         payload["redirect"] = redirect
     resp = jsonify(payload)
