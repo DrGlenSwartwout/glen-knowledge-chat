@@ -6,6 +6,7 @@ docs/superpowers/specs/2026-05-28-progressive-disclosure-funnel-design.md
 """
 
 import json
+import sqlite3
 
 from datetime import datetime, timezone
 
@@ -115,17 +116,10 @@ def reveal_for(rung):
 # ---------------------------------------------------------------------------
 
 def _row_for_session(cx, session_id):
-    cx.row_factory = __import__("sqlite3").Row
+    cx.row_factory = sqlite3.Row
     return cx.execute(
         "SELECT * FROM journey_state WHERE session_id=? ORDER BY id DESC LIMIT 1",
         (session_id,)).fetchone()
-
-
-def _gates_list(raw):
-    try:
-        return list(raw or [])
-    except Exception:
-        return []
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +130,7 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
                   first_name="", tos=False, ref_slug="", tos_version=""):
     if trigger not in VALID_TRIGGERS:
         raise ValueError(f"invalid trigger: {trigger!r}")
-    cx.row_factory = __import__("sqlite3").Row
+    cx.row_factory = sqlite3.Row
     now = _now()
     row = _row_for_session(cx, session_id)
 
@@ -215,7 +209,7 @@ def get_state(cx, session_id="", email=""):
     """Return the visitor's aggregated journey state. When an email is known,
     union the gates across ALL rows sharing that email (cross-device
     continuity) plus the current session row. Non-destructive."""
-    cx.row_factory = __import__("sqlite3").Row
+    cx.row_factory = sqlite3.Row
     email = (email or "").strip().lower()
     rows = []
     seen = set()
