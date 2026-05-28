@@ -188,7 +188,9 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
     """, (now, session_id, new_email, trigger, detail[:500],
           rung_before, rung_after))
     cx.commit()
-    return get_state(cx, session_id=session_id)
+    state = get_state(cx, session_id=session_id)
+    state["rung_before"] = rung_before
+    return state
 
 
 # ---------------------------------------------------------------------------

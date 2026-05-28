@@ -947,7 +947,9 @@ def begin_unlock():
 
     # Free-tier transition (email + ToS): onboard to GHL + concierge referral,
     # non-blocking — same pattern as /chat.
-    if state["current_rung"] == "free_tier" and state.get("email"):
+    if (state["current_rung"] == "free_tier"
+            and state.get("rung_before") != "free_tier"
+            and state.get("email")):
         import threading as _threading
 
         def _onboard():

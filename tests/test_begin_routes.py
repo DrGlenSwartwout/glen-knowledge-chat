@@ -82,3 +82,38 @@ def test_begin_unlock_name_then_email_tos_reaches_free_tier(monkeypatch, tmp_pat
     body = r.get_json()
     assert body["current_rung"] == "free_tier"
     assert "layer5" in body["reveal"]
+
+
+def test_begin_unlock_onboards_once_on_free_tier_transition(monkeypatch, tmp_path):
+    import sqlite3, begin_funnel, threading, time
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    lock = threading.Lock()
+    calls = []
+
+    def _rec(*a, **k):
+        with lock:
+            calls.append((a, k))
+        return {"contact_id": "x"}
+
+    monkeypatch.setattr(app_module, "ghl_onboard_contact", _rec)
+    monkeypatch.setattr(app_module, "_capture_concierge_referral", lambda *a, **k: None)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "s9")
+    # Transition into free_tier -> should onboard exactly once
+    client.post("/begin/unlock", json={"trigger": "tos", "email": "z@x.com", "tos": True})
+    # Wait (up to ~2s) for the daemon onboarding thread to complete
+    for _ in range(40):
+        with lock:
+            n = len(calls)
+        if n >= 1:
+            break
+        time.sleep(0.05)
+    # A later unlock while STILL at free_tier must NOT re-onboard
+    client.post("/begin/unlock", json={"trigger": "scroll"})
+    time.sleep(0.3)
+    with lock:
+        assert len(calls) == 1, f"expected exactly one onboarding call, got {len(calls)}"
