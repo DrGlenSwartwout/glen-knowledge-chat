@@ -33,3 +33,29 @@ def test_init_creates_journey_tables():
     for c in ("ts", "session_id", "email", "trigger", "detail",
               "rung_before", "rung_after"):
         assert c in ev_cols, c
+
+
+def test_compute_rung_ladder():
+    import begin_funnel as bf
+    assert bf.compute_rung(set(), "", False) == "arrival"
+    assert bf.compute_rung({"video"}, "", False) == "listening"
+    assert bf.compute_rung({"scroll"}, "", False) == "listening"
+    assert bf.compute_rung({"video", "question"}, "", False) == "inquire"
+    assert bf.compute_rung({"question", "name"}, "", False) == "personalize"
+    # email WITHOUT tos does not grant free_tier
+    assert bf.compute_rung({"name"}, "a@b.com", False) == "personalize"
+    # email AND tos grants free_tier
+    assert bf.compute_rung({"name"}, "a@b.com", True) == "free_tier"
+    # later rungs (forward-compatible spine; rooms built in later slices)
+    assert bf.compute_rung({"voice"}, "a@b.com", True) == "explore_voice"
+    assert bf.compute_rung({"scan"}, "a@b.com", True) == "assess"
+    assert bf.compute_rung({"paid_fork"}, "a@b.com", True) == "choose_path"
+    assert bf.compute_rung({"purchase"}, "a@b.com", True) == "ascend"
+    assert bf.compute_rung({"share_video"}, "a@b.com", True) == "advocate"
+
+
+def test_valid_triggers_set():
+    import begin_funnel as bf
+    for t in ("load", "video", "scroll", "question", "name", "email", "tos",
+              "voice", "scan", "quiz", "paid_fork", "purchase", "share_video"):
+        assert t in bf.VALID_TRIGGERS
