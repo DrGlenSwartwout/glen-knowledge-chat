@@ -713,11 +713,24 @@
         return st; });
   }
 
-  // ---- arrival: load state, reveal what's already unlocked ----
-  fetch('/begin/state',{credentials:'same-origin'}).then(function(r){return r.json();})
-    .then(function(st){ STATE=st; applyReveal(st.reveal); personalize(st.first_name);
-      if(st.current_rung==='arrival'){ unlock('video'); } })
-    .catch(function(){ applyReveal(['layer0','layer1']); });
+  // ---- arrival: deep-link (?want=) takes priority, else normal state load ----
+  (function arrival(){
+    var want = '';
+    try { want = (new URLSearchParams(location.search).get('want') || '').trim().toLowerCase(); } catch(_){}
+    if (want) {
+      // strip ?want= so reload / back-button never re-triggers the redirect
+      try { history.replaceState({}, '', '/begin'); } catch(_){}
+      unlock('deep_link', { want: want }).then(function(st){
+        if (st && st.redirect) { location.replace(st.redirect); return; }  // boom, straight there
+        // not-yet-built target: full page already revealed by gate-skip in unlock()
+      }).catch(function(){ applyReveal(['layer0','layer1']); });
+      return;
+    }
+    fetch('/begin/state',{credentials:'same-origin'}).then(function(r){return r.json();})
+      .then(function(st){ STATE=st; applyReveal(st.reveal); personalize(st.first_name);
+        if(st.current_rung==='arrival'){ unlock('video'); } })
+      .catch(function(){ applyReveal(['layer0','layer1']); });
+  })();
 
   // ---- video play unlocks listening ----
   var vid = document.querySelector('.video');
