@@ -119,8 +119,9 @@ WANT_TARGETS = {
     "quiz":    "https://healing.scoreapp.com",
     "join":    "https://truly.vip/Join",
     "results": "https://truly.vip/Results",
+    "voice":   "/begin/voice",
 }
-# not-yet-built rooms (no Slice 2 redirect): "voice", "path", "ash"
+# not-yet-built rooms (no Slice 2 redirect): "path", "ash"
 
 
 def resolve_want(want, ref=""):
@@ -129,6 +130,8 @@ def resolve_want(want, ref=""):
     base = WANT_TARGETS.get(key)
     if not base:
         return None
+    if base.startswith("/"):      # internal target — same-origin, no utm
+        return base
     slug = (ref or "remedy-match").strip() or "remedy-match"
     sep = "&" if "?" in base else "?"
     return (f"{base}{sep}utm_source={urllib.parse.quote(slug)}"
@@ -367,7 +370,7 @@ CARD_CATALOG = {
                            "base_url": "https://truly.vip/Join", "internal": False},
     "voice_distinctions": {"title": "Listen Deeper — Your Voice & Frequencies",
                            "sub": "5-Element toning · voice-sample analysis · Bioenergetic Wellness Scan · EVOX",
-                           "base_url": "https://truly.vip/E4L", "internal": False},
+                           "base_url": "/begin/voice", "internal": True},
     "product":            {"title": "Formulations Matched to You",
                            "sub": "Explore remedies suited to what your body needs",
                            "base_url": "https://remedymatch.com", "internal": False},

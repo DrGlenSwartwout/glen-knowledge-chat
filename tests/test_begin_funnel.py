@@ -183,7 +183,7 @@ def test_resolve_want_live_targets():
 
 def test_resolve_want_unknown_or_unbuilt_returns_none():
     import begin_funnel as bf
-    assert bf.resolve_want("voice", "x") is None
+    # "voice" is now a live internal target (slice 4) — only truly unknown keys return None
     assert bf.resolve_want("ash", "x") is None
     assert bf.resolve_want("", "x") is None
     assert bf.resolve_want("bogus", "x") is None
@@ -355,3 +355,20 @@ def test_surface_most_aware_masterclass_when_no_specific():
     import begin_funnel as bf
     st = {"awareness_stage": "most", "current_rung": "arrival", "unlocked_gates": []}
     assert _keys(bf.surface(st, ["hello"], "")) == ["ash_masterclass"]
+
+
+def test_resolve_want_voice_is_internal_room_no_utm():
+    import begin_funnel as bf
+    assert bf.resolve_want("voice", "Jane") == "/begin/voice"   # internal — no utm threading
+
+
+def test_resolve_want_external_still_threads():
+    import begin_funnel as bf
+    h = bf.resolve_want("e4l", "Jane")
+    assert h.startswith("https://truly.vip/E4L") and "utm_source=Jane" in h
+
+
+def test_voice_distinctions_card_points_to_room():
+    import begin_funnel as bf
+    assert bf.CARD_CATALOG["voice_distinctions"]["internal"] is True
+    assert bf.card_href("voice_distinctions", "Jane") == "/begin/voice"
