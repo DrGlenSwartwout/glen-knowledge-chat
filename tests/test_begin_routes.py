@@ -144,7 +144,7 @@ def test_begin_unlock_deep_link_unbuilt_target_no_redirect(monkeypatch, tmp_path
         begin_funnel.init_journey_tables(cx)
     client = app_module.app.test_client()
     client.set_cookie("amg_session", "sdl2")
-    r = client.post("/begin/unlock", json={"trigger": "deep_link", "want": "voice"})
+    r = client.post("/begin/unlock", json={"trigger": "deep_link", "want": "ash"})
     body = r.get_json()
     assert body["awareness_stage"] == "most"
     assert "redirect" not in body or body.get("redirect") in (None, "")
