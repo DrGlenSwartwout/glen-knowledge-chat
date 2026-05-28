@@ -142,3 +142,28 @@ def test_get_state_aggregates_across_sessions_by_email():
     assert set(st["unlocked_gates"]) >= {"question", "name", "video"}
     assert st["first_name"] == "Ada"
     assert "layer5" in st["reveal"]
+
+
+def test_awareness_rank_order():
+    import begin_funnel as bf
+    assert bf.AWARENESS_RANK["unknown"] < bf.AWARENESS_RANK["problem"] < \
+           bf.AWARENESS_RANK["solution"] < bf.AWARENESS_RANK["product"] < \
+           bf.AWARENESS_RANK["most"]
+
+
+def test_infer_awareness_heuristic():
+    import begin_funnel as bf
+    assert bf.infer_awareness_heuristic("e4l", set(), []) == "most"
+    assert bf.infer_awareness_heuristic("", {"scan"}, []) == "product"
+    assert bf.infer_awareness_heuristic("", set(), ["tell me about EVOX"]) == "product"
+    assert bf.infer_awareness_heuristic("", set(), ["what about a detox protocol"]) == "solution"
+    assert bf.infer_awareness_heuristic("", set(), ["I am so tired and can't sleep"]) == "problem"
+    assert bf.infer_awareness_heuristic("", set(), ["hello"]) == "unknown"
+    assert bf.infer_awareness_heuristic("", set(), ["detox with E4L"]) == "product"
+
+
+def test_max_awareness_monotonic():
+    import begin_funnel as bf
+    assert bf._max_awareness("problem", "product") == "product"
+    assert bf._max_awareness("most", "solution") == "most"
+    assert bf._max_awareness("unknown", "unknown") == "unknown"

@@ -67,6 +67,45 @@ VALID_TRIGGERS = {
 # are still recorded as gates for completeness).
 GATE_TRIGGERS = VALID_TRIGGERS - {"load"}
 
+# ---------------------------------------------------------------------------
+# Awareness-stage inference (Slice 2)
+# ---------------------------------------------------------------------------
+
+AWARENESS_RANK = {"unknown": 0, "problem": 1, "solution": 2, "product": 3, "most": 4}
+
+# Deliberately MINIMAL seed lists (refined from data over time, not hand-tuned
+# here). Case-insensitive substring match on recent chat text.
+_PRODUCT_KEYWORDS = ["e4l", "evox", "neuro magnesium", "retina renew", "zyto",
+                     "voice scan", "bioenergetic"]
+_SOLUTION_KEYWORDS = ["detox", "cleanse", "frequency", "remedy", "supplement",
+                      "protocol", "natural healing", "biofield", "energetic"]
+_PROBLEM_KEYWORDS = ["tired", "fatigue", "pain", "can't sleep", "cant sleep",
+                     "insomnia", "anxious", "anxiety", "bloated", "headache",
+                     "stress", "vision"]
+_PRODUCT_GATES = {"paid_fork", "purchase", "scan", "quiz", "voice"}
+
+
+def _max_awareness(a, b):
+    return a if AWARENESS_RANK.get(a, 0) >= AWARENESS_RANK.get(b, 0) else b
+
+
+def infer_awareness_heuristic(want, gates, query_texts):
+    """Cold-start awareness signal from explicit intent, gates opened, and recent
+    chat text. Returns one of AWARENESS_RANK's keys."""
+    if want:
+        return "most"
+    gates = set(gates or ())
+    if gates & _PRODUCT_GATES:
+        return "product"
+    text = " ".join(query_texts or []).lower()
+    if any(k in text for k in _PRODUCT_KEYWORDS):
+        return "product"
+    if any(k in text for k in _SOLUTION_KEYWORDS):
+        return "solution"
+    if any(k in text for k in _PROBLEM_KEYWORDS):
+        return "problem"
+    return "unknown"
+
 
 def compute_rung(gates, email, tos_agreed):
     """Derive the highest rung reached. Monotonic in ladder order. The
