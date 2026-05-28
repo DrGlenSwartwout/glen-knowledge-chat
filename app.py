@@ -923,7 +923,7 @@ def _classify_awareness_haiku(session_id, query_texts, heuristic_stage):
                     "specific product/tool; most=ready to act/buy."),
             messages=[{"role": "user", "content": f"Questions:\n{joined}"}],
         )
-        haiku_stage = (msg.content[0].text or "").strip().lower()
+        haiku_stage = ((msg.content[0].text if msg.content else "") or "").strip().lower()
         if haiku_stage not in ("problem", "solution", "product", "most"):
             return
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -1027,6 +1027,9 @@ def begin_unlock():
         _threading.Thread(target=_onboard, daemon=True).start()
 
     # Background awareness classification once enough chat has accrued.
+    # Best-effort, fire-once-ish: under rare concurrent unlocks the read-then-spawn
+    # gap can spawn two classifier threads, but set_awareness is idempotent so the
+    # only cost is a duplicate API call + event row — acceptable.
     try:
         already = False
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
