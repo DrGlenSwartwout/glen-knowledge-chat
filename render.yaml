@@ -49,6 +49,13 @@ services:
         value: /data
       - key: GMAIL_TOKEN_PATH
         value: /data/google-token.json
+      # Projects tracker — kanban cache + pending edits. Without these the
+      # files default to /tmp (ephemeral) and the pending-edit queue and
+      # cached PROJECTS.md get wiped on every deploy.
+      - key: PROJECTS_SNAPSHOT_PATH
+        value: /data/projects.md
+      - key: PROJECTS_PENDING_PATH
+        value: /data/pending_project_ideas.json
       - key: CRON_SECRET
         sync: false
     healthCheckPath: /
