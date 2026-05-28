@@ -191,7 +191,10 @@ def _run_nanp_scrape() -> tuple[int, int, int]:
 
 
 def _run_nccaom_scrape() -> tuple[int, int, int]:
-    from scrapers.practitioner_finder.nccaom import fetch_all_records
+    # Lives in migrate_nccaom now — the live fetch requires a non-headless
+    # Playwright session to pass Cloudflare Turnstile (see the migrate
+    # module docstring). The pure parser stays in scrapers.practitioner_finder.nccaom.
+    from scrapers.practitioner_finder.migrate_nccaom import fetch_all_records
     rows = fetch_all_records()
     for row in rows:
         run_upsert(row.to_dict())

@@ -1,48 +1,62 @@
-"""One-shot migration: scrape the NCCAOM Find-a-Practitioner directory
-and load into the practitioners table.
+"""One-shot migration: scrape the NCBAHM (formerly NCCAOM) Find-a-
+Practitioner directory and load into the practitioners table.
 
 Run via:
   doppler run --project remedy-match --config prd -- \\
     python3 -m scrapers.practitioner_finder.migrate_nccaom
 
-Single-stage scrape:
-  - Walk every (Country, [State]) tuple NCCAOM's CountryCode/StateCode
-    dropdowns expose (50 US states + DC + 5 territories + 20 non-US
-    countries) at /FAP/SearchResultWithoutMap.
-  - Each results page (<=20 practitioners) carries every field we need
-    (name, status, credentials via cert-codes, address, phone, website)
-    in the card view — no per-record detail fetch needed.
+Single-stage scrape (no per-practitioner detail fetch needed — the
+list-grid cards carry every field we need):
 
-NCCAOM is the largest adapter in the Practitioner Finder fleet (~15-20k
-listed diplomates). The on-page disclaimer notes the directory is
-"voluntary, not all certified Diplomates will be listed" — total
-NCCAOM certified count is ~25,000+, but only the opted-in subset is
-publicly searchable.
+  - Walk all 50 US states + DC + 5 territories via the
+    ``/FAP/SearchResultWithoutMap`` GET URL with ``StateCode=<XX>`` and
+    ``PageNo=<N>`` parameters.
+  - For each state: fetch page 1, read ``hdnlastpage`` for the last
+    page number, then walk PageNo=2..N.
+  - Parse each page's ~20 cards into NormalizedPractitionerRow and
+    upsert into the practitioners table AS WE GO (don't accumulate
+    20k rows in memory before the first DB write).
 
-directory.nccaom.org is Cloudflare-protected. Every HTTP request goes
-through the shared Playwright fetcher so the cf_clearance cookie is
-granted once and reused across the full ~2,000-page walk. Be defensive:
+Cloudflare Turnstile
+--------------------
+directory.ncbahm.org gates the search POST with a Cloudflare Turnstile
+widget. HEADLESS Playwright FAILS the Turnstile challenge — the JS
+solver detects automation and refuses to grant the cf_clearance cookie.
 
-- 0.5s sleep between fetches (the fetcher handles this)
-- If a page returns a Cloudflare challenge HTML (no result cards AND
-  also no "0 Practitioners found" banner), retry once after a longer pause
-- Log progress every 50 pages so the operator can see status
+This runner uses ``playwright_session(headless=False)``, which opens a
+visible Chromium window. The first navigation to the directory will
+prompt Turnstile; once the cookie is granted, the entire walk
+(~50 states × ~20 pages average = ~1,000 pages) re-uses the same
+session and Turnstile does NOT re-prompt for subsequent navigations
+within the same browser context.
+
+If the operator needs to run unattended, they can pre-warm the
+``cf_clearance`` cookie in a separate visible session, persist the
+browser state, and re-launch in headless mode — but the
+out-of-the-box runner just opens a window and lets the user-driven
+Turnstile auto-solve do its job.
+
+Per-page sleep is 2.5 seconds — NCBAHM has no public-API
+expectation and we want to be polite. At ~1,000 pages × 2.5s that's
+~42 minutes of network sleep alone; total wall-clock for a full
+nationwide walk is ~50-75 minutes depending on render latency.
 
 Idempotent — re-running upserts by source_url (the bare
 ``/FAP/PractitionerDetail?AgencyClientId=<b64>`` URL is stable across
-re-runs since AgencyClientId is the opaque NCCAOM-assigned identifier).
+re-runs since AgencyClientId is the opaque NCBAHM-assigned identifier).
 After load, runs the shared geocoder over any rows still lacking
 lat/lng.
 """
 import sys
+import time
 from typing import Optional
 from urllib.parse import urlencode
 
 from scrapers.practitioner_finder.nccaom import (
-    NON_US_COUNTRIES,
     SEARCH_URL,
     US_STATES,
     parse_search_html,
+    parse_total_count,
     parse_total_pages,
 )
 from scrapers.practitioner_finder.geocode import geocode_row, MapboxError
@@ -58,38 +72,52 @@ from scrapers.practitioner_finder.playwright_fetch import (
 )
 
 
-_PROGRESS_EVERY = 50
+_PROGRESS_EVERY = 25            # log every N pages
+_PER_PAGE_SLEEP_S = 2.5         # politeness floor between page fetches
+_PER_STATE_SLEEP_S = 3.0        # additional pause between state transitions
 
 
-def _search_url(country: str, state: Optional[str], page: int) -> str:
+def _search_url(state: str, page: int) -> str:
+    """Build the GET URL the live NCBAHM directory accepts.
+
+    SortDirection=DESC mirrors the live search-form default (the form's
+    sort dropdown defaults to descending DisplayName). PageSize=20 is
+    fixed by the back-end."""
     params = {
         "Radius": "0",
-        "CountryCode": country,
+        "CountryCode": "USA",
+        "StateCode": state,
         "SearchType": "2",
         "Latitude": "0",
         "Longitude": "0",
         "SortBy": "DisplayName",
-        "SortDirection": "ASC",
+        "SortDirection": "DESC",
         "SearchFormType": "FAP",
         "PageNo": str(page),
+        "PageSize": "20",
     }
-    if state:
-        params["StateCode"] = state
     return f"{SEARCH_URL}?{urlencode(params)}"
 
 
 def _looks_like_challenge(html: str) -> bool:
-    """Heuristic: True when the response looks like a Cloudflare interstitial.
+    """Heuristic: True when the response looks like a Turnstile/Cloudflare
+    interstitial rather than a real result page.
 
     The real result page has either practitioner cards (``result-card__item``)
-    OR a "0 Practitioners found" banner. A Cloudflare challenge has neither
-    AND typically mentions "Just a moment" or a turnstile script.
+    OR a "0 Practitioners found" banner. A challenge has neither AND
+    typically embeds the Turnstile widget or a CF browser-verification
+    interstitial.
     """
     if not isinstance(html, str):
         return True
     if "result-card__item" in html or "Practitioners found" in html:
         return False
-    if "Just a moment" in html or "challenge-platform" in html or "cf-browser-verification" in html:
+    if (
+        "cf-turnstile" in html
+        or "Just a moment" in html
+        or "challenge-platform" in html
+        or "cf-browser-verification" in html
+    ):
         return True
     # Empty or near-empty body — also treat as challenge so we retry once.
     return len(html) < 2000
@@ -97,129 +125,141 @@ def _looks_like_challenge(html: str) -> bool:
 
 def fetch_search_page(
     *,
-    country: str = "USA",
-    state: Optional[str] = None,
-    page: int = 1,
-    fetcher: Optional[PlaywrightFetcher] = None,
+    state: str,
+    page: int,
+    fetcher: PlaywrightFetcher,
 ) -> str:
     """Fetch one page of /FAP/SearchResultWithoutMap via Playwright.
 
-    If the response looks like a Cloudflare challenge, sleep briefly and
-    retry once with a fresh navigation. Returns whatever HTML the second
-    attempt produced (caller is responsible for parsing — if the retry
-    also fails, ``parse_search_html`` will simply return [])."""
-    url = _search_url(country, state, page)
-    if fetcher is None:
-        with playwright_session() as f:
-            return fetch_search_page(
-                country=country, state=state, page=page, fetcher=f
-            )
-    html = fetcher.get(url, wait_for_selector=".result-card__item, .citySearchList__content, .result-info, body")
+    If the response looks like a Turnstile/Cloudflare challenge, sleep
+    briefly and retry once with a fresh navigation. Returns whatever HTML
+    the second attempt produced (caller is responsible for parsing — if
+    the retry also fails, ``parse_search_html`` will simply return [])."""
+    url = _search_url(state, page)
+    html = fetcher.get(
+        url,
+        wait_for_selector=".result-card__item, .result-info, body",
+        sleep_s=_PER_PAGE_SLEEP_S,
+    )
     if _looks_like_challenge(html):
-        # Brief pause then retry once — Cloudflare's grace period is short.
-        fetcher.get(url, wait_for_selector="body", sleep_s=2.0)
+        # Brief pause then retry once — Turnstile's automatic re-issue
+        # tends to grant clearance on the second navigation in the same
+        # session.
+        time.sleep(3.0)
         html = fetcher.get(
             url,
-            wait_for_selector=".result-card__item, .citySearchList__content, .result-info, body",
+            wait_for_selector=".result-card__item, .result-info, body",
+            sleep_s=_PER_PAGE_SLEEP_S,
         )
     return html
 
 
-def fetch_all_records() -> list[NormalizedPractitionerRow]:
-    """Walk every (Country, [State]) tuple the NCCAOM dropdown exposes
-    and return a flat list of NormalizedPractitionerRow. Dedups by
-    source_url within the run.
+# ---------------------------------------------------------------------------
+# Streaming walker: upsert as we go (don't accumulate 20k rows in memory)
+# ---------------------------------------------------------------------------
 
-    Strategy:
-      1. For Country=USA, walk all 50 states + DC + 5 territories.
-      2. For every non-US country in ``NON_US_COUNTRIES``, walk
-         Country=<NAME> (state is unavailable for these and search
-         returns the country's full list).
+def _upsert_row(row: NormalizedPractitionerRow) -> None:
+    """Single-row upsert wrapper — separate function so tests can monkeypatch."""
+    run_upsert(row.to_dict())
 
-    A single Playwright session wraps the entire walk so the
-    cf_clearance cookie persists across all ~2,000 page fetches.
 
-    Logs progress every 50 pages so the operator can see status."""
-    seen: set[str] = set()
-    out: list[NormalizedPractitionerRow] = []
+def walk_state(
+    state: str, fetcher: PlaywrightFetcher
+) -> tuple[int, int]:
+    """Walk all pages for a single state, upserting as we go.
+
+    Returns ``(rows_emitted, pages_fetched)``. Per-row dedup happens at
+    the DB layer (source_url UNIQUE), so we don't carry a per-state seen
+    set — if a re-emit occurs at a page boundary the second upsert is
+    a no-op."""
+    page = 1
+    rows_emitted = 0
     pages_fetched = 0
+    total_pages = None
+    total_count = None
 
-    def _log_progress():
-        if pages_fetched and pages_fetched % _PROGRESS_EVERY == 0:
+    while True:
+        html = fetch_search_page(state=state, page=page, fetcher=fetcher)
+        pages_fetched += 1
+
+        if total_pages is None:
+            total_pages = parse_total_pages(html)
+            total_count = parse_total_count(html)
+            if total_count is not None:
+                print(
+                    f"  [NCCAOM] {state}: total={total_count} pages={total_pages}"
+                )
+
+        rows = parse_search_html(html)
+        if not rows:
+            # Either past the end of results or a challenge slipped
+            # through — break either way (next state).
+            break
+
+        for r in rows:
+            _upsert_row(r)
+            rows_emitted += 1
+
+        if pages_fetched % _PROGRESS_EVERY == 0:
             print(
-                f"  [NCCAOM] {pages_fetched} pages fetched, "
-                f"{len(out)} rows accumulated"
+                f"    [NCCAOM] {state} page {page}: cumulative {rows_emitted} rows"
             )
 
-    with playwright_session() as fetcher:
-        # US states + DC + territories.
-        for st in US_STATES:
-            page = 1
-            while True:
-                html = fetch_search_page(
-                    country="USA", state=st, page=page, fetcher=fetcher
-                )
-                pages_fetched += 1
-                rows = parse_search_html(html)
-                if not rows:
-                    # If the banner says >0 results but we got no rows, we
-                    # likely hit a transient challenge — but we already
-                    # retried once inside fetch_search_page. Move on.
-                    break
-                added = 0
-                for r in rows:
-                    if r.source_url and r.source_url not in seen:
-                        seen.add(r.source_url)
-                        out.append(r)
-                        added += 1
-                _log_progress()
-                total = parse_total_pages(html)
-                if total > 0 and page >= total:
-                    break
-                if total == 0 or added == 0:
-                    # Defensive: no pagination info OR no new rows -> break.
-                    break
-                page += 1
-            print(f"  [NCCAOM] USA / {st}: {len(out)} cumulative rows")
+        if total_pages and page >= total_pages:
+            break
+        if not total_pages:
+            # Defensive: no pagination metadata available -> stop after
+            # one page rather than spinning forever.
+            break
+        page += 1
 
-        # Non-US countries.
-        for c in NON_US_COUNTRIES:
-            page = 1
-            while True:
-                html = fetch_search_page(
-                    country=c, state=None, page=page, fetcher=fetcher
-                )
-                pages_fetched += 1
-                rows = parse_search_html(html)
-                if not rows:
-                    break
-                added = 0
-                for r in rows:
-                    if r.source_url and r.source_url not in seen:
-                        seen.add(r.source_url)
-                        out.append(r)
-                        added += 1
-                _log_progress()
-                total = parse_total_pages(html)
-                if total > 0 and page >= total:
-                    break
-                if total == 0 or added == 0:
-                    break
-                page += 1
-            print(f"  [NCCAOM] {c}: {len(out)} cumulative rows")
-
-    return out
+    return rows_emitted, pages_fetched
 
 
 def main() -> int:
-    print("Fetching NCCAOM directory via directory.nccaom.org (Playwright-backed)...")
-    rows = fetch_all_records()
-    print(f"  parsed {len(rows)} rows")
+    print(
+        "Fetching NCBAHM directory via directory.ncbahm.org "
+        "(non-headless Playwright for Cloudflare Turnstile)..."
+    )
+    total_rows = 0
+    total_pages = 0
+    # CRITICAL: headless=False so Cloudflare Turnstile auto-solves.
+    # Headless mode is detected by the Turnstile JS and BLOCKED.
+    with playwright_session(headless=False) as fetcher:
+        # Warm-up navigation: visit the directory root to trigger the
+        # initial Turnstile challenge and warm the cf_clearance cookie
+        # before the first search request.
+        print("  warm-up: directory root (auto-solve Turnstile)")
+        try:
+            fetcher.get(
+                "https://directory.ncbahm.org/",
+                wait_for_selector="body",
+                sleep_s=3.0,
+            )
+        except Exception as e:  # pragma: no cover - live IO
+            print(f"  WARN: warm-up failed: {e}")
 
-    print(f"\nUpserting {len(rows)} rows...")
-    for row in rows:
-        run_upsert(row.to_dict())
-    print("  upsert complete")
+        for i, state in enumerate(US_STATES, start=1):
+            print(f"\n[{i}/{len(US_STATES)}] {state}")
+            try:
+                rows, pages = walk_state(state, fetcher=fetcher)
+            except Exception as e:  # pragma: no cover - live IO
+                print(f"  ERROR fetching {state}: {e}")
+                continue
+            total_rows += rows
+            total_pages += pages
+            print(
+                f"  {state} done: {rows} rows over {pages} pages "
+                f"(cumulative: {total_rows} rows, {total_pages} pages)"
+            )
+            # Per-state cool-down on top of the per-page sleep.
+            if i < len(US_STATES):
+                time.sleep(_PER_STATE_SLEEP_S)
+
+    print(
+        f"\nUpsert complete: {total_rows} rows emitted over "
+        f"{total_pages} pages."
+    )
 
     print("\nGeocoding ungeocoded rows...")
     ungeocoded = list_ungeocoded()
@@ -246,6 +286,51 @@ def main() -> int:
     print(f"  successfully geocoded {geocoded_count}/{len(ungeocoded)}")
 
     return 0
+
+
+def fetch_all_records() -> list[NormalizedPractitionerRow]:
+    """Compatibility shim for run_all.py's ``_run_nccaom_scrape`` wrapper.
+
+    Walks every (USA, state) tuple and returns the flat list of
+    NormalizedPractitionerRow. Note this loads ALL rows into memory —
+    the streaming ``main()`` path above is preferred for production runs
+    since the nationwide row count is ~10-15k.
+    """
+    out: list[NormalizedPractitionerRow] = []
+    seen: set[str] = set()
+
+    with playwright_session(headless=False) as fetcher:
+        try:
+            fetcher.get(
+                "https://directory.ncbahm.org/",
+                wait_for_selector="body",
+                sleep_s=3.0,
+            )
+        except Exception as e:  # pragma: no cover - live IO
+            print(f"  WARN: warm-up failed: {e}")
+
+        for state in US_STATES:
+            page = 1
+            total_pages: Optional[int] = None
+            while True:
+                html = fetch_search_page(state=state, page=page, fetcher=fetcher)
+                if total_pages is None:
+                    total_pages = parse_total_pages(html)
+                rows = parse_search_html(html)
+                if not rows:
+                    break
+                for r in rows:
+                    if r.source_url and r.source_url not in seen:
+                        seen.add(r.source_url)
+                        out.append(r)
+                if total_pages and page >= total_pages:
+                    break
+                if not total_pages:
+                    break
+                page += 1
+            time.sleep(_PER_STATE_SLEEP_S)
+
+    return out
 
 
 if __name__ == "__main__":

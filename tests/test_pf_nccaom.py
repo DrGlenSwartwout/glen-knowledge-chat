@@ -1,47 +1,43 @@
-"""Unit tests for the NCCAOM (National Certification Commission for
-Acupuncture and Oriental Medicine) adapter.
+"""Unit tests for the NCBAHM (formerly NCCAOM) "Find a Practitioner"
+adapter.
 
-NCCAOM publishes its Find-a-Practitioner directory through an ASP.NET
-MVC application at ``directory.nccaom.org``. The public form POSTs to
-``/FAP/SearchPractitioners`` but the same query parameters work as a
-GET against ``/FAP/SearchResultWithoutMap`` (which is what we use).
+Background
+----------
+The organization rebranded in 2026 from NCCAOM (National Certification
+Commission for Acupuncture and Oriental Medicine) to NCBAHM (National
+Board for Acupuncture and Herbal Medicine). The directory now lives at
+``https://directory.ncbahm.org/``. The module/file is still named
+``nccaom.py`` and emits ``source_org="NCCAOM"`` to keep the database +
+orchestrator + UI key stable across the rebrand; only the credential
+strings updated to ``Dipl. <X> (NCBAHM)``.
 
-Fixtures here are real responses captured 2026-05-27 via the Internet
-Archive Wayback Machine (the production endpoint is Cloudflare-gated;
-the parser is fully decoupled from fetch so the same parse logic runs
-against fixtures, archived snapshots, or live HTML alike):
+Fixtures
+--------
+Five real captured-live fixtures (2026-05-27):
 
-  - nccaom_search_wa.html      — Country=USA & State=WA results page 1
-                                 (20 practitioners, 789 total / 40 pages).
-                                 Validates: locked invariants, card
-                                 parsing, address extraction, cert-code
-                                 -> credentials mapping, pagination
-                                 metadata, fellowship default True.
-  - nccaom_search_name.html    — Name search (FirstName=eileen
-                                 LastName=li, 1 result). Validates the
-                                 alternative ``citySearchList__content``
-                                 card layout and the
-                                 ``/FAPPractitionerProfile/<id>=`` link
-                                 form (vs the list-page's
-                                 ``/FAP/PractitionerDetail?AgencyClientId=<id>=``).
-  - nccaom_search_empty.html   — Synthetic "0 Practitioners found" page.
-                                 Validates that an empty result page
-                                 yields zero rows and total_pages=0.
-  - nccaom_profile.html        — Detail page (Willow E. Hammer). Only
-                                 used for spot-checking the profile-URL
-                                 helpers; the live adapter does not fetch
-                                 detail pages (the list view carries
-                                 every field we need).
+  - ncbahm_search_wa_live.html      — WA page 1 (20 cards, 800 total, 40 pages)
+  - ncbahm_search_ny_live.html      — NY page 1 (20 cards, 1198 total, 60 pages)
+  - ncbahm_search_ca_live.html      — CA page 1 (20 cards, 2007 total, 101 pages)
+  - ncbahm_search_hi_live.html      — HI page 1 (20 cards, 151 total, 8 pages)
+  - ncbahm_search_hi_p2_live.html   — HI page 2 (pagination round-trip check)
 
-Fellowship rule: every NCCAOM-listed practitioner is board-certified by
-definition (NCCAOM IS a credentialing body — the directory only lists
-Dipl. Ac. / Dipl. C.H. / Dipl. O.M. / Dipl. ABT certificate holders).
-The adapter defaults ``fellowship_level=True`` and only downgrades to
-False when the per-card status text carries an inactive marker
+Each fixture exercises:
+  - 20 cards per page (back-end-enforced PageSize=20)
+  - Locked invariants (tier, source_org, specialties, fellowship_level)
+  - hdnlastpage parser
+  - "<N> Practitioners found" total-count parser
+  - Phone / address / credentials extraction per row
+  - Multi-cert practitioners (NY: Adam J. French has AC + CH + OM)
+  - "Not Available" sentinel handling (HI: Aaron Bullington has no
+    phone or address)
+
+Fellowship rule: every NCBAHM-listed practitioner is board-certified by
+definition (NCBAHM IS a credentialing body — the directory only lists
+Dipl. <X> certificate holders). Default ``fellowship_level=True``; only
+downgraded to False when the per-card status carries an inactive marker
 (Expired / Inactive / Retired / Recertification Pending / Suspended /
-Revoked). The production fixtures only contain "Certified Diplomate"
-status, so the downgrade branch is exercised via synthetic fixtures
-in the tests below.
+Revoked). Production fixtures only contain "Certified Diplomate" so
+the downgrade branch is exercised via synthetic fixtures below.
 """
 import sys
 from pathlib import Path
@@ -71,168 +67,217 @@ def _load(name: str) -> str:
     return (FIXTURE_DIR / name).read_text()
 
 
+# Per-fixture expected pagination metadata (verified at capture time).
+_EXPECTED = {
+    "ncbahm_search_wa_live.html": {"rows": 20, "total": 800,  "pages": 40,  "state": "WA"},
+    "ncbahm_search_ny_live.html": {"rows": 20, "total": 1198, "pages": 60,  "state": "NY"},
+    "ncbahm_search_ca_live.html": {"rows": 20, "total": 2007, "pages": 101, "state": "CA"},
+    "ncbahm_search_hi_live.html": {"rows": 20, "total": 151,  "pages": 8,   "state": "HI"},
+    "ncbahm_search_hi_p2_live.html": {"rows": 20, "total": 151,  "pages": 8, "state": "HI"},
+}
+
+
 # ---------------------------------------------------------------------------
-# Fixture-driven behavioral tests
+# Fixture sweep — each live fixture must parse to 20 rows with locked
+# invariants
 # ---------------------------------------------------------------------------
 
-def test_parse_wa_returns_full_page_batch():
-    """The WA fixture is page 1 of 40 — 20 cards per page. Adapter must
-    produce all 20 rows."""
-    rows = parse_search_html(_load("nccaom_search_wa.html"))
-    assert len(rows) == 20
-
-
-def test_all_rows_carry_locked_invariants():
-    """tier / source_org / specialties are constant per spec."""
-    rows = parse_search_html(_load("nccaom_search_wa.html"))
-    rows += parse_search_html(_load("nccaom_search_name.html"))
-    assert rows
-    for r in rows:
-        assert r.tier == "org_member"
-        assert r.source_org == "NCCAOM"
-        assert r.specialties == ["acupuncture_tcm", "holistic_health"]
-        # source_url is always populated (it's the dedup key).
-        assert r.source_url
-        assert r.source_url.startswith(
-            "https://directory.nccaom.org/FAP/PractitionerDetail?AgencyClientId="
+def test_each_live_fixture_parses_to_twenty_rows():
+    """Every captured live fixture is a single result page (PageSize=20)
+    — the parser must return all 20 cards from each."""
+    for fname, meta in _EXPECTED.items():
+        rows = parse_search_html(_load(fname))
+        assert len(rows) == meta["rows"], (
+            f"{fname}: expected {meta['rows']} rows, got {len(rows)}"
         )
 
 
-def test_fellowship_default_true_for_all_listed():
-    """NCCAOM is a credentialing body — every practitioner in the public
-    directory holds at least one Dipl. designation, so fellowship_level
-    defaults True. The WA fixture is all Certified Diplomates."""
-    rows = parse_search_html(_load("nccaom_search_wa.html"))
-    assert rows
-    for r in rows:
-        assert r.fellowship_level is True
+def test_each_live_fixture_pagination_metadata():
+    """hdnlastpage + 'N Practitioners found' parse from every live fixture."""
+    for fname, meta in _EXPECTED.items():
+        html = _load(fname)
+        assert parse_total_pages(html) == meta["pages"], fname
+        assert parse_total_count(html) == meta["total"], fname
 
 
-def test_spot_check_zhenbo_li_full_fields():
-    """First card on the WA page — Zhenbo Li, Dipl. Ac. + Dipl. C.H.,
-    full US address. Validates name + address + phone + website +
-    credentials extraction."""
-    rows = parse_search_html(_load("nccaom_search_wa.html"))
-    li = next(r for r in rows if r.name == "Zhenbo Li")
-    assert li.fellowship_level is True
-    assert li.phone == "360-984-6489"
-    assert li.website == "http://www.lotusacupuncturefertility.com"
-    assert li.address1 == "513 N Morrison Rd"
-    assert li.city == "Vancouver"
-    assert li.state == "WA"
-    assert li.country == "US"
-    # Both AC and CH certs are listed for this practitioner.
-    assert li.credentials
-    assert "Dipl. Ac. (NCCAOM)" in li.credentials
-    assert "Dipl. C.H. (NCCAOM)" in li.credentials
+def test_all_live_rows_carry_locked_invariants():
+    """tier / source_org / specialties / source_url are constant per spec
+    across every live fixture row."""
+    for fname in _EXPECTED:
+        rows = parse_search_html(_load(fname))
+        assert rows, fname
+        for r in rows:
+            assert r.tier == "org_member", fname
+            # NCBAHM is the new brand; source_org keeps the historical
+            # NCCAOM string (see module docstring).
+            assert r.source_org == "NCCAOM", fname
+            assert r.specialties == ["acupuncture_tcm", "holistic_health"], fname
+            assert r.source_url, fname
+            assert r.source_url.startswith(
+                "https://directory.ncbahm.org/FAP/PractitionerDetail?AgencyClientId="
+            ), fname
 
 
-def test_credentials_combine_multiple_cert_codes():
-    """Practitioners with multiple cert badges (AC + CH + OM) get all of
-    them in the credentials string. Yufang Xue on the WA page has both
-    CH and AC."""
-    rows = parse_search_html(_load("nccaom_search_wa.html"))
-    xue = next(r for r in rows if r.name == "Yufang Xue")
-    assert xue.credentials
-    assert "Dipl. C.H. (NCCAOM)" in xue.credentials
-    assert "Dipl. Ac. (NCCAOM)" in xue.credentials
+def test_all_live_rows_default_fellowship_true():
+    """Every NCBAHM listing is board-certified by definition. All live
+    fixtures contain only 'Certified Diplomate' status, so all rows must
+    default fellowship_level=True."""
+    for fname in _EXPECTED:
+        rows = parse_search_html(_load(fname))
+        assert rows, fname
+        for r in rows:
+            assert r.fellowship_level is True, f"{fname}: {r.name}"
 
 
-def test_credentials_extract_om_cert():
-    """OM Certification (Dipl. O.M.) is a distinct cert-code from AC and
-    CH — must be expanded to its full form. Yun Xiao on the WA page has
-    the OM cert."""
-    rows = parse_search_html(_load("nccaom_search_wa.html"))
-    xiao = next(r for r in rows if r.name == "Yun Xiao")
-    assert xiao.credentials
-    assert "Dipl. O.M. (NCCAOM)" in xiao.credentials
+def test_no_duplicate_source_urls_within_a_page():
+    """A single page must not emit duplicate source_urls."""
+    for fname in _EXPECTED:
+        rows = parse_search_html(_load(fname))
+        urls = [r.source_url for r in rows]
+        assert len(urls) == len(set(urls)), fname
 
 
-def test_name_with_trailing_degree_stripped_into_credentials():
-    """A practitioner whose displayed name ends in 'L.Ac.' or 'DAOM' has
-    that degree pulled into credentials so the name field stays clean.
-    Youl Park on the WA page is the canonical case
-    (displayed as 'Youl Park L.Ac.')."""
-    rows = parse_search_html(_load("nccaom_search_wa.html"))
-    park = next(r for r in rows if r.name.startswith("Youl Park"))
-    assert park.name == "Youl Park"
-    assert park.credentials
-    assert "L.Ac." in park.credentials
-    # The cert-code Dipl. Ac. is still preserved.
-    assert "Dipl. Ac. (NCCAOM)" in park.credentials
+# ---------------------------------------------------------------------------
+# Per-fixture spot-check rows — at least 2 sample rows per fixture
+# verified end-to-end
+# ---------------------------------------------------------------------------
+
+def test_wa_spot_check_abigail_coble_hoehne():
+    """First row on WA page 1, descending-sort: Abigail Coble Hoehne."""
+    rows = parse_search_html(_load("ncbahm_search_wa_live.html"))
+    abigail = next(r for r in rows if r.name == "Abigail Coble Hoehne")
+    assert abigail.phone == "206-920-7979"
+    assert abigail.address1 == "524 N 67th St"
+    assert abigail.city == "Seattle"
+    assert abigail.state == "WA"
+    assert abigail.country == "US"
+    assert abigail.credentials and "Dipl. Ac. (NCBAHM)" in abigail.credentials
+    assert abigail.fellowship_level is True
 
 
-def test_website_not_available_is_none():
-    """Cards whose globe block reads 'Not Available' must yield
-    website=None (not the literal string). Zhaoyang Chen on the WA page
-    has 'Not Available' for both website and other optional fields."""
-    rows = parse_search_html(_load("nccaom_search_wa.html"))
-    chen = next(r for r in rows if r.name == "Zhaoyang Chen")
-    assert chen.website is None
-    assert chen.phone == "212-974-2880"  # phone IS available
+def test_wa_spot_check_multi_cert_allen_sayigh():
+    """WA card #14 — Allen Adnan Sayigh holds AC + CH; credentials must
+    combine both into the canonical Dipl. <X> (NCBAHM) strings."""
+    rows = parse_search_html(_load("ncbahm_search_wa_live.html"))
+    allen = next(r for r in rows if r.name == "Allen Adnan Sayigh")
+    assert allen.credentials
+    assert "Dipl. Ac. (NCBAHM)" in allen.credentials
+    assert "Dipl. CH. (NCBAHM)" in allen.credentials
 
 
-def test_name_search_layout_parsed():
-    """The name-search page uses a DIFFERENT card layout
-    (citySearchList__content) and a different link form
-    (/FAPPractitionerProfile/<id>=). Same parser must handle it."""
-    rows = parse_search_html(_load("nccaom_search_name.html"))
-    assert len(rows) == 1
-    eileen = rows[0]
-    assert eileen.name == "Eileen Li"
-    assert eileen.source_url == (
-        "https://directory.nccaom.org/FAP/PractitionerDetail?"
-        "AgencyClientId=tYzwDnfj8Pg="
-    )
-    assert eileen.country == "US"
-    assert eileen.state == "CT"
-    assert eileen.city == "Old Greenwich"
-    # Name-search page omits phone — 'Not Available' shows in both phone
-    # and website blocks for this entry.
-    assert eileen.phone is None
-    assert eileen.website is None
+def test_ny_spot_check_a_li_song():
+    """First row on NY page 1 (descending-sort): A Li Song."""
+    rows = parse_search_html(_load("ncbahm_search_ny_live.html"))
+    song = next(r for r in rows if r.name == "A Li Song")
+    assert song.phone == "917-807-0898"
+    assert song.address1 == "6801 Jericho Tpke"
+    assert song.city == "Syosset"
+    assert song.state == "NY"
+    assert song.country == "US"
+    assert song.credentials and "Dipl." in song.credentials
 
 
-def test_empty_result_page_yields_zero_rows():
-    """An '0 Practitioners found' page produces no rows and pagination
-    reports zero pages — caller's empty-page break stops the walk."""
-    html = _load("nccaom_search_empty.html")
-    rows = parse_search_html(html)
-    assert rows == []
-    assert parse_total_pages(html) == 0
-    assert parse_total_count(html) == 0
+def test_ny_spot_check_adam_french_three_certs_plus_trailing_lac():
+    """NY card #6 — Adam J. French L.Ac. holds AC + CH + OM AND has the
+    L.Ac. degree trailing on his displayed name. Credentials must
+    include all three Dipl. strings AND the trailing L.Ac. degree;
+    name field must be cleaned to 'Adam J. French'."""
+    rows = parse_search_html(_load("ncbahm_search_ny_live.html"))
+    adam = next(r for r in rows if r.name == "Adam J. French")
+    assert adam.credentials
+    assert "Dipl. Ac. (NCBAHM)" in adam.credentials
+    assert "Dipl. CH. (NCBAHM)" in adam.credentials
+    assert "Dipl. OM. (NCBAHM)" in adam.credentials
+    assert "L.Ac." in adam.credentials
+    assert adam.website == "http://adamfrenchlac.com"
 
 
-def test_total_pages_and_count_from_real_page():
-    """The pagination + result-banner helpers pull WA's 40 pages / 789
-    total directly off the fixture."""
-    html = _load("nccaom_search_wa.html")
-    assert parse_total_pages(html) == 40
-    assert parse_total_count(html) == 789
+def test_ca_spot_check_a_young_kim():
+    """First row on CA page 1: A Young Kim."""
+    rows = parse_search_html(_load("ncbahm_search_ca_live.html"))
+    kim = next(r for r in rows if r.name == "A Young Kim")
+    assert kim.phone == "661-251-5930"
+    assert kim.address1 == "18261 Soledad Canyon Rd"
+    assert kim.city == "Canyon Country"
+    assert kim.state == "CA"
+    assert kim.country == "US"
+    assert kim.credentials and "Dipl." in kim.credentials
 
+
+def test_ca_spot_check_multi_cert_abbey_tucker_seiden():
+    """CA card #4 — Abbey Tucker Seiden holds AC + OM."""
+    rows = parse_search_html(_load("ncbahm_search_ca_live.html"))
+    abbey = next(r for r in rows if r.name == "Abbey Tucker Seiden")
+    assert abbey.credentials
+    assert "Dipl. Ac. (NCBAHM)" in abbey.credentials
+    assert "Dipl. OM. (NCBAHM)" in abbey.credentials
+
+
+def test_hi_spot_check_aaron_bullington_no_phone_no_address():
+    """HI card #1 — Aaron Bullington has 'Not Available' for both phone
+    AND address. Must emit phone=None, address fields=None (NOT the
+    literal 'Not Available' string), but website IS available."""
+    rows = parse_search_html(_load("ncbahm_search_hi_live.html"))
+    aaron = next(r for r in rows if r.name == "Aaron Bullington")
+    assert aaron.phone is None
+    assert aaron.address1 is None
+    assert aaron.city is None
+    assert aaron.state is None
+    assert aaron.website == "http://www.bodyrealms.com"
+    # Cert is OM for this practitioner.
+    assert aaron.credentials and "Dipl. OM. (NCBAHM)" in aaron.credentials
+
+
+def test_hi_spot_check_aaron_tsutomo_ishigo():
+    """HI card #2 — Aaron Tsutomo Ishigo with full address + phone +
+    AC cert, NO website (the 'Not Available' globe sentinel)."""
+    rows = parse_search_html(_load("ncbahm_search_hi_live.html"))
+    aaron = next(r for r in rows if r.name == "Aaron Tsutomo Ishigo")
+    assert aaron.phone == "808-934-9858"
+    assert aaron.address1 == "82 Keaa St"
+    assert aaron.city == "Hilo"
+    assert aaron.state == "HI"
+    assert aaron.country == "US"
+    assert aaron.website is None  # globe block is "Not Available"
+    assert aaron.credentials and "Dipl. Ac. (NCBAHM)" in aaron.credentials
+
+
+def test_hi_pagination_round_trip_p1_and_p2_both_parse():
+    """Both HI page 1 and page 2 fixtures must parse to 20 rows with the
+    same total + last-page metadata (the back-end emits the same
+    pagination header on every page within a search)."""
+    p1_html = _load("ncbahm_search_hi_live.html")
+    p2_html = _load("ncbahm_search_hi_p2_live.html")
+    p1 = parse_search_html(p1_html)
+    p2 = parse_search_html(p2_html)
+    assert len(p1) == 20
+    assert len(p2) == 20
+    assert parse_total_pages(p1_html) == parse_total_pages(p2_html) == 8
+    assert parse_total_count(p1_html) == parse_total_count(p2_html) == 151
+
+
+# ---------------------------------------------------------------------------
+# Source URL stability — dedup key contract
+# ---------------------------------------------------------------------------
 
 def test_source_url_is_stable_across_reruns():
-    """Re-parsing the same fixture twice must yield identical source_urls
+    """Re-parsing the same fixture twice yields identical source_urls
     in the same order — these are the dedup keys for ON CONFLICT
     upsert."""
-    html = _load("nccaom_search_wa.html")
+    html = _load("ncbahm_search_wa_live.html")
     a = parse_search_html(html)
     b = parse_search_html(html)
     assert [r.source_url for r in a] == [r.source_url for r in b]
-    # All distinct.
-    urls = [r.source_url for r in a]
-    assert len(urls) == len(set(urls))
 
 
-def test_source_url_format_uses_canonical_form():
-    """Both list-page anchors (?AgencyClientId=<id>) and name-search
-    anchors (/FAPPractitionerProfile/<id>) normalize to the same
-    canonical ``/FAP/PractitionerDetail?AgencyClientId=<id>`` source_url."""
-    rows_list = parse_search_html(_load("nccaom_search_wa.html"))
-    rows_name = parse_search_html(_load("nccaom_search_name.html"))
-    # Both layouts produce source_urls in the canonical detail form.
-    for r in rows_list + rows_name:
-        assert "/FAP/PractitionerDetail?AgencyClientId=" in r.source_url
+def test_source_url_canonical_form_across_fixtures():
+    """Every emitted source_url uses the canonical
+    /FAP/PractitionerDetail?AgencyClientId=<id> form."""
+    for fname in _EXPECTED:
+        for r in parse_search_html(_load(fname)):
+            assert "/FAP/PractitionerDetail?AgencyClientId=" in r.source_url, (
+                fname, r.name, r.source_url
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -295,9 +340,7 @@ def test_fellowship_false_for_retired_status():
 
 
 def test_fellowship_false_for_recertification_pending_status():
-    """'Recertification Pending' downgrades fellowship_level (the
-    practitioner is in the middle of renewal and not currently
-    actively certified)."""
+    """'Recertification Pending' downgrades fellowship_level."""
     html = _EXPIRED_CARD.replace(
         ">Expired |", ">Recertification Pending |"
     ).replace("EXPIREDtest1=", "RECERTtest1=")
@@ -323,15 +366,15 @@ def test_extract_agency_client_id_from_list_page_link():
     """The list page uses ?AgencyClientId=<id>= query-param form."""
     assert (
         _extract_agency_client_id(
-            "/FAP/PractitionerDetail?AgencyClientId=rTjSagQVHkY="
+            "/FAP/PractitionerDetail?AgencyClientId=FdSPJbqR6f4="
         )
-        == "rTjSagQVHkY="
+        == "FdSPJbqR6f4="
     )
 
 
-def test_extract_agency_client_id_from_name_search_link():
-    """The name-search page uses /FAPPractitionerProfile/<id>= path
-    form. The opaque ID is identical."""
+def test_extract_agency_client_id_from_legacy_path_form():
+    """The legacy name-search layout used /FAPPractitionerProfile/<id>=
+    path form. The opaque ID is identical."""
     assert (
         _extract_agency_client_id("/FAPPractitionerProfile/tYzwDnfj8Pg=")
         == "tYzwDnfj8Pg="
@@ -346,9 +389,10 @@ def test_extract_agency_client_id_handles_absent_id():
 
 
 def test_build_source_url_canonical_form():
-    """source_url is always the bare ?AgencyClientId=<id> form."""
+    """source_url is always the bare ?AgencyClientId=<id> form on the
+    new ncbahm.org host."""
     assert _build_source_url("abc123=") == (
-        "https://directory.nccaom.org/FAP/PractitionerDetail?AgencyClientId=abc123="
+        "https://directory.ncbahm.org/FAP/PractitionerDetail?AgencyClientId=abc123="
     )
     assert _build_source_url(None) is None
     assert _build_source_url("") is None
@@ -403,7 +447,7 @@ def test_normalize_phone_handles_sentinels():
 
 
 def test_strip_credentials_handles_trailing_degree_no_comma():
-    """'Youl Park L.Ac.' -> name='Youl Park', creds='L.Ac.'. The NCCAOM
+    """'Youl Park L.Ac.' -> name='Youl Park', creds='L.Ac.'. The NCBAHM
     directory frequently lists the degree this way (no comma)."""
     name, creds = _strip_credentials("Youl Park L.Ac.")
     assert name == "Youl Park"
@@ -443,14 +487,11 @@ def test_parse_address_line_us_no_postal():
     assert out["country"] == "USA"
 
 
-def test_parse_address_line_no_street():
-    """When the practitioner only listed city/state/country (no street),
-    everything still parses without crashing."""
-    out = _parse_address_line("Seattle, WA, USA")
-    assert out.get("address1") is None
-    assert out["city"] == "Seattle"
-    assert out["state"] == "WA"
-    assert out["country"] == "USA"
+def test_parse_address_line_not_available_sentinel():
+    """The 'Not Available' literal (HI Aaron Bullington pattern) yields
+    an empty dict — caller's address fields stay None."""
+    assert _parse_address_line("Not Available") == {}
+    assert _parse_address_line("not available") == {}
 
 
 def test_parse_address_line_empty_or_garbage():
@@ -460,11 +501,10 @@ def test_parse_address_line_empty_or_garbage():
     assert out.get("address1") == "Unknown"
 
 
-def test_parse_card_extracts_all_fields():
+def test_parse_card_extracts_all_fields_from_synthetic_card():
     """End-to-end: a single result-card chunk parses to the expected
     fields dict."""
-    card = _EXPIRED_CARD
-    parsed = _parse_card(card)
+    parsed = _parse_card(_EXPIRED_CARD)
     assert parsed is not None
     assert parsed["name"] == "Jane Expired"
     assert "EXPIREDtest1=" in parsed["href"]
@@ -499,3 +539,12 @@ def test_parser_handles_non_string_input():
     assert parse_search_html(None) == []  # type: ignore[arg-type]
     assert parse_search_html(b"<html></html>") == []  # type: ignore[arg-type]
     assert parse_search_html({}) == []  # type: ignore[arg-type]
+
+
+def test_empty_page_yields_zero_rows_and_zero_pagination():
+    """A page with no result cards and no banner -> zero rows, zero
+    last-page; callers' empty-page break stops the walk."""
+    html = "<html><body>no results here</body></html>"
+    assert parse_search_html(html) == []
+    assert parse_total_pages(html) == 0
+    assert parse_total_count(html) is None

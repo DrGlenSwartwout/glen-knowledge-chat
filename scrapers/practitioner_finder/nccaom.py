@@ -1,183 +1,176 @@
-"""National Certification Commission for Acupuncture and Oriental Medicine
-(NCCAOM) "Find a Practitioner" directory scraper.
+"""National Board for Acupuncture and Herbal Medicine (NCBAHM) — formerly
+NCCAOM — "Find a Practitioner" directory scraper.
 
-NCCAOM is the credentialing body for acupuncture and Oriental medicine
-practitioners in the US — every diplomate listed in the public directory
-holds at least one of:
+Rebrand note (2026)
+-------------------
+The organization formerly known as the National Certification Commission
+for Acupuncture and Oriental Medicine (NCCAOM) rebranded to the National
+Board for Acupuncture and Herbal Medicine (NCBAHM). The directory now
+lives at ``https://directory.ncbahm.org/`` (old ``directory.nccaom.org``
+no longer resolves).
 
-    Dipl. Ac.   (NCCAOM)   — Diplomate of Acupuncture
-    Dipl. C.H.  (NCCAOM)   — Diplomate of Chinese Herbology
-    Dipl. O.M.  (NCCAOM)   — Diplomate of Oriental Medicine
-    Dipl. ABT   (NCCAOM)   — Diplomate of Asian Bodywork Therapy
+The diplomate cert codes were renamed in step with the brand change:
 
-Discovery 2026-05-27:
+    Dipl. Ac.   (NCBAHM)   — Diplomate of Acupuncture
+    Dipl. CH.   (NCBAHM)   — Diplomate of Chinese Herbology
+    Dipl. OM.   (NCBAHM)   — Diplomate of Oriental Medicine
+    Dipl. AHM   (NCBAHM)   — Diplomate of Acupuncture and Herbal Medicine
+    Dipl. ABT   (NCBAHM)   — Diplomate of Asian Bodywork Therapy
 
-The public web UI ``https://www.nccaom.org/find-a-practitioner/`` is
-behind Cloudflare bot mitigation, but the actual practitioner search
-tool lives on a separate ASP.NET MVC subdomain at
-``https://directory.nccaom.org/`` (also gated by Cloudflare in production
-— a real run will need a recycled browser session or Playwright
-fallback; the fixture-driven parser doesn't care). The search form
-``<form action="/FAP/SearchPractitioners" method="post">`` accepts three
-SearchType modes:
+The directory's cert-box still emits the short codes ``AC`` / ``CH`` /
+``OM`` (and historically ``ABT``); we expand them into the canonical
+``Dipl. <X> (NCBAHM)`` form. The newer ``AHM`` code is included in the
+mapping defensively even though no fixture row carries it yet.
 
-    SearchType=1  — Search by Radius   (Radius + PinCode/Latitude/Longitude)
-    SearchType=2  — Search by City, State, Country (CountryCode + StateCode + CityName)
-    SearchType=3  — Search by Practitioner Name (FirstName + LastName)
+The ``source_org`` field is intentionally kept as ``"NCCAOM"`` (not
+``"NCBAHM"``) — orchestrator, UI, GHL tags, and historical DB rows all
+key off that string. We document the rebrand here and emit the new
+``Dipl. ... (NCBAHM)`` credential strings; the ``source_org`` rename
+is a separate (future) coordinated migration.
 
-The POST handler 302-redirects to a GET endpoint that renders the
-results page directly — the GET URL works for re-issuing the same query
-without going back through the POST + CSRF token round-trip:
+Live architecture (locked 2026-05-27)
+-------------------------------------
+- Real host: ``https://directory.ncbahm.org/``
+- Search form: POSTs to ``/FAP/SearchPractitioners``. The POST is
+  Cloudflare-Turnstile-gated and CANNOT be passed with headless
+  Playwright — the migrate runner uses ``playwright_session(headless=False)``
+  to drive a visible window through the Turnstile challenge.
+- Stable per-state URL: the POST handler 302s to a GET URL we can replay
+  directly (no token round-trip needed after the Turnstile cookie is in
+  place):
 
     GET /FAP/SearchResultWithoutMap
         ?Radius=0
         &CountryCode=USA
-        &StateCode=WA
+        &StateCode=<XX>
         &SearchType=2
         &Latitude=0
         &Longitude=0
         &SortBy=DisplayName
-        &SortDirection=ASC
+        &SortDirection=DESC
         &SearchFormType=FAP
-        &PageNo=1
+        &PageNo=<N>
+        &PageSize=20
 
-This is the cleanest full-coverage approach: walk every US state +
-every non-US country in the CountryCode dropdown. The page renders
-20 practitioners per page; the total page count is in the hidden
-``<input id="hdnlastpage" value="N" />`` field — walk PageNo=1..N.
+  ``PageSize=20`` is fixed by the back-end (no larger page renders).
 
-Card markup (one practitioner = one ``<div class="result-card__item">``):
+- Pagination: bump ``PageNo`` 1..N. The hidden
+  ``<input id="hdnlastpage" value="N">`` field on every response carries
+  the last page number; the ``"<N> Practitioners found"`` banner gives
+  the total record count.
+
+- Card structure (one practitioner = one ``<div class="result-card__item">``):
 
     <div class="result-card__item">
       <div class="info-box">
-        <p class="name"><a href="/FAP/PractitionerDetail?AgencyClientId=<b64id>="
-                          title="View the profile of Zhenbo Li"> Zhenbo Li</a></p>
-        <p class="gendar">Certified Diplomate | Female</p>
+        <p class="name">
+          <a href="/FAP/PractitionerDetail?AgencyClientId=<b64id>="
+             title="View the profile of Aaron Bullington"> Aaron Bullington</a>
+        </p>
+        <p class="gendar">Certified Diplomate | Male</p>
         <div class="iconic-callout">
           <div class="iconic-callout__item">
             <i class="icon-call-end"></i>
-            <p class="copy"><em>360-984-6489</em></p>          # phone
+            <p class="copy"><em>808-934-9858</em></p>           # phone
           </div>
           <div class="iconic-callout__item">
             <i class="icon-globe"></i>
             <p class="copy">
-              <span>www.example.com ...</span>
-              <a href="http://www.example.com">Visit ...</a>   # website (or "Not Available")
-            </p>
+              <span>www.example.com</span>
+              <a href="http://www.example.com" title="...">Visit ...</a>
+            </p>                                                # website
           </div>
           <div class="iconic-callout__item">
             <i class="icon-location-pin"></i>
             <p class="copy">
-              <em id="addressdata_N">513 N Morrison Rd , Vancouver, WA, USA</em>
-            </p>
+              <em id="addressdata_N">82 Keaa St , Hilo, HI, USA</em>
+            </p>                                                # address
           </div>
         </div>
       </div>
       <div class="cert-box">
-        <div class="cert-box__item">
-          <div class="content"><p class="copy">AC Certification</p></div>
+        <div class="cerfapfap-init slick-initialized slick-slider ...">
+          <div class="slick-list ..."><div class="slick-track ...">
+            <div class="cert-box__item slick-slide ...">
+              <div class="content"><p class="copy">AC Certification</p></div>
+              ...
+            </div>
+            <div class="cert-box__item ...">
+              <div class="content"><p class="copy">CH Certification</p></div>
+              ...
+            </div>
+          </div></div>
         </div>
-        <div class="cert-box__item">
-          <div class="content"><p class="copy">CH Certification</p></div>
-        </div>
-        ...
       </div>
     </div>
 
-The cert-box codes map to diplomate credentials:
-    AC -> Dipl. Ac. (NCCAOM)
-    CH -> Dipl. C.H. (NCCAOM)
-    OM -> Dipl. O.M. (NCCAOM)
-    ABT -> Dipl. ABT (NCCAOM)
-We combine the codes (e.g. "Dipl. Ac., Dipl. C.H.") into the credentials
-string; the practitioner's degree credentials (L.Ac., DAOM, etc.) are
-only present in the displayed ``name`` field when the practitioner added
-them voluntarily, in which case we lift them via the standard
-``_strip_credentials`` helper.
-
-There's also a Name-Search result page (``SearchType=3``) with a
-different layout — ``<section class="fap--citySearchList">`` containing
-``<div class="citySearchList__content">`` cards. That layout is
-supported by the same parser via secondary card-locator markers; the
-name-search page's per-row anchor is
-``/FAPPractitionerProfile/<b64id>=`` (just the relative variant of
-``/FAP/PractitionerDetail?AgencyClientId=<b64id>=`` — both resolve to
-the same profile and share the same opaque AgencyClientId).
+  The cert-box may carry 1..N badges per practitioner (Adam J. French
+  L.Ac. on the NY page-1 fixture has AC + CH + OM all three). Card
+  fields phone / website / address all use the same ``Not Available``
+  sentinel when the practitioner didn't supply a value.
 
 Fellowship rule
 ---------------
-**Every NCCAOM-listed practitioner is board-certified by definition.**
-NCCAOM is a credentialing body — the only people in this directory hold
-the Dipl. Ac. / Dipl. C.H. / Dipl. O.M. / Dipl. ABT designation. So the
-default is ``fellowship_level=True`` for any row produced from the
-public directory.
+Every practitioner in the NCBAHM public directory is a board-certified
+diplomate by definition (NCBAHM is the credentialing body — the only
+people listed hold the Dipl. <X> designation). So the default is
+``fellowship_level=True``.
 
-Exception: the per-card status text (rendered in the ``<p class="gendar">``
-line as ``"<Status> | <Gender>"``) can carry override states like
-``Expired``, ``Inactive``, ``Retired``, or ``Recertification Pending``.
-We detect those and downgrade fellowship_level to False. The production
-fixtures captured 2026-05-27 only contain ``Certified Diplomate`` (the
-public directory filters expired/inactive entries by default), so the
-override branch is exercised only via synthetic fixtures in the test
-suite — but it's in place for any future hidden-status listings that
-slip through.
+Exception: the per-card ``<p class="gendar">"<Status> | <Gender>"``
+header can carry override states like ``Expired``, ``Inactive``,
+``Retired``, ``Recertification Pending``, ``Suspended``, ``Revoked``.
+We detect those and downgrade to False. The production fixtures only
+contain ``Certified Diplomate`` (the public directory filters
+inactive entries by default), so the downgrade branch is exercised via
+synthetic fixtures in the test suite.
 
+Source URL
+----------
 The per-practitioner ``source_url`` is the canonical detail-page URL:
 
-    https://directory.nccaom.org/FAP/PractitionerDetail?AgencyClientId=<b64id>=
+    https://directory.ncbahm.org/FAP/PractitionerDetail?AgencyClientId=<b64id>=
 
-The AgencyClientId is an opaque URL-safe base64 string stable across
-re-runs — it's the dedup key for upsert.
+The AgencyClientId is an opaque URL-safe base64 string emitted by the
+back-end and is stable across re-runs — it's the dedup key for upsert.
+Cards on the result page link to this URL natively.
 
-Notes / surprises
------------------
-- Cloudflare gating: ``directory.nccaom.org`` serves a JS challenge to
-  static-UA curl in production. A live scrape will need either a recycled
-  browser session, a Playwright fallback, or a residential-proxy
-  pass-through. The parser is fully decoupled from fetch — the migration
-  script can swap fetch backends without parser changes.
-- Voluntary directory: the on-page disclaimer reads "this directory is
-  voluntary, not all certified Diplomates will be listed." Total
-  certified Diplomate count is ~25,000+ (NCCAOM public reporting), but
-  only the opted-in subset is visible — closer to 15,000-20,000 based
-  on per-state spot-counts (WA alone has 789).
-- Page size: 20 per page, regardless of any per_page hint. The result-info
-  banner reports total count; the hidden ``hdnlastpage`` carries total
-  pages. Pagination is 1-indexed.
+Notes
+-----
+- The parser is pure-functional and decoupled from fetch. The live
+  fetch (Cloudflare Turnstile + non-headless Playwright) lives in
+  ``migrate_nccaom.py``.
+- ``PageSize`` is a back-end constant of 20 regardless of any
+  ``PageSize=`` param hint we send (the server ignores it).
+- Pagination is 1-indexed; ``hdnlastpage`` carries the last page number.
 """
 import html as html_module
 import re
-import time
 from typing import Optional
-
-import requests
 
 from scrapers.practitioner_finder.models import NormalizedPractitionerRow
 
 
-USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605"
-BASE = "https://directory.nccaom.org"
+BASE = "https://directory.ncbahm.org"
 SEARCH_URL = f"{BASE}/FAP/SearchResultWithoutMap"
 DETAIL_URL = f"{BASE}/FAP/PractitionerDetail"
 
 LOCKED_SPECIALTIES = ["acupuncture_tcm", "holistic_health"]
 
-# Cert-code -> human credential. The NCCAOM directory list page emits
-# short codes (AC/CH/OM/ABT) in the cert-box; we expand them into the
-# canonical Dipl. <X> (NCCAOM) form, dropping the trademark suffix to
-# keep the credentials string compact and unambiguous.
+# Cert-code -> human credential. The list-view cert-box still emits the
+# short codes; we expand them to the canonical Dipl. <X> (NCBAHM) form.
+# AHM is included defensively for future listings (no fixture row carries
+# the new code yet).
 _CERT_CODE_TO_CREDENTIAL = {
-    "AC": "Dipl. Ac. (NCCAOM)",
-    "CH": "Dipl. C.H. (NCCAOM)",
-    "OM": "Dipl. O.M. (NCCAOM)",
-    "ABT": "Dipl. ABT (NCCAOM)",
+    "AC":  "Dipl. Ac. (NCBAHM)",
+    "CH":  "Dipl. CH. (NCBAHM)",
+    "OM":  "Dipl. OM. (NCBAHM)",
+    "AHM": "Dipl. AHM (NCBAHM)",
+    "ABT": "Dipl. ABT (NCBAHM)",
 }
 
-# Status flags that DOWNGRADE fellowship_level to False. NCCAOM itself
-# isn't the source of these in the current production fixtures (the
-# public directory pre-filters to Certified Diplomate only), but the
-# parser checks the status text defensively in case any of these slip
-# through to the rendered list page in the future.
+# Status tokens (case-insensitive) that DOWNGRADE fellowship_level to
+# False. NCBAHM production fixtures only carry "Certified Diplomate",
+# but the parser checks defensively for these future-proof variants.
 _INACTIVE_STATUS_TOKENS = {
     "EXPIRED",
     "INACTIVE",
@@ -187,7 +180,7 @@ _INACTIVE_STATUS_TOKENS = {
     "REVOKED",
 }
 
-# US state two-letter codes the CountryCode=USA dropdown exposes. NCCAOM
+# US state two-letter codes the CountryCode=USA dropdown exposes. NCBAHM
 # uses the StateCode dropdown for US states only (50 + DC + the five
 # inhabited territories: PR, GU, VI, AS, MP). Order is stable for
 # reproducible run logs.
@@ -200,36 +193,10 @@ US_STATES = [
     "PR", "GU", "VI", "AS", "MP",
 ]
 
-# Non-US countries NCCAOM's CountryCode dropdown exposes. NCCAOM mostly
-# lists US practitioners — the international set is small. We walk the
-# countries known to actually have diplomates in the directory; the rest
-# of the dropdown's full ~250-country list returns empty pages on every
-# query. Keeping this list conservative reduces unnecessary HTTP load
-# at scrape time.
-NON_US_COUNTRIES = [
-    "CANADA",
-    "AUSTRALIA",
-    "NEW ZEALAND",
-    "UNITED KINGDOM",
-    "GERMANY",
-    "JAPAN",
-    "CHINA",
-    "KOREA, REPUBLIC OF",
-    "HONG KONG",
-    "TAIWAN",
-    "SINGAPORE",
-    "MEXICO",
-    "ISRAEL",
-    "SWITZERLAND",
-    "NETHERLANDS",
-    "IRELAND",
-    "ITALY",
-    "FRANCE",
-    "SPAIN",
-    "PUERTO RICO",
-]
-
 # Country-name -> ISO2 (same convention as iabdm.py / iaomt.py / aanp.py).
+# NCBAHM's directory is dominantly US — international entries are a small
+# fringe set, and the rebrand-era directory exposes only the US dropdown.
+# Kept here for the address parser to ISO2-normalize the country token.
 _COUNTRY_NAME_TO_ISO2 = {
     "usa": "US",
     "us": "US",
@@ -274,74 +241,6 @@ _COUNTRY_NAME_TO_ISO2 = {
 }
 
 
-def _session() -> requests.Session:
-    s = requests.Session()
-    s.headers.update(
-        {
-            "User-Agent": USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-    )
-    return s
-
-
-# ---------------------------------------------------------------------------
-# Stage 1: paginated search HTML fetch (live)
-# ---------------------------------------------------------------------------
-
-def fetch_search_page(
-    *,
-    country: str = "USA",
-    state: Optional[str] = None,
-    city: Optional[str] = None,
-    page: int = 1,
-) -> str:
-    """Fetch one page of ``/FAP/SearchResultWithoutMap`` for the given
-    (country, [state], [city], page) tuple.
-
-    Static UA + 20s timeout + 0.5s sleep (rate-friendly, single-threaded).
-    Retries once on connection error before re-raising. Returns the raw
-    HTML body — caller parses it with ``parse_search_html``.
-
-    Note: ``directory.nccaom.org`` is Cloudflare-protected. Static-UA
-    requests can return HTTP 403 ("Just a moment..." challenge page).
-    Production runs should wrap this in a Playwright session or recycle
-    a browser cookie jar.
-    """
-    params = {
-        "Radius": "0",
-        "CountryCode": country,
-        "SearchType": "2",
-        "Latitude": "0",
-        "Longitude": "0",
-        "SortBy": "DisplayName",
-        "SortDirection": "ASC",
-        "SearchFormType": "FAP",
-        "PageNo": str(page),
-    }
-    if state:
-        params["StateCode"] = state
-    if city:
-        params["CityName"] = city
-    s = _session()
-    last_exc: Optional[Exception] = None
-    for attempt in range(2):
-        try:
-            r = s.get(SEARCH_URL, params=params, timeout=20)
-            r.raise_for_status()
-            time.sleep(0.5)
-            return r.text
-        except requests.RequestException as e:
-            last_exc = e
-            time.sleep(1.0)
-            continue
-    # Both attempts failed — re-raise the last error.
-    if last_exc is not None:
-        raise last_exc
-    return ""  # unreachable; satisfies type checker
-
-
 # ---------------------------------------------------------------------------
 # Parsing helpers (pure)
 # ---------------------------------------------------------------------------
@@ -377,7 +276,7 @@ def _strip_credentials(name: str) -> tuple[str, Optional[str]]:
     """Split 'Youl Park L.Ac.' / 'Jane Doe, L.Ac., DAOM' into
     (clean_name, credentials).
 
-    Mirrors the IABDM / AANP / OVDR helpers. The NCCAOM name field
+    Mirrors the IABDM / AANP / OVDR helpers. The NCBAHM name field
     occasionally includes the practitioner's degree (``L.Ac.``,
     ``DAOM``, ``DACM``) tacked onto the end with or without a comma —
     we accept both ``Name, Cred`` and ``Name Cred`` forms when the
@@ -457,17 +356,18 @@ def _extract_agency_client_id(href: str) -> Optional[str]:
     """Pull the opaque AgencyClientId out of any practitioner link.
 
     The list page uses ``/FAP/PractitionerDetail?AgencyClientId=<b64>=``
-    while the name-search results use ``/FAPPractitionerProfile/<b64>=``;
-    both encode the same opaque key. The trailing ``=`` is part of the
-    URL-safe base64 padding and is preserved verbatim — re-runs must
-    yield identical IDs for stable dedup."""
+    while the older name-search results used
+    ``/FAPPractitionerProfile/<b64>=``; both encode the same opaque key.
+    The trailing ``=`` is part of the URL-safe base64 padding and is
+    preserved verbatim — re-runs must yield identical IDs for stable
+    dedup."""
     if not href:
         return None
-    # AgencyClientId query param style.
+    # AgencyClientId query-param form.
     m = re.search(r"[?&]AgencyClientId=([^&\"'#]+)", href)
     if m:
         return m.group(1)
-    # /FAPPractitionerProfile/<id> path style.
+    # /FAPPractitionerProfile/<id> path-style form (legacy).
     m = re.search(r"/FAPPractitionerProfile/([^?&\"'#/]+)", href)
     if m:
         return m.group(1)
@@ -478,16 +378,14 @@ def _build_source_url(agency_client_id: Optional[str]) -> Optional[str]:
     """Canonical per-practitioner URL — bare AgencyClientId form.
 
     The list-page link form ``/FAP/PractitionerDetail?AgencyClientId=<id>``
-    is the canonical source_url we use across both the list parser
-    (which emits this form natively) and the name-search parser (which
-    sees the alternate ``/FAPPractitionerProfile/<id>`` form). Both
-    target the same profile."""
+    is the canonical source_url. Both list-page and legacy name-search
+    pages resolve to this profile."""
     if not agency_client_id:
         return None
     return f"{DETAIL_URL}?AgencyClientId={agency_client_id}"
 
 
-# Address-line regex: NCCAOM renders addresses as a single comma-joined
+# Address-line regex: NCBAHM renders addresses as a single comma-joined
 # line, e.g.:
 #     "513 N Morrison Rd , Vancouver, WA, USA"
 #     "1301 Spring St #7F , Seattle, WA, USA"
@@ -502,12 +400,18 @@ def _parse_address_line(line: str) -> dict:
     """Parse 'street, city, state[ postal], country' into the address fields.
 
     Returns a dict with keys address1 / city / state / postal / country.
-    Any field may be absent (returned as None / missing key)."""
+    Any field may be absent (returned as None / missing key).
+
+    Defensive: returns empty dict for the literal sentinel
+    ``"Not Available"`` (frequent in the HI page-1 fixture for solo
+    practitioners who didn't supply a street address)."""
     out: dict = {}
     if not line:
         return out
     s = re.sub(r"\s+", " ", line.strip()).strip().rstrip(",")
     if not s:
+        return out
+    if s.lower() in {"not available", "n/a", "none"}:
         return out
 
     parts = [p.strip() for p in s.split(",") if p.strip()]
@@ -570,7 +474,7 @@ def _parse_address_line(line: str) -> dict:
 def _detect_inactive_status(status_text: Optional[str]) -> bool:
     """True when the 'gendar' status line contains an inactive marker.
 
-    NCCAOM renders the practitioner status as ``"<Status> | <Gender>"``
+    NCBAHM renders the practitioner status as ``"<Status> | <Gender>"``
     in the ``<p class="gendar">`` block. Current production exclusively
     shows ``Certified Diplomate``, but the parser checks defensively
     for Expired / Inactive / Retired / Recertification Pending /
@@ -595,10 +499,32 @@ def _detect_inactive_status(status_text: Optional[str]) -> bool:
 
 # Match the practitioner-card anchor in both list-view layouts.
 # Production list-page form: <a href="/FAP/PractitionerDetail?AgencyClientId=...=" title="...">Name</a>
-# Name-search form:          <a href="/FAPPractitionerProfile/...=" title="...">Name</a>
+# Legacy name-search form:   <a href="/FAPPractitionerProfile/...=" title="...">Name</a>
 _NAME_ANCHOR_RE = re.compile(
     r'<a\s+href="((?:/FAP/PractitionerDetail\?AgencyClientId=|/FAPPractitionerProfile/)[^"]+)"'
     r'[^>]*>(.*?)</a>',
+    re.S | re.I,
+)
+
+# Cert-code extractor. The live HTML wraps each cert-box__item in
+# ``class="cert-box__item slick-slide ..."`` — i.e. the class attribute
+# carries additional tokens after the cert-box__item class. We anchor on
+# the <p class="copy">XX Certification</p> marker inside the cert-box
+# slick-track instead of trying to thread the class-token regex, which is
+# both simpler and more robust to slick-slider re-shuffling.
+#
+# We narrow the search to AFTER the first ``<div class="cert-box"`` marker
+# so the practitioner's name / status text can't accidentally match
+# (defensive — none of the production fixtures actually contain a stray
+# "XX Certification" string outside the cert-box, but a future
+# practitioner with that phrase in their name would otherwise pollute the
+# cert-codes list).
+_CERT_BOX_RE = re.compile(
+    r'<div[^>]*class="[^"]*\bcert-box\b[^"]*"[^>]*>(.*)$',
+    re.S | re.I,
+)
+_CERT_CODE_INSIDE_BOX_RE = re.compile(
+    r'<p[^>]*class="copy"[^>]*>\s*([A-Za-z]+)\s+Certification',
     re.S | re.I,
 )
 
@@ -627,32 +553,31 @@ def _parse_card(card_html: str) -> Optional[dict]:
     if g:
         out["status"] = _strip_html_tags(g.group(1))
 
-    # Address: <em id="addressdata_N">...</em> OR <em>...</em> directly
-    # following an icon-location-pin marker. The id-anchored form is
-    # the list-view style; the name-search layout uses the same em id
-    # convention.
+    # Address: <em id="addressdata_N">...</em> (the canonical id-anchored
+    # form on the live list page). Fall back to any <em> following an
+    # icon-location-pin marker for forward-compat with the legacy
+    # name-search layout.
     a = re.search(
         r'<em[^>]*id="addressdata_\d+"[^>]*>(.*?)</em>',
         card_html,
         re.S | re.I,
     )
     if not a:
-        # Fall back: any <em> following the location-pin icon.
         a = re.search(
-            r'icon-location-pin[^<]*</i>\s*</span>\s*<em[^>]*>(.*?)</em>',
+            r'icon-location-pin[^<]*</i>\s*<p[^>]*class="copy"[^>]*>\s*<em[^>]*>(.*?)</em>',
             card_html,
             re.S | re.I,
         )
     if not a:
         a = re.search(
-            r'icon-location-pin[^<]*</i>\s*<p[^>]*class="copy"[^>]*>\s*<em[^>]*>(.*?)</em>',
+            r'icon-location-pin[^<]*</i>\s*</span>\s*<em[^>]*>(.*?)</em>',
             card_html,
             re.S | re.I,
         )
     if a:
         out["address"] = _strip_html_tags(a.group(1))
 
-    # Phone: <i class="icon-call-end"></i> ... <em>...</em> (or 'Not Available').
+    # Phone: <i class="icon-call-end"></i> ... <em>...</em>.
     p = re.search(
         r'icon-call-end[^<]*</i>\s*<p[^>]*class="copy"[^>]*>\s*<em[^>]*>(.*?)</em>',
         card_html,
@@ -667,9 +592,10 @@ def _parse_card(card_html: str) -> Optional[dict]:
     if p:
         out["phone"] = _strip_html_tags(p.group(1))
 
-    # Website: <i class="icon-globe"></i> ... <a href="..." title="...">.
-    # The card carries BOTH a truncated display <span> and a full anchor.
-    # Take the anchor href.
+    # Website: the globe block carries BOTH a truncated display <span>
+    # AND a full anchor with the href. Take the anchor href when
+    # present; fall back to the <em> text (which may be "Not Available")
+    # otherwise. Cards without a website link omit the <a> entirely.
     w = re.search(
         r'icon-globe[^<]*</i>\s*<p[^>]*class="copy"[^>]*>(.*?)</p>',
         card_html,
@@ -684,13 +610,15 @@ def _parse_card(card_html: str) -> Optional[dict]:
     if website:
         out["website"] = website
 
-    # Cert codes: every <div class="cert-box__item">... <p class="copy">XX Certification</p> ...
-    certs = re.findall(
-        r'class="cert-box__item"[^>]*>.*?<p[^>]*class="copy"[^>]*>\s*([A-Za-z]+)\s+Certification',
-        card_html,
-        re.S | re.I,
-    )
-    out["cert_codes"] = [c.upper() for c in certs] if certs else []
+    # Cert codes: confine the search to AFTER the first <div class="cert-box"
+    # marker so the card-header status / name / address can't pollute the
+    # cert-codes list.
+    cert_codes: list[str] = []
+    box_m = _CERT_BOX_RE.search(card_html)
+    if box_m:
+        for code_m in _CERT_CODE_INSIDE_BOX_RE.finditer(box_m.group(1)):
+            cert_codes.append(code_m.group(1).upper())
+    out["cert_codes"] = cert_codes
 
     return out
 
@@ -713,15 +641,14 @@ def _card_to_row(card: dict) -> Optional[NormalizedPractitionerRow]:
         return None
 
     # Build credentials: cert-code expansions + any trailing degree
-    # pulled off the name.
+    # pulled off the name. Dedupe preserving first-seen order so the
+    # credentials string reads as "Dipl. Ac. (NCBAHM), Dipl. CH. (NCBAHM), L.Ac.".
     cred_parts: list[str] = []
     for code in card.get("cert_codes", []) or []:
         cred = _CERT_CODE_TO_CREDENTIAL.get(code)
         if cred and cred not in cred_parts:
             cred_parts.append(cred)
     if name_creds:
-        # name-side creds (L.Ac., DAOM, ...) come AFTER the Dipl. codes
-        # so the credential string reads as "Dipl. Ac. (NCCAOM), L.Ac.".
         for chunk in re.split(r",\s*", name_creds):
             chunk = chunk.strip()
             if chunk and chunk not in cred_parts:
@@ -738,12 +665,14 @@ def _card_to_row(card: dict) -> Optional[NormalizedPractitionerRow]:
         tier="org_member",
         name=name,
         specialties=list(LOCKED_SPECIALTIES),
+        # source_org intentionally kept as the historical brand string
+        # (NCCAOM); see module docstring for the rebrand decision.
         source_org="NCCAOM",
         source_url=source_url,
-        # Every listed NCCAOM diplomate is board-certified by definition;
-        # the exception is the explicit inactive status downgrades.
+        # Every listed NCBAHM diplomate is board-certified by definition;
+        # the only exception is the explicit inactive-status downgrade.
         fellowship_level=not inactive,
-        practice_name=None,  # not in list-grid cards; only in detail page
+        practice_name=None,  # not in list-grid cards
         credentials=credentials,
         phone=_normalize_phone(card.get("phone")),
         email=None,           # not in list-grid cards
@@ -765,11 +694,11 @@ def parse_search_html(html: str) -> list[NormalizedPractitionerRow]:
     and returns one NormalizedPractitionerRow per practitioner card on
     the page. No I/O.
 
-    Handles BOTH the production list layout
-    (``<div class="result-card__item">`` inside
-    ``<div id="pageListDetail">``) AND the name-search layout
-    (``<div class="citySearchList__content">`` cards). Pagination is the
-    caller's responsibility — this parser is page-scoped.
+    Handles the production list layout
+    (``<div class="result-card__item">``) and the legacy name-search
+    layout (``<div class="citySearchList__content">``) — both feed
+    through the same per-card parser. Pagination is the caller's
+    responsibility — this parser is page-scoped.
     """
     if not isinstance(html, str):
         return []
@@ -777,45 +706,25 @@ def parse_search_html(html: str) -> list[NormalizedPractitionerRow]:
     rows: list[NormalizedPractitionerRow] = []
     seen_urls: set[str] = set()
 
-    # List-view cards live in <div class="result-card__item">...</div>.
-    # Split on the opening tag and parse each chunk.
-    for chunk in re.split(r'<div\s+class="result-card__item"', html)[1:]:
-        # Re-prepend the marker so the chunk is self-contained for regex,
-        # then trim at the start of the NEXT result-card__item if any
-        # leaked through (shouldn't, since split consumed it).
-        card_html = '<div class="result-card__item"' + chunk
-        # Trim trailing junk past the next card boundary if present.
-        nxt = card_html.find('<div class="result-card__item"', 1)
-        if nxt > 0:
-            card_html = card_html[:nxt]
-        parsed = _parse_card(card_html)
-        if not parsed:
-            continue
-        row = _card_to_row(parsed)
-        if row is None:
-            continue
-        if row.source_url in seen_urls:
-            continue
-        seen_urls.add(row.source_url)
-        rows.append(row)
+    def _walk(marker: str) -> None:
+        for chunk in re.split(r'<div\s+class="' + re.escape(marker) + r'"', html)[1:]:
+            card_html = '<div class="' + marker + '"' + chunk
+            nxt = card_html.find('<div class="' + marker + '"', 1)
+            if nxt > 0:
+                card_html = card_html[:nxt]
+            parsed = _parse_card(card_html)
+            if not parsed:
+                continue
+            row = _card_to_row(parsed)
+            if row is None:
+                continue
+            if row.source_url in seen_urls:
+                continue
+            seen_urls.add(row.source_url)
+            rows.append(row)
 
-    # Name-search layout: <div class="citySearchList__content"> ... </div>.
-    # Iterate the same way, but use the alternative card marker.
-    for chunk in re.split(r'<div\s+class="citySearchList__content"', html)[1:]:
-        card_html = '<div class="citySearchList__content"' + chunk
-        nxt = card_html.find('<div class="citySearchList__content"', 1)
-        if nxt > 0:
-            card_html = card_html[:nxt]
-        parsed = _parse_card(card_html)
-        if not parsed:
-            continue
-        row = _card_to_row(parsed)
-        if row is None:
-            continue
-        if row.source_url in seen_urls:
-            continue
-        seen_urls.add(row.source_url)
-        rows.append(row)
+    _walk("result-card__item")
+    _walk("citySearchList__content")
 
     return rows
 
@@ -850,70 +759,3 @@ def parse_total_count(html: str) -> Optional[int]:
         return int(m.group(1))
     except (TypeError, ValueError):
         return None
-
-
-# ---------------------------------------------------------------------------
-# Full-coverage fetch
-# ---------------------------------------------------------------------------
-
-def fetch_all_records() -> list[NormalizedPractitionerRow]:
-    """Walk every (Country, [State]) tuple the NCCAOM dropdown exposes
-    and return a flat list of NormalizedPractitionerRow. Dedups by
-    source_url within the run.
-
-    Strategy:
-      1. For Country=USA, walk all 50 states + DC + 5 territories.
-      2. For every non-US country in ``NON_US_COUNTRIES``, walk
-         Country=<NAME> (state is unavailable for these and search
-         returns the country's full list).
-
-    0.5s sleep between every HTTP call (fetch_search_page sleeps
-    internally). Single-threaded — at ~17k expected total rows this
-    completes in well under an hour.
-
-    Used by migrate_nccaom.main(). Note that the live endpoint is
-    Cloudflare-gated — production runs may need a Playwright wrapper
-    around fetch_search_page; the parser itself is fully decoupled."""
-    seen: set[str] = set()
-    out: list[NormalizedPractitionerRow] = []
-
-    # US states + DC + territories.
-    for st in US_STATES:
-        page = 1
-        while True:
-            html = fetch_search_page(country="USA", state=st, page=page)
-            rows = parse_search_html(html)
-            if not rows:
-                break
-            new_rows = [r for r in rows if r.source_url and r.source_url not in seen]
-            for r in new_rows:
-                seen.add(r.source_url)
-                out.append(r)
-            total = parse_total_pages(html)
-            if total > 0 and page >= total:
-                break
-            if total == 0:
-                # Defensive: no pagination info -> empty-page break only.
-                break
-            page += 1
-
-    # Non-US countries.
-    for c in NON_US_COUNTRIES:
-        page = 1
-        while True:
-            html = fetch_search_page(country=c, page=page)
-            rows = parse_search_html(html)
-            if not rows:
-                break
-            new_rows = [r for r in rows if r.source_url and r.source_url not in seen]
-            for r in new_rows:
-                seen.add(r.source_url)
-                out.append(r)
-            total = parse_total_pages(html)
-            if total > 0 and page >= total:
-                break
-            if total == 0:
-                break
-            page += 1
-
-    return out
