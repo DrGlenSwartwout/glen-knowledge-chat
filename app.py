@@ -961,6 +961,20 @@ def begin_tone():
     return resp
 
 
+@app.route("/begin/voice")
+def begin_voice():
+    resp = send_from_directory(STATIC, "begin-voice.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie(
+            "amg_session", uuid.uuid4().hex,
+            max_age=60 * 60 * 24 * 365,
+            httponly=True, samesite="Lax", secure=request.is_secure,
+        )
+    return resp
+
+
 @app.route("/begin/state", methods=["GET"])
 def begin_state():
     session_id = (request.cookies.get("amg_session") or "").strip()

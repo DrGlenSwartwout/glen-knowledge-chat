@@ -189,6 +189,15 @@ def test_begin_tone_serves(monkeypatch, tmp_path):
     assert b"<html" in r.data.lower() or b"<!doctype" in r.data.lower()
 
 
+def test_begin_voice_serves_and_mints_session(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    client = app_module.app.test_client()
+    r = client.get("/begin/voice")
+    assert r.status_code == 200
+    assert "amg_session=" in r.headers.get("Set-Cookie", "")
+
+
 def test_haiku_classification_guarded_below_threshold(monkeypatch, tmp_path):
     app_module = _load_app()
     db = str(tmp_path / "chat_log.db")
