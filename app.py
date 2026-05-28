@@ -1956,6 +1956,22 @@ def _init_referral_tables():
                 cx.execute(f"ALTER TABLE affiliate_offers ADD COLUMN {col}")
             except Exception:
                 pass
+        # Conversions credited to an affiliate (store purchases + course enrollments),
+        # attributed by email-match against referral_events.
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS affiliate_conversions (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                received_at     TEXT NOT NULL,
+                email           TEXT,
+                affiliate_slug  TEXT,
+                conversion_type TEXT,
+                detail          TEXT,
+                order_value     REAL,
+                source          TEXT,
+                raw_json        TEXT
+            )
+        """)
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_affiliate_conversions_slug ON affiliate_conversions(affiliate_slug)")
         # Seed quiz as first offer
         if not cx.execute("SELECT id FROM affiliate_offers WHERE name='Accelerate Self-Healing Quiz'").fetchone():
             cx.execute("""
@@ -2013,6 +2029,16 @@ def _init_referral_tables():
                     'The full DIY protocol for Accelerated Self Healing™. Free self-paced course on Practice Better — work through the modules at your own pace.',
                     'https://truly.vip/GetWell?utm_source={slug}&utm_medium=affiliate&utm_campaign=ash-diy-course',
                     'Free on Practice Better — students create a free account to access. Affiliates can share the link as-is.',
+                    1)
+            """)
+        # Seed Shop for Remedies (the GrooveKart store)
+        if not cx.execute("SELECT id FROM affiliate_offers WHERE name='Shop for Remedies'").fetchone():
+            cx.execute("""
+                INSERT INTO affiliate_offers (sort_order, name, description, url_template, instructions, active)
+                VALUES (5, 'Shop for Remedies',
+                    'Dr. Glen''s full line of remedies and formulations at RemedyMatch.com. Share with anyone ready to start their protocol.',
+                    'https://remedymatch.com?utm_source={slug}&utm_medium=affiliate&utm_campaign=store',
+                    'Direct link to the store. Purchases are credited to you automatically when the buyer first came through one of your free-offer links (same email). Cold store visitors aren''t tracked yet — coupon codes for that are a future add-on.',
                     1)
             """)
         # Seed AllHeal as first referral source if not exists
@@ -2493,6 +2519,9 @@ def affiliate_portal_data():
         recruited_count = cx.execute("""
             SELECT COUNT(*) FROM affiliate_signups WHERE referred_by=? AND status='approved'
         """, (slug,)).fetchone()[0]
+        conversions_count = cx.execute("""
+            SELECT COUNT(*) FROM affiliate_conversions WHERE affiliate_slug=?
+        """, (slug,)).fetchone()[0]
         offers = cx.execute(
             "SELECT name, description, url_template, COALESCE(instructions, '') "
             "FROM affiliate_offers WHERE active=1 ORDER BY sort_order ASC"
@@ -2507,6 +2536,7 @@ def affiliate_portal_data():
         "total_leads": stats[0] if stats else 0,
         "last_lead": stats[1] if stats else None,
         "recruited_count": recruited_count,
+        "conversions_count": conversions_count,
         "recent": [{"received_at": r[0],
                     "name": _mask_lead_name(r[1], r[2]),
                     "score": r[3]} for r in recent],
@@ -2701,6 +2731,34 @@ def _log_referral_event(lead_id, email, first_name, last_name, utm_source, utm_m
         """, (ts, lead_id, email, first_name, last_name,
               utm_source, utm_medium, utm_campaign, utm_content, utm_term, quiz_score, raw))
         cx.commit()
+
+
+def _attribute_conversion_by_email(email, conversion_type, detail="", order_value=None,
+                                   source="", raw_json=""):
+    """Credit a conversion (store purchase / course enrollment) to the most-recent
+    affiliate who referred this email via a free offer (referral_events.utm_source).
+    Records an affiliate_conversions row. Returns the credited slug, or None when the
+    email was never referred by an approved affiliate (cold / unattributable)."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("""
+            SELECT re.utm_source FROM referral_events re
+            JOIN affiliate_signups a ON a.slug = re.utm_source AND a.status = 'approved'
+            WHERE LOWER(re.email) = ?
+            ORDER BY re.received_at DESC LIMIT 1
+        """, (email,)).fetchone()
+        if not row:
+            return None
+        cx.execute("""
+            INSERT INTO affiliate_conversions
+              (received_at, email, affiliate_slug, conversion_type, detail, order_value, source, raw_json)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, (datetime.now(timezone.utc).isoformat(), email, row[0],
+              conversion_type, detail, order_value, source, raw_json))
+        cx.commit()
+        return row[0]
 
 
 # ── Inbound lead DB table ─────────────────────────────────────────────────────
@@ -3040,6 +3098,8 @@ def pb_webhook():
             source_tag="source:pb-signup"
         )
         _log_inbound_lead("practice-better", pb_email, first, last, "", raw, ghl_result)
+        _attribute_conversion_by_email(
+            pb_email, "course-enrollment", event_type, None, "practice-better", raw)
 
     return jsonify({"ok": True, "event": event_type}), 200
 
@@ -3319,6 +3379,17 @@ def groovekart_webhook():
     product  = data.get("line_items", [{}])[0].get("name", "") if data.get("line_items") else ""
     raw      = json.dumps(data)
 
+    # Best-effort order total — GrooveKart/PrestaShop payloads vary
+    order_total = None
+    for k in ("total_paid", "total_price", "total", "total_paid_tax_incl", "amount"):
+        v = data.get(k)
+        if v not in (None, ""):
+            try:
+                order_total = float(v)
+                break
+            except (TypeError, ValueError):
+                pass
+
     if not email:
         return jsonify({"error": "No email in payload"}), 400
 
@@ -3332,7 +3403,9 @@ def groovekart_webhook():
                   {"body": f"GrooveKart purchase: {product}"})
 
     _log_inbound_lead("groovekart", email, first, last, phone, raw, ghl_result)
-    return jsonify({"ok": True, "ghl": ghl_result}), 200
+    credited = _attribute_conversion_by_email(
+        email, "store-purchase", product, order_total, "groovekart", raw)
+    return jsonify({"ok": True, "ghl": ghl_result, "affiliate_credited": credited}), 200
 
 
 @app.route("/inbound-leads", methods=["GET"])

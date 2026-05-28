@@ -92,6 +92,11 @@
       <div class="stat-sub" id="stat-last"></div>
     </div>
     <div class="stat-card">
+      <div class="stat-num" id="stat-conversions">—</div>
+      <div class="stat-label">Sales / Enrollments</div>
+      <div class="stat-sub">credited to you</div>
+    </div>
+    <div class="stat-card">
       <div class="stat-num" style="font-size:20px;padding-top:6px;" id="stat-slug">—</div>
       <div class="stat-label">Your Affiliate ID</div>
     </div>
@@ -187,6 +192,7 @@ function render(d) {
     d.member_since ? new Date(d.member_since).toLocaleDateString([], { month: 'long', year: 'numeric' }) : '';
   document.getElementById('stat-total').textContent = d.total_leads ?? 0;
   document.getElementById('stat-last').textContent = d.last_lead ? 'Last: ' + timeAgo(d.last_lead) : 'No referrals yet';
+  document.getElementById('stat-conversions').textContent = d.conversions_count ?? 0;
   document.getElementById('stat-slug').textContent = d.slug;
   document.getElementById('recruit-url').textContent  = d.recruit_url || '';
   const rc = d.recruited_count || 0;
