@@ -478,6 +478,13 @@
   .empty-state .icon { font-size: 48px; opacity: 0.3; }
   .empty-state .logo-icon { width: 180px; height: 180px; object-fit: contain; opacity: 0.9; }
   .empty-state p { font-size: 13px; max-width: 220px; }
+  .concierge-greeting { font-size: 14px; max-width: 360px; color: var(--text); line-height: 1.55; }
+  .concierge-cta { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 360px; }
+  .cta-card { display: block; text-align: left; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 11px 14px; text-decoration: none; transition: border-color .15s, background .15s; }
+  .cta-card:hover { border-color: var(--accent); background: var(--surface2); }
+  .cta-card .cta-title { font-size: 13px; font-weight: 700; color: var(--text); }
+  .cta-card .cta-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; line-height: 1.4; }
 
 
   /* ── Metadata bar ── */
@@ -625,6 +632,8 @@
     <div id="messages">
       <div class="empty-state" id="empty-state">
         <img class="logo-icon" src="/static/logo.png" alt="Mentorship University">
+        <p class="concierge-greeting">Welcome — I'm Dr. Glen's wellness guide. Let's find where your body wants to begin. Ask me anything below, or take a first step:</p>
+        <div class="concierge-cta" id="concierge-cta"></div>
       </div>
     </div>
 
@@ -709,6 +718,27 @@
 <script>
   const history = [];
   let isLoading = false;
+
+  // Concierge — capture affiliate ref slug from ?ref=<slug> into a 90-day cookie
+  // (+ localStorage), so it rides every same-origin /chat request and persists
+  // through to a later purchase/enrollment for attribution.
+  (function captureRef() {
+    try {
+      const ref = (new URLSearchParams(location.search).get('ref') || '').trim();
+      if (ref && /^[A-Za-z0-9_-]{1,64}$/.test(ref)) {
+        document.cookie = 'rm_ref=' + encodeURIComponent(ref) +
+                          ';path=/;max-age=' + (90 * 24 * 3600) + ';SameSite=Lax';
+        localStorage.setItem('rm_ref', ref);
+      }
+    } catch (_) {}
+  })();
+  function getRef() {
+    try {
+      const m = document.cookie.match(/(?:^|;\s*)rm_ref=([^;]+)/);
+      if (m) return decodeURIComponent(m[1]);
+      return localStorage.getItem('rm_ref') || '';
+    } catch (_) { return ''; }
+  }
 
   const SEED_QUESTIONS = {
     'self-healing': 'What is your body trying to tell you through this symptom?',
@@ -970,6 +1000,7 @@
       });
     });
     restoreContactFromLocalStorage();
+    renderConciergeCTAs();
     // Server-side autofill — if the session cookie identifies a returning
     // visitor whose email/name we already have in query_log, prefer that
     // (newer or more authoritative than stale localStorage).
@@ -1112,9 +1143,31 @@
     document.getElementById('messages').innerHTML =
       `<div class="empty-state" id="empty-state">
         <img class="logo-icon" src="/static/logo.png" alt="Mentorship University">
+        <p class="concierge-greeting">Welcome — I'm Dr. Glen's wellness guide. Let's find where your body wants to begin. Ask me anything below, or take a first step:</p>
+        <div class="concierge-cta" id="concierge-cta"></div>
       </div>`;
+    renderConciergeCTAs();
     updateSuggestion(SEED_QUESTIONS[getCurrentLevel()]);
     renderSourcesPanel([]);
+  }
+
+  // Concierge guided steps — quiz → scan → intake, slug-substituted for attribution
+  const CONCIERGE_STEPS = [
+    { title: '1 · Take the free quiz',  sub: 'Discover your top healing opportunities in minutes.',
+      url: 'https://healing.scoreapp.com?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz' },
+    { title: '2 · Do your voice scan',  sub: 'A free bioenergetic voice scan reveals your wellness priorities.',
+      url: 'https://truly.vip/E4L?utm_source={slug}&utm_medium=affiliate&utm_campaign=e4l-scan' },
+    { title: '3 · Start your intake',   sub: 'A one-page application to begin your personalized path.',
+      url: 'https://truly.vip/Join?utm_source={slug}&utm_medium=affiliate&utm_campaign=pb-intake' },
+  ];
+  function renderConciergeCTAs() {
+    const box = document.getElementById('concierge-cta');
+    if (!box) return;
+    const slug = getRef() || 'remedy-match';  // house fallback when no affiliate ref
+    box.innerHTML = CONCIERGE_STEPS.map(s =>
+      `<a class="cta-card" href="${s.url.replace('{slug}', encodeURIComponent(slug))}" target="_blank" rel="noopener">
+         <div class="cta-title">${s.title}</div><div class="cta-sub">${s.sub}</div></a>`
+    ).join('');
   }
 
   async function sendQuery() {

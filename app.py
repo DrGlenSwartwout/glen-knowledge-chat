@@ -927,6 +927,8 @@ def chat():
     )
     user_agent = request.headers.get("User-Agent", "")
     referer    = request.headers.get("Referer", "")
+    # Concierge — affiliate ref slug captured at entry (?ref=<slug> → rm_ref cookie)
+    ref_slug   = (request.cookies.get("rm_ref") or "").strip()
 
     # Phase 4 — if the visitor is authenticated, the auth identity wins
     # over any form-submitted email/name. This stops a logged-in user from
@@ -1086,6 +1088,10 @@ def chat():
                     )
                     if frequency:  # backwards-compatible — old clients may still send
                         tags.append(f"frequency-{frequency}")
+                    if ref_slug:
+                        tags.append("concierge")
+                        tags.append(f"ref:{ref_slug}")
+                        _capture_concierge_referral(email, first, last, ref_slug)
                     ghl_onboard_contact(email, first, last, source_tag="chatbot", extra_tags=tags)
                 except Exception:
                     pass
@@ -2763,6 +2769,39 @@ def _log_referral_event(lead_id, email, first_name, last_name, utm_source, utm_m
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         """, (ts, lead_id, email, first_name, last_name,
               utm_source, utm_medium, utm_campaign, utm_content, utm_term, quiz_score, raw))
+        cx.commit()
+
+
+def _capture_concierge_referral(email, first_name, last_name, ref_slug):
+    """Concierge entry attribution: when a visitor who arrived via ?ref=<slug>
+    (rm_ref cookie) identifies themselves with an email in the chat, log a
+    referral_event crediting that approved affiliate. This is what lets a
+    concierge-originated journey attribute a later purchase/enrollment via
+    _attribute_conversion_by_email. Idempotent per (email, slug)."""
+    email    = (email or "").strip().lower()
+    ref_slug = (ref_slug or "").strip()
+    if not email or not ref_slug:
+        return
+    ts = datetime.now(timezone.utc).isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        if not cx.execute(
+            "SELECT 1 FROM affiliate_signups WHERE slug=? AND status='approved'",
+            (ref_slug,)
+        ).fetchone():
+            return  # not a real approved affiliate slug
+        if cx.execute(
+            "SELECT 1 FROM referral_events WHERE LOWER(email)=? AND utm_source=? "
+            "AND utm_medium='concierge' LIMIT 1",
+            (email, ref_slug)
+        ).fetchone():
+            return  # already captured — idempotent
+        cx.execute("""
+            INSERT INTO referral_events
+              (received_at, lead_id, email, first_name, last_name,
+               utm_source, utm_medium, utm_campaign, utm_content, utm_term, quiz_score, raw_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (ts, None, email, first_name, last_name,
+              ref_slug, "concierge", "concierge-entry", "", "", "", ""))
         cx.commit()
 
 
