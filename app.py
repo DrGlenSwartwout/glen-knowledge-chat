@@ -888,6 +888,57 @@ def concierge_page():
     return resp
 
 
+def _recent_query_texts(session_id, email, limit=8):
+    """Most-recent chat questions for this visitor (for awareness inference)."""
+    out = []
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            if email:
+                rows = cx.execute(
+                    "SELECT query FROM query_log WHERE email=? OR session_id=? "
+                    "ORDER BY id DESC LIMIT ?", (email, session_id, limit)).fetchall()
+            else:
+                rows = cx.execute(
+                    "SELECT query FROM query_log WHERE session_id=? "
+                    "ORDER BY id DESC LIMIT ?", (session_id, limit)).fetchall()
+            out = [r["query"] for r in rows if r["query"]]
+    except Exception:
+        pass
+    return out
+
+
+def _classify_awareness_haiku(session_id, query_texts, heuristic_stage):
+    """Background: ask Haiku to classify Schwartz awareness stage, persist it
+    upward, and log the heuristic-vs-haiku divergence for the learning loop."""
+    try:
+        joined = "\n".join(f"- {q}" for q in query_texts[:8])
+        msg = _cl.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=10,
+            system=("Classify the person's marketing awareness stage from their "
+                    "questions. Reply with EXACTLY one word: problem, solution, "
+                    "product, or most. problem=aware of a symptom only; "
+                    "solution=knows solution categories exist; product=names a "
+                    "specific product/tool; most=ready to act/buy."),
+            messages=[{"role": "user", "content": f"Questions:\n{joined}"}],
+        )
+        haiku_stage = ((msg.content[0].text if msg.content else "") or "").strip().lower()
+        if haiku_stage not in ("problem", "solution", "product", "most"):
+            return
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            begin_funnel.set_awareness(cx, session_id, haiku_stage)
+            cx.execute(
+                "INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (begin_funnel._now(), session_id, "", "awareness_classified",
+                 json.dumps({"heuristic": heuristic_stage, "haiku": haiku_stage}),
+                 "", ""))
+            cx.commit()
+    except Exception as e:
+        print(f"[begin-awareness] {e!r}", flush=True)
+
+
 @app.route("/begin")
 def begin_page():
     resp = send_from_directory(STATIC, "begin.html")
@@ -934,6 +985,11 @@ def begin_unlock():
     tos = bool(data.get("tos"))
     detail = (data.get("detail") or "").strip()
     ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
+    want = (data.get("want") or "").strip().lower()
+
+    # Fetch recent chat queries OUTSIDE the lock block (_recent_query_texts
+    # acquires _db_lock itself; _db_lock is not reentrant).
+    query_texts = _recent_query_texts(session_id, email)
 
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -942,6 +998,7 @@ def begin_unlock():
                 email=email, detail=detail, first_name=name, tos=tos,
                 ref_slug=ref_slug,
                 tos_version=BEGIN_TOS_VERSION if (tos or trigger == "tos") else "",
+                want=want, query_texts=query_texts,
             )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -969,7 +1026,32 @@ def begin_unlock():
 
         _threading.Thread(target=_onboard, daemon=True).start()
 
-    resp = jsonify(state)
+    # Background awareness classification once enough chat has accrued.
+    # Best-effort, fire-once-ish: under rare concurrent unlocks the read-then-spawn
+    # gap can spawn two classifier threads, but set_awareness is idempotent so the
+    # only cost is a duplicate API call + event row — acceptable.
+    try:
+        already = False
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute(
+                "SELECT awareness_classified_at FROM journey_state WHERE session_id=? "
+                "ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
+            already = bool(row and row[0])
+        if not already and len(query_texts) >= 3:
+            _heur = begin_funnel.infer_awareness_heuristic(
+                want, set(state.get("unlocked_gates") or []), query_texts)
+            import threading as _t
+            _t.Thread(target=_classify_awareness_haiku,
+                      args=(session_id, list(query_texts), _heur),
+                      daemon=True).start()
+    except Exception:
+        pass
+
+    redirect = begin_funnel.resolve_want(want, ref_slug) if want else None
+    payload = dict(state)
+    if redirect:
+        payload["redirect"] = redirect
+    resp = jsonify(payload)
     if not request.cookies.get("amg_session"):
         resp.set_cookie(
             "amg_session", session_id, max_age=60 * 60 * 24 * 365,

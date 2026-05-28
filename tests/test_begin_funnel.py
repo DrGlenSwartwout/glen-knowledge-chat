@@ -142,3 +142,131 @@ def test_get_state_aggregates_across_sessions_by_email():
     assert set(st["unlocked_gates"]) >= {"question", "name", "video"}
     assert st["first_name"] == "Ada"
     assert "layer5" in st["reveal"]
+
+
+def test_awareness_rank_order():
+    import begin_funnel as bf
+    assert bf.AWARENESS_RANK["unknown"] < bf.AWARENESS_RANK["problem"] < \
+           bf.AWARENESS_RANK["solution"] < bf.AWARENESS_RANK["product"] < \
+           bf.AWARENESS_RANK["most"]
+
+
+def test_infer_awareness_heuristic():
+    import begin_funnel as bf
+    assert bf.infer_awareness_heuristic("e4l", set(), []) == "most"
+    assert bf.infer_awareness_heuristic("", {"scan"}, []) == "product"
+    assert bf.infer_awareness_heuristic("", set(), ["tell me about EVOX"]) == "product"
+    assert bf.infer_awareness_heuristic("", set(), ["what about a detox protocol"]) == "solution"
+    assert bf.infer_awareness_heuristic("", set(), ["I am so tired and can't sleep"]) == "problem"
+    assert bf.infer_awareness_heuristic("", set(), ["hello"]) == "unknown"
+    assert bf.infer_awareness_heuristic("", set(), ["detox with E4L"]) == "product"
+
+
+def test_max_awareness_monotonic():
+    import begin_funnel as bf
+    assert bf._max_awareness("problem", "product") == "product"
+    assert bf._max_awareness("most", "solution") == "most"
+    assert bf._max_awareness("unknown", "unknown") == "unknown"
+
+
+def test_resolve_want_live_targets():
+    import begin_funnel as bf
+    url = bf.resolve_want("e4l", "Jane")
+    assert url.startswith("https://truly.vip/E4L")
+    assert "utm_source=Jane" in url
+    assert "utm_campaign=begin-deeplink-e4l" in url
+    assert bf.resolve_want("quiz", "").startswith("https://healing.scoreapp.com")
+    assert "utm_source=remedy-match" in bf.resolve_want("quiz", "")
+    assert bf.resolve_want("join", "x").startswith("https://truly.vip/Join")
+    assert bf.resolve_want("results", "x").startswith("https://truly.vip/Results")
+
+
+def test_resolve_want_unknown_or_unbuilt_returns_none():
+    import begin_funnel as bf
+    assert bf.resolve_want("voice", "x") is None
+    assert bf.resolve_want("ash", "x") is None
+    assert bf.resolve_want("", "x") is None
+    assert bf.resolve_want("bogus", "x") is None
+
+
+def test_reveal_for_gate_skip_for_aware():
+    import begin_funnel as bf
+    assert bf.reveal_for("arrival", "product") == bf._ALL_LAYERS
+    assert bf.reveal_for("arrival", "most") == bf._ALL_LAYERS
+    assert bf.reveal_for("arrival", "solution") == ["layer0"]
+    assert bf.reveal_for("listening", "problem") == ["layer0", "layer1"]
+    assert bf.reveal_for("arrival") == ["layer0"]   # default awareness preserves old behavior
+
+
+def test_awareness_classified_at_column_exists():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    cols = {r[1] for r in cx.execute("PRAGMA table_info(journey_state)")}
+    assert "awareness_classified_at" in cols
+
+
+def test_set_awareness_persists_upward_and_stamps():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    bf.record_unlock(cx, session_id="s1", trigger="question")  # creates row
+    bf.set_awareness(cx, "s1", "product")
+    st = bf.get_state(cx, session_id="s1")
+    assert st["awareness_stage"] == "product"
+    row = cx.execute("SELECT awareness_classified_at FROM journey_state WHERE session_id='s1'").fetchone()
+    assert row[0] is not None
+    # never regresses: a lower stage does not overwrite
+    bf.set_awareness(cx, "s1", "problem")
+    st = bf.get_state(cx, session_id="s1")
+    assert st["awareness_stage"] == "product"
+
+
+def test_deep_link_trigger_valid_but_not_a_gate():
+    import begin_funnel as bf
+    assert "deep_link" in bf.VALID_TRIGGERS
+    assert "deep_link" not in bf.GATE_TRIGGERS
+
+
+def test_record_unlock_persists_awareness_from_query_texts():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    st = bf.record_unlock(cx, session_id="s1", trigger="question",
+                          query_texts=["tell me about EVOX dosing"])
+    assert st["awareness_stage"] == "product"
+    assert "layer5" in st["reveal"]   # product-aware gate-skip even at 'inquire' rung
+
+
+def test_record_unlock_deep_link_sets_most_aware():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    st = bf.record_unlock(cx, session_id="s1", trigger="deep_link", want="e4l")
+    assert st["awareness_stage"] == "most"
+    assert st["current_rung"] == "arrival"   # deep_link is NOT a commitment gate
+    assert "layer5" in st["reveal"]
+
+
+def test_get_state_reveal_uses_awareness():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    bf.record_unlock(cx, session_id="s1", trigger="deep_link", want="voice")
+    st = bf.get_state(cx, session_id="s1")
+    assert st["awareness_stage"] == "most"
+    assert "layer5" in st["reveal"]
+
+
+def test_record_unlock_awareness_never_regresses_on_update():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    # first call infers product-aware from the chat text
+    st = bf.record_unlock(cx, session_id="s1", trigger="question",
+                          query_texts=["how do I use EVOX"])
+    assert st["awareness_stage"] == "product"
+    # a later call with a plain, signal-free question must NOT drop awareness
+    st = bf.record_unlock(cx, session_id="s1", trigger="scroll",
+                          query_texts=["hi"])
+    assert st["awareness_stage"] == "product"

@@ -7,6 +7,7 @@ docs/superpowers/specs/2026-05-28-progressive-disclosure-funnel-design.md
 
 import json
 import sqlite3
+import urllib.parse
 
 from datetime import datetime, timezone
 
@@ -36,6 +37,11 @@ def init_journey_tables(cx):
     """)
     cx.execute("CREATE INDEX IF NOT EXISTS idx_journey_session ON journey_state(session_id)")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_journey_email   ON journey_state(email)")
+    # Slice 2 additive migration — awareness classification timestamp.
+    try:
+        cx.execute("ALTER TABLE journey_state ADD COLUMN awareness_classified_at TEXT")
+    except Exception:
+        pass  # already exists
     cx.execute("""
         CREATE TABLE IF NOT EXISTS journey_events (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,11 +67,72 @@ RUNG_INDEX = {r: i for i, r in enumerate(RUNGS)}
 VALID_TRIGGERS = {
     "load", "video", "scroll", "question", "name", "email", "tos",
     "voice", "scan", "quiz", "paid_fork", "purchase", "share_video",
+    "deep_link",
 }
 
 # Gate keys stored in unlocked_gates (email/tos drive their own columns, but
 # are still recorded as gates for completeness).
-GATE_TRIGGERS = VALID_TRIGGERS - {"load"}
+GATE_TRIGGERS = VALID_TRIGGERS - {"load", "deep_link"}
+
+# ---------------------------------------------------------------------------
+# Awareness-stage inference (Slice 2)
+# ---------------------------------------------------------------------------
+
+AWARENESS_RANK = {"unknown": 0, "problem": 1, "solution": 2, "product": 3, "most": 4}
+
+# Deliberately MINIMAL seed lists (refined from data over time, not hand-tuned
+# here). Case-insensitive substring match on recent chat text.
+_PRODUCT_KEYWORDS = ["e4l", "evox", "neuro magnesium", "retina renew", "zyto",
+                     "voice scan", "bioenergetic"]
+_SOLUTION_KEYWORDS = ["detox", "cleanse", "frequency", "remedy", "supplement",
+                      "protocol", "natural healing", "biofield", "energetic"]
+_PROBLEM_KEYWORDS = ["tired", "fatigue", "pain", "can't sleep", "cant sleep",
+                     "insomnia", "anxious", "anxiety", "bloated", "headache",
+                     "stress", "vision"]
+_PRODUCT_GATES = {"paid_fork", "purchase", "scan", "quiz", "voice"}
+
+
+def _max_awareness(a, b):
+    return a if AWARENESS_RANK.get(a, 0) >= AWARENESS_RANK.get(b, 0) else b
+
+
+def infer_awareness_heuristic(want, gates, query_texts):
+    """Cold-start awareness signal from explicit intent, gates opened, and recent
+    chat text. Returns one of AWARENESS_RANK's keys."""
+    if want:
+        return "most"
+    gates = set(gates or ())
+    if gates & _PRODUCT_GATES:
+        return "product"
+    text = " ".join(query_texts or []).lower()
+    if any(k in text for k in _PRODUCT_KEYWORDS):
+        return "product"
+    if any(k in text for k in _SOLUTION_KEYWORDS):
+        return "solution"
+    if any(k in text for k in _PROBLEM_KEYWORDS):
+        return "problem"
+    return "unknown"
+
+
+WANT_TARGETS = {
+    "e4l":     "https://truly.vip/E4L",
+    "quiz":    "https://healing.scoreapp.com",
+    "join":    "https://truly.vip/Join",
+    "results": "https://truly.vip/Results",
+}
+# not-yet-built rooms (no Slice 2 redirect): "voice", "path", "ash"
+
+
+def resolve_want(want, ref=""):
+    """Return the threaded external URL for a live ?want= target, else None."""
+    key = (want or "").strip().lower()
+    base = WANT_TARGETS.get(key)
+    if not base:
+        return None
+    slug = (ref or "remedy-match").strip() or "remedy-match"
+    sep = "&" if "?" in base else "?"
+    return (f"{base}{sep}utm_source={urllib.parse.quote(slug)}"
+            f"&utm_medium=affiliate&utm_campaign=begin-deeplink-{key}")
 
 
 def compute_rung(gates, email, tos_agreed):
@@ -105,7 +172,10 @@ _RUNG_LAYERS = {
 _ALL_LAYERS = ["layer0", "layer1", "layer2", "layer3", "layer4", "layer5"]
 
 
-def reveal_for(rung):
+def reveal_for(rung, awareness="unknown"):
+    # gate-skip: product/most-aware visitors see the full unfolding surface
+    if AWARENESS_RANK.get(awareness, 0) >= AWARENESS_RANK["product"]:
+        return list(_ALL_LAYERS)
     if RUNG_INDEX.get(rung, 0) >= RUNG_INDEX["free_tier"]:
         return list(_ALL_LAYERS)
     return list(_RUNG_LAYERS.get(rung, ["layer0"]))
@@ -127,7 +197,8 @@ def _row_for_session(cx, session_id):
 # ---------------------------------------------------------------------------
 
 def record_unlock(cx, *, session_id, trigger, email="", detail="",
-                  first_name="", tos=False, ref_slug="", tos_version=""):
+                  first_name="", tos=False, ref_slug="", tos_version="",
+                  want="", query_texts=None):
     if trigger not in VALID_TRIGGERS:
         raise ValueError(f"invalid trigger: {trigger!r}")
     cx.row_factory = sqlite3.Row
@@ -161,6 +232,11 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
     rung_after = compute_rung(gates, new_email, bool(tos_at))
     gates_json = json.dumps(sorted(gates))
 
+    _persisted_aw = (existing.get("awareness_stage") if row is not None else "unknown") or "unknown"
+    # awareness is inferred from the POST-add gate set (a just-opened
+    # product/assessment gate immediately implies product-awareness)
+    _new_aw = _max_awareness(_persisted_aw, infer_awareness_heuristic(want, gates, query_texts))
+
     if row is None:
         cx.execute("""
             INSERT INTO journey_state
@@ -169,17 +245,17 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
                tos_version, last_signal, created_at, updated_at)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (session_id, new_email, new_first, new_ref, rung_after,
-              gates_json, "unknown", "none", tos_at, tos_ver, trigger,
+              gates_json, _new_aw, "none", tos_at, tos_ver, trigger,
               now, now))
     else:
         cx.execute("""
             UPDATE journey_state SET
               email=?, first_name=?, ref_slug=?, current_rung=?,
-              unlocked_gates=?, tos_agreed_at=?, tos_version=?,
-              last_signal=?, updated_at=?
+              unlocked_gates=?, awareness_stage=?, tos_agreed_at=?,
+              tos_version=?, last_signal=?, updated_at=?
             WHERE id=?
         """, (new_email, new_first, new_ref, rung_after, gates_json,
-              tos_at, tos_ver, trigger, now, row["id"]))
+              _new_aw, tos_at, tos_ver, trigger, now, row["id"]))
 
     cx.execute("""
         INSERT INTO journey_events
@@ -244,8 +320,7 @@ def get_state(cx, session_id="", email=""):
         tos_ver = tos_ver or r["tos_version"]
         if (r["path"] or "none") != "none":
             path = r["path"]
-        if (r["awareness_stage"] or "unknown") != "unknown":
-            awareness = r["awareness_stage"]
+        awareness = _max_awareness(awareness, r["awareness_stage"] or "unknown")
         if created_at is None or (r["created_at"] and r["created_at"] < created_at):
             created_at = r["created_at"]
 
@@ -255,5 +330,22 @@ def get_state(cx, session_id="", email=""):
         "ref_slug": ref_slug, "current_rung": rung,
         "unlocked_gates": sorted(gates), "awareness_stage": awareness,
         "path": path, "tos_agreed_at": tos_at, "tos_version": tos_ver,
-        "reveal": reveal_for(rung), "surfaced_cards": [],
+        "reveal": reveal_for(rung, awareness), "surfaced_cards": [],
     }
+
+
+def set_awareness(cx, session_id, stage):
+    """Persist an awareness stage upward (never regresses) for a session and
+    stamp awareness_classified_at. Used by the background Haiku classifier."""
+    cx.row_factory = sqlite3.Row
+    now = _now()
+    rows = cx.execute(
+        "SELECT id, awareness_stage FROM journey_state WHERE session_id=?",
+        (session_id,)).fetchall()
+    for r in rows:
+        merged = _max_awareness(r["awareness_stage"] or "unknown", stage)
+        cx.execute(
+            "UPDATE journey_state SET awareness_stage=?, awareness_classified_at=?, "
+            "updated_at=? WHERE id=?",
+            (merged, now, now, r["id"]))
+    cx.commit()
