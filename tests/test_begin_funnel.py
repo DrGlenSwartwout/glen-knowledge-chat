@@ -196,3 +196,27 @@ def test_reveal_for_gate_skip_for_aware():
     assert bf.reveal_for("arrival", "solution") == ["layer0"]
     assert bf.reveal_for("listening", "problem") == ["layer0", "layer1"]
     assert bf.reveal_for("arrival") == ["layer0"]   # default awareness preserves old behavior
+
+
+def test_awareness_classified_at_column_exists():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    cols = {r[1] for r in cx.execute("PRAGMA table_info(journey_state)")}
+    assert "awareness_classified_at" in cols
+
+
+def test_set_awareness_persists_upward_and_stamps():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    bf.record_unlock(cx, session_id="s1", trigger="question")  # creates row
+    bf.set_awareness(cx, "s1", "product")
+    st = bf.get_state(cx, session_id="s1")
+    assert st["awareness_stage"] == "product"
+    row = cx.execute("SELECT awareness_classified_at FROM journey_state WHERE session_id='s1'").fetchone()
+    assert row[0] is not None
+    # never regresses: a lower stage does not overwrite
+    bf.set_awareness(cx, "s1", "problem")
+    st = bf.get_state(cx, session_id="s1")
+    assert st["awareness_stage"] == "product"

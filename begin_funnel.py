@@ -37,6 +37,11 @@ def init_journey_tables(cx):
     """)
     cx.execute("CREATE INDEX IF NOT EXISTS idx_journey_session ON journey_state(session_id)")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_journey_email   ON journey_state(email)")
+    # Slice 2 additive migration — awareness classification timestamp.
+    try:
+        cx.execute("ALTER TABLE journey_state ADD COLUMN awareness_classified_at TEXT")
+    except Exception:
+        pass  # already exists
     cx.execute("""
         CREATE TABLE IF NOT EXISTS journey_events (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -321,3 +326,20 @@ def get_state(cx, session_id="", email=""):
         "path": path, "tos_agreed_at": tos_at, "tos_version": tos_ver,
         "reveal": reveal_for(rung), "surfaced_cards": [],
     }
+
+
+def set_awareness(cx, session_id, stage):
+    """Persist an awareness stage upward (never regresses) for a session and
+    stamp awareness_classified_at. Used by the background Haiku classifier."""
+    cx.row_factory = sqlite3.Row
+    now = _now()
+    rows = cx.execute(
+        "SELECT id, awareness_stage FROM journey_state WHERE session_id=?",
+        (session_id,)).fetchall()
+    for r in rows:
+        merged = _max_awareness(r["awareness_stage"] or "unknown", stage)
+        cx.execute(
+            "UPDATE journey_state SET awareness_stage=?, awareness_classified_at=?, "
+            "updated_at=? WHERE id=?",
+            (merged, now, now, r["id"]))
+    cx.commit()
