@@ -1,1 +1,122 @@
-<!doctype html><title>voice room</title><h1>voice room</h1>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Your Voice & Frequencies — Dr. Glen Swartwout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+    --maxw:760px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1); }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{ background:var(--bg); color:var(--cream); font-family:"Open Sans",system-ui,sans-serif;
+    font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%); background-attachment:fixed; }
+  h1,h2,h3{ font-family:"Raleway",system-ui,sans-serif; font-weight:600; line-height:1.25; letter-spacing:-0.01em; }
+  a{ color:inherit; text-decoration:none; }
+  .shell{ max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+  .brandbar{ max-width:var(--maxw); margin:0 auto; padding:30px 24px 8px; display:flex; align-items:center; justify-content:center; gap:14px; }
+  .brand-mark{ width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 4px rgba(212,168,67,0.12); }
+  .brand-name{ font-family:"Raleway",sans-serif; font-weight:600; font-size:13px; letter-spacing:0.32em; text-transform:uppercase; color:var(--muted); }
+  .intro{ text-align:center; padding-top:48px; }
+  .eyebrow{ font-family:"Raleway",sans-serif; font-weight:600; font-size:12px; letter-spacing:0.34em; text-transform:uppercase; color:var(--green); margin-bottom:18px; }
+  .intro h1{ font-size:clamp(23px,5vw,31px); color:var(--cream); max-width:600px; margin:0 auto; }
+  .intro p{ color:var(--muted); font-size:15px; margin:14px auto 0; max-width:520px; }
+  .cards{ display:grid; grid-template-columns:1fr; gap:14px; margin-top:40px; }
+  .card{ position:relative; display:flex; align-items:flex-start; gap:18px; background:var(--surface);
+    border:1px solid var(--border); border-radius:var(--radius); padding:24px; cursor:pointer;
+    transition:transform .4s var(--ease), border-color .4s var(--ease), background .4s var(--ease); }
+  .card:hover{ transform:translateY(-2px); border-color:rgba(212,168,67,0.45); background:var(--surface-2); }
+  .card-num{ flex:none; width:42px; height:42px; border-radius:50%; display:grid; place-items:center;
+    border:1px solid var(--border); color:var(--gold); font-family:"Raleway",sans-serif; font-weight:600; font-size:15px; }
+  .card-body{ flex:1; min-width:0; }
+  .card-title{ font-family:"Raleway",sans-serif; font-weight:600; font-size:17.5px; color:var(--cream); line-height:1.3; }
+  .card-sub{ font-size:14px; color:var(--muted); margin-top:6px; line-height:1.55; }
+  .card-tag{ display:inline-block; margin-top:10px; font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--green); border:1px solid var(--border); border-radius:999px; padding:3px 10px; }
+  footer{ margin-top:56px; padding:28px 24px 44px; text-align:center; border-top:1px solid rgba(33,71,45,0.5); }
+  .foot-note{ font-size:12.5px; color:var(--muted); opacity:0.7; max-width:520px; margin:0 auto; line-height:1.7; }
+  .back{ display:inline-block; margin-top:18px; color:var(--muted); font-size:13px; }
+  .back:hover{ color:var(--gold); }
+  @media(max-width:560px){ body{font-size:16px;} .shell{padding:0 18px;} .card{padding:20px;gap:14px;}
+    .card-num{width:38px;height:38px;font-size:14px;} .card-title{font-size:16px;} }
+</style>
+</head>
+<body>
+  <div class="brandbar"><span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;·&nbsp; Healing&nbsp;Oasis</span></div>
+
+  <section class="shell intro">
+    <p class="eyebrow">Your voice as a doorway</p>
+    <h1>Your voice carries your body&rsquo;s current state — in frequency, tone, and rhythm.</h1>
+    <p>Four ways to listen. Begin with whichever calls to you — or move through them in your own time.</p>
+  </section>
+
+  <section class="shell">
+    <div class="cards">
+      <a class="card" id="d-tone" href="/begin/tone">
+        <span class="card-num">01</span>
+        <span class="card-body">
+          <span class="card-title">5-Element Toning Analysis</span>
+          <span class="card-sub">Hold a tone and see how your voice resonates against the Earth frequency (172 Hz) across the Five Elements — instant, right here in your browser.</span>
+          <span class="card-tag">Instant &middot; in-browser</span>
+        </span>
+      </a>
+
+      <a class="card" id="d-journal" href="/journal">
+        <span class="card-num">02</span>
+        <span class="card-body">
+          <span class="card-title">Voice-Sample Analysis</span>
+          <span class="card-sub">Speak naturally for a moment. A deeper read — your Five Elements, Three Treasures, and nervous-system state — with matched remedies and affirmations to read back.</span>
+          <span class="card-tag">Deeper &middot; spoken</span>
+        </span>
+      </a>
+
+      <a class="card" id="d-e4l" href="https://truly.vip/E4L" target="_blank" rel="noopener">
+        <span class="card-num">03</span>
+        <span class="card-body">
+          <span class="card-title">E4L Bioenergetic Wellness Scan</span>
+          <span class="card-sub">A 30-second bioenergetic voice scan that matches formulations to your body&rsquo;s current priorities.</span>
+          <span class="card-tag">Partner scan</span>
+        </span>
+      </a>
+
+      <a class="card" id="d-evox" href="/practitioner">
+        <span class="card-num">04</span>
+        <span class="card-body">
+          <span class="card-title">EVOX Voice-Frequency Biofeedback</span>
+          <span class="card-sub">Practitioner-guided voice-frequency biofeedback for perception reframing — available through a certified practitioner.</span>
+          <span class="card-tag">With a practitioner</span>
+        </span>
+      </a>
+    </div>
+    <div style="text-align:center;"><a class="back" href="/begin">&larr; Back to the beginning</a></div>
+  </section>
+
+  <footer>
+    <p class="foot-note">Shared in the spirit of education and self-understanding. This space offers wellness and
+      educational guidance — it is not a substitute for diagnosis or medical care from your own provider.</p>
+  </footer>
+
+  <script>
+    (function(){try{var ref=(new URLSearchParams(location.search).get('ref')||'').trim();
+      if(ref&&/^[A-Za-z0-9_-]{1,64}$/.test(ref)){document.cookie='rm_ref='+encodeURIComponent(ref)+';path=/;max-age='+(90*24*3600)+';SameSite=Lax';localStorage.setItem('rm_ref',ref);}}catch(_){}})();
+    function getRef(){try{var m=document.cookie.match(/(?:^|;\s*)rm_ref=([^;]+)/);if(m)return decodeURIComponent(m[1]);return localStorage.getItem('rm_ref')||'';}catch(_){return'';}}
+    function unlock(trigger){ try{ return fetch('/begin/unlock',{method:'POST',headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',body:JSON.stringify({trigger:trigger, ref:getRef()})}); }catch(_){ } }
+
+    // entering the room = the 'voice' micro-commitment (→ explore_voice rung)
+    unlock('voice');
+
+    // thread ref onto the external E4L link; choosing it = escalation (→ assess rung)
+    (function(){ var e=document.getElementById('d-e4l'); if(!e) return;
+      var slug=encodeURIComponent(getRef()||'remedy-match');
+      e.setAttribute('href','https://truly.vip/E4L?utm_source='+slug+'&utm_medium=affiliate&utm_campaign=begin-voice-e4l');
+      e.addEventListener('click', function(){ unlock('scan'); });
+    })();
+  </script>
+</body>
+</html>
