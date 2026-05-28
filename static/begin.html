@@ -637,40 +637,7 @@
       <p>Each one a doorway — choose the one that meets you where you are.</p>
     </div>
 
-    <div class="cards">
-      <a class="card reveal" id="cta-quiz" href="#" target="_blank" rel="noopener">
-        <span class="card-num">01</span>
-        <span class="card-body">
-          <span class="card-title">Discover Your Healing Path</span>
-          <span class="card-sub">Uncover your top wellness opportunities in 3 minutes</span>
-        </span>
-        <span class="card-arrow" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-        </span>
-      </a>
-
-      <a class="card reveal" id="cta-scan" href="#" target="_blank" rel="noopener">
-        <span class="card-num">02</span>
-        <span class="card-body">
-          <span class="card-title">Your Voice Reveals What Your Body Knows</span>
-          <span class="card-sub">10-second scan shows your body&rsquo;s current priorities</span>
-        </span>
-        <span class="card-arrow" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-        </span>
-      </a>
-
-      <a class="card reveal" id="cta-intake" href="#" target="_blank" rel="noopener">
-        <span class="card-num">03</span>
-        <span class="card-body">
-          <span class="card-title">Begin Your Journey</span>
-          <span class="card-sub">Personalized guidance starts with understanding your story</span>
-        </span>
-        <span class="card-arrow" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-        </span>
-      </a>
-    </div>
+    <div class="cards" id="cards-host"></div>
   </section>
 
   <!-- FOOTER -->
@@ -700,6 +667,27 @@
       });
     });
   }
+  function renderCards(cards){
+    var host = document.getElementById('cards-host');
+    if(!host || !cards || !cards.length) return;
+    host.innerHTML = '';
+    cards.forEach(function(c, i){
+      var a = document.createElement('a');
+      a.className = 'card reveal in';
+      a.setAttribute('href', c.href || '#');
+      a.setAttribute('rel', 'noopener');
+      if (c.href && c.href.charAt(0) !== '/') { a.setAttribute('target', '_blank'); }
+      var num = (i + 1 < 10 ? '0' : '') + (i + 1);
+      a.innerHTML =
+        '<span class="card-num"></span>' +
+        '<span class="card-body"><span class="card-title"></span><span class="card-sub"></span></span>' +
+        '<span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>';
+      a.querySelector('.card-num').textContent = num;
+      a.querySelector('.card-title').textContent = c.title || '';
+      a.querySelector('.card-sub').textContent = c.sub || '';
+      host.appendChild(a);
+    });
+  }
   function personalize(name){
     if(!name) return;
     document.querySelectorAll('[data-name]').forEach(function(el){ el.textContent = name; });
@@ -710,6 +698,7 @@
       credentials:'same-origin',body:JSON.stringify(body)})
       .then(function(r){ return r.ok ? r.json() : Promise.reject(r); })
       .then(function(st){ STATE = st; applyReveal(st.reveal); personalize(st.first_name);
+        renderCards(st.surfaced_cards);
         return st; });
   }
 
@@ -728,6 +717,7 @@
     }
     fetch('/begin/state',{credentials:'same-origin'}).then(function(r){return r.json();})
       .then(function(st){ STATE=st; applyReveal(st.reveal); personalize(st.first_name);
+        renderCards(st.surfaced_cards);
         if(st.current_rung==='arrival'){ unlock('video'); } })
       .catch(function(){ applyReveal(['layer0','layer1']); });
   })();
