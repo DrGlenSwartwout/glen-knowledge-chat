@@ -2747,6 +2747,36 @@ def _mask_lead_name(first: str, last: str) -> str:
     return fn
 
 
+@app.route("/affiliate/social-links", methods=["POST", "OPTIONS"])
+def affiliate_social_links_submit():
+    if request.method == "OPTIONS":
+        return "", 200
+    data  = request.get_json() or {}
+    token = (data.get("token") or "").strip()
+    urls  = data.get("urls") or []
+    if not token:
+        return jsonify({"error": "token required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT slug, email, status FROM affiliate_signups WHERE token=?",
+                         (token,)).fetchone()
+        if not row:
+            return jsonify({"error": "invalid token"}), 404
+        slug, email, status = row
+        if status != "approved":
+            return jsonify({"error": "application pending review"}), 403
+        ts = datetime.now(timezone.utc).isoformat()
+        count = 0
+        for u in (urls or [])[:10]:
+            u = (u or "").strip()[:500]
+            if not u.startswith(("http://", "https://")):
+                continue
+            cx.execute("INSERT INTO affiliate_social_links (ts, slug, email, url) VALUES (?,?,?,?)",
+                       (ts, slug, email, u))
+            count += 1
+        cx.commit()
+    return jsonify({"ok": True, "count": count})
+
+
 @app.route("/affiliate/portal-data", methods=["GET"])
 def affiliate_portal_data():
     token = request.args.get("token", "").strip()
@@ -2787,6 +2817,9 @@ def affiliate_portal_data():
             "SELECT name, description, url_template, COALESCE(instructions, '') "
             "FROM affiliate_offers WHERE active=1 ORDER BY sort_order ASC"
         ).fetchall()
+        social = cx.execute(
+            "SELECT url, points, views, likes, shares, ts FROM affiliate_social_links "
+            "WHERE slug=? ORDER BY id DESC", (slug,)).fetchall()
 
     return jsonify({
         "name": name,
@@ -2809,6 +2842,10 @@ def affiliate_portal_data():
                 "instructions": o[3],
             }
             for o in offers
+        ],
+        "social_links": [
+            {"url": s[0], "points": s[1], "views": s[2], "likes": s[3], "shares": s[4], "ts": s[5]}
+            for s in social
         ],
         "member_since": created_at,
     })

@@ -238,3 +238,74 @@ def test_begin_path_serves_and_mints_session(monkeypatch, tmp_path):
     r = client.get("/begin/path")
     assert r.status_code == 200
     assert "amg_session=" in r.headers.get("Set-Cookie", "")
+
+
+def _seed_affiliate(db, token="tok-approved", slug="jane", status="approved"):
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+        # ensure affiliate_signups exists (created by app's _init_referral_tables at import;
+        # create a minimal compatible row here for the test DB)
+        cx.execute("""CREATE TABLE IF NOT EXISTS affiliate_signups
+            (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT, organization TEXT,
+             slug TEXT, status TEXT, token TEXT, created_at TEXT, short_url TEXT, referred_by TEXT)""")
+        # also create the tables that affiliate_portal_data queries
+        cx.execute("""CREATE TABLE IF NOT EXISTS referral_events
+            (id INTEGER PRIMARY KEY AUTOINCREMENT, received_at TEXT, lead_id INTEGER,
+             email TEXT, first_name TEXT, last_name TEXT, utm_source TEXT DEFAULT '',
+             utm_medium TEXT DEFAULT '', utm_campaign TEXT DEFAULT '', utm_content TEXT DEFAULT '',
+             utm_term TEXT DEFAULT '', quiz_score TEXT DEFAULT '', raw_json TEXT DEFAULT '')""")
+        cx.execute("""CREATE TABLE IF NOT EXISTS affiliate_conversions
+            (id INTEGER PRIMARY KEY AUTOINCREMENT, received_at TEXT, email TEXT,
+             affiliate_slug TEXT, conversion_type TEXT, detail TEXT,
+             order_value REAL, source TEXT, raw_json TEXT)""")
+        cx.execute("""CREATE TABLE IF NOT EXISTS affiliate_offers
+            (id INTEGER PRIMARY KEY AUTOINCREMENT, sort_order INTEGER DEFAULT 0,
+             name TEXT, description TEXT DEFAULT '', url_template TEXT,
+             active INTEGER DEFAULT 1, instructions TEXT DEFAULT '')""")
+        cx.execute("""CREATE TABLE IF NOT EXISTS affiliate_social_links
+            (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, slug TEXT, email TEXT,
+             url TEXT, platform TEXT, points INTEGER, views INTEGER, likes INTEGER,
+             shares INTEGER, reviewed_at TEXT)""")
+        cx.execute("INSERT INTO affiliate_signups (name,email,slug,status,token,created_at) VALUES (?,?,?,?,?,?)",
+                   ("Jane","jane@x.com",slug,status,token,"2026-05-28T00:00:00+00:00"))
+        cx.commit()
+
+
+def test_social_links_submit_approved(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    _seed_affiliate(db)
+    client = app_module.app.test_client()
+    r = client.post("/affiliate/social-links",
+                    json={"token": "tok-approved",
+                          "urls": ["https://youtu.be/abc", "not-a-url", "https://x.com/p/1"]})
+    body = r.get_json()
+    assert r.status_code == 200 and body["count"] == 2   # the non-url is skipped
+    import sqlite3
+    with sqlite3.connect(db) as cx:
+        n = cx.execute("SELECT COUNT(*) FROM affiliate_social_links WHERE slug='jane'").fetchone()[0]
+    assert n == 2
+
+
+def test_social_links_submit_pending_or_invalid(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    _seed_affiliate(db, token="tok-pending", slug="pend", status="pending")
+    client = app_module.app.test_client()
+    assert client.post("/affiliate/social-links", json={"token": "tok-pending", "urls": ["https://x.com/p"]}).status_code == 403
+    assert client.post("/affiliate/social-links", json={"token": "nope", "urls": ["https://x.com/p"]}).status_code == 404
+
+
+def test_portal_data_returns_social_links(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    _seed_affiliate(db)
+    client = app_module.app.test_client()
+    client.post("/affiliate/social-links", json={"token": "tok-approved", "urls": ["https://youtu.be/abc"]})
+    d = client.get("/affiliate/portal-data?token=tok-approved").get_json()
+    assert "social_links" in d
+    assert any(s["url"] == "https://youtu.be/abc" for s in d["social_links"])
