@@ -214,3 +214,18 @@ def test_haiku_classification_guarded_below_threshold(monkeypatch, tmp_path):
     client.post("/begin/unlock", json={"trigger": "question"})
     import time; time.sleep(0.2)
     assert len(calls) == 0
+
+
+def test_begin_unlock_accepts_path(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import sqlite3, begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "sp")
+    r = client.post("/begin/unlock", json={"trigger": "paid_fork", "path": "pay_forward"})
+    body = r.get_json()
+    assert body["path"] == "pay_forward"
+    assert body["current_rung"] == "choose_path"

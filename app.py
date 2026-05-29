@@ -1012,6 +1012,7 @@ def begin_unlock():
     detail = (data.get("detail") or "").strip()
     ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
     want = (data.get("want") or "").strip().lower()
+    path = (data.get("path") or "").strip()
 
     # Fetch recent chat queries OUTSIDE the lock block (_recent_query_texts
     # acquires _db_lock itself; _db_lock is not reentrant).
@@ -1024,7 +1025,7 @@ def begin_unlock():
                 email=email, detail=detail, first_name=name, tos=tos,
                 ref_slug=ref_slug,
                 tos_version=BEGIN_TOS_VERSION if (tos or trigger == "tos") else "",
-                want=want, query_texts=query_texts,
+                want=want, query_texts=query_texts, path=path,
             )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
