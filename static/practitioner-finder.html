@@ -4,28 +4,73 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Find a Practitioner · Functional Formulations™</title>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.css">
   <style>
     :root {
-      --bg: #faf7f2;
-      --fg: #1a1a1a;
-      --muted: #6b6b6b;
-      --accent: #2a5d4f;
-      --accent-soft: #e7efec;
-      --border: #e2dcd2;
-      --serif: 'Cormorant Garamond', serif;
-      --sans: 'Inter', system-ui, sans-serif;
+      --bg: #0a150d;
+      --surface: #111f16;
+      --surface-2: #162318;
+      --border: #21472d;
+      --cream: #fdf4d8;
+      --muted: #a89870;
+      --gold: #d4a843;
+      --green: #3d8a52;
+      --radius: 14px;
+      --ease: cubic-bezier(0.22,1,0.36,1);
+      /* Aliases for legacy variable names used in this page's rules */
+      --fg: var(--cream);
+      --accent: var(--gold);
+      --accent-soft: var(--surface-2);
+      --accent-light: var(--gold);
+      --sans: "Open Sans", system-ui, sans-serif;
+      --serif: "Raleway", sans-serif;
     }
     * { box-sizing: border-box; }
     body {
-      margin: 0; font-family: var(--sans); background: var(--bg); color: var(--fg);
+      margin: 0;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--fg);
       line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      background-image: radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%);
+      background-attachment: fixed;
     }
+    h1, h2, h3 { font-family: "Raleway", sans-serif; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; }
+    a { color: inherit; text-decoration: none; }
+
+    /* Brand bar */
+    .brandbar {
+      margin: 0 auto;
+      padding: 30px clamp(1rem, 4vw, 3rem) 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+    .brand-mark {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--gold);
+      box-shadow: 0 0 0 4px rgba(212,168,67,0.12);
+    }
+    .brand-name {
+      font-family: "Raleway", sans-serif;
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: 0.32em;
+      color: var(--muted);
+    }
+
     header { padding: clamp(1rem, 3vw, 2.5rem) clamp(1rem, 4vw, 3rem) 0.5rem; }
     header h1 {
-      font-family: var(--serif); margin: 0 0 0.4rem;
-      font-size: clamp(1.6rem, 3vw, 2.4rem); font-weight: 600;
+      font-family: "Raleway", sans-serif;
+      margin: 0 0 0.4rem;
+      font-size: clamp(1.6rem, 3vw, 2.4rem);
+      font-weight: 700;
+      color: var(--cream);
     }
     header p { margin: 0; color: var(--muted); max-width: 60ch; }
 
@@ -35,38 +80,55 @@
     }
     .zip-search {
       display: flex; align-items: center; gap: 0.5rem;
-      background: white; border: 1px solid var(--border); border-radius: 999px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
       padding: 0.5rem 1rem;
     }
     .zip-search input {
-      border: 0; outline: 0; font: inherit; width: 8ch; background: transparent; min-width: 0;
+      border: 0; outline: 0; font: inherit; width: 8ch; background: transparent;
+      min-width: 0; color: var(--cream);
     }
-    .zip-search select { border: 0; outline: 0; font: inherit; background: transparent; min-width: 0; }
+    .zip-search input::placeholder { color: var(--muted); }
+    .zip-search select {
+      border: 0; outline: 0; font: inherit; background: transparent;
+      min-width: 0; color: var(--cream);
+    }
+    .zip-search select option { background: var(--surface); color: var(--cream); }
     @media (max-width: 480px) {
       .zip-search { flex-wrap: wrap; border-radius: 0.8rem; }
       .zip-search button { flex: 1 0 100%; text-align: center; border-radius: 0.5rem; }
     }
     .zip-search button {
-      background: var(--accent); color: white; border: 0; border-radius: 999px;
-      padding: 0.4rem 1rem; font: inherit; cursor: pointer;
+      background: var(--gold);
+      color: #0a150d;
+      border: 0; border-radius: 999px;
+      padding: 0.4rem 1rem; font: inherit; font-weight: 600; cursor: pointer;
+      transition: background 0.15s;
     }
+    .zip-search button:hover { background: #c49535; }
 
     .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
     .chip {
-      background: white; border: 1px solid var(--border); border-radius: 999px;
-      padding: 0.5rem 1rem; cursor: pointer; font: inherit; white-space: nowrap;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.5rem 1rem; cursor: pointer; font: inherit;
+      color: var(--cream); white-space: nowrap;
+      transition: border-color 0.2s, background 0.2s;
     }
-    .chip[aria-pressed="true"] { background: var(--accent); color: white; border-color: var(--accent); }
+    .chip:hover { border-color: rgba(212,168,67,0.45); background: var(--surface-2); }
+    .chip[aria-pressed="true"] { background: var(--gold); color: #0a150d; border-color: var(--gold); }
 
-    /* Fellowship toggle — gold accent so it visually differs from category chips */
+    /* Fellowship toggle */
     .chip.fellow-toggle {
-      border-color: #b8860b;
-      color: #8a6508;
+      border-color: rgba(212,168,67,0.5);
+      color: var(--gold);
     }
     .chip.fellow-toggle[aria-pressed="true"] {
-      background: #b8860b;
-      color: white;
-      border-color: #b8860b;
+      background: var(--gold);
+      color: #0a150d;
+      border-color: var(--gold);
     }
     .chip.fellow-toggle::before {
       content: "★ ";
@@ -75,12 +137,12 @@
     /* Fellowship badge on result cards + side panel */
     .fellow-badge {
       display: inline-block;
-      background: #b8860b;
-      color: white;
+      background: var(--gold);
+      color: #0a150d;
       padding: 0.1rem 0.5rem;
       border-radius: 999px;
       font-size: 0.7rem;
-      font-weight: 600;
+      font-weight: 700;
       letter-spacing: 0.04em;
       vertical-align: middle;
       margin-left: 0.4rem;
@@ -94,13 +156,21 @@
     .drill-down.open { display: block; }
     .drill-down .sub-chips {
       display: flex; flex-wrap: wrap; gap: 0.4rem;
-      background: var(--accent-soft); padding: 0.6rem 0.8rem; border-radius: 0.6rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 0.6rem 0.8rem; border-radius: 0.6rem;
     }
     .sub-chip {
       background: transparent; border: 1px solid transparent; border-radius: 999px;
-      padding: 0.3rem 0.9rem; cursor: pointer; font: inherit; color: var(--fg);
+      padding: 0.3rem 0.9rem; cursor: pointer; font: inherit; color: var(--muted);
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
-    .sub-chip[aria-pressed="true"] { background: white; border-color: var(--accent); color: var(--accent); }
+    .sub-chip:hover { color: var(--cream); border-color: var(--border); }
+    .sub-chip[aria-pressed="true"] {
+      background: var(--surface-2);
+      border-color: var(--gold);
+      color: var(--gold);
+    }
 
     .layout {
       display: grid; grid-template-columns: 1fr; gap: 1rem;
@@ -110,37 +180,75 @@
     @media (min-width: 900px) {
       .layout { grid-template-columns: 3fr 2fr; }
     }
-    #map { height: 60vh; min-height: 400px; border-radius: 0.6rem; background: #ddd; }
+    #map { height: 60vh; min-height: 400px; border-radius: var(--radius); background: var(--surface); }
     .results { max-height: 60vh; overflow-y: auto; }
     .results .empty { color: var(--muted); padding: 1rem; }
     .result-card {
-      padding: 0.8rem 1rem; border-bottom: 1px solid var(--border);
+      padding: 0.8rem 1rem;
+      border-bottom: 1px solid var(--border);
       cursor: pointer;
+      transition: background 0.15s;
     }
-    .result-card:hover { background: var(--accent-soft); }
-    .result-card h3 { margin: 0 0 0.2rem; font-family: var(--serif); font-size: 1.1rem; }
+    .result-card:hover { background: var(--surface-2); }
+    .result-card h3 {
+      margin: 0 0 0.2rem;
+      font-family: "Raleway", sans-serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--cream);
+    }
     .result-card .meta { font-size: 0.85rem; color: var(--muted); }
 
     .side-panel {
       position: fixed; top: 0; right: 0; height: 100vh; width: min(420px, 100%);
-      background: white; box-shadow: -8px 0 24px rgba(0,0,0,0.1);
+      background: var(--surface); box-shadow: -8px 0 32px rgba(0,0,0,0.4);
       transform: translateX(100%); transition: transform 0.2s ease;
       overflow-y: auto; padding: 2rem 1.5rem;
+      border-left: 1px solid var(--border);
     }
     .side-panel.open { transform: translateX(0); }
     .side-panel .close {
       background: transparent; border: 0; font-size: 1.5rem; cursor: pointer;
       position: absolute; top: 0.5rem; right: 0.8rem;
+      color: var(--muted); transition: color 0.15s;
+    }
+    .side-panel .close:hover { color: var(--cream); }
+
+    /* Inline chat section */
+    .chat-section {
+      padding: 0 clamp(1rem, 4vw, 3rem) clamp(1rem, 4vw, 3rem);
+    }
+    .chat-label {
+      font-family: "Raleway", sans-serif;
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .chat-sub {
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 4px;
     }
 
     footer {
       padding: 1rem clamp(1rem, 4vw, 3rem) 2rem;
       color: var(--muted); font-size: 0.85rem;
+      border-top: 1px solid rgba(33,71,45,0.5);
     }
     footer a { color: var(--muted); }
+    footer a:hover { color: var(--gold); }
   </style>
 </head>
 <body>
+
+  <div class="brandbar">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;·&nbsp; Healing&nbsp;Oasis</span>
+  </div>
+
   <header>
     <h1>Find a Practitioner</h1>
     <p>Practitioners aligned with Functional Formulations™ across functional eye care, biological dentistry, and integrative health.</p>
@@ -215,12 +323,20 @@
     <div id="side-panel-content"></div>
   </aside>
 
+  <section class="chat-section">
+    <p class="chat-label">Ask Dr. Glen</p>
+    <p class="chat-sub">Found a practitioner? Ask Dr. Glen for guidance on next steps, what to expect, or which specialty fits your situation.</p>
+    <iframe src="/embed" title="Ask Dr. Glen" loading="lazy"
+      style="width:100%;height:520px;max-height:70vh;border:1px solid var(--border);border-radius:14px;background:var(--surface);margin:18px 0;"></iframe>
+  </section>
+
   <footer>
     Are you a practitioner listed here who would like to be removed?
     <a href="mailto:suerae1111@gmail.com?subject=Practitioner%20Finder%20Removal%20Request">Email Rae</a>.
   </footer>
 
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.js"></script>
+  <script src="/ref-capture.js"></script>
   <script>
     const MAPBOX_TOKEN = window.__MAPBOX_TOKEN__ || '';
 
@@ -231,7 +347,7 @@
       fellowsOnly: false,
     };
 
-    // Fellowship toggle behavior — independent of category chips
+    // Fellowship toggle behavior, independent of category chips
     document.getElementById('fellow-toggle').addEventListener('click', (e) => {
       filterState.fellowsOnly = !filterState.fellowsOnly;
       e.currentTarget.setAttribute('aria-pressed', filterState.fellowsOnly ? 'true' : 'false');
@@ -254,7 +370,7 @@
     }
 
     // Top-level chip behavior. Scope to category chips (those with
-    // data-parent) so the Fellows Only toggle — which is also a .chip — is
+    // data-parent) so the Fellows Only toggle (which is also a .chip) is
     // NOT swept up by this handler or reset below; it owns its own click
     // handler and its pressed (gold) state stays independent of categories.
     document.querySelectorAll('.chip[data-parent]').forEach(btn => {
@@ -391,18 +507,18 @@
       const fellowBadge = p.fellowship_level
         ? `<span class="fellow-badge" title="Org-vetted fellowship credential">Fellow</span>`
         : '';
-      parts.push(`<h2 style="font-family:var(--serif);margin-top:0">${escapeHtml(p.name)}${fellowBadge}</h2>`);
+      parts.push(`<h2 style="font-family:'Raleway',sans-serif;margin-top:0">${escapeHtml(p.name)}${fellowBadge}</h2>`);
       if (p.credentials) parts.push(`<div style="color:var(--muted)">${escapeHtml(p.credentials)}</div>`);
       if (p.practice_name) parts.push(`<div>${escapeHtml(p.practice_name)}</div>`);
-      parts.push('<hr>');
+      parts.push('<hr style="border:none;border-top:1px solid var(--border);margin:0.75rem 0;">');
       const addrParts = [p.address1, p.city, p.state, p.postal].filter(Boolean).map(escapeHtml);
       if (addrParts.length) parts.push(`<div>${addrParts.join(', ')}</div>`);
       if (p.geocode_quality && p.geocode_quality !== 'full') {
-        parts.push('<div style="color:var(--muted);font-size:0.85rem;margin-top:0.2rem">Approximate — call the practice for exact address.</div>');
+        parts.push('<div style="color:var(--muted);font-size:0.85rem;margin-top:0.2rem">Approximate. Call the practice for the exact address.</div>');
       }
-      if (p.phone) parts.push(`<div style="margin-top:0.4rem"><a href="tel:${escapeHtml(p.phone)}">${escapeHtml(p.phone)}</a></div>`);
-      if (p.email) parts.push(`<div><a href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a></div>`);
-      if (p.website) parts.push(`<div><a href="${escapeHtml(p.website)}" target="_blank" rel="noopener">${escapeHtml(p.website)}</a></div>`);
+      if (p.phone) parts.push(`<div style="margin-top:0.4rem"><a href="tel:${escapeHtml(p.phone)}" style="color:var(--gold)">${escapeHtml(p.phone)}</a></div>`);
+      if (p.email) parts.push(`<div><a href="mailto:${escapeHtml(p.email)}" style="color:var(--gold)">${escapeHtml(p.email)}</a></div>`);
+      if (p.website) parts.push(`<div><a href="${escapeHtml(p.website)}" target="_blank" rel="noopener" style="color:var(--gold)">${escapeHtml(p.website)}</a></div>`);
       if (p.source_org) {
         parts.push(`<div style="margin-top:1rem;color:var(--muted);font-size:0.85rem">Source: ${escapeHtml(p.source_org)}</div>`);
       }

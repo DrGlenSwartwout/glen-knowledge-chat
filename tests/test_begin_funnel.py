@@ -312,7 +312,7 @@ def test_card_href_external_threads_utm():
 
 def test_card_href_internal_as_is():
     import begin_funnel as bf
-    assert bf.card_href("practitioner", "Jane") == "/practitioner"
+    assert bf.card_href("practitioner", "Jane") == "/practitioner-finder"
 
 
 def test_card_builds_full_dict():
@@ -495,3 +495,18 @@ def test_affiliate_journey_does_not_regress_advocate():
     st = begin_funnel.get_state(cx, "a2")
     assert st["current_rung"] == "advocate"   # monotonic, does not regress
     assert st["path"] == "pay_forward"
+
+
+def test_practitioner_card_targets_the_real_finder():
+    import begin_funnel
+    c = begin_funnel.CARD_CATALOG.get("practitioner")
+    assert c is not None
+    assert c["base_url"] == "/practitioner-finder"
+    assert c["internal"] is True
+    # surface() with a practitioner-keyword query still surfaces this card
+    cards = begin_funnel.surface({}, ["I need a local practitioner"], "")
+    keys = [x["key"] for x in cards]
+    assert "practitioner" in keys
+    # and the rendered href is the internal finder path (no utm appended for internal)
+    matched = [x for x in cards if x["key"] == "practitioner"][0]
+    assert matched["href"] == "/practitioner-finder"
