@@ -2546,6 +2546,11 @@ def init_inquiry_tables(cx):
           practitioner_id TEXT
         );
     """)
+    # Additive migration: ip column for per-IP rate limiting (mirrors schema-evolution pattern)
+    try:
+        cx.execute("ALTER TABLE inquiries ADD COLUMN ip TEXT")
+    except Exception:
+        pass  # already exists
 
 
 def _init_inquiry_tables():
@@ -9058,6 +9063,305 @@ def practitioner_finder_page():
     injection = f"<script>window.__MAPBOX_TOKEN__ = {token!r};</script>"
     html = html.replace("</head>", injection + "\n</head>")
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+def _fetch_practitioners_by_ids(ids: list) -> list:
+    """Fetch practitioner records from Supabase by a list of id strings.
+
+    Returns a list of dicts with at minimum: id, email, name, accepts_inquiries.
+    Mirrors the connection style of practitioner_finder_search (pf_db / supabase_cursor).
+    Unknown ids are silently omitted — callers check len(result) vs len(ids).
+    """
+    if not ids:
+        return []
+    from db_supabase import supabase_cursor
+    # Use %s placeholders; psycopg2 fills them positionally
+    placeholders = ", ".join(["%s"] * len(ids))
+    sql = f"""
+        SELECT id, name, email, accepts_inquiries
+        FROM practitioners
+        WHERE id::text = ANY(ARRAY[{placeholders}])
+    """
+    try:
+        with supabase_cursor() as cur:
+            cur.execute(sql, list(ids))
+            return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        print(f"[inquiry] _fetch_practitioners_by_ids error: {e!r}", flush=True)
+        return []
+
+
+@app.route("/api/practitioner-finder/inquiry", methods=["POST", "OPTIONS"])
+def practitioner_finder_inquiry():
+    """POST /api/practitioner-finder/inquiry
+
+    Accept a multi-cast inquiry from a site visitor.  Fan-out one email per
+    selected practitioner, record the inquiry in SQLite, fire a
+    journey_events row, and return {inquiry_id, sent_count, skipped}.
+    """
+    if request.method == "OPTIONS":
+        return "", 200
+
+    data = request.get_json(force=True) or {}
+
+    # ── Validation ────────────────────────────────────────────────────────────
+    client_name      = (data.get("client_name") or "").strip()
+    client_email     = (data.get("client_email") or "").strip().lower()
+    client_phone     = (data.get("client_phone") or "").strip()
+    main_challenge   = (data.get("main_challenge") or "").strip()
+    main_goal        = (data.get("main_goal") or "").strip()
+    practitioner_ids = data.get("practitioner_ids") or []
+
+    missing = []
+    if not client_name:
+        missing.append("client_name")
+    if not client_email:
+        missing.append("client_email")
+    elif "@" not in client_email or "." not in client_email:
+        return jsonify({"error": "client_email must be a valid email address"}), 400
+    if not main_challenge:
+        missing.append("main_challenge")
+    if not main_goal:
+        missing.append("main_goal")
+    if not practitioner_ids:
+        missing.append("practitioner_ids")
+    if missing:
+        return jsonify({"error": f"missing required fields: {', '.join(missing)}"}), 400
+    if not isinstance(practitioner_ids, list):
+        return jsonify({"error": "practitioner_ids must be a list"}), 400
+
+    # ── Rate limit 1: max 20 practitioners ───────────────────────────────────
+    if len(practitioner_ids) > 20:
+        return jsonify({"error": "max 20 practitioners per inquiry"}), 400
+
+    # ── Session handling (mirrors /begin/unlock pattern exactly) ─────────────
+    session_id     = (request.cookies.get("amg_session") or "").strip()
+    minted_session = not session_id
+    if minted_session:
+        session_id = secrets.token_urlsafe(16)
+
+    ref_slug = (request.cookies.get("rm_ref") or "").strip()
+    ip       = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+
+    sorted_ids = sorted(str(i) for i in practitioner_ids)
+    pcount     = len(sorted_ids)
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        # Ensure ip column exists (defensive ALTER — mirrors schema-evolution pattern)
+        try:
+            cx.execute("ALTER TABLE inquiries ADD COLUMN ip TEXT")
+            cx.commit()
+        except sqlite3.OperationalError:
+            pass  # already exists
+
+        # ── Rate limit 2: one inquiry per session per 24h (different email or set) ──
+        prior = cx.execute(
+            "SELECT id, client_email, practitioner_count FROM inquiries "
+            "WHERE session_id=? AND created_at > datetime('now','-24 hour')",
+            (session_id,)
+        ).fetchone()
+        if prior:
+            prior_id, prior_email, prior_count = prior
+            # Check if this is a true de-dupe (same email + same set)
+            is_dedup = False
+            if prior_email == client_email and prior_count == pcount:
+                prior_pids = sorted(
+                    row[0] for row in cx.execute(
+                        "SELECT practitioner_id FROM inquiry_practitioners WHERE inquiry_id=?",
+                        (prior_id,)
+                    ).fetchall()
+                )
+                if prior_pids == sorted_ids:
+                    is_dedup = True
+            if is_dedup:
+                # Idempotent replay — return existing inquiry_id, skip all sends
+                resp = jsonify({
+                    "inquiry_id": prior_id,
+                    "sent_count": 0,
+                    "skipped": [],
+                    "deduped": True,
+                })
+                return resp, 200
+            else:
+                return jsonify({"error": "one inquiry per day"}), 429
+
+        # ── Rate limit 3: 3 per IP per 24h ───────────────────────────────────
+        if ip:
+            ip_count = cx.execute(
+                "SELECT COUNT(*) FROM inquiries WHERE ip=? AND created_at > datetime('now','-24 hour')",
+                (ip,)
+            ).fetchone()[0]
+            if ip_count >= 3:
+                return jsonify({"error": "too many inquiries from this network today"}), 429
+
+    # ── Fetch practitioners + build to_send / skipped lists ──────────────────
+    records     = _fetch_practitioners_by_ids(sorted_ids)
+    records_map = {str(r["id"]): r for r in records}
+
+    # Check opt-outs in batch
+    with sqlite3.connect(LOG_DB) as cx:
+        opted_out_emails = {
+            row[0] for row in cx.execute(
+                "SELECT email FROM practitioner_inquiry_opt_outs"
+            ).fetchall()
+        }
+
+    to_send = []
+    skipped = []
+
+    for pid in sorted_ids:
+        rec = records_map.get(pid)
+        if rec is None:
+            skipped.append({"practitioner_id": pid, "reason": "not_found"})
+            continue
+        ai = rec.get("accepts_inquiries")
+        if ai is False:
+            skipped.append({"practitioner_id": pid, "reason": "opted_out_at_listing"})
+            continue
+        email_addr = (rec.get("email") or "").strip()
+        if not email_addr:
+            skipped.append({"practitioner_id": pid, "reason": "no_email"})
+            continue
+        if email_addr in opted_out_emails:
+            skipped.append({"practitioner_id": pid, "reason": "globally_opted_out"})
+            continue
+        to_send.append(rec)
+
+    # ── Inserts (single transaction) ─────────────────────────────────────────
+    inquiry_id = str(uuid.uuid4())
+    created_at = datetime.utcnow().isoformat() + "Z"
+    ts_now     = datetime.utcnow()
+    base_url   = request.host_url.rstrip("/")
+
+    # Per-recipient tokens (minted before the DB write)
+    send_tokens = []   # [(rec, plain_reply, plain_optout, plain_claim)]
+    for rec in to_send:
+        plain_reply   = secrets.token_urlsafe(32)
+        plain_optout  = secrets.token_urlsafe(32)
+        plain_claim   = secrets.token_urlsafe(32)
+        send_tokens.append((rec, plain_reply, plain_optout, plain_claim))
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        # inquiries row
+        cx.execute(
+            "INSERT INTO inquiries "
+            "(id, created_at, session_id, client_email, client_name, client_phone, "
+            "ref_slug, main_challenge, main_goal, practitioner_count, ip) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (inquiry_id, created_at, session_id, client_email, client_name, client_phone,
+             ref_slug or None, main_challenge, main_goal, pcount, ip or None)
+        )
+        # inquiry_practitioners rows (only for to_send; skipped entries are in the response, not the DB)
+        for rec, plain_reply, plain_optout, plain_claim in send_tokens:
+            pid        = str(rec["id"])
+            email_addr = rec["email"].strip()
+            ip_row_id  = str(uuid.uuid4())
+            cx.execute(
+                "INSERT INTO inquiry_practitioners "
+                "(id, inquiry_id, practitioner_id, practitioner_email, status, email_sent_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (ip_row_id, inquiry_id, pid, email_addr, "sent", created_at)
+            )
+            # inquiry_reply_tokens
+            expires_reply = (ts_now + timedelta(days=30)).isoformat() + "Z"
+            cx.execute(
+                "INSERT OR REPLACE INTO inquiry_reply_tokens "
+                "(token_hash, inquiry_id, practitioner_id, created_at, expires_at) "
+                "VALUES (?,?,?,?,?)",
+                (_hash_token(plain_reply), inquiry_id, pid, created_at, expires_reply)
+            )
+            # auth_tokens: practitioner_optout (365d)
+            expires_optout = (ts_now + timedelta(days=365)).isoformat() + "Z"
+            cx.execute(
+                "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                "VALUES (?,?,?,?,?)",
+                (_hash_token(plain_optout), email_addr, "practitioner_optout",
+                 created_at, expires_optout)
+            )
+            # auth_tokens: practitioner_claim (7d)
+            expires_claim = (ts_now + timedelta(days=7)).isoformat() + "Z"
+            cx.execute(
+                "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                "VALUES (?,?,?,?,?)",
+                (_hash_token(plain_claim), email_addr, "practitioner_claim",
+                 created_at, expires_claim)
+            )
+        cx.commit()
+
+    # ── Fan-out emails ────────────────────────────────────────────────────────
+    client_first = client_name.split(None, 1)[0] if client_name else "Someone"
+    sent_count   = 0
+
+    for rec, plain_reply, plain_optout, plain_claim in send_tokens:
+        pid              = str(rec["id"])
+        pract_email      = rec["email"].strip()
+        pract_name       = (rec.get("name") or pract_email)
+        reply_url        = f"{base_url}/inquiries/{inquiry_id}/{pid}/reply?token={plain_reply}"
+        optout_url       = f"{base_url}/practitioner-optout/{plain_optout}"
+        claim_url        = f"{base_url}/practitioner-claim/{plain_claim}"
+
+        subject = "A potential client is asking about your work"
+        body = (
+            f"Hi {pract_name},\n\n"
+            f"{client_first} found your listing on RemedyMatch.com and asked us to share "
+            f"their question with you.\n\n"
+            f"WHAT THEY ARE WORKING THROUGH:\n{main_challenge}\n\n"
+            f"WHAT SUCCESS LOOKS LIKE FOR THEM:\n{main_goal}\n\n"
+            f"HOW TO RESPOND:\n"
+            f"Reply by email (just hit Reply) - it goes straight to {client_email}\n\n"
+            f"Or reply via secure link:\n{reply_url}\n\n"
+            f"---\n"
+            f"You received this because your listing appears on RemedyMatch.com. "
+            f"To stop receiving future inquiries:\n{optout_url}\n\n"
+            f"To claim your listing and display a 'Verified Responsive' badge:\n{claim_url}\n\n"
+            f"Remedy Match LLC, Hawaii, USA\n"
+            f"This message was sent on behalf of {client_first}; "
+            f"you can reply directly to {client_email}.\n"
+        )
+
+        ok = _send_inquiry_email(
+            to_email=pract_email,
+            subject=subject,
+            body=body,
+            reply_to=client_email,
+        )
+        if ok:
+            sent_count += 1
+        else:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.execute(
+                    "UPDATE inquiry_practitioners SET status='failed' "
+                    "WHERE inquiry_id=? AND practitioner_id=?",
+                    (inquiry_id, pid)
+                )
+                cx.commit()
+
+    # ── Journey signal (fire-and-forget) ─────────────────────────────────────
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO journey_events "
+                "(ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                "VALUES (?, ?, ?, 'practitioner_inquiry', ?, '', '')",
+                (created_at, session_id, client_email,
+                 json.dumps({"count": len(to_send), "ref_slug": ref_slug or ""}))
+            )
+            cx.commit()
+    except Exception as e:
+        print(f"[inquiry] journey_events insert failed: {e!r}", flush=True)
+
+    # ── Response ──────────────────────────────────────────────────────────────
+    resp = jsonify({
+        "inquiry_id": inquiry_id,
+        "sent_count": sent_count,
+        "skipped": skipped,
+    })
+    if minted_session:
+        resp.set_cookie(
+            "amg_session", session_id, max_age=60 * 60 * 24 * 365,
+            httponly=True, samesite="Lax", secure=request.is_secure,
+        )
+    return resp, 200
 
 
 @app.route("/transcribe", methods=["POST"])
