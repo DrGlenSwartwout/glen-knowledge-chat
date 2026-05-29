@@ -233,6 +233,27 @@ def _run_ipi_scrape() -> tuple[int, int, int]:
     return len(rows), len(rows), 0
 
 
+def _run_a4m_scrape() -> tuple[int, int, int]:
+    # Cloudflare-gated: needs a NON-headless session + in-page fetch (like
+    # NCCAOM). One coordinates call returns all listing ids nationwide; detail
+    # records are hydrated in batches through the same warmed session.
+    from scrapers.practitioner_finder.a4m import (
+        fetch_listing_ids, fetch_listings, parse_listings_json, _warm,
+    )
+    from scrapers.practitioner_finder.playwright_fetch import playwright_session
+    BATCH = 75
+    with playwright_session(headless=False) as f:
+        _warm(f)
+        ids = fetch_listing_ids(fetcher=f)
+        records: list[dict] = []
+        for i in range(0, len(ids), BATCH):
+            records.extend(fetch_listings(ids[i:i + BATCH], fetcher=f))
+    rows = parse_listings_json(records)
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
 ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("oepf", _run_oepf_scrape),
     ("iaomt", _run_iaomt_scrape),
@@ -252,6 +273,7 @@ ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     #   re-enable when a current DABCI directory exists.
     ("acfn", _run_acfn_scrape),
     ("ipi", _run_ipi_scrape),
+    ("a4m", _run_a4m_scrape),
 ]
 
 
