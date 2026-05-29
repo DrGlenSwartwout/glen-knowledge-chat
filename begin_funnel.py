@@ -437,20 +437,18 @@ _PRACTITIONER_KEYWORDS = ["practitioner", "dentist", "doctor", "chiropractor",
 _DEFAULT_TRIO = ["quiz", "e4l_scan", "intake"]
 
 
-def surface(state, query_texts, ref=""):
-    """Return an ordered, deduped, capped-at-3 list of card dicts for the visitor's
-    signals. Falls back to the default trio when no contextual signal fires."""
+def _match_card_keys(state, query_texts):
+    """Return an ordered, deduped list of matched card keys with NO fallback.
+    Extracts the signal-matching logic shared by surface() and surface_for_chat()."""
     state = state or {}
     text = " ".join(query_texts or []).lower()
     aw = state.get("awareness_stage", "unknown")
     rung = state.get("current_rung", "arrival")
     gates = set(state.get("unlocked_gates") or [])
-
     keys = []
     def add(k):
         if k not in keys:
             keys.append(k)
-
     if any(k in text for k in _PRACTITIONER_KEYWORDS):
         add("practitioner")
     specific_product = (any(k in text for k in _PRODUCT_KEYWORDS)
@@ -469,7 +467,22 @@ def surface(state, query_texts, ref=""):
             or RUNG_INDEX.get(rung, 0) >= RUNG_INDEX["assess"]
             or len(gates) >= 5):
         add("ash_masterclass")
+    return keys
 
+
+def surface(state, query_texts, ref=""):
+    """Return an ordered, deduped, capped-at-3 list of card dicts for the visitor's
+    signals. Falls back to the default trio when no contextual signal fires."""
+    keys = _match_card_keys(state, query_texts)
     if not keys:
         keys = list(_DEFAULT_TRIO)
     return [_card(k, ref) for k in keys[:3]]
+
+
+def surface_for_chat(state, query_texts, ref=""):
+    """Return an ordered, deduped, capped-at-2 list of card dicts for chat context.
+    Falls back to a single gentle quiz card when no contextual signal fires."""
+    keys = _match_card_keys(state, query_texts)
+    if not keys:
+        keys = ["quiz"]
+    return [_card(k, ref) for k in keys[:2]]
