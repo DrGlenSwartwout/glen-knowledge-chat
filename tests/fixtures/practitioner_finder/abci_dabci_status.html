@@ -1,0 +1,1337 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+
+<style type="text/css">
+body {text-align:center; font-family:Fixedsys; background:#e9e3e9}
+@media only screen and (min-width : 768px) {
+/*and (min-width : 1224px) {*/
+.small-only{display:none;}
+.rounded-corners {border-radius:5px;}
+.rounded-corners3 {-moz-border-radius:5px; -webkit-border-radius:5px; -khtml-border-radius:5px; border-radius: 5px;}
+
+#outer_container {width:1010px; margin:0 auto; text-align:left; border:red groove 0px; position:relative;}
+#handshake {width:8px; height:8px; position:absolute; right:0px;}
+#top_social_bar {float:right; margin:0 20px 0 0; position:relative; top:3px; z-index:999;}
+#top_nav_container {width:1000px; position:relative;  margin-top:7px; z-index:99; text-align:center; border:red groove 0px;}
+#mega_nav {float:left; /*position:relative;  font-size:12px;*/}
+#top_drop_nav {float:left;}
+
+#main_container {clear:both; width:998px; 
+background:#9f999f; background-position:top; border:#ccc groove 1px;}
+
+#top {width:998px; margin-bottom:10px; -moz-border-radius-topleft:5px 5px; -moz-border-radius-topright:5px 5px; -webkit-border-top-left-radius:5px 5px; -webkit-border-top-right-radius:5px 5px; border-top-left-radius:5px 5px; border-top-right-radius:5px 5px; border:red groove 0px;}
+#logo_container {float:left; border:#ccc groove 0px;}
+#logo_text {padding:10px 10px 5px 20px; margin:20px 0 0 20px; font-size:36px;}
+#logo2_text {font-style:italic; font-size:14px; text-align:center;}
+#banner_link {float:left; width:400px; border:#ccc groove 0px; display:block;}
+#top_right_container {float:right; width:475px; text-align:right; border:#ccc groove 0px;}
+#search_box {clear:right; float:right; width:200px; margin:5px 20px 0 0; border:blue groove 0px;}
+.logout_container {float:right; margin-top:5px;}
+#upper_right_signup {clear:right; float:right; width:250px; font-size:12px; padding:7px 20px 0px 0; color:#333; border:blue groove 0px;}
+#xtra_link{ float:right; font-size:12px; text-decoration:none; margin:0px 20px 0 0;}
+#xtra_fields{ clear:both; display:none; position:relative; left:100px; width:300px; margin:25px 20px 0 20px; padding:10px; font-size:12px; text-align:center; background:#F2EFEF; border-radius:10px; border:#ccc groove 1px; }
+label.error {float:left; width:75px; font-weight:normal; color:red; }
+.hideifbig {display:none;}
+.hideifsmall {}
+.formfont {font-size:10px;}
+.forme {font-size:12px; width:100px;}
+.formp {font-size:12px; width:60px}
+.cart_button_font {font-size:10px; border-radius:5px;}
+
+#header_center_top {float:right; position:relative; left:75px; color:red; text-align:center; z-index:1; border:blue groove 0px;}
+#center_top {font-size:20px; font-weight:bold; padding-top:25px; text-align:center; border:red groove 0px;}
+
+#top_hor_nav {clear:left; width:998px; padding:5px 0; margin-top:10px; font-size:12px; text-align:center; background:#fff; border-top:#ccc solid 1px; border-bottom:#ccc solid 1px;}
+#bottom_hor_nav {display:none; clear:both; width:998px; padding:5px 0; font-size:12px; text-align:center; background:#fff; border-top:#ccc solid 1px; border-bottom:#ccc solid 1px;}
+
+#mobile {display:none;}
+
+#dev_frags_top {position:relative; top:15px; text-align:center;}
+#dev_frags_left {float:left; margin:15px 15px 0 0; background-color:transparent; text-align:center; width:230;}
+#dev_frags_right {float:right; margin:15px 0 0 15px; background-color:transparent; text-align:center; width:; border:red groove 0px;}
+
+#frags_left_container {float:left; margin:0 15px 0 0; background-color:transparent; text-align:center; width:230;}
+#frags_right_container {float:right; margin:0 0 0 15px; background-color:transparent; text-align:center; width:;}
+.frag_l {clear:left; float:left; margin:0 15px 0px 0; width:;}
+.frag_r {clear:right; float:right; margin:0 0 0px 15px; width:;}
+
+.frag {}
+
+#left-nav-wrapper {float:left; width:230px; border:#ccc groove 0px;}
+#left-nav {margin:15px 15px 15px 15px; padding:15px; font-size:12px; border-radius:20px; background:#fafafa; border:#ccc groove 1px;}
+#below-nav {margin:15px; padding:15px 15px 0 15px; font-size:13px; border-radius:20px; ; border:#ccc groove 1px;}
+#page_views {text-align:center; color:#ccc; border:red groove 0px;}
+
+#content_container_wrapper {margin-top:20px; float:left; width:968px; ; border-left:#ccc groove 0px; position:relative; left:15px; }
+#content_container {font-size:14px; line-height:18px; margin:15px 0; padding:15px; border-radius:5px;   background:#fff; }
+
+#sitewide_robot_nav {width:900px; margin:10px auto; padding:10px; font-size:11px; line-height:12px; color:#838383; text-align:justify; border:red groove 0px;}
+
+#prod-h1-container {width:70%; margin:0 auto; line-height:24px; border:red groove 0px;}
+}
+
+
+/*@media only screen and (max-width : 360px) {*/
+@media only screen and (max-device-width : 767px) {
+/*and (max-device-width : 480px) {*/
+
+.big-only{display:none;}
+#outer_container {width:100%; margin:0 auto; text-align:left; border:red groove 0px; position:relative;}
+#handshake { display:none; width:8px; height:8px; background:#333; position:absolute; right:0px;}
+#top_social_bar { display:none; float:right; margin:0 20px 0 0; position:relative; top:3px; z-index:999;}
+#top_nav_container { display:none; width:px; position:relative;  margin-top:7px; z-index:99; text-align:center; border:red groove 0px;}
+#mega_nav {float:left; position:relative;  font-size:12px;}
+#top_drop_nav {float:left;}
+
+#main_container {clear:both; background:#9f999f; background-position:top;}
+
+#top {text-align:center; margin-bottom:10px; border:red groove 0px;}
+#logo_container {border:#ccc groove 0px;}
+#logo_text {padding:10px 10px 5px 20px; font-size:48px;}
+#logo2_text {font-style:italic; font-size:18px; text-align:center;}
+#banner_link {float:left; width:100%; border:#ccc groove 0px; display:block;}
+
+#top_right_container {/*display:none; float:right; width:475px; text-align:right; border:#ccc groove 0px;*/}
+#search_box { display:none; clear:right; float:right; width:200px; margin:5px 20px 0 0; border:blue groove 0px;}
+.logout_container {float:left; padding:0 0 10px 10px; margin:5px 0px 0 0; border:red solid 0px;}
+#cart_button {font-size:16px; position:relative; top:-5px;}
+#upper_right_signup { display:none; clear:right; float:right; width:250px; font-size:16px; padding:7px 20px 0px 0; color:#333; border:blue groove 0px;}
+#xtra_link{ float:left; font-size:16px; text-decoration:none; padding-bottom:10px; margin:0px 8px;}
+#xtra_fields{ clear:both; display:none; width:100%; margin:20px 0; padding:10px 0; font-size:16px; text-align:center; background:#F2EFEF; border:#ccc groove 1px; }
+label.error {float:left; width:75px; font-weight:normal; color:red; }
+.hideifbig {}
+.hideifsmall {display:none;}
+.formfont {float:right; font-size:16px; margin-right:50px;}
+.forme {font-size:16px; width:150px;}
+.formp {font-size:16px; width:60px}
+.cart_button_font {font-size:16px;}
+
+#header_center_top {color:red; text-align:center; z-index:1; border:blue groove 0px;}
+#center_top {clear:both; font-size:20px; font-weight:bold; text-align:center; border:red groove 0px;}
+
+#top_hor_nav {clear:left; width:-22px; /*padding:5px 20px;*/ padding:20px 0 20px 20px; margin:10px 0; font-size:24px; line-height:35px; text-align:center; background:#fff; border-top:#ccc solid 1px; border-bottom:#ccc solid 1px;}
+#bottom_hor_nav {clear:both; width:-22px; /*padding:5px 20px;*/ padding:20px 0 20px 20px; font-size:24px; line-height:35px; text-align:center; background:#fff; border-top:#ccc solid 1px; border-bottom:#ccc solid 1px;}
+
+#mobile {text-align:center;}
+
+#dev_frags_top {font-size:24px;}
+#left-nav-wrapper { display:none; float:left; width:230px; border:#ccc groove 0px;}
+#left-nav {display:none; margin:15px 15px 15px 15px; padding:15px; font-size:12px; border-radius:20px; background:#fafafa; border:#ccc groove 1px;}
+#below-nav {margin:15px; padding:15px 15px 0 15px; font-size:13px; border-radius:20px; ; border:#ccc groove 1px;}
+#page_views {text-align:center; color:#ccc; border:red groove 0px;}
+
+#content_container_wrapper {float:left; margin-top:-50px; width:100%; overflow:hidden; ; border-left:#ccc groove 0px; }
+#content_container {font-size:16px; line-height:18px; padding:5px 15px 15px 15px; margin:50px 0 15px 0; /*padding:15px; border-radius:20px;*/   background:#fff;}
+
+#content_container img {float:none !important; width:90% !important; height:90% !important;}
+
+#sitewide_robot_nav {margin:10px auto; padding:10px; font-size:11px; line-height:12px; color:#838383; text-align:justify; border:red groove 0px;}
+
+/*h1{position:relative; top:-5px;}*/
+#prod-h1-container {width:50%; margin:0 auto 5px auto; line-height:24px; border:red groove 0px;}
+
+}
+
+
+#content-wrapper {padding:0 15px 5px 15px;}
+
+#rss_container {margin:-10px 20px 0 20px;}
+
+#page_footer {clear:both; margin-top:10px; text-align:center; font-size:12px; line-height:18px; border-radius:10px; padding:1px; border:green groove 0px;}
+#site_footer {clear:both; margin:15px 0; text-align:center; font-size:12px; line-height:18px; border:green groove 0px;}
+
+h1{font-size:20px; padding:10px 0; line-height:24px;}
+h2{font-size:16px; margin:0 0 3px 0;}
+h3{font-size:14px; margin:0 0 5px 0;}
+
+a.logo:link, a.logo:visited {color:#9d999f; text-decoration: none;}
+a.logo:hover, a.logo:active {color:#343334;}
+a.hor:link, a.hor:visited {font-family:Arial,Helvetica,sans-serif; color:#3C779F; text-decoration: none;}
+a.hor:hover, a.hor:active {color:red;}
+a.nav:link, a.nav:visited {font-family:Arial,Helvetica,sans-serif; color:#3C779F; text-decoration: none;}
+a.nav:hover, a.nav:active {color:red;}
+
+.indent{margin-left:10px;} .bold{font-weight:bold;} .bold-indent{margin-left:10px; font-weight:bold;} .center{width:100%; text-align:center; border:#red groove 1px;} .bold-center{font-weight:bold; width:100%; text-align:center; border:#red groove 1px;}
+
+.rev-bm{position:relative; top:-30px;}
+.clear {clear:both;}
+
+.px12{font-size:12px;}
+.px10{font-size:10px;}
+
+
+</style>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=1">
+    <!--[if lte IE 8]>
+        <link rel="stylesheet" href="css/ie.css" media="screen" />
+    <![endif]-->
+    <link rel="stylesheet" href="//www.DABCI.org/css/style.css?v=1.3" media="all" />
+	<script src="//code.jquery.com/jquery-1.9.1.min.js"></script>
+	
+	<script src="//www.DABCI.org/js/main.js"></script>
+	
+	
+	<script src="//www.DABCI.org/js/jquery.slider.js" ></script>
+		<script src="//www.DABCI.org/js/validate.js"></script>
+  <script>
+  $(document).ready(function(){
+    $("#loginform").validate();
+  });
+  </script>
+
+
+
+<title>DABCI</title>
+
+
+<meta name="description" content="This was the website for the American Board of Chiropractic Internists (ABCI) professional certification board and credentialing agency. The content below is from the site's 2008-2009 archived pages." />
+
+<meta name="robots" content="noindex" />  
+<link rel="canonical" href="https://www.dabci.org/" />
+
+
+</head>
+<body class="homepage">
+<a name="top"></a>
+<!--outer container-->
+<div id="outer_container">
+
+<div id="handshake"><a href="https://www.DABCI.org/index.php?id=1&reveal=yes&view_only=yes" style="width:100%; height:100%; display:block;"></a></div>
+
+<!--main container-->
+<div id="main_container" class="rounded-corners">
+
+<!--top-->
+
+<div id="top"  style="height:216px; background-image:url('https://www.DABCI.org/images/site-images/banner-home-page.jpg'); background-position:center; background-repeat:no-repeat;">
+
+<!-- logo link home either text or display block link -->
+<div id="logo_container">
+<div id="logo_text"><a href="https://www.DABCI.org/" class="logo" title="Home">DABCI.org<div id="logo2_text"></div></a>
+</div>
+</div>
+
+<!--center_top container-->
+<div id="header_center_top">
+</div>
+<!--close center_top container-->
+
+<div class="clear"></div></div>
+<!--close top-->
+
+<!--hor nav-->
+<!--close hor nav-->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!--content-->
+<div id="content_container_wrapper">
+<div id="content_container">
+
+
+
+
+
+
+
+
+
+
+<h1 class="page_title" align="center">American Board of Chiropractic Internists (ABCI): A Professional Certification Board and Credentiali</h1>
+
+<hr />
+<p>&nbsp;</p>
+
+<p align="center">This was the website for the American Board of Chiropractic Internists (ABCI) professional certification board and credentialing agency.<br />
+The content below is from the site&#39;s 2008-2009 archived pages.<br />
+If you have reached this website and are looking for more information about the DABCI, the ABCI agency, and/or the CDID** orgainzation go to https://aca-cdid.com/.<br />
+<br />
+** The CDID (a certified specialty council of the American Chiropractic Association or ACA) administers and coordinates the activity of the DABCI post-doctoral specialty.</p>
+
+<p align="center">CIRCA 2008-2009</p>
+
+<p>The American Board of Chiropractic Internists (ABCI) is a non-profit, tax-exempt professional certification board and credentialing agency. The ABCI advances the quality of clinical competency for doctors of chiropractic specializing in diagnosis and treatment of internal disorders through certification and recertification of those doctors who demonstrate excellence in the chiropractic internist practice.</p>
+
+<p>Consistent with the ABCI Articles of Incorporation and Bylaws, the ABCI shall promote the advancement of chiropractic internal medicine by identifying to professionals and the public those chiropractors who have voluntarily sought and obtained certification in chiropractic internal medicine.</p>
+
+<p>In a world of rapidly evolving technology, chiropractic practices can benefit immensely from the myriad new devices, techniques, and especially with the help of specialized application custom software, creating tools designed to serve the needs of this industry. Custom software approaches to medicine in general go far beyond billing, scheduling, and bookkeeping. Software solutions are paired with 3D printing to create highly personalized tools and patient aids, while at the same time permitting patients to monitor their on health status. Over the next few months, we will be updating this site to make it more informative and user friendly. In the meantime, if there is a broken link or missing pdf file on our download page, please be patient.</p>
+
+<p>Thank you</p>
+
+<p>Candidate testing for Part I, Part II, and Part III of the board examination is held:</p>
+
+<p>4th weekend of April<br />
+3rd weekend of October</p>
+
+<p>&nbsp;</p>
+
+<hr />
+<hr />
+<p>&nbsp;</p>
+
+<p><em>As a licensed chiropractor and active NYC realtor, I live a uniquely demanding dual life&mdash;balancing muscle groups and market trends in equal measure. That&#39;s why I found DABCI.org fascinating. This site, though archived, reminded me why I pursued chiropractic internal medicine certification in the first place: to go beyond spinal adjustments and offer deeper, more systemic solutions to my patients&#39; health issues.</em></p>
+
+<p><em>Managing two high-responsibility careers in one of the most competitive cities on earth isn&rsquo;t for the faint of heart. It requires constant learning, strategic multitasking, and the ability to operate under scrutiny. In that sense, I relate deeply to the challenges described on this site and those faced by a trailblazer like Dov Hertz in NYC development&mdash;each of us navigating skepticism, regulatory pressures, and the constant push to prove our legitimacy in established industries.</em></p>
+
+<p><em>What DABCI.org captures is that same entrepreneurial spirit: expanding the boundaries of what&rsquo;s traditionally accepted, and carving out new territory&mdash;whether it&rsquo;s in healthcare, like the DABCI community aims to do, or in reshaping city skylines, as <a href="https://www.postal-the-movie.com/tools/dov-hertz.html" style="color:#000; text-decoration:none;" >Dov</a> does so well. In both worlds, you need a thick skin, a sharp mind, and a long view. This archive reflects a profession in flux, striving for recognition while staying rooted in a deep belief in better care. I respect that immensely.</em> <strong>Josh Hardy</strong></p>
+
+<p>&nbsp;</p>
+
+<hr />
+<hr />
+<ul>
+</ul>
+
+<p>&nbsp;</p>
+
+<div>
+<p align="center"><strong>Continuing Education</strong></p>
+
+<p>Diplomates of the American Board of Chiropractic Internists must attend twelve (12) hours of ABCI approved education every year to maintain their certification. This course material must be in the field of diagnosis and treatment of internal disorders. Courses and seminars that have gone through the approval process are posted on this website. If a course does not appear on the list and it is felt by a DABCI that it should be approved, please contact the Secretary of the ABCI to receive information on the approval process.</p>
+
+<p style="text-align: center;"><img alt="" src="/images/abci-logo.jpg" style="width: 100px; height: 100px;" /></p>
+
+<p align="left">At least every other year the educational hours&nbsp;<u><strong>must be met</strong></u>&nbsp;by attending the ABCI approved CDID Symposium.</p>
+</div>
+
+<p>These are the links to the currently approved course sponsors:</p>
+
+<ul>
+	<li>Dr. Jack Kessinger (ProHealth Seminars)</li>
+	<li>CDID Sponsored Symposium</li>
+</ul>
+
+<div>
+<p align="left">Currently Approved Seminars and Courses:</p>
+
+<table border="1" width="100%">
+	<tbody>
+		<tr valign="top">
+			<td align="center"><strong>Dates</strong></td>
+			<td>
+			<p align="center"><strong>Seminar / Course</strong></p>
+			</td>
+			<td>
+			<p align="center"><strong>Hrs</strong></p>
+			</td>
+			<td>
+			<p align="center"><strong>Location</strong></p>
+			</td>
+			<td>
+			<p align="center"><strong>Contact</strong></p>
+			</td>
+		</tr>
+		<tr>
+			<td>11/15-11/16/2008</td>
+			<td>Spirometry &amp; Pulmonary Disease</td>
+			<td>12</td>
+			<td>Chicago, IL</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>11/22-11/23/2008</td>
+			<td>Cardiovascular Disease: Prevention, Diagnosis, Management</td>
+			<td>12</td>
+			<td>Dallas, TX</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>12/13-12/14/2008</td>
+			<td>Electrocardiography &amp; Phonocardiography</td>
+			<td>12</td>
+			<td>Dallas, TX</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+	</tbody>
+</table>
+</div>
+
+<p>If you do not see the seminar or course approved for continuing education credits that you would like to take, please submit the&nbsp;Course Approval Packet. Please allow 6 weeks to receive approval.</p>
+
+<p align="left">&nbsp;</p>
+
+<div>
+<table border="1" width="100%">
+	<colgroup>
+		<col width="92" />
+		<col width="14" />
+		<col width="57" />
+		<col width="42" />
+		<col width="51" />
+	</colgroup>
+	<tbody>
+		<tr>
+			<td>&nbsp;</td>
+			<td>&nbsp;</td>
+			<td>&nbsp;</td>
+			<td>&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr valign="top">
+			<td align="center"><strong>Dates</strong></td>
+			<td>
+			<p align="center"><strong>Seminar / Course</strong></p>
+			</td>
+			<td>
+			<p align="center"><strong>Hrs</strong></p>
+			</td>
+			<td>
+			<p align="center"><strong>Location</strong></p>
+			</td>
+			<td>
+			<p align="center"><strong>Contact</strong></p>
+			</td>
+		</tr>
+		<tr>
+			<td>06/28-06/29/2008</td>
+			<td>Functional Endocrinology</td>
+			<td>16&nbsp;</td>
+			<td>Dallas, TX&nbsp;</td>
+			<td>www.hormoneseminars.com (800-736-4381)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>06/28-06/29/2008</td>
+			<td>The General Examination and Associated Pathology</td>
+			<td>12</td>
+			<td>Dallas, TX</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>07/12-07/13/2008</td>
+			<td>Functional Endocrinology</td>
+			<td>16&nbsp;</td>
+			<td>San Francisco, CA</td>
+			<td>www.hormoneseminars.com (800-736-4381)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>07/12-07/13/2008</td>
+			<td>Reports, Clinical Documentation &amp; Drug Reactions</td>
+			<td>12</td>
+			<td>Charlotte, NC</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>07/18-07/20/2008</td>
+			<td>Symposium 2008&nbsp;</td>
+			<td>17</td>
+			<td>Cincinnati, OH</td>
+			<td>www.councildid.com</td>
+		</tr>
+		<tr>
+			<td>07/19-07/20/2008</td>
+			<td>Functional Endocrinology</td>
+			<td>16&nbsp;</td>
+			<td>Orlando FL&nbsp;</td>
+			<td>wwwhormoneseminars.com (800-736-4381)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>07/26-07/27/2008</td>
+			<td>Electrocardiography &amp; Phonocardiography</td>
+			<td>12</td>
+			<td>Chicago, IL</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>07/26-07/27/2008</td>
+			<td>Diseases and Exam of the Pelvis</td>
+			<td>12</td>
+			<td>Dallas, TX</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>07/26-07/27/2008</td>
+			<td>Functional Endocrinology</td>
+			<td>16</td>
+			<td>Santa Fe, NM</td>
+			<td>www.hormoneseminars.com (800-736-4381)</td>
+		</tr>
+		<tr valign="top">
+			<td>08/16-08/17/2008</td>
+			<td>Pharmacognosy</td>
+			<td>
+			<p align="left">12</p>
+			</td>
+			<td>
+			<p align="left">Chicago, IL</p>
+			</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>08/18-08/19/2008</td>
+			<td>Functional Endocrinology</td>
+			<td>16</td>
+			<td>Los Angeles, CA</td>
+			<td>www.hormoneseminars.com (800-736-4381)</td>
+		</tr>
+		<tr>
+			<td>08/23-08/24/2008</td>
+			<td>
+			<p>Multi-Channel Blood Chemistries</p>
+			</td>
+			<td>
+			<p>12</p>
+			</td>
+			<td>
+			<p>Dallas, TX&nbsp;</p>
+			</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>09/20-09/21/2008</td>
+			<td>Chronic Degenerative Disease</td>
+			<td>12</td>
+			<td>Chicago, IL</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>09/20-09/21/08</td>
+			<td>Functional Endocrinology</td>
+			<td>16</td>
+			<td>Charlotte, NC</td>
+			<td>www.hormoneseminars.com (800-736-4381)</td>
+		</tr>
+		<tr>
+			<td>09/27-09/28/2008</td>
+			<td>Additional Blood Tests / Tumor Markers</td>
+			<td>12</td>
+			<td>Dallas, TX</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>10/18-10/19/2008</td>
+			<td>Pediatrics</td>
+			<td>12</td>
+			<td>Chicago, IL</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>10/25-10/26/2008</td>
+			<td>Blood Interpretation Workshop</td>
+			<td>12</td>
+			<td>Dallas, TX</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>11/15-11/16/2008</td>
+			<td>Spirometry &amp; Pulmonary Disease</td>
+			<td>12</td>
+			<td>Chicago, IL</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>11/22-11/23/2008</td>
+			<td>Cardiovascular Disease: Prevention, Diagnosis, Management</td>
+			<td>12</td>
+			<td>Dallas, TX</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+		<tr>
+			<td>12/13-12/14/2008</td>
+			<td>Electrocardiography &amp; Phonocardiography</td>
+			<td>12</td>
+			<td>Dallas, TX</td>
+			<td>Virginia@drkessinger.com (573-341-8448)&nbsp;</td>
+		</tr>
+	</tbody>
+</table>
+</div>
+
+<p style="text-align: center;"><br />
+<img alt="" src="/images/abci-logo.jpg" style="width: 100px; height: 100px;" /></p>
+
+<div>
+<h2 align="center"><strong>DABCI Status</strong></h2>
+</div>
+
+<p>This is a public directory of all DABCIs, their location, and current status with the ABCI. If a doctor has had disciplinary action taken against them, it will be so noted. Current status is indicated as &#39;Credentialed&#39; if they are active and have taken recertification or &#39;Uncredentialed&#39; if they have lost ABCI credentialing. Uncredentialed doctors will have the date of uncredentialing so noted.</p>
+
+<p>This file may be downloaded also:</p>
+
+<p><em>DABCI Status Report</em></p>
+
+<table border="1" width="100%">
+	<tbody>
+		<tr>
+			<td>
+			<p align="center"><strong>Doctor</strong></p>
+			</td>
+			<td>
+			<p align="center"><strong>Location</strong></p>
+			</td>
+			<td>
+			<p align="center"><strong>Status</strong></p>
+			</td>
+			<td>
+			<p align="center"><strong>Disciplinary Action</strong></p>
+			</td>
+		</tr>
+		<tr>
+			<td>Anderson, Delilah</td>
+			<td>Sandwich, IL</td>
+			<td>
+			<p>Certified</p>
+			</td>
+			<td>
+			<p>&nbsp;</p>
+			</td>
+		</tr>
+		<tr>
+			<td>Anderson, Jeffrey</td>
+			<td>Edina, MN&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Arnone, Philip</td>
+			<td>Matthews, NC</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Bergin, Jeffrey</td>
+			<td>Zion, IL&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Bergrin, Jon</td>
+			<td>Florence, SC</td>
+			<td>Certified</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Bertsch, Timothy</td>
+			<td>St. Paul, MN&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Best, Leslie</td>
+			<td>Madison, WI&nbsp;</td>
+			<td>Certified</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Betz, Michael</td>
+			<td>Auburn, KS</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Boudro, Stephen</td>
+			<td>Elm Hurst, IL&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Bradley, Barbara</td>
+			<td>Wasau, WI&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Braman, David</td>
+			<td>Tualatin, OR&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Branham, Kevin</td>
+			<td>Eagle River, WI&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Button, Stephen</td>
+			<td>Mount Airy, NC&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Brown, Edward</td>
+			<td>Dallas, TX</td>
+			<td>Retired&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Brown, Richard</td>
+			<td>Olathe, KS&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Cardin, Ralph</td>
+			<td>Overland Park, KS&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Carpenter, Debra</td>
+			<td>Pueblo West, CO&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Cessna, Michael</td>
+			<td>Tuscon, AZ&nbsp;</td>
+			<td>Retired&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Chalker, Harold</td>
+			<td>Meade, KS</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Cheney, Dustin</td>
+			<td>Phillipsburg, KS&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Clements, Rodney</td>
+			<td>Eldorado, KS&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Clouse, Lance</td>
+			<td>Van Buren, AR</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Collinson, Terry</td>
+			<td>Colorado Springs, CO</td>
+			<td>Retired&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Cummings, Rita</td>
+			<td>Littleton, CO&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Dechert, Paula</td>
+			<td>Denver, CO</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>DiDomizio, Paul</td>
+			<td>Wolcott, CT</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Dooley, Jan</td>
+			<td>Arcata, CA&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Duca, Robert</td>
+			<td>Dunn Loring, VA&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Durrett, Lance</td>
+			<td>The Woodlands, TX</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Finch, Bernie</td>
+			<td>Pepin, WI</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Findlay, John</td>
+			<td>W Palm Beach, FL</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Fink, Bruce</td>
+			<td>Coudersport, PA</td>
+			<td>Certified</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Friedrichs, Robert</td>
+			<td>Mason City, IH&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Gauerke, Gwendolyn</td>
+			<td>Iola, WI&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Gelhot, John</td>
+			<td>Albuquerque, NM</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Gerger, Marguerite</td>
+			<td>Clearwater, FL&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Gerhart, Timothy</td>
+			<td>Glendale, AZ</td>
+			<td>Certified</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Gilbaugh, Craig</td>
+			<td>Ashland, WI&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Gilbert, Robert</td>
+			<td>Bellville, OH&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Gifford, Janie</td>
+			<td>Frisco, TX&nbsp;</td>
+			<td>Retired&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Grimm, Steven</td>
+			<td>San Antonio, TX&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Haberski, Larry</td>
+			<td>Stone Mountain, GA</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Hedberg, Nikolas</td>
+			<td>Arden, NC&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Holze, Lester</td>
+			<td>Elgin, Il&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Howard, Cindy</td>
+			<td>Orland Park,IL&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Hug, Reginald</td>
+			<td>&nbsp;</td>
+			<td>Retired&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Hult, Frederick</td>
+			<td>McHenry, IL&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Jensen, Thomas</td>
+			<td>Sterling,IL&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Jeurink, Tobi</td>
+			<td>Gardnet, KS&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Kessinger, Jack</td>
+			<td>Rolla, MO&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Kfoury, Peter</td>
+			<td>Charleston, SC</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Kleber, William</td>
+			<td>Berthoud, CO&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>LaHoda, John</td>
+			<td>Richboro, PA&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Lewis-Overton, Doreen</td>
+			<td>San Antonio, TX</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Lokken, Steven</td>
+			<td>Colorado Springs, CO</td>
+			<td>Certified</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Lucas, Andrew</td>
+			<td>Riverside, CA&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Lumsden, Steven</td>
+			<td>Gresham, OR&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Martin, Sandrine</td>
+			<td>Cornelius, NC&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>McGinn, James</td>
+			<td>Crystal Lake, IL&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>McGregor, Daniel</td>
+			<td>Prudenville,MI&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>McGuckin, Brian</td>
+			<td>Michigan City, IN&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Maedke, Anne</td>
+			<td>Milwaukee, WI&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Metzler, Cheryl</td>
+			<td>Green Bay, WI&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Nicholson, Christena</td>
+			<td>Overland Park, KS&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Peterson, Kristopher</td>
+			<td>Hermiston, OR&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Pirner, Janie</td>
+			<td>Wichita, KS</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Piro, Janice</td>
+			<td>Palm Harbor, FL&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Player, Susan</td>
+			<td>Clearwater,FL&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Podlaski, John</td>
+			<td>Ocala, FL&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Pollack, Philip</td>
+			<td>Sterling, CO&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Prioux, Michael</td>
+			<td>Friendswood, TX&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Riekeman, Deborah</td>
+			<td>Colorado Springs, CO</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Santelli, Richard</td>
+			<td>Moore, OK</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Satterwhite, R Vincent</td>
+			<td>North Kanas City, MO&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Saunders, Barbara</td>
+			<td>Garner, NC&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Schultz, Gina</td>
+			<td>Hollandale, WI&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Smiley, John</td>
+			<td>Saloam Springs, AR&nbsp;</td>
+			<td>Retired&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Smith, Robert</td>
+			<td>Baton Rouge, LA&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Smith, Todd A.</td>
+			<td>Winston-Salem, NC</td>
+			<td>
+			<p>Certified</p>
+			</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Sodano, Wayne</td>
+			<td>Bel Air, MD&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Stam, Douglas</td>
+			<td>Bour Bonnais, IL&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Stone, Michael</td>
+			<td>Tucson, AZ</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Strauman, Charles</td>
+			<td>Minneapolis, MN</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Taylor, Mike</td>
+			<td>OK&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Tiahrt, Melanie</td>
+			<td>Alton, IL&nbsp;</td>
+			<td>Retired&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Thomas, Mark</td>
+			<td>Cottage Grove, OR</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Thompson, Virginia</td>
+			<td>Arlington, TX&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Thornton, Jeremy</td>
+			<td>Stockton, MO&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Vradenburg, Donald</td>
+			<td>St. George, UT&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Yeager, Mark</td>
+			<td>Charlotte, NC&nbsp;</td>
+			<td>Cerifiied&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Watkins, Zachary</td>
+			<td>Johnston, IA&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Wellhausen, Sylvie</td>
+			<td>Loma Linda, CA</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Willhite, Dean</td>
+			<td>Manitowoc, WI</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>
+			<p>Williams, Jonathan C.</p>
+			</td>
+			<td>
+			<p>West St. Paul, MN</p>
+			</td>
+			<td>
+			<p>Certified</p>
+			</td>
+			<td>
+			<p>&nbsp;</p>
+			</td>
+		</tr>
+		<tr>
+			<td>Wilson, Brian</td>
+			<td>Englewood, CO&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Zaeske, Steve</td>
+			<td>Orland Park.IL&nbsp;</td>
+			<td>Certified&nbsp;</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>Zevan III, Alex</td>
+			<td>Bloomingdale, IL</td>
+			<td>Certified</td>
+			<td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td>
+			<p>&nbsp;</p>
+			</td>
+			<td>
+			<p>&nbsp;</p>
+			</td>
+			<td>
+			<p>&nbsp;</p>
+			</td>
+			<td>
+			<p>&nbsp;</p>
+			</td>
+		</tr>
+	</tbody>
+</table>
+
+<p>&nbsp;</p>
+
+<hr />
+<hr />
+<p>&nbsp;</p>
+
+<h2><strong>More Background on DABCI.org</strong></h2>
+
+<p>The American Board of Chiropractic Internists (ABCI) is a professional organization that offers certification for chiropractors who specialize in internal medicine and functional medicine approaches. While the ABCI aims to advance chiropractic care in treating internal disorders, the organization and its certification program have faced scrutiny and criticism from the broader medical community.</p>
+
+<h2>History and Background</h2>
+
+<p>The ABCI was established in the 1980s as a way for chiropractors to gain additional credentials in diagnosing and treating internal disorders beyond traditional chiropractic care focused on spinal manipulation. The organization created the Diplomate of the American Board of Chiropractic Internists (DABCI) certification to recognize chiropractors who complete extensive post-graduate training in areas like laboratory diagnosis, nutrition, and functional medicine. The DABCI program typically involves over 300 hours of classroom instruction and hands-on training spread out over several years. Topics covered include cardiovascular health, endocrinology, gastrointestinal disorders, and other areas of internal medicine. Proponents argue this additional training allows chiropractors to take a more holistic, preventative approach to patient care.</p>
+
+<h2>Certification Process and Requirements</h2>
+
+<p>To become certified as a DABCI, chiropractors must complete the required coursework and pass a comprehensive exam. The certification process includes:</p>
+
+<ul>
+	<li>Completing over 300 hours of post-graduate education</li>
+	<li>Attending approved seminars and workshops</li>
+	<li>Passing written and practical examinations</li>
+	<li>Maintaining certification through continuing education</li>
+</ul>
+
+<p>The coursework covers a wide range of topics in internal medicine, functional medicine, laboratory diagnosis, and natural treatment approaches. Proponents say this allows chiropractors to expand their scope of practice and take a more integrative approach to patient care.</p>
+
+<h2>Controversy and Criticism</h2>
+
+<p>While the ABCI presents the DABCI certification as an advanced credential, it has faced significant criticism and skepticism from the mainstream medical community. Some key concerns that have been raised include:</p>
+
+<ul>
+	<li>The relatively limited training compared to medical residencies in internal medicine</li>
+	<li>Questions about the scientific validity of some functional medicine concepts taught</li>
+	<li>Lack of recognition by major medical organizations</li>
+	<li>Potential for chiropractors to practice beyond their legal scope</li>
+</ul>
+
+<p>Critics argue that the 300 hours of classroom instruction in the DABCI program cannot compare to the thousands of hours of clinical training received by medical doctors specializing in internal medicine. There are concerns that DABCI-certified chiropractors may attempt to diagnose and treat complex internal disorders without adequate training.</p>
+
+<h2>Scope of Practice Issues</h2>
+
+<p>One of the major controversies surrounding the DABCI certification is the scope of practice it implies. While chiropractic care is typically focused on musculoskeletal issues, particularly related to the spine, DABCI chiropractors often claim to be able to diagnose and treat a much wider range of internal disorders. This expanded scope has led to legal and ethical debates about whether DABCI chiropractors are practicing medicine without a license in some cases. The exact scope of practice for chiropractors varies by state, but generally does not include diagnosing and treating internal medical conditions outside of how they relate to the musculoskeletal system.</p>
+
+<h2>Reception in the Medical Community</h2>
+
+<p>The DABCI certification and the ABCI as an organization are not recognized by major medical associations or accrediting bodies in the United States. Groups like the American Medical Association and American Board of Internal Medicine do not acknowledge the DABCI as equivalent to board certification in internal medicine. This lack of recognition in the broader medical community has limited the ability of DABCI chiropractors to integrate into mainstream healthcare systems or gain hospital privileges. It has also led to ongoing debates about the role of chiropractors in diagnosing and treating internal disorders.</p>
+
+<h2>Patient Perspectives and Experiences</h2>
+
+<p>Despite the controversy in medical circles, some patients report positive experiences with DABCI-certified chiropractors. Proponents argue that the functional medicine approach taught in the DABCI program allows for more personalized, holistic care that addresses root causes rather than just treating symptoms. However, there are also reports of patients receiving questionable diagnoses or ineffective treatments from DABCI practitioners. Consumer advocacy groups have raised concerns about potential exploitation of patients through unnecessary testing or treatments not supported by scientific evidence.</p>
+
+<h2>Impact on the Chiropractic Profession</h2>
+
+<p>The DABCI certification and expansion into internal medicine has been a divisive issue within the chiropractic profession itself. Some chiropractors view it as a positive step toward greater integration with mainstream healthcare, while others see it as straying too far from chiropractic&#39;s core focus on the musculoskeletal system. This divide reflects broader debates within chiropractic about the profession&#39;s identity and scope. While some chiropractors advocate for an expanded role in primary care, others argue for maintaining a more focused approach on spinal health and manual therapies.</p>
+
+<h2>Regulatory and Legal Considerations</h2>
+
+<p>The legal status of DABCI chiropractors practicing internal medicine varies by state. Some states have taken action to more clearly define and limit the scope of chiropractic practice, particularly related to diagnosing and treating non-musculoskeletal conditions. There have been cases of DABCI chiropractors facing disciplinary action or legal challenges for practicing beyond the scope allowed by state laws. This has led to ongoing debates about how to regulate and oversee chiropractors who obtain additional certifications like the DABCI.</p>
+
+<h2>Educational Programs and Providers</h2>
+
+<p>The coursework required for DABCI certification is primarily provided through private seminar companies rather than accredited chiropractic colleges or universities. This has raised questions about the quality and consistency of the education provided. Some chiropractic colleges have begun offering functional medicine programs or collaborating with DABCI education providers. However, these programs are generally not accredited by the same bodies that oversee medical school curricula.</p>
+
+<h2>Research and Evidence Base</h2>
+
+<p>One of the ongoing criticisms of the DABCI program is the lack of rigorous scientific research supporting many of the diagnostic and treatment approaches taught. While some individual techniques or concepts may have research backing, critics argue that the overall approach lacks sufficient evidence of safety and efficacy for diagnosing and treating internal disorders. Proponents counter that the functional medicine model taught in DABCI programs takes a more systems-based, preventative approach that is not always amenable to traditional clinical trials. However, the lack of high-quality research remains a significant barrier to broader acceptance.</p>
+
+<h2>Future Outlook and Challenges</h2>
+
+<p>The future of the DABCI certification and the ABCI&#39;s role in chiropractic education remains uncertain. While interest in integrative and functional medicine approaches continues to grow among some patients and practitioners, the lack of recognition from the broader medical community poses ongoing challenges. For the DABCI certification to gain wider acceptance, significant changes would likely be needed in the depth and rigor of training, the evidence base for diagnostic and treatment approaches, and clearer definition of scope of practice. Whether the chiropractic profession as a whole will move in this direction or maintain a more traditional focus remains to be seen. In conclusion, while the ABCI and DABCI certification represent an attempt to expand the role of chiropractors in diagnosing and treating internal disorders, they remain controversial and face significant skepticism from the mainstream medical community. Patients considering care from a DABCI-certified chiropractor should carefully research the evidence base for proposed treatments and consult with other healthcare providers as needed.</p>
+
+<p>&nbsp;</p>
+
+<p style="text-align: center;"><br />
+<br />
+<img alt="" src="/images/abci-logo.jpg" style="width: 168px; height: 168px;" /></p>
+
+<p>&nbsp;</p>
+
+
+
+
+
+
+
+
+
+
+
+<div /*id="page_footer"*/ style="font-size:24px; padding:20px; text-align:center;">DABCI.org</div>
+
+<div style="clear:both;"></div></div>
+</div>
+<!--close content-->
+
+
+
+
+
+
+
+
+
+
+<!--hor nav-->
+<!--close hor nav-->
+
+
+
+<!--footer-->
+
+
+
+<!--close footer-->
+
+<div style="clear:left;"></div></div>
+<!--close main container-->
+
+
+
+
+
+
+<form action="https://www.DABCI.org/index.php#tool" method="post" style="margin:0;">
+<input class="px12" type="password" name="password" value="" />
+<input class="px12" type="submit" value="submit" />
+<input type="hidden" name="id" value="1" />
+<input type="hidden" name="products_id" value="" />
+<input type="hidden" name="categories_id" value="" />
+<input type="hidden" name="brands_id" value="" />
+<input type="hidden" name="view_only" value="yes" />
+</form>
+
+</div>
+<!--outer container-->
+
+
+
+</body>
+</html>

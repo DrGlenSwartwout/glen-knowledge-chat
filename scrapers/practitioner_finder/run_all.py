@@ -201,6 +201,38 @@ def _run_nccaom_scrape() -> tuple[int, int, int]:
     return len(rows), len(rows), 0
 
 
+# ---------------------------------------------------------------------------
+# Tier 1 expansion (2026-05-29): chiropractic / functional neurology /
+# integrative psychiatry. See spec 2026-05-29-practitioner-finder-tier1-adapters.
+# ---------------------------------------------------------------------------
+def _run_abci_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.abci import (
+        fetch_all_records, parse_directory_records,
+    )
+    rows = parse_directory_records(fetch_all_records())
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
+def _run_acfn_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.acfn import fetch_all_directory_rows
+    rows = fetch_all_directory_rows()
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
+def _run_ipi_scrape() -> tuple[int, int, int]:
+    from scrapers.practitioner_finder.ipi import (
+        fetch_all_directory_records, parse_directory_json,
+    )
+    rows = parse_directory_json(fetch_all_directory_records())
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
 ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("oepf", _run_oepf_scrape),
     ("iaomt", _run_iaomt_scrape),
@@ -215,6 +247,11 @@ ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("aama", _run_aama_scrape),
     ("nanp", _run_nanp_scrape),
     ("nccaom", _run_nccaom_scrape),
+    # ("abci", _run_abci_scrape),  # DEFERRED 2026-05-29: only public source is
+    #   an archival 2008-09 roster with no contact info. Adapter + tests kept;
+    #   re-enable when a current DABCI directory exists.
+    ("acfn", _run_acfn_scrape),
+    ("ipi", _run_ipi_scrape),
 ]
 
 
