@@ -2484,6 +2484,77 @@ def _init_journey_tables():
 _init_journey_tables()
 
 
+# ── Practitioner inquiry bridge — SQLite tables ──────────────────────────────
+
+def init_inquiry_tables(cx):
+    """Idempotent CREATE TABLE IF NOT EXISTS for the inquiry bridge.
+    Called on app startup (alongside init_journey_tables) and wherever
+    init_journey_tables is called defensively inside request handlers."""
+    cx.executescript("""
+        CREATE TABLE IF NOT EXISTS inquiries (
+          id            TEXT PRIMARY KEY,
+          created_at    TEXT NOT NULL,
+          session_id    TEXT NOT NULL,
+          client_email  TEXT NOT NULL,
+          client_name   TEXT,
+          client_phone  TEXT,
+          ref_slug      TEXT,
+          main_challenge TEXT NOT NULL,
+          main_goal      TEXT NOT NULL,
+          practitioner_count INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS inquiry_practitioners (
+          id              TEXT PRIMARY KEY,
+          inquiry_id      TEXT NOT NULL,
+          practitioner_id TEXT NOT NULL,
+          practitioner_email TEXT NOT NULL,
+          status          TEXT NOT NULL,
+          email_sent_at   TEXT,
+          UNIQUE(inquiry_id, practitioner_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS inquiry_reply_tokens (
+          token_hash      TEXT PRIMARY KEY,
+          inquiry_id      TEXT NOT NULL,
+          practitioner_id TEXT NOT NULL,
+          created_at      TEXT NOT NULL,
+          expires_at      TEXT NOT NULL,
+          UNIQUE(inquiry_id, practitioner_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS inquiry_replies (
+          id              TEXT PRIMARY KEY,
+          inquiry_id      TEXT NOT NULL,
+          practitioner_id TEXT NOT NULL,
+          body            TEXT NOT NULL,
+          reply_method    TEXT NOT NULL,
+          received_at     TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS inquiry_reply_impressions (
+          ts              TEXT NOT NULL,
+          inquiry_id      TEXT NOT NULL,
+          practitioner_id TEXT NOT NULL,
+          ip              TEXT,
+          user_agent      TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS practitioner_inquiry_opt_outs (
+          email           TEXT PRIMARY KEY,
+          ts              TEXT NOT NULL,
+          practitioner_id TEXT
+        );
+    """)
+
+
+def _init_inquiry_tables():
+    with sqlite3.connect(LOG_DB) as cx:
+        init_inquiry_tables(cx)
+
+_init_inquiry_tables()
+
+
 @app.route("/api/referral-sources", methods=["GET"])
 def get_referral_sources():
     if CONSOLE_SECRET:
@@ -2703,6 +2774,39 @@ def _send_affiliate_magic_link(to_email: str, name: str, magic_url: str) -> tupl
             return "smtp-failed", str(e)
     print(f"\n[affiliate-magic] MAGIC LINK for {to_email}: {magic_url}\n", flush=True)
     return "console-log", "no SMTP configured"
+
+
+def _send_inquiry_email(to_email, subject, body, reply_to=None):
+    """Per-recipient SMTP send for the inquiry fan-out. Returns True on success,
+    False on SMTP failure (never raises). Falls back to print() when SMTP env
+    is unset (dev)."""
+    import os, smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user or "noreply@remedymatch.com")
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    if not (smtp_host and smtp_user and smtp_pass):
+        print(f"[inquiry-email] (no SMTP env) would send to={to_email} subject={subject!r} reply_to={reply_to}", flush=True)
+        return True
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = smtp_from
+        msg["To"] = to_email
+        if reply_to:
+            msg["Reply-To"] = reply_to
+        msg.attach(MIMEText(body, "plain"))
+        with smtplib.SMTP(smtp_host, smtp_port) as s:
+            s.starttls()
+            s.login(smtp_user, smtp_pass)
+            s.sendmail(smtp_from, [to_email], msg.as_string())
+        return True
+    except Exception as e:
+        print(f"[inquiry-email] FAIL to={to_email} err={e!r}", flush=True)
+        return False
 
 
 @app.route("/affiliate/login-request", methods=["POST"])
@@ -3312,6 +3416,7 @@ def _stamp_affiliate_journey(session_id, email, first_name, last_name, recruiter
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             begin_funnel.init_journey_tables(cx)
+            init_inquiry_tables(cx)
             cur = cx.execute(
                 "SELECT 1 FROM journey_events WHERE session_id=? AND trigger='paid_fork' AND detail='become_affiliate' LIMIT 1",
                 (session_id,))
