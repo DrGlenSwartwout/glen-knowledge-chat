@@ -766,6 +766,21 @@
     });
   }
 
+  // ---- inbound ?ask= (e.g. handed off from /concierge) -> run the inline ask ----
+  (function(){
+    try{
+      var p = new URLSearchParams(location.search);
+      var aq = (p.get('ask') || '').trim();
+      if(aq && askForm && askInput){
+        askInput.value = aq;
+        p.delete('ask');
+        var qs = p.toString();
+        history.replaceState(null, '', location.pathname + (qs ? ('?' + qs) : '') + location.hash);
+        askForm.dispatchEvent(new Event('submit', {cancelable:true}));
+      }
+    }catch(_){}
+  })();
+
   // ---- inline name field -> personalize trigger ----
   var nameInline = document.getElementById('name-inline-input');
   if(nameInline){
@@ -804,5 +819,6 @@
     items.forEach(function(el){io.observe(el);});})();
   </script>
 
+<script src="/widget.js" data-position="bottom-right" data-color="#d4a843" data-label="Ask Dr. Glen" data-title="Accelerated Self-Healing"></script>
 </body>
 </html>
