@@ -1,7 +1,7 @@
 {
-  "_comment": "Maps clinical names (the names Glen says) to canonical catalog products. Bot uses this to inject the right product URL when a formulation is mentioned. Loaded at startup from this file \u2014 edit + redeploy to update.",
-  "_updated": "2026-04-27",
-  "_source": "00 System/remedymatch-product-inventory.json + Glen's clinical-qa entries",
+  "_comment": "Product clinical-name -> canonical URL for the chat link-injection table. Homepage catalog merged 2026-05-28. truly.vip shortlinks / deprecated / described-only entries preserved.",
+  "_updated": "2026-05-28",
+  "_source": "remedymatch.com homepage full Syntropy catalog (108 products) + curated extras",
   "aliases": {
     "Synergy C": {
       "catalog_name": "Vitamin C Syntropy",
@@ -13,7 +13,7 @@
     },
     "Terrain Restore": {
       "catalog_name": "Terrain Restore",
-      "url": "https://remedymatch.com/search?controller=search&search_query=Terrain+Restore"
+      "url": "https://remedymatch.com/remedies/syntropy/113-terrain-restore"
     },
     "WholOmega": {
       "catalog_name": "WholOmega",
@@ -74,7 +74,7 @@
     },
     "Neuro-Magnesium": {
       "catalog_name": "Neuro Magnesium",
-      "url": "https://remedymatch.com/search?controller=search&search_query=Neuro+Magnesium"
+      "url": "https://remedymatch.com/remedies/syntropy/80-neuromagnesium"
     },
     "Molecular Hydrogen Tablets": {
       "catalog_name": "Molecular Hydrogen Tablets",
@@ -84,7 +84,7 @@
     "Molecular Hydrogen": {
       "catalog_name": "Molecular Hydrogen (portable bottle)",
       "url": "https://remedymatch.com/resources/439-molecular-hydrogen",
-      "note": "Portable molecular-hydrogen bottle \u2014 Glen's recommended replacement for the discontinued Living Water Bottle. Generates molecular-hydrogen-rich water via electrolysis."
+      "note": "Portable molecular-hydrogen bottle — Glen's recommended replacement for the discontinued Living Water Bottle. Generates molecular-hydrogen-rich water via electrolysis."
     },
     "Hydrogen Bottle": {
       "catalog_name": "Molecular Hydrogen (portable bottle)",
@@ -167,7 +167,635 @@
     "Living Water": {
       "catalog_name": "Molecular Hydrogen (portable bottle)",
       "url": "https://remedymatch.com/resources/439-molecular-hydrogen",
-      "note": "Living Water is the CONCEPT \u2014 alkaline ionized + molecular hydrogen. The recommended PRODUCT for clients is the portable Molecular Hydrogen bottle at the URL. The earlier 'Living Water Bottle' (prill-bead system) is DEPRECATED and no longer sold."
+      "note": "Living Water is the CONCEPT — alkaline ionized + molecular hydrogen. The recommended PRODUCT for clients is the portable Molecular Hydrogen bottle at the URL. The earlier 'Living Water Bottle' (prill-bead system) is DEPRECATED and no longer sold."
+    },
+    "Vitality": {
+      "catalog_name": "Vitality",
+      "url": "https://remedymatch.com/remedies/syntropy/377-vitality"
+    },
+    "Longevity": {
+      "catalog_name": "Longevity",
+      "url": "https://remedymatch.com/remedies/syntropy/363-longevity"
+    },
+    "Reverse AGE": {
+      "catalog_name": "Reverse AGE",
+      "url": "https://remedymatch.com/remedies/syntropy/325-reverse-age"
+    },
+    "Brain Cleanse": {
+      "catalog_name": "Brain Cleanse",
+      "url": "https://remedymatch.com/remedies/syntropy/138-brain-cleanse"
+    },
+    "Perfect Skin": {
+      "catalog_name": "Perfect Skin",
+      "url": "https://remedymatch.com/remedies/syntropy/90-perfect-skin"
+    },
+    "Stress Release": {
+      "catalog_name": "Stress Release",
+      "url": "https://remedymatch.com/remedies/syntropy/249-stress-release"
+    },
+    "Microbiome": {
+      "catalog_name": "Microbiome",
+      "url": "https://remedymatch.com/remedies/syntropy/73-microbiome"
+    },
+    "Glucose Tolerance": {
+      "catalog_name": "Glucose Tolerance",
+      "url": "https://remedymatch.com/remedies/syntropy/47-glucose-tolerance"
+    },
+    "Clarity": {
+      "catalog_name": "Clarity",
+      "url": "https://remedymatch.com/remedies/syntropy/331-clarity"
+    },
+    "Immune Modulation": {
+      "catalog_name": "Immune Modulation",
+      "url": "https://remedymatch.com/remedies/syntropy/56-immune-modulation"
+    },
+    "Binder Complex": {
+      "catalog_name": "Binder Complex",
+      "url": "https://remedymatch.com/remedies/syntropy/10-binder-complex"
+    },
+    "Dental Powder": {
+      "catalog_name": "Dental Powder",
+      "url": "https://remedymatch.com/remedies/syntropy/29-dental-powder"
+    },
+    "Chelation": {
+      "catalog_name": "Chelation",
+      "url": "https://remedymatch.com/remedies/syntropy/18-chelation"
+    },
+    "Brain Boost": {
+      "catalog_name": "Brain Boost",
+      "url": "https://remedymatch.com/remedies/syntropy/14-brain-boost"
+    },
+    "Lipid Cleanse": {
+      "catalog_name": "Lipid Cleanse",
+      "url": "https://remedymatch.com/remedies/syntropy/405-lipid-cleanse"
+    },
+    "Fiber Cleanse": {
+      "catalog_name": "Fiber Cleanse",
+      "url": "https://remedymatch.com/remedies/syntropy/28-fiber-cleanse"
+    },
+    "Endocrine Restore": {
+      "catalog_name": "Endocrine Restore",
+      "url": "https://remedymatch.com/remedies/syntropy/34-endocrine-restore"
+    },
+    "Bone Builder": {
+      "catalog_name": "Bone Builder",
+      "url": "https://remedymatch.com/remedies/syntropy/13-bone-builder"
+    },
+    "GERD Guard": {
+      "catalog_name": "GERD Guard",
+      "url": "https://remedymatch.com/remedies/syntropy/43-gerd-guard"
+    },
+    "Mitochondrial Biogenesis": {
+      "catalog_name": "Mitochondrial Biogenesis",
+      "url": "https://remedymatch.com/remedies/syntropy/74-mitochondrial-biogenesis"
+    },
+    "Moisturize": {
+      "catalog_name": "Moisturize",
+      "url": "https://remedymatch.com/remedies/syntropy/76-moisturize"
+    },
+    "Nous Energy": {
+      "catalog_name": "Nous Energy",
+      "url": "https://remedymatch.com/remedies/syntropy/85-nous-energy"
+    },
+    "Spike Shield": {
+      "catalog_name": "Spike Shield",
+      "url": "https://remedymatch.com/remedies/syntropy/283-spike-shield"
+    },
+    "IOP Syntropy": {
+      "catalog_name": "IOP Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/474-iop-syntropy"
+    },
+    "Sleep Syntropy": {
+      "catalog_name": "Sleep Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/107-sleep-syntropy"
+    },
+    "Liver Support": {
+      "catalog_name": "Liver Support",
+      "url": "https://remedymatch.com/remedies/syntropy/60-liver-support"
+    },
+    "Lymph Flow": {
+      "catalog_name": "Lymph Flow",
+      "url": "https://remedymatch.com/remedies/syntropy/314-lymph-flow"
+    },
+    "Blood Cleanse": {
+      "catalog_name": "Blood Cleanse",
+      "url": "https://remedymatch.com/remedies/syntropy/11-blood-cleanse"
+    },
+    "Crystalline Clarity": {
+      "catalog_name": "Crystalline Clarity",
+      "url": "https://remedymatch.com/remedies/syntropy/23-crystalline-clarity"
+    },
+    "Apoptogenesis": {
+      "catalog_name": "Apoptogenesis",
+      "url": "https://remedymatch.com/remedies/syntropy/8-apoptogenesis"
+    },
+    "Alkalize Bicarbonate Blend": {
+      "catalog_name": "Alkalize Bicarbonate Blend",
+      "url": "https://remedymatch.com/remedies/syntropy/9-alkalize-bicarbonate-blend"
+    },
+    "B17 Syntropy": {
+      "catalog_name": "B17 Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/12-b17-syntropy"
+    },
+    "Fibrolysis Factors": {
+      "catalog_name": "Fibrolysis Factors",
+      "url": "https://remedymatch.com/remedies/syntropy/26-fibrolysis-factors"
+    },
+    "Flow Ease": {
+      "catalog_name": "Flow Ease",
+      "url": "https://remedymatch.com/remedies/syntropy/36-flow-ease"
+    },
+    "Immune Intelligence": {
+      "catalog_name": "Immune Intelligence",
+      "url": "https://remedymatch.com/remedies/syntropy/21-immune-intelligence"
+    },
+    "Candida Cleanse": {
+      "catalog_name": "Candida Cleanse",
+      "url": "https://remedymatch.com/remedies/syntropy/38-candida-cleanse"
+    },
+    "Fungifuge": {
+      "catalog_name": "Fungifuge",
+      "url": "https://remedymatch.com/remedies/syntropy/39-fungifuge"
+    },
+    "GastroZyme": {
+      "catalog_name": "GastroZyme",
+      "url": "https://remedymatch.com/remedies/syntropy/42-gastrozyme"
+    },
+    "GI Repair": {
+      "catalog_name": "GI Repair",
+      "url": "https://remedymatch.com/remedies/syntropy/44-gi-repair"
+    },
+    "Glutathione Syntropy": {
+      "catalog_name": "Glutathione Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/48-glutathione-syntropy"
+    },
+    "Nerve Pulse": {
+      "catalog_name": "Nerve Pulse",
+      "url": "https://remedymatch.com/remedies/syntropy/79-nerve-pulse"
+    },
+    "Neuroceramides": {
+      "catalog_name": "Neuroceramides",
+      "url": "https://remedymatch.com/remedies/syntropy/81-neuroceramides"
+    },
+    "Neuroprotect": {
+      "catalog_name": "Neuroprotect",
+      "url": "https://remedymatch.com/remedies/syntropy/83-neuroprotect"
+    },
+    "Night Vision": {
+      "catalog_name": "Night Vision",
+      "url": "https://remedymatch.com/remedies/syntropy/84-night-vision"
+    },
+    "Para-Cleanse": {
+      "catalog_name": "Para-Cleanse",
+      "url": "https://remedymatch.com/remedies/syntropy/89-paracleanse"
+    },
+    "PSC Protect": {
+      "catalog_name": "PSC Protect",
+      "url": "https://remedymatch.com/remedies/syntropy/93-psc-protect"
+    },
+    "Heart Health": {
+      "catalog_name": "Heart Health",
+      "url": "https://remedymatch.com/remedies/syntropy/100-heart-health"
+    },
+    "Rhythm Restore": {
+      "catalog_name": "Rhythm Restore",
+      "url": "https://remedymatch.com/remedies/syntropy/99-rhythm-restore"
+    },
+    "C15 Syntropy: Pentadecanoic Acid": {
+      "catalog_name": "C15 Syntropy: Pentadecanoic Acid",
+      "url": "https://remedymatch.com/remedies/533-c15-syntropy-pentadecanoic-acid"
+    },
+    "Rise & Shine": {
+      "catalog_name": "Rise & Shine",
+      "url": "https://remedymatch.com/remedies/syntropy/101-rise--shine"
+    },
+    "SeaAmino Syntropy": {
+      "catalog_name": "SeaAmino Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/103-seaamino-syntropy"
+    },
+    "Serenity": {
+      "catalog_name": "Serenity",
+      "url": "https://remedymatch.com/remedies/syntropy/104-serenity"
+    },
+    "Adrenal Syntropy": {
+      "catalog_name": "Adrenal Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/109-adrenal-syntropy"
+    },
+    "Sulfur Syntropy": {
+      "catalog_name": "Sulfur Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/110-sulfur-syntropy"
+    },
+    "Sustain": {
+      "catalog_name": "Sustain",
+      "url": "https://remedymatch.com/remedies/syntropy/111-sustain"
+    },
+    "Thermogenesis": {
+      "catalog_name": "Thermogenesis",
+      "url": "https://remedymatch.com/remedies/syntropy/116-thermogenesis"
+    },
+    "Thyroid Support": {
+      "catalog_name": "Thyroid Support",
+      "url": "https://remedymatch.com/remedies/syntropy/117-thyroid-support"
+    },
+    "Transform": {
+      "catalog_name": "Transform",
+      "url": "https://remedymatch.com/remedies/syntropy/118-transform"
+    },
+    "VirEx": {
+      "catalog_name": "VirEx",
+      "url": "https://remedymatch.com/remedies/syntropy/120-virex"
+    },
+    "Vital Energy Be": {
+      "catalog_name": "Vital Energy Be",
+      "url": "https://remedymatch.com/remedies/syntropy/122-vital-energy-be"
+    },
+    "Vitamin D Syntropy": {
+      "catalog_name": "Vitamin D Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/123-vitamin-d-syntropy"
+    },
+    "Vitamin P Polyphenols": {
+      "catalog_name": "Vitamin P Polyphenols",
+      "url": "https://remedymatch.com/remedies/syntropy/125-vitamin-p-polyphenols"
+    },
+    "Sublingual B12": {
+      "catalog_name": "Sublingual B12",
+      "url": "https://remedymatch.com/remedies/syntropy/133-sublingual-b12"
+    },
+    "Soothe": {
+      "catalog_name": "Soothe",
+      "url": "https://remedymatch.com/remedies/syntropy/140-soothe"
+    },
+    "Breast Support": {
+      "catalog_name": "Breast Support",
+      "url": "https://remedymatch.com/remedies/syntropy/223-breast-support"
+    },
+    "MigraFree": {
+      "catalog_name": "MigraFree",
+      "url": "https://remedymatch.com/remedies/syntropy/227-migrafree"
+    },
+    "TMG Syntropy Powder (Trimethylglycine)": {
+      "catalog_name": "TMG Syntropy Powder (Trimethylglycine)",
+      "url": "https://remedymatch.com/remedies/syntropy/228-tmg-syntropy-powder-trimethylglycine"
+    },
+    "Rescue": {
+      "catalog_name": "Rescue",
+      "url": "https://remedymatch.com/remedies/syntropy/232-rescue"
+    },
+    "Shields Up": {
+      "catalog_name": "Shields Up",
+      "url": "https://remedymatch.com/remedies/syntropy/239-shields-up"
+    },
+    "OcuFlow Bedtime": {
+      "catalog_name": "OcuFlow Bedtime",
+      "url": "https://remedymatch.com/remedies/syntropy/244-ocuflow-bedtime"
+    },
+    "OcuFlow Daytime": {
+      "catalog_name": "OcuFlow Daytime",
+      "url": "https://remedymatch.com/remedies/syntropy/243-ocuflow-daytime"
+    },
+    "Sanctuary C60": {
+      "catalog_name": "Sanctuary C60",
+      "url": "https://remedymatch.com/remedies/syntropy/248-sanctuary-c60"
+    },
+    "Pure & Natural MSM Lotion": {
+      "catalog_name": "Pure & Natural MSM Lotion",
+      "url": "https://remedymatch.com/remedies/245-pure--natural-msm-lotion"
+    },
+    "Free & Easy": {
+      "catalog_name": "Free & Easy",
+      "url": "https://remedymatch.com/remedies/syntropy/250-free-easy"
+    },
+    "Golden Book": {
+      "catalog_name": "Golden Book",
+      "url": "https://remedymatch.com/remedies/syntropy/251-golden-book"
+    },
+    "Zinc Syntropy": {
+      "catalog_name": "Zinc Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/263-zinc-syntropy"
+    },
+    "Zinc Taste Test": {
+      "catalog_name": "Zinc Taste Test",
+      "url": "https://remedymatch.com/remedies/syntropy/126-zinc-taste-test"
+    },
+    "OcuHeal Eye Drops": {
+      "catalog_name": "OcuHeal Eye Drops",
+      "url": "https://remedymatch.com/remedies/syntropy/265-ocuheal-eye-drops"
+    },
+    "Lipid Zyme": {
+      "catalog_name": "Lipid Zyme",
+      "url": "https://remedymatch.com/remedies/syntropy/266-lipid-zyme"
+    },
+    "DHT Blocker": {
+      "catalog_name": "DHT Blocker",
+      "url": "https://remedymatch.com/remedies/syntropy/279-dht-blocker"
+    },
+    "Ozonated Olive Oil": {
+      "catalog_name": "Ozonated Olive Oil",
+      "url": "https://remedymatch.com/remedies/syntropy/312-ozonated-olive-oil"
+    },
+    "Stone Solvent": {
+      "catalog_name": "Stone Solvent",
+      "url": "https://remedymatch.com/remedies/syntropy/354-stone-solvent"
+    },
+    "Man Manna": {
+      "catalog_name": "Man Manna",
+      "url": "https://remedymatch.com/remedies/syntropy/441-man-manna"
+    },
+    "Muscle Mass": {
+      "catalog_name": "Muscle Mass",
+      "url": "https://remedymatch.com/remedies/syntropy/426-muscle-mass"
+    },
+    "Comfort": {
+      "catalog_name": "Comfort",
+      "url": "https://remedymatch.com/remedies/syntropy/428-comfort"
+    },
+    "Spleen Support": {
+      "catalog_name": "Spleen Support",
+      "url": "https://remedymatch.com/remedies/syntropy/313-spleen-support"
+    },
+    "Vitreous Vitality": {
+      "catalog_name": "Vitreous Vitality",
+      "url": "https://remedymatch.com/remedies/syntropy/315-vitreous-vitality"
+    },
+    "Sinus Terrain Nasal Spray": {
+      "catalog_name": "Sinus Terrain Nasal Spray",
+      "url": "https://remedymatch.com/remedies/syntropy/316-sinus-terrain-nasal-spray"
+    },
+    "Dental Regen Powder": {
+      "catalog_name": "Dental Regen Powder",
+      "url": "https://remedymatch.com/remedies/syntropy/317-dental-regen-powder"
+    },
+    "Iron Out": {
+      "catalog_name": "Iron Out",
+      "url": "https://remedymatch.com/remedies/syntropy/318-iron-out"
+    },
+    "Iron Syntropy": {
+      "catalog_name": "Iron Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/319-iron-syntropy"
+    },
+    "Vitamin A Syntropy": {
+      "catalog_name": "Vitamin A Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/327-vitamin-a-syntropy"
+    },
+    "Acetaldehyde Detox": {
+      "catalog_name": "Acetaldehyde Detox",
+      "url": "https://remedymatch.com/remedies/syntropy/360-acetaldehyde-detox"
+    },
+    "Mercury Detox Syntropy Powder": {
+      "catalog_name": "Mercury Detox Syntropy Powder",
+      "url": "https://remedymatch.com/remedies/syntropy/424-mercury-detox-syntropy-powder"
+    },
+    "D-Mannose Syntropy": {
+      "catalog_name": "D-Mannose Syntropy",
+      "url": "https://remedymatch.com/remedies/syntropy/430-dmannose-syntropy"
+    },
+    "Snake & Dragon": {
+      "catalog_name": "Snake & Dragon",
+      "url": "https://remedymatch.com/remedies/syntropy/437-snake--dragon"
+    },
+    "Oxygen Cleanse": {
+      "catalog_name": "Oxygen Cleanse",
+      "url": "https://remedymatch.com/remedies/syntropy/88-oxygen-cleanse"
+    },
+    "One Step": {
+      "catalog_name": "One Step",
+      "url": "https://remedymatch.com/remedies/304-one-step"
+    },
+    "Vinpocetine": {
+      "catalog_name": "Vinpocetine",
+      "url": "https://remedymatch.com/remedies/476-vinpocetine"
+    },
+    "Ginkgo Biloba Extract": {
+      "catalog_name": "Ginkgo Biloba Extract",
+      "url": "https://remedymatch.com/remedies/477-ginkgo-biloba-extract"
+    },
+    "Phosphatides": {
+      "catalog_name": "Phosphatides",
+      "url": "https://remedymatch.com/remedies/478-phosphatides"
+    },
+    "Miracle Tree": {
+      "catalog_name": "Miracle Tree",
+      "url": "https://remedymatch.com/remedies/479-miracle-tree"
+    },
+    "Licorice Omnipotent": {
+      "catalog_name": "Licorice Omnipotent",
+      "url": "https://remedymatch.com/remedies/480-licorice-omnipotent"
+    },
+    "Gingerol": {
+      "catalog_name": "Gingerol",
+      "url": "https://remedymatch.com/remedies/481-gingerol"
+    },
+    "Piperine": {
+      "catalog_name": "Piperine",
+      "url": "https://remedymatch.com/remedies/482-piperine"
+    },
+    "Fulvic Acid": {
+      "catalog_name": "Fulvic Acid",
+      "url": "https://remedymatch.com/remedies/483-fulvic-acid"
+    },
+    "Humic Acid": {
+      "catalog_name": "Humic Acid",
+      "url": "https://remedymatch.com/remedies/484-humic-acid"
+    },
+    "R-Lipoate": {
+      "catalog_name": "R-Lipoate",
+      "url": "https://remedymatch.com/remedies/485-rlipoate"
+    },
+    "S-Acetyl Glutathione": {
+      "catalog_name": "S-Acetyl Glutathione",
+      "url": "https://remedymatch.com/remedies/486-sacetyl-glutathione"
+    },
+    "N-Acetyl Cysteine": {
+      "catalog_name": "N-Acetyl Cysteine",
+      "url": "https://remedymatch.com/remedies/487-nacetyl-cysteine"
+    },
+    "Magnesium Taurate": {
+      "catalog_name": "Magnesium Taurate",
+      "url": "https://remedymatch.com/remedies/488-magnesium-taurate"
+    },
+    "Lycopene": {
+      "catalog_name": "Lycopene",
+      "url": "https://remedymatch.com/remedies/489-lycopene"
+    },
+    "Curcumin": {
+      "catalog_name": "Curcumin",
+      "url": "https://remedymatch.com/remedies/490-curcumin"
+    },
+    "Quercetin Dihydrate": {
+      "catalog_name": "Quercetin Dihydrate",
+      "url": "https://remedymatch.com/remedies/491-quercetin-dihydrate"
+    },
+    "Polyphenols (Camellia sinensis)": {
+      "catalog_name": "Polyphenols (Camellia sinensis)",
+      "url": "https://remedymatch.com/remedies/492-polyphenols-camellia-sinensis"
+    },
+    "Ginsengosides": {
+      "catalog_name": "Ginsengosides",
+      "url": "https://remedymatch.com/remedies/493-ginsengosides"
+    },
+    "Salvianolic Acid": {
+      "catalog_name": "Salvianolic Acid",
+      "url": "https://remedymatch.com/remedies/494-salvianolic-acid"
+    },
+    "C3G": {
+      "catalog_name": "C3G",
+      "url": "https://remedymatch.com/remedies/495-c3g"
+    },
+    "Trans-Resveratrol": {
+      "catalog_name": "Trans-Resveratrol",
+      "url": "https://remedymatch.com/remedies/496-transresveratrol"
+    },
+    "5-MTHF": {
+      "catalog_name": "5-MTHF",
+      "url": "https://remedymatch.com/remedies/497-5mthf"
+    },
+    "Adenosyl Cobalamin": {
+      "catalog_name": "Adenosyl Cobalamin",
+      "url": "https://remedymatch.com/remedies/498-adenosyl-cobalamin"
+    },
+    "Methyl Cobalamin": {
+      "catalog_name": "Methyl Cobalamin",
+      "url": "https://remedymatch.com/remedies/499-methyl-cobalamin"
+    },
+    "TMG": {
+      "catalog_name": "TMG",
+      "url": "https://remedymatch.com/remedies/500-tmg"
+    },
+    "ALCAR": {
+      "catalog_name": "ALCAR",
+      "url": "https://remedymatch.com/remedies/501-alcar"
+    },
+    "Ascorbyl Palmitate": {
+      "catalog_name": "Ascorbyl Palmitate",
+      "url": "https://remedymatch.com/remedies/502-ascorbyl-palmitate"
+    },
+    "CoQ10": {
+      "catalog_name": "CoQ10",
+      "url": "https://remedymatch.com/remedies/503-coq10"
+    },
+    "L-Carnosine": {
+      "catalog_name": "L-Carnosine",
+      "url": "https://remedymatch.com/remedies/504-lcarnosine"
+    },
+    "Tetrahydrocurcumin": {
+      "catalog_name": "Tetrahydrocurcumin",
+      "url": "https://remedymatch.com/remedies/505-tetrahydrocurcumin"
+    },
+    "Centrophenoxine": {
+      "catalog_name": "Centrophenoxine",
+      "url": "https://remedymatch.com/remedies/506-centrophenoxine"
+    },
+    "Inositol": {
+      "catalog_name": "Inositol",
+      "url": "https://remedymatch.com/remedies/507-inositol"
+    },
+    "Magnesium Acetyl-Taurate": {
+      "catalog_name": "Magnesium Acetyl-Taurate",
+      "url": "https://remedymatch.com/remedies/508-magnesium-acetyltaurate"
+    },
+    "Coluracetam": {
+      "catalog_name": "Coluracetam",
+      "url": "https://remedymatch.com/remedies/509-coluracetam"
+    },
+    "Lipase": {
+      "catalog_name": "Lipase",
+      "url": "https://remedymatch.com/remedies/510-lipase"
+    },
+    "Neutral Protease": {
+      "catalog_name": "Neutral Protease",
+      "url": "https://remedymatch.com/remedies/511-neutral-protease"
+    },
+    "Serrapeptase": {
+      "catalog_name": "Serrapeptase",
+      "url": "https://remedymatch.com/remedies/512-serrapeptase"
+    },
+    "d-Alpha Tocopherol Succinate": {
+      "catalog_name": "d-Alpha Tocopherol Succinate",
+      "url": "https://remedymatch.com/remedies/513-dalpha-tocopherol-succinate"
+    },
+    "Asiaticosides": {
+      "catalog_name": "Asiaticosides",
+      "url": "https://remedymatch.com/remedies/514-asiaticosides"
+    },
+    "Methylselenocysteine": {
+      "catalog_name": "Methylselenocysteine",
+      "url": "https://remedymatch.com/remedies/515-methylselenocysteine"
+    },
+    "Zinc Ascorbate": {
+      "catalog_name": "Zinc Ascorbate",
+      "url": "https://remedymatch.com/remedies/516-zinc-ascorbate"
+    },
+    "Cholecalciferol": {
+      "catalog_name": "Cholecalciferol",
+      "url": "https://remedymatch.com/remedies/517-cholecalciferol"
+    },
+    "Proteoglycans": {
+      "catalog_name": "Proteoglycans",
+      "url": "https://remedymatch.com/remedies/518-proteoglycans"
+    },
+    "Lapachol": {
+      "catalog_name": "Lapachol",
+      "url": "https://remedymatch.com/remedies/519-lapachol"
+    },
+    "Viscum album": {
+      "catalog_name": "Viscum album",
+      "url": "https://remedymatch.com/remedies/520-viscum-album"
+    },
+    "Honokiol": {
+      "catalog_name": "Honokiol",
+      "url": "https://remedymatch.com/remedies/521-honokiol"
+    },
+    "Artemisinin": {
+      "catalog_name": "Artemisinin",
+      "url": "https://remedymatch.com/remedies/522-artemisinin"
+    },
+    "Proanthocyanidin (Pinus pinaster)": {
+      "catalog_name": "Proanthocyanidin (Pinus pinaster)",
+      "url": "https://remedymatch.com/remedies/523-proanthocyanidin-pinus-pinaster-"
+    },
+    "Apigenin": {
+      "catalog_name": "Apigenin",
+      "url": "https://remedymatch.com/remedies/524-apigenin"
+    },
+    "Polysaccharides (Aloe barbadensis)": {
+      "catalog_name": "Polysaccharides (Aloe barbadensis)",
+      "url": "https://remedymatch.com/remedies/525-polysaccharides-aloe-barbadensis-"
+    },
+    "Baicalein": {
+      "catalog_name": "Baicalein",
+      "url": "https://remedymatch.com/remedies/526-baicalein"
+    },
+    "Silymarin": {
+      "catalog_name": "Silymarin",
+      "url": "https://remedymatch.com/remedies/527-silymarin"
+    },
+    "Lutein": {
+      "catalog_name": "Lutein",
+      "url": "https://remedymatch.com/remedies/528-lutein"
+    },
+    "Cotinus coggygria": {
+      "catalog_name": "Cotinus coggygria",
+      "url": "https://remedymatch.com/remedies/529-cotinus-coggygria"
+    },
+    "Anthocyanidins (Ribes nigrum)": {
+      "catalog_name": "Anthocyanidins (Ribes nigrum)",
+      "url": "https://remedymatch.com/remedies/530-anthocyanidins-ribes-nigrum"
+    },
+    "Cocos nucifera": {
+      "catalog_name": "Cocos nucifera",
+      "url": "https://remedymatch.com/remedies/532-cocos-nucifera"
+    },
+    "C15: Pentadecanoic Acid": {
+      "catalog_name": "C15: Pentadecanoic Acid",
+      "url": "https://remedymatch.com/remedies/534-c15-pentadecanoic-acid"
+    },
+    "Astragalus membranaceus": {
+      "catalog_name": "Astragalus membranaceus",
+      "url": "https://remedymatch.com/remedies/535-astragalus-membranaceus"
+    },
+    "B17 Max": {
+      "catalog_name": "B17 Max",
+      "url": "https://remedymatch.com/remedies/540-b17-max"
     }
   },
   "search_url_pattern": "https://remedymatch.com/search?controller=search&search_query={query}",
