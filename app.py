@@ -872,12 +872,22 @@ def sse(payload: dict) -> str:
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
-@app.route("/")
-def index():
-    resp = send_from_directory(STATIC, "index.html")
+def _serve_funnel_home():
+    resp = send_from_directory(STATIC, "begin.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie(
+            "amg_session", uuid.uuid4().hex,
+            max_age=60 * 60 * 24 * 365,
+            httponly=True, samesite="Lax", secure=request.is_secure,
+        )
     return resp
+
+
+@app.route("/")
+def index():
+    return _serve_funnel_home()
 
 
 @app.route("/ask")
@@ -949,16 +959,7 @@ def _classify_awareness_haiku(session_id, query_texts, heuristic_stage):
 
 @app.route("/begin")
 def begin_page():
-    resp = send_from_directory(STATIC, "begin.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    resp.headers["Pragma"] = "no-cache"
-    if not request.cookies.get("amg_session"):
-        resp.set_cookie(
-            "amg_session", uuid.uuid4().hex,
-            max_age=60 * 60 * 24 * 365,
-            httponly=True, samesite="Lax", secure=request.is_secure,
-        )
-    return resp
+    return _serve_funnel_home()
 
 
 @app.route("/begin/tone")

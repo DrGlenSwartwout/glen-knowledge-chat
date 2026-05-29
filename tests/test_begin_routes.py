@@ -328,3 +328,22 @@ def test_ask_serves_full_chat(monkeypatch, tmp_path):
     assert r.status_code == 200
     expected = (app_module.STATIC / "index.html").read_bytes()
     assert r.data == expected
+
+
+def test_root_serves_funnel_and_mints_session(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    client = app_module.app.test_client()
+    r = client.get("/")
+    assert r.status_code == 200
+    assert r.data == (app_module.STATIC / "begin.html").read_bytes()
+    assert "amg_session=" in r.headers.get("Set-Cookie", "")
+
+
+def test_begin_alias_still_serves_funnel(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    client = app_module.app.test_client()
+    r = client.get("/begin")
+    assert r.status_code == 200
+    assert r.data == (app_module.STATIC / "begin.html").read_bytes()
