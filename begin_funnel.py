@@ -54,6 +54,15 @@ def init_journey_tables(cx):
             rung_after  TEXT
         )
     """)
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS affiliate_social_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL, slug TEXT NOT NULL, email TEXT,
+            url TEXT NOT NULL, platform TEXT DEFAULT '',
+            points INTEGER, views INTEGER, likes INTEGER, shares INTEGER,
+            reviewed_at TEXT
+        )
+    """)
     cx.commit()
 
 
@@ -120,8 +129,9 @@ WANT_TARGETS = {
     "join":    "https://truly.vip/Join",
     "results": "https://truly.vip/Results",
     "voice":   "/begin/voice",
+    "path":    "/begin/path",
 }
-# not-yet-built rooms (no Slice 2 redirect): "path", "ash"
+# not-yet-built rooms (no Slice 2 redirect): "ash"
 
 
 def resolve_want(want, ref=""):
@@ -201,7 +211,7 @@ def _row_for_session(cx, session_id):
 
 def record_unlock(cx, *, session_id, trigger, email="", detail="",
                   first_name="", tos=False, ref_slug="", tos_version="",
-                  want="", query_texts=None):
+                  want="", query_texts=None, path=""):
     if trigger not in VALID_TRIGGERS:
         raise ValueError(f"invalid trigger: {trigger!r}")
     cx.row_factory = sqlite3.Row
@@ -240,6 +250,9 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
     # product/assessment gate immediately implies product-awareness)
     _new_aw = _max_awareness(_persisted_aw, infer_awareness_heuristic(want, gates, query_texts))
 
+    _persisted_path = (existing.get("path") if row is not None else "none") or "none"
+    _new_path = path if (path and path != "none") else _persisted_path
+
     if row is None:
         cx.execute("""
             INSERT INTO journey_state
@@ -248,17 +261,17 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
                tos_version, last_signal, created_at, updated_at)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (session_id, new_email, new_first, new_ref, rung_after,
-              gates_json, _new_aw, "none", tos_at, tos_ver, trigger,
+              gates_json, _new_aw, _new_path, tos_at, tos_ver, trigger,
               now, now))
     else:
         cx.execute("""
             UPDATE journey_state SET
               email=?, first_name=?, ref_slug=?, current_rung=?,
-              unlocked_gates=?, awareness_stage=?, tos_agreed_at=?,
+              unlocked_gates=?, awareness_stage=?, path=?, tos_agreed_at=?,
               tos_version=?, last_signal=?, updated_at=?
             WHERE id=?
         """, (new_email, new_first, new_ref, rung_after, gates_json,
-              _new_aw, tos_at, tos_ver, trigger, now, row["id"]))
+              _new_aw, _new_path, tos_at, tos_ver, trigger, now, row["id"]))
 
     cx.execute("""
         INSERT INTO journey_events
@@ -382,7 +395,7 @@ CARD_CATALOG = {
                            "base_url": "https://truly.vip/Intro", "internal": False},
     "pay_forward":        {"title": "Share Your Results, Lift Others",
                            "sub": "Pass your healing forward — and earn as you do",
-                           "base_url": "https://truly.vip/Results", "internal": False},
+                           "base_url": "/begin/path", "internal": True},
     "practitioner":       {"title": "Find a Practitioner Near You",
                            "sub": "Connect with a practitioner who fits your path",
                            "base_url": "/practitioner", "internal": True},

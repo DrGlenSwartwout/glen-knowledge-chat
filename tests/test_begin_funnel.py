@@ -372,3 +372,36 @@ def test_voice_distinctions_card_points_to_room():
     import begin_funnel as bf
     assert bf.CARD_CATALOG["voice_distinctions"]["internal"] is True
     assert bf.card_href("voice_distinctions", "Jane") == "/begin/voice"
+
+
+def test_pay_forward_card_points_to_path_room():
+    import begin_funnel as bf
+    assert bf.CARD_CATALOG["pay_forward"]["internal"] is True
+    assert bf.card_href("pay_forward", "Jane") == "/begin/path"
+
+
+def test_resolve_want_path_is_internal_room():
+    import begin_funnel as bf
+    assert bf.resolve_want("path", "Jane") == "/begin/path"
+
+
+def test_record_unlock_stamps_path_and_does_not_reset():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    st = bf.record_unlock(cx, session_id="s1", trigger="paid_fork", path="pay_forward")
+    assert st["path"] == "pay_forward"
+    # a later unlock WITHOUT a path must not reset it to 'none'
+    st = bf.record_unlock(cx, session_id="s1", trigger="scroll")
+    assert st["path"] == "pay_forward"
+
+
+def test_affiliate_social_links_table_exists():
+    import begin_funnel as bf
+    cx = _mem()
+    bf.init_journey_tables(cx)
+    names = {r[0] for r in cx.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "affiliate_social_links" in names
+    cols = {r[1] for r in cx.execute("PRAGMA table_info(affiliate_social_links)")}
+    for c in ("slug", "url", "points", "views", "likes", "shares", "ts"):
+        assert c in cols, c
