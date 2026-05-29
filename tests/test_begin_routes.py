@@ -401,3 +401,27 @@ def test_begin_unlock_captures_last_name(monkeypatch, tmp_path):
     # state should reflect the captured last name
     s = client.get("/begin/state").get_json()
     assert s.get("last_name") == "Swartwout"
+
+
+def test_ascend_tier_page_known_slug(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    c = app_module.app.test_client()
+    r = c.get("/begin/ascend/hawaii-immersion")
+    assert r.status_code == 200
+    assert "amg_session=" in r.headers.get("Set-Cookie", "")
+
+def test_ascend_tier_page_unknown_slug_404(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    c = app_module.app.test_client()
+    assert c.get("/begin/ascend/nope").status_code == 404
+
+def test_ascend_tier_data_json(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    c = app_module.app.test_client()
+    r = c.get("/begin/ascend-tier?slug=certification")
+    assert r.status_code == 200
+    assert r.get_json()["n"] == 4
+    assert c.get("/begin/ascend-tier?slug=nope").status_code == 404

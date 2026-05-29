@@ -103,10 +103,8 @@
       educational guidance. It is not a substitute for diagnosis or medical care from your own provider.</p>
   </footer>
 
+  <script src="/ref-capture.js"></script>
   <script>
-    (function(){try{var ref=(new URLSearchParams(location.search).get('ref')||'').trim();
-      if(ref&&/^[A-Za-z0-9_-]{1,64}$/.test(ref)){document.cookie='rm_ref='+encodeURIComponent(ref)+';path=/;max-age='+(90*24*3600)+';SameSite=Lax';localStorage.setItem('rm_ref',ref);}}catch(_){}})();
-    function getRef(){try{var m=document.cookie.match(/(?:^|;\s*)rm_ref=([^;]+)/);if(m)return decodeURIComponent(m[1]);return localStorage.getItem('rm_ref')||'';}catch(_){return'';}}
     function unlock(trigger, extra){ try{ var b=Object.assign({trigger:trigger, ref:getRef()}, extra||{});
       return fetch('/begin/unlock',{method:'POST',headers:{'Content-Type':'application/json'},
         credentials:'same-origin',body:JSON.stringify(b)}); }catch(_){ } }

@@ -496,3 +496,40 @@ def surface_for_chat(state, query_texts, ref=""):
     if not keys:
         keys = ["quiz"]
     return [_card(k, ref) for k in keys[:2]]
+
+
+# ---------------------------------------------------------------------------
+# Piece 4 -- per-tier ascension catalog (paid tiers 3-8, slug-keyed)
+# ---------------------------------------------------------------------------
+TIER_CATALOG = {
+    "biofield-analysis": {"slug": "biofield-analysis", "n": 3,
+        "title": "Causal Biofield Analysis + Program Design + Consultation",
+        "price": "$300", "value": "$1,000 value",
+        "included": "Your ASH Causal Biofield Analysis, a Functional Formulations™ program designed for you, and a consultation.",
+        "cta_label": "Book your consultation"},
+    "certification": {"slug": "certification", "n": 4,
+        "title": "ASH Certification Training", "price": "~$3,600", "value": "",
+        "included": "Train in the Accelerated Self-Healing™ method.",
+        "cta_label": "Book your consultation"},
+    "one-to-one": {"slug": "one-to-one", "n": 5,
+        "title": "ASH 1:1 Live Support + Certification", "price": "~$8,500", "value": "6 months",
+        "included": "Six months of live one-to-one support alongside your certification.",
+        "cta_label": "Book your consultation"},
+    "healing-oasis-tools": {"slug": "healing-oasis-tools", "n": 6,
+        "title": "Healing Oasis Tools Installation + Training + Certification",
+        "price": "~$14,000", "value": "",
+        "included": "Your own Healing Oasis tools installed, full tools training, and ASH certification.",
+        "cta_label": "Book your consultation"},
+    "hawaii-immersion": {"slug": "hawaii-immersion", "n": 7,
+        "title": "Hawaii Island Technology Detox at The Shire", "price": "~$25,000", "value": "1 week",
+        "included": "A one-week immersion on Hawaiʻi Island: Healing Oasis package, training, and ASH certification.",
+        "cta_label": "Book your consultation"},
+    "consultant-package": {"slug": "consultant-package", "n": 8,
+        "title": "Complete Consultant Package", "price": "~$50,000", "value": "",
+        "included": "Everything, including the software, to run your own Accelerated Self-Healing practice.",
+        "cta_label": "Book your consultation"},
+}
+
+
+def tier_for(slug):
+    return TIER_CATALOG.get(slug)

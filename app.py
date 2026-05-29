@@ -1007,6 +1007,27 @@ def begin_ascend():
     return resp
 
 
+@app.route("/begin/ascend/<slug>")
+def begin_ascend_tier(slug):
+    if slug not in begin_funnel.TIER_CATALOG:
+        return ("", 404)
+    resp = send_from_directory(STATIC, "begin-ascend-tier.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/ascend-tier")
+def begin_ascend_tier_data():
+    tier = begin_funnel.TIER_CATALOG.get((request.args.get("slug") or "").strip())
+    if not tier:
+        return jsonify({"error": "unknown tier"}), 404
+    return jsonify(tier)
+
+
 @app.route("/begin/path")
 def begin_path():
     resp = send_from_directory(STATIC, "begin-path.html")
@@ -1190,6 +1211,15 @@ def embed_page():
 @app.route("/widget.js")
 def widget_js():
     resp = send_from_directory(STATIC, "widget.js")
+    resp.headers["Content-Type"] = "application/javascript"
+    resp.headers["Cache-Control"] = "public, max-age=300"
+    return resp
+
+
+@app.route("/ref-capture.js")
+def ref_capture_js():
+    # Shared affiliate-referral capture, loaded by every funnel page.
+    resp = send_from_directory(STATIC, "ref-capture.js")
     resp.headers["Content-Type"] = "application/javascript"
     resp.headers["Cache-Control"] = "public, max-age=300"
     return resp
@@ -2367,6 +2397,69 @@ def _init_referral_tables():
                     'Direct link to the store. Purchases are credited to you automatically when the buyer first came through one of your free-offer links (same email). Cold store visitors aren''t tracked yet — coupon codes for that are a future add-on.',
                     1)
             """)
+        # ── Funnel offers (funnel-first hybrid) ──────────────────────────────
+        # The funnel front door is now the primary share link: it captures the
+        # ref into journey_state once and carries it through every step + any
+        # later conversion. The ?want= deep-links route THROUGH the funnel (so
+        # the referral sticks) and then redirect outward with utm_source threaded.
+        # Direct external offers below are demoted to a secondary "advanced" tier.
+        _FUNNEL_OFFERS = [
+            (1, 'Your Front Door — start here',
+             "Your main link. Send anyone here first. The page meets each visitor where "
+             "they are and walks them to the right next step, and every result is credited "
+             "to you. Best for cold or curious people who don't know Dr. Glen yet.",
+             f"{PUBLIC_BASE_URL}/?ref={{slug}}", ''),
+            (2, 'Free Wellness Scan (E4L)',
+             "Sends people to the free voice-based bioenergetic scan, routed through your "
+             "front door so the referral always sticks. Best for anyone open to a quick, "
+             "free assessment.",
+             f"{PUBLIC_BASE_URL}/?ref={{slug}}&want=e4l", ''),
+            (3, 'Self-Healing Quiz',
+             "Sends people to the free Accelerate Self-Healing quiz through your front door. "
+             "Best for a broad audience curious about natural healing.",
+             f"{PUBLIC_BASE_URL}/?ref={{slug}}&want=quiz", ''),
+            (4, 'Explore the Path & Tiers',
+             "Opens the full ladder of ways to work with Dr. Glen, from the free course up "
+             "to the consultant package. Best for warm people ready to see their options.",
+             f"{PUBLIC_BASE_URL}/?ref={{slug}}&want=ascend", ''),
+            (5, 'Talk to Dr. Glen (Join)',
+             "Routes to the consultative intake to start working with Dr. Glen directly. "
+             "Best for the most ready, high-intent people.",
+             f"{PUBLIC_BASE_URL}/?ref={{slug}}&want=join", ''),
+        ]
+        for sort_order, oname, odesc, ourl, oinstr in _FUNNEL_OFFERS:
+            existing_offer = cx.execute(
+                "SELECT id FROM affiliate_offers WHERE name=?", (oname,)).fetchone()
+            if not existing_offer:
+                cx.execute(
+                    "INSERT INTO affiliate_offers (sort_order, name, description, url_template, instructions, active) "
+                    "VALUES (?,?,?,?,?,1)",
+                    (sort_order, oname, odesc, ourl, oinstr))
+            else:
+                # Keep the live row's ordering, copy, and URL in sync with the seed.
+                cx.execute(
+                    "UPDATE affiliate_offers SET sort_order=?, description=?, url_template=? WHERE name=?",
+                    (sort_order, odesc, ourl, oname))
+        # Demote the direct external offers below the funnel links + flag them as
+        # advanced. Idempotent: only bump sort_order while it's still in the
+        # funnel-link range, and only prepend the note once.
+        _DIRECT_OFFER_NAMES = (
+            'Accelerate Self-Healing Quiz',
+            'Free Bioenergetic Wellness Scan',
+            'Free ASH MasterClass',
+            'Free DIY Accelerated Self Healing Course — Heal Yourself',
+            'Shop for Remedies',
+        )
+        _ADVANCED_NOTE = ("Advanced direct link. The funnel links above preserve full "
+                          "attribution across every step. ")
+        for oname in _DIRECT_OFFER_NAMES:
+            cx.execute(
+                "UPDATE affiliate_offers SET sort_order = sort_order + 20 "
+                "WHERE name=? AND sort_order < 20", (oname,))
+            cx.execute(
+                "UPDATE affiliate_offers SET description = ? || description "
+                "WHERE name=? AND description NOT LIKE ?",
+                (_ADVANCED_NOTE, oname, _ADVANCED_NOTE + '%'))
         # Seed AllHeal as first referral source if not exists
         existing = cx.execute("SELECT id FROM referral_sources WHERE slug='allheal'").fetchone()
         if not existing:

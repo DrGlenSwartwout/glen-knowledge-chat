@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Healing Oasis | Dr. Glen Swartwout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+    --maxw:760px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1); }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{ background:var(--bg); color:var(--cream); font-family:"Open Sans",system-ui,sans-serif;
+    font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%); background-attachment:fixed; }
+  h1,h2,h3{ font-family:"Raleway",system-ui,sans-serif; font-weight:600; line-height:1.25; letter-spacing:-0.01em; }
+  a{ color:inherit; text-decoration:none; }
+  .shell{ max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+  .brandbar{ max-width:var(--maxw); margin:0 auto; padding:30px 24px 8px; display:flex; align-items:center; justify-content:center; gap:14px; }
+  .brand-mark{ width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 4px rgba(212,168,67,0.12); }
+  .brand-name{ font-family:"Raleway",sans-serif; font-weight:600; font-size:13px; letter-spacing:0.32em; color:var(--muted); }
+  .video{ position:relative; width:100%; aspect-ratio:16/9; border-radius:var(--radius); overflow:hidden; margin-top:32px;
+    background:radial-gradient(90% 120% at 50% 18%, #1a2c1f 0%, #0c1610 70%, #081109 100%); border:1px solid var(--border); }
+  .video .play{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:74px; height:74px; border-radius:50%;
+    display:grid; place-items:center; background:rgba(10,21,13,0.55); border:1px solid rgba(212,168,67,0.55); }
+  .video .play svg{ width:24px; height:24px; margin-left:4px; fill:var(--gold); }
+  .tier-block{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:28px 28px 24px; margin-top:34px; }
+  .eyebrow{ font-family:"Raleway",sans-serif; font-weight:600; font-size:12px; letter-spacing:0.34em; color:var(--green); margin-bottom:14px; }
+  .tier-title{ font-family:"Raleway",sans-serif; font-weight:700; font-size:clamp(20px,4.5vw,27px); color:var(--cream); line-height:1.25; }
+  .tier-price{ display:inline-block; margin-top:12px; font-family:"Raleway",sans-serif; font-weight:600; font-size:13px;
+    letter-spacing:0.04em; color:var(--gold); border:1px solid rgba(212,168,67,0.4); border-radius:999px; padding:4px 14px; }
+  .tier-included{ color:var(--muted); font-size:15px; margin-top:16px; line-height:1.6; }
+  .cta-wrap{ margin-top:28px; }
+  .cta-btn{ display:inline-block; background:var(--gold); color:#0a150d; font-family:"Raleway",sans-serif;
+    font-weight:700; font-size:15px; letter-spacing:0.03em; padding:14px 32px; border-radius:999px;
+    transition:opacity .25s var(--ease), transform .25s var(--ease); cursor:pointer; }
+  .cta-btn:hover{ opacity:0.88; transform:translateY(-1px); }
+  .back{ display:inline-block; margin-top:18px; color:var(--muted); font-size:13px; }
+  .back:hover{ color:var(--gold); }
+  footer{ margin-top:52px; padding:28px 24px 44px; text-align:center; border-top:1px solid rgba(33,71,45,0.5); }
+  .foot-note{ font-size:12.5px; color:var(--muted); opacity:0.7; max-width:540px; margin:0 auto; line-height:1.7; }
+  .reveal{ opacity:0; transform:translateY(14px); }
+  .reveal.in{ opacity:1; transform:none; transition:opacity .8s var(--ease), transform .8s var(--ease); }
+  @media (prefers-reduced-motion: reduce){ .reveal{opacity:1; transform:none;} }
+  @media(max-width:560px){ body{font-size:16px;} .shell{padding:0 18px;} .tier-block{padding:20px 18px 18px;}
+    .cta-btn{padding:12px 24px; font-size:14px;} }
+</style>
+</head>
+<body>
+  <div class="brandbar"><span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;&middot;&nbsp; Healing&nbsp;Oasis</span></div>
+
+  <section class="shell">
+    <div class="video reveal" role="img" aria-label="Overview video coming soon">
+      <div class="play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+    </div>
+  </section>
+
+  <section class="shell">
+    <div class="tier-block reveal">
+      <p class="eyebrow">Your next step</p>
+      <h1 class="tier-title" id="js-title">Loading...</h1>
+      <span class="tier-price" id="js-price"></span>
+      <p class="tier-included" id="js-included"></p>
+      <div class="cta-wrap">
+        <a class="cta-btn" id="js-cta" href="#" target="_blank" rel="noopener">Book your consultation</a>
+      </div>
+    </div>
+    <div style="text-align:center;"><a class="back" href="/begin/ascend">&larr; Back to all options</a></div>
+  </section>
+
+  <section class="shell">
+    <iframe src="/embed" title="Ask Dr. Glen" loading="lazy"
+      style="width:100%;height:480px;max-height:70vh;border:1px solid var(--border);border-radius:14px;background:var(--surface);margin:18px 0;"></iframe>
+  </section>
+
+  <footer>
+    <p class="foot-note">Shared in the spirit of education and self-understanding. These are training, installation, and immersion offerings: wellness and educational guidance, not a substitute for diagnosis or medical care from your own provider. Individual results will vary.</p>
+  </footer>
+
+  <script src="/ref-capture.js"></script>
+  <script>
+    var slug = location.pathname.split('/').filter(Boolean).pop();
+    function unlock(trigger, extra){ try{ var b=Object.assign({trigger:trigger, ref:getRef()}, extra||{});
+      return fetch('/begin/unlock',{method:'POST',headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',body:JSON.stringify(b)}); }catch(_){ } }
+
+    fetch('/begin/ascend-tier?slug='+encodeURIComponent(slug), {credentials:'same-origin'})
+      .then(function(resp){
+        if(!resp.ok){ location.replace('/begin/ascend'); return null; }
+        return resp.json();
+      })
+      .then(function(tier){
+        if(!tier) return;
+
+        // render tier fields via textContent only (never innerHTML of data)
+        var titleEl = document.getElementById('js-title');
+        var priceEl = document.getElementById('js-price');
+        var includedEl = document.getElementById('js-included');
+        var ctaEl = document.getElementById('js-cta');
+
+        titleEl.textContent = tier.title;
+        document.title = tier.title + ' | Dr. Glen Swartwout';
+
+        if(tier.value){
+          priceEl.textContent = tier.price + ' · ' + tier.value;
+        } else {
+          priceEl.textContent = tier.price;
+        }
+        includedEl.textContent = tier.included;
+        ctaEl.textContent = tier.cta_label;
+
+        // build CTA href with ref/utm threading
+        var ref = getRef() || 'remedy-match';
+        var ctaHref = 'https://truly.vip/Join?utm_source=' + encodeURIComponent(ref) +
+          '&utm_medium=affiliate&utm_campaign=begin-ascend-' + encodeURIComponent(slug);
+        ctaEl.setAttribute('href', ctaHref);
+
+        // fire paid_fork unlock on load
+        unlock('paid_fork', {detail: 'ascend-tier-' + tier.n});
+
+        // fire again on CTA click
+        ctaEl.addEventListener('click', function(){
+          unlock('paid_fork', {detail: 'ascend-tier-' + tier.n});
+        });
+      })
+      .catch(function(){ location.replace('/begin/ascend'); });
+
+    // reveal animation
+    (function(){ var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var items=Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+      if(reduce||!('IntersectionObserver'in window)){items.forEach(function(el){el.classList.add('in');});return;}
+      var io=new IntersectionObserver(function(entries){entries.forEach(function(entry){if(entry.isIntersecting){
+        var el=entry.target; setTimeout(function(){el.classList.add('in');},60); io.unobserve(el);}});},
+        {threshold:0.12, rootMargin:'0px 0px -8% 0px'});
+      items.forEach(function(el){io.observe(el);}); })();
+  </script>
+<script src="/widget.js" data-position="bottom-right" data-color="#d4a843" data-label="Ask Dr. Glen" data-title="Accelerated Self-Healing"></script>
+</body>
+</html>
