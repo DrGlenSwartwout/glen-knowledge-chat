@@ -130,8 +130,8 @@ WANT_TARGETS = {
     "results": "https://truly.vip/Results",
     "voice":   "/begin/voice",
     "path":    "/begin/path",
+    "ascend":  "/begin/ascend",
 }
-# not-yet-built rooms (no Slice 2 redirect): "ash"
 
 
 def resolve_want(want, ref=""):
@@ -390,9 +390,9 @@ CARD_CATALOG = {
     "ash_course":         {"title": "Learn to Heal Yourself",
                            "sub": "The Accelerated Self-Healing approach, step by step",
                            "base_url": "https://truly.vip/GetWell", "internal": False},
-    "ash_masterclass":    {"title": "Accelerate Self-Healing — Go Deeper",
-                           "sub": "The masterclass for those ready to fully begin",
-                           "base_url": "https://truly.vip/Intro", "internal": False},
+    "ash_masterclass":    {"title": "The Path Deeper: Choose Your Depth",
+                           "sub": "From a free orientation to full immersion. See the whole spectrum of how you can go further.",
+                           "base_url": "/begin/ascend", "internal": True},
     "pay_forward":        {"title": "Share Your Results, Lift Others",
                            "sub": "Pass your healing forward — and earn as you do",
                            "base_url": "/begin/path", "internal": True},

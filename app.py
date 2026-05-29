@@ -975,6 +975,20 @@ def begin_voice():
     return resp
 
 
+@app.route("/begin/ascend")
+def begin_ascend():
+    resp = send_from_directory(STATIC, "begin-ascend.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie(
+            "amg_session", uuid.uuid4().hex,
+            max_age=60 * 60 * 24 * 365,
+            httponly=True, samesite="Lax", secure=request.is_secure,
+        )
+    return resp
+
+
 @app.route("/begin/path")
 def begin_path():
     resp = send_from_directory(STATIC, "begin-path.html")

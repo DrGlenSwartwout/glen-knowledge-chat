@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Your Path, Your Depth | Dr. Glen Swartwout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+    --maxw:760px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1); }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{ background:var(--bg); color:var(--cream); font-family:"Open Sans",system-ui,sans-serif;
+    font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%); background-attachment:fixed; }
+  h1,h2,h3{ font-family:"Raleway",system-ui,sans-serif; font-weight:600; line-height:1.25; letter-spacing:-0.01em; }
+  a{ color:inherit; text-decoration:none; }
+  .shell{ max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+  .brandbar{ max-width:var(--maxw); margin:0 auto; padding:30px 24px 8px; display:flex; align-items:center; justify-content:center; gap:14px; }
+  .brand-mark{ width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 4px rgba(212,168,67,0.12); }
+  .brand-name{ font-family:"Raleway",sans-serif; font-weight:600; font-size:13px; letter-spacing:0.32em; text-transform:uppercase; color:var(--muted); }
+  .video{ position:relative; width:100%; aspect-ratio:16/9; border-radius:var(--radius); overflow:hidden; margin-top:32px;
+    background:radial-gradient(90% 120% at 50% 18%, #1a2c1f 0%, #0c1610 70%, #081109 100%); border:1px solid var(--border); }
+  .video .play{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:74px; height:74px; border-radius:50%;
+    display:grid; place-items:center; background:rgba(10,21,13,0.55); border:1px solid rgba(212,168,67,0.55); }
+  .video .play svg{ width:24px; height:24px; margin-left:4px; fill:var(--gold); }
+  .intro{ text-align:center; padding-top:34px; }
+  .eyebrow{ font-family:"Raleway",sans-serif; font-weight:600; font-size:12px; letter-spacing:0.34em; text-transform:uppercase; color:var(--green); margin-bottom:16px; }
+  .intro h1{ font-size:clamp(23px,5vw,31px); color:var(--cream); max-width:600px; margin:0 auto; }
+  .intro p{ color:var(--muted); font-size:15px; margin:14px auto 0; max-width:540px; }
+  .cards{ display:grid; grid-template-columns:1fr; gap:14px; margin-top:38px; }
+  .card{ position:relative; display:flex; align-items:flex-start; gap:18px; background:var(--surface);
+    border:1px solid var(--border); border-radius:var(--radius); padding:22px 24px; cursor:pointer;
+    transition:transform .4s var(--ease), border-color .4s var(--ease), background .4s var(--ease); }
+  .card:hover{ transform:translateY(-2px); border-color:rgba(212,168,67,0.45); background:var(--surface-2); }
+  .card-num{ flex:none; width:40px; height:40px; border-radius:50%; display:grid; place-items:center;
+    border:1px solid var(--border); color:var(--gold); font-family:"Raleway",sans-serif; font-weight:600; font-size:14px; }
+  .card-body{ flex:1; min-width:0; }
+  .card-title{ font-family:"Raleway",sans-serif; font-weight:600; font-size:17px; color:var(--cream); line-height:1.3; }
+  .card-sub{ font-size:13.5px; color:var(--muted); margin-top:5px; line-height:1.5; }
+  .price{ display:inline-block; margin-top:10px; font-family:"Raleway",sans-serif; font-weight:600; font-size:12.5px;
+    letter-spacing:0.04em; color:var(--gold); border:1px solid rgba(212,168,67,0.4); border-radius:999px; padding:3px 12px; }
+  .price.free{ color:var(--green); border-color:rgba(61,138,82,0.5); }
+  footer{ margin-top:52px; padding:28px 24px 44px; text-align:center; border-top:1px solid rgba(33,71,45,0.5); }
+  .foot-note{ font-size:12.5px; color:var(--muted); opacity:0.7; max-width:540px; margin:0 auto; line-height:1.7; }
+  .back{ display:inline-block; margin-top:18px; color:var(--muted); font-size:13px; }
+  .back:hover{ color:var(--gold); }
+  .reveal{ opacity:0; transform:translateY(14px); }
+  .reveal.in{ opacity:1; transform:none; transition:opacity .8s var(--ease), transform .8s var(--ease); }
+  @media (prefers-reduced-motion: reduce){ .reveal{opacity:1; transform:none;} }
+  @media(max-width:560px){ body{font-size:16px;} .shell{padding:0 18px;} .card{padding:18px;gap:13px;}
+    .card-num{width:36px;height:36px;font-size:13px;} .card-title{font-size:15.5px;} }
+</style>
+</head>
+<body>
+  <div class="brandbar"><span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;·&nbsp; Healing&nbsp;Oasis</span></div>
+
+  <section class="shell">
+    <div class="video reveal" role="button" aria-label="Play the ascension overview">
+      <div class="play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+    </div>
+  </section>
+
+  <section class="shell intro">
+    <p class="eyebrow reveal">Your path, your depth</p>
+    <h1 class="reveal">Begin free, then ascend as far as you choose.</h1>
+    <p class="reveal">From self-paced learning to a fully installed Healing Oasis, every step is open to you. Start where you are; go as deep as you wish.</p>
+  </section>
+
+  <section class="shell">
+    <div class="cards">
+      <a class="card reveal" data-tier="1" data-ext="https://truly.vip/GetWell">
+        <span class="card-num">01</span><span class="card-body">
+          <span class="card-title">DIY Self-Paced Course</span>
+          <span class="card-sub">Learn remedy matching and begin healing yourself. No services cost.</span>
+          <span class="price free">Free</span></span></a>
+
+      <a class="card reveal" data-tier="2" data-ext="https://truly.vip/Intro">
+        <span class="card-num">02</span><span class="card-body">
+          <span class="card-title">Free MasterClass Orientation</span>
+          <span class="card-sub">Dr. Glen's introduction to the full spectrum of Accelerated Self-Healing.</span>
+          <span class="price free">Free</span></span></a>
+
+      <a class="card reveal paid" data-tier="3" data-ext="https://truly.vip/Join">
+        <span class="card-num">03</span><span class="card-body">
+          <span class="card-title">Causal Biofield Analysis + Program Design + Consultation</span>
+          <span class="card-sub">Your ASH Causal Biofield Analysis, a Functional Formulation program designed for you, and a consultation.</span>
+          <span class="price">$300 &middot; $1,000 value</span></span></a>
+
+      <a class="card reveal paid" data-tier="4" data-ext="https://truly.vip/Join">
+        <span class="card-num">04</span><span class="card-body">
+          <span class="card-title">ASH Certification Training</span>
+          <span class="card-sub">Train in the Accelerated Self-Healing method.</span>
+          <span class="price">~$3,600</span></span></a>
+
+      <a class="card reveal paid" data-tier="5" data-ext="https://truly.vip/Join">
+        <span class="card-num">05</span><span class="card-body">
+          <span class="card-title">ASH 1:1 Live Support + Certification</span>
+          <span class="card-sub">Six months of live one-to-one support alongside your certification.</span>
+          <span class="price">~$8,500 &middot; 6 months</span></span></a>
+
+      <a class="card reveal paid" data-tier="6" data-ext="https://truly.vip/Join">
+        <span class="card-num">06</span><span class="card-body">
+          <span class="card-title">Healing Oasis Tools Installation + Training + Certification</span>
+          <span class="card-sub">Your own Healing Oasis tools installed, full tools training, and ASH certification.</span>
+          <span class="price">~$14,000</span></span></a>
+
+      <a class="card reveal paid" data-tier="7" data-ext="https://truly.vip/Join">
+        <span class="card-num">07</span><span class="card-body">
+          <span class="card-title">Hawaii Island Technology Detox at The Shire</span>
+          <span class="card-sub">A one-week immersion on Hawaii Island: Healing Oasis package, training, and ASH certification.</span>
+          <span class="price">~$25,000 &middot; 1 week</span></span></a>
+
+      <a class="card reveal paid" data-tier="8" data-ext="https://truly.vip/Join">
+        <span class="card-num">08</span><span class="card-body">
+          <span class="card-title">Complete Consultant Package</span>
+          <span class="card-sub">Everything, including the software, to run your own Accelerated Self-Healing practice.</span>
+          <span class="price">~$50,000</span></span></a>
+    </div>
+    <div style="text-align:center;"><a class="back" href="/begin">&larr; Back to the beginning</a></div>
+  </section>
+
+  <footer>
+    <p class="foot-note">Shared in the spirit of education and self-understanding. These are training, installation, and immersion offerings: wellness and educational guidance, not a substitute for diagnosis or medical care from your own provider.</p>
+  </footer>
+
+  <script>
+    (function(){try{var ref=(new URLSearchParams(location.search).get('ref')||'').trim();
+      if(ref&&/^[A-Za-z0-9_-]{1,64}$/.test(ref)){document.cookie='rm_ref='+encodeURIComponent(ref)+';path=/;max-age='+(90*24*3600)+';SameSite=Lax';localStorage.setItem('rm_ref',ref);}}catch(_){}})();
+    function getRef(){try{var m=document.cookie.match(/(?:^|;\s*)rm_ref=([^;]+)/);if(m)return decodeURIComponent(m[1]);return localStorage.getItem('rm_ref')||'';}catch(_){return'';}}
+    function unlock(trigger, extra){ try{ var b=Object.assign({trigger:trigger, ref:getRef()}, extra||{});
+      return fetch('/begin/unlock',{method:'POST',headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',body:JSON.stringify(b)}); }catch(_){ } }
+
+    // entering the ascension room = a 'paid_fork' micro-commitment (→ choose_path rung)
+    unlock('paid_fork');
+
+    var slug = encodeURIComponent(getRef()||'remedy-match');
+    Array.prototype.forEach.call(document.querySelectorAll('.card[data-ext]'), function(el){
+      var n = el.getAttribute('data-tier');
+      el.setAttribute('href', el.getAttribute('data-ext') + '?utm_source=' + slug +
+        '&utm_medium=affiliate&utm_campaign=begin-ascend-tier-' + n);
+      el.setAttribute('target', '_blank'); el.setAttribute('rel', 'noopener');
+      if (el.classList.contains('paid')) {
+        el.addEventListener('click', function(){ unlock('paid_fork', {detail: 'ascend-tier-' + n}); });
+      }
+    });
+
+    (function(){ var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var items=Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+      if(reduce||!('IntersectionObserver'in window)){items.forEach(function(el){el.classList.add('in');});return;}
+      var io=new IntersectionObserver(function(entries){entries.forEach(function(entry){if(entry.isIntersecting){
+        var el=entry.target; setTimeout(function(){el.classList.add('in');},60); io.unobserve(el);}});},
+        {threshold:0.12, rootMargin:'0px 0px -8% 0px'});
+      items.forEach(function(el){io.observe(el);}); })();
+  </script>
+</body>
+</html>

@@ -309,3 +309,12 @@ def test_portal_data_returns_social_links(monkeypatch, tmp_path):
     d = client.get("/affiliate/portal-data?token=tok-approved").get_json()
     assert "social_links" in d
     assert any(s["url"] == "https://youtu.be/abc" for s in d["social_links"])
+
+
+def test_begin_ascend_serves_and_mints_session(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    client = app_module.app.test_client()
+    r = client.get("/begin/ascend")
+    assert r.status_code == 200
+    assert "amg_session=" in r.headers.get("Set-Cookie", "")

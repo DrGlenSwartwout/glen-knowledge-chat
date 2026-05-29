@@ -405,3 +405,18 @@ def test_affiliate_social_links_table_exists():
     cols = {r[1] for r in cx.execute("PRAGMA table_info(affiliate_social_links)")}
     for c in ("slug", "url", "points", "views", "likes", "shares", "ts"):
         assert c in cols, c
+
+
+# ---------------------------------------------------------------------------
+# Slice 6 Task 1 — ash_masterclass → /begin/ascend + want=ascend
+# ---------------------------------------------------------------------------
+
+def test_ash_masterclass_card_points_to_ascension_room():
+    import begin_funnel as bf
+    assert bf.CARD_CATALOG["ash_masterclass"]["internal"] is True
+    assert bf.card_href("ash_masterclass", "Jane") == "/begin/ascend"
+
+
+def test_resolve_want_ascend_is_internal_room():
+    import begin_funnel as bf
+    assert bf.resolve_want("ascend", "Jane") == "/begin/ascend"
