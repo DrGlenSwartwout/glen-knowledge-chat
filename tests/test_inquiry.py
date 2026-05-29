@@ -634,3 +634,27 @@ def test_inquiry_reply_bad_token_4xx(app_client):
     iid, _ = _seed_inquiry_with_reply_token(app_module, db)
     r = client.get(f"/inquiries/{iid}/p1/reply?token=not-a-real-token")
     assert r.status_code in (400, 403, 404)
+
+
+def test_inquiry_dedupe_when_all_skipped(app_client):
+    """Regression: a replay with the same set should dedupe even when all
+    recipients are skipped (e.g. a bogus practitioner_id), not fall through
+    to the 1-per-session rate limit."""
+    client, app_module, db = app_client
+    body = {
+        "client_name": "Q",
+        "client_email": "q@example.com",
+        "main_challenge": "x",
+        "main_goal": "y",
+        "practitioner_ids": ["zzz-not-real"],
+    }
+    r1 = client.post("/api/practitioner-finder/inquiry", json=body)
+    assert r1.status_code == 200
+    j1 = r1.get_json()
+    assert j1["sent_count"] == 0
+    assert any(s["reason"] == "not_found" for s in j1["skipped"])
+    r2 = client.post("/api/practitioner-finder/inquiry", json=body)
+    assert r2.status_code == 200, r2.get_json()
+    j2 = r2.get_json()
+    assert j2.get("deduped") is True
+    assert j2["inquiry_id"] == j1["inquiry_id"]

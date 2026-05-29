@@ -9291,7 +9291,18 @@ def practitioner_finder_inquiry():
             (inquiry_id, created_at, session_id, client_email, client_name, client_phone,
              ref_slug or None, main_challenge, main_goal, pcount, ip or None)
         )
-        # inquiry_practitioners rows (only for to_send; skipped entries are in the response, not the DB)
+        # inquiry_practitioners rows for skipped recipients too, so the dedupe SELECT
+        # sees the full requested set (else a replay with all-skipped ids returns 429)
+        for s in skipped:
+            cx.execute(
+                "INSERT INTO inquiry_practitioners "
+                "(id, inquiry_id, practitioner_id, practitioner_email, status, email_sent_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (str(uuid.uuid4()), inquiry_id, s["practitioner_id"],
+                 (records_map.get(s["practitioner_id"], {}).get("email") or "").strip(),
+                 "skipped_" + s["reason"], None)
+            )
+        # inquiry_practitioners rows for to_send (the ones we actually email)
         for rec, plain_reply, plain_optout, plain_claim in send_tokens:
             pid        = str(rec["id"])
             email_addr = rec["email"].strip()
