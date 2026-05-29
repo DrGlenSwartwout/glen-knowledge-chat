@@ -452,3 +452,17 @@ def test_record_unlock_stores_last_name():
     st = begin_funnel.get_state(cx, "s1")
     assert st.get("first_name") == "Glen"
     assert st.get("last_name") == "Swartwout"
+
+
+def test_tier_catalog_has_six_paid_tiers():
+    import begin_funnel
+    assert len(begin_funnel.TIER_CATALOG) == 6
+    assert set(begin_funnel.TIER_CATALOG) == {
+        "biofield-analysis","certification","one-to-one",
+        "healing-oasis-tools","hawaii-immersion","consultant-package"}
+
+def test_tier_for_known_and_unknown():
+    import begin_funnel
+    t = begin_funnel.tier_for("hawaii-immersion")
+    assert t and t["n"] == 7 and "Hawai" in t["title"]
+    assert begin_funnel.tier_for("nope") is None
