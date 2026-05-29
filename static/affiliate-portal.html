@@ -166,8 +166,9 @@ function timeAgo(iso) {
   return `${Math.floor(diff/86400)}d ago`;
 }
 
+let token = '';
 async function loadPortal() {
-  const token = new URLSearchParams(location.search).get('token');
+  token = new URLSearchParams(location.search).get('token');
   if (!token) { showError(); return; }
 
   try {
