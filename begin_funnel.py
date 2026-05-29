@@ -408,7 +408,7 @@ CARD_CATALOG = {
                            "base_url": "/begin/path", "internal": True},
     "practitioner":       {"title": "Find a Practitioner Near You",
                            "sub": "Connect with a practitioner who fits your path",
-                           "base_url": "/practitioner", "internal": True},
+                           "base_url": "/practitioner-finder", "internal": True},
 }
 
 
