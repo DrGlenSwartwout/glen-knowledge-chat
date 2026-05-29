@@ -322,6 +322,28 @@
   #send-btn:hover { opacity: 0.85; }
   #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  /* ── Mic button ── */
+  #mic-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    font-size: 15px; padding: 0 10px;
+    cursor: pointer; flex-shrink: 0;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    height: 38px; display: flex; align-items: center; justify-content: center;
+  }
+  #mic-btn:hover { border-color: var(--accent); color: var(--text); }
+  #mic-btn.recording {
+    border-color: #c0392b; color: #c0392b; background: #2d1010;
+    animation: mic-pulse 1s ease-in-out infinite;
+  }
+  #mic-btn.busy { opacity: 0.5; cursor: not-allowed; }
+  @keyframes mic-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+
   /* ── Empty state ── */
   .empty-state {
     display: flex; flex-direction: column;
@@ -449,6 +471,7 @@
     placeholder="Ask a question… or share a concern."
     rows="1"
     onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+  <button id="mic-btn" title="Record voice input" aria-label="Record voice input" onclick="toggleMic()">&#127908;</button>
   <button id="send-btn" onclick="sendQuery()">Send</button>
 </div>
 
@@ -1022,6 +1045,118 @@
       alert('Connection error: ' + e.message);
     }
   }
+
+  // ── Mic / voice input ──
+  (function () {
+    // Hide the mic button if the browser lacks MediaRecorder or getUserMedia.
+    var _micBtn = document.getElementById('mic-btn');
+    if (!_micBtn) return;
+    if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      _micBtn.style.display = 'none';
+      return;
+    }
+
+    var _micRecorder   = null;
+    var _micStream     = null;
+    var _micChunks     = [];
+    var _micRecording  = false;
+
+    function _setMicState(state) {
+      // state: 'idle' | 'recording' | 'busy'
+      _micBtn.classList.remove('recording', 'busy');
+      if (state === 'recording') {
+        _micBtn.classList.add('recording');
+        _micBtn.title = 'Stop recording';
+        _micBtn.setAttribute('aria-label', 'Stop recording');
+      } else if (state === 'busy') {
+        _micBtn.classList.add('busy');
+        _micBtn.title = 'Transcribing…';
+        _micBtn.setAttribute('aria-label', 'Transcribing…');
+      } else {
+        _micBtn.title = 'Record voice input';
+        _micBtn.setAttribute('aria-label', 'Record voice input');
+      }
+    }
+
+    function _stopTracks() {
+      if (_micStream) {
+        _micStream.getTracks().forEach(function (t) { try { t.stop(); } catch (_) {} });
+        _micStream = null;
+      }
+    }
+
+    async function _startRecording() {
+      _micChunks = [];
+      try {
+        _micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (e) {
+        console.warn('[mic] getUserMedia denied:', e);
+        return;
+      }
+      var mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+      try {
+        _micRecorder = mime
+          ? new MediaRecorder(_micStream, { mimeType: mime })
+          : new MediaRecorder(_micStream);
+      } catch (e) {
+        console.warn('[mic] MediaRecorder init failed:', e);
+        _stopTracks();
+        return;
+      }
+      _micRecorder.ondataavailable = function (e) {
+        if (e.data && e.data.size > 0) _micChunks.push(e.data);
+      };
+      _micRecorder.onstop = _onRecordingStop;
+      _micRecorder.start();
+      _micRecording = true;
+      _setMicState('recording');
+    }
+
+    function _stopRecording() {
+      if (_micRecorder && _micRecorder.state !== 'inactive') {
+        try { _micRecorder.stop(); } catch (_) {}
+      }
+      _micRecording = false;
+    }
+
+    async function _onRecordingStop() {
+      _stopTracks();
+      _setMicState('busy');
+      var blob = new Blob(_micChunks, { type: (_micRecorder && _micRecorder.mimeType) || 'audio/webm' });
+      _micChunks = [];
+      _micRecorder = null;
+      var ext = (blob.type && blob.type.includes('mp4')) ? 'clip.mp4' : 'clip.webm';
+      var fd = new FormData();
+      fd.append('audio', blob, ext);
+      try {
+        var r = await fetch(BASE + '/transcribe', { method: 'POST', body: fd, credentials: 'same-origin' });
+        if (r.ok) {
+          var d = await r.json();
+          var text = (d && d.text) ? d.text.trim() : '';
+          if (text) {
+            var inp = document.getElementById('query-input');
+            if (inp) { inp.value = text; autoResize(inp); inp.focus(); }
+          }
+        } else {
+          console.warn('[mic] /transcribe returned', r.status);
+        }
+      } catch (e) {
+        console.warn('[mic] fetch /transcribe failed:', e);
+      }
+      _setMicState('idle');
+    }
+
+    window.toggleMic = function () {
+      if (_micBtn.classList.contains('busy')) return;
+      if (_micRecording) {
+        _stopRecording();
+      } else {
+        _startRecording();
+      }
+    };
+  })();
 
   // ── Markdown renderer ──
   function md(text) {

@@ -1,4 +1,5 @@
 import importlib
+import io
 import sys
 from pathlib import Path
 
@@ -364,3 +365,21 @@ def test_begin_card_click_logs_and_204(monkeypatch, tmp_path):
     assert n == 1
     r2 = client.post("/begin/card-click", json={"key": "not_a_card"})
     assert r2.status_code == 204
+
+
+def test_transcribe_returns_text(monkeypatch, tmp_path):
+    app_module = _load_app()
+    import journal_blueprint
+    monkeypatch.setattr(journal_blueprint, "_whisper_transcribe", lambda p: {"text": "hello from whisper"})
+    client = app_module.app.test_client()
+    data = {"audio": (io.BytesIO(b"RIFFfake"), "clip.webm")}
+    r = client.post("/transcribe", data=data, content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert r.get_json()["text"] == "hello from whisper"
+
+
+def test_transcribe_no_audio_400(monkeypatch, tmp_path):
+    app_module = _load_app()
+    client = app_module.app.test_client()
+    r = client.post("/transcribe", data={}, content_type="multipart/form-data")
+    assert r.status_code == 400

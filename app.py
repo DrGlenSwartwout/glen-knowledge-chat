@@ -8796,6 +8796,29 @@ def practitioner_finder_page():
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
+@app.route("/transcribe", methods=["POST"])
+def transcribe():
+    """Transcribe uploaded audio via Whisper (reuses journal_blueprint._whisper_transcribe)."""
+    import tempfile, os as _os
+    import journal_blueprint
+    if "audio" not in request.files:
+        return jsonify({"error": "no audio"}), 400
+    audio_file = request.files["audio"]
+    suffix = _os.path.splitext(audio_file.filename or "clip.webm")[1] or ".webm"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tf:
+        audio_file.save(tf.name)
+        audio_path = tf.name
+    try:
+        result = journal_blueprint._whisper_transcribe(audio_path)
+        return jsonify({"text": (result.get("text") or "").strip()})
+    except Exception as e:
+        print(f"[transcribe] {e!r}", flush=True)
+        return jsonify({"error": "transcription failed"}), 500
+    finally:
+        try: _os.unlink(audio_path)
+        except Exception: pass
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Cache pre-warm — runs per gunicorn worker boot.
 # QB banks has a 5-min in-memory cache; on a cold dyno the first request must
