@@ -318,3 +318,13 @@ def test_begin_ascend_serves_and_mints_session(monkeypatch, tmp_path):
     r = client.get("/begin/ascend")
     assert r.status_code == 200
     assert "amg_session=" in r.headers.get("Set-Cookie", "")
+
+
+def test_ask_serves_full_chat(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    client = app_module.app.test_client()
+    r = client.get("/ask")
+    assert r.status_code == 200
+    expected = (app_module.STATIC / "index.html").read_bytes()
+    assert r.data == expected

@@ -880,6 +880,14 @@ def index():
     return resp
 
 
+@app.route("/ask")
+def ask_page():
+    resp = send_from_directory(STATIC, "index.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/concierge")
 def concierge_page():
     resp = send_from_directory(STATIC, "concierge.html")
