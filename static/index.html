@@ -585,6 +585,39 @@
   .share-option:hover { background: var(--border); color: var(--text); }
   .share-option svg { width: 15px; height: 15px; flex-shrink: 0; }
 
+  /* ── Surfaced funnel cards (piece 2) ── */
+  .surfaced-cards {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .surfaced-cards-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+  .surfaced-cards-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .surfaced-card {
+    display: block;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 13px;
+    text-decoration: none;
+    transition: border-color 0.15s, background 0.15s;
+    flex: 1 1 160px;
+    max-width: 260px;
+  }
+  .surfaced-card:hover { border-color: var(--accent); background: var(--surface2); }
+  .surfaced-card-title { font-size: 13px; font-weight: 700; color: var(--text); }
+  .surfaced-card-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; line-height: 1.4; }
+
   /* ── Responsive ── */
   @media (max-width: 700px) {
     #sources-pane { display: none; }
@@ -1099,6 +1132,42 @@
     return wrap;
   }
 
+  function buildSurfacedCards(cards) {
+    // Returns a DOM node for the surfaced funnel card row, or null if no cards.
+    if (!cards || !cards.length) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'surfaced-cards';
+    const label = document.createElement('div');
+    label.className = 'surfaced-cards-label';
+    label.textContent = 'You might explore';
+    wrap.appendChild(label);
+    const row = document.createElement('div');
+    row.className = 'surfaced-cards-row';
+    cards.forEach(card => {
+      const a = document.createElement('a');
+      a.className = 'surfaced-card';
+      a.href = card.href;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.addEventListener('click', () => {
+        try {
+          navigator.sendBeacon('/begin/card-click', new Blob([JSON.stringify({key: card.key})], {type:'application/json'}));
+        } catch(e) {}
+      });
+      const titleEl = document.createElement('div');
+      titleEl.className = 'surfaced-card-title';
+      titleEl.textContent = card.title;
+      const subEl = document.createElement('div');
+      subEl.className = 'surfaced-card-sub';
+      subEl.textContent = card.sub;
+      a.appendChild(titleEl);
+      a.appendChild(subEl);
+      row.appendChild(a);
+    });
+    wrap.appendChild(row);
+    return wrap;
+  }
+
   function hoverStars(logId, n) {
     document.querySelectorAll(`#stars-${logId} .star`).forEach(s => {
       s.classList.toggle('hover', +s.dataset.n <= n);
@@ -1302,6 +1371,16 @@
               history.push({ role: 'user', content: query });
               history.push({ role: 'assistant', content: accumulated });
               if (evt.next_question) updateSuggestion(evt.next_question);
+              // Surfaced funnel cards (piece 2)
+              if (evt.surfaced_cards && evt.surfaced_cards.length) {
+                const _assist = msgs.querySelectorAll('.message.assistant');
+                const lastMsg = _assist.length ? _assist[_assist.length - 1] : null;
+                const cardNode = buildSurfacedCards(evt.surfaced_cards);
+                if (lastMsg && cardNode) {
+                  lastMsg.appendChild(cardNode);
+                  msgs.scrollTop = msgs.scrollHeight;
+                }
+              }
             }
           }
         }

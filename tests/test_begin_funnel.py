@@ -228,6 +228,27 @@ def test_deep_link_trigger_valid_but_not_a_gate():
     assert "deep_link" not in bf.GATE_TRIGGERS
 
 
+def test_surface_for_chat_single_gentle_card_on_no_signal():
+    import begin_funnel as begin_funnel
+    cards = begin_funnel.surface_for_chat({}, ["hello, how are you"], "")
+    assert [c["key"] for c in cards] == ["quiz"]
+
+
+def test_surface_for_chat_matches_topic_capped_at_2():
+    import begin_funnel as begin_funnel
+    q = ["I want a remedy for my eyes, find a practitioner near me, voice frequency scan"]
+    cards = begin_funnel.surface_for_chat({}, q, "")
+    keys = [c["key"] for c in cards]
+    assert len(keys) <= 2
+    assert keys[0] == "practitioner"
+
+
+def test_surface_unchanged_returns_default_trio_on_no_signal():
+    import begin_funnel as begin_funnel
+    cards = begin_funnel.surface({}, ["hello"], "")
+    assert [c["key"] for c in cards] == ["quiz", "e4l_scan", "intake"]
+
+
 def test_record_unlock_persists_awareness_from_query_texts():
     import begin_funnel as bf
     cx = _mem()
