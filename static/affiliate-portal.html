@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Affiliate Dashboard — Accelerate Self-Healing</title>
+<title>Affiliate Dashboard · Accelerate Self-Healing</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
@@ -125,17 +125,17 @@
 
   <div class="stats-row">
     <div class="stat-card">
-      <div class="stat-num" id="stat-total">&mdash;</div>
+      <div class="stat-num" id="stat-total">&ndash;</div>
       <div class="stat-label">Total Referrals</div>
       <div class="stat-sub" id="stat-last"></div>
     </div>
     <div class="stat-card">
-      <div class="stat-num" id="stat-conversions">&mdash;</div>
+      <div class="stat-num" id="stat-conversions">&ndash;</div>
       <div class="stat-label">Sales / Enrollments</div>
       <div class="stat-sub">credited to you</div>
     </div>
     <div class="stat-card">
-      <div class="stat-num" style="font-size:20px;padding-top:6px;" id="stat-slug">&mdash;</div>
+      <div class="stat-num" style="font-size:20px;padding-top:6px;" id="stat-slug">&ndash;</div>
       <div class="stat-label">Your Affiliate ID</div>
     </div>
   </div>
@@ -143,14 +143,14 @@
   <div class="section">
     <h2>Your Affiliate Links</h2>
     <div id="offers-container"></div>
-    <p class="link-hint">Share any of these links anywhere &mdash; email, social media, your website. Each visitor who arrives through your link is tracked as your referral.</p>
+    <p class="link-hint">Share any of these links anywhere: email, social media, your website. Each visitor who arrives through your link is tracked as your referral.</p>
   </div>
 
   <div class="section">
     <h2>How to Share</h2>
     <ul class="how-list">
       <li><span>&#128231;</span> Paste a link in emails to your list with a short note about why it's worth their time</li>
-      <li><span>&#128241;</span> Share on social media &mdash; these resources are free for the people who click</li>
+      <li><span>&#128241;</span> Share on social media. These resources are free for the people who click</li>
       <li><span>&#127760;</span> Add a link to your website or bio with a brief description</li>
       <li><span>&#128483;&#65039;</span> Mention it in your podcast, video, or at events</li>
     </ul>
@@ -176,7 +176,7 @@
       <span class="link-text" id="recruit-url" style="color:var(--gold);"></span>
       <button class="btn-copy" id="recruit-copy-btn" onclick="copyRecruit()" style="border-color:var(--gold);color:var(--gold);">Copy Link</button>
     </div>
-    <p class="link-hint">Know someone who'd make a great affiliate? Share this link &mdash; when they sign up, they're tracked as your recruit. <span id="recruited-count-text" style="color:var(--gold);font-weight:600;"></span></p>
+    <p class="link-hint">Know someone who'd make a great affiliate? Share this link. When they sign up, they're tracked as your recruit. <span id="recruited-count-text" style="color:var(--gold);font-weight:600;"></span></p>
   </div>
 
   <iframe src="/embed" title="Ask Dr. Glen" loading="lazy"
@@ -277,14 +277,14 @@ function render(d) {
   // Leads table
   const container = document.getElementById('leads-container');
   if (!d.recent || !d.recent.length) {
-    container.innerHTML = `<div class="empty-leads">No referrals yet &mdash; share your link to get started!</div>`;
+    container.innerHTML = `<div class="empty-leads">No referrals yet. Share your link to get started.</div>`;
   } else {
     container.innerHTML = `<table class="leads-table">
       <thead><tr><th>When</th><th>Name</th><th>Quiz Score</th></tr></thead>
       <tbody>${d.recent.map(r => `<tr>
         <td>${timeAgo(r.received_at)}</td>
         <td>${escHtml(r.name || 'Anonymous')}</td>
-        <td>${r.score ? `<span class="score-badge">${escHtml(r.score)}%</span>` : '&mdash;'}</td>
+        <td>${r.score ? `<span class="score-badge">${escHtml(r.score)}%</span>` : '&ndash;'}</td>
       </tr>`).join('')}</tbody>
     </table>`;
   }
@@ -306,7 +306,7 @@ function renderSocialLinks(links) {
     <thead><tr><th>URL</th><th>Points</th><th>Submitted</th></tr></thead>
     <tbody>${links.map(s => `<tr>
       <td><a href="${escHtml(s.url)}" target="_blank" rel="noopener" style="color:var(--accent-light)">${escHtml(s.url)}</a></td>
-      <td>${s.points != null ? `<span class="social-pts">${s.points}</span>` : '&mdash;'}</td>
+      <td>${s.points != null ? `<span class="social-pts">${s.points}</span>` : '&ndash;'}</td>
       <td style="color:var(--muted)">${s.ts ? timeAgo(s.ts) : ''}</td>
     </tr>`).join('')}</tbody>
   </table>`;
