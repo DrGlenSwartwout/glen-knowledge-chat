@@ -1373,7 +1373,8 @@
               if (evt.next_question) updateSuggestion(evt.next_question);
               // Surfaced funnel cards (piece 2)
               if (evt.surfaced_cards && evt.surfaced_cards.length) {
-                const lastMsg = msgs.querySelector('.message.assistant:last-of-type');
+                const _assist = msgs.querySelectorAll('.message.assistant');
+                const lastMsg = _assist.length ? _assist[_assist.length - 1] : null;
                 const cardNode = buildSurfacedCards(evt.surfaced_cards);
                 if (lastMsg && cardNode) {
                   lastMsg.appendChild(cardNode);
