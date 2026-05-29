@@ -902,10 +902,9 @@ def index():
 
 @app.route("/ask")
 def ask_page():
-    resp = send_from_directory(STATIC, "index.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    resp.headers["Pragma"] = "no-cache"
-    return resp
+    # Retired in Piece 3: the chat now lives inline on the funnel + as the widget.
+    from flask import redirect as _redirect
+    return _redirect("/", code=302)
 
 
 @app.route("/concierge")

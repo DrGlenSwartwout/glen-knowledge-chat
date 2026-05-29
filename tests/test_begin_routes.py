@@ -321,14 +321,13 @@ def test_begin_ascend_serves_and_mints_session(monkeypatch, tmp_path):
     assert "amg_session=" in r.headers.get("Set-Cookie", "")
 
 
-def test_ask_serves_full_chat(monkeypatch, tmp_path):
+def test_ask_redirects_to_funnel(monkeypatch, tmp_path):
     app_module = _load_app()
     monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
     client = app_module.app.test_client()
-    r = client.get("/ask")
-    assert r.status_code == 200
-    expected = (app_module.STATIC / "index.html").read_bytes()
-    assert r.data == expected
+    r = client.get("/ask")  # no follow
+    assert r.status_code == 302
+    assert (r.headers.get("Location") or "").endswith("/")  # redirects to the funnel homepage
 
 
 def test_root_serves_funnel_and_mints_session(monkeypatch, tmp_path):
