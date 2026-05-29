@@ -250,8 +250,11 @@
       });
     }
 
-    // Top-level chip behavior
-    document.querySelectorAll('.chip').forEach(btn => {
+    // Top-level chip behavior. Scope to category chips (those with
+    // data-parent) so the Fellows Only toggle — which is also a .chip — is
+    // NOT swept up by this handler or reset below; it owns its own click
+    // handler and its pressed (gold) state stays independent of categories.
+    document.querySelectorAll('.chip[data-parent]').forEach(btn => {
       btn.addEventListener('click', () => {
         const parent = btn.dataset.parent;
         if (filterState.parent === parent) {
@@ -261,7 +264,7 @@
         } else {
           filterState.parent = parent;
           filterState.sub = '__all__';
-          document.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', 'false'));
+          document.querySelectorAll('.chip[data-parent]').forEach(c => c.setAttribute('aria-pressed', 'false'));
           btn.setAttribute('aria-pressed', 'true');
           closeAllDrillDowns();
           if (parent !== '__all__') {
