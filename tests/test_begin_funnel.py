@@ -466,3 +466,32 @@ def test_tier_for_known_and_unknown():
     t = begin_funnel.tier_for("hawaii-immersion")
     assert t and t["n"] == 7 and "Hawai" in t["title"]
     assert begin_funnel.tier_for("nope") is None
+
+
+# ---------------------------------------------------------------------------
+# Affiliate journey wiring — engine-level tests
+# ---------------------------------------------------------------------------
+
+def test_affiliate_journey_paid_fork_reaches_choose_path():
+    import begin_funnel, sqlite3
+    cx = sqlite3.connect(":memory:")
+    begin_funnel.init_journey_tables(cx)
+    begin_funnel.record_unlock(cx, session_id="aff1", trigger="paid_fork",
+        email="ada@test.com", first_name="Ada", last_name="Lovelace",
+        path="pay_forward", detail="become_affiliate", ref_slug="recruiter-x")
+    st = begin_funnel.get_state(cx, "aff1")
+    assert st["current_rung"] == "choose_path"
+    assert st["path"] == "pay_forward"
+    assert st["ref_slug"] == "recruiter-x"
+    assert st["first_name"] == "Ada" and st["last_name"] == "Lovelace"
+
+
+def test_affiliate_journey_does_not_regress_advocate():
+    import begin_funnel, sqlite3
+    cx = sqlite3.connect(":memory:")
+    begin_funnel.init_journey_tables(cx)
+    begin_funnel.record_unlock(cx, session_id="a2", trigger="share_video", email="b@test.com", path="pay_forward")
+    begin_funnel.record_unlock(cx, session_id="a2", trigger="paid_fork", email="b@test.com", path="pay_forward", detail="become_affiliate")
+    st = begin_funnel.get_state(cx, "a2")
+    assert st["current_rung"] == "advocate"   # monotonic, does not regress
+    assert st["path"] == "pay_forward"

@@ -3,31 +3,54 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Affiliate Dashboard — Accelerate Self-Healing</title>
+<title>Affiliate Dashboard · Accelerate Self-Healing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --bg: #0d1117;
-    --surface: #161b22;
-    --border: #30363d;
-    --text: #e6edf3;
-    --muted: #8b949e;
-    --accent: #7c5cbf;
-    --accent-light: #a07fe0;
-    --green: #3fb950;
-    --radius: 10px;
+    --bg: #0a150d;
+    --surface: #111f16;
+    --surface-2: #162318;
+    --border: #21472d;
+    --cream: #fdf4d8;
+    --muted: #a89870;
+    --gold: #d4a843;
+    --green: #3d8a52;
+    --radius: 14px;
+    --ease: cubic-bezier(0.22,1,0.36,1);
+    /* Aliases for existing rules */
+    --text: var(--cream);
+    --accent: var(--gold);
+    --accent-light: var(--gold);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Open Sans", system-ui, sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%);
+    background-attachment: fixed;
+  }
+  h1, h2, h3 { font-family: "Raleway", sans-serif; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; }
+  a { color: inherit; text-decoration: none; }
 
-  #loading { display: flex; align-items: center; justify-content: center; min-height: 100vh; color: var(--muted); font-size: 15px; }
+  .brandbar { max-width: 680px; margin: 0 auto; padding: 30px 24px 8px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .brand-mark { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 4px rgba(212,168,67,0.12); }
+  .brand-name { font-family: "Raleway", sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 0.32em; color: var(--muted); }
+
+  #loading { display: flex; align-items: center; justify-content: center; min-height: 60vh; color: var(--muted); font-size: 15px; }
   #error-view { display: none; text-align: center; padding: 80px 24px; }
-  #error-view h2 { margin-bottom: 12px; }
+  #error-view h2 { margin-bottom: 12px; color: var(--cream); }
   #error-view p { color: var(--muted); margin-bottom: 20px; }
   #error-view a { color: var(--accent-light); }
   #portal { display: none; max-width: 680px; margin: 0 auto; padding: 32px 16px; }
 
   .portal-header { margin-bottom: 32px; }
-  .portal-header h1 { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+  .portal-header h1 { font-size: 22px; font-weight: 800; margin-bottom: 4px; color: var(--cream); }
   .portal-header p { color: var(--muted); font-size: 13px; }
 
   .stats-row { display: flex; gap: 12px; margin-bottom: 28px; }
@@ -42,7 +65,7 @@
   .link-box { display: flex; align-items: center; gap: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 12px 14px; }
   .link-text { flex: 1; font-family: monospace; font-size: 12px; color: var(--accent-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .btn-copy { border: 1px solid var(--accent); background: transparent; border-radius: 6px; color: var(--accent-light); cursor: pointer; padding: 6px 14px; font-size: 12px; font-weight: 600; white-space: nowrap; transition: all .15s; }
-  .btn-copy:hover { background: var(--accent); color: #fff; }
+  .btn-copy:hover { background: var(--gold); color: #0a150d; }
   .link-hint { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.6; }
 
   .how-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
@@ -60,35 +83,38 @@
 
   .leads-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .leads-table th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
-  .leads-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
+  .leads-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); color: var(--cream); }
   .leads-table tr:last-child td { border-bottom: none; }
-  .score-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; background: rgba(124,92,191,.2); color: var(--accent-light); font-size: 11px; font-weight: 600; }
+  .score-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; background: rgba(212,168,67,.2); color: var(--gold); font-size: 11px; font-weight: 600; }
   .empty-leads { text-align: center; padding: 24px; color: var(--muted); font-size: 13px; }
 
   .bookmark-note { font-size: 12px; color: var(--muted); text-align: center; padding: 16px 0 0; }
   .bookmark-note a { color: var(--accent-light); }
 
   .social-textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-size: 12px; font-family: monospace; padding: 10px 12px; resize: vertical; min-height: 72px; }
-  .social-textarea:focus { outline: 1px solid var(--accent); }
-  .btn-submit { margin-top: 10px; background: var(--accent); border: none; border-radius: 7px; color: #fff; cursor: pointer; font-size: 13px; font-weight: 600; padding: 9px 20px; transition: opacity .15s; }
+  .social-textarea:focus { outline: 1px solid var(--gold); }
+  .btn-submit { margin-top: 10px; background: var(--gold); border: none; border-radius: 7px; color: #0a150d; cursor: pointer; font-size: 13px; font-weight: 600; padding: 9px 20px; transition: opacity .15s; }
   .btn-submit:hover { opacity: .85; }
   .btn-submit:disabled { opacity: .45; cursor: default; }
   .social-msg { font-size: 12px; margin-top: 8px; min-height: 16px; }
   .social-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 14px; }
   .social-table th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-  .social-table td { padding: 8px; border-bottom: 1px solid var(--border); word-break: break-all; }
+  .social-table td { padding: 8px; border-bottom: 1px solid var(--border); word-break: break-all; color: var(--cream); }
   .social-table tr:last-child td { border-bottom: none; }
-  .social-pts { display: inline-block; padding: 2px 8px; border-radius: 10px; background: rgba(124,92,191,.2); color: var(--accent-light); font-size: 11px; font-weight: 600; }
+  .social-pts { display: inline-block; padding: 2px 8px; border-radius: 10px; background: rgba(212,168,67,.2); color: var(--gold); font-size: 11px; font-weight: 600; }
 </style>
 </head>
 <body>
 
-<div id="loading">Loading your dashboard…</div>
+<div class="brandbar"><span class="brand-mark" aria-hidden="true"></span>
+  <span class="brand-name">Remedy&nbsp;Match &nbsp;&middot;&nbsp; Healing&nbsp;Oasis</span></div>
+
+<div id="loading">Loading your dashboard&hellip;</div>
 
 <div id="error-view">
   <h2>Dashboard not found</h2>
   <p>This link may be invalid or expired.</p>
-  <a href="/affiliate">Apply for an affiliate account →</a>
+  <a href="/affiliate">Apply for an affiliate account &rarr;</a>
 </div>
 
 <div id="portal">
@@ -99,17 +125,17 @@
 
   <div class="stats-row">
     <div class="stat-card">
-      <div class="stat-num" id="stat-total">—</div>
+      <div class="stat-num" id="stat-total">&ndash;</div>
       <div class="stat-label">Total Referrals</div>
       <div class="stat-sub" id="stat-last"></div>
     </div>
     <div class="stat-card">
-      <div class="stat-num" id="stat-conversions">—</div>
+      <div class="stat-num" id="stat-conversions">&ndash;</div>
       <div class="stat-label">Sales / Enrollments</div>
       <div class="stat-sub">credited to you</div>
     </div>
     <div class="stat-card">
-      <div class="stat-num" style="font-size:20px;padding-top:6px;" id="stat-slug">—</div>
+      <div class="stat-num" style="font-size:20px;padding-top:6px;" id="stat-slug">&ndash;</div>
       <div class="stat-label">Your Affiliate ID</div>
     </div>
   </div>
@@ -117,16 +143,16 @@
   <div class="section">
     <h2>Your Affiliate Links</h2>
     <div id="offers-container"></div>
-    <p class="link-hint">Share any of these links anywhere — email, social media, your website. Each visitor who arrives through your link is tracked as your referral.</p>
+    <p class="link-hint">Share any of these links anywhere: email, social media, your website. Each visitor who arrives through your link is tracked as your referral.</p>
   </div>
 
   <div class="section">
     <h2>How to Share</h2>
     <ul class="how-list">
-      <li><span>📧</span> Paste a link in emails to your list with a short note about why it's worth their time</li>
-      <li><span>📱</span> Share on social media — these resources are free for the people who click</li>
-      <li><span>🌐</span> Add a link to your website or bio with a brief description</li>
-      <li><span>🗣️</span> Mention it in your podcast, video, or at events</li>
+      <li><span>&#128231;</span> Paste a link in emails to your list with a short note about why it's worth their time</li>
+      <li><span>&#128241;</span> Share on social media. These resources are free for the people who click</li>
+      <li><span>&#127760;</span> Add a link to your website or bio with a brief description</li>
+      <li><span>&#128483;&#65039;</span> Mention it in your podcast, video, or at events</li>
     </ul>
   </div>
 
@@ -144,18 +170,22 @@
     <div id="social-links-list"></div>
   </div>
 
-  <div class="section" id="recruit-section" style="border-color:#7c5cbf33;">
+  <div class="section" id="recruit-section" style="border-color:var(--border);">
     <h2>Recruit Other Affiliates</h2>
-    <div class="link-box" style="border-color:#7c5cbf55;">
-      <span class="link-text" id="recruit-url" style="color:#c4a8ff;"></span>
-      <button class="btn-copy" id="recruit-copy-btn" onclick="copyRecruit()" style="border-color:#7c5cbf;color:#c4a8ff;">Copy Link</button>
+    <div class="link-box" style="border-color:rgba(212,168,67,.35);">
+      <span class="link-text" id="recruit-url" style="color:var(--gold);"></span>
+      <button class="btn-copy" id="recruit-copy-btn" onclick="copyRecruit()" style="border-color:var(--gold);color:var(--gold);">Copy Link</button>
     </div>
-    <p class="link-hint">Know someone who'd make a great affiliate? Share this link — when they sign up, they're tracked as your recruit. <span id="recruited-count-text" style="color:#c4a8ff;font-weight:600;"></span></p>
+    <p class="link-hint">Know someone who'd make a great affiliate? Share this link. When they sign up, they're tracked as your recruit. <span id="recruited-count-text" style="color:var(--gold);font-weight:600;"></span></p>
   </div>
+
+  <iframe src="/embed" title="Ask Dr. Glen" loading="lazy"
+    style="width:100%;height:520px;max-height:70vh;border:1px solid var(--border);border-radius:14px;background:var(--surface);margin:18px 0;"></iframe>
 
   <p class="bookmark-note">Bookmark this page to check your referrals anytime. Questions? <a href="mailto:support@remedymatch.com">Contact us</a></p>
 </div>
 
+<script src="/ref-capture.js"></script>
 <script>
 function timeAgo(iso) {
   if (!iso) return '';
@@ -221,7 +251,7 @@ function render(d) {
   document.getElementById('recruited-count-text').textContent =
     rc ? `You've recruited ${rc} affiliate${rc === 1 ? '' : 's'} so far.` : '';
 
-  // Offers — driven by /affiliate/portal-data offers[]; falls back to legacy single tracking_url
+  // Offers -- driven by /affiliate/portal-data offers[]; falls back to legacy single tracking_url
   const offersBox = document.getElementById('offers-container');
   const offers = (d.offers && d.offers.length)
     ? d.offers
@@ -247,14 +277,14 @@ function render(d) {
   // Leads table
   const container = document.getElementById('leads-container');
   if (!d.recent || !d.recent.length) {
-    container.innerHTML = `<div class="empty-leads">No referrals yet — share your link to get started!</div>`;
+    container.innerHTML = `<div class="empty-leads">No referrals yet. Share your link to get started.</div>`;
   } else {
     container.innerHTML = `<table class="leads-table">
       <thead><tr><th>When</th><th>Name</th><th>Quiz Score</th></tr></thead>
       <tbody>${d.recent.map(r => `<tr>
         <td>${timeAgo(r.received_at)}</td>
         <td>${escHtml(r.name || 'Anonymous')}</td>
-        <td>${r.score ? `<span class="score-badge">${escHtml(r.score)}%</span>` : '—'}</td>
+        <td>${r.score ? `<span class="score-badge">${escHtml(r.score)}%</span>` : '&ndash;'}</td>
       </tr>`).join('')}</tbody>
     </table>`;
   }
@@ -276,7 +306,7 @@ function renderSocialLinks(links) {
     <thead><tr><th>URL</th><th>Points</th><th>Submitted</th></tr></thead>
     <tbody>${links.map(s => `<tr>
       <td><a href="${escHtml(s.url)}" target="_blank" rel="noopener" style="color:var(--accent-light)">${escHtml(s.url)}</a></td>
-      <td>${s.points != null ? `<span class="social-pts">${s.points}</span>` : '—'}</td>
+      <td>${s.points != null ? `<span class="social-pts">${s.points}</span>` : '&ndash;'}</td>
       <td style="color:var(--muted)">${s.ts ? timeAgo(s.ts) : ''}</td>
     </tr>`).join('')}</tbody>
   </table>`;

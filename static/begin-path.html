@@ -77,7 +77,7 @@
 
     <p class="section-label">Or go deeper, and help others (optional)</p>
     <div class="cards">
-      <a class="card" id="p-affiliate" href="/affiliate/apply">
+      <a class="card" id="p-affiliate" href="/affiliate">
         <span class="card-num">02</span>
         <span class="card-body">
           <span class="card-title">Become an Affiliate</span>
@@ -119,8 +119,9 @@
       e.setAttribute('href','https://truly.vip/Join?utm_source='+slug+'&utm_medium=affiliate&utm_campaign=begin-path-intake');
       e.addEventListener('click', function(){ unlock('paid_fork', {path:'private'}); }); })();
 
-    // Affiliate on-ramp (pay-it-forward): stamp path=pay_forward
+    // Affiliate on-ramp (pay-it-forward): thread ref, stamp path=pay_forward
     (function(){ var e=document.getElementById('p-affiliate'); if(!e) return;
+      e.setAttribute('href', '/affiliate' + (getRef() ? ('?ref=' + encodeURIComponent(getRef())) : ''));
       e.addEventListener('click', function(){ unlock('paid_fork', {path:'pay_forward'}); }); })();
 
     // Story video on-ramp (pay-it-forward): thread ref, fire share_video + path=pay_forward
