@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reply to inquiry · Remedy Match</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+    --maxw:700px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1); }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{ background:var(--bg); color:var(--cream); font-family:"Open Sans",system-ui,sans-serif;
+    font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%);
+    background-attachment:fixed; }
+  h1,h2,h3{ font-family:"Raleway",system-ui,sans-serif; font-weight:600; line-height:1.25; letter-spacing:-0.01em; }
+  a{ color:var(--gold); text-decoration:none; }
+  .shell{ max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+  .brandbar{ max-width:var(--maxw); margin:0 auto; padding:30px 24px 8px; display:flex; align-items:center; justify-content:center; gap:14px; }
+  .brand-mark{ width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 4px rgba(212,168,67,0.12); }
+  .brand-name{ font-family:"Raleway",sans-serif; font-weight:600; font-size:13px; letter-spacing:0.32em; color:var(--muted); }
+  .intro{ text-align:center; padding-top:48px; }
+  .eyebrow{ font-family:"Raleway",sans-serif; font-weight:600; font-size:12px; letter-spacing:0.34em; color:var(--green); margin-bottom:18px; }
+  .intro h1{ font-size:clamp(20px,4vw,27px); color:var(--cream); max-width:540px; margin:0 auto; }
+  .intro p{ color:var(--muted); font-size:15px; margin:10px auto 0; max-width:480px; }
+  .context-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:24px 28px; margin:32px auto 0; }
+  .context-label{ font-family:"Raleway",sans-serif; font-weight:600; font-size:11px; letter-spacing:0.28em;
+    color:var(--muted); margin-bottom:6px; }
+  .context-text{ font-size:15px; color:var(--cream); white-space:pre-wrap; word-break:break-word; }
+  .context-divider{ border:none; border-top:1px solid var(--border); margin:18px 0; }
+  .reply-form{ background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius);
+    padding:28px 32px; margin:24px auto 0; }
+  .reply-form label{ display:block; font-size:14px; color:var(--muted); margin-bottom:8px; }
+  textarea{ width:100%; min-height:140px; padding:12px 14px; background:var(--bg);
+    border:1px solid var(--border); border-radius:10px; color:var(--cream);
+    font-family:"Open Sans",sans-serif; font-size:15px; line-height:1.6;
+    resize:vertical; outline:none; transition:border-color .25s; }
+  textarea:focus{ border-color:rgba(212,168,67,0.5); }
+  button[type=submit]{ display:block; width:100%; margin-top:16px; padding:14px 24px;
+    background:var(--green); color:var(--cream); font-family:"Raleway",sans-serif;
+    font-weight:600; font-size:16px; border:none; border-radius:var(--radius);
+    cursor:pointer; transition:background .3s var(--ease); }
+  button[type=submit]:hover{ background:#2d6e3e; }
+  .confirmed{ text-align:center; padding-top:80px; }
+  .confirmed .check-icon{ font-size:40px; margin-bottom:16px; }
+  .confirmed h2{ color:var(--gold); font-size:22px; margin-bottom:10px; }
+  .confirmed p{ color:var(--muted); font-size:15px; max-width:420px; margin:0 auto; }
+  .error-page{ text-align:center; padding-top:60px; }
+  .error-page h2{ color:var(--muted); font-size:22px; margin-bottom:10px; }
+  .error-page p{ color:var(--muted); font-size:15px; }
+  footer{ margin-top:60px; padding:28px 24px 44px; text-align:center; border-top:1px solid rgba(33,71,45,0.5); }
+  .foot-note{ font-size:12.5px; color:var(--muted); opacity:0.7; max-width:520px; margin:0 auto; line-height:1.7; }
+  @media(max-width:560px){ body{font-size:16px;} .shell{padding:0 18px;} .reply-form{padding:22px 20px;} .context-card{padding:20px;} }
+</style>
+</head>
+<body>
+  <div class="brandbar">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;·&nbsp; Healing&nbsp;Oasis</span>
+  </div>
+
+  {% if status == "confirmed" %}
+  <section class="shell confirmed">
+    <div class="check-icon">&#10003;</div>
+    <h2>Your reply was sent.</h2>
+    <p>{{ client_first }} will receive your message. They may reply directly to your email address.</p>
+  </section>
+  {% elif status == "error" %}
+  <section class="shell error-page">
+    <h2>This reply link is no longer valid.</h2>
+    <p>It may have expired (links are valid for 30 days). You can still reply directly to the inquiry email you received.</p>
+  </section>
+  {% else %}
+  <section class="shell intro">
+    <p class="eyebrow">Client inquiry</p>
+    <h1>A potential client would like to hear from you.</h1>
+    <p>Read what they shared below, then send your reply. Your message goes directly to their inbox.</p>
+  </section>
+
+  <section class="shell">
+    <div class="context-card">
+      <p class="context-label">What they are working through</p>
+      <p class="context-text">{{ main_challenge }}</p>
+      <hr class="context-divider" />
+      <p class="context-label">What success looks like for them</p>
+      <p class="context-text">{{ main_goal }}</p>
+    </div>
+
+    <div class="reply-form">
+      <form method="POST" action="/inquiries/{{ inquiry_id }}/{{ practitioner_id }}/reply">
+        <input type="hidden" name="token" value="{{ token }}" />
+        <label for="reply-body">Your reply</label>
+        <textarea id="reply-body" name="body" placeholder="Share how you might be able to help, your approach, or next steps..." required></textarea>
+        <button type="submit">Send reply</button>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+
+  <footer>
+    <p class="foot-note">Remedy Match LLC, Hawaii, USA. This reply will be forwarded to the client on your behalf.</p>
+  </footer>
+</body>
+</html>

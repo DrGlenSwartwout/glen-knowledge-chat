@@ -424,3 +424,213 @@ def test_inquiry_unknown_practitioner_id_skipped_not_found(app_client):
     count = cx.execute("SELECT COUNT(*) FROM inquiries").fetchone()[0]
     cx.close()
     assert count == 1
+
+
+# --- Slice 3: token-gated routes ---
+
+@pytest.fixture
+def supabase_writes(monkeypatch):
+    """Capture _set_practitioner_accepts_inquiries calls."""
+    calls = []
+    def fake(pid, value, verified=False):
+        calls.append({"pid": pid, "value": value, "verified": verified})
+        return True
+    # set after _load_app via the existing fixture; the test re-patches per call
+    return calls, fake
+
+
+def _mint_auth_token(app_module, db, purpose, email, extra, ttl_seconds=86400):
+    """Insert an auth_tokens row and return the PLAINTEXT token."""
+    import secrets, json, sqlite3, time
+    plain = secrets.token_urlsafe(32)
+    th = app_module._hash_token(plain)
+    now_iso = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+    exp_iso = (__import__("datetime").datetime.utcnow() + __import__("datetime").timedelta(seconds=ttl_seconds)).isoformat() + "Z"
+    with sqlite3.connect(db) as cx:
+        cx.execute(
+            "INSERT INTO auth_tokens (token_hash, purpose, email, extra, created_at, expires_at, consumed_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, NULL)",
+            (th, purpose, email, json.dumps(extra), now_iso, exp_iso))
+        cx.commit()
+    return plain
+
+
+def test_practitioner_claim_get_renders_form(app_client, monkeypatch):
+    client, app_module, db = app_client
+    plain = _mint_auth_token(app_module, db, "practitioner_claim", "a@e.com",
+                             {"practitioner_id": "p1"}, ttl_seconds=7*86400)
+    r = client.get(f"/practitioner-claim/{plain}")
+    assert r.status_code == 200
+    assert b"<form" in r.data
+    # Practitioner name is rendered safely from extra/lookup
+    assert b"Confirm" in r.data or b"accept client inquiries" in r.data
+
+
+def test_practitioner_claim_post_flips_supabase(app_client, monkeypatch, supabase_writes):
+    client, app_module, db = app_client
+    calls, fake = supabase_writes
+    monkeypatch.setattr(app_module, "_set_practitioner_accepts_inquiries", fake)
+    plain = _mint_auth_token(app_module, db, "practitioner_claim", "a@e.com",
+                             {"practitioner_id": "p1"}, ttl_seconds=7*86400)
+    r = client.post(f"/practitioner-claim/{plain}")
+    assert r.status_code == 200
+    # Helper called with verified=True, value=True
+    assert calls == [{"pid": "p1", "value": True, "verified": True}]
+    # Token consumed (can't be reused)
+    import sqlite3
+    with sqlite3.connect(db) as cx:
+        row = cx.execute("SELECT consumed_at FROM auth_tokens WHERE purpose='practitioner_claim'").fetchone()
+    assert row[0] is not None
+
+
+def test_practitioner_claim_expired_token_returns_4xx(app_client, monkeypatch, supabase_writes):
+    client, app_module, db = app_client
+    calls, fake = supabase_writes
+    monkeypatch.setattr(app_module, "_set_practitioner_accepts_inquiries", fake)
+    plain = _mint_auth_token(app_module, db, "practitioner_claim", "a@e.com",
+                             {"practitioner_id": "p1"}, ttl_seconds=-1)
+    r = client.get(f"/practitioner-claim/{plain}")
+    assert r.status_code in (400, 410)
+    assert calls == []
+
+
+def test_practitioner_claim_already_consumed_returns_4xx(app_client, monkeypatch, supabase_writes):
+    client, app_module, db = app_client
+    calls, fake = supabase_writes
+    monkeypatch.setattr(app_module, "_set_practitioner_accepts_inquiries", fake)
+    plain = _mint_auth_token(app_module, db, "practitioner_claim", "a@e.com",
+                             {"practitioner_id": "p1"}, ttl_seconds=7*86400)
+    r1 = client.post(f"/practitioner-claim/{plain}")
+    assert r1.status_code == 200
+    r2 = client.post(f"/practitioner-claim/{plain}")
+    assert r2.status_code in (400, 410)
+    assert len(calls) == 1  # only the first call hit Supabase
+
+
+def test_practitioner_optout_records_and_flips(app_client, monkeypatch, supabase_writes):
+    client, app_module, db = app_client
+    calls, fake = supabase_writes
+    monkeypatch.setattr(app_module, "_set_practitioner_accepts_inquiries", fake)
+    plain = _mint_auth_token(app_module, db, "practitioner_optout", "a@e.com",
+                             {"practitioner_id": "p1"}, ttl_seconds=365*86400)
+    r = client.get(f"/practitioner-optout/{plain}")
+    assert r.status_code == 200
+    import sqlite3
+    with sqlite3.connect(db) as cx:
+        row = cx.execute("SELECT email, practitioner_id FROM practitioner_inquiry_opt_outs").fetchone()
+    assert row == ("a@e.com", "p1")
+    assert calls == [{"pid": "p1", "value": False, "verified": False}]
+
+
+def _seed_inquiry_with_reply_token(app_module, db, practitioner_id="p1"):
+    """Insert a complete inquiry + a reply token. Returns (inquiry_id, plain_token)."""
+    import secrets, uuid, sqlite3
+    iid = str(uuid.uuid4())
+    plain = secrets.token_urlsafe(32)
+    th = app_module._hash_token(plain)
+    now_iso = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+    exp_iso = (__import__("datetime").datetime.utcnow() + __import__("datetime").timedelta(days=30)).isoformat() + "Z"
+    with sqlite3.connect(db) as cx:
+        cx.execute(
+            "INSERT INTO inquiries (id, created_at, session_id, client_email, client_name, "
+            "client_phone, ref_slug, main_challenge, main_goal, practitioner_count, ip) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (iid, now_iso, "sess1", "client@e.com", "Client", "", "",
+             "challenge text", "goal text", 1, "1.2.3.4"))
+        cx.execute(
+            "INSERT INTO inquiry_practitioners (id, inquiry_id, practitioner_id, "
+            "practitioner_email, status, email_sent_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), iid, practitioner_id, "a@e.com", "sent", now_iso))
+        cx.execute(
+            "INSERT INTO inquiry_reply_tokens (token_hash, inquiry_id, practitioner_id, "
+            "created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+            (th, iid, practitioner_id, now_iso, exp_iso))
+        cx.commit()
+    return iid, plain
+
+
+def test_inquiry_reply_get_renders_context(app_client):
+    client, app_module, db = app_client
+    iid, plain = _seed_inquiry_with_reply_token(app_module, db)
+    r = client.get(f"/inquiries/{iid}/p1/reply?token={plain}")
+    assert r.status_code == 200
+    assert b"challenge text" in r.data
+    assert b"goal text" in r.data
+    assert b"<form" in r.data
+    # impression row written
+    import sqlite3
+    with sqlite3.connect(db) as cx:
+        n = cx.execute("SELECT COUNT(*) FROM inquiry_reply_impressions").fetchone()[0]
+    assert n == 1
+
+
+def test_inquiry_reply_xss_safe(app_client):
+    """main_challenge with HTML must be escaped in the rendered page."""
+    client, app_module, db = app_client
+    import sqlite3, secrets, uuid
+    iid = str(uuid.uuid4())
+    plain = secrets.token_urlsafe(32)
+    th = app_module._hash_token(plain)
+    now_iso = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+    exp_iso = (__import__("datetime").datetime.utcnow() + __import__("datetime").timedelta(days=30)).isoformat() + "Z"
+    with sqlite3.connect(db) as cx:
+        cx.execute(
+            "INSERT INTO inquiries (id, created_at, session_id, client_email, client_name, "
+            "client_phone, ref_slug, main_challenge, main_goal, practitioner_count, ip) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (iid, now_iso, "sess1", "client@e.com", "Client", "", "",
+             "<script>alert(1)</script>", "<img onerror=x>", 1, "1.2.3.4"))
+        cx.execute(
+            "INSERT INTO inquiry_practitioners (id, inquiry_id, practitioner_id, "
+            "practitioner_email, status, email_sent_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), iid, "p1", "a@e.com", "sent", now_iso))
+        cx.execute(
+            "INSERT INTO inquiry_reply_tokens (token_hash, inquiry_id, practitioner_id, "
+            "created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+            (th, iid, "p1", now_iso, exp_iso))
+        cx.commit()
+    r = client.get(f"/inquiries/{iid}/p1/reply?token={plain}")
+    assert r.status_code == 200
+    assert b"<script>alert(1)</script>" not in r.data
+    assert b"&lt;script&gt;" in r.data or b"&#x3C;script&#x3E;" in r.data.lower() or b"&lt;script" in r.data
+
+
+def test_inquiry_reply_post_forwards_and_marks_replied(app_client):
+    client, app_module, db = app_client
+    iid, plain = _seed_inquiry_with_reply_token(app_module, db)
+    r = client.post(f"/inquiries/{iid}/p1/reply",
+                    data={"token": plain, "body": "Sounds like a great fit. Available Tuesday."})
+    assert r.status_code == 200
+    # FakeSMTP captured a forward to the client
+    assert any(b"client@e.com" in i.sent[0][2] or "client@e.com" in i.sent[0][1]
+               for i in FakeSMTP.instances if i.sent)
+    import sqlite3
+    with sqlite3.connect(db) as cx:
+        reply = cx.execute("SELECT body, reply_method FROM inquiry_replies WHERE inquiry_id=?",
+                           (iid,)).fetchone()
+        status = cx.execute("SELECT status FROM inquiry_practitioners WHERE inquiry_id=?",
+                            (iid,)).fetchone()[0]
+    assert reply == ("Sounds like a great fit. Available Tuesday.", "form")
+    assert status == "replied"
+
+
+def test_inquiry_reply_two_views_one_reply(app_client):
+    client, app_module, db = app_client
+    iid, plain = _seed_inquiry_with_reply_token(app_module, db)
+    client.get(f"/inquiries/{iid}/p1/reply?token={plain}")
+    client.get(f"/inquiries/{iid}/p1/reply?token={plain}")
+    client.post(f"/inquiries/{iid}/p1/reply",
+                data={"token": plain, "body": "Yes"})
+    import sqlite3
+    with sqlite3.connect(db) as cx:
+        impressions = cx.execute("SELECT COUNT(*) FROM inquiry_reply_impressions").fetchone()[0]
+        replies = cx.execute("SELECT COUNT(*) FROM inquiry_replies").fetchone()[0]
+    assert impressions == 2
+    assert replies == 1
+
+
+def test_inquiry_reply_bad_token_4xx(app_client):
+    client, app_module, db = app_client
+    iid, _ = _seed_inquiry_with_reply_token(app_module, db)
+    r = client.get(f"/inquiries/{iid}/p1/reply?token=not-a-real-token")
+    assert r.status_code in (400, 403, 404)
