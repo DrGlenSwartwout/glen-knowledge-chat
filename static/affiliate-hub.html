@@ -4,48 +4,76 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Healing Resources</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f8f5f0;
-      color: #1a1a1a;
-      min-height: 100vh;
-      padding: 40px 16px 60px;
+    :root {
+      --bg: #0a150d;
+      --surface: #111f16;
+      --surface-2: #162318;
+      --border: #21472d;
+      --cream: #fdf4d8;
+      --muted: #a89870;
+      --gold: #d4a843;
+      --green: #3d8a52;
+      --radius: 14px;
+      --ease: cubic-bezier(0.22,1,0.36,1);
     }
-    .container { max-width: 560px; margin: 0 auto; }
-    .header { text-align: center; margin-bottom: 40px; }
+    body {
+      font-family: "Open Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--cream);
+      min-height: 100vh;
+      padding: 0 0 60px;
+      -webkit-font-smoothing: antialiased;
+      background-image: radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%);
+      background-attachment: fixed;
+    }
+    h1, h2, h3 { font-family: "Raleway", sans-serif; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; }
+    a { color: inherit; text-decoration: none; }
+
+    .brandbar { max-width: 600px; margin: 0 auto; padding: 30px 24px 8px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+    .brand-mark { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 4px rgba(212,168,67,0.12); }
+    .brand-name { font-family: "Raleway", sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 0.32em; color: var(--muted); }
+
+    .container { max-width: 560px; margin: 0 auto; padding: 0 16px; }
+    .header { text-align: center; margin-bottom: 40px; padding-top: 28px; }
     .header h1 {
       font-size: 1.5rem;
       font-weight: 700;
-      color: #2d6a4f;
+      color: var(--gold);
       margin-bottom: 6px;
     }
     .header .subtitle {
       font-size: 0.95rem;
-      color: #666;
+      color: var(--muted);
     }
     .header .via {
       font-size: 0.82rem;
-      color: #999;
+      color: var(--muted);
+      opacity: 0.7;
       margin-top: 4px;
     }
     .offer-card {
-      background: #fff;
-      border-radius: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
       padding: 24px;
       margin-bottom: 16px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+      transition: border-color .4s var(--ease);
     }
+    .offer-card:hover { border-color: rgba(212,168,67,0.35); }
     .offer-card h2 {
       font-size: 1.05rem;
       font-weight: 600;
-      color: #1a1a1a;
+      color: var(--cream);
       margin-bottom: 8px;
     }
     .offer-card p {
       font-size: 0.9rem;
-      color: #555;
+      color: var(--muted);
       line-height: 1.55;
       margin-bottom: 16px;
     }
@@ -57,9 +85,9 @@
     .offer-url {
       flex: 1;
       font-size: 0.78rem;
-      color: #2d6a4f;
-      background: #f0f7f3;
-      border: 1px solid #c5e0d0;
+      color: var(--gold);
+      background: var(--bg);
+      border: 1px solid var(--border);
       border-radius: 6px;
       padding: 7px 10px;
       overflow: hidden;
@@ -67,10 +95,11 @@
       white-space: nowrap;
       cursor: default;
       user-select: all;
+      font-family: monospace;
     }
     .btn-copy {
-      background: #2d6a4f;
-      color: #fff;
+      background: var(--gold);
+      color: #0a150d;
       border: none;
       border-radius: 6px;
       padding: 7px 14px;
@@ -80,13 +109,13 @@
       white-space: nowrap;
       transition: background .15s;
     }
-    .btn-copy:hover { background: #235c42; }
-    .btn-copy.copied { background: #4caf7d; }
+    .btn-copy:hover { background: #c49535; }
+    .btn-copy.copied { background: var(--green); color: #fff; }
     .btn-go {
       display: block;
       text-align: center;
-      background: #2d6a4f;
-      color: #fff;
+      background: var(--gold);
+      color: #0a150d;
       text-decoration: none;
       border-radius: 8px;
       padding: 11px 20px;
@@ -95,32 +124,40 @@
       margin-top: 10px;
       transition: background .15s;
     }
-    .btn-go:hover { background: #235c42; }
+    .btn-go:hover { background: #c49535; }
     .instructions {
       margin-top: 14px;
       padding: 14px 16px;
-      background: #f0f7f3;
+      background: var(--bg);
+      border: 1px solid var(--border);
       border-radius: 8px;
       font-size: 0.85rem;
-      color: #2d4a3d;
+      color: var(--muted);
       line-height: 1.65;
       white-space: pre-wrap;
     }
-    .instructions a { color: #2d6a4f; }
-    .error { text-align: center; color: #c0392b; padding: 40px 0; }
-    .loading { text-align: center; color: #999; padding: 40px 0; }
+    .instructions a { color: var(--gold); }
+    .error { text-align: center; color: #f85149; padding: 40px 0; }
+    .loading { text-align: center; color: var(--muted); padding: 40px 0; }
   </style>
 </head>
 <body>
+  <div class="brandbar"><span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;&middot;&nbsp; Healing&nbsp;Oasis</span></div>
+
   <div class="container">
     <div class="header">
       <h1 id="header-name">Healing Resources</h1>
       <div class="subtitle">Recommended by <span id="ref-name">your guide</span></div>
-      <div class="via">Dr. Glen Swartwout · Remedy Match</div>
+      <div class="via">Dr. Glen Swartwout &middot; Remedy Match</div>
     </div>
-    <div id="offers-list"><div class="loading">Loading…</div></div>
+    <div id="offers-list"><div class="loading">Loading&hellip;</div></div>
+
+    <iframe src="/embed" title="Ask Dr. Glen" loading="lazy"
+      style="width:100%;height:520px;max-height:70vh;border:1px solid var(--border);border-radius:14px;background:var(--surface);margin:18px 0;"></iframe>
   </div>
 
+  <script src="/ref-capture.js"></script>
   <script>
     const slug = location.pathname.split('/').pop();
 
@@ -166,7 +203,7 @@
               <div class="offer-url" title="${escHtml(o.url)}">${escHtml(o.url)}</div>
               <button class="btn-copy" data-url="${escHtml(o.url)}">Copy Link</button>
             </div>
-            <a class="btn-go" href="${escHtml(o.url)}" target="_blank" rel="noopener">Open →</a>
+            <a class="btn-go" href="${escHtml(o.url)}" target="_blank" rel="noopener">Open &rarr;</a>
             ${o.instructions ? `<div class="instructions">${renderInstructions(o.instructions)}</div>` : ''}
           </div>
         `).join('');
