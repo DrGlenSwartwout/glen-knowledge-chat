@@ -42,6 +42,11 @@ def init_journey_tables(cx):
         cx.execute("ALTER TABLE journey_state ADD COLUMN awareness_classified_at TEXT")
     except Exception:
         pass  # already exists
+    # Piece 3 additive migration — explicit last name capture.
+    try:
+        cx.execute("ALTER TABLE journey_state ADD COLUMN last_name TEXT")
+    except Exception:
+        pass  # already exists
     cx.execute("""
         CREATE TABLE IF NOT EXISTS journey_events (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -210,7 +215,7 @@ def _row_for_session(cx, session_id):
 # ---------------------------------------------------------------------------
 
 def record_unlock(cx, *, session_id, trigger, email="", detail="",
-                  first_name="", tos=False, ref_slug="", tos_version="",
+                  first_name="", last_name="", tos=False, ref_slug="", tos_version="",
                   want="", query_texts=None, path=""):
     if trigger not in VALID_TRIGGERS:
         raise ValueError(f"invalid trigger: {trigger!r}")
@@ -220,7 +225,7 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
 
     if row is None:
         gates = set()
-        existing = dict(email="", first_name="", ref_slug="",
+        existing = dict(email="", first_name="", last_name="", ref_slug="",
                         tos_agreed_at=None, tos_version=None,
                         created_at=now)
     else:
@@ -235,6 +240,7 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
         gates.add(trigger)
     new_email = (email or existing.get("email") or "").strip().lower()
     new_first = (first_name or existing.get("first_name") or "").strip()
+    new_last = (last_name or existing.get("last_name") or "").strip()
     new_ref = (ref_slug or existing.get("ref_slug") or "").strip()
     tos_at = existing.get("tos_agreed_at")
     tos_ver = existing.get("tos_version")
@@ -256,21 +262,21 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
     if row is None:
         cx.execute("""
             INSERT INTO journey_state
-              (session_id, email, first_name, ref_slug, current_rung,
+              (session_id, email, first_name, last_name, ref_slug, current_rung,
                unlocked_gates, awareness_stage, path, tos_agreed_at,
                tos_version, last_signal, created_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (session_id, new_email, new_first, new_ref, rung_after,
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (session_id, new_email, new_first, new_last, new_ref, rung_after,
               gates_json, _new_aw, _new_path, tos_at, tos_ver, trigger,
               now, now))
     else:
         cx.execute("""
             UPDATE journey_state SET
-              email=?, first_name=?, ref_slug=?, current_rung=?,
+              email=?, first_name=?, last_name=?, ref_slug=?, current_rung=?,
               unlocked_gates=?, awareness_stage=?, path=?, tos_agreed_at=?,
               tos_version=?, last_signal=?, updated_at=?
             WHERE id=?
-        """, (new_email, new_first, new_ref, rung_after, gates_json,
+        """, (new_email, new_first, new_last, new_ref, rung_after, gates_json,
               _new_aw, _new_path, tos_at, tos_ver, trigger, now, row["id"]))
 
     cx.execute("""
@@ -292,6 +298,7 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
 def _default_state(session_id, email):
     return {
         "session_id": session_id, "email": email or "", "first_name": "",
+        "last_name": "",
         "ref_slug": "", "current_rung": "arrival", "unlocked_gates": [],
         "awareness_stage": "unknown", "path": "none",
         "tos_agreed_at": None, "tos_version": None,
@@ -320,6 +327,7 @@ def get_state(cx, session_id="", email=""):
 
     gates = set()
     first_name = ""
+    last_name = ""
     ref_slug = ""
     email_final = email
     tos_at = None
@@ -330,6 +338,7 @@ def get_state(cx, session_id="", email=""):
     for r in rows:
         gates |= set(json.loads(r["unlocked_gates"] or "[]"))
         first_name = first_name or (r["first_name"] or "")
+        last_name = last_name or (r["last_name"] or "")
         ref_slug = ref_slug or (r["ref_slug"] or "")
         email_final = email_final or (r["email"] or "")
         tos_at = tos_at or r["tos_agreed_at"]
@@ -343,6 +352,7 @@ def get_state(cx, session_id="", email=""):
     rung = compute_rung(gates, email_final, bool(tos_at))
     return {
         "session_id": session_id, "email": email_final, "first_name": first_name,
+        "last_name": last_name,
         "ref_slug": ref_slug, "current_rung": rung,
         "unlocked_gates": sorted(gates), "awareness_stage": awareness,
         "path": path, "tos_agreed_at": tos_at, "tos_version": tos_ver,

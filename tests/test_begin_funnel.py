@@ -441,3 +441,14 @@ def test_ash_masterclass_card_points_to_ascension_room():
 def test_resolve_want_ascend_is_internal_room():
     import begin_funnel as bf
     assert bf.resolve_want("ascend", "Jane") == "/begin/ascend"
+
+
+def test_record_unlock_stores_last_name():
+    import begin_funnel, sqlite3
+    cx = sqlite3.connect(":memory:")
+    begin_funnel.init_journey_tables(cx)
+    begin_funnel.record_unlock(cx, session_id="s1", trigger="tos", email="a@b.com",
+                               first_name="Glen", last_name="Swartwout", tos=True)
+    st = begin_funnel.get_state(cx, "s1")
+    assert st.get("first_name") == "Glen"
+    assert st.get("last_name") == "Swartwout"

@@ -1072,6 +1072,10 @@ def begin_unlock():
         or uuid.uuid4().hex
     )
     name = (data.get("name") or "").strip()
+    first_name_explicit = (data.get("first_name") or "").strip()
+    last_name = (data.get("last_name") or "").strip()
+    # first_name: use explicit field if provided, else fall back to first token of name
+    first_name = first_name_explicit if first_name_explicit else (name.split(None, 1)[0] if name else "")
     email = (data.get("email") or "").strip().lower()
     tos = bool(data.get("tos"))
     detail = (data.get("detail") or "").strip()
@@ -1087,7 +1091,8 @@ def begin_unlock():
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             state = begin_funnel.record_unlock(
                 cx, session_id=session_id, trigger=trigger,
-                email=email, detail=detail, first_name=name, tos=tos,
+                email=email, detail=detail, first_name=first_name,
+                last_name=last_name, tos=tos,
                 ref_slug=ref_slug,
                 tos_version=BEGIN_TOS_VERSION if (tos or trigger == "tos") else "",
                 want=want, query_texts=query_texts, path=path,
@@ -1104,14 +1109,13 @@ def begin_unlock():
 
         def _onboard():
             try:
-                parts = (state.get("first_name") or "").split(None, 1)
-                first = parts[0] if parts else ""
-                last = parts[1] if len(parts) > 1 else ""
+                ghl_first = state.get("first_name") or ""
+                ghl_last = state.get("last_name") or ""
                 tags = ["begin", "concierge"]
                 if ref_slug:
                     tags.append(f"ref:{ref_slug}")
-                    _capture_concierge_referral(state["email"], first, last, ref_slug)
-                ghl_onboard_contact(state["email"], first, last,
+                    _capture_concierge_referral(state["email"], ghl_first, ghl_last, ref_slug)
+                ghl_onboard_contact(state["email"], ghl_first, ghl_last,
                                     source_tag="begin", extra_tags=tags)
             except Exception as e:
                 print(f"[begin-onboard] {e!r}", flush=True)

@@ -383,3 +383,22 @@ def test_transcribe_no_audio_400(monkeypatch, tmp_path):
     client = app_module.app.test_client()
     r = client.post("/transcribe", data={}, content_type="multipart/form-data")
     assert r.status_code == 400
+
+
+def test_begin_unlock_captures_last_name(monkeypatch, tmp_path):
+    import sqlite3, begin_funnel
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    monkeypatch.setattr(app_module, "ghl_onboard_contact", lambda *a, **k: {"contact_id": "x"})
+    monkeypatch.setattr(app_module, "_capture_concierge_referral", lambda *a, **k: None)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "ln-test")
+    r = client.post("/begin/unlock", json={"trigger":"tos","email":"a@b.com",
+                    "first_name":"Glen","last_name":"Swartwout","tos":True})
+    assert r.status_code == 200
+    # state should reflect the captured last name
+    s = client.get("/begin/state").get_json()
+    assert s.get("last_name") == "Swartwout"
