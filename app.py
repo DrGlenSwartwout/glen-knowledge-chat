@@ -1402,9 +1402,11 @@ def chat():
 
         surfaced_cards = []
         try:
+            # NOTE: _recent_query_texts acquires _db_lock itself, so it must be
+            # called OUTSIDE the lock block below (the lock is non-reentrant).
+            _qtexts = [query] + _recent_query_texts(session_id, email)
             with _db_lock, sqlite3.connect(LOG_DB) as _cx:
                 _state = begin_funnel.get_state(_cx, session_id, email)
-                _qtexts = [query] + _recent_query_texts(session_id, email)
                 surfaced_cards = begin_funnel.surface_for_chat(_state, _qtexts, ref_slug)
                 if surfaced_cards:
                     _cx.execute(
