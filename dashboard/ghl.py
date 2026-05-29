@@ -19,6 +19,64 @@ def _headers():
             "Accept": "application/json"}
 
 
+def _norm_name(s):
+    """Lowercase, collapse whitespace, drop punctuation for name comparison."""
+    import re
+    return re.sub(r"[^a-z0-9 ]", "", (s or "").lower()).strip()
+
+
+def find_contact_by_name(name, timeout=15):
+    """Resolve a 'Shipped To' name to a GHL contact email + confidence.
+
+    Uses the v1 search endpoint (`/contacts/?query=`), which — unlike the
+    `?email=` param — actually filters server-side. Returns:
+
+        {"email", "contact_id", "name", "confidence"}  or  None
+
+    confidence:
+        "high"   — exactly one candidate AND its name matches exactly (has email)
+        "medium" — exactly one candidate with an email (name not exact)
+        "low"    — multiple candidates; best-effort first one with an email
+    The watcher prefills To: for high/medium and leaves it blank (needs_review)
+    for low/none, so a fuzzy match never silently mails the wrong person.
+    """
+    name = (name or "").strip()
+    if not name:
+        return None
+    try:
+        r = requests.get(f"{BASE}/contacts/", headers=_headers(),
+                         params={"query": name, "limit": 20}, timeout=timeout)
+        r.raise_for_status()
+        contacts = r.json().get("contacts", []) or []
+    except Exception:
+        return None
+
+    target = _norm_name(name)
+    with_email = [c for c in contacts if c.get("email")]
+    if not with_email:
+        return None
+
+    def full_name(c):
+        return _norm_name(
+            c.get("contactName")
+            or " ".join(filter(None, [c.get("firstName"), c.get("lastName")]))
+        )
+
+    exact = [c for c in with_email if full_name(c) == target]
+    if len(exact) == 1:
+        c = exact[0]
+        return {"email": c["email"], "contact_id": c.get("id"),
+                "name": c.get("contactName"), "confidence": "high"}
+    if len(with_email) == 1:
+        c = with_email[0]
+        return {"email": c["email"], "contact_id": c.get("id"),
+                "name": c.get("contactName"), "confidence": "medium"}
+    # Ambiguous — return best exact-or-first, flagged low for human review.
+    c = exact[0] if exact else with_email[0]
+    return {"email": c["email"], "contact_id": c.get("id"),
+            "name": c.get("contactName"), "confidence": "low"}
+
+
 @cached("ghl.pipelines")
 def pipelines():
     r = requests.get(f"{BASE}/pipelines/", headers=_headers(), timeout=15)
