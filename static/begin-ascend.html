@@ -89,37 +89,37 @@
           <span class="card-sub">Dr. Glen's introduction to the full spectrum of Accelerated Self-Healing.</span>
           <span class="price free">Free</span></span></a>
 
-      <a class="card reveal paid" data-tier="3" data-ext="https://truly.vip/Join">
+      <a class="card reveal paid" data-tier="3" data-ext="https://truly.vip/Join" data-internal="/begin/ascend/biofield-analysis">
         <span class="card-num">03</span><span class="card-body">
           <span class="card-title">Causal Biofield Analysis + Program Design + Consultation</span>
           <span class="card-sub">Your ASH Causal Biofield Analysis, a Functional Formulation program designed for you, and a consultation.</span>
           <span class="price">$300 &middot; $1,000 value</span></span></a>
 
-      <a class="card reveal paid" data-tier="4" data-ext="https://truly.vip/Join">
+      <a class="card reveal paid" data-tier="4" data-ext="https://truly.vip/Join" data-internal="/begin/ascend/certification">
         <span class="card-num">04</span><span class="card-body">
           <span class="card-title">ASH Certification Training</span>
           <span class="card-sub">Train in the Accelerated Self-Healing method.</span>
           <span class="price">~$3,600</span></span></a>
 
-      <a class="card reveal paid" data-tier="5" data-ext="https://truly.vip/Join">
+      <a class="card reveal paid" data-tier="5" data-ext="https://truly.vip/Join" data-internal="/begin/ascend/one-to-one">
         <span class="card-num">05</span><span class="card-body">
           <span class="card-title">ASH 1:1 Live Support + Certification</span>
           <span class="card-sub">Six months of live one-to-one support alongside your certification.</span>
           <span class="price">~$8,500 &middot; 6 months</span></span></a>
 
-      <a class="card reveal paid" data-tier="6" data-ext="https://truly.vip/Join">
+      <a class="card reveal paid" data-tier="6" data-ext="https://truly.vip/Join" data-internal="/begin/ascend/healing-oasis-tools">
         <span class="card-num">06</span><span class="card-body">
           <span class="card-title">Healing Oasis Tools Installation + Training + Certification</span>
           <span class="card-sub">Your own Healing Oasis tools installed, full tools training, and ASH certification.</span>
           <span class="price">~$14,000</span></span></a>
 
-      <a class="card reveal paid" data-tier="7" data-ext="https://truly.vip/Join">
+      <a class="card reveal paid" data-tier="7" data-ext="https://truly.vip/Join" data-internal="/begin/ascend/hawaii-immersion">
         <span class="card-num">07</span><span class="card-body">
           <span class="card-title">Hawaii Island Technology Detox at The Shire</span>
           <span class="card-sub">A one-week immersion on Hawaii Island: Healing Oasis package, training, and ASH certification.</span>
           <span class="price">~$25,000 &middot; 1 week</span></span></a>
 
-      <a class="card reveal paid" data-tier="8" data-ext="https://truly.vip/Join">
+      <a class="card reveal paid" data-tier="8" data-ext="https://truly.vip/Join" data-internal="/begin/ascend/consultant-package">
         <span class="card-num">08</span><span class="card-body">
           <span class="card-title">Complete Consultant Package</span>
           <span class="card-sub">Everything, including the software, to run your own Accelerated Self-Healing practice.</span>
@@ -146,11 +146,16 @@
     var slug = encodeURIComponent(getRef()||'remedy-match');
     Array.prototype.forEach.call(document.querySelectorAll('.card[data-ext]'), function(el){
       var n = el.getAttribute('data-tier');
-      el.setAttribute('href', el.getAttribute('data-ext') + '?utm_source=' + slug +
-        '&utm_medium=affiliate&utm_campaign=begin-ascend-tier-' + n);
-      el.setAttribute('target', '_blank'); el.setAttribute('rel', 'noopener');
-      if (el.classList.contains('paid')) {
+      var internal = el.getAttribute('data-internal');
+      if (internal) {
+        // paid tier: link to internal per-tier page, stay in funnel
+        el.setAttribute('href', internal);
         el.addEventListener('click', function(){ unlock('paid_fork', {detail: 'ascend-tier-' + n}); });
+      } else {
+        // free tier: external truly.vip link with utm params
+        el.setAttribute('href', el.getAttribute('data-ext') + '?utm_source=' + slug +
+          '&utm_medium=affiliate&utm_campaign=begin-ascend-tier-' + n);
+        el.setAttribute('target', '_blank'); el.setAttribute('rel', 'noopener');
       }
     });
 
