@@ -322,6 +322,28 @@
   #send-btn:hover { opacity: 0.85; }
   #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  /* ── Mic button ── */
+  #mic-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    font-size: 15px; padding: 0 10px;
+    cursor: pointer; flex-shrink: 0;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    height: 38px; display: flex; align-items: center; justify-content: center;
+  }
+  #mic-btn:hover { border-color: var(--accent); color: var(--text); }
+  #mic-btn.recording {
+    border-color: #c0392b; color: #c0392b; background: #2d1010;
+    animation: mic-pulse 1s ease-in-out infinite;
+  }
+  #mic-btn.busy { opacity: 0.5; cursor: not-allowed; }
+  @keyframes mic-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+
   /* ── Empty state ── */
   .empty-state {
     display: flex; flex-direction: column;
@@ -386,6 +408,74 @@
   .embed-footer a { color: var(--text-muted); text-decoration: none; }
   .embed-footer a:hover { color: var(--accent); }
 
+  /* ── Funnel-mode gate (piece 3) ── */
+  #funnel-name-bar {
+    padding: 6px 12px 0;
+    background: var(--surface);
+    display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0;
+  }
+  #funnel-name-bar label { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  #funnel-name-bar input {
+    flex: 1; min-width: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: var(--font); font-size: 11px;
+    padding: 4px 8px; outline: none;
+  }
+  #funnel-name-bar input:focus { border-color: var(--accent); }
+  #funnel-name-bar input::placeholder { color: var(--text-muted); opacity: 0.55; }
+
+  .funnel-gate {
+    margin: 10px 12px 2px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 14px 12px;
+    flex-shrink: 0;
+  }
+  .funnel-gate h4 {
+    font-family: var(--heading-font); font-size: 13px; font-weight: 700;
+    color: var(--text); margin-bottom: 4px;
+  }
+  .funnel-gate p {
+    font-size: 11px; color: var(--text-muted); margin-bottom: 10px;
+  }
+  .funnel-gate-fields { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .funnel-gate-fields input {
+    flex: 1; min-width: 120px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text); font-family: var(--font); font-size: 12px;
+    padding: 6px 9px; outline: none;
+  }
+  .funnel-gate-fields input:focus { border-color: var(--accent); }
+  .funnel-gate-fields input::placeholder { color: var(--text-muted); opacity: 0.7; }
+  .funnel-gate-tos {
+    display: flex; gap: 7px; align-items: flex-start;
+    font-size: 11px; color: var(--text-muted);
+    margin-bottom: 8px; line-height: 1.45;
+  }
+  .funnel-gate-tos input[type=checkbox] { margin-top: 2px; flex-shrink: 0; }
+  .funnel-gate-tos a { color: var(--accent); text-decoration: underline; }
+  .funnel-gate-err { color: #e08a8a; font-size: 11px; min-height: 1em; margin-bottom: 6px; }
+  .funnel-gate-btn {
+    width: 100%; padding: 8px 0;
+    background: var(--accent); border: none; border-radius: var(--radius);
+    color: #000; font-family: var(--heading-font); font-weight: 700; font-size: 12px;
+    cursor: pointer; transition: opacity 0.15s;
+  }
+  .funnel-gate-btn:hover { opacity: 0.85; }
+  .funnel-gate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .funnel-gate-confirm {
+    font-size: 12px; color: var(--accent2);
+    font-family: var(--heading-font); font-weight: 700;
+    text-align: center; padding: 6px 0 4px;
+  }
+
   /* ── Surfaced funnel cards (piece 2) ── */
   .surfaced-cards {
     margin-top: 8px;
@@ -444,11 +534,17 @@
   <button class="level-btn" data-level="health-care" onclick="setLevel(this)">Health Care</button>
   <button class="level-btn" data-level="science" onclick="setLevel(this)">Science</button>
 </div>
+<!-- Funnel mode: early first-name bar (hidden by default; shown by JS when FUNNEL) -->
+<div id="funnel-name-bar" style="display:none;">
+  <label for="funnel-first-name">Your name</label>
+  <input type="text" id="funnel-first-name" placeholder="First name…" autocomplete="given-name" />
+</div>
 <div id="input-bar">
   <textarea id="query-input"
     placeholder="Ask a question… or share a concern."
     rows="1"
     onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+  <button id="mic-btn" title="Record voice input" aria-label="Record voice input" onclick="toggleMic()">&#127908;</button>
   <button id="send-btn" onclick="sendQuery()">Send</button>
 </div>
 
@@ -1022,6 +1118,608 @@
       alert('Connection error: ' + e.message);
     }
   }
+
+  // ── Mic / voice input ──
+  (function () {
+    // Hide the mic button if the browser lacks MediaRecorder or getUserMedia.
+    var _micBtn = document.getElementById('mic-btn');
+    if (!_micBtn) return;
+    if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      _micBtn.style.display = 'none';
+      return;
+    }
+
+    var _micRecorder   = null;
+    var _micStream     = null;
+    var _micChunks     = [];
+    var _micRecording  = false;
+
+    function _setMicState(state) {
+      // state: 'idle' | 'recording' | 'busy'
+      _micBtn.classList.remove('recording', 'busy');
+      if (state === 'recording') {
+        _micBtn.classList.add('recording');
+        _micBtn.title = 'Stop recording';
+        _micBtn.setAttribute('aria-label', 'Stop recording');
+      } else if (state === 'busy') {
+        _micBtn.classList.add('busy');
+        _micBtn.title = 'Transcribing…';
+        _micBtn.setAttribute('aria-label', 'Transcribing…');
+      } else {
+        _micBtn.title = 'Record voice input';
+        _micBtn.setAttribute('aria-label', 'Record voice input');
+      }
+    }
+
+    function _stopTracks() {
+      if (_micStream) {
+        _micStream.getTracks().forEach(function (t) { try { t.stop(); } catch (_) {} });
+        _micStream = null;
+      }
+    }
+
+    async function _startRecording() {
+      _micChunks = [];
+      try {
+        _micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (e) {
+        console.warn('[mic] getUserMedia denied:', e);
+        return;
+      }
+      var mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+      try {
+        _micRecorder = mime
+          ? new MediaRecorder(_micStream, { mimeType: mime })
+          : new MediaRecorder(_micStream);
+      } catch (e) {
+        console.warn('[mic] MediaRecorder init failed:', e);
+        _stopTracks();
+        return;
+      }
+      _micRecorder.ondataavailable = function (e) {
+        if (e.data && e.data.size > 0) _micChunks.push(e.data);
+      };
+      _micRecorder.onstop = _onRecordingStop;
+      _micRecorder.start();
+      _micRecording = true;
+      _setMicState('recording');
+    }
+
+    function _stopRecording() {
+      if (_micRecorder && _micRecorder.state !== 'inactive') {
+        try { _micRecorder.stop(); } catch (_) {}
+      }
+      _micRecording = false;
+    }
+
+    async function _onRecordingStop() {
+      _stopTracks();
+      _setMicState('busy');
+      var blob = new Blob(_micChunks, { type: (_micRecorder && _micRecorder.mimeType) || 'audio/webm' });
+      _micChunks = [];
+      _micRecorder = null;
+      var ext = (blob.type && blob.type.includes('mp4')) ? 'clip.mp4' : 'clip.webm';
+      var fd = new FormData();
+      fd.append('audio', blob, ext);
+      try {
+        var r = await fetch(BASE + '/transcribe', { method: 'POST', body: fd, credentials: 'same-origin' });
+        if (r.ok) {
+          var d = await r.json();
+          var text = (d && d.text) ? d.text.trim() : '';
+          if (text) {
+            var inp = document.getElementById('query-input');
+            if (inp) { inp.value = text; autoResize(inp); inp.focus(); }
+          }
+        } else {
+          console.warn('[mic] /transcribe returned', r.status);
+        }
+      } catch (e) {
+        console.warn('[mic] fetch /transcribe failed:', e);
+      }
+      _setMicState('idle');
+    }
+
+    window.toggleMic = function () {
+      if (_micBtn.classList.contains('busy')) return;
+      if (_micRecording) {
+        _stopRecording();
+      } else {
+        _startRecording();
+      }
+    };
+  })();
+
+  // ── Funnel mode (piece 3) ─────────────────────────────────────────────────
+  // Activated only when this embed is loaded with ?mode=funnel.
+  // ALL funnel logic is gated behind FUNNEL; default mode is completely unchanged.
+  const FUNNEL = new URLSearchParams(location.search).get('mode') === 'funnel';
+
+  if (FUNNEL) {
+    // State
+    let _funnelSendCount = 0;   // how many user sends have been made
+    let _funnelGatePassed = false;
+    let _funnelFirstName = '';
+    let _funnelLastQuery = '';   // last query text (for full re-request after gate)
+    let _funnelNameFired = false; // first-name unlock fired?
+
+    // Show the early first-name bar
+    const _nameBar = document.getElementById('funnel-name-bar');
+    if (_nameBar) _nameBar.style.display = '';
+
+    // Hide the default opt-in bar (we manage capture differently in funnel mode)
+    const _optinBar = document.getElementById('optin-bar');
+    if (_optinBar) _optinBar.style.display = 'none';
+
+    // Notify the parent funnel page of an unlock event
+    function notifyParent(resp) {
+      try {
+        window.parent.postMessage(
+          { type: 'begin-unlock', rung: (resp && resp.current_rung) || '' },
+          location.origin
+        );
+      } catch (e) {}
+    }
+
+    // Fire first-name unlock trigger once
+    function _fireName(fn) {
+      if (_funnelNameFired || !fn) return;
+      _funnelNameFired = true;
+      _funnelFirstName = fn;
+      // Also personalize the embed header slightly
+      fetch(BASE + '/begin/unlock', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trigger: 'name', first_name: fn })
+      })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(resp) { if (resp) notifyParent(resp); })
+        .catch(function() {});
+    }
+
+    // Build and insert the inline gate block into the messages area
+    function _showGate() {
+      if (_funnelGatePassed) return;
+      const msgs = document.getElementById('messages');
+      if (!msgs) return;
+      // Don't insert a second gate
+      if (msgs.querySelector('.funnel-gate')) return;
+
+      const wrap = document.createElement('div');
+      wrap.className = 'funnel-gate';
+
+      const h4 = document.createElement('h4');
+      h4.textContent = 'Want the full guidance?';
+      wrap.appendChild(h4);
+
+      const p = document.createElement('p');
+      p.textContent = "I’ll show you the complete next step here and email you a copy to keep.";
+      wrap.appendChild(p);
+
+      // Fields row
+      const fieldsRow = document.createElement('div');
+      fieldsRow.className = 'funnel-gate-fields';
+
+      const lastInput = document.createElement('input');
+      lastInput.type = 'text';
+      lastInput.id = 'funnel-gate-last';
+      lastInput.placeholder = 'Last name';
+      lastInput.autocomplete = 'family-name';
+      fieldsRow.appendChild(lastInput);
+
+      const emailInput = document.createElement('input');
+      emailInput.type = 'email';
+      emailInput.id = 'funnel-gate-email';
+      emailInput.placeholder = 'your@email.com';
+      emailInput.autocomplete = 'email';
+      fieldsRow.appendChild(emailInput);
+      wrap.appendChild(fieldsRow);
+
+      // ToS row
+      const tosWrap = document.createElement('div');
+      tosWrap.className = 'funnel-gate-tos';
+      const tosChk = document.createElement('input');
+      tosChk.type = 'checkbox';
+      tosChk.id = 'funnel-gate-tos';
+      const tosLabel = document.createElement('label');
+      tosLabel.htmlFor = 'funnel-gate-tos';
+      const tosText = document.createTextNode(
+        'I understand this is wellness coaching and education, not medical advice, and I agree to the '
+      );
+      const tosLink = document.createElement('a');
+      tosLink.href = 'https://remedymatch.com/info/terms-and-conditions';
+      tosLink.target = '_blank';
+      tosLink.rel = 'noopener';
+      tosLink.textContent = 'Terms & Conditions';
+      tosLabel.appendChild(tosText);
+      tosLabel.appendChild(tosLink);
+      tosLabel.appendChild(document.createTextNode('.'));
+      tosWrap.appendChild(tosChk);
+      tosWrap.appendChild(tosLabel);
+      wrap.appendChild(tosWrap);
+
+      // Error
+      const err = document.createElement('div');
+      err.className = 'funnel-gate-err';
+      err.id = 'funnel-gate-err';
+      wrap.appendChild(err);
+
+      // Submit button
+      const btn = document.createElement('button');
+      btn.className = 'funnel-gate-btn';
+      btn.type = 'button';
+      btn.textContent = 'Show my full guidance';
+      btn.addEventListener('click', _submitGate);
+      wrap.appendChild(btn);
+
+      msgs.appendChild(wrap);
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    async function _submitGate() {
+      if (_funnelGatePassed) return;
+      const lastVal = (document.getElementById('funnel-gate-last') || {}).value || '';
+      const emailVal = ((document.getElementById('funnel-gate-email') || {}).value || '').trim();
+      const tosChk = document.getElementById('funnel-gate-tos');
+      const tosChecked = tosChk && tosChk.checked;
+      const errEl = document.getElementById('funnel-gate-err');
+      if (errEl) errEl.textContent = '';
+
+      if (!emailVal || !emailVal.includes('@')) {
+        if (errEl) errEl.textContent = 'Please enter a valid email.';
+        return;
+      }
+      if (!tosChecked) {
+        if (errEl) errEl.textContent = 'Please agree to the Terms to continue.';
+        return;
+      }
+
+      const btn = document.querySelector('.funnel-gate-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'One moment…'; }
+
+      // Capture first name from the name bar if not yet fired
+      const fnBarInput = document.getElementById('funnel-first-name');
+      const fnVal = ((fnBarInput && fnBarInput.value) || _funnelFirstName || '').trim();
+      if (fnVal && !_funnelNameFired) { _funnelFirstName = fnVal; }
+
+      try {
+        const r = await fetch(BASE + '/begin/unlock', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trigger: 'tos',
+            first_name: _funnelFirstName,
+            last_name: lastVal.trim(),
+            email: emailVal,
+            tos: true
+          })
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const resp = await r.json();
+        _funnelGatePassed = true;
+        notifyParent(resp);
+
+        // Replace gate with confirmation
+        const gate = document.querySelector('.funnel-gate');
+        if (gate) {
+          const confirm = document.createElement('div');
+          confirm.className = 'funnel-gate-confirm';
+          confirm.textContent = 'Your full guidance is below, and on its way to your inbox.';
+          gate.replaceWith(confirm);
+        }
+
+        // Re-request full answer for the last question
+        if (_funnelLastQuery) {
+          _funnelRequestFull(_funnelLastQuery, _funnelFirstName);
+        }
+
+        // Store for future use
+        try {
+          if (emailVal) localStorage.setItem('amg_email', emailVal);
+          if (_funnelFirstName) localStorage.setItem('amg_name', _funnelFirstName);
+        } catch (_) {}
+
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Show my full guidance'; }
+        if (errEl) errEl.textContent = 'Something went wrong. Please try again.';
+      }
+    }
+
+    // Stream the full answer into a new assistant message
+    function _funnelRequestFull(query, name) {
+      const msgs = document.getElementById('messages');
+      if (!msgs) return;
+      const tid2 = 't' + Date.now() + 'f';
+      appendThinking(tid2);
+      isLoading = true;
+      const sb = document.getElementById('send-btn');
+      if (sb) sb.disabled = true;
+
+      fetch(BASE + '/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          query: query,
+          history: history.slice(),
+          level: currentLevel,
+          name: name || '',
+          email: '',
+          mode: 'full'
+        })
+      }).then(function(r) {
+        if (!r.ok || !r.body) {
+          removeEl(tid2);
+          appendMessage('assistant', '**Error:** Could not retrieve full guidance.', null, null);
+          isLoading = false;
+          if (sb) sb.disabled = false;
+          return;
+        }
+        var reader = r.body.getReader();
+        var decoder = new TextDecoder();
+        var buf = '';
+        var accumulated = '';
+        var streamDiv = null;
+        var bodyDiv = null;
+
+        function _pump() {
+          return reader.read().then(function(res) {
+            if (res.done) {
+              if (streamDiv) {
+                streamDiv.remove();
+                appendMessage('assistant', accumulated || '(no response)', null, null);
+                history.push({ role: 'user', content: query });
+                history.push({ role: 'assistant', content: accumulated });
+              }
+              isLoading = false;
+              if (sb) sb.disabled = false;
+              return;
+            }
+            buf += decoder.decode(res.value, { stream: true });
+            var lines = buf.split('\n');
+            buf = lines.pop();
+            for (var i = 0; i < lines.length; i++) {
+              var line = lines[i];
+              if (!line.startsWith('data: ')) continue;
+              var raw = line.slice(6).trim();
+              if (!raw) continue;
+              var evt;
+              try { evt = JSON.parse(raw); } catch (_) { continue; }
+              if (evt.token) {
+                if (!streamDiv) {
+                  removeEl(tid2);
+                  streamDiv = document.createElement('div');
+                  streamDiv.className = 'message assistant';
+                  bodyDiv = document.createElement('div');
+                  bodyDiv.className = 'message-body';
+                  var lbl = document.createElement('div');
+                  lbl.className = 'role-label';
+                  lbl.textContent = 'Mentor';
+                  streamDiv.appendChild(lbl);
+                  streamDiv.appendChild(bodyDiv);
+                  msgs.appendChild(streamDiv);
+                }
+                accumulated += evt.token;
+                bodyDiv.innerHTML = md(accumulated);
+                msgs.scrollTop = msgs.scrollHeight;
+              }
+              if (evt.done) {
+                if (streamDiv) {
+                  streamDiv.remove();
+                  appendMessage('assistant', accumulated || '(no response)', evt.sources, evt.chunks_retrieved, evt.log_id);
+                  history.push({ role: 'user', content: query });
+                  history.push({ role: 'assistant', content: accumulated });
+                }
+                isLoading = false;
+                if (sb) sb.disabled = false;
+                return;
+              }
+            }
+            return _pump();
+          });
+        }
+        return _pump();
+      }).catch(function(e) {
+        removeEl(tid2);
+        appendMessage('assistant', '**Connection error:** ' + e.message, null, null);
+        isLoading = false;
+        if (sb) sb.disabled = false;
+      });
+    }
+
+    // Patch sendQuery to add funnel behaviour: mode:'brief' on first send,
+    // name-bar trigger, gate reveal after first assistant response.
+    const _origSendQuery = sendQuery;
+    window.sendQuery = function sendQuery() {
+      if (isLoading) return;
+      const inp = document.getElementById('query-input');
+      const query = (inp.value || '').trim();
+      if (!query) return;
+
+      // Check first-name bar and fire name trigger if filled
+      const fnBarInput = document.getElementById('funnel-first-name');
+      const fnVal = ((fnBarInput && fnBarInput.value) || '').trim();
+      if (fnVal && !_funnelNameFired) { _fireName(fnVal); }
+
+      // Track query for possible full re-request after gate
+      _funnelLastQuery = query;
+      const sendIndex = _funnelSendCount;
+      _funnelSendCount++;
+
+      if (_funnelGatePassed || sendIndex > 0) {
+        // Gate already passed or not the first send — normal multi-turn
+        _origSendQuery.call(this);
+        return;
+      }
+
+      // ── First send: use mode:'brief' ──────────────────────────────────────
+      inp.value = ''; inp.style.height = 'auto';
+      const empty = document.getElementById('empty-state');
+      if (empty) empty.remove();
+      appendMessage('user', query, null, null);
+      const tid = 't' + Date.now();
+      appendThinking(tid);
+      isLoading = true;
+      const sb = document.getElementById('send-btn');
+      if (sb) sb.disabled = true;
+
+      const _name = _funnelFirstName || '';
+      fetch(BASE + '/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          query: query,
+          history: history.slice(),
+          level: currentLevel,
+          name: _name,
+          email: '',
+          mode: 'brief'
+        })
+      }).then(function(r) {
+        if (!r.ok || !r.body) {
+          return r.json().catch(function() { return { error: 'HTTP ' + r.status }; })
+            .then(function(data) {
+              removeEl(tid);
+              appendMessage('assistant', '**Error:** ' + (data.error || r.statusText), null, null);
+              isLoading = false;
+              if (sb) sb.disabled = false;
+              if (inp) inp.focus();
+            });
+        }
+        var reader = r.body.getReader();
+        var decoder = new TextDecoder();
+        var buf = '';
+        var accumulated = '';
+        var streamDiv = null;
+        var bodyDiv = null;
+        var msgs = document.getElementById('messages');
+
+        function _pump() {
+          return reader.read().then(function(res) {
+            if (res.done) {
+              // Stream ended without done event
+              if (streamDiv && !accumulated) {
+                streamDiv.remove();
+                removeEl(tid);
+                appendMessage('assistant', '**Error:** Empty response.', null, null);
+              }
+              isLoading = false;
+              if (sb) sb.disabled = false;
+              inp.focus();
+              return;
+            }
+            buf += decoder.decode(res.value, { stream: true });
+            var lines = buf.split('\n');
+            buf = lines.pop();
+            for (var i = 0; i < lines.length; i++) {
+              var line = lines[i];
+              if (!line.startsWith('data: ')) continue;
+              var raw = line.slice(6).trim();
+              if (!raw) continue;
+              var evt;
+              try { evt = JSON.parse(raw); } catch (_) { continue; }
+
+              if (evt.error) {
+                removeEl(tid);
+                appendMessage('assistant', '**Error:** ' + evt.error, null, null);
+                isLoading = false;
+                if (sb) sb.disabled = false;
+                inp.focus();
+                return;
+              }
+
+              if (evt.token) {
+                if (!streamDiv) {
+                  removeEl(tid);
+                  streamDiv = document.createElement('div');
+                  streamDiv.className = 'message assistant';
+                  bodyDiv = document.createElement('div');
+                  bodyDiv.className = 'message-body';
+                  var lbl = document.createElement('div');
+                  lbl.className = 'role-label';
+                  lbl.textContent = 'Mentor';
+                  streamDiv.appendChild(lbl);
+                  streamDiv.appendChild(bodyDiv);
+                  msgs.appendChild(streamDiv);
+                }
+                accumulated += evt.token;
+                bodyDiv.innerHTML = md(accumulated);
+                msgs.scrollTop = msgs.scrollHeight;
+              }
+
+              if (evt.done) {
+                if (streamDiv) streamDiv.remove();
+                appendMessage('assistant', accumulated || '(no response)', evt.sources, evt.chunks_retrieved, evt.log_id);
+                history.push({ role: 'user', content: query });
+                history.push({ role: 'assistant', content: accumulated });
+                // Surfaced cards
+                if (evt.surfaced_cards && evt.surfaced_cards.length) {
+                  var _assist = msgs.querySelectorAll('.message.assistant');
+                  var lastMsg = _assist.length ? _assist[_assist.length - 1] : null;
+                  var cardNode = buildSurfacedCards(evt.surfaced_cards);
+                  if (lastMsg && cardNode) {
+                    lastMsg.appendChild(cardNode);
+                    msgs.scrollTop = msgs.scrollHeight;
+                  }
+                }
+                isLoading = false;
+                if (sb) sb.disabled = false;
+                inp.focus();
+                // After brief answer: show gate (if not already passed)
+                if (!_funnelGatePassed) {
+                  _showGate();
+                  // Also fire a 'question' trigger
+                  fetch(BASE + '/begin/unlock', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ trigger: 'question' })
+                  })
+                    .then(function(r2) { return r2.ok ? r2.json() : null; })
+                    .then(function(resp) { if (resp) notifyParent(resp); })
+                    .catch(function() {});
+                }
+                return;
+              }
+            }
+            return _pump();
+          });
+        }
+        return _pump();
+      }).catch(function(e) {
+        removeEl(tid);
+        appendMessage('assistant', '**Connection error:** ' + e.message, null, null);
+        isLoading = false;
+        if (sb) sb.disabled = false;
+        inp.focus();
+      });
+    };
+
+    // Inbound ?ask= in funnel mode: prefill + auto-run
+    (function() {
+      try {
+        var p = new URLSearchParams(location.search);
+        var aq = (p.get('ask') || '').trim();
+        if (aq) {
+          var inp = document.getElementById('query-input');
+          if (inp) {
+            inp.value = aq;
+            autoResize(inp);
+            p.delete('ask');
+            var qs = p.toString();
+            try { window.history.replaceState(null, '', location.pathname + (qs ? ('?' + qs) : '') + location.hash); } catch (_) {}
+            // Auto-send after a short tick so the DOM is ready
+            setTimeout(function() { window.sendQuery(); }, 80);
+          }
+        }
+      } catch (_) {}
+    })();
+  }
+  // ── End funnel mode ─────────────────────────────────────────────────────
 
   // ── Markdown renderer ──
   function md(text) {

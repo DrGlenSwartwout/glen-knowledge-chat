@@ -902,10 +902,9 @@ def index():
 
 @app.route("/ask")
 def ask_page():
-    resp = send_from_directory(STATIC, "index.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    resp.headers["Pragma"] = "no-cache"
-    return resp
+    # Retired in Piece 3: the chat now lives inline on the funnel + as the widget.
+    from flask import redirect as _redirect
+    return _redirect("/", code=302)
 
 
 @app.route("/concierge")
@@ -1072,6 +1071,10 @@ def begin_unlock():
         or uuid.uuid4().hex
     )
     name = (data.get("name") or "").strip()
+    first_name_explicit = (data.get("first_name") or "").strip()
+    last_name = (data.get("last_name") or "").strip()
+    # first_name: use explicit field if provided, else fall back to first token of name
+    first_name = first_name_explicit if first_name_explicit else (name.split(None, 1)[0] if name else "")
     email = (data.get("email") or "").strip().lower()
     tos = bool(data.get("tos"))
     detail = (data.get("detail") or "").strip()
@@ -1087,7 +1090,8 @@ def begin_unlock():
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             state = begin_funnel.record_unlock(
                 cx, session_id=session_id, trigger=trigger,
-                email=email, detail=detail, first_name=name, tos=tos,
+                email=email, detail=detail, first_name=first_name,
+                last_name=last_name, tos=tos,
                 ref_slug=ref_slug,
                 tos_version=BEGIN_TOS_VERSION if (tos or trigger == "tos") else "",
                 want=want, query_texts=query_texts, path=path,
@@ -1104,14 +1108,13 @@ def begin_unlock():
 
         def _onboard():
             try:
-                parts = (state.get("first_name") or "").split(None, 1)
-                first = parts[0] if parts else ""
-                last = parts[1] if len(parts) > 1 else ""
+                ghl_first = state.get("first_name") or ""
+                ghl_last = state.get("last_name") or ""
                 tags = ["begin", "concierge"]
                 if ref_slug:
                     tags.append(f"ref:{ref_slug}")
-                    _capture_concierge_referral(state["email"], first, last, ref_slug)
-                ghl_onboard_contact(state["email"], first, last,
+                    _capture_concierge_referral(state["email"], ghl_first, ghl_last, ref_slug)
+                ghl_onboard_contact(state["email"], ghl_first, ghl_last,
                                     source_tag="begin", extra_tags=tags)
             except Exception as e:
                 print(f"[begin-onboard] {e!r}", flush=True)
@@ -8794,6 +8797,31 @@ def practitioner_finder_page():
     injection = f"<script>window.__MAPBOX_TOKEN__ = {token!r};</script>"
     html = html.replace("</head>", injection + "\n</head>")
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/transcribe", methods=["POST"])
+def transcribe():
+    """Transcribe uploaded audio via Whisper (reuses journal_blueprint._whisper_transcribe)."""
+    import tempfile, os as _os
+    import journal_blueprint
+    if "audio" not in request.files:
+        return jsonify({"error": "no audio"}), 400
+    audio_file = request.files["audio"]
+    if (request.content_length or 0) > 26 * 1024 * 1024:
+        return jsonify({"error": "audio too large"}), 413
+    suffix = _os.path.splitext(audio_file.filename or "clip.webm")[1] or ".webm"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tf:
+        audio_file.save(tf.name)
+        audio_path = tf.name
+    try:
+        result = journal_blueprint._whisper_transcribe(audio_path)
+        return jsonify({"text": (result.get("text") or "").strip()})
+    except Exception as e:
+        print(f"[transcribe] {e!r}", flush=True)
+        return jsonify({"error": "transcription failed"}), 500
+    finally:
+        try: _os.unlink(audio_path)
+        except Exception: pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────

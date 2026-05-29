@@ -1,4 +1,5 @@
 import importlib
+import io
 import sys
 from pathlib import Path
 
@@ -320,14 +321,13 @@ def test_begin_ascend_serves_and_mints_session(monkeypatch, tmp_path):
     assert "amg_session=" in r.headers.get("Set-Cookie", "")
 
 
-def test_ask_serves_full_chat(monkeypatch, tmp_path):
+def test_ask_redirects_to_funnel(monkeypatch, tmp_path):
     app_module = _load_app()
     monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
     client = app_module.app.test_client()
-    r = client.get("/ask")
-    assert r.status_code == 200
-    expected = (app_module.STATIC / "index.html").read_bytes()
-    assert r.data == expected
+    r = client.get("/ask")  # no follow
+    assert r.status_code == 302
+    assert (r.headers.get("Location") or "").endswith("/")  # redirects to the funnel homepage
 
 
 def test_root_serves_funnel_and_mints_session(monkeypatch, tmp_path):
@@ -364,3 +364,40 @@ def test_begin_card_click_logs_and_204(monkeypatch, tmp_path):
     assert n == 1
     r2 = client.post("/begin/card-click", json={"key": "not_a_card"})
     assert r2.status_code == 204
+
+
+def test_transcribe_returns_text(monkeypatch, tmp_path):
+    app_module = _load_app()
+    import journal_blueprint
+    monkeypatch.setattr(journal_blueprint, "_whisper_transcribe", lambda p: {"text": "hello from whisper"})
+    client = app_module.app.test_client()
+    data = {"audio": (io.BytesIO(b"RIFFfake"), "clip.webm")}
+    r = client.post("/transcribe", data=data, content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert r.get_json()["text"] == "hello from whisper"
+
+
+def test_transcribe_no_audio_400(monkeypatch, tmp_path):
+    app_module = _load_app()
+    client = app_module.app.test_client()
+    r = client.post("/transcribe", data={}, content_type="multipart/form-data")
+    assert r.status_code == 400
+
+
+def test_begin_unlock_captures_last_name(monkeypatch, tmp_path):
+    import sqlite3, begin_funnel
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    monkeypatch.setattr(app_module, "ghl_onboard_contact", lambda *a, **k: {"contact_id": "x"})
+    monkeypatch.setattr(app_module, "_capture_concierge_referral", lambda *a, **k: None)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "ln-test")
+    r = client.post("/begin/unlock", json={"trigger":"tos","email":"a@b.com",
+                    "first_name":"Glen","last_name":"Swartwout","tos":True})
+    assert r.status_code == 200
+    # state should reflect the captured last name
+    s = client.get("/begin/state").get_json()
+    assert s.get("last_name") == "Swartwout"
