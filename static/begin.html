@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Begin — Dr. Glen Swartwout</title>
+<title>Begin · Dr. Glen Swartwout</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
@@ -225,6 +225,22 @@
     color: var(--gold);
     font-style: italic;
   }
+
+  /* Streamed AI answers: rich text, left-justified (overrides .byline centering) */
+  .byline.answer {
+    text-align: left;
+    white-space: normal;
+    color: var(--cream);
+  }
+  .byline.answer p { margin: 0 0 0.7em; }
+  .byline.answer p:last-child { margin-bottom: 0; }
+  .byline.answer strong { color: var(--cream); font-weight: 600; }
+  .byline.answer em { font-style: italic; }
+  .byline.answer ul, .byline.answer ol { padding-left: 1.3em; margin: 0 0 0.7em; text-align: left; }
+  .byline.answer li { margin-bottom: 0.3em; }
+  .byline.answer h3 { color: var(--cream); font-size: 16px; font-weight: 600; margin: 0.9em 0 0.4em; font-family: "Raleway",sans-serif; }
+  .byline.answer code { background: rgba(255,255,255,0.08); border-radius: 3px; padding: 1px 5px; font-size: 13px; }
+  .byline.answer hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 
   /* ---------- ASK A QUESTION ---------- */
   .ask {
@@ -551,7 +567,7 @@
         <div class="lower-third">
           <div class="lt-rule" aria-hidden="true"></div>
           <p class="lt-text">
-            Guided by the lifework of <strong>Dr. Glen Swartwout, O.D., N.D.</strong> — featured in USA&nbsp;Today:
+            Guided by the lifework of <strong>Dr. Glen Swartwout, O.D., N.D.</strong>, featured in USA&nbsp;Today:
             <em>&ldquo;Revolutionizing the World of Medicine with Natural Therapies.&rdquo;</em>
           </p>
         </div>
@@ -567,13 +583,13 @@
   <section class="shell pad-y locked" data-layer="layer1">
     <p class="eyebrow reveal">A consultative welcome</p>
     <h1 class="hero-greeting reveal">
-      Hello, <span data-name>there</span> &mdash; you&rsquo;ve found a place that understands.
+      Hello, <span data-name>there</span>. You&rsquo;ve found a place that understands.
       <span class="soft">Healing isn&rsquo;t one-size-fits-all, and you know your body better than anyone.
       Share what&rsquo;s on your mind, or let&rsquo;s begin with listening to what your body needs right now.</span>
     </h1>
 
     <p class="byline reveal">
-      <span class="name">Guided by the lifework of Dr. Glen Swartwout, O.D., N.D.</span> — featured in USA&nbsp;Today:
+      <span class="name">Guided by the lifework of Dr. Glen Swartwout, O.D., N.D.</span>, featured in USA&nbsp;Today:
       <span class="quote">&ldquo;Revolutionizing the World of Medicine with Natural Therapies.&rdquo;</span>
     </p>
 
@@ -592,7 +608,7 @@
     </div>
 
     <!-- Brief hook answer streams here after question is asked -->
-    <div id="answer-hook" class="byline" style="white-space:pre-wrap;"></div>
+    <div id="answer-hook" class="byline answer"></div>
 
     <!-- Inline name field — shown after a question is asked -->
     <div id="name-inline" style="display:none;text-align:center;margin-top:14px;">
@@ -612,7 +628,7 @@
       </form>
       <label>
         <input type="checkbox" id="gate-tos" />
-        <span>I understand this is <strong>wellness coaching and education — not
+        <span>I understand this is <strong>wellness coaching and education, not
         conventional health care, diagnosis, or treatment</strong>, and I agree to the
         <a href="https://remedymatch.com/info/terms-and-conditions" target="_blank" rel="noopener">Terms &amp; Conditions</a>.</span>
       </label>
@@ -622,7 +638,7 @@
     </div>
 
     <!-- Full guidance streams here after free-tier gate is passed -->
-    <div id="answer-full" class="byline" style="white-space:pre-wrap;"></div>
+    <div id="answer-full" class="byline answer"></div>
   </section>
 
   <hr class="divider reveal" aria-hidden="true" />
@@ -645,7 +661,7 @@
     </div>
     <p class="foot-note">
       Shared in the spirit of education and self-understanding. This space offers wellness and
-      educational guidance — it is not a substitute for diagnosis or medical care from your own provider.
+      educational guidance. It is not a substitute for diagnosis or medical care from your own provider.
     </p>
   </footer>
 
@@ -727,8 +743,28 @@
   var askForm = document.getElementById('ask-form');
   var askInput = document.getElementById('ask-input');
   var lastQuestion = '';
+  // Minimal markdown -> rich text (mirrors the chat widget's renderer)
+  function md(text){
+    var h = String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    h = h.replace(/`([^`]+)`/g,'<code>$1</code>');
+    h = h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+    h = h.replace(/\*([^*]+)\*/g,'<em>$1</em>');
+    h = h.replace(/^#{1,3} (.+)$/gm,'<h3>$1</h3>');
+    h = h.replace(/^\s*[-*] (.+)$/gm,'<li>$1</li>');
+    h = h.replace(/(<li>[\s\S]*?<\/li>(?:\n|$))+/g, function(m){ return '<ul>'+m+'</ul>'; });
+    h = h.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');
+    h = h.replace(/^---+$/gm,'<hr>');
+    h = h.split(/\n\n+/).map(function(p){
+      p = p.trim(); if(!p) return '';
+      if(p.indexOf('<h3>')===0 || p.indexOf('<ul>')===0 || p.indexOf('<hr')===0) return p;
+      return '<p>'+p.replace(/\n/g,'<br>')+'</p>';
+    }).join('');
+    return h;
+  }
+
   function streamChat(question, mode, targetEl){
-    targetEl.textContent = '';
+    targetEl.innerHTML = '';
+    var acc = '';
     return fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},
       credentials:'same-origin',
       // email intentionally omitted: /begin/unlock owns GHL onboarding;
@@ -742,7 +778,7 @@
           buf+=dec.decode(res.value,{stream:true});
           var parts=buf.split('\n\n'); buf=parts.pop();
           parts.forEach(function(p){ var line=p.replace(/^data:\s?/,'');
-            try{var j=JSON.parse(line); if(j.token){targetEl.textContent+=j.token;}}catch(_){}});
+            try{var j=JSON.parse(line); if(j.token){ acc+=j.token; targetEl.innerHTML=md(acc); }}catch(_){}});
           return pump();
         });}
         return pump();
@@ -803,7 +839,7 @@
         var full=document.getElementById('answer-full');
         if(full && lastQuestion){ streamChat(lastQuestion,'full',full); }
         var gate=document.getElementById('freetier-gate');
-        if(gate){ gate.outerHTML='<p style="color:var(--gold);text-align:center;font-family:Raleway,sans-serif;font-weight:600;">Your full guidance is below — and on its way to your inbox.</p>'; }
+        if(gate){ gate.outerHTML='<p style="color:var(--gold);text-align:center;font-family:Raleway,sans-serif;font-weight:600;">Your full guidance is below, and on its way to your inbox.</p>'; }
       }).catch(function(){ gateSubmit.disabled=false; gateSubmit.textContent='Show my full guidance'; });
     });
   }
