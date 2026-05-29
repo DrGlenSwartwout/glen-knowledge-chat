@@ -240,6 +240,195 @@
     }
     footer a { color: var(--muted); }
     footer a:hover { color: var(--gold); }
+
+    /* ── Slice 4: multi-select, badge, sticky CTA, inquiry modal ── */
+
+    /* Checkbox overlay on each result card */
+    .result-card { position: relative; }
+    .card-select-wrapper {
+      position: absolute;
+      top: 0.55rem;
+      right: 0.75rem;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+    }
+    .card-select {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: var(--gold);
+      flex-shrink: 0;
+    }
+    /* keep card text from overlapping checkbox */
+    .result-card h3 { padding-right: 2.5rem; }
+
+    /* Verified-responsive badge */
+    .vr-badge {
+      display: inline-block;
+      background: rgba(212,168,67,0.15);
+      color: var(--gold);
+      border: 1px solid rgba(212,168,67,0.4);
+      padding: 0.1rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      vertical-align: middle;
+      margin-left: 0.4rem;
+      white-space: nowrap;
+    }
+
+    /* Sticky CTA bar */
+    .sticky-cta {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 10px 1rem;
+      padding-bottom: max(10px, env(safe-area-inset-bottom));
+      display: none;
+      z-index: 400;
+      text-align: center;
+    }
+    .sticky-cta.visible { display: block; }
+    .sticky-cta-btn {
+      background: var(--gold);
+      color: #0a150d;
+      border: 0;
+      border-radius: 999px;
+      padding: 0.65rem 2rem;
+      font: inherit;
+      font-weight: 700;
+      font-size: 1rem;
+      min-height: 44px;
+      cursor: pointer;
+      transition: background 0.15s;
+      width: 100%;
+      max-width: 420px;
+    }
+    .sticky-cta-btn:hover { background: #c49535; }
+
+    /* Inquiry modal */
+    .inquiry-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 600;
+      padding: 12px;
+      overflow-y: auto;
+    }
+    .inquiry-modal-overlay.hidden { display: none; }
+    .inquiry-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 480px;
+      padding: 1.75rem 1.5rem;
+      position: relative;
+    }
+    .inquiry-modal h3 {
+      margin: 0 0 1.25rem;
+      font-family: "Raleway", sans-serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--cream);
+    }
+    .inquiry-modal label {
+      display: block;
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+      margin-top: 0.85rem;
+    }
+    .inquiry-modal label:first-of-type { margin-top: 0; }
+    .inquiry-modal input,
+    .inquiry-modal textarea {
+      display: block;
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--cream);
+      font: inherit;
+      font-size: 0.95rem;
+      padding: 0.6rem 0.75rem;
+      outline: none;
+      transition: border-color 0.15s;
+      resize: vertical;
+    }
+    .inquiry-modal input:focus,
+    .inquiry-modal textarea:focus { border-color: var(--gold); }
+    .inquiry-modal-actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1.25rem;
+      justify-content: flex-end;
+    }
+    .modal-cancel-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      font: inherit;
+      padding: 0.5rem 1.25rem;
+      min-height: 44px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .modal-cancel-btn:hover { border-color: var(--cream); color: var(--cream); }
+    .modal-submit-btn {
+      background: var(--gold);
+      color: #0a150d;
+      border: 0;
+      border-radius: 999px;
+      font: inherit;
+      font-weight: 700;
+      padding: 0.5rem 1.5rem;
+      min-height: 44px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .modal-submit-btn:hover { background: #c49535; }
+    .modal-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .modal-err {
+      color: #e07070;
+      font-size: 0.875rem;
+      margin-top: 0.6rem;
+      min-height: 1.2em;
+    }
+    .modal-confirm {
+      color: var(--cream);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+    .modal-confirm p { margin: 0 0 0.6rem; }
+    .modal-confirm .note { color: var(--muted); font-size: 0.85rem; }
+    .modal-close-btn {
+      background: var(--gold);
+      color: #0a150d;
+      border: 0;
+      border-radius: 999px;
+      font: inherit;
+      font-weight: 700;
+      padding: 0.5rem 1.5rem;
+      min-height: 44px;
+      cursor: pointer;
+      margin-top: 1rem;
+      transition: background 0.15s;
+    }
+    .modal-close-btn:hover { background: #c49535; }
+    /* bottom padding so sticky CTA doesn't obscure last card */
+    #results-list { padding-bottom: 72px; }
   </style>
 </head>
 <body>
@@ -335,10 +524,23 @@
     <a href="mailto:suerae1111@gmail.com?subject=Practitioner%20Finder%20Removal%20Request">Email Rae</a>.
   </footer>
 
+  <!-- Sticky CTA bar (Slice 4) -->
+  <div class="sticky-cta" id="sticky-cta" role="region" aria-label="Inquiry selection bar" aria-live="polite">
+    <button class="sticky-cta-btn" id="sticky-cta-btn" type="button">Send inquiry to 0 practitioners</button>
+  </div>
+
+  <!-- Inquiry modal (Slice 4) — built dynamically; overlay serves as backdrop -->
+  <div class="inquiry-modal-overlay hidden" id="inquiry-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="inquiry-modal-title">
+    <div class="inquiry-modal" id="inquiry-modal"></div>
+  </div>
+
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.js"></script>
   <script src="/ref-capture.js"></script>
   <script>
     const MAPBOX_TOKEN = window.__MAPBOX_TOKEN__ || '';
+
+    // ── Slice 4: multi-select state ──
+    const selectedIds = new Set();
 
     // Filter state
     const filterState = {
@@ -475,19 +677,59 @@
       data.practitioners.forEach((p, i) => {
         const card = document.createElement('div');
         card.className = 'result-card';
-        const fellowBadge = p.fellowship_level
-          ? `<span class="fellow-badge" title="Org-vetted fellowship credential">Fellow</span>`
-          : '';
-        card.innerHTML = `
-          <h3>${escapeHtml(p.name)}${fellowBadge}</h3>
-          <div class="meta">
-            ${p.credentials ? escapeHtml(p.credentials) + ' &middot; ' : ''}
-            ${p.city ? escapeHtml(p.city) : ''}${p.state ? ', ' + escapeHtml(p.state) : ''}
-            ${typeof p.distance_miles === 'number' ? ' &middot; ' + p.distance_miles.toFixed(1) + ' mi' : ''}
-          </div>
-        `;
+        card.dataset.practitionerId = p.id;
+
+        // Build heading with fellow badge + vr badge using createElement
+        const h3 = document.createElement('h3');
+        h3.textContent = p.name;
+        if (p.fellowship_level) {
+          const fb = document.createElement('span');
+          fb.className = 'fellow-badge';
+          fb.title = 'Org-vetted fellowship credential';
+          fb.textContent = 'Fellow';
+          h3.appendChild(fb);
+        }
+        if (p.accepts_inquiries === true) {
+          const vrb = document.createElement('span');
+          vrb.className = 'vr-badge';
+          vrb.title = 'This practitioner has confirmed they respond to client inquiries';
+          vrb.textContent = 'verified responsive';
+          h3.appendChild(vrb);
+        }
+        card.appendChild(h3);
+
+        // Meta row (safe: credentials/city/state/distance)
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        const metaParts = [];
+        if (p.credentials) metaParts.push(escapeHtml(p.credentials));
+        const loc = [p.city ? escapeHtml(p.city) : '', p.state ? escapeHtml(p.state) : ''].filter(Boolean).join(', ');
+        if (loc) metaParts.push(loc);
+        if (typeof p.distance_miles === 'number') metaParts.push(p.distance_miles.toFixed(1) + ' mi');
+        meta.innerHTML = metaParts.join(' &middot; ');
+        card.appendChild(meta);
+
+        // Checkbox wrapper (top-right corner; stopPropagation prevents side panel open)
+        const cbWrapper = document.createElement('label');
+        cbWrapper.className = 'card-select-wrapper';
+        cbWrapper.title = 'Select for inquiry';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'card-select';
+        cb.dataset.id = p.id;
+        cb.setAttribute('aria-label', 'Select ' + escapeHtml(p.name) + ' for inquiry');
+        if (selectedIds.has(p.id)) {
+          cb.checked = true;
+        }
+        cbWrapper.addEventListener('click', (e) => e.stopPropagation());
+        cbWrapper.appendChild(cb);
+        card.appendChild(cbWrapper);
+
         card.addEventListener('click', () => openSidePanel(p));
         list.appendChild(card);
+
+        // Re-evaluate disabled state for this new checkbox
+        updateCheckboxDisabledState();
 
         if (p.lat && p.lng && map) {
           const color = p.geocode_quality === 'full' ? '#c0392b' : '#3a78b8';
@@ -537,6 +779,216 @@
       return String(s).replace(/[&<>"']/g, c => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       }[c]));
+    }
+
+    // ── Slice 4: checkbox delegation ──
+    document.getElementById('results-list').addEventListener('change', (e) => {
+      const cb = e.target.closest('.card-select');
+      if (!cb) return;
+      const id = cb.dataset.id;
+      if (!id) return;
+      if (cb.checked) {
+        selectedIds.add(id);
+      } else {
+        selectedIds.delete(id);
+      }
+      updateCheckboxDisabledState();
+      updateStickyCta();
+    });
+
+    function updateCheckboxDisabledState() {
+      const atCap = selectedIds.size >= 20;
+      document.querySelectorAll('.card-select').forEach((cb) => {
+        cb.disabled = atCap && !cb.checked;
+      });
+    }
+
+    function updateStickyCta() {
+      const bar = document.getElementById('sticky-cta');
+      const btn = document.getElementById('sticky-cta-btn');
+      const n = selectedIds.size;
+      if (n > 0) {
+        bar.classList.add('visible');
+        btn.textContent = 'Send inquiry to ' + n + ' practitioner' + (n > 1 ? 's' : '');
+      } else {
+        bar.classList.remove('visible');
+      }
+    }
+
+    document.getElementById('sticky-cta-btn').addEventListener('click', () => {
+      openInquiryModal();
+    });
+
+    // ── Slice 4: inquiry modal ──
+    function openInquiryModal() {
+      const overlay = document.getElementById('inquiry-modal-overlay');
+      const modal = document.getElementById('inquiry-modal');
+      modal.innerHTML = '';
+
+      const n = selectedIds.size;
+
+      const title = document.createElement('h3');
+      title.id = 'inquiry-modal-title';
+      title.textContent = 'Send an inquiry to ' + n + ' practitioner' + (n > 1 ? 's' : '');
+      modal.appendChild(title);
+
+      // Helper: labeled input
+      function addField(labelText, tag, attrs) {
+        const lbl = document.createElement('label');
+        lbl.textContent = labelText;
+        modal.appendChild(lbl);
+        const el = document.createElement(tag);
+        Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+        if (tag === 'textarea') {
+          el.rows = 3;
+        }
+        modal.appendChild(el);
+        return el;
+      }
+
+      const nameInput = addField('Your name', 'input', { type: 'text', required: '', autocomplete: 'name' });
+      const emailInput = addField('Your email address', 'input', { type: 'email', required: '', autocomplete: 'email' });
+      const phoneInput = addField('Your phone (optional)', 'input', { type: 'tel', autocomplete: 'tel' });
+      const challengeInput = addField("What's the main thing you're working through?", 'textarea', { required: '', placeholder: "What's the main thing you're working through?" });
+      const goalInput = addField('What does success look like for you?', 'textarea', { required: '', placeholder: 'What does success look like for you?' });
+
+      const errRow = document.createElement('div');
+      errRow.className = 'modal-err';
+      modal.appendChild(errRow);
+
+      const actions = document.createElement('div');
+      actions.className = 'inquiry-modal-actions';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'modal-cancel-btn';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.addEventListener('click', closeInquiryModal);
+
+      const submitBtn = document.createElement('button');
+      submitBtn.type = 'button';
+      submitBtn.className = 'modal-submit-btn';
+      submitBtn.textContent = 'Send inquiry';
+      submitBtn.addEventListener('click', () => submitInquiry({
+        nameInput, emailInput, phoneInput, challengeInput, goalInput, errRow, submitBtn
+      }));
+
+      actions.appendChild(cancelBtn);
+      actions.appendChild(submitBtn);
+      modal.appendChild(actions);
+
+      overlay.classList.remove('hidden');
+      nameInput.focus();
+
+      // Escape key closes modal
+      overlay._escHandler = (e) => {
+        if (e.key === 'Escape') closeInquiryModal();
+      };
+      document.addEventListener('keydown', overlay._escHandler);
+    }
+
+    function closeInquiryModal() {
+      const overlay = document.getElementById('inquiry-modal-overlay');
+      overlay.classList.add('hidden');
+      if (overlay._escHandler) {
+        document.removeEventListener('keydown', overlay._escHandler);
+        delete overlay._escHandler;
+      }
+    }
+
+    async function submitInquiry({ nameInput, emailInput, phoneInput, challengeInput, goalInput, errRow, submitBtn }) {
+      errRow.textContent = '';
+
+      const client_name = nameInput.value.trim();
+      const client_email = emailInput.value.trim();
+      const client_phone = phoneInput.value.trim();
+      const main_challenge = challengeInput.value.trim();
+      const main_goal = goalInput.value.trim();
+
+      if (!client_name) { errRow.textContent = 'Please enter your name.'; nameInput.focus(); return; }
+      if (!client_email) { errRow.textContent = 'Please enter your email address.'; emailInput.focus(); return; }
+      if (!main_challenge) { errRow.textContent = 'Please describe your main challenge.'; challengeInput.focus(); return; }
+      if (!main_goal) { errRow.textContent = 'Please describe what success looks like.'; goalInput.focus(); return; }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending...';
+
+      try {
+        const resp = await fetch('/api/practitioner-finder/inquiry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            client_name,
+            client_email,
+            client_phone,
+            main_challenge,
+            main_goal,
+            practitioner_ids: [...selectedIds]
+          })
+        });
+
+        if (resp.ok) {
+          const json = await resp.json();
+          showInquiryConfirmation(json);
+        } else {
+          let msg = 'Could not send. Please try again.';
+          try {
+            const errJson = await resp.json();
+            if (errJson.error) msg = errJson.error;
+          } catch (_) {}
+          errRow.textContent = msg;
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Send inquiry';
+        }
+      } catch (_) {
+        errRow.textContent = 'Network error. Please check your connection and try again.';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Send inquiry';
+      }
+    }
+
+    function showInquiryConfirmation(json) {
+      const modal = document.getElementById('inquiry-modal');
+      modal.innerHTML = '';
+
+      const confirm = document.createElement('div');
+      confirm.className = 'modal-confirm';
+
+      if (json.deduped === true) {
+        const p1 = document.createElement('p');
+        p1.textContent = 'You already sent this inquiry today. They have your message.';
+        confirm.appendChild(p1);
+      } else {
+        const sentCount = (json.sent !== undefined) ? json.sent : selectedIds.size;
+        const p1 = document.createElement('p');
+        p1.textContent = 'Your inquiry was sent to ' + sentCount + ' practitioner' + (sentCount !== 1 ? 's' : '') + '. They\'ll reply by email if it\'s a fit.';
+        confirm.appendChild(p1);
+
+        const skipped = json.skipped || [];
+        if (skipped.length > 0) {
+          const note = document.createElement('p');
+          note.className = 'note';
+          note.textContent = 'Note: ' + skipped.length + ' of your selected practitioner' + (skipped.length !== 1 ? 's' : '') + ' wasn\'t reachable (not opted in or no email on file).';
+          confirm.appendChild(note);
+        }
+      }
+
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'modal-close-btn';
+      closeBtn.textContent = 'Close';
+      closeBtn.addEventListener('click', () => {
+        // Clear selections on confirmed send
+        selectedIds.clear();
+        updateStickyCta();
+        document.querySelectorAll('.card-select').forEach((cb) => { cb.checked = false; });
+        updateCheckboxDisabledState();
+        closeInquiryModal();
+      });
+
+      modal.appendChild(confirm);
+      modal.appendChild(closeBtn);
     }
   </script>
 </body>
