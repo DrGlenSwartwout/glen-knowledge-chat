@@ -247,7 +247,9 @@ ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("aama", _run_aama_scrape),
     ("nanp", _run_nanp_scrape),
     ("nccaom", _run_nccaom_scrape),
-    ("abci", _run_abci_scrape),
+    # ("abci", _run_abci_scrape),  # DEFERRED 2026-05-29: only public source is
+    #   an archival 2008-09 roster with no contact info. Adapter + tests kept;
+    #   re-enable when a current DABCI directory exists.
     ("acfn", _run_acfn_scrape),
     ("ipi", _run_ipi_scrape),
 ]
