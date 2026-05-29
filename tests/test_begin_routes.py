@@ -229,3 +229,12 @@ def test_begin_unlock_accepts_path(monkeypatch, tmp_path):
     body = r.get_json()
     assert body["path"] == "pay_forward"
     assert body["current_rung"] == "choose_path"
+
+
+def test_begin_path_serves_and_mints_session(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    client = app_module.app.test_client()
+    r = client.get("/begin/path")
+    assert r.status_code == 200
+    assert "amg_session=" in r.headers.get("Set-Cookie", "")
