@@ -9367,7 +9367,7 @@ def practitioner_finder_inquiry():
             f"You received this because your listing appears on RemedyMatch.com. "
             f"To stop receiving future inquiries:\n{optout_url}\n\n"
             f"To claim your listing and display a 'Verified Responsive' badge:\n{claim_url}\n\n"
-            f"Remedy Match LLC, Hawaii, USA\n"
+            f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
             f"This message was sent on behalf of {client_first}; "
             f"you can reply directly to {client_email}.\n"
         )
@@ -9691,7 +9691,7 @@ def inquiry_reply_post(inquiry_id, practitioner_id):
         f"What you are working through: {main_challenge}\n"
         f"What success looks like: {main_goal}\n\n"
         f"You can reply directly to this practitioner by responding to this email.\n\n"
-        f"Remedy Match LLC, Hawaii, USA\n"
+        f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
     )
     _send_inquiry_email(
         to_email=client_email,
