@@ -802,9 +802,10 @@ def _long_form_synth_instr(is_logged_in: bool) -> str:
     if is_logged_in:
         return (
             "Produce the BREAK & REBUILD LONG-FORM response — follow the "
-            "6-step arc described in the system prompt (Hook → Justify the "
+            "6-step arc described in the system prompt (opening insight → Justify the "
             "false belief → Break → Rebuild → Journey → The one thing + "
-            "next step). Glen's voice, not Brunson's; practitioner-clinical, "
+            "next step). Do NOT print a 'Hook' label; the opening insight is just "
+            "the first line. Glen's voice, not Brunson's; practitioner-clinical, "
             "no hype. List sources at the end."
         )
     return (
@@ -838,7 +839,14 @@ def query_all_namespaces(vec):
 
 def build_context(matches):
     seen, sources, parts, total = set(), {}, [], 0
-    for m in sorted(matches, key=lambda x: -x.score):
+    # Authoritative clinical-qa chunks go in FIRST so the context-char cap can
+    # never starve them out — Glen's verified positions must always reach the
+    # model. Everything else follows by descending score.
+    def _rank(m):
+        meta = m.metadata or {}
+        auth = meta.get("type") == "clinical-qa" or meta.get("priority") == "authoritative"
+        return (0 if auth else 1, -m.score)
+    for m in sorted(matches, key=_rank):
         if m.id in seen:
             continue
         seen.add(m.id)
@@ -1305,9 +1313,9 @@ def chat():
         synth_instr = (
             _long_form_synth_instr(bool(auth_user))
             if mode == "full" else
-            "Produce the DEFAULT EXECUTIVE SUMMARY response — Hook, Top action, "
-            "2-4 bullet rationale, single action link, source line. ~200 words. "
-            "Tight and decisive."
+            "Produce the DEFAULT EXECUTIVE SUMMARY response — opening insight "
+            "(NO 'Hook' label, just state it), Top action, 2-4 bullet rationale, "
+            "single action link, source line. ~200 words. Tight and decisive."
         )
 
         image_context = ""
