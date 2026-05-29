@@ -5,6 +5,7 @@ processor for the Phase 0 beta. Imported into app.py at module load.
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -80,6 +81,46 @@ def _get_jinja_env():
     return _jinja_env
 
 
+# Section labels an LLM occasionally prepends to email prose (copywriting
+# artifact). These should never appear in a plain-text personal email.
+_STRUCTURAL_LABELS = {
+    "body copy", "body", "email body", "headline", "subject",
+    "cta", "call to action",
+}
+
+
+def _strip_structural_labels(text: str) -> str:
+    """Remove a leading structural section label an LLM sometimes prepends
+    (e.g. ``# Body Copy``) before the actual email prose.
+
+    Strips only at the very start of the text — leading blank lines, any
+    leading ATX markdown heading line, and a leading standalone section
+    label (bare, bold ``**Body Copy**``, or colon-terminated ``Body Copy:``).
+    Content further down, including a legitimate in-body ``#``, is untouched.
+    """
+    if not text:
+        return text
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if line == "":
+            i += 1
+            continue
+        # A markdown heading at the very top of a plain-text email is always
+        # a structural artifact — drop it.
+        if re.match(r"^#{1,6}\s+\S", line):
+            i += 1
+            continue
+        # Bare / bold / colon-terminated section label on its own line.
+        normalized = line.strip("*").strip().rstrip(":").strip().lower()
+        if normalized in _STRUCTURAL_LABELS:
+            i += 1
+            continue
+        break  # first real content line
+    return "\n".join(lines[i:]).strip()
+
+
 def _llm_complete(prompt: str, max_tokens: int = 500) -> str:
     """Call Claude Haiku for the teaching body. Replaceable in tests."""
     import anthropic
@@ -125,10 +166,11 @@ def generate_personal_email(
         "Open with ONE teaching nugget — a distinction, a question, or a "
         "surprising connection. Then naturally transition to recommending "
         "the product " + product["name"] + ". Keep it warm and direct. No "
-        "subject line, no greeting, no signature — just the body. ~150-300 "
-        "words."
+        "subject line, no greeting, no signature. Output plain prose only: "
+        "do not add any heading, label, title, or markdown formatting. Start "
+        "directly with the first sentence. ~150-300 words."
     )
-    teaching_body = _llm_complete(prompt, max_tokens=500)
+    teaching_body = _strip_structural_labels(_llm_complete(prompt, max_tokens=500))
 
     subj_prompt = (
         f"Write a short email subject line (max 50 chars) for a personal "
@@ -406,9 +448,9 @@ def build_personal_note_for_user(user_state: dict) -> str:
         f"direct voice, addressed to a subscriber whose recent reading "
         f"interest is '{top_topic}'. Reference the topic without being "
         f"creepy about it; tease something coming up that ties in. "
-        f"Output ONLY the note, no greeting, no signature."
+        f"Output ONLY the note, no greeting, no signature, no heading or label."
     )
-    return _llm_complete(prompt, max_tokens=120).strip()
+    return _strip_structural_labels(_llm_complete(prompt, max_tokens=120))
 
 
 # ── Beta send orchestrator + cron worker (Task 13) ───────────────────

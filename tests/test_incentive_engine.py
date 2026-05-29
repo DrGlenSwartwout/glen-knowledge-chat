@@ -177,6 +177,60 @@ def test_generate_personal_email_includes_required_sections(monkeypatch):
     assert email["subject"]              # non-empty subject
 
 
+# ── Structural-label sanitizer (Body Copy leak fix) ──────────────────
+
+
+def test_strip_structural_labels_removes_leading_markdown_heading():
+    from incentive_engine import _strip_structural_labels
+    assert _strip_structural_labels("# Body Copy\n\nReal text.") == "Real text."
+
+
+def test_strip_structural_labels_removes_bold_and_colon_labels():
+    from incentive_engine import _strip_structural_labels
+    assert _strip_structural_labels("**Body Copy**\nReal text.") == "Real text."
+    assert _strip_structural_labels("Body Copy:\nReal.") == "Real."
+
+
+def test_strip_structural_labels_passes_plain_prose_unchanged():
+    from incentive_engine import _strip_structural_labels
+    prose = "Today's discovery: tight junctions matter. Try it before meals."
+    assert _strip_structural_labels(prose) == prose
+
+
+def test_strip_structural_labels_preserves_in_body_hash():
+    """A '#' that isn't a leading structural label must survive."""
+    from incentive_engine import _strip_structural_labels
+    body = "Tight junctions matter.\n\nStep #1 is timing."
+    assert _strip_structural_labels(body) == body
+
+
+def test_generate_personal_email_strips_body_copy_label(monkeypatch):
+    """Regression: Haiku sometimes prefixes '# Body Copy'; it must never
+    reach the rendered email body."""
+    from incentive_engine import generate_personal_email
+
+    def fake_llm(prompt, max_tokens=500):
+        if prompt.lower().startswith("write a short email subject line"):
+            return "What if your gut runs the show?"
+        return "# Body Copy\n\nThe gut lining governs more than digestion."
+    monkeypatch.setattr("incentive_engine._llm_complete", fake_llm)
+
+    email = generate_personal_email(
+        user={"id": 42, "name": "Test", "email": "test@example.com"},
+        topic="leaky-gut",
+        topic_source_text="Terrain Restore activates tight junctions...",
+        product={"name": "Terrain Restore",
+                 "url": "https://truly.vip/terrain-restore",
+                 "code": "BETA5"},
+        is_beta=True,
+        audience="client",
+    )
+
+    assert "# Body Copy" not in email["body"]
+    assert "Body Copy" not in email["body"]
+    assert "gut lining governs" in email["body"]
+
+
 # ── Task 8: engagement-gated send decision ───────────────────────────
 
 
