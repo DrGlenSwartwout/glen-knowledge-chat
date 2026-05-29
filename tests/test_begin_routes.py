@@ -347,3 +347,20 @@ def test_begin_alias_still_serves_funnel(monkeypatch, tmp_path):
     r = client.get("/begin")
     assert r.status_code == 200
     assert r.data == (app_module.STATIC / "begin.html").read_bytes()
+
+
+def test_begin_card_click_logs_and_204(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import begin_funnel, sqlite3
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    client = app_module.app.test_client()
+    r = client.post("/begin/card-click", json={"key": "quiz", "session_id": "s-test"})
+    assert r.status_code == 204
+    with sqlite3.connect(db) as cx:
+        n = cx.execute("SELECT COUNT(*) FROM journey_events WHERE trigger='chat_card_click' AND detail='quiz'").fetchone()[0]
+    assert n == 1
+    r2 = client.post("/begin/card-click", json={"key": "not_a_card"})
+    assert r2.status_code == 204

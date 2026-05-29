@@ -1026,6 +1026,24 @@ def begin_state():
     return jsonify(payload)
 
 
+@app.route("/begin/card-click", methods=["POST"])
+def begin_card_click():
+    data = request.get_json(silent=True) or {}
+    key = (data.get("key") or "").strip()
+    session_id = (request.cookies.get("amg_session") or data.get("session_id") or "").strip()
+    if key in begin_funnel.CARD_CATALOG:
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.execute(
+                    "INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (begin_funnel._now(), session_id, "", "chat_card_click", key, "", ""))
+                cx.commit()
+        except Exception as e:
+            print(f"[card-click] {e!r}", flush=True)
+    return ("", 204)
+
+
 # ToS version stamp for the /begin free-tier gate. The live T&C page at
 # remedymatch.com/info/terms-and-conditions carries no version string, so we
 # date-stamp agreement here. Bump when the T&C content materially changes.
