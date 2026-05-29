@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Inquiry opt-out · Remedy Match</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+    --maxw:680px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1); }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{ background:var(--bg); color:var(--cream); font-family:"Open Sans",system-ui,sans-serif;
+    font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%);
+    background-attachment:fixed; }
+  h1,h2,h3{ font-family:"Raleway",system-ui,sans-serif; font-weight:600; line-height:1.25; letter-spacing:-0.01em; }
+  a{ color:var(--gold); text-decoration:none; }
+  .shell{ max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+  .brandbar{ max-width:var(--maxw); margin:0 auto; padding:30px 24px 8px; display:flex; align-items:center; justify-content:center; gap:14px; }
+  .brand-mark{ width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 4px rgba(212,168,67,0.12); }
+  .brand-name{ font-family:"Raleway",sans-serif; font-weight:600; font-size:13px; letter-spacing:0.32em; color:var(--muted); }
+  .main{ text-align:center; padding-top:72px; }
+  .check-icon{ font-size:40px; margin-bottom:20px; color:var(--muted); }
+  .main h1{ font-size:clamp(20px,4vw,27px); color:var(--cream); max-width:480px; margin:0 auto 16px; }
+  .main p{ color:var(--muted); font-size:15px; max-width:440px; margin:0 auto 12px; }
+  .error-page{ text-align:center; padding-top:60px; }
+  .error-page h2{ color:var(--muted); font-size:22px; margin-bottom:10px; }
+  .error-page p{ color:var(--muted); font-size:15px; }
+  footer{ margin-top:60px; padding:28px 24px 44px; text-align:center; border-top:1px solid rgba(33,71,45,0.5); }
+  .foot-note{ font-size:12.5px; color:var(--muted); opacity:0.7; max-width:520px; margin:0 auto; line-height:1.7; }
+  @media(max-width:560px){ body{font-size:16px;} .shell{padding:0 18px;} }
+</style>
+</head>
+<body>
+  <div class="brandbar">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;·&nbsp; Healing&nbsp;Oasis</span>
+  </div>
+
+  {% if status == "error" %}
+  <section class="shell error-page">
+    <h2>This link is no longer valid.</h2>
+    <p>It may have already been used or it may have expired. If you need to update your inquiry preferences, please contact us.</p>
+  </section>
+  {% else %}
+  <section class="shell main">
+    <div class="check-icon">&#10003;</div>
+    <h1>You are no longer receiving client inquiries.</h1>
+    <p>We have recorded your preference. You will not receive future inquiry emails from Remedy Match at this address.</p>
+    <p>Your listing may still appear in search results. To remove it entirely, please contact us.</p>
+  </section>
+  {% endif %}
+
+  <footer>
+    <p class="foot-note">Remedy Match LLC, Hawaii, USA. Listing services for natural health practitioners.</p>
+  </footer>
+</body>
+</html>
