@@ -1007,6 +1007,27 @@ def begin_ascend():
     return resp
 
 
+@app.route("/begin/ascend/<slug>")
+def begin_ascend_tier(slug):
+    if slug not in begin_funnel.TIER_CATALOG:
+        return ("", 404)
+    resp = send_from_directory(STATIC, "begin-ascend-tier.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/ascend-tier")
+def begin_ascend_tier_data():
+    tier = begin_funnel.TIER_CATALOG.get((request.args.get("slug") or "").strip())
+    if not tier:
+        return jsonify({"error": "unknown tier"}), 404
+    return jsonify(tier)
+
+
 @app.route("/begin/path")
 def begin_path():
     resp = send_from_directory(STATIC, "begin-path.html")
