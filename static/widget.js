@@ -7,6 +7,11 @@
  *   data-color="#58a6ff"          (button color)
  *   data-label="Ask Glen"         (button tooltip)
  *   data-title="Glen's Assistant" (panel header title)
+ *
+ * Inline (body-embedded) mode:
+ *   data-inline                   (boolean presence — no value needed)
+ *   data-target="#some-selector"  (CSS selector of container; defaults to after this script tag)
+ *   data-height="560px"           (iframe height; default 560px)
  */
 (function () {
   'use strict';
@@ -24,11 +29,45 @@
     : window.location.origin;
 
   // ── Config from data attributes ──────────────────────────────────────────
-  var position = (scriptEl && scriptEl.dataset.position) || 'bottom-right';
-  var color    = (scriptEl && scriptEl.dataset.color)    || '#d4a843';
-  var label    = (scriptEl && scriptEl.dataset.label)    || 'Ask Dr. Glen';
-  var title    = (scriptEl && scriptEl.dataset.title)    || "The Minding Body Mentor";
+  var position   = (scriptEl && scriptEl.dataset.position) || 'bottom-right';
+  var color      = (scriptEl && scriptEl.dataset.color)    || '#d4a843';
+  var label      = (scriptEl && scriptEl.dataset.label)    || 'Ask Dr. Glen';
+  var title      = (scriptEl && scriptEl.dataset.title)    || "The Minding Body Mentor";
+  var inlineMode = scriptEl ? scriptEl.hasAttribute('data-inline') : false;
+  var targetSel  = (scriptEl && scriptEl.dataset.target)   || null;
+  var iframeH    = (scriptEl && scriptEl.dataset.height)   || '560px';
 
+  // ── Inline mode ─────────────────────────────────────────────────────────
+  if (inlineMode) {
+    var inlineIframe = document.createElement('iframe');
+    inlineIframe.src = serverOrigin + '/embed';
+    inlineIframe.title = title;
+    inlineIframe.allow = 'clipboard-write';
+    inlineIframe.style.cssText = [
+      'width:100%',
+      'height:' + iframeH,
+      'border:1px solid rgba(255,255,255,0.1)',
+      'border-radius:14px',
+      'display:block',
+      'box-shadow:0 12px 48px rgba(0,0,0,0.5)'
+    ].join(';');
+
+    // Resolve insertion target
+    var container = null;
+    if (targetSel) {
+      try { container = document.querySelector(targetSel); } catch (e) {}
+    }
+    if (container) {
+      container.appendChild(inlineIframe);
+    } else if (scriptEl && scriptEl.parentNode) {
+      scriptEl.parentNode.insertBefore(inlineIframe, scriptEl.nextSibling);
+    } else {
+      document.body.appendChild(inlineIframe);
+    }
+    return; // done — skip floating-button path entirely
+  }
+
+  // ── Floating button mode (default) ──────────────────────────────────────
   var isRight  = position !== 'bottom-left';
   var side     = isRight ? 'right' : 'left';
   var panelW   = 380;
