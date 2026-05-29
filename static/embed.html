@@ -1587,7 +1587,7 @@
               appendMessage('assistant', '**Error:** ' + (data.error || r.statusText), null, null);
               isLoading = false;
               if (sb) sb.disabled = false;
-              if (sb) sb.focus ? inp.focus() : null;
+              if (inp) inp.focus();
             });
         }
         var reader = r.body.getReader();
@@ -1711,7 +1711,7 @@
             autoResize(inp);
             p.delete('ask');
             var qs = p.toString();
-            try { history.replaceState(null, '', location.pathname + (qs ? ('?' + qs) : '') + location.hash); } catch (_) {}
+            try { window.history.replaceState(null, '', location.pathname + (qs ? ('?' + qs) : '') + location.hash); } catch (_) {}
             // Auto-send after a short tick so the DOM is ready
             setTimeout(function() { window.sendQuery(); }, 80);
           }

@@ -8807,6 +8807,8 @@ def transcribe():
     if "audio" not in request.files:
         return jsonify({"error": "no audio"}), 400
     audio_file = request.files["audio"]
+    if (request.content_length or 0) > 26 * 1024 * 1024:
+        return jsonify({"error": "audio too large"}), 413
     suffix = _os.path.splitext(audio_file.filename or "clip.webm")[1] or ".webm"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tf:
         audio_file.save(tf.name)
