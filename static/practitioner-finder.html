@@ -960,7 +960,7 @@
         p1.textContent = 'You already sent this inquiry today. They have your message.';
         confirm.appendChild(p1);
       } else {
-        const sentCount = (json.sent !== undefined) ? json.sent : selectedIds.size;
+        const sentCount = (typeof json.sent_count === 'number') ? json.sent_count : selectedIds.size;
         const p1 = document.createElement('p');
         p1.textContent = 'Your inquiry was sent to ' + sentCount + ' practitioner' + (sentCount !== 1 ? 's' : '') + '. They\'ll reply by email if it\'s a fit.';
         confirm.appendChild(p1);
