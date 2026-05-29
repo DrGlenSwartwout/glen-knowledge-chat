@@ -2796,6 +2796,18 @@ def affiliate_apply_form():
     if not name or not email:
         return _redirect("/affiliate?error=" + _urlparse.quote("Name and email are required"))
 
+    # Split name into first/last (same logic as /begin/unlock)
+    _name_parts = name.split(None, 1)
+    _first = _name_parts[0] if _name_parts else ""
+    _last  = _name_parts[1] if len(_name_parts) > 1 else ""
+
+    # Session and recruiter for journey wiring
+    _session_id = (request.cookies.get("amg_session") or "").strip()
+    _minted_session = not _session_id
+    if _minted_session:
+        _session_id = uuid.uuid4().hex
+    _recruiter_slug = (request.cookies.get("rm_ref") or referred_by or "").strip()
+
     base = re.sub(r"[^a-z0-9]+", "-", (org or name).lower()).strip("-")[:30]
     import secrets as _sec
     token = _sec.token_urlsafe(24)
@@ -2806,7 +2818,12 @@ def affiliate_apply_form():
     with sqlite3.connect(LOG_DB) as cx:
         existing = cx.execute("SELECT token FROM affiliate_signups WHERE email=?", (email,)).fetchone()
     if existing:
-        return _redirect(f"/affiliate/portal?token={existing[0]}")
+        resp = _redirect(f"/affiliate/portal?token={existing[0]}")
+        _stamp_affiliate_journey(_session_id, email, _first, _last, _recruiter_slug)
+        if _minted_session:
+            resp.set_cookie("amg_session", _session_id, max_age=60 * 60 * 24 * 365,
+                            httponly=True, samesite="Lax", secure=request.is_secure)
+        return resp
 
     # Ensure unique slug
     with sqlite3.connect(LOG_DB) as cx:
@@ -2838,7 +2855,12 @@ def affiliate_apply_form():
     except Exception as e:
         return _redirect("/affiliate?error=" + _urlparse.quote(f"Signup failed: {str(e)[:80]}"))
 
-    return _redirect(f"/affiliate/portal?token={token}")
+    resp = _redirect(f"/affiliate/portal?token={token}")
+    _stamp_affiliate_journey(_session_id, email, _first, _last, _recruiter_slug)
+    if _minted_session:
+        resp.set_cookie("amg_session", _session_id, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
 
 
 @app.route("/affiliate/apply", methods=["POST", "OPTIONS"])
@@ -2854,6 +2876,18 @@ def affiliate_apply():
 
     if not name or not email:
         return jsonify({"error": "Name and email are required"}), 400
+
+    # Split name into first/last (same logic as /begin/unlock)
+    _name_parts = name.split(None, 1)
+    _first = _name_parts[0] if _name_parts else ""
+    _last  = _name_parts[1] if len(_name_parts) > 1 else ""
+
+    # Session and recruiter for journey wiring
+    _session_id = (request.cookies.get("amg_session") or "").strip()
+    _minted_session = not _session_id
+    if _minted_session:
+        _session_id = uuid.uuid4().hex
+    _recruiter_slug = (request.cookies.get("rm_ref") or data.get("referred_by") or "").strip()
 
     # Generate slug from org or name
     base = re.sub(r"[^a-z0-9]+", "-", (org or name).lower()).strip("-")[:30]
@@ -2895,12 +2929,18 @@ def affiliate_apply():
         f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
     )
     portal_url = f"/affiliate/portal?token={token}"
-    return jsonify({
+    resp = jsonify({
         "ok": True,
         "portal_url": portal_url,
         "tracking_url": tracking_url,
         "slug": slug,
-    }), 201
+    })
+    resp.status_code = 201
+    _stamp_affiliate_journey(_session_id, email, _first, _last, _recruiter_slug)
+    if _minted_session:
+        resp.set_cookie("amg_session", _session_id, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
 
 
 def _mask_lead_name(first: str, last: str) -> str:
@@ -3262,6 +3302,29 @@ def _capture_concierge_referral(email, first_name, last_name, ref_slug):
         """, (ts, None, email, first_name, last_name,
               ref_slug, "concierge", "concierge-entry", "", "", "", ""))
         cx.commit()
+
+
+def _stamp_affiliate_journey(session_id, email, first_name, last_name, recruiter_slug):
+    """Additive, defensive: record an affiliate signup into the journey engine.
+    Stamps paid_fork + path=pay_forward (-> choose_path). Idempotent per session
+    (skips if a become_affiliate event already exists). Credits the recruiter if a
+    real approved slug is present. NEVER raises into the caller."""
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            begin_funnel.init_journey_tables(cx)
+            cur = cx.execute(
+                "SELECT 1 FROM journey_events WHERE session_id=? AND trigger='paid_fork' AND detail='become_affiliate' LIMIT 1",
+                (session_id,))
+            if cur.fetchone():
+                return  # already stamped
+            begin_funnel.record_unlock(
+                cx, session_id=session_id, trigger="paid_fork", email=email,
+                first_name=first_name, last_name=last_name, path="pay_forward",
+                detail="become_affiliate", ref_slug=(recruiter_slug or ""))
+        if recruiter_slug:
+            _capture_concierge_referral(email, first_name, last_name, recruiter_slug)
+    except Exception as e:
+        print(f"[affiliate-journey] {e!r}", flush=True)
 
 
 def _attribute_conversion_by_email(email, conversion_type, detail="", order_value=None,
