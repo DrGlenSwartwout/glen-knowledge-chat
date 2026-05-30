@@ -165,9 +165,10 @@ def create_recurring_invoice(customer, *, item_name, amount, day_of_month,
             "Type": "Scheduled",   # Scheduled = QBO auto-creates each cycle (vs Reminder/Unscheduled)
             "Active": True,
             "ScheduleInfo": {
+                # Intuit's ScheduleInfo expects these numeric fields as STRINGS
                 "IntervalType": interval,
-                "NumInterval": int(num_interval),
-                "DayOfMonth": int(day_of_month),
+                "NumInterval": str(int(num_interval)),
+                "DayOfMonth": str(int(day_of_month)),
                 "StartDate": start_date,
             },
         },
