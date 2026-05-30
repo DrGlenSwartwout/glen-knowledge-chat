@@ -168,10 +168,14 @@ def test_inquiry_happy_path_sends_to_three_records_skips_opted_out_and_no_email(
     reasons = {s["practitioner_id"]: s["reason"] for s in body["skipped"]}
     assert reasons["p3"] == "opted_out_at_listing"
     assert reasons["p4"] == "no_email"
-    # FakeSMTP: 3 sends, all with Reply-To = jane@example.com
+    # FakeSMTP: 3 practitioner sends + 1 client receipt (Phase 2b) = 4
     all_sends = [s for inst in FakeSMTP.instances for s in inst.sent]
-    assert len(all_sends) == 3
-    for _, _, raw in all_sends:
+    assert len(all_sends) == 4
+    # Reply-To = jane@example.com on the 3 practitioner sends (the receipt
+    # has Reply-To = RM_INBOUND_INQUIRY_EMAIL and is sent TO jane).
+    practitioner_sends = [s for s in all_sends if "jane@example.com" not in s[1]]
+    assert len(practitioner_sends) == 3
+    for _, _, raw in practitioner_sends:
         raw_str = raw if isinstance(raw, str) else raw.decode("utf-8", errors="replace")
         assert "jane@example.com" in raw_str
     # DB checks
@@ -286,9 +290,9 @@ def test_inquiry_dedupe_same_session_same_email_same_set(app_client):
     cx = sqlite3.connect(db)
     session_id = cx.execute("SELECT session_id FROM inquiries").fetchone()[0]
     cx.close()
-    # Count sends after first POST
+    # Count sends after first POST: 2 practitioners + 1 client receipt (Phase 2b)
     sends_after_first = sum(len(inst.sent) for inst in FakeSMTP.instances)
-    assert sends_after_first == 2   # p1 + p2
+    assert sends_after_first == 3   # p1 + p2 + client receipt
     # Replay with same session + same payload
     r2 = client.post(
         "/api/practitioner-finder/inquiry",
@@ -658,3 +662,209 @@ def test_inquiry_dedupe_when_all_skipped(app_client):
     j2 = r2.get_json()
     assert j2.get("deduped") is True
     assert j2["inquiry_id"] == j1["inquiry_id"]
+
+
+# ── Phase 2b: client receipt + share-with-practitioner ────────────────────────
+
+def test_inquiry_route_sends_client_receipt(app_client):
+    """Happy-path inquiry POST also sends a receipt to the client."""
+    client, app_module, db = app_client
+    body = {
+        "client_name": "Jane Doe",
+        "client_email": "jane@example.com",
+        "main_challenge": "c",
+        "main_goal": "g",
+        "practitioner_ids": ["p1","p2"],  # both succeed in the fixture
+    }
+    r = client.post("/api/practitioner-finder/inquiry", json=body)
+    assert r.status_code == 200
+    # Three sends total: two to practitioners, one receipt to the client
+    to_addrs = []
+    for inst in FakeSMTP.instances:
+        for frm, to, raw in inst.sent:
+            to_addrs.extend(to)
+    assert "jane@example.com" in to_addrs
+    # Receipt has Reply-To = RM_INBOUND_INQUIRY_EMAIL
+    receipt_raw = None
+    for inst in FakeSMTP.instances:
+        for frm, to, raw in inst.sent:
+            if "jane@example.com" in to:
+                receipt_raw = raw if isinstance(raw, str) else raw.decode("utf-8", errors="replace")
+                break
+    assert receipt_raw is not None
+    assert app_module.RM_INBOUND_INQUIRY_EMAIL in receipt_raw
+    assert "Your inquiry was sent to 2 practitioners" in receipt_raw
+    # Practitioner emails must NOT appear in the receipt body
+    assert "a@e.com" not in receipt_raw  # p1's email
+    assert "e@e.com" not in receipt_raw  # p5's email
+
+
+def test_inquiry_route_skips_receipt_when_all_skipped(app_client):
+    """No receipt if no practitioners were actually contacted."""
+    client, app_module, db = app_client
+    body = {
+        "client_name": "X",
+        "client_email": "x@example.com",
+        "main_challenge": "c",
+        "main_goal": "g",
+        "practitioner_ids": ["p3"],  # opted_out_at_listing in the fixture
+    }
+    r = client.post("/api/practitioner-finder/inquiry", json=body)
+    assert r.status_code == 200
+    to_addrs = []
+    for inst in FakeSMTP.instances:
+        for frm, to, raw in inst.sent:
+            to_addrs.extend(to)
+    assert "x@example.com" not in to_addrs  # no receipt
+
+
+def test_recent_inquiry_lookup(app_client):
+    """_recent_inquiry_practitioner_ids returns only sent rows for this email
+    inside the window."""
+    client, app_module, db = app_client
+    # Seed an inquiry directly
+    import sqlite3, uuid
+    iid = str(uuid.uuid4())
+    now_iso = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+    with sqlite3.connect(db) as cx:
+        cx.execute(
+            "INSERT INTO inquiries (id,created_at,session_id,client_email,client_name,"
+            "client_phone,ref_slug,main_challenge,main_goal,practitioner_count,ip) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (iid, now_iso, "s","z@example.com","Z","","","ch","go",2,"1.2.3.4")
+        )
+        cx.execute(
+            "INSERT INTO inquiry_practitioners "
+            "(id,inquiry_id,practitioner_id,practitioner_email,status,email_sent_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (str(uuid.uuid4()), iid, "pa", "pa@e.com", "sent", now_iso))
+        cx.execute(
+            "INSERT INTO inquiry_practitioners "
+            "(id,inquiry_id,practitioner_id,practitioner_email,status,email_sent_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (str(uuid.uuid4()), iid, "pb", "", "skipped_no_email", None))
+        cx.commit()
+    rows = app_module._recent_inquiry_practitioner_ids("z@example.com")
+    assert len(rows) == 1
+    assert rows[0][1] == "pa"
+
+
+def test_share_page_get_renders(app_client, monkeypatch):
+    """GET /share-with-practitioner/<token> renders the preview when token+payload exist."""
+    client, app_module, db = app_client
+    # Seed: an inbound_leads scoreapp row + an inquiry + a token
+    import sqlite3, uuid, json as _json, secrets, hashlib
+    from datetime import datetime, timedelta
+    with sqlite3.connect(db) as cx:
+        # inbound_leads table — must exist; call the init that creates it
+        try:
+            cx.execute("CREATE TABLE IF NOT EXISTS inbound_leads (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                       "received_at TEXT, source TEXT, email TEXT, first_name TEXT, last_name TEXT, "
+                       "phone TEXT, raw_json TEXT, ghl_contact_id TEXT, ghl_error TEXT, "
+                       "last_outbound_at TEXT, tags TEXT)")
+        except Exception: pass
+        payload = {"data": {
+            "email": "shareclient@example.com",
+            "total_score": {"percent": 67},
+            "quiz_questions": [
+                {"question": "Which system is most in need?", "answers": [{"answer": "Immune"}]},
+                {"question": "What's the main challenge phase?", "answers": [{"answer": "Inflammation"}]},
+            ],
+        }}
+        cx.execute(
+            "INSERT INTO inbound_leads (received_at, source, email, raw_json) VALUES (?,?,?,?)",
+            (datetime.utcnow().isoformat()+"Z", "scoreapp", "shareclient@example.com",
+             _json.dumps(payload)))
+        # Seed inquiry + sent row
+        iid = str(uuid.uuid4())
+        now_iso = datetime.utcnow().isoformat()+"Z"
+        cx.execute(
+            "INSERT INTO inquiries (id,created_at,session_id,client_email,client_name,"
+            "client_phone,ref_slug,main_challenge,main_goal,practitioner_count,ip) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (iid, now_iso,"s","shareclient@example.com","Sharer","","",
+             "the challenge","the goal",1,"1.2.3.4"))
+        cx.execute(
+            "INSERT INTO inquiry_practitioners "
+            "(id,inquiry_id,practitioner_id,practitioner_email,status,email_sent_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (str(uuid.uuid4()), iid, "p1", "a@e.com", "sent", now_iso))
+        # share token
+        plain = secrets.token_urlsafe(32)
+        th = hashlib.sha256(plain.encode()).hexdigest()
+        exp = (datetime.utcnow()+timedelta(days=30)).isoformat()+"Z"
+        cx.execute(
+            "INSERT INTO auth_tokens (token_hash,email,purpose,extra,created_at,expires_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (th, "shareclient@example.com", "practitioner_share",
+             _json.dumps({"days":30}), now_iso, exp))
+        cx.commit()
+    r = client.get(f"/share-with-practitioner/{plain}")
+    assert r.status_code == 200
+    assert b"the challenge" in r.data or b"Immune" in r.data
+    assert b"<form" in r.data
+
+
+def test_share_post_fans_out_marks_shared_at(app_client, monkeypatch):
+    """POST /share-with-practitioner/<token> sends an email per recent practitioner,
+    marks shared_at, and re-clicking does NOT re-send."""
+    client, app_module, db = app_client
+    import sqlite3, uuid, json as _json, secrets, hashlib
+    from datetime import datetime, timedelta
+    # Same seed pattern as the GET test
+    with sqlite3.connect(db) as cx:
+        try:
+            cx.execute("CREATE TABLE IF NOT EXISTS inbound_leads (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                       "received_at TEXT, source TEXT, email TEXT, first_name TEXT, last_name TEXT, "
+                       "phone TEXT, raw_json TEXT, ghl_contact_id TEXT, ghl_error TEXT, "
+                       "last_outbound_at TEXT, tags TEXT)")
+        except Exception: pass
+        payload = {"data":{"email":"y@example.com","total_score":{"percent":50},
+                  "quiz_questions":[{"question":"Q","answers":[{"answer":"A"}]}]}}
+        cx.execute("INSERT INTO inbound_leads (received_at,source,email,raw_json) VALUES (?,?,?,?)",
+                   (datetime.utcnow().isoformat()+"Z","scoreapp","y@example.com",_json.dumps(payload)))
+        iid = str(uuid.uuid4())
+        now_iso = datetime.utcnow().isoformat()+"Z"
+        cx.execute(
+            "INSERT INTO inquiries (id,created_at,session_id,client_email,client_name,"
+            "client_phone,ref_slug,main_challenge,main_goal,practitioner_count,ip) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (iid,now_iso,"s","y@example.com","Y","","","c","g",2,"1.2.3.4"))
+        for pid, pemail in [("p1","a@e.com"),("p2","b@e.com")]:
+            cx.execute(
+                "INSERT INTO inquiry_practitioners "
+                "(id,inquiry_id,practitioner_id,practitioner_email,status,email_sent_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (str(uuid.uuid4()), iid, pid, pemail, "sent", now_iso))
+        plain = secrets.token_urlsafe(32)
+        th = hashlib.sha256(plain.encode()).hexdigest()
+        exp = (datetime.utcnow()+timedelta(days=30)).isoformat()+"Z"
+        cx.execute(
+            "INSERT INTO auth_tokens (token_hash,email,purpose,extra,created_at,expires_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (th,"y@example.com","practitioner_share",_json.dumps({"days":30}),now_iso,exp))
+        cx.commit()
+    # Reset SMTP fake instances
+    FakeSMTP.instances = []
+    r1 = client.post(f"/share-with-practitioner/{plain}",
+                     data={"token": plain})
+    assert r1.status_code == 200
+    sends = sum(len(i.sent) for i in FakeSMTP.instances)
+    assert sends == 2  # one per practitioner
+    # Bodies include the full Q&A
+    raw_all = b"".join(
+        (raw if isinstance(raw,bytes) else raw.encode("utf-8"))
+        for i in FakeSMTP.instances for (frm,to,raw) in i.sent)
+    assert b"Q" in raw_all and b"A" in raw_all
+    # shared_at flipped
+    with sqlite3.connect(db) as cx:
+        n_shared = cx.execute(
+            "SELECT COUNT(*) FROM inquiry_practitioners WHERE shared_at IS NOT NULL"
+        ).fetchone()[0]
+    assert n_shared == 2
+    # Re-click: should NOT send again (token consumed; idempotency via shared_at)
+    FakeSMTP.instances = []
+    r2 = client.post(f"/share-with-practitioner/{plain}",
+                     data={"token": plain})
+    # Either 4xx (token consumed) OR 200 with 0 new sends
+    new_sends = sum(len(i.sent) for i in FakeSMTP.instances)
+    assert new_sends == 0
