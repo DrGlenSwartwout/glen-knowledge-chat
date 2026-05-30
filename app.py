@@ -2579,6 +2579,97 @@ def _init_inquiry_tables():
 _init_inquiry_tables()
 
 
+def init_membership_tables(cx):
+    """Idempotent CREATE TABLE IF NOT EXISTS for the Pay-It-Forward membership layer.
+    Called on app startup alongside init_inquiry_tables and wherever
+    init_inquiry_tables is called defensively inside request handlers."""
+    cx.executescript("""
+        CREATE TABLE IF NOT EXISTS memberships (
+          id              TEXT PRIMARY KEY,
+          email           TEXT NOT NULL,
+          granted_at      TEXT NOT NULL,
+          expires_at      TEXT,
+          granted_by      TEXT,
+          source          TEXT,
+          truly_vip_ref   TEXT,
+          notes           TEXT,
+          last_reminder_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS escalation_queue (
+          id              TEXT PRIMARY KEY,
+          created_at      TEXT NOT NULL,
+          email           TEXT NOT NULL,
+          query_text      TEXT NOT NULL,
+          ai_response     TEXT,
+          ai_confidence   REAL,
+          flag_reason     TEXT,
+          status          TEXT NOT NULL DEFAULT 'pending',
+          glen_reply_url  TEXT,
+          glen_reply_text TEXT,
+          replied_at      TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS studio_credit_intents (
+          id          TEXT PRIMARY KEY,
+          created_at  TEXT NOT NULL,
+          email       TEXT NOT NULL,
+          studio_ref  TEXT,
+          notes       TEXT
+        );
+    """)
+
+
+def _init_membership_tables():
+    with sqlite3.connect(LOG_DB) as cx:
+        init_membership_tables(cx)
+
+_init_membership_tables()
+
+
+def _mint_membership_magic_link(email, ttl_min=15):
+    """Mint a single-use magic-link token for a membership grant or return-flow.
+    Returns the plaintext token; caller is responsible for emailing it."""
+    import secrets, json
+    plain = secrets.token_urlsafe(32)
+    th = _hash_token(plain)
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    exp_iso = (datetime.utcnow() + timedelta(minutes=int(ttl_min))).isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (th, email, "membership_magic_link", json.dumps({}), now_iso, exp_iso)
+        )
+    return plain
+
+
+def _validate_membership_magic_link(token):
+    """Return the email if the token is a valid (purpose, not consumed, not expired)
+    membership_magic_link, else None. Does NOT mark consumed_at; caller decides."""
+    if not token:
+        return None
+    th = _hash_token(token)
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='membership_magic_link'",
+            (th,)
+        ).fetchone()
+    if not row:
+        return None
+    email, expires_at, consumed_at = row
+    if consumed_at:
+        return None
+    try:
+        exp_dt = datetime.fromisoformat(expires_at.rstrip("Z"))
+        if exp_dt < datetime.utcnow():
+            return None
+    except Exception:
+        return None
+    return email
+
+
 @app.route("/api/referral-sources", methods=["GET"])
 def get_referral_sources():
     if CONSOLE_SECRET:
@@ -3567,6 +3658,7 @@ def _stamp_affiliate_journey(session_id, email, first_name, last_name, recruiter
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             begin_funnel.init_journey_tables(cx)
             init_inquiry_tables(cx)
+            init_membership_tables(cx)
             cur = cx.execute(
                 "SELECT 1 FROM journey_events WHERE session_id=? AND trigger='paid_fork' AND detail='become_affiliate' LIMIT 1",
                 (session_id,))
