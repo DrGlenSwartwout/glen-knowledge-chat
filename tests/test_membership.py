@@ -315,6 +315,9 @@ def app_client_member(monkeypatch, tmp_path, fake_smtp):
     app_module = _load_app()
     db = str(tmp_path / "chat_log.db")
     monkeypatch.setattr(app_module, "LOG_DB", db)
+    import dashboard as _dashboard
+    monkeypatch.setattr(app_module, "CONSOLE_SECRET", "test-console-secret-xyz")
+    monkeypatch.setattr(_dashboard, "CONSOLE_SECRET", "test-console-secret-xyz")
     cx = sqlite3.connect(db)
     cx.executescript("""
         CREATE TABLE IF NOT EXISTS auth_tokens (
@@ -563,3 +566,139 @@ def test_chat_free_tier_unchanged_when_no_member_cookie(app_client_member, monke
         pass
     captured_ctx = getattr(app_module, "_LAST_CONTEXT_STR_FOR_TEST", None) or ""
     assert "MEMBER CONTEXT" not in captured_ctx
+
+
+# ── Slice 5: escalation flow ────────────────────────────────────────────────
+
+def test_escalate_requires_active_membership_else_403(app_client_member):
+    """No member cookie -> 403; expired/no membership -> 403."""
+    client, app_module, db = app_client_member
+    # No cookie
+    r = client.post("/coaching/escalate", json={"query_text": "hi"})
+    assert r.status_code == 403
+    # Cookie present but no row
+    client.set_cookie("rm_member_email", "nobody@example.com")
+    r = client.post("/coaching/escalate", json={"query_text": "hi"})
+    assert r.status_code == 403
+
+
+def test_escalate_inserts_pending_row_and_logs_event(app_client_member):
+    client, app_module, db = app_client_member
+    client.set_cookie("rm_member_email", "jane@example.com")
+    r = client.post("/coaching/escalate",
+                    json={"query_text":"What about my hashimoto situation?",
+                          "ai_response":"AI said something"})
+    assert r.status_code == 200
+    assert "Glen has been notified" in r.get_json()["message"]
+    cx = sqlite3.connect(db)
+    row = cx.execute(
+        "SELECT email, query_text, status, flag_reason FROM escalation_queue"
+    ).fetchone()
+    assert row == ("jane@example.com", "What about my hashimoto situation?",
+                   "pending", "member_request")
+    je = cx.execute(
+        "SELECT trigger FROM journey_events WHERE trigger='membership_escalation_filed'"
+    ).fetchone()
+    assert je is not None
+    cx.close()
+
+
+def test_admin_escalation_detail_returns_member_context(app_client_member):
+    client, app_module, db = app_client_member
+    # seed a pending escalation
+    import uuid as _uuid
+    eid = str(_uuid.uuid4())
+    now_iso = datetime.utcnow().isoformat()+"Z"
+    cx = sqlite3.connect(db)
+    cx.execute(
+        "INSERT INTO escalation_queue "
+        "(id, created_at, email, query_text, ai_response, flag_reason, status) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (eid, now_iso, "jane@example.com", "test q", "ai r", "member_request", "pending"))
+    cx.commit(); cx.close()
+    r = client.get(f"/admin/escalations/{eid}", headers=_ckey())
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["id"] == eid
+    assert body["email"] == "jane@example.com"
+    assert "member_context" in body
+    assert isinstance(body["member_context"], dict)
+
+
+def test_admin_escalation_detail_requires_console_key(app_client_member):
+    client, _, _ = app_client_member
+    r = client.get("/admin/escalations/nonexistent")
+    assert r.status_code in (401, 403)
+
+
+def test_admin_escalation_detail_404_for_unknown(app_client_member):
+    client, _, _ = app_client_member
+    r = client.get("/admin/escalations/does-not-exist", headers=_ckey())
+    assert r.status_code == 404
+
+
+def test_admin_reply_marks_replied_sends_email_logs_event(app_client_member, fake_smtp):
+    client, app_module, db = app_client_member
+    # seed pending
+    import uuid as _uuid
+    eid = str(_uuid.uuid4())
+    now_iso = datetime.utcnow().isoformat()+"Z"
+    cx = sqlite3.connect(db)
+    cx.execute(
+        "INSERT INTO escalation_queue "
+        "(id, created_at, email, query_text, ai_response, flag_reason, status) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (eid, now_iso, "jane@example.com", "what should I do?", "ai r", "member_request", "pending"))
+    cx.commit(); cx.close()
+    fake_smtp.instances = []
+    r = client.post(f"/admin/escalations/{eid}/reply",
+                    json={"video_url":"https://loom.com/abc",
+                          "text":"Here is my take..."},
+                    headers=_ckey())
+    assert r.status_code == 200
+    cx = sqlite3.connect(db)
+    row = cx.execute(
+        "SELECT status, glen_reply_url, glen_reply_text, replied_at FROM escalation_queue WHERE id=?",
+        (eid,)
+    ).fetchone()
+    assert row[0] == "replied"
+    assert row[1] == "https://loom.com/abc"
+    assert row[2] == "Here is my take..."
+    assert row[3] is not None
+    je = cx.execute(
+        "SELECT trigger FROM journey_events WHERE trigger='membership_escalation_replied'"
+    ).fetchone()
+    assert je is not None
+    cx.close()
+    sends = [s for inst in fake_smtp.instances for s in inst.sent]
+    assert any("jane@example.com" in to for (_, to, _) in sends)
+
+
+def test_admin_reply_rejects_non_pending(app_client_member, fake_smtp):
+    client, app_module, db = app_client_member
+    import uuid as _uuid
+    eid = str(_uuid.uuid4())
+    now_iso = datetime.utcnow().isoformat()+"Z"
+    cx = sqlite3.connect(db)
+    cx.execute(
+        "INSERT INTO escalation_queue "
+        "(id, created_at, email, query_text, ai_response, flag_reason, status) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (eid, now_iso, "jane@example.com", "q", "ai r", "member_request", "replied"))
+    cx.commit(); cx.close()
+    fake_smtp.instances = []
+    r = client.post(f"/admin/escalations/{eid}/reply",
+                    json={"video_url":"https://loom.com/x","text":"again"},
+                    headers=_ckey())
+    assert r.status_code == 400
+
+
+def test_embed_html_renders_talk_to_glen_hook(app_client_member):
+    """Static embed.html must contain the JS hook that renders the Talk-to-Glen
+    action when SSE done event carries member_mode: true."""
+    client, _, _ = app_client_member
+    r = client.get("/embed")
+    assert r.status_code == 200
+    body = r.data.decode("utf-8", errors="replace")
+    assert "member_mode" in body
+    assert "/coaching/escalate" in body

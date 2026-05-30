@@ -10505,6 +10505,121 @@ def admin_escalations_list():
     return jsonify([dict(r) for r in rows]), 200
 
 
+# ── Slice 5: member-triggered escalation + admin queue detail + admin reply ───
+
+@app.route("/coaching/escalate", methods=["POST"])
+def coaching_escalate():
+    import json as _json, uuid
+    email = request.cookies.get("rm_member_email", "").strip().lower()
+    membership = _active_membership_for_email(email) if email else None
+    if not membership:
+        return jsonify({"error": "membership required"}), 403
+    data = request.get_json(silent=True) or {}
+    query_text = (data.get("query_text") or "").strip()
+    ai_response = (data.get("ai_response") or "").strip() or None
+    if not query_text:
+        return jsonify({"error": "query_text required"}), 400
+    eid = str(uuid.uuid4())
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO escalation_queue "
+            "(id, created_at, email, query_text, ai_response, ai_confidence, "
+            " flag_reason, status) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (eid, now_iso, email, query_text, ai_response, None,
+             "member_request", "pending")
+        )
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                "VALUES (?,?,?,'membership_escalation_filed',?,'','')",
+                (now_iso, request.cookies.get("amg_session", ""), email,
+                 _json.dumps({"escalation_id": eid}))
+            )
+            cx.commit()
+    except Exception as e:
+        print(f"[coaching-escalate] journey_events insert failed: {e!r}", flush=True)
+    return jsonify({
+        "message": "Glen has been notified; a reply will arrive in your inbox within ~7 days.",
+        "escalation_id": eid,
+    }), 200
+
+
+@app.route("/admin/escalations/<eid>", methods=["GET"])
+@require_console_key
+def admin_escalation_detail(eid):
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT id, created_at, email, query_text, ai_response, flag_reason, status "
+            "FROM escalation_queue WHERE id=?",
+            (eid,)
+        ).fetchone()
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    body = dict(row)
+    body["member_context"] = _member_context_for_email(body["email"])
+    return jsonify(body), 200
+
+
+@app.route("/admin/escalations/<eid>/reply", methods=["POST"])
+@require_console_key
+def admin_escalation_reply(eid):
+    import json as _json
+    data = request.get_json(silent=True) or {}
+    video_url = (data.get("video_url") or "").strip()
+    text = (data.get("text") or "").strip()
+    if not video_url or not text:
+        return jsonify({"error": "video_url and text required"}), 400
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email, query_text, status FROM escalation_queue WHERE id=?",
+            (eid,)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "not found"}), 404
+        email, query_text, status = row
+        if status != "pending":
+            return jsonify({"error": "row not pending"}), 400
+        cx.execute(
+            "UPDATE escalation_queue SET status='replied', glen_reply_url=?, "
+            "glen_reply_text=?, replied_at=? WHERE id=?",
+            (video_url, text, now_iso, eid)
+        )
+    base = request.host_url.rstrip("/")
+    subject = "Glen replied to your question"
+    body = (
+        f"Hi,\n\n"
+        f"You asked: {query_text}\n\n"
+        f"Glen recorded a reply for you here:\n{video_url}\n\n"
+        f"Glen says: {text}\n\n"
+        f"You can return to your coaching dashboard any time:\n{base}/coaching\n\n"
+        f"---\n"
+        f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+    )
+    try:
+        _send_inquiry_email(
+            to_email=email, subject=subject, body=body,
+            reply_to=RM_INBOUND_INQUIRY_EMAIL,
+        )
+    except Exception as e:
+        print(f"[escalation-reply] email send failed: {e!r}", flush=True)
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                "VALUES (?,?,?,'membership_escalation_replied',?,'','')",
+                (now_iso, "", email, _json.dumps({"escalation_id": eid}))
+            )
+            cx.commit()
+    except Exception as e:
+        print(f"[escalation-reply] journey_events insert failed: {e!r}", flush=True)
+    return jsonify({"ok": True}), 200
+
+
 # ── Slice 3: member auth + coaching dashboard ─────────────────────────────────
 
 @app.route("/coaching/auth/<token>", methods=["GET"])

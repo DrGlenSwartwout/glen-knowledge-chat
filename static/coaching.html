@@ -89,6 +89,46 @@
     </div>
   </section>
 
+  <section class="shell" style="margin-top:24px;">
+    <div class="card">
+      <h3>Talk to Glen directly</h3>
+      <p>Stuck on something the AI couldn't quite address? Send a short note to Glen. He'll record a video reply, usually within seven days.</p>
+      <form id="escalate-form" onsubmit="return submitEscalation(event)">
+        <textarea id="escalate-q" rows="3" placeholder="What's the question?" required style="width:100%;background:var(--surface-2);color:var(--cream);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:15px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
+        <button type="submit" class="btn">Send to Glen</button>
+      </form>
+      <p id="escalate-status" class="muted" style="display:none;font-size:15px;margin-top:12px;"></p>
+    </div>
+  </section>
+  <script>
+  async function submitEscalation(e) {
+    e.preventDefault();
+    var q = document.getElementById('escalate-q').value.trim();
+    if (!q) return false;
+    var statusEl = document.getElementById('escalate-status');
+    var formEl = document.getElementById('escalate-form');
+    statusEl.style.display = 'block';
+    statusEl.textContent = 'Sending...';
+    try {
+      var r = await fetch('/coaching/escalate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({query_text: q})
+      });
+      if (r.ok) {
+        formEl.style.display = 'none';
+        statusEl.textContent = 'Sent. Glen will reply via email within about seven days.';
+      } else {
+        statusEl.textContent = 'Could not send. Please try again.';
+      }
+    } catch (err) {
+      statusEl.textContent = 'Could not send. Please try again.';
+    }
+    return false;
+  }
+  </script>
+
   {% if glen_replies %}
   <section class="shell replies-section">
     <h3>Past replies from Glen</h3>
