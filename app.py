@@ -15,13 +15,14 @@ import os
 import re
 import json
 import uuid
+import secrets
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Tuple
-from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context, render_template_string
+from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context, render_template_string, redirect
 from flask_cors import CORS
 from pinecone import Pinecone
 from openai import OpenAI
@@ -2668,6 +2669,28 @@ def _validate_membership_magic_link(token):
     except Exception:
         return None
     return email
+
+
+def _active_membership_for_email(email):
+    """Return the active membership row as a dict (with derived days_remaining), or None."""
+    if not email:
+        return None
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT * FROM memberships WHERE email=? AND expires_at > ? "
+            "ORDER BY expires_at DESC LIMIT 1",
+            (email, datetime.utcnow().isoformat() + "Z")
+        ).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    try:
+        exp_dt = datetime.fromisoformat(d["expires_at"].rstrip("Z"))
+        d["days_remaining"] = max(0, (exp_dt - datetime.utcnow()).days)
+    except Exception:
+        d["days_remaining"] = 0
+    return d
 
 
 @app.route("/api/referral-sources", methods=["GET"])
@@ -10315,6 +10338,114 @@ def admin_escalations_list():
             "FROM escalation_queue WHERE status='pending' ORDER BY created_at"
         ).fetchall()
     return jsonify([dict(r) for r in rows]), 200
+
+
+# ── Slice 3: member auth + coaching dashboard ─────────────────────────────────
+
+@app.route("/coaching/auth/<token>", methods=["GET"])
+def coaching_auth_token(token):
+    email = _validate_membership_magic_link(token)
+    if not email:
+        html = _render_static_template("coaching.html", status="error")
+        return html, 410, {"Content-Type": "text/html; charset=utf-8"}
+    # Consume the token
+    th = _hash_token(token)
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "UPDATE auth_tokens SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL",
+            (now_iso, th)
+        )
+    # Mint amg_session if absent, then set rm_member_email cookie
+    session_id = request.cookies.get("amg_session", "")
+    minted = not session_id
+    if minted:
+        session_id = secrets.token_urlsafe(16)
+    resp = redirect("/coaching", code=302)
+    if minted:
+        resp.set_cookie("amg_session", session_id,
+                        max_age=60 * 60 * 24 * 365, httponly=True,
+                        samesite="Lax", secure=request.is_secure)
+    resp.set_cookie("rm_member_email", email,
+                    max_age=60 * 60 * 24 * 365, httponly=True,
+                    samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/coaching/login-request", methods=["POST"])
+def coaching_login_request():
+    data = request.get_json(silent=True) or request.form or {}
+    email = (data.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        # Still return the same shape (defense-in-depth)
+        return jsonify({"message": "If an active membership exists for that email, a sign-in link is on its way."}), 200
+    # Mint and send REGARDLESS of active status (defense-in-depth: don't leak membership status)
+    plain = _mint_membership_magic_link(email)
+    base = request.host_url.rstrip("/")
+    magic_link_url = f"{base}/coaching/auth/{plain}"
+    subject = "Your Remedy Match sign-in link"
+    body = (
+        f"Hi,\n\n"
+        f"Use this link to sign in to your Remedy Match coaching dashboard:\n{magic_link_url}\n\n"
+        f"The link is good for 15 minutes. If you don't have an active membership, "
+        f"recording a fresh 3-5 minute video at https://truly.vip/Results will earn you "
+        f"30 days of access.\n\n"
+        f"---\n"
+        f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+    )
+    try:
+        _send_inquiry_email(
+            to_email=email, subject=subject, body=body,
+            reply_to=RM_INBOUND_INQUIRY_EMAIL,
+        )
+    except Exception as e:
+        print(f"[coaching-login] email send failed: {e!r}", flush=True)
+    return jsonify({"message": "If an active membership exists for that email, a sign-in link is on its way."}), 200
+
+
+@app.route("/coaching", methods=["GET"])
+def coaching_dashboard():
+    email = request.cookies.get("rm_member_email", "").strip().lower()
+    membership = _active_membership_for_email(email) if email else None
+    if not membership:
+        html = _render_static_template("coaching.html", status="lapsed")
+        return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+    # Resolve first name from inbound_leads (best effort) or email local-part
+    client_first = email.split("@", 1)[0]
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute(
+                "SELECT first_name FROM inbound_leads "
+                "WHERE email=? AND first_name IS NOT NULL AND first_name != '' "
+                "ORDER BY id DESC LIMIT 1",
+                (email,)
+            ).fetchone()
+            if row and row[0]:
+                client_first = row[0]
+    except Exception:
+        pass
+    # Pull last 5 Glen replies
+    glen_replies = []
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            for r in cx.execute(
+                "SELECT id, query_text, glen_reply_url, glen_reply_text, replied_at "
+                "FROM escalation_queue WHERE email=? AND status='replied' "
+                "ORDER BY replied_at DESC LIMIT 5",
+                (email,)
+            ).fetchall():
+                glen_replies.append(dict(r))
+    except Exception:
+        pass
+    html = _render_static_template(
+        "coaching.html",
+        status="active",
+        client_first=client_first,
+        days_remaining=membership.get("days_remaining", 0),
+        glen_replies=glen_replies,
+    )
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
 if __name__ == "__main__":

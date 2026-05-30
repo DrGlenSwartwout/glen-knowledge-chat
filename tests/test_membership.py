@@ -302,3 +302,142 @@ def test_admin_escalations_returns_only_pending(app_client_mem):
     emails = [item["email"] for item in arr]
     assert "a@e.com" in emails
     assert "b@e.com" not in emails
+
+
+# ── Slice 3: member auth + dashboard shell ───────────────────────────────────
+
+import re
+
+
+@pytest.fixture
+def app_client_member(monkeypatch, tmp_path, fake_smtp):
+    """Test client with a seeded active membership for jane@example.com."""
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    cx = sqlite3.connect(db)
+    cx.executescript("""
+        CREATE TABLE IF NOT EXISTS auth_tokens (
+          token_hash TEXT PRIMARY KEY, email TEXT, purpose TEXT NOT NULL,
+          extra TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+          consumed_at TEXT
+        );
+    """)
+    try:
+        import begin_funnel
+        begin_funnel.init_journey_tables(cx)
+    except Exception: pass
+    app_module.init_membership_tables(cx)
+    # seed an inbound_leads row for client_first lookup (used by /coaching)
+    try:
+        cx.execute("CREATE TABLE IF NOT EXISTS inbound_leads (id INTEGER PRIMARY KEY AUTOINCREMENT, received_at TEXT, source TEXT, email TEXT, first_name TEXT, last_name TEXT, phone TEXT, raw_json TEXT, ghl_contact_id TEXT, ghl_error TEXT, last_outbound_at TEXT, tags TEXT)")
+        cx.execute("INSERT INTO inbound_leads (received_at, source, email, first_name) VALUES (?,?,?,?)",
+                   (datetime.utcnow().isoformat()+"Z", "scoreapp", "jane@example.com", "Jane"))
+    except Exception: pass
+    # seed an active membership
+    import uuid as _uuid
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source) "
+        "VALUES (?,?,?,?,?,?)",
+        (str(_uuid.uuid4()), "jane@example.com",
+         datetime.utcnow().isoformat()+"Z",
+         (datetime.utcnow()+timedelta(days=27)).isoformat()+"Z",
+         "glen", "video")
+    )
+    cx.commit(); cx.close()
+    return app_module.app.test_client(), app_module, db
+
+
+def test_active_membership_for_email_returns_row(app_client_member):
+    _, app_module, _ = app_client_member
+    row = app_module._active_membership_for_email("jane@example.com")
+    assert row is not None
+    assert row["email"] == "jane@example.com"
+    assert "days_remaining" in row
+    assert 26 <= row["days_remaining"] <= 28
+
+
+def test_active_membership_for_email_returns_none_when_expired(app_client_member):
+    _, app_module, db = app_client_member
+    cx = sqlite3.connect(db)
+    cx.execute("UPDATE memberships SET expires_at=? WHERE email='jane@example.com'",
+               ((datetime.utcnow() - timedelta(days=1)).isoformat()+"Z",))
+    cx.commit(); cx.close()
+    assert app_module._active_membership_for_email("jane@example.com") is None
+
+
+def test_auth_token_consumes_and_sets_cookie_redirects_to_coaching(app_client_member):
+    client, app_module, db = app_client_member
+    plain = app_module._mint_membership_magic_link("jane@example.com")
+    r = client.get(f"/coaching/auth/{plain}", follow_redirects=False)
+    assert r.status_code in (302, 303)
+    assert r.headers.get("Location", "").endswith("/coaching")
+    set_cookie = r.headers.get("Set-Cookie", "")
+    # multiple Set-Cookie headers can appear; use headers.getlist if available
+    cookies = r.headers.getlist("Set-Cookie")
+    blob = "\n".join(cookies)
+    assert "rm_member_email" in blob
+    assert "jane%40example.com" in blob or "jane@example.com" in blob
+    # token consumed_at flipped
+    cx = sqlite3.connect(db)
+    th = app_module._hash_token(plain)
+    consumed_at = cx.execute("SELECT consumed_at FROM auth_tokens WHERE token_hash=?", (th,)).fetchone()[0]
+    cx.close()
+    assert consumed_at is not None
+
+
+def test_auth_token_bad_token_renders_error_410(app_client_member):
+    client, _, _ = app_client_member
+    r = client.get("/coaching/auth/not-a-real-token")
+    assert r.status_code == 410
+    assert b"<html" in r.data.lower() or b"<form" in r.data.lower() or b"invalid" in r.data.lower() or b"valid" in r.data.lower()
+
+
+def test_login_request_for_unknown_email_returns_200_no_leak(app_client_member, fake_smtp):
+    client, _, _ = app_client_member
+    fake_smtp.instances = []
+    r = client.post("/coaching/login-request", json={"email":"unknown@example.com"})
+    assert r.status_code == 200
+    j = r.get_json()
+    assert "If an active membership" in j["message"]
+    # We MUST still send the email so the response timing/content doesn't leak status
+    sends = [s for inst in fake_smtp.instances for s in inst.sent]
+    assert any("unknown@example.com" in to for (_, to, _) in sends)
+
+
+def test_login_request_for_active_member_sends_magic_link(app_client_member, fake_smtp):
+    client, _, _ = app_client_member
+    fake_smtp.instances = []
+    r = client.post("/coaching/login-request", json={"email":"jane@example.com"})
+    assert r.status_code == 200
+    sends = [s for inst in fake_smtp.instances for s in inst.sent]
+    raw_all = b"".join(
+        raw if isinstance(raw, bytes) else raw.encode("utf-8")
+        for (_, _, raw) in sends)
+    assert b"/coaching/auth/" in raw_all
+
+
+def test_coaching_active_renders_iframe_and_days_remaining(app_client_member):
+    client, app_module, db = app_client_member
+    # Set the rm_member_email cookie
+    client.set_cookie("rm_member_email", "jane@example.com")
+    r = client.get("/coaching")
+    assert r.status_code == 200
+    # Iframe to /embed exists
+    assert b"/embed" in r.data
+    # Days remaining rendered
+    assert re.search(rb"2[6-8]", r.data) is not None  # 26/27/28 days
+    # Brand bar
+    assert b"Remedy" in r.data
+    # First name from inbound_leads or email local-part
+    assert b"Jane" in r.data or b"jane" in r.data
+
+
+def test_coaching_lapsed_renders_truly_vip_cta(app_client_member):
+    client, app_module, db = app_client_member
+    # No cookie, no active membership for the implicit visitor
+    r = client.get("/coaching")
+    assert r.status_code == 200
+    # Lapsed state: CTA to Truly.VIP/Results
+    body_lower = r.data.lower()
+    assert b"truly.vip/results" in body_lower
