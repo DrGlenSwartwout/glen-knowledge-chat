@@ -1,0 +1,6 @@
+{
+  "_comment": "Off-catalog but Glen-approved remedy / tool / service / therapy links for RemedyMatch auto-open. Grows organically. Keys are remedy/tool/service names; matching is case-insensitive (exact or substring, name length > 4). Value is a URL string, or an object {\"url\": \"...\", \"note\": \"...\"}. Catalog products do NOT go here — those resolve via product-aliases.json. Only add links you trust to open in a new tab.",
+  "links": {
+    "E4L Bioenergetic Scan": { "url": "https://truly.vip/E4L", "note": "Energy For Life 10-second voice scan / Biofield Analysis" }
+  }
+}

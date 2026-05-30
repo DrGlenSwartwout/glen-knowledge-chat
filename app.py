@@ -1541,6 +1541,233 @@ def chat():
     return resp
 
 
+# ── RemedyMatch — Socratic remedy-matching funnel page ───────────────────────
+# Standalone page /begin/match (+ a surfaceable card). A Socratic chat converges
+# on the ONE perfect remedy — usually a Functional Formulation, but possibly a
+# tool, service, or therapy outside our catalog — then opens its TRUSTED page in
+# a new tab. Reuses the /chat retrieval pipeline (embed → Pinecone → build_context).
+_TRUSTED_LINKS = _load_json(DATA_DIR / "trusted-links.json", default={"links": {}})
+
+# Retrieval tuned for matching: specific-formulations is NOT in the /chat
+# NAMESPACES, so include it here alongside the authoritative clinical sources.
+MATCH_NAMESPACES = ["specific-formulations", "clinical-qa", "e4l-protocols",
+                    "ingredients", "glen-authored-works"]
+
+def _match_query_namespaces(vec):
+    out = []
+    with ThreadPoolExecutor(max_workers=len(MATCH_NAMESPACES)) as pool:
+        futs = {pool.submit(query_ns, vec, ns, TOP_K_PER_NS): ns for ns in MATCH_NAMESPACES}
+        for f in as_completed(futs):
+            out.extend(f.result())
+    return out
+
+def _resolve_remedy_url(name):
+    """Resolve a remedy/product NAME to a TRUSTED url. Returns (url, source) or
+    (None, None). Never guesses a URL. Sources: 'catalog' (product-aliases.json,
+    prefers the remedymatch.com canonical) or 'trusted' (trusted-links.json)."""
+    if not name:
+        return (None, None)
+    nl = name.strip().lower()
+    for key, info in (_PRODUCT_ALIASES.get("aliases", {}) or {}).items():
+        kl = (key or "").lower()
+        cat = (info.get("catalog_name") or "").lower()
+        if kl and (nl == kl or nl == cat or (len(nl) > 4 and (nl in kl or kl in nl))):
+            url = info.get("canonical_url") or info.get("url")
+            if url:
+                return (url, "catalog")
+    for key, val in (_TRUSTED_LINKS.get("links", {}) or {}).items():
+        kl = (key or "").lower()
+        url = val if isinstance(val, str) else (val or {}).get("url")
+        if url and kl and (nl == kl or (len(nl) > 4 and (nl in kl or kl in nl))):
+            return (url, "trusted")
+    return (None, None)
+
+def _store_search_url(name):
+    from urllib.parse import quote_plus
+    return f"https://remedymatch.com/?controller=search&s={quote_plus(name or '')}"
+
+_REMEDY_MATCH_SYSTEM = (
+    "You are RemedyMatch, Dr. Glen Swartwout's warm, Socratic remedy-matching guide "
+    "(naturopathic physician, Hilo Hawai'i). Goal: through brief back-and-forth, help the "
+    "person find the ONE perfect remedy for their need right now.\n\n"
+    "How you work:\n"
+    "- Ask ONE focused question at a time, warmly and plainly. Gather: their main concern or "
+    "goal, who it's for, what they've tried, and current patterns (energy, sleep, stress, terrain).\n"
+    "- Prefer Functional Formulations (Advanced Botanical / Nutritional) FIRST — they simplify "
+    "implementation — then individual remedies, healing tools, services, or a natural therapy "
+    "outside our catalog when that is genuinely the best fit.\n"
+    "- The RETRIEVED SNIPPETS are your source of truth. Snippets tagged [AUTHORITATIVE ...] or "
+    "type clinical-qa override anything else; apply them directly.\n"
+    "- If you do NOT yet have enough to name a single best match, ask the next best question. "
+    "Do not guess or list many options.\n"
+    "- When you ARE confident in the single best match, name it clearly, say in 1-2 sentences why "
+    "it fits THIS person, and invite them to open its page.\n"
+    "- You may suggest a quick 10-second E4L voice scan (truly.vip/E4L) to read current stress "
+    "patterns when that would sharpen the match.\n"
+    "- Never invent product URLs or prices. Keep replies short. Sign off warmly as Dr. Glen."
+)
+
+_MATCH_EXTRACT_SYSTEM = (
+    "You analyze a remedy-matching conversation. If the assistant has CONFIDENTLY identified the "
+    "single perfect remedy to recommend now, return JSON: "
+    "{\"matched\": true, \"name\": \"<exact remedy/product name>\", "
+    "\"kind\": \"formulation|remedy|tool|service|external\", \"why\": \"<one short sentence>\"}. "
+    "If it is still gathering information, or offered several options, return {\"matched\": false}. "
+    "Output ONLY the JSON, no prose, no code fences."
+)
+
+
+@app.route("/begin/match")
+def begin_match_page():
+    resp = send_from_directory(STATIC, "begin-match.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/match/chat", methods=["POST", "OPTIONS"])
+def begin_match_chat():
+    if request.method == "OPTIONS":
+        return "", 200
+    data    = request.get_json() or {}
+    query   = (data.get("query") or "").strip()
+    history = data.get("history") or []
+    for_whom = (data.get("for_whom") or "").strip().lower()   # "me" | "someone-else" | ""
+    name    = (data.get("name") or "").strip()
+    email   = (data.get("email") or "").strip().lower()
+    session_id = (request.cookies.get("amg_session")
+                  or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
+    auth_user = get_authenticated_user(request)
+    if auth_user:
+        email = auth_user["email"]
+        if not name and auth_user.get("name"):
+            name = auth_user["name"]
+    if not query:
+        return jsonify({"error": "Empty query"}), 400
+
+    def generate():
+        try:
+            q_vec = embed(query)
+        except Exception as e:
+            yield sse({"error": f"Embedding failed: {e}"}); return
+        matches = _match_query_namespaces(q_vec)
+        context_str, sources_list = build_context(matches) if matches else ("", [])
+
+        # Personal context — only when it's FOR THEM and we know the email.
+        personal_block, household_note = "", ""
+        if email and for_whom != "someone-else":
+            try:
+                with sqlite3.connect(LOG_DB) as cx:
+                    ppl = cx.execute("SELECT name FROM people WHERE email=?", (email,)).fetchall()
+                if len(ppl) > 1:
+                    nm = ", ".join([p[0] for p in ppl if p[0]][:5])
+                    household_note = (f"HOUSEHOLD NOTE: this email is shared by multiple people "
+                                      f"({nm}). Confirm WHICH person this remedy is for before "
+                                      f"personalizing.\n")
+                mc = _member_context_for_email(email)
+                bits = []
+                if mc.get("intake_summary"):   bits.append("Intake: " + str(mc["intake_summary"]))
+                if mc.get("recent_inquiries"): bits.append("Recent concerns/goals: " + "; ".join(str(x) for x in mc["recent_inquiries"][:3]))
+                if mc.get("recent_queries"):   bits.append("Recent questions: " + "; ".join(str(x) for x in mc["recent_queries"][:3]))
+                if mc.get("voice_scan_summary"): bits.append("Voice scan: " + str(mc["voice_scan_summary"]))
+                if bits:
+                    personal_block = "PERSONAL CONTEXT (apply only if this remedy is for THEM):\n" + "\n".join(bits) + "\n\n"
+            except Exception as e:
+                print(f"[match] personal ctx: {e!r}", flush=True)
+
+        whom_line = {
+            "me": "This match is FOR THE PERSON THEMSELVES.",
+            "someone-else": "This match is FOR SOMEONE ELSE — do not apply the chatter's personal data.",
+        }.get(for_whom, "The person hasn't said who this is for — gently confirm it's for them or someone else.")
+
+        messages = []
+        for turn in history[-8:]:
+            if turn.get("role") in ("user", "assistant") and turn.get("content"):
+                messages.append({"role": turn["role"], "content": turn["content"]})
+        messages.append({"role": "user", "content":
+            f"USER MESSAGE: {query}\n\n{whom_line}\n{household_note}\n{personal_block}"
+            f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
+            "Continue the Socratic match. If you can now name the ONE best remedy, name it and "
+            "invite them to open its page; otherwise ask the single best next question."})
+
+        full = []
+        try:
+            with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=900,
+                                     system=_REMEDY_MATCH_SYSTEM, messages=messages) as stream:
+                for tok in stream.text_stream:
+                    full.append(tok); yield sse({"token": tok})
+        except Exception as e:
+            yield sse({"error": f"Claude error: {e}"}); return
+        answer = "".join(full)
+
+        try:
+            log_query(query, "self-healing", answer, session_id=session_id,
+                      email=email, name=name, mode="brief")
+        except Exception:
+            pass
+
+        # Confirm a single confident match (separate call so it never pollutes the stream).
+        match_evt = None
+        try:
+            convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-3:]) + f"\nassistant: {answer}"
+            mx = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=200,
+                                     system=_MATCH_EXTRACT_SYSTEM,
+                                     messages=[{"role": "user", "content": convo[:4000]}])
+            txt = mx.content[0].text.strip()
+            if txt.startswith("```"):
+                txt = txt.split("```", 2)[1]
+                if txt.startswith("json\n"): txt = txt[5:]
+            obj = json.loads(txt)
+            if obj.get("matched") and obj.get("name"):
+                url, src = _resolve_remedy_url(obj["name"])
+                match_evt = {"name": obj["name"], "kind": obj.get("kind", ""),
+                             "why": obj.get("why", ""), "url": url, "url_source": src,
+                             "search_url": "" if url else _store_search_url(obj["name"])}
+        except Exception as e:
+            print(f"[match] extract: {e!r}", flush=True)
+        if match_evt:
+            yield sse({"match": match_evt})
+
+        yield sse({"done": True, "session_id": session_id,
+                   "sources": sources_list, "chunks_retrieved": len(matches)})
+
+    resp = Response(stream_with_context(generate()), content_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", session_id, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/match/voice-signal", methods=["POST"])
+def begin_match_voice_signal():
+    """Exploratory: log a voice-derived signal from the match page's mic dictation.
+    v1 stores the transcript + optional client metrics; acoustic tone analysis is Phase 2."""
+    data = request.get_json(silent=True) or {}
+    session_id = (request.cookies.get("amg_session") or (data.get("session_id") or "").strip())
+    email      = (data.get("email") or "").strip().lower()
+    transcript = (data.get("transcript") or "").strip()[:2000]
+    source     = (data.get("source") or "match-dictation").strip()[:40]
+    metrics    = data.get("metrics") or {}
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute("""CREATE TABLE IF NOT EXISTS voice_signals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, email TEXT, source TEXT,
+                transcript TEXT, metrics_json TEXT)""")
+            cx.execute("INSERT INTO voice_signals (ts, session_id, email, source, transcript, metrics_json) "
+                       "VALUES (?,?,?,?,?,?)",
+                       (datetime.now(timezone.utc).isoformat(), session_id, email, source,
+                        transcript, json.dumps(metrics)[:4000]))
+            cx.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 # ── Phase 2B — full-report endpoint (View full / Email full) ─────────────────
 @app.route("/full-report", methods=["POST", "OPTIONS"])
 def full_report():

@@ -394,6 +394,9 @@ CARD_CATALOG = {
     "voice_distinctions": {"title": "Listen Deeper — Your Voice & Frequencies",
                            "sub": "5-Element toning · voice-sample analysis · Bioenergetic Wellness Scan · EVOX",
                            "base_url": "/begin/voice", "internal": True},
+    "remedy_match":       {"title": "Find Your Perfect Remedy Match",
+                           "sub": "A few questions to match you to your one perfect remedy",
+                           "base_url": "/begin/match", "internal": True},
     "product":            {"title": "Formulations Matched to You",
                            "sub": "Explore remedies suited to what your body needs",
                            "base_url": "https://remedymatch.com", "internal": False},
@@ -461,8 +464,10 @@ def _match_card_keys(state, query_texts):
             keys.append(k)
     if any(k in text for k in _PRACTITIONER_KEYWORDS):
         add("practitioner")
-    specific_product = (any(k in text for k in _PRODUCT_KEYWORDS)
-                        or any(c in text for c in _REMEDY_MATCH_CUES))
+    remedy_intent = any(c in text for c in _REMEDY_MATCH_CUES)
+    specific_product = (any(k in text for k in _PRODUCT_KEYWORDS) or remedy_intent)
+    if remedy_intent:
+        add("remedy_match")   # Socratic matcher → /begin/match (before generic browse)
     if specific_product:
         add("product")
     generic_product = (not specific_product
