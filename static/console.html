@@ -2085,7 +2085,7 @@ async function generateDraft(id) {
   try {
     const resp = await fetch(`/api/todos/${id}/draft-reply`, {
       method: 'POST',
-      headers: {'Content-Type':'application/json','X-Console-Key': KEY},
+      headers: {'Content-Type':'application/json','X-Console-Key': consoleKey},
       body: JSON.stringify({guidance})
     });
     const data = await resp.json();
