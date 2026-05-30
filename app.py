@@ -10213,6 +10213,110 @@ def _prewarm_caches():
 _prewarm_caches()
 
 
+# ── Membership admin routes (Slice 2) ─────────────────────────────────────────
+
+@app.route("/admin/membership/grant", methods=["POST"])
+@require_console_key
+def admin_membership_grant():
+    import json as _json, uuid
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    source = (data.get("source") or "").strip()
+    truly_vip_ref = (data.get("truly_vip_ref") or "").strip() or None
+    notes = data.get("notes")
+    days_raw = data.get("days")
+
+    allowed_sources = {
+        "video", "cash", "studio_credit",
+        "bonus_biofield", "bonus_cert", "bonus_one_to_one",
+        "bonus_healing_oasis", "bonus_hawaii", "bonus_consultant",
+    }
+    if not email or "@" not in email:
+        return jsonify({"error": "email required"}), 400
+    if source not in allowed_sources:
+        return jsonify({"error": f"unknown source; allowed={sorted(allowed_sources)}"}), 400
+    try:
+        days = int(days_raw) if days_raw is not None else 30
+    except (TypeError, ValueError):
+        return jsonify({"error": "days must be an integer"}), 400
+    if days <= 0 or days > 3650:
+        return jsonify({"error": "days out of range"}), 400
+
+    membership_id = str(uuid.uuid4())
+    granted_by = request.headers.get("X-Console-Granted-By", "glen")
+    granted_at = datetime.utcnow().isoformat() + "Z"
+    expires_at = (datetime.utcnow() + timedelta(days=days)).isoformat() + "Z"
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO memberships "
+            "(id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (membership_id, email, granted_at, expires_at, granted_by, source,
+             truly_vip_ref, notes)
+        )
+
+    plain = _mint_membership_magic_link(email)
+    base = request.host_url.rstrip("/")
+    magic_link_url = f"{base}/coaching/auth/{plain}"
+
+    subject = "Your Remedy Match coaching access is open"
+    body = (
+        f"Hi,\n\n"
+        f"Your Remedy Match coaching access has been opened for the next {days} days.\n\n"
+        f"Click here to sign in:\n{magic_link_url}\n\n"
+        f"You'll land in your member dashboard with the AI agent loaded for your context. "
+        f"You can chat 24/7, request a direct video reply from Glen on tricky questions, "
+        f"and join the monthly group Zoom call.\n\n"
+        f"When you'd like to renew for another 30 days, record a fresh 3-5 minute video at "
+        f"https://truly.vip/Results.\n\n"
+        f"---\n"
+        f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawaiʼi 96720 USA\n"
+    )
+    try:
+        _send_inquiry_email(
+            to_email=email,
+            subject=subject,
+            body=body,
+            reply_to=RM_INBOUND_INQUIRY_EMAIL,
+        )
+    except Exception as e:
+        print(f"[membership-grant] email send failed: {e!r}", flush=True)
+
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO journey_events "
+                "(ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                "VALUES (?, ?, ?, 'membership_granted', ?, '', '')",
+                (granted_at, "", email,
+                 _json.dumps({"source": source, "days": days,
+                              "membership_id": membership_id,
+                              "truly_vip_ref": truly_vip_ref or ""}))
+            )
+            cx.commit()
+    except Exception as e:
+        print(f"[membership-grant] journey_events insert failed: {e!r}", flush=True)
+
+    return jsonify({
+        "membership_id": membership_id,
+        "magic_link_url": magic_link_url,
+        "expires_at": expires_at,
+    }), 200
+
+
+@app.route("/admin/escalations", methods=["GET"])
+@require_console_key
+def admin_escalations_list():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute(
+            "SELECT id, created_at, email, query_text, ai_response, flag_reason "
+            "FROM escalation_queue WHERE status='pending' ORDER BY created_at"
+        ).fetchall()
+    return jsonify([dict(r) for r in rows]), 200
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
