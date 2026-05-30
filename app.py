@@ -1780,6 +1780,71 @@ def begin_match_voice_signal():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ── QuickBooks invoicing — write-layer diagnostics + test (console-key gated) ──
+def _qbo_auth_ok():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return False
+    return True
+
+
+@app.route("/api/qbo/diagnostics", methods=["GET"])
+def qbo_diagnostics():
+    """Read-only: confirm QBO write-layer prerequisites (items + income accounts)."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        from dashboard import qbo_billing as qb
+        items = qb.list_items()
+        inc = qb._query("SELECT * FROM Account WHERE AccountType = 'Income'") \
+                .get("QueryResponse", {}).get("Account", [])
+        return jsonify({
+            "ok": True,
+            "item_count": len(items),
+            "items": [{"id": i.get("Id"), "name": i.get("Name"),
+                       "type": i.get("Type"), "price": i.get("UnitPrice")} for i in items[:25]],
+            "income_accounts": [{"id": a.get("Id"), "name": a.get("Name")} for a in inc[:10]],
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/qbo/test-invoice", methods=["POST"])
+def qbo_test_invoice():
+    """Create ONE test invoice (no online pay) for a clearly-named test customer to
+    verify write capability. Void it afterward via /api/qbo/void-invoice."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        from dashboard import qbo_billing as qb
+        cust = qb.find_or_create_customer("zztest+remedymatch@example.com", "ZZ Test DeleteMe")
+        inv = qb.create_invoice(cust,
+                                [{"name": "TEST RemedyMatch Product", "amount": 69.97, "qty": 1,
+                                  "description": "TEST — verifying QBO write layer, please void"}],
+                                allow_online_pay=False)
+        return jsonify({"ok": True,
+                        "invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
+                        "total": inv.get("TotalAmt"), "sync_token": inv.get("SyncToken"),
+                        "pay_link": qb.get_invoice_pay_link(inv),
+                        "customer": cust.get("DisplayName")})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/qbo/void-invoice", methods=["POST"])
+def qbo_void_invoice():
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        from dashboard import qbo_billing as qb
+        out = qb.void_invoice(data.get("id"), data.get("sync_token"))
+        return jsonify({"ok": True, "voided": out.get("Invoice", {}).get("Id")})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 # ── Phase 2B — full-report endpoint (View full / Email full) ─────────────────
 @app.route("/full-report", methods=["POST", "OPTIONS"])
 def full_report():
