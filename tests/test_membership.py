@@ -568,6 +568,28 @@ def test_chat_free_tier_unchanged_when_no_member_cookie(app_client_member, monke
     assert "MEMBER CONTEXT" not in captured_ctx
 
 
+def test_chat_seam_not_written_on_non_pytest_traffic(app_client_member, monkeypatch):
+    """SECURITY: the _LAST_CONTEXT_STR_FOR_TEST seam must stay None on real
+    (non-pytest) traffic so member PII never lands in the module global. The
+    write is gated behind PYTEST_CURRENT_TEST; deleting that env var simulates
+    a production request, after which the global must remain None."""
+    client, app_module, db = app_client_member
+    monkeypatch.setattr(app_module, "_LAST_CONTEXT_STR_FOR_TEST", None, raising=False)
+    monkeypatch.setattr(app_module, "embed", lambda text: [0.0] * 1536)
+    monkeypatch.setattr(app_module, "query_all_namespaces",
+                        lambda vec: [_make_fake_match()])
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    client.set_cookie("rm_member_email", "jane@example.com")
+    try:
+        client.post("/chat",
+                    json={"query": "What should I do about my fatigue?",
+                          "level": "executive"},
+                    buffered=True)
+    except Exception:
+        pass
+    assert getattr(app_module, "_LAST_CONTEXT_STR_FOR_TEST", None) is None
+
+
 # ── Slice 5: escalation flow ────────────────────────────────────────────────
 
 def test_escalate_requires_active_membership_else_403(app_client_member):

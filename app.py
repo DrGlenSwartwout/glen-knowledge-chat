@@ -31,7 +31,9 @@ import begin_funnel
 
 # ── Slice 4 test seam ─────────────────────────────────────────────────────────
 # Tests verify member-context injection by reading this module-level variable.
-# Production traffic sets it but never reads it; cost is one pointer assignment.
+# The /chat write is gated behind PYTEST_CURRENT_TEST, so on production traffic
+# this stays None (no member PII captured here). Default must stay None (not
+# gated away) so `app._LAST_CONTEXT_STR_FOR_TEST` is always a defined attribute.
 _LAST_CONTEXT_STR_FOR_TEST = None
 
 # ── Load .env if present ──────────────────────────────────────────────────────
@@ -1358,11 +1360,11 @@ def chat():
         # Test seam: capture context_str immediately after member-context
         # injection so tests can assert on the injection without needing to
         # mock the full LLM stream or the query_log history lookup.
-        # Production traffic sets this variable but never reads it.
-        try:
+        # Gated behind PYTEST_CURRENT_TEST so real traffic never writes member
+        # PII (context_str carries member context) into this module global; on
+        # production the variable stays None.
+        if os.environ.get("PYTEST_CURRENT_TEST"):
             globals()["_LAST_CONTEXT_STR_FOR_TEST"] = context_str
-        except Exception:
-            pass
 
         messages = []
         # If the front-end didn't send any history (e.g. fresh page load
