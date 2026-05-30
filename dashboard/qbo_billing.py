@@ -162,7 +162,7 @@ def create_recurring_invoice(customer, *, item_name, amount, day_of_month,
         "CustomerRef": {"value": customer["Id"]},
         "RecurringInfo": {
             "Name": name,
-            "RecurType": "Automated",
+            "Type": "Scheduled",   # Scheduled = QBO auto-creates each cycle (vs Reminder/Unscheduled)
             "Active": True,
             "ScheduleInfo": {
                 "IntervalType": interval,
