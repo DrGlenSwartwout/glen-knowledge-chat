@@ -21,6 +21,7 @@ def build_search_sql(
     tiers: Optional[list[str]],
     limit: int,
     fellowship_only: bool = False,
+    countries: Optional[list[str]] = None,
 ) -> Tuple[str, list]:
     """Build the search SQL string and parameter tuple.
 
@@ -59,6 +60,13 @@ def build_search_sql(
     if tiers:
         where_clauses.append("tier = ANY(%s)")
         where_params.append(tiers)
+
+    if countries:
+        # Defense-in-depth: a US-ZIP search constrains results to US rows so a
+        # stray mis-geocoded coordinate (foreign row that slipped through) can
+        # never surface in a domestic search. See geocode.mapbox_country_filter.
+        where_clauses.append("country = ANY(%s)")
+        where_params.append(countries)
 
     if fellowship_only:
         where_clauses.append("fellowship_level = true")
@@ -120,11 +128,12 @@ def run_search(
     tiers: Optional[list[str]],
     limit: int = 200,
     fellowship_only: bool = False,
+    countries: Optional[list[str]] = None,
 ) -> list[dict]:
     sql, params = build_search_sql(
         lat=lat, lng=lng, radius_miles=radius_miles,
         specialties=specialties, tiers=tiers, limit=limit,
-        fellowship_only=fellowship_only,
+        fellowship_only=fellowship_only, countries=countries,
     )
     with supabase_cursor() as cur:
         cur.execute(sql, params)

@@ -9512,7 +9512,7 @@ def practitioner_finder_search():
     results = pf_db.run_search(
         lat=lat, lng=lng, radius_miles=radius_miles,
         specialties=specialties, tiers=tiers, limit=200,
-        fellowship_only=fellowship_only,
+        fellowship_only=fellowship_only, countries=["US"],
     )
     return jsonify({"count": len(results), "practitioners": results,
                     "search_center": {"lat": lat, "lng": lng}})
