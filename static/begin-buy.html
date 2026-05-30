@@ -35,6 +35,15 @@
   .p-benefits{ list-style:none; margin-top:18px; padding:0; }
   .p-benefits li{ position:relative; padding-left:26px; margin-bottom:9px; font-size:14.5px; color:var(--cream); line-height:1.55; }
   .p-benefits li::before{ content:"\2713"; position:absolute; left:0; top:0; color:var(--green); font-weight:700; }
+  .p-section-label{ font-family:var(--heading); font-weight:600; font-size:12px; letter-spacing:0.18em;
+    text-transform:uppercase; color:var(--muted); margin-top:24px; margin-bottom:10px; }
+  .p-ingredients{ list-style:none; margin:0; padding:0; border-top:1px solid rgba(33,71,45,0.55); }
+  .p-ingredients li{ font-size:13.5px; color:var(--cream); opacity:0.9; padding:7px 0;
+    border-bottom:1px solid rgba(33,71,45,0.4); line-height:1.5; }
+  .learn-more{ display:inline-flex; align-items:center; gap:7px; margin-top:20px; font-family:var(--heading);
+    font-weight:600; font-size:13.5px; color:var(--gold); border:1px solid rgba(212,168,67,0.4);
+    border-radius:999px; padding:9px 18px; transition:border-color .2s var(--ease), background .2s var(--ease); }
+  .learn-more:hover{ border-color:var(--gold); background:rgba(212,168,67,0.08); }
 
   /* ── Checkout form ── */
   .checkout{ margin-top:26px; border-top:1px solid var(--border); padding-top:24px; }
@@ -140,6 +149,13 @@
       <span class="p-price" id="p-price"></span>
       <p class="p-desc" id="p-desc"></p>
       <ul class="p-benefits hidden" id="p-benefits"></ul>
+
+      <div id="ingredients-wrap" class="hidden">
+        <div class="p-section-label">What&rsquo;s inside</div>
+        <ul class="p-ingredients" id="p-ingredients"></ul>
+      </div>
+
+      <a id="learn-more" class="learn-more hidden" href="#">Learn more: the research &#8594;</a>
 
       <!-- Info-only path -->
       <div id="infoonly" class="infoonly-cta hidden">
@@ -294,6 +310,22 @@
         });
         show('p-benefits');
       }
+
+      // Ingredients (only when the formula's contents are on record).
+      if (Array.isArray(p.ingredients) && p.ingredients.length) {
+        var il = document.getElementById('p-ingredients');
+        p.ingredients.forEach(function(ing){
+          var li = document.createElement('li');
+          li.textContent = String(ing);
+          il.appendChild(li);
+        });
+        show('ingredients-wrap');
+      }
+
+      // Learn-more research page (3rd Buy surface).
+      var learn = document.getElementById('learn-more');
+      learn.setAttribute('href', p.learn_url || ('/begin/learn/' + encodeURIComponent(slug)));
+      show('learn-more');
 
       // Card option only when payments are active.
       if (p.payments_active) {

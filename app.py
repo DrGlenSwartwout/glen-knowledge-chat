@@ -1874,6 +1874,28 @@ def _get_product(slug):
     return out
 
 
+# Generated/cached product content (ingredients + benefits + learn-more research).
+# Source = Pinecone specific-formulations (page copy) + ingredients (study citations).
+try:
+    from dashboard import product_content as _product_content
+    with sqlite3.connect(LOG_DB) as _cx:
+        _product_content.init_product_content_table(_cx)
+except Exception as _pce:
+    _product_content = None
+    print(f"[product_content] init failed: {_pce}", flush=True)
+
+
+def _product_card(product):
+    """Cached {description, ingredients[], benefits[]} for a product (best-effort)."""
+    if not _product_content:
+        return {"description": "", "ingredients": [], "benefits": []}
+    try:
+        return _product_content.get_or_generate(product, "card")["content"]
+    except Exception as e:
+        print(f"[product_content] card failed {product.get('slug')}: {e}", flush=True)
+        return {"description": "", "ingredients": [], "benefits": []}
+
+
 def _resolve_buy_slug(name):
     """Map a remedy NAME to a products.json slug (our QBO checkout catalog) so
     RemedyMatch can offer a Buy button. Returns slug or None."""
@@ -1904,13 +1926,76 @@ def begin_product_data(slug):
     p = _get_product(slug)
     if not p:
         return jsonify({"error": "not found"}), 404
+    # Generated content (ingredients + benefits + short description). Static JSON
+    # values override the generated card when present (lets Glen pin copy).
+    card = _product_card(p) if not p.get("info_only") else {}
     return jsonify({
         "slug": slug, "name": p["name"],
         "price_cents": p["price_cents"], "price": f"${p['price_cents']/100:.2f}",
-        "description": p.get("description", ""), "benefits": p.get("benefits", []),
+        "description": p.get("description") or card.get("description", ""),
+        "ingredients": p.get("ingredients") or card.get("ingredients", []),
+        "benefits": p.get("benefits") or card.get("benefits", []),
         "info_only": bool(p.get("info_only")), "affiliate_url": p.get("affiliate_url", ""),
         "payments_active": _QBO_PAYMENTS_ACTIVE,
+        "learn_url": f"/begin/learn/{slug}",
     })
+
+
+@app.route("/begin/learn/<slug>")
+def begin_learn_page(slug):
+    """Research page — the 3rd Buy-button surface."""
+    if not _get_product(slug):
+        return ("", 404)
+    resp = send_from_directory(STATIC, "begin-learn.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/learn-data/<slug>")
+def begin_learn_data(slug):
+    p = _get_product(slug)
+    if not p:
+        return jsonify({"error": "not found"}), 404
+    markdown, sources = "", []
+    if _product_content and not p.get("info_only"):
+        try:
+            lm = _product_content.get_or_generate(p, "learn_more")
+            markdown = lm["content"].get("markdown", "")
+            sources = lm.get("sources", [])
+        except Exception as e:
+            print(f"[product_content] learn_more failed {slug}: {e}", flush=True)
+    return jsonify({
+        "slug": slug, "name": p["name"],
+        "price": f"${p['price_cents']/100:.2f}",
+        "markdown": markdown, "sources": sources,
+        "buy_url": f"/begin/buy/{slug}",
+        "info_only": bool(p.get("info_only")), "affiliate_url": p.get("affiliate_url", ""),
+    })
+
+
+@app.route("/api/qbo/content-refresh/<slug>", methods=["POST"])
+def qbo_content_refresh(slug):
+    """Console-gated: force-regenerate the cached card + learn_more for a product."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    p = _get_product(slug)
+    if not p:
+        return jsonify({"ok": False, "error": "unknown product"}), 404
+    if not _product_content:
+        return jsonify({"ok": False, "error": "product_content unavailable"}), 503
+    try:
+        card = _product_content.get_or_generate(p, "card", force=True)["content"]
+        lm = _product_content.get_or_generate(p, "learn_more", force=True)
+        return jsonify({"ok": True, "slug": slug,
+                        "ingredients": len(card.get("ingredients", [])),
+                        "benefits": len(card.get("benefits", [])),
+                        "learn_more_chars": len(lm["content"].get("markdown", "")),
+                        "sources": len(lm.get("sources", []))})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/begin/checkout/<slug>", methods=["POST"])
