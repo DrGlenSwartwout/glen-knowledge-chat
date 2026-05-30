@@ -2793,7 +2793,7 @@ def _member_context_for_email(email, *, query_log_n=5):
     except Exception as e:
         print(f"[member-context] inquiries fetch failed: {e!r}", flush=True)
 
-    # Recent queries — production table uses 'query' column; test table uses
+    # Recent queries. Production table uses 'query' column; test table uses
     # 'question'.  Try 'question' first; fall back to 'query' on OperationalError.
     try:
         with sqlite3.connect(LOG_DB) as cx:
@@ -2807,7 +2807,7 @@ def _member_context_for_email(email, *, query_log_n=5):
                 out["recent_queries"] = [{"question": r["question"], "ts": r["ts"]}
                                          for r in rows]
             except Exception:
-                # Production table uses 'query' column — normalise to 'question' key
+                # Production table uses 'query' column; normalise to 'question' key
                 rows = cx.execute(
                     "SELECT query, ts FROM query_log WHERE email=? "
                     "ORDER BY id DESC LIMIT ?",
@@ -10459,7 +10459,7 @@ def admin_membership_grant():
         f"When you'd like to renew for another 30 days, record a fresh 3-5 minute video at "
         f"https://truly.vip/Results.\n\n"
         f"---\n"
-        f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawaiʼi 96720 USA\n"
+        f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
     )
     try:
         _send_inquiry_email(
@@ -10705,8 +10705,9 @@ def cron_membership_renewals():
         cx.row_factory = sqlite3.Row
         rows = cx.execute(
             "SELECT id, email, expires_at, last_reminder_at FROM memberships "
-            "WHERE expires_at > datetime('now') "
-            "AND expires_at < datetime('now', '+3 days')"
+            "WHERE datetime(expires_at) > datetime('now') "
+            "AND datetime(expires_at) < datetime('now', '+3 days') "
+            "LIMIT 500"
         ).fetchall()
     reminded = 0
     for r in rows:
