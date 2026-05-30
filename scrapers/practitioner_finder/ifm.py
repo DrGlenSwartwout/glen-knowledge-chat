@@ -97,6 +97,28 @@ FIND_URL = f"{BASE}/find-a-practitioner/"
 
 LOCKED_SPECIALTIES = ["functional_medicine", "holistic_health"]
 
+# Drupal pager page size (result cards per page). A page with fewer than this
+# many cards is the last page; an empty page means we've walked off the end.
+PAGE_SIZE = 10
+
+# Default radius for the centroid fan-out. Larger than IFM's 40km form default
+# so the metro grid bridges most inter-metro gaps; the per-practitioner profile
+# enrichment carries exact coordinates regardless, so radius only bounds (a) the
+# number of pager pages per centroid and (b) the centroid-fallback accuracy for
+# slug-less rows. ~50km keeps fallback error modest.
+DEFAULT_RADIUS_KM = 50
+
+# Per-centroid pager ceiling — a defensive bound so a pathological pager can't
+# loop forever. 10 cards/page x 60 pages = 600 cards per metro, far above any
+# real 50km result count.
+DEFAULT_MAX_PAGES = 60
+
+# geocode_quality is the Postgres enum practitioner_geocode_quality
+# (full|city|zip|state_only) — NOT free text. Centroid-fallback rows get the
+# surfacing metro's coords, which is city/metro-level precision -> 'city'.
+# Profile-enriched rows get exact street coords -> 'full'.
+FALLBACK_GEOCODE_QUALITY = "city"
+
 
 # ---------------------------------------------------------------------------
 # Regexes (module-level, compiled once)
@@ -127,6 +149,31 @@ _HREF_RE = re.compile(r'href="(https?://[^"]+)"', re.I)
 _EMAIL_SHAPE_RE = re.compile(
     r'^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$'
 )
+
+# US phone on a card, e.g. "+1 (818) 550-1113", "808-555-0199", "(212) 555.1234".
+# Optional leading +1/1, area code (parenthesized or not), then 3-4 with
+# space/dot/hyphen separators.
+_PHONE_RE = re.compile(
+    r'(\+?1[\s.\-]?)?'           # optional country code
+    r'(\(?\d{3}\)?[\s.\-]?)'     # area code
+    r'(\d{3}[\s.\-]?\d{4})'      # exchange + line
+    r'(?!\d)'                    # not part of a longer digit run
+)
+
+# Per-practitioner marker coordinates on a profile page live in the embedded
+# Google-Maps "Open this area in Google Maps" link: ...maps?ll=<lat>,<lng>&...
+_PROFILE_LL_RE = re.compile(
+    r'maps\.google\.[a-z.]+/maps\?ll=(-?\d+\.\d+),(-?\d+\.\d+)', re.I
+)
+
+# The visible "Address:" line, e.g.
+#   Address: 10645 Riverside Dr, Toluca Lake, CA 91602, US
+# We anchor on the US "<ST> <ZIP>" component and capture from the label to the
+# end of that address. Country (the trailing ", US"/", USA") is optional.
+_PROFILE_ADDR_RE = re.compile(
+    r'Address:\s*(.+?,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?(?:,\s*[A-Za-z.]{2,})?)\b'
+)
+_STATE_ZIP_RE = re.compile(r'\b([A-Z]{2})\s+(\d{5})(?:-\d{4})?\b')
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +260,22 @@ def _extract_website(card_html: str) -> Optional[str]:
     return site or None
 
 
+def _extract_phone(card_html: str) -> Optional[str]:
+    """First US phone number in the card text, returned verbatim (trimmed).
+
+    Cards render the practitioner's phone as visible text (e.g.
+    ``+1 (818) 550-1113``). We preserve the original formatting — downstream
+    normalization is the portal's job, and keeping the human format matches the
+    other adapters' light-touch contact handling.
+    """
+    if not card_html:
+        return None
+    m = _PHONE_RE.search(card_html)
+    if not m:
+        return None
+    return m.group(0).strip()
+
+
 def _build_source_url(slug: Optional[str], pid: Optional[str]) -> Optional[str]:
     """Stable, unique per-practitioner URL.
 
@@ -262,7 +325,7 @@ def _card_to_row(card_html: str) -> Optional[NormalizedPractitionerRow]:
         fellowship_level=_is_certified(card_html),
         practice_name=None,
         credentials=credentials,
-        phone=None,
+        phone=_extract_phone(card_html),
         email=_extract_email(card_html),
         website=_extract_website(card_html),
         address1=None,
@@ -345,3 +408,241 @@ def fetch_listings_html(
     with playwright_session(headless=True) as f:
         f.get(FIND_URL, sleep_s=1.0)
         return f.get(url, wait_for_selector="ul.practitioner-list, .practitioner-list__no-results", sleep_s=2.0)
+
+
+# ---------------------------------------------------------------------------
+# Per-profile enrichment parser (PURE — no I/O)
+#
+# List cards carry no street/city/state/postal/coordinates. The finder searches
+# purely by lat/lng radius, so rows need coordinates or they are invisible. The
+# per-practitioner profile page (/practitioners/<slug>) carries BOTH the exact
+# marker coordinates (in the embedded Google-Maps "open in Google Maps" link)
+# and a visible "Address:" line. This parser pulls both from rendered profile
+# HTML. Slug-less (id-anchored) practitioners have no profile page and fall back
+# to the surfacing centroid's coordinates (see scrape_grid / enrich_rows).
+# ---------------------------------------------------------------------------
+
+def _split_address(addr: str) -> dict:
+    """Split 'street, city, ST ZIP[, country]' right-anchored off the ST+ZIP.
+
+    Right-anchoring survives suites/commas in the street ('123 Main St, Suite
+    400, Denver, CO 80202, US') and a missing trailing country
+    ('456 Oak Ave, Austin, TX 78701' -> country defaults US).
+    """
+    out = {"address1": None, "city": None, "state": None,
+           "postal": None, "country": None}
+    parts = [p.strip() for p in addr.split(",") if p.strip()]
+    sz_idx = None
+    for i, p in enumerate(parts):
+        m = _STATE_ZIP_RE.search(p)
+        if m:
+            sz_idx = i
+            out["state"] = m.group(1)
+            out["postal"] = m.group(2)
+            break
+    if sz_idx is None:
+        return out
+    if sz_idx - 1 >= 0:
+        out["city"] = parts[sz_idx - 1] or None
+    street = ", ".join(parts[: max(sz_idx - 1, 0)]).strip()
+    out["address1"] = street or None
+    country = parts[sz_idx + 1] if sz_idx + 1 < len(parts) else "US"
+    if country and country.upper().replace(".", "") in ("US", "USA"):
+        country = "US"
+    out["country"] = country or "US"
+    return out
+
+
+def parse_profile_html(html: str) -> dict:
+    """Extract lat/lng + postal address from a rendered profile page.
+
+    Returns a dict with keys lat, lng, address1, city, state, postal, country
+    (any of which may be None). No network I/O — the driver feeds it whatever
+    the Playwright session rendered.
+    """
+    out = {"lat": None, "lng": None, "address1": None, "city": None,
+           "state": None, "postal": None, "country": None}
+    if not isinstance(html, str) or not html:
+        return out
+    m = _PROFILE_LL_RE.search(html_module.unescape(html))
+    if m:
+        try:
+            out["lat"] = float(m.group(1))
+            out["lng"] = float(m.group(2))
+        except ValueError:
+            pass
+    text = _strip_tags(html)
+    am = _PROFILE_ADDR_RE.search(text)
+    if am:
+        out.update(_split_address(am.group(1).strip()))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# US metro/ZIP centroid grid for the geo-radius fan-out.
+#
+# IFM's directory is geo-radius-search-only (no list-all endpoint). We walk a
+# grid of major US metro centroids at DEFAULT_RADIUS_KM and dedup by source_url.
+# Functional-medicine practitioners concentrate in metros, so a metro grid
+# captures the vast majority; sparse rural gaps are accepted (and logged by the
+# runner, not silently dropped). Coords are 2-decimal centroids; the profile
+# enrichment supplies exact coordinates for slug-bearing practitioners, so this
+# grid only needs to ensure discovery coverage + fallback positioning.
+# ---------------------------------------------------------------------------
+
+US_METRO_CENTROIDS: list[tuple[str, float, float]] = [
+    # Northeast / Mid-Atlantic
+    ("New York NY", 40.71, -74.01), ("Boston MA", 42.36, -71.06),
+    ("Philadelphia PA", 39.95, -75.16), ("Pittsburgh PA", 40.44, -79.99),
+    ("Buffalo NY", 42.89, -78.88), ("Providence RI", 41.82, -71.41),
+    ("Hartford CT", 41.76, -72.69), ("Albany NY", 42.65, -73.75),
+    ("Washington DC", 38.90, -77.04), ("Baltimore MD", 39.29, -76.61),
+    ("Richmond VA", 37.54, -77.44), ("Virginia Beach VA", 36.85, -76.29),
+    ("Portland ME", 43.66, -70.26),
+    # Southeast
+    ("Charlotte NC", 35.23, -80.84), ("Raleigh NC", 35.78, -78.64),
+    ("Asheville NC", 35.60, -82.55), ("Atlanta GA", 33.75, -84.39),
+    ("Savannah GA", 32.08, -81.09), ("Jacksonville FL", 30.33, -81.66),
+    ("Orlando FL", 28.54, -81.38), ("Tampa FL", 27.95, -82.46),
+    ("Miami FL", 25.76, -80.19), ("Fort Myers FL", 26.64, -81.87),
+    ("Nashville TN", 36.16, -86.78), ("Memphis TN", 35.15, -90.05),
+    ("Knoxville TN", 35.96, -83.92), ("Louisville KY", 38.25, -85.76),
+    ("Lexington KY", 38.04, -84.50), ("Birmingham AL", 33.52, -86.80),
+    ("New Orleans LA", 29.95, -90.07), ("Baton Rouge LA", 30.45, -91.19),
+    ("Columbia SC", 34.00, -81.03), ("Charleston SC", 32.78, -79.93),
+    ("Greenville SC", 34.85, -82.39), ("Jackson MS", 32.30, -90.18),
+    # Midwest
+    ("Chicago IL", 41.88, -87.63), ("Detroit MI", 42.33, -83.05),
+    ("Grand Rapids MI", 42.96, -85.67), ("Indianapolis IN", 39.77, -86.16),
+    ("Columbus OH", 39.96, -82.99), ("Cleveland OH", 41.50, -81.69),
+    ("Cincinnati OH", 39.10, -84.51), ("Milwaukee WI", 43.04, -87.91),
+    ("Madison WI", 43.07, -89.40), ("Minneapolis MN", 44.98, -93.27),
+    ("St. Louis MO", 38.63, -90.20), ("Kansas City MO", 39.10, -94.58),
+    ("Omaha NE", 41.26, -95.93), ("Des Moines IA", 41.59, -93.62),
+    ("Wichita KS", 37.69, -97.34), ("Fargo ND", 46.88, -96.79),
+    ("Sioux Falls SD", 43.55, -96.73),
+    # South Central
+    ("Dallas TX", 32.78, -96.80), ("Fort Worth TX", 32.76, -97.33),
+    ("Houston TX", 29.76, -95.37), ("San Antonio TX", 29.42, -98.49),
+    ("Austin TX", 30.27, -97.74), ("El Paso TX", 31.76, -106.49),
+    ("Oklahoma City OK", 35.47, -97.52), ("Tulsa OK", 36.15, -95.99),
+    ("Little Rock AR", 34.75, -92.29),
+    # Mountain / Southwest
+    ("Denver CO", 39.74, -104.99), ("Colorado Springs CO", 38.83, -104.82),
+    ("Salt Lake City UT", 40.76, -111.89), ("Boise ID", 43.62, -116.21),
+    ("Albuquerque NM", 35.08, -106.65), ("Santa Fe NM", 35.69, -105.94),
+    ("Phoenix AZ", 33.45, -112.07), ("Tucson AZ", 32.22, -110.97),
+    ("Las Vegas NV", 36.17, -115.14), ("Reno NV", 39.53, -119.81),
+    ("Billings MT", 45.78, -108.50), ("Cheyenne WY", 41.14, -104.82),
+    # West Coast / Pacific
+    ("Los Angeles CA", 34.05, -118.24), ("San Diego CA", 32.72, -117.16),
+    ("San Francisco CA", 37.77, -122.42), ("San Jose CA", 37.34, -121.89),
+    ("Sacramento CA", 38.58, -121.49), ("Fresno CA", 36.74, -119.79),
+    ("Santa Barbara CA", 34.42, -119.70), ("Portland OR", 45.52, -122.68),
+    ("Eugene OR", 44.05, -123.09), ("Seattle WA", 47.61, -122.33),
+    ("Spokane WA", 47.66, -117.43), ("Honolulu HI", 21.31, -157.86),
+    ("Anchorage AK", 61.22, -149.90),
+]
+
+
+# ---------------------------------------------------------------------------
+# Fan-out runner (fetcher-injected so it's unit-testable).
+# ---------------------------------------------------------------------------
+
+def iter_centroid_pages(
+    fetcher,
+    lat: float,
+    lng: float,
+    radius_km: int = DEFAULT_RADIUS_KM,
+    max_pages: int = DEFAULT_MAX_PAGES,
+):
+    """Yield fresh-to-this-centroid row batches, paging until exhausted.
+
+    Stops on: an empty page (walked off the end), a partial page
+    (<PAGE_SIZE cards -> last page), or a page that introduces no new
+    source_url for this centroid (stuck-pager guard). Each yield is the list of
+    rows new to THIS centroid; cross-centroid dedup is the caller's job.
+    """
+    centroid_seen: set = set()
+    for page in range(max_pages):
+        html = fetch_listings_html(
+            lat, lng, radius_km=radius_km, page=page, fetcher=fetcher
+        )
+        rows = parse_listings_html(html)
+        if not rows:
+            return
+        fresh = [r for r in rows if r.source_url not in centroid_seen]
+        if not fresh:
+            return
+        for r in fresh:
+            centroid_seen.add(r.source_url)
+        yield fresh
+        if len(rows) < PAGE_SIZE:
+            return
+
+
+def scrape_grid(
+    fetcher,
+    centroids: Optional[list] = None,
+    radius_km: int = DEFAULT_RADIUS_KM,
+    max_pages: int = DEFAULT_MAX_PAGES,
+) -> list[NormalizedPractitionerRow]:
+    """Walk the centroid grid, global-dedup by source_url, return rows.
+
+    On first sighting a row is tagged with the surfacing centroid's coordinates
+    as a provisional geocode. The geocode_quality column is the Postgres enum
+    practitioner_geocode_quality (full|city|zip|state_only) — metro-centroid
+    precision maps to FALLBACK_GEOCODE_QUALITY='city' (city/metro level).
+    enrich_rows() later overrides slug-bearing rows with their exact profile
+    coordinates ('full'); slug-less rows keep this fallback.
+    """
+    if centroids is None:
+        centroids = US_METRO_CENTROIDS
+    seen: set = set()
+    out: list[NormalizedPractitionerRow] = []
+    for label, clat, clng in centroids:
+        for fresh in iter_centroid_pages(
+            fetcher, clat, clng, radius_km=radius_km, max_pages=max_pages
+        ):
+            for r in fresh:
+                if r.source_url in seen:
+                    continue
+                seen.add(r.source_url)
+                r.lat = clat
+                r.lng = clng
+                r.geocode_quality = FALLBACK_GEOCODE_QUALITY
+                out.append(r)
+    return out
+
+
+def enrich_rows(fetcher, rows: list, profile_sleep_s: float = 1.5) -> int:
+    """For slug-bearing rows, fetch the profile + set exact coords/address.
+
+    Rows whose source_url is a /practitioners/<slug> permalink get their
+    coordinates + postal address replaced from the profile page
+    (geocode_quality='full'). Id-anchored (slug-less) rows have no profile page
+    and keep the centroid fallback from scrape_grid. Returns the number of rows
+    enriched. Per-profile failures are swallowed (the row keeps its fallback).
+    """
+    prefix = f"{BASE}/practitioners/"
+    enriched = 0
+    for r in rows:
+        url = r.source_url or ""
+        if not url.startswith(prefix):
+            continue
+        try:
+            html = fetcher.get(
+                url, wait_for_selector="body", sleep_s=profile_sleep_s
+            )
+        except Exception:  # noqa: BLE001 - best-effort; keep the fallback
+            continue
+        d = parse_profile_html(html)
+        if d.get("lat") is not None and d.get("lng") is not None:
+            r.lat = d["lat"]
+            r.lng = d["lng"]
+            r.geocode_quality = "full"
+        for k in ("address1", "city", "state", "postal", "country"):
+            if d.get(k):
+                setattr(r, k, d[k])
+        enriched += 1
+    return enriched
