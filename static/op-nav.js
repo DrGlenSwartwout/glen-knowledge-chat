@@ -3,7 +3,7 @@
  * Usage: drop one synchronous script tag immediately after <body> on each page:
  *   <script src="/static/op-nav.js" data-active="dashboard"></script>
  *
- * Valid data-active values: "dashboard" | "console" | "projects" | "inbox" | "shipping" | "orders" | "settings" | "chat"
+ * Valid data-active values: "dashboard" | "console" | "projects" | "inbox" | "shipping" | "orders" | "settings" | "funnel"
  *
  * The bar:
  *   - Renders synchronously via document.write so there is no flash
@@ -34,7 +34,7 @@
     { id: "shipping",  label: "Shipping",  href: "/admin/shipping" + qs },
     { id: "orders",    label: "Orders",    href: "/orders/new"     + qs },
     { id: "settings",  label: "Settings",  href: "/console/settings" + qs },
-    { id: "chat",      label: "Chat",      href: "/" + qs },
+    { id: "funnel",    label: "Funnel",    href: "/funnel" + qs },
   ];
 
   var styles = ''

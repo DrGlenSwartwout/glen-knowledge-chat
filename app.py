@@ -5096,6 +5096,15 @@ def console_page():
     return resp
 
 
+@app.route("/funnel")
+def funnel_page():
+    # Internal ops view: op-nav top row + a second row of funnel sub-tabs that
+    # load each funnel page (/begin, /ask, …) in an iframe.
+    resp = send_from_directory(STATIC, "funnel.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/todos", methods=["GET"])
 def get_todos():
     # Auth: when CONSOLE_SECRET is set, require auth. Scoped tokens get their

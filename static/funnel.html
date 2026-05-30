@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Funnel — Glen Ops</title>
+<style>
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    background: #0a0a0f;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  /* op-nav.js writes the top tab row here (sticky, 40px) */
+
+  .funnel-subnav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 14px;
+    background: #0f0f16;
+    border-bottom: 1px solid #2a2a35;
+    overflow-x: auto;
+    flex: 0 0 auto;
+    box-shadow: 0 2px 8px rgba(0,0,0,.2);
+  }
+  .funnel-subnav .fn-label {
+    color: #9a9384;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    font-size: 10px;
+    font-weight: 600;
+    margin-right: 10px;
+    white-space: nowrap;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  .funnel-tab {
+    padding: 6px 16px;
+    border-radius: 20px;
+    border: 1px solid #2a2a35;
+    background: transparent;
+    color: #9aa0b4;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .funnel-tab:hover:not(.active) { color: #e6edf3; border-color: #4a4a55; }
+  .funnel-tab.active { background: #7c5cbf; color: #fff; border-color: #7c5cbf; }
+
+  .fn-open {
+    margin-left: auto;
+    color: #9aa0b4;
+    font-size: 12px;
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .fn-open:hover { color: #e6edf3; background: rgba(255,255,255,.04); }
+
+  .funnel-frame-wrap { flex: 1 1 auto; min-height: 0; }
+  iframe#funnelFrame { width: 100%; height: 100%; border: 0; background: #fff; display: block; }
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="funnel"></script>
+
+<nav class="funnel-subnav" id="funnelSubnav" aria-label="Funnel pages">
+  <span class="fn-label">Funnel</span>
+</nav>
+
+<div class="funnel-frame-wrap">
+  <iframe id="funnelFrame" title="Funnel page" referrerpolicy="no-referrer"></iframe>
+</div>
+
+<script>
+(function () {
+  // Funnel sub-pages. hrefs are public funnel routes; no ?key passed into the
+  // iframe so the embedded page never renders the internal ops bar inside it.
+  var PAGES = [
+    { id: "begin",  label: "Begin",  href: "/begin" },
+    { id: "path",   label: "Path",   href: "/begin/path" },
+    { id: "voice",  label: "Voice",  href: "/begin/voice" },
+    { id: "tone",   label: "Tone",   href: "/begin/tone" },
+    { id: "ascend", label: "Ascend", href: "/begin/ascend" },
+    { id: "ask",    label: "Chat",   href: "/ask" },
+  ];
+
+  var subnav = document.getElementById("funnelSubnav");
+  var frame  = document.getElementById("funnelFrame");
+
+  var openLink = document.createElement("a");
+  openLink.className = "fn-open";
+  openLink.target = "_blank";
+  openLink.rel = "noopener";
+  openLink.textContent = "Open in new tab ↗";
+
+  function select(id) {
+    var p = PAGES.filter(function (x) { return x.id === id; })[0] || PAGES[0];
+    if (frame.getAttribute("src") !== p.href) frame.src = p.href;
+    openLink.href = p.href;
+    var btns = subnav.querySelectorAll(".funnel-tab");
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle("active", btns[i].dataset.id === p.id);
+    }
+    if (location.hash !== "#" + p.id) {
+      history.replaceState(null, "", "#" + p.id + location.search);
+    }
+  }
+
+  PAGES.forEach(function (p) {
+    var b = document.createElement("button");
+    b.className = "funnel-tab";
+    b.dataset.id = p.id;
+    b.textContent = p.label;
+    b.addEventListener("click", function () { select(p.id); });
+    subnav.appendChild(b);
+  });
+  subnav.appendChild(openLink);
+
+  var initial = (location.hash || "").replace(/^#/, "").split("?")[0];
+  var valid = PAGES.some(function (p) { return p.id === initial; });
+  select(valid ? initial : "begin");
+})();
+</script>
+</body>
+</html>
