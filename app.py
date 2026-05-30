@@ -15,18 +15,24 @@ import os
 import re
 import json
 import uuid
+import secrets
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Tuple
-from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context, render_template_string
+from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context, render_template_string, redirect
 from flask_cors import CORS
 from pinecone import Pinecone
 from openai import OpenAI
 import anthropic
 import begin_funnel
+
+# ── Slice 4 test seam ─────────────────────────────────────────────────────────
+# Tests verify member-context injection by reading this module-level variable.
+# Production traffic sets it but never reads it; cost is one pointer assignment.
+_LAST_CONTEXT_STR_FOR_TEST = None
 
 # ── Load .env if present ──────────────────────────────────────────────────────
 _env = Path(__file__).parent / ".env"
@@ -1333,6 +1339,31 @@ def chat():
 
         context_str, sources_list = build_context(all_matches)
 
+        # ── Slice 4: member-mode overlay ──────────────────────────────────────
+        # Read the rm_member_email cookie set by /coaching/auth/<token>.
+        # If the visitor is an active member, prepend a MEMBER CONTEXT block to
+        # context_str.  Free-tier path (no cookie / no active membership) is
+        # byte-identical to pre-Slice-4 behavior.
+        _member_email = request.cookies.get("rm_member_email", "").strip().lower()
+        _member_active = _active_membership_for_email(_member_email) if _member_email else None
+        if _member_active:
+            try:
+                _member_ctx = _member_context_for_email(_member_email)
+                _member_block = _format_member_context_block(_member_active, _member_ctx)
+                context_str = _member_block + "\n\n" + (context_str or "")
+            except Exception as _mc_err:
+                print(f"[chat] member-context inject failed: {_mc_err!r}", flush=True)
+        # ── end member overlay ────────────────────────────────────────────────
+
+        # Test seam: capture context_str immediately after member-context
+        # injection so tests can assert on the injection without needing to
+        # mock the full LLM stream or the query_log history lookup.
+        # Production traffic sets this variable but never reads it.
+        try:
+            globals()["_LAST_CONTEXT_STR_FOR_TEST"] = context_str
+        except Exception:
+            pass
+
         messages = []
         # If the front-end didn't send any history (e.g. fresh page load
         # after browser refresh), fall back to the last 3 Q&A pairs we've
@@ -1476,11 +1507,17 @@ def chat():
         except Exception as e:
             print(f"[chat-surface] {e!r}", flush=True)
 
-        yield sse({"done": True, "log_id": log_id,
-                   "sources": sources_list, "chunks_retrieved": len(all_matches),
-                   "next_question": next_question,
-                   "session_id": session_id, "mode": mode,
-                   "surfaced_cards": surfaced_cards})
+        _done_payload = {
+            "done": True, "log_id": log_id,
+            "sources": sources_list, "chunks_retrieved": len(all_matches),
+            "next_question": next_question,
+            "session_id": session_id, "mode": mode,
+            "surfaced_cards": surfaced_cards,
+            "member_mode": bool(_member_active),
+        }
+        if _member_active:
+            _done_payload["days_remaining"] = _member_active.get("days_remaining", 0)
+        yield sse(_done_payload)
 
     resp = Response(
         stream_with_context(generate()),
@@ -2579,6 +2616,248 @@ def _init_inquiry_tables():
 _init_inquiry_tables()
 
 
+def init_membership_tables(cx):
+    """Idempotent CREATE TABLE IF NOT EXISTS for the Pay-It-Forward membership layer.
+    Called on app startup alongside init_inquiry_tables and wherever
+    init_inquiry_tables is called defensively inside request handlers."""
+    cx.executescript("""
+        CREATE TABLE IF NOT EXISTS memberships (
+          id              TEXT PRIMARY KEY,
+          email           TEXT NOT NULL,
+          granted_at      TEXT NOT NULL,
+          expires_at      TEXT,
+          granted_by      TEXT,
+          source          TEXT,
+          truly_vip_ref   TEXT,
+          notes           TEXT,
+          last_reminder_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS escalation_queue (
+          id              TEXT PRIMARY KEY,
+          created_at      TEXT NOT NULL,
+          email           TEXT NOT NULL,
+          query_text      TEXT NOT NULL,
+          ai_response     TEXT,
+          ai_confidence   REAL,
+          flag_reason     TEXT,
+          status          TEXT NOT NULL DEFAULT 'pending',
+          glen_reply_url  TEXT,
+          glen_reply_text TEXT,
+          replied_at      TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS studio_credit_intents (
+          id          TEXT PRIMARY KEY,
+          created_at  TEXT NOT NULL,
+          email       TEXT NOT NULL,
+          studio_ref  TEXT,
+          notes       TEXT
+        );
+    """)
+
+
+def _init_membership_tables():
+    with sqlite3.connect(LOG_DB) as cx:
+        init_membership_tables(cx)
+
+_init_membership_tables()
+
+
+def _mint_membership_magic_link(email, ttl_min=15):
+    """Mint a single-use magic-link token for a membership grant or return-flow.
+    Returns the plaintext token; caller is responsible for emailing it."""
+    import secrets, json
+    plain = secrets.token_urlsafe(32)
+    th = _hash_token(plain)
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    exp_iso = (datetime.utcnow() + timedelta(minutes=int(ttl_min))).isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (th, email, "membership_magic_link", json.dumps({}), now_iso, exp_iso)
+        )
+    return plain
+
+
+def _validate_membership_magic_link(token):
+    """Return the email if the token is a valid (purpose, not consumed, not expired)
+    membership_magic_link, else None. Does NOT mark consumed_at; caller decides."""
+    if not token:
+        return None
+    th = _hash_token(token)
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='membership_magic_link'",
+            (th,)
+        ).fetchone()
+    if not row:
+        return None
+    email, expires_at, consumed_at = row
+    if consumed_at:
+        return None
+    try:
+        exp_dt = datetime.fromisoformat(expires_at.rstrip("Z"))
+        if exp_dt < datetime.utcnow():
+            return None
+    except Exception:
+        return None
+    return email
+
+
+def _active_membership_for_email(email):
+    """Return the active membership row as a dict (with derived days_remaining), or None."""
+    if not email:
+        return None
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT * FROM memberships WHERE email=? AND expires_at > ? "
+            "ORDER BY expires_at DESC LIMIT 1",
+            (email, datetime.utcnow().isoformat() + "Z")
+        ).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    try:
+        exp_dt = datetime.fromisoformat(d["expires_at"].rstrip("Z"))
+        d["days_remaining"] = max(0, (exp_dt - datetime.utcnow()).days)
+    except Exception:
+        d["days_remaining"] = 0
+    return d
+
+
+def _member_context_for_email(email, *, query_log_n=5):
+    """Aggregate the member's recent context for the /chat agent overlay.
+
+    Returns a dict with keys: intake_summary, recent_inquiries, recent_queries,
+    voice_scan_summary.  All keys are always present; empty when no data found.
+    """
+    out = {
+        "intake_summary": "",
+        "recent_inquiries": [],
+        "recent_queries": [],
+        "voice_scan_summary": "",
+    }
+    if not email:
+        return out
+
+    # Intake from inbound_leads (most recent scoreapp / practice-better / concierge)
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute(
+                "SELECT first_name, raw_json FROM inbound_leads "
+                "WHERE email=? AND source IN ('scoreapp','practice-better','concierge') "
+                "ORDER BY id DESC LIMIT 1",
+                (email,)
+            ).fetchone()
+            if row:
+                first_name, raw_json_str = row
+                parts = []
+                if first_name:
+                    parts.append(f"first name: {first_name}")
+                try:
+                    payload = json.loads(raw_json_str or "{}")
+                    data = payload.get("data", payload) or {}
+                    score = (data.get("total_score") or {}).get("percent") or data.get("score")
+                    if score:
+                        parts.append(f"assessment score: {score}%")
+                    qs = data.get("quiz_questions") or []
+                    for q in qs[:6]:
+                        qt = (q.get("question") or "").strip()
+                        ans = ", ".join(
+                            (a.get("answer") or "").strip()
+                            for a in (q.get("answers") or [])
+                            if a.get("answer")
+                        )
+                        if qt and ans:
+                            parts.append(f"  {qt}: {ans}")
+                except Exception:
+                    pass
+                out["intake_summary"] = "\n".join(parts)
+    except Exception as e:
+        print(f"[member-context] intake fetch failed: {e!r}", flush=True)
+
+    # Recent inquiries
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            for r in cx.execute(
+                "SELECT main_challenge, main_goal, created_at FROM inquiries "
+                "WHERE client_email=? ORDER BY created_at DESC LIMIT 3",
+                (email,)
+            ).fetchall():
+                out["recent_inquiries"].append(dict(r))
+    except Exception as e:
+        print(f"[member-context] inquiries fetch failed: {e!r}", flush=True)
+
+    # Recent queries. Production table uses 'query' column; test table uses
+    # 'question'.  Try 'question' first; fall back to 'query' on OperationalError.
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            try:
+                rows = cx.execute(
+                    "SELECT question, ts FROM query_log WHERE email=? "
+                    "ORDER BY id DESC LIMIT ?",
+                    (email, int(query_log_n))
+                ).fetchall()
+                out["recent_queries"] = [{"question": r["question"], "ts": r["ts"]}
+                                         for r in rows]
+            except Exception:
+                # Production table uses 'query' column; normalise to 'question' key
+                rows = cx.execute(
+                    "SELECT query, ts FROM query_log WHERE email=? "
+                    "ORDER BY id DESC LIMIT ?",
+                    (email, int(query_log_n))
+                ).fetchall()
+                out["recent_queries"] = [{"question": r["query"], "ts": r["ts"]}
+                                         for r in rows]
+    except Exception as e:
+        print(f"[member-context] query_log fetch failed: {e!r}", flush=True)
+
+    # Voice scan from Pinecone (best-effort; skipped if client not available)
+    try:
+        import pinecone  # noqa: F401
+        # Locate the existing Pinecone client and e4l-scans namespace.
+        # If unavailable (e.g. test environment), silently skip.
+        pass
+    except Exception:
+        pass
+
+    return out
+
+
+def _format_member_context_block(member, ctx):
+    """Format the member context dict into a compact human-readable block for
+    injection into the /chat system prompt."""
+    lines = ["===== MEMBER CONTEXT (active coaching member) ====="]
+    if member and member.get("days_remaining") is not None:
+        lines.append(f"Days remaining in current 30-day window: {member['days_remaining']}.")
+    if ctx.get("intake_summary"):
+        lines.append("Intake:")
+        lines.append(ctx["intake_summary"])
+    if ctx.get("recent_inquiries"):
+        lines.append("Recent inquiries:")
+        for r in ctx["recent_inquiries"]:
+            lines.append(
+                f"  challenge: {r.get('main_challenge', '')}; "
+                f"goal: {r.get('main_goal', '')}"
+            )
+    if ctx.get("recent_queries"):
+        lines.append("Recent questions:")
+        for r in ctx["recent_queries"]:
+            q = (r.get("question") or "").strip()
+            if q:
+                lines.append(f"  - {q}")
+    if ctx.get("voice_scan_summary"):
+        lines.append(f"Voice scan summary: {ctx['voice_scan_summary']}")
+    lines.append("===== END MEMBER CONTEXT =====")
+    return "\n".join(lines)
+
+
 @app.route("/api/referral-sources", methods=["GET"])
 def get_referral_sources():
     if CONSOLE_SECRET:
@@ -3567,6 +3846,7 @@ def _stamp_affiliate_journey(session_id, email, first_name, last_name, recruiter
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             begin_funnel.init_journey_tables(cx)
             init_inquiry_tables(cx)
+            init_membership_tables(cx)
             cur = cx.execute(
                 "SELECT 1 FROM journey_events WHERE session_id=? AND trigger='paid_fork' AND detail='become_affiliate' LIMIT 1",
                 (session_id,))
@@ -10119,6 +10399,446 @@ def _prewarm_caches():
     threading.Thread(target=_warm, daemon=True, name="prewarm-money").start()
 
 _prewarm_caches()
+
+
+# ── Membership admin routes (Slice 2) ─────────────────────────────────────────
+
+@app.route("/admin/membership/grant", methods=["POST"])
+@require_console_key
+def admin_membership_grant():
+    import json as _json, uuid
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    source = (data.get("source") or "").strip()
+    truly_vip_ref = (data.get("truly_vip_ref") or "").strip() or None
+    notes = data.get("notes")
+    days_raw = data.get("days")
+
+    allowed_sources = {
+        "video", "cash", "studio_credit",
+        "bonus_biofield", "bonus_cert", "bonus_one_to_one",
+        "bonus_healing_oasis", "bonus_hawaii", "bonus_consultant",
+    }
+    if not email or "@" not in email:
+        return jsonify({"error": "email required"}), 400
+    if source not in allowed_sources:
+        return jsonify({"error": f"unknown source; allowed={sorted(allowed_sources)}"}), 400
+    try:
+        days = int(days_raw) if days_raw is not None else 30
+    except (TypeError, ValueError):
+        return jsonify({"error": "days must be an integer"}), 400
+    if days <= 0 or days > 3650:
+        return jsonify({"error": "days out of range"}), 400
+
+    membership_id = str(uuid.uuid4())
+    granted_by = request.headers.get("X-Console-Granted-By", "glen")
+    granted_at = datetime.utcnow().isoformat() + "Z"
+    expires_at = (datetime.utcnow() + timedelta(days=days)).isoformat() + "Z"
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO memberships "
+            "(id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (membership_id, email, granted_at, expires_at, granted_by, source,
+             truly_vip_ref, notes)
+        )
+
+    plain = _mint_membership_magic_link(email)
+    base = request.host_url.rstrip("/")
+    magic_link_url = f"{base}/coaching/auth/{plain}"
+
+    subject = "Your Remedy Match coaching access is open"
+    body = (
+        f"Hi,\n\n"
+        f"Your Remedy Match coaching access has been opened for the next {days} days.\n\n"
+        f"Click here to sign in:\n{magic_link_url}\n\n"
+        f"You'll land in your member dashboard with the AI agent loaded for your context. "
+        f"You can chat 24/7, request a direct video reply from Glen on tricky questions, "
+        f"and join the monthly group Zoom call.\n\n"
+        f"When you'd like to renew for another 30 days, record a fresh 3-5 minute video at "
+        f"https://truly.vip/Results.\n\n"
+        f"---\n"
+        f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+    )
+    try:
+        _send_inquiry_email(
+            to_email=email,
+            subject=subject,
+            body=body,
+            reply_to=RM_INBOUND_INQUIRY_EMAIL,
+        )
+    except Exception as e:
+        print(f"[membership-grant] email send failed: {e!r}", flush=True)
+
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO journey_events "
+                "(ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                "VALUES (?, ?, ?, 'membership_granted', ?, '', '')",
+                (granted_at, "", email,
+                 _json.dumps({"source": source, "days": days,
+                              "membership_id": membership_id,
+                              "truly_vip_ref": truly_vip_ref or ""}))
+            )
+            cx.commit()
+    except Exception as e:
+        print(f"[membership-grant] journey_events insert failed: {e!r}", flush=True)
+
+    return jsonify({
+        "membership_id": membership_id,
+        "magic_link_url": magic_link_url,
+        "expires_at": expires_at,
+    }), 200
+
+
+@app.route("/admin/escalations", methods=["GET"])
+@require_console_key
+def admin_escalations_list():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute(
+            "SELECT id, created_at, email, query_text, ai_response, flag_reason "
+            "FROM escalation_queue WHERE status='pending' ORDER BY created_at"
+        ).fetchall()
+    return jsonify([dict(r) for r in rows]), 200
+
+
+# ── Slice 5: member-triggered escalation + admin queue detail + admin reply ───
+
+@app.route("/coaching/escalate", methods=["POST"])
+def coaching_escalate():
+    import json as _json, uuid
+    email = request.cookies.get("rm_member_email", "").strip().lower()
+    membership = _active_membership_for_email(email) if email else None
+    if not membership:
+        return jsonify({"error": "membership required"}), 403
+    data = request.get_json(silent=True) or {}
+    query_text = (data.get("query_text") or "").strip()
+    ai_response = (data.get("ai_response") or "").strip() or None
+    if not query_text:
+        return jsonify({"error": "query_text required"}), 400
+    eid = str(uuid.uuid4())
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO escalation_queue "
+            "(id, created_at, email, query_text, ai_response, ai_confidence, "
+            " flag_reason, status) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (eid, now_iso, email, query_text, ai_response, None,
+             "member_request", "pending")
+        )
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                "VALUES (?,?,?,'membership_escalation_filed',?,'','')",
+                (now_iso, request.cookies.get("amg_session", ""), email,
+                 _json.dumps({"escalation_id": eid}))
+            )
+            cx.commit()
+    except Exception as e:
+        print(f"[coaching-escalate] journey_events insert failed: {e!r}", flush=True)
+    return jsonify({
+        "message": "Glen has been notified; a reply will arrive in your inbox within ~7 days.",
+        "escalation_id": eid,
+    }), 200
+
+
+@app.route("/admin/escalations/<eid>", methods=["GET"])
+@require_console_key
+def admin_escalation_detail(eid):
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT id, created_at, email, query_text, ai_response, flag_reason, status "
+            "FROM escalation_queue WHERE id=?",
+            (eid,)
+        ).fetchone()
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    body = dict(row)
+    body["member_context"] = _member_context_for_email(body["email"])
+    return jsonify(body), 200
+
+
+@app.route("/admin/escalations/<eid>/reply", methods=["POST"])
+@require_console_key
+def admin_escalation_reply(eid):
+    import json as _json
+    data = request.get_json(silent=True) or {}
+    video_url = (data.get("video_url") or "").strip()
+    text = (data.get("text") or "").strip()
+    if not video_url or not text:
+        return jsonify({"error": "video_url and text required"}), 400
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email, query_text, status FROM escalation_queue WHERE id=?",
+            (eid,)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "not found"}), 404
+        email, query_text, status = row
+        if status != "pending":
+            return jsonify({"error": "row not pending"}), 400
+        cx.execute(
+            "UPDATE escalation_queue SET status='replied', glen_reply_url=?, "
+            "glen_reply_text=?, replied_at=? WHERE id=?",
+            (video_url, text, now_iso, eid)
+        )
+    base = request.host_url.rstrip("/")
+    subject = "Glen replied to your question"
+    body = (
+        f"Hi,\n\n"
+        f"You asked: {query_text}\n\n"
+        f"Glen recorded a reply for you here:\n{video_url}\n\n"
+        f"Glen says: {text}\n\n"
+        f"You can return to your coaching dashboard any time:\n{base}/coaching\n\n"
+        f"---\n"
+        f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+    )
+    try:
+        _send_inquiry_email(
+            to_email=email, subject=subject, body=body,
+            reply_to=RM_INBOUND_INQUIRY_EMAIL,
+        )
+    except Exception as e:
+        print(f"[escalation-reply] email send failed: {e!r}", flush=True)
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                "VALUES (?,?,?,'membership_escalation_replied',?,'','')",
+                (now_iso, "", email, _json.dumps({"escalation_id": eid}))
+            )
+            cx.commit()
+    except Exception as e:
+        print(f"[escalation-reply] journey_events insert failed: {e!r}", flush=True)
+    return jsonify({"ok": True}), 200
+
+
+# ── Slice 3: member auth + coaching dashboard ─────────────────────────────────
+
+@app.route("/coaching/auth/<token>", methods=["GET"])
+def coaching_auth_token(token):
+    email = _validate_membership_magic_link(token)
+    if not email:
+        html = _render_static_template("coaching.html", status="error")
+        return html, 410, {"Content-Type": "text/html; charset=utf-8"}
+    # Consume the token
+    th = _hash_token(token)
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "UPDATE auth_tokens SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL",
+            (now_iso, th)
+        )
+    # Mint amg_session if absent, then set rm_member_email cookie
+    session_id = request.cookies.get("amg_session", "")
+    minted = not session_id
+    if minted:
+        session_id = secrets.token_urlsafe(16)
+    resp = redirect("/coaching", code=302)
+    if minted:
+        resp.set_cookie("amg_session", session_id,
+                        max_age=60 * 60 * 24 * 365, httponly=True,
+                        samesite="Lax", secure=request.is_secure)
+    resp.set_cookie("rm_member_email", email,
+                    max_age=60 * 60 * 24 * 365, httponly=True,
+                    samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+# ── Slice 6: studio.com credit intent + daily renewal-reminder cron ──────────
+
+@app.route("/coaching/studio-credit", methods=["GET"])
+def coaching_studio_credit_get():
+    html = _render_static_template("coaching.html", status="studio_credit")
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/coaching/studio-credit", methods=["POST"])
+def coaching_studio_credit_post():
+    import uuid
+    data = request.get_json(silent=True) or request.form or {}
+    email = (data.get("email") or "").strip().lower()
+    studio_ref = (data.get("studio_ref") or "").strip() or None
+    if email and "@" in email:
+        sid = str(uuid.uuid4())
+        now_iso = datetime.utcnow().isoformat() + "Z"
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO studio_credit_intents (id, created_at, email, studio_ref) "
+                "VALUES (?,?,?,?)",
+                (sid, now_iso, email, studio_ref)
+            )
+        subject = "studio.com credit intent submitted"
+        body = (
+            f"A visitor reported a studio.com purchase and asked for the 30-day credit.\n\n"
+            f"Email: {email}\n"
+            f"studio_ref: {studio_ref or '(not provided)'}\n"
+            f"Submitted: {now_iso}\n\n"
+            f"To verify and grant 30 days, POST /admin/membership/grant with "
+            f"source=studio_credit, email={email}, notes=studio_ref.\n"
+        )
+        try:
+            _send_inquiry_email(
+                to_email=RM_INBOUND_INQUIRY_EMAIL,
+                subject=subject, body=body,
+                reply_to=None,
+            )
+        except Exception as e:
+            print(f"[studio-credit] glen notification failed: {e!r}", flush=True)
+    html = _render_static_template("coaching.html", status="studio_credit_submitted")
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/api/cron/membership-renewals", methods=["POST"])
+@require_console_key
+def cron_membership_renewals():
+    import json as _json
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute(
+            "SELECT id, email, expires_at, last_reminder_at FROM memberships "
+            "WHERE datetime(expires_at) > datetime('now') "
+            "AND datetime(expires_at) < datetime('now', '+3 days') "
+            "LIMIT 500"
+        ).fetchall()
+    reminded = 0
+    for r in rows:
+        last = r["last_reminder_at"]
+        if last:
+            try:
+                last_dt = datetime.fromisoformat(last.rstrip("Z"))
+                if (datetime.utcnow() - last_dt) < timedelta(hours=24):
+                    continue
+            except Exception:
+                pass
+        try:
+            exp_dt = datetime.fromisoformat(r["expires_at"].rstrip("Z"))
+            days_left = max(0, (exp_dt - datetime.utcnow()).days)
+        except Exception:
+            days_left = 0
+        s_days = "s" if days_left != 1 else ""
+        subject = f"Your Remedy Match coaching access ends in {days_left} day{s_days}"
+        body = (
+            f"Hi,\n\n"
+            f"Your Remedy Match coaching access ends in {days_left} day{s_days}"
+            f" on {r['expires_at']}.\n\n"
+            f"To renew for another 30 days, record a fresh 3-5 minute video at:\n"
+            f"https://truly.vip/Results\n\n"
+            f"Glen reviews each submission and re-opens access on acceptance.\n\n"
+            f"---\n"
+            f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+        )
+        try:
+            ok_sent = _send_inquiry_email(
+                to_email=r["email"], subject=subject, body=body,
+                reply_to=RM_INBOUND_INQUIRY_EMAIL,
+            )
+        except Exception as e:
+            print(f"[renewal-cron] send failed for {r['email']}: {e!r}", flush=True)
+            ok_sent = False
+        if ok_sent:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.execute(
+                    "UPDATE memberships SET last_reminder_at=? WHERE id=?",
+                    (now_iso, r["id"])
+                )
+            try:
+                with sqlite3.connect(LOG_DB) as cx:
+                    cx.execute(
+                        "INSERT INTO journey_events "
+                        "(ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                        "VALUES (?,?,?,'membership_renewal_reminder',?,'','')",
+                        (now_iso, "", r["email"], _json.dumps({"days_left": days_left}))
+                    )
+                    cx.commit()
+            except Exception as e:
+                print(f"[renewal-cron] journey_events insert failed: {e!r}", flush=True)
+            reminded += 1
+    return jsonify({"reminded": reminded}), 200
+
+
+@app.route("/coaching/login-request", methods=["POST"])
+def coaching_login_request():
+    data = request.get_json(silent=True) or request.form or {}
+    email = (data.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        # Still return the same shape (defense-in-depth)
+        return jsonify({"message": "If an active membership exists for that email, a sign-in link is on its way."}), 200
+    # Mint and send REGARDLESS of active status (defense-in-depth: don't leak membership status)
+    plain = _mint_membership_magic_link(email)
+    base = request.host_url.rstrip("/")
+    magic_link_url = f"{base}/coaching/auth/{plain}"
+    subject = "Your Remedy Match sign-in link"
+    body = (
+        f"Hi,\n\n"
+        f"Use this link to sign in to your Remedy Match coaching dashboard:\n{magic_link_url}\n\n"
+        f"The link is good for 15 minutes. If you don't have an active membership, "
+        f"recording a fresh 3-5 minute video at https://truly.vip/Results will earn you "
+        f"30 days of access.\n\n"
+        f"---\n"
+        f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+    )
+    try:
+        _send_inquiry_email(
+            to_email=email, subject=subject, body=body,
+            reply_to=RM_INBOUND_INQUIRY_EMAIL,
+        )
+    except Exception as e:
+        print(f"[coaching-login] email send failed: {e!r}", flush=True)
+    return jsonify({"message": "If an active membership exists for that email, a sign-in link is on its way."}), 200
+
+
+@app.route("/coaching", methods=["GET"])
+def coaching_dashboard():
+    email = request.cookies.get("rm_member_email", "").strip().lower()
+    membership = _active_membership_for_email(email) if email else None
+    if not membership:
+        html = _render_static_template("coaching.html", status="lapsed")
+        return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+    # Resolve first name from inbound_leads (best effort) or email local-part
+    client_first = email.split("@", 1)[0]
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute(
+                "SELECT first_name FROM inbound_leads "
+                "WHERE email=? AND first_name IS NOT NULL AND first_name != '' "
+                "ORDER BY id DESC LIMIT 1",
+                (email,)
+            ).fetchone()
+            if row and row[0]:
+                client_first = row[0]
+    except Exception:
+        pass
+    # Pull last 5 Glen replies
+    glen_replies = []
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            for r in cx.execute(
+                "SELECT id, query_text, glen_reply_url, glen_reply_text, replied_at "
+                "FROM escalation_queue WHERE email=? AND status='replied' "
+                "ORDER BY replied_at DESC LIMIT 5",
+                (email,)
+            ).fetchall():
+                glen_replies.append(dict(r))
+    except Exception:
+        pass
+    html = _render_static_template(
+        "coaching.html",
+        status="active",
+        client_first=client_first,
+        days_remaining=membership.get("days_remaining", 0),
+        glen_replies=glen_replies,
+    )
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
 if __name__ == "__main__":

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Coaching dashboard · Remedy Match</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+    --maxw:720px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1); }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{ background:var(--bg); color:var(--cream); font-family:"Open Sans",system-ui,sans-serif;
+    font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%);
+    background-attachment:fixed; }
+  h1,h2,h3{ font-family:"Raleway",system-ui,sans-serif; font-weight:600; line-height:1.25; letter-spacing:-0.01em; }
+  a{ color:var(--gold); text-decoration:none; }
+  a:hover{ text-decoration:underline; }
+  .shell{ max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+  .brandbar{ max-width:var(--maxw); margin:0 auto; padding:30px 24px 8px; display:flex; align-items:center; justify-content:center; gap:14px; }
+  .brand-mark{ width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 4px rgba(212,168,67,0.12); }
+  .brand-name{ font-family:"Raleway",sans-serif; font-weight:600; font-size:13px; letter-spacing:0.32em; color:var(--muted); }
+  .intro{ text-align:center; padding-top:40px; }
+  .eyebrow{ font-family:"Raleway",sans-serif; font-weight:600; font-size:12px; letter-spacing:0.34em; color:var(--green); margin-bottom:18px; }
+  .intro h1{ font-size:clamp(21px,4.5vw,29px); color:var(--cream); max-width:560px; margin:0 auto; }
+  .intro p{ color:var(--muted); font-size:15px; margin:14px auto 0; max-width:500px; }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:28px 32px; margin:28px auto 0; }
+  .card h2{ font-size:18px; color:var(--cream); margin-bottom:10px; }
+  .card p{ color:var(--muted); font-size:15px; margin-bottom:8px; }
+  .days-badge{ display:inline-block; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 18px; font-family:"Raleway",sans-serif; font-size:15px; color:var(--gold); margin-bottom:18px; }
+  .btn{ display:inline-block; padding:13px 28px; background:var(--green); color:var(--cream) !important;
+    font-family:"Raleway",sans-serif; font-weight:600; font-size:16px; border:none; border-radius:var(--radius);
+    cursor:pointer; text-decoration:none !important; transition:background .3s var(--ease); }
+  .btn:hover{ background:#2d6e3e; text-decoration:none !important; }
+  .btn-block{ display:block; text-align:center; margin-top:20px; }
+  iframe.funnel-frame{ width:100%; border:none; border-radius:var(--radius); min-height:640px; margin-top:8px; background:var(--surface); }
+  .replies-section{ margin:28px 0 0; }
+  .replies-section h3{ font-size:15px; color:var(--muted); font-family:"Raleway",sans-serif; letter-spacing:0.06em; margin-bottom:14px; }
+  .reply-item{ background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:16px 20px; margin-bottom:12px; }
+  .reply-item .query{ font-size:13px; color:var(--muted); margin-bottom:6px; }
+  .reply-item .reply-body{ font-size:15px; color:var(--cream); }
+  .reply-item .reply-link{ font-size:13px; color:var(--gold); margin-top:8px; display:inline-block; }
+  .reply-item .replied-at{ font-size:12px; color:var(--muted); opacity:0.7; margin-top:4px; }
+  .error-page{ text-align:center; padding-top:60px; }
+  .error-page h2{ color:var(--muted); font-size:22px; margin-bottom:10px; }
+  .error-page p{ color:var(--muted); font-size:15px; max-width:440px; margin:0 auto 20px; }
+  .lapsed-page{ text-align:center; padding-top:60px; }
+  .lapsed-page h2{ font-size:clamp(20px,4vw,27px); color:var(--cream); margin-bottom:12px; }
+  .lapsed-page p{ color:var(--muted); font-size:15px; max-width:480px; margin:0 auto 24px; }
+  .stub-section{ text-align:center; padding-top:60px; }
+  .stub-section h2{ color:var(--muted); font-size:20px; margin-bottom:10px; }
+  .stub-section p{ color:var(--muted); font-size:15px; }
+  footer{ margin-top:60px; padding:28px 24px 44px; text-align:center; border-top:1px solid rgba(33,71,45,0.5); }
+  .foot-note{ font-size:12.5px; color:var(--muted); opacity:0.7; max-width:520px; margin:0 auto; line-height:1.7; }
+  @media(max-width:560px){ body{font-size:16px;} .shell{padding:0 18px;} .card{padding:22px 20px;} }
+</style>
+</head>
+<body>
+
+  <div class="brandbar">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;·&nbsp; Healing&nbsp;Oasis</span>
+  </div>
+
+  {% if status == "active" %}
+
+  <section class="shell intro">
+    <p class="eyebrow">Coaching dashboard</p>
+    <h1>Welcome back{% if client_first %}, {{ client_first }}{% endif %}.</h1>
+    <p>Your personal access is active. Ask anything below and Glen will review your most important questions.</p>
+  </section>
+
+  <section class="shell">
+    <div class="card">
+      <h2>Your membership</h2>
+      <span class="days-badge">{{ days_remaining }} day{{ "s" if days_remaining != 1 else "" }} remaining</span>
+      <p>When your access ends, record a new 3-5 minute video at <a href="https://truly.vip/Results" target="_blank" rel="noopener">truly.vip/Results</a> to earn another 30 days.</p>
+    </div>
+  </section>
+
+  <section class="shell" style="margin-top:32px;">
+    <div class="card" style="padding:20px 24px;">
+      <h2 style="margin-bottom:12px;">Ask your question</h2>
+      <p style="margin-bottom:14px;">Type your question in the chat below. Members get priority review and a personal reply from Glen.</p>
+      <iframe class="funnel-frame" src="/embed?mode=funnel" title="Ask Glen"></iframe>
+    </div>
+  </section>
+
+  <section class="shell" style="margin-top:24px;">
+    <div class="card">
+      <h3>Talk to Glen directly</h3>
+      <p>Stuck on something the AI couldn't quite address? Send a short note to Glen. He'll record a video reply, usually within seven days.</p>
+      <form id="escalate-form" onsubmit="return submitEscalation(event)">
+        <textarea id="escalate-q" rows="3" placeholder="What's the question?" required style="width:100%;background:var(--surface-2);color:var(--cream);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:15px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
+        <button type="submit" class="btn">Send to Glen</button>
+      </form>
+      <p id="escalate-status" class="muted" style="display:none;font-size:15px;margin-top:12px;"></p>
+    </div>
+  </section>
+  <script>
+  async function submitEscalation(e) {
+    e.preventDefault();
+    var q = document.getElementById('escalate-q').value.trim();
+    if (!q) return false;
+    var statusEl = document.getElementById('escalate-status');
+    var formEl = document.getElementById('escalate-form');
+    statusEl.style.display = 'block';
+    statusEl.textContent = 'Sending...';
+    try {
+      var r = await fetch('/coaching/escalate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({query_text: q})
+      });
+      if (r.ok) {
+        formEl.style.display = 'none';
+        statusEl.textContent = 'Sent. Glen will reply via email within about seven days.';
+      } else {
+        statusEl.textContent = 'Could not send. Please try again.';
+      }
+    } catch (err) {
+      statusEl.textContent = 'Could not send. Please try again.';
+    }
+    return false;
+  }
+  </script>
+
+  {% if glen_replies %}
+  <section class="shell replies-section">
+    <h3>Past replies from Glen</h3>
+    {% for reply in glen_replies %}
+    <div class="reply-item">
+      {% if reply.query_text %}
+      <div class="query">Your question: {{ reply.query_text }}</div>
+      {% endif %}
+      {% if reply.glen_reply_text %}
+      <div class="reply-body">{{ reply.glen_reply_text }}</div>
+      {% endif %}
+      {% if reply.glen_reply_url %}
+      <a class="reply-link" href="{{ reply.glen_reply_url }}" target="_blank" rel="noopener">Watch Glen's video reply</a>
+      {% endif %}
+      {% if reply.replied_at %}
+      <div class="replied-at">Replied {{ reply.replied_at[:10] }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% elif status == "lapsed" %}
+
+  <section class="shell lapsed-page">
+    <p class="eyebrow">Coaching dashboard</p>
+    <h2>Your coaching access has ended.</h2>
+    <p>Recording a short 3-5 minute video at the link below earns you 30 days of personal coaching access. Glen reviews your question and records a personal reply.</p>
+    <a class="btn" href="https://truly.vip/Results" target="_blank" rel="noopener">Record your video at truly.vip/Results</a>
+    <p style="margin-top:28px; font-size:14px;">Already recorded your video? Check your email for a sign-in link, or <a href="mailto:glen@remedymatch.com">contact Glen's team</a>.</p>
+  </section>
+
+  {% elif status == "error" %}
+
+  <section class="shell error-page">
+    <h2>This sign-in link is no longer valid.</h2>
+    <p>It may have already been used or it may have expired. Check your email for a newer link, or request a fresh one.</p>
+    <a class="btn" href="/coaching" style="margin-top:16px; display:inline-block;">Go to coaching dashboard</a>
+  </section>
+
+  {% elif status == "studio_credit" %}
+
+  <main class="shell">
+    <section class="card" style="margin-top:40px;">
+      <h2>studio.com credit</h2>
+      <p>Already subscribed to studio.com? Tell us your email and your studio.com receipt details. Glen will verify and credit you 30 days of access here.</p>
+      <form method="POST" action="/coaching/studio-credit" style="margin-top:18px;">
+        <div style="margin-bottom:14px;">
+          <label for="sc-email" style="display:block; font-size:14px; color:var(--muted); margin-bottom:6px;">Email</label>
+          <input id="sc-email" name="email" type="email" required
+            style="width:100%; background:var(--surface-2); color:var(--cream); border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:15px; font-family:inherit;" />
+        </div>
+        <div style="margin-bottom:18px;">
+          <label for="sc-ref" style="display:block; font-size:14px; color:var(--muted); margin-bottom:6px;">studio.com receipt details (optional)</label>
+          <textarea id="sc-ref" name="studio_ref" rows="3"
+            placeholder="Receipt number, order URL, or anything that helps Glen verify."
+            style="width:100%; background:var(--surface-2); color:var(--cream); border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:15px; font-family:inherit; resize:vertical;"></textarea>
+        </div>
+        <button type="submit" class="btn">Submit</button>
+      </form>
+    </section>
+  </main>
+
+  {% elif status == "studio_credit_submitted" %}
+
+  <main class="shell">
+    <section class="card" style="margin-top:40px;">
+      <h2>Got it.</h2>
+      <p>Glen will verify your studio.com purchase and email you a sign-in link within about seven days.</p>
+      <p style="margin-top:16px;"><a href="/coaching" class="link" style="color:var(--gold);">Return to the coaching page</a></p>
+    </section>
+  </main>
+
+  {% else %}
+
+  <section class="shell error-page">
+    <h2>Something went wrong.</h2>
+    <p>Please try again or <a href="mailto:glen@remedymatch.com">contact Glen's team</a>.</p>
+  </section>
+
+  {% endif %}
+
+  <footer>
+    <p class="foot-note">Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA</p>
+  </footer>
+
+</body>
+</html>

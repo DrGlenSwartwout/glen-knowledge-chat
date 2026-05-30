@@ -882,6 +882,39 @@
                   msgs.scrollTop = msgs.scrollHeight;
                 }
               }
+              // ── Slice 5: member_mode Talk-to-Glen hook ───────────────────
+              // Track last Q+A for escalation button (member mode only).
+              window.__lastQuestion = query;
+              window.__lastAnswer = accumulated;
+              if (evt.member_mode === true) {
+                let btn = document.getElementById('talk-to-glen-btn');
+                if (!btn) {
+                  btn = document.createElement('button');
+                  btn.id = 'talk-to-glen-btn';
+                  btn.type = 'button';
+                  btn.textContent = 'Talk to Glen directly';
+                  btn.style.cssText = 'margin-top:8px;padding:6px 12px;background:#3d8a52;color:#fdf4d8;border:none;border-radius:6px;cursor:pointer;font-size:13px;';
+                  btn.onclick = async function() {
+                    var lastQ = (window.__lastQuestion || '').toString();
+                    var lastA = (window.__lastAnswer || '').toString();
+                    try {
+                      var resp = await fetch('/coaching/escalate', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        credentials: 'same-origin',
+                        body: JSON.stringify({query_text: lastQ, ai_response: lastA})
+                      });
+                      btn.textContent = resp.ok ? 'Sent to Glen' : 'Could not send';
+                      btn.disabled = true;
+                    } catch (ex) {
+                      btn.textContent = 'Could not send';
+                    }
+                  };
+                  var inputArea = document.querySelector('#input-area, form, .input') || document.body;
+                  inputArea.appendChild(btn);
+                }
+              }
+              // ── end member_mode hook ─────────────────────────────────────
             }
           }
         }
