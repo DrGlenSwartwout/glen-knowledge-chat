@@ -2565,6 +2565,11 @@ def init_inquiry_tables(cx):
         cx.execute("ALTER TABLE inquiries ADD COLUMN ip TEXT")
     except Exception:
         pass  # already exists
+    # Additive migration: shared_at for Phase 2b share-with-practitioner tracking
+    try:
+        cx.execute("ALTER TABLE inquiry_practitioners ADD COLUMN shared_at TEXT")
+    except sqlite3.OperationalError:
+        pass  # already exists
 
 
 def _init_inquiry_tables():
@@ -2648,6 +2653,7 @@ def get_referrals():
 
 
 QUIZ_URL            = "https://healing.scoreapp.com"
+RM_INBOUND_INQUIRY_EMAIL = "drglenswartwout+rm-inquiry@gmail.com"
 REBRANDLY_API_KEY   = os.environ.get("REBRANDLY_API_KEY", "")
 REBRANDLY_VIP       = "truly.vip"   # affiliate / referral tracking links
 REBRANDLY_SO        = "truly.so"    # general short links
@@ -2826,6 +2832,131 @@ def _send_inquiry_email(to_email, subject, body, reply_to=None):
     except Exception as e:
         print(f"[inquiry-email] FAIL to={to_email} err={e!r}", flush=True)
         return False
+
+
+def _send_client_receipt(client_email, client_name, sent_records, base_url):
+    """Send a one-time receipt to the client after a successful inquiry POST.
+    sent_records is the list of practitioner dicts we actually emailed (NOT the
+    full requested set; skipped recipients are not in the receipt).
+    Reply-To is the inbound RM inquiry mailbox so a client reply lands somewhere
+    we can automate against."""
+    client_first = (client_name.split(None, 1)[0] if client_name else "there")
+    n = len(sent_records)
+    if n == 0:
+        return False  # nothing to confirm
+    lines = [
+        f"Hi {client_first},",
+        "",
+        f"Your inquiry just went out to {n} practitioner{'s' if n != 1 else ''} on RemedyMatch:",
+        "",
+    ]
+    for rec in sent_records:
+        name = (rec.get("name") or "").strip() or "(name unavailable)"
+        city = (rec.get("city") or "").strip()
+        state = (rec.get("state") or "").strip()
+        loc = ", ".join(p for p in [city, state] if p)
+        lines.append(f"  - {name}" + (f" ({loc})" if loc else ""))
+    lines += [
+        "",
+        f"Replies will arrive at this address ({client_email}), usually within a few days.",
+        "You can reply directly to each practitioner just by hitting Reply on their email.",
+        "",
+        "While you wait, here's a 60-second self-assessment that helps you understand your health context:",
+        "https://healing.scoreapp.com",
+        "",
+        "---",
+        "Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA",
+        "This is a one-time receipt for the inquiry you just sent.",
+    ]
+    subject = f"Your inquiry was sent to {n} practitioner{'s' if n != 1 else ''}"
+    return _send_inquiry_email(
+        to_email=client_email,
+        subject=subject,
+        body="\n".join(lines),
+        reply_to=RM_INBOUND_INQUIRY_EMAIL,
+    )
+
+
+def _scoreapp_payload_for(email):
+    """Fetch the most recent ScoreApp payload (dict) for this email, or None.
+    Reads from inbound_leads where source='scoreapp'."""
+    if not email:
+        return None
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute(
+                "SELECT raw_json FROM inbound_leads "
+                "WHERE source='scoreapp' AND email=? "
+                "ORDER BY id DESC LIMIT 1",
+                (email,)
+            ).fetchone()
+        if not row:
+            return None
+        return json.loads(row[0])
+    except Exception:
+        return None
+
+
+def _recent_inquiry_practitioner_ids(client_email, days=30):
+    """Return the list of (inquiry_id, practitioner_id, practitioner_email,
+    shared_at) tuples for inquiries the client sent in the last `days` days.
+    Only includes rows where status='sent' (not skipped, not failed)."""
+    if not client_email:
+        return []
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute(
+            "SELECT ip.inquiry_id, ip.practitioner_id, ip.practitioner_email, ip.shared_at "
+            "FROM inquiry_practitioners ip "
+            "JOIN inquiries i ON i.id = ip.inquiry_id "
+            "WHERE i.client_email=? "
+            "  AND i.created_at > datetime('now', ?) "
+            "  AND ip.status='sent'",
+            (client_email, f"-{int(days)} days")
+        ).fetchall()
+    return [(r[0], r[1], r[2], r[3]) for r in rows]
+
+
+def _compose_share_email(client_first, client_email, main_challenge, main_goal,
+                          scoreapp_payload):
+    """Compose the body of the share-with-practitioner email."""
+    data = scoreapp_payload.get("data", scoreapp_payload)
+    score = (data.get("total_score") or {}).get("percent") or data.get("score") or ""
+    questions = data.get("quiz_questions") or []
+    lines = [
+        f"Hi,",
+        "",
+        f"{client_first} reached out to you on RemedyMatch and has now completed "
+        f"our self-assessment. They asked us to share the full results with you "
+        f"so you have additional context.",
+        "",
+        f"Their original inquiry:",
+        f"  What they are working through: {main_challenge}",
+        f"  What success looks like for them: {main_goal}",
+        "",
+        f"Self-assessment results:",
+    ]
+    if score:
+        lines.append(f"  Overall score: {score}%")
+    if questions:
+        lines.append("")
+        lines.append("  Full Q&A:")
+        for q in questions:
+            qt = (q.get("question") or "").strip()
+            answers = q.get("answers") or []
+            atext = ", ".join((a.get("answer") or "").strip() for a in answers if a.get("answer"))
+            if qt and atext:
+                lines.append(f"    - {qt}")
+                lines.append(f"      -> {atext}")
+    lines += [
+        "",
+        f"You can reply by hitting Reply (this email is set to send your response "
+        f"directly to {client_email}).",
+        "",
+        f"---",
+        f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA",
+        f"This is a one-time follow-up tied to {client_first}'s recent inquiry.",
+    ]
+    return "\n".join(lines)
 
 
 @app.route("/affiliate/login-request", methods=["POST"])
@@ -4078,6 +4209,47 @@ def scoreapp_webhook():
         _log_referral_event(lead_id, email, first, last,
                             utm_source, utm_medium, utm_campaign,
                             utm_content, utm_term, str(score), raw)
+
+    # Phase 2b: if this email has recent practitioner inquiries, offer to
+    # share the assessment with those practitioners. Fire-and-forget.
+    try:
+        recent = _recent_inquiry_practitioner_ids(email)
+        if recent:
+            plain = secrets.token_urlsafe(32)
+            th = _hash_token(plain)
+            now_iso = datetime.utcnow().isoformat() + "Z"
+            exp_iso = (datetime.utcnow() + timedelta(days=30)).isoformat() + "Z"
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.execute(
+                    "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (th, email, "practitioner_share",
+                     json.dumps({"days": 30}), now_iso, exp_iso)
+                )
+            n_practitioners = len({pid for (_, pid, _, _) in recent})
+            base = request.host_url.rstrip("/")
+            share_url = f"{base}/share-with-practitioner/{plain}"
+            first_safe = first or "there"
+            offer_body = (
+                f"Hi {first_safe},\n\n"
+                f"Thanks for completing the self-assessment.\n\n"
+                f"You recently reached out to {n_practitioners} practitioner"
+                f"{'s' if n_practitioners != 1 else ''} on RemedyMatch. "
+                f"Would you like to share your assessment results with them so they "
+                f"have full context for their reply?\n\n"
+                f"Share with one click:\n{share_url}\n\n"
+                f"You can review what gets shared on that page before confirming.\n\n"
+                f"---\n"
+                f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+            )
+            _send_inquiry_email(
+                to_email=email,
+                subject="Share your assessment with the practitioners you contacted?",
+                body=offer_body,
+                reply_to=RM_INBOUND_INQUIRY_EMAIL,
+            )
+    except Exception as e:
+        print(f"[scoreapp] share-offer send failed: {e!r}", flush=True)
 
     return jsonify({"ok": True, "tags": answer_tags, "ghl": ghl_result,
                     "utm_source": utm_source or None}), 200
@@ -9403,6 +9575,13 @@ def practitioner_finder_inquiry():
     except Exception as e:
         print(f"[inquiry] journey_events insert failed: {e!r}", flush=True)
 
+    # ── Client receipt (transactional, fire-and-forget) ──────────────────────
+    try:
+        if to_send:
+            _send_client_receipt(client_email, client_name, [r for r, *_ in send_tokens], base_url)
+    except Exception as e:
+        print(f"[inquiry] client receipt send failed: {e!r}", flush=True)
+
     # ── Response ──────────────────────────────────────────────────────────────
     resp = jsonify({
         "inquiry_id": inquiry_id,
@@ -9704,6 +9883,195 @@ def inquiry_reply_post(inquiry_id, practitioner_id):
         "inquiry-reply.html",
         status="confirmed",
         client_first=client_first,
+    )
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+# ── Phase 2b: share-with-practitioner ────────────────────────────────────────
+
+def _validate_share_token(token):
+    """Return (email, row) for a valid practitioner_share token, or (None, None)."""
+    if not token:
+        return None, None
+    th = _hash_token(token)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT email, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='practitioner_share'",
+            (th,)
+        ).fetchone()
+    if not row:
+        return None, None
+    if row["consumed_at"]:
+        return None, None
+    try:
+        exp_dt = datetime.fromisoformat(row["expires_at"].rstrip("Z"))
+        if exp_dt < datetime.utcnow():
+            return None, None
+    except Exception:
+        return None, None
+    return row["email"], row
+
+
+@app.route("/share-with-practitioner/<token>", methods=["GET"])
+def share_with_practitioner_get(token):
+    email, _row = _validate_share_token(token)
+    if not email:
+        html = _render_static_template("practitioner-share.html", status="error")
+        return html, 410, {"Content-Type": "text/html; charset=utf-8"}
+
+    payload = _scoreapp_payload_for(email)
+    recent  = _recent_inquiry_practitioner_ids(email)
+
+    # Read globally-opted-out emails so we hide them from the recipient list
+    with sqlite3.connect(LOG_DB) as cx:
+        opted_out = {r[0] for r in cx.execute(
+            "SELECT email FROM practitioner_inquiry_opt_outs").fetchall()}
+
+    # Filter: not opted-out at the email level AND not already shared
+    eligible = [
+        (iid, pid, pemail) for (iid, pid, pemail, shared_at) in recent
+        if pemail and pemail not in opted_out and not shared_at
+    ]
+    if not payload or not eligible:
+        html = _render_static_template(
+            "practitioner-share.html", status="empty", token=token)
+        return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+    # Load practitioner display rows for each unique id
+    unique_pids = sorted({pid for (_, pid, _) in eligible})
+    records = _fetch_practitioners_by_ids(unique_pids)
+    rec_map = {str(r["id"]): r for r in records}
+    practitioners = []
+    for pid in unique_pids:
+        r = rec_map.get(pid, {})
+        name = (r.get("name") or "(name unavailable)").strip() or "(name unavailable)"
+        city = (r.get("city") or "").strip()
+        state = (r.get("state") or "").strip()
+        loc = ", ".join(p for p in [city, state] if p)
+        practitioners.append({"name": name, "location": loc})
+
+    data = (payload.get("data", payload) or {})
+    score = (data.get("total_score") or {}).get("percent") or data.get("score") or ""
+    quiz_questions = data.get("quiz_questions") or []
+    questions = []
+    for q in quiz_questions:
+        qt = (q.get("question") or "").strip()
+        answers = q.get("answers") or []
+        atext = ", ".join((a.get("answer") or "").strip() for a in answers if a.get("answer"))
+        if qt and atext:
+            questions.append({"question": qt, "answer": atext})
+
+    first_row = None
+    try:
+        first_row = next(iter(c for c in [data.get("first_name")] if c), "") or ""
+    except Exception:
+        first_row = ""
+    client_first = (first_row.strip() or email.split("@", 1)[0])
+
+    html = _render_static_template(
+        "practitioner-share.html",
+        status="ready",
+        token=token,
+        client_first=client_first,
+        score=score,
+        questions=questions,
+        practitioners=practitioners,
+        practitioner_count=len(practitioners),
+    )
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/share-with-practitioner/<token>", methods=["POST"])
+def share_with_practitioner_post(token):
+    email, _row = _validate_share_token(token)
+    if not email:
+        html = _render_static_template("practitioner-share.html", status="error")
+        return html, 410, {"Content-Type": "text/html; charset=utf-8"}
+
+    payload = _scoreapp_payload_for(email)
+    if not payload:
+        html = _render_static_template(
+            "practitioner-share.html", status="empty", token=token)
+        return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+    recent = _recent_inquiry_practitioner_ids(email)
+    with sqlite3.connect(LOG_DB) as cx:
+        opted_out = {r[0] for r in cx.execute(
+            "SELECT email FROM practitioner_inquiry_opt_outs").fetchall()}
+    eligible = [
+        (iid, pid, pemail) for (iid, pid, pemail, shared_at) in recent
+        if pemail and pemail not in opted_out and not shared_at
+    ]
+    if not eligible:
+        html = _render_static_template(
+            "practitioner-share.html", status="empty", token=token)
+        return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+    # Pull the original inquiry context per (inquiry_id) to populate the share
+    # email body.
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        inq_ids = sorted({iid for (iid, _, _) in eligible})
+        placeholders = ",".join(["?"] * len(inq_ids))
+        inq_rows = cx.execute(
+            f"SELECT id, client_name, client_email, main_challenge, main_goal "
+            f"FROM inquiries WHERE id IN ({placeholders})",
+            inq_ids
+        ).fetchall()
+    inq_map = {r["id"]: r for r in inq_rows}
+
+    sent_ok = 0
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    for (iid, pid, pemail) in eligible:
+        inq = inq_map.get(iid)
+        if not inq:
+            continue
+        client_name = inq["client_name"] or ""
+        client_email = inq["client_email"] or email
+        client_first = (client_name.split(None, 1)[0] if client_name
+                        else client_email.split("@", 1)[0])
+        body = _compose_share_email(
+            client_first=client_first,
+            client_email=client_email,
+            main_challenge=inq["main_challenge"] or "",
+            main_goal=inq["main_goal"] or "",
+            scoreapp_payload=payload,
+        )
+        try:
+            ok = _send_inquiry_email(
+                to_email=pemail,
+                subject=f"Follow-up from {client_first}: assessment context for your reply",
+                body=body,
+                reply_to=client_email,
+            )
+        except Exception as e:
+            print(f"[share] send failed for {pemail}: {e!r}", flush=True)
+            ok = False
+        if ok:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.execute(
+                    "UPDATE inquiry_practitioners SET shared_at=? "
+                    "WHERE inquiry_id=? AND practitioner_id=?",
+                    (now_iso, iid, pid)
+                )
+            sent_ok += 1
+
+    # Mark the share token consumed
+    th = _hash_token(token)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "UPDATE auth_tokens SET consumed_at=? "
+            "WHERE token_hash=? AND consumed_at IS NULL",
+            (now_iso, th)
+        )
+
+    html = _render_static_template(
+        "practitioner-share.html",
+        status="confirmed",
+        sent_count=sent_ok,
+        token=token,
     )
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
