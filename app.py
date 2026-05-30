@@ -1979,6 +1979,15 @@ def qbo_price_coverage():
                     "total": len(out), "products": out})
 
 
+@app.route("/api/qbo/pay-methods", methods=["GET"])
+def qbo_pay_methods():
+    """Read-only: confirm the Zelle/Wise pay-to text (from env) renders correctly,
+    without creating an invoice."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    return jsonify({"payments_active": _QBO_PAYMENTS_ACTIVE, "alt_pay": _ALT_PAY})
+
+
 # ── Phase 2B — full-report endpoint (View full / Email full) ─────────────────
 @app.route("/full-report", methods=["POST", "OPTIONS"])
 def full_report():
