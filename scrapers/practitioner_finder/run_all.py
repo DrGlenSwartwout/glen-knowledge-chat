@@ -233,6 +233,17 @@ def _run_ipi_scrape() -> tuple[int, int, int]:
     return len(rows), len(rows), 0
 
 
+def _run_chc_scrape() -> tuple[int, int, int]:
+    # Council for Homeopathic Certification (CCH homeopaths). Plain-requests
+    # paginated wpbdp directory; city/state come from the listing excerpt so the
+    # global geocode sweep handles coordinates. No email published; out of GHL.
+    from scrapers.practitioner_finder.chc import fetch_all_directory_rows
+    rows = fetch_all_directory_rows()
+    for row in rows:
+        run_upsert(row.to_dict())
+    return len(rows), len(rows), 0
+
+
 def _run_a4m_scrape() -> tuple[int, int, int]:
     # Cloudflare-gated: needs a NON-headless session + in-page fetch (like
     # NCCAOM). One coordinates call returns all listing ids nationwide; detail
@@ -299,6 +310,7 @@ ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("ipi", _run_ipi_scrape),
     ("a4m", _run_a4m_scrape),
     ("ifm", _run_ifm_scrape),
+    ("chc", _run_chc_scrape),
 ]
 
 
