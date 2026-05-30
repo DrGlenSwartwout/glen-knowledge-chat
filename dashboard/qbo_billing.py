@@ -130,3 +130,78 @@ def void_invoice(invoice_id, sync_token):
     """Void a test invoice (keeps the number, zeroes it). Used in verification."""
     return _post("/invoice?operation=void",
                  {"Id": str(invoice_id), "SyncToken": str(sync_token)})
+
+
+# ── recurring transactions (subscriptions / memberships) ──────────────────────
+def create_recurring_invoice(customer, *, item_name, amount, day_of_month,
+                             start_date, interval="Monthly", num_interval=1,
+                             template_name=None, email_to=None,
+                             allow_online_pay=False, description=None):
+    """Create a QBO RecurringTransaction (Invoice template) that auto-generates the
+    invoice each cycle.
+
+    amount: unit price ($). day_of_month: 1-31. start_date: 'YYYY-MM-DD'.
+    RecurType 'Automated' = QBO auto-creates (and, per the company's email
+    preference, emails) the invoice each cycle. Auto-CHARGING a card additionally
+    needs QuickBooks Payments active + the member enrolled in Autopay / card-on-file;
+    until then the member pays each emailed invoice via Zelle/Wise.
+
+    Returns the created template's Invoice dict (carries Id + SyncToken)."""
+    amt = round(float(amount), 2)
+    item = find_or_create_item(item_name, amt)
+    line = {
+        "DetailType": "SalesItemLineDetail",
+        "Amount": amt,
+        "Description": description or item_name,
+        "SalesItemLineDetail": {"ItemRef": {"value": item["Id"]},
+                                "Qty": 1, "UnitPrice": amt},
+    }
+    name = (template_name or f"{item_name} - {customer.get('DisplayName', 'member')}")[:100]
+    inv = {
+        "Line": [line],
+        "CustomerRef": {"value": customer["Id"]},
+        "RecurringInfo": {
+            "Name": name,
+            "RecurType": "Automated",
+            "Active": True,
+            "ScheduleInfo": {
+                "IntervalType": interval,
+                "NumInterval": int(num_interval),
+                "DayOfMonth": int(day_of_month),
+                "StartDate": start_date,
+            },
+        },
+    }
+    if email_to:
+        inv["BillEmail"] = {"Address": email_to}
+    if allow_online_pay:
+        inv["AllowOnlineCreditCardPayment"] = True
+        inv["AllowOnlineACHPayment"] = True
+    out = _post("/recurringtransaction", {"RecurringTransaction": {"Invoice": inv}})
+    return (out.get("RecurringTransaction") or {}).get("Invoice") or out.get("Invoice")
+
+
+def list_recurring():
+    rs = _query("SELECT * FROM RecurringTransaction")
+    arr = rs.get("QueryResponse", {}).get("RecurringTransaction", [])
+    # each item nests the underlying txn (e.g. {"Invoice": {...}}); normalize
+    out = []
+    for it in arr:
+        ent = it.get("Invoice") or it.get("RecurringTransaction", {}).get("Invoice") or it
+        out.append(ent)
+    return out
+
+
+def set_recurring_active(rt_invoice_id, sync_token, active):
+    """Activate/deactivate a recurring template (sparse update on RecurringInfo.Active)."""
+    body = {"RecurringTransaction": {"Invoice": {
+        "Id": str(rt_invoice_id), "SyncToken": str(sync_token), "sparse": True,
+        "RecurringInfo": {"Active": bool(active)}}}}
+    return _post("/recurringtransaction", body)
+
+
+def delete_recurring(rt_invoice_id, sync_token):
+    """Delete a recurring template (used to clean up the guarded prod test)."""
+    return _post("/recurringtransaction?operation=delete",
+                 {"RecurringTransaction": {"Invoice": {
+                     "Id": str(rt_invoice_id), "SyncToken": str(sync_token)}}})

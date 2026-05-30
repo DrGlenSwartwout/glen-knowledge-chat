@@ -1847,6 +1847,123 @@ def qbo_void_invoice():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ── Recurring membership subscriptions (Group Coaching) ───────────────────────
+def _membership_schedule(data):
+    """Resolve (tier, start_date, day_of_month, tier_key) from a request.
+
+    Defaults: rebill the same day each month (no proration). `first_month_free`
+    (the studio.com $99-annual promo) shifts the FIRST billed cycle one month out
+    while keeping the original day-of-month for the recurrence, so the member rides
+    this month free and the first invoice lands next month at the founders rate."""
+    import datetime as _dt
+    import calendar as _cal
+    tier_key = (data.get("tier") or "standard").strip().lower()
+    tier = _MEMBERSHIP_TIERS.get(tier_key)
+    if not tier:
+        raise ValueError(f"unknown tier '{tier_key}' (use standard|founders)")
+    today = _dt.date.today()
+    explicit = (data.get("start_date") or "").strip()
+    if explicit:
+        try:
+            sd = _dt.date.fromisoformat(explicit)
+        except Exception:
+            raise ValueError("start_date must be YYYY-MM-DD")
+    else:
+        sd = today
+    dom = int(data.get("day_of_month") or sd.day)
+    dom = max(1, min(dom, 31))
+    if data.get("first_month_free") and not explicit:
+        y, m = (sd.year + 1, 1) if sd.month == 12 else (sd.year, sd.month + 1)
+        sd = _dt.date(y, m, min(dom, _cal.monthrange(y, m)[1]))
+    return tier, sd.isoformat(), dom, tier_key
+
+
+@app.route("/api/qbo/membership/start", methods=["POST"])
+def qbo_membership_start():
+    """Console-gated: start a recurring Group Coaching subscription for a customer."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    name = (data.get("name") or "").strip()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    try:
+        tier, start_date, dom, tier_key = _membership_schedule(data)
+    except ValueError as ve:
+        return jsonify({"ok": False, "error": str(ve)}), 400
+    try:
+        from dashboard import qbo_billing as qb
+        cust = qb.find_or_create_customer(email, name)
+        allow_online = bool(_QBO_PAYMENTS_ACTIVE)  # card autopay only once Payments is live
+        rt = qb.create_recurring_invoice(
+            cust, item_name=_MEMBERSHIP_ITEM, amount=tier["amount"],
+            day_of_month=dom, start_date=start_date,
+            template_name=f"{tier['label']} - {cust.get('DisplayName', email)}",
+            email_to=email, allow_online_pay=allow_online, description=tier["label"])
+        return jsonify({"ok": True, "tier": tier_key, "amount": tier["amount"],
+                        "customer": cust.get("DisplayName"),
+                        "recurring_id": (rt or {}).get("Id"),
+                        "sync_token": (rt or {}).get("SyncToken"),
+                        "day_of_month": dom, "start_date": start_date,
+                        "first_month_free": bool(data.get("first_month_free")),
+                        "auto_charge": allow_online})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/qbo/membership/cancel", methods=["POST"])
+def qbo_membership_cancel():
+    """Console-gated: deactivate (default) or delete a recurring template."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    rid, stok = data.get("id"), data.get("sync_token")
+    if not rid:
+        return jsonify({"ok": False, "error": "id required"}), 400
+    try:
+        from dashboard import qbo_billing as qb
+        if data.get("delete"):
+            qb.delete_recurring(rid, stok)
+            return jsonify({"ok": True, "deleted": str(rid)})
+        qb.set_recurring_active(rid, stok, False)
+        return jsonify({"ok": True, "deactivated": str(rid)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/qbo/membership/test", methods=["POST"])
+def qbo_membership_test():
+    """Console-gated guarded test: create a recurring template for a ZZ test customer,
+    confirm the mechanism, then delete it. Proves the RecurringTransaction shape on the
+    real books without leaving anything behind."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    import datetime as _dt
+    try:
+        from dashboard import qbo_billing as qb
+        cust = qb.find_or_create_customer("zztest+groupcoaching@example.com", "ZZ Test Member DeleteMe")
+        today = _dt.date.today()
+        rt = qb.create_recurring_invoice(
+            cust, item_name=_MEMBERSHIP_ITEM, amount=149.00,
+            day_of_month=today.day, start_date=today.isoformat(),
+            template_name="ZZ TEST Group Coaching DeleteMe",
+            email_to="zztest+groupcoaching@example.com", description="TEST recurring, auto-deleted")
+        rid, stok = (rt or {}).get("Id"), (rt or {}).get("SyncToken")
+        deleted = None
+        if rid:
+            try:
+                qb.delete_recurring(rid, stok)
+                deleted = rid
+            except Exception as de:
+                return jsonify({"ok": True, "created_id": rid, "delete_error": str(de),
+                                "note": "template created but NOT deleted — clean up manually"}), 200
+        return jsonify({"ok": True, "created_id": rid, "deleted": deleted,
+                        "item": _MEMBERSHIP_ITEM})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 # ── Funnel product checkout — product page → Buy → QBO invoice ────────────────
 _PRODUCTS = _load_json(DATA_DIR / "products.json",
                        default={"default_price_cents": 6997, "products": {}})
@@ -1861,6 +1978,14 @@ _ALT_PAY = {
               "to": os.environ.get("WISE_PAY_TO", "(set WISE_PAY_TO)"),
               "note": "Send the invoice total via Wise, using the invoice number as the reference. "
                       "You earn extra loyalty points for choosing a fee-free method."},
+}
+
+
+# Recurring membership tiers (Group Coaching). One QBO Item, price set per tier.
+_MEMBERSHIP_ITEM = "Group Coaching Membership"
+_MEMBERSHIP_TIERS = {
+    "standard": {"label": "Group Coaching Membership", "amount": 149.00},
+    "founders": {"label": "Group Coaching Membership (Founders)", "amount": 99.00},
 }
 
 
