@@ -1941,13 +1941,33 @@ def qbo_recurring_probe():
     if not _qbo_auth_ok():
         return jsonify({"error": "Unauthorized"}), 401
     data = request.get_json(silent=True) or {}
-    rinfo = data.get("recurring_info")
-    if not isinstance(rinfo, dict):
-        return jsonify({"ok": False, "error": "recurring_info object required"}), 400
     try:
         from dashboard import qbo_billing as qb
         cust = qb.find_or_create_customer("zztest+groupcoaching@example.com", "ZZ Test Member DeleteMe")
         item = qb.find_or_create_item(_MEMBERSHIP_ITEM, 149.00)
+        if data.get("ids"):
+            return jsonify({"ok": True, "customer_id": cust["Id"], "item_id": item["Id"]})
+        # raw mode: post exactly the body provided (after substituting id placeholders)
+        raw = data.get("raw")
+        if isinstance(raw, dict):
+            blob = json.dumps(raw).replace("CUST_ID", cust["Id"]).replace("ITEM_ID", item["Id"])
+            body = json.loads(blob)
+            try:
+                out = qb._post("/recurringtransaction", body)
+            except Exception as pe:
+                return jsonify({"ok": False, "error": str(pe)}), 200
+            created = (out.get("RecurringTransaction") or {}).get("Invoice") or out.get("Invoice") or {}
+            rid, stok = created.get("Id"), created.get("SyncToken")
+            deleted = None
+            if rid:
+                try:
+                    qb.delete_recurring(rid, stok); deleted = rid
+                except Exception as de:
+                    deleted = f"DELETE FAILED ({de}) id {rid}"
+            return jsonify({"ok": True, "created_id": rid, "deleted": deleted})
+        rinfo = data.get("recurring_info")
+        if not isinstance(rinfo, dict):
+            return jsonify({"ok": False, "error": "recurring_info or raw object required"}), 400
         inv = {
             "Line": [{"DetailType": "SalesItemLineDetail", "Amount": 149.00,
                       "Description": _MEMBERSHIP_ITEM,
