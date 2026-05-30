@@ -2653,7 +2653,7 @@ def get_referrals():
 
 
 QUIZ_URL            = "https://healing.scoreapp.com"
-RM_INBOUND_INQUIRY_EMAIL = "drglenswartwout+rm-inquiry@gmail.com"
+RM_INBOUND_INQUIRY_EMAIL = "this.elf+rm-inquiry@gmail.com"
 REBRANDLY_API_KEY   = os.environ.get("REBRANDLY_API_KEY", "")
 REBRANDLY_VIP       = "truly.vip"   # affiliate / referral tracking links
 REBRANDLY_SO        = "truly.so"    # general short links
