@@ -1947,6 +1947,38 @@ def begin_checkout(slug):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/qbo/price-coverage", methods=["GET"])
+def qbo_price_coverage():
+    """Diagnostic: for each products.json product, query specific-formulations for a
+    price (the last scrape stored price_your/price_retail). Shows match title + score
+    so we can judge coverage + match quality before populating products.json."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    out = []
+    for slug, p in (_PRODUCTS.get("products") or {}).items():
+        name = p["name"]
+        try:
+            vec = embed(name)
+            res = _idx.query(vector=vec, top_k=4, namespace="specific-formulations",
+                             include_metadata=True)
+            best = None
+            for m in res.matches:
+                md = m.metadata or {}
+                price = md.get("price") or md.get("price_your") or md.get("price_retail")
+                if price:
+                    best = {"match_title": md.get("title", ""), "price": str(price),
+                            "score": round(float(m.score), 3)}
+                    break
+            row = {"slug": slug, "name": name, "found": bool(best)}
+            if best:
+                row.update(best)
+            out.append(row)
+        except Exception as e:
+            out.append({"slug": slug, "name": name, "error": str(e)[:120]})
+    return jsonify({"ok": True, "covered": sum(1 for o in out if o.get("found")),
+                    "total": len(out), "products": out})
+
+
 # ── Phase 2B — full-report endpoint (View full / Email full) ─────────────────
 @app.route("/full-report", methods=["POST", "OPTIONS"])
 def full_report():
