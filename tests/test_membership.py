@@ -441,3 +441,125 @@ def test_coaching_lapsed_renders_truly_vip_cta(app_client_member):
     # Lapsed state: CTA to Truly.VIP/Results
     body_lower = r.data.lower()
     assert b"truly.vip/results" in body_lower
+
+
+# ── Slice 4: member-mode /chat overlay ───────────────────────────────────────
+
+import json as _json4
+
+
+def test_active_membership_for_email_returns_none_for_unknown(app_client_member):
+    _, app_module, _ = app_client_member
+    assert app_module._active_membership_for_email("nobody@example.com") is None
+
+
+def test_member_context_aggregates_intake_inquiries_queries(app_client_member):
+    _, app_module, db = app_client_member
+    # Seed:
+    #   - inbound_leads scoreapp row for jane (already partially seeded with first_name; add raw_json)
+    #   - an inquiries row for jane
+    #   - query_log rows for jane
+    import uuid as _uuid
+    now_iso = datetime.utcnow().isoformat()+"Z"
+    cx = sqlite3.connect(db)
+    cx.execute("UPDATE inbound_leads SET raw_json=? WHERE email=?",
+               (_json4.dumps({"data":{"total_score":{"percent":67},
+                              "quiz_questions":[{"question":"Which system?","answers":[{"answer":"Immune"}]}]}}),
+                "jane@example.com"))
+    # Ensure the inquiries table (and ip column) exist in the test DB.
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS inquiries (
+          id TEXT PRIMARY KEY, created_at TEXT NOT NULL,
+          session_id TEXT NOT NULL, client_email TEXT NOT NULL,
+          client_name TEXT, client_phone TEXT, ref_slug TEXT,
+          main_challenge TEXT NOT NULL, main_goal TEXT NOT NULL,
+          practitioner_count INTEGER NOT NULL
+        )
+    """)
+    try:
+        cx.execute("ALTER TABLE inquiries ADD COLUMN ip TEXT")
+    except Exception:
+        pass  # column already exists
+    cx.execute(
+        "INSERT INTO inquiries (id, created_at, session_id, client_email, client_name, "
+        "client_phone, ref_slug, main_challenge, main_goal, practitioner_count, ip) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (str(_uuid.uuid4()), now_iso, "s1", "jane@example.com", "Jane", "", "",
+         "fatigue and brain fog", "stable energy", 1, "1.2.3.4"))
+    try:
+        cx.execute("CREATE TABLE IF NOT EXISTS query_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, email TEXT, question TEXT, answer TEXT, sources TEXT, session_id TEXT)")
+    except Exception: pass
+    cx.execute("INSERT INTO query_log (ts, email, question, answer) VALUES (?,?,?,?)",
+               (now_iso, "jane@example.com", "How do I rebuild my microbiome?", "..."))
+    cx.execute("INSERT INTO query_log (ts, email, question, answer) VALUES (?,?,?,?)",
+               (now_iso, "jane@example.com", "Should I do a heavy metal detox?", "..."))
+    cx.commit(); cx.close()
+    ctx = app_module._member_context_for_email("jane@example.com")
+    assert isinstance(ctx, dict)
+    # Includes the intake fragments
+    blob = _json4.dumps(ctx)
+    assert "Immune" in blob or "67" in blob
+    # Includes recent inquiry
+    assert "fatigue" in blob.lower() or "stable" in blob.lower()
+    # Includes recent queries
+    assert "microbiome" in blob.lower() or "metal" in blob.lower()
+
+
+def test_member_context_returns_empty_dict_for_unknown_email(app_client_member):
+    _, app_module, _ = app_client_member
+    ctx = app_module._member_context_for_email("nobody-here@example.com")
+    assert isinstance(ctx, dict)
+    # Empty/falsy expected fields
+    assert not ctx.get("recent_inquiries")
+    assert not ctx.get("recent_queries")
+
+
+def _make_fake_match(text="Test snippet"):
+    """Minimal Pinecone-style match object for /chat handler stubs."""
+    class _M:
+        def __init__(self, t):
+            self.metadata = {"text": t, "source": "test", "url": ""}
+            self.score = 0.9
+            self.id = "t1"
+    return _M(text)
+
+
+def test_chat_member_mode_prepends_member_context_to_rag(app_client_member, monkeypatch):
+    """The /chat SSE handler MUST inject a 'MEMBER CONTEXT' block when an active
+    member cookie is present.  We stub embed + query_all_namespaces so the handler
+    reaches the context-build + test-seam code without external API calls."""
+    client, app_module, db = app_client_member
+    monkeypatch.setattr(app_module, "_LAST_CONTEXT_STR_FOR_TEST", None, raising=False)
+    # Stub RAG pipeline so handler reaches build_context and our seam.
+    monkeypatch.setattr(app_module, "embed", lambda text: [0.0] * 1536)
+    monkeypatch.setattr(app_module, "query_all_namespaces",
+                        lambda vec: [_make_fake_match()])
+    # Set the member cookie
+    client.set_cookie("rm_member_email", "jane@example.com")
+    try:
+        r = client.post("/chat",
+                        json={"query": "What should I do about my fatigue?",
+                              "level": "executive"},
+                        buffered=True)
+    except Exception:
+        pass
+    captured_ctx = getattr(app_module, "_LAST_CONTEXT_STR_FOR_TEST", None) or ""
+    assert "MEMBER CONTEXT" in captured_ctx or "member" in captured_ctx.lower()
+
+
+def test_chat_free_tier_unchanged_when_no_member_cookie(app_client_member, monkeypatch):
+    """No cookie = no member context block in the system prompt."""
+    client, app_module, db = app_client_member
+    monkeypatch.setattr(app_module, "_LAST_CONTEXT_STR_FOR_TEST", None, raising=False)
+    monkeypatch.setattr(app_module, "embed", lambda text: [0.0] * 1536)
+    monkeypatch.setattr(app_module, "query_all_namespaces",
+                        lambda vec: [_make_fake_match()])
+    # NO set_cookie call — visitor is anonymous
+    try:
+        r = client.post("/chat",
+                        json={"query": "Hi", "level": "executive"},
+                        buffered=True)
+    except Exception:
+        pass
+    captured_ctx = getattr(app_module, "_LAST_CONTEXT_STR_FOR_TEST", None) or ""
+    assert "MEMBER CONTEXT" not in captured_ctx

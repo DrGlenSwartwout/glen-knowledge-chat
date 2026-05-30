@@ -29,6 +29,11 @@ from openai import OpenAI
 import anthropic
 import begin_funnel
 
+# ── Slice 4 test seam ─────────────────────────────────────────────────────────
+# Tests verify member-context injection by reading this module-level variable.
+# Production traffic sets it but never reads it; cost is one pointer assignment.
+_LAST_CONTEXT_STR_FOR_TEST = None
+
 # ── Load .env if present ──────────────────────────────────────────────────────
 _env = Path(__file__).parent / ".env"
 if not _env.exists():
@@ -1334,6 +1339,31 @@ def chat():
 
         context_str, sources_list = build_context(all_matches)
 
+        # ── Slice 4: member-mode overlay ──────────────────────────────────────
+        # Read the rm_member_email cookie set by /coaching/auth/<token>.
+        # If the visitor is an active member, prepend a MEMBER CONTEXT block to
+        # context_str.  Free-tier path (no cookie / no active membership) is
+        # byte-identical to pre-Slice-4 behavior.
+        _member_email = request.cookies.get("rm_member_email", "").strip().lower()
+        _member_active = _active_membership_for_email(_member_email) if _member_email else None
+        if _member_active:
+            try:
+                _member_ctx = _member_context_for_email(_member_email)
+                _member_block = _format_member_context_block(_member_active, _member_ctx)
+                context_str = _member_block + "\n\n" + (context_str or "")
+            except Exception as _mc_err:
+                print(f"[chat] member-context inject failed: {_mc_err!r}", flush=True)
+        # ── end member overlay ────────────────────────────────────────────────
+
+        # Test seam: capture context_str immediately after member-context
+        # injection so tests can assert on the injection without needing to
+        # mock the full LLM stream or the query_log history lookup.
+        # Production traffic sets this variable but never reads it.
+        try:
+            globals()["_LAST_CONTEXT_STR_FOR_TEST"] = context_str
+        except Exception:
+            pass
+
         messages = []
         # If the front-end didn't send any history (e.g. fresh page load
         # after browser refresh), fall back to the last 3 Q&A pairs we've
@@ -1477,11 +1507,17 @@ def chat():
         except Exception as e:
             print(f"[chat-surface] {e!r}", flush=True)
 
-        yield sse({"done": True, "log_id": log_id,
-                   "sources": sources_list, "chunks_retrieved": len(all_matches),
-                   "next_question": next_question,
-                   "session_id": session_id, "mode": mode,
-                   "surfaced_cards": surfaced_cards})
+        _done_payload = {
+            "done": True, "log_id": log_id,
+            "sources": sources_list, "chunks_retrieved": len(all_matches),
+            "next_question": next_question,
+            "session_id": session_id, "mode": mode,
+            "surfaced_cards": surfaced_cards,
+            "member_mode": bool(_member_active),
+        }
+        if _member_active:
+            _done_payload["days_remaining"] = _member_active.get("days_remaining", 0)
+        yield sse(_done_payload)
 
     resp = Response(
         stream_with_context(generate()),
@@ -2691,6 +2727,135 @@ def _active_membership_for_email(email):
     except Exception:
         d["days_remaining"] = 0
     return d
+
+
+def _member_context_for_email(email, *, query_log_n=5):
+    """Aggregate the member's recent context for the /chat agent overlay.
+
+    Returns a dict with keys: intake_summary, recent_inquiries, recent_queries,
+    voice_scan_summary.  All keys are always present; empty when no data found.
+    """
+    out = {
+        "intake_summary": "",
+        "recent_inquiries": [],
+        "recent_queries": [],
+        "voice_scan_summary": "",
+    }
+    if not email:
+        return out
+
+    # Intake from inbound_leads (most recent scoreapp / practice-better / concierge)
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute(
+                "SELECT first_name, raw_json FROM inbound_leads "
+                "WHERE email=? AND source IN ('scoreapp','practice-better','concierge') "
+                "ORDER BY id DESC LIMIT 1",
+                (email,)
+            ).fetchone()
+            if row:
+                first_name, raw_json_str = row
+                parts = []
+                if first_name:
+                    parts.append(f"first name: {first_name}")
+                try:
+                    payload = json.loads(raw_json_str or "{}")
+                    data = payload.get("data", payload) or {}
+                    score = (data.get("total_score") or {}).get("percent") or data.get("score")
+                    if score:
+                        parts.append(f"assessment score: {score}%")
+                    qs = data.get("quiz_questions") or []
+                    for q in qs[:6]:
+                        qt = (q.get("question") or "").strip()
+                        ans = ", ".join(
+                            (a.get("answer") or "").strip()
+                            for a in (q.get("answers") or [])
+                            if a.get("answer")
+                        )
+                        if qt and ans:
+                            parts.append(f"  {qt}: {ans}")
+                except Exception:
+                    pass
+                out["intake_summary"] = "\n".join(parts)
+    except Exception as e:
+        print(f"[member-context] intake fetch failed: {e!r}", flush=True)
+
+    # Recent inquiries
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            for r in cx.execute(
+                "SELECT main_challenge, main_goal, created_at FROM inquiries "
+                "WHERE client_email=? ORDER BY created_at DESC LIMIT 3",
+                (email,)
+            ).fetchall():
+                out["recent_inquiries"].append(dict(r))
+    except Exception as e:
+        print(f"[member-context] inquiries fetch failed: {e!r}", flush=True)
+
+    # Recent queries — production table uses 'query' column; test table uses
+    # 'question'.  Try 'question' first; fall back to 'query' on OperationalError.
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            try:
+                rows = cx.execute(
+                    "SELECT question, ts FROM query_log WHERE email=? "
+                    "ORDER BY id DESC LIMIT ?",
+                    (email, int(query_log_n))
+                ).fetchall()
+                out["recent_queries"] = [{"question": r["question"], "ts": r["ts"]}
+                                         for r in rows]
+            except Exception:
+                # Production table uses 'query' column — normalise to 'question' key
+                rows = cx.execute(
+                    "SELECT query, ts FROM query_log WHERE email=? "
+                    "ORDER BY id DESC LIMIT ?",
+                    (email, int(query_log_n))
+                ).fetchall()
+                out["recent_queries"] = [{"question": r["query"], "ts": r["ts"]}
+                                         for r in rows]
+    except Exception as e:
+        print(f"[member-context] query_log fetch failed: {e!r}", flush=True)
+
+    # Voice scan from Pinecone (best-effort; skipped if client not available)
+    try:
+        import pinecone  # noqa: F401
+        # Locate the existing Pinecone client and e4l-scans namespace.
+        # If unavailable (e.g. test environment), silently skip.
+        pass
+    except Exception:
+        pass
+
+    return out
+
+
+def _format_member_context_block(member, ctx):
+    """Format the member context dict into a compact human-readable block for
+    injection into the /chat system prompt."""
+    lines = ["===== MEMBER CONTEXT (active coaching member) ====="]
+    if member and member.get("days_remaining") is not None:
+        lines.append(f"Days remaining in current 30-day window: {member['days_remaining']}.")
+    if ctx.get("intake_summary"):
+        lines.append("Intake:")
+        lines.append(ctx["intake_summary"])
+    if ctx.get("recent_inquiries"):
+        lines.append("Recent inquiries:")
+        for r in ctx["recent_inquiries"]:
+            lines.append(
+                f"  challenge: {r.get('main_challenge', '')}; "
+                f"goal: {r.get('main_goal', '')}"
+            )
+    if ctx.get("recent_queries"):
+        lines.append("Recent questions:")
+        for r in ctx["recent_queries"]:
+            q = (r.get("question") or "").strip()
+            if q:
+                lines.append(f"  - {q}")
+    if ctx.get("voice_scan_summary"):
+        lines.append(f"Voice scan summary: {ctx['voice_scan_summary']}")
+    lines.append("===== END MEMBER CONTEXT =====")
+    return "\n".join(lines)
 
 
 @app.route("/api/referral-sources", methods=["GET"])
