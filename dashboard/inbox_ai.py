@@ -43,14 +43,21 @@ def _client():
 
 
 def summarize(body: str) -> dict:
-    """Return {summary: [bullets], actions: [numbered actions]} from the message body."""
+    """Return {essence, summary: [bullets], actions: [numbered actions]} from the body.
+
+    `essence` is a single short line capturing the most important point — the gist
+    of the actual message, stripped of notification chrome.
+    """
     if not body or not body.strip():
-        return {"summary": [], "actions": []}
+        return {"essence": "", "summary": [], "actions": []}
     prompt = (
         "Summarize the following email message into:\n"
-        "1) A bullet list of key points (max 4 bullets, one short sentence each)\n"
-        "2) A numbered list of suggested actions Glen could take (max 4 actions)\n\n"
-        "Return STRICT JSON: {\"summary\": [\"...\", ...], \"actions\": [\"...\", ...]}\n"
+        "1) An ESSENCE: one short line (max ~140 chars) capturing the single most "
+        "important point — the gist of the actual human-written message, stripped of "
+        "notification chrome, signatures, and boilerplate.\n"
+        "2) A bullet list of key points (max 4 bullets, one short sentence each)\n"
+        "3) A numbered list of suggested actions Glen could take (max 4 actions)\n\n"
+        "Return STRICT JSON: {\"essence\": \"...\", \"summary\": [\"...\", ...], \"actions\": [\"...\", ...]}\n"
         "No markdown fences, no prose outside the JSON.\n\n"
         f"MESSAGE:\n{body[:6000]}"
     )
@@ -67,9 +74,11 @@ def summarize(body: str) -> dict:
             text = text[5:]
     try:
         out = json.loads(text)
-        return {"summary": out.get("summary", []), "actions": out.get("actions", [])}
+        return {"essence": out.get("essence", ""),
+                "summary": out.get("summary", []),
+                "actions": out.get("actions", [])}
     except json.JSONDecodeError:
-        return {"summary": [text[:400]], "actions": []}
+        return {"essence": "", "summary": [text[:400]], "actions": []}
 
 
 def _voice_samples_block(voice_samples: Optional[List[dict]]) -> str:

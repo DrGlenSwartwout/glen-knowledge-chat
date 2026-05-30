@@ -115,33 +115,47 @@ def _full_body(service, msg_id):
         return ''
 
 def _bullet_summary(subject, from_addr, body):
-    """Call Claude Haiku to produce bullet summary + action line."""
+    """Call Claude Haiku for bullet summary + action line + verbatim core message.
+
+    Returns (bullets, action, core_message). core_message is the actual
+    human-written content stripped of notification chrome (e.g. the real message
+    inside a Practice Better notification), '' if there is none.
+    """
     if not ANTHROPIC_KEY:
-        return '', ''
+        return '', '', ''
     try:
         cl = _ant.Anthropic(api_key=ANTHROPIC_KEY)
         prompt = (
             f"Summarize this email for Dr. Glen Swartwout in 2-4 brief bullets (key info only), "
-            f"then one ACTION line.\n\n"
+            f"then one ACTION line, then MESSAGE: the actual human-written message content "
+            f"verbatim, stripped of notification chrome, signatures, app-store links, and "
+            f"boilerplate. If it is a notification wrapping a real message (e.g. Practice "
+            f"Better), return only that real message. If there is no human-written message, "
+            f"leave MESSAGE empty.\n\n"
             f"From: {from_addr}\nSubject: {subject}\nBody:\n{body[:1800]}\n\n"
-            f"Format exactly:\nBULLETS:\n• ...\nACTION: ..."
+            f"Format exactly:\nBULLETS:\n• ...\nACTION: ...\nMESSAGE: ..."
         )
         msg = cl.messages.create(
             model='claude-haiku-4-5-20251001',
-            max_tokens=300,
+            max_tokens=400,
             messages=[{'role': 'user', 'content': prompt}]
         )
         text = msg.content[0].text
-        bullets, action = '', ''
+        bullets, action, message = '', '', ''
         if 'BULLETS:' in text and 'ACTION:' in text:
             bullets = text.split('BULLETS:')[1].split('ACTION:')[0].strip()
-            action  = text.split('ACTION:')[1].strip()
+            rest = text.split('ACTION:')[1]
+            if 'MESSAGE:' in rest:
+                action  = rest.split('MESSAGE:')[0].strip()
+                message = rest.split('MESSAGE:')[1].strip()
+            else:
+                action = rest.strip()
         else:
             bullets = text[:250]
-        return bullets, action
+        return bullets, action, message
     except Exception as e:
         print(f'  Claude summary error: {e}')
-        return '', ''
+        return '', '', ''
 
 def triage_starred(service):
     """Pull Glen's starred emails (past 7 days) and generate bullet summaries."""
@@ -161,7 +175,7 @@ def triage_starred(service):
         meta = _msg_meta(service, m['id'])
         if not meta: continue
         body = _full_body(service, m['id'])
-        bullets, action = _bullet_summary(meta['subject'], meta['from'], body)
+        bullets, action, core_message = _bullet_summary(meta['subject'], meta['from'], body)
         todos.append({
             'owner':     'glen',
             'category':  '★ Starred',
@@ -171,6 +185,7 @@ def triage_starred(service):
             'source':    'glen-starred',
             'ai_summary':   bullets,
             'action_note':  action,
+            'core_message': core_message,
             'suggested_reply': '',
             'dedup_key': f'glen:starred:{m["id"]}',
         })
@@ -556,7 +571,7 @@ def triage_remedy_imap(days=3, max_results=30):
                 else:
                     body = msg.get_payload(decode=True).decode('utf-8', errors='replace')
                 body = body.strip()[:800]
-                bullets, action = _bullet_summary(subject, from_addr, body)
+                bullets, action, core_message = _bullet_summary(subject, from_addr, body)
                 # Determine owner: orders → Rae, personal-domain senders → Rae, else → Glen
                 from_lower = from_addr.lower()
                 is_order = 'new order' in subject.lower() or 'order confirmed' in subject.lower()
@@ -573,6 +588,7 @@ def triage_remedy_imap(days=3, max_results=30):
                     'source':   'remedy-imap',
                     'ai_summary':    bullets,
                     'action_note':   action,
+                    'core_message':  core_message,
                     'suggested_reply': '',
                     'dedup_key': f'remedy:{num.decode()}',
                 })
@@ -636,7 +652,7 @@ def triage_remedy_orders(days=14):
                 # Extract order reference (alphanumeric after #)
                 ref_match = re.search(r'#([A-Z0-9]{6,})', subject)
                 order_ref = ref_match.group(1) if ref_match else num.decode()
-                bullets, action = _bullet_summary(subject, from_addr, body)
+                bullets, action, core_message = _bullet_summary(subject, from_addr, body)
                 todos.append({
                     'owner':    'rae',
                     'category': 'New Order',
@@ -646,6 +662,7 @@ def triage_remedy_orders(days=14):
                     'source':   'remedy-orders',
                     'ai_summary':    bullets,
                     'action_note':   action or 'Check order details and prepare for fulfillment',
+                    'core_message':  core_message,
                     'suggested_reply': '',
                     'dedup_key': f'remedy:order:{order_ref}',
                 })

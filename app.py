@@ -4677,12 +4677,14 @@ def _init_todos_table():
                 ai_summary      TEXT DEFAULT '',
                 suggested_reply TEXT DEFAULT '',
                 action_note     TEXT DEFAULT '',
+                core_message    TEXT DEFAULT '',
                 received_at     TEXT DEFAULT ''
             )
         """)
         # Migrate existing tables that predate these columns
         for col, ddl in [("ai_summary", "TEXT DEFAULT ''"), ("suggested_reply", "TEXT DEFAULT ''"),
-                         ("action_note", "TEXT DEFAULT ''"), ("received_at", "TEXT DEFAULT ''"),
+                         ("action_note", "TEXT DEFAULT ''"), ("core_message", "TEXT DEFAULT ''"),
+                         ("received_at", "TEXT DEFAULT ''"),
                          ("phase", "TEXT NOT NULL DEFAULT 'plan'"),
                          ("first_started_at", "TEXT DEFAULT ''")] :
             try:
@@ -5122,7 +5124,7 @@ def get_todos():
         rows = cx.execute("""
             SELECT id, created_at, owner, category, title, body, priority,
                    status, delegated_to, delegated_at, done_at, source, dedup_key,
-                   ai_summary, suggested_reply, action_note, received_at
+                   ai_summary, suggested_reply, action_note, core_message, received_at
             FROM todos
             WHERE owner=? AND status=?
             ORDER BY
@@ -5131,7 +5133,7 @@ def get_todos():
         """, (owner, status)).fetchall()
     cols = ["id","created_at","owner","category","title","body","priority",
             "status","delegated_to","delegated_at","done_at","source","dedup_key",
-            "ai_summary","suggested_reply","action_note","received_at"]
+            "ai_summary","suggested_reply","action_note","core_message","received_at"]
     return jsonify({"todos": [dict(zip(cols, r)) for r in rows]})
 
 
@@ -5161,6 +5163,7 @@ def post_todos():
             ai_summary      = item.get("ai_summary") or ""
             suggested_reply = item.get("suggested_reply") or ""
             action_note     = item.get("action_note") or ""
+            core_message    = item.get("core_message") or ""
             received_at     = item.get("received_at") or ""
             if not title:
                 continue
@@ -5168,15 +5171,16 @@ def post_todos():
                 cx.execute("""
                     INSERT INTO todos
                       (created_at, owner, category, title, body, priority, source, dedup_key,
-                       ai_summary, suggested_reply, action_note, received_at)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                       ai_summary, suggested_reply, action_note, core_message, received_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(dedup_key) DO UPDATE SET
                       ai_summary=excluded.ai_summary,
                       suggested_reply=excluded.suggested_reply,
                       action_note=excluded.action_note,
+                      core_message=excluded.core_message,
                       received_at=CASE WHEN excluded.received_at != '' THEN excluded.received_at ELSE received_at END
                 """, (ts, owner, category, title, body, priority, source, dedup,
-                      ai_summary, suggested_reply, action_note, received_at))
+                      ai_summary, suggested_reply, action_note, core_message, received_at))
                 if cx.execute("SELECT changes()").fetchone()[0]:
                     inserted += 1
             except Exception:
@@ -5252,9 +5256,12 @@ def draft_reply_endpoint(todo_id):
     title, body, category = row
     guidance_block = f"\n\nGlen's guidance: {guidance}" if guidance else ""
     prompt = (
-        "You are drafting a reply on behalf of Dr. Glen Swartwout, naturopathic physician "
-        "and biofield scientist in Hilo, Hawaiʻi. Be warm, concise, and professional. "
-        "Sign off naturally as Dr. Glen.\n\n"
+        "You are drafting a reply on behalf of Dr. Glen Swartwout, naturopathic "
+        "physician in Hilo, Hawaiʻi. Be warm, concise, and professional.\n"
+        "Sign-off — choose by who the email is from:\n"
+        "- Client or patient: sign off informally as:\n    In wellness,\n    Dr. Glen\n"
+        "- Doctor, vendor, or professional contact: sign off formally as:\n"
+        "    Dr. Glen Swartwout, Naturopathic Optometrist, Hilo, Hawai'i\n\n"
         f"Email subject: {title}\n"
         f"Email content:\n{(body or '')[:2000]}"
         f"{guidance_block}\n\n"
@@ -9127,6 +9134,7 @@ def api_inbox_ai(thread_id):
         summary = _ai.summarize(body_clean)
         draft = _ai.draft_reply(body_clean, sender=sender, voice_samples=voice_samples)
         return ok({
+            "essence": summary.get("essence", ""),
             "summary": summary.get("summary", []),
             "actions": summary.get("actions", []),
             "draft": draft,

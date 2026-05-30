@@ -282,7 +282,7 @@
           <div class="field-header">
             <div class="field-title"><span class="field-chevron">▾</span><h3>1 · Message</h3></div>
             <div class="field-actions">
-              <button id="btn-show-raw">Show raw</button>
+              <button id="btn-show-raw">Full message ↗</button>
             </div>
           </div>
           <div class="field-body" id="msg-body">—</div>
@@ -315,7 +315,7 @@
             </div>
           </div>
           <div class="field-body">
-            <textarea id="reply-body" placeholder="AI-drafted reply will appear here. Click anywhere in this box to edit — your changes are kept when you Send."></textarea>
+            <textarea id="reply-body" data-mic placeholder="AI-drafted reply will appear here. Click anywhere in this box to edit — your changes are kept when you Send."></textarea>
           </div>
         </div>
 
@@ -326,7 +326,7 @@
           </div>
           <div class="field-body">
             <div class="hint">Tell the AI how to change the suggested reply, write from scratch, or jot notes for yourself. Examples: "make it warmer", "ignore prior draft and focus on the appointment Tuesday", "shorten by half".</div>
-            <textarea id="prompt-body" placeholder="Your instructions for regenerate, or freeform notes…"></textarea>
+            <textarea id="prompt-body" data-mic placeholder="Your instructions for regenerate, or freeform notes…"></textarea>
           </div>
         </div>
 
@@ -349,6 +349,39 @@
 
 <div id="toast"></div>
 
+<!-- Full-message slide-in panel (Justus-style) -->
+<style>
+  #msg-panel { position:fixed; top:40px; right:-540px; width:520px; max-width:92vw;
+    height:calc(100vh - 40px); background:var(--surface); border-left:1px solid var(--border);
+    z-index:60; display:flex; flex-direction:column; transition:right .25s ease;
+    box-shadow:-4px 0 24px rgba(0,0,0,.4); }
+  #msg-panel.open { right:0; }
+  #msg-panel .mp-header { display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px; border-bottom:1px solid var(--border); background:var(--bg); flex:0 0 auto; }
+  #msg-panel .mp-header h3 { font-size:14px; margin:0; }
+  #msg-panel .mp-actions { display:flex; gap:8px; }
+  #msg-panel .mp-actions button { background:transparent; border:1px solid var(--border);
+    color:var(--muted); border-radius:6px; padding:5px 11px; font-size:12px; cursor:pointer; }
+  #msg-panel .mp-actions button:hover { color:var(--text); border-color:var(--text); }
+  #msg-panel .mp-body { flex:1 1 auto; min-height:0; overflow-y:auto; padding:16px;
+    white-space:pre-wrap; word-break:break-word; line-height:1.6; font-size:14px; }
+  @media(max-width:520px){ #msg-panel{ top:38px; height:calc(100vh - 38px); } }
+  .msg-essence { font-size:14px; line-height:1.55; }
+  .btn-show-full { margin-top:8px; background:transparent; border:1px solid var(--border);
+    color:var(--muted); border-radius:6px; padding:5px 12px; font-size:12px; cursor:pointer; }
+  .btn-show-full:hover { color:var(--text); border-color:var(--text); }
+</style>
+<div id="msg-panel" aria-label="Full message">
+  <div class="mp-header">
+    <h3>Full message</h3>
+    <div class="mp-actions">
+      <button id="btn-msg-raw" onclick="toggleMsgRaw()">Show raw</button>
+      <button onclick="closeMsgPanel()">✕ Close</button>
+    </div>
+  </div>
+  <div class="mp-body" id="msg-panel-body"></div>
+</div>
+
 <script>
 const KEY = new URLSearchParams(location.search).get("key") || "";
 const HEADERS = { "Content-Type": "application/json", "X-Console-Key": KEY };
@@ -357,6 +390,8 @@ let CURRENT_THREAD_ID = null;
 let ALL_THREADS = [];          // unfiltered list
 let CURRENT_FILTER = "inbox-merged";   // matches default-active chip (important + inbox)
 let SHOW_RAW = false;
+let CURRENT_MSG = { clean: "", raw: "" };
+let MSG_RAW = false;
 
 function toast(msg, kind="ok") {
   const t = document.getElementById("toast");
@@ -626,15 +661,48 @@ async function markUnreadCurrent() {
 function renderMessage(thread) {
   const msgs = thread.messages || [];
   const last = msgs[msgs.length - 1] || {};
-  const text = SHOW_RAW
-    ? (last.body_plain || last.snippet || "")
-    : (last.body_clean || last.body_plain || last.snippet || "");
-  document.getElementById("msg-body").innerHTML = linkify(escapeHtml(text)) || "<em>(empty)</em>";
+  CURRENT_MSG = {
+    clean: last.body_clean || last.body_plain || last.snippet || "",
+    raw:   last.body_plain || last.snippet || "",
+  };
+  MSG_RAW = false;
+  // Field 1 shows a brief essence; the full message opens in the right panel.
+  const full = (last.snippet || CURRENT_MSG.clean || "").trim();
+  const snip = full.slice(0, 220);
+  renderEssence(snip ? snip + (full.length > 220 ? "…" : "") : "");
+}
+
+function renderEssence(text) {
+  const e = (text || "").trim();
+  document.getElementById("msg-body").innerHTML =
+    (e ? `<div class="msg-essence">✉ ${escapeHtml(e)}</div>`
+       : `<div class="msg-essence"><em>(loading…)</em></div>`) +
+    `<button class="btn-show-full" onclick="openMsgPanel()">Show full message ↗</button>`;
+}
+
+function renderMsgPanel() {
+  const text = MSG_RAW ? CURRENT_MSG.raw : CURRENT_MSG.clean;
+  document.getElementById("msg-panel-body").innerHTML = linkify(escapeHtml(text)) || "<em>(empty)</em>";
+}
+function openMsgPanel() {
+  if (!CURRENT_THREAD) return;
+  renderMsgPanel();
+  document.getElementById("msg-panel").classList.add("open");
+}
+function closeMsgPanel() {
+  document.getElementById("msg-panel").classList.remove("open");
+}
+function toggleMsgRaw() {
+  MSG_RAW = !MSG_RAW;
+  document.getElementById("btn-msg-raw").textContent = MSG_RAW ? "Show clean" : "Show raw";
+  renderMsgPanel();
 }
 
 async function runAI(threadId) {
   try {
     const result = await api(`/api/inbox/threads/${threadId}/ai`, { method: "POST" });
+    if (result.body_clean) CURRENT_MSG.clean = result.body_clean;
+    if (result.essence) renderEssence(result.essence);
     renderSummary(result.summary, result.actions);
     if (result.draft) {
       document.getElementById("reply-body").value = result.draft;
@@ -776,11 +844,7 @@ document.getElementById("btn-regenerate").addEventListener("click", regenerateRe
 document.getElementById("btn-skip").addEventListener("click", skipThread);
 document.getElementById("btn-archive").addEventListener("click", archiveCurrent);
 document.getElementById("btn-hide-sender").addEventListener("click", hideSender);
-document.getElementById("btn-show-raw").addEventListener("click", () => {
-  SHOW_RAW = !SHOW_RAW;
-  document.getElementById("btn-show-raw").textContent = SHOW_RAW ? "Show clean" : "Show raw";
-  if (CURRENT_THREAD) renderMessage(CURRENT_THREAD);
-});
+document.getElementById("btn-show-raw").addEventListener("click", openMsgPanel);
 document.getElementById("btn-rerun-summary").addEventListener("click", () => {
   if (CURRENT_THREAD_ID) runAI(CURRENT_THREAD_ID);
 });
@@ -822,5 +886,6 @@ if (!KEY) {
 }
 </script>
 <script src="/static/justus-widget.js" defer></script>
+<script src="/static/mic-input.js"></script>
 </body>
 </html>

@@ -159,6 +159,7 @@
   .todo-detail { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.5; word-break: break-word; }
   .ai-summary { font-size: 12px; margin-top: 6px; color: #a8c4ff; line-height: 1.5; }
   .action-note { font-size: 12px; margin-top: 5px; padding: 4px 8px; border-radius: 5px; background: #2a1e0a; border-left: 3px solid #f7a54f; color: #f7c54f; line-height: 1.5; }
+  .core-message { font-size: 13px; margin-top: 6px; padding: 6px 9px; border-radius: 5px; background: #2a1e0a; border-left: 3px solid #f7c54f; color: #ffe9a8; line-height: 1.55; white-space: pre-wrap; word-break: break-word; font-weight: 500; }
   .suggested-reply-wrap { margin-top: 8px; border-left: 2px solid #2a3a5a; padding-left: 8px; }
   .suggested-reply-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; display: flex; align-items: center; gap: 8px; }
   .suggested-reply { font-size: 12px; color: #c8d8f0; line-height: 1.6; white-space: pre-wrap; }
@@ -558,7 +559,7 @@
         <div class="ref-add-form" style="margin-top:10px;">
           <input id="ref-new-name" placeholder="Source name (e.g. AllHeal)">
           <input id="ref-new-slug" placeholder="Slug (e.g. allheal)">
-          <input id="ref-new-desc" placeholder="Description (optional)">
+          <input id="ref-new-desc" data-mic placeholder="Description (optional)">
           <button onclick="addReferralSource()">Add</button>
         </div>
       </details>
@@ -1031,6 +1032,9 @@ function todoCard(t) {
   const actionBadge = t.action_note && t.action_note !== 'Reply only.'
     ? `<div class="action-note">⚡ Action needed: ${escHtml(t.action_note)}</div>`
     : '';
+  const coreMessage = t.core_message
+    ? `<div class="core-message">✉ ${escHtml(t.core_message)}</div>`
+    : '';
   const replyId = `reply-${t.id}`;
   const suggestedReply = t.suggested_reply && t.suggested_reply !== 'No reply needed.'
     ? `<div class="suggested-reply-wrap">
@@ -1047,6 +1051,7 @@ function todoCard(t) {
     <div class="todo-body">
       <div class="todo-title">${escHtml(t.title)}</div>
       ${wsBadges ? `<div class="ws-badge-row">${wsBadges}</div>` : ''}
+      ${coreMessage}
       ${t.body ? `<details class="todo-body-details"><summary>Body</summary><div class="todo-detail">${escHtml(t.body)}</div></details>` : ''}
       ${aiSummary}
       ${actionBadge}
@@ -1054,7 +1059,7 @@ function todoCard(t) {
       ${meta.length ? `<div class="todo-meta">${meta.join('')}</div>` : ''}
       <div class="draft-reply-wrap" id="draft-wrap-${t.id}">
         <div class="draft-guidance-row">
-          <textarea id="draft-guidance-${t.id}" placeholder="Optional guidance for Justus…"></textarea>
+          <textarea id="draft-guidance-${t.id}" data-mic placeholder="Optional guidance for Justus…"></textarea>
           <button class="btn-generate" onclick="generateDraft(${t.id})">Generate ✦</button>
         </div>
         <div class="draft-output" id="draft-output-${t.id}"></div>
@@ -1508,7 +1513,7 @@ function renderPersonDetail(p, household) {
     <div class="detail-pane" id="dp-notes">
       <div style="white-space:pre-wrap;font-size:13px;line-height:1.6;color:var(--text)">${_esc(p.notes||'No notes yet.')}</div>
       <div class="detail-note-row">
-        <input type="text" id="note-input-${p.id}" placeholder="Add a note…">
+        <input type="text" id="note-input-${p.id}" data-mic placeholder="Add a note…">
         <button onclick="addPersonNote(${p.id})">Add</button>
       </div>
     </div>`;
@@ -2470,7 +2475,7 @@ initKey();
   </div>
   <div class="ai-messages" id="ai-messages"></div>
   <div class="ai-input-row">
-    <textarea id="ai-input" placeholder="Ask anything…" rows="1"
+    <textarea id="ai-input" data-mic placeholder="Ask anything…" rows="1"
       onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();sendAI();}
                  else if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAI();}"
       oninput="this.style.height='38px';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
@@ -2487,7 +2492,7 @@ initKey();
   </div>
   <div class="ws-thread-body" id="ws-thread-body"></div>
   <div class="ws-thread-compose">
-    <textarea id="ws-thread-input" rows="2" placeholder="Reply…"
+    <textarea id="ws-thread-input" data-mic rows="2" placeholder="Reply…"
       onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();sendWsThread();}"></textarea>
     <button onclick="sendWsThread()">Send</button>
   </div>
@@ -2513,7 +2518,7 @@ initKey();
     </div>
     <div><label for="ap-orgs">Organizations</label><input type="text" id="ap-orgs" placeholder="ACAM, IAOMT, AOA…" autocomplete="off"></div>
     <div><label for="ap-tags">Tags (comma-separated)</label><input type="text" id="ap-tags" placeholder="e.g. prospect, OD, hawaii-island" autocomplete="off"></div>
-    <div><label for="ap-notes">Notes</label><textarea id="ap-notes" style="min-height:60px" placeholder="Context, how you know them, strategic value…"></textarea></div>
+    <div><label for="ap-notes">Notes</label><textarea id="ap-notes" data-mic style="min-height:60px" placeholder="Context, how you know them, strategic value…"></textarea></div>
   </div>
   <div class="newtask-footer">
     <button class="btn-newtask-cancel" onclick="document.getElementById('add-person-dialog').close()">Cancel</button>
@@ -2578,7 +2583,7 @@ initKey();
     </div>
     <div>
       <label for="nt-notes">Notes / guidance (optional)</label>
-      <textarea id="nt-notes" placeholder="Context, links, instructions…"></textarea>
+      <textarea id="nt-notes" data-mic placeholder="Context, links, instructions…"></textarea>
     </div>
     <div>
       <label>Priority</label>
@@ -2610,7 +2615,7 @@ initKey();
   </div>
   <div class="justus-body">
     <label id="delegate-note-label" for="delegate-note">Guidance (optional)</label>
-    <textarea id="delegate-note" placeholder="Any context, instructions, or questions…"></textarea>
+    <textarea id="delegate-note" data-mic placeholder="Any context, instructions, or questions…"></textarea>
   </div>
   <div class="justus-footer">
     <button class="btn-justus-cancel" onclick="document.getElementById('justus-dialog').close()">Cancel</button>
@@ -2618,5 +2623,6 @@ initKey();
   </div>
 </dialog>
 
+<script src="/static/mic-input.js"></script>
 </body>
 </html>
