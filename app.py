@@ -10652,6 +10652,118 @@ def coaching_auth_token(token):
     return resp
 
 
+# ── Slice 6: studio.com credit intent + daily renewal-reminder cron ──────────
+
+@app.route("/coaching/studio-credit", methods=["GET"])
+def coaching_studio_credit_get():
+    html = _render_static_template("coaching.html", status="studio_credit")
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/coaching/studio-credit", methods=["POST"])
+def coaching_studio_credit_post():
+    import uuid
+    data = request.get_json(silent=True) or request.form or {}
+    email = (data.get("email") or "").strip().lower()
+    studio_ref = (data.get("studio_ref") or "").strip() or None
+    if email and "@" in email:
+        sid = str(uuid.uuid4())
+        now_iso = datetime.utcnow().isoformat() + "Z"
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO studio_credit_intents (id, created_at, email, studio_ref) "
+                "VALUES (?,?,?,?)",
+                (sid, now_iso, email, studio_ref)
+            )
+        subject = "studio.com credit intent submitted"
+        body = (
+            f"A visitor reported a studio.com purchase and asked for the 30-day credit.\n\n"
+            f"Email: {email}\n"
+            f"studio_ref: {studio_ref or '(not provided)'}\n"
+            f"Submitted: {now_iso}\n\n"
+            f"To verify and grant 30 days, POST /admin/membership/grant with "
+            f"source=studio_credit, email={email}, notes=studio_ref.\n"
+        )
+        try:
+            _send_inquiry_email(
+                to_email=RM_INBOUND_INQUIRY_EMAIL,
+                subject=subject, body=body,
+                reply_to=None,
+            )
+        except Exception as e:
+            print(f"[studio-credit] glen notification failed: {e!r}", flush=True)
+    html = _render_static_template("coaching.html", status="studio_credit_submitted")
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/api/cron/membership-renewals", methods=["POST"])
+@require_console_key
+def cron_membership_renewals():
+    import json as _json
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute(
+            "SELECT id, email, expires_at, last_reminder_at FROM memberships "
+            "WHERE expires_at > datetime('now') "
+            "AND expires_at < datetime('now', '+3 days')"
+        ).fetchall()
+    reminded = 0
+    for r in rows:
+        last = r["last_reminder_at"]
+        if last:
+            try:
+                last_dt = datetime.fromisoformat(last.rstrip("Z"))
+                if (datetime.utcnow() - last_dt) < timedelta(hours=24):
+                    continue
+            except Exception:
+                pass
+        try:
+            exp_dt = datetime.fromisoformat(r["expires_at"].rstrip("Z"))
+            days_left = max(0, (exp_dt - datetime.utcnow()).days)
+        except Exception:
+            days_left = 0
+        s_days = "s" if days_left != 1 else ""
+        subject = f"Your Remedy Match coaching access ends in {days_left} day{s_days}"
+        body = (
+            f"Hi,\n\n"
+            f"Your Remedy Match coaching access ends in {days_left} day{s_days}"
+            f" on {r['expires_at']}.\n\n"
+            f"To renew for another 30 days, record a fresh 3-5 minute video at:\n"
+            f"https://truly.vip/Results\n\n"
+            f"Glen reviews each submission and re-opens access on acceptance.\n\n"
+            f"---\n"
+            f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+        )
+        try:
+            ok_sent = _send_inquiry_email(
+                to_email=r["email"], subject=subject, body=body,
+                reply_to=RM_INBOUND_INQUIRY_EMAIL,
+            )
+        except Exception as e:
+            print(f"[renewal-cron] send failed for {r['email']}: {e!r}", flush=True)
+            ok_sent = False
+        if ok_sent:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.execute(
+                    "UPDATE memberships SET last_reminder_at=? WHERE id=?",
+                    (now_iso, r["id"])
+                )
+            try:
+                with sqlite3.connect(LOG_DB) as cx:
+                    cx.execute(
+                        "INSERT INTO journey_events "
+                        "(ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                        "VALUES (?,?,?,'membership_renewal_reminder',?,'','')",
+                        (now_iso, "", r["email"], _json.dumps({"days_left": days_left}))
+                    )
+                    cx.commit()
+            except Exception as e:
+                print(f"[renewal-cron] journey_events insert failed: {e!r}", flush=True)
+            reminded += 1
+    return jsonify({"reminded": reminded}), 200
+
+
 @app.route("/coaching/login-request", methods=["POST"])
 def coaching_login_request():
     data = request.get_json(silent=True) or request.form or {}

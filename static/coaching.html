@@ -171,17 +171,36 @@
 
   {% elif status == "studio_credit" %}
 
-  <section class="shell stub-section">
-    <h2>Studio credit</h2>
-    <p>This section is coming soon. Your credit is on file and will be applied automatically.</p>
-  </section>
+  <main class="shell">
+    <section class="card" style="margin-top:40px;">
+      <h2>studio.com credit</h2>
+      <p>Already subscribed to studio.com? Tell us your email and your studio.com receipt details. Glen will verify and credit you 30 days of access here.</p>
+      <form method="POST" action="/coaching/studio-credit" style="margin-top:18px;">
+        <div style="margin-bottom:14px;">
+          <label for="sc-email" style="display:block; font-size:14px; color:var(--muted); margin-bottom:6px;">Email</label>
+          <input id="sc-email" name="email" type="email" required
+            style="width:100%; background:var(--surface-2); color:var(--cream); border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:15px; font-family:inherit;" />
+        </div>
+        <div style="margin-bottom:18px;">
+          <label for="sc-ref" style="display:block; font-size:14px; color:var(--muted); margin-bottom:6px;">studio.com receipt details (optional)</label>
+          <textarea id="sc-ref" name="studio_ref" rows="3"
+            placeholder="Receipt number, order URL, or anything that helps Glen verify."
+            style="width:100%; background:var(--surface-2); color:var(--cream); border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:15px; font-family:inherit; resize:vertical;"></textarea>
+        </div>
+        <button type="submit" class="btn">Submit</button>
+      </form>
+    </section>
+  </main>
 
   {% elif status == "studio_credit_submitted" %}
 
-  <section class="shell stub-section">
-    <h2>Credit request received.</h2>
-    <p>Glen's team will review and apply your studio credit within one business day.</p>
-  </section>
+  <main class="shell">
+    <section class="card" style="margin-top:40px;">
+      <h2>Got it.</h2>
+      <p>Glen will verify your studio.com purchase and email you a sign-in link within about seven days.</p>
+      <p style="margin-top:16px;"><a href="/coaching" class="link" style="color:var(--gold);">Return to the coaching page</a></p>
+    </section>
+  </main>
 
   {% else %}
 

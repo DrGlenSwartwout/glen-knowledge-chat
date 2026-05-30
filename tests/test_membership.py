@@ -702,3 +702,101 @@ def test_embed_html_renders_talk_to_glen_hook(app_client_member):
     body = r.data.decode("utf-8", errors="replace")
     assert "member_mode" in body
     assert "/coaching/escalate" in body
+
+
+# ── Slice 6: studio credit + renewal cron ───────────────────────────────────
+
+def test_studio_credit_get_renders_form(app_client_mem):
+    client, _, _ = app_client_mem
+    r = client.get("/coaching/studio-credit")
+    assert r.status_code == 200
+    body = r.data
+    assert b"<form" in body
+    assert b"studio" in body.lower() or b"Studio" in body
+    assert b"email" in body.lower()
+
+
+def test_studio_credit_post_inserts_intent_sends_glen_notification(app_client_mem, fake_smtp):
+    client, app_module, db = app_client_mem
+    fake_smtp.instances = []
+    r = client.post("/coaching/studio-credit",
+                    data={"email":"sc@example.com",
+                          "studio_ref":"studio receipt #ABC"})
+    assert r.status_code == 200
+    cx = sqlite3.connect(db)
+    row = cx.execute(
+        "SELECT email, studio_ref FROM studio_credit_intents"
+    ).fetchone()
+    assert row == ("sc@example.com", "studio receipt #ABC")
+    cx.close()
+    # Notification email TO the inbound inquiry mailbox
+    sends = [s for inst in fake_smtp.instances for s in inst.sent]
+    assert any(app_module.RM_INBOUND_INQUIRY_EMAIL in to for (_, to, _) in sends)
+    # Submitted-state HTML rendered
+    assert b"Got it" in r.data or b"verify" in r.data.lower()
+
+
+def test_renewal_cron_requires_console_key(app_client_mem):
+    client, _, _ = app_client_mem
+    r = client.post("/api/cron/membership-renewals")
+    assert r.status_code in (401, 403)
+
+
+def test_renewal_cron_emails_expiring_in_window(app_client_mem, fake_smtp):
+    """Members whose expires_at is in (now, now+3d) and not reminded in last 24h get reminded."""
+    client, app_module, db = app_client_mem
+    import uuid as _uuid
+    now = datetime.utcnow()
+    cx = sqlite3.connect(db)
+    # In-window, never reminded
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source) "
+        "VALUES (?,?,?,?,?,?)",
+        (str(_uuid.uuid4()), "soon@example.com",
+         now.isoformat()+"Z",
+         (now+timedelta(days=2)).isoformat()+"Z", "glen", "video"))
+    # Too far out (5d) - NOT reminded
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source) "
+        "VALUES (?,?,?,?,?,?)",
+        (str(_uuid.uuid4()), "later@example.com",
+         now.isoformat()+"Z",
+         (now+timedelta(days=5)).isoformat()+"Z", "glen", "video"))
+    # Already expired - NOT reminded
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source) "
+        "VALUES (?,?,?,?,?,?)",
+        (str(_uuid.uuid4()), "past@example.com",
+         (now-timedelta(days=2)).isoformat()+"Z",
+         (now-timedelta(days=1)).isoformat()+"Z", "glen", "video"))
+    cx.commit(); cx.close()
+    fake_smtp.instances = []
+    r = client.post("/api/cron/membership-renewals", headers=_ckey())
+    assert r.status_code == 200
+    assert r.get_json().get("reminded") == 1
+    sends_all = [s for inst in fake_smtp.instances for s in inst.sent]
+    to_addrs = [to for (_, to, _) in sends_all]
+    assert any("soon@example.com" in to for to in to_addrs)
+    assert not any("later@example.com" in to for to in to_addrs)
+    assert not any("past@example.com" in to for to in to_addrs)
+
+
+def test_renewal_cron_skips_already_reminded_within_24h(app_client_mem, fake_smtp):
+    client, app_module, db = app_client_mem
+    import uuid as _uuid
+    now = datetime.utcnow()
+    cx = sqlite3.connect(db)
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source, last_reminder_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (str(_uuid.uuid4()), "already@example.com",
+         now.isoformat()+"Z",
+         (now+timedelta(days=2)).isoformat()+"Z", "glen", "video",
+         (now-timedelta(hours=12)).isoformat()+"Z"))
+    cx.commit(); cx.close()
+    fake_smtp.instances = []
+    r = client.post("/api/cron/membership-renewals", headers=_ckey())
+    assert r.status_code == 200
+    assert r.get_json().get("reminded") == 0
+    sends_all = [s for inst in fake_smtp.instances for s in inst.sent]
+    assert not any("already@example.com" in to for (_, to, _) in sends_all)
