@@ -1845,6 +1845,108 @@ def qbo_void_invoice():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ── Funnel product checkout — product page → Buy → QBO invoice ────────────────
+_PRODUCTS = _load_json(DATA_DIR / "products.json",
+                       default={"default_price_cents": 6997, "products": {}})
+# Card/ACH online payment is gated until QuickBooks Payments is activated.
+_QBO_PAYMENTS_ACTIVE = os.environ.get("QBO_PAYMENTS_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
+_ALT_PAY = {
+    "zelle": {"label": "Zelle (US)",
+              "to": os.environ.get("ZELLE_PAY_TO", "(set ZELLE_PAY_TO)"),
+              "note": "Send the invoice total via Zelle, using the invoice number as the memo. "
+                      "You earn extra loyalty points for choosing a fee-free method."},
+    "wise":  {"label": "Wise (International)",
+              "to": os.environ.get("WISE_PAY_TO", "(set WISE_PAY_TO)"),
+              "note": "Send the invoice total via Wise, using the invoice number as the reference. "
+                      "You earn extra loyalty points for choosing a fee-free method."},
+}
+
+
+def _get_product(slug):
+    p = (_PRODUCTS.get("products") or {}).get(slug)
+    if not p:
+        return None
+    out = dict(p)
+    out["slug"] = slug
+    out.setdefault("price_cents", _PRODUCTS.get("default_price_cents", 6997))
+    return out
+
+
+@app.route("/begin/buy/<slug>")
+def begin_buy_page(slug):
+    if not _get_product(slug):
+        return ("", 404)
+    resp = send_from_directory(STATIC, "begin-buy.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/product-data/<slug>")
+def begin_product_data(slug):
+    p = _get_product(slug)
+    if not p:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({
+        "slug": slug, "name": p["name"],
+        "price_cents": p["price_cents"], "price": f"${p['price_cents']/100:.2f}",
+        "description": p.get("description", ""), "benefits": p.get("benefits", []),
+        "info_only": bool(p.get("info_only")), "affiliate_url": p.get("affiliate_url", ""),
+        "payments_active": _QBO_PAYMENTS_ACTIVE,
+    })
+
+
+@app.route("/begin/checkout/<slug>", methods=["POST"])
+def begin_checkout(slug):
+    p = _get_product(slug)
+    if not p:
+        return jsonify({"ok": False, "error": "unknown product"}), 404
+    if p.get("info_only"):
+        return jsonify({"ok": True, "info_only": True, "affiliate_url": p.get("affiliate_url", "")})
+    data   = request.get_json(silent=True) or {}
+    email  = (data.get("email") or "").strip().lower()
+    name   = (data.get("name") or "").strip()
+    method = (data.get("method") or "").strip().lower()   # zelle | wise | card
+    try:
+        qty = max(1, min(int(data.get("qty", 1) or 1), 99))
+    except Exception:
+        qty = 1
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    session_id = request.cookies.get("amg_session", "")
+    try:
+        from dashboard import qbo_billing as qb
+        cust = qb.find_or_create_customer(email, name)
+        unit = round(p["price_cents"] / 100.0, 2)
+        allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
+        inv = qb.create_invoice(
+            cust,
+            [{"name": p["name"], "amount": unit, "qty": qty,
+              "item_id": p.get("qbo_item_id"), "description": p["name"]}],
+            allow_online_pay=allow_online, email_to=email)
+        # best-effort journey log (never break checkout)
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.execute("INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                           "VALUES (?,?,?,?,?,?,?)",
+                           (begin_funnel._now(), session_id, email, "purchase",
+                            f"buy-{slug}-{method}", "", ""))
+                cx.commit()
+        except Exception:
+            pass
+        out = {"ok": True, "invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
+               "total": inv.get("TotalAmt"), "method": method,
+               "pay_link": qb.get_invoice_pay_link(inv)}
+        if method in ("zelle", "wise"):
+            out["pay_instructions"] = _ALT_PAY.get(method, {})
+            out["earns_points"] = True   # awarded on confirmed payment (reconciliation, Phase 2)
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 # ── Phase 2B — full-report endpoint (View full / Email full) ─────────────────
 @app.route("/full-report", methods=["POST", "OPTIONS"])
 def full_report():

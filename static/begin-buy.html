@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Order · Dr. Glen Swartwout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+    --maxw:760px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1);
+    --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{ background:var(--bg); color:var(--cream); font-family:var(--font);
+    font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%); background-attachment:fixed; }
+  h1,h2,h3{ font-family:var(--heading); font-weight:600; line-height:1.25; letter-spacing:-0.01em; }
+  a{ color:inherit; text-decoration:none; }
+  .shell{ max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+  .brandbar{ max-width:var(--maxw); margin:0 auto; padding:30px 24px 8px; display:flex; align-items:center; justify-content:center; gap:14px; }
+  .brand-mark{ width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 4px rgba(212,168,67,0.12); }
+  .brand-name{ font-family:var(--heading); font-weight:600; font-size:13px; letter-spacing:0.32em; color:var(--muted); }
+
+  .eyebrow{ font-family:var(--heading); font-weight:600; font-size:12px; letter-spacing:0.34em; color:var(--green); margin-bottom:14px; }
+
+  /* ── Product block ── */
+  .product{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:28px 28px 26px; margin-top:34px; }
+  .p-name{ font-family:var(--heading); font-weight:700; font-size:clamp(22px,4.6vw,29px); color:var(--cream); line-height:1.25; }
+  .p-price{ display:inline-block; margin-top:14px; font-family:var(--heading); font-weight:600; font-size:14px;
+    letter-spacing:0.04em; color:var(--gold); border:1px solid rgba(212,168,67,0.4); border-radius:999px; padding:5px 16px; }
+  .p-desc{ color:var(--cream); opacity:0.92; font-size:15.5px; margin-top:18px; line-height:1.65; }
+  .p-benefits{ list-style:none; margin-top:18px; padding:0; }
+  .p-benefits li{ position:relative; padding-left:26px; margin-bottom:9px; font-size:14.5px; color:var(--cream); line-height:1.55; }
+  .p-benefits li::before{ content:"\2713"; position:absolute; left:0; top:0; color:var(--green); font-weight:700; }
+
+  /* ── Checkout form ── */
+  .checkout{ margin-top:26px; border-top:1px solid var(--border); padding-top:24px; }
+  .field{ margin-bottom:18px; }
+  .field label{ display:block; font-family:var(--heading); font-weight:600; font-size:13.5px; color:var(--cream); margin-bottom:7px; }
+  .field .hint{ font-size:12.5px; color:var(--muted); font-weight:400; }
+  input[type="email"], input[type="text"], input[type="number"]{
+    width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:10px;
+    color:var(--cream); font-family:var(--font); font-size:15px; padding:11px 13px; outline:none;
+    transition:border-color .15s; }
+  input:focus{ border-color:var(--gold); }
+  input::placeholder{ color:var(--muted); opacity:0.7; }
+  .qty-row{ display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; }
+  .qty-row .field{ margin-bottom:0; }
+  .qty-field{ max-width:120px; }
+
+  .methods{ display:flex; flex-direction:column; gap:10px; }
+  .method-opt{ display:flex; align-items:flex-start; gap:11px; cursor:pointer; border:1px solid var(--border);
+    border-radius:10px; padding:13px 15px; transition:border-color .2s var(--ease), background .2s var(--ease); }
+  .method-opt:hover{ border-color:rgba(212,168,67,0.45); }
+  .method-opt.active{ border-color:var(--green); background:#3d8a5212; }
+  .method-opt input{ accent-color:var(--green); width:17px; height:17px; flex:none; margin-top:2px; }
+  .method-opt .m-text{ flex:1; }
+  .method-opt .m-title{ font-size:14.5px; color:var(--cream); font-weight:600; }
+  .method-opt .m-sub{ font-size:12.5px; color:var(--muted); margin-top:2px; line-height:1.5; }
+  .method-opt .m-badge{ display:inline-block; margin-left:8px; font-size:10.5px; letter-spacing:0.05em;
+    color:var(--green); border:1px solid rgba(61,138,82,0.5); border-radius:999px; padding:1px 8px; vertical-align:middle; }
+  .card-soon{ font-size:12.5px; color:var(--muted); margin-top:8px; line-height:1.5; font-style:italic; }
+
+  .reassure{ font-size:12.5px; color:var(--muted); margin-top:16px; line-height:1.6; }
+
+  .buy-wrap{ margin-top:22px; }
+  .buy-btn{ display:inline-block; background:var(--gold); color:#0a150d; font-family:var(--heading);
+    font-weight:700; font-size:15px; letter-spacing:0.03em; padding:14px 34px; border:none; border-radius:999px;
+    cursor:pointer; transition:opacity .25s var(--ease), transform .25s var(--ease); }
+  .buy-btn:hover{ opacity:0.9; transform:translateY(-1px); }
+  .buy-btn:disabled{ opacity:0.45; cursor:not-allowed; transform:none; }
+  .inline-msg{ font-size:13px; color:var(--gold); margin-top:12px; min-height:1em; line-height:1.5; }
+
+  /* ── Info-only block ── */
+  .infoonly-cta{ margin-top:24px; }
+  .store-btn{ display:inline-block; background:var(--gold); color:#0a150d; font-family:var(--heading);
+    font-weight:700; font-size:15px; letter-spacing:0.03em; padding:14px 30px; border-radius:999px;
+    transition:opacity .25s var(--ease), transform .25s var(--ease); }
+  .store-btn:hover{ opacity:0.9; transform:translateY(-1px); }
+  .infoonly-note{ font-size:12.5px; color:var(--muted); margin-top:14px; line-height:1.6; }
+
+  /* ── Confirmation card ── */
+  .confirm-card{ margin-top:26px; background:linear-gradient(160deg, rgba(61,138,82,0.16), rgba(212,168,67,0.08));
+    border:1px solid var(--green); border-radius:var(--radius); padding:22px 22px 20px; }
+  .confirm-card .cc-eyebrow{ font-family:var(--heading); font-weight:600; font-size:11px; letter-spacing:0.22em;
+    text-transform:uppercase; color:var(--green); margin-bottom:10px; }
+  .confirm-card .cc-head{ font-family:var(--heading); font-weight:700; font-size:18px; color:var(--cream); line-height:1.3; }
+  .pay-detail{ margin-top:16px; }
+  .pay-detail .pd-label{ font-size:13px; color:var(--muted); }
+  .pay-detail .pd-to{ font-size:17px; color:var(--gold); font-weight:600; font-family:var(--heading); margin-top:3px; word-break:break-word; }
+  .pay-detail .pd-note{ font-size:13.5px; color:var(--cream); opacity:0.92; margin-top:10px; line-height:1.6; }
+  .pay-link{ display:inline-block; margin-top:18px; background:var(--gold); color:#0a150d; font-family:var(--heading);
+    font-weight:700; font-size:14.5px; border-radius:999px; padding:12px 26px; transition:opacity .15s; }
+  .pay-link:hover{ opacity:0.9; }
+  .cc-email-note{ font-size:12.5px; color:var(--muted); margin-top:16px; line-height:1.6; }
+
+  .notfound{ text-align:center; padding:54px 18px; }
+  .notfound .glyph{ font-size:28px; color:var(--gold); opacity:0.5; }
+  .notfound p{ color:var(--muted); font-size:15px; max-width:420px; margin:12px auto 0; line-height:1.65; }
+
+  .loading{ text-align:center; color:var(--muted); padding:48px 18px; font-size:15px; }
+
+  .back{ display:inline-block; margin-top:18px; color:var(--muted); font-size:13px; }
+  .back:hover{ color:var(--gold); }
+
+  footer{ margin-top:48px; padding:28px 24px 44px; text-align:center; border-top:1px solid rgba(33,71,45,0.5); }
+  .foot-note{ font-size:12.5px; color:var(--muted); opacity:0.7; max-width:540px; margin:0 auto; line-height:1.7; }
+
+  .hidden{ display:none !important; }
+
+  @media(max-width:560px){
+    body{ font-size:16px; }
+    .shell{ padding:0 18px; }
+    .product{ padding:22px 18px 20px; }
+    .buy-btn,.store-btn{ width:100%; text-align:center; }
+  }
+</style>
+</head>
+<body>
+  <div class="brandbar"><span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;&middot;&nbsp; Healing&nbsp;Oasis</span></div>
+
+  <section class="shell">
+    <div id="loading" class="loading">Loading your remedy&hellip;</div>
+
+    <!-- Product not found -->
+    <div id="notfound" class="notfound hidden">
+      <div class="glyph" aria-hidden="true">&#10022;</div>
+      <p>I couldn&rsquo;t find that remedy. The link may have changed. Let&rsquo;s head back and find what fits you.</p>
+      <div><a class="back" href="/begin">&larr; Back to the beginning</a></div>
+    </div>
+
+    <!-- Product (rendered after load) -->
+    <div id="product" class="product hidden">
+      <p class="eyebrow">Your remedy</p>
+      <h1 class="p-name" id="p-name"></h1>
+      <span class="p-price" id="p-price"></span>
+      <p class="p-desc" id="p-desc"></p>
+      <ul class="p-benefits hidden" id="p-benefits"></ul>
+
+      <!-- Info-only path -->
+      <div id="infoonly" class="infoonly-cta hidden">
+        <a id="store-link" class="store-btn" href="#" target="_blank" rel="noopener sponsored">View on the maker&rsquo;s store &#8599;</a>
+        <p class="infoonly-note">This one is offered directly through the maker. Tap above to learn more and order on their store.</p>
+      </div>
+
+      <!-- Checkout path -->
+      <div id="checkout" class="checkout hidden">
+        <div class="qty-row">
+          <div class="field qty-field">
+            <label for="qty">Quantity</label>
+            <input type="number" id="qty" min="1" value="1" inputmode="numeric" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="name">Your name <span class="hint">(optional)</span></label>
+          <input type="text" id="name" placeholder="So we can address your invoice" autocomplete="name" />
+        </div>
+
+        <div class="field">
+          <label for="email">Email <span class="hint">(required, your invoice goes here)</span></label>
+          <input type="email" id="email" placeholder="you@example.com" autocomplete="email" required />
+        </div>
+
+        <div class="field">
+          <label>How would you like to pay?</label>
+          <div class="methods" id="methods">
+            <label class="method-opt" data-method="zelle">
+              <input type="radio" name="method" value="zelle" />
+              <span class="m-text">
+                <span class="m-title">Pay by Zelle (US)<span class="m-badge">earns extra points</span></span>
+                <span class="m-sub">Fee-free, settles today. You&rsquo;ll see the pay-to details right after you order.</span>
+              </span>
+            </label>
+            <label class="method-opt" data-method="wise">
+              <input type="radio" name="method" value="wise" />
+              <span class="m-text">
+                <span class="m-title">Pay by Wise (International)<span class="m-badge">earns extra points</span></span>
+                <span class="m-sub">Fee-free across borders. Pay-to details appear right after you order.</span>
+              </span>
+            </label>
+            <label class="method-opt hidden" id="method-card" data-method="card">
+              <input type="radio" name="method" value="card" />
+              <span class="m-text">
+                <span class="m-title">Pay by card</span>
+                <span class="m-sub">Secure card checkout opens in a new tab.</span>
+              </span>
+            </label>
+          </div>
+          <p class="card-soon hidden" id="card-soon">Card payment is coming soon. For now, Zelle or Wise both work today and earn you extra loyalty points.</p>
+        </div>
+
+        <p class="reassure">A simple one-time purchase. Your invoice and payment are recorded in QuickBooks, and a copy is emailed to you. Zelle and Wise are fee-free and earn extra loyalty points.</p>
+
+        <div class="buy-wrap">
+          <button class="buy-btn" id="buy-btn" disabled>Place your order</button>
+          <div class="inline-msg" id="inline-msg"></div>
+        </div>
+      </div>
+
+      <!-- Confirmation (after checkout) -->
+      <div id="confirm" class="confirm-card hidden">
+        <div class="cc-eyebrow">Order received</div>
+        <div class="cc-head" id="cc-head"></div>
+        <div class="pay-detail hidden" id="pay-detail">
+          <div class="pd-label" id="pd-label"></div>
+          <div class="pd-to" id="pd-to"></div>
+          <div class="pd-note" id="pd-note"></div>
+        </div>
+        <a class="pay-link hidden" id="pay-link" href="#" target="_blank" rel="noopener">Pay securely &#8599;</a>
+        <div class="cc-email-note" id="cc-email-note"></div>
+      </div>
+    </div>
+
+    <div id="back-wrap" class="hidden" style="text-align:center;"><a class="back" href="/begin">&larr; Back to the beginning</a></div>
+  </section>
+
+  <footer>
+    <p class="foot-note">Shared in the spirit of education and self-understanding. This space offers wellness and
+      educational guidance. It is not a substitute for diagnosis or medical care from your own provider. Individual results will vary.</p>
+    <p class="foot-note">Some recommendations include affiliate links. As an Amazon Associate, Healing Oasis earns from qualifying purchases.</p>
+  </footer>
+
+  <script src="/ref-capture.js"></script>
+  <script>
+    // ── State ──────────────────────────────────────────────────────────────
+    var BASE = window.location.origin;
+    var slug = location.pathname.split('/').filter(Boolean).pop() || '';
+    var product = null;
+    var chosenMethod = '';
+    var ordering = false;
+
+    function show(id){ var e = document.getElementById(id); if (e) e.classList.remove('hidden'); }
+    function hide(id){ var e = document.getElementById(id); if (e) e.classList.add('hidden'); }
+    function escHtml(s){
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── Load product ───────────────────────────────────────────────────────
+    fetch(BASE + '/begin/product-data/' + encodeURIComponent(slug), { credentials: 'same-origin' })
+      .then(function(resp){
+        hide('loading');
+        if (resp.status === 404) { show('notfound'); return null; }
+        if (!resp.ok) { show('notfound'); return null; }
+        return resp.json();
+      })
+      .then(function(data){
+        if (!data) return;
+        product = data;
+        renderProduct(data);
+      })
+      .catch(function(){
+        hide('loading');
+        show('notfound');
+      });
+
+    function renderProduct(p){
+      document.getElementById('p-name').textContent = p.name || 'Your remedy';
+      document.title = (p.name || 'Order') + ' · Dr. Glen Swartwout';
+      document.getElementById('p-desc').textContent = p.description || '';
+      show('product');
+      show('back-wrap');
+
+      if (p.info_only) {
+        // Info-only: no checkout, just a link to the maker's store.
+        hide('p-price');
+        var link = document.getElementById('store-link');
+        var url = (p.affiliate_url || '').trim();
+        if (url) {
+          link.setAttribute('href', url);
+        } else {
+          link.classList.add('hidden');
+          document.querySelector('#infoonly .infoonly-note').textContent =
+            'Details on where to order are on the way. Please check back shortly.';
+        }
+        show('infoonly');
+        return;
+      }
+
+      // Purchasable product.
+      if (p.price) { document.getElementById('p-price').textContent = p.price; }
+      else { hide('p-price'); }
+
+      if (Array.isArray(p.benefits) && p.benefits.length) {
+        var ul = document.getElementById('p-benefits');
+        p.benefits.forEach(function(b){
+          var li = document.createElement('li');
+          li.textContent = String(b);
+          ul.appendChild(li);
+        });
+        show('p-benefits');
+      }
+
+      // Card option only when payments are active.
+      if (p.payments_active) {
+        show('method-card');
+      } else {
+        show('card-soon');
+      }
+
+      show('checkout');
+      wireForm();
+    }
+
+    // ── Form wiring ────────────────────────────────────────────────────────
+    function wireForm(){
+      var emailEl = document.getElementById('email');
+      var buyBtn = document.getElementById('buy-btn');
+
+      document.querySelectorAll('input[name="method"]').forEach(function(r){
+        r.addEventListener('change', function(){
+          chosenMethod = r.value;
+          document.querySelectorAll('.method-opt').forEach(function(o){ o.classList.remove('active'); });
+          var lab = r.closest('.method-opt');
+          if (lab) lab.classList.add('active');
+          clearInlineMsg();
+          refreshBuyState();
+        });
+      });
+
+      emailEl.addEventListener('input', function(){ clearInlineMsg(); refreshBuyState(); });
+
+      buyBtn.addEventListener('click', placeOrder);
+      refreshBuyState();
+    }
+
+    function emailValid(){
+      var v = (document.getElementById('email').value || '').trim();
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+    }
+
+    function refreshBuyState(){
+      var ready = emailValid() && !!chosenMethod && !ordering;
+      document.getElementById('buy-btn').disabled = !ready;
+    }
+
+    function clearInlineMsg(){ document.getElementById('inline-msg').textContent = ''; }
+    function setInlineMsg(t){ document.getElementById('inline-msg').textContent = t; }
+
+    // ── Place order ────────────────────────────────────────────────────────
+    function placeOrder(){
+      if (ordering) return;
+
+      if (!emailValid()) {
+        setInlineMsg('Please add a valid email so we can send your invoice.');
+        document.getElementById('email').focus();
+        return;
+      }
+      if (!chosenMethod) {
+        setInlineMsg('Please choose how you would like to pay.');
+        return;
+      }
+
+      ordering = true;
+      var buyBtn = document.getElementById('buy-btn');
+      buyBtn.disabled = true;
+      buyBtn.textContent = 'Creating your invoice…';
+      clearInlineMsg();
+
+      var qty = parseInt(document.getElementById('qty').value, 10);
+      if (!qty || qty < 1) qty = 1;
+
+      var payload = {
+        email: (document.getElementById('email').value || '').trim(),
+        name: (document.getElementById('name').value || '').trim(),
+        qty: qty,
+        method: chosenMethod
+      };
+
+      fetch(BASE + '/begin/checkout/' + encodeURIComponent(slug), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload)
+      })
+      .then(function(r){ return r.json().catch(function(){ return { ok:false, error:'HTTP ' + r.status }; }); })
+      .then(function(data){
+        ordering = false;
+        buyBtn.textContent = 'Place your order';
+        if (!data || !data.ok) {
+          setInlineMsg((data && data.error) ? data.error : 'Something went sideways creating your order. Please try again.');
+          refreshBuyState();
+          return;
+        }
+        renderConfirmation(data);
+      })
+      .catch(function(e){
+        ordering = false;
+        buyBtn.textContent = 'Place your order';
+        setInlineMsg('Connection hiccup: ' + e.message + '. Please try again.');
+        refreshBuyState();
+      });
+    }
+
+    // ── Confirmation ───────────────────────────────────────────────────────
+    function renderConfirmation(data){
+      hide('checkout');
+
+      var head = document.getElementById('cc-head');
+      var doc = data.doc_number ? ('#' + data.doc_number) : '';
+      var total = (data.total != null) ? data.total : '';
+      head.textContent = 'Invoice ' + doc + ' created for $' + total + '.';
+
+      if (data.method === 'card') {
+        var link = (data.pay_link || '').trim();
+        if (link) {
+          var payLink = document.getElementById('pay-link');
+          payLink.setAttribute('href', link);
+          payLink.classList.remove('hidden');
+          document.getElementById('cc-email-note').textContent =
+            'A copy of your invoice is on its way to your email as well.';
+        } else {
+          document.getElementById('cc-email-note').textContent =
+            'Card payment isn’t enabled yet. Please use Zelle or Wise to complete this order, and they earn you extra points too.';
+        }
+      } else {
+        // Zelle / Wise: show pay-to instructions.
+        var pi = data.pay_instructions || {};
+        if (pi.label || pi.to || pi.note) {
+          if (pi.label) document.getElementById('pd-label').textContent = pi.label;
+          if (pi.to) document.getElementById('pd-to').textContent = pi.to;
+          if (pi.note) document.getElementById('pd-note').textContent = pi.note;
+          show('pay-detail');
+        }
+        document.getElementById('cc-email-note').textContent =
+          'You’ll receive this invoice by email too, so you have the payment details handy.';
+      }
+
+      show('confirm');
+      document.getElementById('confirm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  </script>
+</body>
+</html>

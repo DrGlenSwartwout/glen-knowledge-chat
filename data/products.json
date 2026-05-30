@@ -1,0 +1,23 @@
+{
+  "_comment": "RemedyMatch funnel checkout catalog. Source of truth for PRICE (QBO Items carry no UnitPrice). Each product maps a funnel slug -> the existing QuickBooks Item id (realm 193514563989859) + price in cents. Most are $69.97. Add products / adjust prices freely; add a `price_cents` to override the default. Non-$70 items (tools, ebooks, devices) can be added with their own price_cents.",
+  "default_price_cents": 6997,
+  "products": {
+    "1st-line":            {"name": "1st Line",                                  "qbo_item_id": "32"},
+    "aces-eyedrops":       {"name": "ACES Eyedrops",                             "qbo_item_id": "21"},
+    "aller-free-aid":      {"name": "Aller-Free Aid for Inhalant Allergies",     "qbo_item_id": "37"},
+    "bone-builder":        {"name": "Bone Builder",                              "qbo_item_id": "20"},
+    "brain-boost":         {"name": "Brain Boost",                               "qbo_item_id": "27"},
+    "brain-cleanse":       {"name": "Brain Cleanse",                             "qbo_item_id": "28"},
+    "crystalline-clarity": {"name": "Crystalline Clarity",                       "qbo_item_id": "24"},
+    "dental-powder":       {"name": "Dental Powder",                            "qbo_item_id": "49"},
+    "esr":                 {"name": "ESR (Emotional Stress Release)",            "qbo_item_id": "26"},
+    "free-and-easy":       {"name": "Free & Easy",                               "qbo_item_id": "40"},
+    "gastrozyme":          {"name": "GastroZyme",                                "qbo_item_id": "44"},
+    "gi-repair":           {"name": "GI Repair Helicobacter Pylori Terrain Support", "qbo_item_id": "42"},
+    "holy-grail-ormus":    {"name": "Holy Grail Full Spectrum M-10 ORMUS",       "qbo_item_id": "18"},
+    "lens-zyme":           {"name": "Lens-Zyme Brunescense Buster",              "qbo_item_id": "39"},
+    "medicinal-mushrooms": {"name": "Medicinal Mushrooms",                       "qbo_item_id": "43"},
+    "microbes-liver-meridian": {"name": "Microbes/Liver Meridian (EI-8)",        "qbo_item_id": "30"},
+    "microbiome":          {"name": "Microbiome",                               "qbo_item_id": "29"}
+  }
+}
