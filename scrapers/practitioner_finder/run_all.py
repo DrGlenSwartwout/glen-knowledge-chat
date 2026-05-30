@@ -254,6 +254,30 @@ def _run_a4m_scrape() -> tuple[int, int, int]:
     return len(rows), len(rows), 0
 
 
+def _run_ifm_scrape() -> tuple[int, int, int]:
+    # IFM's directory is geo-radius-search-only (no list-all). Fan out over the
+    # US metro centroid grid, paginate + dedup by source_url, then enrich
+    # slug-bearing rows with exact profile coordinates (slug-less rows keep the
+    # surfacing centroid's coords as a city-level fallback). IFM rows carry
+    # their own lat/lng, so the global geocode sweep skips them. Headless works —
+    # no Cloudflare interstitial.
+    from scrapers.practitioner_finder.ifm import (
+        FIND_URL, scrape_grid, enrich_rows,
+    )
+    from scrapers.practitioner_finder.playwright_fetch import playwright_session
+    with playwright_session(headless=True) as f:
+        f.get(FIND_URL, sleep_s=1.0)   # warm the Cloudflare cookie once
+        rows = scrape_grid(f)
+        enriched = enrich_rows(f, rows)
+    for row in rows:
+        run_upsert(row.to_dict())
+    from scrapers.practitioner_finder.ifm import FALLBACK_GEOCODE_QUALITY
+    fallback = sum(1 for r in rows if r.geocode_quality == FALLBACK_GEOCODE_QUALITY)
+    print(f"  ifm: {len(rows)} unique rows "
+          f"({enriched} profile-enriched, {fallback} centroid-fallback)")
+    return len(rows), len(rows), 0
+
+
 ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("oepf", _run_oepf_scrape),
     ("iaomt", _run_iaomt_scrape),
@@ -274,6 +298,7 @@ ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("acfn", _run_acfn_scrape),
     ("ipi", _run_ipi_scrape),
     ("a4m", _run_a4m_scrape),
+    ("ifm", _run_ifm_scrape),
 ]
 
 
