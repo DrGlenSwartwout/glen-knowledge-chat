@@ -156,6 +156,9 @@ def create_recurring_invoice(customer, *, item_name, amount, day_of_month,
         "SalesItemLineDetail": {"ItemRef": {"value": item["Id"]},
                                 "Qty": 1, "UnitPrice": amt},
     }
+    # QBO recurring DayOfMonth supports only 1-28 (so every month has that day);
+    # the 29th-31st clamp to 28.
+    dom = max(1, min(int(day_of_month), 28))
     name = (template_name or f"{item_name} - {customer.get('DisplayName', 'member')}")[:100]
     inv = {
         "Line": [line],
@@ -168,7 +171,7 @@ def create_recurring_invoice(customer, *, item_name, amount, day_of_month,
                 # Intuit's ScheduleInfo expects these numeric fields as STRINGS
                 "IntervalType": interval,
                 "NumInterval": str(int(num_interval)),
-                "DayOfMonth": str(int(day_of_month)),
+                "DayOfMonth": str(dom),
                 "StartDate": start_date,
             },
         },

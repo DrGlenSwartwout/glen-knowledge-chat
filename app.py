@@ -1871,7 +1871,7 @@ def _membership_schedule(data):
     else:
         sd = today
     dom = int(data.get("day_of_month") or sd.day)
-    dom = max(1, min(dom, 31))
+    dom = max(1, min(dom, 28))  # QBO recurring supports DayOfMonth 1-28 only
     if data.get("first_month_free") and not explicit:
         y, m = (sd.year + 1, 1) if sd.month == 12 else (sd.year, sd.month + 1)
         sd = _dt.date(y, m, min(dom, _cal.monthrange(y, m)[1]))
