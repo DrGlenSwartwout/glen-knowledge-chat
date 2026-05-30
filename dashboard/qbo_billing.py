@@ -162,7 +162,7 @@ def create_recurring_invoice(customer, *, item_name, amount, day_of_month,
         "CustomerRef": {"value": customer["Id"]},
         "RecurringInfo": {
             "Name": name,
-            "Type": "Scheduled",   # Scheduled = QBO auto-creates each cycle (vs Reminder/Unscheduled)
+            "RecurType": "Automated",   # Automated = QBO auto-creates each cycle
             "Active": True,
             "ScheduleInfo": {
                 # Intuit's ScheduleInfo expects these numeric fields as STRINGS
@@ -178,8 +178,10 @@ def create_recurring_invoice(customer, *, item_name, amount, day_of_month,
     if allow_online_pay:
         inv["AllowOnlineCreditCardPayment"] = True
         inv["AllowOnlineACHPayment"] = True
-    out = _post("/recurringtransaction", {"RecurringTransaction": {"Invoice": inv}})
-    return (out.get("RecurringTransaction") or {}).get("Invoice") or out.get("Invoice")
+    # The create request posts the entity keyed by its type ("Invoice"); the outer
+    # {"RecurringTransaction": ...} wrapper is response-only (it would 2120 here).
+    out = _post("/recurringtransaction", {"Invoice": inv})
+    return out.get("Invoice") or (out.get("RecurringTransaction") or {}).get("Invoice")
 
 
 def list_recurring():
@@ -195,14 +197,15 @@ def list_recurring():
 
 def set_recurring_active(rt_invoice_id, sync_token, active):
     """Activate/deactivate a recurring template (sparse update on RecurringInfo.Active)."""
-    body = {"RecurringTransaction": {"Invoice": {
+    body = {"Invoice": {
         "Id": str(rt_invoice_id), "SyncToken": str(sync_token), "sparse": True,
-        "RecurringInfo": {"Active": bool(active)}}}}
+        "RecurringInfo": {"Active": bool(active)}}}
     return _post("/recurringtransaction", body)
 
 
 def delete_recurring(rt_invoice_id, sync_token):
-    """Delete a recurring template (used to clean up the guarded prod test)."""
+    """Delete a recurring template (used to clean up the guarded prod test). The entity
+    is keyed by its type ("Invoice"); no outer RecurringTransaction wrapper."""
     return _post("/recurringtransaction?operation=delete",
-                 {"RecurringTransaction": {"Invoice": {
-                     "Id": str(rt_invoice_id), "SyncToken": str(sync_token)}}})
+                 {"Invoice": {"Id": str(rt_invoice_id),
+                              "SyncToken": str(sync_token or "0")}})
