@@ -1683,12 +1683,24 @@ def begin_match_chat():
             "someone-else": "This match is FOR SOMEONE ELSE — do not apply the chatter's personal data.",
         }.get(for_whom, "The person hasn't said who this is for — gently confirm it's for them or someone else.")
 
+        # Glen's recommended off-catalog tools/products (trusted-links.json) — give
+        # the model their names so it can recommend them by name when they truly fit
+        # (Functional Formulations still come first; these are adjunct tools/devices).
+        tools_lines = []
+        for k, v in (_TRUSTED_LINKS.get("links", {}) or {}).items():
+            note = v.get("note", "") if isinstance(v, dict) else ""
+            tools_lines.append(f"- {k}" + (f": {note}" if note else ""))
+        tools_block = ("GLEN'S RECOMMENDED ADJUNCT TOOLS/PRODUCTS (name one by its EXACT name only "
+                       "when it is genuinely the best fit; Functional Formulations still come first):\n"
+                       + "\n".join(tools_lines) + "\n\n") if tools_lines else ""
+
         messages = []
         for turn in history[-8:]:
             if turn.get("role") in ("user", "assistant") and turn.get("content"):
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content":
             f"USER MESSAGE: {query}\n\n{whom_line}\n{household_note}\n{personal_block}"
+            f"{tools_block}"
             f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
             "Continue the Socratic match. If you can now name the ONE best remedy, name it and "
             "invite them to open its page; otherwise ask the single best next question."})
