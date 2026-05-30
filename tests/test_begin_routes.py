@@ -429,9 +429,11 @@ def test_ascend_tier_data_json(monkeypatch, tmp_path):
 
 def test_begin_path_story_card_surfaces_membership(monkeypatch, tmp_path):
     """The pay-it-forward 'Share Your Story' card on /begin/path points at the
-    video-capture link AND describes the membership that shipped (Glen reviews
-    each video; accepted videos earn 30 days of coaching + community), not the
-    pre-membership 'free consultation' promise."""
+    video-capture link AND describes the membership that shipped: Glen reviews
+    each video; accepted videos earn 30 days of coaching + community + live
+    group onboarding (all qualified members), and the most compelling stories
+    can also earn a free initial consultation (the reserved highest-promise
+    tier)."""
     app_module = _load_app()
     monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
     client = app_module.app.test_client()
@@ -440,4 +442,5 @@ def test_begin_path_story_card_surfaces_membership(monkeypatch, tmp_path):
     html = r.get_data(as_text=True)
     assert "https://truly.vip/Results" in html
     assert "30 days" in html
-    assert "free initial consultation" not in html
+    assert "live group onboarding" in html
+    assert "free initial consultation" in html
