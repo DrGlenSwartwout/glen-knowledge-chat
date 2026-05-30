@@ -1,9 +1,7 @@
 {
   "_comment": "RemedyMatch funnel checkout catalog. Source of truth for PRICE (QBO Items carry no UnitPrice). Each product maps a funnel slug -> the existing QuickBooks Item id (realm 193514563989859) + price in cents. Prices populated 2026-05-30 from the specific-formulations Pinecone (exact-title matches). Add products / variants (larger bottles, cellophane refill packs) with their own qbo_item_id + price_cents. info_only items (Kloud, Centropix) use price_cents 0 + affiliate_url.",
-  "_price_unverified": "1st-line and esr were NOT in specific-formulations (fuzzy-matched the wrong product), so their price is the $69.97 default placeholder pending confirmation from FMP / remedymatch.com / Glen.",
   "default_price_cents": 6997,
   "products": {
-    "1st-line":            {"name": "1st Line",                                  "qbo_item_id": "32", "price_cents": 6997, "price_unverified": true},
     "aces-eyedrops":       {"name": "ACES Eyedrops",                             "qbo_item_id": "21", "price_cents": 6997},
     "aller-free-aid":      {"name": "Aller-Free Aid for Inhalant Allergies",     "qbo_item_id": "37", "price_cents": 6997},
     "bone-builder":        {"name": "Bone Builder",                              "qbo_item_id": "20", "price_cents": 6997},
@@ -11,7 +9,7 @@
     "brain-cleanse":       {"name": "Brain Cleanse",                             "qbo_item_id": "28", "price_cents": 6997},
     "crystalline-clarity": {"name": "Crystalline Clarity",                       "qbo_item_id": "24", "price_cents": 6997},
     "dental-powder":       {"name": "Dental Powder",                            "qbo_item_id": "49", "price_cents": 6997},
-    "esr":                 {"name": "ESR (Emotional Stress Release)",            "qbo_item_id": "26", "price_cents": 6997, "price_unverified": true},
+    "esr":                 {"name": "Emotional Stress Release (MB5)",            "qbo_item_id": "26", "price_cents": 3997},
     "free-and-easy":       {"name": "Free & Easy",                               "qbo_item_id": "40", "price_cents": 6997},
     "gastrozyme":          {"name": "GastroZyme",                                "qbo_item_id": "44", "price_cents": 6997},
     "gi-repair":           {"name": "GI Repair Helicobacter Pylori Terrain Support", "qbo_item_id": "42", "price_cents": 6997},
