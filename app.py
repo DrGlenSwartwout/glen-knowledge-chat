@@ -1735,8 +1735,10 @@ def begin_match_chat():
             obj = json.loads(txt)
             if obj.get("matched") and obj.get("name"):
                 url, src = _resolve_remedy_url(obj["name"])
+                buy_slug = _resolve_buy_slug(obj["name"])
                 match_evt = {"name": obj["name"], "kind": obj.get("kind", ""),
                              "why": obj.get("why", ""), "url": url, "url_source": src,
+                             "buy_url": (f"/begin/buy/{buy_slug}" if buy_slug else ""),
                              "search_url": "" if url else _store_search_url(obj["name"])}
         except Exception as e:
             print(f"[match] extract: {e!r}", flush=True)
@@ -1870,6 +1872,19 @@ def _get_product(slug):
     out["slug"] = slug
     out.setdefault("price_cents", _PRODUCTS.get("default_price_cents", 6997))
     return out
+
+
+def _resolve_buy_slug(name):
+    """Map a remedy NAME to a products.json slug (our QBO checkout catalog) so
+    RemedyMatch can offer a Buy button. Returns slug or None."""
+    if not name:
+        return None
+    nl = name.strip().lower()
+    for slug, p in (_PRODUCTS.get("products") or {}).items():
+        pn = (p.get("name") or "").lower()
+        if pn and (nl == pn or (len(nl) > 4 and (nl in pn or pn in nl))):
+            return slug
+    return None
 
 
 @app.route("/begin/buy/<slug>")

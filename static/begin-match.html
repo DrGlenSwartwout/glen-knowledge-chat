@@ -273,12 +273,17 @@
       if (match.kind) html += '<div class="mc-kind">' + escHtml(match.kind) + '</div>';
       if (match.why)  html += '<div class="mc-why">' + escHtml(match.why) + '</div>';
 
+      const buyUrl = (match.buy_url || '').trim();
       const url = (match.url || '').trim();
       const searchUrl = (match.search_url || '').trim();
       const amazon = /amzn\.to|amazon\.[a-z.]+/i.test(url);
 
-      if (url) {
-        // Button-first: a real link the person clicks (no auto-open — browsers
+      if (buyUrl) {
+        // In our catalog: the primary action is our own QuickBooks checkout.
+        html += '<a class="mc-open" href="' + escAttr(buyUrl) + '">Buy ' + escHtml(match.name) + ' →</a>';
+        if (url) html += '<a class="mc-search" href="' + escAttr(url) + '" target="_blank" rel="noopener" style="margin-left:10px;">View details ↗</a>';
+      } else if (url) {
+        // Off-catalog: a real link the person clicks (no auto-open — browsers
         // pop-up-block async window.open, and affiliate attribution needs a real
         // click). Amazon links get the required Associate disclosure.
         const label = amazon ? 'View on Amazon ↗' : ('Open ' + escHtml(match.name) + ' ↗');
