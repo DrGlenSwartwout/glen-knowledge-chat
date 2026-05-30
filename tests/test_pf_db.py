@@ -75,6 +75,26 @@ def test_search_sql_fellowship_only_default_false_omits_clause():
     assert "fellowship_level = true" not in sql
 
 
+def test_search_sql_countries_guard_adds_clause():
+    """Defense-in-depth: a US-ZIP search constrains results to US rows so a
+    stray mis-geocoded foreign coordinate can never surface."""
+    sql, params = build_search_sql(
+        lat=42.75, lng=-73.76, radius_miles=25,
+        specialties=None, tiers=None, limit=200,
+        countries=["US"],
+    )
+    assert "country = ANY(%s)" in sql
+    assert ["US"] in params
+
+
+def test_search_sql_countries_default_omits_clause():
+    sql, _ = build_search_sql(
+        lat=42.75, lng=-73.76, radius_miles=25,
+        specialties=None, tiers=None, limit=200,
+    )
+    assert "country = ANY(%s)" not in sql
+
+
 def test_upsert_sql_params_match_dict():
     row_dict = {
         "tier": "eyehealing",

@@ -27,6 +27,62 @@ def test_geocode_full_address_success(mock_get):
 
 @patch("scrapers.practitioner_finder.geocode.requests.get")
 @patch.dict("os.environ", {"MAPBOX_PUBLIC_TOKEN": "pk.fake"})
+def test_geocode_us_row_constrains_to_us(mock_get):
+    """Default country='US' row biases Mapbox to the US (country=us)."""
+    mock_get.return_value = MagicMock(
+        status_code=200,
+        json=lambda: {"features": [{"center": [-157.8581, 21.3099]}]},
+    )
+    row = _row(address1="123 Main St", city="Honolulu", state="HI", postal="96813")
+    geocode_row(row)
+    assert mock_get.call_args.kwargs["params"]["country"] == "us"
+
+
+@patch("scrapers.practitioner_finder.geocode.requests.get")
+@patch.dict("os.environ", {"MAPBOX_PUBLIC_TOKEN": "pk.fake"})
+def test_geocode_foreign_iso2_passes_real_country(mock_get):
+    """A KR practitioner must geocode to Korea, not be force-matched to the US."""
+    mock_get.return_value = MagicMock(
+        status_code=200,
+        json=lambda: {"features": [{"center": [129.16, 35.16]}]},
+    )
+    row = _row(address1="Centum 5-ro 55", city="Busan", state="Busan",
+               postal="48059", country="KR")
+    geocode_row(row)
+    assert mock_get.call_args.kwargs["params"]["country"] == "kr"
+
+
+@patch("scrapers.practitioner_finder.geocode.requests.get")
+@patch.dict("os.environ", {"MAPBOX_PUBLIC_TOKEN": "pk.fake"})
+def test_geocode_fullname_country_omits_filter(mock_get):
+    """A non-ISO2 country name (e.g. 'Zimbabwe') omits the country filter so
+    Mapbox resolves it from the freeform query rather than force-matching the US."""
+    mock_get.return_value = MagicMock(
+        status_code=200,
+        json=lambda: {"features": [{"center": [31.05, -17.83]}]},
+    )
+    row = _row(address1="1 Harare St", city="Harare", state="Mashonaland",
+               postal="0000", country="Zimbabwe")
+    geocode_row(row)
+    assert "country" not in mock_get.call_args.kwargs["params"]
+
+
+@patch("scrapers.practitioner_finder.geocode.requests.get")
+@patch.dict("os.environ", {"MAPBOX_PUBLIC_TOKEN": "pk.fake"})
+def test_geocode_us_name_variant_constrains_to_us(mock_get):
+    """Messy US strings ('U.S.A', 'United Sates') still bias to the US."""
+    mock_get.return_value = MagicMock(
+        status_code=200,
+        json=lambda: {"features": [{"center": [-90.3, 38.6]}]},
+    )
+    row = _row(address1="1 Main St", city="St. Louis", state="Missouri",
+               postal="63131", country="U.S.A")
+    geocode_row(row)
+    assert mock_get.call_args.kwargs["params"]["country"] == "us"
+
+
+@patch("scrapers.practitioner_finder.geocode.requests.get")
+@patch.dict("os.environ", {"MAPBOX_PUBLIC_TOKEN": "pk.fake"})
 def test_geocode_no_features_returns_none(mock_get):
     mock_get.return_value = MagicMock(status_code=200, json=lambda: {"features": []})
     row = _row(address1="999 Nowhere Ln", city="Nowheresville", state="XX")

@@ -32,6 +32,37 @@ def _throttle():
     _LAST_CALL_AT[0] = time.monotonic()
 
 
+# Messy US-country strings seen in the source directories that mean "United
+# States". Normalised to the Mapbox country filter "us". Everything else that
+# is not a 2-letter ISO 3166-1 alpha-2 code is treated as a foreign country
+# name we don't have a code for — we omit the filter and let the freeform
+# query string (which ends with the country name) drive the match.
+_US_COUNTRY_ALIASES = {
+    "US", "USA", "U.S.", "U.S.A", "U.S.A.", "UNITED STATES",
+    "UNITED STATES OF AMERICA", "UNITED SATES", "PUERTO RICO",
+}
+
+
+def mapbox_country_filter(country: Optional[str]) -> Optional[str]:
+    """Map a row's country to a Mapbox `country` filter value (ISO 3166-1
+    alpha-2, lowercase) or None to omit the filter entirely.
+
+    - Missing/US-variant  -> "us"  (patient ZIP lookups default country="US")
+    - 2-letter ISO code   -> lowercased ("KR" -> "kr")
+    - Any other full name -> None  (don't force a country; freeform query drives it)
+
+    Forcing every row to "us" (the old behaviour) silently relocated foreign
+    practitioners onto random US coordinates, polluting US ZIP searches."""
+    if not country or not country.strip():
+        return "us"
+    c = country.strip()
+    if c.upper() in _US_COUNTRY_ALIASES:
+        return "us"
+    if len(c) == 2 and c.isalpha():
+        return c.lower()
+    return None
+
+
 def geocode_row(
     row: NormalizedPractitionerRow,
 ) -> Tuple[Optional[float], Optional[float], Optional[str]]:
@@ -48,10 +79,14 @@ def geocode_row(
         raise MapboxError("MAPBOX_PUBLIC_TOKEN (or MAPBOX_SECRET_TOKEN) env var not set")
 
     query = requests.utils.quote(geocode_input_string(row), safe="")
+    params = {"access_token": token, "limit": 1}
+    country_filter = mapbox_country_filter(row.country)
+    if country_filter:
+        params["country"] = country_filter
     _throttle()
     resp = requests.get(
         MAPBOX_GEOCODE_URL.format(query=query),
-        params={"access_token": token, "limit": 1, "country": "us"},
+        params=params,
         timeout=10,
     )
     if resp.status_code != 200:
