@@ -2047,6 +2047,56 @@ def _product_how(product):
         return ""
 
 
+# Section preferences: remember which detail panels a client opens (What's inside /
+# How it works / The research), keyed by session + email, so future formulations
+# default-open those AND email campaigns can focus on what the client engages with.
+with sqlite3.connect(LOG_DB) as _cx:
+    _cx.execute("""CREATE TABLE IF NOT EXISTS section_prefs (
+        session_id TEXT PRIMARY KEY, email TEXT, opened TEXT, updated_at TEXT)""")
+    _cx.execute("CREATE INDEX IF NOT EXISTS idx_section_prefs_email ON section_prefs(email)")
+_SECTIONS = ("ingredients", "how", "research")
+
+
+def _read_open_sections(session_id, email=""):
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            row = None
+            if session_id:
+                row = cx.execute("SELECT opened FROM section_prefs WHERE session_id=?", (session_id,)).fetchone()
+            if not row and email:
+                row = cx.execute("SELECT opened FROM section_prefs WHERE email=? ORDER BY updated_at DESC LIMIT 1",
+                                 (email,)).fetchone()
+        return json.loads(row[0]) if row and row[0] else []
+    except Exception:
+        return []
+
+
+@app.route("/begin/section-pref", methods=["POST"])
+def begin_section_pref():
+    """Record that a client opened a detail panel (remembered for defaults + email focus)."""
+    data = request.get_json(silent=True) or {}
+    section = (data.get("section") or "").strip()
+    if section not in _SECTIONS:
+        return jsonify({"ok": False}), 400
+    session_id = request.cookies.get("amg_session", "")
+    if not session_id:
+        return jsonify({"ok": True})
+    au = get_authenticated_user(request)
+    email = (au or {}).get("email", "") if au else ""
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute("SELECT opened FROM section_prefs WHERE session_id=?", (session_id,)).fetchone()
+            opened = set(json.loads(row[0])) if row and row[0] else set()
+            opened.add(section)
+            cx.execute("INSERT INTO section_prefs (session_id, email, opened, updated_at) VALUES (?,?,?,?) "
+                       "ON CONFLICT(session_id) DO UPDATE SET opened=excluded.opened, "
+                       "email=COALESCE(NULLIF(excluded.email,''), section_prefs.email), updated_at=excluded.updated_at",
+                       (session_id, email, json.dumps(sorted(opened)), begin_funnel._now()))
+    except Exception as e:
+        print(f"[section-pref] {e}", flush=True)
+    return jsonify({"ok": True})
+
+
 def _resolve_buy_slug(name):
     """Map a remedy NAME to a products.json slug (our QBO checkout catalog) so
     RemedyMatch can offer a Buy button. Returns slug or None."""
@@ -2092,6 +2142,9 @@ def begin_product_data(slug):
         "info_only": bool(p.get("info_only")), "affiliate_url": p.get("affiliate_url", ""),
         "payments_active": _QBO_PAYMENTS_ACTIVE,
         "learn_url": f"/begin/learn/{slug}",
+        "open_sections": _read_open_sections(
+            request.cookies.get("amg_session", ""),
+            (get_authenticated_user(request) or {}).get("email", "")),
     })
 
 
