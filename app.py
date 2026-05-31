@@ -2170,13 +2170,173 @@ def begin_checkout(slug):
                 cx.commit()
         except Exception:
             pass
-        out = {"ok": True, "invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
+        out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
+               "doc_number": inv.get("DocNumber"),
                "total": inv.get("TotalAmt"), "method": method,
                "pay_link": qb.get_invoice_pay_link(inv)}
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
             out["earns_points"] = True   # awarded on confirmed payment (reconciliation, Phase 2)
         return jsonify(out)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Post-buy concierge (consultative upsell) ─────────────────────────────────
+_PAIRINGS = _load_json(DATA_DIR / "upsell-pairings.json", default={"pairings": {}})
+# pinecone_title -> catalog slug (deterministic in-catalog resolution; avoids the
+# "Stress Release" vs "Emotional Stress Release" false match).
+_TITLE_TO_SLUG = {(p.get("pinecone_title") or p.get("name")): s
+                  for s, p in (_PRODUCTS.get("products") or {}).items()}
+_COMPLEMENT_CACHE = {}
+
+
+def _resolve_complement(name):
+    """Resolve a complement product NAME to {name, title, url, price, slug, in_catalog}.
+    in_catalog (slug present) -> addable to the invoice; else -> open on the store."""
+    if not name:
+        return None
+    key = name.strip().lower()
+    if key in _COMPLEMENT_CACHE:
+        return _COMPLEMENT_CACHE[key]
+    title = url = price = None
+    try:
+        vec = embed(name)
+        res = _idx.query(vector=vec, top_k=1, namespace="specific-formulations", include_metadata=True)
+        if res.matches and res.matches[0].score >= 0.83:
+            md = res.matches[0].metadata or {}
+            title, url, price = md.get("title"), md.get("url"), md.get("price")
+    except Exception as e:
+        print(f"[concierge] resolve {name}: {e}", flush=True)
+    slug = _TITLE_TO_SLUG.get(title) if title else None
+    out = {"name": name, "title": title, "url": url, "price": price,
+           "slug": slug, "in_catalog": bool(slug)}
+    _COMPLEMENT_CACHE[key] = out
+    return out
+
+
+_CONCIERGE_SYSTEM = (
+    "You are Dr. Glen Swartwout's warm post-purchase concierge (naturopathic physician, Hilo "
+    "Hawai'i). The person just ordered a remedy. Your job is to help them complete their protocol "
+    "in a calm, consultative, concierge way: they should feel served and in control, because they "
+    "are.\n\n"
+    "How you work:\n"
+    "- Open by affirming their choice and what it supports. Then ask ONE gentle question at a time "
+    "to understand their fuller goal or terrain (energy, sleep, stress, digestion, what else they "
+    "are working on).\n"
+    "- When it fits, suggest ONE complementary remedy at a time, with a short plain reason it pairs "
+    "well with what they bought. Prefer the SUGGESTED COMPLEMENTS provided; you may go beyond them "
+    "if the person's needs point elsewhere. Functional Formulations first.\n"
+    "- Never pressure. After a suggestion, invite them to add it or keep exploring, and make clear "
+    "they can stop anytime and they are all set whenever they choose.\n"
+    "- Keep replies short and warm. Do not invent prices or URLs. Sign off warmly as Dr. Glen only "
+    "when concluding.\n"
+    "- Style: do NOT use em dashes (use commas, colons, or periods). Do NOT use ALL CAPS. Never "
+    "prefix anything with the word 'Hook:'."
+)
+
+_CONCIERGE_EXTRACT_SYSTEM = (
+    "You read a concierge turn. If the assistant is suggesting ONE specific product to add now, "
+    "return JSON {\"suggest\": true, \"name\": \"<exact product name>\"}. If it is just asking a "
+    "question or chatting with no single specific product offered, return {\"suggest\": false}. "
+    "Output ONLY the JSON, no prose, no code fences."
+)
+
+
+@app.route("/begin/concierge/chat", methods=["POST", "OPTIONS"])
+def begin_concierge_chat():
+    if request.method == "OPTIONS":
+        return "", 200
+    data = request.get_json() or {}
+    query = (data.get("query") or "").strip()
+    history = data.get("history") or []
+    bought_slug = (data.get("bought_slug") or "").strip()
+    bought = _get_product(bought_slug) if bought_slug else None
+    session_id = (request.cookies.get("amg_session")
+                  or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
+    if not query:
+        return jsonify({"error": "Empty query"}), 400
+
+    # Pairing priors for what they bought + a little RAG for rationale/benefits.
+    priors = (_PAIRINGS.get("pairings", {}) or {}).get(bought_slug, []) if bought_slug else []
+    priors_block = (f"SUGGESTED COMPLEMENTS for {bought['name'] if bought else 'their purchase'} "
+                    f"(offer these first, one at a time): {', '.join(priors)}\n\n") if priors else ""
+    context_str = ""
+    try:
+        matches = _match_query_namespaces(embed(query + " " + (bought["name"] if bought else "")))
+        context_str, _ = build_context(matches) if matches else ("", [])
+    except Exception as e:
+        print(f"[concierge] retrieval: {e}", flush=True)
+
+    def generate():
+        messages = []
+        for turn in history[-8:]:
+            if turn.get("role") in ("user", "assistant") and turn.get("content"):
+                messages.append({"role": turn["role"], "content": turn["content"]})
+        messages.append({"role": "user", "content":
+            f"THEY JUST BOUGHT: {bought['name'] if bought else 'a remedy'}.\n"
+            f"{priors_block}"
+            f"RETRIEVED SNIPPETS (for rationale/benefits):\n{context_str}\n\n"
+            f"MEMBER MESSAGE: {query}\n\n"
+            "Continue as the concierge: affirm, ask the single best next question, or suggest ONE "
+            "complement with a short why. Keep it warm and brief."})
+        full = []
+        try:
+            with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=700,
+                                     system=_CONCIERGE_SYSTEM, messages=messages) as stream:
+                for tok in stream.text_stream:
+                    full.append(tok); yield sse({"token": tok})
+        except Exception as e:
+            yield sse({"error": f"Claude error: {e}"}); return
+        answer = "".join(full)
+
+        # Extract a single suggested complement (separate call) and resolve it.
+        try:
+            convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-2:]) + f"\nassistant: {answer}"
+            mx = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=120,
+                                     system=_CONCIERGE_EXTRACT_SYSTEM,
+                                     messages=[{"role": "user", "content": convo[:3500]}])
+            txt = mx.content[0].text.strip()
+            if txt.startswith("```"):
+                txt = txt.split("```", 2)[1]
+                if txt.startswith("json\n"): txt = txt[5:]
+            obj = json.loads(txt)
+            if obj.get("suggest") and obj.get("name"):
+                c = _resolve_complement(obj["name"])
+                if c and (c["in_catalog"] or c["url"]):
+                    yield sse({"suggestion": c})
+        except Exception as e:
+            print(f"[concierge] extract: {e!r}", flush=True)
+        yield sse({"done": True, "session_id": session_id})
+
+    resp = Response(stream_with_context(generate()), content_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return resp
+
+
+@app.route("/begin/concierge/add", methods=["POST"])
+def begin_concierge_add():
+    """Add a catalog complement to the member's existing (unpaid) invoice."""
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip()
+    invoice_id = (data.get("invoice_id") or "").strip()
+    p = _get_product(slug)
+    if not p or p.get("info_only"):
+        return jsonify({"ok": False, "error": "not an addable catalog product"}), 400
+    if not invoice_id:
+        return jsonify({"ok": False, "error": "invoice_id required"}), 400
+    try:
+        qty = max(1, min(int(data.get("qty", 1) or 1), 99))
+    except Exception:
+        qty = 1
+    try:
+        from dashboard import qbo_billing as qb
+        unit = round(p["price_cents"] / 100.0, 2)
+        inv = qb.add_invoice_line(invoice_id, name=p["name"], amount=unit, qty=qty,
+                                  item_id=p.get("qbo_item_id"), description=p["name"])
+        return jsonify({"ok": True, "added": p["name"], "qty": qty,
+                        "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
+                        "total": inv.get("TotalAmt")})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

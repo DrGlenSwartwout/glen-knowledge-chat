@@ -120,6 +120,35 @@ def create_invoice(customer, lines, *, allow_online_pay=False, email_to=None):
     return _post("/invoice", body).get("Invoice")
 
 
+def get_invoice(invoice_id):
+    """Read a single invoice by Id (for the SyncToken + current lines)."""
+    tok = money.qb_refresh()
+    return money.qb_get(tok, f"/invoice/{invoice_id}", {"minorversion": MINOR}).get("Invoice")
+
+
+def add_invoice_line(invoice_id, *, name, amount, qty=1, item_id=None, description=None):
+    """Append a product line to an existing (unpaid) invoice and return the updated
+    invoice (new TotalAmt + SyncToken). Used by the post-buy concierge so a member's
+    add-ons land on the SAME invoice they're about to pay. QBO Line is replaced wholesale
+    on update, so we resend the existing item lines + the new one (QBO recomputes totals)."""
+    inv = get_invoice(invoice_id)
+    if not inv:
+        raise RuntimeError(f"invoice {invoice_id} not found")
+    unit = round(float(amount), 2)
+    if not item_id:
+        item_id = find_or_create_item(name, unit)["Id"]
+    qty = int(qty or 1)
+    keep = [l for l in inv.get("Line", []) if l.get("DetailType") == "SalesItemLineDetail"]
+    keep.append({
+        "DetailType": "SalesItemLineDetail",
+        "Amount": round(unit * qty, 2),
+        "Description": description or name,
+        "SalesItemLineDetail": {"ItemRef": {"value": str(item_id)}, "Qty": qty, "UnitPrice": unit},
+    })
+    body = {"Id": str(invoice_id), "SyncToken": inv["SyncToken"], "sparse": True, "Line": keep}
+    return _post("/invoice", body).get("Invoice")
+
+
 def get_invoice_pay_link(invoice):
     """Shareable hosted-payment link. Present (InvoiceLink) only when the invoice
     was created with online payment enabled AND QuickBooks Payments is active."""

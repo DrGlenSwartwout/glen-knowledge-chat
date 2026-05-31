@@ -106,6 +106,43 @@
   .pay-link:hover{ opacity:0.9; }
   .cc-email-note{ font-size:12.5px; color:var(--muted); margin-top:16px; line-height:1.6; }
 
+  /* ── Concierge (post-buy) ── */
+  .concierge{ margin-top:22px; }
+  .cg-intro{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px 22px; }
+  .cg-lead{ font-size:14.5px; color:var(--cream); line-height:1.6; }
+  .cg-intro-btns{ display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+  .cg-start{ background:var(--gold); color:#0a150d; font-family:var(--heading); font-weight:700; font-size:14px;
+    border:none; border-radius:999px; padding:11px 22px; cursor:pointer; transition:opacity .2s, transform .2s; }
+  .cg-start:hover{ opacity:.92; transform:translateY(-1px); }
+  .cg-allset{ background:transparent; color:var(--muted); font-family:var(--heading); font-weight:600; font-size:13.5px;
+    border:1px solid var(--border); border-radius:999px; padding:11px 20px; cursor:pointer; transition:border-color .2s,color .2s; }
+  .cg-allset:hover{ border-color:var(--gold); color:var(--gold); }
+  .cg-chat{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; }
+  .cg-thread{ display:flex; flex-direction:column; gap:12px; max-height:340px; overflow-y:auto; padding-right:4px; }
+  .cg-msg{ font-size:14px; line-height:1.6; padding:11px 14px; border-radius:12px; max-width:88%; }
+  .cg-msg.bot{ background:var(--surface-2); border:1px solid var(--border); color:var(--cream); align-self:flex-start; border-bottom-left-radius:4px; }
+  .cg-msg.me{ background:#3d8a5218; border:1px solid rgba(61,138,82,.4); color:var(--cream); align-self:flex-end; border-bottom-right-radius:4px; }
+  .cg-typing{ font-size:12.5px; color:var(--muted); margin-top:8px; font-style:italic; }
+  .cg-suggestion{ margin-top:14px; border:1px solid var(--green); border-radius:12px; padding:14px; background:#3d8a520f; }
+  .cg-suggestion .s-name{ font-family:var(--heading); font-weight:700; font-size:15px; color:var(--cream); }
+  .cg-suggestion .s-act{ display:inline-block; margin-top:10px; background:var(--gold); color:#0a150d; font-family:var(--heading);
+    font-weight:700; font-size:13.5px; border:none; border-radius:999px; padding:10px 18px; cursor:pointer; text-decoration:none; }
+  .cg-suggestion .s-act.store{ background:transparent; color:var(--gold); border:1px solid rgba(212,168,67,.5); }
+  .cg-inputrow{ display:flex; gap:9px; margin-top:16px; }
+  .cg-inputrow input{ flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; color:var(--cream);
+    font-family:var(--font); font-size:14.5px; padding:11px 13px; outline:none; }
+  .cg-inputrow input:focus{ border-color:var(--gold); }
+  .cg-inputrow button{ background:var(--gold); color:#0a150d; font-family:var(--heading); font-weight:700; font-size:14px;
+    border:none; border-radius:10px; padding:0 18px; cursor:pointer; }
+  .cg-order{ margin-top:16px; border-top:1px solid var(--border); padding-top:14px; font-size:13px; }
+  .cg-order .o-row{ display:flex; justify-content:space-between; padding:4px 0; color:var(--cream); }
+  .cg-order .o-total{ font-family:var(--heading); font-weight:700; color:var(--gold); border-top:1px solid rgba(33,71,45,.5); margin-top:6px; padding-top:8px; }
+  .cg-chat .cg-allset{ margin-top:16px; width:100%; }
+  .cg-final{ background:linear-gradient(160deg, rgba(61,138,82,0.16), rgba(212,168,67,0.08)); border:1px solid var(--green);
+    border-radius:var(--radius); padding:20px 22px; }
+  .cg-final .f-head{ font-family:var(--heading); font-weight:700; font-size:16px; color:var(--cream); }
+  .cg-final .f-note{ font-size:13.5px; color:var(--cream); opacity:.92; margin-top:10px; line-height:1.6; }
+
   .notfound{ text-align:center; padding:54px 18px; }
   .notfound .glyph{ font-size:28px; color:var(--gold); opacity:0.5; }
   .notfound p{ color:var(--muted); font-size:15px; max-width:420px; margin:12px auto 0; line-height:1.65; }
@@ -229,6 +266,29 @@
         </div>
         <a class="pay-link hidden" id="pay-link" href="#" target="_blank" rel="noopener">Pay securely &#8599;</a>
         <div class="cc-email-note" id="cc-email-note"></div>
+      </div>
+
+      <!-- Post-buy concierge -->
+      <div id="concierge" class="concierge hidden">
+        <div id="cg-intro" class="cg-intro">
+          <p class="cg-lead" id="cg-lead">Would you like a hand completing your protocol? I can suggest what pairs beautifully with this, and add it to the same order so you pay once.</p>
+          <div class="cg-intro-btns">
+            <button class="cg-start" id="cg-start">Yes, what pairs well?</button>
+            <button class="cg-allset" id="cg-allset-1">I&rsquo;m all set</button>
+          </div>
+        </div>
+        <div id="cg-chat" class="cg-chat hidden">
+          <div id="cg-thread" class="cg-thread"></div>
+          <div id="cg-typing" class="cg-typing hidden">Dr. Glen is considering&hellip;</div>
+          <div id="cg-suggestion" class="cg-suggestion hidden"></div>
+          <div class="cg-inputrow">
+            <input type="text" id="cg-input" placeholder="Tell me what else you&rsquo;re working on&hellip;" />
+            <button id="cg-send">Send</button>
+          </div>
+          <div class="cg-order hidden" id="cg-order"></div>
+          <button class="cg-allset" id="cg-allset-2">I&rsquo;m all set, show my total</button>
+        </div>
+        <div id="cg-final" class="cg-final hidden"></div>
       </div>
     </div>
 
@@ -464,6 +524,148 @@
 
       show('confirm');
       document.getElementById('confirm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      // Hand off to the concierge (only for Zelle/Wise pay-now flows where the
+      // invoice is still unpaid, so add-ons land on the same invoice).
+      initConcierge(data);
+    }
+
+    // ── Post-buy concierge ─────────────────────────────────────────────────
+    var cg = { invoiceId:'', total:0, method:'', payInstr:null, history:[], items:[], busy:false, started:false };
+
+    function initConcierge(data){
+      cg.invoiceId = data.invoice_id || '';
+      cg.total = parseFloat(data.total) || 0;
+      cg.method = data.method || '';
+      cg.payInstr = data.pay_instructions || null;
+      cg.items = [ { name: (product && product.name) || 'Your remedy', amount: cg.total } ];
+      if (!cg.invoiceId) return;            // nothing to add to
+      show('concierge');
+      document.getElementById('cg-start').addEventListener('click', startConcierge);
+      document.getElementById('cg-allset-1').addEventListener('click', concludeConcierge);
+      document.getElementById('cg-allset-2').addEventListener('click', concludeConcierge);
+      document.getElementById('cg-send').addEventListener('click', function(){ sendConcierge(); });
+      document.getElementById('cg-input').addEventListener('keydown', function(e){ if(e.key==='Enter') sendConcierge(); });
+    }
+
+    function cgAppend(role, text){
+      var t = document.getElementById('cg-thread');
+      var d = document.createElement('div');
+      d.className = 'cg-msg ' + (role==='me'?'me':'bot');
+      d.textContent = text;
+      t.appendChild(d); t.scrollTop = t.scrollHeight;
+      return d;
+    }
+
+    function startConcierge(){
+      hide('cg-intro'); show('cg-chat');
+      renderOrder();
+      cg.started = true;
+      streamConcierge('I just ordered ' + ((product&&product.name)||'a remedy') + '. What pairs well with it?', true);
+    }
+
+    function sendConcierge(){
+      var el = document.getElementById('cg-input');
+      var q = (el.value||'').trim();
+      if (!q || cg.busy) return;
+      el.value='';
+      cgAppend('me', q);
+      streamConcierge(q, false);
+    }
+
+    function streamConcierge(query, firstTurn){
+      if (cg.busy) return;
+      cg.busy = true;
+      hide('cg-suggestion');
+      show('cg-typing');
+      var bubble = null, assistant = '';
+      fetch(BASE + '/begin/concierge/chat', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
+        body: JSON.stringify({ query: query, history: cg.history, bought_slug: slug })
+      }).then(function(resp){
+        var reader = resp.body.getReader(), dec = new TextDecoder(), buf='';
+        function pump(){
+          return reader.read().then(function(r){
+            if (r.done) return;
+            buf += dec.decode(r.value, {stream:true});
+            var parts = buf.split('\n\n'); buf = parts.pop();
+            parts.forEach(function(chunk){
+              var line = chunk.trim();
+              if (line.indexOf('data:') !== 0) return;
+              var payload = line.slice(5).trim(); if(!payload) return;
+              var ev; try { ev = JSON.parse(payload); } catch(e){ return; }
+              if (ev.token){ hide('cg-typing'); if(!bubble) bubble = cgAppend('bot',''); assistant += ev.token; bubble.textContent = assistant; document.getElementById('cg-thread').scrollTop = 1e9; }
+              else if (ev.suggestion){ renderSuggestion(ev.suggestion); }
+              else if (ev.error){ hide('cg-typing'); if(!bubble) cgAppend('bot', 'Sorry, I had a hiccup. Tell me what else you are working on and I will suggest something.'); }
+            });
+            return pump();
+          });
+        }
+        return pump();
+      }).then(function(){
+        cg.busy = false; hide('cg-typing');
+        if (assistant){ cg.history.push({role:'user',content:query}); cg.history.push({role:'assistant',content:assistant}); }
+      }).catch(function(){
+        cg.busy = false; hide('cg-typing');
+        if(!bubble) cgAppend('bot','Connection hiccup. Please try again.');
+      });
+    }
+
+    function renderSuggestion(s){
+      var box = document.getElementById('cg-suggestion');
+      var priceTxt = s.price ? (' ' + s.price) : '';
+      var html = '<div class="s-name">' + escHtml(s.name) + '</div>';
+      if (s.in_catalog){
+        html += '<button class="s-act" id="cg-add">Add to my order' + escHtml(priceTxt) + '</button>';
+      } else if (s.url){
+        html += '<a class="s-act store" href="' + escHtml(s.url) + '" target="_blank" rel="noopener">Open ' + escHtml(s.name) + ' on the store &#8599;</a>';
+      }
+      box.innerHTML = html; show('cg-suggestion');
+      if (s.in_catalog){
+        document.getElementById('cg-add').addEventListener('click', function(){ addToOrder(s); });
+      }
+    }
+
+    function addToOrder(s){
+      var btn = document.getElementById('cg-add');
+      if (btn){ btn.disabled = true; btn.textContent = 'Adding…'; }
+      fetch(BASE + '/begin/concierge/add', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
+        body: JSON.stringify({ slug: s.slug, invoice_id: cg.invoiceId })
+      }).then(function(r){ return r.json(); }).then(function(d){
+        if (!d || !d.ok){ if(btn){ btn.disabled=false; btn.textContent='Add to my order'; } cgAppend('bot', (d&&d.error)||'I could not add that just now.'); return; }
+        cg.total = parseFloat(d.total) || cg.total;
+        cg.items.push({ name: d.added, amount: null });
+        hide('cg-suggestion');
+        renderOrder();
+        cgAppend('bot', 'Added ' + d.added + ' to your order. Your total is now $' + cg.total.toFixed(2) + '. Anything else you are working on, or are you all set?');
+      }).catch(function(){ if(btn){ btn.disabled=false; btn.textContent='Add to my order'; } });
+    }
+
+    function renderOrder(){
+      var box = document.getElementById('cg-order');
+      var html = '';
+      cg.items.forEach(function(it){
+        html += '<div class="o-row"><span>' + escHtml(it.name) + '</span><span>' + (it.amount!=null ? ('$'+Number(it.amount).toFixed(2)) : 'added') + '</span></div>';
+      });
+      html += '<div class="o-row o-total"><span>Total</span><span>$' + cg.total.toFixed(2) + '</span></div>';
+      box.innerHTML = html; show('cg-order');
+    }
+
+    function concludeConcierge(){
+      hide('cg-intro'); hide('cg-chat');
+      var box = document.getElementById('cg-final');
+      var html = '<div class="f-head">You&rsquo;re all set. Your order total is $' + cg.total.toFixed(2) + '.</div>';
+      if (cg.method === 'card'){
+        html += '<div class="f-note">Use the secure payment link above to complete your order.</div>';
+      } else if (cg.payInstr && (cg.payInstr.to || cg.payInstr.label)){
+        html += '<div class="f-note">Please send <strong>$' + cg.total.toFixed(2) + '</strong> via ' + escHtml(cg.payInstr.label||'') +
+                ' to <strong>' + escHtml(cg.payInstr.to||'') + '</strong>, using your invoice number as the memo. A copy is in your email too.</div>';
+      } else {
+        html += '<div class="f-note">Your invoice is in your email with the payment details.</div>';
+      }
+      box.innerHTML = html; show('cg-final');
+      box.scrollIntoView({ behavior:'smooth', block:'center' });
     }
   </script>
 </body>

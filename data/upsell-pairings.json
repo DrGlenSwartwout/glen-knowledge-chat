@@ -1,0 +1,21 @@
+{
+  "_comment": "Post-buy concierge pairing PRIORS. Keyed by our checkout-catalog slug (the product just bought) -> ordered list of complementary product NAMES the concierge offers first. Glen-edited 2026-05-30 (mirrors remedymatch.com related products; auto-scrape is WAF-blocked). NOTE: many of these complements are NOT yet in products.json (the QBO checkout catalog), so the concierge resolves each name at runtime: in-catalog -> 'Add to order' (adds a line to the same unpaid invoice); else -> resolve the remedymatch.com URL via the specific-formulations Pinecone namespace -> 'Open on the store'; else mention by name only. The concierge is member-led and may go beyond this list.",
+  "pairings": {
+    "gastrozyme":              ["GI Repair", "Microbiome", "Digestzymes"],
+    "gi-repair":               ["Microbiome", "GastroZyme", "Medicinal Mushrooms"],
+    "microbiome":              ["Transform", "Fiber Cleanse", "Mucosa Syntropy Powder"],
+    "aces-eyedrops":           ["WholOmega", "Moisturize", "Harmony Laser"],
+    "lens-zyme":               ["Crystalline Clarity", "Clarity", "Clear Lens Eye Drops"],
+    "crystalline-clarity":     ["Clear Lens Eye Drops", "Clarity", "Golden Book"],
+    "brain-boost":             ["Brain Cleanse", "Nous Energy", "Neuro-Magnesium"],
+    "brain-cleanse":           ["Sleep Syntropy", "Stress Release", "Neuro-Magnesium"],
+    "esr":                     ["Free & Easy", "Stress Release", "Nous Energy"],
+    "free-and-easy":           ["Stress Release", "Liver Support", "Brain Cleanse"],
+    "microbes-liver-meridian": ["Free & Easy", "Brain Cleanse", "Liver Support"],
+    "bone-builder":            ["Dental Regen Powder", "Endocrine Restore", "Vitamin D Syntropy"],
+    "dental-powder":           ["Bone Builder", "Microbiome", "Dental Regen Powder"],
+    "aller-free-aid":          ["Microbiome", "Medicinal Mushrooms", "Immune Modulation"],
+    "medicinal-mushrooms":     ["Immune Modulation", "Microbiome", "Lymph Support"],
+    "holy-grail-ormus":        ["Nous Energy", "Neuro-Magnesium", "Adrenal Syntropy"]
+  }
+}
