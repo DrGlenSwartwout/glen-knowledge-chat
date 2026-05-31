@@ -226,10 +226,36 @@ def _generate_learn_more(product, page, sources):
     return {"markdown": markdown}
 
 
+# ── Generation: "How it works" (short mechanism explainer) ────────────────────
+_HOW_SYSTEM = (
+    "You write a short 'How it works' explainer for a Functional Formulation. " + _VOICE + "\n\n"
+    "From the SUPPLIED PAGE COPY, explain in plain language HOW the formula works in the body, the "
+    "mechanism, what the key ingredients do and why they were chosen to work together. 90-150 words, "
+    "2-3 short paragraphs, warm and clear. This is the mechanism, not a citation list and not a "
+    "benefits list. Output plain text only (no markdown headers, no citations)."
+)
+
+
+def _generate_how_it_works(product, page):
+    idx, cl, embed = _clients()
+    name = product.get("name", "")
+    page_text = (page or {}).get("text", "")
+    if not page_text:
+        return {"text": ""}
+    user = f"PRODUCT: {name}\n\nPAGE COPY:\n{page_text[:12000]}"
+    try:
+        msg = cl.messages.create(model=_MODEL, max_tokens=600, system=_HOW_SYSTEM,
+                                 messages=[{"role": "user", "content": user}])
+        return {"text": _dd((msg.content[0].text if msg.content else "").strip())}
+    except Exception as e:
+        print(f"[product_content] how_it_works gen failed {name}: {e}", flush=True)
+        return {"text": ""}
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 def get_or_generate(product, content_type, force=False):
     """Return cached content for (product, content_type), generating + caching on miss.
-    content_type in {'card', 'learn_more'}. `product` is the _get_product(slug) dict."""
+    content_type in {'card', 'how_it_works', 'learn_more'}. `product` is _get_product(slug)."""
     slug = product.get("slug")
     if not force:
         hit = _cache_get(slug, content_type)
@@ -242,6 +268,9 @@ def get_or_generate(product, content_type, force=False):
         sources = []
         if page and page.get("url"):
             sources = [{"label": "Product page", "url": page["url"]}]
+    elif content_type == "how_it_works":
+        content = _generate_how_it_works(product, page)
+        sources = []
     elif content_type == "learn_more":
         research = _research_sources(product.get("name", ""))
         content = _generate_learn_more(product, page, research)

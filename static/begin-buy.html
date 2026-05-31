@@ -35,15 +35,36 @@
   .p-benefits{ list-style:none; margin-top:18px; padding:0; }
   .p-benefits li{ position:relative; padding-left:26px; margin-bottom:9px; font-size:14.5px; color:var(--cream); line-height:1.55; }
   .p-benefits li::before{ content:"\2713"; position:absolute; left:0; top:0; color:var(--green); font-weight:700; }
-  .p-section-label{ font-family:var(--heading); font-weight:600; font-size:12px; letter-spacing:0.18em;
-    text-transform:uppercase; color:var(--muted); margin-top:24px; margin-bottom:10px; }
-  .p-ingredients{ list-style:none; margin:0; padding:0; border-top:1px solid rgba(33,71,45,0.55); }
+  /* first-time chooser */
+  .sec-chooser{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; margin-top:24px; }
+  .ch-lead{ font-family:var(--heading); font-weight:600; font-size:14.5px; color:var(--cream); margin-bottom:6px; }
+  .ch-sub{ font-size:12.5px; color:var(--muted); margin-bottom:12px; line-height:1.5; }
+  .ch-opt{ display:flex; align-items:center; gap:10px; font-size:14px; color:var(--cream); padding:6px 0; cursor:pointer; }
+  .ch-opt input{ accent-color:var(--green); width:17px; height:17px; }
+  .ch-go{ margin-top:14px; background:var(--gold); color:#0a150d; font-family:var(--heading); font-weight:700;
+    font-size:13.5px; border:none; border-radius:999px; padding:10px 24px; cursor:pointer; }
+  /* accordions */
+  .sections{ margin-top:22px; }
+  .acc{ border:1px solid var(--border); border-radius:11px; margin-bottom:10px; overflow:hidden; background:var(--surface-2); }
+  .acc-head{ width:100%; display:flex; align-items:center; gap:11px; background:transparent; border:none; cursor:pointer;
+    padding:14px 16px; text-align:left; font-family:var(--heading); color:var(--cream); }
+  .acc-title{ font-weight:700; font-size:14.5px; white-space:nowrap; }
+  .acc-teaser{ flex:1; font-family:var(--font); font-weight:400; font-size:12.5px; color:var(--muted); }
+  .acc-caret{ color:var(--gold); transition:transform .2s var(--ease); font-size:11px; }
+  .acc.open .acc-caret{ transform:rotate(180deg); }
+  .acc-body{ display:none; padding:2px 16px 16px; }
+  .acc.open .acc-body{ display:block; }
+  .p-ingredients{ list-style:none; margin:0; padding:0; }
   .p-ingredients li{ font-size:13.5px; color:var(--cream); opacity:0.9; padding:7px 0;
     border-bottom:1px solid rgba(33,71,45,0.4); line-height:1.5; }
-  .learn-more{ display:inline-flex; align-items:center; gap:7px; margin-top:20px; font-family:var(--heading);
+  .p-how{ font-size:14px; color:var(--cream); opacity:0.93; line-height:1.68; white-space:pre-wrap; }
+  .p-research-note{ font-size:13.5px; color:var(--cream); opacity:0.9; margin-bottom:12px; line-height:1.6; }
+  .learn-more{ display:inline-flex; align-items:center; gap:7px; font-family:var(--heading);
     font-weight:600; font-size:13.5px; color:var(--gold); border:1px solid rgba(212,168,67,0.4);
     border-radius:999px; padding:9px 18px; transition:border-color .2s var(--ease), background .2s var(--ease); }
   .learn-more:hover{ border-color:var(--gold); background:rgba(212,168,67,0.08); }
+  .sec-adjust{ display:inline-block; margin-top:4px; font-size:12.5px; color:var(--muted); }
+  .sec-adjust:hover{ color:var(--gold); }
 
   /* ── Checkout form ── */
   .checkout{ margin-top:26px; border-top:1px solid var(--border); padding-top:24px; }
@@ -187,12 +208,35 @@
       <p class="p-desc" id="p-desc"></p>
       <ul class="p-benefits hidden" id="p-benefits"></ul>
 
-      <div id="ingredients-wrap" class="hidden">
-        <div class="p-section-label">What&rsquo;s inside</div>
-        <ul class="p-ingredients" id="p-ingredients"></ul>
+      <!-- First-time chooser: which sections to open by default (remembered) -->
+      <div id="sec-chooser" class="sec-chooser hidden">
+        <p class="ch-lead">What would you like to see for your remedies?</p>
+        <p class="ch-sub">Pick what matters to you. I&rsquo;ll remember it, and you can always open the others.</p>
+        <label class="ch-opt"><input type="checkbox" id="ch-ingredients" checked /> What&rsquo;s inside</label>
+        <label class="ch-opt"><input type="checkbox" id="ch-how" checked /> How it works</label>
+        <label class="ch-opt"><input type="checkbox" id="ch-research" checked /> The research</label>
+        <button class="ch-go" id="ch-go">Show me</button>
       </div>
 
-      <a id="learn-more" class="learn-more hidden" href="#">Learn more: the research &#8594;</a>
+      <!-- Always-present collapsible sections -->
+      <div id="sections" class="sections hidden">
+        <div class="acc" data-sec="ingredients" id="acc-ingredients">
+          <button class="acc-head" type="button"><span class="acc-title">What&rsquo;s inside</span><span class="acc-teaser" id="t-ingredients"></span><span class="acc-caret">&#9662;</span></button>
+          <div class="acc-body"><ul class="p-ingredients" id="p-ingredients"></ul></div>
+        </div>
+        <div class="acc" data-sec="how" id="acc-how">
+          <button class="acc-head" type="button"><span class="acc-title">How it works</span><span class="acc-teaser" id="t-how"></span><span class="acc-caret">&#9662;</span></button>
+          <div class="acc-body"><p class="p-how" id="p-how"></p></div>
+        </div>
+        <div class="acc" data-sec="research" id="acc-research">
+          <button class="acc-head" type="button"><span class="acc-title">The research</span><span class="acc-teaser" id="t-research"></span><span class="acc-caret">&#9662;</span></button>
+          <div class="acc-body">
+            <p class="p-research-note">The studies behind the key ingredients, in plain language.</p>
+            <a id="learn-more" class="learn-more" href="#">Open the full research &#8594;</a>
+          </div>
+        </div>
+        <a class="sec-adjust" id="sec-adjust" href="#">Adjust what I see</a>
+      </div>
 
       <!-- Info-only path -->
       <div id="infoonly" class="infoonly-cta hidden">
@@ -371,21 +415,7 @@
         show('p-benefits');
       }
 
-      // Ingredients (only when the formula's contents are on record).
-      if (Array.isArray(p.ingredients) && p.ingredients.length) {
-        var il = document.getElementById('p-ingredients');
-        p.ingredients.forEach(function(ing){
-          var li = document.createElement('li');
-          li.textContent = String(ing);
-          il.appendChild(li);
-        });
-        show('ingredients-wrap');
-      }
-
-      // Learn-more research page (3rd Buy surface).
-      var learn = document.getElementById('learn-more');
-      learn.setAttribute('href', p.learn_url || ('/begin/learn/' + encodeURIComponent(slug)));
-      show('learn-more');
+      setupSections(p);
 
       // Card option only when payments are active.
       if (p.payments_active) {
@@ -396,6 +426,71 @@
 
       show('checkout');
       wireForm();
+    }
+
+    // ── Tailored sections (accordions + remembered chooser) ────────────────
+    function isHidden(id){ var e=document.getElementById(id); return !e || e.classList.contains('hidden'); }
+    function teaser(t){
+      var w = String(t).replace(/\s+/g,' ').trim().split(' ').slice(0,7).join(' ');
+      return w ? (w + '…') : '';
+    }
+    function readPrefs(){ try{ return JSON.parse(localStorage.getItem('fx_sections')||'null'); }catch(e){ return null; } }
+    function savePrefs(p){ try{ localStorage.setItem('fx_sections', JSON.stringify(p)); }catch(e){} }
+
+    function setupSections(p){
+      var hasIng = Array.isArray(p.ingredients) && p.ingredients.length;
+      var hasHow = !!(p.how_it_works && String(p.how_it_works).trim());
+
+      if (hasIng){
+        var il = document.getElementById('p-ingredients');
+        p.ingredients.forEach(function(ing){ var li=document.createElement('li'); li.textContent=String(ing); il.appendChild(li); });
+        document.getElementById('t-ingredients').textContent = p.ingredients.length + ' key ingredient' + (p.ingredients.length>1?'s':'');
+      } else { document.getElementById('acc-ingredients').classList.add('hidden'); }
+
+      if (hasHow){
+        document.getElementById('p-how').textContent = String(p.how_it_works);
+        document.getElementById('t-how').textContent = teaser(p.how_it_works);
+      } else { document.getElementById('acc-how').classList.add('hidden'); }
+
+      document.getElementById('learn-more').setAttribute('href', p.learn_url || ('/begin/learn/' + encodeURIComponent(slug)));
+      document.getElementById('t-research').textContent = 'Studies behind the key ingredients';
+
+      document.querySelectorAll('.acc').forEach(function(acc){
+        acc.querySelector('.acc-head').addEventListener('click', function(){ acc.classList.toggle('open'); });
+      });
+      document.getElementById('sec-adjust').addEventListener('click', function(e){ e.preventDefault(); openChooser(); });
+      document.getElementById('ch-go').addEventListener('click', applyChooser);
+
+      var prefs = readPrefs();
+      if (prefs){ show('sections'); applyPrefs(prefs); }
+      else { openChooser(); }   // first time on any formulation: ask
+    }
+
+    function applyPrefs(prefs){
+      ['ingredients','how','research'].forEach(function(sec){
+        var acc = document.getElementById('acc-'+sec);
+        if (!acc || acc.classList.contains('hidden')) return;
+        if (prefs[sec]) acc.classList.add('open'); else acc.classList.remove('open');
+      });
+      hide('sec-chooser');
+    }
+    function openChooser(){
+      var prefs = readPrefs();
+      if (prefs){
+        document.getElementById('ch-ingredients').checked = !!prefs.ingredients;
+        document.getElementById('ch-how').checked = !!prefs.how;
+        document.getElementById('ch-research').checked = !!prefs.research;
+      }
+      document.querySelectorAll('.acc').forEach(function(a){ a.classList.remove('open'); });
+      show('sec-chooser');
+    }
+    function applyChooser(){
+      var prefs = { ingredients: document.getElementById('ch-ingredients').checked,
+                    how: document.getElementById('ch-how').checked,
+                    research: document.getElementById('ch-research').checked };
+      savePrefs(prefs);
+      show('sections');
+      applyPrefs(prefs);
     }
 
     // ── Form wiring ────────────────────────────────────────────────────────

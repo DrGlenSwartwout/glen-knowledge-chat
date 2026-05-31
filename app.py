@@ -2036,6 +2036,17 @@ def _product_card(product):
         return {"description": "", "ingredients": [], "benefits": []}
 
 
+def _product_how(product):
+    """Cached 'How it works' mechanism text for a product (best-effort)."""
+    if not _product_content:
+        return ""
+    try:
+        return _product_content.get_or_generate(product, "how_it_works")["content"].get("text", "")
+    except Exception as e:
+        print(f"[product_content] how_it_works failed {product.get('slug')}: {e}", flush=True)
+        return ""
+
+
 def _resolve_buy_slug(name):
     """Map a remedy NAME to a products.json slug (our QBO checkout catalog) so
     RemedyMatch can offer a Buy button. Returns slug or None."""
@@ -2069,12 +2080,15 @@ def begin_product_data(slug):
     # Generated content (ingredients + benefits + short description). Static JSON
     # values override the generated card when present (lets Glen pin copy).
     card = _product_card(p) if not p.get("info_only") else {}
+    how = "" if p.get("info_only") else _product_how(p)
+    ingredients = p.get("ingredients") or card.get("ingredients", [])
     return jsonify({
         "slug": slug, "name": p["name"],
         "price_cents": p["price_cents"], "price": f"${p['price_cents']/100:.2f}",
         "description": p.get("description") or card.get("description", ""),
-        "ingredients": p.get("ingredients") or card.get("ingredients", []),
+        "ingredients": ingredients,
         "benefits": p.get("benefits") or card.get("benefits", []),
+        "how_it_works": how,
         "info_only": bool(p.get("info_only")), "affiliate_url": p.get("affiliate_url", ""),
         "payments_active": _QBO_PAYMENTS_ACTIVE,
         "learn_url": f"/begin/learn/{slug}",
@@ -2128,10 +2142,12 @@ def qbo_content_refresh(slug):
         return jsonify({"ok": False, "error": "product_content unavailable"}), 503
     try:
         card = _product_content.get_or_generate(p, "card", force=True)["content"]
+        how = _product_content.get_or_generate(p, "how_it_works", force=True)["content"]
         lm = _product_content.get_or_generate(p, "learn_more", force=True)
         return jsonify({"ok": True, "slug": slug,
                         "ingredients": len(card.get("ingredients", [])),
                         "benefits": len(card.get("benefits", [])),
+                        "how_it_works_chars": len(how.get("text", "")),
                         "learn_more_chars": len(lm["content"].get("markdown", "")),
                         "sources": len(lm.get("sources", []))})
     except Exception as e:
