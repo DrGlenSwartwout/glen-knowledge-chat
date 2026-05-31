@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Start a Membership · Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+    --maxw:600px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1);
+    --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{ background:var(--bg); color:var(--cream); font-family:var(--font); font-size:16px; line-height:1.6;
+    background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%); }
+  h1,h2{ font-family:var(--heading); font-weight:600; line-height:1.25; }
+  .shell{ max-width:var(--maxw); margin:0 auto; padding:32px 22px 60px; }
+  .eyebrow{ font-family:var(--heading); font-weight:600; font-size:12px; letter-spacing:0.3em; color:var(--green); margin-bottom:10px; }
+  h1{ font-size:24px; color:var(--cream); }
+  .sub{ color:var(--muted); font-size:14px; margin-top:8px; }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; margin-top:24px; }
+  .field{ margin-bottom:18px; }
+  label{ display:block; font-family:var(--heading); font-weight:600; font-size:13px; color:var(--cream); margin-bottom:7px; }
+  .hint{ font-weight:400; color:var(--muted); font-size:12px; }
+  input[type=email],input[type=text],input[type=number],input[type=date]{ width:100%; background:var(--surface-2);
+    border:1px solid var(--border); border-radius:9px; color:var(--cream); font-family:var(--font); font-size:15px; padding:11px 13px; outline:none; }
+  input:focus{ border-color:var(--gold); }
+  input::placeholder{ color:var(--muted); opacity:.6; }
+  .tiers{ display:flex; flex-direction:column; gap:10px; }
+  .tier{ display:flex; align-items:center; gap:11px; border:1px solid var(--border); border-radius:9px; padding:12px 14px; cursor:pointer; transition:border-color .2s; }
+  .tier:hover{ border-color:rgba(212,168,67,.45); }
+  .tier.active{ border-color:var(--green); background:#3d8a5212; }
+  .tier input{ accent-color:var(--green); width:17px; height:17px; }
+  .tier .t-name{ font-weight:600; font-size:14.5px; }
+  .tier .t-price{ margin-left:auto; color:var(--gold); font-family:var(--heading); font-weight:700; }
+  .check{ display:flex; align-items:flex-start; gap:10px; cursor:pointer; }
+  .check input{ accent-color:var(--green); width:17px; height:17px; margin-top:3px; }
+  .check .c-text{ font-size:14px; } .check .c-sub{ color:var(--muted); font-size:12.5px; margin-top:2px; }
+  .row{ display:flex; gap:14px; } .row .field{ flex:1; }
+  .btn{ display:inline-block; width:100%; background:var(--gold); color:#0a150d; font-family:var(--heading); font-weight:700;
+    font-size:15px; border:none; border-radius:999px; padding:14px; cursor:pointer; transition:opacity .2s, transform .2s; }
+  .btn:hover{ opacity:.92; transform:translateY(-1px); } .btn:disabled{ opacity:.45; cursor:not-allowed; transform:none; }
+  .msg{ font-size:13.5px; margin-top:14px; min-height:1em; line-height:1.5; }
+  .msg.err{ color:#e8a0a0; } .msg.ok{ color:var(--green); }
+  .result{ margin-top:20px; border-top:1px solid var(--border); padding-top:18px; display:none; }
+  .result.show{ display:block; }
+  .result h2{ font-size:16px; color:var(--green); }
+  .kv{ display:flex; justify-content:space-between; gap:12px; font-size:13.5px; padding:6px 0; border-bottom:1px solid rgba(33,71,45,.4); }
+  .kv .k{ color:var(--muted); } .kv .v{ color:var(--cream); font-weight:600; text-align:right; }
+  .note{ font-size:12.5px; color:var(--muted); margin-top:14px; line-height:1.6; }
+  .keybar{ display:flex; gap:10px; align-items:flex-end; }
+  .keybar .field{ flex:1; margin:0; }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <p class="eyebrow">Healing Oasis · Admin</p>
+    <h1>Start a Group Coaching membership</h1>
+    <p class="sub">Creates a recurring QuickBooks invoice. Until QuickBooks Payments is active, QBO emails the invoice each month and the member pays by Zelle or Wise.</p>
+
+    <!-- Console key gate -->
+    <div class="card" id="key-card">
+      <div class="field" style="margin-bottom:12px;">
+        <label for="key">Console key <span class="hint">(same key as the console)</span></label>
+        <div class="keybar">
+          <div class="field"><input type="password" id="key" placeholder="Enter console key" autocomplete="off" /></div>
+          <button class="btn" style="width:auto;padding:11px 20px;" id="key-save">Unlock</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Form -->
+    <div class="card" id="form-card" style="display:none;">
+      <div class="field">
+        <label for="email">Member email <span class="hint">(required — invoice goes here)</span></label>
+        <input type="email" id="email" placeholder="member@example.com" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="name">Member name <span class="hint">(optional)</span></label>
+        <input type="text" id="name" placeholder="First Last" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>Tier</label>
+        <div class="tiers" id="tiers">
+          <label class="tier" data-tier="standard"><input type="radio" name="tier" value="standard" />
+            <span class="t-name">Group Coaching</span><span class="t-price">$149/mo</span></label>
+          <label class="tier" data-tier="founders"><input type="radio" name="tier" value="founders" />
+            <span class="t-name">Founders rate</span><span class="t-price">$99/mo</span></label>
+        </div>
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" id="fmf" />
+          <span class="c-text">First month free<span class="c-sub">For studio.com $99-annual buyers. First invoice shifts one month out, then bills monthly.</span></span></label>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="dom">Bill day <span class="hint">(1–28, optional)</span></label>
+          <input type="number" id="dom" min="1" max="28" placeholder="today" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="start">Start date <span class="hint">(optional)</span></label>
+          <input type="date" id="start" />
+        </div>
+      </div>
+      <button class="btn" id="go" disabled>Start subscription</button>
+      <div class="msg" id="msg"></div>
+
+      <div class="result" id="result">
+        <h2>Subscription started</h2>
+        <div id="kvs"></div>
+        <p class="note" id="result-note"></p>
+      </div>
+    </div>
+
+    <p class="note">To pause or cancel a member later, open QuickBooks → Settings (gear) → Recurring Transactions, and edit or delete the template. A built-in cancel tool can come later.</p>
+  </div>
+
+  <script>
+    var BASE = window.location.origin;
+    var KEY = localStorage.getItem('console_key') || '';
+    var tier = '';
+
+    function $(id){ return document.getElementById(id); }
+    function showForm(){ $('key-card').style.display='none'; $('form-card').style.display='block'; }
+
+    if (KEY) showForm();
+    $('key-save').addEventListener('click', function(){
+      KEY = ($('key').value||'').trim();
+      if (KEY){ localStorage.setItem('console_key', KEY); showForm(); }
+    });
+    $('key').addEventListener('keydown', function(e){ if(e.key==='Enter') $('key-save').click(); });
+
+    document.querySelectorAll('input[name=tier]').forEach(function(r){
+      r.addEventListener('change', function(){
+        tier = r.value;
+        document.querySelectorAll('.tier').forEach(function(t){ t.classList.remove('active'); });
+        r.closest('.tier').classList.add('active');
+        refresh();
+      });
+    });
+    function emailOk(){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(($('email').value||'').trim()); }
+    function refresh(){ $('go').disabled = !(emailOk() && tier); }
+    $('email').addEventListener('input', refresh);
+
+    $('go').addEventListener('click', function(){
+      if (!(emailOk() && tier)) return;
+      var btn = $('go'); btn.disabled = true; btn.textContent = 'Creating…';
+      $('msg').className = 'msg'; $('msg').textContent = '';
+      var payload = { email: $('email').value.trim(), name: $('name').value.trim(), tier: tier,
+        first_month_free: $('fmf').checked };
+      if ($('dom').value) payload.day_of_month = parseInt($('dom').value,10);
+      if ($('start').value) payload.start_date = $('start').value;
+
+      fetch(BASE + '/api/qbo/membership/start', { method:'POST',
+        headers: { 'Content-Type':'application/json', 'X-Console-Key': KEY },
+        body: JSON.stringify(payload) })
+        .then(function(r){ if(r.status===401){ localStorage.removeItem('console_key'); location.reload(); return {ok:false,error:'Key rejected'}; } return r.json(); })
+        .then(function(d){
+          btn.disabled = false; btn.textContent = 'Start subscription';
+          if (!d || !d.ok){ $('msg').className='msg err'; $('msg').textContent = (d&&d.error)||'Something went wrong.'; return; }
+          renderResult(d);
+        })
+        .catch(function(e){ btn.disabled=false; btn.textContent='Start subscription'; $('msg').className='msg err'; $('msg').textContent='Connection error: '+e.message; });
+    });
+
+    function kv(k,v){ return '<div class="kv"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>'; }
+    function renderResult(d){
+      var html = '';
+      html += kv('Member', d.customer||'');
+      html += kv('Tier', (d.tier==='founders'?'Founders':'Standard')+' — $'+d.amount+'/mo');
+      html += kv('First bill', d.start_date + (d.first_month_free?' (first month free)':''));
+      html += kv('Bills on', 'day '+d.day_of_month+' each month');
+      html += kv('QBO recurring id', d.recurring_id||'—');
+      html += kv('Card auto-charge', d.auto_charge ? 'on (Payments active)' : 'off — pays Zelle/Wise');
+      $('kvs').innerHTML = html;
+      $('result-note').textContent = d.auto_charge
+        ? 'QuickBooks will auto-charge the card on file each cycle.'
+        : 'QuickBooks emails the invoice each cycle; the member pays by Zelle or Wise (fee-free, earns points). Card auto-charge turns on once QuickBooks Payments is active.';
+      $('result').classList.add('show');
+      $('msg').className='msg ok'; $('msg').textContent='Recurring invoice template created in QuickBooks.';
+      // reset for the next member
+      $('email').value=''; $('name').value=''; $('dom').value=''; $('start').value=''; $('fmf').checked=false;
+      document.querySelectorAll('.tier').forEach(function(t){ t.classList.remove('active'); });
+      document.querySelectorAll('input[name=tier]').forEach(function(r){ r.checked=false; });
+      tier=''; refresh();
+    }
+  </script>
+</body>
+</html>

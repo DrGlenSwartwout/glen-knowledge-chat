@@ -1848,6 +1848,15 @@ def qbo_void_invoice():
 
 
 # ── Recurring membership subscriptions (Group Coaching) ───────────────────────
+@app.route("/admin/membership")
+def admin_membership_page():
+    """Admin form to start a Group Coaching subscription. The page collects the console
+    key and the /api/qbo/membership/start action it calls is console-gated."""
+    resp = send_from_directory(STATIC, "membership-admin.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 def _membership_schedule(data):
     """Resolve (tier, start_date, day_of_month, tier_key) from a request.
 
