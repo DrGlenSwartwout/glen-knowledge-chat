@@ -36,6 +36,11 @@ def _now():
     return _dt.datetime.now(_dt.timezone.utc).isoformat()
 
 
+def _dd(s):
+    """Enforce Glen's no-em-dash rule (models slip despite the prompt)."""
+    return s.replace("—", ", ") if isinstance(s, str) else s
+
+
 def _clients():
     """Lazily reuse app.py's already-initialized clients (runtime import avoids the
     circular import at module load, since app imports this module)."""
@@ -182,9 +187,9 @@ def _generate_card(product, page):
         raw = (msg.content[0].text if msg.content else "").strip()
         raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         data = json.loads(raw)
-        return {"description": (data.get("description") or "").strip(),
+        return {"description": _dd((data.get("description") or "").strip()),
                 "ingredients": [s.strip() for s in (data.get("ingredients") or []) if s.strip()],
-                "benefits": [s.strip() for s in (data.get("benefits") or []) if s.strip()]}
+                "benefits": [_dd(s.strip()) for s in (data.get("benefits") or []) if s.strip()]}
     except Exception as e:
         print(f"[product_content] card gen failed {name}: {e}", flush=True)
         return {"description": "", "ingredients": [], "benefits": []}
@@ -214,7 +219,7 @@ def _generate_learn_more(product, page, sources):
     try:
         msg = cl.messages.create(model=_MODEL, max_tokens=2400, system=_LEARN_SYSTEM,
                                  messages=[{"role": "user", "content": user}])
-        markdown = (msg.content[0].text if msg.content else "").strip()
+        markdown = _dd((msg.content[0].text if msg.content else "").strip())
     except Exception as e:
         print(f"[product_content] learn_more gen failed {name}: {e}", flush=True)
         markdown = ""

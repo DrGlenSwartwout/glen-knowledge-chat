@@ -903,6 +903,12 @@ def sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
+def _strip_dash(s):
+    """Enforce Glen's no-em-dash rule on generated copy (models ignore the prompt
+    rule intermittently). Em dash -> comma; en dash left alone (number ranges OK)."""
+    return s.replace("—", ", ") if s else s
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 def _serve_funnel_home():
     resp = send_from_directory(STATIC, "begin.html")
@@ -1710,7 +1716,7 @@ def begin_match_chat():
             with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=900,
                                      system=_REMEDY_MATCH_SYSTEM, messages=messages) as stream:
                 for tok in stream.text_stream:
-                    full.append(tok); yield sse({"token": tok})
+                    tok = _strip_dash(tok); full.append(tok); yield sse({"token": tok})
         except Exception as e:
             yield sse({"error": f"Claude error: {e}"}); return
         answer = "".join(full)
@@ -2285,7 +2291,7 @@ def begin_concierge_chat():
             with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=700,
                                      system=_CONCIERGE_SYSTEM, messages=messages) as stream:
                 for tok in stream.text_stream:
-                    full.append(tok); yield sse({"token": tok})
+                    tok = _strip_dash(tok); full.append(tok); yield sse({"token": tok})
         except Exception as e:
             yield sse({"error": f"Claude error: {e}"}); return
         answer = "".join(full)
