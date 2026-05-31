@@ -88,7 +88,10 @@
   .qp-fmt{ display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:9px; padding:10px 13px; cursor:pointer; transition:border-color .2s; font-size:13.5px; color:var(--cream); }
   .qp-fmt:hover{ border-color:rgba(212,168,67,.45); }
   .qp-fmt.active{ border-color:var(--green); background:#3d8a5212; }
-  .qp-fmt input{ accent-color:var(--green); width:16px; height:16px; }
+  .qp-fmt input{ accent-color:var(--green); width:16px; height:16px; flex:none; }
+  .qf-text{ display:flex; flex-direction:column; gap:2px; }
+  .qf-label{ font-weight:600; }
+  .qf-note{ font-size:12px; color:var(--muted); font-weight:400; line-height:1.4; }
 
   .methods{ display:flex; flex-direction:column; gap:10px; }
   .method-opt{ display:flex; align-items:flex-start; gap:11px; cursor:pointer; border:1px solid var(--border);
@@ -527,7 +530,10 @@
           return '<span class="qp-tier" data-min="'+t.min+'">'+(t.min)+'+: <b>'+t.unit+'</b>'+(t.save?(' ($'+t.save+' off)'):'')+'</span>';
         }).join('');
         document.getElementById('qp-formats').innerHTML = (p.formats||[]).map(function(f,i){
-          return '<label class="qp-fmt'+(i===0?' active':'')+'" data-fmt="'+f.id+'"><input type="radio" name="fmt" value="'+f.id+'"'+(i===0?' checked':'')+' /> '+escHtml(f.label)+'</label>';
+          return '<label class="qp-fmt'+(i===0?' active':'')+'" data-fmt="'+f.id+'">' +
+                 '<input type="radio" name="fmt" value="'+f.id+'"'+(i===0?' checked':'')+' />' +
+                 '<span class="qf-text"><span class="qf-label">'+escHtml(f.label)+'</span>' +
+                 (f.note ? '<span class="qf-note">'+escHtml(f.note)+'</span>' : '') + '</span></label>';
         }).join('');
         chosenFormat = (p.formats && p.formats[0]) ? p.formats[0].id : 'bottle';
         document.querySelectorAll('input[name="fmt"]').forEach(function(r){

@@ -2001,9 +2001,9 @@ _ALT_PAY = {
 # to products flagged qty_pricing=true in products.json (capsule + $69.97).
 _QTY_TIERS = [(12, 3997), (6, 4997), (3, 5997), (1, 6997)]   # (min_qty, unit_cents) desc
 _FORMATS = [
-    {"id": "bottle", "label": "Standard bottle"},
-    {"id": "larger", "label": "Larger bottle"},
-    {"id": "refill", "label": "Cellophane refill packs (capsules)"},
+    {"id": "bottle", "label": "Standard bottles", "note": "30 capsules per bottle"},
+    {"id": "larger", "label": "Larger bottle", "note": "90, 180, or 360 capsules in one bottle (quantity 3, 6, or 12)"},
+    {"id": "refill", "label": "Cellophane refill packs", "note": "Capsules only, no bottle"},
 ]
 
 
