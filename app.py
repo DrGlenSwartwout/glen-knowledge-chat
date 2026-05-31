@@ -1996,6 +1996,31 @@ _ALT_PAY = {
 }
 
 
+# Quantity pricing for capsule Functional Formulations ($69.97 base). Per-unit price
+# drops by quantity (Glen 2026-05-30): 3+ $59.97, 6+ $49.97, 12+ $39.97. Applies only
+# to products flagged qty_pricing=true in products.json (capsule + $69.97).
+_QTY_TIERS = [(12, 3997), (6, 4997), (3, 5997), (1, 6997)]   # (min_qty, unit_cents) desc
+_FORMATS = [
+    {"id": "bottle", "label": "Standard bottle"},
+    {"id": "larger", "label": "Larger bottle"},
+    {"id": "refill", "label": "Cellophane refill packs (capsules)"},
+]
+
+
+def _qty_eligible(p):
+    return bool(p.get("qty_pricing")) and p.get("price_cents") == 6997 and not p.get("info_only")
+
+
+def _qty_unit_cents(p, qty):
+    """Per-unit price honoring the capsule quantity tiers for eligible products."""
+    if not _qty_eligible(p):
+        return p.get("price_cents", 6997)
+    for min_q, unit in _QTY_TIERS:
+        if qty >= min_q:
+            return unit
+    return p.get("price_cents", 6997)
+
+
 # Recurring membership tiers (Group Coaching). One QBO Item, price set per tier.
 _MEMBERSHIP_ITEM = "Group Coaching Membership"
 _MEMBERSHIP_TIERS = {
@@ -2132,6 +2157,12 @@ def begin_product_data(slug):
     card = _product_card(p) if not p.get("info_only") else {}
     how = "" if p.get("info_only") else _product_how(p)
     ingredients = p.get("ingredients") or card.get("ingredients", [])
+    qty_tiers, formats = None, None
+    if _qty_eligible(p):
+        qty_tiers = [{"min": m, "unit_cents": u, "unit": f"${u/100:.2f}",
+                      "save": ((6997 - u) // 100) if u < 6997 else 0}
+                     for m, u in [(1, 6997), (3, 5997), (6, 4997), (12, 3997)]]
+        formats = _FORMATS
     return jsonify({
         "slug": slug, "name": p["name"],
         "price_cents": p["price_cents"], "price": f"${p['price_cents']/100:.2f}",
@@ -2142,6 +2173,7 @@ def begin_product_data(slug):
         "info_only": bool(p.get("info_only")), "affiliate_url": p.get("affiliate_url", ""),
         "payments_active": _QBO_PAYMENTS_ACTIVE,
         "learn_url": f"/begin/learn/{slug}",
+        "qty_pricing": qty_tiers, "formats": formats,
         "open_sections": _read_open_sections(
             request.cookies.get("amg_session", ""),
             (get_authenticated_user(request) or {}).get("email", "")),
@@ -2218,6 +2250,7 @@ def begin_checkout(slug):
     email  = (data.get("email") or "").strip().lower()
     name   = (data.get("name") or "").strip()
     method = (data.get("method") or "").strip().lower()   # zelle | wise | card
+    fmt    = (data.get("format") or "").strip().lower()    # bottle | larger | refill
     try:
         qty = max(1, min(int(data.get("qty", 1) or 1), 99))
     except Exception:
@@ -2228,12 +2261,16 @@ def begin_checkout(slug):
     try:
         from dashboard import qbo_billing as qb
         cust = qb.find_or_create_customer(email, name)
-        unit = round(p["price_cents"] / 100.0, 2)
+        unit = round(_qty_unit_cents(p, qty) / 100.0, 2)   # capsule quantity tiers
+        desc = p["name"]
+        fmt_label = next((f["label"] for f in _FORMATS if f["id"] == fmt), "")
+        if fmt and fmt != "bottle" and fmt_label:
+            desc = f"{p['name']} ({fmt_label})"
         allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
         inv = qb.create_invoice(
             cust,
             [{"name": p["name"], "amount": unit, "qty": qty,
-              "item_id": p.get("qbo_item_id"), "description": p["name"]}],
+              "item_id": p.get("qbo_item_id"), "description": desc}],
             allow_online_pay=allow_online, email_to=email)
         # best-effort journey log (never break checkout)
         try:

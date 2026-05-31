@@ -18,25 +18,29 @@
       "name": "Bone Builder",
       "qbo_item_id": "20",
       "price_cents": 6997,
-      "pinecone_title": "Bone Builder"
+      "pinecone_title": "Bone Builder",
+      "qty_pricing": true
     },
     "brain-boost": {
       "name": "Brain Boost",
       "qbo_item_id": "27",
       "price_cents": 6997,
-      "pinecone_title": "Brain Boost Nootropic"
+      "pinecone_title": "Brain Boost Nootropic",
+      "qty_pricing": true
     },
     "brain-cleanse": {
       "name": "Brain Cleanse",
       "qbo_item_id": "28",
       "price_cents": 6997,
-      "pinecone_title": "Brain Cleanse"
+      "pinecone_title": "Brain Cleanse",
+      "qty_pricing": true
     },
     "crystalline-clarity": {
       "name": "Crystalline Clarity",
       "qbo_item_id": "24",
       "price_cents": 6997,
-      "pinecone_title": "Crystalline Clarity"
+      "pinecone_title": "Crystalline Clarity",
+      "qty_pricing": true
     },
     "dental-powder": {
       "name": "Dental Powder",
@@ -54,19 +58,22 @@
       "name": "Free & Easy",
       "qbo_item_id": "40",
       "price_cents": 6997,
-      "pinecone_title": "Free &amp; Easy"
+      "pinecone_title": "Free &amp; Easy",
+      "qty_pricing": true
     },
     "gastrozyme": {
       "name": "GastroZyme",
       "qbo_item_id": "44",
       "price_cents": 6997,
-      "pinecone_title": "GastroZyme"
+      "pinecone_title": "GastroZyme",
+      "qty_pricing": true
     },
     "gi-repair": {
       "name": "GI Repair Helicobacter Pylori Terrain Support",
       "qbo_item_id": "42",
       "price_cents": 6997,
-      "pinecone_title": "GI Repair"
+      "pinecone_title": "GI Repair",
+      "qty_pricing": true
     },
     "holy-grail-ormus": {
       "name": "Holy Grail Full Spectrum M-10 ORMUS",
@@ -78,13 +85,15 @@
       "name": "Lens-Zyme Brunescense Buster",
       "qbo_item_id": "39",
       "price_cents": 6997,
-      "pinecone_title": "Lens-Zyme"
+      "pinecone_title": "Lens-Zyme",
+      "qty_pricing": true
     },
     "medicinal-mushrooms": {
       "name": "Medicinal Mushrooms",
       "qbo_item_id": "43",
       "price_cents": 6997,
-      "pinecone_title": "Medicinal Mushrooms"
+      "pinecone_title": "Medicinal Mushrooms",
+      "qty_pricing": true
     },
     "microbes-liver-meridian": {
       "name": "Microbes/Liver Meridian (EI-8)",
@@ -96,13 +105,15 @@
       "name": "Microbiome",
       "qbo_item_id": "29",
       "price_cents": 6997,
-      "pinecone_title": "Microbiome"
+      "pinecone_title": "Microbiome",
+      "qty_pricing": true
     },
     "golden-book": {
       "name": "Golden Book",
       "price_cents": 6997,
       "pinecone_title": "Golden Book",
-      "url": "https://remedymatch.com/remedies/syntropy/251-golden-book"
+      "url": "https://remedymatch.com/remedies/syntropy/251-golden-book",
+      "qty_pricing": true
     },
     "rescue": {
       "name": "Rescue",
@@ -114,7 +125,8 @@
       "name": "Lipid Cleanse",
       "price_cents": 6997,
       "pinecone_title": "Lipid Cleanse",
-      "url": "https://remedymatch.com/remedies/syntropy/405-lipid-cleanse"
+      "url": "https://remedymatch.com/remedies/syntropy/405-lipid-cleanse",
+      "qty_pricing": true
     },
     "iop-syntropy": {
       "name": "IOP Syntropy",
@@ -126,25 +138,29 @@
       "name": "Stone Solvent",
       "price_cents": 6997,
       "pinecone_title": "Stone Solvent",
-      "url": "https://remedymatch.com/remedies/syntropy/354-stone-solvent"
+      "url": "https://remedymatch.com/remedies/syntropy/354-stone-solvent",
+      "qty_pricing": true
     },
     "sustain": {
       "name": "Sustain",
       "price_cents": 6997,
       "pinecone_title": "Sustain",
-      "url": "https://remedymatch.com/remedies/syntropy/111-sustain"
+      "url": "https://remedymatch.com/remedies/syntropy/111-sustain",
+      "qty_pricing": true
     },
     "soothe": {
       "name": "Soothe",
       "price_cents": 6997,
       "pinecone_title": "Soothe",
-      "url": "https://remedymatch.com/remedies/syntropy/140-soothe"
+      "url": "https://remedymatch.com/remedies/syntropy/140-soothe",
+      "qty_pricing": true
     },
     "fungifuge": {
       "name": "Fungifuge",
       "price_cents": 6997,
       "pinecone_title": "Fungifuge",
-      "url": "https://remedymatch.com/remedies/syntropy/39-fungifuge"
+      "url": "https://remedymatch.com/remedies/syntropy/39-fungifuge",
+      "qty_pricing": true
     },
     "ocuheal-eye-drops": {
       "name": "OcuHeal Eye Drops",
@@ -162,7 +178,8 @@
       "name": "Thermogenesis",
       "price_cents": 6997,
       "pinecone_title": "Thermogenesis",
-      "url": "https://remedymatch.com/remedies/syntropy/116-thermogenesis"
+      "url": "https://remedymatch.com/remedies/syntropy/116-thermogenesis",
+      "qty_pricing": true
     },
     "vitamin-e-spectrum": {
       "name": "Vitamin E Spectrum",
@@ -186,7 +203,8 @@
       "name": "Moisturize",
       "price_cents": 6997,
       "pinecone_title": "Moisturize",
-      "url": "https://remedymatch.com/remedies/syntropy/76-moisturize"
+      "url": "https://remedymatch.com/remedies/syntropy/76-moisturize",
+      "qty_pricing": true
     },
     "vitality": {
       "name": "Vitality",
@@ -204,19 +222,22 @@
       "name": "Sulfur Synergy",
       "price_cents": 6997,
       "pinecone_title": "Sulfur Synergy",
-      "url": "https://remedymatch.com/remedies/syntropy/110-sulfur-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/110-sulfur-syntropy",
+      "qty_pricing": true
     },
     "neuroceramides": {
       "name": "Neuroceramides",
       "price_cents": 6997,
       "pinecone_title": "Neuroceramides",
-      "url": "https://remedymatch.com/remedies/syntropy/81-neuroceramides"
+      "url": "https://remedymatch.com/remedies/syntropy/81-neuroceramides",
+      "qty_pricing": true
     },
     "macular-wellness-lutein": {
       "name": "Macular Wellness Lutein",
       "price_cents": 6997,
       "pinecone_title": "Macular Wellness Lutein",
-      "url": "https://remedymatch.com/remedies/syntropy/67-macular-wellness-lutein"
+      "url": "https://remedymatch.com/remedies/syntropy/67-macular-wellness-lutein",
+      "qty_pricing": true
     },
     "msm-syntropy": {
       "name": "MSM Synergy",
@@ -228,13 +249,15 @@
       "name": "Binder Complex",
       "price_cents": 6997,
       "pinecone_title": "Binder Complex",
-      "url": "https://remedymatch.com/remedies/syntropy/10-binder-complex"
+      "url": "https://remedymatch.com/remedies/syntropy/10-binder-complex",
+      "qty_pricing": true
     },
     "chelation": {
       "name": "Chelation",
       "price_cents": 6997,
       "pinecone_title": "Chelation",
-      "url": "https://remedymatch.com/remedies/syntropy/18-chelation"
+      "url": "https://remedymatch.com/remedies/syntropy/18-chelation",
+      "qty_pricing": true
     },
     "juglans-nigra": {
       "name": "Juglans nigra",
@@ -252,7 +275,8 @@
       "name": "Vitamin A Synergy",
       "price_cents": 6997,
       "pinecone_title": "Vitamin A Synergy",
-      "url": "https://remedymatch.com/remedies/syntropy/327-vitamin-a-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/327-vitamin-a-syntropy",
+      "qty_pricing": true
     },
     "off-syrup": {
       "name": "Off Syrup",
@@ -264,19 +288,22 @@
       "name": "5 Ways \"Clear the Way\" Naturally Transforms Tissue Healing",
       "price_cents": 6997,
       "pinecone_title": "5 Ways &quot;Clear the Way&quot; Naturally Transforms Tissue Healing",
-      "url": "https://remedymatch.com/remedies/syntropy/20-clear-the-way"
+      "url": "https://remedymatch.com/remedies/syntropy/20-clear-the-way",
+      "qty_pricing": true
     },
     "clarity": {
       "name": "Clarity",
       "price_cents": 6997,
       "pinecone_title": "Clarity",
-      "url": "https://remedymatch.com/remedies/syntropy/331-clarity"
+      "url": "https://remedymatch.com/remedies/syntropy/331-clarity",
+      "qty_pricing": true
     },
     "glutathione-syntropy": {
       "name": "Glutathione Synergy",
       "price_cents": 6997,
       "pinecone_title": "Glutathione Synergy",
-      "url": "https://remedymatch.com/remedies/syntropy/48-glutathione-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/48-glutathione-syntropy",
+      "qty_pricing": true
     },
     "scar-solve": {
       "name": "Scar Solve",
@@ -294,7 +321,8 @@
       "name": "Perfect Skin",
       "price_cents": 6997,
       "pinecone_title": "Perfect Skin",
-      "url": "https://remedymatch.com/remedies/syntropy/90-perfect-skin"
+      "url": "https://remedymatch.com/remedies/syntropy/90-perfect-skin",
+      "qty_pricing": true
     },
     "phytolacca-oil": {
       "name": "Phytolacca Oil",
@@ -306,7 +334,8 @@
       "name": "Vital Energy Be",
       "price_cents": 6997,
       "pinecone_title": "Vital Energy Be",
-      "url": "https://remedymatch.com/remedies/syntropy/122-vital-energy-be"
+      "url": "https://remedymatch.com/remedies/syntropy/122-vital-energy-be",
+      "qty_pricing": true
     },
     "mold-spray": {
       "name": "Mold Spray",
@@ -318,7 +347,8 @@
       "name": "Transform",
       "price_cents": 6997,
       "pinecone_title": "Transform",
-      "url": "https://remedymatch.com/remedies/syntropy/118-transform"
+      "url": "https://remedymatch.com/remedies/syntropy/118-transform",
+      "qty_pricing": true
     },
     "vitreous-vitality": {
       "name": "Vitreous Vitality",
@@ -330,7 +360,8 @@
       "name": "Seacure Synergy",
       "price_cents": 6997,
       "pinecone_title": "Seacure Synergy",
-      "url": "https://remedymatch.com/remedies/syntropy/103-seaamino-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/103-seaamino-syntropy",
+      "qty_pricing": true
     },
     "es3-nerve": {
       "name": "ES3",
@@ -354,7 +385,8 @@
       "name": "Neuroprotect",
       "price_cents": 6997,
       "pinecone_title": "Neuroprotect",
-      "url": "https://remedymatch.com/remedies/syntropy/83-neuroprotect"
+      "url": "https://remedymatch.com/remedies/syntropy/83-neuroprotect",
+      "qty_pricing": true
     },
     "lavender-msm-lotion": {
       "name": "Pure & Natural MSM Lotion",
@@ -378,7 +410,8 @@
       "name": "Molybdenum Synergy",
       "price_cents": 6997,
       "pinecone_title": "Molybdenum Synergy",
-      "url": "https://remedymatch.com/remedies/syntropy/322-molybdenum-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/322-molybdenum-syntropy",
+      "qty_pricing": true
     },
     "pure--natural-msm-lotion": {
       "name": "Pure & Natural MSM Lotion",
@@ -408,13 +441,15 @@
       "name": "Sleep Synergy",
       "price_cents": 6997,
       "pinecone_title": "Sleep Synergy",
-      "url": "https://remedymatch.com/remedies/syntropy/107-sleep-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/107-sleep-syntropy",
+      "qty_pricing": true
     },
     "vitamin-c-syntropy": {
       "name": "Synergy C",
       "price_cents": 6997,
       "pinecone_title": "Synergy C",
-      "url": "https://remedymatch.com/remedies/syntropy/112-vitamin-c-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/112-vitamin-c-syntropy",
+      "qty_pricing": true
     },
     "potassium-citrate": {
       "name": "Potassium Citrate",
@@ -480,31 +515,36 @@
       "name": "Apoptogenesis",
       "price_cents": 6997,
       "pinecone_title": "Apoptogenesis",
-      "url": "https://remedymatch.com/remedies/syntropy/8-apoptogenesis"
+      "url": "https://remedymatch.com/remedies/syntropy/8-apoptogenesis",
+      "qty_pricing": true
     },
     "immune-modulation": {
       "name": "Immune Modulation",
       "price_cents": 6997,
       "pinecone_title": "Immune Modulation",
-      "url": "https://remedymatch.com/remedies/syntropy/56-immune-modulation"
+      "url": "https://remedymatch.com/remedies/syntropy/56-immune-modulation",
+      "qty_pricing": true
     },
     "migrafree": {
       "name": "MigraFree",
       "price_cents": 6997,
       "pinecone_title": "MigraFree",
-      "url": "https://remedymatch.com/remedies/syntropy/227-migrafree"
+      "url": "https://remedymatch.com/remedies/syntropy/227-migrafree",
+      "qty_pricing": true
     },
     "macular-wellness-safranal": {
       "name": "Macular Wellness Astaxanthin",
       "price_cents": 6997,
       "pinecone_title": "Macular Wellness Astaxanthin",
-      "url": "https://remedymatch.com/remedies/syntropy/68-macular-wellness-safranal"
+      "url": "https://remedymatch.com/remedies/syntropy/68-macular-wellness-safranal",
+      "qty_pricing": true
     },
     "macular-wellness-mesozeaxanthin": {
       "name": "Macular Wellness Astaxanthin",
       "price_cents": 6997,
       "pinecone_title": "Macular Wellness Astaxanthin",
-      "url": "https://remedymatch.com/remedies/syntropy/70-macular-wellness-mesozeaxanthin"
+      "url": "https://remedymatch.com/remedies/syntropy/70-macular-wellness-mesozeaxanthin",
+      "qty_pricing": true
     },
     "energessence": {
       "name": "Energessence",
@@ -516,7 +556,8 @@
       "name": "Flow Ease",
       "price_cents": 6997,
       "pinecone_title": "Flow Ease",
-      "url": "https://remedymatch.com/remedies/syntropy/36-flow-ease"
+      "url": "https://remedymatch.com/remedies/syntropy/36-flow-ease",
+      "qty_pricing": true
     },
     "gas-ex-powder": {
       "name": "Gas Ex Powder",
@@ -528,7 +569,8 @@
       "name": "DHT Blocker",
       "price_cents": 6997,
       "pinecone_title": "DHT Blocker",
-      "url": "https://remedymatch.com/remedies/syntropy/279-dht-blocker"
+      "url": "https://remedymatch.com/remedies/syntropy/279-dht-blocker",
+      "qty_pricing": true
     },
     "longevity": {
       "name": "Longevity",
@@ -540,7 +582,8 @@
       "name": "OcuFlow Bedtime",
       "price_cents": 6997,
       "pinecone_title": "OcuFlow Bedtime",
-      "url": "https://remedymatch.com/remedies/syntropy/244-ocuflow-bedtime"
+      "url": "https://remedymatch.com/remedies/syntropy/244-ocuflow-bedtime",
+      "qty_pricing": true
     },
     "et11-liver-2": {
       "name": "ET11",
@@ -552,13 +595,15 @@
       "name": "Para-Cleanse",
       "price_cents": 6997,
       "pinecone_title": "Para-Cleanse",
-      "url": "https://remedymatch.com/remedies/syntropy/89-paracleanse"
+      "url": "https://remedymatch.com/remedies/syntropy/89-paracleanse",
+      "qty_pricing": true
     },
     "prostate-protect": {
       "name": "Prostate Protect",
       "price_cents": 6997,
       "pinecone_title": "Prostate Protect",
-      "url": "https://remedymatch.com/remedies/syntropy/222-prostate-protect"
+      "url": "https://remedymatch.com/remedies/syntropy/222-prostate-protect",
+      "qty_pricing": true
     },
     "msm-powder": {
       "name": "MSM Synergy",
@@ -570,19 +615,22 @@
       "name": "Fibrolysis Factors",
       "price_cents": 6997,
       "pinecone_title": "Fibrolysis Factors",
-      "url": "https://remedymatch.com/remedies/syntropy/26-fibrolysis-factors"
+      "url": "https://remedymatch.com/remedies/syntropy/26-fibrolysis-factors",
+      "qty_pricing": true
     },
     "ocuflow-daytime": {
       "name": "OcuFlow Daytime",
       "price_cents": 6997,
       "pinecone_title": "OcuFlow Daytime",
-      "url": "https://remedymatch.com/remedies/syntropy/243-ocuflow-daytime"
+      "url": "https://remedymatch.com/remedies/syntropy/243-ocuflow-daytime",
+      "qty_pricing": true
     },
     "melatonin-max": {
       "name": "Melatonin Max",
       "price_cents": 6997,
       "pinecone_title": "Melatonin Max",
-      "url": "https://remedymatch.com/remedies/syntropy/272-melatonin-max"
+      "url": "https://remedymatch.com/remedies/syntropy/272-melatonin-max",
+      "qty_pricing": true
     },
     "sweet-life": {
       "name": "Sweet Life",
@@ -612,7 +660,8 @@
       "name": "Lymph Flow",
       "price_cents": 6997,
       "pinecone_title": "Lymph Flow",
-      "url": "https://remedymatch.com/remedies/syntropy/314-lymph-flow"
+      "url": "https://remedymatch.com/remedies/syntropy/314-lymph-flow",
+      "qty_pricing": true
     },
     "stamina-plus": {
       "name": "Stamina Plus",
@@ -642,7 +691,8 @@
       "name": "Iron Out",
       "price_cents": 6997,
       "pinecone_title": "Iron Out",
-      "url": "https://remedymatch.com/remedies/syntropy/318-iron-out"
+      "url": "https://remedymatch.com/remedies/syntropy/318-iron-out",
+      "qty_pricing": true
     },
     "hydrolyzed-whey": {
       "name": "Hydrolyzed Collagen",
@@ -654,7 +704,8 @@
       "name": "Nerve Repair",
       "price_cents": 6997,
       "pinecone_title": "Nerve Repair",
-      "url": "https://remedymatch.com/remedies/syntropy/79-nerve-pulse"
+      "url": "https://remedymatch.com/remedies/syntropy/79-nerve-pulse",
+      "qty_pricing": true
     },
     "hydrolyzed-collagen": {
       "name": "Hydrolyzed Collagen",
@@ -678,13 +729,15 @@
       "name": "Rhythm Section",
       "price_cents": 6997,
       "pinecone_title": "Rhythm Section",
-      "url": "https://remedymatch.com/remedies/syntropy/100-heart-health"
+      "url": "https://remedymatch.com/remedies/syntropy/100-heart-health",
+      "qty_pricing": true
     },
     "rise--shine": {
       "name": "Rise & Shine",
       "price_cents": 6997,
       "pinecone_title": "Rise &amp; Shine",
-      "url": "https://remedymatch.com/remedies/syntropy/101-rise--shine"
+      "url": "https://remedymatch.com/remedies/syntropy/101-rise--shine",
+      "qty_pricing": true
     },
     "es9-audio": {
       "name": "ES9",
@@ -720,7 +773,8 @@
       "name": "Breast Support",
       "price_cents": 6997,
       "pinecone_title": "Breast Support",
-      "url": "https://remedymatch.com/remedies/syntropy/223-breast-support"
+      "url": "https://remedymatch.com/remedies/syntropy/223-breast-support",
+      "qty_pricing": true
     },
     "es10-video": {
       "name": "ES10",
@@ -750,13 +804,15 @@
       "name": "Curcu Guard",
       "price_cents": 6997,
       "pinecone_title": "Curcu Guard",
-      "url": "https://remedymatch.com/remedies/syntropy/376-curcu-guard"
+      "url": "https://remedymatch.com/remedies/syntropy/376-curcu-guard",
+      "qty_pricing": true
     },
     "vitamin-p-polyphenols": {
       "name": "Vitamin P",
       "price_cents": 6997,
       "pinecone_title": "Vitamin P",
-      "url": "https://remedymatch.com/remedies/syntropy/125-vitamin-p-polyphenols"
+      "url": "https://remedymatch.com/remedies/syntropy/125-vitamin-p-polyphenols",
+      "qty_pricing": true
     },
     "bath-salt": {
       "name": "Bath Salt",
@@ -774,7 +830,8 @@
       "name": "Happy Cow Colostrum",
       "price_cents": 6997,
       "pinecone_title": "Happy Cow Colostrum",
-      "url": "https://remedymatch.com/remedies/syntropy/21-immune-intelligence"
+      "url": "https://remedymatch.com/remedies/syntropy/21-immune-intelligence",
+      "qty_pricing": true
     },
     "mb4-cch": {
       "name": "MB 4",
@@ -792,7 +849,8 @@
       "name": "PSC Protect",
       "price_cents": 6997,
       "pinecone_title": "PSC Protect",
-      "url": "https://remedymatch.com/remedies/syntropy/93-psc-protect"
+      "url": "https://remedymatch.com/remedies/syntropy/93-psc-protect",
+      "qty_pricing": true
     },
     "clear-lens-eye-drops": {
       "name": "Clear Lens Eyedrops",
@@ -804,7 +862,8 @@
       "name": "Iron Synergy",
       "price_cents": 6997,
       "pinecone_title": "Iron Synergy",
-      "url": "https://remedymatch.com/remedies/syntropy/319-iron-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/319-iron-syntropy",
+      "qty_pricing": true
     },
     "sleep": {
       "name": "Sleep",
@@ -816,7 +875,8 @@
       "name": "Night Vision",
       "price_cents": 6997,
       "pinecone_title": "Night Vision",
-      "url": "https://remedymatch.com/remedies/syntropy/84-night-vision"
+      "url": "https://remedymatch.com/remedies/syntropy/84-night-vision",
+      "qty_pricing": true
     },
     "et12-liver-3": {
       "name": "ET12",
@@ -834,7 +894,8 @@
       "name": "Alkalize Bicarbonate Blend",
       "price_cents": 6997,
       "pinecone_title": "Alkalize Bicarbonate Blend",
-      "url": "https://remedymatch.com/remedies/syntropy/9-alkalize-bicarbonate-blend"
+      "url": "https://remedymatch.com/remedies/syntropy/9-alkalize-bicarbonate-blend",
+      "qty_pricing": true
     },
     "mb2-cmh": {
       "name": "MB 2",
@@ -852,7 +913,8 @@
       "name": "Macular Wellness Lycopene",
       "price_cents": 6997,
       "pinecone_title": "Macular Wellness Lycopene",
-      "url": "https://remedymatch.com/remedies/syntropy/358-macular-wellness-lycopene"
+      "url": "https://remedymatch.com/remedies/syntropy/358-macular-wellness-lycopene",
+      "qty_pricing": true
     },
     "es6-circulation": {
       "name": "ES6",
@@ -912,7 +974,8 @@
       "name": "Thyroid Support",
       "price_cents": 6997,
       "pinecone_title": "Thyroid Support",
-      "url": "https://remedymatch.com/remedies/syntropy/117-thyroid-support"
+      "url": "https://remedymatch.com/remedies/syntropy/117-thyroid-support",
+      "qty_pricing": true
     },
     "et1-immune-1": {
       "name": "ET1 Immu 1: Immunity 1",
@@ -942,25 +1005,29 @@
       "name": "Shields Up",
       "price_cents": 6997,
       "pinecone_title": "Shields Up",
-      "url": "https://remedymatch.com/remedies/syntropy/239-shields-up"
+      "url": "https://remedymatch.com/remedies/syntropy/239-shields-up",
+      "qty_pricing": true
     },
     "macular-wellness-crocin": {
       "name": "Macular Wellness Astaxanthin",
       "price_cents": 6997,
       "pinecone_title": "Macular Wellness Astaxanthin",
-      "url": "https://remedymatch.com/remedies/syntropy/236-macular-wellness-crocin"
+      "url": "https://remedymatch.com/remedies/syntropy/236-macular-wellness-crocin",
+      "qty_pricing": true
     },
     "virex": {
       "name": "VirEx",
       "price_cents": 6997,
       "pinecone_title": "VirEx",
-      "url": "https://remedymatch.com/remedies/syntropy/120-virex"
+      "url": "https://remedymatch.com/remedies/syntropy/120-virex",
+      "qty_pricing": true
     },
     "glucose-tolerance": {
       "name": "Glucose Tolerance",
       "price_cents": 6997,
       "pinecone_title": "Glucose Tolerance",
-      "url": "https://remedymatch.com/remedies/syntropy/47-glucose-tolerance"
+      "url": "https://remedymatch.com/remedies/syntropy/47-glucose-tolerance",
+      "qty_pricing": true
     },
     "gut-terrain-program": {
       "name": "Gut Terrain Program",
@@ -972,7 +1039,8 @@
       "name": "Acetaldehyde Detox",
       "price_cents": 6997,
       "pinecone_title": "Acetaldehyde Detox",
-      "url": "https://remedymatch.com/remedies/syntropy/360-acetaldehyde-detox"
+      "url": "https://remedymatch.com/remedies/syntropy/360-acetaldehyde-detox",
+      "qty_pricing": true
     },
     "nerve-repair": {
       "name": "Nerve Repair",
@@ -1014,7 +1082,8 @@
       "name": "Appestat",
       "price_cents": 6997,
       "pinecone_title": "Appestat",
-      "url": "https://remedymatch.com/remedies/syntropy/347-appestat"
+      "url": "https://remedymatch.com/remedies/syntropy/347-appestat",
+      "qty_pricing": true
     },
     "emf": {
       "name": "EMF",
@@ -1026,13 +1095,15 @@
       "name": "Nous Energy",
       "price_cents": 6997,
       "pinecone_title": "Nous Energy",
-      "url": "https://remedymatch.com/remedies/syntropy/85-nous-energy"
+      "url": "https://remedymatch.com/remedies/syntropy/85-nous-energy",
+      "qty_pricing": true
     },
     "spike-shield": {
       "name": "Spike Shield",
       "price_cents": 6997,
       "pinecone_title": "Spike Shield",
-      "url": "https://remedymatch.com/remedies/syntropy/283-spike-shield"
+      "url": "https://remedymatch.com/remedies/syntropy/283-spike-shield",
+      "qty_pricing": true
     },
     "fulvic-acid": {
       "name": "Fulvic Acid",
@@ -1056,7 +1127,8 @@
       "name": "Vitamin D Synergy",
       "price_cents": 6997,
       "pinecone_title": "Vitamin D Synergy",
-      "url": "https://remedymatch.com/remedies/syntropy/123-vitamin-d-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/123-vitamin-d-syntropy",
+      "qty_pricing": true
     },
     "day": {
       "name": "Day",
@@ -1074,7 +1146,8 @@
       "name": "GERD Guard",
       "price_cents": 6997,
       "pinecone_title": "GERD Guard",
-      "url": "https://remedymatch.com/remedies/syntropy/43-gerd-guard"
+      "url": "https://remedymatch.com/remedies/syntropy/43-gerd-guard",
+      "qty_pricing": true
     },
     "licorice-omnipotent": {
       "name": "Licorice Omnipotent",
@@ -1104,7 +1177,8 @@
       "name": "Muscle Mass",
       "price_cents": 6997,
       "pinecone_title": "Muscle Mass",
-      "url": "https://remedymatch.com/remedies/syntropy/426-muscle-mass"
+      "url": "https://remedymatch.com/remedies/syntropy/426-muscle-mass",
+      "qty_pricing": true
     },
     "et7-cfs": {
       "name": "ET7 CFS: Chronic Fatigue Syndrome",
@@ -1122,7 +1196,8 @@
       "name": "Connective Tissue Support",
       "price_cents": 6997,
       "pinecone_title": "Connective Tissue Support",
-      "url": "https://remedymatch.com/remedies/syntropy/22-connective-tissue-support"
+      "url": "https://remedymatch.com/remedies/syntropy/22-connective-tissue-support",
+      "qty_pricing": true
     },
     "wash--rinse": {
       "name": "Wash & Rinse",
@@ -1134,7 +1209,8 @@
       "name": "Macular Wellness Astaxanthin",
       "price_cents": 6997,
       "pinecone_title": "Macular Wellness Astaxanthin",
-      "url": "https://remedymatch.com/remedies/syntropy/69-macular-wellness-zeaxanthin"
+      "url": "https://remedymatch.com/remedies/syntropy/69-macular-wellness-zeaxanthin",
+      "qty_pricing": true
     },
     "curcumin": {
       "name": "Curcumin",
@@ -1152,7 +1228,8 @@
       "name": "Rhythm Restore",
       "price_cents": 6997,
       "pinecone_title": "Rhythm Restore",
-      "url": "https://remedymatch.com/remedies/syntropy/99-rhythm-restore"
+      "url": "https://remedymatch.com/remedies/syntropy/99-rhythm-restore",
+      "qty_pricing": true
     },
     "fat-metabolism": {
       "name": "Fat Metabolism",
@@ -1176,13 +1253,15 @@
       "name": "AngiogenX",
       "price_cents": 6997,
       "pinecone_title": "AngiogenX",
-      "url": "https://remedymatch.com/remedies/syntropy/51-angiogenx"
+      "url": "https://remedymatch.com/remedies/syntropy/51-angiogenx",
+      "qty_pricing": true
     },
     "stress-release": {
       "name": "Stress Release",
       "price_cents": 6997,
       "pinecone_title": "Stress Release",
-      "url": "https://remedymatch.com/remedies/syntropy/249-stress-release"
+      "url": "https://remedymatch.com/remedies/syntropy/249-stress-release",
+      "qty_pricing": true
     },
     "tmg-syntropy-powder-trimethylglycine": {
       "name": "TMG Powder (Trimethylglycine)",
@@ -1212,7 +1291,8 @@
       "name": "Macular Wellness Astaxanthin",
       "price_cents": 6997,
       "pinecone_title": "Macular Wellness Astaxanthin",
-      "url": "https://remedymatch.com/remedies/syntropy/65-macular-wellness-astaxanthin"
+      "url": "https://remedymatch.com/remedies/syntropy/65-macular-wellness-astaxanthin",
+      "qty_pricing": true
     },
     "brain-program": {
       "name": "Brain Program",
@@ -1236,13 +1316,15 @@
       "name": "Candida Cleanse",
       "price_cents": 6997,
       "pinecone_title": "Candida Cleanse",
-      "url": "https://remedymatch.com/remedies/syntropy/38-candida-cleanse"
+      "url": "https://remedymatch.com/remedies/syntropy/38-candida-cleanse",
+      "qty_pricing": true
     },
     "b17-syntropy": {
       "name": "Blushwood B17 Complex",
       "price_cents": 6997,
       "pinecone_title": "Blushwood B17 Complex",
-      "url": "https://remedymatch.com/remedies/syntropy/12-b17-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/12-b17-syntropy",
+      "qty_pricing": true
     },
     "et8-neuro": {
       "name": "ET8 Neuron  ET8",
@@ -1254,7 +1336,8 @@
       "name": "Cistus Synergy",
       "price_cents": 6997,
       "pinecone_title": "Cistus Synergy",
-      "url": "https://remedymatch.com/remedies/syntropy/348-cistus-syntropy-immunitea"
+      "url": "https://remedymatch.com/remedies/syntropy/348-cistus-syntropy-immunitea",
+      "qty_pricing": true
     },
     "silymarin": {
       "name": "Silymarin",
@@ -1326,7 +1409,8 @@
       "name": "Serene Blue Green",
       "price_cents": 6997,
       "pinecone_title": "Serene Blue Green",
-      "url": "https://remedymatch.com/remedies/syntropy/104-serenity"
+      "url": "https://remedymatch.com/remedies/syntropy/104-serenity",
+      "qty_pricing": true
     },
     "ed1-source-driver": {
       "name": "ED1 Source Driver",
@@ -1362,7 +1446,8 @@
       "name": "Fiber Cleanse",
       "price_cents": 6997,
       "pinecone_title": "Fiber Cleanse",
-      "url": "https://remedymatch.com/remedies/syntropy/28-fiber-cleanse"
+      "url": "https://remedymatch.com/remedies/syntropy/28-fiber-cleanse",
+      "qty_pricing": true
     },
     "dead-sea-salt": {
       "name": "Dead Sea Salt",
@@ -1392,7 +1477,8 @@
       "name": "NeurOmega",
       "price_cents": 6997,
       "pinecone_title": "NeurOmega",
-      "url": "https://remedymatch.com/remedies/syntropy/82-wholomega"
+      "url": "https://remedymatch.com/remedies/syntropy/82-wholomega",
+      "qty_pricing": true
     },
     "ei5-lymphaticsbladder-meridian": {
       "name": "EI5 Lymphatics/Bladder Meridian",
@@ -1404,7 +1490,8 @@
       "name": "Blood Cleanse",
       "price_cents": 6997,
       "pinecone_title": "Blood Cleanse",
-      "url": "https://remedymatch.com/remedies/syntropy/11-blood-cleanse"
+      "url": "https://remedymatch.com/remedies/syntropy/11-blood-cleanse",
+      "qty_pricing": true
     },
     "reverse-age": {
       "name": "Anti-AGE",
@@ -1428,7 +1515,8 @@
       "name": "Mitochondrial Biogenesis",
       "price_cents": 6997,
       "pinecone_title": "Mitochondrial Biogenesis",
-      "url": "https://remedymatch.com/remedies/syntropy/74-mitochondrial-biogenesis"
+      "url": "https://remedymatch.com/remedies/syntropy/74-mitochondrial-biogenesis",
+      "qty_pricing": true
     },
     "night": {
       "name": "Night",
@@ -1464,7 +1552,8 @@
       "name": "Liver Support",
       "price_cents": 6997,
       "pinecone_title": "Liver Support",
-      "url": "https://remedymatch.com/remedies/syntropy/60-liver-support"
+      "url": "https://remedymatch.com/remedies/syntropy/60-liver-support",
+      "qty_pricing": true
     },
     "ei7-bloodgall-bladder-meridian": {
       "name": "EI7 Blood/Gall Bladder Meridian",
@@ -1476,7 +1565,8 @@
       "name": "Magnesium Synergy",
       "price_cents": 6997,
       "pinecone_title": "Magnesium Synergy",
-      "url": "https://remedymatch.com/remedies/syntropy/71-magnesium-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/71-magnesium-syntropy",
+      "qty_pricing": true
     },
     "coluracetam": {
       "name": "Coluracetam",
@@ -1524,7 +1614,8 @@
       "name": "Vagus Nerve Support",
       "price_cents": 6997,
       "pinecone_title": "Vagus Nerve Support",
-      "url": "https://remedymatch.com/remedies/syntropy/252-vagus-nerve-support"
+      "url": "https://remedymatch.com/remedies/syntropy/252-vagus-nerve-support",
+      "qty_pricing": true
     },
     "pl-polarity": {
       "name": "PL Polarity",
@@ -1536,7 +1627,8 @@
       "name": "Spleen Support",
       "price_cents": 6997,
       "pinecone_title": "Spleen Support",
-      "url": "https://remedymatch.com/remedies/syntropy/313-spleen-support"
+      "url": "https://remedymatch.com/remedies/syntropy/313-spleen-support",
+      "qty_pricing": true
     },
     "wholomega-120-capsules": {
       "name": "NeurOmega",
@@ -1776,7 +1868,8 @@
       "name": "D-Mannose Syntropy",
       "price_cents": 6997,
       "pinecone_title": "D-Mannose Syntropy",
-      "url": "https://remedymatch.com/remedies/syntropy/430-dmannose-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/430-dmannose-syntropy",
+      "qty_pricing": true
     },
     "adrenal-syntropy": {
       "name": "Adrenal Syntropy",
@@ -1836,7 +1929,8 @@
       "name": "Zinc Synergy",
       "price_cents": 6997,
       "pinecone_title": "Zinc Synergy",
-      "url": "https://remedymatch.com/remedies/syntropy/263-zinc-syntropy"
+      "url": "https://remedymatch.com/remedies/syntropy/263-zinc-syntropy",
+      "qty_pricing": true
     },
     "miracle-tree": {
       "name": "Miracle Tree",
@@ -1860,7 +1954,8 @@
       "name": "Pollen Power",
       "price_cents": 6997,
       "pinecone_title": "Pollen Power",
-      "url": "https://remedymatch.com/remedies/syntropy/92-pollen-power"
+      "url": "https://remedymatch.com/remedies/syntropy/92-pollen-power",
+      "qty_pricing": true
     },
     "cotinus-coggygria": {
       "name": "Cotinus coggygria",

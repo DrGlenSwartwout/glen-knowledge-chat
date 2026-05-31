@@ -76,6 +76,19 @@
   .qty-row{ display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; }
   .qty-row .field{ margin-bottom:0; }
   .qty-field{ max-width:120px; }
+  .qp-summary{ font-family:var(--heading); font-size:13.5px; color:var(--cream); line-height:1.4; }
+  .qp-summary .qp-unit{ color:var(--gold); font-weight:700; }
+  .qp-summary .qp-save{ color:var(--green); font-weight:600; font-size:12.5px; }
+  .qty-pricing{ margin-top:14px; }
+  .qp-tiers{ display:flex; flex-wrap:wrap; gap:7px; margin-bottom:16px; }
+  .qp-tier{ font-size:12px; color:var(--muted); border:1px solid var(--border); border-radius:8px; padding:6px 10px; line-height:1.3; }
+  .qp-tier.active{ border-color:var(--green); color:var(--cream); background:#3d8a5212; }
+  .qp-tier b{ color:var(--gold); }
+  .qp-formats{ display:flex; flex-direction:column; gap:8px; }
+  .qp-fmt{ display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:9px; padding:10px 13px; cursor:pointer; transition:border-color .2s; font-size:13.5px; color:var(--cream); }
+  .qp-fmt:hover{ border-color:rgba(212,168,67,.45); }
+  .qp-fmt.active{ border-color:var(--green); background:#3d8a5212; }
+  .qp-fmt input{ accent-color:var(--green); width:16px; height:16px; }
 
   .methods{ display:flex; flex-direction:column; gap:10px; }
   .method-opt{ display:flex; align-items:flex-start; gap:11px; cursor:pointer; border:1px solid var(--border);
@@ -248,6 +261,16 @@
             <label for="qty">Quantity</label>
             <input type="number" id="qty" min="1" value="1" inputmode="numeric" />
           </div>
+          <div class="field" style="flex:1;"><div class="qp-summary" id="qp-summary"></div></div>
+        </div>
+
+        <!-- Quantity tiers + format (capsule formulations) -->
+        <div id="qty-pricing" class="qty-pricing hidden">
+          <div class="qp-tiers" id="qp-tiers"></div>
+          <div class="field qp-format" id="qp-format">
+            <label>How would you like it?</label>
+            <div class="qp-formats" id="qp-formats"></div>
+          </div>
         </div>
 
         <div class="field">
@@ -349,6 +372,7 @@
     var slug = location.pathname.split('/').filter(Boolean).pop() || '';
     var product = null;
     var chosenMethod = '';
+    var chosenFormat = '';
     var ordering = false;
 
     function show(id){ var e = document.getElementById(id); if (e) e.classList.remove('hidden'); }
@@ -414,6 +438,7 @@
       }
 
       setupSections(p);
+      setupQtyPricing(p);
 
       // Card option only when payments are active.
       if (p.payments_active) {
@@ -486,6 +511,55 @@
       }
     }
 
+    // ── Quantity tiers + format (capsule formulations) ─────────────────────
+    function unitCentsForQty(p, qty){
+      if (Array.isArray(p.qty_pricing) && p.qty_pricing.length){
+        var u = p.qty_pricing[0].unit_cents;
+        p.qty_pricing.forEach(function(t){ if (qty >= t.min) u = t.unit_cents; });
+        return u;
+      }
+      return p.price_cents;
+    }
+    function setupQtyPricing(p){
+      var qtyEl = document.getElementById('qty');
+      if (Array.isArray(p.qty_pricing) && p.qty_pricing.length){
+        document.getElementById('qp-tiers').innerHTML = p.qty_pricing.map(function(t){
+          return '<span class="qp-tier" data-min="'+t.min+'">'+(t.min)+'+: <b>'+t.unit+'</b>'+(t.save?(' ($'+t.save+' off)'):'')+'</span>';
+        }).join('');
+        document.getElementById('qp-formats').innerHTML = (p.formats||[]).map(function(f,i){
+          return '<label class="qp-fmt'+(i===0?' active':'')+'" data-fmt="'+f.id+'"><input type="radio" name="fmt" value="'+f.id+'"'+(i===0?' checked':'')+' /> '+escHtml(f.label)+'</label>';
+        }).join('');
+        chosenFormat = (p.formats && p.formats[0]) ? p.formats[0].id : 'bottle';
+        document.querySelectorAll('input[name="fmt"]').forEach(function(r){
+          r.addEventListener('change', function(){
+            chosenFormat = r.value;
+            document.querySelectorAll('.qp-fmt').forEach(function(o){ o.classList.remove('active'); });
+            r.closest('.qp-fmt').classList.add('active');
+          });
+        });
+        show('qty-pricing');
+      }
+      qtyEl.addEventListener('input', updateQtyPrice);
+      qtyEl.addEventListener('change', updateQtyPrice);
+      updateQtyPrice();
+    }
+    function updateQtyPrice(){
+      if (!product) return;
+      var qty = parseInt(document.getElementById('qty').value, 10); if (!qty || qty < 1) qty = 1;
+      var unit = unitCentsForQty(product, qty), base = product.price_cents, total = unit * qty;
+      var s = '<span class="qp-unit">$' + (unit/100).toFixed(2) + '</span> each';
+      if (qty > 1) s += ' &times; ' + qty + ' = <span class="qp-unit">$' + (total/100).toFixed(2) + '</span>';
+      if (unit < base) s += '<br><span class="qp-save">You save $' + ((base-unit)*qty/100).toFixed(2) + '</span>';
+      document.getElementById('qp-summary').innerHTML = s;
+      if (Array.isArray(product.qty_pricing)){
+        var activeMin = 1;
+        product.qty_pricing.forEach(function(t){ if (qty >= t.min) activeMin = t.min; });
+        document.querySelectorAll('.qp-tier').forEach(function(el){
+          el.classList.toggle('active', parseInt(el.getAttribute('data-min'),10) === activeMin);
+        });
+      }
+    }
+
     // ── Form wiring ────────────────────────────────────────────────────────
     function wireForm(){
       var emailEl = document.getElementById('email');
@@ -548,7 +622,8 @@
         email: (document.getElementById('email').value || '').trim(),
         name: (document.getElementById('name').value || '').trim(),
         qty: qty,
-        method: chosenMethod
+        method: chosenMethod,
+        format: chosenFormat
       };
 
       fetch(BASE + '/begin/checkout/' + encodeURIComponent(slug), {
