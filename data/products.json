@@ -1,6 +1,8 @@
 {
   "_comment": "RemedyMatch funnel checkout catalog. Source of truth for PRICE (QBO Items carry no UnitPrice). Each product maps a funnel slug -> the existing QuickBooks Item id (realm 193514563989859) + price in cents. Prices populated 2026-05-30 from the specific-formulations Pinecone (exact-title matches). pinecone_title = the EXACT specific-formulations namespace title for the content layer (deterministic title-filter fetch; curated 2026-05-30 because fuzzy embedding mis-maps infoceuticals e.g. ESR). Add products / variants (larger bottles, cellophane refill packs) with their own qbo_item_id + price_cents. info_only items (Kloud, Centropix) use price_cents 0 + affiliate_url. | EXPANDED to all products from specific-formulations Pinecone (name/price/url/product_id); new entries have no qbo_item_id (created on first sale).",
   "default_price_cents": 6997,
+  "default_bottle_type": "default",
+  "_wholesale_schema": "Phase 1 wholesale pricing engine (dashboard/wholesale_pricing.py): a product MAY add optional fields — bottle_type (string; matches dashboard.shipping bottle_types.name, used to source the box-fit large-box capacity B), cogs_cents (int; landed product cost), fulfillment_cents (int; per-bottle pick/pack/ship). Retail = price_cents. cogs+fulfillment gate the wholesale margin floor; when unset the margin is left unverified (loud warning). Populate per product before wholesale go-live (data task, see spec 2026-06-01 section 5).",
   "products": {
     "aces-eyedrops": {
       "name": "ACES Eyedrops",
