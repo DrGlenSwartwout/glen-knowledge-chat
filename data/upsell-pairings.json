@@ -15,7 +15,7 @@
     "bone-builder":            ["Dental Regen Powder", "Endocrine Restore", "Vitamin D Syntropy"],
     "dental-powder":           ["Bone Builder", "Microbiome", "Dental Regen Powder"],
     "aller-free-aid":          ["Microbiome", "Medicinal Mushrooms", "Immune Modulation"],
-    "medicinal-mushrooms":     ["Immune Modulation", "Microbiome", "Lymph Support"],
+    "medicinal-mushrooms":     ["Immune Modulation", "Microbiome", "Lymph Flow"],
     "holy-grail-ormus":        ["Nous Energy", "Neuro-Magnesium", "Adrenal Syntropy"]
   }
 }
