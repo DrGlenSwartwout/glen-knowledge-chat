@@ -1007,6 +1007,37 @@ def begin_tone():
     return resp
 
 
+@app.route("/begin/explore")
+def begin_explore():
+    """Non-linear table of contents — every explorable funnel room in one place.
+
+    Renders from begin_funnel.explore_sections() (sourced from CARD_CATALOG), so
+    it stays in sync with the funnel. Sections are injected as JSON; the page
+    renders the cards client-side. ref (rm_ref cookie or ?ref=) threads utm onto
+    external links, matching the rest of the funnel.
+
+    A valid ?ref= is persisted as the rm_ref cookie (90 days, last-touch) so a
+    campaign or affiliate link landing here carries attribution through the rest
+    of the journey, mirroring the client-side capture in index.html."""
+    arg_ref = (request.args.get("ref") or "").strip()
+    ref = (request.cookies.get("rm_ref") or arg_ref).strip()
+    sections = begin_funnel.explore_sections(ref)
+    html = (STATIC / "begin-explore.html").read_text()
+    injection = f"<script>window.__EXPLORE__ = {json.dumps(sections)};</script>"
+    html = html.replace("</head>", injection + "\n</head>")
+    resp = Response(html, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    # Persist a valid ?ref= as rm_ref (same slug rules + 90d TTL as index.html).
+    if arg_ref and re.match(r"^[A-Za-z0-9_-]{1,64}$", arg_ref):
+        resp.set_cookie(
+            "rm_ref", arg_ref,
+            max_age=90 * 24 * 3600,
+            samesite="Lax", secure=request.is_secure,
+        )
+    return resp
+
+
 @app.route("/begin/voice")
 def begin_voice():
     resp = send_from_directory(STATIC, "begin-voice.html")
@@ -3432,6 +3463,12 @@ def _init_referral_tables():
              "Routes to the consultative intake to start working with Dr. Glen directly. "
              "Best for the most ready, high-intent people.",
              f"{PUBLIC_BASE_URL}/?ref={{slug}}&want=join", ''),
+            (6, 'Explore Everything: the full map',
+             "Opens the full table of contents of everything available, every room on "
+             "one page, so people can wander and pick what draws them. Best for "
+             "self-directed people who would rather browse than be guided step by step. "
+             "The link sets your referral, so every step and any later purchase is credited to you.",
+             f"{PUBLIC_BASE_URL}/begin/explore?ref={{slug}}", ''),
         ]
         for sort_order, oname, odesc, ourl, oinstr in _FUNNEL_OFFERS:
             existing_offer = cx.execute(
@@ -6214,7 +6251,9 @@ def draft_reply_endpoint(todo_id):
         "Sign-off — choose by who the email is from:\n"
         "- Client or patient: sign off informally as:\n    In wellness,\n    Dr. Glen\n"
         "- Doctor, vendor, or professional contact: sign off formally as:\n"
-        "    Dr. Glen Swartwout, Naturopathic Optometrist, Hilo, Hawai'i\n\n"
+        "    Dr. Glen Swartwout, Naturopathic Optometrist, Hilo, Hawai'i\n"
+        "- Warm, long-standing colleague or friend (even if a doctor): relationship\n"
+        "  warmth wins over the formal default, so sign off as:\n    Much Aloha,\n    Dr. Glen\n\n"
         f"Email subject: {title}\n"
         f"Email content:\n{(body or '')[:2000]}"
         f"{guidance_block}\n\n"

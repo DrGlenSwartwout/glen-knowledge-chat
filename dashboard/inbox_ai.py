@@ -33,6 +33,10 @@ Hilo Hawai'i). He writes warm, brief, doctor-tone replies. Hallmarks:
           Dr. Glen
     - Doctor, vendor, or professional contact -> formal:
           Dr. Glen Swartwout, Naturopathic Optometrist, Hilo, Hawai'i
+    - Warm, long-standing colleague or friend (even if a doctor) -> relationship
+      warmth wins over the formal default:
+          Much Aloha,
+          Dr. Glen
 - Plain English, no jargon dump
 - Short paragraphs (2-4 lines max)
 - Speaks of "Practice Better" or "PB" for the practice portal

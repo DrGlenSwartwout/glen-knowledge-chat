@@ -444,3 +444,42 @@ def test_begin_path_story_card_surfaces_membership(monkeypatch, tmp_path):
     assert "30 days" in html
     assert "live group onboarding" in html
     assert "free initial consultation" in html
+
+
+def test_begin_explore_served_with_injected_sections(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    client = app_module.app.test_client()
+    r = client.get("/begin/explore")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    # sections injected for client-side render
+    assert "window.__EXPLORE__" in html
+    # a known patient room and the practitioner-application entry are present
+    assert "Find Your Perfect Remedy Match" in html
+    assert "Work With Us" in html
+    # page heading rendered
+    assert "Explore Everything" in html
+
+
+def test_begin_explore_threads_ref_query(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    client = app_module.app.test_client()
+    r = client.get("/begin/explore?ref=carol")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    # external card hrefs carry the ref as utm_source
+    assert "utm_source=carol" in html
+
+
+def test_begin_explore_persists_rm_ref_cookie(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    client = app_module.app.test_client()
+    # valid slug is persisted as rm_ref (so affiliate/campaign attribution sticks)
+    r = client.get("/begin/explore?ref=alice")
+    assert "rm_ref=alice" in r.headers.get("Set-Cookie", "")
+    # invalid slug is rejected (not written)
+    r2 = client.get("/begin/explore?ref=bad slug!")
+    assert "rm_ref=" not in r2.headers.get("Set-Cookie", "")

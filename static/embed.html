@@ -572,7 +572,7 @@
   <a id="feedback-view-link" href="https://Truly.VIP/Feedback" target="_blank">View feedback ↗</a>
 </div>
 <div class="embed-footer">
-  Powered by <a href="https://mentorshipu.com" target="_blank">Mentorship University</a>
+  Powered by <a href="https://mentorshipu.com" target="_blank">Mentorship University</a><span id="explore-link-wrap"> &nbsp;·&nbsp; <a href="/begin/explore" target="_blank" rel="noopener">Explore everything</a></span>
 </div>
 
 <script>
@@ -1284,6 +1284,11 @@
     // Hide the default opt-in bar (we manage capture differently in funnel mode)
     const _optinBar = document.getElementById('optin-bar');
     if (_optinBar) _optinBar.style.display = 'none';
+
+    // Hide the footer "Explore everything" link in funnel mode — the /begin
+    // page already shows that hint right below this embedded chat.
+    const _exploreWrap = document.getElementById('explore-link-wrap');
+    if (_exploreWrap) _exploreWrap.style.display = 'none';
 
     // Notify the parent funnel page of an unlock event
     function notifyParent(resp) {

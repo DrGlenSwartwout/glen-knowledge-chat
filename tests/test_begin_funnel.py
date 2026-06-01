@@ -510,3 +510,60 @@ def test_practitioner_card_targets_the_real_finder():
     # and the rendered href is the internal finder path (no utm appended for internal)
     matched = [x for x in cards if x["key"] == "practitioner"][0]
     assert matched["href"] == "/practitioner-finder"
+
+
+# ---------------------------------------------------------------------------
+# explore_sections() — the /begin/explore table-of-contents
+# ---------------------------------------------------------------------------
+
+def test_explore_sections_structure_and_ordering():
+    import begin_funnel as bf
+    secs = bf.explore_sections(ref="alice")
+    assert [s["title"] for s in secs] == [
+        "Start Here", "Listen Deeper", "Match & Remedies", "Learn to Heal",
+        "Go Deeper", "Share & Lift Others", "Find a Practitioner",
+        "For Practitioners",
+    ]
+    for s in secs:
+        assert s["cards"], f"section {s['title']} has no cards"
+        for c in s["cards"]:
+            assert {"title", "sub", "href", "external"} <= set(c.keys())
+
+
+def test_explore_sections_practitioner_section_separated_and_internal():
+    import begin_funnel as bf
+    secs = bf.explore_sections()
+    forprac = [s for s in secs if s["title"] == "For Practitioners"][0]
+    assert forprac["audience"] == "practitioner"
+    assert forprac["cards"][0]["href"] == "/practitioner"
+    assert forprac["cards"][0]["external"] is False
+    # the patient-facing finder is a different, internal entry
+    finder = [s for s in secs if s["title"] == "Find a Practitioner"][0]
+    assert finder["cards"][0]["href"] == "/practitioner-finder"
+    assert finder["cards"][0]["external"] is False
+    # patient sections default to audience "patient"
+    assert all(s["audience"] == "patient" for s in secs
+               if s["title"] != "For Practitioners")
+
+
+def test_explore_sections_ref_threads_external_links_only():
+    import begin_funnel as bf
+    flat = [c for s in bf.explore_sections(ref="bob") for c in s["cards"]]
+    external = [c for c in flat if c["external"]]
+    internal = [c for c in flat if not c["external"]]
+    assert external, "expected external cards (quiz/e4l/intake/product/ash_course)"
+    for c in external:
+        assert c["href"].startswith("http")
+        assert "utm_source=bob" in c["href"]
+    for c in internal:
+        assert c["href"].startswith("/")
+        assert "utm_source=" not in c["href"]
+
+
+def test_explore_sections_new_copy_has_no_em_dashes():
+    # Section titles + blurbs are Glen-facing copy we authored; must be em-dash-free.
+    # (CARD_CATALOG card titles are pre-existing data and out of scope here.)
+    import begin_funnel as bf
+    for s in bf.explore_sections():
+        assert "—" not in s["title"]
+        assert "—" not in s["blurb"]

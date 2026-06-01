@@ -431,6 +431,83 @@ def _card(key, ref=""):
 
 
 # ---------------------------------------------------------------------------
+# Explore page — non-linear table of contents (served at /begin/explore)
+# ---------------------------------------------------------------------------
+
+# Explore-only entries that are intentionally NOT in CARD_CATALOG. CARD_CATALOG
+# drives Slice-3 contextual surfacing; keeping these out of it lets the Explore
+# directory list them without altering surfacing behavior. Both are internal.
+_EXPLORE_EXTRA = {
+    "tone": {
+        "title": "5-Element Tone Analyzer",
+        "sub": "Hear which of the five elements your voice is calling for",
+        "base_url": "/begin/tone", "internal": True},
+    "practitioner_apply": {
+        "title": "Work With Us",
+        "sub": "For practitioners: bring Dr. Glen's formulations and methods into your practice",
+        "base_url": "/practitioner", "internal": True},
+}
+
+# Ordered Explore layout. Each item is either a CARD_CATALOG key, or an
+# _EXPLORE_EXTRA key prefixed with "x:". Sections render top-to-bottom.
+_EXPLORE_LAYOUT = [
+    {"title": "Start Here",
+     "blurb": "Three quick ways to learn what your body is asking for.",
+     "items": ["quiz", "e4l_scan", "intake"]},
+    {"title": "Listen Deeper",
+     "blurb": "Your voice carries the signal.",
+     "items": ["voice_distinctions", "x:tone"]},
+    {"title": "Match & Remedies",
+     "blurb": "Find what fits, then explore the formulations.",
+     "items": ["remedy_match", "product"]},
+    {"title": "Learn to Heal",
+     "blurb": "The Accelerated Self-Healing approach, step by step.",
+     "items": ["ash_course"]},
+    {"title": "Go Deeper",
+     "blurb": "Choose how far you want to take this.",
+     "items": ["ash_masterclass"]},
+    {"title": "Share & Lift Others",
+     "blurb": "Pass your healing forward.",
+     "items": ["pay_forward"]},
+    {"title": "Find a Practitioner",
+     "blurb": "Connect with someone near you.",
+     "items": ["practitioner"]},
+    {"title": "For Practitioners",
+     "blurb": "A different door, for the clinicians among us.",
+     "items": ["x:practitioner_apply"], "audience": "practitioner"},
+]
+
+
+def explore_sections(ref=""):
+    """Build the ordered, ref-threaded section list for the /begin/explore page.
+
+    Renders from CARD_CATALOG (so it stays in sync with the funnel as rooms are
+    added) plus the explore-only extras in _EXPLORE_EXTRA. Returns a list of:
+        {title, blurb, audience, cards: [{title, sub, href, external}]}
+    `external` is True for off-site links (drives target=_blank on the page).
+    External hrefs carry the same utm threading as card_href; internal hrefs
+    stay bare. All new copy here is em-dash-free (Glen's standing rule)."""
+    sections = []
+    for sec in _EXPLORE_LAYOUT:
+        cards = []
+        for item in sec["items"]:
+            if item.startswith("x:"):
+                c = _EXPLORE_EXTRA[item[2:]]
+                href = c["base_url"]          # extras are always internal
+                external = not c["internal"]
+            else:
+                c = CARD_CATALOG[item]
+                href = card_href(item, ref)
+                external = not c["internal"]
+            cards.append({"title": c["title"], "sub": c["sub"],
+                          "href": href, "external": external})
+        sections.append({"title": sec["title"], "blurb": sec["blurb"],
+                         "audience": sec.get("audience", "patient"),
+                         "cards": cards})
+    return sections
+
+
+# ---------------------------------------------------------------------------
 # Slice 3 Task 2 — surface()
 # ---------------------------------------------------------------------------
 
