@@ -44,6 +44,16 @@
     <div class="stat"><b id="status">–</b><span>Wholesale access</span></div>
   </div>
 
+  <div class="panel" id="assist-panel" style="display:none">
+    <h2 style="margin:0 0 4px;font-size:17px">Formulation assistant</h2>
+    <div class="muted" style="font-size:13px;margin-bottom:10px">Describe a patient or condition and I'll suggest formulations you can add to your order.</div>
+    <div id="assist-log" style="max-height:300px;overflow:auto;margin-bottom:10px"></div>
+    <div class="row">
+      <input class="slug" id="assist-q" placeholder="e.g. elevated IOP in a glaucoma patient">
+      <button id="assist-send">Ask</button>
+    </div>
+  </div>
+
   <div class="panel">
     <h2 style="margin:0 0 4px;font-size:17px">Build your order</h2>
     <div class="muted" style="font-size:13px;margin-bottom:12px">Bigger orders and completed certification lower your per-bottle price. Credit covers up to half of a product order.</div>
@@ -78,6 +88,7 @@ function render(d){
   $('status').innerHTML = unlocked ? '<span class="badge ok">Active</span>' : '<span class="badge no">Locked</span>';
   $('locked').style.display = unlocked ? 'none' : 'block';
   $('add').disabled = !unlocked; $('checkout').disabled = !unlocked;
+  $('assist-panel').style.display = unlocked ? 'block' : 'none';
   var tb = $('cart').querySelector('tbody'); tb.innerHTML = '';
   (d.cart||[]).forEach(function(it){
     var tr = document.createElement('tr');
@@ -131,6 +142,59 @@ $('checkout').addEventListener('click', function(){
     })
     .catch(function(){ $('msg').textContent='Network error.'; $('checkout').disabled=false; });
 });
+// ── formulation assistant ──
+var assistHistory = [];
+function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function addToCart(slug, qty){
+  fetch('/api/practitioner/cart', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:TOKEN, slug:slug, qty:qty})})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ if(d.ok){ render(d); $('msg').textContent = 'Added '+slug+' to your order.'; } });
+}
+function renderMatch(m, log){
+  var c = document.createElement('div'); c.className='panel'; c.style.margin='8px 0'; c.style.padding='12px';
+  var h = '<b>'+escapeHtml(m.name)+'</b>';
+  if(m.why) h += '<div class="muted" style="font-size:13px">'+escapeHtml(m.why)+'</div>';
+  h += '<div class="row" style="margin-top:8px"><input class="qty" type="number" min="1" value="1" id="mq-'+m.slug+'"><button class="addbtn" data-slug="'+m.slug+'">Add to order</button></div>';
+  if(m.also_consider && m.also_consider.length){
+    h += '<div class="muted" style="margin-top:8px;font-size:13px">Often paired with:</div><div>';
+    m.also_consider.forEach(function(x){ h += '<button class="ghost addchip" data-slug="'+x.slug+'" style="margin:4px 4px 0 0;font-size:13px">+ '+escapeHtml(x.name)+'</button>'; });
+    h += '</div>';
+  }
+  c.innerHTML = h; log.appendChild(c);
+  c.querySelector('.addbtn').addEventListener('click', function(){ var s=this.getAttribute('data-slug'); addToCart(s, parseInt(document.getElementById('mq-'+s).value,10)||1); });
+  c.querySelectorAll('.addchip').forEach(function(b){ b.addEventListener('click', function(){ addToCart(this.getAttribute('data-slug'), 1); }); });
+}
+function streamAssist(query){
+  var log = $('assist-log');
+  var u = document.createElement('div'); u.style.margin='6px 0'; u.innerHTML='<b>You:</b> '+escapeHtml(query); log.appendChild(u);
+  var a = document.createElement('div'); a.style.margin='6px 0'; a.innerHTML='<b>Dr. Glen:</b> <span class="atext"></span>'; log.appendChild(a);
+  var atext = a.querySelector('.atext'); log.scrollTop = log.scrollHeight;
+  assistHistory.push({role:'user', content:query});
+  var acc = '';
+  fetch('/api/practitioner/assist', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:TOKEN, query:query, history:assistHistory.slice(-8)})})
+    .then(function(r){
+      var reader = r.body.getReader(), dec = new TextDecoder(), buf = '';
+      function pump(){ return reader.read().then(function(res){
+        if(res.done){ assistHistory.push({role:'assistant', content:acc}); return; }
+        buf += dec.decode(res.value, {stream:true});
+        var parts = buf.split('\n\n'); buf = parts.pop();
+        parts.forEach(function(p){
+          var line = p.replace(/^data: /,'').trim(); if(!line) return;
+          var ev; try{ ev = JSON.parse(line); } catch(e){ return; }
+          if(ev.token){ acc += ev.token; atext.textContent = acc; }
+          else if(ev.match){ renderMatch(ev.match, log); }
+          else if(ev.error){ atext.textContent += ' ['+ev.error+']'; }
+        });
+        log.scrollTop = log.scrollHeight;
+        return pump();
+      }); }
+      return pump();
+    })
+    .catch(function(){ atext.textContent += ' [connection error]'; });
+}
+function sendAssist(){ var q = $('assist-q').value.trim(); if(!q) return; $('assist-q').value=''; streamAssist(q); }
+$('assist-send').addEventListener('click', sendAssist);
+$('assist-q').addEventListener('keydown', function(e){ if(e.key==='Enter') sendAssist(); });
 load();
 </script>
 </body>
