@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knowledge Atlas — Dr. Glen Swartwout</title>
+<meta name="description" content="An interactive atlas of natural vision and whole-health concepts — explore by meaning, A–Z, or hierarchy, with videos and articles for each.">
+<link rel="stylesheet" href="/atlas.css">
+<style>
+  body{background:#0a150d;color:#fdf4d8;font-family:system-ui,sans-serif;margin:0;padding:24px}
+  header{max-width:980px;margin:0 auto 16px} h1{color:#d4a843;margin:0 0 4px}
+  .sub{color:#a89870} #root{max-width:980px;margin:0 auto;height:70vh}
+  .seo{position:absolute;left:-9999px}
+</style></head><body>
+<header><h1>◼ Knowledge Atlas</h1>
+  <div class="sub">Explore by meaning, A–Z, or hierarchy. Ask a question — the map responds.</div></header>
+<div id="root"></div>
+<!-- SEO: concept list crawlable without JS; populated/expanded over time -->
+<nav class="seo" aria-label="Concept index">
+  <a href="/atlas#biofield">Biofield</a><a href="/atlas#light-therapy">Light Therapy</a>
+  <a href="/atlas#detox">Detoxification</a>
+</nav>
+<script src="/atlas.js" data-target="#root" data-mode="full"></script>
+</body></html>
