@@ -28,9 +28,11 @@ def _qbo_line(ln: dict, catalog: Optional[dict]) -> dict:
     }
 
 
-def build_order(cart_items: List[dict], practitioner: dict, *,
+def build_order(cart_items: List[dict], practitioner: dict, *, method=None,
                 db_path=None, catalog=None, allow_override=False) -> dict:
     """Price + invoice a product cart, then redeem up to 50% of the order in credit.
+    When paid fee-free (method zelle/wise), also earn 3% Wellness Credit on the
+    amount charged.
 
     practitioner needs: id (uuid), modules_completed, email, name.
     Returns the checkout result dict (ok / error)."""
@@ -50,6 +52,11 @@ def build_order(cart_items: List[dict], practitioner: dict, *,
     if redeemed > 0:
         inv = qb.apply_invoice_discount(invoice_id, redeemed)
 
+    fee_free = 0
+    if method in ("zelle", "wise"):
+        charged = max(0, quote["subtotal_cents"] - redeemed)
+        fee_free = wallet.earn_fee_free(practitioner["id"], charged, invoice_id)
+
     return {
         "ok": True,
         "invoice_id": invoice_id,
@@ -59,6 +66,9 @@ def build_order(cart_items: List[dict], practitioner: dict, *,
         "subtotal_cents": quote["subtotal_cents"],
         "blended_unit_price_cents": quote["blended_unit_price_cents"],
         "credit_redeemed_cents": redeemed,
+        "fee_free_credit_cents": fee_free,
+        "method": method,
+        "customer_id": cust.get("Id"),
     }
 
 

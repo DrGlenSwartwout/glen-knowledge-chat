@@ -2015,6 +2015,7 @@ _PRODUCTS = _load_json(DATA_DIR / "products.json",
                        default={"default_price_cents": 6997, "products": {}})
 # Card/ACH online payment is gated until QuickBooks Payments is activated.
 _QBO_PAYMENTS_ACTIVE = os.environ.get("QBO_PAYMENTS_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
+_STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 _ALT_PAY = {
     "zelle": {"label": "Zelle (US)",
               "to": os.environ.get("ZELLE_PAY_TO", "(set ZELLE_PAY_TO)"),
@@ -4919,6 +4920,7 @@ def api_practitioner_portal_data():
         return jsonify({"ok": False, "error": "account not found"}), 404
     if data.get("dispensary_code"):
         data["dispensary_link"] = f"{PUBLIC_BASE_URL}/dispensary/{data['dispensary_code']}"
+    data["stripe_active"] = _STRIPE_ACTIVE
     return jsonify({"ok": True, **data})
 
 
@@ -4969,8 +4971,15 @@ def api_practitioner_checkout():
         return jsonify({"ok": False, "error": "Your cart is empty."}), 400
     prac = {"id": pid, "modules_completed": data.get("modules_completed", 0),
             "email": data.get("email"), "name": data.get("name") or ""}
+    _body = request.get_json(silent=True) or {}
+    method = (_body.get("method") or "zelle").strip().lower()
+    _session_token = (_body.get("token") or "").strip()
+    if method == "card" and not _STRIPE_ACTIVE:
+        method = "zelle"   # card not enabled yet
+    if method not in ("zelle", "wise", "card"):
+        method = "zelle"
     try:
-        out = _wc.build_order(items, prac)
+        out = _wc.build_order(items, prac, method=method)
     except Exception as e:
         print(f"[practitioner-checkout] failed: {e!r}", flush=True)
         return jsonify({"ok": False, "error": "Checkout failed. Please try again."}), 500
@@ -4983,6 +4992,10 @@ def api_practitioner_checkout():
                              credit_cents=out.get("credit_redeemed_cents", 0))
         except Exception as e:
             print(f"[practitioner-checkout] record_order failed: {e!r}", flush=True)
+        if method in ("zelle", "wise"):
+            out["pay_instructions"] = _ALT_PAY.get(method, {})
+        elif method == "card":
+            out["stripe_url"] = _stripe_checkout_url_for_order(out, prac["email"], _session_token)
     return jsonify(out), (200 if out.get("ok") else 422)
 
 
@@ -5140,6 +5153,59 @@ def dispensary_landing(code):
         resp.set_cookie("rm_dispensary", code, max_age=90 * 24 * 3600,
                         samesite="Lax", secure=request.is_secure)
     return resp
+
+
+def _stripe_checkout_url_for_order(out, email, session_token):
+    """Create a Stripe Checkout Session for a wholesale invoice; returns its URL."""
+    try:
+        from dashboard import stripe_pay
+        import urllib.parse as _up
+        total_cents = int(round((out.get("total") or 0) * 100))
+        if total_cents <= 0:
+            return ""
+        success = (f"{PUBLIC_BASE_URL}/practitioner/checkout-return"
+                   f"?session_id={{CHECKOUT_SESSION_ID}}&t={_up.quote(session_token)}")
+        sess = stripe_pay.create_checkout_session(
+            total_cents, customer_email=email,
+            description=f"Remedy Match wholesale order #{out.get('doc_number')}",
+            metadata={"invoice_id": out.get("invoice_id"),
+                      "customer_id": out.get("customer_id"), "kind": "wholesale"},
+            success_url=success,
+            cancel_url=f"{PUBLIC_BASE_URL}/practitioner/portal?token={_up.quote(session_token)}")
+        return sess.get("url") or ""
+    except Exception as e:
+        print(f"[stripe] session create failed: {e!r}", flush=True)
+        return ""
+
+
+@app.route("/practitioner/checkout-return")
+def practitioner_checkout_return():
+    """Stripe return: verify the session and record the QBO payment, then back to the portal."""
+    from flask import redirect as _redir
+    import urllib.parse as _up
+    sid = (request.args.get("session_id") or "").strip()
+    token = (request.args.get("t") or "").strip()
+    paid = "0"
+    if sid:
+        try:
+            from dashboard import stripe_pay
+            sess = stripe_pay.get_session(sid)
+            if sess.get("payment_status") == "paid":
+                paid = "1"
+                md = sess.get("metadata") or {}
+                inv, cid = md.get("invoice_id"), md.get("customer_id")
+                if inv and cid:
+                    try:
+                        from dashboard import qbo_billing as qb
+                        qb.record_payment(cid, int(sess.get("amount_total") or 0), inv)
+                    except Exception as e:
+                        print(f"[stripe-return] qbo payment failed: {e!r}", flush=True)
+        except Exception as e:
+            print(f"[stripe-return] {e!r}", flush=True)
+    dest = "/practitioner/portal?paid=" + paid
+    if token:
+        dest += "&token=" + _up.quote(token)
+    return _redir(dest)
 
 
 def _log_referral_event(lead_id, email, first_name, last_name, utm_source, utm_medium,
