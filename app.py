@@ -5026,6 +5026,33 @@ _ASSIST_EXTRACT_SYSTEM = (
 )
 
 
+def _assist_resolve_products(items):
+    """Resolve assistant-named products to addable cart slugs: fuzzy name/title
+    match first, then a semantic fallback (embed + specific-formulations) for
+    descriptively-named formulations. Excludes external/info_only items."""
+    cat = _PRODUCTS.get("products") or {}
+    out, seen = [], set()
+    for it in (items or []):
+        nm = (it.get("name") or "").strip()
+        if not nm:
+            continue
+        slug = _pp.name_to_slug(nm, cat)
+        if not slug:
+            try:
+                res = _idx.query(vector=embed(nm), top_k=1,
+                                 namespace="specific-formulations", include_metadata=True)
+                if res.matches and res.matches[0].score >= 0.83:
+                    title = (res.matches[0].metadata or {}).get("title")
+                    slug = _TITLE_TO_SLUG.get(title)
+            except Exception as e:
+                print(f"[assist] semantic resolve {nm!r}: {e!r}", flush=True)
+        if not slug or slug in seen or (cat.get(slug) or {}).get("info_only"):
+            continue
+        seen.add(slug)
+        out.append({"name": nm, "why": (it.get("why") or "").strip(), "slug": slug})
+    return out
+
+
 @app.route("/api/practitioner/assist", methods=["POST", "OPTIONS"])
 def api_practitioner_assist():
     if request.method == "OPTIONS":
@@ -5077,7 +5104,7 @@ def api_practitioner_assist():
                 txt = txt.split("```", 2)[1]
                 if txt.startswith("json\n"): txt = txt[5:]
             obj = json.loads(txt)
-            products = _pp.resolve_named_products(obj.get("products") or [])
+            products = _assist_resolve_products(obj.get("products") or [])
         except Exception as e:
             print(f"[assist] extract: {e!r}", flush=True)
         if products:
