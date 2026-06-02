@@ -1,0 +1,136 @@
+"""Tests for dashboard.practitioner_portal — cart, magic-link/session tokens,
+two-door registration validation, and the registration insert (Phase 3c/3d)."""
+
+from datetime import datetime, timedelta
+
+import pytest
+
+PID = "00000000-0000-0000-0000-000000000009"
+
+
+@pytest.fixture
+def db(tmp_path):
+    return str(tmp_path / "chat_log.db")
+
+
+# ── validate_registration (pure) ──────────────────────────────────────────────
+
+def test_validate_licensed_ok():
+    from dashboard.practitioner_portal import validate_registration
+    clean, err = validate_registration({
+        "email": "DR@Clinic.com", "name": "Dr Jane", "portal_role": "licensed",
+        "license_number": "OD-123", "license_state": "CA"})
+    assert err is None
+    assert clean["email"] == "dr@clinic.com"   # lowercased
+    assert clean["portal_role"] == "licensed"
+
+
+def test_validate_coach_ok():
+    from dashboard.practitioner_portal import validate_registration
+    clean, err = validate_registration({
+        "email": "c@x.com", "name": "Coach", "portal_role": "coach",
+        "resale_license_number": "RS-9"})
+    assert err is None and clean["portal_role"] == "coach"
+
+
+def test_validate_rejects_bad_email_role_and_missing_license():
+    from dashboard.practitioner_portal import validate_registration
+    assert validate_registration({"email": "nope", "name": "x", "portal_role": "licensed"})[0] is None
+    assert validate_registration({"email": "a@b.com", "name": "x", "portal_role": "other"})[0] is None
+    assert validate_registration({"email": "a@b.com", "name": "x",
+                                  "portal_role": "licensed"})[1]  # no license_number
+    assert validate_registration({"email": "a@b.com", "name": "x",
+                                  "portal_role": "coach"})[1]      # no resale number
+
+
+# ── cart (SQLite) ─────────────────────────────────────────────────────────────
+
+def test_cart_set_get_update_remove_clear(db):
+    from dashboard.practitioner_portal import cart_set, cart_items, cart_clear
+    cart_set(PID, "a", 5, db_path=db)
+    cart_set(PID, "b", 2, db_path=db)
+    assert cart_items(PID, db_path=db) == [{"slug": "a", "qty": 5}, {"slug": "b", "qty": 2}]
+    cart_set(PID, "a", 9, db_path=db)               # update
+    assert cart_items(PID, db_path=db)[0]["qty"] == 9
+    cart_set(PID, "a", 0, db_path=db)               # remove
+    assert [i["slug"] for i in cart_items(PID, db_path=db)] == ["b"]
+    cart_clear(PID, db_path=db)
+    assert cart_items(PID, db_path=db) == []
+
+
+# ── tokens ────────────────────────────────────────────────────────────────────
+
+def test_magic_link_is_single_use(db):
+    from dashboard.practitioner_portal import create_magic_link_token, consume_magic_link
+    t0 = datetime(2026, 6, 1, 12, 0, 0)
+    tok = create_magic_link_token(PID, "dr@x.com", now=t0, db_path=db)
+    assert consume_magic_link(tok, now=t0, db_path=db) == PID
+    assert consume_magic_link(tok, now=t0, db_path=db) is None   # already used
+
+
+def test_magic_link_expires(db):
+    from dashboard.practitioner_portal import create_magic_link_token, consume_magic_link
+    t0 = datetime(2026, 6, 1, 12, 0, 0)
+    tok = create_magic_link_token(PID, "dr@x.com", now=t0, db_path=db)
+    assert consume_magic_link(tok, now=t0 + timedelta(minutes=16), db_path=db) is None
+
+
+def test_session_token_validates_until_expiry(db):
+    from dashboard.practitioner_portal import create_session_token, practitioner_id_from_session
+    t0 = datetime(2026, 6, 1, 12, 0, 0)
+    tok = create_session_token(PID, now=t0, db_path=db)
+    assert practitioner_id_from_session(tok, now=t0, db_path=db) == PID
+    assert practitioner_id_from_session(tok, now=t0 + timedelta(days=31), db_path=db) is None
+    assert practitioner_id_from_session("garbage", now=t0, db_path=db) is None
+
+
+# ── registration insert (fake Supabase cursor) ────────────────────────────────
+
+class _FakeCur:
+    def __init__(self):
+        self.inserts = []
+        self._r = None
+    def execute(self, sql, params=()):
+        s = " ".join(sql.split())
+        if s.startswith("SELECT id FROM practitioners WHERE lower(email)"):
+            self._r = None                      # new email -> insert path
+        elif "INSERT INTO practitioners" in s and "RETURNING id" in s:
+            self.inserts.append(list(params))
+            self._r = {"id": "P-NEW"}
+        else:
+            self._r = None
+    def fetchone(self):
+        return self._r
+
+
+class _FakeCtx:
+    def __init__(self, cur): self.cur = cur
+    def __enter__(self): return self.cur
+    def __exit__(self, *a): return False
+
+
+@pytest.fixture
+def fake_supabase(monkeypatch):
+    cur = _FakeCur()
+    import db_supabase
+    monkeypatch.setattr(db_supabase, "supabase_cursor", lambda: _FakeCtx(cur))
+    return cur
+
+
+def test_register_licensed_unlocks_immediately(fake_supabase):
+    from dashboard.practitioner_portal import register_practitioner, validate_registration
+    clean, _ = validate_registration({"email": "od@x.com", "name": "OD",
+                                      "portal_role": "licensed", "license_number": "1"})
+    pid, unlocked = register_practitioner(clean, now=datetime(2026, 6, 1))
+    assert pid == "P-NEW"
+    assert unlocked is True
+    assert fake_supabase.inserts[0][-1] is not None        # wholesale_unlocked_at set
+
+
+def test_register_coach_stays_locked(fake_supabase):
+    from dashboard.practitioner_portal import register_practitioner, validate_registration
+    clean, _ = validate_registration({"email": "c@x.com", "name": "C",
+                                      "portal_role": "coach", "resale_license_number": "9"})
+    pid, unlocked = register_practitioner(clean, now=datetime(2026, 6, 1))
+    assert unlocked is False
+    assert fake_supabase.inserts[0][-1] is None            # locked until first module
