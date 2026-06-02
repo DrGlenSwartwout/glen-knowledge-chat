@@ -418,7 +418,150 @@
   .ws-thread-compose button { background:var(--glen); border:none; color:#0a150d; border-radius:6px;
     padding:0 16px; font-weight:700; cursor:pointer; }
   .ws-thread-empty { text-align:center; color:var(--muted); font-size:12px; padding:18px 0; }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     LIGHT MODE OVERRIDES
+     Added by light/dark pass. Activated only when theme-toggle.js sets
+     <html data-theme="light">. Dark mode is untouched (no existing rule above
+     was modified). The shared theme-toggle.js already remaps the STRUCTURAL
+     vars (--bg --surface --surface-2 --border --text --muted --panel --panel-2
+     --ink --dim --hair --accent --green --gold --cream --accent2 --text-muted
+     --surface2). Below we (a) remap this page's PAGE-SPECIFIC semantic vars,
+     and (b) override hardcoded color literals that bypass the vars and would
+     be unreadable on a light surface.
+     ──────────────────────────────────────────────────────────────────────── */
+
+  /* (a) Page-specific semantic vars ───────────────────────────────────────── */
+  :root[data-theme="light"] {
+    /* Person colors — darkened so they read as text/borders AND have enough
+       contrast to carry #fff text when used as a solid button/pill fill. */
+    --glen:   #B08A3E;
+    --rae:    #A85A2E;
+    --shaira: #2D7A6A;
+    --justus: #6B5BA0;
+    /* Priority colors */
+    --high:   #B23A1E;
+    --normal: #9A7A1E;
+    --low:    #6B6250;
+    /* Background vars → light surfaces */
+    --done-bg: #EFE7D7;
+    --cal-bg:  #FFFFFF;
+  }
+
+  /* --justus is used as a solid fill with DARK text (#0f1117 / #0a150d) in a
+     few places (.btn-justus-send, .btn-generate, .ws-thread-compose button via
+     --glen). In light mode the darkened person colors above are dark enough
+     that dark text on them would fail; force light text on those solid fills. */
+  :root[data-theme="light"] .btn-justus-send,
+  :root[data-theme="light"] .btn-generate { color: #fff; }
+  :root[data-theme="light"] .ws-thread-compose button { color: #fff; }
+
+  /* (b) Hardcoded literal overrides ────────────────────────────────────────
+     Each rule re-skins an element whose dark literal background or pale text
+     would break on a light surface. #000/#fff text kept on colored accent
+     buttons (reads fine). Faint alpha tints, shadows, backdrops left alone. */
+
+  /* Buttons that paint #fff text on a person-color fill on :hover — keep #fff
+     (the var fill is dark enough). No override needed for those.
+     Dark hover-fill literals on otherwise-transparent action buttons: */
+  :root[data-theme="light"] .btn-copy-reply:hover { background: #EAF1F8; }
+  :root[data-theme="light"] .btn-gmail:hover       { background: #EAF1F8; }
+  :root[data-theme="light"] .btn-done:hover         { background: #E4F3E4; }
+  :root[data-theme="light"] .btn-read:hover         { background: #EAF1F8; }
+  :root[data-theme="light"] .btn-reopen:hover       { background: #EAF1F8; }
+  :root[data-theme="light"] .btn-dismiss:hover      { background: #F8E8E4; }
+  :root[data-theme="light"] .btn-delegate:hover     { background: #F8EEE4; }
+  :root[data-theme="light"] .btn-draft:hover        { background: #F0EAF8; }
+  :root[data-theme="light"] .delegate-option.justus:hover { background: #F0EAF8; }
+  :root[data-theme="light"] .btn-cal-delete:hover   { background: #F8E8E4; }
+  :root[data-theme="light"] .detail-enrich-btn:hover { background: #EAF1F8; }
+  :root[data-theme="light"] .ws-thread-btn:hover    { background: #F0EAF8; }
+
+  /* Calendar alert: dark-red fill + red text → light red fill */
+  :root[data-theme="light"] .cal-event.alerted,
+  :root[data-theme="light"] .btn-cal-alert:hover,
+  :root[data-theme="light"] .btn-cal-alert.active { background: #FBE3E0; }
+
+  /* AI summary / reply text colors were tuned for a dark bg (light blue/tan).
+     On a light surface they vanish — darken to readable equivalents. */
+  :root[data-theme="light"] .ai-summary     { color: #2B5BA8; }
+  :root[data-theme="light"] .suggested-reply { color: #2A3F66; }
+
+  /* action-note / core-message: dark amber panel + pale amber text.
+     Repaint as a light amber panel with dark amber text. */
+  :root[data-theme="light"] .action-note {
+    background: #FBF1D8; border-left-color: #C8821E; color: #7A5510;
+  }
+  :root[data-theme="light"] .core-message {
+    background: #FBF1D8; border-left-color: #C8821E; color: #6E4A0C;
+  }
+
+  /* "delegated" meta badge: dark-tan fill + pale-amber text → light amber pill */
+  :root[data-theme="light"] .meta-badge.delegated { background: #FBEFD8; color: #8A5E12; }
+
+  /* People-card selected state: dark navy fill → light blue tint */
+  :root[data-theme="light"] .person-card.selected { background: #E6EEFB; }
+
+  /* People ptag chips: dark fills + pale text → light tints + dark text */
+  :root[data-theme="light"] .ptag.system  { background: #E2ECFA; color: #1F5FA8; }
+  :root[data-theme="light"] .ptag.phase   { background: #E2F5E2; color: #1F7A2E; }
+  :root[data-theme="light"] .ptag.concern { background: #FBE3E0; color: #B23A2E; }
+  :root[data-theme="light"] .ptag.source  { background: #F7F1D8; color: #8A6A12; }
+
+  /* assign-btn selected: dark fills + person-color text. The person-color text
+     is now dark, so a light tint fill keeps it readable. */
+  :root[data-theme="light"] .assign-btn.glen.selected   { background: #FBF1DC; }
+  :root[data-theme="light"] .assign-btn.rae.selected    { background: #FBEAE0; }
+  :root[data-theme="light"] .assign-btn.shaira.selected { background: #E2F2EC; }
+
+  /* Justus dialog header: dark purple bar + purple text → light purple */
+  :root[data-theme="light"] .justus-header { background: #F0EAF8; }
+  /* New-task dialog header: dark navy bar + glen text → light tint */
+  :root[data-theme="light"] .newtask-header { background: #F4EEFB; }
+
+  /* Referrals (purple accent #7c5cbf / #a07fe0): the bright purples read on
+     light too, but the #a07fe0 stat numbers / url-code are low-contrast on
+     white — darken to the solid accent purple. */
+  :root[data-theme="light"] .ref-stat-num   { color: #6B4FB0; }
+  :root[data-theme="light"] .ref-url-code    { color: #6B4FB0; }
+  :root[data-theme="light"] .btn-copy-url:hover { color: #6B4FB0; }
+
+  /* aff-status pills: dark fills + person/priority text → light tints */
+  :root[data-theme="light"] .aff-status.approved  { background: #E4F3E4; }
+  :root[data-theme="light"] .aff-status.pending   { background: #FBF1D8; color: #8A5E12; }
+  :root[data-theme="light"] .aff-status.suspended,
+  :root[data-theme="light"] .aff-status.rejected  { background: #FBE3E0; }
+
+  /* Workspace chips: dark fills + pale text → light tints + dark text */
+  :root[data-theme="light"] .ws-chip.plan       { background: #E2F2E8; color: #1F7A4A; }
+  :root[data-theme="light"] .ws-chip.in_process { background: #F7F1D8; color: #8A6A12; }
+  :root[data-theme="light"] .ws-chip.complete   { background: #E4ECE6; color: #4A6052; }
+  :root[data-theme="light"] .ws-chip.time       { background: #E6EEE8; color: #4A6052; }
+  :root[data-theme="light"] .ws-chip.ask        { background: #FBEADE; color: #A85A18; }
+  :root[data-theme="light"] .ws-thread-btn.has-ask { color: #A85A18; }
+
+  /* Workspace messages: dark person-tint fills + person-color role labels.
+     Repaint fills as light person-tints; the var-based role colors are already
+     remapped (dark), so they stay readable on the light tint. */
+  :root[data-theme="light"] .ws-msg.shaira { background: #E2F2EC; }
+  :root[data-theme="light"] .ws-msg.justus { background: #F0EAF8; }
+  :root[data-theme="light"] .ws-msg.glen   { background: #FBF3DC; }
+  :root[data-theme="light"] .ws-msg.rae    { background: #FBEAE0; }
+  :root[data-theme="light"] .ws-msg.justus_to_glen,
+  :root[data-theme="light"] .ws-msg.justus_to_rae { background: #FBEADE; border-left-color: #A85A18; }
+  :root[data-theme="light"] .ws-msg.justus_to_glen .ws-msg-role,
+  :root[data-theme="light"] .ws-msg.justus_to_rae .ws-msg-role { color: #A85A18; }
+
+  /* Static People-page banners (#household-candidates-banner,
+     #pending-merges-banner, #people-multiselect-toolbar): their dark fill is
+     set as an INLINE style on the same element that holds inline-colored pale
+     text spans. Overriding only the background (clean, by stable ID) would
+     leave the inline pale text low-contrast on a light fill, and recoloring
+     the inner spans would require the forbidden [style*=#hex] substring hack.
+     So these are left in their (dark) inline state — documented limitation. */
+
 </style>
+<script src="/static/theme-toggle.js"></script>
 </head>
 <body>
 <script src="/static/op-nav.js" data-active="console"></script>
