@@ -11,6 +11,8 @@
   :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
     --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --radius:14px;
     --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
+  :root[data-theme="light"]{ --bg:#FBF8F3; --surface:#FFFFFF; --surface-2:#F4ECDE;
+    --border:#E2D9C9; --cream:#1E2A2A; --muted:#5F6B6B; --gold:#B08A3E; --green:#2D7A6A; }
   *{box-sizing:border-box}
   body{ margin:0; background:var(--bg); color:var(--cream); font-family:var(--font); line-height:1.6; }
   .wrap{ max-width:760px; margin:0 auto; padding:34px 20px; }
@@ -40,10 +42,14 @@
   .notice{ background:var(--surface-2); border:1px solid var(--border); color:var(--gold); border-radius:10px; padding:12px; font-size:14px; margin-top:10px; }
   #msg{ margin-top:12px; font-size:14px; color:#8fd6a3; }
 </style>
+<script>(function(){var t=localStorage.getItem('rm-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
 </head>
 <body>
 <div class="wrap">
-  <div id="head"><h1>Wholesale Portal</h1><div class="muted" id="who">Loading…</div></div>
+  <div id="head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+    <div><h1>Wholesale Portal</h1><div class="muted" id="who">Loading…</div></div>
+    <button id="theme-toggle" class="ghost" onclick="toggleTheme()" style="white-space:nowrap">Light</button>
+  </div>
   <div class="cards">
     <div class="stat"><b id="modules">–</b><span>Certification modules</span></div>
     <div class="stat"><b id="wallet">–</b><span>Wellness Credit</span></div>
@@ -93,6 +99,13 @@
 var TOKEN = new URLSearchParams(location.search).get('token') || '';
 var $ = function(id){ return document.getElementById(id); };
 var money = function(c){ return '$' + (Number(c||0)/100).toFixed(2); };
+function toggleTheme(){
+  var next = document.documentElement.getAttribute('data-theme')==='light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('rm-theme', next);
+  var b=document.getElementById('theme-toggle'); if(b) b.textContent = next==='light' ? 'Dark' : 'Light';
+}
+(function(){ var t=document.documentElement.getAttribute('data-theme'); var b=document.getElementById('theme-toggle'); if(b) b.textContent = t==='light' ? 'Dark' : 'Light'; })();
 function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function linkify(s){
   return s.replace(/((?:https?:\/\/|www\.)[^\s<]+|\b[a-z0-9-]+\.(?:com|org|net|io|vip|co)(?:\/[^\s<]*)?)/gi, function(m){

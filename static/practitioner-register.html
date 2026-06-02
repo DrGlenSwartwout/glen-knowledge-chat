@@ -11,6 +11,9 @@
   :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
     --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --radius:14px;
     --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
+  :root[data-theme="light"]{ --bg:#FBF8F3; --surface:#FFFFFF; --surface-2:#F4ECDE;
+    --border:#E2D9C9; --cream:#1E2A2A; --muted:#5F6B6B; --gold:#B08A3E; --green:#2D7A6A; }
+  .ghost{ background:transparent; color:var(--gold); border:1px solid var(--border); border-radius:8px; padding:6px 12px; font-weight:600; cursor:pointer; font-family:inherit; width:auto; margin:0; }
   *{box-sizing:border-box}
   body{ margin:0; background:var(--bg); color:var(--cream); font-family:var(--font); line-height:1.6; }
   .wrap{ max-width:620px; margin:0 auto; padding:40px 20px; }
@@ -33,9 +36,11 @@
   .foot{ margin-top:18px; font-size:14px; color:var(--muted); }
   a{ color:var(--gold); }
 </style>
+<script>(function(){var t=localStorage.getItem('rm-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
 </head>
 <body>
 <div class="wrap">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:4px"><button id="theme-toggle" class="ghost" onclick="toggleTheme()">Light</button></div>
   <h1>Join the Wholesale Portal</h1>
   <p class="sub">Order Functional Formulations™ at wholesale. Licensed practitioners unlock pricing right away; coaches start with the first certification module.</p>
   <div class="panel">
@@ -75,6 +80,13 @@
 <script>
 var role = null;
 var $ = function(id){ return document.getElementById(id); };
+function toggleTheme(){
+  var next = document.documentElement.getAttribute('data-theme')==='light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('rm-theme', next);
+  var b=document.getElementById('theme-toggle'); if(b) b.textContent = next==='light' ? 'Dark' : 'Light';
+}
+(function(){ var t=document.documentElement.getAttribute('data-theme'); var b=document.getElementById('theme-toggle'); if(b) b.textContent = t==='light' ? 'Dark' : 'Light'; })();
 document.querySelectorAll('.role').forEach(function(el){
   el.addEventListener('click', function(){
     document.querySelectorAll('.role').forEach(function(r){ r.classList.remove('sel'); });
