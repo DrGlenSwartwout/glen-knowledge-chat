@@ -80,6 +80,14 @@
     <h2>Order history</h2>
     <table id="history"><thead><tr><th>Invoice</th><th>Date</th><th>Credit used</th><th>Total</th></tr></thead><tbody></tbody></table>
   </div>
+
+  <div class="panel" id="dispensary-panel" style="display:none">
+    <h2>Your dispensary</h2>
+    <div class="muted" style="font-size:13px;margin:4px 0 10px">Share this link with patients. They order at retail (shipped direct from Remedy Match) and you earn $20/bottle in Wellness Credit.</div>
+    <div class="row"><input class="slug" id="disp-link" readonly><button id="disp-copy" class="ghost">Copy</button></div>
+    <div id="disp-credit" style="margin-top:10px;font-weight:600;color:var(--gold)"></div>
+    <table id="disp-table"><thead><tr><th>Date</th><th>Patient</th><th>Bottles</th><th>Credit</th></tr></thead><tbody></tbody></table>
+  </div>
 </div>
 <script>
 var TOKEN = new URLSearchParams(location.search).get('token') || '';
@@ -125,6 +133,18 @@ function render(d){
       tr.innerHTML = '<td>#'+(o.doc_number||'—')+'</td><td>'+((o.created_at||'').slice(0,10))+
         '</td><td>'+(o.credit_cents ? money(o.credit_cents) : '—')+'</td><td>'+money(o.total_cents)+'</td>';
       hb.appendChild(tr);
+    });
+  }
+  if(d.dispensary_link){
+    $('dispensary-panel').style.display = 'block';
+    $('disp-link').value = d.dispensary_link;
+    $('disp-credit').textContent = 'Credit earned from your dispensary: ' + money(d.dispensary_credit_total_cents);
+    var db = $('disp-table').querySelector('tbody'); db.innerHTML = '';
+    (d.dispensary_orders||[]).forEach(function(o){
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>'+((o.created_at||'').slice(0,10))+'</td><td>'+(o.customer_email||'—')+
+        '</td><td>'+(o.bottles||0)+'</td><td>'+money(o.credit_earned_cents)+'</td>';
+      db.appendChild(tr);
     });
   }
 }
@@ -207,6 +227,7 @@ function streamAssist(query){
 function sendAssist(){ var q = $('assist-q').value.trim(); if(!q) return; $('assist-q').value=''; streamAssist(q); }
 $('assist-send').addEventListener('click', sendAssist);
 $('assist-q').addEventListener('keydown', function(e){ if(e.key==='Enter') sendAssist(); });
+$('disp-copy').addEventListener('click', function(){ var i=$('disp-link'); i.select(); try{ document.execCommand('copy'); }catch(e){} $('disp-copy').textContent='Copied'; setTimeout(function(){ $('disp-copy').textContent='Copy'; }, 1500); });
 load();
 </script>
 </body>

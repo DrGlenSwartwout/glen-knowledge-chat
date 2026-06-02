@@ -176,10 +176,12 @@ def earn_order(practitioner_id, order_total_cents, qbo_invoice_id, *, note=None)
                   qbo_invoice_id=qbo_invoice_id, note=note)
 
 
-def earn_dropship(practitioner_id, bottles, *, ref=None) -> int:
-    """Credit a drop-ship dispensary sale at $20/bottle (credit-only, never cash)."""
+def earn_dropship(practitioner_id, bottles, *, qbo_invoice_id=None, ref=None) -> int:
+    """Credit a drop-ship dispensary sale at $20/bottle (credit-only, never cash).
+    qbo_invoice_id makes it idempotent per client invoice (retry-safe)."""
     amt = earn_amount_dropship_cents(bottles)
-    return _apply(practitioner_id, "earn_dropship", lambda _bal: amt, note=ref)
+    return _apply(practitioner_id, "earn_dropship", lambda _bal: amt,
+                  qbo_invoice_id=qbo_invoice_id, note=ref)
 
 
 def redeem_for_order(practitioner_id, order_total_cents, qbo_invoice_id) -> int:
