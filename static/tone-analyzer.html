@@ -577,6 +577,10 @@
   :root[data-theme="light"] .qe-water .q-popup-meta { color: #3a6ea5; }
   :root[data-theme="light"] .qe-fire  .q-popup-meta { color: #b04a4a; }
   :root[data-theme="light"] .qe-wood  .q-popup-meta { color: #2f8a4e; }
+
+  /* Secondary buttons use a hardcoded dark fill (#2a2f3a) with themed text, so in
+     light mode they were dark-on-dark. Flip to a light surface + border. */
+  :root[data-theme="light"] button.secondary { background: var(--panel-2); border: 1px solid var(--hair); }
 </style>
   <script src="/static/theme-toggle.js"></script>
 </head>
