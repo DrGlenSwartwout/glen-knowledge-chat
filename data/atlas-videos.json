@@ -1,0 +1,9 @@
+{
+  "version": "2026-06-02",
+  "videos": [
+    { "url": "https://www.youtube.com/watch?v=PLACEHOLDER1", "platform": "youtube",
+      "title": "Biofield and BEV explained", "description": "Intro to bio-energetic vitality and the biofield." },
+    { "url": "https://rumble.com/vPLACEHOLDER2", "platform": "rumble",
+      "title": "Light therapy for vision", "description": "How syntonic light frequencies support the eyes." }
+  ]
+}
