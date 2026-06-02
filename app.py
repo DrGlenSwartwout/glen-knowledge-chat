@@ -4893,7 +4893,7 @@ def api_practitioner_portal_data():
     pid = _practitioner_session_pid()
     if not pid:
         return jsonify({"ok": False, "error": "not signed in"}), 401
-    data = _pp.portal_data(pid)
+    data = _pp.portal_data(pid, include_orders=True)
     if not data:
         return jsonify({"ok": False, "error": "account not found"}), 404
     return jsonify({"ok": True, **data})
@@ -4949,6 +4949,13 @@ def api_practitioner_checkout():
         return jsonify({"ok": False, "error": "Checkout failed. Please try again."}), 500
     if out.get("ok"):
         _pp.cart_clear(pid)
+        try:
+            _pp.record_order(pid, invoice_id=out.get("invoice_id"),
+                             doc_number=out.get("doc_number"),
+                             total_cents=int(round((out.get("total") or 0) * 100)),
+                             credit_cents=out.get("credit_redeemed_cents", 0))
+        except Exception as e:
+            print(f"[practitioner-checkout] record_order failed: {e!r}", flush=True)
     return jsonify(out), (200 if out.get("ok") else 422)
 
 

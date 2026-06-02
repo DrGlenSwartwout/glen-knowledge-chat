@@ -98,6 +98,51 @@ def cart_clear(practitioner_id, *, db_path=None) -> None:
         cx.commit()
 
 
+# ── order history (local record, written at checkout) ─────────────────────────
+
+def _ensure_orders_table(cx) -> None:
+    cx.execute(
+        "CREATE TABLE IF NOT EXISTS wholesale_orders ("
+        "invoice_id TEXT PRIMARY KEY, practitioner_id TEXT NOT NULL, doc_number TEXT, "
+        "total_cents INTEGER, credit_cents INTEGER, created_at TEXT NOT NULL)"
+    )
+    cx.execute("CREATE INDEX IF NOT EXISTS wholesale_orders_prac "
+               "ON wholesale_orders (practitioner_id, created_at DESC)")
+
+
+def record_order(practitioner_id, *, invoice_id, doc_number=None, total_cents=0,
+                 credit_cents=0, now=None, db_path=None) -> None:
+    """Persist a placed order so the portal can show history without a live QBO
+    call. Idempotent on invoice_id (a retry won't duplicate)."""
+    if not invoice_id:
+        return
+    p = db_path or _db_path()
+    ts = (now or datetime.now(timezone.utc)).isoformat()
+    with sqlite3.connect(p) as cx:
+        _ensure_orders_table(cx)
+        cx.execute(
+            "INSERT INTO wholesale_orders "
+            "(invoice_id, practitioner_id, doc_number, total_cents, credit_cents, created_at) "
+            "VALUES (?,?,?,?,?,?) ON CONFLICT(invoice_id) DO NOTHING",
+            (str(invoice_id), str(practitioner_id), doc_number,
+             int(total_cents or 0), int(credit_cents or 0), ts),
+        )
+        cx.commit()
+
+
+def order_history(practitioner_id, *, limit=20, db_path=None) -> List[dict]:
+    p = db_path or _db_path()
+    with sqlite3.connect(p) as cx:
+        _ensure_orders_table(cx)
+        rows = cx.execute(
+            "SELECT invoice_id, doc_number, total_cents, credit_cents, created_at "
+            "FROM wholesale_orders WHERE practitioner_id=? ORDER BY created_at DESC LIMIT ?",
+            (str(practitioner_id), int(limit)),
+        ).fetchall()
+    return [{"invoice_id": r[0], "doc_number": r[1], "total_cents": r[2],
+             "credit_cents": r[3], "created_at": r[4]} for r in rows]
+
+
 # ── tokens (SQLite auth_tokens, shared with the app's magic-link table) ────────
 
 def _insert_token(tok, purpose, extra, ttl_seconds, now=None, db_path=None) -> None:
@@ -269,7 +314,7 @@ def unlock_wholesale(practitioner_id, *, now=None) -> None:
 
 # ── portal data ───────────────────────────────────────────────────────────────
 
-def portal_data(practitioner_id, *, db_path=None) -> Optional[dict]:
+def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optional[dict]:
     from db_supabase import supabase_cursor
     with supabase_cursor() as cur:
         cur.execute(
@@ -288,7 +333,7 @@ def portal_data(practitioner_id, *, db_path=None) -> Optional[dict]:
                 items, {"modules_completed": row["modules_completed"]}, db_path=db_path)
         except Exception:
             quote = None
-    return {
+    data = {
         "practitioner_id": str(row["id"]),
         "name": row["name"],
         "practice_name": row["practice_name"],
@@ -300,3 +345,6 @@ def portal_data(practitioner_id, *, db_path=None) -> Optional[dict]:
         "cart": items,
         "quote": quote,
     }
+    if include_orders:
+        data["order_history"] = order_history(practitioner_id, db_path=db_path)
+    return data

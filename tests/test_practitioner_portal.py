@@ -127,6 +127,20 @@ def test_register_licensed_unlocks_immediately(fake_supabase):
     assert fake_supabase.inserts[0][-1] is not None        # wholesale_unlocked_at set
 
 
+def test_order_history_records_newest_first_and_is_idempotent(db):
+    from dashboard.practitioner_portal import record_order, order_history
+    record_order(PID, invoice_id="INV1", doc_number="1001", total_cents=100000,
+                 credit_cents=50000, db_path=db, now=datetime(2026, 6, 1))
+    record_order(PID, invoice_id="INV2", doc_number="1002", total_cents=80000,
+                 db_path=db, now=datetime(2026, 6, 2))
+    record_order(PID, invoice_id="INV1", doc_number="1001", total_cents=100000,
+                 db_path=db, now=datetime(2026, 6, 3))   # retry — must not duplicate
+    h = order_history(PID, db_path=db)
+    assert [o["invoice_id"] for o in h] == ["INV2", "INV1"]   # newest first
+    assert len(h) == 2
+    assert h[1]["credit_cents"] == 50000
+
+
 def test_register_coach_stays_locked(fake_supabase):
     from dashboard.practitioner_portal import register_practitioner, validate_registration
     clean, _ = validate_registration({"email": "c@x.com", "name": "C",
