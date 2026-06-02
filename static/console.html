@@ -20,6 +20,15 @@
     --low: #a89870;
     --done-bg: #0f1c12;
     --cal-bg: #111f16;
+    /* Household / merge / people-detail panels — these are rendered by JS with
+       inline styles; referenced as var() (below) so the light override themes
+       them. Backgrounds/borders are dark here; text colors are the accents. */
+    --hh-amber-bg: #1a1410; --hh-amber-row-bg: #0f0c08; --hh-amber-border: #2a1f10;
+    --hh-blue-bg: #0e1f2e; --hh-blue-row-bg: #0a1520; --hh-blue-border: #1a3450;
+    --hh-brown-border: #4a3520; --hh-chip-bg: #0a0c12; --hh-error-bg: #3a2615;
+    --hh-headbadge-bg: #4a3520;
+    --hh-amber-text: #f5b87a; --hh-meta: #8a93a3; --hh-blue-text: #7ab8f5;
+    --hh-red-text: #f57a7a; --hh-warn-text: #f5d07a; --hh-headbadge-text: #f5d4a0;
     --radius: 8px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -446,6 +455,14 @@
     /* Background vars → light surfaces */
     --done-bg: #EFE7D7;
     --cal-bg:  #FFFFFF;
+    /* Household / merge / people-detail panel tokens (themed via var() in the
+       JS-rendered inline styles): backgrounds/borders → light tints, text → dark. */
+    --hh-amber-bg: #FBF1E0; --hh-amber-row-bg: #FAF4E8; --hh-amber-border: #E8D9C0;
+    --hh-blue-bg: #E8F1FB; --hh-blue-row-bg: #EEF5FC; --hh-blue-border: #C8DCF0;
+    --hh-brown-border: #D8C4A0; --hh-chip-bg: #FFFFFF; --hh-error-bg: #FBF1E0;
+    --hh-headbadge-bg: #EADFC8;
+    --hh-amber-text: #A8631E; --hh-meta: #5F6B6B; --hh-blue-text: #2B6CB8;
+    --hh-red-text: #C0392B; --hh-warn-text: #9A7A1E; --hh-headbadge-text: #6B5320;
   }
 
   /* --justus is used as a solid fill with DARK text (#0f1117 / #0a150d) in a
@@ -642,27 +659,27 @@
   <div class="people-layout">
     <!-- Left: search + list -->
     <div class="people-left">
-      <div id="household-candidates-banner" style="display:none;background:#1a1410;border:1px solid #2a1f10;border-radius:5px;padding:10px 12px;margin-bottom:10px">
+      <div id="household-candidates-banner" style="display:none;background:var(--hh-amber-bg);border:1px solid var(--hh-amber-border);border-radius:5px;padding:10px 12px;margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleCandidatesPanel()">
-          <span style="font-size:13px;color:#f5b87a">👥 <span id="hcb-count">0</span> possible household(s) detected</span>
+          <span style="font-size:13px;color:var(--hh-amber-text)">👥 <span id="hcb-count">0</span> possible household(s) detected</span>
           <span style="flex:1"></span>
-          <span style="font-size:11px;color:#8a93a3" id="hcb-toggle">Review →</span>
+          <span style="font-size:11px;color:var(--hh-meta)" id="hcb-toggle">Review →</span>
         </div>
-        <div id="hcb-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #2a1f10"></div>
+        <div id="hcb-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--hh-amber-border)"></div>
       </div>
-      <div id="pending-merges-banner" style="display:none;background:#0e1f2e;border:1px solid #1a3450;border-radius:5px;padding:10px 12px;margin-bottom:10px">
+      <div id="pending-merges-banner" style="display:none;background:var(--hh-blue-bg);border:1px solid var(--hh-blue-border);border-radius:5px;padding:10px 12px;margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="togglePendingMergesPanel()">
-          <span style="font-size:13px;color:#7ab8f5">🔀 <span id="pmb-count">0</span> merge(s) queued</span>
+          <span style="font-size:13px;color:var(--hh-blue-text)">🔀 <span id="pmb-count">0</span> merge(s) queued</span>
           <span style="flex:1"></span>
-          <span style="font-size:11px;color:#8a93a3" id="pmb-toggle">Review →</span>
+          <span style="font-size:11px;color:var(--hh-meta)" id="pmb-toggle">Review →</span>
         </div>
-        <div id="pmb-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #1a3450"></div>
+        <div id="pmb-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--hh-blue-border)"></div>
       </div>
       <div id="people-multiselect-toolbar"
-           style="display:none;gap:8px;align-items:center;padding:8px 10px;background:#1a1410;border-radius:5px;margin-bottom:10px;border:1px solid #2a1f10">
-        <span id="pms-count" style="flex:1;font-size:12px;color:#f5b87a;font-weight:600">0 selected</span>
+           style="display:none;gap:8px;align-items:center;padding:8px 10px;background:var(--hh-amber-bg);border-radius:5px;margin-bottom:10px;border:1px solid var(--hh-amber-border)">
+        <span id="pms-count" style="flex:1;font-size:12px;color:var(--hh-amber-text);font-weight:600">0 selected</span>
         <button onclick="openHouseholdDialogForMultiSelect()" style="padding:6px 12px;background:#f5b87a;color:#0a0c12;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">Group as household</button>
-        <button onclick="pmsClear()" style="padding:6px 12px;background:transparent;color:#f5b87a;border:1px solid #4a3520;border-radius:5px;font-size:12px;cursor:pointer">Clear</button>
+        <button onclick="pmsClear()" style="padding:6px 12px;background:transparent;color:var(--hh-amber-text);border:1px solid var(--hh-brown-border);border-radius:5px;font-size:12px;cursor:pointer">Clear</button>
       </div>
       <div class="people-search-bar">
         <input type="text" id="people-q" placeholder="Search by name or email…" oninput="peopleDebouncedSearch()" autocomplete="off">
@@ -1276,16 +1293,16 @@ function renderCandidatesPanel() {
   const html = _hcbCandidates.map(c => {
     const persons = c.persons.map(p => _esc(p.name || p.email)).join(', ');
     const warning = c.persons.length > 5
-      ? '<div style="color:#f5d07a;font-size:11px;margin-bottom:4px">⚠ Unusually large — review carefully</div>'
+      ? '<div style="color:var(--hh-warn-text);font-size:11px;margin-bottom:4px">⚠ Unusually large — review carefully</div>'
       : '';
-    return `<div style="padding:10px;margin-bottom:6px;background:#0f0c08;border:1px solid #2a1f10;border-radius:5px">
+    return `<div style="padding:10px;margin-bottom:6px;background:var(--hh-amber-row-bg);border:1px solid var(--hh-amber-border);border-radius:5px">
       ${warning}
-      <div style="font-size:11px;color:#8a93a3;margin-bottom:4px">signal: ${_esc(c.signal)}</div>
+      <div style="font-size:11px;color:var(--hh-meta);margin-bottom:4px">signal: ${_esc(c.signal)}</div>
       <div style="font-size:13px;margin-bottom:6px">${persons}</div>
       <div style="display:flex;gap:6px">
         <button onclick="hcbConfirm(${c.id})" style="padding:5px 10px;background:#f5b87a;color:#0a0c12;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">Confirm as household</button>
         ${c.persons.length === 2 ? `<button onclick="hcbMerge(${c.id})" style="padding:5px 10px;background:#7ab8f5;color:#0a0c12;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">Merge as duplicate</button>` : ''}
-        <button onclick="hcbDismiss(${c.id})" style="padding:5px 10px;background:transparent;color:#8a93a3;border:1px solid #4a3520;border-radius:4px;font-size:11px;cursor:pointer">Dismiss</button>
+        <button onclick="hcbDismiss(${c.id})" style="padding:5px 10px;background:transparent;color:var(--hh-meta);border:1px solid var(--hh-brown-border);border-radius:4px;font-size:11px;cursor:pointer">Dismiss</button>
       </div>
     </div>`;
   }).join('');
@@ -1334,8 +1351,8 @@ async function hcbMerge(candId) {
 
 function mkdUpdateLabels() {
   const p1Selected = document.getElementById('mkd-p1-radio').checked;
-  const KEEP = '<span style="color:#7ab8f5">KEEPER</span>';
-  const DEL  = '<span style="color:#f57a7a">WILL BE DELETED</span>';
+  const KEEP = '<span style="color:var(--hh-blue-text)">KEEPER</span>';
+  const DEL  = '<span style="color:var(--hh-red-text)">WILL BE DELETED</span>';
   document.getElementById('mkd-p1-tag').innerHTML = p1Selected ? KEEP : DEL;
   document.getElementById('mkd-p2-tag').innerHTML = p1Selected ? DEL : KEEP;
   document.getElementById('mkd-p1-row').style.borderColor = p1Selected ? '#7ab8f5' : '#1c2433';
@@ -1403,17 +1420,17 @@ function renderPendingMergesPanel() {
       `${m.keeper.first_name||''} ${m.keeper.last_name||''}`.trim() || m.keeper.email || `#${m.keeper.id}`;
     const dupeName = m.dupe.deleted ? `[deleted person ${m.dupe.id}]` :
       `${m.dupe.first_name||''} ${m.dupe.last_name||''}`.trim() || m.dupe.email || `#${m.dupe.id}`;
-    return `<div style="padding:10px;margin-bottom:6px;background:#0a1520;border:1px solid #1a3450;border-radius:5px">
-      <div style="font-size:11px;color:#8a93a3;margin-bottom:4px">queued ${m.queued_at.slice(0,10)} by ${_esc(m.queued_by)}</div>
+    return `<div style="padding:10px;margin-bottom:6px;background:var(--hh-blue-row-bg);border:1px solid var(--hh-blue-border);border-radius:5px">
+      <div style="font-size:11px;color:var(--hh-meta);margin-bottom:4px">queued ${m.queued_at.slice(0,10)} by ${_esc(m.queued_by)}</div>
       <div style="font-size:13px;margin-bottom:6px">
-        <span style="color:#7ab8f5;font-weight:600">KEEP:</span> ${_esc(keeperName)} <span style="color:#8a93a3;font-size:11px">${_esc(m.keeper.email||'')}</span>
+        <span style="color:var(--hh-blue-text);font-weight:600">KEEP:</span> ${_esc(keeperName)} <span style="color:var(--hh-meta);font-size:11px">${_esc(m.keeper.email||'')}</span>
       </div>
       <div style="font-size:13px;margin-bottom:8px">
-        <span style="color:#f57a7a;font-weight:600">DELETE:</span> ${_esc(dupeName)} <span style="color:#8a93a3;font-size:11px">${_esc(m.dupe.email||'')}</span>
+        <span style="color:var(--hh-red-text);font-weight:600">DELETE:</span> ${_esc(dupeName)} <span style="color:var(--hh-meta);font-size:11px">${_esc(m.dupe.email||'')}</span>
       </div>
       <div style="display:flex;gap:6px">
         <button onclick="pmbApply(${m.id})" style="padding:5px 10px;background:#7ab8f5;color:#0a0c12;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">Apply merge</button>
-        <button onclick="pmbCancel(${m.id})" style="padding:5px 10px;background:transparent;color:#8a93a3;border:1px solid #4a3520;border-radius:4px;font-size:11px;cursor:pointer">Cancel</button>
+        <button onclick="pmbCancel(${m.id})" style="padding:5px 10px;background:transparent;color:var(--hh-meta);border:1px solid var(--hh-brown-border);border-radius:4px;font-size:11px;cursor:pointer">Cancel</button>
       </div>
     </div>`;
   }).join('');
@@ -1567,7 +1584,7 @@ function _personCard(p) {
     <div style="display:flex;align-items:flex-start;gap:8px">
       <div onclick="event.stopPropagation();pmsToggle(${p.id})"
            class="pms-check"
-           style="flex-shrink:0;width:16px;height:16px;border:1px solid #4a3520;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;background:#0a0c12;font-size:11px;font-weight:700;margin-top:1px;${checked}">${checkmark}</div>
+           style="flex-shrink:0;width:16px;height:16px;border:1px solid var(--hh-brown-border);border-radius:3px;display:inline-flex;align-items:center;justify-content:center;background:var(--hh-chip-bg);font-size:11px;font-weight:700;margin-top:1px;${checked}">${checkmark}</div>
       <div style="flex:1;min-width:0">
         <div class="person-card-name">${_esc(p.name || (p.first_name+' '+p.last_name).trim() || p.email)}</div>
         <div class="person-card-email">${_esc(p.email)}${p.profession ? ' · '+_esc(p.profession) : ''}</div>
@@ -1673,33 +1690,33 @@ function _renderHouseholdSection(person, household) {
   }
   const errors = _hhRecentErrors.get(household.slug) || [];
   const errorBadge = errors.length > 0 ? `
-    <div style="margin:8px 0;padding:8px 10px;background:#3a2615;border:1px solid #f5d07a;border-radius:5px;color:#f5d07a;font-size:11px">
+    <div style="margin:8px 0;padding:8px 10px;background:var(--hh-error-bg);border:1px solid var(--hh-warn-text);border-radius:5px;color:var(--hh-warn-text);font-size:11px">
       ⚠ GHL sync incomplete (${errors.length} member(s) failed).
       <button onclick="hhResyncGhl('${_esc(household.slug)}')"
-              style="margin-left:8px;padding:3px 8px;background:transparent;color:#f5d07a;border:1px solid #f5d07a;border-radius:3px;font-size:10px;cursor:pointer">Retry</button>
+              style="margin-left:8px;padding:3px 8px;background:transparent;color:var(--hh-warn-text);border:1px solid var(--hh-warn-text);border-radius:3px;font-size:10px;cursor:pointer">Retry</button>
     </div>` : '';
   const members = household.members || [];
-  const headBadge = `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#4a3520;color:#f5d4a0;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-left:6px">${_esc(members.find(m=>m.is_head)?.first_name||'')} is head</span>`;
+  const headBadge = `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--hh-headbadge-bg);color:var(--hh-headbadge-text);text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-left:6px">${_esc(members.find(m=>m.is_head)?.first_name||'')} is head</span>`;
   const memberCards = members.map(m => {
     const initials = ((m.first_name||'?')[0] + (m.last_name||'?')[0]).toUpperCase();
-    const thisOne = m.id === person.id ? 'opacity:0.7;border-color:#f5b87a' : '';
-    return `<div style="display:flex;gap:10px;padding:8px 10px;margin:6px 0;background:#0f0c08;border:1px solid #2a1f10;border-radius:6px;cursor:pointer;${thisOne}"
+    const thisOne = m.id === person.id ? 'opacity:0.7;border-color:var(--hh-amber-text)' : '';
+    return `<div style="display:flex;gap:10px;padding:8px 10px;margin:6px 0;background:var(--hh-amber-row-bg);border:1px solid var(--hh-amber-border);border-radius:6px;cursor:pointer;${thisOne}"
             onclick="loadPersonDetail(${m.id})">
-      <div style="width:28px;height:28px;border-radius:50%;background:#4a3520;color:#f5d4a0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${initials}</div>
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--hh-headbadge-bg);color:var(--hh-headbadge-text);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${initials}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600">${_esc(m.name)} ${m.is_head ? '<span style="font-size:9px;padding:2px 5px;border-radius:4px;background:#4a3520;color:#f5d4a0;text-transform:uppercase;letter-spacing:0.05em">Head</span>' : ''}</div>
-        <div style="font-size:11px;color:#8a93a3">${_esc(m.email||'')}</div>
+        <div style="font-size:13px;font-weight:600">${_esc(m.name)} ${m.is_head ? '<span style="font-size:9px;padding:2px 5px;border-radius:4px;background:var(--hh-headbadge-bg);color:var(--hh-headbadge-text);text-transform:uppercase;letter-spacing:0.05em">Head</span>' : ''}</div>
+        <div style="font-size:11px;color:var(--hh-meta)">${_esc(m.email||'')}</div>
       </div>
     </div>`;
   }).join('');
-  return `<div class="detail-field" style="margin-top:14px;background:#1a1410;border:1px solid #2a1f10;border-radius:8px;padding:12px">
-    <h4 style="margin:0 0 8px;font-size:12px;color:#f5b87a;display:flex;justify-content:space-between;align-items:center">
+  return `<div class="detail-field" style="margin-top:14px;background:var(--hh-amber-bg);border:1px solid var(--hh-amber-border);border-radius:8px;padding:12px">
+    <h4 style="margin:0 0 8px;font-size:12px;color:var(--hh-amber-text);display:flex;justify-content:space-between;align-items:center">
       <span>👥 ${_esc(household.name)} household ${headBadge}</span>
-      <button onclick="openHouseholdEditDialog('${_esc(household.slug)}')" style="background:transparent;border:none;color:#8a93a3;cursor:pointer;font-size:14px">⚙</button>
+      <button onclick="openHouseholdEditDialog('${_esc(household.slug)}')" style="background:transparent;border:none;color:var(--hh-meta);cursor:pointer;font-size:14px">⚙</button>
     </h4>
     ${errorBadge}
     ${memberCards}
-    <button class="detail-enrich-btn" style="border-color:#f5b87a;color:#f5b87a;width:100%;margin-top:6px;font-size:11px"
+    <button class="detail-enrich-btn" style="border-color:var(--hh-amber-text);color:var(--hh-amber-text);width:100%;margin-top:6px;font-size:11px"
             onclick="openHouseholdDialogForAddMember('${_esc(household.slug)}')">+ Add member</button>
   </div>`;
 }
