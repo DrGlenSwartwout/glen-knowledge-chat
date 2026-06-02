@@ -2320,6 +2320,14 @@ def begin_checkout(slug):
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
             out["earns_points"] = True   # awarded on confirmed payment (reconciliation, Phase 2)
+        # dispensary attribution: credit the referring practitioner $20/bottle (best-effort,
+        # idempotent on the invoice id; never break a customer checkout)
+        try:
+            disp = (request.cookies.get("rm_dispensary") or "").strip()
+            if disp:
+                _record_dispensary_sale(disp, email, qty, inv.get("Id"))
+        except Exception as e:
+            print(f"[dispensary] hook: {e!r}", flush=True)
         return jsonify(out)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -4909,6 +4917,8 @@ def api_practitioner_portal_data():
     data = _pp.portal_data(pid, include_orders=True)
     if not data:
         return jsonify({"ok": False, "error": "account not found"}), 404
+    if data.get("dispensary_code"):
+        data["dispensary_link"] = f"{PUBLIC_BASE_URL}/dispensary/{data['dispensary_code']}"
     return jsonify({"ok": True, **data})
 
 
@@ -4925,6 +4935,10 @@ def api_practitioner_cart():
         qty = int(data.get("qty", 0))
     except Exception:
         qty = 0
+    if qty > 0 and not _pp.is_orderable(slug):
+        return jsonify({"ok": False,
+                        "error": "That item is ordered separately (e.g. on the Centropix store), "
+                                 "not through wholesale."}), 400
     _pp.cart_set(pid, slug, qty)
     return jsonify({"ok": True, **(_pp.portal_data(pid) or {})})
 
@@ -4990,10 +5004,15 @@ _PRACTITIONER_ASSIST_SYSTEM = (
     "1-2 sentences of clinical rationale, and you may name 1-2 adjacent formulations that complete "
     "the protocol. Name products by their EXACT catalog name so they can be added to the order.\n"
     "- Never invent product names, URLs, prices, or product codes. Many products are NES-style "
-    "infoceuticals identified by codes (ES, EI, ED, ET, MB series, e.g. ES9, EI13, ED6); there is "
-    "no 'EN' series. Use ONLY the exact name or code that appears in the retrieved snippets. If you "
-    "are not certain of a product's exact code, describe what's needed and let the practitioner "
-    "confirm, rather than guessing a code.\n"
+    "infoceuticals identified by codes; there is no 'EN' series. The families and what they target: "
+    "ES (Energetic Stars) = body SYSTEMS (lead with ES9 for ear/hearing, ES3 for the nervous "
+    "system); ED (Energetic Drivers) = organs/tissues, except ED1 'Source' which affects all cells; "
+    "EI (Energetic Integrators) = meridian-related; ET (Energetic Terrains) = terrains, mostly "
+    "Phase 1 low-energy viral terrains except those specifically Fungal or Bacterial; MB = "
+    "mind-body. Use ONLY the exact code/name that appears in the retrieved snippets; if unsure of "
+    "the exact code, describe what's needed rather than guessing.\n"
+    "- EMF/Kloud and other Centropix devices are ordered on the Centropix store, not through "
+    "wholesale; mention them if relevant, but do not present them as add-to-order items.\n"
     "- Keep replies concise and clinical. Sign off as Dr. Glen."
 )
 
@@ -5067,6 +5086,33 @@ def api_practitioner_assist():
 
     return Response(stream_with_context(generate()), content_type="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _record_dispensary_sale(code, customer_email, bottles, invoice_id):
+    """Attribute a drop-ship sale to a practitioner by dispensary code and credit
+    $20/bottle Wellness Credit. Idempotent on the client invoice id."""
+    if not invoice_id:
+        return
+    pid = _pp.practitioner_id_by_dispensary_code(code)
+    if not pid:
+        return
+    from dashboard import wallet as _wallet
+    _wallet.earn_dropship(pid, bottles, qbo_invoice_id=str(invoice_id))
+    _pp.record_dispensary_order(
+        pid, invoice_id=str(invoice_id), customer_email=customer_email,
+        bottles=int(bottles or 0),
+        credit_earned_cents=int(bottles or 0) * _wallet.DROPSHIP_CREDIT_PER_BOTTLE_CENTS)
+
+
+@app.route("/dispensary/<code>")
+def dispensary_landing(code):
+    """Set the dispensary-attribution cookie and land the patient in the funnel."""
+    from flask import redirect as _redir
+    resp = _redir("/begin")
+    if re.match(r"^[A-Za-z0-9_-]{1,64}$", code or ""):
+        resp.set_cookie("rm_dispensary", code, max_age=90 * 24 * 3600,
+                        samesite="Lax", secure=request.is_secure)
+    return resp
 
 
 def _log_referral_event(lead_id, email, first_name, last_name, utm_source, utm_medium,

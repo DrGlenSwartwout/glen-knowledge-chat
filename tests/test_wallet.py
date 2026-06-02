@@ -143,6 +143,15 @@ def test_earn_dropship_credits_twenty_per_bottle_and_writes_ledger(store):
     assert row["balance_after_cents"] == 20000
 
 
+def test_earn_dropship_idempotent_on_invoice(store):
+    from dashboard.wallet import earn_dropship, get_balance_cents
+    assert earn_dropship(PID, 10, qbo_invoice_id="DINV1") == 20000
+    assert earn_dropship(PID, 10, qbo_invoice_id="DINV1") == 0   # same invoice, no double credit
+    assert get_balance_cents(PID) == 20000
+    assert earn_dropship(PID, 5, qbo_invoice_id="DINV2") == 10000  # distinct invoice stacks
+    assert get_balance_cents(PID) == 30000
+
+
 def test_redeem_for_order_capped_at_half_and_never_negative(store):
     from dashboard.wallet import earn_dropship, redeem_for_order, get_balance_cents
     earn_dropship(PID, 50)                      # +100000 ($1000 credit)

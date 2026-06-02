@@ -175,6 +175,67 @@ def test_resolve_named_products_keeps_in_catalog_dedup():
     assert resolve_named_products([], cat) == []
 
 
+def test_record_dispensary_order_history(db):
+    from dashboard.practitioner_portal import record_dispensary_order, dispensary_order_history
+    record_dispensary_order(PID, invoice_id="CINV1", customer_email="c@x.com", bottles=3,
+                            credit_earned_cents=6000, db_path=db, now=datetime(2026, 6, 1))
+    record_dispensary_order(PID, invoice_id="CINV2", customer_email="d@x.com", bottles=1,
+                            credit_earned_cents=2000, db_path=db, now=datetime(2026, 6, 2))
+    record_dispensary_order(PID, invoice_id="CINV1", customer_email="c@x.com", bottles=3,
+                            credit_earned_cents=6000, db_path=db, now=datetime(2026, 6, 3))  # dup
+    h = dispensary_order_history(PID, db_path=db)
+    assert [o["invoice_id"] for o in h] == ["CINV2", "CINV1"]   # newest first
+    assert len(h) == 2
+    assert h[1]["bottles"] == 3 and h[1]["credit_earned_cents"] == 6000
+
+
+class _DispCur:
+    def __init__(self, rows): self.rows = rows; self._r = None
+    def execute(self, sql, params=()):
+        s = " ".join(sql.split()); p = list(params)
+        if s.startswith("SELECT dispensary_code FROM practitioners WHERE id"):
+            r = self.rows.get(p[0]); self._r = {"dispensary_code": (r or {}).get("dispensary_code")}
+        elif s.startswith("UPDATE practitioners SET dispensary_code"):
+            r = self.rows.setdefault(p[1], {"dispensary_code": None})
+            if r.get("dispensary_code") is None: r["dispensary_code"] = p[0]
+            self._r = None
+        elif s.startswith("SELECT id FROM practitioners WHERE dispensary_code"):
+            self._r = next(({"id": pid} for pid, r in self.rows.items()
+                            if r.get("dispensary_code") == p[0]), None)
+        else:
+            self._r = None
+    def fetchone(self): return self._r
+
+
+def test_dispensary_code_get_or_create_and_lookup(monkeypatch):
+    rows = {PID: {"dispensary_code": None}}
+    import db_supabase
+    monkeypatch.setattr(db_supabase, "supabase_cursor", lambda: _FakeCtx(_DispCur(rows)))
+    from dashboard.practitioner_portal import (
+        get_or_create_dispensary_code, practitioner_id_by_dispensary_code)
+    code = get_or_create_dispensary_code(PID, _gen=lambda: "abc123")
+    assert code == "abc123"
+    assert get_or_create_dispensary_code(PID, _gen=lambda: "XXX") == "abc123"  # stable
+    assert practitioner_id_by_dispensary_code("abc123") == PID
+    assert practitioner_id_by_dispensary_code("nope") is None
+
+
+def test_resolve_named_products_excludes_info_only():
+    from dashboard.practitioner_portal import resolve_named_products
+    cat = {"lens-zyme": {"name": "Lens-Zyme"}, "emf": {"name": "EMF", "info_only": True}}
+    out = resolve_named_products([{"name": "Lens-Zyme", "why": "a"},
+                                  {"name": "EMF", "why": "b"}], cat)
+    assert out == [{"name": "Lens-Zyme", "why": "a", "slug": "lens-zyme"}]   # EMF dropped
+
+
+def test_is_orderable():
+    from dashboard.practitioner_portal import is_orderable
+    cat = {"lens-zyme": {"name": "Lens-Zyme"}, "emf": {"name": "EMF", "info_only": True}}
+    assert is_orderable("lens-zyme", cat) is True
+    assert is_orderable("emf", cat) is False
+    assert is_orderable("nope", cat) is False
+
+
 def test_register_coach_stays_locked(fake_supabase):
     from dashboard.practitioner_portal import register_practitioner, validate_registration
     clean, _ = validate_registration({"email": "c@x.com", "name": "C",

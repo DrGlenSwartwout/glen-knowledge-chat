@@ -143,6 +143,78 @@ def order_history(practitioner_id, *, limit=20, db_path=None) -> List[dict]:
              "credit_cents": r[3], "created_at": r[4]} for r in rows]
 
 
+# ── drop-ship dispensary (Phase 5) ────────────────────────────────────────────
+
+def _ensure_dispensary_table(cx) -> None:
+    cx.execute(
+        "CREATE TABLE IF NOT EXISTS dispensary_orders ("
+        "invoice_id TEXT PRIMARY KEY, practitioner_id TEXT NOT NULL, customer_email TEXT, "
+        "bottles INTEGER, credit_earned_cents INTEGER, created_at TEXT NOT NULL)"
+    )
+    cx.execute("CREATE INDEX IF NOT EXISTS dispensary_orders_prac "
+               "ON dispensary_orders (practitioner_id, created_at DESC)")
+
+
+def record_dispensary_order(practitioner_id, *, invoice_id, customer_email=None,
+                            bottles=0, credit_earned_cents=0, now=None, db_path=None) -> None:
+    """Persist a drop-ship sale attributed to a practitioner. Idempotent on invoice_id."""
+    if not invoice_id:
+        return
+    p = db_path or _db_path()
+    ts = (now or datetime.now(timezone.utc)).isoformat()
+    with sqlite3.connect(p) as cx:
+        _ensure_dispensary_table(cx)
+        cx.execute(
+            "INSERT INTO dispensary_orders "
+            "(invoice_id, practitioner_id, customer_email, bottles, credit_earned_cents, created_at) "
+            "VALUES (?,?,?,?,?,?) ON CONFLICT(invoice_id) DO NOTHING",
+            (str(invoice_id), str(practitioner_id), customer_email,
+             int(bottles or 0), int(credit_earned_cents or 0), ts),
+        )
+        cx.commit()
+
+
+def dispensary_order_history(practitioner_id, *, limit=20, db_path=None) -> List[dict]:
+    p = db_path or _db_path()
+    with sqlite3.connect(p) as cx:
+        _ensure_dispensary_table(cx)
+        rows = cx.execute(
+            "SELECT invoice_id, customer_email, bottles, credit_earned_cents, created_at "
+            "FROM dispensary_orders WHERE practitioner_id=? ORDER BY created_at DESC LIMIT ?",
+            (str(practitioner_id), int(limit)),
+        ).fetchall()
+    return [{"invoice_id": r[0], "customer_email": r[1], "bottles": r[2],
+             "credit_earned_cents": r[3], "created_at": r[4]} for r in rows]
+
+
+def practitioner_id_by_dispensary_code(code) -> Optional[str]:
+    if not code:
+        return None
+    from db_supabase import supabase_cursor
+    with supabase_cursor() as cur:
+        cur.execute("SELECT id FROM practitioners WHERE dispensary_code=%s LIMIT 1",
+                    (str(code).strip(),))
+        row = cur.fetchone()
+    return str(row["id"]) if row else None
+
+
+def get_or_create_dispensary_code(practitioner_id, *, _gen=None) -> str:
+    """Return the practitioner's dispensary code, generating + persisting one on first use."""
+    from db_supabase import supabase_cursor
+    pid = str(practitioner_id)
+    with supabase_cursor() as cur:
+        cur.execute("SELECT dispensary_code FROM practitioners WHERE id=%s", (pid,))
+        row = cur.fetchone()
+        if row and row.get("dispensary_code"):
+            return row["dispensary_code"]
+        code = (_gen or (lambda: secrets.token_urlsafe(6)))()
+        cur.execute("UPDATE practitioners SET dispensary_code=%s WHERE id=%s "
+                    "AND dispensary_code IS NULL", (code, pid))
+        cur.execute("SELECT dispensary_code FROM practitioners WHERE id=%s", (pid,))
+        row2 = cur.fetchone()
+        return (row2 and row2.get("dispensary_code")) or code
+
+
 # ── AI assistant cross-sell (resolve adjacent formulations to cart slugs) ──────
 
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -160,16 +232,26 @@ def _load_pairings() -> dict:
 
 
 def name_to_slug(name, catalog) -> Optional[str]:
-    """Resolve a product NAME to a products.json slug (exact or fuzzy substring).
-    Mirrors app.py:_resolve_buy_slug so the assistant can add to the cart."""
+    """Resolve a product NAME to a products.json slug (exact or fuzzy substring,
+    matching either the catalog name or its pinecone_title) so the assistant can
+    add it to the cart."""
     if not name:
         return None
     nl = name.strip().lower()
     for slug, p in (catalog or {}).items():
-        pn = (p.get("name") or "").lower()
-        if pn and (nl == pn or (len(nl) > 4 and (nl in pn or pn in nl))):
-            return slug
+        for cand in (p.get("name"), p.get("pinecone_title")):
+            pn = (cand or "").lower()
+            if pn and (nl == pn or (len(nl) > 4 and (nl in pn or pn in nl))):
+                return slug
     return None
+
+
+def is_orderable(slug, catalog=None) -> bool:
+    """A product is wholesale-orderable only if it exists and is not info_only
+    (external products like EMF/Kloud on the Centropix store are not)."""
+    cat = catalog if catalog is not None else pricing._load_catalog()
+    p = cat.get(slug)
+    return bool(p) and not p.get("info_only")
 
 
 def resolve_named_products(items, catalog=None) -> List[dict]:
@@ -180,9 +262,12 @@ def resolve_named_products(items, catalog=None) -> List[dict]:
     for it in (items or []):
         nm = (it.get("name") or "").strip()
         slug = name_to_slug(nm, cat)
-        if slug and slug not in seen:
-            seen.add(slug)
-            out.append({"name": nm, "why": (it.get("why") or "").strip(), "slug": slug})
+        if not slug or slug in seen:
+            continue
+        if (cat.get(slug) or {}).get("info_only"):
+            continue   # external/non-wholesale (e.g. EMF/Kloud on Centropix) — no Add button
+        seen.add(slug)
+        out.append({"name": nm, "why": (it.get("why") or "").strip(), "slug": slug})
     return out
 
 
@@ -405,4 +490,12 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
     }
     if include_orders:
         data["order_history"] = order_history(practitioner_id, db_path=db_path)
+        disp = dispensary_order_history(practitioner_id, db_path=db_path)
+        data["dispensary_orders"] = disp
+        data["dispensary_credit_total_cents"] = sum(
+            int(o.get("credit_earned_cents") or 0) for o in disp)
+        try:
+            data["dispensary_code"] = get_or_create_dispensary_code(practitioner_id)
+        except Exception:
+            data["dispensary_code"] = None
     return data

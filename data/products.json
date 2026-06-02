@@ -1089,9 +1089,11 @@
     },
     "emf": {
       "name": "EMF",
-      "price_cents": 3997,
+      "price_cents": 0,
       "pinecone_title": "EMF",
-      "url": "https://remedymatch.com/remedies/modalities/biocommunication/infoceuticals/213-emf"
+      "url": "https://remedymatch.com/remedies/modalities/biocommunication/infoceuticals/213-emf",
+      "info_only": true,
+      "affiliate_url": "https://remedymatch.com/remedies/modalities/biocommunication/infoceuticals/213-emf"
     },
     "nous-energy": {
       "name": "Nous Energy",
