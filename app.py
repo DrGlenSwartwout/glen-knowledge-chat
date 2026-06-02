@@ -12306,6 +12306,72 @@ def coaching_dashboard():
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
+# ───────────────────────── Knowledge Atlas ─────────────────────────
+import atlas_store
+import atlas_ask as _atlas_ask
+
+
+@app.route("/atlas")
+def atlas_page():
+    resp = send_from_directory(STATIC, "atlas.html")
+    resp.headers["Cache-Control"] = "public, max-age=300"
+    return resp
+
+
+@app.route("/atlas/data")
+def atlas_data():
+    return jsonify(atlas_store.build_graph())
+
+
+@app.route("/atlas/ask", methods=["POST"])
+def atlas_ask_route():
+    question = (request.get_json(silent=True) or {}).get("question", "")
+    concepts = atlas_store.build_graph()["concepts"]
+
+    def _answer(q, ids):
+        try:
+            vec = embed(q)
+            matches = query_all_namespaces(vec)[:6]
+            ctx = "\n".join(m.metadata.get("text", "")[:400] for m in matches)
+            labels = [c["label"] for c in concepts if c["id"] in ids]
+            lead = ("This relates to " + ", ".join(labels) + ". ") if labels else ""
+            return lead + (ctx[:600] if ctx else "See the linked concepts on the map.")
+        except Exception:
+            return "See the highlighted concepts on the map."
+
+    return jsonify(_atlas_ask.atlas_ask(question, concepts, answer_fn=_answer))
+
+
+@app.route("/admin/atlas")
+def admin_atlas_page():
+    return send_from_directory(STATIC, "admin-atlas.html")
+
+
+@app.route("/admin/atlas/pending", methods=["GET"])
+@require_console_key
+def admin_atlas_pending():
+    return ok({"concepts": atlas_store.load_pending().get("concepts", [])})
+
+
+@app.route("/admin/atlas/approve", methods=["POST"])
+@require_console_key
+def admin_atlas_approve():
+    cid = (request.get_json(silent=True) or {}).get("id")
+    try:
+        atlas_store.approve_concept(cid)
+    except KeyError:
+        return fail("unknown concept id", 404)
+    return ok({"approved": cid})
+
+
+@app.route("/admin/atlas/reject", methods=["POST"])
+@require_console_key
+def admin_atlas_reject():
+    cid = (request.get_json(silent=True) or {}).get("id")
+    atlas_store.reject_concept(cid)
+    return ok({"rejected": cid})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
