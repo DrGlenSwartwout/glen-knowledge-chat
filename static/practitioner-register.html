@@ -95,9 +95,14 @@ $('form').addEventListener('submit', function(e){
     .then(function(d){
       $('submit').disabled = false; $('submit').textContent = 'Create my account';
       if(!d.ok){ show('err', d.error || 'Something went wrong.'); return; }
-      var t = d.message || 'Check your email for a sign-in link.';
-      if(d.module_pay && d.module_pay.invoice_id){ t += ' Your first certification module invoice (#' + d.module_pay.doc_number + ') is on its way by email.'; }
-      show('ok', t);
+      show('ok', d.message || 'Check your email for a sign-in link.');
+      var mp = d.module_pay;
+      if(mp && mp.invoice_id){
+        var h = '<div class="msg ok" style="margin-top:10px"><b>Your first certification module — Invoice #'+mp.doc_number+' — $'+Number(mp.total||297).toFixed(2)+'</b><br>Pay by:';
+        (mp.pay_instructions||[]).forEach(function(p){ h += '<br>'+p.label+': <b>'+p.to+'</b>'; });
+        h += '<br><span style="font-size:13px;color:#5F6B6B">Use invoice #'+mp.doc_number+' as the memo. Wholesale ordering is already unlocked, and you can see this invoice in your portal under Order history.</span></div>';
+        document.getElementById('msg').insertAdjacentHTML('beforeend', h);
+      }
     })
     .catch(function(){ $('submit').disabled=false; $('submit').textContent='Create my account'; show('err','Network error. Please try again.'); });
 });

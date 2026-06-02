@@ -4837,8 +4837,21 @@ def api_practitioner_register():
             mo = _wc.build_module_order(
                 {"id": pid, "email": clean["email"], "name": clean["name"]},
                 "module-1", today=datetime.now(timezone.utc))
-            module_pay = {"invoice_id": mo.get("invoice_id"), "total": mo.get("total"),
-                          "doc_number": mo.get("doc_number")}
+            module_pay = {
+                "invoice_id": mo.get("invoice_id"), "total": mo.get("total"),
+                "doc_number": mo.get("doc_number"),
+                "pay_instructions": [
+                    {"label": _ALT_PAY["zelle"]["label"], "to": _ALT_PAY["zelle"]["to"]},
+                    {"label": _ALT_PAY["wise"]["label"], "to": _ALT_PAY["wise"]["to"]},
+                ],
+            }
+            try:
+                _pp.record_order(pid, invoice_id=mo.get("invoice_id"),
+                                 doc_number=mo.get("doc_number"),
+                                 total_cents=int(round((mo.get("total") or 0) * 100)),
+                                 credit_cents=mo.get("credit_redeemed_cents", 0))
+            except Exception:
+                pass
             _pp.unlock_wholesale(pid)
             unlocked = True
         except Exception as e:
