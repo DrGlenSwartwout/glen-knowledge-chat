@@ -4989,8 +4989,12 @@ _PRACTITIONER_ASSIST_SYSTEM = (
     "- When you can name the single best PRIMARY formulation for this case, name it clearly with "
     "1-2 sentences of clinical rationale, and you may name 1-2 adjacent formulations that complete "
     "the protocol. Name products by their EXACT catalog name so they can be added to the order.\n"
-    "- Never invent product names, URLs, or prices. Keep replies concise and clinical. Sign off as "
-    "Dr. Glen."
+    "- Never invent product names, URLs, prices, or product codes. Many products are NES-style "
+    "infoceuticals identified by codes (ES, EI, ED, ET, MB series, e.g. ES9, EI13, ED6); there is "
+    "no 'EN' series. Use ONLY the exact name or code that appears in the retrieved snippets. If you "
+    "are not certain of a product's exact code, describe what's needed and let the practitioner "
+    "confirm, rather than guessing a code.\n"
+    "- Keep replies concise and clinical. Sign off as Dr. Glen."
 )
 
 _ASSIST_EXTRACT_SYSTEM = (
