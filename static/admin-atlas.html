@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Atlas Approvals</title>
+<style>
+  body{background:#0a150d;color:#fdf4d8;font-family:system-ui,sans-serif;margin:0;padding:24px}
+  h1{color:#d4a843} .c{border:1px solid #21472d;border-radius:10px;padding:14px;margin:10px 0;background:#111f16}
+  .lbl{color:#d4a843;font-weight:600} button{cursor:pointer;border:0;border-radius:6px;padding:6px 12px;margin-right:8px}
+  .ok{background:#3d8a52;color:#0a150d} .no{background:#e08a8a;color:#0a150d} a{color:#e2ba5c}
+</style></head><body>
+<h1>◼ Atlas — pending approvals</h1>
+<p>Append <code>?key=YOUR_CONSOLE_KEY</code> to this URL.</p>
+<div id="list">Loading…</div>
+<script>
+const key = new URLSearchParams(location.search).get("key") || "";
+async function load(){
+  const r = await fetch("/admin/atlas/pending?key="+encodeURIComponent(key));
+  const j = await r.json();
+  const items = (j.data && j.data.concepts) || j.concepts || [];
+  document.getElementById("list").innerHTML = items.length ? "" : "<p>Nothing pending.</p>";
+  for(const c of items){
+    const el = document.createElement("div"); el.className="c";
+    el.innerHTML = `<div class="lbl">${c.label}</div><div>${c.summary||""}</div>
+      <div>cluster: ${c.cluster} · neighbors: ${(c.neighbors||[]).join(", ")||"—"}</div>
+      <div>links: ${(c.links||[]).map(l=>`<a href="${l.url}" target="_blank">${l.type}</a>`).join(" ")||"—"}</div>
+      <div style="margin-top:8px">
+        <button class="ok" data-id="${c.id}" data-act="approve">Approve</button>
+        <button class="no" data-id="${c.id}" data-act="reject">Reject</button></div>`;
+    document.getElementById("list").appendChild(el);
+  }
+}
+document.addEventListener("click", async e=>{
+  const b = e.target.closest("button[data-act]"); if(!b) return;
+  await fetch(`/admin/atlas/${b.dataset.act}?key=${encodeURIComponent(key)}`,
+    {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:b.dataset.id})});
+  load();
+});
+load();
+</script></body></html>
