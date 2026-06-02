@@ -561,6 +561,22 @@
   :root[data-theme="light"] .score.s2  { color: #b04a4a; }  /* was #d49a9a */
   :root[data-theme="light"] .score.s1  { color: #6f55a0; }  /* was #b09bc9 */
   :root[data-theme="light"] .freq-meta { color: #4a5560; opacity: 1; }  /* was --metal #d6dde6 @ .75 */
+
+  /* Light-mode popups: the hover popups use a hardcoded dark background, so in
+     light mode their (now-dark) body text sat on a dark card. Flip the card to
+     light and darken the element-tinted meta labels that read too pale on white.
+     Scoped to .q-popup so the on-cell tints elsewhere are untouched. */
+  :root[data-theme="light"] .q-popup {
+    background: #FFFFFF;
+    border-color: var(--hair);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.18);
+  }
+  :root[data-theme="light"] .harmonics .q-popup-meta,
+  :root[data-theme="light"] .freq-section .q-popup-meta { color: #4a5560; }  /* metal */
+  :root[data-theme="light"] .qe-earth .q-popup-meta { color: #a8791f; }
+  :root[data-theme="light"] .qe-water .q-popup-meta { color: #3a6ea5; }
+  :root[data-theme="light"] .qe-fire  .q-popup-meta { color: #b04a4a; }
+  :root[data-theme="light"] .qe-wood  .q-popup-meta { color: #2f8a4e; }
 </style>
   <script src="/static/theme-toggle.js"></script>
 </head>
