@@ -4993,6 +4993,15 @@ _PRACTITIONER_ASSIST_SYSTEM = (
     "Dr. Glen."
 )
 
+_ASSIST_EXTRACT_SYSTEM = (
+    "You read a clinical formulation recommendation written for a practitioner. Return JSON "
+    "{\"products\": [{\"name\": \"<exact product/formulation name as written>\", "
+    "\"why\": \"<short reason it was recommended>\"}]} listing EVERY specific product or "
+    "formulation the assistant told the practitioner they could add to their order (primary and "
+    "adjuncts). Use the exact product names. If none were named yet, return {\"products\": []}. "
+    "Output ONLY the JSON, no prose, no code fences."
+)
+
 
 @app.route("/api/practitioner/assist", methods=["POST", "OPTIONS"])
 def api_practitioner_assist():
@@ -5034,27 +5043,22 @@ def api_practitioner_assist():
             yield sse({"error": f"Claude error: {e}"}); return
         answer = "".join(full)
 
-        match_evt = None
+        products = []
         try:
             convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-3:]) + f"\nassistant: {answer}"
-            mx = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=200,
-                                     system=_MATCH_EXTRACT_SYSTEM,
+            mx = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=400,
+                                     system=_ASSIST_EXTRACT_SYSTEM,
                                      messages=[{"role": "user", "content": convo[:4000]}])
             txt = mx.content[0].text.strip()
             if txt.startswith("```"):
                 txt = txt.split("```", 2)[1]
                 if txt.startswith("json\n"): txt = txt[5:]
             obj = json.loads(txt)
-            if obj.get("matched") and obj.get("name"):
-                slug = _resolve_buy_slug(obj["name"])
-                if slug:
-                    match_evt = {"name": obj["name"], "kind": obj.get("kind", ""),
-                                 "why": obj.get("why", ""), "slug": slug,
-                                 "also_consider": _pp.assist_cross_sell(slug)}
+            products = _pp.resolve_named_products(obj.get("products") or [])
         except Exception as e:
             print(f"[assist] extract: {e!r}", flush=True)
-        if match_evt:
-            yield sse({"match": match_evt})
+        if products:
+            yield sse({"products": products})
         yield sse({"done": True, "sources": sources_list, "chunks_retrieved": len(matches)})
 
     return Response(stream_with_context(generate()), content_type="text/event-stream",

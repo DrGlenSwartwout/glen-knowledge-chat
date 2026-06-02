@@ -4,35 +4,41 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wholesale Portal · Remedy Match</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#FBF8F3;--ink:#1E2A2A;--muted:#5F6B6B;--accent:#2D7A6A;--accent-deep:#1F5A4D;--soft:#E8DFD3;--gold:#B08A3E;--panel:#fff}
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --radius:14px;
+    --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.6}
-  .wrap{max-width:760px;margin:0 auto;padding:34px 20px}
-  h1{font-weight:600;font-size:24px;margin:0}
-  .muted{color:var(--muted)}
-  .cards{display:flex;gap:12px;margin:18px 0}
-  .stat{flex:1;background:var(--panel);border:1px solid var(--soft);border-radius:12px;padding:14px}
-  .stat b{display:block;font-size:22px}
-  .stat span{font-size:12px;color:var(--muted)}
-  .panel{background:var(--panel);border:1px solid var(--soft);border-radius:14px;padding:20px;margin-top:16px}
-  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
-  .badge.ok{background:#E1EEEA;color:var(--accent-deep)}
-  .badge.no{background:#F4ECD7;color:var(--gold)}
-  .row{display:flex;gap:8px;align-items:center}
-  input{padding:9px 10px;border:1px solid var(--soft);border-radius:8px;font-size:14px;font-family:inherit}
-  input.slug{flex:1}
-  input.qty{width:80px}
-  button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
-  button.ghost{background:transparent;color:var(--accent-deep);border:1px solid var(--soft)}
-  button:disabled{opacity:.55;cursor:default}
-  table{width:100%;border-collapse:collapse;margin-top:12px}
-  td,th{text-align:left;padding:8px 6px;border-bottom:1px solid var(--soft);font-size:14px}
-  th{color:var(--muted);font-weight:500}
-  .total{font-size:18px;font-weight:600;margin-top:12px}
-  .warn{color:var(--gold);font-size:13px;margin-top:8px}
-  .notice{background:#F4ECD7;color:#6b531f;border-radius:10px;padding:12px;font-size:14px;margin-top:10px}
-  #msg{margin-top:12px;font-size:14px}
+  body{ margin:0; background:var(--bg); color:var(--cream); font-family:var(--font); line-height:1.6; }
+  .wrap{ max-width:760px; margin:0 auto; padding:34px 20px; }
+  h1,h2{ font-family:var(--heading); font-weight:700; margin:0; }
+  h1{ font-size:24px; } h2{ font-size:17px; }
+  .muted{ color:var(--muted); }
+  .cards{ display:flex; gap:12px; margin:18px 0; }
+  .stat{ flex:1; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px; }
+  .stat b{ display:block; font-size:22px; font-family:var(--heading); color:var(--gold); }
+  .stat span{ font-size:12px; color:var(--muted); }
+  .panel{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-top:16px; }
+  .badge{ display:inline-block; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; }
+  .badge.ok{ background:rgba(61,138,82,0.18); color:#8fd6a3; }
+  .badge.no{ background:rgba(212,168,67,0.15); color:var(--gold); }
+  .row{ display:flex; gap:8px; align-items:center; }
+  input{ padding:9px 10px; border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; background:var(--surface-2); color:var(--cream); }
+  input::placeholder{ color:#6f7d6f; }
+  input.slug{ flex:1; } input.qty{ width:80px; }
+  button{ background:var(--green); color:#fff; border:0; border-radius:8px; padding:9px 14px; font-weight:600; cursor:pointer; font-family:inherit; }
+  button.ghost{ background:transparent; color:var(--gold); border:1px solid var(--border); }
+  button:disabled{ opacity:.5; cursor:default; }
+  table{ width:100%; border-collapse:collapse; margin-top:12px; }
+  td,th{ text-align:left; padding:8px 6px; border-bottom:1px solid var(--border); font-size:14px; }
+  th{ color:var(--muted); font-weight:600; }
+  .total{ font-size:18px; font-weight:700; font-family:var(--heading); margin-top:12px; color:var(--gold); }
+  .warn{ color:var(--gold); font-size:13px; margin-top:8px; }
+  .notice{ background:var(--surface-2); border:1px solid var(--border); color:var(--gold); border-radius:10px; padding:12px; font-size:14px; margin-top:10px; }
+  #msg{ margin-top:12px; font-size:14px; color:#8fd6a3; }
 </style>
 </head>
 <body>
@@ -45,8 +51,8 @@
   </div>
 
   <div class="panel" id="assist-panel" style="display:none">
-    <h2 style="margin:0 0 4px;font-size:17px">Formulation assistant</h2>
-    <div class="muted" style="font-size:13px;margin-bottom:10px">Describe a patient or condition and I'll suggest formulations you can add to your order.</div>
+    <h2>Formulation assistant</h2>
+    <div class="muted" style="font-size:13px;margin:4px 0 10px">Describe a patient or condition and I'll suggest formulations you can add to your order.</div>
     <div id="assist-log" style="max-height:300px;overflow:auto;margin-bottom:10px"></div>
     <div class="row">
       <input class="slug" id="assist-q" placeholder="e.g. elevated IOP in a glaucoma patient">
@@ -55,8 +61,8 @@
   </div>
 
   <div class="panel">
-    <h2 style="margin:0 0 4px;font-size:17px">Build your order</h2>
-    <div class="muted" style="font-size:13px;margin-bottom:12px">Bigger orders and completed certification lower your per-bottle price. Credit covers up to half of a product order.</div>
+    <h2>Build your order</h2>
+    <div class="muted" style="font-size:13px;margin:4px 0 12px">Bigger orders and completed certification lower your per-bottle price. Credit covers up to half of a product order.</div>
     <div id="locked" class="notice" style="display:none">Finish your first certification module to unlock ordering. Check your email for the module invoice.</div>
     <div class="row">
       <input class="slug" id="slug" placeholder="Product slug (e.g. bone-builder)">
@@ -71,7 +77,7 @@
   </div>
 
   <div class="panel" id="history-panel" style="display:none">
-    <h2 style="margin:0 0 8px;font-size:17px">Order history</h2>
+    <h2>Order history</h2>
     <table id="history"><thead><tr><th>Invoice</th><th>Date</th><th>Credit used</th><th>Total</th></tr></thead><tbody></tbody></table>
   </div>
 </div>
@@ -79,6 +85,7 @@
 var TOKEN = new URLSearchParams(location.search).get('token') || '';
 var $ = function(id){ return document.getElementById(id); };
 var money = function(c){ return '$' + (Number(c||0)/100).toFixed(2); };
+function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 
 function render(d){
   $('who').textContent = (d.name || '') + (d.practice_name ? ' · ' + d.practice_name : '');
@@ -142,32 +149,30 @@ $('checkout').addEventListener('click', function(){
     })
     .catch(function(){ $('msg').textContent='Network error.'; $('checkout').disabled=false; });
 });
+
 // ── formulation assistant ──
 var assistHistory = [];
-function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function addToCart(slug, qty){
   fetch('/api/practitioner/cart', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:TOKEN, slug:slug, qty:qty})})
     .then(function(r){ return r.json(); })
     .then(function(d){ if(d.ok){ render(d); $('msg').textContent = 'Added '+slug+' to your order.'; } });
 }
-function renderMatch(m, log){
+function renderProducts(list, log){
+  if(!list || !list.length) return;
   var c = document.createElement('div'); c.className='panel'; c.style.margin='8px 0'; c.style.padding='12px';
-  var h = '<b>'+escapeHtml(m.name)+'</b>';
-  if(m.why) h += '<div class="muted" style="font-size:13px">'+escapeHtml(m.why)+'</div>';
-  h += '<div class="row" style="margin-top:8px"><input class="qty" type="number" min="1" value="1" id="mq-'+m.slug+'"><button class="addbtn" data-slug="'+m.slug+'">Add to order</button></div>';
-  if(m.also_consider && m.also_consider.length){
-    h += '<div class="muted" style="margin-top:8px;font-size:13px">Often paired with:</div><div>';
-    m.also_consider.forEach(function(x){ h += '<button class="ghost addchip" data-slug="'+x.slug+'" style="margin:4px 4px 0 0;font-size:13px">+ '+escapeHtml(x.name)+'</button>'; });
-    h += '</div>';
-  }
+  var h = '<div class="muted" style="font-size:13px;margin-bottom:4px">Add to your order:</div>';
+  list.forEach(function(m){
+    h += '<div style="margin:10px 0 0;padding-top:10px;border-top:1px solid var(--border)"><b>'+escapeHtml(m.name)+'</b>';
+    if(m.why) h += '<div class="muted" style="font-size:13px">'+escapeHtml(m.why)+'</div>';
+    h += '<div class="row" style="margin-top:6px"><input class="qty" type="number" min="1" value="1" id="mq-'+m.slug+'"><button class="addbtn" data-slug="'+m.slug+'">Add to order</button></div></div>';
+  });
   c.innerHTML = h; log.appendChild(c);
-  c.querySelector('.addbtn').addEventListener('click', function(){ var s=this.getAttribute('data-slug'); addToCart(s, parseInt(document.getElementById('mq-'+s).value,10)||1); });
-  c.querySelectorAll('.addchip').forEach(function(b){ b.addEventListener('click', function(){ addToCart(this.getAttribute('data-slug'), 1); }); });
+  c.querySelectorAll('.addbtn').forEach(function(b){ b.addEventListener('click', function(){ var s=this.getAttribute('data-slug'); addToCart(s, parseInt(document.getElementById('mq-'+s).value,10)||1); }); });
 }
 function streamAssist(query){
   var log = $('assist-log');
-  var u = document.createElement('div'); u.style.margin='6px 0'; u.innerHTML='<b>You:</b> '+escapeHtml(query); log.appendChild(u);
-  var a = document.createElement('div'); a.style.margin='6px 0'; a.innerHTML='<b>Dr. Glen:</b> <span class="atext"></span>'; log.appendChild(a);
+  var u = document.createElement('div'); u.style.margin='6px 0'; u.innerHTML='<b style="color:var(--gold)">You:</b> '+escapeHtml(query); log.appendChild(u);
+  var a = document.createElement('div'); a.style.margin='6px 0'; a.innerHTML='<b style="color:var(--green)">Dr. Glen:</b> <span class="atext"></span>'; log.appendChild(a);
   var atext = a.querySelector('.atext'); log.scrollTop = log.scrollHeight;
   assistHistory.push({role:'user', content:query});
   var acc = '';
@@ -182,7 +187,7 @@ function streamAssist(query){
           var line = p.replace(/^data: /,'').trim(); if(!line) return;
           var ev; try{ ev = JSON.parse(line); } catch(e){ return; }
           if(ev.token){ acc += ev.token; atext.textContent = acc; }
-          else if(ev.match){ renderMatch(ev.match, log); }
+          else if(ev.products){ renderProducts(ev.products, log); }
           else if(ev.error){ atext.textContent += ' ['+ev.error+']'; }
         });
         log.scrollTop = log.scrollHeight;

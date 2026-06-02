@@ -172,6 +172,20 @@ def name_to_slug(name, catalog) -> Optional[str]:
     return None
 
 
+def resolve_named_products(items, catalog=None) -> List[dict]:
+    """From [{name, why}] (products the assistant named), keep those resolvable to a
+    catalog slug, deduped. Returns [{name, why, slug}] so each gets an Add button."""
+    cat = catalog if catalog is not None else pricing._load_catalog()
+    out, seen = [], set()
+    for it in (items or []):
+        nm = (it.get("name") or "").strip()
+        slug = name_to_slug(nm, cat)
+        if slug and slug not in seen:
+            seen.add(slug)
+            out.append({"name": nm, "why": (it.get("why") or "").strip(), "slug": slug})
+    return out
+
+
 def assist_cross_sell(slug, *, catalog=None, pairings=None) -> List[dict]:
     """Adjacent in-catalog formulations for a matched slug, from upsell-pairings.
     Returns [{name, slug}] for resolvable, in-catalog complements (others dropped)."""
