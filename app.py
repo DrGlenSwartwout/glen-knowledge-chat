@@ -12318,6 +12318,14 @@ def atlas_page():
     return resp
 
 
+@app.route("/atlas.js")
+def atlas_js():
+    resp = send_from_directory(STATIC, "atlas.js")
+    resp.headers["Content-Type"] = "application/javascript"
+    resp.headers["Cache-Control"] = "public, max-age=300"
+    return resp
+
+
 @app.route("/atlas/data")
 def atlas_data():
     return jsonify(atlas_store.build_graph())
