@@ -12326,6 +12326,14 @@ def atlas_js():
     return resp
 
 
+@app.route("/atlas.css")
+def atlas_css():
+    resp = send_from_directory(STATIC, "atlas.css")
+    resp.headers["Content-Type"] = "text/css"
+    resp.headers["Cache-Control"] = "public, max-age=300"
+    return resp
+
+
 @app.route("/atlas/data")
 def atlas_data():
     return jsonify(atlas_store.build_graph())
@@ -12365,6 +12373,8 @@ def admin_atlas_pending():
 @require_console_key
 def admin_atlas_approve():
     cid = (request.get_json(silent=True) or {}).get("id")
+    if not cid:
+        return fail("id required", 400)
     try:
         atlas_store.approve_concept(cid)
     except KeyError:
@@ -12376,6 +12386,8 @@ def admin_atlas_approve():
 @require_console_key
 def admin_atlas_reject():
     cid = (request.get_json(silent=True) or {}).get("id")
+    if not cid:
+        return fail("id required", 400)
     atlas_store.reject_concept(cid)
     return ok({"rejected": cid})
 

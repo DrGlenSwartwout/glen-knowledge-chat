@@ -70,7 +70,7 @@ def _match_videos(concept, videos, embed_fn):
 
 def enrich(seed_path=SEED_PATH, out_path=PENDING_PATH):  # pragma: no cover (needs APIs)
     """Manual entrypoint: embed seeds, compute coords/neighbors/clusters, match links."""
-    from app import embed, _idx  # reuse the app's ada-002 embed + Pinecone index
+    from app import embed  # reuse the app's ada-002 embed
     seeds = json.loads(Path(seed_path).read_text(encoding="utf-8"))["concepts"]
     videos = json.loads(Path(VIDEOS_PATH).read_text(encoding="utf-8")).get("videos", [])
     vecs = [embed(s["label"] + " " + s["summary"]) for s in seeds]

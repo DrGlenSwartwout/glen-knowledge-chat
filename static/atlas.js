@@ -1,7 +1,9 @@
-/* Knowledge Atlas module. Mount:
+/* Knowledge Atlas module — embeddable, self-styling (loads /atlas.css automatically).
+ * Mount:
  *   <div id="rm-atlas"></div>
  *   <script src="/atlas.js" data-target="#rm-atlas" data-mode="compact"></script>
- * Or full page: <script src="/atlas.js" data-target="#root" data-mode="full"></script>
+ * Full page:
+ *   <script src="/atlas.js" data-target="#root" data-mode="full"></script>
  */
 (function () {
   "use strict";
@@ -9,6 +11,17 @@
   var origin = script.src.replace(/\/atlas\.js.*$/, "");
   var mountSel = script.getAttribute("data-target") || "#rm-atlas";
   var startMode = script.getAttribute("data-mode") || "compact";
+
+  function ensureStyles() {
+    var href = origin + "/atlas.css";
+    if (document.querySelector('link[data-rm-atlas-css]')) return;
+    var link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    link.setAttribute("data-rm-atlas-css", "1");
+    document.head.appendChild(link);
+  }
+  ensureStyles();
 
   function el(tag, cls, html) {
     var e = document.createElement(tag);
