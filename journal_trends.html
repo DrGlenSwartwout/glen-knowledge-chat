@@ -284,6 +284,39 @@
     font-size: 13px;
   }
   .nav-link:hover { text-decoration: underline; }
+
+  /* ─── Light-mode overrides ────────────────────────────────────────────────
+     Dark mode is the source of truth and is left untouched. The shared
+     /static/theme-toggle.js handles the common structural vars
+     (--bg --panel --panel-2 --ink --dim --hair --accent etc.). Below we only
+     remap PAGE-SPECIFIC semantic vars + scoped literal overrides that would
+     otherwise break (dark backgrounds carrying --ink text, or pale fills that
+     vanish on a light surface). Distinct data-viz hues (wood/fire/earth/water,
+     jing/qi/shen, ventral/sympathetic/dorsal) read fine on white and are left
+     as-is. */
+  :root[data-theme="light"] {
+    /* text-primary semantic colors → darker for contrast on white */
+    --warn: #A85A2E;   /* orange — drift icons, badges, cross-phase text */
+    --bad:  #B23A1E;   /* red    — urgent drift icon / border */
+    --good: #2D7A6A;   /* green  — in-phase stat text */
+    /* metal element is a near-white gray (#d6dde6) — invisible as a fill on a
+       light surface; mid-slate keeps the cell/pill/track-fill visible while
+       its dark pill text (#0f1115) stays readable */
+    --metal: #7E8794;
+  }
+  /* Heatmap "no entry" / empty cell was a near-background dark (#1f2330) →
+     dark blot on white; lighten to a faint gray */
+  :root[data-theme="light"] .heatmap-cell { background: #e6e6ea; }
+  /* Legend swatch for "no entry" mirrors the empty cell (inline style → !important) */
+  :root[data-theme="light"] .legend-item .swatch[style*="1f2330"] { background: #e6e6ea !important; }
+  /* Tooltip + drift items carry --ink text which flips dark in light mode —
+     their dark backgrounds must become light or the text is unreadable */
+  :root[data-theme="light"] .heatmap-tooltip { background: #ffffff; }
+  :root[data-theme="light"] .drift-item { background: #eef1f4; }
+  /* Progress tracks were dark (#232733); lighten so the empty portion isn't a
+     dark blot behind the colored fill */
+  :root[data-theme="light"] .mer-track { background: #e6e6ea; }
+  :root[data-theme="light"] .emo-track { background: #e6e6ea; }
 </style>
   <script src="/static/theme-toggle.js"></script>
 </head>
