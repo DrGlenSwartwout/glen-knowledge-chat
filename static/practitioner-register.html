@@ -4,28 +4,34 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Join the Practitioner Wholesale Portal · Remedy Match</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#FBF8F3;--ink:#1E2A2A;--muted:#5F6B6B;--accent:#2D7A6A;--accent-deep:#1F5A4D;--soft:#E8DFD3;--panel:#fff}
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --radius:14px;
+    --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.6}
-  .wrap{max-width:620px;margin:0 auto;padding:40px 20px}
-  h1{font-weight:600;font-size:28px;margin:0 0 6px}
-  .sub{color:var(--muted);margin:0 0 28px}
-  .panel{background:var(--panel);border:1px solid var(--soft);border-radius:14px;padding:24px;box-shadow:0 12px 40px -22px rgba(30,42,42,.25)}
-  label{display:block;font-weight:500;font-size:14px;margin:14px 0 5px}
-  input[type=text],input[type=email],input[type=tel]{width:100%;padding:11px 12px;border:1px solid var(--soft);border-radius:9px;font-size:15px;font-family:inherit}
-  .roles{display:flex;gap:10px;margin-top:6px}
-  .role{flex:1;border:1px solid var(--soft);border-radius:10px;padding:12px;cursor:pointer}
-  .role.sel{border-color:var(--accent);background:#E1EEEA}
-  .role b{display:block}.role span{font-size:13px;color:var(--muted)}
-  .hide{display:none}
-  button{margin-top:22px;width:100%;background:var(--accent);color:#fff;border:0;border-radius:10px;padding:13px;font-size:16px;font-weight:600;cursor:pointer}
-  button:disabled{opacity:.6;cursor:default}
-  .msg{margin-top:16px;padding:12px;border-radius:9px;font-size:14px}
-  .msg.err{background:#FBE9E7;color:#8a2c20}
-  .msg.ok{background:#E1EEEA;color:var(--accent-deep)}
-  .foot{margin-top:18px;font-size:14px;color:var(--muted)}
-  a{color:var(--accent-deep)}
+  body{ margin:0; background:var(--bg); color:var(--cream); font-family:var(--font); line-height:1.6; }
+  .wrap{ max-width:620px; margin:0 auto; padding:40px 20px; }
+  h1{ font-family:var(--heading); font-weight:700; font-size:28px; margin:0 0 6px; }
+  .sub{ color:var(--muted); margin:0 0 28px; }
+  .panel{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; }
+  label{ display:block; font-weight:600; font-size:14px; margin:14px 0 5px; }
+  input[type=text],input[type=email],input[type=tel]{ width:100%; padding:11px 12px; border:1px solid var(--border); border-radius:9px; font-size:15px; font-family:inherit; background:var(--surface-2); color:var(--cream); }
+  input::placeholder{ color:#6f7d6f; }
+  .roles{ display:flex; gap:10px; margin-top:6px; }
+  .role{ flex:1; border:1px solid var(--border); border-radius:10px; padding:12px; cursor:pointer; background:var(--surface-2); }
+  .role.sel{ border-color:var(--gold); background:rgba(212,168,67,0.08); }
+  .role b{ display:block; } .role span{ font-size:13px; color:var(--muted); }
+  .hide{ display:none; }
+  button{ margin-top:22px; width:100%; background:var(--green); color:#fff; border:0; border-radius:10px; padding:13px; font-size:16px; font-weight:600; cursor:pointer; font-family:inherit; }
+  button:disabled{ opacity:.6; cursor:default; }
+  .msg{ margin-top:16px; padding:12px; border-radius:9px; font-size:14px; }
+  .msg.err{ background:rgba(180,60,40,0.15); color:#e8a08f; }
+  .msg.ok{ background:rgba(61,138,82,0.15); color:#8fd6a3; }
+  .foot{ margin-top:18px; font-size:14px; color:var(--muted); }
+  a{ color:var(--gold); }
 </style>
 </head>
 <body>
@@ -100,8 +106,8 @@ $('form').addEventListener('submit', function(e){
       if(mp && mp.invoice_id){
         var h = '<div class="msg ok" style="margin-top:10px"><b>Your first certification module — Invoice #'+mp.doc_number+' — $'+Number(mp.total||297).toFixed(2)+'</b><br>Pay by:';
         (mp.pay_instructions||[]).forEach(function(p){ h += '<br>'+p.label+': <b>'+p.to+'</b>'; });
-        h += '<br><span style="font-size:13px;color:#5F6B6B">Use invoice #'+mp.doc_number+' as the memo. Wholesale ordering is already unlocked, and you can see this invoice in your portal under Order history.</span></div>';
-        document.getElementById('msg').insertAdjacentHTML('beforeend', h);
+        h += '<br><span style="font-size:13px;color:var(--muted)">Use invoice #'+mp.doc_number+' as the memo. Wholesale ordering is already unlocked, and you can see this invoice in your portal under Order history.</span></div>';
+        $('msg').insertAdjacentHTML('beforeend', h);
       }
     })
     .catch(function(){ $('submit').disabled=false; $('submit').textContent='Create my account'; show('err','Network error. Please try again.'); });

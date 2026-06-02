@@ -161,6 +161,20 @@ def test_assist_cross_sell_resolves_in_catalog_only():
     assert assist_cross_sell("unknown-slug", catalog=cat, pairings=pairings) == []
 
 
+def test_resolve_named_products_keeps_in_catalog_dedup():
+    from dashboard.practitioner_portal import resolve_named_products
+    cat = {"lens-zyme": {"name": "Lens-Zyme"},
+           "crystalline-clarity": {"name": "Crystalline Clarity"}}
+    items = [{"name": "Lens-Zyme", "why": "a"},
+             {"name": "Crystalline Clarity", "why": "b"},
+             {"name": "Made Up Tool", "why": "c"},      # not in catalog -> dropped
+             {"name": "Lens-Zyme", "why": "dup"}]        # dup slug -> dropped
+    out = resolve_named_products(items, cat)
+    assert out == [{"name": "Lens-Zyme", "why": "a", "slug": "lens-zyme"},
+                   {"name": "Crystalline Clarity", "why": "b", "slug": "crystalline-clarity"}]
+    assert resolve_named_products([], cat) == []
+
+
 def test_register_coach_stays_locked(fake_supabase):
     from dashboard.practitioner_portal import register_practitioner, validate_registration
     clean, _ = validate_registration({"email": "c@x.com", "name": "C",
