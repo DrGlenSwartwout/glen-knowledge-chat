@@ -24,6 +24,7 @@ from typing import Callable, List, Optional
 # earns the $20/bottle spread between the ~$50 small-order cost and the $70 retail.
 EARN_RATE_ORDER = 0.0                     # wholesale orders earn nothing (dial kept)
 DROPSHIP_CREDIT_PER_BOTTLE_CENTS = 2000   # $20/bottle credit on drop-ship sales
+EARN_FEE_FREE_PCT = 0.03                   # 3% credit when an order is paid fee-free (Zelle/Wise)
 MODULE_TUITION_CENTS = 29700              # $297
 # Products carry high fixed cost, so credit covers at most half a product order.
 # Training has minimal marginal cost, so credit can cover a whole module. Credit is
@@ -182,6 +183,18 @@ def earn_dropship(practitioner_id, bottles, *, qbo_invoice_id=None, ref=None) ->
     amt = earn_amount_dropship_cents(bottles)
     return _apply(practitioner_id, "earn_dropship", lambda _bal: amt,
                   qbo_invoice_id=qbo_invoice_id, note=ref)
+
+
+def earn_amount_fee_free_cents(order_total_cents: int) -> int:
+    return math.floor(EARN_FEE_FREE_PCT * max(0, int(order_total_cents)))
+
+
+def earn_fee_free(practitioner_id, order_total_cents, qbo_invoice_id, *, note=None) -> int:
+    """Credit 3% of a wholesale order paid by a fee-free method (Zelle/Wise).
+    Idempotent per invoice."""
+    amt = earn_amount_fee_free_cents(order_total_cents)
+    return _apply(practitioner_id, "earn_fee_free", lambda _bal: amt,
+                  qbo_invoice_id=qbo_invoice_id, note=note)
 
 
 def redeem_for_order(practitioner_id, order_total_cents, qbo_invoice_id) -> int:

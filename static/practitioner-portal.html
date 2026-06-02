@@ -78,6 +78,12 @@
     <table id="cart"><thead><tr><th>Product</th><th>Qty</th><th></th></tr></thead><tbody></tbody></table>
     <div id="quote"></div>
     <div class="total" id="total"></div>
+    <div id="pay-methods" style="margin-top:12px">
+      <div class="muted" style="font-size:13px;margin-bottom:6px">Payment method</div>
+      <label style="margin-right:14px"><input type="radio" name="pm" value="zelle" checked> Zelle (US) <span class="muted" style="font-size:12px">— earns 3% credit</span></label>
+      <label style="margin-right:14px"><input type="radio" name="pm" value="wise"> Wise (international) <span class="muted" style="font-size:12px">— earns 3% credit</span></label>
+      <label id="pm-card" style="display:none"><input type="radio" name="pm" value="card"> Card</label>
+    </div>
     <button id="checkout" style="margin-top:14px">Place wholesale order</button>
     <div id="msg"></div>
   </div>
@@ -140,6 +146,7 @@ function render(d){
   $('locked').style.display = unlocked ? 'none' : 'block';
   $('add').disabled = !unlocked; $('checkout').disabled = !unlocked;
   $('assist-panel').style.display = unlocked ? 'block' : 'none';
+  $('pm-card').style.display = d.stripe_active ? 'inline-block' : 'none';
   var tb = $('cart').querySelector('tbody'); tb.innerHTML = '';
   (d.cart||[]).forEach(function(it){
     var tr = document.createElement('tr');
@@ -192,19 +199,25 @@ $('add').addEventListener('click', function(){
   if(!slug) return; setLine(slug, qty); $('slug').value='';
 });
 $('checkout').addEventListener('click', function(){
+  var method = (document.querySelector('input[name=pm]:checked')||{}).value || 'zelle';
   $('checkout').disabled = true; $('msg').textContent = 'Placing your order…';
-  fetch('/api/practitioner/checkout', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:TOKEN})})
+  fetch('/api/practitioner/checkout', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:TOKEN, method:method})})
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(d.ok){
-        $('msg').innerHTML = 'Order placed. Invoice #' + d.doc_number + ' for ' + money((d.total||0)*100) +
-          (d.credit_redeemed_cents ? ' (credit applied: ' + money(d.credit_redeemed_cents) + ')' : '') +
-          '. Check your email to pay.';
+        if(d.stripe_url){ window.location.href = d.stripe_url; return; }
+        var m = 'Order placed. Invoice #' + d.doc_number + ' for ' + money((d.total||0)*100);
+        if(d.credit_redeemed_cents) m += ' (credit applied: ' + money(d.credit_redeemed_cents) + ')';
+        if(d.fee_free_credit_cents) m += '. You earned ' + money(d.fee_free_credit_cents) + ' fee-free credit';
+        m += '.';
+        if(d.pay_instructions && d.pay_instructions.to) m += ' Pay by ' + d.pay_instructions.label + ': ' + d.pay_instructions.to + ' (memo: invoice #' + d.doc_number + ').';
+        $('msg').textContent = m;
         load();
       } else { $('msg').textContent = d.error || 'Checkout failed.'; $('checkout').disabled=false; }
     })
     .catch(function(){ $('msg').textContent='Network error.'; $('checkout').disabled=false; });
 });
+(function(){ if(new URLSearchParams(location.search).get('paid')==='1'){ $('msg').textContent='Payment received — thank you. Your invoice is marked paid.'; } })();
 
 // ── formulation assistant ──
 var assistHistory = [];

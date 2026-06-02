@@ -128,6 +128,22 @@ def test_build_order_applies_credit_capped_at_half(env):
                for r in env["store"]["ledger"])
 
 
+def test_build_order_zelle_earns_3pct_fee_free(env):
+    out = env["wc"].build_order([{"slug": "x", "qty": 40}], env["prac"], method="zelle",
+                                db_path=env["db"], catalog=env["catalog"])
+    assert out["ok"] is True
+    # certified 40 bottles = $1000 charged (no credit yet) -> 3% = $30 credit
+    assert out["fee_free_credit_cents"] == 3000
+    assert env["wallet"].get_balance_cents(PID) == 3000
+
+
+def test_build_order_card_no_fee_free(env):
+    out = env["wc"].build_order([{"slug": "x", "qty": 40}], env["prac"], method="card",
+                                db_path=env["db"], catalog=env["catalog"])
+    assert out["fee_free_credit_cents"] == 0
+    assert env["wallet"].get_balance_cents(PID) == 0
+
+
 def test_build_order_blocks_when_margin_breached(env):
     cat = {"x": {"name": "X", "bottle_type": "dropper", "price_cents": 7000,
                  "qbo_item_id": "55", "cogs_cents": 2000, "fulfillment_cents": 800}}

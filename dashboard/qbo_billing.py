@@ -192,6 +192,29 @@ def apply_invoice_discount(invoice_id, discount_cents):
     return _post("/invoice", body).get("Invoice")
 
 
+def record_payment(customer_id, amount_cents, invoice_id):
+    """Record a QBO Payment applied to an invoice (marks it paid) — used when Stripe
+    confirms a card payment. Idempotent: skips when the invoice balance is already
+    zero (so a re-hit of the return URL won't double-pay)."""
+    inv = get_invoice(invoice_id)
+    if not inv:
+        raise RuntimeError(f"invoice {invoice_id} not found")
+    try:
+        balance = float(inv.get("Balance", inv.get("TotalAmt", 0)) or 0)
+    except Exception:
+        balance = 0.0
+    if balance <= 0:
+        return inv   # already paid
+    amt = round(int(amount_cents) / 100.0, 2)
+    body = {
+        "CustomerRef": {"value": str(customer_id)},
+        "TotalAmt": amt,
+        "Line": [{"Amount": amt,
+                  "LinkedTxn": [{"TxnId": str(invoice_id), "TxnType": "Invoice"}]}],
+    }
+    return _post("/payment", body).get("Payment")
+
+
 def get_invoice_pay_link(invoice):
     """Shareable hosted-payment link. Present (InvoiceLink) only when the invoice
     was created with online payment enabled AND QuickBooks Payments is active."""

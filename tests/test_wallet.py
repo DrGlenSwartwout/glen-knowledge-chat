@@ -152,6 +152,15 @@ def test_earn_dropship_idempotent_on_invoice(store):
     assert get_balance_cents(PID) == 30000
 
 
+def test_earn_fee_free_credits_three_percent_idempotent(store):
+    from dashboard.wallet import earn_fee_free, get_balance_cents
+    assert earn_fee_free(PID, 100000, "FINV1") == 3000   # 3% of a $1000 order
+    assert earn_fee_free(PID, 100000, "FINV1") == 0       # same invoice -> idempotent
+    assert get_balance_cents(PID) == 3000
+    assert earn_fee_free(PID, 33333, "FINV2") == 999      # floor(0.03*33333)
+    assert get_balance_cents(PID) == 3999
+
+
 def test_redeem_for_order_capped_at_half_and_never_negative(store):
     from dashboard.wallet import earn_dropship, redeem_for_order, get_balance_cents
     earn_dropship(PID, 50)                      # +100000 ($1000 credit)
