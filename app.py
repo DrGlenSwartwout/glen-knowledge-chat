@@ -5208,6 +5208,32 @@ def practitioner_checkout_return():
     return _redir(dest)
 
 
+@app.route("/api/practitioner/admin/clear-orders", methods=["POST"])
+def api_practitioner_admin_clear_orders():
+    """Console-gated: clear a practitioner's local wholesale + dispensary order
+    history (e.g. to tidy test data). Does not touch QBO or the wallet."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    pid = ((request.get_json(silent=True) or {}).get("practitioner_id") or "").strip()
+    if not pid:
+        return jsonify({"ok": False, "error": "practitioner_id required"}), 400
+    counts = {}
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            for tbl in ("wholesale_orders", "dispensary_orders", "wholesale_cart"):
+                try:
+                    counts[tbl] = cx.execute(
+                        f"DELETE FROM {tbl} WHERE practitioner_id=?", (pid,)).rowcount
+                except Exception:
+                    counts[tbl] = 0
+            cx.commit()
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": True, "deleted": counts})
+
+
 def _log_referral_event(lead_id, email, first_name, last_name, utm_source, utm_medium,
                         utm_campaign, utm_content, utm_term, quiz_score, raw):
     if not utm_source:
