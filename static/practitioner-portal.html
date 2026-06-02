@@ -86,6 +86,13 @@ var TOKEN = new URLSearchParams(location.search).get('token') || '';
 var $ = function(id){ return document.getElementById(id); };
 var money = function(c){ return '$' + (Number(c||0)/100).toFixed(2); };
 function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function linkify(s){
+  return s.replace(/((?:https?:\/\/|www\.)[^\s<]+|\b[a-z0-9-]+\.(?:com|org|net|io|vip|co)(?:\/[^\s<]*)?)/gi, function(m){
+    var trail=''; var t=m.replace(/([.,;:!?)]+)$/, function(p){ trail=p; return ''; });
+    var href = /^https?:\/\//i.test(t) ? t : 'https://'+t;
+    return '<a href="'+href+'" target="_blank" rel="noopener" style="color:var(--gold)">'+t+'</a>'+trail;
+  });
+}
 
 function render(d){
   $('who').textContent = (d.name || '') + (d.practice_name ? ' · ' + d.practice_name : '');
@@ -186,7 +193,7 @@ function streamAssist(query){
         parts.forEach(function(p){
           var line = p.replace(/^data: /,'').trim(); if(!line) return;
           var ev; try{ ev = JSON.parse(line); } catch(e){ return; }
-          if(ev.token){ acc += ev.token; atext.textContent = acc; }
+          if(ev.token){ acc += ev.token; atext.innerHTML = linkify(escapeHtml(acc)); }
           else if(ev.products){ renderProducts(ev.products, log); }
           else if(ev.error){ atext.textContent += ' ['+ev.error+']'; }
         });
