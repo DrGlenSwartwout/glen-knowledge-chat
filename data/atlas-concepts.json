@@ -1,0 +1,97 @@
+{
+  "version": "2026-06-02-handseed",
+  "concepts": [
+    {
+      "id": "biofield",
+      "label": "Biofield",
+      "aliases": ["bioenergetic field", "energy field"],
+      "summary": "The body's organizing energy field; basis of BEV measurement.",
+      "cluster": "energetic-medicine",
+      "parent": "energetic-medicine",
+      "namespaces": [],
+      "coords": {"x": 0.30, "y": 0.45},
+      "neighbors": ["bev", "structured-water"],
+      "links": [
+        {
+          "type": "video",
+          "source": "youtube",
+          "url": "https://www.youtube.com/watch?v=PLACEHOLDER1",
+          "title": "Biofield and BEV explained"
+        }
+      ],
+      "status": "live"
+    },
+    {
+      "id": "bev",
+      "label": "Bio-Energetic Vitality (BEV)",
+      "aliases": ["BEV", "biological terrain"],
+      "summary": "Measurement of the body's electrical terrain across phases.",
+      "cluster": "energetic-medicine",
+      "parent": "energetic-medicine",
+      "namespaces": [],
+      "coords": {"x": 0.42, "y": 0.30},
+      "neighbors": ["biofield", "structured-water"],
+      "links": [],
+      "status": "live"
+    },
+    {
+      "id": "structured-water",
+      "label": "Structured Water",
+      "aliases": ["EZ water", "coherent water"],
+      "summary": "Ordered water phase supporting cellular coherence.",
+      "cluster": "energetic-medicine",
+      "parent": "energetic-medicine",
+      "namespaces": [],
+      "coords": {"x": 0.22, "y": 0.62},
+      "neighbors": ["biofield", "bev"],
+      "links": [],
+      "status": "live"
+    },
+    {
+      "id": "light-therapy",
+      "label": "Light Therapy",
+      "aliases": ["photobiomodulation", "syntonics"],
+      "summary": "Use of specific light frequencies to support vision and healing.",
+      "cluster": "vision",
+      "parent": "vision",
+      "namespaces": [],
+      "coords": {"x": 0.68, "y": 0.40},
+      "neighbors": ["astigmatism"],
+      "links": [
+        {
+          "type": "video",
+          "source": "rumble",
+          "url": "https://rumble.com/vPLACEHOLDER2",
+          "title": "Light therapy for vision"
+        }
+      ],
+      "status": "live"
+    },
+    {
+      "id": "astigmatism",
+      "label": "Astigmatism",
+      "aliases": [],
+      "summary": "Irregular corneal curvature; addressed through vision training and structure.",
+      "cluster": "vision",
+      "parent": "vision",
+      "namespaces": [],
+      "coords": {"x": 0.80, "y": 0.58},
+      "neighbors": ["light-therapy"],
+      "links": [],
+      "status": "live"
+    },
+    {
+      "id": "detox",
+      "label": "Detoxification",
+      "aliases": ["detox", "cleansing"],
+      "summary": "Supporting the body's elimination of metabolic and environmental load.",
+      "cluster": "foundations",
+      "parent": "foundations",
+      "namespaces": [],
+      "coords": {"x": 0.50, "y": 0.78},
+      "neighbors": ["biofield"],
+      "links": [],
+      "status": "live"
+    }
+  ]
+}

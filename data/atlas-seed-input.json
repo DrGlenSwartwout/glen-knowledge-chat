@@ -1,0 +1,29 @@
+{
+  "version": "2026-06-02",
+  "concepts": [
+    { "id": "biofield", "label": "Biofield", "aliases": ["bioenergetic field", "energy field"],
+      "summary": "The body's organizing energy field; basis of BEV measurement.",
+      "cluster": "energetic-medicine", "parent": "energetic-medicine",
+      "link_hints": { "video_terms": ["BEV", "biofield"], "product_query": "biofield support" } },
+    { "id": "bev", "label": "Bio-Energetic Vitality (BEV)", "aliases": ["BEV", "biological terrain"],
+      "summary": "Measurement of the body's electrical terrain across phases.",
+      "cluster": "energetic-medicine", "parent": "energetic-medicine",
+      "link_hints": { "video_terms": ["BEV", "terrain"], "product_query": "terrain" } },
+    { "id": "light-therapy", "label": "Light Therapy", "aliases": ["photobiomodulation", "syntonics"],
+      "summary": "Use of specific light frequencies to support vision and healing.",
+      "cluster": "vision", "parent": "vision",
+      "link_hints": { "video_terms": ["light therapy", "syntonics"], "product_query": "light therapy" } },
+    { "id": "astigmatism", "label": "Astigmatism", "aliases": [],
+      "summary": "Irregular corneal curvature; addressed through vision training and structure.",
+      "cluster": "vision", "parent": "vision",
+      "link_hints": { "video_terms": ["astigmatism"], "product_query": "vision" } },
+    { "id": "detox", "label": "Detoxification", "aliases": ["detox", "cleansing"],
+      "summary": "Supporting the body's elimination of metabolic and environmental load.",
+      "cluster": "foundations", "parent": "foundations",
+      "link_hints": { "video_terms": ["detox"], "product_query": "detox" } },
+    { "id": "structured-water", "label": "Structured Water", "aliases": ["EZ water", "coherent water"],
+      "summary": "Ordered water phase supporting cellular coherence.",
+      "cluster": "energetic-medicine", "parent": "energetic-medicine",
+      "link_hints": { "video_terms": ["structured water", "EZ water"], "product_query": "water" } }
+  ]
+}
