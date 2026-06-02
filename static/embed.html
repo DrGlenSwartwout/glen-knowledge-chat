@@ -507,6 +507,13 @@
   .surfaced-card-title { font-size: 12px; font-weight: 700; color: var(--text); }
   .surfaced-card-sub { font-size: 10px; color: var(--text-muted); margin-top: 1px; line-height: 1.3; }
 
+  /* Case-study / testimonial card variant */
+  .surfaced-card.case-study-card { border-color: rgba(212,168,67,0.35); background: rgba(212,168,67,0.05); }
+  .surfaced-card.case-study-card:hover { border-color: var(--accent); background: rgba(212,168,67,0.10); }
+  .surfaced-card-proof-label { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 2px; }
+  .surfaced-card-watch { display: inline-block; margin-top: 4px; font-size: 10px; color: var(--accent); text-decoration: none; font-weight: 600; }
+  .surfaced-card-watch:hover { text-decoration: underline; }
+
   /* Light-mode legibility: dark literals that bypass the theme vars. Scoped so
      DARK mode is untouched; all var(--…) colors theme via theme-toggle.js. */
   :root[data-theme="light"] .message.user { background: var(--surface2); }  /* was #152019; assistant stays --surface (white) */
@@ -690,6 +697,50 @@
     const row = document.createElement('div');
     row.className = 'surfaced-cards-row';
     cards.forEach(card => {
+      if (card.kind === 'case-study') {
+        // Case-study / testimonial card: proof-labelled, non-navigating container
+        const div = document.createElement('div');
+        div.className = 'surfaced-card case-study-card';
+
+        const proofLabel = document.createElement('div');
+        proofLabel.className = 'surfaced-card-proof-label';
+        proofLabel.textContent = 'Patient story';
+        div.appendChild(proofLabel);
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'surfaced-card-title';
+        titleEl.textContent = card.title;
+        div.appendChild(titleEl);
+
+        if (card.sub) {
+          const subEl = document.createElement('div');
+          subEl.className = 'surfaced-card-sub';
+          subEl.textContent = card.sub;
+          div.appendChild(subEl);
+        }
+
+        if (card.video) {
+          const isYT = card.video.includes('youtube.com') || card.video.includes('youtu.be');
+          const watchLink = document.createElement('a');
+          watchLink.className = 'surfaced-card-watch';
+          watchLink.href = card.video;
+          watchLink.target = '_blank';
+          watchLink.rel = 'noopener';
+          watchLink.textContent = isYT ? '▶ Watch this story' : '▶ Watch the video';
+          watchLink.addEventListener('click', (e) => {
+            e.stopPropagation();
+            try {
+              navigator.sendBeacon('/begin/card-click', new Blob([JSON.stringify({key: card.key})], {type:'application/json'}));
+            } catch(_) {}
+          });
+          div.appendChild(watchLink);
+        }
+
+        row.appendChild(div);
+        return;
+      }
+
+      // Default CTA card
       const a = document.createElement('a');
       a.className = 'surfaced-card';
       a.href = card.href;

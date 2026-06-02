@@ -199,6 +199,25 @@
     text-align: center;
     margin-bottom: 22px;
   }
+  .hero-eyebrow {
+    text-align: center;
+    margin-bottom: 14px;
+  }
+  .i2we {
+    display: block;
+    font-family: "Raleway", sans-serif;
+    font-weight: 700;
+    font-size: clamp(20px, 4vw, 30px);
+    letter-spacing: 0.04em;
+    color: var(--gold);
+  }
+  .i2we-sub {
+    display: block;
+    font-size: 14px;
+    color: var(--muted);
+    margin-top: 4px;
+    font-style: italic;
+  }
   .hero-greeting {
     font-family: "Raleway", sans-serif;
     font-weight: 600;
@@ -427,6 +446,13 @@
   .card-arrow svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; }
   .card:hover .card-arrow { color: var(--gold); transform: translateX(4px); }
 
+  /* Case-study / testimonial card variant in the cards-host grid */
+  .card.case-study-card { border-color: rgba(212,168,67,0.35); background: rgba(212,168,67,0.04); }
+  .card.case-study-card:hover { border-color: var(--gold); }
+  .card-proof-label { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold); margin-bottom: 4px; }
+  .card-watch-link { display: inline-block; margin-top: 6px; font-size: 13px; color: var(--gold); text-decoration: none; font-weight: 600; }
+  .card-watch-link:hover { text-decoration: underline; }
+
   /* ---------- EMAIL CAPTURE ---------- */
   .capture {
     margin-top: 18px;
@@ -587,6 +613,10 @@
        question (they keep their own display:none until then). -->
   <section class="shell pad-y locked" data-layer="layer1">
     <p class="eyebrow reveal">A consultative welcome</p>
+    <div class="hero-eyebrow reveal">
+      <span class="i2we">I to We. Ill to well.</span>
+      <span class="i2we-sub">When &ldquo;I&rdquo; becomes &ldquo;We,&rdquo; healing follows.</span>
+    </div>
     <h1 class="hero-greeting reveal">
       Hello, <span data-name>there</span>. You&rsquo;ve found a place that understands.
       <span class="soft">Healing isn&rsquo;t one-size-fits-all, and you know your body better than anyone.
@@ -649,6 +679,48 @@
     if(!host || !cards || !cards.length) return;
     host.innerHTML = '';
     cards.forEach(function(c, i){
+      if (c.kind === 'case-study') {
+        // Proof card: visually distinct, non-nav wrapper with optional video link
+        var div = document.createElement('div');
+        div.className = 'card case-study-card reveal in';
+
+        var proofLabel = document.createElement('span');
+        proofLabel.className = 'card-proof-label';
+        proofLabel.textContent = 'Patient story';
+
+        var bodySpan = document.createElement('span');
+        bodySpan.className = 'card-body';
+
+        var titleSpan = document.createElement('span');
+        titleSpan.className = 'card-title';
+        titleSpan.textContent = c.title || '';
+        bodySpan.appendChild(titleSpan);
+
+        if (c.sub) {
+          var subSpan = document.createElement('span');
+          subSpan.className = 'card-sub';
+          subSpan.textContent = c.sub;
+          bodySpan.appendChild(subSpan);
+        }
+
+        if (c.video) {
+          var isYT = c.video.indexOf('youtube.com') !== -1 || c.video.indexOf('youtu.be') !== -1;
+          var watchA = document.createElement('a');
+          watchA.className = 'card-watch-link';
+          watchA.href = c.video;
+          watchA.target = '_blank';
+          watchA.rel = 'noopener';
+          watchA.textContent = isYT ? '▶ Watch this story' : '▶ Watch the video';
+          bodySpan.appendChild(watchA);
+        }
+
+        div.appendChild(proofLabel);
+        div.appendChild(bodySpan);
+        host.appendChild(div);
+        return;
+      }
+
+      // Default CTA card
       var a = document.createElement('a');
       a.className = 'card reveal in';
       a.setAttribute('href', c.href || '#');

@@ -859,6 +859,41 @@ def query_all_namespaces(vec):
     return all_matches
 
 
+def surface_case_study_cards(q_vec, max_cards=1, threshold=0.80):
+    """Query the `case-studies` namespace; return up to max_cards proof cards
+    for any match scoring above threshold. Cards carry kind='case-study' plus an
+    excerpt and (optional) video url so the frontend can render proof inline."""
+    try:
+        res = _idx.query(vector=q_vec, top_k=4, namespace="case-studies", include_metadata=True)
+    except Exception:
+        return []
+    cards, seen = [], set()
+    for m in getattr(res, "matches", []) or []:
+        if (m.score or 0) < threshold:
+            continue
+        md = m.metadata or {}
+        cond = (md.get("condition") or "general")
+        if cond in ("general", "case-studies") or cond in seen:
+            continue
+        seen.add(cond)
+        excerpt = (md.get("text") or "").strip()
+        if len(excerpt) > 240:
+            excerpt = excerpt[:240].rsplit(" ", 1)[0] + "…"
+        cards.append({
+            "key": "case:" + cond,
+            "kind": "case-study",
+            "title": md.get("title") or cond.replace("-", " ").title(),
+            "sub": excerpt,
+            "href": md.get("url") or "",
+            "video": md.get("url") or "",
+            "source": md.get("source") or "",
+            "name": md.get("name") or "",
+        })
+        if len(cards) >= max_cards:
+            break
+    return cards
+
+
 def build_context(matches):
     seen, sources, parts, total = set(), {}, [], 0
     # Authoritative clinical-qa chunks go in FIRST so the context-char cap can
@@ -1545,6 +1580,11 @@ def chat():
                     _cx.commit()
         except Exception as e:
             print(f"[chat-surface] {e!r}", flush=True)
+
+        try:
+            surfaced_cards = (surfaced_cards or []) + surface_case_study_cards(q_vec)
+        except Exception as _cse:
+            print(f"[case-study-surface] {_cse!r}", flush=True)
 
         _done_payload = {
             "done": True, "log_id": log_id,
