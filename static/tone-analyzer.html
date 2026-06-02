@@ -122,7 +122,7 @@
     cursor: help;
   }
   .harmonics-label {
-    color: #ffffff;
+    color: var(--ink);
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 1.5px;
@@ -162,7 +162,7 @@
     border: 1px solid #ffffff;
   }
   .score-label {
-    color: #ffffff;
+    color: var(--ink);
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 1.5px;
@@ -550,6 +550,17 @@
   details + details { margin-top: 6px; }
   table { border-collapse: collapse; margin-top: 8px; }
   td { padding: 2px 12px 2px 0; font-variant-numeric: tabular-nums; vertical-align: top; }
+
+  /* Light-mode legibility: the score-tier palette and the Metal freq-meta were
+     tuned for a dark surface, so they read too pale on white. Darken them while
+     keeping each tier's hue (these use hardcoded colors that bypass --ink/--dim). */
+  :root[data-theme="light"] .score.s5p { color: #4a5560; }  /* was #e0e6ed (light gray) */
+  :root[data-theme="light"] .score.s5  { color: #2f8a4e; }  /* was #9bcfa8 */
+  :root[data-theme="light"] .score.s4  { color: #a8791f; }  /* was #e8c992 */
+  :root[data-theme="light"] .score.s3  { color: #3a6ea5; }  /* was #a8c0d9 */
+  :root[data-theme="light"] .score.s2  { color: #b04a4a; }  /* was #d49a9a */
+  :root[data-theme="light"] .score.s1  { color: #6f55a0; }  /* was #b09bc9 */
+  :root[data-theme="light"] .freq-meta { color: #4a5560; opacity: 1; }  /* was --metal #d6dde6 @ .75 */
 </style>
   <script src="/static/theme-toggle.js"></script>
 </head>
