@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wholesale Portal · Remedy Match</title>
+<style>
+  :root{--bg:#FBF8F3;--ink:#1E2A2A;--muted:#5F6B6B;--accent:#2D7A6A;--accent-deep:#1F5A4D;--soft:#E8DFD3;--gold:#B08A3E;--panel:#fff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.6}
+  .wrap{max-width:760px;margin:0 auto;padding:34px 20px}
+  h1{font-weight:600;font-size:24px;margin:0}
+  .muted{color:var(--muted)}
+  .cards{display:flex;gap:12px;margin:18px 0}
+  .stat{flex:1;background:var(--panel);border:1px solid var(--soft);border-radius:12px;padding:14px}
+  .stat b{display:block;font-size:22px}
+  .stat span{font-size:12px;color:var(--muted)}
+  .panel{background:var(--panel);border:1px solid var(--soft);border-radius:14px;padding:20px;margin-top:16px}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .badge.ok{background:#E1EEEA;color:var(--accent-deep)}
+  .badge.no{background:#F4ECD7;color:var(--gold)}
+  .row{display:flex;gap:8px;align-items:center}
+  input{padding:9px 10px;border:1px solid var(--soft);border-radius:8px;font-size:14px;font-family:inherit}
+  input.slug{flex:1}
+  input.qty{width:80px}
+  button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
+  button.ghost{background:transparent;color:var(--accent-deep);border:1px solid var(--soft)}
+  button:disabled{opacity:.55;cursor:default}
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  td,th{text-align:left;padding:8px 6px;border-bottom:1px solid var(--soft);font-size:14px}
+  th{color:var(--muted);font-weight:500}
+  .total{font-size:18px;font-weight:600;margin-top:12px}
+  .warn{color:var(--gold);font-size:13px;margin-top:8px}
+  .notice{background:#F4ECD7;color:#6b531f;border-radius:10px;padding:12px;font-size:14px;margin-top:10px}
+  #msg{margin-top:12px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="head"><h1>Wholesale Portal</h1><div class="muted" id="who">Loading…</div></div>
+  <div class="cards">
+    <div class="stat"><b id="modules">–</b><span>Certification modules</span></div>
+    <div class="stat"><b id="wallet">–</b><span>Wellness Credit</span></div>
+    <div class="stat"><b id="status">–</b><span>Wholesale access</span></div>
+  </div>
+
+  <div class="panel">
+    <h2 style="margin:0 0 4px;font-size:17px">Build your order</h2>
+    <div class="muted" style="font-size:13px;margin-bottom:12px">Bigger orders and completed certification lower your per-bottle price. Credit covers up to half of a product order.</div>
+    <div id="locked" class="notice" style="display:none">Finish your first certification module to unlock ordering. Check your email for the module invoice.</div>
+    <div class="row">
+      <input class="slug" id="slug" placeholder="Product slug (e.g. bone-builder)">
+      <input class="qty" id="qty" type="number" min="1" value="1">
+      <button id="add">Add</button>
+    </div>
+    <table id="cart"><thead><tr><th>Product</th><th>Qty</th><th></th></tr></thead><tbody></tbody></table>
+    <div id="quote"></div>
+    <div class="total" id="total"></div>
+    <button id="checkout" style="margin-top:14px">Place wholesale order</button>
+    <div id="msg"></div>
+  </div>
+
+  <div class="panel" id="history-panel" style="display:none">
+    <h2 style="margin:0 0 8px;font-size:17px">Order history</h2>
+    <table id="history"><thead><tr><th>Invoice</th><th>Date</th><th>Credit used</th><th>Total</th></tr></thead><tbody></tbody></table>
+  </div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '';
+var $ = function(id){ return document.getElementById(id); };
+var money = function(c){ return '$' + (Number(c||0)/100).toFixed(2); };
+
+function render(d){
+  $('who').textContent = (d.name || '') + (d.practice_name ? ' · ' + d.practice_name : '');
+  $('modules').textContent = (d.modules_completed||0) + ' / 12';
+  $('wallet').textContent = money(d.wallet_balance_cents);
+  var unlocked = !!d.wholesale_unlocked;
+  $('status').innerHTML = unlocked ? '<span class="badge ok">Active</span>' : '<span class="badge no">Locked</span>';
+  $('locked').style.display = unlocked ? 'none' : 'block';
+  $('add').disabled = !unlocked; $('checkout').disabled = !unlocked;
+  var tb = $('cart').querySelector('tbody'); tb.innerHTML = '';
+  (d.cart||[]).forEach(function(it){
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>'+it.slug+'</td><td>'+it.qty+'</td><td><button class="ghost rm" data-slug="'+it.slug+'">remove</button></td>';
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('.rm').forEach(function(b){ b.addEventListener('click', function(){ setLine(b.getAttribute('data-slug'), 0); }); });
+  var q = d.quote;
+  if(q){
+    $('quote').innerHTML = '<div class="muted" style="font-size:13px;margin-top:10px">'+q.total_bottles+' bottles · '+money(q.blended_unit_price_cents)+' per bottle</div>';
+    $('total').textContent = 'Order total: ' + money(q.subtotal_cents);
+    if(q.margin_warnings && q.margin_warnings.length){ $('quote').innerHTML += '<div class="warn">'+q.margin_warnings.join('<br>')+'</div>'; }
+  } else { $('quote').innerHTML=''; $('total').textContent=''; }
+  if(d.order_history){
+    var oh = d.order_history;
+    $('history-panel').style.display = oh.length ? 'block' : 'none';
+    var hb = $('history').querySelector('tbody'); hb.innerHTML = '';
+    oh.forEach(function(o){
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>#'+(o.doc_number||'—')+'</td><td>'+((o.created_at||'').slice(0,10))+
+        '</td><td>'+(o.credit_cents ? money(o.credit_cents) : '—')+'</td><td>'+money(o.total_cents)+'</td>';
+      hb.appendChild(tr);
+    });
+  }
+}
+
+function load(){
+  fetch('/api/practitioner/portal-data?token='+encodeURIComponent(TOKEN))
+    .then(function(r){ return r.json(); })
+    .then(function(d){ if(!d.ok){ $('who').textContent = 'Please sign in again.'; return; } render(d); });
+}
+function setLine(slug, qty){
+  fetch('/api/practitioner/cart', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:TOKEN, slug:slug, qty:qty})})
+    .then(function(r){ return r.json(); }).then(function(d){ if(d.ok) render(d); });
+}
+$('add').addEventListener('click', function(){
+  var slug = $('slug').value.trim(); var qty = parseInt($('qty').value,10)||1;
+  if(!slug) return; setLine(slug, qty); $('slug').value='';
+});
+$('checkout').addEventListener('click', function(){
+  $('checkout').disabled = true; $('msg').textContent = 'Placing your order…';
+  fetch('/api/practitioner/checkout', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:TOKEN})})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.ok){
+        $('msg').innerHTML = 'Order placed. Invoice #' + d.doc_number + ' for ' + money((d.total||0)*100) +
+          (d.credit_redeemed_cents ? ' (credit applied: ' + money(d.credit_redeemed_cents) + ')' : '') +
+          '. Check your email to pay.';
+        load();
+      } else { $('msg').textContent = d.error || 'Checkout failed.'; $('checkout').disabled=false; }
+    })
+    .catch(function(){ $('msg').textContent='Network error.'; $('checkout').disabled=false; });
+});
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join the Practitioner Wholesale Portal · Remedy Match</title>
+<style>
+  :root{--bg:#FBF8F3;--ink:#1E2A2A;--muted:#5F6B6B;--accent:#2D7A6A;--accent-deep:#1F5A4D;--soft:#E8DFD3;--panel:#fff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.6}
+  .wrap{max-width:620px;margin:0 auto;padding:40px 20px}
+  h1{font-weight:600;font-size:28px;margin:0 0 6px}
+  .sub{color:var(--muted);margin:0 0 28px}
+  .panel{background:var(--panel);border:1px solid var(--soft);border-radius:14px;padding:24px;box-shadow:0 12px 40px -22px rgba(30,42,42,.25)}
+  label{display:block;font-weight:500;font-size:14px;margin:14px 0 5px}
+  input[type=text],input[type=email],input[type=tel]{width:100%;padding:11px 12px;border:1px solid var(--soft);border-radius:9px;font-size:15px;font-family:inherit}
+  .roles{display:flex;gap:10px;margin-top:6px}
+  .role{flex:1;border:1px solid var(--soft);border-radius:10px;padding:12px;cursor:pointer}
+  .role.sel{border-color:var(--accent);background:#E1EEEA}
+  .role b{display:block}.role span{font-size:13px;color:var(--muted)}
+  .hide{display:none}
+  button{margin-top:22px;width:100%;background:var(--accent);color:#fff;border:0;border-radius:10px;padding:13px;font-size:16px;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.6;cursor:default}
+  .msg{margin-top:16px;padding:12px;border-radius:9px;font-size:14px}
+  .msg.err{background:#FBE9E7;color:#8a2c20}
+  .msg.ok{background:#E1EEEA;color:var(--accent-deep)}
+  .foot{margin-top:18px;font-size:14px;color:var(--muted)}
+  a{color:var(--accent-deep)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Join the Wholesale Portal</h1>
+  <p class="sub">Order Functional Formulations™ at wholesale. Licensed practitioners unlock pricing right away; coaches start with the first certification module.</p>
+  <div class="panel">
+    <form id="form">
+      <label>Your name</label>
+      <input type="text" id="name" autocomplete="name" required>
+      <label>Email</label>
+      <input type="email" id="email" autocomplete="email" required>
+      <label>Phone</label>
+      <input type="tel" id="phone" autocomplete="tel">
+      <label>Practice name</label>
+      <input type="text" id="practice_name">
+
+      <label>How are you joining?</label>
+      <div class="roles">
+        <div class="role" data-role="licensed"><b>Licensed practitioner</b><span>OD, ND, LAc, DC, etc.</span></div>
+        <div class="role" data-role="coach"><b>Coach</b><span>Start with certification</span></div>
+      </div>
+
+      <div id="licensed-fields" class="hide">
+        <label>License number</label>
+        <input type="text" id="license_number">
+        <label>License state</label>
+        <input type="text" id="license_state">
+      </div>
+      <div id="coach-fields" class="hide">
+        <label>Resale certificate number</label>
+        <input type="text" id="resale_license_number">
+      </div>
+
+      <button id="submit" type="submit" disabled>Create my account</button>
+    </form>
+    <div id="msg"></div>
+  </div>
+  <p class="foot">Already registered? <a href="#" id="signin">Email me a sign-in link</a>.</p>
+</div>
+<script>
+var role = null;
+var $ = function(id){ return document.getElementById(id); };
+document.querySelectorAll('.role').forEach(function(el){
+  el.addEventListener('click', function(){
+    document.querySelectorAll('.role').forEach(function(r){ r.classList.remove('sel'); });
+    el.classList.add('sel'); role = el.getAttribute('data-role');
+    $('licensed-fields').classList.toggle('hide', role !== 'licensed');
+    $('coach-fields').classList.toggle('hide', role !== 'coach');
+    $('submit').disabled = false;
+  });
+});
+function show(kind, text){ var m=$('msg'); m.className='msg '+kind; m.textContent=text; }
+$('form').addEventListener('submit', function(e){
+  e.preventDefault();
+  if(!role){ show('err','Please choose how you are joining.'); return; }
+  $('submit').disabled = true; $('submit').textContent = 'Creating…';
+  var payload = {
+    name: $('name').value.trim(), email: $('email').value.trim(),
+    phone: $('phone').value.trim(), practice_name: $('practice_name').value.trim(),
+    portal_role: role, license_number: $('license_number').value.trim(),
+    license_state: $('license_state').value.trim(),
+    resale_license_number: $('resale_license_number').value.trim()
+  };
+  fetch('/api/practitioner/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      $('submit').disabled = false; $('submit').textContent = 'Create my account';
+      if(!d.ok){ show('err', d.error || 'Something went wrong.'); return; }
+      var t = d.message || 'Check your email for a sign-in link.';
+      if(d.module_pay && d.module_pay.invoice_id){ t += ' Your first certification module invoice (#' + d.module_pay.doc_number + ') is on its way by email.'; }
+      show('ok', t);
+    })
+    .catch(function(){ $('submit').disabled=false; $('submit').textContent='Create my account'; show('err','Network error. Please try again.'); });
+});
+$('signin').addEventListener('click', function(e){
+  e.preventDefault();
+  var email = $('email').value.trim();
+  if(!email){ show('err','Enter your email above, then click again.'); return; }
+  fetch('/practitioner/login-request', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:email})})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ show('ok', d.message || 'If that email has an account, a link is on its way.'); });
+});
+</script>
+</body>
+</html>

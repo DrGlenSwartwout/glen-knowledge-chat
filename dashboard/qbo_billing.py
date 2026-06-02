@@ -93,25 +93,52 @@ def find_or_create_item(name, price=None, income_account_id=None):
 
 
 # ── invoices ──────────────────────────────────────────────────────────────────
-def create_invoice(customer, lines, *, allow_online_pay=False, email_to=None):
-    """lines: [{name, amount(unit $), qty, description?, item_id?}].
-    customer: a QBO Customer dict (from find_or_create_customer)."""
+def _discount_line(discount_cents):
+    """A single fixed-amount (not percent) QBO DiscountLineDetail, or None."""
+    if not discount_cents or int(discount_cents) <= 0:
+        return None
+    return {
+        "DetailType": "DiscountLineDetail",
+        "Amount": round(int(discount_cents) / 100.0, 2),
+        "DiscountLineDetail": {"PercentBased": False},
+    }
+
+
+def _build_invoice_lines(lines, discount_cents=0):
+    """Pure: build the QBO Line array from RESOLVED lines (each must carry item_id),
+    appending one fixed-amount DiscountLineDetail when discount_cents > 0. No I/O —
+    item resolution happens before this is called."""
     inv_lines = []
     for ln in lines:
         qty = int(ln.get("qty", 1) or 1)
         unit = round(float(ln["amount"]), 2)
-        item_id = ln.get("item_id")
-        if not item_id:
-            item = find_or_create_item(ln.get("name", "RemedyMatch Product"), unit)
-            item_id = item["Id"]
         inv_lines.append({
             "DetailType": "SalesItemLineDetail",
             "Amount": round(unit * qty, 2),
             "Description": ln.get("description") or ln.get("name", ""),
-            "SalesItemLineDetail": {"ItemRef": {"value": item_id},
+            "SalesItemLineDetail": {"ItemRef": {"value": str(ln["item_id"])},
                                     "Qty": qty, "UnitPrice": unit},
         })
-    body = {"CustomerRef": {"value": customer["Id"]}, "Line": inv_lines}
+    disc = _discount_line(discount_cents)
+    if disc:
+        inv_lines.append(disc)
+    return inv_lines
+
+
+def create_invoice(customer, lines, *, allow_online_pay=False, email_to=None,
+                   discount_cents=0):
+    """lines: [{name, amount(unit $), qty, description?, item_id?}].
+    customer: a QBO Customer dict (from find_or_create_customer).
+    discount_cents: optional fixed-amount discount (e.g. Wellness Credit redeemed)."""
+    resolved = []
+    for ln in lines:
+        item_id = ln.get("item_id")
+        if not item_id:
+            unit = round(float(ln["amount"]), 2)
+            item_id = find_or_create_item(ln.get("name", "RemedyMatch Product"), unit)["Id"]
+        resolved.append({**ln, "item_id": item_id})
+    body = {"CustomerRef": {"value": customer["Id"]},
+            "Line": _build_invoice_lines(resolved, discount_cents)}
     if email_to:
         body["BillEmail"] = {"Address": email_to}
     if allow_online_pay:
@@ -146,6 +173,22 @@ def add_invoice_line(invoice_id, *, name, amount, qty=1, item_id=None, descripti
         "SalesItemLineDetail": {"ItemRef": {"value": str(item_id)}, "Qty": qty, "UnitPrice": unit},
     })
     body = {"Id": str(invoice_id), "SyncToken": inv["SyncToken"], "sparse": True, "Line": keep}
+    return _post("/invoice", body).get("Invoice")
+
+
+def apply_invoice_discount(invoice_id, discount_cents):
+    """Set a single fixed-amount discount line on an existing unpaid invoice,
+    preserving its item lines (QBO replaces Line wholesale on update). Used by the
+    wholesale checkout after Wellness Credit is redeemed, so the discount equals the
+    amount actually committed to the ledger. Returns the updated invoice."""
+    inv = get_invoice(invoice_id)
+    if not inv:
+        raise RuntimeError(f"invoice {invoice_id} not found")
+    lines = [l for l in inv.get("Line", []) if l.get("DetailType") == "SalesItemLineDetail"]
+    disc = _discount_line(discount_cents)
+    if disc:
+        lines.append(disc)
+    body = {"Id": str(invoice_id), "SyncToken": inv["SyncToken"], "sparse": True, "Line": lines}
     return _post("/invoice", body).get("Invoice")
 
 

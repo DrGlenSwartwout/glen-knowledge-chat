@@ -4780,6 +4780,185 @@ def practitioner_application():
     }), 201
 
 
+# ── Practitioner wholesale portal (Phase 3: auth + registration + cart) ───────
+from dashboard import practitioner_portal as _pp
+from dashboard import wholesale_checkout as _wc
+
+
+def _send_practitioner_magic_link(to_email, name, magic_url):
+    """Practitioner-portal sign-in email (reuses the report-email transport)."""
+    subject = "Your Remedy Match practitioner sign-in link"
+    body = (
+        f"Hi {name or 'there'},\n\n"
+        f"Click the link below to open your practitioner portal. It is single-use and "
+        f"expires in {_pp.MAGIC_TTL_MIN} minutes.\n\n{magic_url}\n\n"
+        f"If you didn't request this, you can ignore this email.\n\n— Remedy Match\n"
+    )
+    return _send_full_report_email(to_email, name or "there", subject, body)
+
+
+def _practitioner_session_pid():
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        token = ((request.get_json(silent=True) or {}).get("token") or "").strip()
+    return _pp.practitioner_id_from_session(token) if token else None
+
+
+@app.route("/practitioner/portal")
+def practitioner_portal_page():
+    return send_from_directory(STATIC, "practitioner-portal.html")
+
+
+@app.route("/practitioner/register", methods=["GET"])
+def practitioner_register_page():
+    return send_from_directory(STATIC, "practitioner-register.html")
+
+
+@app.route("/api/practitioner/register", methods=["POST"])
+def api_practitioner_register():
+    clean, err = _pp.validate_registration(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    try:
+        pid, unlocked = _pp.register_practitioner(clean)
+    except Exception as e:
+        print(f"[practitioner-register] insert failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "Could not create your account. Please try again."}), 500
+    try:
+        parts = clean["name"].split(None, 1)
+        ghl_upsert_contact(clean["email"], parts[0], (parts[1] if len(parts) > 1 else ""),
+                           clean.get("phone") or "", source_tag="practitioner-portal",
+                           extra_tags=[f"portal-{clean['portal_role']}"])
+    except Exception as e:
+        print(f"[practitioner-register] GHL upsert failed: {e!r}", flush=True)
+    module_pay = None
+    if clean["portal_role"] == "coach":
+        try:
+            mo = _wc.build_module_order(
+                {"id": pid, "email": clean["email"], "name": clean["name"]},
+                "module-1", today=datetime.now(timezone.utc))
+            module_pay = {"invoice_id": mo.get("invoice_id"), "total": mo.get("total"),
+                          "doc_number": mo.get("doc_number")}
+            _pp.unlock_wholesale(pid)
+            unlocked = True
+        except Exception as e:
+            print(f"[practitioner-register] module invoice failed: {e!r}", flush=True)
+    try:
+        magic = _pp.create_magic_link_token(pid, clean["email"])
+        _send_practitioner_magic_link(
+            clean["email"], clean["name"],
+            f"{PUBLIC_BASE_URL}/practitioner/login-verify?token={magic}")
+    except Exception as e:
+        print(f"[practitioner-register] magic link failed: {e!r}", flush=True)
+    try:
+        _send_full_report_email(
+            os.environ.get("RAE_EMAIL", "suerae1111@gmail.com"), "Rae",
+            f"New practitioner portal registration: {clean['name']}",
+            f"{clean['name']} ({clean['email']}) joined as {clean['portal_role']}. "
+            f"Wholesale unlocked: {unlocked}.")
+    except Exception:
+        pass
+    return jsonify({"ok": True, "wholesale_unlocked": unlocked, "module_pay": module_pay,
+                    "message": "Check your email for a sign-in link."}), 201
+
+
+@app.route("/practitioner/login-request", methods=["POST"])
+def practitioner_login_request():
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if "@" in email:
+        try:
+            pid = _pp.find_practitioner_id_by_email(email)
+        except Exception:
+            pid = None
+        if pid:
+            magic = _pp.create_magic_link_token(pid, email)
+            _send_practitioner_magic_link(
+                email, "", f"{PUBLIC_BASE_URL}/practitioner/login-verify?token={magic}")
+    return jsonify({"ok": True,
+                    "message": "If that email has a portal account, a sign-in link is on its way."})
+
+
+@app.route("/practitioner/login-verify", methods=["GET"])
+def practitioner_login_verify():
+    from flask import redirect as _redir
+    token = (request.args.get("token") or "").strip()
+    pid = _pp.consume_magic_link(token) if token else None
+    if not pid:
+        return _redir("/practitioner/register?error=link")
+    return _redir(f"/practitioner/portal?token={_pp.create_session_token(pid)}")
+
+
+@app.route("/api/practitioner/portal-data", methods=["GET"])
+def api_practitioner_portal_data():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    data = _pp.portal_data(pid, include_orders=True)
+    if not data:
+        return jsonify({"ok": False, "error": "account not found"}), 404
+    return jsonify({"ok": True, **data})
+
+
+@app.route("/api/practitioner/cart", methods=["POST"])
+def api_practitioner_cart():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip()
+    if not slug:
+        return jsonify({"ok": False, "error": "slug required"}), 400
+    try:
+        qty = int(data.get("qty", 0))
+    except Exception:
+        qty = 0
+    _pp.cart_set(pid, slug, qty)
+    return jsonify({"ok": True, **(_pp.portal_data(pid) or {})})
+
+
+@app.route("/api/practitioner/quote", methods=["POST"])
+def api_practitioner_quote():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    data = _pp.portal_data(pid) or {}
+    return jsonify({"ok": True, "quote": data.get("quote"),
+                    "wallet_balance_cents": data.get("wallet_balance_cents")})
+
+
+@app.route("/api/practitioner/checkout", methods=["POST"])
+def api_practitioner_checkout():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    data = _pp.portal_data(pid)
+    if not data:
+        return jsonify({"ok": False, "error": "account not found"}), 404
+    if not data.get("wholesale_unlocked"):
+        return jsonify({"ok": False,
+                        "error": "Finish your first certification module to unlock ordering."}), 403
+    items = data.get("cart") or []
+    if not items:
+        return jsonify({"ok": False, "error": "Your cart is empty."}), 400
+    prac = {"id": pid, "modules_completed": data.get("modules_completed", 0),
+            "email": data.get("email"), "name": data.get("name") or ""}
+    try:
+        out = _wc.build_order(items, prac)
+    except Exception as e:
+        print(f"[practitioner-checkout] failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "Checkout failed. Please try again."}), 500
+    if out.get("ok"):
+        _pp.cart_clear(pid)
+        try:
+            _pp.record_order(pid, invoice_id=out.get("invoice_id"),
+                             doc_number=out.get("doc_number"),
+                             total_cents=int(round((out.get("total") or 0) * 100)),
+                             credit_cents=out.get("credit_redeemed_cents", 0))
+        except Exception as e:
+            print(f"[practitioner-checkout] record_order failed: {e!r}", flush=True)
+    return jsonify(out), (200 if out.get("ok") else 422)
+
+
 def _log_referral_event(lead_id, email, first_name, last_name, utm_source, utm_medium,
                         utm_campaign, utm_content, utm_term, quiz_score, raw):
     if not utm_source:
