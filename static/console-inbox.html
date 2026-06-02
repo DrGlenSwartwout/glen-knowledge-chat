@@ -239,7 +239,16 @@
 
   .auth-warn { background: rgba(248, 81, 73, 0.08); border: 1px solid var(--red); border-radius: 8px; padding: 14px; color: var(--red); margin: 20px; display: none; }
   .loading { color: var(--muted); padding: 20px; text-align: center; font-size: 13px; }
+
+  /* Light-mode: page-specific semantic vars + literals that bypass the vars.
+     Structural vars (shared override) + dark mode untouched. */
+  :root[data-theme="light"]{ --accent-light:#9A7A1E; --amber:#9A7A1E; --red:#B23A1E; --blue:#5F6B6B; }
+  :root[data-theme="light"] .badge-tag.starred { background:#E8C876; }  /* keep light so its #0a0a0a text reads (--amber is now dark) */
+  :root[data-theme="light"] .toolbar input.search,
+  :root[data-theme="light"] .field.reply textarea#reply-body,
+  :root[data-theme="light"] .field.prompt textarea#prompt-body { background:#FFFFFF; }  /* was #0d1117 dark island under themed text */
 </style>
+<script src="/static/theme-toggle.js"></script>
 </head>
 <body>
 <script src="/static/op-nav.js" data-active="inbox"></script>

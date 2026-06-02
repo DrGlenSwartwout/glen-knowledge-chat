@@ -546,6 +546,19 @@
     margin-top: 8px;
     font-style: italic;
   }
+
+  /* Light-mode legibility: these data-viz backgrounds are old standalone-scheme
+     literals (#2a2f3a/#232733/#1f2330) that bypass the theme vars, so they stayed
+     dark in light mode — dark text on a dark fill, or a dark track on a light panel.
+     Scoped to light mode so DARK mode is untouched. Tracks/chips use --hair (a tan
+     tint distinct from the beige panel); the secondary button and physiology inset
+     use a surface + border so they read as raised on the light card. */
+  :root[data-theme="light"] button.secondary { background: var(--panel-2); border: 1px solid var(--hair); }
+  :root[data-theme="light"] .emo-chip { background: var(--hair); }
+  :root[data-theme="light"] .bar-track { background: var(--hair); }
+  :root[data-theme="light"] .organ-physiology { background: var(--panel); border: 1px solid var(--hair); }
+  :root[data-theme="light"] .delta-row .delta-pre,
+  :root[data-theme="light"] .delta-row .delta-post { background: var(--hair); }
 </style>
   <script src="/static/theme-toggle.js"></script>
 </head>

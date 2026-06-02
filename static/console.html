@@ -20,6 +20,15 @@
     --low: #a89870;
     --done-bg: #0f1c12;
     --cal-bg: #111f16;
+    /* Household / merge / people-detail panels — these are rendered by JS with
+       inline styles; referenced as var() (below) so the light override themes
+       them. Backgrounds/borders are dark here; text colors are the accents. */
+    --hh-amber-bg: #1a1410; --hh-amber-row-bg: #0f0c08; --hh-amber-border: #2a1f10;
+    --hh-blue-bg: #0e1f2e; --hh-blue-row-bg: #0a1520; --hh-blue-border: #1a3450;
+    --hh-brown-border: #4a3520; --hh-chip-bg: #0a0c12; --hh-error-bg: #3a2615;
+    --hh-headbadge-bg: #4a3520;
+    --hh-amber-text: #f5b87a; --hh-meta: #8a93a3; --hh-blue-text: #7ab8f5;
+    --hh-red-text: #f57a7a; --hh-warn-text: #f5d07a; --hh-headbadge-text: #f5d4a0;
     --radius: 8px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -418,7 +427,158 @@
   .ws-thread-compose button { background:var(--glen); border:none; color:#0a150d; border-radius:6px;
     padding:0 16px; font-weight:700; cursor:pointer; }
   .ws-thread-empty { text-align:center; color:var(--muted); font-size:12px; padding:18px 0; }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     LIGHT MODE OVERRIDES
+     Added by light/dark pass. Activated only when theme-toggle.js sets
+     <html data-theme="light">. Dark mode is untouched (no existing rule above
+     was modified). The shared theme-toggle.js already remaps the STRUCTURAL
+     vars (--bg --surface --surface-2 --border --text --muted --panel --panel-2
+     --ink --dim --hair --accent --green --gold --cream --accent2 --text-muted
+     --surface2). Below we (a) remap this page's PAGE-SPECIFIC semantic vars,
+     and (b) override hardcoded color literals that bypass the vars and would
+     be unreadable on a light surface.
+     ──────────────────────────────────────────────────────────────────────── */
+
+  /* (a) Page-specific semantic vars ───────────────────────────────────────── */
+  :root[data-theme="light"] {
+    /* Person colors — darkened so they read as text/borders AND have enough
+       contrast to carry #fff text when used as a solid button/pill fill. */
+    --glen:   #B08A3E;
+    --rae:    #A85A2E;
+    --shaira: #2D7A6A;
+    --justus: #6B5BA0;
+    /* Priority colors */
+    --high:   #B23A1E;
+    --normal: #9A7A1E;
+    --low:    #6B6250;
+    /* Background vars → light surfaces */
+    --done-bg: #EFE7D7;
+    --cal-bg:  #FFFFFF;
+    /* Household / merge / people-detail panel tokens (themed via var() in the
+       JS-rendered inline styles): backgrounds/borders → light tints, text → dark. */
+    --hh-amber-bg: #FBF1E0; --hh-amber-row-bg: #FAF4E8; --hh-amber-border: #E8D9C0;
+    --hh-blue-bg: #E8F1FB; --hh-blue-row-bg: #EEF5FC; --hh-blue-border: #C8DCF0;
+    --hh-brown-border: #D8C4A0; --hh-chip-bg: #FFFFFF; --hh-error-bg: #FBF1E0;
+    --hh-headbadge-bg: #EADFC8;
+    --hh-amber-text: #A8631E; --hh-meta: #5F6B6B; --hh-blue-text: #2B6CB8;
+    --hh-red-text: #C0392B; --hh-warn-text: #9A7A1E; --hh-headbadge-text: #6B5320;
+  }
+
+  /* --justus is used as a solid fill with DARK text (#0f1117 / #0a150d) in a
+     few places (.btn-justus-send, .btn-generate, .ws-thread-compose button via
+     --glen). In light mode the darkened person colors above are dark enough
+     that dark text on them would fail; force light text on those solid fills. */
+  :root[data-theme="light"] .btn-justus-send,
+  :root[data-theme="light"] .btn-generate { color: #fff; }
+  :root[data-theme="light"] .ws-thread-compose button { color: #fff; }
+
+  /* (b) Hardcoded literal overrides ────────────────────────────────────────
+     Each rule re-skins an element whose dark literal background or pale text
+     would break on a light surface. #000/#fff text kept on colored accent
+     buttons (reads fine). Faint alpha tints, shadows, backdrops left alone. */
+
+  /* Buttons that paint #fff text on a person-color fill on :hover — keep #fff
+     (the var fill is dark enough). No override needed for those.
+     Dark hover-fill literals on otherwise-transparent action buttons: */
+  :root[data-theme="light"] .btn-copy-reply:hover { background: #EAF1F8; }
+  :root[data-theme="light"] .btn-gmail:hover       { background: #EAF1F8; }
+  :root[data-theme="light"] .btn-done:hover         { background: #E4F3E4; }
+  :root[data-theme="light"] .btn-read:hover         { background: #EAF1F8; }
+  :root[data-theme="light"] .btn-reopen:hover       { background: #EAF1F8; }
+  :root[data-theme="light"] .btn-dismiss:hover      { background: #F8E8E4; }
+  :root[data-theme="light"] .btn-delegate:hover     { background: #F8EEE4; }
+  :root[data-theme="light"] .btn-draft:hover        { background: #F0EAF8; }
+  :root[data-theme="light"] .delegate-option.justus:hover { background: #F0EAF8; }
+  :root[data-theme="light"] .btn-cal-delete:hover   { background: #F8E8E4; }
+  :root[data-theme="light"] .detail-enrich-btn:hover { background: #EAF1F8; }
+  :root[data-theme="light"] .ws-thread-btn:hover    { background: #F0EAF8; }
+
+  /* Calendar alert: dark-red fill + red text → light red fill */
+  :root[data-theme="light"] .cal-event.alerted,
+  :root[data-theme="light"] .btn-cal-alert:hover,
+  :root[data-theme="light"] .btn-cal-alert.active { background: #FBE3E0; }
+
+  /* AI summary / reply text colors were tuned for a dark bg (light blue/tan).
+     On a light surface they vanish — darken to readable equivalents. */
+  :root[data-theme="light"] .ai-summary     { color: #2B5BA8; }
+  :root[data-theme="light"] .suggested-reply { color: #2A3F66; }
+
+  /* action-note / core-message: dark amber panel + pale amber text.
+     Repaint as a light amber panel with dark amber text. */
+  :root[data-theme="light"] .action-note {
+    background: #FBF1D8; border-left-color: #C8821E; color: #7A5510;
+  }
+  :root[data-theme="light"] .core-message {
+    background: #FBF1D8; border-left-color: #C8821E; color: #6E4A0C;
+  }
+
+  /* "delegated" meta badge: dark-tan fill + pale-amber text → light amber pill */
+  :root[data-theme="light"] .meta-badge.delegated { background: #FBEFD8; color: #8A5E12; }
+
+  /* People-card selected state: dark navy fill → light blue tint */
+  :root[data-theme="light"] .person-card.selected { background: #E6EEFB; }
+
+  /* People ptag chips: dark fills + pale text → light tints + dark text */
+  :root[data-theme="light"] .ptag.system  { background: #E2ECFA; color: #1F5FA8; }
+  :root[data-theme="light"] .ptag.phase   { background: #E2F5E2; color: #1F7A2E; }
+  :root[data-theme="light"] .ptag.concern { background: #FBE3E0; color: #B23A2E; }
+  :root[data-theme="light"] .ptag.source  { background: #F7F1D8; color: #8A6A12; }
+
+  /* assign-btn selected: dark fills + person-color text. The person-color text
+     is now dark, so a light tint fill keeps it readable. */
+  :root[data-theme="light"] .assign-btn.glen.selected   { background: #FBF1DC; }
+  :root[data-theme="light"] .assign-btn.rae.selected    { background: #FBEAE0; }
+  :root[data-theme="light"] .assign-btn.shaira.selected { background: #E2F2EC; }
+
+  /* Justus dialog header: dark purple bar + purple text → light purple */
+  :root[data-theme="light"] .justus-header { background: #F0EAF8; }
+  /* New-task dialog header: dark navy bar + glen text → light tint */
+  :root[data-theme="light"] .newtask-header { background: #F4EEFB; }
+
+  /* Referrals (purple accent #7c5cbf / #a07fe0): the bright purples read on
+     light too, but the #a07fe0 stat numbers / url-code are low-contrast on
+     white — darken to the solid accent purple. */
+  :root[data-theme="light"] .ref-stat-num   { color: #6B4FB0; }
+  :root[data-theme="light"] .ref-url-code    { color: #6B4FB0; }
+  :root[data-theme="light"] .btn-copy-url:hover { color: #6B4FB0; }
+
+  /* aff-status pills: dark fills + person/priority text → light tints */
+  :root[data-theme="light"] .aff-status.approved  { background: #E4F3E4; }
+  :root[data-theme="light"] .aff-status.pending   { background: #FBF1D8; color: #8A5E12; }
+  :root[data-theme="light"] .aff-status.suspended,
+  :root[data-theme="light"] .aff-status.rejected  { background: #FBE3E0; }
+
+  /* Workspace chips: dark fills + pale text → light tints + dark text */
+  :root[data-theme="light"] .ws-chip.plan       { background: #E2F2E8; color: #1F7A4A; }
+  :root[data-theme="light"] .ws-chip.in_process { background: #F7F1D8; color: #8A6A12; }
+  :root[data-theme="light"] .ws-chip.complete   { background: #E4ECE6; color: #4A6052; }
+  :root[data-theme="light"] .ws-chip.time       { background: #E6EEE8; color: #4A6052; }
+  :root[data-theme="light"] .ws-chip.ask        { background: #FBEADE; color: #A85A18; }
+  :root[data-theme="light"] .ws-thread-btn.has-ask { color: #A85A18; }
+
+  /* Workspace messages: dark person-tint fills + person-color role labels.
+     Repaint fills as light person-tints; the var-based role colors are already
+     remapped (dark), so they stay readable on the light tint. */
+  :root[data-theme="light"] .ws-msg.shaira { background: #E2F2EC; }
+  :root[data-theme="light"] .ws-msg.justus { background: #F0EAF8; }
+  :root[data-theme="light"] .ws-msg.glen   { background: #FBF3DC; }
+  :root[data-theme="light"] .ws-msg.rae    { background: #FBEAE0; }
+  :root[data-theme="light"] .ws-msg.justus_to_glen,
+  :root[data-theme="light"] .ws-msg.justus_to_rae { background: #FBEADE; border-left-color: #A85A18; }
+  :root[data-theme="light"] .ws-msg.justus_to_glen .ws-msg-role,
+  :root[data-theme="light"] .ws-msg.justus_to_rae .ws-msg-role { color: #A85A18; }
+
+  /* Static People-page banners (#household-candidates-banner,
+     #pending-merges-banner, #people-multiselect-toolbar): their dark fill is
+     set as an INLINE style on the same element that holds inline-colored pale
+     text spans. Overriding only the background (clean, by stable ID) would
+     leave the inline pale text low-contrast on a light fill, and recoloring
+     the inner spans would require the forbidden [style*=#hex] substring hack.
+     So these are left in their (dark) inline state — documented limitation. */
+
 </style>
+<script src="/static/theme-toggle.js"></script>
 </head>
 <body>
 <script src="/static/op-nav.js" data-active="console"></script>
@@ -499,27 +659,27 @@
   <div class="people-layout">
     <!-- Left: search + list -->
     <div class="people-left">
-      <div id="household-candidates-banner" style="display:none;background:#1a1410;border:1px solid #2a1f10;border-radius:5px;padding:10px 12px;margin-bottom:10px">
+      <div id="household-candidates-banner" style="display:none;background:var(--hh-amber-bg);border:1px solid var(--hh-amber-border);border-radius:5px;padding:10px 12px;margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleCandidatesPanel()">
-          <span style="font-size:13px;color:#f5b87a">👥 <span id="hcb-count">0</span> possible household(s) detected</span>
+          <span style="font-size:13px;color:var(--hh-amber-text)">👥 <span id="hcb-count">0</span> possible household(s) detected</span>
           <span style="flex:1"></span>
-          <span style="font-size:11px;color:#8a93a3" id="hcb-toggle">Review →</span>
+          <span style="font-size:11px;color:var(--hh-meta)" id="hcb-toggle">Review →</span>
         </div>
-        <div id="hcb-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #2a1f10"></div>
+        <div id="hcb-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--hh-amber-border)"></div>
       </div>
-      <div id="pending-merges-banner" style="display:none;background:#0e1f2e;border:1px solid #1a3450;border-radius:5px;padding:10px 12px;margin-bottom:10px">
+      <div id="pending-merges-banner" style="display:none;background:var(--hh-blue-bg);border:1px solid var(--hh-blue-border);border-radius:5px;padding:10px 12px;margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="togglePendingMergesPanel()">
-          <span style="font-size:13px;color:#7ab8f5">🔀 <span id="pmb-count">0</span> merge(s) queued</span>
+          <span style="font-size:13px;color:var(--hh-blue-text)">🔀 <span id="pmb-count">0</span> merge(s) queued</span>
           <span style="flex:1"></span>
-          <span style="font-size:11px;color:#8a93a3" id="pmb-toggle">Review →</span>
+          <span style="font-size:11px;color:var(--hh-meta)" id="pmb-toggle">Review →</span>
         </div>
-        <div id="pmb-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #1a3450"></div>
+        <div id="pmb-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--hh-blue-border)"></div>
       </div>
       <div id="people-multiselect-toolbar"
-           style="display:none;gap:8px;align-items:center;padding:8px 10px;background:#1a1410;border-radius:5px;margin-bottom:10px;border:1px solid #2a1f10">
-        <span id="pms-count" style="flex:1;font-size:12px;color:#f5b87a;font-weight:600">0 selected</span>
+           style="display:none;gap:8px;align-items:center;padding:8px 10px;background:var(--hh-amber-bg);border-radius:5px;margin-bottom:10px;border:1px solid var(--hh-amber-border)">
+        <span id="pms-count" style="flex:1;font-size:12px;color:var(--hh-amber-text);font-weight:600">0 selected</span>
         <button onclick="openHouseholdDialogForMultiSelect()" style="padding:6px 12px;background:#f5b87a;color:#0a0c12;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">Group as household</button>
-        <button onclick="pmsClear()" style="padding:6px 12px;background:transparent;color:#f5b87a;border:1px solid #4a3520;border-radius:5px;font-size:12px;cursor:pointer">Clear</button>
+        <button onclick="pmsClear()" style="padding:6px 12px;background:transparent;color:var(--hh-amber-text);border:1px solid var(--hh-brown-border);border-radius:5px;font-size:12px;cursor:pointer">Clear</button>
       </div>
       <div class="people-search-bar">
         <input type="text" id="people-q" placeholder="Search by name or email…" oninput="peopleDebouncedSearch()" autocomplete="off">
@@ -1133,16 +1293,16 @@ function renderCandidatesPanel() {
   const html = _hcbCandidates.map(c => {
     const persons = c.persons.map(p => _esc(p.name || p.email)).join(', ');
     const warning = c.persons.length > 5
-      ? '<div style="color:#f5d07a;font-size:11px;margin-bottom:4px">⚠ Unusually large — review carefully</div>'
+      ? '<div style="color:var(--hh-warn-text);font-size:11px;margin-bottom:4px">⚠ Unusually large — review carefully</div>'
       : '';
-    return `<div style="padding:10px;margin-bottom:6px;background:#0f0c08;border:1px solid #2a1f10;border-radius:5px">
+    return `<div style="padding:10px;margin-bottom:6px;background:var(--hh-amber-row-bg);border:1px solid var(--hh-amber-border);border-radius:5px">
       ${warning}
-      <div style="font-size:11px;color:#8a93a3;margin-bottom:4px">signal: ${_esc(c.signal)}</div>
+      <div style="font-size:11px;color:var(--hh-meta);margin-bottom:4px">signal: ${_esc(c.signal)}</div>
       <div style="font-size:13px;margin-bottom:6px">${persons}</div>
       <div style="display:flex;gap:6px">
         <button onclick="hcbConfirm(${c.id})" style="padding:5px 10px;background:#f5b87a;color:#0a0c12;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">Confirm as household</button>
         ${c.persons.length === 2 ? `<button onclick="hcbMerge(${c.id})" style="padding:5px 10px;background:#7ab8f5;color:#0a0c12;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">Merge as duplicate</button>` : ''}
-        <button onclick="hcbDismiss(${c.id})" style="padding:5px 10px;background:transparent;color:#8a93a3;border:1px solid #4a3520;border-radius:4px;font-size:11px;cursor:pointer">Dismiss</button>
+        <button onclick="hcbDismiss(${c.id})" style="padding:5px 10px;background:transparent;color:var(--hh-meta);border:1px solid var(--hh-brown-border);border-radius:4px;font-size:11px;cursor:pointer">Dismiss</button>
       </div>
     </div>`;
   }).join('');
@@ -1191,8 +1351,8 @@ async function hcbMerge(candId) {
 
 function mkdUpdateLabels() {
   const p1Selected = document.getElementById('mkd-p1-radio').checked;
-  const KEEP = '<span style="color:#7ab8f5">KEEPER</span>';
-  const DEL  = '<span style="color:#f57a7a">WILL BE DELETED</span>';
+  const KEEP = '<span style="color:var(--hh-blue-text)">KEEPER</span>';
+  const DEL  = '<span style="color:var(--hh-red-text)">WILL BE DELETED</span>';
   document.getElementById('mkd-p1-tag').innerHTML = p1Selected ? KEEP : DEL;
   document.getElementById('mkd-p2-tag').innerHTML = p1Selected ? DEL : KEEP;
   document.getElementById('mkd-p1-row').style.borderColor = p1Selected ? '#7ab8f5' : '#1c2433';
@@ -1260,17 +1420,17 @@ function renderPendingMergesPanel() {
       `${m.keeper.first_name||''} ${m.keeper.last_name||''}`.trim() || m.keeper.email || `#${m.keeper.id}`;
     const dupeName = m.dupe.deleted ? `[deleted person ${m.dupe.id}]` :
       `${m.dupe.first_name||''} ${m.dupe.last_name||''}`.trim() || m.dupe.email || `#${m.dupe.id}`;
-    return `<div style="padding:10px;margin-bottom:6px;background:#0a1520;border:1px solid #1a3450;border-radius:5px">
-      <div style="font-size:11px;color:#8a93a3;margin-bottom:4px">queued ${m.queued_at.slice(0,10)} by ${_esc(m.queued_by)}</div>
+    return `<div style="padding:10px;margin-bottom:6px;background:var(--hh-blue-row-bg);border:1px solid var(--hh-blue-border);border-radius:5px">
+      <div style="font-size:11px;color:var(--hh-meta);margin-bottom:4px">queued ${m.queued_at.slice(0,10)} by ${_esc(m.queued_by)}</div>
       <div style="font-size:13px;margin-bottom:6px">
-        <span style="color:#7ab8f5;font-weight:600">KEEP:</span> ${_esc(keeperName)} <span style="color:#8a93a3;font-size:11px">${_esc(m.keeper.email||'')}</span>
+        <span style="color:var(--hh-blue-text);font-weight:600">KEEP:</span> ${_esc(keeperName)} <span style="color:var(--hh-meta);font-size:11px">${_esc(m.keeper.email||'')}</span>
       </div>
       <div style="font-size:13px;margin-bottom:8px">
-        <span style="color:#f57a7a;font-weight:600">DELETE:</span> ${_esc(dupeName)} <span style="color:#8a93a3;font-size:11px">${_esc(m.dupe.email||'')}</span>
+        <span style="color:var(--hh-red-text);font-weight:600">DELETE:</span> ${_esc(dupeName)} <span style="color:var(--hh-meta);font-size:11px">${_esc(m.dupe.email||'')}</span>
       </div>
       <div style="display:flex;gap:6px">
         <button onclick="pmbApply(${m.id})" style="padding:5px 10px;background:#7ab8f5;color:#0a0c12;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">Apply merge</button>
-        <button onclick="pmbCancel(${m.id})" style="padding:5px 10px;background:transparent;color:#8a93a3;border:1px solid #4a3520;border-radius:4px;font-size:11px;cursor:pointer">Cancel</button>
+        <button onclick="pmbCancel(${m.id})" style="padding:5px 10px;background:transparent;color:var(--hh-meta);border:1px solid var(--hh-brown-border);border-radius:4px;font-size:11px;cursor:pointer">Cancel</button>
       </div>
     </div>`;
   }).join('');
@@ -1424,7 +1584,7 @@ function _personCard(p) {
     <div style="display:flex;align-items:flex-start;gap:8px">
       <div onclick="event.stopPropagation();pmsToggle(${p.id})"
            class="pms-check"
-           style="flex-shrink:0;width:16px;height:16px;border:1px solid #4a3520;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;background:#0a0c12;font-size:11px;font-weight:700;margin-top:1px;${checked}">${checkmark}</div>
+           style="flex-shrink:0;width:16px;height:16px;border:1px solid var(--hh-brown-border);border-radius:3px;display:inline-flex;align-items:center;justify-content:center;background:var(--hh-chip-bg);font-size:11px;font-weight:700;margin-top:1px;${checked}">${checkmark}</div>
       <div style="flex:1;min-width:0">
         <div class="person-card-name">${_esc(p.name || (p.first_name+' '+p.last_name).trim() || p.email)}</div>
         <div class="person-card-email">${_esc(p.email)}${p.profession ? ' · '+_esc(p.profession) : ''}</div>
@@ -1530,33 +1690,33 @@ function _renderHouseholdSection(person, household) {
   }
   const errors = _hhRecentErrors.get(household.slug) || [];
   const errorBadge = errors.length > 0 ? `
-    <div style="margin:8px 0;padding:8px 10px;background:#3a2615;border:1px solid #f5d07a;border-radius:5px;color:#f5d07a;font-size:11px">
+    <div style="margin:8px 0;padding:8px 10px;background:var(--hh-error-bg);border:1px solid var(--hh-warn-text);border-radius:5px;color:var(--hh-warn-text);font-size:11px">
       ⚠ GHL sync incomplete (${errors.length} member(s) failed).
       <button onclick="hhResyncGhl('${_esc(household.slug)}')"
-              style="margin-left:8px;padding:3px 8px;background:transparent;color:#f5d07a;border:1px solid #f5d07a;border-radius:3px;font-size:10px;cursor:pointer">Retry</button>
+              style="margin-left:8px;padding:3px 8px;background:transparent;color:var(--hh-warn-text);border:1px solid var(--hh-warn-text);border-radius:3px;font-size:10px;cursor:pointer">Retry</button>
     </div>` : '';
   const members = household.members || [];
-  const headBadge = `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#4a3520;color:#f5d4a0;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-left:6px">${_esc(members.find(m=>m.is_head)?.first_name||'')} is head</span>`;
+  const headBadge = `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--hh-headbadge-bg);color:var(--hh-headbadge-text);text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-left:6px">${_esc(members.find(m=>m.is_head)?.first_name||'')} is head</span>`;
   const memberCards = members.map(m => {
     const initials = ((m.first_name||'?')[0] + (m.last_name||'?')[0]).toUpperCase();
-    const thisOne = m.id === person.id ? 'opacity:0.7;border-color:#f5b87a' : '';
-    return `<div style="display:flex;gap:10px;padding:8px 10px;margin:6px 0;background:#0f0c08;border:1px solid #2a1f10;border-radius:6px;cursor:pointer;${thisOne}"
+    const thisOne = m.id === person.id ? 'opacity:0.7;border-color:var(--hh-amber-text)' : '';
+    return `<div style="display:flex;gap:10px;padding:8px 10px;margin:6px 0;background:var(--hh-amber-row-bg);border:1px solid var(--hh-amber-border);border-radius:6px;cursor:pointer;${thisOne}"
             onclick="loadPersonDetail(${m.id})">
-      <div style="width:28px;height:28px;border-radius:50%;background:#4a3520;color:#f5d4a0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${initials}</div>
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--hh-headbadge-bg);color:var(--hh-headbadge-text);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${initials}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600">${_esc(m.name)} ${m.is_head ? '<span style="font-size:9px;padding:2px 5px;border-radius:4px;background:#4a3520;color:#f5d4a0;text-transform:uppercase;letter-spacing:0.05em">Head</span>' : ''}</div>
-        <div style="font-size:11px;color:#8a93a3">${_esc(m.email||'')}</div>
+        <div style="font-size:13px;font-weight:600">${_esc(m.name)} ${m.is_head ? '<span style="font-size:9px;padding:2px 5px;border-radius:4px;background:var(--hh-headbadge-bg);color:var(--hh-headbadge-text);text-transform:uppercase;letter-spacing:0.05em">Head</span>' : ''}</div>
+        <div style="font-size:11px;color:var(--hh-meta)">${_esc(m.email||'')}</div>
       </div>
     </div>`;
   }).join('');
-  return `<div class="detail-field" style="margin-top:14px;background:#1a1410;border:1px solid #2a1f10;border-radius:8px;padding:12px">
-    <h4 style="margin:0 0 8px;font-size:12px;color:#f5b87a;display:flex;justify-content:space-between;align-items:center">
+  return `<div class="detail-field" style="margin-top:14px;background:var(--hh-amber-bg);border:1px solid var(--hh-amber-border);border-radius:8px;padding:12px">
+    <h4 style="margin:0 0 8px;font-size:12px;color:var(--hh-amber-text);display:flex;justify-content:space-between;align-items:center">
       <span>👥 ${_esc(household.name)} household ${headBadge}</span>
-      <button onclick="openHouseholdEditDialog('${_esc(household.slug)}')" style="background:transparent;border:none;color:#8a93a3;cursor:pointer;font-size:14px">⚙</button>
+      <button onclick="openHouseholdEditDialog('${_esc(household.slug)}')" style="background:transparent;border:none;color:var(--hh-meta);cursor:pointer;font-size:14px">⚙</button>
     </h4>
     ${errorBadge}
     ${memberCards}
-    <button class="detail-enrich-btn" style="border-color:#f5b87a;color:#f5b87a;width:100%;margin-top:6px;font-size:11px"
+    <button class="detail-enrich-btn" style="border-color:var(--hh-amber-text);color:var(--hh-amber-text);width:100%;margin-top:6px;font-size:11px"
             onclick="openHouseholdDialogForAddMember('${_esc(household.slug)}')">+ Add member</button>
   </div>`;
 }

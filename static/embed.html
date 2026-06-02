@@ -506,7 +506,18 @@
   .surfaced-card:hover { border-color: var(--accent); background: var(--bg); }
   .surfaced-card-title { font-size: 12px; font-weight: 700; color: var(--text); }
   .surfaced-card-sub { font-size: 10px; color: var(--text-muted); margin-top: 1px; line-height: 1.3; }
+
+  /* Light-mode legibility: dark literals that bypass the theme vars. Scoped so
+     DARK mode is untouched; all var(--…) colors theme via theme-toggle.js. */
+  :root[data-theme="light"] .message.user { background: var(--surface2); }  /* was #152019; assistant stays --surface (white) */
+  :root[data-theme="light"] .message-body code { color: #b5482f; }          /* was #f78166, too pale on beige */
+  :root[data-theme="light"] .pill-high { color: #2f7a45; }
+  :root[data-theme="light"] .pill-mid  { color: #9a7a1e; }
+  :root[data-theme="light"] .pill-low  { color: #6b6250; }
+  :root[data-theme="light"] #mic-btn.recording { background: #fdecec; }      /* was #2d1010 dark-red blob */
+  :root[data-theme="light"] .funnel-gate-err { color: #c0392b; }             /* was #e08a8a, too pale on white */
 </style>
+<script src="/static/theme-toggle.js"></script>
 </head>
 <body>
 

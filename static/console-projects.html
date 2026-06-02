@@ -275,7 +275,16 @@
     cursor: pointer;
     font-weight: 600;
   }
+
+  /* Light-mode: page-specific semantic vars (status + kanban columns) not
+     covered by the shared theme-toggle.js override. Dark mode untouched. */
+  :root[data-theme="light"]{
+    --good:#2D7A6A; --warn:#9A7A1E; --bad:#B23A1E;
+    --col-active:#9A7A1E; --col-queued:#A85A2E; --col-planning:#3A6E80;
+    --col-ideas:#6B6250; --col-done:#2D7A6A;
+  }
 </style>
+<script src="/static/theme-toggle.js"></script>
 </head>
 <body>
 <script src="/static/op-nav.js" data-active="projects"></script>
