@@ -141,6 +141,26 @@ def test_order_history_records_newest_first_and_is_idempotent(db):
     assert h[1]["credit_cents"] == 50000
 
 
+def test_name_to_slug_exact_and_fuzzy():
+    from dashboard.practitioner_portal import name_to_slug
+    cat = {"gi-repair": {"name": "GI Repair"}, "microbiome": {"name": "Microbiome"}}
+    assert name_to_slug("gi repair", cat) == "gi-repair"            # exact, case-insensitive
+    assert name_to_slug("microbiome support", cat) == "microbiome"  # fuzzy (pn within nl)
+    assert name_to_slug("nope", cat) is None
+    assert name_to_slug("", cat) is None
+
+
+def test_assist_cross_sell_resolves_in_catalog_only():
+    from dashboard.practitioner_portal import assist_cross_sell
+    cat = {"gastrozyme": {"name": "GastroZyme"}, "gi-repair": {"name": "GI Repair"},
+           "microbiome": {"name": "Microbiome"}}
+    pairings = {"pairings": {"gastrozyme": ["GI Repair", "Microbiome", "Nonexistent Tool"]}}
+    out = assist_cross_sell("gastrozyme", catalog=cat, pairings=pairings)
+    assert out == [{"name": "GI Repair", "slug": "gi-repair"},
+                   {"name": "Microbiome", "slug": "microbiome"}]   # out-of-catalog dropped
+    assert assist_cross_sell("unknown-slug", catalog=cat, pairings=pairings) == []
+
+
 def test_register_coach_stays_locked(fake_supabase):
     from dashboard.practitioner_portal import register_practitioner, validate_registration
     clean, _ = validate_registration({"email": "c@x.com", "name": "C",

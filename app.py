@@ -4972,6 +4972,95 @@ def api_practitioner_checkout():
     return jsonify(out), (200 if out.get("ok") else 422)
 
 
+_PRACTITIONER_ASSIST_SYSTEM = (
+    "You are Dr. Glen Swartwout's clinical formulation assistant, helping a licensed "
+    "practitioner or certified coach build a wholesale order for a patient (naturopathic "
+    "physician, Hilo Hawai'i). Help them choose the right Functional Formulations for the "
+    "patient's terrain and condition.\n\n"
+    "How you work:\n"
+    "- Write at a clinical practitioner level: anatomical and physiological terms, meridian "
+    "names, mechanism of action, dosage ranges. Be precise and protocol-oriented.\n"
+    "- A practitioner often gives enough up front; ask ONE focused clinical question only when "
+    "you genuinely need more (presentation, terrain, what they have tried). Don't over-question.\n"
+    "- Prefer Functional Formulations (Advanced Botanical / Nutritional) FIRST, since they "
+    "simplify implementation, then individual remedies, healing tools, or adjunct therapies.\n"
+    "- The RETRIEVED SNIPPETS are your source of truth; snippets tagged [AUTHORITATIVE ...] or "
+    "type clinical-qa override anything else.\n"
+    "- When you can name the single best PRIMARY formulation for this case, name it clearly with "
+    "1-2 sentences of clinical rationale, and you may name 1-2 adjacent formulations that complete "
+    "the protocol. Name products by their EXACT catalog name so they can be added to the order.\n"
+    "- Never invent product names, URLs, or prices. Keep replies concise and clinical. Sign off as "
+    "Dr. Glen."
+)
+
+
+@app.route("/api/practitioner/assist", methods=["POST", "OPTIONS"])
+def api_practitioner_assist():
+    if request.method == "OPTIONS":
+        return "", 200
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"error": "not signed in"}), 401
+    data = request.get_json(silent=True) or {}
+    query = (data.get("query") or "").strip()
+    history = data.get("history") or []
+    if not query:
+        return jsonify({"error": "Empty query"}), 400
+
+    def generate():
+        try:
+            q_vec = embed(query)
+        except Exception as e:
+            yield sse({"error": f"Embedding failed: {e}"}); return
+        matches = _match_query_namespaces(q_vec)
+        context_str, sources_list = build_context(matches) if matches else ("", [])
+        messages = []
+        for turn in history[-8:]:
+            if turn.get("role") in ("user", "assistant") and turn.get("content"):
+                messages.append({"role": turn["role"], "content": turn["content"]})
+        messages.append({"role": "user", "content":
+            f"PRACTITIONER MESSAGE: {query}\n\n"
+            f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
+            "Continue the clinical formulation match. If you can name the best primary Functional "
+            "Formulation (and any adjuncts), name them with brief clinical rationale; otherwise ask "
+            "the single best clinical question."})
+        full = []
+        try:
+            with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=900,
+                                     system=_PRACTITIONER_ASSIST_SYSTEM, messages=messages) as stream:
+                for tok in stream.text_stream:
+                    tok = _strip_dash(tok); full.append(tok); yield sse({"token": tok})
+        except Exception as e:
+            yield sse({"error": f"Claude error: {e}"}); return
+        answer = "".join(full)
+
+        match_evt = None
+        try:
+            convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-3:]) + f"\nassistant: {answer}"
+            mx = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=200,
+                                     system=_MATCH_EXTRACT_SYSTEM,
+                                     messages=[{"role": "user", "content": convo[:4000]}])
+            txt = mx.content[0].text.strip()
+            if txt.startswith("```"):
+                txt = txt.split("```", 2)[1]
+                if txt.startswith("json\n"): txt = txt[5:]
+            obj = json.loads(txt)
+            if obj.get("matched") and obj.get("name"):
+                slug = _resolve_buy_slug(obj["name"])
+                if slug:
+                    match_evt = {"name": obj["name"], "kind": obj.get("kind", ""),
+                                 "why": obj.get("why", ""), "slug": slug,
+                                 "also_consider": _pp.assist_cross_sell(slug)}
+        except Exception as e:
+            print(f"[assist] extract: {e!r}", flush=True)
+        if match_evt:
+            yield sse({"match": match_evt})
+        yield sse({"done": True, "sources": sources_list, "chunks_retrieved": len(matches)})
+
+    return Response(stream_with_context(generate()), content_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 def _log_referral_event(lead_id, email, first_name, last_name, utm_source, utm_medium,
                         utm_campaign, utm_content, utm_term, quiz_score, raw):
     if not utm_source:

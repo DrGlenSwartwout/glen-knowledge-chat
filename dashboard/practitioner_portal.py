@@ -143,6 +143,50 @@ def order_history(practitioner_id, *, limit=20, db_path=None) -> List[dict]:
              "credit_cents": r[3], "created_at": r[4]} for r in rows]
 
 
+# ── AI assistant cross-sell (resolve adjacent formulations to cart slugs) ──────
+
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_PAIRINGS_CACHE = None
+
+
+def _load_pairings() -> dict:
+    global _PAIRINGS_CACHE
+    if _PAIRINGS_CACHE is None:
+        try:
+            _PAIRINGS_CACHE = json.loads((_DATA_DIR / "upsell-pairings.json").read_text())
+        except Exception:
+            _PAIRINGS_CACHE = {}
+    return _PAIRINGS_CACHE
+
+
+def name_to_slug(name, catalog) -> Optional[str]:
+    """Resolve a product NAME to a products.json slug (exact or fuzzy substring).
+    Mirrors app.py:_resolve_buy_slug so the assistant can add to the cart."""
+    if not name:
+        return None
+    nl = name.strip().lower()
+    for slug, p in (catalog or {}).items():
+        pn = (p.get("name") or "").lower()
+        if pn and (nl == pn or (len(nl) > 4 and (nl in pn or pn in nl))):
+            return slug
+    return None
+
+
+def assist_cross_sell(slug, *, catalog=None, pairings=None) -> List[dict]:
+    """Adjacent in-catalog formulations for a matched slug, from upsell-pairings.
+    Returns [{name, slug}] for resolvable, in-catalog complements (others dropped)."""
+    cat = catalog if catalog is not None else pricing._load_catalog()
+    pr = pairings if pairings is not None else _load_pairings()
+    names = (pr.get("pairings") or {}).get(slug) or []
+    out, seen = [], set()
+    for nm in names:
+        s = name_to_slug(nm, cat)
+        if s and s != slug and s not in seen:
+            seen.add(s)
+            out.append({"name": nm, "slug": s})
+    return out
+
+
 # ── tokens (SQLite auth_tokens, shared with the app's magic-link table) ────────
 
 def _insert_token(tok, purpose, extra, ttl_seconds, now=None, db_path=None) -> None:
