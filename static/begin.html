@@ -679,6 +679,44 @@
     if(!host || !cards || !cards.length) return;
     host.innerHTML = '';
     cards.forEach(function(c, i){
+      if (c.kind === 'clip') {
+        // Clip card: inline HTML5 player, non-navigating
+        var div = document.createElement('div');
+        div.className = 'card case-study-card reveal in';
+
+        var clipLabel = document.createElement('span');
+        clipLabel.className = 'card-proof-label';
+        clipLabel.textContent = 'Clip';
+
+        var bodySpan = document.createElement('span');
+        bodySpan.className = 'card-body';
+
+        var titleSpan = document.createElement('span');
+        titleSpan.className = 'card-title';
+        titleSpan.textContent = c.title || '';
+        bodySpan.appendChild(titleSpan);
+
+        var vidEl = document.createElement('video');
+        vidEl.controls = true;
+        vidEl.preload = 'metadata';
+        vidEl.setAttribute('playsinline', '');
+        vidEl.style.cssText = 'width:100%;max-width:340px;border-radius:8px;display:block;margin:8px 0';
+        vidEl.src = c.clip_url;
+        bodySpan.appendChild(vidEl);
+
+        if (c.sub) {
+          var subSpan = document.createElement('span');
+          subSpan.className = 'card-sub';
+          subSpan.textContent = c.sub;
+          bodySpan.appendChild(subSpan);
+        }
+
+        div.appendChild(clipLabel);
+        div.appendChild(bodySpan);
+        host.appendChild(div);
+        return;
+      }
+
       if (c.kind === 'case-study') {
         // Proof card: visually distinct, non-nav wrapper with optional video link
         var div = document.createElement('div');

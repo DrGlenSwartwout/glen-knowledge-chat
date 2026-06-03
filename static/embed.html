@@ -697,6 +697,40 @@
     const row = document.createElement('div');
     row.className = 'surfaced-cards-row';
     cards.forEach(card => {
+      if (card.kind === 'clip') {
+        // Clip card: inline HTML5 player, non-navigating
+        const div = document.createElement('div');
+        div.className = 'surfaced-card case-study-card';
+
+        const clipLabel = document.createElement('div');
+        clipLabel.className = 'surfaced-card-proof-label';
+        clipLabel.textContent = 'Clip';
+        div.appendChild(clipLabel);
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'surfaced-card-title';
+        titleEl.textContent = card.title;
+        div.appendChild(titleEl);
+
+        const vidEl = document.createElement('video');
+        vidEl.controls = true;
+        vidEl.preload = 'metadata';
+        vidEl.setAttribute('playsinline', '');
+        vidEl.style.cssText = 'width:100%;max-width:340px;border-radius:8px;display:block;margin:8px 0';
+        vidEl.src = card.clip_url;
+        div.appendChild(vidEl);
+
+        if (card.sub) {
+          const subEl = document.createElement('div');
+          subEl.className = 'surfaced-card-sub';
+          subEl.textContent = card.sub;
+          div.appendChild(subEl);
+        }
+
+        row.appendChild(div);
+        return;
+      }
+
       if (card.kind === 'case-study') {
         // Case-study / testimonial card: proof-labelled, non-navigating container
         const div = document.createElement('div');

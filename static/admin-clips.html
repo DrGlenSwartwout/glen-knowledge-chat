@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clips Review — Admin</title>
+<style>
+  :root {
+    --bg: #0a150d;
+    --surface: #111f16;
+    --border: #21472d;
+    --text: #fdf4d8;
+    --muted: #a89870;
+    --accent: #d4a843;
+    --accent-light: #e8c876;
+    --green: #3d8a52;
+    --amber: #d4a843;
+    --red: #cc4b2c;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+  #wrap { max-width: 900px; margin: 0 auto; padding: 32px 16px; }
+
+  header { margin-bottom: 28px; }
+  h1 { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+  header p { color: var(--muted); font-size: 13px; }
+
+  #status { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  #status.error { color: var(--red); }
+
+  .clip-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .clip-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: baseline; }
+  .clip-title { font-size: 16px; font-weight: 700; flex: 1 1 100%; }
+  .chip {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+    padding: 3px 8px; border-radius: 4px; background: rgba(212,168,67,0.12); color: var(--accent);
+    border: 1px solid rgba(212,168,67,0.25);
+  }
+  .chip.green { background: rgba(61,138,82,0.12); color: #6ddc8a; border-color: rgba(61,138,82,0.3); }
+
+  video { display: block; margin: 10px 0 14px; border-radius: 8px; background: #000; }
+
+  .clip-why { font-size: 13px; color: var(--text); margin-bottom: 8px; line-height: 1.5; }
+  .clip-text { font-size: 12px; color: var(--muted); line-height: 1.55; border-left: 2px solid var(--border); padding-left: 10px; margin-bottom: 14px; }
+
+  .actions { display: flex; gap: 10px; }
+  button {
+    padding: 9px 18px; border: none; border-radius: 6px;
+    font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s;
+  }
+  button:hover { opacity: .85; }
+  button.approve { background: var(--green); color: #fff; }
+  button.reject  { background: transparent; color: var(--red); border: 1px solid rgba(204,75,44,0.4); }
+  button.reject:hover { background: rgba(204,75,44,0.08); opacity: 1; }
+
+  #empty { color: var(--muted); font-size: 14px; padding: 20px 0; display: none; }
+
+  #toast {
+    position: fixed; bottom: 20px; right: 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 16px; font-size: 13px;
+    opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+  #toast.ok    { border-color: var(--green); color: #6ddc8a; }
+  #toast.error { border-color: var(--red); color: var(--red); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>Clips Review</h1>
+    <p>Pending clips from the <code>clips</code> Pinecone namespace. Approve to surface in chat; Reject to delete.</p>
+  </header>
+  <div id="status">Loading...</div>
+  <div id="list"></div>
+  <div id="empty">No pending clips.</div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function() {
+  function qs(k) {
+    return new URLSearchParams(location.search).get(k) || '';
+  }
+  var KEY = qs('key');
+  var STATUS = document.getElementById('status');
+  var LIST   = document.getElementById('list');
+  var EMPTY  = document.getElementById('empty');
+
+  function toast(msg, type) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'show ' + (type || '');
+    clearTimeout(el._t);
+    el._t = setTimeout(function() { el.className = ''; }, 2800);
+  }
+
+  function apiKey(path) {
+    return path + (KEY ? '?key=' + encodeURIComponent(KEY) : '');
+  }
+
+  function buildCard(clip) {
+    var card = document.createElement('div');
+    card.className = 'clip-card';
+    card.dataset.id = clip.id;
+    card.dataset.r2key = clip.r2_key || '';
+
+    var meta = document.createElement('div');
+    meta.className = 'clip-meta';
+
+    var title = document.createElement('div');
+    title.className = 'clip-title';
+    title.textContent = clip.title || clip.id;
+    meta.appendChild(title);
+
+    if (clip.score != null) {
+      var sc = document.createElement('span');
+      sc.className = 'chip';
+      sc.textContent = 'Score ' + parseFloat(clip.score).toFixed(1) + '/10';
+      meta.appendChild(sc);
+    }
+    if (clip.channel) {
+      var ch = document.createElement('span');
+      ch.className = 'chip green';
+      ch.textContent = clip.channel;
+      meta.appendChild(ch);
+    }
+    if (clip.topic) {
+      var tp = document.createElement('span');
+      tp.className = 'chip';
+      tp.textContent = clip.topic;
+      meta.appendChild(tp);
+    }
+    card.appendChild(meta);
+
+    if (clip.r2_key) {
+      var vid = document.createElement('video');
+      vid.controls = true;
+      vid.preload = 'metadata';
+      vid.style.cssText = 'max-width:360px;width:100%';
+      vid.src = '/clip/' + clip.r2_key;
+      card.appendChild(vid);
+    }
+
+    if (clip.why) {
+      var why = document.createElement('div');
+      why.className = 'clip-why';
+      why.textContent = clip.why;
+      card.appendChild(why);
+    }
+    if (clip.text) {
+      var txt = document.createElement('div');
+      txt.className = 'clip-text';
+      txt.textContent = clip.text;
+      card.appendChild(txt);
+    }
+
+    var actions = document.createElement('div');
+    actions.className = 'actions';
+
+    var btnApprove = document.createElement('button');
+    btnApprove.className = 'approve';
+    btnApprove.textContent = 'Approve';
+    btnApprove.addEventListener('click', function() { doAction('approve', clip.id, clip.r2_key, card); });
+    actions.appendChild(btnApprove);
+
+    var btnReject = document.createElement('button');
+    btnReject.className = 'reject';
+    btnReject.textContent = 'Reject';
+    btnReject.addEventListener('click', function() { doAction('reject', clip.id, clip.r2_key, card); });
+    actions.appendChild(btnReject);
+
+    card.appendChild(actions);
+    return card;
+  }
+
+  function doAction(action, id, r2_key, card) {
+    var url = apiKey('/admin/clips/' + action);
+    fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: id, r2_key: r2_key})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(j) {
+      var d = j.data || j;
+      if (d.approved || d.rejected) {
+        card.remove();
+        toast(action === 'approve' ? 'Approved' : 'Rejected', 'ok');
+        if (!LIST.querySelector('.clip-card')) {
+          EMPTY.style.display = 'block';
+        }
+      } else {
+        toast((j.error || j.message || 'Error'), 'error');
+      }
+    })
+    .catch(function(e) { toast('Request failed: ' + e, 'error'); });
+  }
+
+  function load() {
+    STATUS.textContent = 'Loading...';
+    STATUS.className = '';
+    fetch(apiKey('/admin/clips/pending'))
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        var clips = (j.data && j.data.clips) ? j.data.clips : (j.clips || []);
+        STATUS.textContent = clips.length + ' pending clip' + (clips.length !== 1 ? 's' : '');
+        LIST.innerHTML = '';
+        if (!clips.length) {
+          EMPTY.style.display = 'block';
+          return;
+        }
+        EMPTY.style.display = 'none';
+        clips.forEach(function(c) { LIST.appendChild(buildCard(c)); });
+      })
+      .catch(function(e) {
+        STATUS.textContent = 'Failed to load: ' + e;
+        STATUS.className = 'error';
+      });
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>

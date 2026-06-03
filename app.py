@@ -27,6 +27,7 @@ from flask_cors import CORS
 from pinecone import Pinecone
 from openai import OpenAI
 import anthropic
+import boto3 as _boto3
 import begin_funnel
 
 # ── Slice 4 test seam ─────────────────────────────────────────────────────────
@@ -894,6 +895,80 @@ def surface_case_study_cards(q_vec, max_cards=1, threshold=0.80):
     return cards
 
 
+# ── R2 clip proxy ─────────────────────────────────────────────────────────────
+_r2_client = None
+
+
+def _r2():
+    global _r2_client
+    if _r2_client is None:
+        _r2_client = _boto3.client(
+            "s3",
+            endpoint_url=os.environ.get("R2_ENDPOINT"),
+            aws_access_key_id=os.environ.get("R2_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.environ.get("R2_SECRET_ACCESS_KEY"),
+            region_name="auto",
+        )
+    return _r2_client
+
+
+@app.route("/clip/<path:key>")
+def serve_clip(key):
+    rng = request.headers.get("Range")
+    kw = {"Bucket": os.environ.get("R2_BUCKET", "rm-clips"), "Key": key}
+    if rng:
+        kw["Range"] = rng
+    try:
+        obj = _r2().get_object(**kw)
+    except Exception:
+        return "not found", 404
+    body = obj["Body"]
+    headers = {
+        "Content-Type": obj.get("ContentType", "video/mp4"),
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=86400",
+    }
+    status = 200
+    if rng and obj.get("ContentRange"):
+        headers["Content-Range"] = obj["ContentRange"]
+        status = 206
+    if obj.get("ContentLength") is not None:
+        headers["Content-Length"] = str(obj["ContentLength"])
+    return Response(body.iter_chunks(chunk_size=65536), status=status, headers=headers)
+
+
+def surface_approved_clips(q_vec, max_cards=1, threshold=0.80):
+    """Query the `clips` namespace; return up to max_cards clip cards for any
+    approved match scoring above threshold."""
+    try:
+        res = _idx.query(
+            vector=q_vec,
+            top_k=3,
+            namespace="clips",
+            include_metadata=True,
+            filter={"status": "approved"},
+        )
+    except Exception:
+        return []
+    cards = []
+    for m in getattr(res, "matches", []) or []:
+        if (m.score or 0) < threshold:
+            continue
+        md = m.metadata or {}
+        if not md.get("r2_key"):
+            continue
+        cards.append({
+            "key": "clip:" + m.id,
+            "kind": "clip",
+            "title": md.get("title") or "Watch this",
+            "sub": md.get("why") or "",
+            "clip_url": "/clip/" + md["r2_key"],
+        })
+        if len(cards) >= max_cards:
+            break
+    return cards
+
+
 def build_context(matches):
     seen, sources, parts, total = set(), {}, [], 0
     # Authoritative clinical-qa chunks go in FIRST so the context-char cap can
@@ -1585,6 +1660,11 @@ def chat():
             surfaced_cards = (surfaced_cards or []) + surface_case_study_cards(q_vec)
         except Exception as _cse:
             print(f"[case-study-surface] {_cse!r}", flush=True)
+
+        try:
+            surfaced_cards = (surfaced_cards or []) + surface_approved_clips(q_vec)
+        except Exception as _cle:
+            print(f"[clip-surface] {_cle!r}", flush=True)
 
         _done_payload = {
             "done": True, "log_id": log_id,
@@ -12429,6 +12509,55 @@ def admin_atlas_reject():
     if not cid:
         return fail("id required", 400)
     atlas_store.reject_concept(cid)
+    return ok({"rejected": cid})
+
+
+# ── Clips review admin ────────────────────────────────────────────────────────
+@app.route("/admin/clips")
+def admin_clips_page():
+    return send_from_directory(STATIC, "admin-clips.html")
+
+
+@app.route("/admin/clips/pending", methods=["GET"])
+@require_console_key
+def admin_clips_pending():
+    try:
+        res = _idx.query(
+            vector=[0.0] * 1536,
+            top_k=100,
+            namespace="clips",
+            include_metadata=True,
+            filter={"status": "pending"},
+        )
+        items = [{"id": m.id, **(m.metadata or {})} for m in res.matches]
+    except Exception as e:
+        return fail(str(e), 500)
+    return ok({"clips": items})
+
+
+@app.route("/admin/clips/approve", methods=["POST"])
+@require_console_key
+def admin_clips_approve():
+    cid = (request.get_json(silent=True) or {}).get("id")
+    if not cid:
+        return fail("id required", 400)
+    _idx.update(id=cid, set_metadata={"status": "approved"}, namespace="clips")
+    return ok({"approved": cid})
+
+
+@app.route("/admin/clips/reject", methods=["POST"])
+@require_console_key
+def admin_clips_reject():
+    d = request.get_json(silent=True) or {}
+    cid = d.get("id")
+    if not cid:
+        return fail("id required", 400)
+    _idx.delete(ids=[cid], namespace="clips")
+    if d.get("r2_key"):
+        try:
+            _r2().delete_object(Bucket=os.environ.get("R2_BUCKET", "rm-clips"), Key=d["r2_key"])
+        except Exception:
+            pass
     return ok({"rejected": cid})
 
 
