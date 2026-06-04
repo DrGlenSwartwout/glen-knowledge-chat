@@ -7,6 +7,7 @@ tested in Task 13 against the real Supabase instance."""
 from typing import Optional, Tuple
 
 from db_supabase import supabase_cursor
+from scrapers.practitioner_finder.normalize import normalize_country
 
 
 MILES_TO_METERS = 1609.344
@@ -114,6 +115,10 @@ def upsert_sql_and_params(row_dict: dict) -> Tuple[str, list]:
 
 
 def run_upsert(row_dict: dict) -> None:
+    # Normalize the country to an ISO-2 code at the single write boundary so
+    # every scraped row stores a clean value (adapters stay unchanged).
+    if "country" in row_dict:
+        row_dict["country"] = normalize_country(row_dict.get("country"))
     sql, params = upsert_sql_and_params(row_dict)
     with supabase_cursor() as cur:
         cur.execute(sql, params)

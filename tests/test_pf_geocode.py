@@ -4,7 +4,44 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scrapers.practitioner_finder.models import NormalizedPractitionerRow
-from scrapers.practitioner_finder.geocode import geocode_row, MapboxError
+from scrapers.practitioner_finder.geocode import geocode_row, geocode_place, MapboxError
+
+
+@patch("scrapers.practitioner_finder.geocode.requests.get")
+@patch.dict("os.environ", {"MAPBOX_PUBLIC_TOKEN": "pk.fake"})
+def test_geocode_place_bare_city_with_country_bias(mock_get):
+    mock_get.return_value = MagicMock(
+        status_code=200,
+        json=lambda: {"features": [{"center": [13.40, 52.52]}]},
+    )
+    lat, lng = geocode_place("Berlin", "DE")
+    assert (lat, lng) == (52.52, 13.40)
+    # Country bias passed to Mapbox, lower-cased.
+    assert mock_get.call_args.kwargs["params"]["country"] == "de"
+
+
+@patch("scrapers.practitioner_finder.geocode.requests.get")
+@patch.dict("os.environ", {"MAPBOX_PUBLIC_TOKEN": "pk.fake"})
+def test_geocode_place_no_country_omits_bias(mock_get):
+    mock_get.return_value = MagicMock(
+        status_code=200,
+        json=lambda: {"features": [{"center": [2.35, 48.85]}]},
+    )
+    geocode_place("Paris", None)
+    # International search: no country forced (NOT defaulted to "us").
+    assert "country" not in mock_get.call_args.kwargs["params"]
+
+
+@patch("scrapers.practitioner_finder.geocode.requests.get")
+@patch.dict("os.environ", {"MAPBOX_PUBLIC_TOKEN": "pk.fake"})
+def test_geocode_place_no_feature_returns_none(mock_get):
+    mock_get.return_value = MagicMock(status_code=200, json=lambda: {"features": []})
+    assert geocode_place("Nowheresville", "US") == (None, None)
+
+
+def test_geocode_place_empty_input_returns_none():
+    assert geocode_place("", "US") == (None, None)
+    assert geocode_place("   ", None) == (None, None)
 
 
 def _row(**kw):
