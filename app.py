@@ -6968,6 +6968,71 @@ def generate_audio():
     })
 
 
+# ── Chat audio output (per-message "Listen") ─────────────────────────────────
+# Public endpoint that speaks a single chat reply via ElevenLabs (Glen's voice).
+# The front-end (static/tts-output.js) falls back to the browser voice on any
+# non-200 response, so this stays simple: cache to avoid re-charging on replays,
+# rate-limit per IP to protect the paid API, and 503 when EL isn't configured.
+import time as _tts_time
+from collections import OrderedDict as _TTSOrderedDict
+
+_TTS_CACHE       = _TTSOrderedDict()   # sha256(text) -> audio bytes (LRU)
+_TTS_CACHE_MAX   = 200
+_TTS_RATE        = {}                  # ip -> [timestamps within window]
+_TTS_RATE_MAX    = 40                  # requests
+_TTS_RATE_WINDOW = 300                 # seconds (5 min)
+_TTS_MAX_CHARS   = 2500                # one reply; caps cost + latency
+_tts_lock        = threading.Lock()
+
+
+@app.route("/chat/tts", methods=["POST", "OPTIONS"])
+def chat_tts():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    body = request.get_json(silent=True) or {}
+    text = (body.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    if not _EL_API_KEY or not _EL_VOICE_ID:
+        return jsonify({"error": "tts not configured"}), 503
+
+    text = text[:_TTS_MAX_CHARS]
+
+    # Per-IP rate limit (protects the paid ElevenLabs API on a public route).
+    ip  = (request.headers.get("X-Forwarded-For", request.remote_addr or "")
+           .split(",")[0].strip()) or "anon"
+    now = _tts_time.time()
+    with _tts_lock:
+        hits = [t for t in _TTS_RATE.get(ip, []) if now - t < _TTS_RATE_WINDOW]
+        if len(hits) >= _TTS_RATE_MAX:
+            _TTS_RATE[ip] = hits
+            return jsonify({"error": "rate limited"}), 429
+        hits.append(now)
+        _TTS_RATE[ip] = hits
+
+    key = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    with _tts_lock:
+        audio = _TTS_CACHE.get(key)
+        if audio is not None:
+            _TTS_CACHE.move_to_end(key)
+
+    if audio is None:
+        audio, err = _el_tts(text)
+        if err or not audio:
+            return jsonify({"error": f"tts upstream error: {err or 'empty'}"}), 502
+        with _tts_lock:
+            _TTS_CACHE[key] = audio
+            _TTS_CACHE.move_to_end(key)
+            while len(_TTS_CACHE) > _TTS_CACHE_MAX:
+                _TTS_CACHE.popitem(last=False)
+
+    resp = Response(audio, mimetype="audio/mpeg")
+    resp.headers["Cache-Control"]  = "private, max-age=86400"
+    resp.headers["Content-Length"] = str(len(audio))
+    return resp
+
+
 # ── Transcript Ingest Endpoint ───────────────────────────────────────────────
 import re as _re
 import time as _time

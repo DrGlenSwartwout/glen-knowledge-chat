@@ -1095,6 +1095,13 @@
       div.appendChild(buildStars(logId));
     }
     msgs.appendChild(div);
+
+    if (role === 'assistant' && window.TTS) {
+      const bar  = div.querySelector('.msg-actions');
+      const body = div.querySelector('.message-body');
+      if (bar && body) window.TTS.attach(bar, body.innerText);
+    }
+
     msgs.scrollTop = msgs.scrollHeight;
   }
 
@@ -1878,5 +1885,6 @@
     return h;
   }
 </script>
+<script src="/static/tts-output.js"></script>
 </body>
 </html>
