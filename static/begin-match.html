@@ -205,6 +205,7 @@
 
   <script src="/ref-capture.js"></script>
   <script src="/static/mic-input.js"></script>
+  <script src="/static/tts-output.js"></script>
   <script>
     // ── State ──────────────────────────────────────────────────────────────
     const history = [];
@@ -259,6 +260,10 @@
       div.innerHTML = '<div class="role-label">' + label + '</div>'
         + '<div class="message-body">' + md(text) + '</div>';
       msgs.appendChild(div);
+      if (role === 'assistant' && window.TTS) {
+        const body = div.querySelector('.message-body');
+        if (body) window.TTS.attach(div, body.innerText);
+      }
       msgs.scrollTop = msgs.scrollHeight;
     }
 
@@ -401,6 +406,7 @@
                 if (evt.session_id) sessionId = evt.session_id;
                 if (streamDiv) {
                   // Leave the streamed assistant text in place (already rendered).
+                  if (window.TTS && bodyDiv) window.TTS.attach(streamDiv, bodyDiv.innerText);
                 }
                 history.push({ role: 'user', content: query });
                 if (accumulated) history.push({ role: 'assistant', content: accumulated });
