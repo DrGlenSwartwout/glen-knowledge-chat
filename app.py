@@ -9998,6 +9998,30 @@ def workspace_state(owner):
 import secrets as _secrets
 
 
+def _token_mint_allowed():
+    """Refuse to mint tokens against a non-production DB.
+
+    On Render, DATA_DIR is set and LOG_DB lives on the persistent disk
+    (same signal the scheduler uses). On a local run DATA_DIR is unset and
+    LOG_DB falls back to a repo-local/ephemeral chat_log.db, so a token
+    minted there never reaches production and silently fails to authenticate
+    (the Shaira 'Unauthorized' incident, 2026-06-04). Set
+    ALLOW_LOCAL_TOKEN_MINT=1 to opt in for deliberate local testing.
+
+    Returns (ok: bool, error_message: str|None).
+    """
+    if os.environ.get("DATA_DIR") or os.environ.get("ALLOW_LOCAL_TOKEN_MINT") == "1":
+        return True, None
+    return False, (
+        "Refusing to mint a token: this is not the production database "
+        "(DATA_DIR is unset, so LOG_DB falls back to a local/ephemeral file "
+        f"at {LOG_DB}). A token minted here never reaches production and will "
+        "fail with 'Unauthorized'. Mint against the live service "
+        "(https://glen-knowledge-chat.onrender.com), or set "
+        "ALLOW_LOCAL_TOKEN_MINT=1 to override for local testing."
+    )
+
+
 @app.route("/api/access-tokens", methods=["POST"])
 def access_token_create():
     """Mint a per-user access token. Admin (CONSOLE_SECRET) only.
@@ -10005,6 +10029,9 @@ def access_token_create():
     Returns the full token ONCE — never retrievable again."""
     if not _ws_auth_ok():
         return jsonify({"error":"Unauthorized"}), 401
+    ok, why = _token_mint_allowed()
+    if not ok:
+        return jsonify({"error": why, "log_db": str(LOG_DB)}), 409
     data = request.get_json(force=True) or {}
     name  = (data.get("name") or "").lower().strip()
     scope = (data.get("scope") or "").strip()
