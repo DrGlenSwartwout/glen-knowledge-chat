@@ -1,11 +1,40 @@
 """Knowledge Atlas store: load/validate/approve concept data. No Flask/Pinecone deps."""
 import json
+import os
 from pathlib import Path
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
-CONCEPTS_PATH = DATA_DIR / "atlas-concepts.json"
-PENDING_PATH = DATA_DIR / "atlas-pending.json"
-VIDEOS_PATH = DATA_DIR / "atlas-videos.json"
+# The git-committed copies (shipped with every deploy) — the build pipeline writes here.
+REPO_DATA = Path(__file__).resolve().parent / "data"
+
+
+def _persist_dir():
+    """The mutable concept/pending files live on the persistent disk (DATA_DIR=/data on
+    Render) so admin approvals survive redeploys. Falls back to the repo dir locally / in
+    tests where no persistent disk exists."""
+    d = Path(os.environ.get("DATA_DIR") or "/data")
+    if d.is_dir() and os.access(d, os.W_OK):
+        return d
+    return REPO_DATA
+
+
+DATA_DIR = _persist_dir()
+CONCEPTS_PATH = DATA_DIR / "atlas-concepts.json"      # mutable (approve/reject) -> persistent
+PENDING_PATH = DATA_DIR / "atlas-pending.json"        # mutable -> persistent
+VIDEOS_PATH = REPO_DATA / "atlas-videos.json"         # read-only link catalog -> ship with repo
+
+
+def reseed_from_repo(force=False):
+    """Copy the git-committed atlas files onto the persistent dir. Seeds them on first boot
+    (force=False, won't clobber live curation); force=True republishes a fresh build."""
+    if DATA_DIR == REPO_DATA:
+        return False
+    seeded = False
+    for fname in ("atlas-concepts.json", "atlas-pending.json"):
+        dst, src = DATA_DIR / fname, REPO_DATA / fname
+        if src.exists() and (force or not dst.exists()):
+            dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+            seeded = True
+    return seeded
 
 _REQUIRED = ("id", "label", "summary", "cluster", "coords", "links", "status")
 

@@ -12430,6 +12430,14 @@ def coaching_dashboard():
 import atlas_store
 import atlas_ask as _atlas_ask
 
+# Seed the mutable concept/pending files onto the persistent disk on first boot so admin
+# approvals survive redeploys (no-op locally / once seeded).
+try:
+    if atlas_store.reseed_from_repo():
+        print("[atlas] seeded persistent concept files from repo", flush=True)
+except Exception as _e:
+    print(f"[atlas] reseed skipped: {_e}", flush=True)
+
 
 @app.route("/atlas")
 def atlas_page():
@@ -12510,6 +12518,16 @@ def admin_atlas_reject():
         return fail("id required", 400)
     atlas_store.reject_concept(cid)
     return ok({"rejected": cid})
+
+
+@app.route("/admin/atlas/reseed", methods=["POST"])
+@require_console_key
+def admin_atlas_reseed():
+    # Republish the git-committed build onto the persistent disk (overwrites live curation).
+    # Use after an intentional rebuild. force defaults true here (explicit admin action).
+    force = (request.get_json(silent=True) or {}).get("force", True)
+    seeded = atlas_store.reseed_from_repo(force=force)
+    return ok({"reseeded": seeded, "force": force})
 
 
 # ── Clips review admin ────────────────────────────────────────────────────────

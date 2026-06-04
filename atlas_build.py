@@ -17,10 +17,14 @@ from pathlib import Path
 import numpy as np
 
 from atlas_seed import pca_coords, cosine_neighbors, kmeans_clusters
-from atlas_store import validate_concept, load_videos, CONCEPTS_PATH, PENDING_PATH
+from atlas_store import validate_concept, load_videos, REPO_DATA
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 SEED_PATH = DATA_DIR / "atlas-seed-input.json"
+# The build always writes the git-committed copies (deploy ships them; the app then seeds
+# the persistent disk from these). NOT the runtime persistent paths.
+CONCEPTS_PATH = REPO_DATA / "atlas-concepts.json"
+PENDING_PATH = REPO_DATA / "atlas-pending.json"
 VIDEO_SIM_THRESHOLD = 0.78
 NEIGHBORS_K = 4
 
