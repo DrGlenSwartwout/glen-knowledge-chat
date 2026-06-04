@@ -32,7 +32,7 @@
 
   function Atlas(root, mode) {
     this.root = root; this.mode = mode;
-    this.state = { concepts: [], byId: {}, hierarchy: {}, view: "map", selectedId: null };
+    this.state = { concepts: [], byId: {}, hierarchy: {}, view: "map", selectedId: null, expandedCluster: null };
     this.build();
     this.load();
   }
@@ -94,31 +94,82 @@
     this.renderDrawer();
   };
 
-  Atlas.prototype.renderMap = function () {
-    var self = this, W = 600, H = 360;
-    var svg = '<svg class="rm-atlas__map" viewBox="0 0 ' + W + ' ' + H + '">';
-    var pos = {};
+  Atlas.prototype.clustersOf = function () {
+    var groups = {};
     this.state.concepts.forEach(function (c) {
-      pos[c.id] = { x: 20 + c.coords.x * (W - 40), y: 20 + c.coords.y * (H - 40) };
+      var k = c.cluster || "other";
+      (groups[k] = groups[k] || []).push(c);
     });
-    this.state.concepts.forEach(function (c) {
+    return groups;
+  };
+
+  // Cluster-first map: collapsed = one hub per cluster; click a hub to drill into its members.
+  Atlas.prototype.renderMap = function () {
+    var W = 600, H = 360, PAD = 28;
+    var groups = this.clustersOf();
+    if (this.state.expandedCluster && groups[this.state.expandedCluster]) {
+      this.renderClusterMembers(groups[this.state.expandedCluster], W, H, PAD);
+    } else {
+      this.state.expandedCluster = null;
+      this.renderClusterHubs(groups, W, H, PAD);
+    }
+  };
+
+  Atlas.prototype.renderClusterHubs = function (groups, W, H, PAD) {
+    var self = this;
+    var hubs = Object.keys(groups).sort().map(function (k) {
+      var ms = groups[k], cx = 0, cy = 0;
+      ms.forEach(function (c) { cx += c.coords.x; cy += c.coords.y; });
+      return { key: k, n: ms.length, x: cx / ms.length, y: cy / ms.length };
+    });
+    var svg = '<svg class="rm-atlas__map" viewBox="0 0 ' + W + ' ' + H + '">';
+    hubs.forEach(function (h) {
+      var px = PAD + h.x * (W - 2 * PAD), py = PAD + h.y * (H - 2 * PAD);
+      var r = Math.max(9, Math.min(28, 7 + Math.sqrt(h.n) * 2.4));
+      svg += '<g class="rm-hub" data-cluster="' + h.key + '">' +
+        '<circle cx="' + px + '" cy="' + py + '" r="' + r + '" fill="#1f5d35" stroke="#d4a843"/>' +
+        '<text x="' + px + '" y="' + (py + r + 12) + '" text-anchor="middle">' + h.key + ' (' + h.n + ')</text></g>';
+    });
+    svg += "</svg>";
+    this.viewEl.innerHTML = svg;
+    [].forEach.call(this.viewEl.querySelectorAll(".rm-hub"), function (g) {
+      g.onclick = function () { self.expandCluster(g.dataset.cluster); };
+    });
+  };
+
+  Atlas.prototype.renderClusterMembers = function (ms, W, H, PAD) {
+    var self = this;
+    var xs = ms.map(function (c) { return c.coords.x; }), ys = ms.map(function (c) { return c.coords.y; });
+    var minx = Math.min.apply(null, xs), maxx = Math.max.apply(null, xs);
+    var miny = Math.min.apply(null, ys), maxy = Math.max.apply(null, ys);
+    function sx(x) { return PAD + (maxx > minx ? (x - minx) / (maxx - minx) : 0.5) * (W - 2 * PAD); }
+    function sy(y) { return PAD + (maxy > miny ? (y - miny) / (maxy - miny) : 0.5) * (H - 2 * PAD); }
+    var pos = {};
+    ms.forEach(function (c) { pos[c.id] = { x: sx(c.coords.x), y: sy(c.coords.y) }; });
+    var svg = '<svg class="rm-atlas__map" viewBox="0 0 ' + W + ' ' + H + '">';
+    ms.forEach(function (c) {
       (c.neighbors || []).forEach(function (nid) {
         if (pos[nid]) svg += '<line x1="' + pos[c.id].x + '" y1="' + pos[c.id].y +
           '" x2="' + pos[nid].x + '" y2="' + pos[nid].y + '" stroke="#21472d"/>';
       });
     });
-    this.state.concepts.forEach(function (c) {
+    ms.forEach(function (c) {
       var sel = c.id === self.state.selectedId ? " rm-node--sel" : "";
       svg += '<g class="rm-node' + sel + '" data-id="' + c.id + '">' +
-        '<circle cx="' + pos[c.id].x + '" cy="' + pos[c.id].y + '" r="7" fill="#3d8a52"/>' +
-        '<text x="' + (pos[c.id].x + 10) + '" y="' + (pos[c.id].y + 4) + '">' + c.label + '</text></g>';
+        '<circle cx="' + pos[c.id].x + '" cy="' + pos[c.id].y + '" r="6" fill="#3d8a52"/>' +
+        '<text x="' + (pos[c.id].x + 9) + '" y="' + (pos[c.id].y + 4) + '">' + c.label + '</text></g>';
     });
-    svg += "</svg>";
+    svg += '<g class="rm-back"><text x="10" y="20">← all clusters</text></g></svg>';
     this.viewEl.innerHTML = svg;
     [].forEach.call(this.viewEl.querySelectorAll(".rm-node"), function (g) {
       g.onclick = function () { self.select(g.dataset.id); };
     });
+    var back = this.viewEl.querySelector(".rm-back");
+    if (back) back.onclick = function () { self.collapseClusters(); };
   };
+
+  Atlas.prototype.expandCluster = function (k) { this.state.expandedCluster = k; this.render(); };
+  Atlas.prototype.collapseClusters = function () { this.state.expandedCluster = null; this.render(); };
 
   Atlas.prototype.renderAZ = function () {
     var self = this, items = this.state.concepts.slice().sort(function (a, b) {
@@ -167,11 +218,17 @@
   };
 
   Atlas.prototype.highlight = function (ids) {
+    ids = ids || [];
+    if (ids.length) {                          // chat→map: jump into the concept's cluster, select it
+      var c = this.state.byId[ids[0]];
+      if (c && c.cluster) this.state.expandedCluster = c.cluster;
+      this.state.selectedId = ids[0];
+    }
+    this.setView("map");                       // syncs tab state + draws expanded cluster with --sel
     var set = {}; ids.forEach(function (i) { set[i] = 1; });
     [].forEach.call(this.viewEl.querySelectorAll(".rm-node"), function (g) {
-      g.classList.toggle("rm-node--hi", !!set[g.dataset.id]);
+      g.classList.toggle("rm-node--hi", !!set[g.dataset.id]);   // applied post-render so it survives
     });
-    if (ids.length) this.select(ids[0]);
   };
 
   Atlas.prototype.ask = function (q) {

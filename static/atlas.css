@@ -21,6 +21,13 @@
 .rm-node--sel circle{fill:var(--rm-green);stroke:var(--rm-gold);stroke-width:3}
 .rm-node--sel text{fill:var(--rm-cream)}
 .rm-node--hi circle{stroke:var(--rm-gold);stroke-width:2}
+.rm-hub{cursor:pointer}
+.rm-hub circle{transition:fill .15s}
+.rm-hub:hover circle{fill:#2a7a47}
+.rm-hub text{fill:var(--rm-gold);font-size:11px;font-weight:600}
+.rm-back{cursor:pointer}
+.rm-back text{fill:var(--rm-accent);font-size:12px}
+.rm-back:hover text{fill:var(--rm-cream)}
 .rm-list{list-style:none;margin:0;padding:8px}
 .rm-list li{padding:6px 10px;cursor:pointer;border-radius:6px;color:var(--rm-cream)}
 .rm-list li:hover,.rm-list li.rm-list--sel{background:var(--rm-surface)}

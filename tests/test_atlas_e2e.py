@@ -32,8 +32,10 @@ def test_atlas_views_selection_and_ask(live_server):
     with sync_playwright() as p:
         b = p.chromium.launch(); pg = b.new_page()
         pg.goto(live_server + "/atlas")
-        pg.wait_for_selector(".rm-node")
-        # select on map
+        # cluster-first map: drill into the cluster hub, then select the member node
+        pg.wait_for_selector(".rm-hub")
+        pg.click('.rm-hub[data-cluster="vision"]')
+        pg.wait_for_selector('.rm-node[data-id="light-therapy"]')
         pg.click('.rm-node[data-id="light-therapy"]')
         assert "Light Therapy" in pg.inner_text(".rm-drawer")
         # switch to A–Z, selection preserved
