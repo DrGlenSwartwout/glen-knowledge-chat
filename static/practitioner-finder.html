@@ -445,7 +445,12 @@
 
   <div class="controls">
     <form class="zip-search" id="zip-form">
-      <label>ZIP <input id="zip-input" type="text" inputmode="numeric" pattern="\d{5}" placeholder="96813" required></label>
+      <label>Country
+        <select id="country-select">
+          <option value="US" selected>United States</option>
+        </select>
+      </label>
+      <label>Location <input id="location-input" type="text" placeholder="City, postal code, or address" required></label>
       <label>Within
         <select id="radius-select">
           <option value="5">5 mi</option>
@@ -453,7 +458,7 @@
           <option value="25" selected>25 mi</option>
           <option value="50">50 mi</option>
           <option value="100">100 mi</option>
-          <option value="9999">Nationwide</option>
+          <option value="country-wide">Country-wide</option>
         </select>
       </label>
       <button type="submit">Search</button>
@@ -613,21 +618,55 @@
       });
     });
 
-    // ZIP form submission
+    // Populate the country selector from the data, then guard the radius UI.
+    const countrySelect = document.getElementById('country-select');
+    const radiusSelect = document.getElementById('radius-select');
+    const countryWideOpt = radiusSelect.querySelector('option[value="country-wide"]');
+
+    function syncRadiusForCountry() {
+      // "Country-wide" makes no sense for an international (anywhere) search —
+      // it would pull the whole table. Disable it and fall back to 25 mi.
+      const isAny = countrySelect.value === 'ANY';
+      countryWideOpt.disabled = isAny;
+      countryWideOpt.hidden = isAny;
+      if (isAny && radiusSelect.value === 'country-wide') radiusSelect.value = '25';
+    }
+
+    async function loadCountries() {
+      try {
+        const resp = await fetch('/api/practitioner-finder/countries');
+        if (!resp.ok) return;
+        const { countries } = await resp.json();
+        if (!countries || !countries.length) return;
+        const opts = ['<option value="US">United States</option>',
+                      '<option value="ANY">International (anywhere)</option>'];
+        countries.filter(c => c.code !== 'US').forEach(c => {
+          opts.push(`<option value="${c.code}">${c.name} (${c.count})</option>`);
+        });
+        countrySelect.innerHTML = opts.join('');
+        countrySelect.value = 'US';
+      } catch (_) { /* leave the static US-only option in place */ }
+      syncRadiusForCountry();
+    }
+    countrySelect.addEventListener('change', syncRadiusForCountry);
+    loadCountries();
+
+    // Search form submission
     document.getElementById('zip-form').addEventListener('submit', (e) => {
       e.preventDefault();
       runSearch();
     });
 
     async function runSearch() {
-      const zip = document.getElementById('zip-input').value.trim();
-      if (!zip) {
-        document.getElementById('empty-state').textContent = 'Enter a ZIP to search.';
+      const location = document.getElementById('location-input').value.trim();
+      if (!location) {
+        document.getElementById('empty-state').textContent = 'Enter a location to search.';
         return;
       }
-      const radius = document.getElementById('radius-select').value;
+      const radius = radiusSelect.value;
       const params = new URLSearchParams();
-      params.set('zip', zip);
+      params.set('country', countrySelect.value || 'US');
+      params.set('location', location);
       params.set('radius_miles', radius);
       if (filterState.parent && filterState.parent !== '__all__') {
         if (filterState.sub === '__all__') {
@@ -643,7 +682,7 @@
       const resp = await fetch(`/api/practitioner-finder/search?${params}`);
       if (!resp.ok) {
         document.getElementById('empty-state').textContent =
-          `Search failed (${resp.status}). Try a different ZIP.`;
+          `Search failed (${resp.status}). Try a different location.`;
         document.getElementById('empty-state').style.display = '';
         document.getElementById('results-list').innerHTML = '';
         return;

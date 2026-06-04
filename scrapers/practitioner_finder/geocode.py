@@ -98,3 +98,50 @@ def geocode_row(
 
     lng, lat = features[0]["center"]
     return float(lat), float(lng), quality
+
+
+def geocode_place(
+    place: str,
+    country_iso: Optional[str] = None,
+) -> Tuple[Optional[float], Optional[float]]:
+    """Forward-geocode an arbitrary free-text location ("Berlin", "London, UK",
+    "90210") and return (lat, lng), or (None, None) if Mapbox finds nothing.
+
+    Unlike geocode_row this does NOT go through detect_geocode_quality (which
+    requires a structured city+state or postal and would reject a bare city
+    name). Used by the practitioner-finder search endpoint to resolve the
+    map-search centre from a user's typed location.
+
+    country_iso biases the geocoder to that country (ISO 3166-1 alpha-2). When
+    None/empty (international/anywhere search) no country bias is applied — we
+    deliberately do NOT fall back to "us" the way mapbox_country_filter does for
+    structured rows."""
+    place = (place or "").strip()
+    if not place:
+        return None, None
+
+    token = os.environ.get("MAPBOX_PUBLIC_TOKEN") or os.environ.get("MAPBOX_SECRET_TOKEN")
+    if not token:
+        raise MapboxError("MAPBOX_PUBLIC_TOKEN (or MAPBOX_SECRET_TOKEN) env var not set")
+
+    query = requests.utils.quote(place, safe="")
+    params = {"access_token": token, "limit": 1}
+    if country_iso and country_iso.strip():
+        bias = mapbox_country_filter(country_iso)
+        if bias:
+            params["country"] = bias
+    _throttle()
+    resp = requests.get(
+        MAPBOX_GEOCODE_URL.format(query=query),
+        params=params,
+        timeout=10,
+    )
+    if resp.status_code != 200:
+        raise MapboxError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+
+    features = resp.json().get("features", [])
+    if not features:
+        return None, None
+
+    lng, lat = features[0]["center"]
+    return float(lat), float(lng)

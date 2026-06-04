@@ -11091,7 +11091,22 @@ def api_projects_pending_edits():
 import scrapers.practitioner_finder.db as pf_db
 import scrapers.practitioner_finder.geocode as pf_geocode
 from scrapers.practitioner_finder.geocode import MapboxError as PfMapboxError
-from scrapers.practitioner_finder.models import NormalizedPractitionerRow as PfRow
+
+
+# A whole-country radius cap: larger than the great-circle span of any single
+# country, so the earthdistance circle effectively becomes "everything in the
+# selected country" while the SELECT's ORDER BY distance_miles still sorts by
+# proximity to the typed place.
+PF_COUNTRYWIDE_RADIUS_MILES = 12500.0
+
+
+def _pf_parse_radius(raw: str) -> float:
+    """Map the radius_miles param to miles. Accepts a number, the 'country-wide'
+    sentinel, or the legacy '9999' Nationwide value."""
+    raw = (raw or "25").strip().lower()
+    if raw in ("country-wide", "countrywide", "nationwide", "9999"):
+        return PF_COUNTRYWIDE_RADIUS_MILES
+    return float(raw)
 
 
 @app.route("/api/practitioner-finder/search", methods=["GET", "OPTIONS"])
@@ -11099,35 +11114,88 @@ def practitioner_finder_search():
     if request.method == "OPTIONS":
         return "", 200
 
-    zip_code = request.args.get("zip", "").strip()
-    if not zip_code:
-        return jsonify({"error": "zip query param is required"}), 400
+    # `location` is the free-text place; `zip` is kept as a back-compat alias.
+    location = request.args.get("location", "").strip() or request.args.get("zip", "").strip()
+    if not location:
+        return jsonify({"error": "location (or zip) query param is required"}), 400
+
+    # country: ISO-2 (default US). "ANY"/empty => international, no country filter.
+    country = request.args.get("country", "US").strip().upper()
+    international = country in ("", "ANY")
 
     try:
-        radius_miles = float(request.args.get("radius_miles", "25"))
+        radius_miles = _pf_parse_radius(request.args.get("radius_miles", "25"))
     except ValueError:
-        return jsonify({"error": "radius_miles must be a number"}), 400
+        return jsonify({"error": "radius_miles must be a number or 'country-wide'"}), 400
 
     specialties = request.args.getlist("specialties[]") or None
     tiers = request.args.getlist("tier[]") or None
     fellowship_only = request.args.get("fellowship_only", "").lower() in ("1", "true", "yes")
 
-    # Geocode patient's ZIP to centroid
-    zip_row = PfRow(tier="eyehealing", name="patient", specialties=[], postal=zip_code)
+    # Geocode the typed place to a search centre, biased to the chosen country.
     try:
-        lat, lng, _ = pf_geocode.geocode_row(zip_row)
+        lat, lng = pf_geocode.geocode_place(location, None if international else country)
     except PfMapboxError as e:
         return jsonify({"error": f"geocoding failed: {e}"}), 502
     if lat is None or lng is None:
-        return jsonify({"error": f"could not locate zip {zip_code}"}), 404
+        return jsonify({"error": f"could not locate '{location}'"}), 404
 
     results = pf_db.run_search(
         lat=lat, lng=lng, radius_miles=radius_miles,
         specialties=specialties, tiers=tiers, limit=200,
-        fellowship_only=fellowship_only, countries=["US"],
+        fellowship_only=fellowship_only,
+        countries=None if international else [country],
     )
     return jsonify({"count": len(results), "practitioners": results,
                     "search_center": {"lat": lat, "lng": lng}})
+
+
+# Friendly names for the countries that actually appear in the data. Anything
+# not listed falls back to its raw code so the dropdown never shows a blank.
+PF_COUNTRY_NAMES = {
+    "US": "United States", "CA": "Canada", "GB": "United Kingdom",
+    "AU": "Australia", "NZ": "New Zealand", "IE": "Ireland",
+    "KR": "South Korea", "JP": "Japan", "CN": "China", "HK": "Hong Kong",
+    "SG": "Singapore", "MY": "Malaysia", "ID": "Indonesia", "IN": "India",
+    "AE": "United Arab Emirates", "SA": "Saudi Arabia", "IL": "Israel",
+    "TR": "Turkey", "EG": "Egypt", "ZA": "South Africa", "MX": "Mexico",
+    "BR": "Brazil", "CO": "Colombia", "CL": "Chile", "EC": "Ecuador",
+    "VE": "Venezuela", "PY": "Paraguay", "GT": "Guatemala", "CR": "Costa Rica",
+    "DO": "Dominican Republic", "PR": "Puerto Rico", "DE": "Germany",
+    "FR": "France", "ES": "Spain", "IT": "Italy", "PT": "Portugal",
+    "NL": "Netherlands", "BE": "Belgium", "CH": "Switzerland", "AT": "Austria",
+    "CZ": "Czechia", "PL": "Poland", "HU": "Hungary", "SK": "Slovakia",
+    "SI": "Slovenia", "HR": "Croatia", "GR": "Greece", "RO": "Romania",
+    "LV": "Latvia", "GE": "Georgia", "CY": "Cyprus", "LU": "Luxembourg",
+    "LB": "Lebanon", "JO": "Jordan", "IQ": "Iraq", "IR": "Iran",
+    "TZ": "Tanzania", "ZW": "Zimbabwe", "MU": "Mauritius", "JM": "Jamaica",
+    "BB": "Barbados", "GY": "Guyana", "PH": "Philippines",
+}
+
+
+@app.route("/api/practitioner-finder/countries", methods=["GET"])
+def practitioner_finder_countries():
+    """List countries present in the (geocodable) practitioner data, with counts,
+    for the finder's country selector."""
+    from db_supabase import supabase_cursor
+    try:
+        with supabase_cursor() as cur:
+            cur.execute(
+                "SELECT country, count(*) AS n FROM v_practitioners_public "
+                "WHERE lat IS NOT NULL AND country IS NOT NULL "
+                "GROUP BY country ORDER BY n DESC"
+            )
+            rows = cur.fetchall()
+    except Exception as e:
+        print(f"[pf-countries] error: {e!r}", flush=True)
+        return jsonify({"countries": []}), 200
+    countries = [
+        {"code": r["country"],
+         "name": PF_COUNTRY_NAMES.get(r["country"], r["country"]),
+         "count": r["n"]}
+        for r in rows
+    ]
+    return jsonify({"countries": countries})
 
 
 @app.route("/practitioner-finder", methods=["GET"])

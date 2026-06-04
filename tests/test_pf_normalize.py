@@ -7,8 +7,48 @@ from scrapers.practitioner_finder.normalize import (
     detect_geocode_quality,
     geocode_input_string,
     infer_eyehealing_specialties,
+    normalize_country,
     DEFAULT_EYEHEALING_SPECIALTIES,
 )
+
+
+def test_normalize_country_none_and_empty_default_to_us():
+    assert normalize_country(None) == "US"
+    assert normalize_country("") == "US"
+    assert normalize_country("   ") == "US"
+
+
+def test_normalize_country_us_aliases():
+    for v in ("US", "usa", "U.S.A", "United States", "United Sates", "  USA  "):
+        assert normalize_country(v) == "US", v
+
+
+def test_normalize_country_iso2_passthrough_uppercased():
+    assert normalize_country("DE") == "DE"
+    assert normalize_country("gb") == "GB"
+    assert normalize_country("Kr") == "KR"
+
+
+def test_normalize_country_full_name_table():
+    assert normalize_country("Slovenia") == "SI"
+    assert normalize_country("Guatemala") == "GT"
+    assert normalize_country("Iran (Islamic Republic of)") == "IR"
+    assert normalize_country("Croatia (Hrvatska)") == "HR"
+    assert normalize_country("Dominican Republic") == "DO"
+
+
+def test_normalize_country_puerto_rico_stays_pr_not_us():
+    assert normalize_country("Puerto Rico") == "PR"
+
+
+def test_normalize_country_georgia_maps_to_ge():
+    # Ambiguous (country vs US state); column is a country column -> GE.
+    assert normalize_country("Georgia") == "GE"
+
+
+def test_normalize_country_unresolved_passthrough_uppercased():
+    # Unknown full name we have no code for: keep it, upper-cased, never drop.
+    assert normalize_country("Atlantis") == "ATLANTIS"
 
 
 def _row(**kw):
