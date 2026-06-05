@@ -17,7 +17,7 @@ def _amount_of(params):
 def _execute(cx, action, params, actor, source):
     actor_name = (actor.name or actor.role) if actor else "system"
     try:
-        result = action.executor(params or {}, {"actor": actor})
+        result = action.executor(params or {}, {"actor": actor, "cx": cx})
         eid = _events.append_event(
             cx, actor=actor_name, source=source, action_key=action.key,
             module=action.module, risk_tier=action.risk_tier, params=params,
@@ -32,7 +32,8 @@ def _execute(cx, action, params, actor, source):
 
 
 def dispatch_action(cx, key, params, actor, *, source="panel",
-                    attended=True, confirmed=False):
+                    attended=True,  # attended: reserved for Phase 1c (Justus unattended mode)
+                    confirmed=False):
     action = get_action(key)
     if action is None:
         return {"status": "error", "error": f"unknown action: {key}"}

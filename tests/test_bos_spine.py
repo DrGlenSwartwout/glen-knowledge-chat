@@ -1,3 +1,4 @@
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -97,9 +98,6 @@ def test_resolve_actor_by_token_role():
     a = R.resolve_actor("", console_secret="SEKRET",
                         token="tok_shaira", role_for_token=lambda t: R.VA)
     assert a is not None and a.role == R.VA
-
-
-import sqlite3
 
 
 def _evx():
@@ -245,3 +243,29 @@ def test_cancel_event_marks_cancelled():
     assert res["status"] == "cancelled"
     assert calls["n"] == 0
     assert E.get_event(cx, q["event_id"])["status"] == "cancelled"
+
+
+def test_complete_todo_action_marks_done():
+    import importlib
+    import dashboard.actions_tasks as actions_tasks
+    from dashboard import actions as A, dispatch as D, events as E, rbac as R
+    # The autouse _clean_registry fixture empties the registry; if the module was
+    # already imported (cached) by another test/file, re-run its registration.
+    if A.get_action("tasks.complete_todo") is None:
+        importlib.reload(actions_tasks)
+
+    cx = sqlite3.connect(":memory:")
+    cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx)
+    cx.execute("CREATE TABLE todos (id INTEGER PRIMARY KEY, status TEXT, done_at TEXT)")
+    cx.execute("INSERT INTO todos (id, status) VALUES (7, 'open')")
+    cx.commit()
+
+    act = A.get_action("tasks.complete_todo")
+    assert act is not None and act.risk_tier == A.LOW_WRITE
+
+    res = D.dispatch_action(cx, "tasks.complete_todo", {"todo_id": 7},
+                            R.Actor(role=R.OWNER))
+    assert res["status"] == "done"
+    row = cx.execute("SELECT status FROM todos WHERE id=7").fetchone()
+    assert row["status"] == "done"
