@@ -23,9 +23,16 @@
   - `data/products-enrich-report.md`: counts by source+confidence; the FULL low-confidence + unmatched lists (slug, name, pinecone_title, best guess) for Glen's review.
 - Validate: run it, report match-quality stats + 10 sample enriched entries. Reuse the `normalize()` approach from `~/AI-Training/02 Skills/backfill-formulations-from-pinecone.py`.
 
-### Stage B (next build): Pinecone descriptions + GK-vs-FMP ingredient diff
-- Add the `specific-formulations` pull per slug (reuse `dashboard/product_content.py` `_page_text` pattern) -> the GK description + the ingredients mentioned on the page.
-- Diff GK page ingredients vs FMP ingredients -> a `data/products-stale-gk-report.md` listing products whose GK page is out of date (needs a sales-page update). Run under doppler (Pinecone key).
+### Stage A.1 (fallback fix, before B): FMP-empty -> Formulations DB
+The new FMP is not fully populated: some products match an FMP product by name but have ZERO `products_items` rows (e.g. AllerFree, ACES Eye Drops, Brain Boost). Per Glen's rule ("for those not in the newest FMP, the older Formulations database is the most recent"), treat an FMP match with NO ingredients the SAME as no FMP match: fall through to the T33 (older Formulations DB) ingredients. Keep the FMP identity match, but source the ingredient list from T33. New source value: `fmp_new_empty->t33` (or just `t33` with a note). Re-run; report the improved coverage.
+
+### Stage B: Pinecone descriptions + the full ingredient priority + stale-GK diff
+**Ingredient source priority (Glen): new FMP -> older Formulations DB (T33) -> GrooveKart.** Some products have ingredients ONLY on the GK sales page (no FMP, no T33 record) -- for those, GK is the ingredient source.
+- Pull per slug from Pinecone `specific-formulations` (reuse `dashboard/product_content.py` `_page_text`): the GK **description** (always) + the **ingredients mentioned on the page** (parse the Contents/ingredient panel out of the concatenated page text: lines with mg/mcg/IU/% or a "Contents:"/"Ingredients:" block).
+- Resolve final ingredients per product by priority: FMP-new (non-empty) -> T33 (non-empty) -> GK-parsed. Record `ingredients_source`.
+- **Diff** the GK page ingredients against the authoritative set (FMP or T33) ONLY where an authoritative set exists -> `data/products-stale-gk-report.md`: products whose GK page differs from FMP/T33 (the GK sales page needs updating; FMP/T33 wins). Show added/removed ingredient names.
+- **Flag GK-only** products (ingredients_source=GK, no FMP/T33 record) in the report as "GK-only, unverified" so Glen knows these aren't cross-checked.
+- Output the updated `data/products-enrich-candidate.json` (now with `description`, final `ingredients`, `ingredients_source`) + the stale-GK report. Run under doppler (Pinecone + OpenAI embed keys). STILL no products.json write.
 
 ### Stage C (after Glen's review): commit + module
 - Apply the reviewed candidate into products.json (`ingredients` + `description` fields), commit.
