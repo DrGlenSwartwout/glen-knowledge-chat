@@ -109,3 +109,15 @@ def test_set_tracking_action_records_and_ships():
     row = O.get_order(cx, oid)
     assert row["status"] == "shipped"
     assert row["tracking_number"] == "9400111899223"
+
+
+def test_stripe_pi_column_and_lookup():
+    from dashboard import orders as O
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    O.init_orders_table(cx)
+    oid = O.upsert_order(cx, source="wholesale", external_ref="INV-77", email="w@x.com")
+    assert O.set_order_stripe_pi(cx, oid, "pi_77") is True
+    assert O.get_order(cx, oid)["stripe_payment_intent"] == "pi_77"
+    found = O.find_order_by_external_ref(cx, "INV-77")
+    assert found and found["id"] == oid
+    assert O.find_order_by_external_ref(cx, "nope") is None

@@ -36,6 +36,10 @@ def init_orders_table(cx):
         cx.execute("ALTER TABLE orders ADD COLUMN label_url TEXT")
     except Exception:
         pass  # already present
+    try:
+        cx.execute("ALTER TABLE orders ADD COLUMN stripe_payment_intent TEXT")
+    except Exception:
+        pass
     cx.commit()
 
 
@@ -111,6 +115,19 @@ def set_order_tracking(cx, order_id, tracking_number, shipment_id=None):
                      (tracking_number, shipment_id, _now(), order_id))
     cx.commit()
     return cur.rowcount > 0
+
+
+def set_order_stripe_pi(cx, order_id, payment_intent):
+    cur = cx.execute("UPDATE orders SET stripe_payment_intent=?, updated_at=? WHERE id=?",
+                     (payment_intent, _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def find_order_by_external_ref(cx, external_ref):
+    cur = cx.execute("SELECT * FROM orders WHERE external_ref=? ORDER BY id DESC LIMIT 1",
+                     (str(external_ref),))
+    return _row_to_dict(cur.fetchone())
 
 
 def set_order_label(cx, order_id, label_url, tracking_number=None):
