@@ -141,6 +141,24 @@ action(key="orders.cancel", module="orders", title="Cancel order",
        permission=(OWNER, OPS, VA))(_status_action("cancelled", "cancelled"))
 
 
+def _set_tracking_exec(params, ctx):
+    cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+    if cx is None:
+        raise ValueError("no db connection")
+    oid = int(params["order_id"])
+    tn = str(params.get("tracking_number", "")).strip()
+    if not set_order_tracking(cx, oid, tn):
+        raise ValueError(f"order #{oid} not found")
+    set_order_status(cx, oid, "shipped")
+    return {"order_id": oid, "tracking_number": tn, "status": "shipped",
+            "message": f"Order #{oid} shipped" + (f" (tracking {tn})." if tn else ".")}
+
+
+action(key="orders.set_tracking", module="orders", title="Set tracking + ship",
+       description="Record a tracking number and mark the order shipped.",
+       risk_tier=LOW_WRITE, permission=(OWNER, OPS, VA))(_set_tracking_exec)
+
+
 @_signal("orders")
 def orders_signal(cx, actor=None, now=None):
     try:
