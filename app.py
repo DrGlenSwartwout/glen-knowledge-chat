@@ -12998,6 +12998,7 @@ import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + 
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
 import dashboard.crm as _bos_crm  # noqa: F401 (registers the CRM home signal)
 import dashboard.module_signals as _bos_module_signals  # noqa: F401 (registers 5 cell signals)
+import dashboard.products as _bos_products  # noqa: F401 (registers products signal + action; replaces module_signals' products signal)
 import dashboard.easypost as _bos_easypost  # noqa: F401
 import dashboard.ghl_queue as _bos_ghl_queue  # noqa: F401 (registers crm enqueue actions)
 
@@ -13151,6 +13152,27 @@ def bos_home_page():
 @app.route("/console/orders")
 def bos_orders_page():
     resp = send_from_directory(STATIC, "console-orders.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/products")
+def bos_products_list():
+    if _bos_actor() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify({"products": _bos_products.catalog()})
+
+
+@app.route("/api/products/stale")
+def bos_products_stale():
+    if _bos_actor() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify({"stale": _bos_products.stale_pages()})
+
+
+@app.route("/console/products")
+def bos_products_page():
+    resp = send_from_directory(STATIC, "console-products.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
 
