@@ -386,6 +386,17 @@
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
+    // ── Stripe return: show a thank-you instead of the buy form on ?paid=1 ──
+    var _paidReturn = false;
+    try { _paidReturn = new URLSearchParams(location.search).get('paid') === '1'; } catch(e) {}
+    if (_paidReturn) {
+      hide('loading');
+      var _ph = document.getElementById('cc-head');
+      if (_ph) _ph.textContent = 'Payment received. Thank you!';
+      var _pn = document.getElementById('cc-email-note');
+      if (_pn) _pn.textContent = 'Your receipt and order details are on the way to your email.';
+      show('confirm');
+    } else {
     // ── Load product ───────────────────────────────────────────────────────
     fetch(BASE + '/begin/product-data/' + encodeURIComponent(slug), { credentials: 'same-origin' })
       .then(function(resp){
@@ -403,6 +414,7 @@
         hide('loading');
         show('notfound');
       });
+    }
 
     function renderProduct(p){
       document.getElementById('p-name').textContent = p.name || 'Your remedy';
@@ -669,6 +681,7 @@
       head.textContent = 'Invoice ' + doc + ' created for $' + total + '.';
 
       if (data.method === 'card') {
+        if (data.stripe_url) { window.location.href = data.stripe_url; return; }
         var link = (data.pay_link || '').trim();
         if (link) {
           var payLink = document.getElementById('pay-link');
