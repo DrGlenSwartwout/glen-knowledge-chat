@@ -130,21 +130,58 @@ A scheduled Justus run can triage, tag, and draft on its own; a refund or outbou
 
 ---
 
-## 4. The unified shell
+## 4. The unified shell and the Home signal board
 
-One console shell with a left-nav of modules. Existing pages become module views inside the shell rather than separate destinations; we wrap, not rebuild. Command Home is the default landing view. The shell carries actor identity (login/token), so every panel and Justus call inherit the actor.
+One console shell with a left-nav. The landing view is the **Home signal board**, and behind it sits **one dedicated page per module** (the 9 functional modules in section 5). Justus is cross-cutting and present on every page, not a page of its own. Existing pages (`/dashboard`, `/console/inbox`, `/console/projects`, `/admin/*`) become module views inside the shell rather than separate destinations; we wrap, not rebuild. The shell carries actor identity (login/token), so every panel and Justus call inherit the actor.
+
+### 4.1 Home signal board
+
+A grid of one cell per functional module (a 3x3 mission-control view). Each cell shows:
+
+- the module name,
+- a **color-coded priority signal** for "how much does this need me right now",
+- a one-line summary (for example "4 invoices overdue, $612"),
+- the **top actions needed now** (1 to 3), each either a one-click dispatch (through `dispatch_action`) or a jump into the module page,
+- click-through to the module's full page.
+
+**Signal colors** (priority for action):
+
+| Color | Meaning |
+|-------|---------|
+| red | urgent, act now (overdue, blocked, money or client at risk) |
+| amber | needs attention soon (due today, queue building) |
+| green | healthy, nothing required |
+| gray | idle / no data |
+
+### 4.2 The module signal contract
+
+Each module implements one function:
+
+```
+signal(actor) -> {
+  level,            # red | amber | green | gray
+  summary,          # one line for the Home cell
+  top_actions,      # [ {label, action_key?, params?, href?} ]  up to 3
+  count             # optional badge number (e.g. items needing attention)
+}
+```
+
+The Home board calls every module's `signal()` and renders the grid; the worst level floats the cell up visually. Pending-approval events from the spine (section 3.3) feed straight into the relevant module's signal, so anything queued for the operator shows as red/amber on Home. Priority rules start as **seed heuristics per module** and are refined from real data over time (Glen's seed-then-learn rule), for example: Money red on overdue AR or cash below a floor; Orders red on an unfulfilled order aging past 24h; Comms red on a flagged email unanswered past N hours; Content amber when approvals are piling up. The heuristics live next to each module so they evolve independently.
 
 ---
 
 ## 5. Module map (end-state)
 
-Each module sits on the spine and contributes: **views** (panels, mostly already exist as reads) and **actions** (new registry entries that make those views actionable). Listed with the current-to-target delta.
+There are **nine functional module pages**, each with its own page, each contributing **views** (panels, mostly already exist as reads), **actions** (new registry entries that make them actionable), and a **signal()** for the Home board (section 4.2). The nine: Money & Finance, Sales & CRM, Orders & Fulfillment, Marketing & Growth, Products & Inventory, Content & Knowledge, Comms & Calendar, Team & Tasks, and Practitioner & B2B. The Home signal board (section 4) is the landing view, not a module. Justus (section 5.10) is cross-cutting, present on every page. Listed below with the current-to-target delta (subsection order is not priority order).
 
-### 5.1 Command Home (spine module)
-- **Purpose:** daily operating rhythm and whole-business visibility.
-- **Views:** live activity/event stream; pending-approval cards; the daily intelligence briefing rendered as an actionable worklist; quick Justus access.
-- **Actions:** approve/deny pending actions; snooze; run a briefing item.
-- **Delta:** briefings exist today as narrative cards; turn them into one-click actions. The activity stream and audit log are new and come from the events table.
+> Reconciling "the 9": with the Home board now its own landing view (not a module), the ninth functional module is **Practitioner & B2B**, which also closes the noted B2B/Fullscript gap. If your nine differ (for example you want Command/Strategy as a page and B2B folded elsewhere), say so and the set adjusts; it does not affect the Phase 1 spine.
+
+### 5.1 Practitioner & B2B Channel
+- **Integrations:** GHL, QBO, `wholesale_orders` / `dispensary_orders` / `practitioners` tables, Practice Better, future Fullscript.
+- **Purpose:** the wholesale and practitioner channel, a stated growth priority with no operational home today.
+- **Views:** practitioner accounts, wholesale/dispensary orders, application and approval pipeline, ASH-certified tiers.
+- **Actions:** `b2b.approve_practitioner`, `b2b.create_wholesale_order`, `b2b.set_pricing_tier`, `b2b.invite_practitioner`.
+- **Delta:** the tables exist but are unsurfaced and the practitioner portal is "future"; this module gives the B2B/Fullscript priority a home.
 
 ### 5.2 Money & Finance
 - **Integrations:** QBO (CRUD), Stripe, Wise, Authorize.net, Practice Better.
@@ -203,7 +240,7 @@ Each module sits on the spine and contributes: **views** (panels, mostly already
 
 Each phase is its own spec and implementation plan. The blueprint above is the fixed target they all aim at.
 
-- **Phase 1, the spine (specified below in build detail):** Action Registry, `dispatch_action`, Event/Audit stream, RBAC/actor identity + policy matrix, generic `/api/action/<key>`, Justus tools re-homed onto the registry, and a Command Home that renders the stream, pending approvals, and briefings-as-actions. Migrate the three existing Justus domains (todos, projects, households) onto the registry as the proof. This makes today's read-only dashboard actionable without a rebuild.
+- **Phase 1, the spine (specified below in build detail):** Action Registry, `dispatch_action`, Event/Audit stream, RBAC/actor identity + policy matrix, generic `/api/action/<key>`, Justus tools re-homed onto the registry, the **module signal() contract**, and the **Home signal board** (the 9-cell mission-control landing view) rendering signals, pending approvals, the activity stream, and briefings-as-actions. Migrate the three existing Justus domains (todos, projects, households) onto the registry as the proof, and ship real signals for the modules whose data already exists. This makes today's read-only dashboard actionable without a rebuild.
 - **Phase 2, Orders & Fulfillment (decided 2026-06-04):** close the order-to-ship-to-track loop end to end. Proves the panel-plus-agent action model on a high-value, currently-manual workflow.
 - **Phase 3+, remaining modules** on the spine, in rough ROI order: Money & Finance, Sales & CRM pipeline, Marketing & Growth, Comms/Calendar scheduling, Content factory, Products & Inventory (largest data effort, last).
 
@@ -218,7 +255,9 @@ Each phase is its own spec and implementation plan. The blueprint above is the f
 - Route `/api/action/<key>` (POST) : generic attended dispatch for panel buttons.
 - Route `/api/events` (GET) : the activity stream + pending approvals for Command Home.
 - Route `/api/events/<id>/approve` and `/cancel` (POST) : resolve pending approvals.
-- `static/console-home.html` (or a Command Home view in the existing shell).
+- `dashboard/signals.py` : the `signal()` contract, a registry of per-module signal functions, and the aggregation that powers the Home board. Phase 1 ships real signals for modules whose data already exists (Team & Tasks from todos; read-derived signals for Money, Orders, Comms from existing reads) and gray placeholders for not-yet-built modules; each later module phase fills in its own `signal()`.
+- Route `/api/home/signals` (GET) : aggregate every module `signal()` for the Home board.
+- `static/console-home.html` : the Home signal board (9-cell grid: color, summary, top actions, click-through) plus the activity stream and pending-approval cards.
 - Justus refactor: replace the 3 hardcoded tool groups with registry-generated tool defs that call `dispatch_action`.
 
 **Migration strategy:** wrap existing capability, do not rewrite it. The first registered actions are the todo/project/household operations Justus already performs, re-expressed as registry actions, proving the path with zero new business logic. The existing `/admin/*` and `/dashboard` pages keep working unchanged and get folded into the shell incrementally.
@@ -234,7 +273,8 @@ Each phase is its own spec and implementation plan. The blueprint above is the f
 - Unit: event stream append + query, pending-approval lifecycle (create, approve, cancel).
 - Route: `/api/action/<key>` attended dispatch (auto, confirm-required, queued, denied) and `/api/events` rendering, gated on actor identity.
 - Migration: the three re-homed domains (todos/projects/households) behave identically through the registry as they do today (characterization tests against current behavior).
-- Guard: no action executes a money_send or irreversible tier for `va`/`agent`/`system` without a pending-approval row.
+- Guard: no action executes a money_send or irreversible tier for `va`/`agent`/`system` without a pending-approval row. Guard: unattended-agent money_send always queues regardless of amount; owner money_send obeys `OWNER_MONEY_AUTO_THRESHOLD` (0 = confirm all; 50 = auto under $50).
+- Signals: each module `signal()` returns the contract shape; the worst level floats up on the Home board; a pending-approval event raises the owning module's level; `/api/home/signals` aggregates all nine.
 
 ---
 
