@@ -1,3 +1,106 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Orders - Console</title></head>
-<body><h1>Orders</h1><div id="board"></div></body></html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Orders - Business OS</title>
+<style>
+  :root { --bg:#0a150d; --surface:#111f16; --surface2:#162318; --border:#21472d;
+          --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --red:#c0432b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--cream);
+         font-family:"Open Sans",system-ui,sans-serif; padding:24px; }
+  h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+  .cols { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; align-items:start; }
+  .col { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px; }
+  .col h2 { font-family:"Raleway",sans-serif; font-size:13px; letter-spacing:.08em;
+            text-transform:uppercase; color:var(--muted); margin-bottom:10px; }
+  .col h2 .n { color:var(--gold); }
+  .card { background:var(--surface2); border:1px solid var(--border); border-radius:9px;
+          padding:11px 12px; margin-bottom:10px; }
+  .card .who { font-weight:600; font-size:14px; }
+  .card .meta { color:var(--muted); font-size:12px; margin-top:3px; line-height:1.5; }
+  .card .src { display:inline-block; font-size:10px; letter-spacing:.05em; text-transform:uppercase;
+               color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:1px 6px; }
+  .card .age.old { color:var(--red); }
+  .acts { margin-top:9px; display:flex; flex-wrap:wrap; gap:6px; }
+  .acts button { font-size:11px; border:1px solid var(--border); background:transparent;
+                 color:var(--cream); border-radius:6px; padding:3px 9px; cursor:pointer; }
+  .acts button:hover { border-color:var(--gold); color:var(--gold); }
+  .acts button.cancel:hover { border-color:var(--red); color:var(--red); }
+  #gate { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; }
+  #gate input { padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--cream); }
+</style>
+</head>
+<body>
+  <div id="gate"><div style="text-align:center">
+    <p style="margin-bottom:10px;color:var(--muted)">Enter console key</p>
+    <input id="key" type="password" placeholder="console key" />
+    <button onclick="unlock()" style="padding:10px 14px;margin-left:6px;border-radius:8px;border:1px solid var(--border);background:var(--gold);color:#0a150d;cursor:pointer">Unlock</button>
+  </div></div>
+
+  <h1>Orders</h1>
+  <div class="sub">Every order, from every channel, through one lifecycle.</div>
+  <div class="cols" id="board"></div>
+
+<script>
+  var LANES = [["new","New"],["packed","Packed"],["shipped","Shipped"],["done","Done"]];
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; load(); }
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+  function ageStr(iso){
+    try { var h = (Date.now() - new Date(iso).getTime())/3600000;
+      if (h < 1) return Math.round(h*60)+'m'; if (h < 48) return Math.round(h)+'h'; return Math.round(h/24)+'d'; }
+    catch(e){ return ''; }
+  }
+  function isOld(iso){ try { return (Date.now()-new Date(iso).getTime())/3600000 > 24; } catch(e){ return false; } }
+
+  function cardHtml(o){
+    var total = o.total_cents ? '$'+(o.total_cents/100).toFixed(2) : '';
+    var items = (o.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||''); }).join(', ');
+    var age = ageStr(o.created_at);
+    var acts = '';
+    if (o.status==='new')     acts = btn(o.id,'orders.mark_packed','Pack');
+    else if (o.status==='packed') acts = shipBtn(o.id);
+    else if (o.status==='shipped') acts = btn(o.id,'orders.mark_done','Mark delivered');
+    if (o.status!=='done' && o.status!=='cancelled') acts += ' <button class="cancel" onclick="act('+Number(o.id)+',\'orders.cancel\',{})">Cancel</button>';
+    return '<div class="card"><div class="who">'+esc(o.name||o.email||'Order #'+o.id)+'</div>'
+      + '<div class="meta">'+(items?esc(items)+'<br>':'')
+      + (total?total+' &middot; ':'')+'<span class="src">'+esc(o.source)+'</span> &middot; <span class="age'+(isOld(o.created_at)?' old':'')+'">'+age+'</span>'
+      + (o.tracking_number?'<br>tracking '+esc(o.tracking_number):'')+'</div>'
+      + '<div class="acts">'+acts+'</div></div>';
+  }
+  function btn(id,key,label){ return '<button onclick="act('+Number(id)+',\''+key+'\',{})">'+label+'</button>'; }
+  function shipBtn(id){ return '<button onclick="ship('+Number(id)+')">Ship + tracking</button>'; }
+
+  async function load(){
+    var r = await fetch('/api/orders?limit=300', {headers:hdr()});
+    if (r.status===401){ document.getElementById('gate').style.display='flex'; return; }
+    var orders = (await r.json()).data || [];
+    var board = document.getElementById('board'); board.innerHTML='';
+    LANES.forEach(function(l){
+      var inLane = orders.filter(function(o){ return o.status===l[0]; });
+      var col = document.createElement('div'); col.className='col';
+      col.innerHTML = '<h2>'+l[1]+' <span class="n">'+inLane.length+'</span></h2>'
+        + inLane.map(cardHtml).join('');
+      board.appendChild(col);
+    });
+  }
+
+  async function act(id, key, params){
+    params = params || {}; params.order_id = id;
+    await fetch('/api/action/'+key, {method:'POST', headers:hdr(), body:JSON.stringify(params)});
+    load();
+  }
+  function ship(id){
+    var tn = prompt('Tracking number (optional):','');
+    act(id, 'orders.set_tracking', {tracking_number: tn||''});
+  }
+
+  if (key()) { document.getElementById('gate').style.display='none'; load(); }
+</script>
+</body>
+</html>
