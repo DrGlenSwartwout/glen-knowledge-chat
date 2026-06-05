@@ -12981,11 +12981,31 @@ def bos_home_page():
     return resp
 
 
-@app.route("/api/orders", methods=["POST"])
+@app.route("/console/orders")
+def bos_orders_page():
+    resp = send_from_directory(STATIC, "console-orders.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/orders", methods=["GET", "POST"])
 def bos_orders_create():
     actor = _bos_actor()
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
+    if request.method == "GET":
+        cx = _sqlite3.connect(LOG_DB)
+        cx.row_factory = _sqlite3.Row
+        try:
+            rows = _bos_orders.list_orders(
+                cx, status=request.args.get("status"),
+                limit=min(int(request.args.get("limit", 200) or 200), 500))
+        except (TypeError, ValueError):
+            rows = _bos_orders.list_orders(cx)
+        finally:
+            cx.close()
+        return jsonify({"ok": True, "data": rows})
+    # --- existing POST body unchanged below ---
     b = request.get_json(silent=True) or {}
     ref = str(b.get("external_ref") or f"manual-{_bos_orders._now()}")
     cx = _sqlite3.connect(LOG_DB)

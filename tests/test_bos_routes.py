@@ -70,3 +70,26 @@ def test_home_page_served(monkeypatch, tmp_path):
     r = client.get("/console/home")
     assert r.status_code == 200
     assert b"Home" in r.data or b"home" in r.data
+
+
+def test_orders_list_and_board(monkeypatch, tmp_path):
+    app_module = _load_app()
+    import sqlite3
+    db = str(tmp_path / "o.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    from dashboard import orders as O
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    O.init_orders_table(cx)
+    O.upsert_order(cx, source="funnel", external_ref="L1", email="a@b.com", total_cents=7000)
+    cx.commit(); cx.close()
+
+    client = app_module.app.test_client()
+    key = app_module.dashboard.CONSOLE_SECRET or ""
+    r = client.get("/api/orders", headers={"X-Console-Key": key})
+    assert r.status_code == 200
+    data = r.get_json()["data"]
+    assert any(o["external_ref"] == "L1" for o in data)
+
+    p = client.get("/console/orders")
+    assert p.status_code == 200
+    assert b"Orders" in p.data
