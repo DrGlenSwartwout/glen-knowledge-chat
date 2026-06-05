@@ -41,20 +41,6 @@ def marketing_signal(cx, actor=None):
             "top_actions": [{"label": "Open people", "href": "/console"}], "count": n}
 
 
-@signal("products")
-def products_signal(cx, actor=None):
-    p = _data_file("products.json")
-    if not p:
-        return {"level": GRAY, "summary": "Not yet wired", "top_actions": [], "count": 0}
-    try:
-        prods = (json.loads(p.read_text()).get("products") or {})
-        n = sum(1 for v in prods.values()
-                if not (isinstance(v, dict) and v.get("info_only")))
-    except Exception:
-        return {"level": GRAY, "summary": "Not yet wired", "top_actions": [], "count": 0}
-    return {"level": GREEN, "summary": f"{n} products in catalog", "top_actions": [], "count": n}
-
-
 @signal("content")
 def content_signal(cx, actor=None):
     p = _data_file("atlas-pending.json")
