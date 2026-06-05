@@ -66,6 +66,9 @@
   function key(){ return localStorage.getItem('console_key') || ''; }
   function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; load(); }
   function hdr(){ return { 'X-Console-Key': key() }; }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(ch){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]; }); }
+  function safeHref(h){ h = String(h == null ? '#' : h); return (h.charAt(0) === '/' || h.indexOf('http://') === 0 || h.indexOf('https://') === 0) ? h : '#'; }
 
   async function load(){
     try {
@@ -76,11 +79,11 @@
       board.innerHTML = '';
       cells.forEach(function(c){
         const div = document.createElement('div');
-        div.className = 'cell ' + c.level;
+        div.className = 'cell ' + (['red','amber','green','gray'].indexOf(c.level) >= 0 ? c.level : 'gray');
         const acts = (c.top_actions||[]).map(function(a){
-          return '<a href="'+(a.href||'#')+'">'+a.label+'</a>'; }).join('');
-        div.innerHTML = '<span class="dot"></span><h2>'+c.title+'</h2>'
-          + '<p class="summary">'+(c.summary||'')+'</p>'
+          return '<a href="'+esc(safeHref(a.href))+'">'+esc(a.label)+'</a>'; }).join('');
+        div.innerHTML = '<span class="dot"></span><h2>'+esc(c.title)+'</h2>'
+          + '<p class="summary">'+esc(c.summary||'')+'</p>'
           + '<div class="actions">'+acts+'</div>';
         board.appendChild(div);
       });
@@ -98,9 +101,9 @@
     list.forEach(function(e){
       const div = document.createElement('div');
       div.className = 'row';
-      div.innerHTML = '<span>'+e.action_key+' <span class="meta">('+e.module+', by '+e.actor+')</span></span>'
-        + '<span><button class="approve" onclick="act('+e.id+',\'approve\')">Approve</button>'
-        + '<button class="cancel" onclick="act('+e.id+',\'cancel\')">Cancel</button></span>';
+      div.innerHTML = '<span>'+esc(e.action_key)+' <span class="meta">('+esc(e.module)+', by '+esc(e.actor)+')</span></span>'
+        + '<span><button class="approve" onclick="act('+Number(e.id)+',\'approve\')">Approve</button>'
+        + '<button class="cancel" onclick="act('+Number(e.id)+',\'cancel\')">Cancel</button></span>';
       host.appendChild(div);
     });
   }
@@ -108,8 +111,8 @@
   function renderActivity(list){
     const host = document.getElementById('activity-list');
     host.innerHTML = list.map(function(e){
-      return '<div class="row"><span>'+e.action_key+'</span>'
-        + '<span class="meta">'+e.status+' · '+(e.actor||'')+'</span></div>';
+      return '<div class="row"><span>'+esc(e.action_key)+'</span>'
+        + '<span class="meta">'+esc(e.status)+' · '+esc(e.actor||'')+'</span></div>';
     }).join('') || '<div class="row meta">No activity yet.</div>';
   }
 
