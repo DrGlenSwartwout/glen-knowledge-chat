@@ -4262,6 +4262,36 @@ def _send_inquiry_email(to_email, subject, body, reply_to=None):
         return False
 
 
+def _register_finance_email_actions():
+    from dashboard.actions import action as _act, get_action as _get, LOW_WRITE
+    from dashboard import rbac as _r
+    if _get("finance.send_payment_reminder"):
+        return
+
+    def _reminder(params, ctx):
+        email = (params.get("email") or "").strip()
+        if not email:
+            raise ValueError("email required")
+        doc = params.get("doc") or params.get("invoice_id") or ""
+        amount = params.get("amount")
+        amt = f" of ${float(amount):.2f}" if amount not in (None, "") else ""
+        subject = "A quick note about your invoice"
+        body = (f"Aloha,\n\nThis is a friendly reminder that invoice {doc} "
+                f"{('for a balance' + amt) if amt else ''} is still open. "
+                f"You can reply here with any questions.\n\nIn wellness,\nDr. Glen")
+        ok = _send_inquiry_email(to_email=email, subject=subject, body=body,
+                                 reply_to=RM_INBOUND_INQUIRY_EMAIL)
+        return {"email": email, "doc": doc, "sent": bool(ok),
+                "message": f"Payment reminder {'sent to' if ok else 'failed for'} {email}."}
+
+    _act(key="finance.send_payment_reminder", module="money",
+         title="Send payment reminder", description="Email a customer about an open invoice.",
+         risk_tier=LOW_WRITE, permission=(_r.OWNER, _r.OPS, _r.VA))(_reminder)
+
+
+_register_finance_email_actions()
+
+
 def _send_client_receipt(client_email, client_name, sent_records, base_url):
     """Send a one-time receipt to the client after a successful inquiry POST.
     sent_records is the list of practitioner dicts we actually emailed (NOT the
@@ -12844,6 +12874,7 @@ from dashboard import rbac as _bos_rbac
 import dashboard.actions_tasks  # noqa: F401  (registers tasks.* actions)
 import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals)
 import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
+import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
 import dashboard.easypost as _bos_easypost  # noqa: F401
 
 
@@ -13022,6 +13053,19 @@ def bos_orders_create():
     finally:
         cx.close()
     return jsonify({"ok": True, "order_id": oid})
+
+
+@app.route("/api/finance/ar", methods=["GET"])
+def bos_finance_ar():
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    try:
+        rows = _bos_finance.open_invoices()
+        summary = _bos_finance.finance_summary()
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+    return jsonify({"ok": True, "data": rows, "summary": summary})
 
 
 if __name__ == "__main__":
