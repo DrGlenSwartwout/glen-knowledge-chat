@@ -200,6 +200,53 @@ action(key="orders.create_label", module="orders", title="Create shipping label"
        risk_tier=LOW_WRITE, permission=(OWNER, OPS, VA))(_create_label_exec)
 
 
+def _gmail_send_tracking(to, subject, html):
+    """Best-effort customer email via the inbox Gmail sender. Production-only;
+    returns False (not an error) when Gmail is unavailable."""
+    try:
+        from dashboard.inbox import send_email
+        send_email(to, subject, html, from_name="Dr. Glen Swartwout")
+        return True
+    except Exception as e:
+        print(f"[orders] tracking email skipped: {e!r}", flush=True)
+        return False
+
+
+def _send_tracking_exec(params, ctx):
+    from dashboard import tracking as T
+    cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+    if cx is None:
+        raise ValueError("no db connection")
+    oid = int(params["order_id"])
+    order = get_order(cx, oid)
+    if not order:
+        raise ValueError(f"order #{oid} not found")
+    tn = order.get("tracking_number") or ""
+    if not tn:
+        raise ValueError("order has no tracking number yet (create a label or set tracking first)")
+    email = order.get("email") or ""
+    em = T.build_tracking_email(tn, order.get("name"))
+    sent = _gmail_send_tracking(email, em.get("subject", "tracking number"), em.get("html", "")) if email else False
+    try:
+        T.init_tracking_schema(cx)
+        T.record_shipment(cx, tracking_number=tn, recipient_name=order.get("name"),
+                          resolved_email=email, status=("sent" if sent else "drafted"),
+                          order_uuid=order.get("external_ref"))
+        sh = cx.execute("SELECT id FROM shipments WHERE tracking_number=?", (tn,)).fetchone()
+        if sh:
+            set_order_tracking(cx, oid, tn, shipment_id=sh[0])
+    except Exception as e:
+        print(f"[orders] shipment record: {e!r}", flush=True)
+    verb = "sent to" if sent else "drafted for"
+    return {"order_id": oid, "tracking_number": tn, "emailed": sent,
+            "message": f"Tracking {tn} {verb} {email or 'customer'}."}
+
+
+action(key="orders.send_tracking", module="orders", title="Send tracking email",
+       description="Email the customer their tracking number and record the shipment.",
+       risk_tier=LOW_WRITE, permission=(OWNER, OPS, VA))(_send_tracking_exec)
+
+
 @_signal("orders")
 def orders_signal(cx, actor=None, now=None):
     try:

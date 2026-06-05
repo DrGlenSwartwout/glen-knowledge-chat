@@ -43,3 +43,31 @@ def test_create_label_handoff_when_unconfigured(monkeypatch):
     assert res["status"] == "done"
     msg = (res["result"] or {}).get("message", "")
     assert "click-n-ship" in msg.lower() or "cns.usps" in (res["result"] or {}).get("handoff", "").lower()
+
+
+def test_send_tracking_records_shipment(monkeypatch):
+    import sqlite3
+    from dashboard import orders as O, dispatch as D, events as E, rbac as R, actions as A
+    from dashboard import tracking as T
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx); O.init_orders_table(cx); T.init_tracking_schema(cx)
+    oid = O.upsert_order(cx, source="funnel", external_ref="TR-1", name="Ann",
+                         email="ann@x.com")
+    O.set_order_tracking(cx, oid, "9400111899")
+    # stub the gmail send so the test never hits the network
+    import dashboard.orders as OM
+    monkeypatch.setattr(OM, "_gmail_send_tracking", lambda to, subj, html: True, raising=False)
+    res = D.dispatch_action(cx, "orders.send_tracking", {"order_id": oid}, R.Actor(role=R.OWNER))
+    assert res["status"] == "done"
+    sh = cx.execute("SELECT status, resolved_email FROM shipments WHERE tracking_number='9400111899'").fetchone()
+    assert sh is not None and sh["resolved_email"] == "ann@x.com"
+
+
+def test_send_tracking_requires_tracking_number():
+    import sqlite3
+    from dashboard import orders as O, dispatch as D, events as E, rbac as R
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx); O.init_orders_table(cx)
+    oid = O.upsert_order(cx, source="funnel", external_ref="TR-2", email="b@x.com")
+    res = D.dispatch_action(cx, "orders.send_tracking", {"order_id": oid}, R.Actor(role=R.OWNER))
+    assert res["status"] == "failed"
