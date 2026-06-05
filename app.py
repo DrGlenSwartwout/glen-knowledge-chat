@@ -2462,6 +2462,10 @@ def begin_checkout(slug):
                "doc_number": inv.get("DocNumber"),
                "total": inv.get("TotalAmt"), "method": method,
                "pay_link": qb.get_invoice_pay_link(inv)}
+        _ingest_order(source="funnel", external_ref=inv.get("Id"), email=email, name=name,
+                      items=[{"name": p["name"], "qty": qty, "desc": desc}],
+                      total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                      channel="retail")
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
             out["earns_points"] = True   # awarded on confirmed payment (reconciliation, Phase 2)
@@ -5136,6 +5140,12 @@ def api_practitioner_checkout():
                              credit_cents=out.get("credit_redeemed_cents", 0))
         except Exception as e:
             print(f"[practitioner-checkout] record_order failed: {e!r}", flush=True)
+        _ingest_order(source="wholesale",
+                      external_ref=str(out.get("invoice_id") or out.get("Id") or ""),
+                      email=(prac.get("email") if isinstance(prac, dict) else "") or "",
+                      name=(prac.get("name") if isinstance(prac, dict) else "") or "",
+                      total_cents=int(round((out.get("total") or 0) * 100)),
+                      channel="wholesale")
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":
@@ -5286,6 +5296,11 @@ def _record_dispensary_sale(code, customer_email, bottles, invoice_id):
         pid, invoice_id=str(invoice_id), customer_email=customer_email,
         bottles=int(bottles or 0),
         credit_earned_cents=int(bottles or 0) * _wallet.DROPSHIP_CREDIT_PER_BOTTLE_CENTS)
+    if invoice_id:
+        _ingest_order(source="dispensary", external_ref=str(invoice_id),
+                      email=customer_email or "",
+                      items=[{"name": "Dispensary", "qty": bottles}],
+                      channel="retail")
 
 
 @app.route("/dispensary/<code>")
@@ -6165,6 +6180,11 @@ def groovekart_webhook():
     _log_inbound_lead("groovekart", email, first, last, phone, raw, ghl_result)
     credited = _attribute_conversion_by_email(
         email, "store-purchase", product, order_total, "groovekart", raw)
+    _ingest_order(source="groovekart",
+                  external_ref=str(data.get("id") or data.get("order_id") or email or _bos_orders._now()),
+                  email=email, name=(first + " " + last).strip(),
+                  items=[{"name": product}] if product else [],
+                  total_cents=int(round(float(order_total or 0) * 100)), channel="retail")
     return jsonify({"ok": True, "ghl": ghl_result, "affiliate_credited": credited}), 200
 
 
@@ -12823,6 +12843,7 @@ from dashboard import dispatch as _bos_dispatch
 from dashboard import rbac as _bos_rbac
 import dashboard.actions_tasks  # noqa: F401  (registers tasks.* actions)
 import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals)
+import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
 
 
 def _init_bos_events():
@@ -12834,6 +12855,34 @@ def _init_bos_events():
 
 
 _init_bos_events()
+
+
+def _init_bos_orders():
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _bos_orders.init_orders_table(cx)
+    finally:
+        cx.close()
+
+
+_init_bos_orders()
+
+
+def _ingest_order(*, source, external_ref, email="", name="", phone="",
+                  items=None, total_cents=0, address=None, channel="retail"):
+    """Best-effort: record an order into the BOS orders table. Never raises into
+    a checkout path."""
+    try:
+        cx = _sqlite3.connect(LOG_DB)
+        try:
+            _bos_orders.upsert_order(
+                cx, source=source, external_ref=external_ref, email=email, name=name,
+                phone=phone, items=items or [], total_cents=int(total_cents or 0),
+                address=address or {}, channel=channel)
+        finally:
+            cx.close()
+    except Exception as e:
+        print(f"[orders] ingest {source}/{external_ref}: {e!r}", flush=True)
 
 
 def _bos_actor():
@@ -12930,6 +12979,26 @@ def bos_home_page():
     resp = send_from_directory(STATIC, "console-home.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+@app.route("/api/orders", methods=["POST"])
+def bos_orders_create():
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    b = request.get_json(silent=True) or {}
+    ref = str(b.get("external_ref") or f"manual-{_bos_orders._now()}")
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        oid = _bos_orders.upsert_order(
+            cx, source="manual", external_ref=ref, email=b.get("email", ""),
+            name=b.get("name", ""), phone=b.get("phone", ""), items=b.get("items") or [],
+            total_cents=int(b.get("total_cents") or 0), address=b.get("address") or {},
+            channel=b.get("channel", "retail"))
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "order_id": oid})
 
 
 if __name__ == "__main__":
