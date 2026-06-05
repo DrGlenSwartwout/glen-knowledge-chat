@@ -522,7 +522,7 @@ def test_explore_sections_structure_and_ordering():
     assert [s["title"] for s in secs] == [
         "Start Here", "Listen Deeper", "Match & Remedies", "Learn to Heal",
         "Go Deeper", "Share & Lift Others", "Find a Practitioner",
-        "For Practitioners",
+        "For Practitioners", "Earn by Sharing",
     ]
     for s in secs:
         assert s["cards"], f"section {s['title']} has no cards"
@@ -567,3 +567,91 @@ def test_explore_sections_new_copy_has_no_em_dashes():
     for s in bf.explore_sections():
         assert "—" not in s["title"]
         assert "—" not in s["blurb"]
+
+
+# ── Affiliate ↔ funnel integration ───────────────────────────────────────────
+
+_FAKE_TRUSTED = {
+    "links": {
+        "E4L Bioenergetic Scan": {"url": "https://truly.vip/E4L", "note": "internal scan"},
+        "Heated Eye Mask": {"url": "https://amzn.to/49l3Ts8", "note": "warm compress", "affiliate": True},
+        "Blushield": {"url": "https://blushield-us.com/heal", "note": "EMF protection", "affiliate": True},
+    }
+}
+
+
+def test_partner_links_filters_affiliate_flag():
+    import begin_funnel as bf
+    pls = bf.partner_links(_FAKE_TRUSTED)
+    names = [p["name"] for p in pls]
+    assert "Blushield" in names
+    assert "Heated Eye Mask" in names
+    assert "E4L Bioenergetic Scan" not in names  # unflagged internal link excluded
+
+
+def test_partner_links_shape_and_amazon_detection():
+    import begin_funnel as bf
+    pls = {p["name"]: p for p in bf.partner_links(_FAKE_TRUSTED)}
+    eye = pls["Heated Eye Mask"]
+    assert eye["url"] == "https://amzn.to/49l3Ts8"
+    assert eye["note"] == "warm compress"
+    assert eye["amazon"] is True
+    assert pls["Blushield"]["amazon"] is False
+
+
+def test_partner_links_empty_when_no_flags():
+    import begin_funnel as bf
+    assert bf.partner_links({"links": {"X": {"url": "https://x", "note": "n"}}}) == []
+
+
+def test_explore_sections_includes_affiliate_door():
+    import begin_funnel as bf
+    secs = bf.explore_sections(ref="abc123")
+    titles = [s["title"] for s in secs]
+    assert "Earn by Sharing" in titles
+    aff = next(s for s in secs if s["title"] == "Earn by Sharing")
+    card = aff["cards"][0]
+    assert card["href"] == "/affiliate?ref=abc123"  # ref threaded
+    assert card["external"] is False
+
+
+def test_explore_sections_affiliate_door_bare_without_ref():
+    import begin_funnel as bf
+    aff = next(s for s in bf.explore_sections() if s["title"] == "Earn by Sharing")
+    assert aff["cards"][0]["href"] == "/affiliate"
+
+
+def test_explore_sections_partner_section_with_disclosure():
+    import begin_funnel as bf
+    secs = bf.explore_sections(trusted_links=_FAKE_TRUSTED)
+    partner = next(s for s in secs if s["title"] == "Recommended Tools & Partners")
+    titles = [c["title"] for c in partner["cards"]]
+    assert "Blushield" in titles
+    assert "E4L Bioenergetic Scan" not in titles
+    assert all(c["external"] for c in partner["cards"])
+    assert "Amazon Associate" in partner["disclosure"]
+    assert "Healing Oasis" in partner["disclosure"]
+
+
+def test_explore_sections_no_partner_section_without_trusted_links():
+    import begin_funnel as bf
+    titles = [s["title"] for s in bf.explore_sections()]
+    assert "Recommended Tools & Partners" not in titles
+
+
+def test_real_trusted_links_blushield_is_partner():
+    """Lock the data contract: the real trusted-links.json carries Blushield as
+    an affiliate-flagged partner so it renders in the funnel partner section AND
+    resolves for contextual auto-open (substring match, len > 4)."""
+    import json
+    from pathlib import Path
+    import begin_funnel as bf
+    data = json.loads((Path(__file__).resolve().parent.parent
+                       / "data" / "trusted-links.json").read_text())
+    bl = data["links"].get("Blushield")
+    assert bl and bl.get("affiliate") is True
+    assert bl["url"] == "https://blushield-us.com/heal"
+    names = [p["name"] for p in bf.partner_links(data)]
+    assert "Blushield" in names
+    # internal-only links stay out of the partner section
+    assert "E4L Bioenergetic Scan" not in names
