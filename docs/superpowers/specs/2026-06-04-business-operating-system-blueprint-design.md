@@ -118,13 +118,15 @@ Policy is a function of (actor role x action risk tier), stored as config:
 
 | Role | read | low_write (tags, todos, drafts, notes) | money_send (refunds, payouts, outbound email, bulk) | irreversible (deletes, merges) |
 |------|------|----------------------------------------|-----------------------------------------------------|--------------------------------|
-| owner (Glen) | auto | auto | confirm (auto under a $ threshold) | confirm |
+| owner (Glen) | auto | auto | confirm (phased, see below) | confirm |
 | ops (Rae) | auto | auto | confirm | confirm |
 | va (Shaira) | auto (scoped) | auto | queue for owner/ops approval | deny |
-| agent (Justus unattended) | auto | auto | queue for approval | deny |
+| agent (Justus unattended) | auto | auto | **always queue** for approval | deny |
 | system (cron/webhook) | auto | auto | queue for approval | deny |
 
-A scheduled Justus run can triage, tag, and draft on its own; a refund or outbound send it wants becomes a pending-approval card rather than executing. Thresholds (the owner money_send auto-under-$X) are config values.
+A scheduled Justus run can triage, tag, and draft on its own; a refund or outbound send it wants becomes a pending-approval card rather than executing. **Unattended Justus never moves money: money_send always queues for human approval, regardless of amount (decided 2026-06-04).**
+
+**Phased owner autonomy (decided 2026-06-04).** The owner money_send cell starts at **confirm on every action** (manual approval for a break-in period, so we watch the registry behave on real money before loosening it). Once it has proven reliable, flip a config flag to enable **auto under $50, confirm at or above $50**. The policy matrix reads its owner money_send mode from config (`OWNER_MONEY_AUTO_THRESHOLD`, default 0 = confirm everything; set to 50 after the break-in). No code change to graduate, just config.
 
 ---
 
@@ -202,7 +204,7 @@ Each module sits on the spine and contributes: **views** (panels, mostly already
 Each phase is its own spec and implementation plan. The blueprint above is the fixed target they all aim at.
 
 - **Phase 1, the spine (specified below in build detail):** Action Registry, `dispatch_action`, Event/Audit stream, RBAC/actor identity + policy matrix, generic `/api/action/<key>`, Justus tools re-homed onto the registry, and a Command Home that renders the stream, pending approvals, and briefings-as-actions. Migrate the three existing Justus domains (todos, projects, households) onto the registry as the proof. This makes today's read-only dashboard actionable without a rebuild.
-- **Phase 2, Orders & Fulfillment:** close the order-to-ship-to-track loop end to end. Proves the panel-plus-agent action model on a high-value, currently-manual workflow. (Money & Finance is a close alternative if cash workflow is the bigger pain.)
+- **Phase 2, Orders & Fulfillment (decided 2026-06-04):** close the order-to-ship-to-track loop end to end. Proves the panel-plus-agent action model on a high-value, currently-manual workflow.
 - **Phase 3+, remaining modules** on the spine, in rough ROI order: Money & Finance, Sales & CRM pipeline, Marketing & Growth, Comms/Calendar scheduling, Content factory, Products & Inventory (largest data effort, last).
 
 ---
@@ -251,4 +253,5 @@ Each phase is its own spec and implementation plan. The blueprint above is the f
 - **Catalog source of truth:** Products & Inventory depends on choosing one master (Numbers sheet vs GrooveKart vs a new table). Deferred, but it blocks that module.
 - **Render cron statelessness:** cron containers do not share the web `/data` disk; unattended-agent actions must dispatch via the web service (the established pattern), not write the DB directly.
 - **Identity rollout:** moving from one shared secret to per-actor RBAC needs a low-friction login for Rae and Shaira; scoped tokens are the seed but the UX needs design in Phase 1.
-- **Open:** confirm the Phase 2 pick (Orders vs Money). Confirm the owner money_send auto-threshold value. Confirm whether unattended Justus should be allowed any money_send at all or always queue.
+
+**Resolved 2026-06-04:** Phase 2 is Orders & Fulfillment. Owner money_send starts at confirm-everything (manual break-in) and graduates to auto-under-$50 via config, no code change. Unattended Justus always queues money_send for human approval.
