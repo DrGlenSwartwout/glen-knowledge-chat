@@ -4,22 +4,28 @@ Queued work from the 2026-06-05 enrichment session (Glen). The ingredient enrich
 (148 products, from FMP/Formulations, Glen-verified corrections) is DONE and applied to
 `data/products.json`. These items remain.
 
-## 1. GK scrape missed a description field — stale list is PROVISIONAL (HIGH)
-**Confirmed 2026-06-05:** the GrooveKart scrape (`~/AI-Training/02 Skills/scrape-remedymatch.py`,
-namespace `specific-formulations`) captured only part of each product page. The raw HTML for
-`macular-wellness-crocin` contains CoQ10, NAC, C3G, lutein — but the scrape's `_extract_body`
-dropped them (it flattens the page and trims at footer markers like "Related Products:", and
-likely keeps only the short description, missing the full description/ingredient panel).
+## 1. GK scrape stale list — FIXED 2026-06-05 (PR #40)
+**Done.** Re-parsed the intact raw cache (`scripts/reparse_gk.py`: green-plus `<p>` bullets,
+mapped by filename slug) + re-judged the 44 flagged products (synonym-aware parallel pass) +
+applied (`scripts/apply_reparse.py`). Trustworthy result: **40 stale** (36 GK pages genuinely
+missing current advanced actives + 4 un-reverified), 8 cleared, 38 flagged `gk_has_extra`.
+neuromagnesium cleared (Glen updated its page). See #1b below for the un-reverified 4.
 
-**Impact:** the 48-item stale-GK list (`data/products-stale-gk-clean.md`) and the `gk_stale`
-flags in `products.json` are INFLATED with false positives (the whole macular-wellness family,
-and any "GK lists only N of M ingredients" row). Do NOT action the stale list for GK page
-updates until this is fixed.
+## 1b. 4 un-reverified stale (LOW)
+`iron-out`, `nerve-repair`, `man-manna`, `snake--dragon` had no green-plus panel parsed (their
+GK pages use a different ingredient format, or a slug mismatch). Still flagged from the OLD
+(possibly inflated) diff. Re-check their GK page format + re-judge.
 
-**Fix (cheap — no re-scrape):** the raw cache is intact at `~/Downloads/remedymatch-scrape/raw/`
-(321 `.html` files). Re-parse capturing BOTH PrestaShop description fields
-(`description_short` + the full `description`/data-sheet body) instead of trimming at the first
-footer marker. Then re-run the Stage-B GK diff (`scripts/enrich_products.py --with-gk`) + the
+## 1c. 38 products: GK lists MORE than our FMP/Formulations record (DECISION)
+`gk_has_extra` on 38 products — our authoritative ingredient list is PARTIAL vs the GK page.
+Glen's rule was "FMP/Formulations wins", but here GK is the richer source. Decision: merge GK's
+extra ingredients into the authoritative `ingredients` (and re-verify against Glen's true current
+formula), or leave FMP-as-authoritative and accept the gaps. `gk_has_extra` lists the candidates per product.
+
+## (was 1, superseded) original scrape-field note — kept for context
+The scrape's `_extract_body` dropped the full ingredient panel (`~/AI-Training/02 Skills/scrape-remedymatch.py`).
+Raw cache intact at `~/Downloads/remedymatch-scrape/raw/` (321 `.html`). Re-parse recovers it; a future
+re-ingestion of the FULL panels into Pinecone `specific-formulations` would also fix the chatbot/card copy. To re-run the Stage-B GK diff (`scripts/enrich_products.py --with-gk`) + the
 parallel cleanup synonym-diff to regenerate a TRUSTWORTHY stale list. Update `products.json`
 `gk_stale` flags from the corrected diff.
 

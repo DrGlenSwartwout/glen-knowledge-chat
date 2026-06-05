@@ -1,69 +1,100 @@
-# Products — Clean Stale-GrooveKart Report (LLM-normalized)
+# Products — Stale GrooveKart Report (re-parsed, trustworthy)
 
-> **PROVISIONAL — do not action yet.** The GrooveKart scrape captured only part of each page (confirmed: macular-wellness raw HTML has CoQ10/NAC/C3G/lutein that the scrape dropped), so this list is INFLATED with false positives. Fix is queued: re-parse the raw cache capturing both description fields, then re-diff. See docs/products-enrichment-followups.md #1.
-
-Generated from the parallel cleanup of 159 products. Synonym-aware: only REAL formula differences are flagged.
+Built from the full re-parsed GK ingredient panels (the original scrape dropped them) + a synonym-aware re-judge. A page is STALE only when it genuinely OMITS current ingredients; pages where GK lists MORE than our record mean our FMP/Formulations record is partial (not a page problem).
 
 ## Counts
 
 | Metric | Count |
 |---|---|
-| Products cleaned | 159 |
-| **Genuinely stale GK pages** | **48** |
+| GK pages missing current ingredients (real updates) | 36 |
+| Pages cleared (GK matches the formula) | 8 |
+| Products where GK is richer than our record (FMP partial) | 38 |
+| Originally-flagged but no re-parsed panel (un-reverified) | 4 |
 
-Ingredient source: fmp_new=94, gk=13, t33=52
+## (A) GK pages to update — genuinely missing current ingredients
 
-## Genuinely stale GK pages (real formula differences)
+| Slug | Add to the GK page (missing) |
+|---|---|
+| angiogenx | Tetrahydrocurcumin, Fisetin, Safranal, Enzymatically Modified Isoquercetrin |
+| blood-cleanse | TMG (Trimethylglycine) |
+| bone-builder | Chlorogenic Acid, Isoflavones, Dihydroberberine (GlucoVantage), Pyridoxamine, Ketosterone (3-Ketosteroid) |
+| brain-boost | Cynarin 10% (Cynara scolymus) |
+| brain-cleanse | Xanthohumol, Xanthan Gum, Glucomannan |
+| chelation | N-Acetyl Cysteine (NAC), Allicin, Selenium (Methylselenocysteine) |
+| cistus-syntropy-immunitea | Baicalein (Scutellaria baicalensis), Steviocides (Stevia rebaudiana) |
+| golden-book | Baicalein |
+| immune-modulation | Tetrahydrocurcumin, Baicalein, Enzymatically Modified Isoquercetrin, Andrographolide, Thymoquinone, Pterostilbene, Phenylethylamine HCl, Trans-Resveratrol |
+| lipid-cleanse | Dihydroberberine (GlucoVantage) |
+| liver-support | TUDCA, Tetrahydrocurcumin, Cynarin, Schisandrins, Dihydroberberine (GlucoVantage) |
+| longevity | Vitamin B1 (Benfotiamine), Vitamin B2 (Riboflavin 5-Phosphate / R5P), Nicotinamide Riboside (NR), Nicotinamide Mononucleotide (NMN), Pyridoxal 5-Phosphate (P5P), Trimethylglycine (TMG), Vitamin D3 (Cholecalciferol), CoQ10 (Ultra Absorption), Lapachol 3% (Tabebuia avellanidae), Pyruvate (Calcium Pyruvate) |
+| lymph-flow | Taraxsterols, Isoflavones, Chicoric Acid |
+| macular-wellness-astaxanthin | Tetrahydrocurcumin |
+| macular-wellness-crocin | Astaxanthin, Tetrahydrocurcumin |
+| macular-wellness-lutein | Tetrahydrocurcumin, Pterostilbene |
+| macular-wellness-lycopene | Tetrahydrocurcumin, Pterostilbene |
+| macular-wellness-mesozeaxanthin | Astaxanthin, Tetrahydrocurcumin |
+| macular-wellness-safranal | Tetrahydrocurcumin, Astaxanthin |
+| macular-wellness-zeaxanthin | Astaxanthin, Tetrahydrocurcumin |
+| mitochondrial-biogenesis | Trans-Resveratrol, Nicotinamide Riboside |
+| muscle-mass | Creatine, Ergothioneine |
+| nerve-pulse | Pyridoxal-5-Phosphate (P5P), Baicalein, Riboflavin-5-Phosphate (Coenzyme B2), 5-MTHF (Methylfolate), Mixed Tocopherols, Tocotrienols, Copper Glycinate |
+| neuroceramides | Magnesium, Chromium, Adenosyl 90% & Methyl 10% Cobalamin, TMG (Trimethylglycine), MK-7 (Menaquinone-7), MK-4 (Menaquinone-4), Phosphatidylserine, Trans-Resveratrol |
+| neuroprotect | Tetrahydrocurcumin, Lion's Mane Extract, Apigenin, Sulforaphane, Safranal, Astaxanthin, Polysaccharide |
+| night-vision | Schisandrins, Zinc Glycinate (GK uses Zinc Picolinate instead) |
+| rise--shine | Chromium, Centrophenoxine |
+| seaamino-syntropy | Ashitaba 10:1 (Angelica Keiskei Koidzumi) |
+| seaaminos | Chalcones (Xanthoangelol & 4-Hydroxyderricin), Rosmarinic Acid |
+| shields-up | Thymoquinone, Andrographolide, Enzymatically Modified Isoquercetrin, Zinc Glycinate (GK uses Zinc Carnosine instead) |
+| spike-shield | Bromelain, Tetrahydrocurcumin, N-Acetyl Cysteine (NAC), S-Acetyl Glutathione, Glutathione, Thymoquinone, Chitosan Oligosaccharide |
+| stress-release | CBD, Ursolic Acid, Honokiol, L-Theanine, Safranal, Apigenin, GABA, Rosmarinic Acid, Xanthan Gum, Glucomannan |
+| sustain | Vitamin C (Manganese Ascorbate), Manganese (Manganese Ascorbate), Chromium (as GTF Chromium Polynicotinate), Microbiome (25 probiotic species), Rhodiola rosea (Rosavins 10% Salidroside 5%), EGb 761 (Ginkgo biloba, 24% Flavone Glycosides / 6% Lactones), Moringa 100:1 (Moringa oleifera), Licorice Omnipotent (Glycyrrhiza glabra), Gingerol 40% (Zingiber officinalis), Piperine (Piper nigrum) |
+| virex | Lactoferrin, Baicalein, Andrographolide, Allicin |
+| vitreous-vitality | Retinyl Acetate (GK has Retinyl Palmitate instead), Fisetin, Naringenin |
+| zinc-syntropy | Magnesium |
 
-`+ on GK` = on the page but not in the current formula. `- missing on GK` = in the current formula but absent from the page.
+## (B) Our FMP/Formulations record is partial — GK lists more (data follow-up, not a page fix)
 
-| Slug | Reason | + on GK | - missing on GK |
-|---|---|---|---|
-| angiogenx | GK page is missing Tetrahydrocurcumin, Fisetin, Safranal, and Enzymatically Modified Isoqu | R-Lipoic Acid (Stabilized Bioenhanced), NAC (N-Acetyl Cysteine), Zinc (from Zinc Ascorbate), Vitamin C (from Zinc Ascorbate), Proteoglycans 98% (Convulvulus arv | Tetrahydrocurcumin, Fisetin, Safranal, Enzymatically Modified Isoquercetrin |
-| blood-cleanse | TMG (Trimethylglycine) is in the authoritative formula but absent from the GK page; GK pag | Microbiome (25 Probiotic Species) 5 Billion CFU | TMG (Trimethylglycine) |
-| bone-builder | GK page lists Betaine HCl and Knit Bone (Symphytum officinalis) not present in the authori | Betaine HCl, Knit Bone (Symphytum officinalis) | MCHA (Microcrystalline Hydroxyapatite), Adenosyl/Methyl Cobalamin (90% Adenosyl / 10% Methyl B12), Allantoin, Chlorogenic Acid, Isoflavones, Magnesium Glycinate |
-| brain-boost | GK page lists Centrophenoxine, Citicoline, and DHA (from Algae) which are absent from the  | Centrophenoxine, Citicoline, DHA (from Algae) | Choline Complex, Phosphatidylserine (Glycine max), Cynarin 10% (Cynara scolymus), Humic Acid, EGb 761 (Ginkgo biloba), Vitamin B3 (as Niacin), Moringa 100:1 (Mo |
-| brain-cleanse | GK page lists 12 additional ingredients (B6/B9/B12 forms, Magnesium L-Threonate, Chromium, | Vitamin B6 (Pyridoxal-5-Phosphate / P5P), Vitamin B9 (5-MTHF / Folate), Vitamin B12 (Adenosylcobalamin), Vitamin B12 (Methylcobalamin), Magnesium L-Threonate, C | Xanthan Gum, Glucomannan |
-| chelation | GK page has 5 substances not in the authoritative formula (Vitamin C, Lysine, Chlorella, S | Vitamin C (L-Ascorbic Acid), Lysine, Chlorella, S-Acetyl Glutathione, Cilantro | N-Acetyl Cysteine (NAC), Allicin, Selenium (Methylselenocysteine) |
-| cistus-syntropy-immunitea | GK page lists only 3 of 18 authoritative ingredients; 15 are absent from the GK listing | — | Silica 70% (Bambusa spp.), PEA (Phenylethylamine HCl), Polyphenols 65% (Cistus incanus), Lomatium 10:1 (Lomatium dissectum), Glycyrrhizic acid 5% (Glycyrrhiza g |
-| connective-tissue-support | GK page omits all 7 bioavailability-factor ingredients: Vitamin B3 (Niacin), EGb 761 (Gink | — | Vitamin B3 (as Niacin), EGb 761 (Ginkgo biloba) (24% Flavone Glycosides, 6% Lactones), Moringa 100:1 (Moringa oleifera), Licorice Omnipotent (Glycyrrhiza glabra |
-| dental-regen-powder | GK page includes a Bicarbonate Blend (Potassium Bicarbonate, Magnesium Bicarbonate, Sodium | Potassium Bicarbonate, Magnesium Bicarbonate, Sodium Bicarbonate | — |
-| golden-book | GK has 3 extra ingredients (Alismatis, Rehmanniae, Aconite) not in authoritative formula,  | Alismatis, Rehmanniae, Aconite | Baicalein |
-| immune-modulation | GK page lists a largely different set of botanicals (African Star Flower, Beta-Sitosterol, | African Star Flower (Hypoxis hemerocallidea), Beta-Sitosterol, Quercetin Dihydrate, Artemisinin, Withanolides (Withania somnifera), Lupulin from Hops, Rehmannia | Tetrahydrocurcumin, Baicalein, Enzymatically Modified Isoquercetrin, Andrographolide, Thymoquinone, Pterostilbene, Phenylethylamine HCl, Trans-Resveratrol |
-| iron-out | GK page omits DHA (from Algae) and Nano Chitosan as distinct ingredients, and collapses th | — | DHA (from Algae), Nano Chitosan (from Crustacean shells), Vitamin B3 (Niacin), EGb 761 (Ginkgo biloba), Moringa 100:1 (Moringa oleifera), Licorice Omnipotent (G |
-| lipid-cleanse | GK lists only 'Berberine' (1 ingredient) vs 10 authoritative ingredients; also Berberine v | Berberine (Coptis chinensis) | Coluracetam, Methylselenocysteine (MSC), Ginsenosides, Green Tea Extract EGCG 98% (Epigallocatechin Gallate) (Camellia sinensis), Fucoxanthin 85%, Tocotrienols, |
-| lipid-zyme | GK page lists only Piperine; authoritative formula has 6 additional ingredients (Lipase, P | — | Lipase, Protease, Fucoxanthin 85%, Bromelain, Serrapeptase, Nattokinase |
-| liver-support | GK page lists 14 substances absent from authoritative formula (B vitamins, Vitamin C, Sele | Vitamin B5 (Calcium Pantothenate), Vitamin B6 (Pyridoxal 5-Phosphate), Vitamin B9 Folate (5-MTHF), Vitamin B12 (Adenosylcobalamin), Vitamin B12 (Methylcobalamin | TUDCA, Tetrahydrocurcumin, Cynarin, Schisandrins, Dihydroberberine (GlucoVantage) |
-| longevity | GK page lists only 5 of 19 authoritative ingredients (B1, B2, NR, NMN, Pyruvate); 14 subst | — | Pyridoxal 5-Phosphate (P5P), Trimethylglycine (TMG), Vitamin D3 (Cholecalciferol), CoQ10 (Ultra Absorption), Lapachol 3% (Tabebuia avellanidae), Malate (Malic A |
-| lymph-flow | GK page lists S-Acetyl Glutathione, P5P (B6), Poke Root, Rehmannia, Red Root, Curcumin 95% | S-Acetyl Glutathione, Pyridoxal 5-Phosphate (P5P), Poke Root (Phytolacca americana), Rehmannia 50:1 (Rehmannia glutinosa), Red Root (Ceanothus americanus), Curc | Taraxsterols, Isoflavones, Chicoric Acid |
-| macular-wellness-astaxanthin | GK page lists only 2 entries (5-MTHF and Oryza sativa excipient) vs 10 authoritative ingre | — | Adenosyl/Methyl Cobalamin (90% Adenosyl, 10% Methyl), Coenzyme Q10, N-Acetyl Cysteine (NAC), Tetrahydrocurcumin, Cyanidin-3-glucosides, Trans-Resveratrol, Astax |
-| macular-wellness-crocin | GK page lists only 5-MTHF and Oryza sativa; missing 9 of 10 authoritative ingredients (CoQ | Oryza sativa | Adenosyl 90% & Methyl 10% Cobalamin, Coenzyme Q10, N-Acetyl Cysteine (NAC), Tetrahydrocurcumin, Cyanidin-3-Glucosides, Trans-Resveratrol, Astaxanthin, Salvianol |
-| macular-wellness-lutein | GK page lists only 2 ingredients (5-MTHF + R-Lipoic Acid) vs 10 in the authoritative formu | Stabilized Bio-Enhanced R-Lipoic Acid | N-Acetyl Cysteine (NAC), Lutein, Tetrahydrocurcumin, Cyanidin-3-Glucosides, Trans-Resveratrol, Coenzyme Q10, Salvianolic Acid B 20%, Adenosyl 90% & Methyl 10% C |
-| macular-wellness-lycopene | GK page lists Stabilized Bio-Enhanced Na R-Lipoate (not in authoritative formula) and is m | Stabilized Bio-Enhanced Na R-Lipoate | Adenosyl 90% & Methyl 10% Cobalamin, Coenzyme Q10, N-Acetyl Cysteine (NAC), Tetrahydrocurcumin, Cyanidin-3-glucosides, Trans-Resveratrol, Lycopene, Pterostilben |
-| macular-wellness-mesozeaxanthin | GK page lists only 2 items (5-MTHF, Oryza sativa) vs 10 authoritative ingredients; 9 autho | Oryza sativa | Adenosyl/Methyl Cobalamin (B12), Coenzyme Q10, N-Acetyl Cysteine (NAC), Tetrahydrocurcumin, Cyanidin-3-glucosides, Trans-Resveratrol, Astaxanthin, Curcumin |
-| macular-wellness-safranal | GK page lists only 5-MTHF and Oryza sativa; missing 8 authoritative ingredients (CoQ10, NA | Oryza sativa | Adenosyl & Methyl Cobalamin (90% Adenosyl / 10% Methyl), Coenzyme Q10, N-Acetyl Cysteine (NAC), Tetrahydrocurcumin, Cyanidin-3-glucosides, Trans-Resveratrol, As |
-| macular-wellness-zeaxanthin | GK page lists only 2 items (5-MTHF and Oryza sativa/rice) vs 10 authoritative ingredients; | Oryza sativa (rice) | Adenosyl (90%) & Methyl (10%) Cobalamin, Coenzyme Q10, N-Acetyl Cysteine (NAC), Tetrahydrocurcumin, Cyanidin-3-glucosides, Trans-Resveratrol, Astaxanthin, Curcu |
-| man-manna | GK page lists Phytosterols/Pygeum africanum, Saw Palmetto, Graminex Rye Extract, Green Tea | Phytosterols 12.5% (Pygeum africanum), Saw Palmetto (Serenoa repens), Graminex Rye Extract (Secale cereal), Green Tea Polyphenols (Camellia sinensis), Pumpkin E | Zinc Glycinate, Beta Sitosterol |
-| mitochondrial-biogenesis | GK lists NADH instead of Nicotinamide Riboside (different compounds); GK is missing Trans- | NADH (Reduced Nicotinamide Adenine Dinucleotide) | Trans-Resveratrol, Nicotinamide Riboside |
-| muscle-mass | Ergothioneine and Creatine (plain) are in the authoritative formula but absent from the GK | — | Ergothioneine, Creatine |
-| nerve-pulse | GK page lists ALCAR and Lion's Mane (not in authoritative formula) and omits Baicalein, Te | ALCAR (Acetyl L-Carnitine), Lion's Mane Polysaccharides 30% | Baicalein, Tetrahydrocurcumin, Riboflavin-5-Phosphate (Coenzyme B2), 5-MTHF (Methylfolate), Mixed Tocopherols, Tocotrienols, Copper Glycinate |
-| nerve-repair | GK lists ALCAR and Lion's Mane Polysaccharides not in authoritative formula; authoritative | ALCAR (Acetyl L-Carnitine), Lion's Mane Polysaccharides 30% (Hericium erinaceus) | Baicalein, Tetrahydrocurcumin, Riboflavin-5-Phosphate (Coenzyme B2), 5-MTHF (Methylfolate), Mixed Tocopherols, Tocotrienols, Copper Glycinate |
-| neuroceramides | GK page adds Myelin Sheath Protein (Bovine), Alpha GPC, and DHA (from Algae) not in author | Myelin Sheath Protein (Bovine), Alpha GPC (L-Alpha glycerylphosphorylcholine), DHA (from Algae) | Magnesium, Chromium, Adenosyl 90% & Methyl 10% Cobalamin, TMG (Trimethylglycine), MK-7 (Menaquinone-7), MK-4 (Menaquinone-4), Phosphatidylserine, Trans-Resverat |
-| neuromagnesium | GK page is missing Pyridoxal-5-Phosphate (P5P) and Vitamin D3 (Cholecalciferol) from the a | Polyphenol Complex (Proprietary) | Pyridoxal-5-Phosphate (P5P), Vitamin D3 (Cholecalciferol) |
-| neuroprotect | GK page lists 18 entirely different ingredients (DHA, Forskolin, Berberine, Huperzine A, N | DHA (from Algae), Forskolin (Coleus forskohlii), Berberine, Huperzine A, NAC (N-Acetyl Cysteine), CoQ10, Magnesium Threonate, Magnesium Taurate | Tetrahydrocurcumin, Lion's Mane Extract (Polysaccharides, Hericenones, Erinacines), Apigenin, Piperine, Sulforaphane, Safranal, Astaxanthin, Polysaccharide |
-| night-vision | Schisandrins absent from GK page; GK adds Taurine and DHA not in authoritative formula; zi | Taurine, DHA (from Algae), Oryza sativa (Rice) | Schisandrins |
-| rise--shine | GK page lists only 16 B-vitamin entries; 15 authoritative ingredients absent (DMAE Bitartr | — | DMAE Bitartrate, Pangamic Acid, TMG (Trimethylglycine), DMG (Dimethylglycine), Amygdalin, ALCAR (Acetyl-L-Carnitine), Centrophenoxine, Ginsenosides |
-| seaamino-syntropy | GK page lists only 2 of 10 authoritative ingredients; missing Ashitaba, EGb 761 (Ginkgo bi | — | Ashitaba 10:1 (Angelica Keiskei Koidzumi), EGb 761 (Ginkgo biloba) (24% Flavone Glycosides, 6% Lactones, <0.0005% Ginkgolic Acid), Vitamin B3 (as Niacin), Morin |
-| seaaminos | GK page lists only 'Amino Acids (Peptides from White Fish)'; authoritative formula also co | — | Chalcones (Xanthoangelol & 4-Hydroxyderricin), Rosmarinic Acid |
-| shields-up | GK page lists 16 substances not in the authoritative formula (Vitamin B1, Vitamin B6, Vita | Vitamin B1 (Sulbutiamine), Vitamin B6 (P5P), Vitamin C (L-Ascorbic Acid), L-Lysine, GSH (S-Acetyl Glutathione and Reduced Glutathione), Fulvic Acid, PQQ (Pyrrol | Polysaccharide, Thymoquinone, Andrographolide, Enzymatically Modified Isoquercetrin, Gingerols (Zingiber officinalis) |
-| snake--dragon | GK lists Gentian, Akebia, Plantago, Licorice which are absent from the authoritative clean | Gentian (Gentiana lutea), Akebia (Akebia caulis), Plantago (Plantago lanceolata), Licorice (Glycyrrhiza uralensis) | Baicalein |
-| spike-shield | GK page adds C60, Shungite, Monatomic Gold/ORMUS, and Nattokinase not in authoritative for | C60 (Buckminster Fullerene), Shungite, Monatomic Gold with M-11 ORMUS, Nattokinase, Polyphenols (Cinnamomum cassia) | Bromelain, Shikimic Acid, Withanolides, Azadirachtin, Tetrahydrocurcumin, N-Acetyl Cysteine (NAC), S-Acetyl Glutathione, Glutathione |
-| stone-solvent | GK page has 10 ingredients not in the authoritative formula (Magnesium Sulfate, Dandelion, | Magnesium (Magnesium Sulfate), Dandelion (Taraxacum officinale), Cynarin 10% (Cynara scolymus), Curcumin (Curcuma longa), Silymarin (Silybum marianum), EGb 761  | Lipase, Chanca Piedra 8:1 (Phyllanthus niruri), Phosphatides 50% (Helianthus annuus) |
-| stress-release | GK page lists 6 substances not in the authoritative formula (Rhodiola rosavins/salidroside | Rosavins / Salidroside (Rhodiola rosea), Reishi 30:1 (Ganoderma lucidum), Polysaccharide 30% (Cordyceps militaris), Modified Citrus Pectin, Gum Arabic, Myrrh Gu | Ursolic Acid, Honokiol, L-Theanine, Safranal, Apigenin, GABA, Rosmarinic Acid, Flavones |
-| sustain | GK adds Vitamin E (Mixed Tocopherols) and 7-Keto DHEA not in authoritative formula; GK omi | Vitamin E (Mixed Tocopherols), 7-Keto DHEA | EGb 761 (Ginkgo biloba, 24% Flavone Glycosides / 6% Lactones), Moringa 100:1 (Moringa oleifera), Licorice Omnipotent (Glycyrrhiza glabra), Gingerol 40% (Zingibe |
-| virex | GK page has 10 ingredients not in the authoritative formula (L-Lysine, Monolaurin, Rhodiol | L-Lysine, Monolaurin, Salidroside / Rosavins (Rhodiola rosea), Lemon balm (Melissa officinalis), Oxindole Alkaloids (Uncaria tomentosa), Curcumin, Reishi Shell- | Lactoferrin, Baicalein, Dipotassium Glycyrrhizinate, Gingerol, Andrographolide, Allicin |
-| vital-energy-be | GK page lists only 12 B-vitamin entries; missing 19 authoritative substances (Niacinamide, | — | Niacinamide, Inositol Hexanicotinate, Choline Bitartrate, Alpha GPC (Alpha-Glyceryl Phosphoryl Choline), DMAE Bitartrate, Centrophenoxine, Pangamic Acid (Vitami |
-| vitality | GK page is missing Ginsenosides (7 mg) and Asiaticosides/Centella asiatica (75 mg) that ap | — | Ginsenosides, Asiaticosides (Centella asiatica) |
-| vitamin-d-syntropy | GK page is missing the entire Bioavailability Factors section: Phosphatidyl Choline, Vitam | — | Phosphatidyl Choline 30% (Gallus gallus domesticus), Vitamin B3 (Niacin), EGb 761 (Ginkgo biloba) (24% Flavone Glycosides, 6% Lactones), Moringa 100:1 (Moringa  |
-| vitreous-vitality | GK page missing 7 authoritative ingredients (Notoginsenosides, Ceramide, Polysaccharide, P | Cinnamon (Cinnamomum cassia), Retinyl Palmitate (GK lists this form; authoritative formula specifies Retinyl Acetate) | Notoginsenosides, Ceramide, Polysaccharide, Procyanidolic Oligomers, Fisetin, Trans-Resveratrol, Naringenin |
-| zinc-syntropy | GK lists Zinc Citrate (not in authoritative formula); authoritative has Zinc Sulfate Monoh | Zinc Citrate | Zinc Sulfate Monohydrate, Magnesium |
+| Slug | On GK but not in our record |
+|---|---|
+| angiogenx | R-Lipoic Acid, NAC (N-Acetyl Cysteine), Zinc (from Zinc Ascorbate), Vitamin C (from Zinc Ascorbate), Proteoglycans (Convolvulus arvensis), Lapachol (Tabebuia avellanedae), Mistletoe (Viscum album), Proanthocyanidin (Pinus pinaster), Quercetin Dihydrate, Polysaccharides (Aloe barbadensis), Silymarin (Silybum marianum), Lutein |
+| blood-cleanse | Microbiome (25 Probiotic Species), Phosphatides (Vitamin B13), EGb 761 (Ginkgo biloba), Moringa oleifera (Miracle Tree), Licorice (Glycyrrhiza glabra), Vinpocetine, Gingerol, Piperine, Fulvic Acid, Humic Acid, Spirit Minerals |
+| bone-builder | 7-Keto DHEA, Betaine HCl, Asiaticosides (Centella asiatica), Vitamin K1 (Phylloquinone) |
+| brain-boost | Centrophenoxine, Citicoline, DHA (from Algae), Fulvic Acid, 11 Spirit Minerals |
+| brain-cleanse | Vitamin B6 (as P-5-P), Vitamin B9 (as 5-MTHF), Vitamin B12 (as Adenosylcobalamin), Vitamin B12 (as Methylcobalamin), Magnesium (from Magnesium Threonate), Chromium (from Chromium Polynicotinate), NAC (N-Acetyl Cysteine), MCP (Modified Citrus Pectin), Gum Arabic, Myrrh Gum/Guggul, Mastic Gum, Huang Bai (Phellodendron chinense) |
+| chelation | Vitamin C (L-Ascorbic Acid), Lysine, Chlorella, S-Acetyl Glutathione, Cilantro (Coriandrum sativum), Vitamin B13: Phosphatides (Sunflower lecithin), EGb 761 (Ginkgo biloba), Vitamin B3 (Niacin), Moringa (Miracle Tree), Licorice (Glycyrrhiza glabra), Vinpocetine, Gingerol (Ginger) |
+| connective-tissue-support | Vitamin B13: Phosphatides 50% (Helianthus annua), Fulvic Acid, Humic Acid, 11 Spirit Minerals |
+| dental-regen-powder | Potassium Bicarbonate, Sodium Bicarbonate |
+| golden-book | Alismatis (Alisma orientalis rhizome), Rehmanniae (Rehmannia glutinosa root), Aconite (Aconitum carmichaelii root) |
+| immune-modulation | African Star Flower (Hypoxis hemerocallidea), Beta-Sitosterol, Quercetin Dihydrate, Artemisinin (Artemisia annua), Withanolides (Withania somnifera), Lupulin from Hops (Humulus lupulus), Rehmannia (Rehmannia glutinosa), Reishi (Ganoderma spp.), Curcumin (Curcuma longa), Vitamin B13: Phosphatides (Helianthus annua), EGb 761 (Ginkgo biloba), Vitamin B3 (Niacin) |
+| lipid-cleanse | Berberine (plain; authoritative specifies Dihydroberberine/GlucoVantage), Magnesium (from Magnesium L-Threonate) |
+| liver-support | Vitamin B5 (Calcium Pantothenate), Vitamin B6 (Pyridoxal 5-Phosphate), Vitamin B9 Folate (5-MTHF), Vitamin B12 (Adenosylcobalamin), Vitamin B12 (Methylcobalamin), Vitamin B13 CDP Choline (Citicoline), Vitamin B15 TMG (Trimethylglycine), Vitamin C (L-Ascorbic Acid), Selenium (Methylselenocysteine), Chelidonine (Chelidonium majus), Boswellic Acid (Boswellia serrata), Flavonoids/Taraxacum (Dandelion) |
+| longevity | EGb 761 (Ginkgo biloba), Vitamin B3 (Niacin), Moringa oleifera (Miracle Tree 100:1), Licorice (Glycyrrhiza glabra), Vinpocetine (Vinca minor), Gingerol 10% (Zingiber officinalis), Piperine (Piper nigrum), Fulvic Acid, Humic Acid, 11 Spirit Minerals |
+| lymph-flow | S-Acetyl Glutathione, Vitamin B6 (as Pyridoxal 5-Phosphate), Poke Root (Phytolacca americana), Rehmannia (Rehmannia glutinosa), Red Root (Ceanothus americanus), Curcumin (Curcuma longa), Vitamin B13: Phosphatides (Helianthus annua), Ginkgo biloba (EGb 761), Vitamin B3 (Niacin), Moringa oleifera, Licorice (Glycyrrhiza glabra), Vinpocetine (Vinca minor) |
+| macular-wellness-astaxanthin | TMG (Trimethylglycine, listed as Vitamin B15), ALCAR (Acetyl-L-Carnitine, listed as Vitamin B20), Ascorbyl Palmitate (Vitamin C), L-Carnosine, R-Lipoic Acid (Stabilized Bio-Enhanced R-Lipoic Acid), S-Acetyl Glutathione, Magnesium Taurate, Quercetin Dihydrate, Green Tea Polyphenols (Camellia sinensis), Ginsenosides (Panax quinquefolius) |
+| macular-wellness-crocin | TMG (Vitamin B15 from Beta spp.), ALCAR (Vitamin B20), Ascorbyl Palmitate (Vitamin C), L-Carnosine, R-Lipoic Acid (Stabilized Bio-Enhanced), S-Acetyl Glutathione, Taurate, Magnesium, Crocin 45% (Gardenia jasminoides), Quercetin Dihydrate (Sophora japonica), Polyphenols (Camellia sinensis), Ginsenosides (Panax quinquefolius) |
+| macular-wellness-lutein | Curcumin (instead of Tetrahydrocurcumin), TMG (Vitamin B15), ALCAR (Vitamin B20), Ascorbyl Palmitate (Vitamin C), L-Carnosine, R-Lipoic Acid (Stabilized Bio-Enhanced), S-Acetyl Glutathione, Taurate / Magnesium, Quercetin Dihydrate, Polyphenols (green tea, Camellia sinensis), Ginsenosides (Panax quinquefolius), Phosphatides (Vitamin B13) |
+| macular-wellness-lycopene | ALCAR (Acetyl-L-Carnitine / Vitamin B20), TMG (Trimethylglycine / Vitamin B15), Ascorbyl Palmitate (Vitamin C), L-Carnosine, Na R-Lipoate (Stabilized R-Lipoic Acid), S-Acetyl Glutathione, Taurate, Magnesium, Quercetin Dihydrate, Polyphenols (Camellia sinensis / green tea), Ginsenosides (Panax quinquefolius), Phosphatides (Vitamin B13 / sunflower lecithin) |
+| macular-wellness-mesozeaxanthin | Mesozeaxanthin, TMG (Trimethylglycine / Vitamin B15), ALCAR (Acetyl-L-Carnitine / Vitamin B20), Ascorbyl Palmitate (Vitamin C), L-Carnosine, R-Lipoic Acid (Stabilized Bio-Enhanced), S-Acetyl Glutathione, Taurate, Magnesium, Quercetin Dihydrate, Polyphenols (green tea / Camellia sinensis), Ginsenosides (Panax quinquefolius) |
+| macular-wellness-safranal | TMG (Trimethylglycine), ALCAR (Acetyl-L-Carnitine), Ascorbyl Palmitate (Vitamin C), L-Carnosine, R-Lipoic Acid (Stabilized Bio-Enhanced), S-Acetyl Glutathione, Taurate, Magnesium, Safranal (Crocus sativa), Quercetin Dihydrate, Polyphenols (Green Tea / Camellia sinensis), Ginsenosides (Panax quinquefolius) |
+| macular-wellness-zeaxanthin | TMG (Trimethylglycine), ALCAR (Acetyl-L-Carnitine), Ascorbyl Palmitate (Vitamin C), L-Carnosine, R-Lipoic Acid (Stabilized Bio-Enhanced), S-Acetyl Glutathione, Magnesium Taurate (Taurate), Zeaxanthin, Quercetin Dihydrate, Polyphenols (Camellia sinensis / Green Tea), Ginsenosides (Panax quinquefolius), Phosphatides / Phosphatidylcholine (Vitamin B13) |
+| mitochondrial-biogenesis | NADH (Reduced Nicotinamide Adenine Dinucleotide), Vitamin B13: Phosphatides (Helianthus annua), EGb 761 (Ginkgo biloba), Vitamin B3 (Niacin), Miracle Tree / Moringa oleifera, Licorice (Glycyrrhiza glabra), Vinpocetine (Vinca minor), Gingerol (Zingiber officinalis), Piperine (Piper nigrum), Fulvic Acid, Humic Acid, 11 Spirit Minerals |
+| muscle-mass | Phosphatides 50% (Helianthus annua), EGb 761 (Ginkgo biloba), Vitamin B3 (Niacin), Moringa oleifera (Miracle Tree 100:1), Licorice (Glycyrrhiza glabra), Vinpocetine (Vinca minor), Gingerol 10% (Zingiber officinalis), Piperine (Piper nigrum), Fulvic Acid, Humic Acid, 11 Spirit Minerals |
+| nerve-pulse | Huperzine A, Vitamin D3 (Cholecalciferol), Garlic Allicin, Pterostilbene, St. John's Wort (Hypericin) |
+| neuroceramides | Myelin Sheath Protein (Bovine), Alpha GPC (L-Alpha glycerylphosphorylcholine), DHA (from Algae), Red Root (Ceanothus americanus), Vitamin B13: Phosphatides (Helianthus annua), EGb 761 (Ginkgo biloba), Vitamin B3 (Niacin), Miracle Tree (Moringa oleifera), Licorice Omnipotent (Glycyrrhiza glabra), Vinpocetine (Vinca minor), Gingerol (Zingiber officinalis), Piperine (Piper nigrum) |
+| neuroprotect | DHA (from Algae), Forskolin, Berberine, Huperzine A, NAC (N-Acetyl Cysteine), CoQ10, Magnesium Threonate, Magnesium Taurate, Chromium, Vitamin B3 (as Polynicotinate/Niacin), Iodine (as Potassium Iodide), Gingerol (Ginger) |
+| night-vision | Taurine, DHA, Phosphatides (Vitamin B13), Ginkgo biloba (EGb 761), Niacin (Vitamin B3), Moringa oleifera, Licorice (Glycyrrhiza glabra), Vinpocetine, Ginger (Gingerol), Piperine, Fulvic Acid, Humic Acid |
+| rise--shine | Phosphatides (Helianthus annua / sunflower lecithin), Ginkgo biloba (EGb 761), Moringa oleifera, Licorice (Glycyrrhiza glabra), Vinpocetine, Gingerol / Ginger (Zingiber officinalis), Piperine (Piper nigrum), Fulvic Acid, Humic Acid, 11 Spirit Minerals |
+| seaamino-syntropy | Vitamin B13: Phosphatides 50% (Helianthus annua), Fulvic Acid, Humic Acid, 11 Spirit Minerals |
+| shields-up | Vitamin B1 (Sulbutiamine), Vitamin B6 (P5P), Vitamin C (L-Ascorbic Acid), Zinc Carnosine, L-Lysine, GSH (S-Acetyl Glutathione / Reduced Glutathione), Fulvic Acid, Humic Acid, Spirit Minerals, PQQ (Pyrroloquinoline Quinone), Thymus Peptides, Ketones (Rubus spp.) |
+| spike-shield | C60 (Buckminster Fullerene), Shungite, Monatomic Gold with M-11 ORMUS, Nattokinase, Pine Needle Extract, Vitamin B13 (Phosphatides), EGb 761 (Ginkgo biloba), Vitamin B3 (Niacin), Miracle Tree (Moringa oleifera), Licorice (Glycyrrhiza glabra), Vinpocetine, Gingerol |
+| stone-solvent | Magnesium (Magnesium Sulfate), Dandelion (Taraxacum officinale), Cynarin 10% (Cynara scolymus), Curcumin (Curcuma longa), Silymarin (Silybum marianum), EGb 761 (Ginkgo biloba), Vitamin B3 (Niacin), Moringa 100:1 (Moringa oleifera), Licorice Omnipotent (Glycyrrhiza glabra), Gingerol 10% (Zingiber officinalis), Piperine (Piper nigrum), Vinpocetine (Vinca minor) |
+| stress-release | Rosavins / Salidroside (Rhodiola rosea), Reishi (Ganoderma lucidum), Polysaccharides (Cordyceps militaris), Modified Citrus Pectin (MCP), Gum Arabic (Acacia), Myrrh Gum / Guggul (Commiphora myrrha), Mastic Gum, Niacin (Vitamin B3), Moringa (Miracle Tree), Licorice (Glycyrrhiza glabra), Vinpocetine, Gingerol (Ginger) |
+| virex | L-Lysine, Monolaurin, Salidroside / Rosavins (Rhodiola rosea), Lemon balm (Melissa officinalis), Oxindole Alkaloids (Cat's Claw / Uncaria tomentosa), Curcumin, Reishi (Ganoderma lucidum), Hesperidin Methyl Chalcone, Trans Resveratrol, Lomatium, Vitamin B13: Phosphatides, Ginkgo biloba (EGb 761) |
+| vital-energy-be | Phosphatides (Helianthus annua / sunflower lecithin), EGb 761 (Ginkgo biloba), Niacin (standalone, beyond Inositol Hexaniacinate blend), Moringa oleifera (Miracle Tree 100:1), Glycyrrhiza glabra (Licorice Omnipotent), Vinpocetine (Vinca minor), Gingerol (Zingiber officinalis), Piperine (Piper nigrum), Fulvic Acid, Humic Acid, 11 Spirit Minerals |
+| vitality | Ginkgo biloba |
+| vitamin-d-syntropy | Fulvic Acid, Humic Acid, Spirit Minerals |
+| vitreous-vitality | Retinyl Palmitate (GK has this; authoritative specifies Retinyl Acetate), Vitamin C, Taurine (Acetyl-Taurate), Cinnamon (Cinnamomum cassia), Sumac Bran (Cotinus coggygria), Phosphatides / Vitamin B13 (Helianthus annua), Ginkgo biloba (EGb 761), Niacin (Vitamin B3), Moringa (Moringa oleifera), Licorice (Glycyrrhiza glabra), Vinpocetine (Vinca minor), Gingerol (Zingiber officinalis) |
+
+## (C) Un-reverified (no green-plus panel re-parsed): iron-out, man-manna, nerve-repair, snake--dragon
+
+## (D) Cleared: connective-tissue-support, dental-regen-powder, lipid-zyme, neuromagnesium, stone-solvent, vital-energy-be, vitality, vitamin-d-syntropy
