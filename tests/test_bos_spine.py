@@ -143,3 +143,105 @@ def test_event_set_status():
     assert E.set_event_status(cx, eid, "confirmed") is True
     assert E.get_event(cx, eid)["status"] == "confirmed"
     assert E.set_event_status(cx, 9999, "confirmed") is False
+
+
+def _dispatch_env():
+    from dashboard import actions as A, events as E, dispatch as D, rbac as R
+    cx = sqlite3.connect(":memory:")
+    cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx)
+    calls = {"n": 0}
+
+    @A.action(key="demo.low", module="demo", title="Low", description="d",
+              risk_tier=A.LOW_WRITE, permission=(R.OWNER, R.VA))
+    def low(params, ctx):
+        calls["n"] += 1
+        return {"did": "low"}
+
+    @A.action(key="demo.money", module="demo", title="Money", description="d",
+              risk_tier=A.MONEY_SEND, permission=(R.OWNER, R.VA, R.AGENT),
+              confirm_summary=lambda p: f"refund ${p.get('amount')}")
+    def money(params, ctx):
+        calls["n"] += 1
+        return {"did": "money"}
+
+    @A.action(key="demo.del", module="demo", title="Del", description="d",
+              risk_tier=A.IRREVERSIBLE, permission=(R.OWNER, R.VA, R.AGENT))
+    def dele(params, ctx):
+        calls["n"] += 1
+        return {"did": "del"}
+
+    @A.action(key="demo.boom", module="demo", title="Boom", description="d",
+              risk_tier=A.LOW_WRITE, permission=(R.OWNER,))
+    def boom(params, ctx):
+        raise RuntimeError("kaboom")
+
+    return A, E, D, R, cx, calls
+
+
+def test_dispatch_owner_low_write_auto_done():
+    A, E, D, R, cx, calls = _dispatch_env()
+    res = D.dispatch_action(cx, "demo.low", {}, R.Actor(role=R.OWNER))
+    assert res["status"] == "done"
+    assert res["result"] == {"did": "low"}
+    assert calls["n"] == 1
+    assert E.get_event(cx, res["event_id"])["status"] == "done"
+
+
+def test_dispatch_owner_money_needs_confirmation_then_runs():
+    A, E, D, R, cx, calls = _dispatch_env()
+    res = D.dispatch_action(cx, "demo.money", {"amount": 80}, R.Actor(role=R.OWNER))
+    assert res["status"] == "needs_confirmation"
+    assert "80" in res["summary"]
+    assert calls["n"] == 0
+    res2 = D.dispatch_action(cx, "demo.money", {"amount": 80},
+                             R.Actor(role=R.OWNER), confirmed=True)
+    assert res2["status"] == "done"
+    assert calls["n"] == 1
+
+
+def test_dispatch_va_money_queues():
+    A, E, D, R, cx, calls = _dispatch_env()
+    res = D.dispatch_action(cx, "demo.money", {"amount": 5}, R.Actor(role=R.VA))
+    assert res["status"] == "queued"
+    assert calls["n"] == 0
+    assert E.get_event(cx, res["event_id"])["status"] == "pending_approval"
+
+
+def test_dispatch_va_irreversible_denied():
+    A, E, D, R, cx, calls = _dispatch_env()
+    res = D.dispatch_action(cx, "demo.del", {}, R.Actor(role=R.VA))
+    assert res["status"] == "denied"
+    assert calls["n"] == 0
+
+
+def test_dispatch_unknown_action_and_no_actor():
+    A, E, D, R, cx, calls = _dispatch_env()
+    assert D.dispatch_action(cx, "nope", {}, R.Actor(role=R.OWNER))["status"] == "error"
+    assert D.dispatch_action(cx, "demo.low", {}, None)["status"] == "denied"
+
+
+def test_dispatch_executor_failure_logs_failed():
+    A, E, D, R, cx, calls = _dispatch_env()
+    res = D.dispatch_action(cx, "demo.boom", {}, R.Actor(role=R.OWNER))
+    assert res["status"] == "failed"
+    assert "kaboom" in res["error"]
+    assert E.get_event(cx, res["event_id"])["status"] == "failed"
+
+
+def test_approve_event_runs_queued_action():
+    A, E, D, R, cx, calls = _dispatch_env()
+    q = D.dispatch_action(cx, "demo.money", {"amount": 5}, R.Actor(role=R.VA))
+    res = D.approve_event(cx, q["event_id"], R.Actor(role=R.OWNER))
+    assert res["status"] == "done"
+    assert calls["n"] == 1
+    assert E.get_event(cx, q["event_id"])["status"] == "confirmed"
+
+
+def test_cancel_event_marks_cancelled():
+    A, E, D, R, cx, calls = _dispatch_env()
+    q = D.dispatch_action(cx, "demo.money", {"amount": 5}, R.Actor(role=R.VA))
+    res = D.cancel_event(cx, q["event_id"])
+    assert res["status"] == "cancelled"
+    assert calls["n"] == 0
+    assert E.get_event(cx, q["event_id"])["status"] == "cancelled"
