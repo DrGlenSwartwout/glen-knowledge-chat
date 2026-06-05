@@ -669,6 +669,7 @@
       head.textContent = 'Invoice ' + doc + ' created for $' + total + '.';
 
       if (data.method === 'card') {
+        if (data.stripe_url) { window.location.href = data.stripe_url; return; }
         var link = (data.pay_link || '').trim();
         if (link) {
           var payLink = document.getElementById('pay-link');
