@@ -460,11 +460,30 @@ def test_begin_explore_served_with_injected_sections(monkeypatch, tmp_path):
     assert "Work With Us" in html
     # page heading rendered
     assert "Explore Everything" in html
-    # affiliate-funnel integration: affiliate door + partner section + disclosure
-    assert "Earn by Sharing" in html
-    assert "Recommended Tools &amp; Partners" in html or "Recommended Tools & Partners" in html
+    # affiliate-funnel integration: affiliate door + single partner-page card,
+    # both woven into existing sections (no standalone sections, no inline
+    # partner names on the explore page itself)
+    assert "Become an Affiliate" in html
+    assert "/affiliate" in html
+    assert "Recommended Tools & Partners" in html
+    assert "/begin/tools" in html
+    assert "Earn by Sharing" not in html
+    assert "Blushield" not in html
+
+
+def test_begin_tools_page_lists_partners_with_disclosure(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    client = app_module.app.test_client()
+    r = client.get("/begin/tools")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert "window.__TOOLS__" in html
     assert "Blushield" in html
+    assert "blushield-us.com/heal" in html
     assert "Amazon Associate" in html
+    # the page heading
+    assert "Recommended Tools" in html
 
 
 def test_begin_explore_threads_ref_query(monkeypatch, tmp_path):

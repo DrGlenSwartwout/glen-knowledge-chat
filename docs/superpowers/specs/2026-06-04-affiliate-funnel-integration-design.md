@@ -4,6 +4,22 @@
 **Domain:** illtowell.com (live, serving the deploy-chat app)
 **Branch:** sess/ec0e1f15
 
+## Revision 2 (2026-06-04, post-#26)
+
+Per Glen, two placement changes to workstream A:
+- **Recommended Tools & Partners is now its own page** at `/begin/tools`
+  (`static/begin-tools.html`, route renders `partner_page_cards()` + the Amazon
+  disclosure). The Explore page carries a SINGLE card titled "Recommended Tools
+  & Partners" → `/begin/tools`, appended to the existing **"Match & Remedies"**
+  section. Individual partner names no longer appear on the Explore page.
+- **The affiliate card moves into the existing "Share & Lift Others" section**,
+  appended right after the pay-it-forward card ("Share Your Results, Lift
+  Others"). The standalone "Earn by Sharing" section is removed.
+
+`explore_sections()` no longer emits a `disclosure` field; the disclosure lives
+on the `/begin/tools` page. The original workstream-A text below is superseded
+by this revision; B/C/D are unchanged.
+
 ## Goal
 
 Integrate the affiliate system into the `/begin` funnel at illtowell.com. Four

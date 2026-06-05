@@ -504,22 +504,37 @@ def partner_links(trusted_links):
     return out
 
 
+def partner_page_cards(trusted_links):
+    """Build the render payload for the dedicated /begin/tools partner page:
+        {cards: [{title, sub, href, external}], disclosure}
+    Cards come from partner_links() (all external, open in a new tab). The
+    Amazon Associates disclosure is included when any card is an Amazon link."""
+    partners = partner_links(trusted_links)
+    cards = [{"title": p["name"], "sub": p["note"],
+              "href": p["url"], "external": True} for p in partners]
+    disclosure = ("As an Amazon Associate, Healing Oasis earns from "
+                  "qualifying purchases.") if any(p["amazon"] for p in partners) else ""
+    return {"cards": cards, "disclosure": disclosure}
+
+
 def explore_sections(ref="", trusted_links=None):
     """Build the ordered, ref-threaded section list for the /begin/explore page.
 
     Renders from CARD_CATALOG (so it stays in sync with the funnel as rooms are
     added) plus the explore-only extras in _EXPLORE_EXTRA. Returns a list of:
-        {title, blurb, audience, cards: [{title, sub, href, external}], disclosure?}
+        {title, blurb, audience, cards: [{title, sub, href, external}]}
     `external` is True for off-site links (drives target=_blank on the page).
     External hrefs carry the same utm threading as card_href; internal hrefs
     stay bare. All new copy here is em-dash-free (Glen's standing rule).
 
-    Two integration sections are appended after the static layout:
-      - "Earn by Sharing": the affiliate-program door (-> /affiliate, ref-threaded
-        as ?ref= when a ref is present so attribution carries through).
-      - "Recommended Tools & Partners": rendered only when `trusted_links` is
-        supplied, from partner_links(); carries an Amazon Associates disclosure
-        when any card is an Amazon link."""
+    Two affiliate-funnel integrations weave into the existing layout (no new
+    top-level sections):
+      - the affiliate-program door ("Become an Affiliate", -> /affiliate,
+        ref-threaded) is appended to the "Share & Lift Others" section, right
+        after the pay-it-forward card it belongs with;
+      - a single "Recommended Tools & Partners" card (-> /begin/tools, the
+        dedicated partner page) is appended to the "Match & Remedies" section
+        when `trusted_links` carries at least one partner link."""
     sections = []
     for sec in _EXPLORE_LAYOUT:
         cards = []
@@ -538,34 +553,29 @@ def explore_sections(ref="", trusted_links=None):
                          "audience": sec.get("audience", "patient"),
                          "cards": cards})
 
-    # Affiliate-program door — its own directory entry (today it only lives
-    # inside /begin/path). Ref-threaded so a landing attribution carries through.
+    by_title = {s["title"]: s for s in sections}
+
+    # Affiliate-program door — lives with "Share & Lift Others", after the
+    # pay-it-forward card. Ref-threaded so a landing attribution carries through.
     aff_href = "/affiliate"
     if ref:
         aff_href += "?ref=" + urllib.parse.quote(ref)
-    sections.append({
-        "title": "Earn by Sharing",
-        "blurb": "Pass your healing forward, and earn your way deeper as others begin through you.",
-        "audience": "patient",
-        "cards": [{
+    share_sec = by_title.get("Share & Lift Others")
+    if share_sec is not None:
+        share_sec["cards"].append({
             "title": "Become an Affiliate",
             "sub": "Share your link and earn. Points and credit accrue toward your own access as others start their journey through you.",
-            "href": aff_href, "external": False}],
-    })
+            "href": aff_href, "external": False})
 
-    # External partner / affiliate tools (Blushield, Glen's Amazon picks).
-    if trusted_links:
-        partners = partner_links(trusted_links)
-        if partners:
-            cards = [{"title": p["name"], "sub": p["note"],
-                      "href": p["url"], "external": True} for p in partners]
-            disclosure = ("As an Amazon Associate, Healing Oasis earns from "
-                          "qualifying purchases.") if any(p["amazon"] for p in partners) else ""
-            sections.append({
+    # Single card into "Match & Remedies" pointing at the dedicated partner page
+    # (/begin/tools). The cookie-borne ref carries attribution; href stays bare.
+    if trusted_links and partner_links(trusted_links):
+        match_sec = by_title.get("Match & Remedies")
+        if match_sec is not None:
+            match_sec["cards"].append({
                 "title": "Recommended Tools & Partners",
-                "blurb": "Trusted devices and tools Dr. Glen recommends alongside your remedies.",
-                "audience": "patient",
-                "cards": cards, "disclosure": disclosure})
+                "sub": "Devices and tools Dr. Glen recommends alongside your remedies.",
+                "href": "/begin/tools", "external": False})
 
     return sections
 
