@@ -478,15 +478,48 @@ _EXPLORE_LAYOUT = [
 ]
 
 
-def explore_sections(ref=""):
+def partner_links(trusted_links):
+    """Return the external partner/affiliate links for the funnel's 'Recommended
+    Tools & Partners' section, sourced from trusted-links.json.
+
+    Only entries flagged `"affiliate": true` are returned (Blushield, Glen's
+    Amazon Associates picks); unflagged internal links (E4L, etc.) are excluded
+    so they stay name-resolve / auto-open only. `trusted_links` is the parsed
+    trusted-links.json dict ({"links": {...}}), injected by the caller so this
+    module stays free of app.py / filesystem coupling.
+
+    Each item: {name, url, note, amazon} where `amazon` is True for amzn.to /
+    amazon.* links (drives the Amazon Associates disclosure). Order follows the
+    JSON insertion order."""
+    out = []
+    for name, val in (trusted_links.get("links", {}) or {}).items():
+        if not isinstance(val, dict) or not val.get("affiliate"):
+            continue
+        url = val.get("url", "")
+        if not url:
+            continue
+        amazon = "amzn.to" in url or "amazon." in url
+        out.append({"name": name, "url": url,
+                    "note": val.get("note", ""), "amazon": amazon})
+    return out
+
+
+def explore_sections(ref="", trusted_links=None):
     """Build the ordered, ref-threaded section list for the /begin/explore page.
 
     Renders from CARD_CATALOG (so it stays in sync with the funnel as rooms are
     added) plus the explore-only extras in _EXPLORE_EXTRA. Returns a list of:
-        {title, blurb, audience, cards: [{title, sub, href, external}]}
+        {title, blurb, audience, cards: [{title, sub, href, external}], disclosure?}
     `external` is True for off-site links (drives target=_blank on the page).
     External hrefs carry the same utm threading as card_href; internal hrefs
-    stay bare. All new copy here is em-dash-free (Glen's standing rule)."""
+    stay bare. All new copy here is em-dash-free (Glen's standing rule).
+
+    Two integration sections are appended after the static layout:
+      - "Earn by Sharing": the affiliate-program door (-> /affiliate, ref-threaded
+        as ?ref= when a ref is present so attribution carries through).
+      - "Recommended Tools & Partners": rendered only when `trusted_links` is
+        supplied, from partner_links(); carries an Amazon Associates disclosure
+        when any card is an Amazon link."""
     sections = []
     for sec in _EXPLORE_LAYOUT:
         cards = []
@@ -504,6 +537,36 @@ def explore_sections(ref=""):
         sections.append({"title": sec["title"], "blurb": sec["blurb"],
                          "audience": sec.get("audience", "patient"),
                          "cards": cards})
+
+    # Affiliate-program door — its own directory entry (today it only lives
+    # inside /begin/path). Ref-threaded so a landing attribution carries through.
+    aff_href = "/affiliate"
+    if ref:
+        aff_href += "?ref=" + urllib.parse.quote(ref)
+    sections.append({
+        "title": "Earn by Sharing",
+        "blurb": "Pass your healing forward, and earn your way deeper as others begin through you.",
+        "audience": "patient",
+        "cards": [{
+            "title": "Become an Affiliate",
+            "sub": "Share your link and earn. Points and credit accrue toward your own access as others start their journey through you.",
+            "href": aff_href, "external": False}],
+    })
+
+    # External partner / affiliate tools (Blushield, Glen's Amazon picks).
+    if trusted_links:
+        partners = partner_links(trusted_links)
+        if partners:
+            cards = [{"title": p["name"], "sub": p["note"],
+                      "href": p["url"], "external": True} for p in partners]
+            disclosure = ("As an Amazon Associate, Healing Oasis earns from "
+                          "qualifying purchases.") if any(p["amazon"] for p in partners) else ""
+            sections.append({
+                "title": "Recommended Tools & Partners",
+                "blurb": "Trusted devices and tools Dr. Glen recommends alongside your remedies.",
+                "audience": "patient",
+                "cards": cards, "disclosure": disclosure})
+
     return sections
 
 

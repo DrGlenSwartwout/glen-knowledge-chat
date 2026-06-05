@@ -1,13 +1,13 @@
 {
-  "_comment": "Off-catalog but Glen-approved remedy / tool / service / therapy links for RemedyMatch auto-open. Grows organically. Keys are remedy/tool/service names; matching is case-insensitive (exact or substring, name length > 4). Value is a URL string, or an object {\"url\": \"...\", \"note\": \"...\"}. Catalog products do NOT go here, those resolve via product-aliases.json. Only add links you trust to open in a new tab. The amzn.to links below are Glen's own Amazon Associates affiliate links (tag healoasi02-20), mined from his sent email 2026-05-30 (see 00 Projects/remedymatch/amazon-affiliate-products.md).",
+  "_comment": "Off-catalog but Glen-approved remedy / tool / service / therapy links for RemedyMatch auto-open. Grows organically. Keys are remedy/tool/service names; matching is case-insensitive (exact or substring, name length > 4). Value is a URL string, or an object {\"url\": \"...\", \"note\": \"...\", \"affiliate\": true}. Catalog products do NOT go here, those resolve via product-aliases.json. Only add links you trust to open in a new tab. The amzn.to links below are Glen's own Amazon Associates affiliate links (tag healoasi02-20), mined from his sent email 2026-05-30 (see 00 Projects/remedymatch/amazon-affiliate-products.md). Entries with \"affiliate\": true ALSO render in the funnel's 'Recommended Tools & Partners' section on /begin/explore (begin_funnel.partner_links()); unflagged entries stay name-resolve / auto-open only.",
   "links": {
     "E4L Bioenergetic Scan": { "url": "https://truly.vip/E4L", "note": "Energy For Life 10-second voice scan / Biofield Analysis" },
-    "Heated Eye Mask": { "url": "https://amzn.to/49l3Ts8", "note": "Silk cordless warm compress for dry eyes / stye / tired eyes. Glen's most-recommended Amazon pick (15x)." },
-    "Eyelid Foaming Cleanser": { "url": "https://amzn.to/4pZjVPh", "note": "NOVEHA lavender + tea tree eyelid foaming cleanser for Demodex / MGD / stye. Glen Amazon pick (12x)." },
-    "Water Distiller": { "url": "https://amzn.to/4d9aO9H", "note": "GarveeHome 1 gal stainless countertop water distiller. Glen Amazon pick." },
-    "Vibration Plate": { "url": "https://amzn.to/41yvL8M", "note": "Lifepro Waver mini vibration plate for lymphatic drainage. Glen Amazon pick." },
-    "Creatine Monohydrate": { "url": "https://amzn.to/4l9MpnT", "note": "BulkSupplements micronized creatine monohydrate, 1 kg. Glen Amazon pick." },
-    "EAV Electro Acupuncture Device": { "url": "https://amzn.to/49euQ1M", "note": "EAV diagnostic device (Voll method). Glen Amazon pick." },
-    "Blushield": { "url": "https://blushield-us.com/heal", "note": "Blushield active scalar EMF protection devices. Glen's own affiliate link (affiliate area: blushield-us.com/my-account/affiliate-area/)." }
+    "Heated Eye Mask": { "url": "https://amzn.to/49l3Ts8", "note": "Silk cordless warm compress for dry eyes / stye / tired eyes. Glen's most-recommended Amazon pick (15x).", "affiliate": true },
+    "Eyelid Foaming Cleanser": { "url": "https://amzn.to/4pZjVPh", "note": "NOVEHA lavender + tea tree eyelid foaming cleanser for Demodex / MGD / stye. Glen Amazon pick (12x).", "affiliate": true },
+    "Water Distiller": { "url": "https://amzn.to/4d9aO9H", "note": "GarveeHome 1 gal stainless countertop water distiller. Glen Amazon pick.", "affiliate": true },
+    "Vibration Plate": { "url": "https://amzn.to/41yvL8M", "note": "Lifepro Waver mini vibration plate for lymphatic drainage. Glen Amazon pick.", "affiliate": true },
+    "Creatine Monohydrate": { "url": "https://amzn.to/4l9MpnT", "note": "BulkSupplements micronized creatine monohydrate, 1 kg. Glen Amazon pick.", "affiliate": true },
+    "EAV Electro Acupuncture Device": { "url": "https://amzn.to/49euQ1M", "note": "EAV diagnostic device (Voll method). Glen Amazon pick.", "affiliate": true },
+    "Blushield": { "url": "https://blushield-us.com/heal", "note": "Blushield active scalar EMF protection devices. Glen's own affiliate link (affiliate area: blushield-us.com/my-account/affiliate-area/).", "affiliate": true }
   }
 }

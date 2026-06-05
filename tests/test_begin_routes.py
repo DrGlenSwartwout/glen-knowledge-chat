@@ -460,6 +460,11 @@ def test_begin_explore_served_with_injected_sections(monkeypatch, tmp_path):
     assert "Work With Us" in html
     # page heading rendered
     assert "Explore Everything" in html
+    # affiliate-funnel integration: affiliate door + partner section + disclosure
+    assert "Earn by Sharing" in html
+    assert "Recommended Tools &amp; Partners" in html or "Recommended Tools & Partners" in html
+    assert "Blushield" in html
+    assert "Amazon Associate" in html
 
 
 def test_begin_explore_threads_ref_query(monkeypatch, tmp_path):

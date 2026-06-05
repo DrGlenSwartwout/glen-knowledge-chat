@@ -107,6 +107,11 @@
   .card:hover .card-arrow { color: var(--gold); transform: translateX(4px); }
   .card-ext { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; opacity: 0.7; margin-left: 8px; }
 
+  .section-disclosure {
+    margin-top: 14px; font-size: 12px; color: var(--muted);
+    opacity: 0.8; line-height: 1.5; font-style: italic;
+  }
+
   .backlink { text-align: center; margin-top: 64px; }
   .backlink a {
     font-family: "Raleway", sans-serif; font-weight: 600; font-size: 14px;
@@ -193,6 +198,14 @@
           grid.appendChild(a);
         });
         section.appendChild(grid);
+
+        if (sec.disclosure) {
+          var disc = document.createElement('p');
+          disc.className = 'section-disclosure';
+          disc.textContent = sec.disclosure;
+          section.appendChild(disc);
+        }
+
         host.appendChild(section);
       });
 

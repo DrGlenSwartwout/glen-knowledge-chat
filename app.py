@@ -133,7 +133,7 @@ import hashlib, hmac, secrets
 
 AUTH_TOKEN_TTL_MIN  = 15           # magic-link token validity window
 SESSION_TTL_DAYS    = 30           # session cookie validity
-PUBLIC_BASE_URL     = os.environ.get("PUBLIC_BASE_URL", "https://glen-knowledge-chat.onrender.com").rstrip("/")
+PUBLIC_BASE_URL     = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
 GHL_MAGIC_WORKFLOW  = os.environ.get("GHL_MAGIC_LINK_WORKFLOW_ID", "")
 
 
@@ -1131,7 +1131,7 @@ def begin_explore():
     of the journey, mirroring the client-side capture in index.html."""
     arg_ref = (request.args.get("ref") or "").strip()
     ref = (request.cookies.get("rm_ref") or arg_ref).strip()
-    sections = begin_funnel.explore_sections(ref)
+    sections = begin_funnel.explore_sections(ref, trusted_links=_TRUSTED_LINKS)
     html = (STATIC / "begin-explore.html").read_text()
     injection = f"<script>window.__EXPLORE__ = {json.dumps(sections)};</script>"
     html = html.replace("</head>", injection + "\n</head>")
@@ -2803,7 +2803,7 @@ def _full_report_send_email(log_id, query, level, email, name, session_id,
         f"DR. GLEN'S RESPONSE:\n\n"
         f"{full_answer}\n\n"
         f"— Dr. Glen Swartwout\n"
-        f"https://glen-knowledge-chat.onrender.com/"
+        f"{PUBLIC_BASE_URL}/"
     )
 
     sent_via, _err = _send_full_report_email(email, name, subject, body)
@@ -4656,7 +4656,7 @@ def affiliate_portal_data():
 
     long_url       = f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
     tracking_url   = short_url if short_url else long_url
-    recruit_url    = f"https://glen-knowledge-chat.onrender.com/affiliate?ref={slug}"
+    recruit_url    = f"{PUBLIC_BASE_URL}/affiliate?ref={slug}"
 
     with sqlite3.connect(LOG_DB) as cx:
         stats = cx.execute("""
