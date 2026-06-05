@@ -86,3 +86,69 @@ def money_signal_from(summary, cash_floor=0.0):
                 "top_actions": [{"label": "Open finance", "href": "/console/finance"}],
                 "count": opc}
     return {"level": GREEN, "summary": "AR clear", "top_actions": [], "count": 0}
+
+
+# --- QBO-backed reads (cached) + Money signal + void action ---
+from dashboard.actions import action, LOW_WRITE
+from dashboard.rbac import OWNER, OPS
+
+_cache = {}
+
+
+def _cached(key, ttl, fn):
+    now = time.time()
+    hit = _cache.get(key)
+    if hit and now - hit[0] < ttl:
+        return hit[1]
+    val = fn()
+    _cache[key] = (now, val)
+    return val
+
+
+def open_invoices():
+    """Cached (10 min): QBO open invoices as AR rows. Production-only (QBO)."""
+    def _f():
+        from dashboard import qbo_billing as qb
+        rs = qb._query("SELECT * FROM Invoice WHERE Balance > '0' ORDER BY DueDate ASC")
+        invs = (rs.get("QueryResponse") or {}).get("Invoice") or []
+        return aging(invs)
+    return _cached("open_invoices", 600, _f)
+
+
+def finance_summary():
+    """Cached: AR summary + cash position (sum of QBO bank balances)."""
+    def _f():
+        from dashboard import money as M
+        aged = open_invoices()
+        try:
+            cash = sum(a.get("balance", 0) for a in (M.qb_banks().get("accounts") or []))
+        except Exception:
+            cash = 0.0
+        return summarize(aged, cash)
+    return _cached("finance_summary", 600, _f)
+
+
+@_signal("money")
+def money_signal(cx, actor=None):
+    try:
+        s = finance_summary()
+    except Exception:
+        return {"level": GRAY, "summary": "Not yet wired", "top_actions": [], "count": 0}
+    return money_signal_from(s, cash_floor=_cash_floor())
+
+
+def _void_invoice_exec(params, ctx):
+    from dashboard import qbo_billing as qb
+    iid = str(params["invoice_id"])
+    inv = qb.get_invoice(iid)
+    if not inv:
+        raise ValueError(f"invoice {iid} not found")
+    qb.void_invoice(iid, inv.get("SyncToken"))
+    _cache.clear()  # AR changed
+    return {"invoice_id": iid, "doc": inv.get("DocNumber"),
+            "message": f"Invoice {inv.get('DocNumber', iid)} voided."}
+
+
+action(key="finance.void_invoice", module="money", title="Void invoice",
+       description="Void an unpaid QBO invoice (zeroes it).", risk_tier=LOW_WRITE,
+       permission=(OWNER, OPS))(_void_invoice_exec)
