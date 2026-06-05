@@ -89,7 +89,7 @@ def money_signal_from(summary, cash_floor=0.0):
 
 
 # --- QBO-backed reads (cached) + Money signal + void action ---
-from dashboard.actions import action, LOW_WRITE, IRREVERSIBLE
+from dashboard.actions import action, LOW_WRITE, IRREVERSIBLE, MONEY_SEND
 from dashboard.rbac import OWNER, OPS
 
 _cache = {}
@@ -152,3 +152,52 @@ def _void_invoice_exec(params, ctx):
 action(key="finance.void_invoice", module="money", title="Void invoice",
        description="Void an unpaid QBO invoice (zeroes it).", risk_tier=IRREVERSIBLE,
        permission=(OWNER, OPS))(_void_invoice_exec)
+
+
+def _refund_confirm_summary(params):
+    try:
+        amt = f"${float(params.get('amount', 0)):.2f}"
+    except (TypeError, ValueError):
+        amt = "$?"
+    target = params.get("invoice_id") or f"order #{params.get('order_id', '?')}"
+    return (f"Issue a {amt} refund against invoice {target}. This records a money-out "
+            f"refund in QuickBooks (you still send the actual money for Zelle/Wise). Confirm?")
+
+
+def _refund_order_exec(params, ctx):
+    from dashboard import qbo_billing as qb
+    cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+    try:
+        amount = float(params["amount"])
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("a positive amount (dollars) is required")
+    if amount <= 0:
+        raise ValueError("a positive amount is required")
+    invoice_id = params.get("invoice_id")
+    if not invoice_id and params.get("order_id"):
+        from dashboard.orders import get_order
+        order = get_order(cx, int(params["order_id"]))
+        if not order:
+            raise ValueError(f"order #{params['order_id']} not found")
+        invoice_id = order.get("external_ref")
+    if not invoice_id:
+        raise ValueError("invoice_id or order_id required")
+    inv = qb.get_invoice(str(invoice_id))
+    if not inv:
+        raise ValueError(f"invoice {invoice_id} not found")
+    customer_id = (inv.get("CustomerRef") or {}).get("value")
+    if not customer_id:
+        raise ValueError("invoice has no customer")
+    description = params.get("reason") or f"Refund for invoice {invoice_id}"
+    receipt = qb.create_refund_receipt(customer_id, amount, description=description)
+    _cache.clear()
+    return {"refund_receipt_id": receipt.get("Id"), "customer_id": customer_id,
+            "amount": amount, "invoice_id": invoice_id,
+            "message": f"Refund of ${amount:.2f} recorded in QuickBooks "
+                       f"(RefundReceipt {receipt.get('DocNumber', receipt.get('Id'))})."}
+
+
+action(key="finance.refund_order", module="money", title="Refund order",
+       description="Record a customer refund in QuickBooks (money-out RefundReceipt).",
+       risk_tier=MONEY_SEND, permission=(OWNER, OPS, "va"),
+       confirm_summary=_refund_confirm_summary)(_refund_order_exec)

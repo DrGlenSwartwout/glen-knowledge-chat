@@ -58,6 +58,18 @@
   <div class="sub">Accounts receivable aging and payment actions.</div>
 
   <div class="summary-strip" id="summary"></div>
+
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:20px">
+    <div style="font-family:'Raleway',sans-serif;font-size:14px;font-weight:600;margin-bottom:10px">Issue a refund</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      <input id="r-invoice" placeholder="QBO invoice id" style="flex:1;min-width:140px;padding:7px 10px;background:var(--bg);color:var(--cream);border:1px solid var(--border);border-radius:6px;font-size:13px" />
+      <input id="r-amount" type="number" step="0.01" placeholder="amount $" style="width:120px;padding:7px 10px;background:var(--bg);color:var(--cream);border:1px solid var(--border);border-radius:6px;font-size:13px" />
+      <input id="r-reason" placeholder="reason (optional)" style="flex:1;min-width:140px;padding:7px 10px;background:var(--bg);color:var(--cream);border:1px solid var(--border);border-radius:6px;font-size:13px" />
+      <button onclick="doRefund()" style="border:1px solid var(--red);background:transparent;color:var(--red);border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px">Refund</button>
+    </div>
+    <div id="r-result" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
+  </div>
+
   <div class="ar-list" id="board"></div>
   <div id="err"></div>
   <div id="empty">No open invoices.</div>
@@ -146,6 +158,28 @@
         await fetch('/api/action/'+actionKey, {method:'POST', headers:hdr(), body:JSON.stringify(params)});
       } else { return; }
     }
+    load();
+  }
+
+  async function doRefund(){
+    var inv = (document.getElementById('r-invoice').value || '').trim();
+    var amt = parseFloat(document.getElementById('r-amount').value);
+    var reason = (document.getElementById('r-reason').value || '').trim();
+    var out = document.getElementById('r-result');
+    if (!inv || !(amt > 0)){ out.textContent = 'Enter an invoice id and a positive amount.'; return; }
+    out.textContent = 'Working...';
+    var params = {invoice_id: inv, amount: amt};
+    if (reason) params.reason = reason;
+    var res = await fetch('/api/action/finance.refund_order', {method:'POST', headers:hdr(), body:JSON.stringify(params)});
+    var body = await res.json();
+    if (body.status === 'needs_confirmation'){
+      if (!confirm(body.summary || 'Confirm this refund?')){ out.textContent = 'Cancelled.'; return; }
+      params.confirmed = true;
+      body = await (await fetch('/api/action/finance.refund_order', {method:'POST', headers:hdr(), body:JSON.stringify(params)})).json();
+    }
+    out.textContent = body.status === 'done'
+      ? ((body.result && body.result.message) || 'Refund recorded.')
+      : ('Error: ' + (body.error || body.status));
     load();
   }
 

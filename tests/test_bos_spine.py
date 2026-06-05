@@ -282,3 +282,19 @@ def test_approve_event_denies_actor_without_permission():
     assert calls["n"] == 0
     # the queued event is untouched (still pending), approver was rejected
     assert E.get_event(cx, q["event_id"])["status"] == "pending_approval"
+
+
+def test_va_cannot_approve_own_queued_money_action():
+    # Separation of duties: a va can SUBMIT a money_send action (it queues), but
+    # cannot approve it -- only an owner/ops may. demo.money permits va + is money_send.
+    A, E, D, R, cx, calls = _dispatch_env()
+    q = D.dispatch_action(cx, "demo.money", {"amount": 5}, R.Actor(role=R.VA))
+    assert q["status"] == "queued"
+    res = D.approve_event(cx, q["event_id"], R.Actor(role=R.VA))
+    assert res["status"] == "denied"
+    assert calls["n"] == 0
+    assert E.get_event(cx, q["event_id"])["status"] == "pending_approval"
+    # an owner CAN approve it
+    res2 = D.approve_event(cx, q["event_id"], R.Actor(role=R.OWNER))
+    assert res2["status"] == "done"
+    assert calls["n"] == 1

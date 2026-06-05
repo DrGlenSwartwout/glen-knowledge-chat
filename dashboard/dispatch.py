@@ -1,8 +1,12 @@
 """Business-OS single dispatch path. Panels and Justus both call dispatch_action.
 Every dispatch resolves policy and writes an event."""
 from dashboard.actions import get_action
-from dashboard.rbac import policy_for, AUTO, CONFIRM, QUEUE, DENY
+from dashboard.rbac import policy_for, AUTO, CONFIRM, QUEUE, DENY, OWNER, OPS
 from dashboard import events as _events
+
+# Roles permitted to APPROVE a queued action. Separation of duties: the actor who
+# submitted a queued action (e.g. a va) must not be able to approve their own.
+APPROVER_ROLES = (OWNER, OPS)
 
 
 def _amount_of(params):
@@ -64,7 +68,10 @@ def approve_event(cx, event_id, actor):
     action = get_action(ev["action_key"])
     if action is None:
         return {"status": "error", "error": "unknown action"}
-    if actor is None or actor.role not in action.permission:
+    # Approver must hold the action's permission AND be a privileged approver
+    # (owner/ops). A va can submit a money_send action (it queues) but cannot
+    # approve it -- only an owner/ops can.
+    if actor is None or actor.role not in action.permission or actor.role not in APPROVER_ROLES:
         return {"status": "denied", "reason": "permission"}
     res = _execute(cx, action, ev["params"], actor, source="approval")
     _events.set_event_status(cx, event_id, "confirmed")

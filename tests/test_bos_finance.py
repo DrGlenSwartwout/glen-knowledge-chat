@@ -67,3 +67,68 @@ def test_void_invoice_action_registered():
     assert a.module == "money"
     assert a.permission == ("owner", "ops")  # not va
     assert a.risk_tier == A.IRREVERSIBLE  # a void is permanent
+
+
+def test_refund_action_registered():
+    from dashboard import finance as F, actions as A  # noqa: F401
+    a = A.get_action("finance.refund_order")
+    assert a is not None
+    assert a.module == "money"
+    assert a.risk_tier == A.MONEY_SEND
+    # owner+ops confirm; va queues (per RBAC policy); all three are in permission
+    assert "owner" in a.permission and "ops" in a.permission and "va" in a.permission
+    assert a.confirm_summary is not None
+
+
+def test_refund_owner_needs_confirmation_no_qbo_call(monkeypatch):
+    import sqlite3
+    from dashboard import finance as F, dispatch as D, events as E, rbac as R
+    from dashboard import qbo_billing as QB
+    called = {"refund": 0}
+    monkeypatch.setattr(QB, "create_refund_receipt",
+                        lambda *a, **k: called.__setitem__("refund", called["refund"] + 1) or {"Id": "1"})
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx)
+    res = D.dispatch_action(cx, "finance.refund_order",
+                            {"invoice_id": "INV9", "amount": 80},
+                            R.Actor(role=R.OWNER))
+    assert res["status"] == "needs_confirmation"
+    assert "80" in res["summary"]
+    assert called["refund"] == 0  # nothing happened without confirmation
+
+
+def test_refund_va_queues_no_qbo_call(monkeypatch):
+    import sqlite3
+    from dashboard import finance as F, dispatch as D, events as E, rbac as R
+    from dashboard import qbo_billing as QB
+    called = {"refund": 0}
+    monkeypatch.setattr(QB, "create_refund_receipt",
+                        lambda *a, **k: called.__setitem__("refund", called["refund"] + 1) or {"Id": "1"})
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx)
+    res = D.dispatch_action(cx, "finance.refund_order",
+                            {"invoice_id": "INV9", "amount": 80}, R.Actor(role=R.VA))
+    assert res["status"] == "queued"
+    assert called["refund"] == 0
+    assert E.get_event(cx, res["event_id"])["status"] == "pending_approval"
+
+
+def test_refund_executes_when_confirmed(monkeypatch):
+    import sqlite3
+    from dashboard import finance as F, dispatch as D, events as E, rbac as R
+    from dashboard import qbo_billing as QB
+    monkeypatch.setattr(QB, "get_invoice",
+                        lambda iid: {"CustomerRef": {"value": "C7"}, "DocNumber": "1009"})
+    captured = {}
+    def _fake_refund(customer_id, amount, **k):
+        captured.update({"customer_id": customer_id, "amount": amount})
+        return {"Id": "RR1", "DocNumber": "RR-1"}
+    monkeypatch.setattr(QB, "create_refund_receipt", _fake_refund)
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx)
+    res = D.dispatch_action(cx, "finance.refund_order",
+                            {"invoice_id": "INV9", "amount": 80, "reason": "duplicate"},
+                            R.Actor(role=R.OWNER), confirmed=True)
+    assert res["status"] == "done"
+    assert captured == {"customer_id": "C7", "amount": 80.0}
+    assert "80" in res["result"]["message"]
