@@ -1,0 +1,24 @@
+{
+  "_comment": "Glen's manual catalog corrections, applied over the LLM-cleaned enrichment by scripts/apply_enrichment.py. Each entry overrides ingredients (and clears gk_stale if the formula is now authoritative here). Slugs here override the HOLD list. ingredients_source 'manual' = Glen-verified.",
+  "tmg-syntropy-powder-trimethylglycine": {
+    "ingredients": [
+      {"name": "Trimethylglycine (TMG)", "dose": ""},
+      {"name": "Vitamin B15 (Pangamic Acid)", "dose": ""},
+      {"name": "Vitamin B16 (DMG, Dimethylglycine)", "dose": ""}
+    ],
+    "ingredients_source": "manual",
+    "note": "TMG Syntropy Powder includes Vitamin B15 & B16 (Glen 2026-06-05)"
+  },
+  "humic-acid": {
+    "ingredients": [{"name": "Humic Acid", "dose": ""}],
+    "ingredients_source": "manual",
+    "single_ingredient_pure_powder": true,
+    "note": "Single-ingredient Pure Powder (Glen). FMP 'Fulvic Acid Complex' match was wrong."
+  },
+  "magnesium-taurate": {
+    "ingredients": [{"name": "Magnesium Taurate", "dose": ""}],
+    "ingredients_source": "manual",
+    "single_ingredient_pure_powder": true,
+    "note": "Single-ingredient Pure Powder (Glen). FMP 'Magnesium Glycinate' match was wrong."
+  }
+}

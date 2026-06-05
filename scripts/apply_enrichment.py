@@ -14,6 +14,7 @@ import re
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLEAN = os.path.join(ROOT, "data", "products-enrich-clean.json")
 PRODUCTS = os.path.join(ROOT, "data", "products.json")
+CORRECTIONS = os.path.join(ROOT, "data", "products-manual-corrections.json")
 
 # Held out of the apply (flagged for Glen's review):
 HOLD = {
@@ -69,10 +70,29 @@ def main():
                 p["gk_stale_reason"] = e["stale_reason"]
         applied.append(slug)
 
+    # Glen's manual corrections override the LLM output and the HOLD list.
+    corrected = []
+    if os.path.exists(CORRECTIONS):
+        corr = json.load(open(CORRECTIONS))
+        for slug, c in corr.items():
+            if slug.startswith("_") or slug not in products:
+                continue
+            p = products[slug]
+            if c.get("ingredients"):
+                p["ingredients"] = c["ingredients"]
+            p["ingredients_source"] = c.get("ingredients_source", "manual")
+            if c.get("note"):
+                p["enrichment_note"] = c["note"]
+            # a Glen-verified formula is authoritative here -> not a stale-GK item
+            p.pop("gk_stale", None)
+            p.pop("gk_stale_reason", None)
+            corrected.append(slug)
+
     doc["_enriched"] = "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
     json.dump(doc, open(PRODUCTS, "w"), indent=2, ensure_ascii=False)
 
-    print(f"applied: {len(applied)}  held: {len(held)}  missing-from-products.json: {len(missing)}")
+    print(f"applied: {len(applied)}  corrected: {len(corrected)} ({', '.join(sorted(corrected))})  "
+          f"held: {len(held)}  missing-from-products.json: {len(missing)}")
     if held:
         print("HELD (flagged for review):", ", ".join(sorted(held)))
     if missing:

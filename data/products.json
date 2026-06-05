@@ -7354,16 +7354,21 @@
       "url": "https://remedymatch.com/remedies/syntropy/228-tmg-syntropy-powder-trimethylglycine",
       "ingredients": [
         {
-          "name": "Vitamin B15 & B16 Blend",
+          "name": "Trimethylglycine (TMG)",
           "dose": ""
         },
         {
-          "name": "Bioavailability Blend",
+          "name": "Vitamin B15 (Pangamic Acid)",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin B16 (DMG, Dimethylglycine)",
           "dose": ""
         }
       ],
-      "ingredients_source": "gk",
-      "description": "TMG Powder (Trimethylglycine) . TMG Powder (Trimethylglycine) TMG Syntropy Powder (Trimethylglycine) Trimethylglycine is nature's most potent methyl donor... TMG Syntropy includes synergists. Glycine gets its name from its slightly sweet taste. Most people experience TMG as sweet from the glycine amino acid in the core of its structure. Each molecule of TMG has 3 methyl groups it can give... That means one molecule can elevate SAMe levels by recycling SAMe three times from Homocysteine which is associated with atherosclerosis much more strongly than is Cholesterol... SAMe is also strongly..."
+      "ingredients_source": "manual",
+      "description": "TMG Powder (Trimethylglycine) . TMG Powder (Trimethylglycine) TMG Syntropy Powder (Trimethylglycine) Trimethylglycine is nature's most potent methyl donor... TMG Syntropy includes synergists. Glycine gets its name from its slightly sweet taste. Most people experience TMG as sweet from the glycine amino acid in the core of its structure. Each molecule of TMG has 3 methyl groups it can give... That means one molecule can elevate SAMe levels by recycling SAMe three times from Homocysteine which is associated with atherosclerosis much more strongly than is Cholesterol... SAMe is also strongly...",
+      "enrichment_note": "TMG Syntropy Powder includes Vitamin B15 & B16 (Glen 2026-06-05)"
     },
     "neuromagnesium": {
       "name": "Neuro Magnesium",
@@ -7813,7 +7818,15 @@
       "name": "Magnesium Taurate",
       "price_cents": 3997,
       "pinecone_title": "Magnesium Taurate",
-      "url": "https://remedymatch.com/remedies/488-magnesium-taurate"
+      "url": "https://remedymatch.com/remedies/488-magnesium-taurate",
+      "ingredients": [
+        {
+          "name": "Magnesium Taurate",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "manual",
+      "enrichment_note": "Single-ingredient Pure Powder (Glen). FMP 'Magnesium Glycinate' match was wrong."
     },
     "serenity": {
       "name": "Serene Blue Green",
@@ -8992,7 +9005,15 @@
       "name": "Humic Acid",
       "price_cents": 3997,
       "pinecone_title": "Humic Acid",
-      "url": "https://remedymatch.com/remedies/484-humic-acid"
+      "url": "https://remedymatch.com/remedies/484-humic-acid",
+      "ingredients": [
+        {
+          "name": "Humic Acid",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "manual",
+      "enrichment_note": "Single-ingredient Pure Powder (Glen). FMP 'Fulvic Acid Complex' match was wrong."
     },
     "ed11-liver-driver": {
       "name": "ED11 Liver Driver Pancreas)",
