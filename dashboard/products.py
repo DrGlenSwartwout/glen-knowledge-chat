@@ -1,0 +1,101 @@
+"""Business-OS Products module over the enriched products.json. Surfaces the
+catalog + ingredients and the stale-GrooveKart-page work queue, and persists the
+'fixed' set on the /data disk (products.json itself is a read-only repo file)."""
+import json
+import os
+from dashboard.signals import signal as _signal, AMBER, GREEN, GRAY
+from dashboard.actions import action, LOW_WRITE
+from dashboard.rbac import OWNER, OPS, VA
+
+_REPO_DATA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+
+_FIXED_CACHE = None
+
+
+def _products_path():
+    d = os.environ.get("DATA_DIR")
+    if d and os.path.exists(os.path.join(d, "products.json")):
+        return os.path.join(d, "products.json")
+    p = os.path.join(_REPO_DATA, "products.json")
+    return p if os.path.exists(p) else None
+
+
+def _fixed_path():
+    d = os.environ.get("DATA_DIR") or _REPO_DATA
+    return os.path.join(d, "products-page-fixed.json")
+
+
+def load_products():
+    p = _products_path()
+    if not p:
+        return {}
+    try:
+        return (json.load(open(p)) or {}).get("products", {})
+    except Exception:
+        return {}
+
+
+def _fixed_set():
+    try:
+        return set(json.load(open(_fixed_path())))
+    except Exception:
+        return set()
+
+
+def stale_pages(products=None, fixed=None):
+    products = load_products() if products is None else products
+    fixed = _fixed_set() if fixed is None else fixed
+    return [{"slug": s, "name": p.get("name"), "reason": p.get("gk_stale_reason", "")}
+            for s, p in products.items()
+            if p.get("gk_stale") and s not in fixed]
+
+
+def catalog(with_ingredients_only=True):
+    out = []
+    for s, p in load_products().items():
+        if with_ingredients_only and not p.get("ingredients"):
+            continue
+        out.append({"slug": s, "name": p.get("name"), "price_cents": p.get("price_cents"),
+                    "ingredients": p.get("ingredients", []), "description": p.get("description", ""),
+                    "ingredients_source": p.get("ingredients_source"), "gk_stale": bool(p.get("gk_stale"))})
+    out.sort(key=lambda x: (x["name"] or "").lower())
+    return out
+
+
+def products_signal(cx=None, actor=None):
+    try:
+        products = load_products()
+        total = len(products)
+        with_ing = sum(1 for p in products.values() if p.get("ingredients"))
+        stale = len(stale_pages(products))
+    except Exception:
+        return {"level": GRAY, "summary": "Not yet wired", "top_actions": [], "count": 0}
+    if total == 0:
+        return {"level": GRAY, "summary": "No catalog", "top_actions": [], "count": 0}
+    if stale:
+        return {"level": AMBER, "summary": f"{stale} sales page{'s' if stale != 1 else ''} to update",
+                "top_actions": [{"label": "Open products", "href": "/console/products"}], "count": stale}
+    return {"level": GREEN, "summary": f"{with_ing}/{total} products enriched",
+            "top_actions": [{"label": "Open products", "href": "/console/products"}], "count": 0}
+
+
+products_signal = _signal("products")(products_signal)
+
+
+def _mark_page_fixed_exec(params, ctx):
+    slug = (params.get("slug") or "").strip()
+    if not slug:
+        raise ValueError("slug required")
+    fixed = _fixed_set()
+    fixed.add(slug)
+    try:
+        json.dump(sorted(fixed), open(_fixed_path(), "w"))
+    except Exception as e:
+        raise RuntimeError(f"could not persist fixed set: {e}")
+    return {"slug": slug, "remaining": len(stale_pages()),
+            "message": f"Marked {slug}'s GrooveKart page as updated."}
+
+
+action(key="products.mark_page_fixed", module="products", title="Mark GK page updated",
+       description="Record that a product's GrooveKart sales page now matches the current formula.",
+       risk_tier=LOW_WRITE, permission=(OWNER, OPS, VA))(_mark_page_fixed_exec)

@@ -13,3 +13,7 @@ venv/
 *.db
 .pytest_cache/
 .superpowers/
+
+# Phase 11 intermediate enrichment artifacts (regenerable)
+data/cleanup-input/
+data/cleanup-output/

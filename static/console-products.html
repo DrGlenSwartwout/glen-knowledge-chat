@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Products - Business OS</title>
+<style>
+  :root { --bg:#0a150d; --surface:#111f16; --surface2:#162318; --border:#21472d;
+          --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --red:#c0432b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--cream);
+         font-family:"Open Sans",system-ui,sans-serif; padding:24px; max-width:860px; margin:0 auto; }
+  h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; }
+  .tabs button { font-size:13px; border:1px solid var(--border); background:transparent;
+                 color:var(--cream); border-radius:7px; padding:7px 14px; cursor:pointer; }
+  .tabs button.active { border-color:var(--gold); color:var(--gold); }
+  .panel { background:var(--surface); border:1px solid var(--border); border-radius:12px;
+           padding:18px; margin-bottom:16px; }
+  .panel h2 { font-family:"Raleway",sans-serif; font-size:15px; margin-bottom:12px; }
+  input { width:100%; padding:9px 11px; background:var(--bg); color:var(--cream);
+          border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:10px;
+         border-bottom:1px solid var(--border); padding:10px 0; font-size:13px; }
+  .row:last-child { border-bottom:none; }
+  .row .name { font-weight:600; }
+  .row .reason { color:var(--muted); font-size:12px; }
+  .row button { font-size:12px; border:1px solid var(--border); background:transparent;
+                color:var(--cream); border-radius:7px; padding:6px 12px; cursor:pointer; white-space:nowrap; }
+  .row button:hover { border-color:var(--gold); color:var(--gold); }
+  .badge { color:var(--gold); font-size:10px; letter-spacing:.05em; text-transform:uppercase;
+           border:1px solid var(--gold); border-radius:5px; padding:1px 7px; }
+  .meta { color:var(--muted); }
+  .clickable { cursor:pointer; }
+  .clickable:hover .name { color:var(--gold); }
+  .detail { background:var(--surface2); border:1px solid var(--border); border-radius:8px;
+            padding:12px; margin-top:8px; font-size:13px; }
+  .detail h3 { font-family:"Raleway",sans-serif; font-size:14px; margin-bottom:6px; }
+  .ing { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px dashed var(--border); }
+  .ing:last-child { border-bottom:none; }
+  .ing .dose { color:var(--muted); }
+  .desc { color:var(--cream); margin:8px 0; line-height:1.4; }
+  .src { color:var(--muted); font-size:11px; margin-top:6px; }
+  #result { margin-top:12px; font-size:13px; color:var(--green); min-height:18px; }
+  #result.err { color:var(--red); }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+  #gate { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; }
+  #gate input { max-width:280px; }
+</style>
+</head>
+<body>
+  <div id="gate"><div style="text-align:center">
+    <p style="margin-bottom:10px;color:var(--muted)">Enter console key</p>
+    <input id="key" type="password" placeholder="console key" />
+    <button onclick="unlock()" style="padding:10px 14px;margin-left:6px;border-radius:8px;border:1px solid var(--border);background:var(--gold);color:#0a150d;cursor:pointer">Unlock</button>
+  </div></div>
+
+  <h1>Products</h1>
+  <div class="sub">Work the stale GrooveKart sales pages and browse the enriched catalog (ingredients and descriptions).</div>
+
+  <div class="tabs">
+    <button id="tab-stale" class="active" onclick="showTab('stale')">Stale pages</button>
+    <button id="tab-catalog" onclick="showTab('catalog')">Catalog</button>
+  </div>
+
+  <div id="pane-stale" class="panel">
+    <h2>Sales pages to update <span id="scount" class="meta" style="font-size:12px"></span></h2>
+    <div id="stale"></div>
+    <div id="result"></div>
+    <div class="note">A page is flagged when its GrooveKart copy no longer matches the current formula. "Mark updated" records the page as fixed and shrinks the queue.</div>
+  </div>
+
+  <div id="pane-catalog" class="panel" style="display:none">
+    <h2>Catalog <span id="ccount" class="meta" style="font-size:12px"></span></h2>
+    <input id="search" type="text" placeholder="Search by name or ingredient" oninput="renderCatalog()" />
+    <div id="catalog" style="margin-top:12px"></div>
+  </div>
+
+<script>
+  var CATALOG = [];
+  var OPEN = {};
+
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; loadAll(); }
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+  function show(msg, isErr){
+    var r = document.getElementById('result');
+    r.textContent = msg; r.className = isErr ? 'err' : '';
+  }
+
+  function showTab(which){
+    document.getElementById('tab-stale').className = which === 'stale' ? 'active' : '';
+    document.getElementById('tab-catalog').className = which === 'catalog' ? 'active' : '';
+    document.getElementById('pane-stale').style.display = which === 'stale' ? 'block' : 'none';
+    document.getElementById('pane-catalog').style.display = which === 'catalog' ? 'block' : 'none';
+  }
+
+  function loadAll(){ loadStale(); loadCatalog(); }
+
+  async function loadStale(){
+    try {
+      var res = await fetch('/api/products/stale', {headers:hdr()});
+      if (res.status === 401){ document.getElementById('gate').style.display='flex'; return; }
+      var data = await res.json();
+      var items = data.stale || [];
+      document.getElementById('scount').textContent = items.length ? '('+items.length+' to update)' : '(all clear)';
+      var host = document.getElementById('stale');
+      if (!items.length){ host.innerHTML = '<div class="row meta">Every sales page is up to date.</div>'; return; }
+      host.innerHTML = items.map(function(p){
+        return '<div class="row"><span><span class="name">'+esc(p.name || p.slug)+'</span>'
+             + (p.reason ? '<div class="reason">'+esc(p.reason)+'</div>' : '')
+             + '</span><button onclick="markFixed(\''+esc(p.slug)+'\')">Mark updated</button></div>';
+      }).join('');
+    } catch(e){ /* leave as-is */ }
+  }
+
+  async function markFixed(slug){
+    try {
+      var res = await fetch('/api/action/products.mark_page_fixed', {method:'POST', headers:hdr(), body:JSON.stringify({slug:slug})});
+      if (res.status === 401){ document.getElementById('gate').style.display='flex'; return; }
+      var body = await res.json();
+      if (body.status === 'needs_confirmation'){
+        if (!confirm(body.summary || 'Confirm this action?')) return;
+        body = await (await fetch('/api/action/products.mark_page_fixed', {method:'POST', headers:hdr(), body:JSON.stringify({slug:slug, confirmed:true})})).json();
+      }
+      if (body.status === 'done'){ show((body.result && body.result.message) || 'Done.', false); }
+      else if (body.status === 'denied'){ show('Not permitted.', true); }
+      else { show('Error: ' + (body.error || body.status), true); }
+      loadStale(); loadCatalog();
+    } catch(e){ show('Error: ' + e, true); }
+  }
+
+  async function loadCatalog(){
+    try {
+      var res = await fetch('/api/products', {headers:hdr()});
+      if (res.status === 401){ document.getElementById('gate').style.display='flex'; return; }
+      var data = await res.json();
+      CATALOG = data.products || [];
+      renderCatalog();
+    } catch(e){ /* leave as-is */ }
+  }
+
+  function renderCatalog(){
+    var q = (document.getElementById('search').value || '').toLowerCase();
+    var rows = CATALOG.filter(function(p){
+      if (!q) return true;
+      if ((p.name || '').toLowerCase().indexOf(q) !== -1) return true;
+      return (p.ingredients || []).some(function(i){ return (i.name || '').toLowerCase().indexOf(q) !== -1; });
+    });
+    document.getElementById('ccount').textContent = '('+rows.length+' product'+(rows.length===1?'':'s')+')';
+    var host = document.getElementById('catalog');
+    if (!rows.length){ host.innerHTML = '<div class="row meta">No products match.</div>'; return; }
+    host.innerHTML = rows.map(function(p){
+      var open = OPEN[p.slug];
+      var head = '<div class="row clickable" onclick="toggle(\''+esc(p.slug)+'\')">'
+               + '<span class="name">'+esc(p.name || p.slug)+'</span>'
+               + (p.gk_stale ? '<span class="badge">page outdated</span>' : '<span class="meta" style="font-size:11px">'+ (open ? 'hide' : 'view') +'</span>')
+               + '</div>';
+      if (!open) return head;
+      var ings = (p.ingredients || []).map(function(i){
+        return '<div class="ing"><span>'+esc(i.name)+'</span><span class="dose">'+esc(i.dose || '')+'</span></div>';
+      }).join('') || '<div class="meta">No ingredient list.</div>';
+      var detail = '<div class="detail"><h3>Ingredients</h3>'+ings
+                 + (p.description ? '<div class="desc">'+esc(p.description)+'</div>' : '')
+                 + (p.ingredients_source ? '<div class="src">Source: '+esc(p.ingredients_source)+'</div>' : '')
+                 + '</div>';
+      return head + detail;
+    }).join('');
+  }
+
+  function toggle(slug){ OPEN[slug] = !OPEN[slug]; renderCatalog(); }
+
+  if (key()) { document.getElementById('gate').style.display='none'; loadAll(); }
+</script>
+</body>
+</html>
