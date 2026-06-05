@@ -2347,7 +2347,7 @@ def begin_product_data(slug):
         "benefits": p.get("benefits") or card.get("benefits", []),
         "how_it_works": how,
         "info_only": bool(p.get("info_only")), "affiliate_url": p.get("affiliate_url", ""),
-        "payments_active": _QBO_PAYMENTS_ACTIVE,
+        "payments_active": _QBO_PAYMENTS_ACTIVE or _STRIPE_ACTIVE,
         "learn_url": f"/begin/learn/{slug}",
         "qty_pricing": qty_tiers, "formats": formats,
         "open_sections": _read_open_sections(
@@ -2462,6 +2462,7 @@ def begin_checkout(slug):
                "doc_number": inv.get("DocNumber"),
                "total": inv.get("TotalAmt"), "method": method,
                "pay_link": qb.get_invoice_pay_link(inv)}
+        out["customer_id"] = cust.get("Id")
         _ingest_order(source="funnel", external_ref=inv.get("Id"), email=email, name=name,
                       items=[{"name": p["name"], "qty": qty, "desc": desc}],
                       total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
@@ -2469,6 +2470,8 @@ def begin_checkout(slug):
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
             out["earns_points"] = True   # awarded on confirmed payment (reconciliation, Phase 2)
+        elif method == "card" and _STRIPE_ACTIVE:
+            out["stripe_url"] = _stripe_checkout_url_for_retail(out, email, slug)
         # dispensary attribution: credit the referring practitioner $20/bottle (best-effort,
         # idempotent on the invoice id; never break a customer checkout)
         try:
@@ -2480,6 +2483,47 @@ def begin_checkout(slug):
         return jsonify(out)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/begin/checkout-return")
+def begin_checkout_return():
+    """Stripe retail return: verify the session, record the QBO payment, capture
+    the PaymentIntent on the order, then back to the buy page (paid)."""
+    from flask import redirect as _redir
+    sid = (request.args.get("session_id") or "").strip()
+    slug = ""
+    paid = "0"
+    if sid:
+        try:
+            from dashboard import stripe_pay
+            sess = stripe_pay.get_session(sid)
+            md = sess.get("metadata") or {}
+            slug = md.get("slug", "")
+            if sess.get("payment_status") == "paid":
+                paid = "1"
+                inv, cid = md.get("invoice_id"), md.get("customer_id")
+                if inv and cid:
+                    try:
+                        from dashboard import qbo_billing as qb
+                        qb.record_payment(cid, int(sess.get("amount_total") or 0), inv)
+                    except Exception as e:
+                        print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
+                    pi = sess.get("payment_intent")
+                    if pi:
+                        try:
+                            _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
+                            try:
+                                _o = _bos_orders.find_order_by_external_ref(_cxo, inv)
+                                if _o:
+                                    _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi)
+                            finally:
+                                _cxo.close()
+                        except Exception as _e:
+                            print(f"[begin-return] pi capture: {_e!r}", flush=True)
+        except Exception as e:
+            print(f"[begin-return] {e!r}", flush=True)
+    dest = (f"/begin/buy/{slug}?paid={paid}" if slug else f"/begin?paid={paid}")
+    return _redir(dest)
 
 
 # ── Post-buy concierge (consultative upsell) ─────────────────────────────────
@@ -5342,6 +5386,31 @@ def dispensary_landing(code):
         resp.set_cookie("rm_dispensary", code, max_age=90 * 24 * 3600,
                         samesite="Lax", secure=request.is_secure)
     return resp
+
+
+def _stripe_checkout_url_for_retail(out, email, slug):
+    """Create a Stripe Checkout Session for a retail funnel order; returns its URL.
+    Captures invoice_id/customer_id/slug in metadata so the return handler records
+    the QBO payment and the PaymentIntent (for refunds)."""
+    try:
+        from dashboard import stripe_pay
+        total_cents = int(round(float(out.get("total") or 0) * 100))
+        if total_cents <= 0:
+            return ""
+        success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
+                   f"?session_id={{CHECKOUT_SESSION_ID}}")
+        sess = stripe_pay.create_checkout_session(
+            total_cents, customer_email=email,
+            description=f"Remedy Match order #{out.get('doc_number')}",
+            metadata={"invoice_id": out.get("invoice_id"),
+                      "customer_id": out.get("customer_id"),
+                      "kind": "retail", "slug": slug},
+            success_url=success,
+            cancel_url=f"{PUBLIC_BASE_URL}/begin/buy/{slug}")
+        return sess.get("url") or ""
+    except Exception as e:
+        print(f"[stripe-retail] session create failed: {e!r}", flush=True)
+        return ""
 
 
 def _stripe_checkout_url_for_order(out, email, session_token):
