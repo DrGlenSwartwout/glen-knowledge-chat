@@ -2462,6 +2462,10 @@ def begin_checkout(slug):
                "doc_number": inv.get("DocNumber"),
                "total": inv.get("TotalAmt"), "method": method,
                "pay_link": qb.get_invoice_pay_link(inv)}
+        _ingest_order(source="funnel", external_ref=inv.get("Id"), email=email, name=name,
+                      items=[{"name": p["name"], "qty": qty, "desc": desc}],
+                      total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                      channel="retail")
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
             out["earns_points"] = True   # awarded on confirmed payment (reconciliation, Phase 2)
@@ -5136,6 +5140,12 @@ def api_practitioner_checkout():
                              credit_cents=out.get("credit_redeemed_cents", 0))
         except Exception as e:
             print(f"[practitioner-checkout] record_order failed: {e!r}", flush=True)
+        _ingest_order(source="wholesale",
+                      external_ref=str(out.get("invoice_id") or out.get("Id") or ""),
+                      email=(prac.get("email") if isinstance(prac, dict) else "") or "",
+                      name=(prac.get("name") if isinstance(prac, dict) else "") or "",
+                      total_cents=int(round((out.get("total") or 0) * 100)),
+                      channel="wholesale")
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":
@@ -5286,6 +5296,11 @@ def _record_dispensary_sale(code, customer_email, bottles, invoice_id):
         pid, invoice_id=str(invoice_id), customer_email=customer_email,
         bottles=int(bottles or 0),
         credit_earned_cents=int(bottles or 0) * _wallet.DROPSHIP_CREDIT_PER_BOTTLE_CENTS)
+    if invoice_id:
+        _ingest_order(source="dispensary", external_ref=str(invoice_id),
+                      email=customer_email or "",
+                      items=[{"name": "Dispensary", "qty": bottles}],
+                      channel="retail")
 
 
 @app.route("/dispensary/<code>")
@@ -6165,6 +6180,11 @@ def groovekart_webhook():
     _log_inbound_lead("groovekart", email, first, last, phone, raw, ghl_result)
     credited = _attribute_conversion_by_email(
         email, "store-purchase", product, order_total, "groovekart", raw)
+    _ingest_order(source="groovekart",
+                  external_ref=str(data.get("id") or data.get("order_id") or email or _bos_orders._now()),
+                  email=email, name=(first + " " + last).strip(),
+                  items=[{"name": product}] if product else [],
+                  total_cents=int(round(float(order_total or 0) * 100)), channel="retail")
     return jsonify({"ok": True, "ghl": ghl_result, "affiliate_credited": credited}), 200
 
 
@@ -9269,6 +9289,56 @@ def _execute_console_tool(name: str, inp: dict) -> str:
     return _execute_todo_tool(name, inp)
 
 
+import dashboard.justus_adapter as _ja
+
+
+def _register_justus_actions():
+    """Register each Justus WRITE tool as a BOS action whose executor wraps the
+    existing _execute_console_tool, so dispatch_action audits + governs it."""
+    from dashboard.actions import action as _act, get_action as _get
+    from dashboard import rbac as _bos_rbac
+    for _name, (_key, _module, _tier) in _ja.JUSTUS_WRITE_ACTIONS.items():
+        if _get(_key):
+            continue
+
+        def _make(nm):
+            def _exec(params, ctx):
+                return {"message": _execute_console_tool(nm, params or {})}
+            return _exec
+
+        _act(key=_key, module=_module, title=_key,
+             description=f"Justus action: {_name}", risk_tier=_tier,
+             permission=(_bos_rbac.OWNER, _bos_rbac.OPS, _bos_rbac.VA))(_make(_name))
+
+
+_register_justus_actions()
+
+
+def _justus_tool_dispatch(actor):
+    """Return tool_dispatch(name, input)->str for _ask_justus_stream_tools.
+    READ tools run direct; WRITE tools go through dispatch_action (audit + policy)."""
+    def dispatch(name, inp):
+        inp = inp or {}
+        if _ja.is_read(name):
+            return _execute_console_tool(name, inp)
+        key = _ja.action_key_for(name)
+        if not key:
+            return _execute_console_tool(name, inp)
+        params = dict(inp)
+        if name == "complete_todo" and "id" in params:
+            params["todo_id"] = params.pop("id")
+        cx = _sqlite3.connect(LOG_DB)
+        cx.row_factory = _sqlite3.Row
+        try:
+            res = _bos_dispatch.dispatch_action(
+                cx, key, params, actor, source="justus",
+                confirmed=(actor.role in (_bos_rbac.OWNER, _bos_rbac.OPS)))
+        finally:
+            cx.close()
+        return _ja.format_justus_result(name, res)
+    return dispatch
+
+
 # Tools whose result text should be shown to the user inline (Justus's natural-
 # language reply alone would hide the actual value — e.g. a drafted email body).
 _VISIBLE_TOOL_RESULTS = {"draft_todo_reply", "split_capture", "apply_pending_merge"}
@@ -9369,9 +9439,10 @@ def console_ask():
     # Pass the current page so Justus can reason about what's most relevant.
     page_ctx = f"\nCurrent page: {page}" if page else ""
     system = _justus_system_prompt(owner, (context + page_ctx).strip(), TRACKER_DIRECTIVES)
+    _actor = _bos_rbac.actor_for_scope((ctx or {}).get("scope", "admin"), owner)
     gen = _ask_justus_stream_tools(query, system, history,
                                     PROJECT_TOOLS + TODO_TOOLS + HOUSEHOLD_TOOLS,
-                                    _execute_console_tool, history_n=6)
+                                    _justus_tool_dispatch(_actor), history_n=6)
     return Response(stream_with_context(gen),
                     mimetype="text/event-stream",
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
@@ -12761,6 +12832,196 @@ def admin_clips_reject():
         except Exception:
             pass
     return ok({"rejected": cid})
+
+
+# ── Business OS spine ─────────────────────────────────────────────────────────
+# Event log + action registry population.
+import sqlite3 as _sqlite3
+import dashboard  # noqa: F401 (exposes dashboard.CONSOLE_SECRET for _bos_actor)
+from dashboard import events as _bos_events
+from dashboard import dispatch as _bos_dispatch
+from dashboard import rbac as _bos_rbac
+import dashboard.actions_tasks  # noqa: F401  (registers tasks.* actions)
+import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals)
+import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
+import dashboard.easypost as _bos_easypost  # noqa: F401
+
+
+def _init_bos_events():
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _bos_events.init_event_tables(cx)
+    finally:
+        cx.close()
+
+
+_init_bos_events()
+
+
+def _init_bos_orders():
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _bos_orders.init_orders_table(cx)
+    finally:
+        cx.close()
+
+
+_init_bos_orders()
+
+
+def _ingest_order(*, source, external_ref, email="", name="", phone="",
+                  items=None, total_cents=0, address=None, channel="retail"):
+    """Best-effort: record an order into the BOS orders table. Never raises into
+    a checkout path."""
+    try:
+        cx = _sqlite3.connect(LOG_DB)
+        try:
+            _bos_orders.upsert_order(
+                cx, source=source, external_ref=external_ref, email=email, name=name,
+                phone=phone, items=items or [], total_cents=int(total_cents or 0),
+                address=address or {}, channel=channel)
+        finally:
+            cx.close()
+    except Exception as e:
+        print(f"[orders] ingest {source}/{external_ref}: {e!r}", flush=True)
+
+
+def _bos_actor():
+    """Resolve the calling actor. Owner master key (CONSOLE_SECRET) for now;
+    scoped token->role mapping is added in the RBAC-UX task of Phase 1.
+    Unlike the legacy @require_console_key decorator, BOS routes return 401 when CONSOLE_SECRET is unset (resolve_actor returns None) rather than passing through; this is intentional."""
+    key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+    return _bos_rbac.resolve_actor(key, console_secret=dashboard.CONSOLE_SECRET)
+
+
+@app.route("/api/action/<path:key>", methods=["POST"])
+def bos_action(key):
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    confirmed = bool(body.pop("confirmed", False))
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        res = _bos_dispatch.dispatch_action(
+            cx, key, dict(body), actor, source="panel", confirmed=confirmed)
+    finally:
+        cx.close()
+    return jsonify(res)
+
+
+@app.route("/api/events", methods=["GET"])
+def bos_events():
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        try:
+            _limit = int(request.args.get("limit", 50))
+        except (TypeError, ValueError):
+            _limit = 50
+        _limit = max(1, min(_limit, 200))
+        rows = _bos_events.list_events(
+            cx, limit=_limit,
+            status=request.args.get("status"),
+            module=request.args.get("module"))
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "data": rows})
+
+
+@app.route("/api/events/<int:event_id>/approve", methods=["POST"])
+def bos_event_approve(event_id):
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        res = _bos_dispatch.approve_event(cx, event_id, actor)
+    finally:
+        cx.close()
+    return jsonify(res)
+
+
+@app.route("/api/events/<int:event_id>/cancel", methods=["POST"])
+def bos_event_cancel(event_id):
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        res = _bos_dispatch.cancel_event(cx, event_id)
+    finally:
+        cx.close()
+    return jsonify(res)
+
+
+@app.route("/api/home/signals", methods=["GET"])
+def bos_home_signals():
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        cells = _bos_signals.aggregate_signals(cx, actor)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "data": cells})
+
+
+@app.route("/console/home")
+def bos_home_page():
+    resp = send_from_directory(STATIC, "console-home.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/console/orders")
+def bos_orders_page():
+    resp = send_from_directory(STATIC, "console-orders.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/orders", methods=["GET", "POST"])
+def bos_orders_create():
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    if request.method == "GET":
+        cx = _sqlite3.connect(LOG_DB)
+        cx.row_factory = _sqlite3.Row
+        try:
+            rows = _bos_orders.list_orders(
+                cx, status=request.args.get("status"),
+                limit=min(int(request.args.get("limit", 200) or 200), 500))
+        except (TypeError, ValueError):
+            rows = _bos_orders.list_orders(cx)
+        finally:
+            cx.close()
+        return jsonify({"ok": True, "data": rows})
+    # --- existing POST body unchanged below ---
+    b = request.get_json(silent=True) or {}
+    ref = str(b.get("external_ref") or f"manual-{_bos_orders._now()}")
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        oid = _bos_orders.upsert_order(
+            cx, source="manual", external_ref=ref, email=b.get("email", ""),
+            name=b.get("name", ""), phone=b.get("phone", ""), items=b.get("items") or [],
+            total_cents=int(b.get("total_cents") or 0), address=b.get("address") or {},
+            channel=b.get("channel", "retail"))
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "order_id": oid})
 
 
 if __name__ == "__main__":
