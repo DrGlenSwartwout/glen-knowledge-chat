@@ -7148,12 +7148,7 @@
       ],
       "ingredients_source": "t33",
       "description": "Connective Tissue Support . Connective Tissue Support Connective Tissue Support Connective Tissue Support is inspired by the special needs of the body's connective tissues. The included nutrients and ratios are established by recommended combinations for those with conditions like Ehlers Danlos Syndrome with certain enhancements for better absorption and utilization. Connective Tissue Support . Each Chlorophyll Vegicap supplies: Vitamin C (from Magnesium Ascorbate, Ascorbyl Palmitate and L-Ascorbic Acid) 47 mg 79% Ascorbyl Palmitate 8 mg L-Ascorbic Acid 16 mg Magnesium Ascorbate 32 mg...",
-      "gk_has_extra": [
-        "Vitamin B13: Phosphatides 50% (Helianthus annua)",
-        "Fulvic Acid",
-        "Humic Acid",
-        "11 Spirit Minerals"
-      ]
+      "inactive": true
     },
     "wash--rinse": {
       "name": "Wash & Rinse",

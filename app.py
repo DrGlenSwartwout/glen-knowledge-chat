@@ -2207,8 +2207,8 @@ _MEMBERSHIP_TIERS = {
 
 def _get_product(slug):
     p = (_PRODUCTS.get("products") or {}).get(slug)
-    if not p:
-        return None
+    if not p or p.get("inactive"):
+        return None  # inactive products are not sellable/visible on the funnel
     out = dict(p)
     out["slug"] = slug
     out.setdefault("price_cents", _PRODUCTS.get("default_price_cents", 6997))

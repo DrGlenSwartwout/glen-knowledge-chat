@@ -47,12 +47,14 @@ def stale_pages(products=None, fixed=None):
     fixed = _fixed_set() if fixed is None else fixed
     return [{"slug": s, "name": p.get("name"), "reason": p.get("gk_stale_reason", "")}
             for s, p in products.items()
-            if p.get("gk_stale") and s not in fixed]
+            if p.get("gk_stale") and not p.get("inactive") and s not in fixed]
 
 
-def catalog(with_ingredients_only=True):
+def catalog(with_ingredients_only=True, include_inactive=False):
     out = []
     for s, p in load_products().items():
+        if p.get("inactive") and not include_inactive:
+            continue
         if with_ingredients_only and not p.get("ingredients"):
             continue
         out.append({"slug": s, "name": p.get("name"), "price_cents": p.get("price_cents"),

@@ -54,3 +54,15 @@ def test_mark_page_fixed_action(tmp_path, monkeypatch):
 def test_products_signal_registered():
     from dashboard import products as P, signals as S  # noqa
     assert S.SIGNAL_REGISTRY.get("products") is not None
+
+
+def test_inactive_product_excluded(tmp_path, monkeypatch):
+    P = _products(tmp_path, {
+        "live": {"name": "Live", "ingredients": [{"name": "X"}], "gk_stale": True},
+        "dead": {"name": "Dead", "ingredients": [{"name": "Y"}], "gk_stale": True, "inactive": True},
+    })
+    monkeypatch.setattr(P, "_products_path", lambda: str(tmp_path / "data" / "products.json"))
+    slugs = {c["slug"] for c in P.catalog()}
+    assert "live" in slugs and "dead" not in slugs       # hidden from catalog
+    assert {s["slug"] for s in P.stale_pages()} == {"live"}  # inactive not in stale queue
+    assert "dead" in {c["slug"] for c in P.catalog(include_inactive=True)}
