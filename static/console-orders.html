@@ -68,7 +68,7 @@
     else if (o.status==='shipped') acts = btn(o.id,'orders.mark_done','Mark delivered');
     if (o.status!=='done' && o.status!=='cancelled') acts += ' <button class="cancel" onclick="act('+Number(o.id)+',\'orders.cancel\',{})">Cancel</button>';
     return '<div class="card"><div class="who">'+esc(o.name||o.email||'Order #'+o.id)+'</div>'
-      + '<div class="meta">'+(items?esc(items)+'<br>':'')
+      + '<div class="meta">'+(items?items+'<br>':'')
       + (total?total+' &middot; ':'')+'<span class="src">'+esc(o.source)+'</span> &middot; <span class="age'+(isOld(o.created_at)?' old':'')+'">'+age+'</span>'
       + (o.tracking_number?'<br>tracking '+esc(o.tracking_number):'')+'</div>'
       + '<div class="acts">'+acts+'</div></div>';
