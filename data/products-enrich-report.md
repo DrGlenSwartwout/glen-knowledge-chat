@@ -1,23 +1,37 @@
-# Products Enrichment — Stage A Match Report
+# Products Enrichment — Match Report (Stage A + A.1)
 
-Generated: 2026-06-05  |  Source: `scripts/enrich_products.py`
+Generated: 2026-06-05  |  Source: `scripts/enrich_products.py`  |  Stage B (GK) run
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
 | Total slugs | 321 |
-| FMP-new matched (high conf) | 132 |
-| FMP-new matched (medium conf) | 73 |
-| FMP-new matched (low conf) | 7 |
-| **FMP-new total** | **212** |
-| T33 fallback (high conf) | 14 |
-| T33 fallback (medium conf) | 3 |
-| T33 fallback (low conf) | 2 |
-| **T33 fallback total** | **19** |
-| No match | 90 |
+| FMP-new matched (high conf) | 77 |
+| FMP-new matched (medium conf) | 14 |
+| FMP-new matched (low conf) | 3 |
+| **FMP-new total (non-empty)** | **94** |
+| FMP-matched-but-empty -> T33 ingredients (high) | 30 |
+| FMP-matched-but-empty -> T33 ingredients (medium) | 9 |
+| FMP-matched-but-empty -> T33 ingredients (low) | 2 |
+| **FMP-empty -> T33 total (source=fmp_new_empty_t33)** | **41** |
+| FMP-empty AND T33 also empty (no ingredients) | 77 |
+| T33 fallback, no FMP match (high conf) | 14 |
+| T33 fallback, no FMP match (medium conf) | 3 |
+| T33 fallback, no FMP match (low conf) | 2 |
+| **T33-only fallback total** | **19** |
+| No match (no FMP, no T33) | 90 |
 | Slugs matching a Functional Formulation FMP type | 138 |
 | FMP Functional Formulation products available | 178 |
+
+## Final ingredients_source breakdown
+
+| ingredients_source | Count |
+|--------------------|-------|
+| fmp_new | 94 |
+| t33 | 52 |
+| gk | 13 |
+| none | 162 |
 
 ## Low-Confidence Matches (needs Glen review)
 
@@ -26,12 +40,11 @@ These matched but with a fuzzy score below 0.85. Verify the FMP/T33 name is actu
 | Slug | Name | Pinecone Title | Best FMP/T33 Match | Score | Source |
 |------|------|----------------|-------------------|-------|--------|
 | magnesium-taurate | Magnesium Taurate | Magnesium Taurate | Magnesium Glycinate | 0.72 | fmp_new |
-| serenity | Serene Blue Green | Serene Blue Green | Serenity Blue Green Balance* | 0.73 | fmp_new |
-| nacetyl-cysteine | N-Acetyl Cysteine | N-Acetyl Cysteine | N-Acetyl L-Carnosine | 0.76 | fmp_new |
 | humic-acid | Humic Acid | Humic Acid | Fulvic Acid Complex | 0.76 | fmp_old_t33 |
-| miracle-tree | Miracle Tree | Miracle Tree | Miracule Water | 0.77 | fmp_new |
-| dry-eye-relief-program | Dry Eye Relief Program | Dry Eye Relief Program | Dry Eye Relief (book) | 0.78 | fmp_new |
+| dry-eye-relief-program | Dry Eye Relief Program | Dry Eye Relief Program | (T33) Moisturize | 0.78 | fmp_new_empty_t33 |
+| zinc-taste-test | Zinc Taste Test | Zinc Taste Test | (T33) Chromium Taste Test | 0.79 | fmp_new_empty_t33 |
 | c15-syntropy-pentadecanoic-acid | C15 Syntropy: Pentadecanoic Acid | C15 Syntropy: Pentadecanoic Acid | C15 Syntropy: Pentadecanoic Essential Fatty Acid | 0.79 | fmp_old_t33 |
+| pms-relief | PMS Relief | PMS Relief | (T33) OcuFlow Daytime | 0.80 | fmp_new_empty_t33 |
 | macular-wellness-program | Macular Wellness Program | Macular Wellness Program | Macular Wellness Crocin | 0.81 | fmp_new |
 | glucose-tolerance-program | Glucose Tolerance Program | Glucose Tolerance Program | Glucose Tolerance | 0.81 | fmp_new |
 
