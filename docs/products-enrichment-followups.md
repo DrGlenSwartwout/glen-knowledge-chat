@@ -16,11 +16,13 @@ neuromagnesium cleared (Glen updated its page). See #1b below for the un-reverif
 GK pages use a different ingredient format, or a slug mismatch). Still flagged from the OLD
 (possibly inflated) diff. Re-check their GK page format + re-judge.
 
-## 1c. 38 products: GK lists MORE than our FMP/Formulations record (DECISION)
-`gk_has_extra` on 38 products — our authoritative ingredient list is PARTIAL vs the GK page.
-Glen's rule was "FMP/Formulations wins", but here GK is the richer source. Decision: merge GK's
-extra ingredients into the authoritative `ingredients` (and re-verify against Glen's true current
-formula), or leave FMP-as-authoritative and accept the gaps. `gk_has_extra` lists the candidates per product.
+## 1c. GK lists MORE than our record — RESOLVED for new-FMP (2026-06-05, Glen)
+Rule (Glen): accept the gap when GK's extras are compared to a NEWER, fewer-ingredient formula in
+the new FMP (the extras are superseded old ingredients; do NOT merge). Applied by
+`scripts/accept_extra_gaps.py`: **31 fmp_new products accepted** (flag cleared, `gk_extra_accepted=true`).
+**7 remain open** (authoritative = older Formulations DB / t33, where GK extras may be real and
+belong in the current formula): brain-boost, connective-tissue-support, longevity, muscle-mass,
+seaamino-syntropy, stone-solvent, vitamin-d-syntropy. `gk_has_extra` lists their candidates.
 
 ## (was 1, superseded) original scrape-field note — kept for context
 The scrape's `_extract_body` dropped the full ingredient panel (`~/AI-Training/02 Skills/scrape-remedymatch.py`).
