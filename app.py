@@ -12996,6 +12996,8 @@ def bos_orders_create():
             name=b.get("name", ""), phone=b.get("phone", ""), items=b.get("items") or [],
             total_cents=int(b.get("total_cents") or 0), address=b.get("address") or {},
             channel=b.get("channel", "retail"))
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
     finally:
         cx.close()
     return jsonify({"ok": True, "order_id": oid})
