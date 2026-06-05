@@ -155,9 +155,12 @@ action(key="finance.void_invoice", module="money", title="Void invoice",
 
 
 def _refund_confirm_summary(params):
-    amt = params.get("amount", "?")
+    try:
+        amt = f"${float(params.get('amount', 0)):.2f}"
+    except (TypeError, ValueError):
+        amt = "$?"
     target = params.get("invoice_id") or f"order #{params.get('order_id', '?')}"
-    return (f"Issue a ${amt} refund against invoice {target}. This records a money-out "
+    return (f"Issue a {amt} refund against invoice {target}. This records a money-out "
             f"refund in QuickBooks (you still send the actual money for Zelle/Wise). Confirm?")
 
 
