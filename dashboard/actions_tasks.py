@@ -11,7 +11,7 @@ from dashboard.rbac import OWNER, OPS, VA
         description="Mark a todo as done by id.", risk_tier=LOW_WRITE,
         permission=(OWNER, OPS, VA))
 def complete_todo(params, ctx):
-    cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+    cx = (ctx or {}).get("cx")
     if cx is None:
         raise ValueError("no db connection provided")
     todo_id = int(params["todo_id"])

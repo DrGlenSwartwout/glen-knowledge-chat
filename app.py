@@ -12786,7 +12786,8 @@ _init_bos_events()
 
 def _bos_actor():
     """Resolve the calling actor. Owner master key (CONSOLE_SECRET) for now;
-    scoped token->role mapping is added in the RBAC-UX task of Phase 1."""
+    scoped token->role mapping is added in the RBAC-UX task of Phase 1.
+    Unlike the legacy @require_console_key decorator, BOS routes return 401 when CONSOLE_SECRET is unset (resolve_actor returns None) rather than passing through; this is intentional."""
     key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
     return _bos_rbac.resolve_actor(key, console_secret=dashboard.CONSOLE_SECRET)
 
@@ -12816,8 +12817,13 @@ def bos_events():
     cx = _sqlite3.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
+        try:
+            _limit = int(request.args.get("limit", 50))
+        except (TypeError, ValueError):
+            _limit = 50
+        _limit = max(1, min(_limit, 200))
         rows = _bos_events.list_events(
-            cx, limit=int(request.args.get("limit", 50)),
+            cx, limit=_limit,
             status=request.args.get("status"),
             module=request.args.get("module"))
     finally:

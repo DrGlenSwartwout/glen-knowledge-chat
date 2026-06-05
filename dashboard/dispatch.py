@@ -64,6 +64,8 @@ def approve_event(cx, event_id, actor):
     action = get_action(ev["action_key"])
     if action is None:
         return {"status": "error", "error": "unknown action"}
+    if actor is None or actor.role not in action.permission:
+        return {"status": "denied", "reason": "permission"}
     res = _execute(cx, action, ev["params"], actor, source="approval")
     _events.set_event_status(cx, event_id, "confirmed")
     return res
