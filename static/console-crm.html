@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CRM - Business OS</title>
+<style>
+  :root { --bg:#0a150d; --surface:#111f16; --surface2:#162318; --border:#21472d;
+          --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --red:#c0432b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--cream);
+         font-family:"Open Sans",system-ui,sans-serif; padding:24px; max-width:860px; margin:0 auto; }
+  h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+  .panel { background:var(--surface); border:1px solid var(--border); border-radius:12px;
+           padding:18px; margin-bottom:16px; }
+  .panel h2 { font-family:"Raleway",sans-serif; font-size:15px; margin-bottom:12px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  input, textarea { width:100%; padding:9px 11px; background:var(--bg); color:var(--cream);
+                    border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; }
+  textarea { min-height:54px; resize:vertical; }
+  .actions { margin-top:14px; display:flex; flex-wrap:wrap; gap:8px; }
+  .actions button { font-size:13px; border:1px solid var(--border); background:transparent;
+                    color:var(--cream); border-radius:7px; padding:7px 13px; cursor:pointer; }
+  .actions button:hover { border-color:var(--gold); color:var(--gold); }
+  #result { margin-top:12px; font-size:13px; color:var(--green); min-height:18px; }
+  #result.err { color:var(--red); }
+  .row { display:flex; justify-content:space-between; align-items:center;
+         border-bottom:1px solid var(--border); padding:8px 0; font-size:13px; }
+  .row:last-child { border-bottom:none; }
+  .row .op { color:var(--gold); font-size:11px; letter-spacing:.05em; text-transform:uppercase;
+             border:1px solid var(--border); border-radius:5px; padding:1px 7px; margin-right:8px; }
+  .row .meta { color:var(--muted); }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+  #gate { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; }
+  #gate input { max-width:280px; }
+</style>
+</head>
+<body>
+  <div id="gate"><div style="text-align:center">
+    <p style="margin-bottom:10px;color:var(--muted)">Enter console key</p>
+    <input id="key" type="password" placeholder="console key" />
+    <button onclick="unlock()" style="padding:10px 14px;margin-left:6px;border-radius:8px;border:1px solid var(--border);background:var(--gold);color:#0a150d;cursor:pointer">Unlock</button>
+  </div></div>
+
+  <h1>CRM</h1>
+  <div class="sub">Act on a contact in GHL. Writes queue here and push automatically every few minutes. (People directory and household merges live in the main console.)</div>
+
+  <div class="panel">
+    <h2>Act on a contact</h2>
+    <label for="email">Contact email</label>
+    <input id="email" type="email" placeholder="person@example.com" />
+    <label for="tag">Tag (for Add tag)</label>
+    <input id="tag" type="text" placeholder="e.g. warm-lead" />
+    <label for="note">Note (for Log note)</label>
+    <textarea id="note" placeholder="What happened / next step"></textarea>
+    <div class="actions">
+      <button onclick="doAction('crm.add_tag', {tag:val('tag')})">Add tag</button>
+      <button onclick="doAction('crm.log_outreach', {note:val('note')})">Log note</button>
+      <button onclick="doAction('crm.create_opportunity', {})">Create opportunity</button>
+      <button onclick="doAction('crm.enroll_workflow', {})">Enroll in onboarding</button>
+    </div>
+    <div id="result"></div>
+  </div>
+
+  <div class="panel">
+    <h2>GHL sync queue <span id="qcount" class="meta" style="font-size:12px"></span></h2>
+    <div id="queue"></div>
+    <div class="note">Queued writes push to GHL automatically every 5 minutes via the local drain. A failed item stays visible.</div>
+  </div>
+
+<script>
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; loadQueue(); }
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function val(id){ return document.getElementById(id).value.trim(); }
+
+  function show(msg, isErr){
+    var r = document.getElementById('result');
+    r.textContent = msg; r.className = isErr ? 'err' : '';
+  }
+
+  async function doAction(actionKey, extra){
+    var email = val('email');
+    if (!email){ show('Enter a contact email first.', true); return; }
+    var params = Object.assign({email: email}, extra || {});
+    try {
+      var res = await fetch('/api/action/'+actionKey, {method:'POST', headers:hdr(), body:JSON.stringify(params)});
+      if (res.status === 401){ document.getElementById('gate').style.display='flex'; return; }
+      var body = await res.json();
+      if (body.status === 'needs_confirmation'){
+        if (!confirm(body.summary || 'Confirm this action?')) return;
+        params.confirmed = true;
+        body = await (await fetch('/api/action/'+actionKey, {method:'POST', headers:hdr(), body:JSON.stringify(params)})).json();
+      }
+      if (body.status === 'done'){ show((body.result && body.result.message) || 'Done.', false); }
+      else if (body.status === 'denied'){ show('Not permitted.', true); }
+      else { show('Error: ' + (body.error || body.status), true); }
+      loadQueue();
+    } catch(e){ show('Error: ' + e, true); }
+  }
+
+  async function loadQueue(){
+    try {
+      var res = await fetch('/api/ghl/queue/pending', {headers:hdr()});
+      if (res.status === 401){ document.getElementById('gate').style.display='flex'; return; }
+      var data = await res.json();
+      var items = data.queue || [];
+      document.getElementById('qcount').textContent = items.length ? '('+items.length+' pending)' : '(clear)';
+      var host = document.getElementById('queue');
+      if (!items.length){ host.innerHTML = '<div class="row meta">Nothing waiting to sync.</div>'; return; }
+      host.innerHTML = items.map(function(q){
+        return '<div class="row"><span><span class="op">'+esc(q.op)+'</span>'+esc(q.email)+'</span>'
+             + '<span class="meta">'+esc((q.created_at||'').slice(0,16).replace('T',' '))+'</span></div>';
+      }).join('');
+    } catch(e){ /* leave as-is */ }
+  }
+
+  if (key()) { document.getElementById('gate').style.display='none'; loadQueue(); }
+</script>
+</body>
+</html>

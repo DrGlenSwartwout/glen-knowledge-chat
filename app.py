@@ -13116,6 +13116,13 @@ def bos_finance_page():
     return resp
 
 
+@app.route("/console/crm")
+def bos_crm_page():
+    resp = send_from_directory(STATIC, "console-crm.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/finance/ar", methods=["GET"])
 def bos_finance_ar():
     actor = _bos_actor()

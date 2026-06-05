@@ -102,3 +102,12 @@ def test_finance_page_served(monkeypatch, tmp_path):
     r = client.get("/console/finance")
     assert r.status_code == 200
     assert b"Finance" in r.data
+
+
+def test_crm_page_served(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "c.db"))
+    client = app_module.app.test_client()
+    r = client.get("/console/crm")
+    assert r.status_code == 200
+    assert b"CRM" in r.data
