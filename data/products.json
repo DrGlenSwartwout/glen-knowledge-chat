@@ -166,10 +166,6 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "Coluracetam",
-          "dose": "50 mg"
-        },
-        {
           "name": "Vitamin B6 as P5P (Pyridoxal 5-Phosphate)",
           "dose": "2 mg"
         },
@@ -240,19 +236,27 @@
         {
           "name": "Vinpocetine (Vinca minor)",
           "dose": "1 mg"
+        },
+        {
+          "name": "Centrophenoxine",
+          "dose": ""
+        },
+        {
+          "name": "Citicoline",
+          "dose": ""
+        },
+        {
+          "name": "Fulvic Acid",
+          "dose": ""
+        },
+        {
+          "name": "11 Spirit Minerals",
+          "dose": ""
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "manual",
       "description": "Brain Boost Nootropic . Brain Boost Nootropic Brain Boost Brain Boost is a nootropic formulation that includes Coluracetam, which enhances color vision and other brain functions. Vision provides 2/3 of all the nerve current entering the brain, so increasing vision helps energize many other brain, endocrine and immune functions as well. The pathways from the eyes to the biological clock in the hypothalamus that regulates these other systemic functions are specifically color sensitive, so enhancing color vision can light up your life and your wellness in surprising ways. Brain Boost Nootropic ....",
-      "gk_stale": true,
-      "gk_stale_reason": "GK page missing: Cynarin 10% (Cynara scolymus)",
-      "gk_has_extra": [
-        "Centrophenoxine",
-        "Citicoline",
-        "DHA (from Algae)",
-        "Fulvic Acid",
-        "11 Spirit Minerals"
-      ]
+      "enrichment_note": "Section A: appended confirmed Bioavailability-Factors extras (Centrophenoxine, Citicoline, Fulvic Acid, 11 Spirit Minerals); removed Coluracetam per Glen; DHA intentionally NOT added. Source: Glen's Products-Worklist.md."
     },
     "brain-cleanse": {
       "name": "Brain Cleanse",
@@ -915,24 +919,59 @@
         {
           "name": "Phosphatides 50% (Helianthus annuus)",
           "dose": "21 mg"
+        },
+        {
+          "name": "Magnesium (Magnesium Sulfate)",
+          "dose": ""
+        },
+        {
+          "name": "Dandelion (Taraxacum officinale)",
+          "dose": ""
+        },
+        {
+          "name": "Cynarin 10% (Cynara scolymus)",
+          "dose": ""
+        },
+        {
+          "name": "Curcumin (Curcuma longa)",
+          "dose": ""
+        },
+        {
+          "name": "Silymarin (Silybum marianum)",
+          "dose": ""
+        },
+        {
+          "name": "EGb 761 (Ginkgo biloba)",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin B3 (Niacin)",
+          "dose": ""
+        },
+        {
+          "name": "Moringa 100:1 (Moringa oleifera)",
+          "dose": ""
+        },
+        {
+          "name": "Licorice Omnipotent (Glycyrrhiza glabra)",
+          "dose": ""
+        },
+        {
+          "name": "Gingerol 10% (Zingiber officinalis)",
+          "dose": ""
+        },
+        {
+          "name": "Piperine (Piper nigrum)",
+          "dose": ""
+        },
+        {
+          "name": "Vinpocetine (Vinca minor)",
+          "dose": ""
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "manual",
       "description": "Stone Solvent . Stone Solvent - Kidney & Gall Bladder Stone Solvent Stone Solvent combines botanical and nutritional synergists for dissolving hard deposits such as kidney stones and gall stones. Stone Solvent is synergistic with Potassium Citrate for kidney stones. Gallstones are typically composed mainly of cholesterol, so in that case Stone Solvent is synergistic with Binder Complex, Fiber Cleanse, or Soothe all of which pull cholesterol from the body by reducing the recycling of bile. Stone Solvent is taken with food up to three times a day. Each chlorophyll vegicap supplies: Vitamins:...",
-      "gk_has_extra": [
-        "Magnesium (Magnesium Sulfate)",
-        "Dandelion (Taraxacum officinale)",
-        "Cynarin 10% (Cynara scolymus)",
-        "Curcumin (Curcuma longa)",
-        "Silymarin (Silybum marianum)",
-        "EGb 761 (Ginkgo biloba)",
-        "Vitamin B3 (Niacin)",
-        "Moringa 100:1 (Moringa oleifera)",
-        "Licorice Omnipotent (Glycyrrhiza glabra)",
-        "Gingerol 10% (Zingiber officinalis)",
-        "Piperine (Piper nigrum)",
-        "Vinpocetine (Vinca minor)"
-      ]
+      "enrichment_note": "Section A: appended all GK extras per Glen (Bioavailability Factors + Magnesium/Dandelion/Cynarin/Curcumin/Silymarin). Source: Glen's Products-Worklist.md."
     },
     "sustain": {
       "name": "Sustain",
@@ -2467,18 +2506,27 @@
         {
           "name": "Vinpocetine (Vinca minor)",
           "dose": "1 mg"
+        },
+        {
+          "name": "Vitamin B13: Phosphatides 50% (Helianthus annua)",
+          "dose": ""
+        },
+        {
+          "name": "Fulvic Acid",
+          "dose": ""
+        },
+        {
+          "name": "Humic Acid",
+          "dose": ""
+        },
+        {
+          "name": "11 Spirit Minerals",
+          "dose": ""
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "manual",
       "description": "Seacure Synergy . Seacure Synergy SeaAmino Syntropy Seacure Synergy is based on a traditional Nordic remedy of amino acids from enzymatically pre-digested white fish protein with added synergists for enhanced bioavailability. This combination of botanical and nutritional synergists boosts the already high healing benefits of hydrolyzed peptides from white fish, which include: 1. High Bioavailability and Digestibility Smaller peptide size : The hydrolysis process breaks down protein into smaller peptides, making them easier to digest and absorb. Efficient nutrient uptake : Helps ensure the...",
-      "gk_stale": true,
-      "gk_stale_reason": "GK page missing: Ashitaba 10:1 (Angelica Keiskei Koidzumi)",
-      "gk_has_extra": [
-        "Vitamin B13: Phosphatides 50% (Helianthus annua)",
-        "Fulvic Acid",
-        "Humic Acid",
-        "11 Spirit Minerals"
-      ]
+      "enrichment_note": "Section A: appended Bioavailability-Factors extras per Glen. Source: Glen's Products-Worklist.md."
     },
     "es3-nerve": {
       "name": "ES3",
@@ -3009,7 +3057,17 @@
       "name": "Dry Eye Relief Program",
       "price_cents": 24997,
       "pinecone_title": "Dry Eye Relief Program",
-      "url": "https://remedymatch.com/remedies/program/463-dry-eye-relief-program"
+      "url": "https://remedymatch.com/remedies/program/463-dry-eye-relief-program",
+      "bundle": true,
+      "bundle_components": [
+        "ACES Eye Drops",
+        "Moisturize",
+        "WholOmega"
+      ],
+      "bundle_description": "The Dry Eye Relief Program provides an automatic monthly supply of key remedies to support eye comfort and healthy tear production including:\n\nACES Eye Drops (1 drop in each eye, AM and PM)\n\nMoisturize capsules (1 per day with food)\n\nWholOmega capsules (4 per day with the heaviest meal)",
+      "ingredients": [],
+      "ingredients_source": "manual",
+      "enrichment_note": "Section C: marked as bundle (multi-product monthly program), not a single formula. Source: Glen's Products-Worklist.md."
     },
     "endocrine-restore": {
       "name": "Endocrine Restore",
@@ -3622,24 +3680,51 @@
         {
           "name": "Phosphatides 30% (Helianthus annuus)",
           "dose": "21 mg"
+        },
+        {
+          "name": "EGb 761 (Ginkgo biloba)",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin B3 (Niacin)",
+          "dose": ""
+        },
+        {
+          "name": "Moringa oleifera (Miracle Tree 100:1)",
+          "dose": ""
+        },
+        {
+          "name": "Licorice (Glycyrrhiza glabra)",
+          "dose": ""
+        },
+        {
+          "name": "Vinpocetine (Vinca minor)",
+          "dose": ""
+        },
+        {
+          "name": "Gingerol 10% (Zingiber officinalis)",
+          "dose": ""
+        },
+        {
+          "name": "Piperine (Piper nigrum)",
+          "dose": ""
+        },
+        {
+          "name": "Fulvic Acid",
+          "dose": ""
+        },
+        {
+          "name": "Humic Acid",
+          "dose": ""
+        },
+        {
+          "name": "11 Spirit Minerals",
+          "dose": ""
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "manual",
       "description": "Longevity . Longevity Longevity Longevity is formulated to support your lifelong maintenance of optimum mitochondrial function. Visualize supplying new spark plugs for your cells! Longevity benefits include: • Supports optimum Nicotine Adenine Dinucleotide (NAD+) levels in the mitochondria • Promotes the delivery of high-energy electrons into the electron transport chain of oxidative cellular respiration that supplies cellular energy storage in the form of Adenosine Triphosphate (ATP) • Supports mitochondrial function Mitochondrial dysfunction is the first observed precursor of glaucoma, many...",
-      "gk_stale": true,
-      "gk_stale_reason": "GK page missing: Vitamin B1 (Benfotiamine), Vitamin B2 (Riboflavin 5-Phosphate / R5P), Nicotinamide Riboside (NR), Nicotinamide Mononucleotide (NMN), Pyridoxal 5-Phosphate (P5P), Trimethylglycine (TMG), Vitamin D3 (Cholecalciferol), CoQ10 (Ultra Absorption), Lapachol 3% (Tabebuia avellanidae), Pyruvate (Calcium Pyruvate)",
-      "gk_has_extra": [
-        "EGb 761 (Ginkgo biloba)",
-        "Vitamin B3 (Niacin)",
-        "Moringa oleifera (Miracle Tree 100:1)",
-        "Licorice (Glycyrrhiza glabra)",
-        "Vinpocetine (Vinca minor)",
-        "Gingerol 10% (Zingiber officinalis)",
-        "Piperine (Piper nigrum)",
-        "Fulvic Acid",
-        "Humic Acid",
-        "11 Spirit Minerals"
-      ]
+      "enrichment_note": "Section A: appended the 10 Bioavailability-Factors ingredients per Glen. Source: Glen's Products-Worklist.md."
     },
     "ocuflow-bedtime": {
       "name": "OcuFlow Bedtime",
@@ -4549,11 +4634,111 @@
       "url": "https://remedymatch.com/remedies/modalities/biocommunication/infoceuticals/278-ei16--feeling-forebrain--limbic-system-"
     },
     "heart-health": {
-      "name": "Rhythm Section",
+      "name": "Heart Health",
       "price_cents": 6997,
       "pinecone_title": "Rhythm Section",
       "url": "https://remedymatch.com/remedies/syntropy/100-heart-health",
-      "qty_pricing": true
+      "qty_pricing": true,
+      "ingredients": [
+        {
+          "name": "Selenium (as Methylselenocysteine)",
+          "dose": "100 mcg"
+        },
+        {
+          "name": "Magnesium (as Taurate and Ascorbate)",
+          "dose": "8.2 mg"
+        },
+        {
+          "name": "Vitamin C (as Magnesium Ascorbate)",
+          "dose": "60 mg"
+        },
+        {
+          "name": "Vitamin D3 (Cholecalciferol)",
+          "dose": "1000 IU"
+        },
+        {
+          "name": "Vitamin E (Mixed Tocopherols)",
+          "dose": "30 IU"
+        },
+        {
+          "name": "CoQ10 (Ultra Absorption)",
+          "dose": "10 mg"
+        },
+        {
+          "name": "DHEA-S (Dehydroepiandrosterone Sulfate)",
+          "dose": "5 mg"
+        },
+        {
+          "name": "Lumbrokinase (Lumbricus rubellus) 178,000 LKU",
+          "dose": "10 mg"
+        },
+        {
+          "name": "Curcumin (Curcuma longa)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Inosine",
+          "dose": "10 mg"
+        },
+        {
+          "name": "MCP (Modified Citrus Pectin)",
+          "dose": "30 mg"
+        },
+        {
+          "name": "Salvianolic Acid 20% (Salvia miltiorrhiza)",
+          "dose": "10 mg"
+        },
+        {
+          "name": "Astaxanthin (Haematococcus pluvialis)",
+          "dose": "4 mg"
+        },
+        {
+          "name": "Flavonoids 85% (Crataegus oxyacantha)",
+          "dose": "20 mg"
+        },
+        {
+          "name": "Reishi 30:1 (Ganoderma lucidum)",
+          "dose": "20 mg"
+        },
+        {
+          "name": "Catechins 80% (Camelia sinensis)",
+          "dose": "10 mg"
+        },
+        {
+          "name": "Humic Acid",
+          "dose": "1 mg"
+        },
+        {
+          "name": "EGb 761 (Ginkgo biloba)",
+          "dose": "13 mg"
+        },
+        {
+          "name": "Vitamin B3 (as Niacin)",
+          "dose": "8 mg"
+        },
+        {
+          "name": "Moringa 100:1 (Moringa oleifera)",
+          "dose": "5 mg"
+        },
+        {
+          "name": "Licorice Omnipotent (Glycyrrhiza glabra)",
+          "dose": "3 mg"
+        },
+        {
+          "name": "Gingerol 10% (Zingiber officinalis)",
+          "dose": "2 mg"
+        },
+        {
+          "name": "Piperine (Piper nigrum)",
+          "dose": "1 mg"
+        },
+        {
+          "name": "Vinpocetine (Vinca minor)",
+          "dose": "1 mg"
+        }
+      ],
+      "ingredients_source": "manual",
+      "enrichment_note": "Section B: replaced with Glen's authoritative 'Heart Health 4' formula (Formulations DB 6/14/23). NOTE: Rhythm Restore (TCM Wenxin Keli) is a SEPARATE product needing its own catalog entry - ingredients: Codonopsis pilosula, Polygonatum sibiricum, Panax notoginseng (Notoginsenosides 80%), Amber (Succinic Acid), Nardostachys jatamansi (Spikenard). Those are NOT included here. Source: Glen's Products-Worklist.md."
     },
     "rise--shine": {
       "name": "Rise & Shine",
@@ -6609,15 +6794,23 @@
         {
           "name": "Vinpocetine (Vinca minor)",
           "dose": "1 mg"
+        },
+        {
+          "name": "Fulvic Acid",
+          "dose": ""
+        },
+        {
+          "name": "Humic Acid",
+          "dose": ""
+        },
+        {
+          "name": "Spirit Minerals",
+          "dose": ""
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "manual",
       "description": "Vitamin D Synergy . Vitamin D Synergy Vitamin D Syntropy Vitamin D is formed in the skin when sunlight transforms cholesterol made by enzymatic activity in the liver. Vitamin D is not only the vitamin of light, it is also a hormone, like the other hormones the body makes from cholesterol as a precursor. Vitamin D is crucial for many functions including Calcium metabolism, immunity and nerve function… Individuals who take more than 2,000 IU per day of vitamin D should have their vitamin D levels monitored. Vitamin D Synergy . Each Chlorophyll Vegicap supplies: Coenzyme Synergists: Vitamin A...",
-      "gk_has_extra": [
-        "Fulvic Acid",
-        "Humic Acid",
-        "Spirit Minerals"
-      ]
+      "enrichment_note": "Section A: appended Bioavailability-Factors extras per Glen (Fulvic Acid, Humic Acid, Spirit Minerals). Source: Glen's Products-Worklist.md."
     },
     "day": {
       "name": "Day",
@@ -7014,25 +7207,55 @@
         {
           "name": "NALT (N-Acetyl L-Tyrosine)",
           "dose": "25 mg"
+        },
+        {
+          "name": "Phosphatides 50% (Helianthus annua)",
+          "dose": ""
+        },
+        {
+          "name": "EGb 761 (Ginkgo biloba)",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin B3 (Niacin)",
+          "dose": ""
+        },
+        {
+          "name": "Moringa oleifera (Miracle Tree 100:1)",
+          "dose": ""
+        },
+        {
+          "name": "Licorice (Glycyrrhiza glabra)",
+          "dose": ""
+        },
+        {
+          "name": "Vinpocetine (Vinca minor)",
+          "dose": ""
+        },
+        {
+          "name": "Gingerol 10% (Zingiber officinalis)",
+          "dose": ""
+        },
+        {
+          "name": "Piperine (Piper nigrum)",
+          "dose": ""
+        },
+        {
+          "name": "Fulvic Acid",
+          "dose": ""
+        },
+        {
+          "name": "Humic Acid",
+          "dose": ""
+        },
+        {
+          "name": "11 Spirit Minerals",
+          "dose": ""
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "manual",
       "description": "Muscle Mass . Muscle Mass Muscle Mass Muscle Mass supports increased growth and restoration of muscle tissue. This supports healthy weight gain, increased BMI, and increased basal metabolism. Muscle Mass is synergistic with predigested proteins such as One Step, SeaAminos, Hydrolyzed Collagen, Hydrolyzed Whey, and Hydrolyzed Pea Protein as sources of dipeptides and tripeptides that are the same size poly amino acid as those that result from our digestion in the stomach and small intestine from gastric and pancreatic proteolytic enzymes. The best time to take Muscle Mass is 30 to 60 minutes...",
-      "gk_stale": true,
-      "gk_stale_reason": "GK page missing: Creatine, Ergothioneine",
-      "gk_has_extra": [
-        "Phosphatides 50% (Helianthus annua)",
-        "EGb 761 (Ginkgo biloba)",
-        "Vitamin B3 (Niacin)",
-        "Moringa oleifera (Miracle Tree 100:1)",
-        "Licorice (Glycyrrhiza glabra)",
-        "Vinpocetine (Vinca minor)",
-        "Gingerol 10% (Zingiber officinalis)",
-        "Piperine (Piper nigrum)",
-        "Fulvic Acid",
-        "Humic Acid",
-        "11 Spirit Minerals"
-      ]
+      "enrichment_note": "Section A: appended Bioavailability-Factors extras per Glen. Source: Glen's Products-Worklist.md."
     },
     "et7-cfs": {
       "name": "ET7 CFS: Chronic Fatigue Syndrome",
@@ -7871,7 +8094,16 @@
       "name": "Glucose Tolerance Program",
       "price_cents": 11997,
       "pinecone_title": "Glucose Tolerance Program",
-      "url": "https://remedymatch.com/remedies/program/465-glucose-tolerance-program"
+      "url": "https://remedymatch.com/remedies/program/465-glucose-tolerance-program",
+      "bundle": true,
+      "bundle_components": [
+        "Glucose Tolerance",
+        "Reverse AGE"
+      ],
+      "bundle_description": "About one-third of aging-related changes are directly related to sugar regulation. If you have an issue with sugar regulation such as metabolic syndrome, pre-diabetes, or diabetes, adding a regular program to specifically support healing your sugar regulation and reverse related degenerative tissue changes is essential.\n\nThe Glucose Tolerance Program supplies key remedies monthly to support healthy sugar metabolism:\n\nGlucose Tolerance\n\nReverse AGE\n\nYou can order either or both of these remedies individually on their product pages or you can order the program from this page. Each product is designed to last for one month, and you can order the program to be automatically delivered monthly. We extend savings to you when you set up an automatic shipment, and you can always cancel at any time. If you know you will be using a product for at least 6 months or a year, you can access even greater savings by purchasing in bulk.\n\nIn any case, whatever challenges you are facing, if you are not achieving your health and wellness goals, including maintenance or recovery of vision, the next step beyond a program like this designed to support and optimize your healing processes in the face of a particular issue or symptom, you can apply for a consultation with us. We can evaluate what your healing powers are focused on achieving right now and design a precision program tailor-made to your body's intelligent healing processes that are active - in real time. We typically see the reversal of about one year of aging and degeneration in a one-month program using our systems, which is why we call it Accelerated Self Healing™.",
+      "ingredients": [],
+      "ingredients_source": "manual",
+      "enrichment_note": "Section C: marked as bundle (multi-product monthly program), not a single formula. Source: Glen's Products-Worklist.md."
     },
     "reverse-aging-program": {
       "name": "Reverse Aging Program",
@@ -7904,7 +8136,39 @@
       "price_cents": 6997,
       "pinecone_title": "Serene Blue Green",
       "url": "https://remedymatch.com/remedies/syntropy/104-serenity",
-      "qty_pricing": true
+      "qty_pricing": true,
+      "ingredients": [
+        {
+          "name": "Monk Fruit Mogroside V 50% (Siraitia grosvenorii)",
+          "dose": "20 mg"
+        },
+        {
+          "name": "Yuzu Spray-Dried Fruit Juice (Citrus junos)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Barley (Hordeum vulgare) Grass Juice Powder Organic",
+          "dose": "100 mg"
+        },
+        {
+          "name": "Potassium Citrate",
+          "dose": "100 mg"
+        },
+        {
+          "name": "Spirulina (Spirulina platensis)",
+          "dose": "100 mg"
+        },
+        {
+          "name": "Phycocyanin 99% (Spirulina platensis)",
+          "dose": "30 mg"
+        },
+        {
+          "name": "Collard (Brassica oleracea folia)",
+          "dose": "100 mg"
+        }
+      ],
+      "ingredients_source": "manual",
+      "enrichment_note": "Section B: replaced with Glen's authoritative Serene Blue Green formula. Dose-to-ingredient pairing is best-effort (doses/names pasted in separate columns) - awaiting Glen's confirmation. Source: Glen's Products-Worklist.md."
     },
     "ed1-source-driver": {
       "name": "ED1 Source Driver",
@@ -7928,7 +8192,47 @@
       "name": "C15 Syntropy: Pentadecanoic Acid",
       "price_cents": 6997,
       "pinecone_title": "C15 Syntropy: Pentadecanoic Acid",
-      "url": "https://remedymatch.com/remedies/533-c15-syntropy-pentadecanoic-acid"
+      "url": "https://remedymatch.com/remedies/533-c15-syntropy-pentadecanoic-acid",
+      "ingredients": [
+        {
+          "name": "C15 (Pentadecanoic Acid)",
+          "dose": "100 mg"
+        },
+        {
+          "name": "Sodium Propionate",
+          "dose": "100 mg"
+        },
+        {
+          "name": "ALCAR (Acetyl L-Carnitine) [HYGROSCOPIC]",
+          "dose": "5 mg"
+        },
+        {
+          "name": "Bioavailability Blend",
+          "dose": "34.5 mg"
+        },
+        {
+          "name": "Pullulan 00 vegi capsule",
+          "dose": "1 ea"
+        },
+        {
+          "name": "Vitamin B13: Alpha GPC 99%",
+          "dose": "65 mg"
+        },
+        {
+          "name": "Vitamin B13: DMAE (Dimethylaminoethanol) Bitartrate",
+          "dose": "65 mg"
+        },
+        {
+          "name": "Vitamin B13: Centrophenoxine 99%",
+          "dose": "65 mg"
+        },
+        {
+          "name": "Vitamin B13: Choline Bitartrate",
+          "dose": "65 mg"
+        }
+      ],
+      "ingredients_source": "manual",
+      "enrichment_note": "Section B: replaced with Glen's authoritative C15 formula. Dose-to-ingredient pairing is best-effort (Glen pasted doses and names in separate columns) - awaiting Glen's confirmation. Source: Glen's Products-Worklist.md."
     },
     "ei1-neurosensorycolon-meridian": {
       "name": "EI1 Neurosensory/Colon Meridian",
@@ -8498,7 +8802,19 @@
       "name": "Macular Wellness Program",
       "price_cents": 38997,
       "pinecone_title": "Macular Wellness Program",
-      "url": "https://remedymatch.com/remedies/program/464-macular-wellness-program"
+      "url": "https://remedymatch.com/remedies/program/464-macular-wellness-program",
+      "bundle": true,
+      "bundle_components": [
+        "Macular Wellness Lycopene",
+        "Macular Wellness Astaxanthin",
+        "Lipid Cleanse",
+        "Lipid Zyme",
+        "WholOmega"
+      ],
+      "bundle_description": "The Macular Wellness Program supplies:\n\nMacular Wellness Lycopene (with a different meal than WholOmega and Astaxanthin)\n\nMacular Wellness Astaxanthin (with a different meal than WholOmega and Lycopene)\n\nLipid Cleanse capsules - with meals\n\nLipid Zyme capsules - between meals \n\nWholOmega capsules (4/day with the heaviest meal, and separate from the Macular Wellness formulas)\n\nIf you are having trouble with night vision, take our Night Vision formula.\n\nIf your Macular Pigment Optical Density (MPOD) test is low, add the appropriate Macular Wellness formulation with the carotenoid that the body stores in the area(s) of the retina showing visual or tissue changes. The fovea is responsible for sharp visual acuity better than 20/60. Any distortion of vision can be mapped with an Amsler Grid to track the location to the Parafoveal or outer Macula area. Some tests can distinguish between low Lutein and low levels of the other macular carotenoids.\n\nMacula: Macular Wellness Lutein\n\nParafovea: Macular Wellness Zeaxanthin\n\nFovea: Macular Wellness Meso-Zeaxanthin\n\nIf your Macular Degeneration is moderately advanced, or already progressed into the wet stage, please also apply for consultation with us to develop an individualized program.\n\nIf there is scar tissue in the retina, add Clear the Way capsules between meals.\n\nIf there is leakage of fluids in the retina or the growth of new blood vessels, consider adding AngiogenX in consultation with your trusted source of health and wellness guidance. Avoid taking AngiogenX before, during, and after surgeries or after any other trauma or tissue damage that requires cicatrization (wound healing) and growth of new blood vessels in the process of repair.",
+      "ingredients": [],
+      "ingredients_source": "manual",
+      "enrichment_note": "Section C: marked as bundle (multi-product monthly program), not a single formula. Source: Glen's Products-Worklist.md."
     },
     "seaaminos": {
       "name": "SeaAminos",
