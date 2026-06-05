@@ -12771,6 +12771,7 @@ from dashboard import events as _bos_events
 from dashboard import dispatch as _bos_dispatch
 from dashboard import rbac as _bos_rbac
 import dashboard.actions_tasks  # noqa: F401  (registers tasks.* actions)
+import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals)
 
 
 def _init_bos_events():
@@ -12857,6 +12858,27 @@ def bos_event_cancel(event_id):
     finally:
         cx.close()
     return jsonify(res)
+
+
+@app.route("/api/home/signals", methods=["GET"])
+def bos_home_signals():
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        cells = _bos_signals.aggregate_signals(cx, actor)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "data": cells})
+
+
+@app.route("/console/home")
+def bos_home_page():
+    resp = send_from_directory(STATIC, "console-home.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
 
 if __name__ == "__main__":
