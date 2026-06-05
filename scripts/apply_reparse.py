@@ -28,8 +28,9 @@ def main():
     # the originally-flagged set that did NOT get a re-parsed panel (un-reverified)
     unverified = [s for s, p in products.items() if p.get("gk_stale") and s not in rejudged_slugs]
 
-    # Glen-confirmed stale (overrides the automated re-judge; his explicit knowledge wins)
-    GLEN_STALE = {"neuromagnesium": "GK page needs updating (Glen): missing P5P + Vitamin D3"}
+    # Glen-confirmed stale overrides (his explicit knowledge wins). neuromagnesium
+    # was here, but Glen has since updated its GK page, so the re-judge's clear stands.
+    GLEN_STALE = {}
 
     page_missing, fmp_partial, cleared = [], [], []
     for slug, r in judged.items():

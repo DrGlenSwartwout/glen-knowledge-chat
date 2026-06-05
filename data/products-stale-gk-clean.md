@@ -6,8 +6,8 @@ Built from the full re-parsed GK ingredient panels (the original scrape dropped 
 
 | Metric | Count |
 |---|---|
-| GK pages missing current ingredients (real updates) | 37 |
-| Pages cleared (GK matches the formula) | 7 |
+| GK pages missing current ingredients (real updates) | 36 |
+| Pages cleared (GK matches the formula) | 8 |
 | Products where GK is richer than our record (FMP partial) | 38 |
 | Originally-flagged but no re-parsed panel (un-reverified) | 4 |
 
@@ -39,7 +39,6 @@ Built from the full re-parsed GK ingredient panels (the original scrape dropped 
 | muscle-mass | Creatine, Ergothioneine |
 | nerve-pulse | Pyridoxal-5-Phosphate (P5P), Baicalein, Riboflavin-5-Phosphate (Coenzyme B2), 5-MTHF (Methylfolate), Mixed Tocopherols, Tocotrienols, Copper Glycinate |
 | neuroceramides | Magnesium, Chromium, Adenosyl 90% & Methyl 10% Cobalamin, TMG (Trimethylglycine), MK-7 (Menaquinone-7), MK-4 (Menaquinone-4), Phosphatidylserine, Trans-Resveratrol |
-| neuromagnesium | (Glen-confirmed) |
 | neuroprotect | Tetrahydrocurcumin, Lion's Mane Extract, Apigenin, Sulforaphane, Safranal, Astaxanthin, Polysaccharide |
 | night-vision | Schisandrins, Zinc Glycinate (GK uses Zinc Picolinate instead) |
 | rise--shine | Chromium, Centrophenoxine |
@@ -98,4 +97,4 @@ Built from the full re-parsed GK ingredient panels (the original scrape dropped 
 
 ## (C) Un-reverified (no green-plus panel re-parsed): iron-out, man-manna, nerve-repair, snake--dragon
 
-## (D) Cleared: connective-tissue-support, dental-regen-powder, lipid-zyme, stone-solvent, vital-energy-be, vitality, vitamin-d-syntropy
+## (D) Cleared: connective-tissue-support, dental-regen-powder, lipid-zyme, neuromagnesium, stone-solvent, vital-energy-be, vitality, vitamin-d-syntropy
