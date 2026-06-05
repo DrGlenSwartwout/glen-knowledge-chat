@@ -156,12 +156,7 @@
       "description": "Bone Builder . Bone Builder Bone Builder Bone Builder makes the minerals in your diet more effective. Microcrystalline Hydroxyapatite (MCHA) is the mineral form of calcium found in your bones. When you take this form, it supplies the exact nutrients your body needs to make bone... Your body intelligently senses this and turns on its second calcium absorption channel... This is an active calcium channel, while the other passive channel is always on... This means you absorb double the calcium from MCHA supplements and the meal you take them with, such as bone broth. That means you’ll only need...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Chlorogenic Acid, Isoflavones, Dihydroberberine (GlucoVantage), Pyridoxamine, Ketosterone (3-Ketosteroid)",
-      "gk_has_extra": [
-        "7-Keto DHEA",
-        "Betaine HCl",
-        "Asiaticosides (Centella asiatica)",
-        "Vitamin K1 (Phylloquinone)"
-      ]
+      "gk_extra_accepted": true
     },
     "brain-boost": {
       "name": "Brain Boost",
@@ -307,20 +302,7 @@
       "description": "Brain Cleanse . Brain Cleanse Brain Cleanse One cap at bedtime cleans your brain while you sleep... Brain Cleanse supports detoxification of the central nervous system via the glymph system while you sleep. Take Brain Cleanse before you go to bed. Relax. Rest your mind. Sleep better... And have sweet dreams while your brain gets clean So you can wake to a fresh start the next day. Get this: Clarity. Focus. Energy. And health. Relaxation and restful sleep is supported by the same high-quality ingredients as in our Sleep Synergy formula, though in lower dosages to make room for 20 mg of...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Xanthohumol, Xanthan Gum, Glucomannan",
-      "gk_has_extra": [
-        "Vitamin B6 (as P-5-P)",
-        "Vitamin B9 (as 5-MTHF)",
-        "Vitamin B12 (as Adenosylcobalamin)",
-        "Vitamin B12 (as Methylcobalamin)",
-        "Magnesium (from Magnesium Threonate)",
-        "Chromium (from Chromium Polynicotinate)",
-        "NAC (N-Acetyl Cysteine)",
-        "MCP (Modified Citrus Pectin)",
-        "Gum Arabic",
-        "Myrrh Gum/Guggul",
-        "Mastic Gum",
-        "Huang Bai (Phellodendron chinense)"
-      ]
+      "gk_extra_accepted": true
     },
     "crystalline-clarity": {
       "name": "Crystalline Clarity",
@@ -727,11 +709,7 @@
       "description": "Golden Book . Golden Book Golden Book Golden Book is a traditional Chinese herbal formula, Jin Gui Shen Chi , or Ba Wei Wan . In Japan, it is known as Hachimijiogan , which translates to 8 herbs for eyesight. In TCM, the same formula, known as Jin Gui Shen Qi Wan, has been used at least since 220 AD. In a research study, it was shown to be of clinical benefit in human cataracts. In the early stages of cataractogenesis, 60% of subjects experienced significant improvement, and 20% showed no progression, Only 20% of participants continued to show any progression of cataract formation on this...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Baicalein",
-      "gk_has_extra": [
-        "Alismatis (Alisma orientalis rhizome)",
-        "Rehmanniae (Rehmannia glutinosa root)",
-        "Aconite (Aconitum carmichaelii root)"
-      ]
+      "gk_extra_accepted": true
     },
     "rescue": {
       "name": "Rescue",
@@ -827,10 +805,7 @@
       "description": "Lipid Cleanse . Lipid Cleanse Lipid Cleanse Lipid Cleanse supports the restoration of healthy tissue structure and function including the retina. Soft drusen in the retina produce visual distortion on the Amsler Grid test for monitoring Macular Degeneration. Drusen are accumulations of waste products of retinal metabolism. Dissolving and reversal of drusen formation has been reported with long-term use of supplements high in certain nutrients and botanical extracts. Magnesium L-Threonate crosses the blood-brain and the blood-eye barriers, including the barrier between the blood and the...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Dihydroberberine (GlucoVantage)",
-      "gk_has_extra": [
-        "Berberine (plain; authoritative specifies Dihydroberberine/GlucoVantage)",
-        "Magnesium (from Magnesium L-Threonate)"
-      ]
+      "gk_extra_accepted": true
     },
     "iop-syntropy": {
       "name": "IOP Syntropy",
@@ -1431,9 +1406,7 @@
       ],
       "ingredients_source": "fmp_new",
       "description": "Vitality . Vitality Vitality Vitality is our drug-free anti-aging formula inspired by the Romanian gerontologist Dr. Ana Aslan's discovery of Gerovital (GH3), which has multiple benefits, including: Euphoric Inhibits the stress hormone, cortisol Improves energy Improves memory The standard Pro-Vitamin Ingredient used in original GH3 formulations is the drug: Procaine Hydrochloride 100 mg We do not include this or any pharmaceutical drug in our all-natural botanical/nutritional formula. The conventional formulations also require the addition of these undesirable stabilizers and buffers, which...",
-      "gk_has_extra": [
-        "Ginkgo biloba"
-      ]
+      "gk_extra_accepted": true
     },
     "natural-resource-az": {
       "name": "Natural Resource A-Z",
@@ -1640,20 +1613,7 @@
       "description": "Neuroceramides . Neuroceramides Neuroceramides Neuroceramides delivers Phytoceramides to the Central Nervous System, where they are used for biocommunication in the cell membrane, regulation of metabolism, neuroprotection and repair of the myelin sheath. ​In addition to ingredients designed to increase absorption and bioavailability, including transport across the blood-brain barrier, Neuroceramides includes Myelin Sheath Basic Protein to signal the immune system from the intestinal tract as a dietary protein. Approximately 80% of immune system cells are located in Peyer's Patches in the...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Magnesium, Chromium, Adenosyl 90% & Methyl 10% Cobalamin, TMG (Trimethylglycine), MK-7 (Menaquinone-7), MK-4 (Menaquinone-4), Phosphatidylserine, Trans-Resveratrol",
-      "gk_has_extra": [
-        "Myelin Sheath Protein (Bovine)",
-        "Alpha GPC (L-Alpha glycerylphosphorylcholine)",
-        "DHA (from Algae)",
-        "Red Root (Ceanothus americanus)",
-        "Vitamin B13: Phosphatides (Helianthus annua)",
-        "EGb 761 (Ginkgo biloba)",
-        "Vitamin B3 (Niacin)",
-        "Miracle Tree (Moringa oleifera)",
-        "Licorice Omnipotent (Glycyrrhiza glabra)",
-        "Vinpocetine (Vinca minor)",
-        "Gingerol (Zingiber officinalis)",
-        "Piperine (Piper nigrum)"
-      ]
+      "gk_extra_accepted": true
     },
     "macular-wellness-lutein": {
       "name": "Macular Wellness Lutein",
@@ -1707,20 +1667,7 @@
       "description": "Macular Wellness Lutein . Macular Wellness Lutein Macular Wellness Lutein Lutein is the main carotenoid stored in the macula, the central area of the retina, as well as in the brain and lens of the eye. Without the macula, vision is worse than 20/200 which we define as legal blindness. This impairs crucial functions like reading, driving and seeing faces. Macular Wellness formulas allow you to take a different carotenoid at each meal to ensure absorption. The carotenoids compete for absorption, so avoid supplementing Beta Carotene at the same meal. Also, avoid supplements with stearates or...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Tetrahydrocurcumin, Pterostilbene",
-      "gk_has_extra": [
-        "Curcumin (instead of Tetrahydrocurcumin)",
-        "TMG (Vitamin B15)",
-        "ALCAR (Vitamin B20)",
-        "Ascorbyl Palmitate (Vitamin C)",
-        "L-Carnosine",
-        "R-Lipoic Acid (Stabilized Bio-Enhanced)",
-        "S-Acetyl Glutathione",
-        "Taurate / Magnesium",
-        "Quercetin Dihydrate",
-        "Polyphenols (green tea, Camellia sinensis)",
-        "Ginsenosides (Panax quinquefolius)",
-        "Phosphatides (Vitamin B13)"
-      ]
+      "gk_extra_accepted": true
     },
     "msm-syntropy": {
       "name": "MSM Synergy",
@@ -1859,20 +1806,7 @@
       "description": "Chelation . Chelation Chelation Chelation is our oral heavy metal moving formula. Each bottle supplies 30 excipient free chlorophyll vegicaps. Each capsule supplies: Vitamin C (as L-Ascorbic Acid) 45 mg 75% Lysine 75 mg Chlorella ( Chlorella spp .) (broken cell wall) 75 mg S-Acetyl Glutathione 38 mg Stabilized Bioenhanced R-Lipoic Acid 38 mg Cilantro ( Coriandrum sativum ) (juice) 38 mg EDTA (Ethylenediaminetetraacetic Acid) 38 mg NanoChitosan (from crustacean shells) 38 mg Heavy metals tend to deposit in certain tissues in the body, like the brain and bones. Along the way, they also damage...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: N-Acetyl Cysteine (NAC), Allicin, Selenium (Methylselenocysteine)",
-      "gk_has_extra": [
-        "Vitamin C (L-Ascorbic Acid)",
-        "Lysine",
-        "Chlorella",
-        "S-Acetyl Glutathione",
-        "Cilantro (Coriandrum sativum)",
-        "Vitamin B13: Phosphatides (Sunflower lecithin)",
-        "EGb 761 (Ginkgo biloba)",
-        "Vitamin B3 (Niacin)",
-        "Moringa (Miracle Tree)",
-        "Licorice (Glycyrrhiza glabra)",
-        "Vinpocetine",
-        "Gingerol (Ginger)"
-      ]
+      "gk_extra_accepted": true
     },
     "juglans-nigra": {
       "name": "Juglans nigra",
@@ -2331,19 +2265,7 @@
       ],
       "ingredients_source": "fmp_new",
       "description": "Vital Energy Be . Vital Energy Be Vital Energy Be Lunch-time B Complex There are many nutrients that are or have been classified at one time as B Vitamins. Only those that you cannot survive without are now considered in most B Complex supplements. We consider all of them, because of their important functions and benefits beyond stark survival and prevention of consensus deficiency diseases. We also go the extra distance to consider that different nutrients, including the various B Vitamins are processed optimally at different times during the day and night. Hence, while this is our...",
-      "gk_has_extra": [
-        "Phosphatides (Helianthus annua / sunflower lecithin)",
-        "EGb 761 (Ginkgo biloba)",
-        "Niacin (standalone, beyond Inositol Hexaniacinate blend)",
-        "Moringa oleifera (Miracle Tree 100:1)",
-        "Glycyrrhiza glabra (Licorice Omnipotent)",
-        "Vinpocetine (Vinca minor)",
-        "Gingerol (Zingiber officinalis)",
-        "Piperine (Piper nigrum)",
-        "Fulvic Acid",
-        "Humic Acid",
-        "11 Spirit Minerals"
-      ]
+      "gk_extra_accepted": true
     },
     "mold-spray": {
       "name": "Mold Spray",
@@ -2497,20 +2419,7 @@
       "description": "Vitreous Vitality . Vitreous Vitality Vitreous Vitality Vitreous Vitality is formulated to support the health of the vitreous body. The vitreous is a gelatinous connective tissue that fills the back of the eye. That is where visual floaters form when the connective tissue is damaged or toxic resulting in clumping and shadow formation affecting the retina. When the vitreous shrinks it can pull away from its attachment to the retina causing a Primary Vitreous Detachment (PVD). Vitreous Vitality is formulated to reduce glycation and oxidation in the vitreous body. Vitreous Vitality . Each...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Retinyl Acetate (GK has Retinyl Palmitate instead), Fisetin, Naringenin",
-      "gk_has_extra": [
-        "Retinyl Palmitate (GK has this; authoritative specifies Retinyl Acetate)",
-        "Vitamin C",
-        "Taurine (Acetyl-Taurate)",
-        "Cinnamon (Cinnamomum cassia)",
-        "Sumac Bran (Cotinus coggygria)",
-        "Phosphatides / Vitamin B13 (Helianthus annua)",
-        "Ginkgo biloba (EGb 761)",
-        "Niacin (Vitamin B3)",
-        "Moringa (Moringa oleifera)",
-        "Licorice (Glycyrrhiza glabra)",
-        "Vinpocetine (Vinca minor)",
-        "Gingerol (Zingiber officinalis)"
-      ]
+      "gk_extra_accepted": true
     },
     "seaamino-syntropy": {
       "name": "Seacure Synergy",
@@ -2677,20 +2586,7 @@
       "description": "Neuroprotect . Neuroprotect Neuroprotect Comprehensive support for healing the underlying causes of Glaucoma and other neurodegenerative issues. Neuroprotect . Each excipient-free vegicap supplies: Citicoline (CDP Choline) 100 mg Baicalein ( Scutellaria baicalensis ) 15 mg DHA (from Algae) 30 mg Forskolin ( Coleus forskohlii ) 10 mg Berberine ( Berberis chinensis ) 40 mg Huperzine A ( Huperzia serrata ) 1 mg NAC (N-Acetyl Cysteine) 50 mg R-Lipoic Acid 50 mg CoQ10 (Ultra Absorption) 10 mg Magnesium (as Threonate and Taurate) 4 mg 1% Magnesium Threonate 28.5 mg Magnesium Taurate 25 mg Chromium...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Tetrahydrocurcumin, Lion's Mane Extract, Apigenin, Sulforaphane, Safranal, Astaxanthin, Polysaccharide",
-      "gk_has_extra": [
-        "DHA (from Algae)",
-        "Forskolin",
-        "Berberine",
-        "Huperzine A",
-        "NAC (N-Acetyl Cysteine)",
-        "CoQ10",
-        "Magnesium Threonate",
-        "Magnesium Taurate",
-        "Chromium",
-        "Vitamin B3 (as Polynicotinate/Niacin)",
-        "Iodine (as Potassium Iodide)",
-        "Gingerol (Ginger)"
-      ]
+      "gk_extra_accepted": true
     },
     "lavender-msm-lotion": {
       "name": "Pure & Natural MSM Lotion",
@@ -3302,20 +3198,7 @@
       "description": "Immune Modulation . Immune Modulation Immune Modulation Immune Modulation increases the strength of the immune system against infection and toxins. At the same time, it reduces the tendency to produce excess, damaging, and symptomatic inflammation, such as in allergies, autoimmune issues, and other chronic diseases. There are over 400,000 research articles that show that chronic diseases are the result of chronic transitory inflammation. Relevant Quotes: “...inflammation causes heart attacks, strokes, and even cancer.” - Dr. Oz “Inflammation is the underlying cause of all disease.” - Dr....",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Tetrahydrocurcumin, Baicalein, Enzymatically Modified Isoquercetrin, Andrographolide, Thymoquinone, Pterostilbene, Phenylethylamine HCl, Trans-Resveratrol",
-      "gk_has_extra": [
-        "African Star Flower (Hypoxis hemerocallidea)",
-        "Beta-Sitosterol",
-        "Quercetin Dihydrate",
-        "Artemisinin (Artemisia annua)",
-        "Withanolides (Withania somnifera)",
-        "Lupulin from Hops (Humulus lupulus)",
-        "Rehmannia (Rehmannia glutinosa)",
-        "Reishi (Ganoderma spp.)",
-        "Curcumin (Curcuma longa)",
-        "Vitamin B13: Phosphatides (Helianthus annua)",
-        "EGb 761 (Ginkgo biloba)",
-        "Vitamin B3 (Niacin)"
-      ]
+      "gk_extra_accepted": true
     },
     "migrafree": {
       "name": "MigraFree",
@@ -3456,20 +3339,7 @@
       "description": "Macular Wellness Astaxanthin . Macular Wellness Astaxanthin Macular Wellness Astaxanthin Astaxanthin is the most powerful carotenoid. Though it is not stored up in the macula, it circulates in the blood like lycopene, providing a protective filter in the pre-retinal circulation. Astaxanthin excels at preventing and even reversing inflammation and damage from high energy photons, namely blue and UV light. Macular Wellness formulas allow you to take a different carotenoid at each meal to ensure absorption. The carotenoids compete for absorption, so avoid supplementing Beta Carotene at the same...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Tetrahydrocurcumin, Astaxanthin",
-      "gk_has_extra": [
-        "TMG (Trimethylglycine)",
-        "ALCAR (Acetyl-L-Carnitine)",
-        "Ascorbyl Palmitate (Vitamin C)",
-        "L-Carnosine",
-        "R-Lipoic Acid (Stabilized Bio-Enhanced)",
-        "S-Acetyl Glutathione",
-        "Taurate",
-        "Magnesium",
-        "Safranal (Crocus sativa)",
-        "Quercetin Dihydrate",
-        "Polyphenols (Green Tea / Camellia sinensis)",
-        "Ginsenosides (Panax quinquefolius)"
-      ]
+      "gk_extra_accepted": true
     },
     "macular-wellness-mesozeaxanthin": {
       "name": "Macular Wellness Astaxanthin",
@@ -3523,20 +3393,7 @@
       "description": "Macular Wellness Astaxanthin . Macular Wellness Astaxanthin Macular Wellness Astaxanthin Astaxanthin is the most powerful carotenoid. Though it is not stored up in the macula, it circulates in the blood like lycopene, providing a protective filter in the pre-retinal circulation. Astaxanthin excels at preventing and even reversing inflammation and damage from high energy photons, namely blue and UV light. Macular Wellness formulas allow you to take a different carotenoid at each meal to ensure absorption. The carotenoids compete for absorption, so avoid supplementing Beta Carotene at the same...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Astaxanthin, Tetrahydrocurcumin",
-      "gk_has_extra": [
-        "Mesozeaxanthin",
-        "TMG (Trimethylglycine / Vitamin B15)",
-        "ALCAR (Acetyl-L-Carnitine / Vitamin B20)",
-        "Ascorbyl Palmitate (Vitamin C)",
-        "L-Carnosine",
-        "R-Lipoic Acid (Stabilized Bio-Enhanced)",
-        "S-Acetyl Glutathione",
-        "Taurate",
-        "Magnesium",
-        "Quercetin Dihydrate",
-        "Polyphenols (green tea / Camellia sinensis)",
-        "Ginsenosides (Panax quinquefolius)"
-      ]
+      "gk_extra_accepted": true
     },
     "energessence": {
       "name": "Energessence",
@@ -4334,20 +4191,7 @@
       "description": "Lymph Flow . Lymph Flow Lymph Flow Lymph Flow features N-Acetyl Cysteine (NAC) which helps liquify and move the lymph fluid. NAC also helps boost cellular levels of Glutathione, along with hard-to-find S-Acetyl Glutathione and synergist Pyridoxal 5'-Phosphate (P5P), the active coenzyme form of Vitamin B6. Lymph Flow . Each excipient-free Chlorophyll Vegicap of Lymph Support supplies: Nutritional Support: NAC (N-Acetyl Cysteine) 400 mg * S-Acetyl Glutathione 30 mg * Coenzyme Vitamin B6 (as Pyridoxal 5-Phosphate) 10 mg 500% Botanical Support: Poke Root ( Phytolacca americana ) 10 mg * Rehmannia...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Taraxsterols, Isoflavones, Chicoric Acid",
-      "gk_has_extra": [
-        "S-Acetyl Glutathione",
-        "Vitamin B6 (as Pyridoxal 5-Phosphate)",
-        "Poke Root (Phytolacca americana)",
-        "Rehmannia (Rehmannia glutinosa)",
-        "Red Root (Ceanothus americanus)",
-        "Curcumin (Curcuma longa)",
-        "Vitamin B13: Phosphatides (Helianthus annua)",
-        "Ginkgo biloba (EGb 761)",
-        "Vitamin B3 (Niacin)",
-        "Moringa oleifera",
-        "Licorice (Glycyrrhiza glabra)",
-        "Vinpocetine (Vinca minor)"
-      ]
+      "gk_extra_accepted": true
     },
     "stamina-plus": {
       "name": "Stamina Plus",
@@ -4684,13 +4528,7 @@
       "description": "Nerve Repair . Price: $69.97. Nerve Repair . Nerve Repair Nerve Repair One organic Pullulan capsule of Nerve Repair supplies: ALCAR (Acetyl L-Carnitine) 160 mg Na RALA (Stabilized Bioenhanced Na R-Alpha Lipoate) 60 mg Lion's Mane Polysaccharides 30% ( Hericium erinaceus ) 160 mg Vitamin B1: Benfotiamine 60 mg Vitamin B6: P5P (Pyridoxal 5-Phosphate) 10 mg Vitamin B12: Methylcobalamin 500 mcg Bioavailability Proprietary Blend 34.5 mg Vitamin B13: Phosphatides 50% ( Helianthus annua ) EGb 761 ( Ginkgo biloba ) (24% Flavone Glycosides, 6% Lactones, <0.0005% Ginkgolic Acid) Vitamin B3 (as Niacin)...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Pyridoxal-5-Phosphate (P5P), Baicalein, Riboflavin-5-Phosphate (Coenzyme B2), 5-MTHF (Methylfolate), Mixed Tocopherols, Tocotrienols, Copper Glycinate",
-      "gk_has_extra": [
-        "Huperzine A",
-        "Vitamin D3 (Cholecalciferol)",
-        "Garlic Allicin",
-        "Pterostilbene",
-        "St. John's Wort (Hypericin)"
-      ]
+      "gk_extra_accepted": true
     },
     "hydrolyzed-collagen": {
       "name": "Hydrolyzed Collagen",
@@ -4853,18 +4691,7 @@
       "description": "Rise &amp; Shine . Rise & Shine Rise & Shine Rise & Shine is the cleanest, most targeted, bioavailable and complete Breakfast B-Complex. There are many nutrients that are or have been classified at one time as B Vitamins. Only those that you cannot survive without are now considered in most B Complex supplements. We consider all of them, because of their important functions and benefits beyond stark survival and prevention of consensus deficiency diseases. We also go the extra distance to consider that different nutrients, including the various B Vitamins are processed optimally at different...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Chromium, Centrophenoxine",
-      "gk_has_extra": [
-        "Phosphatides (Helianthus annua / sunflower lecithin)",
-        "Ginkgo biloba (EGb 761)",
-        "Moringa oleifera",
-        "Licorice (Glycyrrhiza glabra)",
-        "Vinpocetine",
-        "Gingerol / Ginger (Zingiber officinalis)",
-        "Piperine (Piper nigrum)",
-        "Fulvic Acid",
-        "Humic Acid",
-        "11 Spirit Minerals"
-      ]
+      "gk_extra_accepted": true
     },
     "es9-audio": {
       "name": "ES9",
@@ -5690,20 +5517,7 @@
       "description": "Night Vision . Night Vision Night Vision Each excipient-free Vegicap of Night Vision supplies: Nutritional Factors: Vitamin A (as Retinyl Palmitate) 5000 IU 100% Zinc (from Zinc Picolinate) 5 mg 33% Magnesium (from Magnesium Taurate) 4 mg 1% Taurine (from Magnesium Taurate) 46 mg DHA (from Algae) 30 mg Botanical Factors: Maqui Anthocyanidins 25% ( Aristotelia chilensis ) 160 mg C3G 40% ( Oryza sativa ) 100 mg Safranal 3% ( Crocus sativa ) 15 mg Bioavailability Factors: 34.5 mg Vitamin B13: Phosphatides 50% (Helianthus annua) EGb 761 (Ginkgo biloba) (24% Flavone Glycosides, 6% Lactones,...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Schisandrins, Zinc Glycinate (GK uses Zinc Picolinate instead)",
-      "gk_has_extra": [
-        "Taurine",
-        "DHA",
-        "Phosphatides (Vitamin B13)",
-        "Ginkgo biloba (EGb 761)",
-        "Niacin (Vitamin B3)",
-        "Moringa oleifera",
-        "Licorice (Glycyrrhiza glabra)",
-        "Vinpocetine",
-        "Ginger (Gingerol)",
-        "Piperine",
-        "Fulvic Acid",
-        "Humic Acid"
-      ]
+      "gk_extra_accepted": true
     },
     "et12-liver-3": {
       "name": "ET12",
@@ -5888,20 +5702,7 @@
       "description": "Macular Wellness Lycopene . Macular Wellness Lycopene Macular Wellness Lycopene Lycopene is the one carotenoid found deficient on blood tests of people who are developing AMD... The whole carotenoid family of 600 phytonutrients all competes for intestinal absorption by a single pathway. Twenty of those carotenoids are found in significant quantities in human blood. Many of those are known to have substantial health benefits, including participation in the prevention of blindness by Macular Degeneration (AMD), considered the leading cause of 'irreversible' blindness in modern culture, even...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Tetrahydrocurcumin, Pterostilbene",
-      "gk_has_extra": [
-        "ALCAR (Acetyl-L-Carnitine / Vitamin B20)",
-        "TMG (Trimethylglycine / Vitamin B15)",
-        "Ascorbyl Palmitate (Vitamin C)",
-        "L-Carnosine",
-        "Na R-Lipoate (Stabilized R-Lipoic Acid)",
-        "S-Acetyl Glutathione",
-        "Taurate",
-        "Magnesium",
-        "Quercetin Dihydrate",
-        "Polyphenols (Camellia sinensis / green tea)",
-        "Ginsenosides (Panax quinquefolius)",
-        "Phosphatides (Vitamin B13 / sunflower lecithin)"
-      ]
+      "gk_extra_accepted": true
     },
     "es6-circulation": {
       "name": "ES6",
@@ -6100,20 +5901,7 @@
       "description": "Shields Up . Shields Up - Cold/Flu Formula Shields Up Boost immunity for colds and flu season… Now with Shikimic Acid. Take 1 capsule daily for health maintenance, or up to 3 capsules daily for symptom relief. A recent study of military personnel published in the peer reviewed journal Vaccine, showed that those who received the flu shot were 35% more susceptible to Corona virus infection. Support your immune system naturally with our new enhanced Shields Up formula. Shields Up . Each capsule supplies: Coenzymes: Vitamin B1 (as Sulbutiamine) 1.5 mg 100% Vitamin B6 (as P5P) 5 mg 250% Vitamin C...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Thymoquinone, Andrographolide, Enzymatically Modified Isoquercetrin, Zinc Glycinate (GK uses Zinc Carnosine instead)",
-      "gk_has_extra": [
-        "Vitamin B1 (Sulbutiamine)",
-        "Vitamin B6 (P5P)",
-        "Vitamin C (L-Ascorbic Acid)",
-        "Zinc Carnosine",
-        "L-Lysine",
-        "GSH (S-Acetyl Glutathione / Reduced Glutathione)",
-        "Fulvic Acid",
-        "Humic Acid",
-        "Spirit Minerals",
-        "PQQ (Pyrroloquinoline Quinone)",
-        "Thymus Peptides",
-        "Ketones (Rubus spp.)"
-      ]
+      "gk_extra_accepted": true
     },
     "macular-wellness-crocin": {
       "name": "Macular Wellness Astaxanthin",
@@ -6167,20 +5955,7 @@
       "description": "Macular Wellness Astaxanthin . Macular Wellness Astaxanthin Macular Wellness Astaxanthin Astaxanthin is the most powerful carotenoid. Though it is not stored up in the macula, it circulates in the blood like lycopene, providing a protective filter in the pre-retinal circulation. Astaxanthin excels at preventing and even reversing inflammation and damage from high energy photons, namely blue and UV light. Macular Wellness formulas allow you to take a different carotenoid at each meal to ensure absorption. The carotenoids compete for absorption, so avoid supplementing Beta Carotene at the same...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Astaxanthin, Tetrahydrocurcumin",
-      "gk_has_extra": [
-        "TMG (Vitamin B15 from Beta spp.)",
-        "ALCAR (Vitamin B20)",
-        "Ascorbyl Palmitate (Vitamin C)",
-        "L-Carnosine",
-        "R-Lipoic Acid (Stabilized Bio-Enhanced)",
-        "S-Acetyl Glutathione",
-        "Taurate",
-        "Magnesium",
-        "Crocin 45% (Gardenia jasminoides)",
-        "Quercetin Dihydrate (Sophora japonica)",
-        "Polyphenols (Camellia sinensis)",
-        "Ginsenosides (Panax quinquefolius)"
-      ]
+      "gk_extra_accepted": true
     },
     "virex": {
       "name": "VirEx",
@@ -6226,20 +6001,7 @@
       "description": "VirEx . VirEx VirEx Boost viral immunity 43 ways... When the next flu strikes - you’ll be glad you bought Virex now... Be sure to stash some in your medicine chest well before the next flu hits. Get a supply in before the next cold... Like a new COVID strain... Or other bio weapon. And before you feel the first sign of some kind of Herpes ... Like shingles... What will you do if the bird flu hits, And it makes us bleed from the eyes, the nose, the mouth? You might want to have more in stock so you can help your friends, too... VirEx is a synergistic herbal nutritional complex for Phase 1...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Lactoferrin, Baicalein, Andrographolide, Allicin",
-      "gk_has_extra": [
-        "L-Lysine",
-        "Monolaurin",
-        "Salidroside / Rosavins (Rhodiola rosea)",
-        "Lemon balm (Melissa officinalis)",
-        "Oxindole Alkaloids (Cat's Claw / Uncaria tomentosa)",
-        "Curcumin",
-        "Reishi (Ganoderma lucidum)",
-        "Hesperidin Methyl Chalcone",
-        "Trans Resveratrol",
-        "Lomatium",
-        "Vitamin B13: Phosphatides",
-        "Ginkgo biloba (EGb 761)"
-      ]
+      "gk_extra_accepted": true
     },
     "glucose-tolerance": {
       "name": "Glucose Tolerance",
@@ -6665,20 +6427,7 @@
       "description": "Spike Shield . Spike Shield Spike Shield Full spectrum support in the face of toxic spike protein production, injection, exposure to shedding, or residual in body cells and tissues. Take one to three on an empty stomach each day. Spike Shield . Each phthalate free enteric vegicap of Spike Shield supplies: Minerals: Iodine (from Laminaria digitata ) 150 mcg 100% Zinc (as Zinc Ascorbate) 5.3 mg 35% C60 (Buckminster Fullerene) 1 mg * Activated Charcoal (from Cocos nucifera ) 30 mg * Shungite 4 mg * Monatomic Gold with M-11 ORMUS 3 mg * Zeolite (Clinoptilolite) 30 mg * Coenzymes & Quinones:...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Bromelain, Tetrahydrocurcumin, N-Acetyl Cysteine (NAC), S-Acetyl Glutathione, Glutathione, Thymoquinone, Chitosan Oligosaccharide",
-      "gk_has_extra": [
-        "C60 (Buckminster Fullerene)",
-        "Shungite",
-        "Monatomic Gold with M-11 ORMUS",
-        "Nattokinase",
-        "Pine Needle Extract",
-        "Vitamin B13 (Phosphatides)",
-        "EGb 761 (Ginkgo biloba)",
-        "Vitamin B3 (Niacin)",
-        "Miracle Tree (Moringa oleifera)",
-        "Licorice (Glycyrrhiza glabra)",
-        "Vinpocetine",
-        "Gingerol"
-      ]
+      "gk_extra_accepted": true
     },
     "fulvic-acid": {
       "name": "Fulvic Acid",
@@ -7464,20 +7213,7 @@
       "description": "Macular Wellness Astaxanthin . Macular Wellness Astaxanthin Macular Wellness Astaxanthin Astaxanthin is the most powerful carotenoid. Though it is not stored up in the macula, it circulates in the blood like lycopene, providing a protective filter in the pre-retinal circulation. Astaxanthin excels at preventing and even reversing inflammation and damage from high energy photons, namely blue and UV light. Macular Wellness formulas allow you to take a different carotenoid at each meal to ensure absorption. The carotenoids compete for absorption, so avoid supplementing Beta Carotene at the same...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Astaxanthin, Tetrahydrocurcumin",
-      "gk_has_extra": [
-        "TMG (Trimethylglycine)",
-        "ALCAR (Acetyl-L-Carnitine)",
-        "Ascorbyl Palmitate (Vitamin C)",
-        "L-Carnosine",
-        "R-Lipoic Acid (Stabilized Bio-Enhanced)",
-        "S-Acetyl Glutathione",
-        "Magnesium Taurate (Taurate)",
-        "Zeaxanthin",
-        "Quercetin Dihydrate",
-        "Polyphenols (Camellia sinensis / Green Tea)",
-        "Ginsenosides (Panax quinquefolius)",
-        "Phosphatides / Phosphatidylcholine (Vitamin B13)"
-      ]
+      "gk_extra_accepted": true
     },
     "curcumin": {
       "name": "Curcumin",
@@ -7612,20 +7348,7 @@
       "description": "AngiogenX . AngiogenX AngiogenX AngiogenX combines nutritional and botanical support for issues involving unwanted angioneogenesis. New blood vessel growth is needed for wound healing, such as immediately following surgery or other trauma . CAUTION: Stop taking this formula while healing from injuries or a few days before surgical procedures and afterward until cicatrization (scar formation) seals the wounds . With a visible wound that would be when the scab falls off, or the surgeon needs no further follow-up visits. If there are stitches that are not self-absorbing, that is also when those...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Tetrahydrocurcumin, Fisetin, Safranal, Enzymatically Modified Isoquercetrin",
-      "gk_has_extra": [
-        "R-Lipoic Acid",
-        "NAC (N-Acetyl Cysteine)",
-        "Zinc (from Zinc Ascorbate)",
-        "Vitamin C (from Zinc Ascorbate)",
-        "Proteoglycans (Convolvulus arvensis)",
-        "Lapachol (Tabebuia avellanedae)",
-        "Mistletoe (Viscum album)",
-        "Proanthocyanidin (Pinus pinaster)",
-        "Quercetin Dihydrate",
-        "Polysaccharides (Aloe barbadensis)",
-        "Silymarin (Silybum marianum)",
-        "Lutein"
-      ]
+      "gk_extra_accepted": true
     },
     "stress-release": {
       "name": "Stress Release",
@@ -7699,20 +7422,7 @@
       "description": "Stress Release . Stress Release - CBD Synergy Stress Release Stress Release - CBD Synergy provides a balance of quick release, slow release and sustained high bioavailability of CBD and synergistic botanical concentrates. Our slow release factors are all biocompatible botanicals, and our formulation is completely free of phthalates (plasticizers) used in most time-release supplements and pharmaceuticals. Phthalates wreak havoc with the immune system, so it is best to avoid them wherever possible. Stress Release can be taken at whatever time of day you find it helpful for stress management and...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: CBD, Ursolic Acid, Honokiol, L-Theanine, Safranal, Apigenin, GABA, Rosmarinic Acid, Xanthan Gum, Glucomannan",
-      "gk_has_extra": [
-        "Rosavins / Salidroside (Rhodiola rosea)",
-        "Reishi (Ganoderma lucidum)",
-        "Polysaccharides (Cordyceps militaris)",
-        "Modified Citrus Pectin (MCP)",
-        "Gum Arabic (Acacia)",
-        "Myrrh Gum / Guggul (Commiphora myrrha)",
-        "Mastic Gum",
-        "Niacin (Vitamin B3)",
-        "Moringa (Miracle Tree)",
-        "Licorice (Glycyrrhiza glabra)",
-        "Vinpocetine",
-        "Gingerol (Ginger)"
-      ]
+      "gk_extra_accepted": true
     },
     "tmg-syntropy-powder-trimethylglycine": {
       "name": "TMG Powder (Trimethylglycine)",
@@ -7847,18 +7557,7 @@
       "description": "Macular Wellness Astaxanthin . Macular Wellness Astaxanthin Macular Wellness Astaxanthin Astaxanthin is the most powerful carotenoid. Though it is not stored up in the macula, it circulates in the blood like lycopene, providing a protective filter in the pre-retinal circulation. Astaxanthin excels at preventing and even reversing inflammation and damage from high energy photons, namely blue and UV light. Macular Wellness formulas allow you to take a different carotenoid at each meal to ensure absorption. The carotenoids compete for absorption, so avoid supplementing Beta Carotene at the same...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Tetrahydrocurcumin",
-      "gk_has_extra": [
-        "TMG (Trimethylglycine, listed as Vitamin B15)",
-        "ALCAR (Acetyl-L-Carnitine, listed as Vitamin B20)",
-        "Ascorbyl Palmitate (Vitamin C)",
-        "L-Carnosine",
-        "R-Lipoic Acid (Stabilized Bio-Enhanced R-Lipoic Acid)",
-        "S-Acetyl Glutathione",
-        "Magnesium Taurate",
-        "Quercetin Dihydrate",
-        "Green Tea Polyphenols (Camellia sinensis)",
-        "Ginsenosides (Panax quinquefolius)"
-      ]
+      "gk_extra_accepted": true
     },
     "brain-program": {
       "name": "Brain Program",
@@ -8450,19 +8149,7 @@
       "description": "Blood Cleanse . Blood Cleanse Blood Cleanse Blood Cleanse supports healthy circulation and blood pressure regulation. Monitor blood pressure carefully if taking together with antihypertensive medications, as dosage may need to be adjusted to prevent hypotension. Blood pressure elevates in order to try to clean the blood when toxic, acidic, viscous blood is hard to pump through the kidneys, which are the high-pressure filters of the systemic blood supply. The heart is the pump that generates the increased pressure by working harder in order to filter the thick blood. Supporting cleansing of...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: TMG (Trimethylglycine)",
-      "gk_has_extra": [
-        "Microbiome (25 Probiotic Species)",
-        "Phosphatides (Vitamin B13)",
-        "EGb 761 (Ginkgo biloba)",
-        "Moringa oleifera (Miracle Tree)",
-        "Licorice (Glycyrrhiza glabra)",
-        "Vinpocetine",
-        "Gingerol",
-        "Piperine",
-        "Fulvic Acid",
-        "Humic Acid",
-        "Spirit Minerals"
-      ]
+      "gk_extra_accepted": true
     },
     "reverse-age": {
       "name": "Anti-AGE",
@@ -8578,20 +8265,7 @@
       "description": "Mitochondrial Biogenesis . Mitochondrial Biogenesis Mitochondrial Biogenesis Mitochondria are the symbiotic bacteria that live in our cells, producing 90% of our metabolic energy. Biogenesis is the technical term for when our Mitochondria reproduce, making more Mitochondria in each cell to be able to make more energy. Mitochondrial Biogenesis . Each excipient-free Chlorophyll Vegicap of Mitochondrial Biogenesis supplies: Nutritional Factors: PQQ (Pyrroloquinoline Quinone) 13 mg Stabilized Bioenhanced R-Lipoic Acid 45 mg ALCAR (Acetyl L-Carnitine) 45 mg B12 (as Adenosylcobalamin) 530 mcg 8900%...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Trans-Resveratrol, Nicotinamide Riboside",
-      "gk_has_extra": [
-        "NADH (Reduced Nicotinamide Adenine Dinucleotide)",
-        "Vitamin B13: Phosphatides (Helianthus annua)",
-        "EGb 761 (Ginkgo biloba)",
-        "Vitamin B3 (Niacin)",
-        "Miracle Tree / Moringa oleifera",
-        "Licorice (Glycyrrhiza glabra)",
-        "Vinpocetine (Vinca minor)",
-        "Gingerol (Zingiber officinalis)",
-        "Piperine (Piper nigrum)",
-        "Fulvic Acid",
-        "Humic Acid",
-        "11 Spirit Minerals"
-      ]
+      "gk_extra_accepted": true
     },
     "night": {
       "name": "Night",
@@ -8646,10 +8320,7 @@
       ],
       "ingredients_source": "fmp_new",
       "description": "Dental Regen Powder . Dental Regen Powder Dental Regen Powder Vegan friendly Nano Crystalline Hydroxyapatite Calcium for topical remineralization of the teeth. Meta‑analyses of randomized trials in generally healthy postmenopausal women show calcium supplements (mostly carbonate and citrate, often without vitamin D) increase cardiovascular disease (CVD) risk by about 15% and coronary heart disease (CHD) risk by about 16%. Source: Calcium supplementation and cardiovascular risk: A rising concern In a British Journal of Nutrition randomized trial comparing 1,000 mg/day calcium as MCHA versus...",
-      "gk_has_extra": [
-        "Potassium Bicarbonate",
-        "Sodium Bicarbonate"
-      ]
+      "gk_extra_accepted": true
     },
     "inositol": {
       "name": "Inositol",
@@ -8719,20 +8390,7 @@
       "description": "Liver Support . Liver Support Liver Support The liver is the largest internal organ. It serves a wide range of functions including detoxification, endocrine (hormone) metabolism and support for the final stages of digestion. The liver filters the portal blood coming from the whole abdominal digestive area. It is a unique blood supply, since it is venous blood coming into the liver with both nutrients and toxins to process, rather than arterial blood straight from the heart loaded with oxygen. This makes the liver the most electropositive of all the major organs, while the brain is the most...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: TUDCA, Tetrahydrocurcumin, Cynarin, Schisandrins, Dihydroberberine (GlucoVantage)",
-      "gk_has_extra": [
-        "Vitamin B5 (Calcium Pantothenate)",
-        "Vitamin B6 (Pyridoxal 5-Phosphate)",
-        "Vitamin B9 Folate (5-MTHF)",
-        "Vitamin B12 (Adenosylcobalamin)",
-        "Vitamin B12 (Methylcobalamin)",
-        "Vitamin B13 CDP Choline (Citicoline)",
-        "Vitamin B15 TMG (Trimethylglycine)",
-        "Vitamin C (L-Ascorbic Acid)",
-        "Selenium (Methylselenocysteine)",
-        "Chelidonine (Chelidonium majus)",
-        "Boswellic Acid (Boswellia serrata)",
-        "Flavonoids/Taraxacum (Dandelion)"
-      ]
+      "gk_extra_accepted": true
     },
     "ei7-bloodgall-bladder-meridian": {
       "name": "EI7 Blood/Gall Bladder Meridian",
