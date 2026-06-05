@@ -12763,6 +12763,96 @@ def admin_clips_reject():
     return ok({"rejected": cid})
 
 
+# ── Business OS spine ─────────────────────────────────────────────────────────
+# Event log + action registry population.
+import sqlite3 as _sqlite3
+import dashboard  # noqa: F401 (exposes dashboard.CONSOLE_SECRET for _bos_actor)
+from dashboard import events as _bos_events
+from dashboard import dispatch as _bos_dispatch
+from dashboard import rbac as _bos_rbac
+import dashboard.actions_tasks  # noqa: F401  (registers tasks.* actions)
+
+
+def _init_bos_events():
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _bos_events.init_event_tables(cx)
+    finally:
+        cx.close()
+
+
+_init_bos_events()
+
+
+def _bos_actor():
+    """Resolve the calling actor. Owner master key (CONSOLE_SECRET) for now;
+    scoped token->role mapping is added in the RBAC-UX task of Phase 1."""
+    key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+    return _bos_rbac.resolve_actor(key, console_secret=dashboard.CONSOLE_SECRET)
+
+
+@app.route("/api/action/<path:key>", methods=["POST"])
+def bos_action(key):
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    confirmed = bool(body.pop("confirmed", False))
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        res = _bos_dispatch.dispatch_action(
+            cx, key, dict(body), actor, source="panel", confirmed=confirmed)
+    finally:
+        cx.close()
+    return jsonify(res)
+
+
+@app.route("/api/events", methods=["GET"])
+def bos_events():
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        rows = _bos_events.list_events(
+            cx, limit=int(request.args.get("limit", 50)),
+            status=request.args.get("status"),
+            module=request.args.get("module"))
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "data": rows})
+
+
+@app.route("/api/events/<int:event_id>/approve", methods=["POST"])
+def bos_event_approve(event_id):
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        res = _bos_dispatch.approve_event(cx, event_id, actor)
+    finally:
+        cx.close()
+    return jsonify(res)
+
+
+@app.route("/api/events/<int:event_id>/cancel", methods=["POST"])
+def bos_event_cancel(event_id):
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        res = _bos_dispatch.cancel_event(cx, event_id)
+    finally:
+        cx.close()
+    return jsonify(res)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
