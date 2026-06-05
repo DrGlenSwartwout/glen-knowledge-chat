@@ -7453,16 +7453,29 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "Notoginsenosides",
+          "name": "Poor Man's Ginseng 20:1 (_Codonopsis pilosula_)",
           "dose": "50 mg"
         },
         {
-          "name": "Succinic Acid",
+          "name": "Solomon's Seal 20:1 (_Polygonatum sibiricum_)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Notoginsenosides 80% (_Panax notoginseng_)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Amber (Succinic Acid)",
           "dose": "300 mg"
+        },
+        {
+          "name": "Spikenard 20:1 (_Nardostachys jatamansi_)",
+          "dose": "50 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
-      "description": "Rhythm Restore . Price: $69.97."
+      "ingredients_source": "manual",
+      "description": "Rhythm Restore . Price: $69.97.",
+      "enrichment_note": "Full Wenxin Keli formula (Glen 2026-06-05). Distinct from Heart Health (heart-health), which was wrongly matched here."
     },
     "fat-metabolism": {
       "name": "Fat Metabolism",
