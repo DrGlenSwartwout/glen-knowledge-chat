@@ -115,13 +115,13 @@ def set_order_tracking(cx, order_id, tracking_number, shipment_id=None):
 
 def set_order_label(cx, order_id, label_url, tracking_number=None):
     if tracking_number:
-        cx.execute("UPDATE orders SET label_url=?, tracking_number=?, updated_at=? WHERE id=?",
-                   (label_url, tracking_number, _now(), order_id))
+        cur = cx.execute("UPDATE orders SET label_url=?, tracking_number=?, updated_at=? WHERE id=?",
+                         (label_url, tracking_number, _now(), order_id))
     else:
-        cx.execute("UPDATE orders SET label_url=?, updated_at=? WHERE id=?",
-                   (label_url, _now(), order_id))
+        cur = cx.execute("UPDATE orders SET label_url=?, updated_at=? WHERE id=?",
+                         (label_url, _now(), order_id))
     cx.commit()
-    return cx.total_changes >= 0
+    return cur.rowcount > 0
 
 
 # --- Lifecycle actions + Home signal (register on import) ---
@@ -225,10 +225,20 @@ def _send_tracking_exec(params, ctx):
     if not tn:
         raise ValueError("order has no tracking number yet (create a label or set tracking first)")
     email = order.get("email") or ""
+    # Re-send guard: if this tracking number was already notified, do not email
+    # the customer again (avoids a duplicate email on a second button press).
+    try:
+        T.init_tracking_schema(cx)
+    except Exception:
+        pass
+    existed = cx.execute("SELECT id FROM shipments WHERE tracking_number=?", (tn,)).fetchone()
+    if existed:
+        set_order_tracking(cx, oid, tn, shipment_id=existed[0])
+        return {"order_id": oid, "tracking_number": tn, "emailed": False,
+                "message": f"Tracking {tn} was already sent for order #{oid}."}
     em = T.build_tracking_email(tn, order.get("name"))
     sent = _gmail_send_tracking(email, em.get("subject", "tracking number"), em.get("html", "")) if email else False
     try:
-        T.init_tracking_schema(cx)
         T.record_shipment(cx, tracking_number=tn, recipient_name=order.get("name"),
                           resolved_email=email, status=("sent" if sent else "drafted"),
                           order_uuid=order.get("external_ref"))

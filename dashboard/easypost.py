@@ -22,6 +22,7 @@ def build_shipment(order, from_address):
     """Pure: build the EasyPost shipment payload from an order dict + the ship-from
     address. Weight is estimated from item count (ounces)."""
     addr = order.get("address") or {}
+    fa = from_address or {}
     n_items = sum(int(i.get("qty", 1) or 1) for i in (order.get("items") or [])) or 1
     return {
         "to_address": {
@@ -30,7 +31,11 @@ def build_shipment(order, from_address):
             "state": addr.get("state", ""), "zip": addr.get("zip", ""),
             "country": addr.get("country", "US"),
         },
-        "from_address": dict(from_address or {}, **{"street1": (from_address or {}).get("street", "")}),
+        "from_address": {
+            "name": fa.get("name", ""), "street1": fa.get("street", ""),
+            "city": fa.get("city", ""), "state": fa.get("state", ""),
+            "zip": fa.get("zip", ""), "country": fa.get("country", "US"),
+        },
         "parcel": {"weight": _DEFAULT_OZ + _PER_ITEM_OZ * n_items},
     }
 

@@ -71,3 +71,20 @@ def test_send_tracking_requires_tracking_number():
     oid = O.upsert_order(cx, source="funnel", external_ref="TR-2", email="b@x.com")
     res = D.dispatch_action(cx, "orders.send_tracking", {"order_id": oid}, R.Actor(role=R.OWNER))
     assert res["status"] == "failed"
+
+
+def test_send_tracking_does_not_double_email(monkeypatch):
+    import sqlite3
+    from dashboard import orders as O, dispatch as D, events as E, rbac as R
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx); O.init_orders_table(cx)
+    oid = O.upsert_order(cx, source="funnel", external_ref="TR-3", name="Ann", email="a@x.com")
+    O.set_order_tracking(cx, oid, "9400111777")
+    calls = {"n": 0}
+    monkeypatch.setattr(O, "_gmail_send_tracking",
+                        lambda to, s, h: (calls.__setitem__("n", calls["n"] + 1), True)[1])
+    r1 = D.dispatch_action(cx, "orders.send_tracking", {"order_id": oid}, R.Actor(role=R.OWNER))
+    r2 = D.dispatch_action(cx, "orders.send_tracking", {"order_id": oid}, R.Actor(role=R.OWNER))
+    assert r1["status"] == "done" and r2["status"] == "done"
+    assert calls["n"] == 1  # the customer is emailed only once
+    assert "already sent" in (r2["result"] or {}).get("message", "").lower()
