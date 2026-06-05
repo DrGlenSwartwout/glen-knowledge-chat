@@ -9269,6 +9269,56 @@ def _execute_console_tool(name: str, inp: dict) -> str:
     return _execute_todo_tool(name, inp)
 
 
+import dashboard.justus_adapter as _ja
+
+
+def _register_justus_actions():
+    """Register each Justus WRITE tool as a BOS action whose executor wraps the
+    existing _execute_console_tool, so dispatch_action audits + governs it."""
+    from dashboard.actions import action as _act, get_action as _get
+    from dashboard import rbac as _bos_rbac
+    for _name, (_key, _module, _tier) in _ja.JUSTUS_WRITE_ACTIONS.items():
+        if _get(_key):
+            continue
+
+        def _make(nm):
+            def _exec(params, ctx):
+                return {"message": _execute_console_tool(nm, params or {})}
+            return _exec
+
+        _act(key=_key, module=_module, title=_key,
+             description=f"Justus action: {_name}", risk_tier=_tier,
+             permission=(_bos_rbac.OWNER, _bos_rbac.OPS, _bos_rbac.VA))(_make(_name))
+
+
+_register_justus_actions()
+
+
+def _justus_tool_dispatch(actor):
+    """Return tool_dispatch(name, input)->str for _ask_justus_stream_tools.
+    READ tools run direct; WRITE tools go through dispatch_action (audit + policy)."""
+    def dispatch(name, inp):
+        inp = inp or {}
+        if _ja.is_read(name):
+            return _execute_console_tool(name, inp)
+        key = _ja.action_key_for(name)
+        if not key:
+            return _execute_console_tool(name, inp)
+        params = dict(inp)
+        if name == "complete_todo" and "id" in params:
+            params["todo_id"] = params.pop("id")
+        cx = _sqlite3.connect(LOG_DB)
+        cx.row_factory = _sqlite3.Row
+        try:
+            res = _bos_dispatch.dispatch_action(
+                cx, key, params, actor, source="justus",
+                confirmed=(actor.role in (_bos_rbac.OWNER, _bos_rbac.OPS)))
+        finally:
+            cx.close()
+        return _ja.format_justus_result(name, res)
+    return dispatch
+
+
 # Tools whose result text should be shown to the user inline (Justus's natural-
 # language reply alone would hide the actual value — e.g. a drafted email body).
 _VISIBLE_TOOL_RESULTS = {"draft_todo_reply", "split_capture", "apply_pending_merge"}
@@ -9369,9 +9419,10 @@ def console_ask():
     # Pass the current page so Justus can reason about what's most relevant.
     page_ctx = f"\nCurrent page: {page}" if page else ""
     system = _justus_system_prompt(owner, (context + page_ctx).strip(), TRACKER_DIRECTIVES)
+    _actor = _bos_rbac.actor_for_scope((ctx or {}).get("scope", "admin"), owner)
     gen = _ask_justus_stream_tools(query, system, history,
                                     PROJECT_TOOLS + TODO_TOOLS + HOUSEHOLD_TOOLS,
-                                    _execute_console_tool, history_n=6)
+                                    _justus_tool_dispatch(_actor), history_n=6)
     return Response(stream_with_context(gen),
                     mimetype="text/event-stream",
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
