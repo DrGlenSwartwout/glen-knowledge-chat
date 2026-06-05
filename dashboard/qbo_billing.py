@@ -75,6 +75,45 @@ def _first_income_account_id():
     return accts[0]["Id"] if accts else None
 
 
+def _first_bank_account_id():
+    """Return the Id of the first QBO Bank account (DepositToAccountRef source)."""
+    rs = _query("SELECT * FROM Account WHERE AccountType = 'Bank'")
+    accts = rs.get("QueryResponse", {}).get("Account", [])
+    return accts[0]["Id"] if accts else None
+
+
+def create_refund_receipt(customer_id, amount, *, item_id=None,
+                          bank_account_id=None, description="Refund"):
+    """Issue a QBO RefundReceipt (records a money-out customer refund). `amount`
+    is dollars (float). `bank_account_id` is the DepositToAccountRef -- the account
+    the refund comes OUT of (defaults to the first Bank account). Returns the
+    RefundReceipt dict. Mirrors the other write functions: a single _post call."""
+    amt = round(float(amount), 2)
+    if amt <= 0:
+        raise ValueError("refund amount must be positive")
+    if not item_id:
+        item_id = find_or_create_item("Refund", amt)["Id"]
+    if not bank_account_id:
+        bank_account_id = _first_bank_account_id()
+    if not bank_account_id:
+        raise RuntimeError("no QBO bank account found for DepositToAccountRef")
+    body = {
+        "CustomerRef": {"value": str(customer_id)},
+        "DepositToAccountRef": {"value": str(bank_account_id)},
+        "Line": [{
+            "DetailType": "SalesItemLineDetail",
+            "Amount": amt,
+            "Description": description,
+            "SalesItemLineDetail": {
+                "ItemRef": {"value": str(item_id)},
+                "Qty": 1,
+                "UnitPrice": amt,
+            },
+        }],
+    }
+    return _post("/refundreceipt", body).get("RefundReceipt")
+
+
 def find_or_create_item(name, price=None, income_account_id=None):
     """Find a Service/Inventory item by name, else create a Service item.
     Returns the Item dict. Creating needs an income account."""
