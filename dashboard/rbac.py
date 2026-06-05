@@ -62,3 +62,28 @@ def resolve_actor(console_key, *, console_secret, token=None, role_for_token=Non
         if role in ROLES:
             return Actor(role=role, name=str(token)[:8])
     return None
+
+
+# Justus / console actor mapping. Rae is owner; Shaira is the scoped VA.
+SCOPE_ROLES = {"rae": OWNER, "shaira": VA}
+
+
+def role_for_owner(owner):
+    """Map a console owner string (glen/rae/shaira/...) to a role. Glen and Rae
+    are owners; Shaira is the VA; any unknown scoped owner defaults to VA."""
+    o = (owner or "").lower()
+    if o in ("glen", "owner"):
+        return OWNER
+    return SCOPE_ROLES.get(o, VA)
+
+
+def actor_for_scope(scope, owner_hint=""):
+    """Build an Actor from an auth scope. 'admin' (or empty) -> owner. A scoped
+    token 'workspace:<owner>' -> the owner's role (rae owner, shaira va)."""
+    if not scope or scope == "admin":
+        return Actor(role=OWNER, name="owner")
+    if scope.startswith("workspace:"):
+        o = scope.split(":", 1)[1]
+    else:
+        o = owner_hint or ""
+    return Actor(role=role_for_owner(o), name=o or "scoped")
