@@ -269,3 +269,16 @@ def test_complete_todo_action_marks_done():
     assert res["status"] == "done"
     row = cx.execute("SELECT status FROM todos WHERE id=7").fetchone()
     assert row["status"] == "done"
+
+
+def test_approve_event_denies_actor_without_permission():
+    A, E, D, R, cx, calls = _dispatch_env()
+    # demo.money permits OWNER, VA, AGENT (not OPS); VA queues it
+    q = D.dispatch_action(cx, "demo.money", {"amount": 5}, R.Actor(role=R.VA))
+    assert q["status"] == "queued"
+    # an OPS actor (not in the action's permission) must not be able to approve it
+    res = D.approve_event(cx, q["event_id"], R.Actor(role=R.OPS))
+    assert res["status"] == "denied"
+    assert calls["n"] == 0
+    # the queued event is untouched (still pending), approver was rejected
+    assert E.get_event(cx, q["event_id"])["status"] == "pending_approval"
