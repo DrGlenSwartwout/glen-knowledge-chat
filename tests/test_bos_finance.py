@@ -132,3 +132,59 @@ def test_refund_executes_when_confirmed(monkeypatch):
     assert res["status"] == "done"
     assert captured == {"customer_id": "C7", "amount": 80.0}
     assert "80" in res["result"]["message"]
+
+
+def test_refund_issues_stripe_card_refund_first(monkeypatch):
+    import sqlite3
+    from dashboard import finance as F, dispatch as D, events as E, rbac as R
+    from dashboard import qbo_billing as QB, stripe_pay as SP
+    order = {}
+    monkeypatch.setattr(QB, "get_invoice", lambda iid: {"CustomerRef": {"value": "C1"}, "DocNumber": "1"})
+    calls = []
+    monkeypatch.setattr(SP, "refund", lambda pi, amount_cents=None: calls.append(("stripe", pi, amount_cents)) or {"id": "re_1", "status": "succeeded"})
+    monkeypatch.setattr(QB, "create_refund_receipt", lambda cid, amt, **k: calls.append(("qbo", cid, amt)) or {"Id": "RR1", "DocNumber": "RR-1"})
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx)
+    res = D.dispatch_action(cx, "finance.refund_order",
+                            {"invoice_id": "INV9", "amount": 40, "stripe_payment_intent": "pi_9"},
+                            R.Actor(role=R.OWNER), confirmed=True)
+    assert res["status"] == "done"
+    # stripe refund runs BEFORE the qbo record, with cents
+    assert calls[0] == ("stripe", "pi_9", 4000)
+    assert calls[1][0] == "qbo"
+    assert "card" in res["result"]["message"].lower()
+
+
+def test_refund_qbo_only_without_payment_intent(monkeypatch):
+    import sqlite3
+    from dashboard import finance as F, dispatch as D, events as E, rbac as R
+    from dashboard import qbo_billing as QB, stripe_pay as SP
+    monkeypatch.setattr(QB, "get_invoice", lambda iid: {"CustomerRef": {"value": "C1"}})
+    monkeypatch.setattr(QB, "create_refund_receipt", lambda cid, amt, **k: {"Id": "RR2", "DocNumber": "RR-2"})
+    def _no_stripe(*a, **k): raise AssertionError("stripe.refund must not be called")
+    monkeypatch.setattr(SP, "refund", _no_stripe)
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx)
+    from dashboard import orders as O; O.init_orders_table(cx)
+    res = D.dispatch_action(cx, "finance.refund_order",
+                            {"invoice_id": "INV-NONE", "amount": 40},
+                            R.Actor(role=R.OWNER), confirmed=True)
+    assert res["status"] == "done"
+    assert "quickbooks" in res["result"]["message"].lower()
+
+
+def test_refund_card_failure_blocks_qbo(monkeypatch):
+    import sqlite3
+    from dashboard import finance as F, dispatch as D, events as E, rbac as R
+    from dashboard import qbo_billing as QB, stripe_pay as SP
+    monkeypatch.setattr(QB, "get_invoice", lambda iid: {"CustomerRef": {"value": "C1"}})
+    monkeypatch.setattr(SP, "refund", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("card declined")))
+    qbo_called = {"n": 0}
+    monkeypatch.setattr(QB, "create_refund_receipt", lambda *a, **k: qbo_called.__setitem__("n", 1) or {"Id": "RR"})
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx)
+    res = D.dispatch_action(cx, "finance.refund_order",
+                            {"invoice_id": "INV9", "amount": 40, "stripe_payment_intent": "pi_x"},
+                            R.Actor(role=R.OWNER), confirmed=True)
+    assert res["status"] == "failed"
+    assert qbo_called["n"] == 0  # card failed -> nothing booked

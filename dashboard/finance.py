@@ -160,8 +160,12 @@ def _refund_confirm_summary(params):
     except (TypeError, ValueError):
         amt = "$?"
     target = params.get("invoice_id") or f"order #{params.get('order_id', '?')}"
-    return (f"Issue a {amt} refund against invoice {target}. This records a money-out "
-            f"refund in QuickBooks (you still send the actual money for Zelle/Wise). Confirm?")
+    if (params.get("stripe_payment_intent") or "").strip():
+        how = "This refunds the card via Stripe and records it in QuickBooks."
+    else:
+        how = ("This records a money-out refund in QuickBooks; if the order has a Stripe card "
+               "payment on file it also refunds the card, otherwise you send the money (Zelle/Wise).")
+    return f"Issue a {amt} refund against invoice {target}. {how} Confirm?"
 
 
 def _refund_order_exec(params, ctx):
@@ -189,11 +193,29 @@ def _refund_order_exec(params, ctx):
     if not customer_id:
         raise ValueError("invoice has no customer")
     description = params.get("reason") or f"Refund for invoice {invoice_id}"
+
+    # Resolve a Stripe PaymentIntent: explicit param, else from the captured order.
+    pi = (params.get("stripe_payment_intent") or "").strip()
+    if not pi and cx is not None:
+        try:
+            from dashboard.orders import find_order_by_external_ref
+            o = find_order_by_external_ref(cx, invoice_id)
+            pi = (o or {}).get("stripe_payment_intent") or ""
+        except Exception:
+            pi = ""
+
+    card_msg = ""
+    if pi:
+        # Card refund FIRST: only book the QBO refund if real money actually went back.
+        from dashboard import stripe_pay
+        sr = stripe_pay.refund(pi, int(round(amount * 100)))
+        card_msg = f" to the card (Stripe {sr.get('id')})"
+
     receipt = qb.create_refund_receipt(customer_id, amount, description=description)
     _cache.clear()
     return {"refund_receipt_id": receipt.get("Id"), "customer_id": customer_id,
-            "amount": amount, "invoice_id": invoice_id,
-            "message": f"Refund of ${amount:.2f} recorded in QuickBooks "
+            "amount": amount, "invoice_id": invoice_id, "stripe_refund": bool(pi),
+            "message": f"Refund of ${amount:.2f}{card_msg} recorded in QuickBooks "
                        f"(RefundReceipt {receipt.get('DocNumber', receipt.get('Id'))})."}
 
 

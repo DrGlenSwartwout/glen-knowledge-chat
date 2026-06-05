@@ -5389,6 +5389,18 @@ def practitioner_checkout_return():
                         qb.record_payment(cid, int(sess.get("amount_total") or 0), inv)
                     except Exception as e:
                         print(f"[stripe-return] qbo payment failed: {e!r}", flush=True)
+                    pi = sess.get("payment_intent")
+                    if pi:
+                        try:
+                            _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
+                            try:
+                                _o = _bos_orders.find_order_by_external_ref(_cxo, inv)
+                                if _o:
+                                    _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi)
+                            finally:
+                                _cxo.close()
+                        except Exception as _e:
+                            print(f"[stripe-return] pi capture: {_e!r}", flush=True)
         except Exception as e:
             print(f"[stripe-return] {e!r}", flush=True)
     dest = "/practitioner/portal?paid=" + paid

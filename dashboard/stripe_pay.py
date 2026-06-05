@@ -57,4 +57,17 @@ def get_session(session_id) -> dict:
     r.raise_for_status()
     j = r.json()
     return {"id": j.get("id"), "payment_status": j.get("payment_status"),
-            "amount_total": j.get("amount_total"), "metadata": j.get("metadata") or {}}
+            "amount_total": j.get("amount_total"), "metadata": j.get("metadata") or {},
+            "payment_intent": j.get("payment_intent")}
+
+
+def refund(payment_intent, amount_cents=None):
+    """Issue a Stripe refund against a PaymentIntent. amount_cents=None = full
+    refund. Returns {id, status, amount}. Raises on a Stripe error."""
+    data = {"payment_intent": str(payment_intent)}
+    if amount_cents is not None:
+        data["amount"] = int(amount_cents)
+    r = requests.post(f"{STRIPE_API}/refunds", data=data, auth=(_key(), ""), timeout=20)
+    r.raise_for_status()
+    j = r.json()
+    return {"id": j.get("id"), "status": j.get("status"), "amount": j.get("amount")}
