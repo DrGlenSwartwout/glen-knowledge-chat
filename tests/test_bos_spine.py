@@ -58,3 +58,42 @@ def test_unknown_risk_tier_raises():
                   risk_tier="banana", permission=("owner",))
         def bad(params, ctx):
             return {}
+
+
+def test_policy_matrix_cells():
+    from dashboard import rbac as R
+    from dashboard import actions as A
+    assert R.policy_for(R.OWNER, A.LOW_WRITE) == R.AUTO
+    assert R.policy_for(R.OWNER, A.IRREVERSIBLE) == R.CONFIRM
+    assert R.policy_for(R.OPS, A.MONEY_SEND) == R.CONFIRM
+    assert R.policy_for(R.VA, A.MONEY_SEND) == R.QUEUE
+    assert R.policy_for(R.VA, A.IRREVERSIBLE) == R.DENY
+    assert R.policy_for(R.AGENT, A.MONEY_SEND) == R.QUEUE
+    assert R.policy_for(R.AGENT, A.IRREVERSIBLE) == R.DENY
+    assert R.policy_for(R.SYSTEM, A.READ) == R.AUTO
+
+
+def test_owner_money_threshold():
+    from dashboard import rbac as R
+    from dashboard import actions as A
+    # threshold 0 => confirm everything
+    assert R.policy_for(R.OWNER, A.MONEY_SEND, amount=10, threshold=0) == R.CONFIRM
+    # threshold 50 => auto under 50, confirm at/above
+    assert R.policy_for(R.OWNER, A.MONEY_SEND, amount=20, threshold=50) == R.AUTO
+    assert R.policy_for(R.OWNER, A.MONEY_SEND, amount=50, threshold=50) == R.CONFIRM
+    assert R.policy_for(R.OWNER, A.MONEY_SEND, amount=None, threshold=50) == R.CONFIRM
+
+
+def test_resolve_actor_owner_by_console_secret():
+    from dashboard import rbac as R
+    a = R.resolve_actor("SEKRET", console_secret="SEKRET")
+    assert a is not None and a.role == R.OWNER
+    assert R.resolve_actor("wrong", console_secret="SEKRET") is None
+    assert R.resolve_actor("", console_secret="") is None
+
+
+def test_resolve_actor_by_token_role():
+    from dashboard import rbac as R
+    a = R.resolve_actor("", console_secret="SEKRET",
+                        token="tok_shaira", role_for_token=lambda t: R.VA)
+    assert a is not None and a.role == R.VA
