@@ -12875,6 +12875,7 @@ import dashboard.actions_tasks  # noqa: F401  (registers tasks.* actions)
 import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals)
 import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
+import dashboard.crm as _bos_crm  # noqa: F401 (registers the CRM home signal)
 import dashboard.easypost as _bos_easypost  # noqa: F401
 
 
