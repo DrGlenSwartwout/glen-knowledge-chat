@@ -29,3 +29,17 @@ def test_build_shipment_shape():
 def test_clicknship_url_constant():
     from dashboard import easypost as EP
     assert EP.CLICKNSHIP_URL.startswith("https://")
+
+
+def test_create_label_handoff_when_unconfigured(monkeypatch):
+    import sqlite3
+    monkeypatch.delenv("EASYPOST_API_KEY", raising=False)
+    from dashboard import orders as O, dispatch as D, events as E, rbac as R, actions as A
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx); O.init_orders_table(cx)
+    oid = O.upsert_order(cx, source="funnel", external_ref="LBL-1", name="Ann")
+    assert A.get_action("orders.create_label") is not None
+    res = D.dispatch_action(cx, "orders.create_label", {"order_id": oid}, R.Actor(role=R.OWNER))
+    assert res["status"] == "done"
+    msg = (res["result"] or {}).get("message", "")
+    assert "click-n-ship" in msg.lower() or "cns.usps" in (res["result"] or {}).get("handoff", "").lower()

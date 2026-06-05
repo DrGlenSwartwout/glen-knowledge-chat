@@ -32,6 +32,10 @@ def init_orders_table(cx):
         )
     """)
     cx.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")
+    try:
+        cx.execute("ALTER TABLE orders ADD COLUMN label_url TEXT")
+    except Exception:
+        pass  # already present
     cx.commit()
 
 
@@ -109,6 +113,17 @@ def set_order_tracking(cx, order_id, tracking_number, shipment_id=None):
     return cur.rowcount > 0
 
 
+def set_order_label(cx, order_id, label_url, tracking_number=None):
+    if tracking_number:
+        cx.execute("UPDATE orders SET label_url=?, tracking_number=?, updated_at=? WHERE id=?",
+                   (label_url, tracking_number, _now(), order_id))
+    else:
+        cx.execute("UPDATE orders SET label_url=?, updated_at=? WHERE id=?",
+                   (label_url, _now(), order_id))
+    cx.commit()
+    return cx.total_changes >= 0
+
+
 # --- Lifecycle actions + Home signal (register on import) ---
 from dashboard.actions import action, LOW_WRITE
 from dashboard.rbac import OWNER, OPS, VA
@@ -157,6 +172,32 @@ def _set_tracking_exec(params, ctx):
 action(key="orders.set_tracking", module="orders", title="Set tracking + ship",
        description="Record a tracking number and mark the order shipped.",
        risk_tier=LOW_WRITE, permission=(OWNER, OPS, VA))(_set_tracking_exec)
+
+
+def _create_label_exec(params, ctx):
+    from dashboard import easypost as EP
+    cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+    if cx is None:
+        raise ValueError("no db connection")
+    oid = int(params["order_id"])
+    order = get_order(cx, oid)
+    if not order:
+        raise ValueError(f"order #{oid} not found")
+    if not EP.is_configured():
+        return {"order_id": oid, "handoff": EP.CLICKNSHIP_URL,
+                "message": "No label API configured. Buy the label on USPS Click-N-Ship, "
+                           "then use Ship + tracking to record the number."}
+    from_addr = (ctx or {}).get("from_address") or {}
+    out = EP.buy_label(order, from_addr)
+    set_order_label(cx, oid, out.get("label_url", ""), out.get("tracking_number"))
+    return {"order_id": oid, "tracking_number": out.get("tracking_number", ""),
+            "label_url": out.get("label_url", ""),
+            "message": f"Label bought for order #{oid} (tracking {out.get('tracking_number','')})."}
+
+
+action(key="orders.create_label", module="orders", title="Create shipping label",
+       description="Buy a USPS label (EasyPost) or hand off to Click-N-Ship.",
+       risk_tier=LOW_WRITE, permission=(OWNER, OPS, VA))(_create_label_exec)
 
 
 @_signal("orders")
