@@ -160,8 +160,12 @@ def _refund_confirm_summary(params):
     except (TypeError, ValueError):
         amt = "$?"
     target = params.get("invoice_id") or f"order #{params.get('order_id', '?')}"
-    return (f"Issue a {amt} refund against invoice {target}. This records a money-out "
-            f"refund in QuickBooks (you still send the actual money for Zelle/Wise). Confirm?")
+    if (params.get("stripe_payment_intent") or "").strip():
+        how = "This refunds the card via Stripe and records it in QuickBooks."
+    else:
+        how = ("This records a money-out refund in QuickBooks; if the order has a Stripe card "
+               "payment on file it also refunds the card, otherwise you send the money (Zelle/Wise).")
+    return f"Issue a {amt} refund against invoice {target}. {how} Confirm?"
 
 
 def _refund_order_exec(params, ctx):

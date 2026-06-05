@@ -5393,10 +5393,12 @@ def practitioner_checkout_return():
                     if pi:
                         try:
                             _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
-                            _o = _bos_orders.find_order_by_external_ref(_cxo, inv)
-                            if _o:
-                                _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi)
-                            _cxo.close()
+                            try:
+                                _o = _bos_orders.find_order_by_external_ref(_cxo, inv)
+                                if _o:
+                                    _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi)
+                            finally:
+                                _cxo.close()
                         except Exception as _e:
                             print(f"[stripe-return] pi capture: {_e!r}", flush=True)
         except Exception as e:
