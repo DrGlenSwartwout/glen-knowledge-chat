@@ -4277,7 +4277,7 @@ def _register_finance_email_actions():
         amt = f" of ${float(amount):.2f}" if amount not in (None, "") else ""
         subject = "A quick note about your invoice"
         body = (f"Aloha,\n\nThis is a friendly reminder that invoice {doc} "
-                f"{('for a balance' + amt) if amt else ''} is still open. "
+                f"{('with a balance' + amt) if amt else ''} is still open. "
                 f"You can reply here with any questions.\n\nIn wellness,\nDr. Glen")
         ok = _send_inquiry_email(to_email=email, subject=subject, body=body,
                                  reply_to=RM_INBOUND_INQUIRY_EMAIL)

@@ -89,7 +89,7 @@ def money_signal_from(summary, cash_floor=0.0):
 
 
 # --- QBO-backed reads (cached) + Money signal + void action ---
-from dashboard.actions import action, LOW_WRITE
+from dashboard.actions import action, LOW_WRITE, IRREVERSIBLE
 from dashboard.rbac import OWNER, OPS
 
 _cache = {}
@@ -150,5 +150,5 @@ def _void_invoice_exec(params, ctx):
 
 
 action(key="finance.void_invoice", module="money", title="Void invoice",
-       description="Void an unpaid QBO invoice (zeroes it).", risk_tier=LOW_WRITE,
+       description="Void an unpaid QBO invoice (zeroes it).", risk_tier=IRREVERSIBLE,
        permission=(OWNER, OPS))(_void_invoice_exec)

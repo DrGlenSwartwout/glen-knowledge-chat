@@ -66,3 +66,4 @@ def test_void_invoice_action_registered():
     assert a is not None
     assert a.module == "money"
     assert a.permission == ("owner", "ops")  # not va
+    assert a.risk_tier == A.IRREVERSIBLE  # a void is permanent
