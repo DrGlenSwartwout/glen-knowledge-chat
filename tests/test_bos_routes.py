@@ -93,3 +93,12 @@ def test_orders_list_and_board(monkeypatch, tmp_path):
     p = client.get("/console/orders")
     assert p.status_code == 200
     assert b"Orders" in p.data
+
+
+def test_finance_page_served(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "f.db"))
+    client = app_module.app.test_client()
+    r = client.get("/console/finance")
+    assert r.status_code == 200
+    assert b"Finance" in r.data

@@ -13055,6 +13055,13 @@ def bos_orders_create():
     return jsonify({"ok": True, "order_id": oid})
 
 
+@app.route("/console/finance")
+def bos_finance_page():
+    resp = send_from_directory(STATIC, "console-finance.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/finance/ar", methods=["GET"])
 def bos_finance_ar():
     actor = _bos_actor()
