@@ -5611,6 +5611,46 @@ def leads_mark_ghl_synced():
     return jsonify({"ok": True, "id": lead_id, "contact_id": contact_id})
 
 
+# ── GHL write-queue drain endpoints (for local-machine drain when WAF blocks Render→GHL) ──
+
+def _ghl_queue_auth():
+    ws = os.environ.get("WEBHOOK_SECRET", "")
+    cs = os.environ.get("CONSOLE_SECRET", "")
+    given = request.headers.get("X-Webhook-Secret", "") or request.headers.get("X-Console-Key", "")
+    return (ws and given == ws) or (cs and given == cs)
+
+
+@app.route("/api/ghl/queue/pending", methods=["GET"])
+def ghl_queue_pending():
+    if not _ghl_queue_auth():
+        return jsonify({"error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        rows = _bos_ghl_queue.list_pending(cx, limit=int(request.args.get("limit", 100) or 100))
+    except (TypeError, ValueError):
+        rows = _bos_ghl_queue.list_pending(cx)
+    finally:
+        cx.close()
+    return jsonify({"queue": rows, "count": len(rows)})
+
+
+@app.route("/api/ghl/queue/result", methods=["POST"])
+def ghl_queue_result():
+    if not _ghl_queue_auth():
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(force=True) or {}
+    qid = data.get("id")
+    status = data.get("status", "done")
+    if not qid:
+        return jsonify({"ok": False, "error": "id required"}), 400
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _bos_ghl_queue.mark_result(cx, int(qid), status, data.get("result", ""))
+    finally:
+        cx.close()
+    return jsonify({"ok": True})
+
+
 # ── Per-lead actions (interactive dashboard) ──────────────────────────────────
 # These mirror the todo action surface so leads + scoreapp signups can be
 # replied to, tagged, or dismissed without leaving /dashboard.
@@ -12878,6 +12918,18 @@ import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal +
 import dashboard.crm as _bos_crm  # noqa: F401 (registers the CRM home signal)
 import dashboard.module_signals as _bos_module_signals  # noqa: F401 (registers 5 cell signals)
 import dashboard.easypost as _bos_easypost  # noqa: F401
+import dashboard.ghl_queue as _bos_ghl_queue  # noqa: F401 (registers crm enqueue actions)
+
+
+def _init_bos_ghl_queue():
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _bos_ghl_queue.init_ghl_queue_table(cx)
+    finally:
+        cx.close()
+
+
+_init_bos_ghl_queue()
 
 
 def _init_bos_events():
