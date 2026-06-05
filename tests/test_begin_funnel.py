@@ -522,7 +522,7 @@ def test_explore_sections_structure_and_ordering():
     assert [s["title"] for s in secs] == [
         "Start Here", "Listen Deeper", "Match & Remedies", "Learn to Heal",
         "Go Deeper", "Share & Lift Others", "Find a Practitioner",
-        "For Practitioners", "Earn by Sharing",
+        "For Practitioners",
     ]
     for s in secs:
         assert s["cards"], f"section {s['title']} has no cards"
@@ -604,39 +604,58 @@ def test_partner_links_empty_when_no_flags():
     assert bf.partner_links({"links": {"X": {"url": "https://x", "note": "n"}}}) == []
 
 
-def test_explore_sections_includes_affiliate_door():
+def test_explore_affiliate_card_in_share_section_after_pay_forward():
     import begin_funnel as bf
     secs = bf.explore_sections(ref="abc123")
-    titles = [s["title"] for s in secs]
-    assert "Earn by Sharing" in titles
-    aff = next(s for s in secs if s["title"] == "Earn by Sharing")
-    card = aff["cards"][0]
-    assert card["href"] == "/affiliate?ref=abc123"  # ref threaded
-    assert card["external"] is False
+    # no standalone affiliate section anymore
+    assert "Earn by Sharing" not in [s["title"] for s in secs]
+    share = next(s for s in secs if s["title"] == "Share & Lift Others")
+    titles = [c["title"] for c in share["cards"]]
+    # the affiliate card sits AFTER the pay-it-forward card
+    assert titles[-1] == "Become an Affiliate"
+    assert titles.index("Share Your Results, Lift Others") < titles.index("Become an Affiliate")
+    aff = share["cards"][-1]
+    assert aff["href"] == "/affiliate?ref=abc123"  # ref threaded
+    assert aff["external"] is False
 
 
-def test_explore_sections_affiliate_door_bare_without_ref():
+def test_explore_affiliate_card_bare_without_ref():
     import begin_funnel as bf
-    aff = next(s for s in bf.explore_sections() if s["title"] == "Earn by Sharing")
-    assert aff["cards"][0]["href"] == "/affiliate"
+    share = next(s for s in bf.explore_sections()
+                 if s["title"] == "Share & Lift Others")
+    assert share["cards"][-1]["href"] == "/affiliate"
 
 
-def test_explore_sections_partner_section_with_disclosure():
+def test_explore_partner_single_card_links_to_tools_page():
     import begin_funnel as bf
     secs = bf.explore_sections(trusted_links=_FAKE_TRUSTED)
-    partner = next(s for s in secs if s["title"] == "Recommended Tools & Partners")
-    titles = [c["title"] for c in partner["cards"]]
+    # no inline partner section; partners live on their own page now
+    assert "Recommended Tools & Partners" not in [s["title"] for s in secs]
+    match = next(s for s in secs if s["title"] == "Match & Remedies")
+    card = next(c for c in match["cards"]
+                if c["title"] == "Recommended Tools & Partners")
+    assert card["href"] == "/begin/tools"
+    assert card["external"] is False
+    # individual partner names do NOT appear on the explore page itself
+    flat = [c["title"] for s in secs for c in s["cards"]]
+    assert "Blushield" not in flat
+
+
+def test_explore_no_partner_card_without_trusted_links():
+    import begin_funnel as bf
+    flat = [c["title"] for s in bf.explore_sections() for c in s["cards"]]
+    assert "Recommended Tools & Partners" not in flat
+
+
+def test_partner_page_cards_renders_partners_with_disclosure():
+    import begin_funnel as bf
+    page = bf.partner_page_cards(_FAKE_TRUSTED)
+    titles = [c["title"] for c in page["cards"]]
     assert "Blushield" in titles
     assert "E4L Bioenergetic Scan" not in titles
-    assert all(c["external"] for c in partner["cards"])
-    assert "Amazon Associate" in partner["disclosure"]
-    assert "Healing Oasis" in partner["disclosure"]
-
-
-def test_explore_sections_no_partner_section_without_trusted_links():
-    import begin_funnel as bf
-    titles = [s["title"] for s in bf.explore_sections()]
-    assert "Recommended Tools & Partners" not in titles
+    assert all(c["external"] for c in page["cards"])
+    assert "Amazon Associate" in page["disclosure"]
+    assert "Healing Oasis" in page["disclosure"]
 
 
 def test_real_trusted_links_blushield_is_partner():

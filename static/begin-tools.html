@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Explore Everything · Dr. Glen Swartwout</title>
+<title>Recommended Tools &amp; Partners · Dr. Glen Swartwout</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
@@ -71,16 +71,7 @@
   .page-head h1 { font-size: clamp(26px, 6vw, 38px); color: var(--cream); }
   .page-head p { color: var(--muted); font-size: 16px; margin-top: 10px; }
 
-  .explore-section { margin-top: 52px; }
-  .section-title { margin-bottom: 20px; }
-  .section-title h2 { font-size: clamp(18px, 4vw, 22px); color: var(--cream); }
-  .section-title p { color: var(--muted); font-size: 14.5px; margin-top: 4px; }
-
-  /* "For practitioners" gets a clear separation from the patient journey */
-  .explore-section.practitioner {
-    margin-top: 72px; padding-top: 44px; border-top: 1px solid var(--border);
-  }
-
+  .tools { margin-top: 40px; }
   .cards { display: grid; grid-template-columns: 1fr; gap: 14px; }
   .card {
     position: relative; display: flex; align-items: center; gap: 20px;
@@ -107,7 +98,13 @@
   .card:hover .card-arrow { color: var(--gold); transform: translateX(4px); }
   .card-ext { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; opacity: 0.7; margin-left: 8px; }
 
-  .backlink { text-align: center; margin-top: 64px; }
+  .disclosure {
+    margin-top: 22px; font-size: 12px; color: var(--muted);
+    opacity: 0.85; line-height: 1.5; font-style: italic; text-align: center;
+  }
+  .empty { margin-top: 40px; text-align: center; color: var(--muted); }
+
+  .backlink { text-align: center; margin-top: 56px; }
   .backlink a {
     font-family: "Raleway", sans-serif; font-weight: 600; font-size: 14px;
     letter-spacing: 0.04em; color: var(--gold);
@@ -124,7 +121,6 @@
     .brandbar { padding-top: 24px; }
     .card { padding: 22px 18px; gap: 15px; }
     .card-title { font-size: 16px; }
-    .explore-section { margin-top: 44px; }
   }
 </style>
   <script src="/static/theme-toggle.js"></script>
@@ -137,75 +133,71 @@
 
   <main class="shell">
     <div class="page-head reveal">
-      <h1>Explore Everything</h1>
-      <p>Everything available to you, in one place. Wander wherever you like.</p>
+      <h1>Recommended Tools &amp; Partners</h1>
+      <p>Trusted devices and tools Dr. Glen recommends alongside your remedies.</p>
     </div>
 
-    <div id="explore-host"></div>
+    <div class="tools reveal">
+      <div class="cards" id="tools-host"></div>
+      <p class="disclosure" id="disclosure" hidden></p>
+    </div>
 
     <div class="backlink reveal">
-      <a href="/begin" id="back-link">Back to your guided path</a>
+      <a href="/begin/explore" id="back-link">Back to Explore</a>
     </div>
   </main>
 
   <script>
     (function () {
-      var data = window.__EXPLORE__ || [];
-      var host = document.getElementById('explore-host');
+      var data = window.__TOOLS__ || { cards: [], disclosure: "" };
+      var host = document.getElementById('tools-host');
 
-      data.forEach(function (sec) {
-        var section = document.createElement('section');
-        section.className = 'explore-section reveal' +
-          (sec.audience === 'practitioner' ? ' practitioner' : '');
-
-        var head = document.createElement('div');
-        head.className = 'section-title';
-        var h2 = document.createElement('h2');
-        h2.textContent = sec.title || '';
-        var blurb = document.createElement('p');
-        blurb.textContent = sec.blurb || '';
-        head.appendChild(h2);
-        head.appendChild(blurb);
-        section.appendChild(head);
-
-        var grid = document.createElement('div');
-        grid.className = 'cards';
-        (sec.cards || []).forEach(function (c) {
-          var a = document.createElement('a');
-          a.className = 'card';
-          a.href = c.href || '#';
-          if (c.external) { a.target = '_blank'; a.rel = 'noopener'; }
-          a.innerHTML =
-            '<span class="card-body"><span class="card-title"></span>' +
-            '<span class="card-sub"></span></span>' +
-            '<span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24">' +
-            '<path d="M5 12h14M13 6l6 6-6 6"/></svg></span>';
-          a.querySelector('.card-title').textContent = c.title || '';
-          var sub = a.querySelector('.card-sub');
-          sub.textContent = c.sub || '';
-          if (c.external) {
-            var ext = document.createElement('span');
-            ext.className = 'card-ext';
-            ext.textContent = 'opens in new tab';
-            sub.appendChild(document.createTextNode(' '));
-            sub.appendChild(ext);
-          }
-          grid.appendChild(a);
-        });
-        section.appendChild(grid);
-        host.appendChild(section);
+      (data.cards || []).forEach(function (c) {
+        var a = document.createElement('a');
+        a.className = 'card';
+        a.href = c.href || '#';
+        if (c.external) { a.target = '_blank'; a.rel = 'noopener'; }
+        a.innerHTML =
+          '<span class="card-body"><span class="card-title"></span>' +
+          '<span class="card-sub"></span></span>' +
+          '<span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24">' +
+          '<path d="M5 12h14M13 6l6 6-6 6"/></svg></span>';
+        a.querySelector('.card-title').textContent = c.title || '';
+        var sub = a.querySelector('.card-sub');
+        sub.textContent = c.sub || '';
+        if (c.external) {
+          var ext = document.createElement('span');
+          ext.className = 'card-ext';
+          ext.textContent = 'opens in new tab';
+          sub.appendChild(document.createTextNode(' '));
+          sub.appendChild(ext);
+        }
+        host.appendChild(a);
       });
+
+      if (!(data.cards || []).length) {
+        var empty = document.createElement('p');
+        empty.className = 'empty';
+        empty.textContent = 'No recommended tools are listed right now. Check back soon.';
+        host.parentNode.insertBefore(empty, host.nextSibling);
+      }
+
+      if (data.disclosure) {
+        var d = document.getElementById('disclosure');
+        d.textContent = data.disclosure;
+        d.hidden = false;
+      }
 
       // Preserve referral slug on the back link, if present in the URL.
       try {
         var ref = new URLSearchParams(location.search).get('ref');
         if (ref) {
           document.getElementById('back-link').href =
-            '/begin?ref=' + encodeURIComponent(ref);
+            '/begin/explore?ref=' + encodeURIComponent(ref);
         }
       } catch (e) {}
 
-      // Reveal-on-scroll (mirrors begin.html).
+      // Reveal-on-scroll (mirrors begin-explore.html).
       var reduce = window.matchMedia &&
         window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       var items = Array.prototype.slice.call(document.querySelectorAll('.reveal'));

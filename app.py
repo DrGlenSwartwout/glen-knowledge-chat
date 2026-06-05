@@ -1148,6 +1148,30 @@ def begin_explore():
     return resp
 
 
+@app.route("/begin/tools")
+def begin_tools():
+    """Recommended Tools & Partners — the dedicated partner page reached from a
+    single card on /begin/explore. Cards (Blushield + Glen's Amazon picks) come
+    from trusted-links.json affiliate-flagged entries via partner_page_cards();
+    they open in a new tab and carry the Amazon Associates disclosure. Mirrors
+    the explore page's JSON-injection render + rm_ref persistence."""
+    arg_ref = (request.args.get("ref") or "").strip()
+    payload = begin_funnel.partner_page_cards(_TRUSTED_LINKS)
+    html = (STATIC / "begin-tools.html").read_text()
+    injection = f"<script>window.__TOOLS__ = {json.dumps(payload)};</script>"
+    html = html.replace("</head>", injection + "\n</head>")
+    resp = Response(html, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if arg_ref and re.match(r"^[A-Za-z0-9_-]{1,64}$", arg_ref):
+        resp.set_cookie(
+            "rm_ref", arg_ref,
+            max_age=90 * 24 * 3600,
+            samesite="Lax", secure=request.is_secure,
+        )
+    return resp
+
+
 @app.route("/begin/voice")
 def begin_voice():
     resp = send_from_directory(STATIC, "begin-voice.html")
