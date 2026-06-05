@@ -97,3 +97,49 @@ def test_resolve_actor_by_token_role():
     a = R.resolve_actor("", console_secret="SEKRET",
                         token="tok_shaira", role_for_token=lambda t: R.VA)
     assert a is not None and a.role == R.VA
+
+
+import sqlite3
+
+
+def _evx():
+    from dashboard import events as E
+    cx = sqlite3.connect(":memory:")
+    cx.row_factory = sqlite3.Row
+    E.init_event_tables(cx)
+    return E, cx
+
+
+def test_event_append_and_get():
+    E, cx = _evx()
+    eid = E.append_event(cx, actor="owner", source="panel",
+                         action_key="demo.x", module="demo", risk_tier="low_write",
+                         params={"a": 1}, result={"ok": True}, status="done")
+    ev = E.get_event(cx, eid)
+    assert ev["actor"] == "owner"
+    assert ev["params"] == {"a": 1}
+    assert ev["result"] == {"ok": True}
+    assert ev["status"] == "done"
+
+
+def test_event_list_filters():
+    E, cx = _evx()
+    E.append_event(cx, actor="owner", source="panel", action_key="m.a",
+                   module="money", risk_tier="read", params={}, result=None,
+                   status="done")
+    E.append_event(cx, actor="va", source="justus", action_key="o.b",
+                   module="orders", risk_tier="money_send", params={}, result=None,
+                   status="pending_approval")
+    assert len(E.list_events(cx)) == 2
+    assert len(E.list_events(cx, status="pending_approval")) == 1
+    assert len(E.list_events(cx, module="money")) == 1
+
+
+def test_event_set_status():
+    E, cx = _evx()
+    eid = E.append_event(cx, actor="va", source="justus", action_key="o.b",
+                         module="orders", risk_tier="money_send", params={},
+                         result=None, status="pending_approval")
+    assert E.set_event_status(cx, eid, "confirmed") is True
+    assert E.get_event(cx, eid)["status"] == "confirmed"
+    assert E.set_event_status(cx, 9999, "confirmed") is False
