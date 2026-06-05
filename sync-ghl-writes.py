@@ -24,16 +24,27 @@ DRY_RUN = "--dry-run" in sys.argv
 
 
 def _curl(method, url, headers=None, payload=None):
-    cmd = ["curl", "-s", "-X", method, url]
+    # -w appends the HTTP status on its own trailing line so a GHL 4xx is treated
+    # as an error (marked failed + visible) rather than silently "done".
+    cmd = ["curl", "-s", "-w", "\n%{http_code}", "-X", method, url]
     if payload is not None:
         cmd += ["-H", "Content-Type: application/json", "-d", json.dumps(payload)]
     for k, v in (headers or {}).items():
         cmd += ["-H", f"{k}: {v}"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+    out = r.stdout or ""
+    nl = out.rfind("\n")
+    code = out[nl + 1:].strip() if nl >= 0 else ""
+    body = out[:nl] if nl >= 0 else out
     try:
-        return json.loads(r.stdout), None
+        data = json.loads(body) if body.strip() else {}
     except Exception:
-        return None, (r.stdout or "")[:200]
+        data = None
+    if code and not code.startswith("2"):
+        return data, f"HTTP {code}: {body[:150]}"
+    if data is None:
+        return None, body[:200]
+    return data, None
 
 
 def _ghl_headers():
