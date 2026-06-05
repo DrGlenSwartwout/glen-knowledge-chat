@@ -47,6 +47,12 @@ services:
         sync: false
       - key: HEYGEN_API_KEY
         sync: false
+      # Public funnel domain. Customer-facing links (full-report email footer,
+      # affiliate recruit_url, etc.) derive from this. illtowell.com is live and
+      # serving this service; keep this authoritative so links never read the
+      # raw onrender host. Code default is also https://illtowell.com.
+      - key: PUBLIC_BASE_URL
+        value: https://illtowell.com
       - key: BRAIN_SNAPSHOT_PATH
         value: /data/brain-state.json
       - key: DATA_DIR
