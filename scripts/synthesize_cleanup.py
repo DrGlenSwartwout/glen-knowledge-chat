@@ -48,6 +48,10 @@ def main():
     src = Counter(v["ingredients_source"] for v in clean.values())
     lines = [
         "# Products — Clean Stale-GrooveKart Report (LLM-normalized)", "",
+        "> **PROVISIONAL — do not action yet.** The GrooveKart scrape captured only part of "
+        "each page (confirmed: macular-wellness raw HTML has CoQ10/NAC/C3G/lutein that the scrape "
+        "dropped), so this list is INFLATED with false positives. Fix is queued: re-parse the raw "
+        "cache capturing both description fields, then re-diff. See docs/products-enrichment-followups.md #1.", "",
         f"Generated from the parallel cleanup of {len(outs)} products. "
         "Synonym-aware: only REAL formula differences are flagged.", "",
         "## Counts", "", "| Metric | Count |", "|---|---|",
