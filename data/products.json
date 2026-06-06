@@ -4440,114 +4440,113 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "Vitamin B6 (Pyridoxal 5-Phosphate)",
-          "dose": "2 mg"
+          "name": "Vitamin: Vitamin B6 (P5P, Pyridoxal-5-Phosphate)",
+          "dose": "2 mg 118% DV"
         },
         {
-          "name": "Vitamin B12 (Adenosyl Cobalamin & Methyl Cobalamin)",
-          "dose": "60 mcg"
+          "name": "Vitamin: Vitamin B12 (Adenosyl & Methyl Cobalamin)",
+          "dose": "60 mcg 2500% DV"
         },
         {
-          "name": "Vitamin D3 (Cholecalciferol)",
-          "dose": "1000 IU"
+          "name": "Vitamin: Vitamin D3 (Cholecalciferol)",
+          "dose": "1000 IU 125% DV"
         },
         {
-          "name": "Vitamin E (Mixed Tocopherols)",
-          "dose": "30 IU"
+          "name": "Vitamin: Vitamin E (Mixed Tocopherols)",
+          "dose": "20.1 mg"
         },
         {
-          "name": "Calcium (Microcrystalline Hydroxyapatite)",
+          "name": "Mineral: Calcium (Microcrystalline Hydroxyapatite)",
+          "dose": "10 mg 1% DV"
+        },
+        {
+          "name": "Mineral: Magnesium (Magnesium L-Threonate)",
+          "dose": "4 mg 1% DV"
+        },
+        {
+          "name": "Mineral: Zinc (Zinc Orotate)",
+          "dose": "5 mg 45% DV"
+        },
+        {
+          "name": "Mineral: Manganese (Manganese Glycinate)",
+          "dose": "2 mg 87% DV"
+        },
+        {
+          "name": "Mineral: Chromium (GTF, Glucose Tolerance Factor)",
+          "dose": "120 mcg 343% DV"
+        },
+        {
+          "name": "Mineral: Selenium (Methylselenocysteine)",
+          "dose": "100 mcg 182% DV"
+        },
+        {
+          "name": "Sulfur Compound: MSM (Methylsulfonylmethane)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Flavonoid: Silymarin (Milk Thistle, Silybum marianum)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Flavonoid: Flavonoids 15% (Dandelion, Taraxacum officinale)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Fatty Acid: DHA (Docosahexaenoic Acid, from Algae)",
+          "dose": "20 mg"
+        },
+        {
+          "name": "Polysaccharide: Nano Chitosan (from Crustacean shells)",
+          "dose": "20 mg"
+        },
+        {
+          "name": "Polysaccharide: MCP (Modified Citrus Pectin) (Citrus spp.)",
+          "dose": "20 mg"
+        },
+        {
+          "name": "Fatty Acid: R-Lipoic Acid (Stabilized Bio-Enhanced R-Lipoate)",
+          "dose": "20 mg"
+        },
+        {
+          "name": "Amino Acid: NAC (N-Acetyl Cysteine)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Chelator: EDTA (Calcium Disodium Ethylenediaminetetraacetic Acid)",
           "dose": "10 mg"
         },
         {
-          "name": "Magnesium (Magnesium Threonate)",
-          "dose": "4 mg"
+          "name": "Vitamin: Vitamin B3 (Niacin)",
+          "dose": "13 mg 81% DV"
         },
         {
-          "name": "MSM (Methylsulfonylmethane)",
-          "dose": "50 mg"
-        },
-        {
-          "name": "Zinc (Zinc Orotate)",
-          "dose": "5 mg"
-        },
-        {
-          "name": "Manganese (Manganese Glycinate)",
-          "dose": "2 mg"
-        },
-        {
-          "name": "Chromium (Glucose Tolerance Factor)",
-          "dose": "120 mcg"
-        },
-        {
-          "name": "Selenium (Methylselenocysteine)",
-          "dose": "100 mcg"
-        },
-        {
-          "name": "Silymarin (Silybum marianum)",
-          "dose": "50 mg"
-        },
-        {
-          "name": "Flavonoids 15% (Taraxacum officinale)",
-          "dose": "50 mg"
-        },
-        {
-          "name": "DHA (from Algae)",
-          "dose": "20 mg"
-        },
-        {
-          "name": "Nano Chitosan (from Crustacean shells)",
-          "dose": "20 mg"
-        },
-        {
-          "name": "Modified Citrus Pectin (Citrus spp.)",
-          "dose": "20 mg"
-        },
-        {
-          "name": "Lipoic Acid (Stabilized Bioenhanced R-Lipoate)",
-          "dose": "20 mg"
-        },
-        {
-          "name": "NAC (N-Acetyl Cysteine)",
-          "dose": "50 mg"
-        },
-        {
-          "name": "EDTA (Calcium Disodium Ethylenediaminetetraacetic acid)",
-          "dose": "10 mg"
-        },
-        {
-          "name": "Vitamin B3 (Niacin)",
-          "dose": "13 mg"
-        },
-        {
-          "name": "EGb 761 (Ginkgo biloba)",
+          "name": "Flavonoid: EGb 761 (Ginkgo biloba, 24% Flavone Glycosides / 6% Lactones)",
           "dose": "8 mg"
         },
         {
-          "name": "Moringa 100:1 (Moringa oleifera)",
+          "name": "Botanical Extract: Moringa 100:1 (Moringa oleifera)",
           "dose": "5 mg"
         },
         {
-          "name": "Licorice Omnipotent (Glycyrrhiza glabra)",
+          "name": "Botanical Extract: Licorice Omnipotent (Glycyrrhiza glabra)",
           "dose": "3 mg"
         },
         {
-          "name": "Gingerol 40% (Zingiber officinalis)",
+          "name": "Polyphenol: Gingerol 40% (Ginger, Zingiber officinalis)",
           "dose": "2 mg"
         },
         {
-          "name": "Piperine (Piper nigrum)",
+          "name": "Alkaloid: Piperine (Black Pepper, Piper nigrum)",
           "dose": "1 mg"
         },
         {
-          "name": "Vinpocetine (Vinca minor)",
+          "name": "Alkaloid: Vinpocetine (Vinca minor)",
           "dose": "1 mg"
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "manual",
       "description": "Iron Out . Iron Out Iron Out Excess iron in tissues promotes oxidation. Iron levels within the normal range but lower than average are associated with increased longevity. Deposition of heme iron from bleeding in tissues contributes to degenerative tendencies. Iron deposits in the retina are a feature of retinitis pigmentosa (RP), a hereditary form of night blindness. Iron Out is a Functional Formulation® designed to support iron detoxification. Iron Out . Each capsule of Iron Out supplies: Vitamin Factors: Vitamin B6 (Pyridoxal 5-Phosphate) 2 mg 100% Vitamin B12 (Adenosyl & Methyl Cobalamin)...",
-      "gk_stale": true,
-      "gk_stale_reason": "GK page omits DHA (from Algae) and Nano Chitosan as distinct ingredients, and collapses the entire bioavailability blend (Niacin, Ginkgo, Moringa, Licorice, Gingerol, Piperine, Vinpocetine) into a generic 'Bioavailability Factors (Proprietary Formula)' label"
+      "enrichment_note": "Recovered from FMP (Glen 2026-06-05); label-formatted (FDA DVs)."
     },
     "hydrolyzed-whey": {
       "name": "Hydrolyzed Collagen",
@@ -6301,54 +6300,57 @@
       "url": "https://remedymatch.com/remedies/syntropy/550-nerve-repair",
       "ingredients": [
         {
-          "name": "Benfotiamine",
-          "dose": "100 mg"
+          "name": "Vitamin: Vitamin B1 (Benfotiamine)",
+          "dose": "100 mg 8333% DV"
         },
         {
-          "name": "Pyridoxal-5-Phosphate (P5P)",
+          "name": "Vitamin: Vitamin B6 (P5P, Pyridoxal-5-Phosphate)",
+          "dose": "10 mg 588% DV"
+        },
+        {
+          "name": "Fatty Acid: RALA (Na R-Lipoate, Stabilized Bio-Enhanced)",
           "dose": "10 mg"
         },
         {
-          "name": "R-Lipoic Acid",
-          "dose": "10 mg"
-        },
-        {
-          "name": "Baicalein",
+          "name": "Flavonoid: Baicalein (Baikal Skullcap, Scutellaria baicalensis)",
           "dose": "100 mg"
         },
         {
-          "name": "Tetrahydrocurcumin",
+          "name": "Polyphenol: Tetrahydrocurcumin (Turmeric, Curcuma longa)",
           "dose": "100 mg"
         },
         {
-          "name": "Methylcobalamin",
-          "dose": "1 mg"
+          "name": "Vitamin: Vitamin B12 (Methylcobalamin)",
+          "dose": "1000 mcg 41667% DV"
         },
         {
-          "name": "Riboflavin-5-Phosphate (Coenzyme B2)",
-          "dose": "5 mg"
-        },
-        {
-          "name": "5-MTHF (Methylfolate)",
-          "dose": "0.4 mg"
-        },
-        {
-          "name": "Mixed Tocopherols",
-          "dose": "50 mg"
-        },
-        {
-          "name": "Tocotrienols",
+          "name": "Mushroom Extract: Lion's Mane Erinacines 5% (Hericium erinaceus, mycelium)",
           "dose": "100 mg"
         },
         {
-          "name": "Copper Glycinate",
-          "dose": "8 mg"
+          "name": "Vitamin: Vitamin B2 (R5P, Riboflavin-5-Phosphate)",
+          "dose": "5 mg 385% DV"
+        },
+        {
+          "name": "Vitamin: Vitamin B9 (5-MTHF, L-5-Methyltetrahydrofolate)",
+          "dose": "400 mcg 100% DV"
+        },
+        {
+          "name": "Vitamin: Vitamin E (Mixed Tocopherols)",
+          "dose": "15 mg"
+        },
+        {
+          "name": "Tocotrienol: Tocotrienols (Rice, Oryza sativa)",
+          "dose": "100 mg"
+        },
+        {
+          "name": "Mineral: Copper (Copper Glycinate, 10% Cu)",
+          "dose": "800 mcg 89% DV"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "manual",
       "description": "Nerve Repair . Price: $69.97. Nerve Repair . Nerve Repair Nerve Repair One organic Pullulan capsule of Nerve Repair supplies: ALCAR (Acetyl L-Carnitine) 160 mg Na RALA (Stabilized Bioenhanced Na R-Alpha Lipoate) 60 mg Lion's Mane Polysaccharides 30% ( Hericium erinaceus ) 160 mg Vitamin B1: Benfotiamine 60 mg Vitamin B6: P5P (Pyridoxal 5-Phosphate) 10 mg Vitamin B12: Methylcobalamin 500 mcg Bioavailability Proprietary Blend 34.5 mg Vitamin B13: Phosphatides 50% ( Helianthus annua ) EGb 761 ( Ginkgo biloba ) (24% Flavone Glycosides, 6% Lactones, <0.0005% Ginkgolic Acid) Vitamin B3 (as Niacin)...",
-      "gk_stale": true,
-      "gk_stale_reason": "GK lists ALCAR and Lion's Mane Polysaccharides not in authoritative formula; authoritative has Baicalein, Tetrahydrocurcumin, Riboflavin-5-Phosphate, 5-MTHF, Mixed Tocopherols, Tocotrienols, and Copper Glycinate absent from GK page."
+      "enrichment_note": "Recovered from FMP (Glen 2026-06-05); label-formatted (FDA DVs)."
     },
     "transresveratrol": {
       "name": "Trans-Resveratrol",
@@ -7070,22 +7072,29 @@
       "url": "https://remedymatch.com/remedies/syntropy/441-man-manna",
       "ingredients": [
         {
-          "name": "Lycopene",
+          "name": "Pollen Extract: Rye Pollen Graminex® G63® (Secale cereale)",
+          "dose": "126 mg"
+        },
+        {
+          "name": "Seed Extract: Pumpkin Seed (Cucurbita pepo, semen)",
+          "dose": "250 mg"
+        },
+        {
+          "name": "Carotenoid: Lycopene (Solanum lycopersicum)",
           "dose": "10 mg"
         },
         {
-          "name": "Beta Sitosterol",
+          "name": "Phytosterol: Beta-Sitosterol (Stinging Nettle, Urtica dioica)",
           "dose": "60 mg"
         },
         {
-          "name": "Zinc Glycinate",
-          "dose": "55 mg"
+          "name": "Mineral: Zinc (Zinc Bisglycinate, 20% Zn)",
+          "dose": "11 mg 100% DV"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "manual",
       "description": "Man Manna . Man Manna Man Manna We researched all the best proven natural prostate remedies... We considered the range of therapeutic dosages for each ingredient by itself... We combined them in one comprehensive formula... Because of synergy, we see even better results with lower doses. A New Space Age Solution NASA’s Multi-Pill Problem Proves Why Your Prostate Regimen is Failing In space, astronauts once had to take over 20 pills a day just to stay healthy. The problem? Compliance dropped. Absorption was inconsistent. Results varied. So NASA simplified everything. They combined essential...",
-      "gk_stale": true,
-      "gk_stale_reason": "GK page lists Phytosterols/Pygeum africanum, Saw Palmetto, Graminex Rye Extract, Green Tea Polyphenols, and Pumpkin Extract which are absent from the authoritative formula; authoritative Zinc Glycinate is absent from GK"
+      "enrichment_note": "Recovered from FMP (Glen 2026-06-05); label-formatted (FDA DVs)."
     },
     "artemisinin": {
       "name": "Artemisinin",
@@ -8862,34 +8871,49 @@
       "url": "https://remedymatch.com/remedies/syntropy/437-snake--dragon",
       "ingredients": [
         {
-          "name": "Saikosaponin (Bupleurum chinense)",
+          "name": "Botanical Extract: Gentian 4:1 (Gentiana lutea)",
+          "dose": "154 mg"
+        },
+        {
+          "name": "Saponin: Saikosaponin 50% (Bupleurum chinense)",
           "dose": "4.8 mg"
         },
         {
-          "name": "Alisma (Alisma orientalis)",
+          "name": "Botanical Extract: Water Plantain 25:1 (Alisma orientalis)",
           "dose": "32.7 mg"
         },
         {
-          "name": "Rehmannia (Rehmannia glutinosa)",
+          "name": "Botanical Extract: Rehmannia 50:1 (Rehmannia glutinosa)",
           "dose": "20.2 mg"
         },
         {
-          "name": "Chalcones (Ashitaba)",
+          "name": "Flavonoid: Angelica Chalcones 30% (Angelica keiskei koidzumi)",
           "dose": "21.8 mg"
         },
         {
-          "name": "Baicalein",
+          "name": "Flavonoid: Baicalein (Baikal Skullcap, Scutellaria baicalensis)",
           "dose": "10.6 mg"
         },
         {
-          "name": "Crocin (Gardenia jasminoides)",
+          "name": "Carotenoid: Crocin 45% (Gardenia jasminoides)",
           "dose": "12.5 mg"
+        },
+        {
+          "name": "Botanical Extract: Mu Tong 20:1 (Akebia caulis)",
+          "dose": "30.8 mg"
+        },
+        {
+          "name": "Botanical Extract: Lamb's Tongue 20:1 (Plantago lanceolata, folia)",
+          "dose": "51 mg"
+        },
+        {
+          "name": "Saponin: Glycyrrhizic Acids 26% (Licorice Omnipotent, Glycyrrhiza glabra)",
+          "dose": "15.7 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "manual",
       "description": "Snake &amp; Dragon . Snake & Dragon Snake & Dragon Snake & Dragon ingredients: Gentian ( Gentiana lutea ) (root) 4:1, 160 mg: Gentian is known for its bitter properties and is used to stimulate digestion and appetite. Saikosaponin ( Bupleurum chinense ) ( radix ) 50%, 5 mg: Saikosaponins are compounds found in Bupleurum, which is used in traditional Chinese medicine for its potential anti-inflammatory and immune-modulating effects. Alisma ( Alisma orientalis ) ( rhizome ) 25:1, 34 mg: Alisma is traditionally used in herbal medicine for promoting diuresis and reducing water retention....",
-      "gk_stale": true,
-      "gk_stale_reason": "GK lists Gentian, Akebia, Plantago, Licorice which are absent from the authoritative clean list; authoritative has Baicalein (likely Scutellaria) and several dose-only rows that cannot be matched; GK is missing Baicalein."
+      "enrichment_note": "Recovered from FMP (Glen 2026-06-05); label-formatted (FDA DVs)."
     },
     "zinc-ascorbate": {
       "name": "Zinc Ascorbate",
