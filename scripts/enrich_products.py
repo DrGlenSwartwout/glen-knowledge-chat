@@ -37,6 +37,29 @@ import re
 from difflib import get_close_matches, SequenceMatcher
 from pathlib import Path
 
+# Optional: label-ready dose computation (elemental/IU/%RDA from the FMP lookup +
+# Glen's DV table). Imported defensively so this offline script never breaks if the
+# dashboard package or its data file is unavailable.
+try:
+    from dashboard import ingredient_content as _ic
+except Exception:
+    _ic = None
+
+
+def _attach_label(ing: dict) -> dict:
+    """Attach ing['label'] = {amount, unit, rda_percent} for numeric mg/mcg/g
+    ingredients via the ingredient_content module. No-op on any failure."""
+    if not _ic:
+        return ing
+    qty = ing.get("qty")
+    unit = ing.get("unit")
+    if qty and unit in ("mg", "mcg", "g"):
+        try:
+            ing["label"] = _ic.label_dose(ing.get("name", ""), qty, unit)
+        except Exception:
+            pass
+    return ing
+
 # ── Paths (override via env vars or edit here) ────────────────────────────────
 WORKTREE = Path(__file__).parent.parent
 PRODUCTS_JSON = WORKTREE / "data" / "products.json"
@@ -276,12 +299,14 @@ def resolve_ingredients(
         qty_raw = it.get("qty", "").strip()
         qty = float(qty_raw) if qty_raw else None
         result.append(
-            {
-                "name": name,
-                "qty": qty,
-                "unit": it.get("unit_measurement", "").strip() or None,
-                "raw": zc_raw or None,
-            }
+            _attach_label(
+                {
+                    "name": name,
+                    "qty": qty,
+                    "unit": it.get("unit_measurement", "").strip() or None,
+                    "raw": zc_raw or None,
+                }
+            )
         )
     return result
 
@@ -391,7 +416,9 @@ def parse_t33_top_block(formula_text: str) -> tuple[str, list[dict]]:
         name = re.sub(r"^[\d\.\-\*\•]+\s*", "", line).strip()
         # Remove bracketed inventory notes [30g] etc.
         name = re.sub(r"\s*\[.*?\]", "", name).strip()
-        ingredients.append({"name": name, "qty": qty, "unit": unit, "raw": line})
+        ingredients.append(
+            _attach_label({"name": name, "qty": qty, "unit": unit, "raw": line})
+        )
 
     return top_block, ingredients
 
