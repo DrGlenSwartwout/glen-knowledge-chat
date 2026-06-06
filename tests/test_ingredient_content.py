@@ -17,14 +17,14 @@ def test_elemental_mg_for_mineral_chelate():
 
 def test_dv_and_rda_percent_glen_convention():
     from dashboard import ingredient_content as IC
-    assert IC.dv_for("Vitamin B12") == (6, "mcg")
-    assert IC.dv_for("Niacin") == (20, "mg")
+    assert IC.dv_for("Vitamin B12") == (2.4, "mcg")
+    assert IC.dv_for("Niacin") == (16, "mg")
     assert IC.dv_for("Chromium") == (35, "mcg")
     assert IC.dv_for("Vitamin D3")[1] == "IU"
     # %RDA on Glen's DVs
-    assert round(IC.rda_percent("Vitamin B12", 60, "mcg")) == 1000
-    assert round(IC.rda_percent("Niacin", 8, "mg")) == 40
-    assert round(IC.rda_percent("Selenium", 100, "mcg")) == 143
+    assert round(IC.rda_percent("Vitamin B12", 60, "mcg")) == 2500
+    assert round(IC.rda_percent("Niacin", 8, "mg")) == 50
+    assert round(IC.rda_percent("Selenium", 100, "mcg")) == 182
     assert round(IC.rda_percent("Chromium", 200, "mcg")) == 571
     assert round(IC.rda_percent("Zinc", 5, "mg")) == 45
     # unit conversion (active in mg, DV in mcg)

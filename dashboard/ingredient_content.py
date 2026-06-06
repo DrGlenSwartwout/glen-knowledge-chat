@@ -11,17 +11,19 @@ _CONTENT = None
 
 # Glen's DV convention (older US Daily Values; verified against his formulas).
 DV = {
-    "vitamin a": (5000, "IU"), "vitamin c": (60, "mg"), "vitamin d": (400, "IU"),
-    "vitamin d3": (400, "IU"), "vitamin e": (30, "IU"), "vitamin k": (80, "mcg"),
-    "thiamin": (1.5, "mg"), "vitamin b1": (1.5, "mg"), "riboflavin": (1.7, "mg"),
-    "vitamin b2": (1.7, "mg"), "niacin": (20, "mg"), "vitamin b3": (20, "mg"),
-    "vitamin b5": (10, "mg"), "pantothenic acid": (10, "mg"), "vitamin b6": (2, "mg"),
-    "folate": (400, "mcg"), "vitamin b9": (400, "mcg"), "5-mthf": (400, "mcg"),
-    "vitamin b12": (6, "mcg"), "biotin": (300, "mcg"), "calcium": (1000, "mg"),
-    "iron": (18, "mg"), "magnesium": (400, "mg"), "zinc": (11, "mg"),
-    "selenium": (70, "mcg"), "copper": (2, "mg"), "manganese": (2.3, "mg"),
-    "chromium": (35, "mcg"), "molybdenum": (75, "mcg"), "iodine": (150, "mcg"),
-    "potassium": (3500, "mg"), "phosphorus": (1000, "mg"),
+    "vitamin a": (3000, "IU"), "vitamin c": (90, "mg"),
+    "vitamin d": (800, "IU"), "vitamin d3": (800, "IU"), "vitamin e": (15, "mg"),
+    "vitamin k": (120, "mcg"), "mk 7": (120, "mcg"), "mk 4": (120, "mcg"),
+    "menaquinone": (120, "mcg"), "thiamin": (1.2, "mg"), "vitamin b1": (1.2, "mg"),
+    "riboflavin": (1.3, "mg"), "vitamin b2": (1.3, "mg"), "niacin": (16, "mg"),
+    "vitamin b3": (16, "mg"), "vitamin b5": (5, "mg"), "pantothenic acid": (5, "mg"),
+    "vitamin b6": (1.7, "mg"), "folate": (400, "mcg"), "vitamin b9": (400, "mcg"),
+    "5 mthf": (400, "mcg"), "vitamin b12": (2.4, "mcg"), "biotin": (30, "mcg"),
+    "choline": (550, "mg"), "calcium": (1300, "mg"), "iron": (18, "mg"),
+    "phosphorus": (1250, "mg"), "iodine": (150, "mcg"), "magnesium": (420, "mg"),
+    "zinc": (11, "mg"), "selenium": (55, "mcg"), "copper": (0.9, "mg"),
+    "manganese": (2.3, "mg"), "chromium": (35, "mcg"), "molybdenum": (45, "mcg"),
+    "potassium": (4700, "mg"),
 }
 _UNIT_MG = {"mg": 1.0, "mcg": 0.001, "g": 1000.0}
 
@@ -91,10 +93,8 @@ def _dv_key(nutrient):
     n = _norm(nutrient)
     if n in DV:
         return n
-    for k in DV:
-        if k in n:
-            return k
-    return None
+    matches = [k for k in DV if k in n]
+    return max(matches, key=len) if matches else None
 
 
 def dv_for(nutrient):
