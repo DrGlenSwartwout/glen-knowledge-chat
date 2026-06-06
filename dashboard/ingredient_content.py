@@ -18,9 +18,9 @@ DV = {
     "vitamin b5": (10, "mg"), "pantothenic acid": (10, "mg"), "vitamin b6": (2, "mg"),
     "folate": (400, "mcg"), "vitamin b9": (400, "mcg"), "5-mthf": (400, "mcg"),
     "vitamin b12": (6, "mcg"), "biotin": (300, "mcg"), "calcium": (1000, "mg"),
-    "iron": (18, "mg"), "magnesium": (400, "mg"), "zinc": (15, "mg"),
-    "selenium": (70, "mcg"), "copper": (2, "mg"), "manganese": (2, "mg"),
-    "chromium": (120, "mcg"), "molybdenum": (75, "mcg"), "iodine": (150, "mcg"),
+    "iron": (18, "mg"), "magnesium": (400, "mg"), "zinc": (11, "mg"),
+    "selenium": (70, "mcg"), "copper": (2, "mg"), "manganese": (2.3, "mg"),
+    "chromium": (35, "mcg"), "molybdenum": (75, "mcg"), "iodine": (150, "mcg"),
     "potassium": (3500, "mg"), "phosphorus": (1000, "mg"),
 }
 _UNIT_MG = {"mg": 1.0, "mcg": 0.001, "g": 1000.0}
@@ -58,6 +58,10 @@ def get(name):
     k = _norm(name)
     if k in d:
         return d[k]
+    # "bisglycinate" is the preferred label term; the FMP lookup stores "glycinate"
+    alt = k.replace("bisglycinate", "glycinate")
+    if alt != k and alt in d:
+        return d[alt]
     for kk, v in d.items():
         if kk and (kk in k or k in kk) and len(kk) > 4:
             return v
