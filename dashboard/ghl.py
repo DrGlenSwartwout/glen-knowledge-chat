@@ -89,15 +89,27 @@ def pipelines():
             "last_success": last_success("ghl.pipelines")}
 
 
+# Pipelines retired from the business — hidden from the dashboard card (and the
+# total) even though they may still exist with contacts in GHL. Matched as a
+# case-insensitive substring of the pipeline name.
+_HIDDEN_PIPELINES = ("email paramedic",)
+
+
+def _is_hidden(name):
+    n = (name or "").strip().lower()
+    return any(h in n for h in _HIDDEN_PIPELINES)
+
+
 @cached("ghl.opportunities")
 def opportunities_by_stage():
     """Returns total opportunity count for each pipeline, sorted highest first.
 
     Glen has 10+ pipelines. Showing one pipeline's stage breakdown buries the
     overall picture. This returns a ranked list so the dashboard widget shows
-    every active pipeline at a glance.
+    every active pipeline at a glance. Retired pipelines (_HIDDEN_PIPELINES) are
+    excluded.
     """
-    pls = pipelines()["pipelines"]
+    pls = [p for p in pipelines()["pipelines"] if not _is_hidden(p["name"])]
     if not pls:
         return {"empty": True, "message": "No pipelines configured in GHL"}
 
