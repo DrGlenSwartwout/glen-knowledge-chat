@@ -73,6 +73,8 @@
 
 <script>
   function key(){ return localStorage.getItem('console_key') || ''; }
+  // Auto-unlock: if arriving with ?key= (from the ops nav), seed the console key once.
+  (function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
   function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; loadQueue(); }
   function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
