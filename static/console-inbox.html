@@ -392,7 +392,9 @@
 </div>
 
 <script>
-const KEY = new URLSearchParams(location.search).get("key") || "";
+const _urlKey = new URLSearchParams(location.search).get("key");
+if (_urlKey) localStorage.setItem("console_key", _urlKey);
+const KEY = _urlKey || localStorage.getItem("console_key") || "";
 const HEADERS = { "Content-Type": "application/json", "X-Console-Key": KEY };
 let CURRENT_THREAD = null;
 let CURRENT_THREAD_ID = null;
