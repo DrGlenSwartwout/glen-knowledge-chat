@@ -3,7 +3,12 @@
  * Usage: drop one synchronous script tag immediately after <body> on each page:
  *   <script src="/static/op-nav.js" data-active="dashboard"></script>
  *
- * Valid data-active values: "dashboard" | "console" | "projects" | "inbox" | "shipping" | "orders" | "settings" | "funnel"
+ * Valid data-active values: "dashboard" | "console" | "bos" | "projects" | "inbox" | "shipping" | "orders" | "settings" | "funnel"
+ *
+ * The "bos" tab points at the Business OS home board (/console/home). The BOS
+ * module boards (orders/finance/crm/products) all carry data-active="bos" so the
+ * top bar highlights "Business OS" while you move between them; bos-nav.js renders
+ * the secondary module bar that switches between the individual boards.
  *
  * The bar:
  *   - Renders synchronously via document.write so there is no flash
@@ -29,6 +34,7 @@
   var tabs = [
     { id: "dashboard", label: "Dashboard", href: "/dashboard" + qs },
     { id: "console",   label: "Console",   href: "/console"   + qs },
+    { id: "bos",       label: "Business OS", href: "/console/home" + qs },
     { id: "projects",  label: "Projects",  href: "/console/projects" + qs },
     { id: "inbox",     label: "Inbox",     href: "/console/inbox" + qs },
     { id: "shipping",  label: "Shipping",  href: "/admin/shipping" + qs },
