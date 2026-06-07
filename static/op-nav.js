@@ -38,6 +38,19 @@
   var isPublic = script && script.dataset && script.dataset.publicPage === "true";
   if (isPublic && !urlKey) return;
 
+  // Brand favicon — the phoenix logo. Injected here so every page that loads the
+  // ops nav gets the tab icon without per-page <head> edits. Only added if the
+  // page doesn't already declare its own icon.
+  try {
+    if (!document.querySelector('link[rel~="icon"]')) {
+      var fav = document.createElement("link");
+      fav.rel = "icon";
+      fav.type = "image/png";
+      fav.href = "/static/favicon.png";
+      document.head.appendChild(fav);
+    }
+  } catch (e) {}
+
   var storedKey = "";
   try { storedKey = localStorage.getItem("console_key") || ""; } catch (e) {}
   var effKey = urlKey || storedKey;
