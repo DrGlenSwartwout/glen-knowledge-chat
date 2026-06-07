@@ -5,31 +5,40 @@
  *
  * Valid data-active values: "dashboard" | "console" | "bos" | "projects" | "inbox" | "shipping" | "orders" | "settings" | "funnel"
  *
- * The "bos" tab points at the Business OS home board (/console/home). The BOS
- * module boards (orders/finance/crm/products) all carry data-active="bos" so the
- * top bar highlights "Business OS" while you move between them; bos-nav.js renders
- * the secondary module bar that switches between the individual boards.
+ * Business OS sub-tabs: when data-active="bos", a secondary row of the BOS module
+ * boards renders under the main bar. Mark the active board with data-sub, e.g.
+ *   <script src="/static/op-nav.js" data-active="bos" data-sub="finance"></script>
+ * Valid data-sub values: "home" | "orders" | "finance" | "crm" | "products"
  *
  * The bar:
  *   - Renders synchronously via document.write so there is no flash
- *   - Reads the current URL's ?key= and preserves it across all internal links
+ *   - Resolves the console key from ?key= OR localStorage('console_key'), persists
+ *     a URL key to localStorage, and carries the resolved key across ALL internal
+ *     links — so pages that gate on ?key= keep working once you've unlocked once
  *   - Highlights the active tab from the data-active attribute
  *   - Sticks to the top of the viewport while scrolling
- *   - Uses neutral dark styling that sits on top of all three page palettes
- *     (editorial-gold dashboard, ops-blue console, purple shipping/orders)
+ *   - Uses neutral dark styling that sits on top of all page palettes
  */
 (function () {
   var script = document.currentScript;
   var active = (script && script.dataset && script.dataset.active) || "";
-  var key = new URLSearchParams(location.search).get("key") || "";
-  var qs = key ? ("?key=" + encodeURIComponent(key)) : "";
+  var sub = (script && script.dataset && script.dataset.sub) || "";
 
-  // If this script is loaded on a PUBLIC page (e.g., the chatbot at /),
-  // only render the nav when a console key is in the URL — so public
-  // visitors aren't shown an internal "GLEN · OPS" bar with tabs they
-  // can't use. Glen visits with ?key= and sees the nav as expected.
+  // Resolve the console key: a URL ?key= wins and is persisted; otherwise fall
+  // back to a previously-stored key. This lets every internal link carry the key
+  // even when the current page's URL doesn't have it (e.g. unlocked via a gate).
+  var urlKey = new URLSearchParams(location.search).get("key") || "";
+  if (urlKey) { try { localStorage.setItem("console_key", urlKey); } catch (e) {} }
+
+  // On a PUBLIC page (e.g. the chatbot at /), only render the nav when a key is in
+  // the URL — so public visitors aren't shown an internal "GLEN · OPS" bar.
   var isPublic = script && script.dataset && script.dataset.publicPage === "true";
-  if (isPublic && !key) return;
+  if (isPublic && !urlKey) return;
+
+  var storedKey = "";
+  try { storedKey = localStorage.getItem("console_key") || ""; } catch (e) {}
+  var effKey = urlKey || storedKey;
+  var qs = effKey ? ("?key=" + encodeURIComponent(effKey)) : "";
 
   var tabs = [
     { id: "dashboard", label: "Dashboard", href: "/dashboard" + qs },
@@ -41,6 +50,16 @@
     { id: "orders",    label: "Orders",    href: "/orders/new"     + qs },
     { id: "settings",  label: "Settings",  href: "/console/settings" + qs },
     { id: "funnel",    label: "Funnel",    href: "/funnel" + qs },
+  ];
+
+  // Business OS module boards — rendered as a secondary sub-tab row under the main
+  // bar whenever the BOS section is active.
+  var bosMods = [
+    { id: "home",     label: "Home",     href: "/console/home" + qs },
+    { id: "orders",   label: "Orders",   href: "/console/orders" + qs },
+    { id: "finance",  label: "Finance",  href: "/console/finance" + qs },
+    { id: "crm",      label: "CRM",      href: "/console/crm" + qs },
+    { id: "products", label: "Products", href: "/console/products" + qs },
   ];
 
   var styles = ''
@@ -75,10 +94,33 @@
     + '.op-nav-bar .op-nav-key-warn{'
     +   'color:#f85149;font-size:11px;margin-right:10px;'
     + '}'
+    // Business OS secondary sub-tab row
+    + '.op-nav-sub{'
+    +   'position:sticky;top:40px;z-index:9998;'
+    +   'display:flex;align-items:center;gap:0;'
+    +   'background:#0d1c12;border-bottom:1px solid #21472d;'
+    +   'padding:0 14px;height:36px;'
+    +   'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;'
+    + '}'
+    + '.op-nav-sub .op-nav-sub-brand{'
+    +   'color:#a89870;letter-spacing:.16em;text-transform:uppercase;'
+    +   'font-size:10px;font-weight:700;margin-right:16px;'
+    +   'font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;'
+    + '}'
+    + '.op-nav-sub a.op-nav-subtab{'
+    +   'display:inline-flex;align-items:center;height:100%;padding:0 13px;'
+    +   'color:#a89870;text-decoration:none;border-bottom:2px solid transparent;'
+    +   'transition:color .15s ease,border-color .15s ease,background .15s ease;'
+    + '}'
+    + '.op-nav-sub a.op-nav-subtab:hover{color:#fdf4d8;background:rgba(255,255,255,.04)}'
+    + '.op-nav-sub a.op-nav-subtab.active{color:#fdf4d8;border-bottom-color:#d4a843}'
     + '@media(max-width:520px){'
     +   '.op-nav-bar{padding:0 8px;font-size:12px;height:38px}'
     +   '.op-nav-bar .op-nav-brand{display:none}'
     +   '.op-nav-bar a.op-nav-tab{padding:0 10px}'
+    +   '.op-nav-sub{padding:0 8px;height:34px}'
+    +   '.op-nav-sub .op-nav-sub-brand{display:none}'
+    +   '.op-nav-sub a.op-nav-subtab{padding:0 10px}'
     + '}'
     + '</style>';
 
@@ -90,10 +132,21 @@
     bar += '<a class="' + cls + '" href="' + t.href + '">' + t.label + '</a>';
   }
   bar += '<span class="op-nav-spacer"></span>';
-  if (!key) {
+  if (!effKey) {
     bar += '<span class="op-nav-key-warn">no ?key — paste &amp; reload</span>';
   }
   bar += '</nav>';
+
+  if (active === "bos") {
+    bar += '<nav class="op-nav-sub" role="navigation" aria-label="Business OS modules">'
+      + '<span class="op-nav-sub-brand">Business OS</span>';
+    for (var j = 0; j < bosMods.length; j++) {
+      var m = bosMods[j];
+      var scls = (m.id === sub) ? "op-nav-subtab active" : "op-nav-subtab";
+      bar += '<a class="' + scls + '" href="' + m.href + '">' + m.label + '</a>';
+    }
+    bar += '</nav>';
+  }
 
   document.write(styles + bar);
 })();
