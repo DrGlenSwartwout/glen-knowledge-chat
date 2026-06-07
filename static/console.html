@@ -577,6 +577,41 @@
      the inner spans would require the forbidden [style*=#hex] substring hack.
      So these are left in their (dark) inline state — documented limitation. */
 
+
+  /* ── Mission Control banner (Business OS signals on the console front door) ──
+     Uses the page's CSS vars (incl. the light-mode-remapped --high/--normal/
+     --shaira) so it stays legible in both themes. */
+  #mc-section { margin-bottom: 28px; }
+  #mc-body.hidden { display: none; }
+  .mc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .mc-cell { background: var(--surface); border: 1px solid var(--border);
+             border-left: 4px solid var(--low); border-radius: 10px; padding: 12px 14px; }
+  .mc-cell.red   { border-left-color: var(--high); }
+  .mc-cell.amber { border-left-color: var(--normal); }
+  .mc-cell.green { border-left-color: var(--shaira); }
+  .mc-cell.gray  { border-left-color: var(--border); opacity: .7; }
+  .mc-cell .mc-dot { display:inline-block; width:8px; height:8px; border-radius:50%;
+                     margin-right:6px; vertical-align:middle; background: var(--low); }
+  .mc-cell.red .mc-dot{background:var(--high);} .mc-cell.amber .mc-dot{background:var(--normal);}
+  .mc-cell.green .mc-dot{background:var(--shaira);}
+  .mc-cell h4 { font-size: 13px; margin: 0; display: inline; font-weight: 700; }
+  .mc-cell .mc-summary { color: var(--muted); font-size: 12px; margin: 6px 0 0; line-height: 1.45; }
+  .mc-cell .mc-actions { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .mc-cell .mc-actions a { font-size: 11px; color: var(--glen); border: 1px solid var(--border);
+                           border-radius: 6px; padding: 2px 8px; text-decoration: none; }
+  .mc-cell .mc-actions a:hover { border-color: var(--glen); }
+  .mc-subhead { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+                color: var(--muted); margin: 16px 0 8px; }
+  .mc-row { display: flex; justify-content: space-between; align-items: center; background: var(--surface);
+            border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; }
+  .mc-row .mc-meta { color: var(--muted); }
+  .mc-row button { font-size: 12px; border: 1px solid var(--border); background: transparent; color: var(--text);
+                   border-radius: 6px; padding: 3px 9px; cursor: pointer; margin-left: 6px; }
+  .mc-row button.mc-approve { color: var(--shaira); }
+  .mc-row button.mc-cancel  { color: var(--high); }
+  body[data-owner="rae"] .mc-cell h4 { font-size: 16px; }
+  body[data-owner="rae"] .mc-cell .mc-summary { font-size: 15px; }
+  @media (max-width: 600px) { .mc-grid { grid-template-columns: 1fr; } }
 </style>
 <script src="/static/theme-toggle.js"></script>
 </head>
@@ -618,7 +653,7 @@
     <button class="tab referrals" id="tab-referrals" onclick="switchToReferrals(this)">Referrals</button>
   </div>
   <div class="section-tabs">
-    <button class="section-tab active" id="stab-inbox" onclick="switchSection('inbox', this)">Inbox</button>
+    <button class="section-tab active" id="stab-inbox" onclick="switchSection('inbox', this)">Tasks</button>
     <button class="section-tab" id="stab-people" onclick="switchSection('people', this)">People</button>
   </div>
   <div class="header-right">
@@ -638,6 +673,20 @@
 <main>
   <div id="loading">Loading...</div>
   <div id="main-content" style="display:none">
+    <!-- Mission Control (Business OS signals — where the business needs you) -->
+    <div id="mc-section">
+      <div class="cal-header">
+        <span class="cal-title">Mission Control</span>
+        <button class="btn-cal-toggle" id="mc-toggle-btn" onclick="toggleMissionControl()">Hide</button>
+      </div>
+      <div id="mc-body">
+        <div class="mc-grid" id="mc-grid"></div>
+        <div id="mc-pending-wrap" style="display:none">
+          <div class="mc-subhead">Pending approvals</div>
+          <div id="mc-pending"></div>
+        </div>
+      </div>
+    </div>
     <!-- Calendar -->
     <div id="cal-section">
       <div class="cal-header">
@@ -755,6 +804,7 @@ let countdownTimer;
 let WS_META = {};   // todo_id → {phase, time_total_seconds, pending_asks} for owners with a Workspace
 let openMenuId = null;
 let calVisible = true;
+let mcVisible = true;
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 function saveKey() {
@@ -891,6 +941,9 @@ function initKey() {
   // Restore calendar toggle state
   calVisible = localStorage.getItem('cal_visible') !== 'false';
   applyCalToggle();
+  // Restore Mission Control toggle state
+  mcVisible = localStorage.getItem('mc_visible') !== 'false';
+  applyMcToggle();
 }
 
 // ── Calendar toggle ───────────────────────────────────────────────────────────
@@ -910,6 +963,67 @@ function applyCalToggle() {
     body.classList.add('hidden');
     btn.textContent = 'Show';
   }
+}
+
+// ── Mission Control (Business OS signal banner) ─────────────────────────────────
+// Folds the old /console/home 9-cell board onto the console front door.
+function mcEsc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(ch){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]; }); }
+function mcSafeHref(h){ h = String(h == null ? '#' : h);
+  return (h.charAt(0) === '/' || h.indexOf('http://') === 0 || h.indexOf('https://') === 0) ? h : '#'; }
+
+function toggleMissionControl() {
+  mcVisible = !mcVisible;
+  localStorage.setItem('mc_visible', mcVisible);
+  applyMcToggle();
+}
+function applyMcToggle() {
+  const body = document.getElementById('mc-body');
+  const btn  = document.getElementById('mc-toggle-btn');
+  if (!body || !btn) return;
+  if (mcVisible) { body.classList.remove('hidden'); btn.textContent = 'Hide'; }
+  else { body.classList.add('hidden'); btn.textContent = 'Show'; }
+}
+
+async function loadMissionControl() {
+  try {
+    const [sigRes, evRes] = await Promise.all([
+      apiFetch('/api/home/signals'),
+      apiFetch('/api/events?limit=40'),
+    ]);
+    const cells = (await sigRes.json()).data || [];
+    const grid = document.getElementById('mc-grid');
+    if (grid) {
+      grid.innerHTML = cells.map(function(c){
+        const lvl = ['red','amber','green','gray'].indexOf(c.level) >= 0 ? c.level : 'gray';
+        const acts = (c.top_actions||[]).map(function(a){
+          return '<a href="'+mcEsc(mcSafeHref(a.href))+'">'+mcEsc(a.label)+'</a>'; }).join('');
+        return '<div class="mc-cell '+lvl+'"><span class="mc-dot"></span><h4>'+mcEsc(c.title)+'</h4>'
+          + '<p class="mc-summary">'+mcEsc(c.summary||'')+'</p>'
+          + '<div class="mc-actions">'+acts+'</div></div>';
+      }).join('');
+    }
+    const events = (await evRes.json()).data || [];
+    renderMcPending(events.filter(function(e){ return e.status === 'pending_approval'; }));
+  } catch (e) { /* leave banner as-is on error */ }
+}
+
+function renderMcPending(list) {
+  const wrap = document.getElementById('mc-pending-wrap');
+  const host = document.getElementById('mc-pending');
+  if (!wrap || !host) return;
+  if (!list.length) { wrap.style.display = 'none'; host.innerHTML = ''; return; }
+  wrap.style.display = '';
+  host.innerHTML = list.map(function(e){
+    return '<div class="mc-row"><span>'+mcEsc(e.action_key)+' <span class="mc-meta">('+mcEsc(e.module)+', by '+mcEsc(e.actor)+')</span></span>'
+      + '<span><button class="mc-approve" onclick="mcAct('+Number(e.id)+',\'approve\')">Approve</button>'
+      + '<button class="mc-cancel" onclick="mcAct('+Number(e.id)+',\'cancel\')">Cancel</button></span></div>';
+  }).join('');
+}
+
+async function mcAct(id, what) {
+  await apiFetch('/api/events/' + id + '/' + what, { method: 'POST' });
+  loadMissionControl();
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -2384,6 +2498,7 @@ async function refresh(restoreScrollY) {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('main-content').style.display = '';
 
+  loadMissionControl();   // fire-and-forget; self-renders into the banner
   renderCalendar(calEvents);
   restoreCalAlerts(calEvents);
   renderTodos(todos);

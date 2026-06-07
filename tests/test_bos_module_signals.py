@@ -62,7 +62,9 @@ def test_comms_signal():
 def test_b2b_signal():
     from dashboard import module_signals as M, signals as S
     cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
-    cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, source TEXT, status TEXT)")
+    # created_at is part of the real orders schema; b2b now shares the open-fulfillment
+    # read (created_at, source) with orders_signal, so the fixture includes it.
+    cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, source TEXT, status TEXT, created_at TEXT)")
     cx.commit()
     assert M.b2b_signal(cx, None)["level"] == S.GREEN and M.b2b_signal(cx, None)["count"] == 0
     cx.execute("INSERT INTO orders (source, status) VALUES ('wholesale', 'new')")

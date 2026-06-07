@@ -3,12 +3,15 @@
  * Usage: drop one synchronous script tag immediately after <body> on each page:
  *   <script src="/static/op-nav.js" data-active="dashboard"></script>
  *
- * Valid data-active values: "dashboard" | "console" | "bos" | "projects" | "inbox" | "shipping" | "orders" | "settings" | "funnel"
+ * Valid data-active values: "dashboard" | "console" | "bos" | "projects" | "inbox" | "settings" | "funnel"
  *
  * Business OS sub-tabs: when data-active="bos", a secondary row of the BOS module
  * boards renders under the main bar. Mark the active board with data-sub, e.g.
  *   <script src="/static/op-nav.js" data-active="bos" data-sub="finance"></script>
- * Valid data-sub values: "home" | "orders" | "finance" | "crm" | "products"
+ * Valid data-sub values: "orders" | "finance" | "crm" | "products" | "shipping" | "neworder"
+ * (Shipping = /admin/shipping, New Order = /orders/new — folded in from the old
+ *  standalone top tabs. The old "home" board is retired; its signals now live on
+ *  the /console front door.)
  *
  * The bar:
  *   - Renders synchronously via document.write so there is no flash
@@ -43,23 +46,23 @@
   var tabs = [
     { id: "dashboard", label: "Dashboard", href: "/dashboard" + qs },
     { id: "console",   label: "Console",   href: "/console"   + qs },
-    { id: "bos",       label: "Business OS", href: "/console/home" + qs },
+    { id: "bos",       label: "Business OS", href: "/console/orders" + qs },
     { id: "projects",  label: "Projects",  href: "/console/projects" + qs },
     { id: "inbox",     label: "Inbox",     href: "/console/inbox" + qs },
-    { id: "shipping",  label: "Shipping",  href: "/admin/shipping" + qs },
-    { id: "orders",    label: "Orders",    href: "/orders/new"     + qs },
     { id: "settings",  label: "Settings",  href: "/console/settings" + qs },
     { id: "funnel",    label: "Funnel",    href: "/funnel" + qs },
   ];
 
   // Business OS module boards — rendered as a secondary sub-tab row under the main
-  // bar whenever the BOS section is active.
+  // bar whenever the BOS section is active. Shipping + New Order were folded in
+  // from the old standalone top tabs.
   var bosMods = [
-    { id: "home",     label: "Home",     href: "/console/home" + qs },
-    { id: "orders",   label: "Orders",   href: "/console/orders" + qs },
-    { id: "finance",  label: "Finance",  href: "/console/finance" + qs },
-    { id: "crm",      label: "CRM",      href: "/console/crm" + qs },
-    { id: "products", label: "Products", href: "/console/products" + qs },
+    { id: "orders",   label: "Orders",    href: "/console/orders" + qs },
+    { id: "finance",  label: "Finance",   href: "/console/finance" + qs },
+    { id: "crm",      label: "CRM",       href: "/console/crm" + qs },
+    { id: "products", label: "Products",  href: "/console/products" + qs },
+    { id: "shipping", label: "Shipping",  href: "/admin/shipping" + qs },
+    { id: "neworder", label: "New Order", href: "/orders/new" + qs },
   ];
 
   var styles = ''
