@@ -34,6 +34,8 @@
 </style>
 </head>
 <body>
+<script src="/static/op-nav.js" data-active="bos"></script>
+<script src="/static/bos-nav.js" data-bos="orders"></script>
   <div id="gate"><div style="text-align:center">
     <p style="margin-bottom:10px;color:var(--muted)">Enter console key</p>
     <input id="key" type="password" placeholder="console key" />
@@ -47,6 +49,8 @@
 <script>
   var LANES = [["new","New"],["packed","Packed"],["shipped","Shipped"],["done","Done"]];
   function key(){ return localStorage.getItem('console_key') || ''; }
+  // Auto-unlock: if arriving with ?key= (from the ops nav), seed the console key once.
+  (function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
   function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; load(); }
   function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
