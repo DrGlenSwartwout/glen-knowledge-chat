@@ -65,28 +65,50 @@ def _default_cell():
     return {"level": GRAY, "summary": "Not yet wired", "top_actions": [], "count": 0}
 
 
+# ── Request-scoped read cache ───────────────────────────────────────────────
+# Lets multiple signals share one DB read within a single aggregate_signals()
+# call (e.g. orders_signal + b2b_signal both need the open-fulfillment queue).
+# It is inactive outside an aggregation, so a signal called directly (as the
+# tests do) always reads fresh — no cross-call/cross-test pollution.
+_REQ_CACHE = None
+
+
+def request_cached(key, producer):
+    """Memoize `producer()` under `key` for the duration of one aggregation."""
+    if _REQ_CACHE is None:
+        return producer()
+    if key not in _REQ_CACHE:
+        _REQ_CACHE[key] = producer()
+    return _REQ_CACHE[key]
+
+
 def aggregate_signals(cx, actor=None):
     """Return the ordered list of nine board cells."""
+    global _REQ_CACHE
     pending = _pending_by_module(cx)
-    cells = []
-    for m in MODULES:
-        fn = SIGNAL_REGISTRY.get(m)
-        sig = fn(cx, actor) if fn else _default_cell()
-        sig = {"level": sig.get("level", GRAY),
-               "summary": sig.get("summary", ""),
-               "top_actions": list(sig.get("top_actions", [])),
-               "count": int(sig.get("count", 0) or 0)}
-        pc = pending.get(m, 0)
-        if pc:
-            sig["level"] = _bump(sig["level"], AMBER)
-            sig["count"] += pc
-            sig["top_actions"] = (
-                [{"label": f"Review {pc} pending", "href": "/console/home#pending"}]
-                + sig["top_actions"])
-        sig["module"] = m
-        sig["title"] = MODULE_TITLES[m]
-        cells.append(sig)
-    return cells
+    _REQ_CACHE = {}
+    try:
+        cells = []
+        for m in MODULES:
+            fn = SIGNAL_REGISTRY.get(m)
+            sig = fn(cx, actor) if fn else _default_cell()
+            sig = {"level": sig.get("level", GRAY),
+                   "summary": sig.get("summary", ""),
+                   "top_actions": list(sig.get("top_actions", [])),
+                   "count": int(sig.get("count", 0) or 0)}
+            pc = pending.get(m, 0)
+            if pc:
+                sig["level"] = _bump(sig["level"], AMBER)
+                sig["count"] += pc
+                sig["top_actions"] = (
+                    [{"label": f"Review {pc} pending", "href": "/console#pending"}]
+                    + sig["top_actions"])
+            sig["module"] = m
+            sig["title"] = MODULE_TITLES[m]
+            cells.append(sig)
+        return cells
+    finally:
+        _REQ_CACHE = None
 
 
 @signal("tasks")

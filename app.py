@@ -13144,9 +13144,11 @@ def bos_home_signals():
 
 @app.route("/console/home")
 def bos_home_page():
-    resp = send_from_directory(STATIC, "console-home.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return resp
+    # Retired: the Business OS home board's 9 signal cells + pending approvals now
+    # live on the /console front door (Mission Control banner). Redirect old
+    # links/bookmarks, preserving the ?key= so the console stays unlocked.
+    qs = request.query_string.decode()
+    return redirect("/console" + ("?" + qs if qs else ""), code=302)
 
 
 @app.route("/console/orders")

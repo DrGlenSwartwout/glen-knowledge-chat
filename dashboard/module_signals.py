@@ -90,9 +90,9 @@ def comms_signal(cx, actor=None):
 @signal("b2b")
 def b2b_signal(cx, actor=None):
     try:
-        n = cx.execute(
-            "SELECT COUNT(*) FROM orders "
-            "WHERE source IN ('wholesale','dispensary') AND status IN ('new','packed')").fetchone()[0]
+        from dashboard.orders import open_fulfillment_orders
+        rows = open_fulfillment_orders(cx)  # shared read with orders_signal
+        n = sum(1 for r in rows if r["source"] in ("wholesale", "dispensary"))
     except Exception:
         return {"level": GRAY, "summary": "Not yet wired", "top_actions": [], "count": 0}
     if n == 0:

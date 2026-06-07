@@ -274,11 +274,24 @@ action(key="orders.send_tracking", module="orders", title="Send tracking email",
        risk_tier=LOW_WRITE, permission=(OWNER, OPS, VA))(_send_tracking_exec)
 
 
+def open_fulfillment_orders(cx):
+    """Open (new/packed) orders as [{created_at, source}] — the single source of
+    the fulfillment-queue read. Shared by orders_signal and b2b_signal so the
+    home board reads the queue once per load (request-cached during aggregation)."""
+    from dashboard.signals import request_cached
+
+    def _read():
+        cur = cx.execute(
+            "SELECT created_at, source FROM orders WHERE status IN ('new','packed')")
+        return [{"created_at": row[0], "source": row[1]} for row in cur.fetchall()]
+
+    return request_cached("orders:open_fulfillment", _read)
+
+
 @_signal("orders")
 def orders_signal(cx, actor=None, now=None):
     try:
-        rows = cx.execute(
-            "SELECT created_at FROM orders WHERE status IN ('new','packed')").fetchall()
+        rows = open_fulfillment_orders(cx)
     except Exception:
         return {"level": GRAY, "summary": "Not yet wired", "top_actions": [], "count": 0}
     n = len(rows)
@@ -288,7 +301,7 @@ def orders_signal(cx, actor=None, now=None):
     aging = 0
     for r in rows:
         try:
-            ts = datetime.fromisoformat(r[0])
+            ts = datetime.fromisoformat(r["created_at"])
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
             if ts < cutoff:
