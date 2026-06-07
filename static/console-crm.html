@@ -10,6 +10,11 @@
   * { box-sizing:border-box; margin:0; padding:0; }
   body { background:var(--bg); color:var(--cream);
          font-family:"Open Sans",system-ui,sans-serif; padding:24px; }
+  /* Center page content in a column (full-width nav preserved), matching the
+     other consoles. Every direct body child except the injected op-nav bars and
+     the fixed gate gets a centered max-width. */
+  body > :not(.op-nav-bar):not(.op-nav-sub):not(#gate):not(script):not(style) {
+    max-width:1280px; margin-left:auto; margin-right:auto; }
   h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
   .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
   .panel { background:var(--surface); border:1px solid var(--border); border-radius:12px;
