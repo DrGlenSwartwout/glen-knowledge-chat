@@ -92,7 +92,9 @@ def pipelines():
 # Pipelines retired from the business — hidden from the dashboard card (and the
 # total) even though they may still exist with contacts in GHL. Matched as a
 # case-insensitive substring of the pipeline name.
-_HIDDEN_PIPELINES = ("email paramedic",)
+#   "mctb" → both "MCTB Sales Pipeline" and "MCTB Onboarding Pipeline", a defunct
+#   2024 funnel (no recent activity; only 2 real client contacts).
+_HIDDEN_PIPELINES = ("email paramedic", "mctb")
 
 
 def _is_hidden(name):
