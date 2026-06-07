@@ -26,12 +26,19 @@ def test_marketing_signal(monkeypatch):
 
 
 def test_products_signal(monkeypatch, tmp_path):
-    from dashboard import module_signals as M, signals as S
-    (tmp_path / "products.json").write_text(json.dumps(
-        {"products": {"a": {"name": "A"}, "b": {"name": "B", "info_only": True}}}))
+    # products_signal lives in dashboard.products (registered there on import).
+    from dashboard import products as P, signals as S
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    sig = M.products_signal(None, None)
-    assert sig["level"] == S.GREEN and sig["count"] == 1  # info_only excluded
+    # No stale GrooveKart pages -> GREEN, count 0 (summary shows the enriched ratio).
+    (tmp_path / "products.json").write_text(json.dumps(
+        {"products": {"a": {"name": "A", "ingredients": ["x"]}, "b": {"name": "B"}}}))
+    sig = P.products_signal(None, None)
+    assert sig["level"] == S.GREEN and sig["count"] == 0
+    # One stale page -> AMBER, count of stale pages.
+    (tmp_path / "products.json").write_text(json.dumps(
+        {"products": {"a": {"name": "A", "gk_stale": True}, "b": {"name": "B"}}}))
+    sig = P.products_signal(None, None)
+    assert sig["level"] == S.AMBER and sig["count"] == 1
 
 
 def test_content_signal(monkeypatch, tmp_path):
@@ -83,7 +90,8 @@ def test_all_defensive_gray_on_missing():
 
 
 def test_all_registered():
-    from dashboard import module_signals as M  # noqa: F401
+    from dashboard import module_signals as M  # noqa: F401  (registers marketing/content/comms/b2b)
+    from dashboard import products as _P  # noqa: F401  (registers products)
     from dashboard import signals as S
     for m in ("marketing", "products", "content", "comms", "b2b"):
         assert S.SIGNAL_REGISTRY.get(m) is not None, m
