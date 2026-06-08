@@ -466,38 +466,61 @@ def list_recent_sent(max_results: int = 5) -> list:
     return out
 
 
+# The real client backlog = Primary-category, unread, last 30 days. Plain
+# `in:inbox` is the untriaged firehose (50k+ threads, mostly newsletters), so it
+# is NOT a meaningful retention signal; this query isolates actual client/personal
+# mail awaiting attention.
+_BACKLOG_QUERY = "in:inbox category:primary is:unread newer_than:30d"
+
+
 def backlog_summary(max_results: int = 25, top: int = 5) -> dict:
-    """Client-message backlog: inbox threads awaiting Glen's reply (the last
-    message is NOT from Glen), with ages. A retention-risk signal for the
-    dashboard's Clients & Pipeline briefing. Hidden senders are excluded by
-    list_threads."""
+    """Client-message backlog for the Clients & Pipeline briefing: unread
+    Primary-category inbox mail from the last 30 days (the real retention-risk
+    queue, excluding the untriaged newsletter/notification firehose), with ages.
+
+    `awaiting_reply` is the EXACT count (cheap thread-id pagination, no per-thread
+    fetch). `oldest` lists a few with ages (capped per-thread fetch). The much
+    larger total untriaged-inbox unread is reported as context via one cheap
+    label-stats call. Hidden senders are excluded by list_threads."""
     svc = _get_gmail_service()
-    me = ""
+
+    # Exact backlog count — thread IDs only, no per-thread fetch.
+    def _count(q):
+        n, tok = 0, None
+        while True:
+            r = svc.users().threads().list(userId="me", q=q, maxResults=100, pageToken=tok).execute()
+            n += len(r.get("threads", []))
+            tok = r.get("nextPageToken")
+            if not tok:
+                return n
+
+    awaiting = _count(_BACKLOG_QUERY)
+
+    # Untriaged-inbox context — one cheap label-stats call (no pagination).
+    inbox_unread_total = None
     try:
-        me = (svc.users().getProfile(userId="me").execute() or {}).get("emailAddress", "").lower()
+        lbl = svc.users().labels().get(userId="me", id="INBOX").execute() or {}
+        inbox_unread_total = lbl.get("threadsUnread")
     except Exception:
-        me = ""
-    threads = list_threads(query="in:inbox", max_results=max_results)
+        pass
+
+    # A few examples with ages (capped per-thread fetch). Best-effort: a failure
+    # here (e.g. hidden-senders store) must not drop the exact count above.
     now = datetime.now(timezone.utc)
-    waiting = []
-    for t in threads:
-        sender = (t.get("sender") or "").lower()
-        if me and me in sender:
-            continue  # Glen sent the last message — already handled
-        ms = int(t.get("internal_date_ms") or 0)
-        age_days = round((now - datetime.fromtimestamp(ms / 1000, tz=timezone.utc)).total_seconds() / 86400, 1) if ms else None
-        waiting.append({
-            "subject": t.get("subject"),
-            "from": t.get("sender"),
-            "category": t.get("category"),
-            "unread": t.get("unread"),
-            "age_days": age_days,
-        })
-    waiting.sort(key=lambda x: (x["age_days"] is None, -(x["age_days"] or 0)))
+    items = []
+    try:
+        for t in list_threads(query=_BACKLOG_QUERY, max_results=max_results):
+            ms = int(t.get("internal_date_ms") or 0)
+            age_days = round((now - datetime.fromtimestamp(ms / 1000, tz=timezone.utc)).total_seconds() / 86400, 1) if ms else None
+            items.append({"subject": t.get("subject"), "from": t.get("sender"), "age_days": age_days})
+        items.sort(key=lambda x: (x["age_days"] is None, -(x["age_days"] or 0)))
+    except Exception:
+        items = []
     return {
-        "awaiting_reply": len(waiting),
-        "unread": sum(1 for w in waiting if w.get("unread")),
-        "oldest": waiting[:top],
+        "awaiting_reply": awaiting,
+        "scope": "primary unread, last 30 days",
+        "oldest": items[:top],
+        "inbox_unread_total": inbox_unread_total,
         "as_of": now.isoformat(),
     }
 
