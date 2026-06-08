@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import os
 import re
+from datetime import datetime, timezone
 from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Optional
@@ -463,6 +464,42 @@ def list_recent_sent(max_results: int = 5) -> list:
         body = _extract_body(full.get("payload", {}))
         out.append({"id": m["id"], "body": clean_body(body["plain"] or body["html"])})
     return out
+
+
+def backlog_summary(max_results: int = 40, top: int = 5) -> dict:
+    """Client-message backlog: inbox threads awaiting Glen's reply (the last
+    message is NOT from Glen), with ages. A retention-risk signal for the
+    dashboard's Clients & Pipeline briefing. Hidden senders are excluded by
+    list_threads."""
+    svc = _get_gmail_service()
+    me = ""
+    try:
+        me = (svc.users().getProfile(userId="me").execute() or {}).get("emailAddress", "").lower()
+    except Exception:
+        me = ""
+    threads = list_threads(query="in:inbox", max_results=max_results)
+    now = datetime.now(timezone.utc)
+    waiting = []
+    for t in threads:
+        sender = (t.get("sender") or "").lower()
+        if me and me in sender:
+            continue  # Glen sent the last message — already handled
+        ms = int(t.get("internal_date_ms") or 0)
+        age_days = round((now - datetime.fromtimestamp(ms / 1000, tz=timezone.utc)).total_seconds() / 86400, 1) if ms else None
+        waiting.append({
+            "subject": t.get("subject"),
+            "from": t.get("sender"),
+            "category": t.get("category"),
+            "unread": t.get("unread"),
+            "age_days": age_days,
+        })
+    waiting.sort(key=lambda x: (x["age_days"] is None, -(x["age_days"] or 0)))
+    return {
+        "awaiting_reply": len(waiting),
+        "unread": sum(1 for w in waiting if w.get("unread")),
+        "oldest": waiting[:top],
+        "as_of": now.isoformat(),
+    }
 
 
 def _build_reply_message(thread: dict, body: str, override_to: Optional[str] = None) -> dict:

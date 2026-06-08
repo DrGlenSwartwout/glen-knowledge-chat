@@ -25,6 +25,7 @@ from . import ghl as _ghl
 from . import pinecone_stats as _pc_stats
 from . import scoreapp as _scoreapp
 from . import heygen as _heygen
+from . import inbox as _inbox
 
 
 MODEL = os.environ.get("BRIEFING_MODEL", "claude-haiku-4-5-20251001")
@@ -53,15 +54,18 @@ SLUG_PROMPTS = {
         "calm, precise, money-first."
     ),
     "clients-pipeline": (
-        "You write the Clients & Pipeline card. Cover ONLY the sales pipeline "
-        "and lead intake, from the snapshot's `gohighlevel` (pipeline "
-        "opportunities by stage) and `scoreapp` (recent quiz signups) blocks: "
-        "which pipelines hold opportunities that could convert this week, and "
-        "the new leads worth contacting. Do NOT cover cash / accounts "
-        "receivable or system health. If a source has an `_error`, say it is "
-        "unavailable rather than inventing. Then one short '## Insight' line on "
-        "the best conversion bet or the biggest stall. Voice: triage-officer; "
-        "name pipelines, stages, counts, and lead names."
+        "You write the Clients & Pipeline card. Cover ONLY client relationships "
+        "and the sales pipeline, from the snapshot's `inbox` (client-message "
+        "backlog awaiting Glen's reply, with ages — this is retention risk), "
+        "`gohighlevel` (pipeline opportunities by stage), and `scoreapp` "
+        "(recent quiz signups) blocks: lead with the unanswered-message backlog "
+        "(`inbox.awaiting_reply` count + the oldest by age = retention risk), "
+        "then pipelines holding opportunities that could convert this week, then "
+        "new leads worth contacting. Do NOT cover cash / accounts receivable or "
+        "system health. If a source has an `_error`, say it is unavailable "
+        "rather than inventing. Then one short '## Insight' line on the biggest "
+        "retention risk or best conversion bet. Voice: triage-officer; name the "
+        "oldest waiting senders, pipelines, stages, counts, and lead names."
     ),
     "signals-patterns": (
         "You write the Signals & Patterns card. Cover cross-system health from "
@@ -104,6 +108,7 @@ def gather_snapshot():
             "authorize_net":   _safe(lambda: _money.an_data(days=30), label="an_data"),
         },
         "gohighlevel": _safe(_ghl.opportunities_by_stage, label="ghl"),
+        "inbox":       _safe(_inbox.backlog_summary,      label="inbox"),
         "pinecone":    _safe(_pc_stats.index_stats,       label="pinecone"),
         "scoreapp":    _safe(lambda: _scoreapp.recent_signups(limit=20), label="scoreapp"),
         "heygen":      _safe(lambda: _heygen.recent_videos(limit=5),     label="heygen"),
