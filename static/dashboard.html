@@ -188,7 +188,11 @@
   .intel-md .act.act-low .act-tag{background:var(--green); color:#fff}
   /* Interactive action items: whole row navigates; ⋯ opens a local control panel */
   .intel-md .act{position:relative; cursor:pointer}
-  .intel-md .act:hover{filter:brightness(1.15)}
+  /* Hover cue via background only — NOT `filter` (filter makes a compositing
+     layer that delays painting the absolutely-positioned panel's background). */
+  .intel-md .act.act-high:hover{background:rgba(204,75,44,.18)}
+  .intel-md .act.act-med:hover{background:rgba(212,168,67,.18)}
+  .intel-md .act.act-low:hover{background:rgba(61,138,82,.18)}
   .intel-md .act .act-text{flex:1; min-width:0}
   .intel-md .act .act-menu{flex:none; background:transparent; border:none; color:var(--ink-2);
     cursor:pointer; font-size:15px; line-height:1; padding:0 2px; border-radius:4px}
