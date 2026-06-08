@@ -186,12 +186,12 @@ def compose_report(metrics, cl):
         "Structure the report in EXACTLY these four sections. Use the bare section "
         "TITLES as the markdown headings (do NOT append these descriptions to them):\n"
         "# Shaira\n"
-        "### Yesterday at a glance (factual: time logged, what she completed, what's in process).\n"
-        "### What it means (analytical: read the signals; flag stuck-language and idle items "
+        "## Yesterday at a glance (factual: time logged, what she completed, what's in process).\n"
+        "## What it means (analytical: read the signals; flag stuck-language and idle items "
         "honestly but kindly; if she's blocked, say so plainly).\n"
-        "### Needs Glen (proposed: anything requiring Glen's decision or approval, especially "
+        "## Needs Glen (proposed: anything requiring Glen's decision or approval, especially "
         "pending questions Justus routed to him).\n"
-        "### Trend (one line on pace, completions this week).\n"
+        "## Trend (one line on pace, completions this week).\n"
         "In the 'Needs Glen' section, write each item on its own line STARTING with a severity "
         "tag in square brackets by urgency and impact: [HIGH] (blocking / needs Glen now), "
         "[MED] (decide this week), [LOW] (FYI / minor). If nothing needs him, write exactly "
@@ -222,7 +222,7 @@ def compose_report(metrics, cl):
 def _fallback_card(m):
     """Deterministic card if the Claude call fails — never leave the dashboard blank."""
     lines = ["# Shaira", "",
-             "### Yesterday at a glance",
+             "## Yesterday at a glance",
              f"- Time logged: {_fmt_dur(m['time_logged_seconds'])} "
              f"across {m['focus_sessions']} focus session(s)",
              f"- Completed: {m['completed_count']}",
@@ -230,19 +230,19 @@ def _fallback_card(m):
     if m["completed"]:
         lines.append("**Completed:** " + ", ".join(c["title"] for c in m["completed"]))
     if m["stuck_hits"]:
-        lines += ["", "### What it means",
-                  f"⚠️ Stuck-language detected on {len(m['stuck_hits'])} item(s) — "
+        lines += ["", "## What it means",
+                  f"⚠️ Stuck-language detected on {len(m['stuck_hits'])} item(s), "
                   "she may be blocked without saying so."]
     if m["idle_items"]:
         lines.append(f"⚠️ {len(m['idle_items'])} item(s) idle 3+ days: "
                      + ", ".join(i["title"] for i in m["idle_items"]))
     if m["pending_asks"]:
-        lines += ["", "### Needs Glen"]
+        lines += ["", "## Needs Glen"]
         for p in m["pending_asks"]:
             lines.append(f"[HIGH] {p['title']}: {p['content'][:200]}")
     else:
-        lines += ["", "### Needs Glen", "[LOW] Nothing blocking — she has a clear runway."]
-    lines += ["", f"### Trend", f"{m['completed_7d']} item(s) completed in the last 7 days."]
+        lines += ["", "## Needs Glen", "[LOW] Nothing blocking, she has a clear runway."]
+    lines += ["", f"## Trend", f"{m['completed_7d']} item(s) completed in the last 7 days."]
     return "\n".join(lines)
 
 
@@ -278,7 +278,7 @@ def latest_report(db_path, owner="shaira"):
             "WHERE owner=? ORDER BY report_date DESC LIMIT 1", (owner,)
         ).fetchone()
     if not row:
-        return {"empty": True, "message": "No daily report yet — first run pending."}
+        return {"empty": True, "message": "No daily report yet. First run pending."}
     return {
         "empty": False,
         "markdown": row["report_md"],
