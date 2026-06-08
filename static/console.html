@@ -2521,7 +2521,14 @@ async function refresh(restoreScrollY) {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('main-content').style.display = '';
 
-  loadMissionControl();   // fire-and-forget; self-renders into the banner
+  // Mission Control (Business OS signals) is Glen/Rae only — hide it on Shaira's page.
+  const mcSection = document.getElementById('mc-section');
+  if (currentOwner === 'shaira') {
+    if (mcSection) mcSection.style.display = 'none';
+  } else {
+    if (mcSection) mcSection.style.display = '';
+    loadMissionControl();   // fire-and-forget; self-renders into the banner
+  }
   renderCalendar(calEvents);
   restoreCalAlerts(calEvents);
   renderTodos(todos);
