@@ -466,7 +466,7 @@ def list_recent_sent(max_results: int = 5) -> list:
     return out
 
 
-def backlog_summary(max_results: int = 40, top: int = 5) -> dict:
+def backlog_summary(max_results: int = 25, top: int = 5) -> dict:
     """Client-message backlog: inbox threads awaiting Glen's reply (the last
     message is NOT from Glen), with ages. A retention-risk signal for the
     dashboard's Clients & Pipeline briefing. Hidden senders are excluded by
