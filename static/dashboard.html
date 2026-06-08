@@ -165,6 +165,17 @@
   .intel-card .head{position:absolute; top:18px; right:16px; margin:0; padding:0; z-index:2}
   .intel-md h1{padding-right:16px}
   @media(min-width:1024px){.intel-card{min-height:340px}}
+  /* Collapsed Intelligence row: show just the top of each card (~Money row height),
+     fade the cutoff to hint there's more, hide the footer. */
+  #intelSection.collapsed .intel-card{min-height:0; height:204px}
+  @media(min-width:1024px){#intelSection.collapsed .intel-card{height:204px}}
+  #intelSection.collapsed .intel-card .body,
+  #intelSection.collapsed .intel-md{overflow:hidden}
+  #intelSection.collapsed .intel-md{
+    -webkit-mask-image:linear-gradient(to bottom, #000 82%, transparent);
+    mask-image:linear-gradient(to bottom, #000 82%, transparent);
+  }
+  #intelSection.collapsed .intel-card footer{display:none}
   .intel-md{
     flex:1; overflow-y:auto; padding-right:6px;
     font-family:var(--serif); font-size:13.5px; line-height:1.55; color:var(--ink);
@@ -370,11 +381,12 @@
   </header>
 
   <!-- ROW 0 — INTELLIGENCE -->
-  <section class="row">
+  <section class="row" id="intelSection">
     <div class="row-head">
       <span class="num">0</span>
       <h2>Intelligence</h2>
       <span class="rule"></span>
+      <button class="row-action" id="intelCollapse" title="Collapse to a compact preview (about the height of the Money row)">Collapse</button>
       <button class="row-action" id="regenIntel" title="Regenerate the 3 briefings via Claude (takes ~15s)">Regenerate</button>
     </div>
     <div class="grid">
@@ -1115,6 +1127,20 @@ document.getElementById("regenIntel").addEventListener("click", async () => {
     setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 4000);
   }
 });
+
+// Collapse / expand the Intelligence row to a compact preview (~Money row height).
+(function(){
+  const sec = document.getElementById("intelSection");
+  const btn = document.getElementById("intelCollapse");
+  if(!sec || !btn) return;
+  function apply(c){
+    sec.classList.toggle("collapsed", c);
+    btn.textContent = c ? "Expand" : "Collapse";
+    localStorage.setItem("intelCollapsed", c ? "1" : "0");
+  }
+  btn.addEventListener("click", () => apply(!sec.classList.contains("collapsed")));
+  apply(localStorage.getItem("intelCollapsed") === "1");
+})();
 
 // Expose for dashboard-actions.js (per-item action panels).
 window.fetchCard = fetchCard;
