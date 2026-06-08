@@ -11,11 +11,35 @@
       "pinecone_title": "ACES Eyedrops",
       "ingredients": [
         {
-          "name": "Quinton 96%",
-          "dose": "60 mL"
+          "name": "Vitamin A",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin C",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin E",
+          "dose": ""
+        },
+        {
+          "name": "Colloidal Silver ions",
+          "dose": ""
+        },
+        {
+          "name": "Organic Sulfur as MSM (Methylsulfonylmethane)",
+          "dose": ""
+        },
+        {
+          "name": "N-Acetyl L-Carnosine",
+          "dose": ""
+        },
+        {
+          "name": "Quintessential Bioterrain Restore base",
+          "dose": ""
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "store-recovery-2026-06-08",
       "description": "ACES Eyedrops . Price: $69.97."
     },
     "aller-free-aid": {
@@ -647,7 +671,118 @@
       "qbo_item_id": "39",
       "price_cents": 6997,
       "pinecone_title": "Lens-Zyme",
-      "qty_pricing": true
+      "qty_pricing": true,
+      "ingredients": [
+        {
+          "name": "Yeast Enzyme Extract (100 K enzyme units/cap)",
+          "dose": "250 mg"
+        },
+        {
+          "name": "MSM (Methylsulfonylmethane)",
+          "dose": "100 mg"
+        },
+        {
+          "name": "EDTA (Calcium Disodium Ethylenediaminetetraacetic acid)",
+          "dose": "10 mg"
+        },
+        {
+          "name": "Lutein 80% (Tagetes spp.)",
+          "dose": "10 mg"
+        },
+        {
+          "name": "Anthocyanidins 25% (Vaccinium myrtillus)",
+          "dose": "10 mg"
+        },
+        {
+          "name": "Trans-Pterostilbene (Vaccinium cyanococcus)",
+          "dose": "10 mg"
+        },
+        {
+          "name": "Honokiol 50% (Magnolia officinalis)",
+          "dose": "10 mg"
+        },
+        {
+          "name": "TECA (Centella asiatica)",
+          "dose": "5 mg"
+        },
+        {
+          "name": "N-Acetyl L-Carnosine",
+          "dose": "10 mg"
+        },
+        {
+          "name": "Vitamin B3 (Nicotinamide Riboside 42 mg)",
+          "dose": "20 mg"
+        },
+        {
+          "name": "Vitamin E (as D-Alpha Tocopherol Succinate)",
+          "dose": "30 IU"
+        },
+        {
+          "name": "Zinc (as Zinc Carnosine)",
+          "dose": "5 mg"
+        },
+        {
+          "name": "L-Carnosine (as Zinc Carnosine)",
+          "dose": "16.7 mg"
+        },
+        {
+          "name": "N-Acetyl-Cysteine",
+          "dose": "100 mg"
+        },
+        {
+          "name": "S-Acetyl Glutathione",
+          "dose": "10 mg"
+        },
+        {
+          "name": "Vitamin B5 (as Calcium Pantothenate)",
+          "dose": "10 mg"
+        },
+        {
+          "name": "Vitamin B13: Phosphatides 50% (Helianthus annua)",
+          "dose": ""
+        },
+        {
+          "name": "EGb 761 Ginkgo (Ginkgo biloba) (24% Flavone Glycosides, 6% Lactones)",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin B3 (as Niacin)",
+          "dose": "5 mg"
+        },
+        {
+          "name": "Miracle Tree 100:1 (Moringa oleifera)",
+          "dose": ""
+        },
+        {
+          "name": "Licorice Omnipotent (Glycyrrhiza glabra)",
+          "dose": ""
+        },
+        {
+          "name": "Vinpocetine (Vinca minor)",
+          "dose": ""
+        },
+        {
+          "name": "Gingerol 10% (Zingiber officinalis)",
+          "dose": ""
+        },
+        {
+          "name": "Piperine (Piper nigrum)",
+          "dose": ""
+        },
+        {
+          "name": "Fulvic Acid",
+          "dose": ""
+        },
+        {
+          "name": "Humic Acid",
+          "dose": ""
+        },
+        {
+          "name": "11 Spirit Minerals",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "medicinal-mushrooms": {
       "name": "Medicinal Mushrooms",
@@ -657,11 +792,55 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "AHCC",
-          "dose": "45 mg"
+          "name": "Shiitake AHCC 50% (Lentinula edodes) (Mycelia)",
+          "dose": "25 mg"
+        },
+        {
+          "name": "Shiitake Polysaccharide 50% (Lentinula edodes) (Fermented Mycelia)",
+          "dose": "25 mg"
+        },
+        {
+          "name": "Agaricus Polysaccharides 30% (Agaricus blazei)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Maitake Polysaccharide 50% (Grifola frondosa)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Dong Chong Xia Cao Polysaccharide 30% (Cordyceps militaris)",
+          "dose": "25 mg"
+        },
+        {
+          "name": "Cordyceps Cs-4 (Cordyceps militaris) (Mycelium)",
+          "dose": "25 mg"
+        },
+        {
+          "name": "Lions Mane Polysaccharide 30% (Hericium erinaceus)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Polysaccharide 30% (Coriolus versicolor)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Reishi (Ganoderma lucidum) (Shell-broken Spore)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Zhu Ling Polysaccharide 50% (Polyporus umbellatus)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Fu Ling Polysaccharide 50% (Poria cocos)",
+          "dose": "50 mg"
+        },
+        {
+          "name": "Enoki Polysaccharide 30% (Flammulina velutipes)",
+          "dose": "50 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "store-recovery-2026-06-08",
       "description": "Medicinal Mushrooms . Price: $69.97."
     },
     "microbes-liver-meridian": {
@@ -675,7 +854,142 @@
       "qbo_item_id": "29",
       "price_cents": 6997,
       "pinecone_title": "Microbiome",
-      "qty_pricing": true
+      "qty_pricing": true,
+      "ingredients": [
+        {
+          "name": "Probiotic Blend (34 strains, 100 Billion CFU/g)",
+          "dose": "10 billion CFU"
+        },
+        {
+          "name": "Lactiplantibacillus plantarum",
+          "dose": "100 mg"
+        },
+        {
+          "name": "Akkermansia muciniphila",
+          "dose": ""
+        },
+        {
+          "name": "Bifidobacterium adolescentis",
+          "dose": ""
+        },
+        {
+          "name": "Bifidobacterium animalis subsp. animalis",
+          "dose": ""
+        },
+        {
+          "name": "Bifidobacterium animalis subsp. lactis",
+          "dose": ""
+        },
+        {
+          "name": "Bifidobacterium bifidum",
+          "dose": ""
+        },
+        {
+          "name": "Bifidobacterium breve",
+          "dose": ""
+        },
+        {
+          "name": "Bifidobacterium longum subsp. infantis",
+          "dose": ""
+        },
+        {
+          "name": "Bifidobacterium longum subsp. longum",
+          "dose": ""
+        },
+        {
+          "name": "Lactococcus lactis subsp. cremoris",
+          "dose": ""
+        },
+        {
+          "name": "Lactococcus lactis subsp. lactis",
+          "dose": ""
+        },
+        {
+          "name": "Latilactobacillus curvatus",
+          "dose": ""
+        },
+        {
+          "name": "Latilactobacillus sakei",
+          "dose": ""
+        },
+        {
+          "name": "Leuconostoc mesenteroides subsp. mesenteroides",
+          "dose": ""
+        },
+        {
+          "name": "Ligilactobacillus salivarius",
+          "dose": ""
+        },
+        {
+          "name": "Limosilactobacillus fermentum",
+          "dose": ""
+        },
+        {
+          "name": "Limosilactobacillus reuteri",
+          "dose": ""
+        },
+        {
+          "name": "Lactobacillus acidophilus",
+          "dose": ""
+        },
+        {
+          "name": "Lactobacillus brevis",
+          "dose": ""
+        },
+        {
+          "name": "Lactobacillus crispatus",
+          "dose": ""
+        },
+        {
+          "name": "Lactobacillus delbrueckii subsp. bulgaricus",
+          "dose": ""
+        },
+        {
+          "name": "Lactobacillus gasseri",
+          "dose": ""
+        },
+        {
+          "name": "Lactobacillus helveticus",
+          "dose": ""
+        },
+        {
+          "name": "Lactobacillus jensenii",
+          "dose": ""
+        },
+        {
+          "name": "Lactobacillus johnsonii",
+          "dose": ""
+        },
+        {
+          "name": "Lacticaseibacillus casei",
+          "dose": ""
+        },
+        {
+          "name": "Lacticaseibacillus paracasei",
+          "dose": ""
+        },
+        {
+          "name": "Lacticaseibacillus rhamnosus",
+          "dose": ""
+        },
+        {
+          "name": "Pediococcus acidilactici",
+          "dose": ""
+        },
+        {
+          "name": "Saccharomyces boulardii",
+          "dose": ""
+        },
+        {
+          "name": "Streptococcus salivarius subsp. thermophilus",
+          "dose": ""
+        },
+        {
+          "name": "Partially Hydrolyzed Guar Gum (PHGG) (Cyamopsis tetragonoloba)",
+          "dose": "400 mg"
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "golden-book": {
       "name": "Golden Book",
@@ -1215,11 +1529,67 @@
       "url": "https://remedymatch.com/remedies/syntropy/265-ocuheal-eye-drops",
       "ingredients": [
         {
-          "name": "Methylsulfonylmethane",
-          "dose": ""
+          "name": "Quinton (Quintessential Terrain Restore)",
+          "dose": "96%"
+        },
+        {
+          "name": "MSM (Methylsulfonylmethane)",
+          "dose": "1%"
+        },
+        {
+          "name": "N-Acetyl L-Carnosine",
+          "dose": "1%"
+        },
+        {
+          "name": "DMSO (Dimethyl Sulfoxide)",
+          "dose": "0.5%"
+        },
+        {
+          "name": "Forskolin (Coleus forskohlii)",
+          "dose": "0.1%"
+        },
+        {
+          "name": "Puerarin (Pueraria mirifica)",
+          "dose": "0.1%"
+        },
+        {
+          "name": "Vitamin A (Retinol)",
+          "dose": "0.1%"
+        },
+        {
+          "name": "Vitamin B2 (Riboflavin 5'-Phosphate)",
+          "dose": "0.1%"
+        },
+        {
+          "name": "Vitamin B6 (Pyridoxal 5'-Phosphate)",
+          "dose": "0.1%"
+        },
+        {
+          "name": "Vitamin C & Zinc (as Zinc Ascorbate)",
+          "dose": "0.1%"
+        },
+        {
+          "name": "Lanosterol",
+          "dose": "0.01%"
+        },
+        {
+          "name": "Vitamin E Complex",
+          "dose": "0.01%"
+        },
+        {
+          "name": "Cineraria maritima succus",
+          "dose": "0.01%"
+        },
+        {
+          "name": "Nano Silver",
+          "dose": "0.001% (10 ppm)"
+        },
+        {
+          "name": "Serrapeptase (Serratia marcescens)",
+          "dose": "5C (0.1 ppb)"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "store-recovery-2026-06-08",
       "description": "OcuHeal Eye Drops . OcuHeal Eye Drops OcuHeal Eye Drops OcuHeal eye drops delivers botanical and nutritional healing ingredients for the whole eye, including the retina, lens, cornea, conjunctiva, lacrimal glands, and tear film… The OcuHeal ingredients are: Quinton (Quintessential Terrain Restore) 96% Quinton is a very special therapeutic saline solution that comes from the ocean. It supplies the full spectrum of electrolytes in sea water, but not just any sea water. It is sea water that levetates to the surface of the ocean from the pristine and ancient depths, supporting the flourishing of..."
     },
     "pms-relief": {
@@ -1355,7 +1725,18 @@
       "name": "Relax",
       "price_cents": 6997,
       "pinecone_title": "Relax",
-      "url": "https://remedymatch.com/remedies/syntropy/364-relax"
+      "url": "https://remedymatch.com/remedies/syntropy/364-relax",
+      "ingredients": [
+        {
+          "name": "Honokiol 50% (Magnolia officinalis)",
+          "dose": "250 mg"
+        },
+        {
+          "name": "Phellodendron 20:1 (Phellodendron chinense)",
+          "dose": "250 mg"
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "moisturize": {
       "name": "Moisturize",
@@ -1451,7 +1832,70 @@
       "name": "Natural Resource A-Z",
       "price_cents": 6997,
       "pinecone_title": "Natural Resource A-Z",
-      "url": "https://remedymatch.com/remedies/syntropy/77-natural-resource-az"
+      "url": "https://remedymatch.com/remedies/syntropy/77-natural-resource-az",
+      "ingredients": [
+        {
+          "name": "Aloe socotrina",
+          "dose": ""
+        },
+        {
+          "name": "Amino Acids (all)",
+          "dose": ""
+        },
+        {
+          "name": "Angelica archangelica",
+          "dose": ""
+        },
+        {
+          "name": "Apis mellifica",
+          "dose": ""
+        },
+        {
+          "name": "Aralia quinquefolia",
+          "dose": ""
+        },
+        {
+          "name": "Dimethylglycine (B15)",
+          "dose": ""
+        },
+        {
+          "name": "Calcium Ascorbate",
+          "dose": ""
+        },
+        {
+          "name": "Cell Salts (all)",
+          "dose": ""
+        },
+        {
+          "name": "Eugenia caryophyllata",
+          "dose": ""
+        },
+        {
+          "name": "Glandulars (all)",
+          "dose": ""
+        },
+        {
+          "name": "GTF Chromium",
+          "dose": ""
+        },
+        {
+          "name": "Krebs Cycle parts (all)",
+          "dose": ""
+        },
+        {
+          "name": "Medicago sativa",
+          "dose": ""
+        },
+        {
+          "name": "Ribes",
+          "dose": ""
+        },
+        {
+          "name": "RNA-DNA from Yeast",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "sulfur-syntropy": {
       "name": "Sulfur Synergy",
@@ -1958,7 +2402,66 @@
       "name": "Off Syrup",
       "price_cents": 6997,
       "pinecone_title": "Off Syrup",
-      "url": "https://remedymatch.com/remedies/syntropy/433-off-syrup"
+      "url": "https://remedymatch.com/remedies/syntropy/433-off-syrup",
+      "ingredients": [
+        {
+          "name": "Aqueous Humic Substances",
+          "dose": "0.1%"
+        },
+        {
+          "name": "Holy Grail Full Spectrum ORMUS",
+          "dose": "5C"
+        },
+        {
+          "name": "Quinton Ocean ORMUS & Trace Mineral Source",
+          "dose": "3%"
+        },
+        {
+          "name": "Manna ORMUS M-11",
+          "dose": "3%"
+        },
+        {
+          "name": "Malabar Nut (Adhatoda vasica) folia",
+          "dose": ""
+        },
+        {
+          "name": "Licorice (Glycyrrhiza glabra) radix",
+          "dose": ""
+        },
+        {
+          "name": "Holy Basil (Ocimum sanctum) folia",
+          "dose": ""
+        },
+        {
+          "name": "Ginger (Zingiber officinale) radix",
+          "dose": ""
+        },
+        {
+          "name": "Wild Cherry (Prunus serotina) cortex",
+          "dose": ""
+        },
+        {
+          "name": "Chebulic Myrobalan (Terminalia chebula) fructus",
+          "dose": ""
+        },
+        {
+          "name": "Long Pepper (Piper longum) fructus",
+          "dose": ""
+        },
+        {
+          "name": "Raspberry (Rubus spp.) fructus",
+          "dose": ""
+        },
+        {
+          "name": "Menthol",
+          "dose": ""
+        },
+        {
+          "name": "Honey",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "clear-the-way": {
       "name": "5 Ways \"Clear the Way\" Naturally Transforms Tissue Healing",
@@ -2168,7 +2671,18 @@
       "name": "Phytolacca Oil",
       "price_cents": 6997,
       "pinecone_title": "Phytolacca Oil",
-      "url": "https://remedymatch.com/remedies/syntropy/425-phytolacca-oil"
+      "url": "https://remedymatch.com/remedies/syntropy/425-phytolacca-oil",
+      "ingredients": [
+        {
+          "name": "Poke Root Oil (Phytolacca decandra)",
+          "dose": ""
+        },
+        {
+          "name": "Black Seed Oil (Nigella sativa)",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "vital-energy-be": {
       "name": "Vital Energy Be",
@@ -2640,13 +3154,135 @@
       "name": "Pure & Natural MSM Lotion",
       "price_cents": 1997,
       "pinecone_title": "Pure &amp; Natural MSM Lotion",
-      "url": "https://remedymatch.com/remedies/246-lavender-msm-lotion"
+      "url": "https://remedymatch.com/remedies/246-lavender-msm-lotion",
+      "ingredients": [
+        {
+          "name": "Triple UV Filtered Deionized Water (Aqua)",
+          "dose": ""
+        },
+        {
+          "name": "Opti-MSM (Methylsulfonylmethane)",
+          "dose": "10%"
+        },
+        {
+          "name": "Fatty Acid Esters from Coconut (Cocos nucifera) Pulp",
+          "dose": ""
+        },
+        {
+          "name": "Organic Coconut (Cocos nucifera) Oil",
+          "dose": ""
+        },
+        {
+          "name": "Usnea (Usnea spp.) Extract",
+          "dose": ""
+        },
+        {
+          "name": "Organic Comfrey (Symphytum officinale) Root Extract",
+          "dose": ""
+        },
+        {
+          "name": "Calendula (Calendula officinalis) Flower Extract",
+          "dose": ""
+        },
+        {
+          "name": "Organic Jojoba (Simmondsia chinensis) Oil",
+          "dose": ""
+        },
+        {
+          "name": "Manuka (Leptospermum scoparium) Honey",
+          "dose": ""
+        },
+        {
+          "name": "Shea (Vitellaria paradoxa) Butter",
+          "dose": ""
+        },
+        {
+          "name": "Organic Aloe (Aloe vera) Extract 200:1",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin C (L-Ascorbic Acid)",
+          "dose": ""
+        },
+        {
+          "name": "Natural Vitamin E (d-Alpha Tocopherol)",
+          "dose": ""
+        },
+        {
+          "name": "Tea Tree (Melaleuca alternifolia) Essential Oil",
+          "dose": "100%"
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "coconut-rose-msm-lotion": {
       "name": "Pure & Natural MSM Lotion",
       "price_cents": 1997,
       "pinecone_title": "Pure &amp; Natural MSM Lotion",
-      "url": "https://remedymatch.com/remedies/247-coconut-rose-msm-lotion"
+      "url": "https://remedymatch.com/remedies/247-coconut-rose-msm-lotion",
+      "ingredients": [
+        {
+          "name": "Deionized Water (Aqua), triple UV filtered",
+          "dose": ""
+        },
+        {
+          "name": "Opti-MSM (Methylsulfonylmethane)",
+          "dose": "10%"
+        },
+        {
+          "name": "Fatty Acid Esters from Coconut (Cocos nucifera) Pulp",
+          "dose": ""
+        },
+        {
+          "name": "Organic Coconut (Cocos nucifera) Oil",
+          "dose": ""
+        },
+        {
+          "name": "Usnea (Usnea spp.) Extract",
+          "dose": ""
+        },
+        {
+          "name": "Organic Comfrey (Symphytum officinale) Root Extract",
+          "dose": ""
+        },
+        {
+          "name": "Calendula (Calendula officinalis) Flower Extract",
+          "dose": ""
+        },
+        {
+          "name": "Organic Jojoba (Simmondsia chinensis) Oil",
+          "dose": ""
+        },
+        {
+          "name": "Manuka (Leptospermum scoparium) Honey",
+          "dose": ""
+        },
+        {
+          "name": "Shea (Vitellaria paradoxa) Butter",
+          "dose": ""
+        },
+        {
+          "name": "Organic Aloe (Aloe vera) Extract 200:1",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin C (L-Ascorbic Acid)",
+          "dose": ""
+        },
+        {
+          "name": "Natural Vitamin E (d-Alpha Tocopherol)",
+          "dose": ""
+        },
+        {
+          "name": "Tea Tree (Melaleuca alternifolia) Essential Oil",
+          "dose": "100% pure"
+        },
+        {
+          "name": "Natural Scents",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "quercetin-dihydrate-powder": {
       "name": "Quercetin Dihydrate Powder",
@@ -2681,7 +3317,66 @@
       "name": "Pure & Natural MSM Lotion",
       "price_cents": 1997,
       "pinecone_title": "Pure &amp; Natural MSM Lotion",
-      "url": "https://remedymatch.com/remedies/245-pure--natural-msm-lotion"
+      "url": "https://remedymatch.com/remedies/245-pure--natural-msm-lotion",
+      "ingredients": [
+        {
+          "name": "Triple UV Filtered Deionized Water (Aqua)",
+          "dose": ""
+        },
+        {
+          "name": "Opti-MSM (Methylsulfonylmethane)",
+          "dose": "10%"
+        },
+        {
+          "name": "Fatty Acid Esters from Coconut (Cocos nucifera) Pulp",
+          "dose": ""
+        },
+        {
+          "name": "Organic Coconut (Cocos nucifera) Oil",
+          "dose": ""
+        },
+        {
+          "name": "Usnea (Usnea spp.) Extract",
+          "dose": ""
+        },
+        {
+          "name": "Organic Comfrey (Symphytum officinale) Root Extract",
+          "dose": ""
+        },
+        {
+          "name": "Calendula (Calendula officinalis) Flower Extract",
+          "dose": ""
+        },
+        {
+          "name": "Organic Jojoba (Simmondsia chinensis) Oil",
+          "dose": ""
+        },
+        {
+          "name": "Manuka (Leptospermum scoparium) Honey",
+          "dose": ""
+        },
+        {
+          "name": "Shea (Vitellaria paradoxa) Butter",
+          "dose": ""
+        },
+        {
+          "name": "Organic Aloe (Aloe vera) Extract 200:1",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin C (L-Ascorbic Acid)",
+          "dose": ""
+        },
+        {
+          "name": "Natural Vitamin E (d-Alpha Tocopherol)",
+          "dose": ""
+        },
+        {
+          "name": "Tea Tree (Melaleuca alternifolia) Essential Oil",
+          "dose": "100%"
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "neem-oil-rollon": {
       "name": "Neem Oil Roll-On",
@@ -2995,7 +3690,102 @@
       "name": "Food Tolerance",
       "price_cents": 6997,
       "pinecone_title": "Food Tolerance",
-      "url": "https://remedymatch.com/remedies/syntropy/52-food-tolerance"
+      "url": "https://remedymatch.com/remedies/syntropy/52-food-tolerance",
+      "ingredients": [
+        {
+          "name": "ACTH (adrenocorticotrophic hormone)",
+          "dose": ""
+        },
+        {
+          "name": "Adrenalinum (adrenaline)",
+          "dose": ""
+        },
+        {
+          "name": "Agaricus muscarius",
+          "dose": ""
+        },
+        {
+          "name": "Agaricus phalloides",
+          "dose": ""
+        },
+        {
+          "name": "Allium cepa",
+          "dose": ""
+        },
+        {
+          "name": "Allium sativum",
+          "dose": ""
+        },
+        {
+          "name": "Argentum nitricum",
+          "dose": ""
+        },
+        {
+          "name": "Avena sativa",
+          "dose": ""
+        },
+        {
+          "name": "Carbo vegetabilis",
+          "dose": ""
+        },
+        {
+          "name": "Coffea tosta",
+          "dose": ""
+        },
+        {
+          "name": "Gossypium herbaceum",
+          "dose": ""
+        },
+        {
+          "name": "Histaminum (histamine)",
+          "dose": ""
+        },
+        {
+          "name": "Hydrangea arborescens",
+          "dose": ""
+        },
+        {
+          "name": "Lac defloratum",
+          "dose": ""
+        },
+        {
+          "name": "Lactuca virosa",
+          "dose": ""
+        },
+        {
+          "name": "Ovi gallinae",
+          "dose": ""
+        },
+        {
+          "name": "Phaseolus",
+          "dose": ""
+        },
+        {
+          "name": "Russula foetens",
+          "dose": ""
+        },
+        {
+          "name": "Saccharomyces",
+          "dose": ""
+        },
+        {
+          "name": "Solanum lycopersicum",
+          "dose": ""
+        },
+        {
+          "name": "Solanum tuberosum",
+          "dose": ""
+        },
+        {
+          "name": "Stigmata maidis",
+          "dose": ""
+        },
+        {
+          "name": "Triticum repens",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "youth": {
       "name": "Youth Infoceutical",
@@ -3457,7 +4247,58 @@
       "name": "Energessence",
       "price_cents": 6997,
       "pinecone_title": "Energessence",
-      "url": "https://remedymatch.com/remedies/syntropy/53-energessence"
+      "url": "https://remedymatch.com/remedies/syntropy/53-energessence",
+      "ingredients": [
+        {
+          "name": "Aloe socotrina",
+          "dose": ""
+        },
+        {
+          "name": "Amygdala amara",
+          "dose": ""
+        },
+        {
+          "name": "Bee Pollen",
+          "dose": ""
+        },
+        {
+          "name": "Flower Pollen (Cernitin)",
+          "dose": ""
+        },
+        {
+          "name": "Ginkgo biloba",
+          "dose": ""
+        },
+        {
+          "name": "Hydrocotyle asiatica",
+          "dose": ""
+        },
+        {
+          "name": "Laminaria",
+          "dose": ""
+        },
+        {
+          "name": "Medicago sativa",
+          "dose": ""
+        },
+        {
+          "name": "RNA-DNA from Yeast",
+          "dose": ""
+        },
+        {
+          "name": "Royal Jelly",
+          "dose": ""
+        },
+        {
+          "name": "Symphytum officinale",
+          "dose": ""
+        },
+        {
+          "name": "Zinc Monomethionine",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "flow-ease": {
       "name": "Flow Ease",
@@ -4416,7 +5257,26 @@
       "name": "Electrolyte Mineral Manna",
       "price_cents": 6997,
       "pinecone_title": "Electrolyte Mineral Manna",
-      "url": "https://remedymatch.com/remedies/syntropy/542-electrolyte-mineral-manna"
+      "url": "https://remedymatch.com/remedies/syntropy/542-electrolyte-mineral-manna",
+      "ingredients": [
+        {
+          "name": "Levitating Sea Mineral Electrolytes",
+          "dose": ""
+        },
+        {
+          "name": "Manna ORMUS M-11",
+          "dose": ""
+        },
+        {
+          "name": "Alkaline Antioxidant Microwater",
+          "dose": ""
+        },
+        {
+          "name": "Low Deuterium Water",
+          "dose": "5 ppm"
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "sanctuary-c60": {
       "name": "Sanctuary C60",
@@ -4425,11 +5285,15 @@
       "url": "https://remedymatch.com/remedies/syntropy/248-sanctuary-c60",
       "ingredients": [
         {
-          "name": "Carbon 60 (Buckminster Fullerene)",
-          "dose": "0.4 mg"
+          "name": "C60 (Buckminster Fullerenes)",
+          "dose": ""
+        },
+        {
+          "name": "Black Seed Oil (Nigella sativa)",
+          "dose": ""
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "store-recovery-2026-06-08",
       "description": "Sanctuary C60 . Price: $69.97."
     },
     "iron-out": {
@@ -5567,11 +6431,51 @@
       "url": "https://remedymatch.com/remedies/syntropy/19-clear-lens-eye-drops",
       "ingredients": [
         {
-          "name": "Quinton",
-          "dose": "60 mL"
+          "name": "Quintessential Bioterrain Restore (Quinton seawater)",
+          "dose": ""
+        },
+        {
+          "name": "MSM (Methylsulfonylmethane)",
+          "dose": "97%"
+        },
+        {
+          "name": "DMSO (Dimethylsulfoxide)",
+          "dose": "1%"
+        },
+        {
+          "name": "N-Acetyl L-Carnosine",
+          "dose": "1%"
+        },
+        {
+          "name": "Vitamin A (Acetate)",
+          "dose": "0.1%"
+        },
+        {
+          "name": "Vitamin C & Zinc (as Zinc-Ascorbate)",
+          "dose": "0.1%"
+        },
+        {
+          "name": "Lanosterol",
+          "dose": "0.02%"
+        },
+        {
+          "name": "Saffron (Crocus sativa)",
+          "dose": "0.02%"
+        },
+        {
+          "name": "Vitamin E Complex",
+          "dose": "0.02%"
+        },
+        {
+          "name": "Cineraria maritima (succus)",
+          "dose": "0.01%"
+        },
+        {
+          "name": "Silver (Ionic)",
+          "dose": "0.001%"
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "store-recovery-2026-06-08",
       "description": "Clear Lens Eyedrops . Price: $69.97."
     },
     "iron-syntropy": {
@@ -5579,7 +6483,54 @@
       "price_cents": 6997,
       "pinecone_title": "Iron Synergy",
       "url": "https://remedymatch.com/remedies/syntropy/319-iron-syntropy",
-      "qty_pricing": true
+      "qty_pricing": true,
+      "ingredients": [
+        {
+          "name": "Vitamin B13: Phosphatides 50% (Helianthus annuus)",
+          "dose": "34.5 mg"
+        },
+        {
+          "name": "Ginkgo Biloba Extract EGb 761 [24% Flavone Glycosides, 6% Lactones, <0.0005% Ginkgolic Acid] (Ginkgo biloba)",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin B3 (as Niacin)",
+          "dose": "5 mg"
+        },
+        {
+          "name": "Miracle Tree 100:1 (Moringa oleifera)",
+          "dose": ""
+        },
+        {
+          "name": "Licorice Omnipotent (Glycyrrhiza glabra)",
+          "dose": ""
+        },
+        {
+          "name": "Vinpocetine (Vinca minor)",
+          "dose": ""
+        },
+        {
+          "name": "Gingerol 10% (Zingiber officinale)",
+          "dose": ""
+        },
+        {
+          "name": "Piperine (Piper nigrum)",
+          "dose": ""
+        },
+        {
+          "name": "Fulvic Acid",
+          "dose": ""
+        },
+        {
+          "name": "Humic Acid",
+          "dose": ""
+        },
+        {
+          "name": "11 Spirit Minerals",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "sleep": {
       "name": "Sleep",
@@ -5944,7 +6895,26 @@
       "name": "Moisture Eyes Night Oil",
       "price_cents": 6997,
       "pinecone_title": "Moisture Eyes Night Oil",
-      "url": "https://remedymatch.com/remedies/syntropy/75-moisture-eyes-night-oil"
+      "url": "https://remedymatch.com/remedies/syntropy/75-moisture-eyes-night-oil",
+      "ingredients": [
+        {
+          "name": "Sea Buckthorn Berry Oil (Hippophae rhamnoides)",
+          "dose": "4 parts"
+        },
+        {
+          "name": "Coconut Oil (Cocos nucifera)",
+          "dose": "3 parts"
+        },
+        {
+          "name": "Kukui Nut Oil (Aleurites moluccana)",
+          "dose": "2 parts"
+        },
+        {
+          "name": "Emu Oil (Dromaius novaehollandiae)",
+          "dose": "1 part"
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "mb3-cbh": {
       "name": "MB 3",
@@ -6020,11 +6990,11 @@
       "url": "https://remedymatch.com/remedies/syntropy/126-zinc-taste-test",
       "ingredients": [
         {
-          "name": "Chromium (as Chromium Chloride)",
-          "dose": "500 mcg"
+          "name": "Zinc Sulfate",
+          "dose": ""
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "store-recovery-2026-06-08",
       "description": "Zinc Taste Test . Price: $39.97."
     },
     "shields-up": {
@@ -7384,7 +8354,18 @@
       "name": "Wash & Rinse",
       "price_cents": 6997,
       "pinecone_title": "Wash &amp; Rinse",
-      "url": "https://remedymatch.com/remedies/syntropy/543-wash--rinse"
+      "url": "https://remedymatch.com/remedies/syntropy/543-wash--rinse",
+      "ingredients": [
+        {
+          "name": "Sodium Bicarbonate (baking soda)",
+          "dose": ""
+        },
+        {
+          "name": "Vinegar Powder from Apple Cider Vinegar (Malus pumila)",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "macular-wellness-zeaxanthin": {
       "name": "Macular Wellness Astaxanthin",
@@ -7450,7 +8431,30 @@
       "name": "Sinus Terrain Nasal Spray",
       "price_cents": 6997,
       "pinecone_title": "Sinus Terrain Nasal Spray",
-      "url": "https://remedymatch.com/remedies/syntropy/316-sinus-terrain-nasal-spray"
+      "url": "https://remedymatch.com/remedies/syntropy/316-sinus-terrain-nasal-spray",
+      "ingredients": [
+        {
+          "name": "Hypertonic Saline base from Quinton seawater (ORMUS Spirit Minerals)",
+          "dose": ""
+        },
+        {
+          "name": "Grapefruit Seed Extract (Citrus paradisi)",
+          "dose": "0.1%"
+        },
+        {
+          "name": "Xylitol (Betula spp.)",
+          "dose": "0.74%"
+        },
+        {
+          "name": "Iodine (from Lugol's Potassium Iodide)",
+          "dose": "0.1%"
+        },
+        {
+          "name": "Humic Acid",
+          "dose": "0.1%"
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "rhythm-restore": {
       "name": "Rhythm Restore",
@@ -7516,7 +8520,30 @@
       "name": "Shark Essence",
       "price_cents": 6997,
       "pinecone_title": "Shark Essence",
-      "url": "https://remedymatch.com/remedies/syntropy/105-shark-essence"
+      "url": "https://remedymatch.com/remedies/syntropy/105-shark-essence",
+      "ingredients": [
+        {
+          "name": "Bovine Thymus",
+          "dose": ""
+        },
+        {
+          "name": "Peppermint (Mentha piperita)",
+          "dose": ""
+        },
+        {
+          "name": "Shark Cartilage",
+          "dose": ""
+        },
+        {
+          "name": "Squalene (shark liver oil)",
+          "dose": ""
+        },
+        {
+          "name": "Thymolum",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "angiogenx": {
       "name": "AngiogenX",
@@ -7735,7 +8762,26 @@
       "name": "CDS Water Purifier & Activator",
       "price_cents": 6997,
       "pinecone_title": "CDS Water Purifier &amp; Activator",
-      "url": "https://remedymatch.com/remedies/syntropy/366-cds-water-purifier--activator"
+      "url": "https://remedymatch.com/remedies/syntropy/366-cds-water-purifier--activator",
+      "ingredients": [
+        {
+          "name": "Sodium Chlorite",
+          "dose": "28% (Purifier solution)"
+        },
+        {
+          "name": "Pure Water",
+          "dose": "72% (Purifier solution)"
+        },
+        {
+          "name": "Citric Acid",
+          "dose": "50% (Activator solution)"
+        },
+        {
+          "name": "Miracule Water",
+          "dose": "50% (Activator solution)"
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "phosphatides": {
       "name": "Phosphatides",
@@ -9222,11 +10268,19 @@
       "url": "https://remedymatch.com/remedies/syntropy/434-crucifer-complex",
       "ingredients": [
         {
-          "name": "3,4-Diindolylmethane (DIM)",
+          "name": "Kale (Brassica oleracea)",
+          "dose": ""
+        },
+        {
+          "name": "Collards (Brassica oleracea)",
+          "dose": ""
+        },
+        {
+          "name": "DIM: 3,3'-Diindolylmethane (standardized extract)",
           "dose": "24 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "store-recovery-2026-06-08",
       "description": "Crucifer Complex . Crucifer Complex Crucifer Complex DIM is found in Kale at about 0.1% concentration. We add a standardized extract of DIM that is about 1,000 times more concentrated to boost the potent healing effects of our Crucifer Complex. That means a single serving provides as much DIM as 100 grams of Kale. That's about 3.5 ounces or close to a quarter of a pound. Kale and Collards are the only foods rated at 1000 on a scale of 0 to 1000. How many of us find it easy to eat enough of them? Crucifer Complex supplies both in concentrated form with the addition of the key phytonutrient..."
     },
     "hydrolized-pea-protein-aminos--pure--predigested": {
@@ -9608,11 +10662,11 @@
       "url": "https://remedymatch.com/remedies/504-lcarnosine",
       "ingredients": [
         {
-          "name": "N-Acetyl L-Carnosine",
-          "dose": "6g"
+          "name": "L-Carnosine",
+          "dose": "30 g (bulk powder)"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "store-recovery-2026-06-08",
       "description": "L-Carnosine . L-Carnosine L-Carnosine Remedy Match: $39.97 for 30g in 50 mL violet glass bottle (bottle retail value: $19 from Infinity Jars) Compare: Nootropics Depot $29.99/30g in plastic bottle L-Carnosine Powder: 30 grams in a Belgian violet glass bottle. L-Carnosine Background L-Carnosine (β-alanyl-L-histidine) is a naturally occurring dipeptide discovered over 100 years ago by Gulewitsch and Amiradžibi at the University of Charkow, Ukraine[1]. Its name derives from the Latin \"caro, carnis\" meaning meat, as it was first isolated from minced meat extract[1]. This endogenous compound is..."
     },
     "viscum-album": {
@@ -9743,11 +10797,47 @@
       "url": "https://remedymatch.com/remedies/syntropy/109-adrenal-syntropy",
       "ingredients": [
         {
-          "name": "DHEA",
+          "name": "7-Keto DHEA (7-Ketodehydroepiandrosterone)",
           "dose": "5 mg"
+        },
+        {
+          "name": "Vitamin C (Ascorbyl Palmitate)",
+          "dose": "60 mg"
+        },
+        {
+          "name": "100% D-Ribose",
+          "dose": "200 mg"
+        },
+        {
+          "name": "Huang Bai 20:1 (Phellodendron chinense)",
+          "dose": "20 mg"
+        },
+        {
+          "name": "Withanolides 10% (Withania somnifera)",
+          "dose": "40 mg"
+        },
+        {
+          "name": "Ginsenosides 80% (Panax ginseng)",
+          "dose": "7 mg"
+        },
+        {
+          "name": "Rosavins 10% Salidrosides 5% (Rhodiola rosea)",
+          "dose": "20 mg"
+        },
+        {
+          "name": "Honokiol 50% (Magnolia officinalis)",
+          "dose": "20 mg"
+        },
+        {
+          "name": "Diosgenin (Dioscorea villosa)",
+          "dose": "8 mg"
+        },
+        {
+          "name": "Mogroside V 80% (Siraitia grosvenorii)",
+          "dose": "2 mg"
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "store-recovery-2026-06-08",
       "description": "Adrenal Syntropy . Adrenal Syntropy Adrenal Syntropy For many years we have instructed our clients to open their capsules of 7 Keto DHEA and hold the powder under their tongues for better efficacy. There is an abundant supply of circulation under the tongue, which carries the 7-Keto directly into the systemic blood supply. Any 7-Keto not absorbed in the mouth must go through the portal blood to be filtered through the liver before reaching the systemic blood supply. About 80% of that is broken down by the liver, so whatever can be absorbed in the mouth is about five times more efficient. The..."
     },
     "cinnamon-blue": {
