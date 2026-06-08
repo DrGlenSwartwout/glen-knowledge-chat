@@ -143,6 +143,9 @@
   .btn-cal-hide:hover     { border-color: var(--muted); color: var(--text); }
   .btn-cal-suppress:hover { border-color: var(--muted); color: var(--muted); }
   .btn-cal-delete:hover   { border-color: var(--high); color: var(--high); background: #2a1a1a; }
+  .btn-cal-delegate:hover { border-color: var(--rae); color: var(--rae); background: #2a1a0a; }
+  .cal-delegate-wrap { position: relative; display: inline-block; }
+  .cal-deleg-done { font-size: 11px; color: var(--shaira); }
   #cal-empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
 
   /* Todo section */
@@ -1148,6 +1151,10 @@ function renderCalendar(events) {
         <div class="cal-event-actions">
           <button class="btn-cal btn-cal-alert${isAlerted ? ' active' : ''}" id="alert-btn-${ev.id}" onclick="toggleCalAlert(${ev.id}, '${escHtml(ev.start||'')}', '${escHtml(ev.summary||'').replace(/'/g,"\\'")}')">🔔 Alert</button>
           <button class="btn-cal btn-cal-hide" onclick="doCalHide(${ev.id})">Skip</button>
+          <span class="delegate-wrap cal-delegate-wrap">
+            <button class="btn-cal btn-cal-delegate" onclick="toggleMenu('cal${ev.id}', event)">Delegate ▾</button>
+            <div class="delegate-menu hidden" id="menu-cal${ev.id}">${calDelegateOptions(ev.id)}</div>
+          </span>
           <button class="btn-cal btn-cal-suppress" onclick="doCalSuppress(${ev.id})">Always ignore</button>
           <button class="btn-cal btn-cal-delete" onclick="doCalDelete(${ev.id})">Delete from Google</button>
         </div>
@@ -1181,6 +1188,21 @@ async function doCalDelete(id) {
   await patchCalEvent(id, 'delete');
   const el = document.getElementById(`cal-ev-${id}`);
   if (el) { el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(() => el.remove(), 300); }
+}
+
+// Delegate a calendar event to another owner's console calendar (non-destructive copy).
+function calDelegateOptions(id) {
+  const cap = o => o.charAt(0).toUpperCase() + o.slice(1);
+  return ['glen','rae','shaira'].filter(o => o !== currentOwner)
+    .map(o => `<button class="delegate-option" onclick="doCalDelegate(${id},'${o}')">${cap(o)}</button>`).join('');
+}
+
+async function doCalDelegate(id, to) {
+  closeAllMenus();
+  const r = await apiFetch(`/api/calendar/${id}`, { method: 'PATCH', body: JSON.stringify({ action: 'delegate', to }) });
+  const cap = to.charAt(0).toUpperCase() + to.slice(1);
+  const wrap = document.querySelector(`#cal-ev-${id} .cal-delegate-wrap`);
+  if (r.ok && wrap) wrap.innerHTML = `<span class="cal-deleg-done">✓ Sent to ${cap}</span>`;
 }
 
 // ── Todo render ───────────────────────────────────────────────────────────────

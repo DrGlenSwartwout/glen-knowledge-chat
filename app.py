@@ -6710,7 +6710,38 @@ def patch_calendar(event_id):
         if key != CONSOLE_SECRET:
             return jsonify({"error": "Unauthorized"}), 401
 
-    action = (request.get_json(force=True) or {}).get("action", "hide")
+    data = request.get_json(force=True) or {}
+    action = data.get("action", "hide")
+
+    # Delegate: copy the event onto another owner's console calendar. Console-only
+    # (synthetic google id, google_cal_id='delegated' so the Google sync never
+    # touches it); non-destructive (original stays on the delegator's calendar).
+    if action == "delegate":
+        to = (data.get("to") or "").lower()
+        if to not in ("glen", "rae", "shaira"):
+            return jsonify({"error": "Invalid delegate target"}), 400
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute(
+                "SELECT summary, start, end, location, owner FROM calendar_events WHERE id=?",
+                (event_id,)).fetchone()
+            if not row:
+                return jsonify({"error": "not found"}), 404
+            summary, start, end, location, from_owner = row
+            cx.execute("""
+                INSERT INTO calendar_events
+                  (pushed_at, google_cal_id, google_event_id, calendar_name,
+                   summary, start, end, location, owner, status, cal_alert)
+                VALUES (?, 'delegated', ?, ?, ?, ?, ?, ?, ?, 'visible', 0)
+                ON CONFLICT(google_cal_id, google_event_id) DO UPDATE SET
+                  status='visible', summary=excluded.summary, start=excluded.start,
+                  end=excluded.end, location=excluded.location,
+                  calendar_name=excluded.calendar_name, pushed_at=excluded.pushed_at
+            """, (datetime.now(timezone.utc).isoformat(), f"deleg-{event_id}-{to}",
+                  f"Delegated by {(from_owner or 'glen').title()}",
+                  summary, start, end, location, to))
+            cx.commit()
+        return jsonify({"ok": True, "delegated_to": to})
+
     if action == "show":
         new_status = "visible"
     elif action == "delete":
