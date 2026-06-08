@@ -30,49 +30,48 @@ from . import heygen as _heygen
 MODEL = os.environ.get("BRIEFING_MODEL", "claude-haiku-4-5-20251001")
 
 VALID_SLUGS = [
-    "daily-briefing",
-    "eyes-on-every-street",
-    "founders-radar",
-    "revenue-x-ray",
-    "pattern-which-connects",
+    "money-cash",
+    "clients-pipeline",
+    "signals-patterns",
 ]
 
 
+# Three domain cards. Each OWNS its slice of the snapshot so a statistic appears
+# on exactly one card (no cross-card repetition). Shared format rules (H1 +
+# dateline, the acronym/retired-pipeline guards, and the [HIGH]/[MED]/[LOW]
+# action rubric) live in _build_user_prompt.
 SLUG_PROMPTS = {
-    "daily-briefing": (
-        "You write Glen Swartwout's one-page morning Daily Briefing. Voice: "
-        "calm, scannable, lead with money + overdue client work, end with a "
-        "single Bottom Line action. Section headers with emoji (💰 Money, "
-        "🚨 Client Messages, 📋 Pipeline & Systems, then Bottom line). Bold "
-        "names and amounts. No filler. Max ~250 words."
+    "money-cash": (
+        "You write the Money & Cash card for Glen Swartwout's Command Center. "
+        "Cover ONLY money, from the snapshot's `money` block: the combined cash "
+        "position (bank balances + Wise together), money in today and over 7 "
+        "days, accounts receivable / overdue, and any Practice Better or "
+        "Authorize.net processor issues. Name the single revenue constraint "
+        "(the Schwerpunkt) limiting cash this week. Do NOT cover pipeline, "
+        "leads, or system health — other cards own those. State each figure "
+        "once. Then one short '## Insight' line on runway / trend. Voice: "
+        "calm, precise, money-first."
     ),
-    "eyes-on-every-street": (
-        "You write the Eyes On Every Street briefing — anomaly detection "
-        "across every system. Lead with the most overdue / aging items. Note "
-        "blind spots explicitly. Voice: observational, structural, names the "
-        "pattern rather than itemizing. End with a Bottom Line that names the "
-        "single most-urgent thing on Glen's desk."
+    "clients-pipeline": (
+        "You write the Clients & Pipeline card. Cover ONLY the sales pipeline "
+        "and lead intake, from the snapshot's `gohighlevel` (pipeline "
+        "opportunities by stage) and `scoreapp` (recent quiz signups) blocks: "
+        "which pipelines hold opportunities that could convert this week, and "
+        "the new leads worth contacting. Do NOT cover cash / accounts "
+        "receivable or system health. If a source has an `_error`, say it is "
+        "unavailable rather than inventing. Then one short '## Insight' line on "
+        "the best conversion bet or the biggest stall. Voice: triage-officer; "
+        "name pipelines, stages, counts, and lead names."
     ),
-    "founders-radar": (
-        "You write Founder's Radar — an attention allocator. For each domain "
-        "(client messages, revenue, pipeline, ads), list aging items with "
-        "specific days-overdue, then say what to clear today vs tomorrow. "
-        "Voice: triage-officer; explicit ages, explicit deadlines."
-    ),
-    "revenue-x-ray": (
-        "You write Revenue X-Ray — a revenue-per-founder-hour analysis. "
-        "Lead with Cash Position (Wise + bank totals). Then Pipeline Reality "
-        "(GHL counts that could convert this week). Then Client Response "
-        "Backlog (retention risk). Name the constraint (Schwerpunkt). End "
-        "with a Bottom Line that names the single revenue lever to pull today."
-    ),
-    "pattern-which-connects": (
-        "You write Pattern Which Connects — Bateson/Sheldrake voice, "
-        "cross-system pattern detection. Find the META-pattern across "
-        "domains (the structural thing that recurs everywhere). Quote "
-        "specific numbers as evidence but stay one level up. Note Data Gaps "
-        "explicitly. End with a Bottom Line that names the structural fact "
-        "every stuck item traces back to."
+    "signals-patterns": (
+        "You write the Signals & Patterns card. Cover cross-system health from "
+        "the snapshot's `pinecone` (knowledge base) and `heygen` (video) blocks "
+        "plus any `_error` markers anywhere in the snapshot (those are the blind "
+        "spots). Then, one level up, name the structural meta-pattern that "
+        "recurs across the systems — Bateson / Sheldrake voice. Do NOT restate "
+        "the cash or pipeline figures the other two cards own. Call out data "
+        "gaps explicitly. Then one short '## Insight' line naming the "
+        "structural fact. Voice: observational, structural."
     ),
 }
 
@@ -133,7 +132,15 @@ def _build_user_prompt(snapshot, slug):
         f"Spell out every acronym in full the first time it appears in each "
         f"briefing, with the short form in parentheses after it — e.g. "
         f"'End of Day (EOD)'. Only reference pipelines and sources that appear "
-        f"in the snapshot; never mention retired ones (e.g. MCTB, Email Paramedic)."
+        f"in the snapshot; never mention retired ones (e.g. MCTB, Email Paramedic).\n\n"
+        f"End the card with a '## Recommended actions' section: 1 to 3 actions, "
+        f"each on its own line, each STARTING with a severity tag in square "
+        f"brackets chosen from urgency AND potential financial impact — "
+        f"[HIGH] (act now / high dollars at stake), [MED] (this week / moderate), "
+        f"[LOW] (maintenance / low impact). Put the most significant action "
+        f"first. Example line: '[HIGH] Collect the $4,210 overdue from Acme — "
+        f"30+ days aged.' If there is genuinely nothing to do, write "
+        f"'[LOW] No action needed.'"
     )
 
 
