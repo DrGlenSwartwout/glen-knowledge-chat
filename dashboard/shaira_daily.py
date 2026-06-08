@@ -153,7 +153,7 @@ def compose_report(metrics, cl):
 
     if not activity:
         return (
-            "## Shaira — Daily Report\n\n"
+            "# Shaira\n\n"
             "_No workspace activity in the last 24 hours._\n\n"
             f"- **Plan queue:** {m['plan_count']} item(s) waiting\n"
             f"- **In process:** {m['in_process_count']} item(s)\n"
@@ -185,19 +185,20 @@ def compose_report(metrics, cl):
         "Shaira, his Philippines-based VA. Glen reads this with his morning coffee.\n"
         "Structure the report in EXACTLY these four sections. Use the bare section "
         "TITLES as the markdown headings (do NOT append these descriptions to them):\n"
-        "## Shaira — Daily Report\n"
-        "### Yesterday at a glance — factual: time logged, what she completed, what's in process.\n"
-        "### What it means — analytical: read the signals. Flag stuck-language and idle items "
-        "honestly but kindly. If she's blocked, say so plainly.\n"
-        "### Needs Glen — proposed: anything requiring Glen's decision/approval, especially "
-        "pending questions Justus routed to him.\n"
-        "### Trend — one line on pace (completions this week).\n"
+        "# Shaira\n"
+        "### Yesterday at a glance (factual: time logged, what she completed, what's in process).\n"
+        "### What it means (analytical: read the signals; flag stuck-language and idle items "
+        "honestly but kindly; if she's blocked, say so plainly).\n"
+        "### Needs Glen (proposed: anything requiring Glen's decision or approval, especially "
+        "pending questions Justus routed to him).\n"
+        "### Trend (one line on pace, completions this week).\n"
         "In the 'Needs Glen' section, write each item on its own line STARTING with a severity "
-        "tag in square brackets by urgency + impact — [HIGH] (blocking / needs Glen now), "
+        "tag in square brackets by urgency and impact: [HIGH] (blocking / needs Glen now), "
         "[MED] (decide this week), [LOW] (FYI / minor). If nothing needs him, write exactly "
-        "'[LOW] Nothing blocking — she has a clear runway.'\n"
-        "Be concise — Glen wants signal, not padding. Total under 250 words. "
-        "Stuck-language ('still working on…', 'deepening my understanding…') is a known pattern — "
+        "'[LOW] Nothing blocking, she has a clear runway.'\n"
+        "Be concise: Glen wants signal, not padding. Total under 250 words. NEVER use em dashes "
+        "(the long dash) anywhere; use a comma, colon, or period. "
+        "Stuck-language ('still working on…', 'deepening my understanding…') is a known pattern: "
         "name it directly but constructively. Do not invent facts beyond the data given."
     )
     prompt = (
@@ -220,7 +221,7 @@ def compose_report(metrics, cl):
 
 def _fallback_card(m):
     """Deterministic card if the Claude call fails — never leave the dashboard blank."""
-    lines = ["## Shaira — Daily Report", "",
+    lines = ["# Shaira", "",
              "### Yesterday at a glance",
              f"- Time logged: {_fmt_dur(m['time_logged_seconds'])} "
              f"across {m['focus_sessions']} focus session(s)",

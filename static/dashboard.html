@@ -158,6 +158,10 @@
 
   /* intelligence card — taller, scrollable, renders markdown */
   .intel-card{min-height:280px}
+  /* Intelligence cards use the markdown H1 as their (yellow) title — hide the
+     duplicate ALL-CAPS head chip; keep the status dot in the top-right. */
+  .intel-card .head .title{display:none}
+  .intel-card .head{justify-content:flex-end}
   @media(min-width:1024px){.intel-card{min-height:340px}}
   .intel-md{
     flex:1; overflow-y:auto; padding-right:6px;
