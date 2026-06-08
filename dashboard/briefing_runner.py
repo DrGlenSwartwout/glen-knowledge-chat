@@ -129,7 +129,11 @@ def _build_user_prompt(snapshot, slug):
         f"Write the {slug} briefing as markdown. Start with an H1 title and an "
         f"italic dateline. Do not wrap in code fences. Do not invent numbers "
         f"that aren't in the snapshot — if a source has an `_error` key, say "
-        f"that source is unavailable. Be specific about names, amounts, and ages."
+        f"that source is unavailable. Be specific about names, amounts, and ages. "
+        f"Spell out every acronym in full the first time it appears in each "
+        f"briefing, with the short form in parentheses after it — e.g. "
+        f"'End of Day (EOD)'. Only reference pipelines and sources that appear "
+        f"in the snapshot; never mention retired ones (e.g. MCTB, Email Paramedic)."
     )
 
 
