@@ -353,7 +353,7 @@
       const r = await fetch('/api/shipping/rates', { headers: apiHeaders() });
       const j = await r.json();
       if (!j.ok) throw new Error(j.error || 'load failed');
-      renderShipping(j.data.current || []);
+      renderShipping(j.data.current || {});
     } catch (e) {
       document.getElementById('ship-grid').innerHTML =
         '<div class="ship-card" style="border-color:var(--red);color:var(--red);grid-column:1/-1">' +
@@ -365,8 +365,10 @@
     const wrap = document.getElementById('ship-grid');
     wrap.innerHTML = '';
     const sizes = ['S', 'M', 'L'];
-    const byBox = {};
-    rates.forEach(r => { byBox[r.box_size] = r; });
+    // /api/shipping/rates returns `current` keyed by box size ({S,M,L}); tolerate an array too.
+    const byBox = Array.isArray(rates)
+      ? Object.fromEntries(rates.map(r => [r.box_size, r]))
+      : (rates || {});
     sizes.forEach(sz => {
       const r = byBox[sz];
       const card = document.createElement('div');
