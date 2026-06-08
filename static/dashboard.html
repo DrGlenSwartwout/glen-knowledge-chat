@@ -50,7 +50,7 @@
   }
   .brand{display:flex; flex-direction:column; gap:4px}
   .brand .eyebrow{
-    font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase;
+    font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:none;
     color:var(--gold-soft);
   }
   .brand h1{
@@ -67,7 +67,7 @@
   .refresh-all{
     display:inline-flex; align-items:center; gap:6px; margin-top:6px;
     background:transparent; border:1px solid var(--rule); color:var(--ink-2);
-    font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase;
+    font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:none;
     padding:6px 10px; cursor:pointer; transition:.18s ease;
   }
   .refresh-all:hover{border-color:var(--gold); color:var(--gold)}
@@ -76,7 +76,7 @@
   /* Section-scoped regen button (e.g. "Regenerate" next to Intelligence) */
   .row-action{
     background:transparent; border:1px solid var(--rule); color:var(--ink-2);
-    font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase;
+    font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:none;
     padding:4px 9px; cursor:pointer; transition:.18s ease;
   }
   .row-action:hover{border-color:var(--gold); color:var(--gold)}
@@ -93,7 +93,7 @@
     font-size:24px; letter-spacing:-.01em; color:var(--ink);
   }
   .row-head .num{
-    font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase;
+    font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:none;
     color:var(--ink-3);
   }
   .row-head .rule{flex:1; height:1px; background:var(--rule); align-self:center}
@@ -119,7 +119,7 @@
     display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;
   }
   .card .title{
-    font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase;
+    font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:none;
     color:var(--ink-2);
   }
   .dot{
@@ -135,7 +135,7 @@
   .card .body{flex:1; display:flex; flex-direction:column; gap:8px; overflow:hidden}
   .card footer{
     margin-top:12px; padding-top:10px; border-top:1px dashed var(--rule);
-    font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase;
+    font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:none;
     color:var(--ink-3); display:flex; justify-content:space-between;
   }
   .card footer .err{color:var(--red); text-transform:none; letter-spacing:.04em; font-size:10px; max-width:70%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
@@ -145,7 +145,7 @@
   .figure.gold{color:var(--gold)}
   .figure.sm{font-size:22px}
   .figure-row{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
-  .figure-row .label{font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-3)}
+  .figure-row .label{font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:none; color:var(--ink-3)}
 
   /* lists */
   ul.feed{list-style:none; display:flex; flex-direction:column; gap:6px}
@@ -172,7 +172,7 @@
   .intel-md::-webkit-scrollbar{width:4px}
   .intel-md::-webkit-scrollbar-thumb{background:var(--rule); border-radius:2px}
   .intel-md h1{font-size:16px; font-style:italic; font-weight:500; color:var(--gold); margin:0 0 8px; letter-spacing:-.01em}
-  .intel-md h2{font-size:11px; font-family:var(--mono); font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-2); margin:14px 0 6px; border-top:1px solid var(--rule); padding-top:10px}
+  .intel-md h2{font-size:11px; font-family:var(--mono); font-weight:600; letter-spacing:.18em; text-transform:none; color:var(--ink-2); margin:14px 0 6px; border-top:1px solid var(--rule); padding-top:10px}
   .intel-md h2:first-child{margin-top:0; border-top:none; padding-top:0}
   .intel-md h3{font-size:13px; font-style:italic; color:var(--gold-soft); margin:10px 0 4px}
   .intel-md p{margin:0 0 8px}
@@ -185,7 +185,7 @@
     margin:4px 0; padding:6px 9px; border-radius:6px; border-left:3px solid var(--gold-soft);
     background:rgba(255,255,255,.03)}
   .intel-md .act .act-tag{flex:none; font-family:var(--mono); font-size:9px; font-weight:700;
-    letter-spacing:.08em; text-transform:uppercase; padding:1px 6px; border-radius:4px; color:#0a0a0f}
+    letter-spacing:.08em; text-transform:none; padding:1px 6px; border-radius:4px; color:#0a0a0f}
   .intel-md .act.act-high{border-left-color:var(--red); background:rgba(204,75,44,.10)}
   .intel-md .act.act-high .act-tag{background:var(--red); color:#fff}
   .intel-md .act.act-med{border-left-color:var(--gold); background:rgba(212,168,67,.10)}
@@ -218,7 +218,7 @@
     display:flex; align-items:center; gap:10px; padding:10px 12px;
     background:rgba(255,255,255,.015); border:1px solid var(--rule);
   }
-  .health-cell .name{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-2); flex:1}
+  .health-cell .name{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:none; color:var(--ink-2); flex:1}
   .health-cell .ts{font-family:var(--mono); font-size:9px; color:var(--ink-3); letter-spacing:.06em}
 
   /* states */
@@ -226,7 +226,7 @@
 
   /* badges */
   .badge{
-    display:inline-block; font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase;
+    display:inline-block; font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:none;
     padding:2px 6px; border:1px solid var(--rule); color:var(--ink-2);
   }
   .badge.gold{color:var(--gold); border-color:var(--gold-soft)}
@@ -237,7 +237,7 @@
   .kv{display:flex; flex-direction:column; gap:5px}
   .kv .row-kv{display:flex; justify-content:space-between; align-items:baseline; gap:10px;
     font-family:var(--mono); font-size:11px; color:var(--ink); letter-spacing:.04em}
-  .kv .row-kv .k{color:var(--ink-2); text-transform:uppercase; font-size:10px; letter-spacing:.14em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .kv .row-kv .k{color:var(--ink-2); text-transform:none; font-size:10px; letter-spacing:.14em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .kv .row-kv .v{color:var(--gold); font-variant-numeric:tabular-nums}
 
   /* lockout overlay */
@@ -262,7 +262,7 @@
   #lockout input:focus{border-bottom-color:var(--gold)}
   #lockout button{
     margin-top:16px; width:100%; background:var(--gold); border:none; color:#1a1500;
-    font-family:var(--mono); font-size:11px; letter-spacing:.22em; text-transform:uppercase;
+    font-family:var(--mono); font-size:11px; letter-spacing:.22em; text-transform:none;
     padding:12px; cursor:pointer; transition:.2s;
   }
   #lockout button:hover{background:#fac826}
@@ -291,7 +291,7 @@
   }
   .action-panel .btn-row{display:flex; flex-wrap:wrap; gap:6px}
   .action-panel button{
-    font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+    font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:none;
     padding:5px 9px; background:transparent; border:1px solid var(--rule); color:var(--ink-2);
     cursor:pointer; transition:.15s ease; line-height:1;
   }
@@ -334,7 +334,7 @@
 
   ul.feed .pills{display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px}
   ul.feed .pills .pill{
-    font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase;
+    font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:none;
     padding:1px 6px; border:1px solid var(--rule); color:var(--ink-3);
   }
 </style>
@@ -794,7 +794,7 @@ R.ghlPipeline = (d) => {
   const active = (d.pipelines || []).filter(p => p.count !== null && p.count > 0).length;
   return `
     <div class="figure-row"><span class="label">All Pipelines</span><span class="figure gold">${d.total||0}</span></div>
-    <div class="figure-row" style="margin-top:6px"><span class="label">${active}/${d.pipeline_count||0} active</span><span class="ts" style="font-size:9px; color:var(--ink-3); letter-spacing:.14em; text-transform:uppercase">tap to expand · TBD</span></div>
+    <div class="figure-row" style="margin-top:6px"><span class="label">${active}/${d.pipeline_count||0} active</span><span class="ts" style="font-size:9px; color:var(--ink-3); letter-spacing:.14em; text-transform:none">tap to expand · TBD</span></div>
   `;
 };
 
@@ -857,7 +857,7 @@ R.brain = (d) => {
     if(!items || !items.length) return "";
     return `
       <div style="margin-bottom:8px">
-        <div style="font-family:var(--mono); font-size:9px; letter-spacing:.18em; text-transform:uppercase; color:var(--gold-soft); margin-bottom:4px">${label}</div>
+        <div style="font-family:var(--mono); font-size:9px; letter-spacing:.18em; text-transform:none; color:var(--gold-soft); margin-bottom:4px">${label}</div>
         <ul class="feed">${items.slice(0,3).map(x => `<li><span class="body-text">${escapeHtml(typeof x === 'string' ? x : (x.text || x.title || JSON.stringify(x).slice(0,80)))}</span></li>`).join("")}</ul>
       </div>
     `;
