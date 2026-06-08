@@ -5413,10 +5413,17 @@
       "enrichment_note": "Recovered from FMP (Glen 2026-06-05); label-formatted (FDA DVs)."
     },
     "hydrolyzed-whey": {
-      "name": "Hydrolyzed Collagen",
+      "name": "Hydrolyzed Whey",
       "price_cents": 3997,
-      "pinecone_title": "Hydrolyzed Collagen",
-      "url": "https://remedymatch.com/remedies/forms/powders/pure-simple-singles/421-hydrolyzed-whey"
+      "pinecone_title": "Hydrolyzed Whey",
+      "url": "https://remedymatch.com/remedies/forms/powders/pure-simple-singles/421-hydrolyzed-whey",
+      "ingredients": [
+        {
+          "name": "Hydrolyzed Whey Protein (grass-fed bovine)",
+          "dose": "20-25 g per serving"
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "nerve-pulse": {
       "name": "Nerve Repair",
@@ -5480,7 +5487,14 @@
       "name": "Hydrolyzed Collagen",
       "price_cents": 3997,
       "pinecone_title": "Hydrolyzed Collagen",
-      "url": "https://remedymatch.com/remedies/forms/powders/pure-simple-singles/417-hydrolyzed-collagen"
+      "url": "https://remedymatch.com/remedies/forms/powders/pure-simple-singles/417-hydrolyzed-collagen",
+      "ingredients": [
+        {
+          "name": "Hydrolyzed Collagen (grass-fed bovine, Type I & III)",
+          "dose": ""
+        }
+      ],
+      "ingredients_source": "store-recovery-2026-06-08"
     },
     "es12-female": {
       "name": "ES12",
