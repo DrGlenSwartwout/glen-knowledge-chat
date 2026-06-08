@@ -173,6 +173,18 @@
   .intel-md li{margin-bottom:3px}
   .intel-md strong{color:var(--ink); font-weight:600}
   .intel-md em{color:var(--gold-soft); font-style:italic}
+  /* Recommended-action callouts — color = significance / financial impact */
+  .intel-md .act{display:flex; gap:7px; align-items:baseline; font-size:12px; line-height:1.4;
+    margin:4px 0; padding:6px 9px; border-radius:6px; border-left:3px solid var(--gold-soft);
+    background:rgba(255,255,255,.03)}
+  .intel-md .act .act-tag{flex:none; font-family:var(--mono); font-size:9px; font-weight:700;
+    letter-spacing:.08em; text-transform:uppercase; padding:1px 6px; border-radius:4px; color:#0a0a0f}
+  .intel-md .act.act-high{border-left-color:var(--red); background:rgba(204,75,44,.10)}
+  .intel-md .act.act-high .act-tag{background:var(--red); color:#fff}
+  .intel-md .act.act-med{border-left-color:var(--gold); background:rgba(212,168,67,.10)}
+  .intel-md .act.act-med .act-tag{background:var(--gold)}
+  .intel-md .act.act-low{border-left-color:var(--green); background:rgba(61,138,82,.10)}
+  .intel-md .act.act-low .act-tag{background:var(--green); color:#fff}
   .intel-md code{font-family:var(--mono); font-size:11px; background:rgba(230,184,0,.06); padding:1px 4px; color:var(--gold)}
 
   /* health grid */
@@ -338,31 +350,21 @@
       <span class="num">0</span>
       <h2>Intelligence</h2>
       <span class="rule"></span>
-      <button class="row-action" id="regenIntel" title="Regenerate all 5 briefings via Claude (takes ~15s)">Regenerate</button>
+      <button class="row-action" id="regenIntel" title="Regenerate the 3 briefings via Claude (takes ~15s)">Regenerate</button>
     </div>
     <div class="grid">
-      <article class="card intel-card" data-endpoint="/api/intelligence/daily-briefing" data-render="briefing">
-        <div class="head"><span class="title">Daily Briefing</span><span class="dot loading"></span></div>
+      <article class="card intel-card" data-endpoint="/api/intelligence/money-cash" data-render="briefing">
+        <div class="head"><span class="title">Money &amp; Cash</span><span class="dot loading"></span></div>
         <div class="body"><div class="loading-text">…</div></div>
         <footer><span class="ts">—</span></footer>
       </article>
-      <article class="card intel-card" data-endpoint="/api/intelligence/eyes-on-every-street" data-render="briefing">
-        <div class="head"><span class="title">Eyes on Every Street</span><span class="dot loading"></span></div>
+      <article class="card intel-card" data-endpoint="/api/intelligence/clients-pipeline" data-render="briefing">
+        <div class="head"><span class="title">Clients &amp; Pipeline</span><span class="dot loading"></span></div>
         <div class="body"><div class="loading-text">…</div></div>
         <footer><span class="ts">—</span></footer>
       </article>
-      <article class="card intel-card" data-endpoint="/api/intelligence/founders-radar" data-render="briefing">
-        <div class="head"><span class="title">Founder's Radar</span><span class="dot loading"></span></div>
-        <div class="body"><div class="loading-text">…</div></div>
-        <footer><span class="ts">—</span></footer>
-      </article>
-      <article class="card intel-card" data-endpoint="/api/intelligence/revenue-x-ray" data-render="briefing">
-        <div class="head"><span class="title">Revenue X-Ray</span><span class="dot loading"></span></div>
-        <div class="body"><div class="loading-text">…</div></div>
-        <footer><span class="ts">—</span></footer>
-      </article>
-      <article class="card intel-card" data-endpoint="/api/intelligence/pattern-which-connects" data-render="briefing">
-        <div class="head"><span class="title">Pattern Which Connects</span><span class="dot loading"></span></div>
+      <article class="card intel-card" data-endpoint="/api/intelligence/signals-patterns" data-render="briefing">
+        <div class="head"><span class="title">Signals &amp; Patterns</span><span class="dot loading"></span></div>
         <div class="body"><div class="loading-text">…</div></div>
         <footer><span class="ts">—</span></footer>
       </article>
@@ -394,11 +396,6 @@
       </article>
       <article class="card" data-endpoint="/api/money/banks" data-render="moneyBanks">
         <div class="head"><span class="title">Bank Balances</span><span class="dot loading"></span></div>
-        <div class="body"><div class="loading-text">…</div></div>
-        <footer><span class="ts">—</span></footer>
-      </article>
-      <article class="card" data-endpoint="/api/money/wise" data-render="moneyWise">
-        <div class="head"><span class="title">Wise</span><span class="dot loading"></span></div>
         <div class="body"><div class="loading-text">…</div></div>
         <footer><span class="ts">—</span></footer>
       </article>
@@ -644,21 +641,20 @@ R.moneyWeek = (d) => `
 
 R.moneyBanks = (d) => {
   const accts = d.accounts || [];
-  if(!accts.length) return `<div class="empty">no accounts</div>`;
+  const wise = d.wise || [];
+  if(!accts.length && !wise.length) return `<div class="empty">no accounts</div>`;
   const total = accts.reduce((s,a)=>s + (+a.balance||0), 0);
-  const rows = accts.slice(0,6).map(a => `
+  const acctRows = accts.slice(0,6).map(a => `
     <li><span class="body-text">${a.name||"—"}</span><span class="amount">${fmtMoney(a.balance)}</span></li>
   `).join("");
+  // Wise holds multiple currencies — listed separately (not summed into the USD bank total).
+  const wiseRows = wise.map(b => `
+    <li><span class="lead">Wise</span><span class="body-text">${b.currency}</span><span class="amount">${(+b.amount).toFixed(2)}</span></li>
+  `).join("");
   return `
-    <div class="figure-row"><span class="label">Total</span><span class="figure sm gold">${fmtMoney(total)}</span></div>
-    <ul class="feed">${rows}</ul>
+    <div class="figure-row"><span class="label">Bank total</span><span class="figure sm gold">${fmtMoney(total)}</span></div>
+    <ul class="feed">${acctRows}${wiseRows}</ul>
   `;
-};
-
-R.moneyWise = (d) => {
-  const bals = d.balances || [];
-  if(!bals.length) return `<div class="empty">—</div>`;
-  return `<ul class="feed">${bals.map(b=>`<li><span class="lead">${b.currency}</span><span class="body-text">balance</span><span class="amount">${(+b.amount).toFixed(2)}</span></li>`).join("")}</ul>`;
 };
 
 R.studioSales = (d) => {
@@ -904,6 +900,14 @@ function mdRender(src){
     if((m = line.match(/^### (.+)/))){ closeBlocks(); out.push(`<h3>${inline(m[1])}</h3>`); }
     else if((m = line.match(/^## (.+)/))){ closeBlocks(); out.push(`<h2>${inline(m[1])}</h2>`); }
     else if((m = line.match(/^# (.+)/))){ closeBlocks(); out.push(`<h1>${inline(m[1])}</h1>`); }
+    else if((m = line.match(/^(?:[-*]\s*)?\[(HIGH|MED|LOW)\]\s*(.+)/i))){
+      // Recommended action, color-coded by significance / financial impact.
+      closeBlocks();
+      const lvl = m[1].toUpperCase();
+      const cls = lvl === "HIGH" ? "act-high" : lvl === "MED" ? "act-med" : "act-low";
+      const label = lvl === "HIGH" ? "High" : (lvl === "MED" ? "Med" : "Low");
+      out.push(`<div class="act ${cls}"><span class="act-tag">${label}</span>${inline(m[2])}</div>`);
+    }
     else if((m = line.match(/^[-*] (.+)/))){
       if(!inUL){ closeBlocks(); out.push("<ul>"); inUL = true; }
       out.push(`<li>${inline(m[1])}</li>`);

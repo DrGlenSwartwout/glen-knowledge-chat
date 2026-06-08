@@ -10717,10 +10717,19 @@ def api_money_week():
 @app.route("/api/money/banks")
 @require_console_key
 def api_money_banks():
-    try: return ok(_money.qb_banks())
+    try:
+        data = _money.qb_banks()
+        # Fold Wise multi-currency balances into the Bank Balances card.
+        try:
+            data["wise"] = _money.wise_data().get("balances", [])
+        except Exception:
+            data["wise"] = []
+        return ok(data)
     except Exception as e: return fail(e)
 
 
+# Retained for back-compat / direct callers; the dashboard now folds Wise into
+# the Bank Balances card (/api/money/banks) instead of a separate card.
 @app.route("/api/money/wise")
 @require_console_key
 def api_money_wise():
