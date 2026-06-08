@@ -186,6 +186,20 @@
   .intel-md .act.act-med .act-tag{background:var(--gold)}
   .intel-md .act.act-low{border-left-color:var(--green); background:rgba(61,138,82,.10)}
   .intel-md .act.act-low .act-tag{background:var(--green); color:#fff}
+  /* Interactive action items: whole row navigates; ⋯ opens a local control panel */
+  .intel-md .act{position:relative; cursor:pointer}
+  .intel-md .act:hover{filter:brightness(1.15)}
+  .intel-md .act .act-text{flex:1; min-width:0}
+  .intel-md .act .act-menu{flex:none; background:transparent; border:none; color:var(--ink-2);
+    cursor:pointer; font-size:15px; line-height:1; padding:0 2px; border-radius:4px}
+  .intel-md .act .act-menu:hover{color:var(--ink); background:rgba(255,255,255,.08)}
+  .intel-md .act-panel{position:absolute; right:6px; top:100%; z-index:30; margin-top:3px;
+    display:flex; flex-direction:column; min-width:140px; background:var(--panel,#13131a);
+    border:1px solid var(--hair,#2a2a35); border-radius:8px; overflow:hidden;
+    box-shadow:0 6px 22px rgba(0,0,0,.45)}
+  .intel-md .act-panel button{background:transparent; border:none; color:var(--ink);
+    text-align:left; padding:8px 12px; font-size:12px; cursor:pointer; white-space:nowrap}
+  .intel-md .act-panel button:hover{background:rgba(255,255,255,.07)}
   .intel-md code{font-family:var(--mono); font-size:11px; background:rgba(230,184,0,.06); padding:1px 4px; color:var(--gold)}
 
   /* health grid */
@@ -907,7 +921,7 @@ function mdRender(src){
       const lvl = m[1].toUpperCase();
       const cls = lvl === "HIGH" ? "act-high" : lvl === "MED" ? "act-med" : "act-low";
       const label = lvl === "HIGH" ? "High" : (lvl === "MED" ? "Med" : "Low");
-      out.push(`<div class="act ${cls}"><span class="act-tag">${label}</span>${inline(m[2])}</div>`);
+      out.push(`<div class="act ${cls}" data-action="${escapeHtml(m[2])}" onclick="actNavigate(this,event)" title="Open the relevant console area"><span class="act-tag">${label}</span><span class="act-text">${inline(m[2])}</span><button class="act-menu" title="Options" onclick="actMenu(event,this)">⋯</button></div>`);
     }
     else if((m = line.match(/^[-*] (.+)/))){
       if(!inUL){ closeBlocks(); out.push("<ul>"); inUL = true; }
@@ -932,6 +946,66 @@ R.briefing = (d) => {
   if(d.empty) return `<div class="empty">${escapeHtml(d.message||"awaiting first run")}</div>`;
   return `<div class="intel-md">${mdRender(d.markdown||"")}</div>`;
 };
+
+// ── Interactive action items (Intelligence cards) ──────────────────────────
+// Whole item navigates to the card's console area; the ⋯ menu opens local
+// controls (hand to AI / done / dismiss / snooze).
+const ACT_AREA = {
+  "money-cash":       "/console/finance",
+  "clients-pipeline": "/console",
+  "signals-patterns": "/console/home",
+  "shaira-daily":     "/console",
+};
+function actSlug(el){
+  const card = el.closest("[data-endpoint]");
+  const ep = card ? (card.dataset.endpoint || "") : "";
+  if (ep.indexOf("/api/intelligence/") === 0) return ep.split("/").pop();
+  if (ep === "/api/shaira-daily") return "shaira-daily";
+  return "";
+}
+function actNavigate(el, e){
+  if (e && e.target.closest(".act-menu, .act-panel")) return;  // menu interactions don't navigate
+  const href = ACT_AREA[actSlug(el)] || "/console";
+  const sep = href.indexOf("?") >= 0 ? "&" : "?";
+  location.assign(href + sep + "key=" + encodeURIComponent(consoleKey));
+}
+function actMenu(e, btn){
+  e.stopPropagation();
+  const act = btn.closest(".act");
+  const existing = act.querySelector(".act-panel");
+  document.querySelectorAll(".act-panel").forEach(p => p.remove());
+  if (existing) return;  // toggle off
+  const p = document.createElement("div");
+  p.className = "act-panel";
+  p.innerHTML =
+    '<button onclick="actToAI(this,event)">✦ Hand to AI</button>' +
+    '<button onclick="actDo(this,event,\'done\')">✓ Done</button>' +
+    '<button onclick="actDo(this,event,\'dismissed\')">✕ Not needed</button>' +
+    '<button onclick="actDo(this,event,\'snoozed\',1)">⏰ Snooze to tomorrow</button>';
+  act.appendChild(p);
+}
+async function actDo(btn, e, state, snoozeDays){
+  e.stopPropagation();
+  const act = btn.closest(".act");
+  try {
+    await fetch("/api/briefing-action", {
+      method: "POST",
+      headers: { "X-Console-Key": consoleKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: actSlug(act), action_text: act.getAttribute("data-action") || "",
+                             state, snooze_days: snoozeDays || 0 }),
+    });
+  } catch (_) {}
+  act.style.transition = "opacity .3s"; act.style.opacity = "0";
+  setTimeout(() => act.remove(), 300);
+}
+function actToAI(btn, e){
+  e.stopPropagation();
+  const act = btn.closest(".act");
+  const text = act.getAttribute("data-action") || "";
+  const panel = act.querySelector(".act-panel"); if (panel) panel.remove();
+  if (typeof window.openJustusWith === "function") window.openJustusWith("Work on this action: " + text);
+}
+document.addEventListener("click", () => document.querySelectorAll(".act-panel").forEach(p => p.remove()));
 
 // ── fetch + render loop ───────────────────────────────────────────────────
 async function fetchCard(card){

@@ -260,6 +260,11 @@ def generate_and_store(db_path, cl, owner="shaira"):
               created_at=datetime('now')
         """, (owner, date_tag, md, json.dumps(metrics, default=str)))
         cx.commit()
+    try:
+        from . import briefing_actions as _ba
+        _ba.reset_slug("shaira-daily")   # fresh report => clear handled-action state
+    except Exception:
+        pass
     return {"owner": owner, "report_date": date_tag, "markdown": md, "metrics": metrics}
 
 

@@ -26,6 +26,7 @@ from . import pinecone_stats as _pc_stats
 from . import scoreapp as _scoreapp
 from . import heygen as _heygen
 from . import inbox as _inbox
+from . import briefing_actions as _ba
 
 
 MODEL = os.environ.get("BRIEFING_MODEL", "claude-haiku-4-5-20251001")
@@ -179,6 +180,7 @@ def regenerate_all():
             try:
                 markdown = fut.result()
                 _intel.write_briefing(slug, markdown)
+                _ba.reset_slug(slug)   # fresh briefing => clear handled-action state
                 results[slug] = {"ok": True, "bytes": len(markdown)}
             except Exception as e:
                 results[slug] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
