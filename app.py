@@ -10591,7 +10591,11 @@ def api_shaira_daily():
         if not ok_:
             return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
     from dashboard.shaira_daily import latest_report
-    return jsonify({"ok": True, "data": latest_report(str(LOG_DB), "shaira")})
+    from dashboard import briefing_actions as _ba
+    data = latest_report(str(LOG_DB), "shaira")
+    if isinstance(data, dict) and data.get("markdown"):
+        data["markdown"] = _ba.filter_markdown("shaira-daily", data["markdown"])
+    return jsonify({"ok": True, "data": data})
 
 
 # ── Token storage (OAuth tokens persisted in DB for cloud cron) ───────────────
@@ -10855,9 +10859,32 @@ from dashboard import intelligence as _intel
 @app.route("/api/intelligence/<slug>")
 @require_console_key
 def api_intelligence_get(slug):
-    try: return ok(_intel.read_briefing(slug))
+    try:
+        from dashboard import briefing_actions as _ba
+        data = _intel.read_briefing(slug)
+        if data.get("markdown"):
+            data["markdown"] = _ba.filter_markdown(slug, data["markdown"])
+        return ok(data)
     except ValueError as e: return fail(e, status=400)
     except Exception as e: return fail(e)
+
+
+@app.route("/api/briefing-action", methods=["POST"])
+@require_console_key
+def api_briefing_action():
+    """Record done/dismissed/snoozed state for a single dashboard action item."""
+    from dashboard import briefing_actions as _ba
+    b = request.get_json(silent=True) or {}
+    slug = (b.get("slug") or "").strip()
+    text = (b.get("action_text") or "").strip()
+    state = (b.get("state") or "").strip()
+    if not slug or not text or state not in ("done", "dismissed", "snoozed"):
+        return fail("slug, action_text, and a valid state are required", status=400)
+    try:
+        _ba.set_state(slug, text, state, snooze_days=int(b.get("snooze_days", 0) or 0))
+        return ok({"slug": slug, "state": state})
+    except Exception as e:
+        return fail(e)
 
 
 @app.route("/api/intelligence/<slug>/upload", methods=["POST"])

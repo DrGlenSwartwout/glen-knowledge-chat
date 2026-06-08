@@ -140,6 +140,15 @@
     sidebar.classList.contains('open') ? close() : open();
   }
 
+  // Public hook: open the widget pre-filled with text (caller adds directions, then Send).
+  window.openJustusWith = function (text) {
+    open();
+    inputEl.value = text || '';
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+    setTimeout(function () { inputEl.focus(); }, 300);
+  };
+
   function pageContext() {
     return 'Page: ' + (document.title || 'console') + ' (' + location.pathname + ')';
   }
