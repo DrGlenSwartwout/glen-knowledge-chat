@@ -10594,7 +10594,8 @@ def api_shaira_daily():
     from dashboard import briefing_actions as _ba
     data = latest_report(str(LOG_DB), "shaira")
     if isinstance(data, dict) and data.get("markdown"):
-        data["markdown"] = _ba.filter_markdown("shaira-daily", data["markdown"])
+        md = _ba.filter_markdown("shaira-daily", data["markdown"])
+        data["markdown"] = _intel.normalize_title("shaira-daily", _intel.actions_first(md))
     return jsonify({"ok": True, "data": data})
 
 
@@ -10863,7 +10864,8 @@ def api_intelligence_get(slug):
         from dashboard import briefing_actions as _ba
         data = _intel.read_briefing(slug)
         if data.get("markdown"):
-            data["markdown"] = _ba.filter_markdown(slug, data["markdown"])
+            md = _ba.filter_markdown(slug, data["markdown"])
+            data["markdown"] = _intel.normalize_title(slug, _intel.actions_first(md))
         return ok(data)
     except ValueError as e: return fail(e, status=400)
     except Exception as e: return fail(e)

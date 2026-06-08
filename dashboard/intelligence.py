@@ -10,6 +10,7 @@ renders the markdown in the Intelligence row (Shaira-Daily is a separate feed).
 """
 
 import os
+import re
 import json
 from pathlib import Path
 from datetime import datetime, timezone
@@ -28,6 +29,78 @@ def _slug_path(slug):
     if slug not in VALID_SLUGS:
         raise ValueError(f"Unknown slug: {slug}. Valid: {sorted(VALID_SLUGS)}")
     return DATA_DIR / f"{slug}.md"
+
+
+# Canonical card title per slug (also covers the separate shaira-daily feed).
+# Forced at serve time so the title is deterministic regardless of LLM wording.
+CANONICAL_TITLE = {
+    "money-cash": "Finance",
+    "clients-pipeline": "Clients",
+    "signals-patterns": "Signals",
+    "shaira-daily": "Shaira",
+}
+
+
+def normalize_title(slug, md):
+    """Force the card's first heading to '# <canonical name>' (a clean H1).
+
+    Fixes LLM title drift (subtitles, leaked product names, em dashes) and the
+    Shaira card's H2/em-dash heading, so all 4 cards share one title style."""
+    name = CANONICAL_TITLE.get(slug)
+    if not name or not md:
+        return md
+    lines = md.split("\n")
+    for i, ln in enumerate(lines):
+        if ln.lstrip().startswith("#"):
+            lines[i] = f"# {name}"
+            return "\n".join(lines)
+    return f"# {name}\n" + md
+
+
+_HEAD_RE = re.compile(r"^\s*#{1,6}\s+")
+_ACT_RE = re.compile(r"^\s*(?:[-*]\s*)?\[(?:HIGH|MED|LOW)\]", re.I)
+
+
+def actions_first(md):
+    """Move the section that holds the action items (the [HIGH]/[MED]/[LOW] lines)
+    up to the top of the card, right under the title + dateline. Works for the
+    'Recommended actions' section and the Shaira card's 'Needs Glen' section."""
+    if not md:
+        return md
+    lines = md.split("\n")
+    # Find the first heading whose section contains an action-tagged line.
+    start = None
+    for i, ln in enumerate(lines):
+        if not _HEAD_RE.match(ln):
+            continue
+        j = i + 1
+        while j < len(lines) and not _HEAD_RE.match(lines[j]):
+            if _ACT_RE.match(lines[j]):
+                start = i
+                break
+            j += 1
+        if start is not None:
+            break
+    if start is None:
+        return md
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if _HEAD_RE.match(lines[j]):
+            end = j
+            break
+    section = lines[start:end]
+    while section and not section[-1].strip():
+        section.pop()
+    rest = lines[:start] + lines[end:]
+    # Insert right after the title heading (+ an immediately-following italic dateline).
+    insert_at = 0
+    for k, ln in enumerate(rest):
+        if _HEAD_RE.match(ln):
+            insert_at = k + 1
+            if insert_at < len(rest) and rest[insert_at].strip().startswith("*"):
+                insert_at += 1
+            break
+    return "\n".join(rest[:insert_at] + [""] + section + [""] + rest[insert_at:])
 
 
 def read_briefing(slug):
