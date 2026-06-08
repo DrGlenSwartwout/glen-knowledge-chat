@@ -10595,6 +10595,9 @@ def api_shaira_daily():
     data = latest_report(str(LOG_DB), "shaira")
     if isinstance(data, dict) and data.get("markdown"):
         md = _ba.filter_markdown("shaira-daily", data["markdown"])
+        # Promote the model's ### subsections to ## so they get the green border-top
+        # rule (the line under the title) and match the other 3 cards' section style.
+        md = re.sub(r"(?m)^(\s*)###\s+", r"\1## ", md)
         data["markdown"] = _intel.normalize_title("shaira-daily", _intel.actions_first(md))
     return jsonify({"ok": True, "data": data})
 
