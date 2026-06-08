@@ -189,7 +189,10 @@ def compose_report(metrics, cl):
         "### What it means — analytical: read the signals. Flag stuck-language and idle items "
         "honestly but kindly. If she's blocked, say so plainly.\n"
         "### Needs Glen — proposed: anything requiring Glen's decision/approval, especially "
-        "pending questions Justus routed to him. If none, say 'Nothing blocking — she has a clear runway.'\n"
+        "pending questions Justus routed to him. Write each item on its own line STARTING with "
+        "a severity tag in square brackets, by urgency + impact — [HIGH] (blocking / needs Glen "
+        "now), [MED] (decide this week), [LOW] (FYI / minor). Example: '[HIGH] Approve the X so "
+        "she can proceed.' If none, write '[LOW] Nothing blocking — she has a clear runway.'\n"
         "### Trend — one line on pace (completions this week).\n"
         "Be concise — Glen wants signal, not padding. Total under 250 words. "
         "Stuck-language ('still working on…', 'deepening my understanding…') is a known pattern — "
@@ -233,9 +236,9 @@ def _fallback_card(m):
     if m["pending_asks"]:
         lines += ["", "### Needs Glen"]
         for p in m["pending_asks"]:
-            lines.append(f"- 🔔 {p['title']}: {p['content'][:200]}")
+            lines.append(f"[HIGH] {p['title']}: {p['content'][:200]}")
     else:
-        lines += ["", "### Needs Glen", "Nothing blocking — she has a clear runway."]
+        lines += ["", "### Needs Glen", "[LOW] Nothing blocking — she has a clear runway."]
     lines += ["", f"### Trend", f"{m['completed_7d']} item(s) completed in the last 7 days."]
     return "\n".join(lines)
 
