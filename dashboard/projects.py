@@ -6,7 +6,8 @@ Pure functions; routes are wired in app.py.
 
 Environment variables:
     PROJECTS_SNAPSHOT_PATH — server-side path for the cached PROJECTS.md
-                              (default: /tmp/projects.md)
+                              (default: $DATA_DIR/projects.md, i.e. the persistent
+                              disk; falls back to /tmp only when DATA_DIR is unset)
 """
 
 import json
@@ -17,10 +18,14 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 
-SNAPSHOT = Path(os.environ.get("PROJECTS_SNAPSHOT_PATH", "/tmp/projects.md"))
+# Default to the persistent disk (DATA_DIR=/data on Render) so the cached snapshot
+# + pending queue survive deploys/restarts. Only an explicit env var or a missing
+# DATA_DIR (local dev) falls back to /tmp. Previously the default was /tmp, so
+# every deploy wiped the kanban until the next 10-min sync.
+_DATA_DIR = os.environ.get("DATA_DIR") or "/tmp"
+SNAPSHOT = Path(os.environ.get("PROJECTS_SNAPSHOT_PATH") or os.path.join(_DATA_DIR, "projects.md"))
 # Page-submitted ideas awaiting fold-in to PROJECTS.md by the Mac sync job.
-PENDING = Path(os.environ.get("PROJECTS_PENDING_PATH",
-                              "/tmp/pending_project_ideas.json"))
+PENDING = Path(os.environ.get("PROJECTS_PENDING_PATH") or os.path.join(_DATA_DIR, "pending_project_ideas.json"))
 
 
 # ─── Read / write ──────────────────────────────────────────────────────────
