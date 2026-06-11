@@ -831,40 +831,46 @@ def _normalize_image_payload(images):
     return _normalize_attachments(images, [])
 
 
-def extract_image_content(image_blocks, query):
-    """Single non-streaming Claude call to extract structured text content
-    from images. Returns the extraction string. Image bytes are NOT persisted
-    anywhere — they exist only in this function's call to Anthropic.
+def extract_attachment_content(blocks, query):
+    """Single non-streaming Claude pass to extract structured text from attached
+    images and/or PDF documents. Returns the extraction string. Attachment bytes
+    are NOT persisted — they exist only in this function's call to Anthropic.
     """
-    if not image_blocks:
+    if not blocks:
         return ""
     instr = (
-        "Extract everything visible in these images as plain text. Focus on:\n"
+        "Extract everything visible in these attachments as plain text. Each "
+        "attachment may be an image or a multi-page PDF document. Focus on:\n"
         "• Any text, labels, headings, captions\n"
         "• Numbers, measurements, dosages, lab values, ranges\n"
-        "• Supplement ingredients lists, milligram amounts, serving sizes\n"
+        "• Supplement ingredient lists, milligram amounts, serving sizes\n"
         "• Lab/test result values with units and reference ranges if present\n"
         "• E4L scan results: item codes (EI/ES/ED/ET/MB), category labels, scores\n"
         "• Any visible chart axes, legend entries, or graph markers\n"
         "• Visible symptoms in clinical photos (describe objectively)\n"
         "• Handwritten notes (transcribe carefully)\n\n"
         f"USER'S QUESTION: {query}\n\n"
-        "Return a clean, structured extraction. Label each image (Image 1, Image 2, "
-        "etc.) if multiple. Do not analyze, diagnose, or recommend — just extract. "
-        "Be exhaustive but concise."
+        "Return a clean, structured extraction. Label each attachment "
+        "(Attachment 1, Attachment 2, …) and each PDF page if multiple. Do not "
+        "analyze, diagnose, or recommend — just extract. Be exhaustive but concise."
     )
     try:
         resp = _cl.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1500,
             messages=[{"role": "user", "content": [
-                *image_blocks,
+                *blocks,
                 {"type": "text", "text": instr},
             ]}],
         )
         return (resp.content[0].text or "").strip() if resp.content else ""
     except Exception as e:
-        return f"[image-extraction-error: {e}]"
+        return f"[attachment-extraction-error: {e}]"
+
+
+def extract_image_content(image_blocks, query):
+    """Back-compat wrapper. Prefer extract_attachment_content."""
+    return extract_attachment_content(image_blocks, query)
 
 
 _SYSTEM_BASE = """You are Glen Swartwout's knowledge assistant — a synthesis engine for his Clinical Theory of Everything (BEV terrain medicine, Bioenergetic diagnostics, Syntonic/Behavioral Optometry, Orthomolecular medicine, Spirit Minerals/ORMUS, Electromagnetic medicine, Living Universe cosmology, Consciousness science).

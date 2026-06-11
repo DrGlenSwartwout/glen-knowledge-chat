@@ -103,3 +103,42 @@ def test_normalize_image_payload_back_compat():
     blocks, errors = app_module._normalize_image_payload([{"data_url": _img_data_url()}])
     assert errors == []
     assert blocks[0]["type"] == "image"
+
+
+def test_extract_forwards_image_and_document_blocks(monkeypatch):
+    import app as app_module
+
+    captured = {}
+
+    class _FakeContent:
+        text = "Attachment 1: Vitamin D 5000 IU"
+
+    class _FakeResp:
+        content = [_FakeContent()]
+
+    def _fake_create(**kwargs):
+        captured["messages"] = kwargs["messages"]
+        captured["model"] = kwargs["model"]
+        return _FakeResp()
+
+    monkeypatch.setattr(app_module._cl.messages, "create", _fake_create)
+
+    blocks = [
+        {"type": "image", "source": {"type": "base64",
+         "media_type": "image/png", "data": "AAAA"}},
+        {"type": "document", "source": {"type": "base64",
+         "media_type": "application/pdf", "data": "BBBB"}},
+    ]
+    out = app_module.extract_attachment_content(blocks, "what is in these?")
+
+    assert out == "Attachment 1: Vitamin D 5000 IU"
+    sent = captured["messages"][0]["content"]
+    # both attachment blocks forwarded, plus the trailing instruction text
+    assert sent[0]["type"] == "image"
+    assert sent[1]["type"] == "document"
+    assert sent[-1]["type"] == "text"
+
+
+def test_extract_empty_blocks_returns_empty():
+    import app as app_module
+    assert app_module.extract_attachment_content([], "q") == ""
