@@ -1,12 +1,16 @@
-"""Hawai'i GET tax computation for QBO invoices (Project B).
+"""Hawai'i GET computation (Project B — absorb-and-track).
 
-QBO is an Automated-Sales-Tax (AST) company, which won't model Hawai'i's
-wholesale GET 0.5% rate. So the app computes GET itself and writes it onto the
-invoice as a per-invoice override (TxnTaxDetail.TotalTax in qbo_billing).
+GET is legally the seller's tax, so it is ABSORBED, not charged to the customer:
+the app computes the GET owed per order and records it on the order ledger
+(orders.get_cents) for remittance — it is NOT added to the invoice/Stripe total.
+TAX_ENABLED therefore means "compute and record GET" (tracking), not "charge."
 
 Rates + the enable flag are CONFIG (env), so Rae/CPA set them without code, and
 the whole thing ships disabled (TAX_ENABLED=false → always 0) until the numbers
 are confirmed. This module is pure and side-effect-free.
+
+(A customer pass-through mode remains latent via qbo_billing.create_invoice's
+tax_cents override hook, but is not wired in absorb mode.)
 
 Tax-law note: rate values and the out-of-state rule are Rae/CPA determinations,
 not encoded judgment. Defaults here are conservative placeholders.

@@ -2561,13 +2561,15 @@ def begin_checkout(slug):
         allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
         from dashboard import tax as _tax
         subtotal_cents = int(_qty_unit_cents(p, qty)) * qty
-        tax_cents = _tax.compute_get_cents(
+        # Absorb-and-track: GET is recorded on the order (below), NOT added to the
+        # invoice — the customer pays the all-in price.
+        get_cents = _tax.compute_get_cents(
             subtotal_cents, channel="retail", ship_to_state=ship.get("state", ""))
         inv = qb.create_invoice(
             cust,
             [{"name": p["name"], "amount": unit, "qty": qty,
               "item_id": p.get("qbo_item_id"), "description": desc}],
-            allow_online_pay=allow_online, email_to=email, tax_cents=tax_cents)
+            allow_online_pay=allow_online, email_to=email)
         # best-effort journey log (never break checkout)
         try:
             with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -2586,7 +2588,7 @@ def begin_checkout(slug):
         _ingest_order(source="funnel", external_ref=inv.get("Id"), email=email, name=name,
                       items=[{"name": p["name"], "qty": qty, "desc": desc}],
                       total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
-                      address=ship, channel="retail")
+                      address=ship, channel="retail", get_cents=get_cents)
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
             out["earns_points"] = True   # awarded on confirmed payment (reconciliation, Phase 2)
@@ -5342,7 +5344,7 @@ def api_practitioner_checkout():
                       email=(prac.get("email") if isinstance(prac, dict) else "") or "",
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
-                      address=ship, channel="wholesale")
+                      address=ship, channel="wholesale", get_cents=out.get("get_cents", 0))
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":
@@ -13289,6 +13291,37 @@ def admin_qbo_taxprefs():
         return fail(f"qbo preferences read failed: {e}", 502)
 
 
+@app.route("/admin/tax")
+def admin_tax_page():
+    return send_from_directory(STATIC, "admin-tax.html")
+
+
+@app.route("/admin/tax/get-report", methods=["GET"])
+@require_console_key
+def admin_tax_get_report():
+    """Absorbed Hawai'i GET owed over a period, in G-45 buckets (HI retail / HI
+    wholesale / out-of-state / unknown-state). ?format=csv for a download."""
+    date_from = (request.args.get("from") or "").strip()
+    date_to = (request.args.get("to") or "").strip()
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _bos_orders.init_orders_table(cx)
+        rep = _bos_orders.get_tax_report(cx, date_from=date_from, date_to=date_to)
+    finally:
+        cx.close()
+    if (request.args.get("format") or "").lower() == "csv":
+        import io as _io, csv as _csv
+        buf = _io.StringIO(); w = _csv.writer(buf)
+        w.writerow(["bucket", "orders", "gross_usd", "get_usd"])
+        for k in ("hi_retail", "hi_wholesale", "out_of_state", "unknown_state"):
+            b = rep[k]
+            w.writerow([k, b["orders"], f"{b['gross_cents']/100:.2f}", f"{b['get_cents']/100:.2f}"])
+        w.writerow(["total_get_owed", "", "", f"{rep['total_get_cents']/100:.2f}"])
+        return Response(buf.getvalue(), mimetype="text/csv",
+                        headers={"Content-Disposition": "attachment; filename=get-report.csv"})
+    return ok(rep)
+
+
 # ── Clips review admin ────────────────────────────────────────────────────────
 @app.route("/admin/clips")
 def admin_clips_page():
@@ -13408,16 +13441,17 @@ def _normalize_ship_address(addr, fallback_name=""):
 
 
 def _ingest_order(*, source, external_ref, email="", name="", phone="",
-                  items=None, total_cents=0, address=None, channel="retail"):
+                  items=None, total_cents=0, address=None, channel="retail",
+                  get_cents=0):
     """Best-effort: record an order into the BOS orders table. Never raises into
-    a checkout path."""
+    a checkout path. get_cents = absorbed Hawai'i GET owed (recorded, not charged)."""
     try:
         cx = _sqlite3.connect(LOG_DB)
         try:
             _bos_orders.upsert_order(
                 cx, source=source, external_ref=external_ref, email=email, name=name,
                 phone=phone, items=items or [], total_cents=int(total_cents or 0),
-                address=address or {}, channel=channel)
+                address=address or {}, channel=channel, get_cents=int(get_cents or 0))
         finally:
             cx.close()
     except Exception as e:

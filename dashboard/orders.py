@@ -40,15 +40,22 @@ def init_orders_table(cx):
         cx.execute("ALTER TABLE orders ADD COLUMN stripe_payment_intent TEXT")
     except Exception:
         pass
+    try:
+        # Hawai'i GET owed on this order (absorbed — NOT charged to the customer;
+        # recorded for remittance). 0 when out-of-state or tax tracking is off.
+        cx.execute("ALTER TABLE orders ADD COLUMN get_cents INTEGER DEFAULT 0")
+    except Exception:
+        pass
     cx.commit()
 
 
 def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
                  items=None, total_cents=0, address=None, channel="retail",
-                 status="new"):
+                 status="new", get_cents=0):
     """Idempotent on (source, external_ref). Inserts a new order, or updates the
     soft fields of an existing one WITHOUT regressing its lifecycle status.
-    items and address are only overwritten when explicitly provided (not None)."""
+    items and address are only overwritten when explicitly provided (not None).
+    get_cents = absorbed Hawai'i GET owed (recorded, not charged)."""
     ref = str(external_ref or "").strip()
     if not ref:
         raise ValueError("external_ref required")
@@ -56,8 +63,10 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
                      (source, ref)).fetchone()
     if row:
         # Only overwrite items_json / address_json when caller provides them.
-        sets = ["email=?", "name=?", "phone=?", "total_cents=?", "channel=?", "updated_at=?"]
-        vals = [email, name, phone, int(total_cents or 0), channel, _now()]
+        sets = ["email=?", "name=?", "phone=?", "total_cents=?", "channel=?",
+                "get_cents=?", "updated_at=?"]
+        vals = [email, name, phone, int(total_cents or 0), channel,
+                int(get_cents or 0), _now()]
         if items is not None:
             sets.insert(3, "items_json=?")
             vals.insert(3, json.dumps(items))
@@ -70,12 +79,55 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
         return row[0]
     cur = cx.execute(
         "INSERT INTO orders (created_at, source, external_ref, channel, email, name, "
-        "phone, items_json, total_cents, address_json, status) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        "phone, items_json, total_cents, address_json, status, get_cents) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         (_now(), source, ref, channel, email, name, phone,
-         json.dumps(items or []), int(total_cents or 0), json.dumps(address or {}), status))
+         json.dumps(items or []), int(total_cents or 0), json.dumps(address or {}),
+         status, int(get_cents or 0)))
     cx.commit()
     return cur.lastrowid
+
+
+def get_tax_report(cx, *, date_from, date_to):
+    """Aggregate absorbed Hawai'i GET over a period, in the shape of a G-45 filing:
+    HI retail, HI wholesale, out-of-state (export), and unknown-state (no ship-to)
+    buckets — each with order count, gross receipts, and GET owed. GET accrues only
+    on the HI buckets. Pure read; ship-state comes from each order's address."""
+    df = str(date_from or "")
+    dt = str(date_to or "")
+    if dt and "T" not in dt:
+        dt = dt + "T23:59:59.999999"
+    rows = cx.execute(
+        "SELECT channel, total_cents, get_cents, address_json, created_at FROM orders "
+        "WHERE created_at >= ? AND created_at <= ?", (df, dt)).fetchall()
+
+    def _bucket():
+        return {"orders": 0, "gross_cents": 0, "get_cents": 0}
+
+    out = {"hi_retail": _bucket(), "hi_wholesale": _bucket(),
+           "out_of_state": _bucket(), "unknown_state": _bucket()}
+    for r in rows:
+        d = dict(r)
+        try:
+            state = (json.loads(d.get("address_json") or "{}").get("state") or "").strip().upper()
+        except Exception:
+            state = ""
+        gross = int(d.get("total_cents") or 0)
+        get_c = int(d.get("get_cents") or 0)
+        if not state:
+            key = "unknown_state"
+        elif state != "HI":
+            key = "out_of_state"
+        else:
+            key = "hi_wholesale" if d.get("channel") == "wholesale" else "hi_retail"
+        b = out[key]
+        b["orders"] += 1
+        b["gross_cents"] += gross
+        b["get_cents"] += get_c
+    out["from"] = df
+    out["to"] = dt
+    out["total_get_cents"] = out["hi_retail"]["get_cents"] + out["hi_wholesale"]["get_cents"]
+    return out
 
 
 def _row_to_dict(row):

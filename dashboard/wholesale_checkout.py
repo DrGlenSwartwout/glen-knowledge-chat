@@ -47,9 +47,11 @@ def build_order(cart_items: List[dict], practitioner: dict, *, method=None,
     lines = [_qbo_line(ln, catalog) for ln in quote["lines"]]
     cust = qb.find_or_create_customer(practitioner["email"], practitioner.get("name", ""))
     from dashboard import tax as _tax
-    tax_cents = _tax.compute_get_cents(quote["subtotal_cents"], channel="wholesale",
+    # Absorb-and-track: GET is computed and returned for the order ledger, NOT
+    # added to the invoice (the practitioner pays the all-in wholesale price).
+    get_cents = _tax.compute_get_cents(quote["subtotal_cents"], channel="wholesale",
                                        ship_to_state=ship_to_state, resale_ok=resale_ok)
-    inv = qb.create_invoice(cust, lines, email_to=practitioner["email"], tax_cents=tax_cents)
+    inv = qb.create_invoice(cust, lines, email_to=practitioner["email"])
     invoice_id = inv.get("Id")
 
     redeemed = wallet.redeem_for_order(practitioner["id"], quote["subtotal_cents"], invoice_id)
@@ -71,6 +73,7 @@ def build_order(cart_items: List[dict], practitioner: dict, *, method=None,
         "blended_unit_price_cents": quote["blended_unit_price_cents"],
         "credit_redeemed_cents": redeemed,
         "fee_free_credit_cents": fee_free,
+        "get_cents": get_cents,
         "method": method,
         "customer_id": cust.get("Id"),
     }
