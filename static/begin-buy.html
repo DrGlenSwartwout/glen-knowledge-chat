@@ -289,6 +289,16 @@
         </div>
 
         <div class="field">
+          <label for="ship-street">Shipping address <span class="hint">(where we send it)</span></label>
+          <input type="text" id="ship-street" placeholder="Street address" autocomplete="shipping street-address" />
+        </div>
+        <div class="qty-row">
+          <div class="field" style="flex:2;"><input type="text" id="ship-city" placeholder="City" autocomplete="shipping address-level2" /></div>
+          <div class="field" style="flex:1;"><input type="text" id="ship-state" placeholder="State" maxlength="2" autocomplete="shipping address-level1" style="text-transform:uppercase" /></div>
+          <div class="field" style="flex:1;"><input type="text" id="ship-zip" placeholder="ZIP" autocomplete="shipping postal-code" inputmode="numeric" /></div>
+        </div>
+
+        <div class="field">
           <label>How would you like to pay?</label>
           <div class="methods" id="methods">
             <label class="method-opt" data-method="zelle">
@@ -629,6 +639,15 @@
         setInlineMsg('Please choose how you would like to pay.');
         return;
       }
+      var _street = (document.getElementById('ship-street').value || '').trim();
+      var _city = (document.getElementById('ship-city').value || '').trim();
+      var _state = (document.getElementById('ship-state').value || '').trim();
+      var _zip = (document.getElementById('ship-zip').value || '').trim();
+      if (!_street || !_city || !_state || !_zip) {
+        setInlineMsg('Please add your shipping address so we can send your order.');
+        document.getElementById('ship-street').focus();
+        return;
+      }
 
       ordering = true;
       var buyBtn = document.getElementById('buy-btn');
@@ -644,7 +663,9 @@
         name: (document.getElementById('name').value || '').trim(),
         qty: qty,
         method: chosenMethod,
-        format: chosenFormat
+        format: chosenFormat,
+        address: { name: (document.getElementById('name').value || '').trim(),
+                   street: _street, city: _city, state: _state, zip: _zip, country: 'US' }
       };
 
       fetch(BASE + '/begin/checkout/' + encodeURIComponent(slug), {

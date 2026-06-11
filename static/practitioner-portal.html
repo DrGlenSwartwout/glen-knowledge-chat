@@ -85,6 +85,15 @@
       <label style="margin-right:14px"><input type="radio" name="pm" value="wise"> Wise (international) <span class="muted" style="font-size:12px">— earns 3% credit</span></label>
       <label id="pm-card" style="display:none"><input type="radio" name="pm" value="card"> Card</label>
     </div>
+    <div id="ship-to" style="margin-top:12px">
+      <div class="muted" style="font-size:13px;margin-bottom:6px">Ship to (patient drop-ship or your practice)</div>
+      <input id="ship-street" placeholder="Street address" style="width:100%;margin-bottom:6px;box-sizing:border-box">
+      <div style="display:flex;gap:6px">
+        <input id="ship-city" placeholder="City" style="flex:2;min-width:0">
+        <input id="ship-state" placeholder="State" maxlength="2" style="flex:1;min-width:0;text-transform:uppercase">
+        <input id="ship-zip" placeholder="ZIP" style="flex:1;min-width:0">
+      </div>
+    </div>
     <button id="checkout" style="margin-top:14px">Place wholesale order</button>
     <div id="msg"></div>
   </div>
@@ -209,8 +218,11 @@ $('add').addEventListener('click', function(){
 });
 $('checkout').addEventListener('click', function(){
   var method = (document.querySelector('input[name=pm]:checked')||{}).value || 'zelle';
+  var street=($('ship-street').value||'').trim(), city=($('ship-city').value||'').trim(),
+      state=($('ship-state').value||'').trim(), zip=($('ship-zip').value||'').trim();
+  if(!street||!city||!state||!zip){ $('msg').textContent = 'Please add a ship-to address.'; return; }
   $('checkout').disabled = true; $('msg').textContent = 'Placing your order…';
-  fetch('/api/practitioner/checkout', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:TOKEN, method:method})})
+  fetch('/api/practitioner/checkout', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:TOKEN, method:method, address:{street:street, city:city, state:state, zip:zip, country:'US'}})})
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(d.ok){
