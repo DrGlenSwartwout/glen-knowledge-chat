@@ -374,6 +374,17 @@
               let evt;
               try { evt = JSON.parse(raw); } catch (_) { continue; }
 
+              if (evt.gate && window.OptinGate) {
+                OptinGate.show({
+                  base: BASE,
+                  onAgree: function () {
+                    const _inp = document.getElementById('query-input');
+                    if (_inp) { _inp.value = query; }
+                    sendQuery();
+                  }
+                });
+              }
+
               if (evt.error) {
                 removeEl(tid);
                 appendMessage('assistant', '**Something went sideways:** ' + evt.error);
@@ -507,5 +518,6 @@
       return h;
     }
   </script>
+<script src="/static/optin-gate.js"></script>
 </body>
 </html>

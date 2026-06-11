@@ -301,6 +301,86 @@ def get_authenticated_user(request_obj):
             "ghl_contact_id": row["ghl_contact_id"]}
 
 
+def is_member(session_id="", email=""):
+    """Tier-1 Member = the visitor has agreed to our Terms of Service
+    (journey_state.tos_agreed_at is set). Unions across email + session via
+    begin_funnel.get_state, so membership carries across devices once the email
+    is known.
+
+    NOTE: this is the CONSENT/ToS membership that gates individualized advice,
+    condition recommendations, and ordering — it is deliberately distinct from
+    the paid-coaching membership (_active_membership_for_email)."""
+    if not session_id and not email:
+        return False
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            state = begin_funnel.get_state(cx, session_id=session_id, email=(email or ""))
+        return bool(state.get("tos_agreed_at"))
+    except Exception as e:
+        print(f"[member] is_member failed: {e!r}", flush=True)
+        return False
+
+
+# The line is education vs. recommendation. Education is open to everyone;
+# anything that individualizes (advice about the user's own body/situation) or
+# recommends a specific product/remedy for a health condition is GATED behind
+# the ToS agreement. This classifier runs ONLY for non-members.
+_GATE_CLASSIFY_SYSTEM = (
+    "You are a routing classifier for a natural-health chat. Decide whether "
+    "ANSWERING the user's message would require either (a) advice specific to "
+    "the user's own body, symptoms, or personal situation, or (b) recommending "
+    "a specific product or remedy for a health condition (even phrased "
+    "generally). Either of those is GATED.\n"
+    "General EDUCATION is NOT gated: how a condition, ingredient, or remedy "
+    "works; the published science; what a product factually contains or does.\n"
+    "Reply with exactly one word: GATED or OPEN.\n"
+    "Examples:\n"
+    "  'how do floaters form?' -> OPEN\n"
+    "  'what does astaxanthin do?' -> OPEN\n"
+    "  \"what's in Retina Renew?\" -> OPEN\n"
+    "  'I have floaters, what should I take?' -> GATED\n"
+    "  'what helps macular degeneration?' -> GATED\n"
+    "  'for dry eyes, which remedy?' -> GATED\n"
+    "  'is this safe with my blood pressure meds?' -> GATED\n"
+)
+
+# Appended to the system prompt for a non-member on a GATED turn. Keeps the
+# answer educational and invites the soft opt-in — the decision is made before
+# any token streams, so gated content never partially leaks.
+_EDUCATE_ONLY_POLICY = (
+    "\n\nCONSENT GATE — THE USER HAS NOT YET AGREED TO OUR TERMS OF SERVICE. "
+    "Give GENERAL EDUCATIONAL information only. Do NOT give guidance specific to "
+    "the user's own body, symptoms, or situation, and do NOT recommend any "
+    "specific product or remedy for a health condition (even generally). Give "
+    "the general educational frame, then in ONE short sentence invite them to "
+    "add their first and last name and agree to the Terms to receive specific, "
+    "individual guidance. Never name a specific product for them to take for "
+    "their condition."
+)
+
+
+def _is_gated_question(query, history_text=""):
+    """True when answering would individualize or recommend a product/remedy for
+    a health condition (requires ToS membership). False for pure education.
+    Fail-safe: returns True on any error, to protect the liability shield."""
+    q = (query or "").strip()
+    if not q:
+        return False
+    try:
+        msg = q if not history_text else (
+            f"Recent context:\n{history_text}\n\nUser message: {q}")
+        r = _cl.messages.create(
+            model="claude-haiku-4-5-20251001", max_tokens=4,
+            system=_GATE_CLASSIFY_SYSTEM,
+            messages=[{"role": "user", "content": msg[:2000]}],
+        )
+        verdict = (r.content[0].text or "").strip().upper()
+        return not verdict.startswith("OPEN")
+    except Exception as e:
+        print(f"[member] gate classify failed: {e!r}", flush=True)
+        return True
+
+
 def _slugify_product(name: str) -> str:
     s = name.lower().strip()
     s = re.sub(r"[^a-z0-9]+", "-", s)
@@ -1594,6 +1674,18 @@ def chat():
             f"{synth_instr}"
         })
 
+        # ── Consent gate (Tier-0 Visitor → Tier-1 Member) ────────────────────
+        # Non-members get general education freely. The moment a turn would
+        # individualize (advice about their own body/situation) or recommend a
+        # product/remedy for a health condition, switch to educate-only and
+        # surface the soft opt-in. Decided BEFORE the stream so gated content
+        # never partially leaks. Members are unaffected (no classifier call).
+        _system = get_system_prompt(level)
+        if not is_member(session_id, email) and _is_gated_question(query):
+            _system = _system + _EDUCATE_ONLY_POLICY
+            yield sse({"gate": True})
+        # ──────────────────────────────────────────────────────────────────────
+
         # Brief mode: 1024 tokens (≈700 words headroom). Full mode: 4096.
         max_tok = 4096 if mode == "full" else 1024
 
@@ -1602,7 +1694,7 @@ def chat():
             with _cl.messages.stream(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=max_tok,
-                system=get_system_prompt(level),
+                system=_system,
                 messages=messages
             ) as stream:
                 for token in stream.text_stream:
@@ -1886,10 +1978,20 @@ def begin_match_chat():
             "Continue the Socratic match. If you can now name the ONE best remedy, name it and "
             "invite them to open its page; otherwise ask the single best next question."})
 
+        # ── Consent gate ── the matcher follows the SAME education-vs-recommendation
+        # rule as the main chat. A non-member gets educate-only on a gated turn,
+        # and the specific product + Buy button (match_evt below) is withheld
+        # until they opt in. Decided before the stream so nothing leaks.
+        _member = is_member(session_id, email)
+        _match_system = _REMEDY_MATCH_SYSTEM
+        if not _member and _is_gated_question(query):
+            _match_system = _REMEDY_MATCH_SYSTEM + _EDUCATE_ONLY_POLICY
+            yield sse({"gate": True})
+
         full = []
         try:
             with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=900,
-                                     system=_REMEDY_MATCH_SYSTEM, messages=messages) as stream:
+                                     system=_match_system, messages=messages) as stream:
                 for tok in stream.text_stream:
                     tok = _strip_dash(tok); full.append(tok); yield sse({"token": tok})
         except Exception as e:
@@ -1923,7 +2025,9 @@ def begin_match_chat():
                              "search_url": "" if url else _store_search_url(obj["name"])}
         except Exception as e:
             print(f"[match] extract: {e!r}", flush=True)
-        if match_evt:
+        # Withhold the named product + Buy button until the visitor is a Member
+        # (recommending a remedy for their condition requires ToS agreement).
+        if match_evt and _member:
             yield sse({"match": match_evt})
 
         yield sse({"done": True, "session_id": session_id,
@@ -2433,6 +2537,15 @@ def begin_checkout(slug):
         qty = 1
     if not email:
         return jsonify({"ok": False, "error": "email required"}), 400
+
+    # ── Consent gate ── ordering requires Tier-1 Membership (ToS agreed +
+    # identified). Enforced here at the API so it can't be bypassed by hitting
+    # the endpoint directly. The front-end shows the soft opt-in on need_optin.
+    _sid = request.cookies.get("amg_session", "")
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please add your name and agree to our Terms "
+                                 "to place an order."}), 403
     session_id = request.cookies.get("amg_session", "")
     try:
         from dashboard import qbo_billing as qb

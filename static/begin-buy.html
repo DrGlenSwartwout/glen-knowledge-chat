@@ -657,6 +657,12 @@
       .then(function(data){
         ordering = false;
         buyBtn.textContent = 'Place your order';
+        if (data && data.need_optin && window.OptinGate) {
+          // Ordering requires Tier-1 Membership (ToS agreed). Show the soft
+          // opt-in, then retry the order automatically once they agree.
+          OptinGate.show({ base: BASE, onAgree: function () { placeOrder(); } });
+          return;
+        }
         if (!data || !data.ok) {
           setInlineMsg((data && data.error) ? data.error : 'Something went sideways creating your order. Please try again.');
           refreshBuyState();
@@ -854,5 +860,6 @@
       box.scrollIntoView({ behavior:'smooth', block:'center' });
     }
   </script>
+<script src="/static/optin-gate.js"></script>
 </body>
 </html>

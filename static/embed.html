@@ -938,6 +938,17 @@
             let evt;
             try { evt = JSON.parse(raw); } catch { continue; }
 
+            if (evt.gate && window.OptinGate) {
+              OptinGate.show({
+                base: BASE,
+                onAgree: function () {
+                  const _inp = document.getElementById('query-input');
+                  if (_inp) { _inp.value = query; }
+                  if (window.sendQuery) window.sendQuery();
+                }
+              });
+            }
+
             if (evt.error) {
               removeEl(tid);
               appendMessage('assistant', `**Error:** ${evt.error}`, null, null);
@@ -1887,5 +1898,6 @@
   }
 </script>
 <script src="/static/tts-output.js"></script>
+<script src="/static/optin-gate.js"></script>
 </body>
 </html>
