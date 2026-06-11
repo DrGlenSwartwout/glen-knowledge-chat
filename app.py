@@ -8404,16 +8404,22 @@ def begin_concierge_chat():
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
-    # Pairing priors for what they bought + a little RAG for rationale/benefits.
+    images_consented = bool(data.get("images_consented"))
+    raw_images = data.get("images") or []
+    raw_documents = data.get("documents") or []
+    attachment_blocks = []
+    if raw_images or raw_documents:
+        if not images_consented:
+            return jsonify({
+                "error": "Attachment consent required. Check the consent box "
+                         "before attaching documents or images."
+            }), 400
+        attachment_blocks, _ = _normalize_attachments(raw_images, raw_documents)
+
+    # Pairing priors for what they bought.
     priors = (_PAIRINGS.get("pairings", {}) or {}).get(bought_slug, []) if bought_slug else []
     priors_block = (f"SUGGESTED COMPLEMENTS for {bought['name'] if bought else 'their purchase'} "
                     f"(offer these first, one at a time): {', '.join(priors)}\n\n") if priors else ""
-    context_str = ""
-    try:
-        matches = _match_query_namespaces(embed(query + " " + (bought["name"] if bought else "")))
-        context_str, _ = build_context(matches) if matches else ("", [])
-    except Exception as e:
-        print(f"[concierge] retrieval: {e}", flush=True)
 
     _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
     _sys_concierge = (_ally_ov + "\n\n" + _CONCIERGE_SYSTEM) if _ally_ov else _CONCIERGE_SYSTEM
@@ -8422,13 +8428,34 @@ def begin_concierge_chat():
         if not is_member(session_id, email):
             yield sse({"gate": True})
             return
+
+        extracted_text = ""
+        if attachment_blocks:
+            yield sse({"status": f"Reading {len(attachment_blocks)} attachment(s)…"})
+            extracted_text = extract_attachment_content(attachment_blocks, query)
+
+        # A little RAG for rationale/benefits (inside generate so the extracted
+        # attachment text can sharpen retrieval).
+        context_str = ""
+        try:
+            emb_q = query + " " + (bought["name"] if bought else "")
+            if extracted_text:
+                emb_q += "\n\nATTACHMENT CONTENT:\n" + extracted_text
+            matches = _match_query_namespaces(embed(emb_q))
+            context_str, _ = build_context(matches) if matches else ("", [])
+        except Exception as e:
+            print(f"[concierge] retrieval: {e}", flush=True)
+
+        attach_block = (f"ATTACHMENT CONTENT (from the person's uploaded files; "
+                        f"quote specific values when relevant):\n{extracted_text}\n\n"
+                        if extracted_text else "")
         messages = []
         for turn in history[-8:]:
             if turn.get("role") in ("user", "assistant") and turn.get("content"):
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content":
             f"THEY JUST BOUGHT: {bought['name'] if bought else 'a remedy'}.\n"
-            f"{priors_block}"
+            f"{priors_block}{attach_block}"
             f"RETRIEVED SNIPPETS (for rationale/benefits):\n{context_str}\n\n"
             f"MEMBER MESSAGE: {query}\n\n"
             "Continue as the concierge: affirm, ask the single best next question, or suggest ONE "
