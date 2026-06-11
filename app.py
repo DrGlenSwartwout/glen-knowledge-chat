@@ -738,59 +738,97 @@ def log_query(query: str, level: str, answer: str,
         return cur.lastrowid
 
 
-def _normalize_image_payload(images):
-    """Accepts a list of image entries and returns Anthropic-API-shaped image
-    blocks. Each input entry can be either:
-      - {"data": "<base64>", "media_type": "image/png"}
-      - {"data_url": "data:image/png;base64,..."}
-      - "data:image/png;base64,..." (string form for convenience)
+def _normalize_attachments(images, documents):
+    """Build Anthropic content blocks from user-attached images and PDFs.
 
-    Caps at 3 images per call; rejects entries over MAX_IMAGE_BYTES_B64.
-    Returns (image_blocks, errors).
+    Each entry (in either list) may be:
+      - "data:<media>;base64,<b64>"            (string form)
+      - {"data_url": "data:<media>;base64,…"}  (dict form)
+      - {"data": "<b64>", "media_type": "…"}   (explicit form)
+
+    Images become image blocks (unchanged behavior). Documents become PDF
+    `document` blocks. Bytes are forwarded to Claude for one extraction pass
+    and never persisted. Returns (blocks, errors). Caps:
+      - images: 3 max, ~5 MB raw (~6.7 MB base64) each, png/jpeg/webp/gif
+      - documents: 2 max, ~10 MB raw (~13.3 MB base64) each, application/pdf
+      - combined: total base64 length across all attachments ≤ ~25 MB raw,
+        keeping the whole request under Claude's 32 MB limit
     """
     MAX_IMAGES = 3
-    MAX_IMAGE_BYTES_B64 = 5 * 1024 * 1024 * 4 // 3  # ~5 MB raw → ~6.7 MB base64
-    ALLOWED = ("image/png", "image/jpeg", "image/webp", "image/gif")
+    MAX_IMAGE_B64 = 5 * 1024 * 1024 * 4 // 3
+    MAX_DOCS = 2
+    MAX_DOC_B64 = 10 * 1024 * 1024 * 4 // 3
+    MAX_TOTAL_B64 = 25 * 1024 * 1024 * 4 // 3
+    IMG_ALLOWED = ("image/png", "image/jpeg", "image/webp", "image/gif")
+
     blocks, errors = [], []
+    state = {"total": 0}
 
-    for i, entry in enumerate(images[:MAX_IMAGES]):
+    def _decode(entry):
+        if isinstance(entry, str):
+            if entry.startswith("data:") and ";base64," in entry:
+                head, b64 = entry.split(";base64,", 1)
+                return head[5:], b64
+            raise ValueError("unsupported string format")
+        if isinstance(entry, dict) and entry.get("data_url"):
+            d = entry["data_url"]
+            if d.startswith("data:") and ";base64," in d:
+                head, b64 = d.split(";base64,", 1)
+                return head[5:], b64
+            raise ValueError("bad data_url")
+        if isinstance(entry, dict) and entry.get("data"):
+            return entry.get("media_type", "image/png"), entry["data"]
+        raise ValueError("unrecognized payload shape")
+
+    for i, entry in enumerate((images or [])[:MAX_IMAGES]):
         try:
-            if isinstance(entry, str):
-                if entry.startswith("data:") and ";base64," in entry:
-                    head, b64 = entry.split(";base64,", 1)
-                    media = head[5:]  # strip "data:"
-                else:
-                    errors.append(f"image[{i}]: unsupported string format")
-                    continue
-            elif isinstance(entry, dict) and entry.get("data_url"):
-                d = entry["data_url"]
-                if d.startswith("data:") and ";base64," in d:
-                    head, b64 = d.split(";base64,", 1)
-                    media = head[5:]
-                else:
-                    errors.append(f"image[{i}]: bad data_url")
-                    continue
-            elif isinstance(entry, dict) and entry.get("data"):
-                b64 = entry["data"]
-                media = entry.get("media_type", "image/png")
-            else:
-                errors.append(f"image[{i}]: unrecognized payload shape")
-                continue
-
-            if media not in ALLOWED:
-                errors.append(f"image[{i}]: media_type {media!r} not allowed")
-                continue
-            if len(b64) > MAX_IMAGE_BYTES_B64:
-                errors.append(f"image[{i}]: exceeds 5 MB size limit")
-                continue
-
-            blocks.append({
-                "type": "image",
-                "source": {"type": "base64", "media_type": media, "data": b64},
-            })
-        except Exception as e:
+            media, b64 = _decode(entry)
+        except ValueError as e:
             errors.append(f"image[{i}]: {e}")
+            continue
+        if media not in IMG_ALLOWED:
+            errors.append(f"image[{i}]: media_type {media!r} not allowed")
+            continue
+        if len(b64) > MAX_IMAGE_B64:
+            errors.append(f"image[{i}]: exceeds 5 MB size limit")
+            continue
+        if state["total"] + len(b64) > MAX_TOTAL_B64:
+            errors.append(f"image[{i}]: combined attachment size limit exceeded")
+            continue
+        state["total"] += len(b64)
+        blocks.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": media, "data": b64},
+        })
+
+    for i, entry in enumerate((documents or [])[:MAX_DOCS]):
+        try:
+            media, b64 = _decode(entry)
+        except ValueError as e:
+            errors.append(f"document[{i}]: {e}")
+            continue
+        if media != "application/pdf":
+            errors.append(f"document[{i}]: only application/pdf is accepted")
+            continue
+        if len(b64) > MAX_DOC_B64:
+            errors.append(f"document[{i}]: exceeds 10 MB size limit")
+            continue
+        if state["total"] + len(b64) > MAX_TOTAL_B64:
+            errors.append(f"document[{i}]: combined attachment size limit exceeded")
+            continue
+        state["total"] += len(b64)
+        blocks.append({
+            "type": "document",
+            "source": {"type": "base64",
+                       "media_type": "application/pdf", "data": b64},
+        })
+
     return blocks, errors
+
+
+def _normalize_image_payload(images):
+    """Back-compat wrapper — images only. Prefer _normalize_attachments."""
+    return _normalize_attachments(images, [])
 
 
 def extract_image_content(image_blocks, query):
