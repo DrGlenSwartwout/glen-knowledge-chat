@@ -4223,9 +4223,27 @@ def begin_match_chat():
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
+    images_consented = bool(data.get("images_consented"))
+    raw_images = data.get("images") or []
+    raw_documents = data.get("documents") or []
+    attachment_blocks = []
+    if raw_images or raw_documents:
+        if not images_consented:
+            return jsonify({
+                "error": "Attachment consent required. Check the consent box "
+                         "before attaching documents or images."
+            }), 400
+        attachment_blocks, _ = _normalize_attachments(raw_images, raw_documents)
+
     def generate():
+        extracted_text = ""
+        if attachment_blocks:
+            yield sse({"status": f"Reading {len(attachment_blocks)} attachment(s)…"})
+            extracted_text = extract_attachment_content(attachment_blocks, query)
+        emb_input = (f"{query}\n\nATTACHMENT CONTENT:\n{extracted_text}"
+                     if extracted_text else query)
         try:
-            q_vec = embed(query)
+            q_vec = embed(emb_input)
         except Exception as e:
             yield sse({"error": f"Embedding failed: {e}"}); return
         matches = _match_query_namespaces(q_vec)
@@ -4269,13 +4287,16 @@ def begin_match_chat():
                        "when it is genuinely the best fit; Functional Formulations still come first):\n"
                        + "\n".join(tools_lines) + "\n\n") if tools_lines else ""
 
+        attach_block = (f"ATTACHMENT CONTENT (from the person's uploaded files; "
+                        f"quote specific values when relevant):\n{extracted_text}\n\n"
+                        if extracted_text else "")
         messages = []
         for turn in history[-8:]:
             if turn.get("role") in ("user", "assistant") and turn.get("content"):
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content":
             f"USER MESSAGE: {query}\n\n{whom_line}\n{household_note}\n{personal_block}"
-            f"{tools_block}"
+            f"{tools_block}{attach_block}"
             f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
             "Continue the Socratic match. If you can now name the ONE best remedy, name it and "
             "invite them to open its page; otherwise ask the single best next question."})
