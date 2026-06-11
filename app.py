@@ -2535,6 +2535,9 @@ def begin_checkout(slug):
         qty = max(1, min(int(data.get("qty", 1) or 1), 99))
     except Exception:
         qty = 1
+    # Ship-to address — drives GET tax (HI vs out-of-state) and auto-fills the
+    # EasyPost label. Normalized to the shape easypost.build_shipment reads.
+    ship = _normalize_ship_address(data.get("address") or {}, fallback_name=name)
     if not email:
         return jsonify({"ok": False, "error": "email required"}), 400
 
@@ -2556,11 +2559,15 @@ def begin_checkout(slug):
         if fmt and fmt != "bottle" and fmt_label:
             desc = f"{p['name']} ({fmt_label})"
         allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
+        from dashboard import tax as _tax
+        subtotal_cents = int(_qty_unit_cents(p, qty)) * qty
+        tax_cents = _tax.compute_get_cents(
+            subtotal_cents, channel="retail", ship_to_state=ship.get("state", ""))
         inv = qb.create_invoice(
             cust,
             [{"name": p["name"], "amount": unit, "qty": qty,
               "item_id": p.get("qbo_item_id"), "description": desc}],
-            allow_online_pay=allow_online, email_to=email)
+            allow_online_pay=allow_online, email_to=email, tax_cents=tax_cents)
         # best-effort journey log (never break checkout)
         try:
             with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -2579,7 +2586,7 @@ def begin_checkout(slug):
         _ingest_order(source="funnel", external_ref=inv.get("Id"), email=email, name=name,
                       items=[{"name": p["name"], "qty": qty, "desc": desc}],
                       total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
-                      channel="retail")
+                      address=ship, channel="retail")
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
             out["earns_points"] = True   # awarded on confirmed payment (reconciliation, Phase 2)
@@ -5313,8 +5320,11 @@ def api_practitioner_checkout():
         method = "zelle"   # card not enabled yet
     if method not in ("zelle", "wise", "card"):
         method = "zelle"
+    ship = _normalize_ship_address(_body.get("address") or {}, fallback_name=prac["name"])
+    resale_ok = bool(data.get("resale_license_number"))   # resale cert on file → 0.5% GET
     try:
-        out = _wc.build_order(items, prac, method=method)
+        out = _wc.build_order(items, prac, method=method,
+                              ship_to_state=ship.get("state", ""), resale_ok=resale_ok)
     except Exception as e:
         print(f"[practitioner-checkout] failed: {e!r}", flush=True)
         return jsonify({"ok": False, "error": "Checkout failed. Please try again."}), 500
@@ -5332,7 +5342,7 @@ def api_practitioner_checkout():
                       email=(prac.get("email") if isinstance(prac, dict) else "") or "",
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
-                      channel="wholesale")
+                      address=ship, channel="wholesale")
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":
@@ -13257,6 +13267,28 @@ def admin_wholesale_reject():
     return ok({"rejected": pid})
 
 
+@app.route("/admin/qbo/taxprefs", methods=["GET"])
+@require_console_key
+def admin_qbo_taxprefs():
+    """Read QBO Preferences.TaxPrefs to confirm Automated Sales Tax (AST) is on.
+    Runs where the live QBO token is valid (Render). PartnerTaxEnabled=true → AST."""
+    try:
+        from dashboard import money
+        pref = money.qb_get(money.qb_refresh(), "/preferences")
+        tp = ((pref.get("Preferences") or pref).get("TaxPrefs") or {})
+        from dashboard import tax as _tax
+        return ok({
+            "partner_tax_enabled": tp.get("PartnerTaxEnabled"),
+            "using_sales_tax": tp.get("UsingSalesTax"),
+            "app_tax_enabled": _tax.tax_enabled(),
+            "app_retail_rate": _tax.retail_rate(),
+            "app_wholesale_rate": _tax.wholesale_rate(),
+            "tax_prefs": tp,
+        })
+    except Exception as e:
+        return fail(f"qbo preferences read failed: {e}", 502)
+
+
 # ── Clips review admin ────────────────────────────────────────────────────────
 @app.route("/admin/clips")
 def admin_clips_page():
@@ -13355,6 +13387,24 @@ def _init_bos_orders():
 
 
 _init_bos_orders()
+
+
+def _normalize_ship_address(addr, fallback_name=""):
+    """Normalize a posted shipping address to the shape easypost.build_shipment
+    reads (street/city/state/zip/country). State is upper-cased for the GET
+    tax check. Returns {} when nothing usable was provided."""
+    addr = addr or {}
+    street = (addr.get("street") or addr.get("street1") or addr.get("address") or "").strip()
+    state = (addr.get("state") or "").strip().upper()
+    zipc = (addr.get("zip") or addr.get("postal") or addr.get("zipcode") or "").strip()
+    city = (addr.get("city") or "").strip()
+    if not (street or city or state or zipc):
+        return {}
+    return {
+        "name": (addr.get("name") or fallback_name or "").strip(),
+        "street": street, "city": city, "state": state, "zip": zipc,
+        "country": (addr.get("country") or "US").strip().upper(),
+    }
 
 
 def _ingest_order(*, source, external_ref, email="", name="", phone="",

@@ -29,7 +29,8 @@ def _qbo_line(ln: dict, catalog: Optional[dict]) -> dict:
 
 
 def build_order(cart_items: List[dict], practitioner: dict, *, method=None,
-                db_path=None, catalog=None, allow_override=False) -> dict:
+                db_path=None, catalog=None, allow_override=False,
+                ship_to_state="", resale_ok=False) -> dict:
     """Price + invoice a product cart, then redeem up to 50% of the order in credit.
     When paid fee-free (method zelle/wise), also earn 3% Wellness Credit on the
     amount charged.
@@ -45,7 +46,10 @@ def build_order(cart_items: List[dict], practitioner: dict, *, method=None,
 
     lines = [_qbo_line(ln, catalog) for ln in quote["lines"]]
     cust = qb.find_or_create_customer(practitioner["email"], practitioner.get("name", ""))
-    inv = qb.create_invoice(cust, lines, email_to=practitioner["email"])
+    from dashboard import tax as _tax
+    tax_cents = _tax.compute_get_cents(quote["subtotal_cents"], channel="wholesale",
+                                       ship_to_state=ship_to_state, resale_ok=resale_ok)
+    inv = qb.create_invoice(cust, lines, email_to=practitioner["email"], tax_cents=tax_cents)
     invoice_id = inv.get("Id")
 
     redeemed = wallet.redeem_for_order(practitioner["id"], quote["subtotal_cents"], invoice_id)

@@ -579,7 +579,8 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
         cur.execute(
             "SELECT id, name, practice_name, email, portal_role, modules_completed, "
             "wallet_balance_cents, wholesale_unlocked_at, application_status, "
-            "application_submitted_at, approval_notes FROM practitioners WHERE id=%s",
+            "application_submitted_at, approval_notes, resale_license_number "
+            "FROM practitioners WHERE id=%s",
             (str(practitioner_id),),
         )
         row = cur.fetchone()
@@ -606,6 +607,7 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
         "application_submitted_at": (row["application_submitted_at"].isoformat()
                                      if row["application_submitted_at"] else None),
         "approval_notes": row["approval_notes"],
+        "resale_license_number": row["resale_license_number"],
         "cart": items,
         "quote": quote,
     }

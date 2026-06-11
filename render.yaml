@@ -43,6 +43,16 @@ services:
         sync: false
       - key: STRIPE_ACTIVE
         sync: false
+      # Project B — GET tax. Off until Rae/CPA confirm the rates (then set
+      # TAX_ENABLED=true). Rates default in code (retail 0.045 / wholesale 0.005).
+      - key: TAX_ENABLED
+        sync: false
+      - key: GET_RETAIL_RATE
+        sync: false
+      - key: GET_WHOLESALE_RATE
+        sync: false
+      - key: GET_HOME_STATE
+        sync: false
       - key: GHL_LOCATION_ID
         sync: false
       - key: HEYGEN_API_KEY

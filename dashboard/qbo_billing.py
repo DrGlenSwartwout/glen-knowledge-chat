@@ -165,10 +165,12 @@ def _build_invoice_lines(lines, discount_cents=0):
 
 
 def create_invoice(customer, lines, *, allow_online_pay=False, email_to=None,
-                   discount_cents=0):
+                   discount_cents=0, tax_cents=0):
     """lines: [{name, amount(unit $), qty, description?, item_id?}].
     customer: a QBO Customer dict (from find_or_create_customer).
-    discount_cents: optional fixed-amount discount (e.g. Wellness Credit redeemed)."""
+    discount_cents: optional fixed-amount discount (e.g. Wellness Credit redeemed).
+    tax_cents: app-computed GET to stamp on the invoice (overrides QBO's AST engine
+    via TxnTaxDetail.TotalTax); 0 = no tax line. See dashboard/tax.py."""
     resolved = []
     for ln in lines:
         item_id = ln.get("item_id")
@@ -183,6 +185,11 @@ def create_invoice(customer, lines, *, allow_online_pay=False, email_to=None,
     if allow_online_pay:
         body["AllowOnlineCreditCardPayment"] = True
         body["AllowOnlineACHPayment"] = True
+    if tax_cents and int(tax_cents) > 0:
+        # App-computed override: QBO honors an explicit TotalTax instead of its
+        # automated calculation. TaxExcluded → line amounts are pre-tax.
+        body["TxnTaxDetail"] = {"TotalTax": round(int(tax_cents) / 100.0, 2)}
+        body["GlobalTaxCalculation"] = "TaxExcluded"
     return _post("/invoice", body).get("Invoice")
 
 
