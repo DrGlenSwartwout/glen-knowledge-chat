@@ -558,6 +558,7 @@
   <label for="funnel-first-name">Your name</label>
   <input type="text" id="funnel-first-name" placeholder="First name…" autocomplete="given-name" />
 </div>
+<div id="chat-attach"></div>
 <div id="input-bar">
   <textarea id="query-input"
     placeholder="Ask a question… or share a concern."
@@ -893,6 +894,7 @@
       localStorage.setItem('amg_newsletter_optin', _newsletter_optin ? '1' : '0');
     } catch (_) {}
 
+    const _att = (window.__chatAttach && window.__chatAttach.getPayload()) || {};
     try {
       const r = await fetch(BASE + '/chat', {
         method: 'POST',
@@ -905,9 +907,13 @@
           name:      _name,
           email:     _email,
           personal_optin:   _personal_optin,
-          newsletter_optin: _newsletter_optin
+          newsletter_optin: _newsletter_optin,
+          images:    _att.images || [],
+          documents: _att.documents || [],
+          images_consented: !!_att.consented
         })
       });
+      if (window.__chatAttach) window.__chatAttach.clear();
 
       if (!r.ok || !r.body) {
         const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
@@ -1899,5 +1905,9 @@
 </script>
 <script src="/static/tts-output.js"></script>
 <script src="/static/optin-gate.js"></script>
+<script src="/static/chat-attachments.js"></script>
+<script>
+  window.__chatAttach = ChatAttach.mount({ host: '#chat-attach', dropZone: '#input-bar' });
+</script>
 </body>
 </html>

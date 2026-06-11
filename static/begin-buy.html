@@ -360,6 +360,7 @@
           <div id="cg-thread" class="cg-thread"></div>
           <div id="cg-typing" class="cg-typing hidden">Dr. Glen is considering&hellip;</div>
           <div id="cg-suggestion" class="cg-suggestion hidden"></div>
+          <div id="chat-attach"></div>
           <div class="cg-inputrow">
             <input type="text" id="cg-input" placeholder="Tell me what else you&rsquo;re working on&hellip;" />
             <button id="cg-send">Send</button>
@@ -791,10 +792,14 @@
       hide('cg-suggestion');
       show('cg-typing');
       var bubble = null, assistant = '';
+      var _att = (window.__chatAttach && window.__chatAttach.getPayload()) || {};
       fetch(BASE + '/begin/concierge/chat', {
         method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
-        body: JSON.stringify({ query: query, history: cg.history, bought_slug: slug })
+        body: JSON.stringify({ query: query, history: cg.history, bought_slug: slug,
+          images: _att.images || [], documents: _att.documents || [],
+          images_consented: !!_att.consented })
       }).then(function(resp){
+        if (window.__chatAttach) window.__chatAttach.clear();
         var reader = resp.body.getReader(), dec = new TextDecoder(), buf='';
         function pump(){
           return reader.read().then(function(r){
@@ -882,5 +887,9 @@
     }
   </script>
 <script src="/static/optin-gate.js"></script>
+<script src="/static/chat-attachments.js"></script>
+<script>
+  window.__chatAttach = ChatAttach.mount({ host: '#chat-attach' });
+</script>
 </body>
 </html>
