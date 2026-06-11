@@ -159,3 +159,13 @@ def test_chat_documents_without_consent_is_400(client):
     })
     assert r.status_code == 400
     assert b"consent" in r.data.lower()
+
+
+def test_match_documents_without_consent_is_400(client):
+    r = client.post("/begin/match/chat", json={
+        "query": "match me from this scan",
+        "documents": ["data:application/pdf;base64,AAAA"],
+        "images_consented": False,
+    })
+    assert r.status_code == 400
+    assert b"consent" in r.data.lower()
