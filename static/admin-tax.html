@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <link rel="icon" type="image/png" href="/static/favicon.png"><meta charset="utf-8"><title>GET Report</title>
+<style>
+  body{background:#0a150d;color:#fdf4d8;font-family:system-ui,sans-serif;margin:0;padding:24px}
+  h1{color:#d4a843} .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin:12px 0}
+  label{display:block;font-size:12px;color:#bcd3c2;margin-bottom:3px}
+  input{background:#0a150d;color:#fdf4d8;border:1px solid #21472d;border-radius:8px;padding:8px}
+  button{cursor:pointer;border:0;border-radius:8px;padding:9px 14px;background:#d4a843;color:#0a150d;font-weight:600}
+  table{border-collapse:collapse;margin-top:14px;min-width:520px}
+  th,td{border:1px solid #21472d;padding:8px 12px;text-align:right} th{color:#d4a843} td:first-child,th:first-child{text-align:left}
+  tr.total td{font-weight:700;color:#8fd19e} a{color:#e2ba5c} .muted{color:#bcd3c2;font-size:13px}
+</style></head><body>
+<h1>◼ Hawai‘i GET — period report</h1>
+<p class="muted">Absorbed GET owed (recorded, not charged to customers). Append <code>?key=YOUR_CONSOLE_KEY</code>.</p>
+<div class="row">
+  <div><label>From</label><input type="date" id="from"></div>
+  <div><label>To</label><input type="date" id="to"></div>
+  <button id="run">Run</button>
+  <a id="csv" href="#" style="margin-left:8px">Download CSV</a>
+</div>
+<div id="out" class="muted">Pick a date range and run.</div>
+<script>
+const key = new URLSearchParams(location.search).get("key") || "";
+const $ = id => document.getElementById(id);
+const usd = c => "$" + (c/100).toFixed(2);
+function qs(){ return "from="+encodeURIComponent($('from').value)+"&to="+encodeURIComponent($('to').value)+"&key="+encodeURIComponent(key); }
+async function run(){
+  $('out').textContent = "Loading…";
+  const r = await fetch("/admin/tax/get-report?"+qs());
+  const j = await r.json();
+  const d = j.data || j;
+  if(!d || !d.hi_retail){ $('out').textContent = "Error: "+(j.error||r.status); return; }
+  const rows = [
+    ["HI retail (4.5%)", d.hi_retail],
+    ["HI wholesale (0.5%)", d.hi_wholesale],
+    ["Out-of-state (export, no GET)", d.out_of_state],
+    ["Unknown ship-to", d.unknown_state],
+  ];
+  let html = "<table><tr><th>Bucket</th><th>Orders</th><th>Gross</th><th>GET owed</th></tr>";
+  for(const [lbl,b] of rows){ html += `<tr><td>${lbl}</td><td>${b.orders}</td><td>${usd(b.gross_cents)}</td><td>${usd(b.get_cents)}</td></tr>`; }
+  html += `<tr class="total"><td>Total GET owed</td><td></td><td></td><td>${usd(d.total_get_cents)}</td></tr></table>`;
+  $('out').innerHTML = html;
+  $('csv').href = "/admin/tax/get-report?"+qs()+"&format=csv";
+}
+$('run').addEventListener('click', run);
+</script></body></html>
