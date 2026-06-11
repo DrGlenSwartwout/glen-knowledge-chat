@@ -142,3 +142,20 @@ def test_extract_forwards_image_and_document_blocks(monkeypatch):
 def test_extract_empty_blocks_returns_empty():
     import app as app_module
     assert app_module.extract_attachment_content([], "q") == ""
+
+
+@pytest.fixture
+def client():
+    import app as app_module
+    app_module.app.config["TESTING"] = True
+    return app_module.app.test_client()
+
+
+def test_chat_documents_without_consent_is_400(client):
+    r = client.post("/chat", json={
+        "query": "read this",
+        "documents": ["data:application/pdf;base64,AAAA"],
+        "images_consented": False,
+    })
+    assert r.status_code == 400
+    assert b"consent" in r.data.lower()

@@ -1591,33 +1591,35 @@ def chat():
     # discarded; only the extracted text is persisted to query_log.
     images_consented = bool(data.get("images_consented"))
     raw_images = data.get("images") or []
-    image_blocks = []
-    image_errors = []
-    if raw_images:
+    raw_documents = data.get("documents") or []
+    attachment_blocks = []
+    attachment_errors = []
+    if raw_images or raw_documents:
         if not images_consented:
             return jsonify({
-                "error": "Image consent required. Check the image-opt-in box "
-                         "before attaching images."
+                "error": "Attachment consent required. Check the consent box "
+                         "before attaching documents or images."
             }), 400
-        image_blocks, image_errors = _normalize_image_payload(raw_images)
+        attachment_blocks, attachment_errors = _normalize_attachments(
+            raw_images, raw_documents)
 
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
     def generate():
-        # Step A — image extraction (if any images attached, run vision call
-        # FIRST so the extracted text can be embedded for retrieval and also
-        # joined to the user question as context).
+        # Step A — attachment extraction (if any images/PDFs attached, run the
+        # OCR pass FIRST so the extracted text can be embedded for retrieval and
+        # also joined to the user question as context).
         extracted_text = ""
-        if image_blocks:
-            yield sse({"status": f"Reading {len(image_blocks)} image(s)…"})
-            extracted_text = extract_image_content(image_blocks, query)
+        if attachment_blocks:
+            yield sse({"status": f"Reading {len(attachment_blocks)} attachment(s)…"})
+            extracted_text = extract_attachment_content(attachment_blocks, query)
 
-        # Combine the user question with extracted image text for embedding
+        # Combine the user question with extracted attachment text for embedding
         # so retrieval can match on label/scan/lab content too.
         embedding_input = query
         if extracted_text:
-            embedding_input = f"{query}\n\nIMAGE CONTENT:\n{extracted_text}"
+            embedding_input = f"{query}\n\nATTACHMENT CONTENT:\n{extracted_text}"
 
         try:
             q_vec = embed(embedding_input)
@@ -1631,7 +1633,7 @@ def chat():
             yield sse({"done": True, "answer": "No relevant content found.",
                        "sources": [], "chunks_retrieved": 0, "log_id": None,
                        "session_id": session_id, "mode": mode,
-                       "image_count": len(image_blocks)})
+                       "image_count": len(attachment_blocks)})
             return
 
         context_str, sources_list = build_context(all_matches)
@@ -1693,16 +1695,16 @@ def chat():
             "single action link, source line. ~200 words. Tight and decisive."
         )
 
-        image_context = ""
+        attachment_context = ""
         if extracted_text:
-            image_context = (
-                f"IMAGE CONTENT EXTRACTED FROM USER ATTACHMENT(S):\n"
+            attachment_context = (
+                f"ATTACHMENT CONTENT EXTRACTED FROM USER UPLOAD(S):\n"
                 f"{extracted_text}\n\n"
-                f"Reference the image content as part of the user's question "
+                f"Reference the attachment content as part of the user's question "
                 f"context. Quote specific values or labels from it when relevant.\n\n"
             )
 
-        # Pass the retrieved snippet text + extracted image content into the
+        # Pass the retrieved snippet text + extracted attachment content into the
         # directive builder so on-the-fly Rebrandly creation only fires for
         # products actually likely to be mentioned in this response.
         product_directive = build_product_directive(
@@ -1712,7 +1714,7 @@ def chat():
 
         messages.append({"role": "user", "content":
             f"USER QUESTION: {query}\n\n"
-            f"{image_context}"
+            f"{attachment_context}"
             f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
             f"{product_block}"
             f"{synth_instr}"
@@ -1754,7 +1756,7 @@ def chat():
             session_id=session_id, email=email, name=name,
             mode=mode, user_agent=user_agent, referer=referer,
             extracted_image_data=extracted_text,
-            image_count=len(image_blocks),
+            image_count=len(attachment_blocks),
         )
 
         # GHL onboarding for email opt-ins (non-blocking)
