@@ -143,7 +143,15 @@ function render(d){
   $('modules').textContent = (d.modules_completed||0) + ' / 12';
   $('wallet').textContent = money(d.wallet_balance_cents);
   var unlocked = !!d.wholesale_unlocked;
-  $('status').innerHTML = unlocked ? '<span class="badge ok">Active</span>' : '<span class="badge no">Locked</span>';
+  if (unlocked) {
+    $('status').innerHTML = '<span class="badge ok">Active</span>';
+  } else if (d.application_status === 'pending') {
+    $('status').innerHTML = '<span class="badge" style="background:#caa43a;color:#0a150d">Pending review</span>';
+  } else if (d.application_status === 'rejected') {
+    $('status').innerHTML = '<span class="badge no">Not approved</span>';
+  } else {
+    $('status').innerHTML = '<span class="badge no">Locked</span>';
+  }
   $('locked').style.display = unlocked ? 'none' : 'block';
   $('add').disabled = !unlocked; $('checkout').disabled = !unlocked;
   $('assist-panel').style.display = unlocked ? 'block' : 'none';

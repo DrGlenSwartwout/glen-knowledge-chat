@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <link rel="icon" type="image/png" href="/static/favicon.png"><meta charset="utf-8"><title>Wholesale Applications</title>
+<style>
+  body{background:#0a150d;color:#fdf4d8;font-family:system-ui,sans-serif;margin:0;padding:24px}
+  h1{color:#d4a843} .c{border:1px solid #21472d;border-radius:10px;padding:14px;margin:10px 0;background:#111f16}
+  .lbl{color:#d4a843;font-weight:600} .meta{color:#bcd3c2;font-size:13px;margin-top:4px}
+  button{cursor:pointer;border:0;border-radius:6px;padding:6px 12px;margin-right:8px}
+  .ok{background:#3d8a52;color:#0a150d} .no{background:#e08a8a;color:#0a150d} a{color:#e2ba5c}
+</style></head><body>
+<h1>◼ Wholesale — pending applications</h1>
+<p>Append <code>?key=YOUR_CONSOLE_KEY</code> to this URL.</p>
+<div id="list">Loading…</div>
+<script>
+const key = new URLSearchParams(location.search).get("key") || "";
+async function load(){
+  const r = await fetch("/admin/wholesale/pending?key="+encodeURIComponent(key));
+  const j = await r.json();
+  const items = (j.data && j.data.applications) || j.applications || [];
+  document.getElementById("list").innerHTML = items.length ? "" : "<p>Nothing pending.</p>";
+  for(const a of items){
+    const el = document.createElement("div"); el.className="c";
+    const loc = [a.license_state].filter(Boolean).join("");
+    el.innerHTML = `<div class="lbl">${a.name||"(no name)"}</div>
+      <div class="meta">${a.email||""} ${a.practice_name?("· "+a.practice_name):""}</div>
+      <div class="meta">resale license: ${a.resale_license_number||"—"}${loc?(" ("+loc+")"):""} · role: ${a.portal_role||"—"}</div>
+      <div class="meta">applied: ${a.application_submitted_at ? new Date(a.application_submitted_at).toLocaleString() : "—"}</div>
+      <div style="margin-top:8px">
+        <button class="ok" data-id="${a.id}" data-act="approve">Approve</button>
+        <button class="no" data-id="${a.id}" data-act="reject">Reject</button></div>`;
+    document.getElementById("list").appendChild(el);
+  }
+}
+document.addEventListener("click", async e=>{
+  const b = e.target.closest("button[data-act]"); if(!b) return;
+  let notes = "";
+  if(b.dataset.act === "reject"){ notes = prompt("Reason (optional, emailed to the applicant):") || ""; }
+  b.disabled = true;
+  await fetch(`/admin/wholesale/${b.dataset.act}?key=${encodeURIComponent(key)}`,
+    {method:"POST",headers:{"Content-Type":"application/json"},
+     body:JSON.stringify({id:b.dataset.id, notes})});
+  load();
+});
+load();
+</script></body></html>

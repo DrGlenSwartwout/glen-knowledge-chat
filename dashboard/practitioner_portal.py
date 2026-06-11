@@ -455,6 +455,122 @@ def unlock_wholesale(practitioner_id, *, now=None) -> None:
         )
 
 
+# ── Tier-2 wholesale application + approval ────────────────────────────────────
+# A third path to wholesale, ALONGSIDE licensed-on-register and coach-on-module:
+# a resale-license holder applies (agreeing to the ToS), Glen/Rae approve, and the
+# same wholesale_unlocked_at gate is set. application_status tracks the apply path.
+
+def validate_wholesale_application(payload: dict) -> Tuple[Optional[dict], Optional[str]]:
+    """Pure validation for the public wholesale application. Returns (clean, None)
+    or (None, error). Requires name, email, a resale license number, and ToS."""
+    email = (payload.get("email") or "").strip().lower()
+    name = (payload.get("name") or "").strip()
+    resale = (payload.get("resale_license_number") or "").strip()
+    if "@" not in email or "." not in email:
+        return None, "A valid email is required."
+    if not name:
+        return None, "Your name is required."
+    if not resale:
+        return None, "A resale license / certificate number is required."
+    if not bool(payload.get("tos")):
+        return None, "Please agree to the Terms to apply."
+    return {
+        "email": email, "name": name,
+        "resale_license_number": resale,
+        "license_state": (payload.get("license_state") or "").strip() or None,
+        "practice_name": (payload.get("practice_name") or "").strip() or None,
+        "credentials": (payload.get("credentials") or "").strip() or None,
+        "phone": (payload.get("phone") or "").strip() or None,
+        "website": (payload.get("website") or "").strip() or None,
+    }, None
+
+
+def submit_wholesale_application(clean: dict, *, now=None) -> Tuple[str, bool]:
+    """Create or update a practitioners row in 'pending' state (no auto-unlock).
+    Links to an existing row by email if present (does not overwrite an existing
+    licensed/coach role, and never clears an already-granted unlock). Returns
+    (practitioner_id, already_unlocked)."""
+    from db_supabase import supabase_cursor
+    submitted_at = _utcnow(now)
+    with supabase_cursor() as cur:
+        cur.execute("SELECT id, wholesale_unlocked_at FROM practitioners "
+                    "WHERE lower(email)=lower(%s) LIMIT 1", (clean["email"],))
+        row = cur.fetchone()
+        if row:
+            pid = row["id"]
+            if row["wholesale_unlocked_at"] is not None:
+                return str(pid), True   # already has wholesale; nothing to do
+            cur.execute(
+                "UPDATE practitioners SET portal_role=COALESCE(portal_role, 'reseller'), "
+                "application_status='pending', application_submitted_at=%s, "
+                "resale_license_number=COALESCE(resale_license_number, %s), "
+                "license_state=COALESCE(license_state, %s), "
+                "name=COALESCE(NULLIF(name,''), %s), practice_name=COALESCE(practice_name, %s), "
+                "credentials=COALESCE(credentials, %s), phone=COALESCE(phone, %s), "
+                "website=COALESCE(website, %s), updated_at=now() WHERE id=%s",
+                (submitted_at, clean["resale_license_number"], clean["license_state"],
+                 clean["name"], clean["practice_name"], clean["credentials"],
+                 clean["phone"], clean["website"], pid),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO practitioners (tier, name, email, practice_name, credentials, "
+                "phone, website, portal_role, license_state, resale_license_number, "
+                "application_status, application_submitted_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,'reseller',%s,%s,'pending',%s) RETURNING id",
+                ("org_member", clean["name"], clean["email"], clean["practice_name"],
+                 clean["credentials"], clean["phone"], clean["website"],
+                 clean["license_state"], clean["resale_license_number"], submitted_at),
+            )
+            pid = cur.fetchone()["id"]
+    return str(pid), False
+
+
+def list_pending_applications() -> List[dict]:
+    """Pending wholesale applicants, newest first, for the admin queue."""
+    from db_supabase import supabase_cursor
+    with supabase_cursor() as cur:
+        cur.execute(
+            "SELECT id, name, email, practice_name, portal_role, resale_license_number, "
+            "license_state, application_submitted_at FROM practitioners "
+            "WHERE application_status='pending' ORDER BY application_submitted_at DESC NULLS LAST")
+        rows = cur.fetchall() or []
+    return [{
+        "id": str(r["id"]), "name": r["name"], "email": r["email"],
+        "practice_name": r["practice_name"], "portal_role": r["portal_role"],
+        "resale_license_number": r["resale_license_number"],
+        "license_state": r["license_state"],
+        "application_submitted_at": (r["application_submitted_at"].isoformat()
+                                     if r["application_submitted_at"] else None),
+    } for r in rows]
+
+
+def decide_application(practitioner_id, *, approve: bool, notes="", now=None) -> Optional[dict]:
+    """Approve (sets application_status='approved' + grants wholesale) or reject
+    (sets 'rejected', leaves the gate NULL). Returns {email, name} of the applicant
+    for the decision email, or None if the id was not found."""
+    from db_supabase import supabase_cursor
+    ts = _utcnow(now)
+    with supabase_cursor() as cur:
+        if approve:
+            cur.execute(
+                "UPDATE practitioners SET application_status='approved', "
+                "wholesale_unlocked_at=COALESCE(wholesale_unlocked_at, %s), "
+                "reviewed_at=%s, approval_notes=%s, updated_at=now() "
+                "WHERE id=%s RETURNING email, name",
+                (ts, ts, (notes or "").strip() or None, str(practitioner_id)))
+        else:
+            cur.execute(
+                "UPDATE practitioners SET application_status='rejected', "
+                "reviewed_at=%s, approval_notes=%s, updated_at=now() "
+                "WHERE id=%s RETURNING email, name",
+                (ts, (notes or "").strip() or None, str(practitioner_id)))
+        row = cur.fetchone()
+    if not row:
+        return None
+    return {"email": row["email"], "name": row["name"]}
+
+
 # ── portal data ───────────────────────────────────────────────────────────────
 
 def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optional[dict]:
@@ -462,7 +578,8 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
     with supabase_cursor() as cur:
         cur.execute(
             "SELECT id, name, practice_name, email, portal_role, modules_completed, "
-            "wallet_balance_cents, wholesale_unlocked_at FROM practitioners WHERE id=%s",
+            "wallet_balance_cents, wholesale_unlocked_at, application_status, "
+            "application_submitted_at, approval_notes FROM practitioners WHERE id=%s",
             (str(practitioner_id),),
         )
         row = cur.fetchone()
@@ -485,6 +602,10 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
         "modules_completed": row["modules_completed"],
         "wallet_balance_cents": row["wallet_balance_cents"],
         "wholesale_unlocked": row["wholesale_unlocked_at"] is not None,
+        "application_status": row["application_status"],
+        "application_submitted_at": (row["application_submitted_at"].isoformat()
+                                     if row["application_submitted_at"] else None),
+        "approval_notes": row["approval_notes"],
         "cart": items,
         "quote": quote,
     }

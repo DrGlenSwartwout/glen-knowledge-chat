@@ -13121,6 +13121,142 @@ def admin_atlas_reseed():
     return ok({"reseeded": seeded, "force": force})
 
 
+# ── Tier-2 wholesale: application → approval ──────────────────────────────────
+# Apply (resale-license holders) → Glen/Rae approve in /admin/wholesale → the same
+# wholesale_unlocked_at gate is set and ordering opens. Sits alongside the existing
+# licensed-on-register and coach-on-module auto-unlock paths.
+
+def _send_wholesale_decision_email(to_email, name, approved, notes=""):
+    """Approval / rejection email to a wholesale applicant."""
+    if approved:
+        subject = "Your Remedy Match wholesale application is approved"
+        body = (
+            f"Hi {name or 'there'},\n\n"
+            f"Good news — your wholesale application is approved. You now have wholesale "
+            f"ordering in your practitioner portal: {PUBLIC_BASE_URL}/practitioner/login-request\n\n"
+            f"In wellness,\nDr. Glen\n")
+    else:
+        subject = "Your Remedy Match wholesale application"
+        body = (
+            f"Hi {name or 'there'},\n\n"
+            f"Thank you for applying for wholesale access. We're not able to approve it "
+            f"at this time.\n"
+            + (f"\nNote: {notes}\n" if notes else "")
+            + f"\nIf you think this is in error, just reply to this email.\n\n— Remedy Match\n")
+    return _send_full_report_email(to_email, name or "there", subject, body)
+
+
+@app.route("/wholesale/apply")
+def wholesale_apply_page():
+    return send_from_directory(STATIC, "wholesale-apply.html")
+
+
+@app.route("/api/wholesale/apply", methods=["POST", "OPTIONS"])
+def api_wholesale_apply():
+    if request.method == "OPTIONS":
+        return "", 200
+    clean, err = _pp.validate_wholesale_application(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    try:
+        pid, already = _pp.submit_wholesale_application(clean)
+    except Exception as e:
+        print(f"[wholesale-apply] submit failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "Could not submit your application. Please try again."}), 500
+
+    # Applying also makes them a Tier-1 Member (they agreed to the ToS here).
+    sid = request.cookies.get("amg_session") or uuid.uuid4().hex
+    parts = clean["name"].split(None, 1)
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            begin_funnel.init_journey_tables(cx)
+            begin_funnel.record_unlock(
+                cx, session_id=sid, trigger="tos", email=clean["email"],
+                first_name=parts[0], last_name=(parts[1] if len(parts) > 1 else ""),
+                tos=True, tos_version=BEGIN_TOS_VERSION)
+    except Exception as e:
+        print(f"[wholesale-apply] tos record failed: {e!r}", flush=True)
+
+    # Magic link so they can sign in and track status.
+    try:
+        magic = _pp.create_magic_link_token(pid, clean["email"])
+        _send_practitioner_magic_link(
+            clean["email"], clean["name"],
+            f"{PUBLIC_BASE_URL}/practitioner/login-verify?token={magic}")
+    except Exception as e:
+        print(f"[wholesale-apply] magic link failed: {e!r}", flush=True)
+
+    # Notify Rae of a new application to review (unless they already had access).
+    if not already:
+        try:
+            _send_full_report_email(
+                os.environ.get("RAE_EMAIL", "suerae1111@gmail.com"), "Rae",
+                f"New wholesale application: {clean['name']}",
+                f"{clean['name']} ({clean['email']}) applied for wholesale access.\n"
+                f"Resale license: {clean['resale_license_number']}"
+                + (f" ({clean['license_state']})" if clean['license_state'] else "") + "\n"
+                + (f"Practice: {clean['practice_name']}\n" if clean['practice_name'] else "")
+                + f"\nReview pending applications at {PUBLIC_BASE_URL}/admin/wholesale\n")
+        except Exception:
+            pass
+
+    msg = ("You already have wholesale access — check your email for a sign-in link."
+           if already else
+           "Application received. We'll email you when it's approved. "
+           "Check your email for a sign-in link to track your status.")
+    resp = jsonify({"ok": True, "already_unlocked": already, "message": msg})
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", sid, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/admin/wholesale")
+def admin_wholesale_page():
+    return send_from_directory(STATIC, "admin-wholesale.html")
+
+
+@app.route("/admin/wholesale/pending", methods=["GET"])
+@require_console_key
+def admin_wholesale_pending():
+    return ok({"applications": _pp.list_pending_applications()})
+
+
+@app.route("/admin/wholesale/approve", methods=["POST"])
+@require_console_key
+def admin_wholesale_approve():
+    data = request.get_json(silent=True) or {}
+    pid = data.get("id")
+    if not pid:
+        return fail("id required", 400)
+    who = _pp.decide_application(pid, approve=True, notes=(data.get("notes") or ""))
+    if not who:
+        return fail("unknown application id", 404)
+    try:
+        _send_wholesale_decision_email(who["email"], who["name"], approved=True)
+    except Exception:
+        pass
+    return ok({"approved": pid})
+
+
+@app.route("/admin/wholesale/reject", methods=["POST"])
+@require_console_key
+def admin_wholesale_reject():
+    data = request.get_json(silent=True) or {}
+    pid = data.get("id")
+    if not pid:
+        return fail("id required", 400)
+    notes = (data.get("notes") or "").strip()
+    who = _pp.decide_application(pid, approve=False, notes=notes)
+    if not who:
+        return fail("unknown application id", 404)
+    try:
+        _send_wholesale_decision_email(who["email"], who["name"], approved=False, notes=notes)
+    except Exception:
+        pass
+    return ok({"rejected": pid})
+
+
 # ── Clips review admin ────────────────────────────────────────────────────────
 @app.route("/admin/clips")
 def admin_clips_page():
