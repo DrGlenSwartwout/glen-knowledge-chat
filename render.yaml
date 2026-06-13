@@ -174,3 +174,21 @@ services:
           type: web
           name: glen-knowledge-chat
           envVarKey: CRON_SECRET
+
+  # Daily Supabase practitioners → People hub tag sync. Reads the practitioners
+  # directory and upserts each into the people table tagged
+  # type:practitioner / type:practitioner-cold + consent (additive). Keeps the
+  # unified People hub fresh. Same cross-container pattern as the PB sync above.
+  - type: cron
+    name: glen-practitioner-tag-sync-daily
+    runtime: python
+    schedule: "0 14 * * *"     # 4 AM HST daily (HST is UTC-10)
+    buildCommand: "true"       # stdlib-only, no deps to install
+    startCommand: python scripts/run_practitioner_sync_cron.py
+    envVars:
+      - key: WEB_URL
+        value: https://glen-knowledge-chat.onrender.com
+      - fromService:
+          type: web
+          name: glen-knowledge-chat
+          envVarKey: CRON_SECRET
