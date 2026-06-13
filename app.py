@@ -6325,6 +6325,18 @@ def _upsert_person_additive(cx, person, ts=None):
     order_count = int(person.get("order_count", 0) or 0)
     session_count = int(person.get("session_count", 0) or 0)
 
+    # Closed-loop consent: a GoHighLevel email unsubscribe / bounce / DND (pulled
+    # in by console_push) revokes opt-in here, so the hub stays the single consent
+    # truth and the Phase-2 mirror stops re-pushing opted-out people. Email-channel
+    # signals only — SMS-only unsubscribes do not gate email.
+    dnd = bool(person.get("dnd")) or any(
+        any(s in t.lower() for s in ("email bounced", "email unsubscrib",
+                                     "do not email", "spam complain"))
+        for t in arrays.get("tags", []))
+
+    def _apply_dnd(tagset):
+        return ((set(tagset) - {"consent:opted-in"}) | {"consent:unsubscribed"}) if dnd else set(tagset)
+
     if existing:
         cols = set(existing.keys())
         upd = {}
@@ -6341,6 +6353,12 @@ def _upsert_person_additive(cx, person, ts=None):
             merged = sorted(ex | set(arrays[jf]))
             if merged != sorted(ex):
                 upd[jf] = json.dumps(merged)
+        if dnd:  # force the consent flip on the tags column (a removal, so the union check above misses it)
+            try:
+                ex_tags = set(json.loads(existing["tags"] or "[]"))
+            except Exception:
+                ex_tags = set()
+            upd["tags"] = json.dumps(sorted(_apply_dnd(ex_tags | set(arrays.get("tags", [])))))
         if order_count > int(existing["order_count"] or 0):
             upd["order_count"] = order_count
         if session_count > int(existing["session_count"] or 0):
@@ -6356,6 +6374,7 @@ def _upsert_person_additive(cx, person, ts=None):
     ins = dict(scalars)
     for jf in _PERSON_UPSERT_JSON:
         ins[jf] = json.dumps(sorted(set(arrays[jf])))
+    ins["tags"] = json.dumps(sorted(_apply_dnd(set(arrays.get("tags", [])))))
     ins["email"] = email
     ins["order_count"] = order_count
     ins["session_count"] = session_count
