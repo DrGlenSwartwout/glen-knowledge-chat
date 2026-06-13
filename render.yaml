@@ -192,3 +192,22 @@ services:
           type: web
           name: glen-knowledge-chat
           envVarKey: CRON_SECRET
+
+  # Daily People hub → GHL mirror (Phase 2). Classifies existing people
+  # (type:client/prospect + consent from explicit opt-in signals) and enqueues
+  # tag_add ops for the opted-in ones onto the GHL write-queue (drained from the
+  # Mac). Cold/no-consent contacts are never enqueued. Tag mirror only — no
+  # sends. Runs after the practitioner + PB syncs so tags are fresh.
+  - type: cron
+    name: glen-people-ghl-sync-daily
+    runtime: python
+    schedule: "0 15 * * *"     # 5 AM HST daily (HST is UTC-10)
+    buildCommand: "true"       # stdlib-only, no deps to install
+    startCommand: python scripts/run_people_ghl_sync_cron.py
+    envVars:
+      - key: WEB_URL
+        value: https://glen-knowledge-chat.onrender.com
+      - fromService:
+          type: web
+          name: glen-knowledge-chat
+          envVarKey: CRON_SECRET

@@ -6468,6 +6468,158 @@ def admin_sync_practitioner_tags():
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
 
 
+# ── People hub Phase 2: classify existing people + mirror opted-in to GHL ──────
+# Substring patterns (matched lowercased against a person's existing tags).
+_OPTIN_TAG_PATTERNS = ("opted in", "opt-in", "email list opted")
+# Hard-suppression: email-negative signals override any opt-in signal
+# (CAN-SPAM / deliverability). SMS-only unsubscribes are intentionally excluded.
+_SUPPRESS_TAG_PATTERNS = ("email bounced", "reengagement:bounced",
+                          "do not email", "spam complaint", "email unsubscribed")
+
+
+def _classify_person(row, tos_agreed=False):
+    """Pure rule. Given a people row (tags/order_count/pb_id) + a tos_agreed flag,
+    return the set of type:/consent: tags to ADD. Additive only (never removes,
+    never downgrades an existing consent tag). Honors 'explicit opt-in signal'
+    with hard-suppression for bounced/unsubscribed."""
+    tags = row.get("tags") or []
+    if isinstance(tags, str):
+        try:
+            tags = json.loads(tags or "[]")
+        except Exception:
+            tags = []
+    tagset = set(tags)
+    low = [t.lower() for t in tagset]
+    add = set()
+
+    has_commerce = int(row.get("order_count") or 0) > 0 or bool((row.get("pb_id") or "").strip())
+    has_type = any(t.startswith("type:") for t in tagset)
+    has_consent = any(t.startswith("consent:") for t in tagset)
+
+    if has_commerce:
+        add.add("type:client")
+    elif not has_type:
+        add.add("type:prospect")
+
+    if not has_consent:
+        suppressed = any(any(p in t for p in _SUPPRESS_TAG_PATTERNS) for t in low)
+        opted = (not suppressed) and (
+            has_commerce or tos_agreed
+            or any(any(p in t for p in _OPTIN_TAG_PATTERNS) for t in low))
+        add.add("consent:opted-in" if opted else "consent:cold-no-consent")
+    return add
+
+
+def _tos_agreed_emails(cx):
+    """Lowercased emails that agreed to the soft ToS (journey_state)."""
+    try:
+        rows = cx.execute(
+            "SELECT DISTINCT lower(email) FROM journey_state "
+            "WHERE tos_agreed_at IS NOT NULL AND tos_agreed_at<>'' AND email<>''"
+        ).fetchall()
+        return {r[0] for r in rows}
+    except Exception:
+        return set()
+
+
+def classify_people(dry_run=False, limit=None):
+    """Tag the existing hub population with type:client/prospect + consent from
+    explicit opt-in signals. Additive + idempotent."""
+    started = _pb_time.time()
+    summary = {"scanned": 0, "updated": 0, "added_client": 0, "added_prospect": 0,
+               "added_opted_in": 0, "added_cold": 0, "dry_run": bool(dry_run), "elapsed_sec": 0}
+    ts = datetime.now(timezone.utc).isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        tos = _tos_agreed_emails(cx)
+        q = "SELECT id,email,tags,order_count,pb_id FROM people"
+        if limit:
+            q += f" LIMIT {int(limit)}"
+        rows = cx.execute(q).fetchall()
+        summary["scanned"] = len(rows)
+        for r in rows:
+            add = _classify_person(dict(r), tos_agreed=(r["email"] or "").lower() in tos)
+            if not add:
+                continue
+            summary["updated"] += 1
+            for t in add:
+                summary["added_client"]   += (t == "type:client")
+                summary["added_prospect"] += (t == "type:prospect")
+                summary["added_opted_in"] += (t == "consent:opted-in")
+                summary["added_cold"]     += (t == "consent:cold-no-consent")
+            if not dry_run:
+                _upsert_person_additive(cx, {"email": r["email"], "tags": sorted(add)}, ts)
+        if not dry_run:
+            cx.commit()
+    summary["elapsed_sec"] = round(_pb_time.time() - started, 2)
+    return summary
+
+
+def sync_people_to_ghl(dry_run=False, limit=None):
+    """Mirror opted-in hub people into GHL by enqueuing tag_add ops (their type:*
+    tags) onto the WAF-safe write-queue (drained from the Mac). Cold contacts are
+    never enqueued, so they never reach GHL and cannot be automated."""
+    started = _pb_time.time()
+    summary = {"opted_in": 0, "enqueued": 0, "skipped_already_pending": 0,
+               "skipped_no_type": 0, "dry_run": bool(dry_run), "elapsed_sec": 0}
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        q = 'SELECT email,tags FROM people WHERE tags LIKE ?'
+        if limit:
+            q += f" LIMIT {int(limit)}"
+        rows = cx.execute(q, ['%"consent:opted-in"%']).fetchall()
+        summary["opted_in"] = len(rows)
+        # Dedup against tags already queued (pending) per email.
+        pending = {}
+        for it in _bos_ghl_queue.list_pending(cx, limit=1000000):
+            if it["op"] == "tag_add":
+                pending.setdefault((it["email"] or "").lower(), set()).update(
+                    json.loads(it.get("payload_json") or "{}").get("tags", []))
+        for r in rows:
+            email = (r["email"] or "").strip().lower()
+            try:
+                tags = set(json.loads(r["tags"] or "[]"))
+            except Exception:
+                tags = set()
+            type_tags = sorted(t for t in tags if t.startswith("type:"))
+            if not type_tags:
+                summary["skipped_no_type"] += 1
+                continue
+            todo = [t for t in type_tags if t not in pending.get(email, set())]
+            if not todo:
+                summary["skipped_already_pending"] += 1
+                continue
+            if not dry_run:
+                _bos_ghl_queue.enqueue(cx, op="tag_add", email=email,
+                                       payload={"tags": todo}, actor="people-ghl-sync")
+                pending.setdefault(email, set()).update(todo)
+            summary["enqueued"] += 1
+    summary["elapsed_sec"] = round(_pb_time.time() - started, 2)
+    return summary
+
+
+@app.route("/admin/sync-people-to-ghl", methods=["POST"])
+def admin_sync_people_to_ghl():
+    """Phase 2: classify existing people, then enqueue opted-in → GHL tag mirrors.
+    Auth/params mirror /admin/sync-pb-tags."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+    limit = request.args.get("limit")
+    lim = int(limit) if limit else None
+    try:
+        classified = classify_people(dry_run=dry_run, limit=lim)
+        mirrored = sync_people_to_ghl(dry_run=dry_run, limit=lim)
+        return jsonify({"ok": True, "classified": classified, "mirrored": mirrored})
+    except Exception as e:
+        app.logger.exception("people→GHL sync failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
 # Maps question text fragments → GHL tag prefix
 _SCOREAPP_Q_PREFIX = {
     "which system is most in need": "system",
