@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Reorder · Remedy Match</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#6b6b6b; --line:#e6e2da; --glen:#2f7d6b; --bg:#faf8f4; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:var(--ink);
+         background:var(--bg); margin:0; line-height:1.5; }
+  .wrap { max-width:40rem; margin:0 auto; padding:2rem 1.25rem 5rem; }
+  h1 { font-size:1.5rem; margin:.2rem 0 .25rem; }
+  .sub { color:var(--muted); margin:0 0 1.5rem; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:1rem 1.1rem; margin-bottom:1rem; }
+  .row { display:flex; align-items:center; gap:.75rem; padding:.6rem 0; border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:0; }
+  .row.un { opacity:.5; }
+  .row .nm { flex:1; min-width:0; }
+  .row .nm b { display:block; }
+  .row .nm small { color:var(--muted); }
+  .qty { display:flex; align-items:center; gap:.4rem; }
+  .qty button { width:28px; height:28px; border:1px solid var(--line); background:#fff; border-radius:6px; font-size:1rem; cursor:pointer; }
+  .qty input { width:42px; text-align:center; border:1px solid var(--line); border-radius:6px; height:28px; }
+  input[type=checkbox] { width:20px; height:20px; accent-color:var(--glen); }
+  button.primary { background:var(--glen); color:#fff; border:0; border-radius:10px; padding:.8rem 1.2rem; font-size:1rem; cursor:pointer; width:100%; }
+  button.primary:disabled { opacity:.45; cursor:default; }
+  button.link { background:none; border:0; color:var(--glen); cursor:pointer; padding:.4rem 0; font-size:.95rem; }
+  .bar { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+  .total { font-size:1.15rem; font-weight:600; }
+  input[type=email] { width:100%; padding:.8rem; border:1px solid var(--line); border-radius:10px; font-size:1rem; }
+  .muted { color:var(--muted); font-size:.9rem; }
+  .hide { display:none; }
+  .sticky { position:sticky; bottom:0; background:linear-gradient(transparent,var(--bg) 35%); padding-top:1rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Reorder</h1>
+  <p class="sub" id="sub">One moment…</p>
+
+  <!-- Sign-in state -->
+  <div id="signin" class="card hide">
+    <p>Enter the email you order with, and we'll send you a secure link to see your past orders and reorder.</p>
+    <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+    <p></p>
+    <button class="primary" id="sendBtn" onclick="sendLink()">Email me my reorder link</button>
+    <p id="sent" class="muted hide">Check your inbox for your secure reorder link (it expires in 15 minutes).</p>
+  </div>
+
+  <!-- Cart state -->
+  <div id="cart" class="hide">
+    <div class="card">
+      <div class="bar" style="margin-bottom:.5rem">
+        <strong>Your last order</strong>
+        <label class="muted"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"> Reorder all</label>
+      </div>
+      <div id="lastList"></div>
+    </div>
+    <button class="link" id="seeAllBtn" onclick="loadAll()">See everything you've ordered ▾</button>
+    <div class="card hide" id="allCard">
+      <strong>All your past products</strong>
+      <div id="allList"></div>
+    </div>
+    <div class="sticky">
+      <div class="bar" style="margin-bottom:.6rem">
+        <span class="muted" id="count">0 items selected</span>
+        <span class="total" id="total">$0.00</span>
+      </div>
+      <button class="primary" id="checkoutBtn" disabled onclick="checkout()">Reorder selected</button>
+      <p class="muted" style="text-align:center;margin:.5rem 0 0">Prices shown are current. You'll pay securely on the next screen.</p>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="empty" class="card hide">
+    <p>We don't have any past orders on file for you yet.</p>
+    <p><a href="https://remedymatch.com">Browse the store →</a></p>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const cents = c => "$" + (c/100).toFixed(2);
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+let rows = {};            // slug -> {..., qty, checked}
+let lastData = [], allData = [];
+
+function showSignin(){ $('#sub').textContent=''; $('#signin').classList.remove('hide'); }
+
+function addRow(it){
+  if (!it.slug) it.slug = '__na__' + it.name;   // unavailable items kept distinct, not checkable
+  if (!(it.slug in rows)) rows[it.slug] = {...it, checked:false, qty: it.qty || 1};
+}
+
+function renderList(sel, items){
+  $(sel).innerHTML = items.map(it => {
+    const r = rows[it.slug] || rows['__na__'+it.name];
+    if (!it.available) return `<div class="row un"><input type="checkbox" disabled>
+      <div class="nm"><b>${esc(it.name)}</b><small>no longer available</small></div></div>`;
+    return `<div class="row">
+      <input type="checkbox" ${r.checked?'checked':''} onchange="check('${it.slug}',this.checked)">
+      <div class="nm"><b>${esc(it.name)}</b><small>${it.current_price} · last ordered ${it.last_ordered||''}</small></div>
+      <div class="qty">
+        <button onclick="bump('${it.slug}',-1)">−</button>
+        <input type="number" min="1" max="99" value="${r.qty}" onchange="setQty('${it.slug}',this.value)">
+        <button onclick="bump('${it.slug}',1)">+</button>
+      </div></div>`;
+  }).join('');
+}
+
+function renderAll(){ renderList('#lastList', lastData); if (allData.length) renderList('#allList', allData); }
+function check(slug,v){ rows[slug].checked=v; recompute(); }
+function setQty(slug,v){ rows[slug].qty=Math.max(1,Math.min(99,parseInt(v)||1)); renderAll(); recompute(); }
+function bump(slug,d){ rows[slug].qty=Math.max(1,Math.min(99,(rows[slug].qty||1)+d)); renderAll(); recompute(); }
+function toggleAll(v){ Object.values(rows).forEach(r=>{ if(r.available) r.checked=v; }); renderAll(); recompute(); }
+
+async function loadAll(){
+  $('#seeAllBtn').disabled = true;
+  const d = await (await fetch('/api/reorder/items?scope=all',{credentials:'same-origin'})).json();
+  d.items.forEach(addRow);
+  allData = d.items;
+  $('#allCard').classList.remove('hide');
+  $('#seeAllBtn').classList.add('hide');
+  renderAll(); recompute();
+}
+
+function recompute(){
+  let n=0, c=0;
+  Object.values(rows).forEach(r=>{ if(r.checked && r.available){ n++; c += (r.current_price_cents||0)*r.qty; }});
+  $('#count').textContent = n + (n===1?' item':' items') + ' selected';
+  $('#total').textContent = cents(c);
+  $('#checkoutBtn').disabled = n===0;
+}
+
+async function checkout(){
+  const items = Object.values(rows).filter(r=>r.checked && r.available).map(r=>({slug:r.slug, qty:r.qty}));
+  if (!items.length) return;
+  $('#checkoutBtn').disabled = true; $('#checkoutBtn').textContent='Starting checkout…';
+  const d = await (await fetch('/reorder/checkout', {method:'POST', credentials:'same-origin',
+            headers:{'Content-Type':'application/json'}, body:JSON.stringify(items)})).json();
+  if (d.ok && d.stripe_url){ window.location = d.stripe_url; return; }
+  alert(d.error || 'Could not start checkout. Please try again.');
+  $('#checkoutBtn').disabled=false; $('#checkoutBtn').textContent='Reorder selected';
+}
+
+async function sendLink(){
+  const email = $('#email').value.trim();
+  if (!email || email.indexOf('@')<0){ $('#email').focus(); return; }
+  $('#sendBtn').disabled = true;
+  await fetch('/reorder/request', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email})});
+  $('#sent').classList.remove('hide');
+}
+
+async function init(){
+  let r;
+  try { r = await fetch('/api/reorder/items?scope=last', {credentials:'same-origin'}); }
+  catch(e){ return showSignin(); }
+  if (r.status === 401) return showSignin();
+  const d = await r.json();
+  if (!d.items || !d.items.length){ $('#sub').textContent=''; $('#empty').classList.remove('hide'); return; }
+  $('#sub').textContent = 'Pick what you’d like to reorder, set the quantity, and check out in one step.';
+  $('#cart').classList.remove('hide');
+  lastData = d.items; d.items.forEach(addRow); renderAll(); recompute();
+}
+init();
+</script>
+</body>
+</html>

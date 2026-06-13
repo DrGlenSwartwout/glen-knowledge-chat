@@ -153,6 +153,15 @@ def list_orders(cx, *, status=None, limit=200):
     return [_row_to_dict(r) for r in cur.fetchall()]
 
 
+def list_orders_by_email(cx, email, limit=200):
+    """A client's orders, most recent first (for the reorder cart). Caller sets
+    cx.row_factory = sqlite3.Row."""
+    cur = cx.execute(
+        "SELECT * FROM orders WHERE lower(email)=? ORDER BY created_at DESC, id DESC LIMIT ?",
+        ((email or "").strip().lower(), limit))
+    return [_row_to_dict(r) for r in cur.fetchall()]
+
+
 def set_order_status(cx, order_id, status):
     if status not in ORDER_STATUSES:
         raise ValueError(f"unknown status: {status}")
