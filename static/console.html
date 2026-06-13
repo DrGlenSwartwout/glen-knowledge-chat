@@ -1688,12 +1688,10 @@ function _peopleParams() {
   const p = new URLSearchParams();
   const q = document.getElementById('people-q').value.trim();
   if (q) p.set('q', q);
-  const tagParts = [];
   const tag = document.getElementById('pf-tag').value.trim();
-  if (tag) tagParts.push(tag);
+  if (tag) p.set('tags', tag);
   const type = document.getElementById('pf-type').value;
-  if (type) tagParts.push(type);
-  if (tagParts.length) p.set('tags', tagParts.join(','));
+  if (type) p.set('type', type);
   const state = document.getElementById('pf-state').value.trim();
   if (state) p.set('state', state);
   const island = document.getElementById('pf-island').value.trim();

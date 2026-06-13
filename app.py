@@ -8241,10 +8241,16 @@ def _people_search_query(params):
         if val:
             clauses.append(f"{fld} LIKE ?")
             args.append(f"%{val}%")
-    # Multi-tag filter: all tags must match (AND logic)
+    # Multi-tag filter (free-text): substring match, all tags AND.
     for tag in [t.strip() for t in params.get("tags", "").split(",") if t.strip()]:
         clauses.append("tags LIKE ?")
         args.append(f"%{tag}%")
+    # Contact-type filter: exact JSON-element match (the quotes prevent
+    # type:practitioner from substring-matching type:practitioner-cold).
+    typ = params.get("type", "").strip()
+    if typ:
+        clauses.append("tags LIKE ?")
+        args.append(f'%"{typ}"%')
     if params.get("has_orders") == "1":
         clauses.append("order_count > 0")
     if params.get("has_sessions") == "1":

@@ -150,6 +150,21 @@ def test_type_tag_filter(app_db):
     assert emails == ["prac@x.com"]
 
 
+def test_type_param_is_exact_not_substring(app_db):
+    """?type=type:practitioner must NOT match type:practitioner-cold."""
+    app, db = app_db
+    client = app.app.test_client()
+    hdr = {"X-Console-Key": "testkey"}
+    client.post("/api/people?merge_tags=1", json=[
+        {"email": "engaged@x.com", "tags": ["type:practitioner", "consent:opted-in"]},
+        {"email": "cold@x.com", "tags": ["type:practitioner-cold", "consent:cold-no-consent"]},
+    ], headers=hdr)
+    r = client.get("/api/people?type=type:practitioner", headers=hdr)
+    assert [p["email"] for p in r.get_json()["people"]] == ["engaged@x.com"]
+    r = client.get("/api/people?type=type:practitioner-cold", headers=hdr)
+    assert [p["email"] for p in r.get_json()["people"]] == ["cold@x.com"]
+
+
 # ── cross-source dedup keeps every tag ────────────────────────────────────────
 
 def test_cross_source_tags_union_on_same_email(app_db):

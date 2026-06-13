@@ -791,8 +791,13 @@ def sync_people_from_ghl(batch_size=100):
             people.append(person)
 
         if people:
+            # merge_tags=1: union GHL tags with existing local tags instead of
+            # overwriting, so contact-type/consent tags set by the People-hub
+            # feeders (type:*, consent:*, source:practitioner-finder, …) survive
+            # this GHL->people sync. GHL is not yet the source of those tags
+            # (Phase 2), so a plain overwrite here would wipe them every run.
             r2 = requests.post(
-                f'{RENDER_BASE}/api/people',
+                f'{RENDER_BASE}/api/people?merge_tags=1',
                 headers=HEADERS, json=people, timeout=20
             )
             try:
