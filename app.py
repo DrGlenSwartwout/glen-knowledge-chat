@@ -6649,6 +6649,82 @@ def admin_sync_people_to_ghl():
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
 
 
+def enroll_segment_in_workflow(workflow_id, segment_tags=("type:client", "consent:opted-in"),
+                               cap=None, dry_run=False):
+    """One-time backfill: enroll an opted-in People-hub segment into an existing
+    GHL workflow by enqueuing `workflow` ops (drained from the Mac). GHL "tag
+    added" triggers only fire forward, so contacts already carrying the segment
+    tag need this to enter the workflow. Deduped by an `enrolled:wf:<id8>` tag so
+    re-runs never double-enqueue; GHL also won't re-enroll a contact already in
+    the workflow. Skips unsubscribed/no-email."""
+    wf = (workflow_id or "").strip()
+    if not wf:
+        return {"error": "workflow_id required"}
+    wf8 = wf[:8]
+    enrolled_tag = f"enrolled:wf:{wf8}"
+    started = _pb_time.time()
+    summary = {"workflow_id": wf, "matched": 0, "enqueued": 0,
+               "skipped_already": 0, "dry_run": bool(dry_run), "elapsed_sec": 0}
+    ts = datetime.now(timezone.utc).isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        clauses = " AND ".join(["tags LIKE ?"] * len(segment_tags))
+        rows = cx.execute(
+            f"SELECT email, tags FROM people WHERE email<>'' AND {clauses}",
+            [f'%"{t}"%' for t in segment_tags]).fetchall()
+        for r in rows:
+            email = (r["email"] or "").strip().lower()
+            try:
+                tags = set(json.loads(r["tags"] or "[]"))
+            except Exception:
+                tags = set()
+            if "consent:unsubscribed" in tags or any(
+                    s in " ".join(t.lower() for t in tags)
+                    for s in ("email bounced", "do not email", "unsubscribed")):
+                continue
+            summary["matched"] += 1
+            if enrolled_tag in tags:
+                summary["skipped_already"] += 1
+                continue
+            if cap and summary["enqueued"] >= int(cap):
+                continue
+            if not dry_run:
+                _bos_ghl_queue.enqueue(cx, op="workflow", email=email,
+                                       payload={"workflow_id": wf}, actor="segment-enroll")
+                _upsert_person_additive(cx, {"email": email, "tags": [enrolled_tag]}, ts)
+            summary["enqueued"] += 1
+        if not dry_run:
+            cx.commit()
+    summary["elapsed_sec"] = round(_pb_time.time() - started, 2)
+    return summary
+
+
+@app.route("/admin/enroll-segment-workflow", methods=["POST"])
+def admin_enroll_segment_workflow():
+    """Backfill: enroll an opted-in segment into an existing GHL workflow.
+    ?workflow_id=... &segment=type:client,consent:opted-in &cap=N &dry_run=1.
+    Auth mirrors /admin/sync-pb-tags."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    wf = request.args.get("workflow_id", "")
+    seg = request.args.get("segment", "type:client,consent:opted-in")
+    tags = tuple(t.strip() for t in seg.split(",") if t.strip())
+    cap = request.args.get("cap")
+    dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+    try:
+        summary = enroll_segment_in_workflow(
+            wf, segment_tags=tags, cap=int(cap) if cap else None, dry_run=dry_run)
+        code = 400 if summary.get("error") else 200
+        return jsonify({"ok": not summary.get("error"), "summary": summary}), code
+    except Exception as e:
+        app.logger.exception("segment enroll failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
 # Maps question text fragments → GHL tag prefix
 _SCOREAPP_Q_PREFIX = {
     "which system is most in need": "system",

@@ -96,7 +96,8 @@ def _do_op(item):
         return (err is None), (err or "opportunity created")
 
     if op == "workflow":
-        _, err = _curl("POST", f"{GHL_BASE}/contacts/{cid}/workflow/{GHL_WORKFLOW_ID}",
+        wf = payload.get("workflow_id") or GHL_WORKFLOW_ID
+        _, err = _curl("POST", f"{GHL_BASE}/contacts/{cid}/workflow/{wf}",
                        _ghl_headers(), {})
         return (err is None), (err or "enrolled")
 
