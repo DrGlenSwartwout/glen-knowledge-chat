@@ -780,6 +780,7 @@ def sync_people_from_ghl(batch_size=100):
                 'source':      c.get('source') or '',
                 'ghl_id':      c.get('id') or '',
                 'tags':        c.get('tags', []),
+                'dnd':         bool(c.get('dnd')),   # GHL unsubscribe/DND → revokes consent in the hub
                 'organizations': orgs,
                 'last_contact_date': (c.get('dateUpdated') or '')[:10],
             }
