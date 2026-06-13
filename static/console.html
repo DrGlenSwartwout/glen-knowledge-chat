@@ -249,6 +249,8 @@
   .ptag.phase   { background:#1a2a1a; color:#7af57a; }
   .ptag.concern { background:#2a1a1a; color:#f57a7a; }
   .ptag.source  { background:#2a2a1a; color:#f5d07a; }
+  .ptag.type    { background:#2a1a2a; color:#e09af5; }
+  .ptag.consent { background:#1a2a28; color:#7af5d0; }
   .person-card-meta { font-size:11px; color:var(--muted); margin-top:4px; }
   /* Detail panel */
   .people-detail-empty { padding:40px; text-align:center; color:var(--muted); font-size:14px; }
@@ -528,6 +530,8 @@
   :root[data-theme="light"] .ptag.phase   { background: #E2F5E2; color: #1F7A2E; }
   :root[data-theme="light"] .ptag.concern { background: #FBE3E0; color: #B23A2E; }
   :root[data-theme="light"] .ptag.source  { background: #F7F1D8; color: #8A6A12; }
+  :root[data-theme="light"] .ptag.type    { background: #F3E2FB; color: #8A2EA8; }
+  :root[data-theme="light"] .ptag.consent { background: #DEF7EF; color: #12806A; }
 
   /* assign-btn selected: dark fills + person-color text. The person-color text
      is now dark, so a light tint fill keeps it readable. */
@@ -740,6 +744,17 @@
       </div>
       <div class="people-filters" id="people-filters">
         <input class="filter-chip-input" type="text" id="pf-tag"    placeholder="Tag…"        oninput="peopleDebouncedSearch()">
+        <select class="filter-chip-input" id="pf-type" onchange="peopleDebouncedSearch()" title="Contact type">
+          <option value="">Any type</option>
+          <option value="type:prospect">Prospects</option>
+          <option value="type:client">Clients</option>
+          <option value="type:practitioner">Practitioners</option>
+          <option value="type:practitioner-cold">Practitioners (cold)</option>
+          <option value="type:pr-media">PR / media</option>
+          <option value="type:affiliate">Affiliates</option>
+          <option value="type:partner">Partners</option>
+          <option value="type:vendor">Vendors</option>
+        </select>
         <input class="filter-chip-input" type="text" id="pf-state"  placeholder="State…"      oninput="peopleDebouncedSearch()">
         <input class="filter-chip-input" type="text" id="pf-island" placeholder="Island…"     oninput="peopleDebouncedSearch()">
         <input class="filter-chip-input" type="text" id="pf-prof"   placeholder="Profession…" oninput="peopleDebouncedSearch()">
@@ -1664,7 +1679,7 @@ function peopleDebouncedSearch() {
   _peopleTimer = setTimeout(() => { _peopleOffset = 0; loadPeople(); }, 300);
 }
 function clearPeopleFilters() {
-  ['people-q','pf-tag','pf-state','pf-island','pf-prof'].forEach(id => document.getElementById(id).value = '');
+  ['people-q','pf-tag','pf-type','pf-state','pf-island','pf-prof'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('pf-orders').checked = false;
   document.getElementById('pf-sessions').checked = false;
   _peopleOffset = 0; loadPeople();
@@ -1673,8 +1688,12 @@ function _peopleParams() {
   const p = new URLSearchParams();
   const q = document.getElementById('people-q').value.trim();
   if (q) p.set('q', q);
+  const tagParts = [];
   const tag = document.getElementById('pf-tag').value.trim();
-  if (tag) p.set('tags', tag);
+  if (tag) tagParts.push(tag);
+  const type = document.getElementById('pf-type').value;
+  if (type) tagParts.push(type);
+  if (tagParts.length) p.set('tags', tagParts.join(','));
   const state = document.getElementById('pf-state').value.trim();
   if (state) p.set('state', state);
   const island = document.getElementById('pf-island').value.trim();
@@ -1736,7 +1755,8 @@ function _parseTags(raw) {
 }
 function _renderPtag(tag) {
   const cls = tag.startsWith('system:') ? 'system' : tag.startsWith('phase:') ? 'phase' :
-              tag.startsWith('concern:') ? 'concern' : tag.startsWith('source:') ? 'source' : '';
+              tag.startsWith('concern:') ? 'concern' : tag.startsWith('source:') ? 'source' :
+              tag.startsWith('type:') ? 'type' : tag.startsWith('consent:') ? 'consent' : '';
   return `<span class="ptag ${cls}">${_esc(tag)}</span>`;
 }
 function _esc(s) {

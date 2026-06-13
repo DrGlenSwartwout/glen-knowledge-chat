@@ -6281,6 +6281,193 @@ def admin_sync_pb_tags():
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
 
 
+# ── Unified People hub: additive upsert + source feeders ──────────────────────
+# Column groups for the additive upsert (mirror the /api/people POST handler).
+_PERSON_UPSERT_SCALARS = [
+    "first_name", "last_name", "name", "phone", "dob", "birth_time", "birthplace",
+    "gender", "city", "state", "country", "island", "profession", "title",
+    "ghl_id", "pb_id", "source", "challenges", "goals", "personal_history",
+    "family_history", "medications", "surgeries", "budget", "investment",
+    "resources", "issue_duration", "form_completed_by",
+    "last_order_date", "last_session_date", "last_contact_date", "notes",
+]
+_PERSON_UPSERT_JSON = [
+    "organizations", "tags", "roles", "terrain_concerns", "body_systems",
+    "conditions", "healing_response", "interests", "request",
+]
+
+
+def _upsert_person_additive(cx, person, ts=None):
+    """Idempotent, additive upsert of one person into the people table, matching
+    by email. JSON-array fields (tags, roles, …) are UNIONED with existing;
+    scalar fields only overwrite when the incoming value is non-empty (never
+    clobbered with blanks); counts take the max. This is what feeders use so
+    re-running is safe and a person who appears in several sources keeps every
+    tag. Returns "inserted" | "updated" | None (no email). Caller holds the
+    transaction (commits)."""
+    ts = ts or datetime.now(timezone.utc).isoformat()
+    email = (person.get("email") or "").strip().lower()
+    if not email:
+        return None
+    cx.row_factory = sqlite3.Row
+    existing = cx.execute("SELECT * FROM people WHERE email=?", (email,)).fetchone()
+
+    scalars = {k: person.get(k, "") for k in _PERSON_UPSERT_SCALARS}
+    arrays = {}
+    for jf in _PERSON_UPSERT_JSON:
+        v = person.get(jf, [])
+        if isinstance(v, str):
+            try:
+                v = json.loads(v or "[]")
+            except Exception:
+                v = []
+        arrays[jf] = list(v or [])
+    order_count = int(person.get("order_count", 0) or 0)
+    session_count = int(person.get("session_count", 0) or 0)
+
+    if existing:
+        cols = set(existing.keys())
+        upd = {}
+        for k in _PERSON_UPSERT_SCALARS:
+            if str(scalars[k]).strip():
+                upd[k] = scalars[k]
+        for jf in _PERSON_UPSERT_JSON:
+            if jf not in cols:
+                continue
+            try:
+                ex = set(json.loads(existing[jf] or "[]"))
+            except Exception:
+                ex = set()
+            merged = sorted(ex | set(arrays[jf]))
+            if merged != sorted(ex):
+                upd[jf] = json.dumps(merged)
+        if order_count > int(existing["order_count"] or 0):
+            upd["order_count"] = order_count
+        if session_count > int(existing["session_count"] or 0):
+            upd["session_count"] = session_count
+        upd["updated_at"] = ts
+        upd["synced_at"] = ts
+        upd = {k: v for k, v in upd.items() if k in cols}
+        set_clause = ", ".join(f"{k}=?" for k in upd)
+        cx.execute(f"UPDATE people SET {set_clause} WHERE email=?",
+                   list(upd.values()) + [email])
+        return "updated"
+
+    ins = dict(scalars)
+    for jf in _PERSON_UPSERT_JSON:
+        ins[jf] = json.dumps(sorted(set(arrays[jf])))
+    ins["email"] = email
+    ins["order_count"] = order_count
+    ins["session_count"] = session_count
+    ins["created_at"] = ts
+    ins["updated_at"] = ts
+    ins["synced_at"] = ts
+    col_sql = ", ".join(ins.keys())
+    val_sql = ", ".join("?" * len(ins))
+    cx.execute(f"INSERT INTO people ({col_sql}) VALUES ({val_sql})", list(ins.values()))
+    return "inserted"
+
+
+def _practitioner_to_person(row):
+    """Map a Supabase `practitioners` row (dict) to a people upsert dict with
+    contact-type + consent tags. Engaged = has a portal_role or wholesale unlock;
+    everything else (scraped directory rows) is cold and suppressed from
+    automation. Returns None if the row has no usable email."""
+    email = (row.get("email") or "").strip().lower()
+    if not email:
+        return None
+    engaged = bool(row.get("portal_role")) or bool(row.get("wholesale_unlocked_at"))
+    type_tag = "type:practitioner" if engaged else "type:practitioner-cold"
+    consent_tag = "consent:opted-in" if engaged else "consent:cold-no-consent"
+    tags = sorted({type_tag, consent_tag, "source:practitioner-finder",
+                   f"pract:{row.get('id')}"})
+    name = (row.get("name") or "").strip()
+    first, last = "", ""
+    if name:
+        parts = name.split(" ", 1)
+        first = parts[0]
+        last = parts[1] if len(parts) > 1 else ""
+    orgs = [o for o in [(row.get("practice_name") or "").strip(),
+                        (row.get("source_org") or "").strip()] if o]
+    return {
+        "email": email, "name": name, "first_name": first, "last_name": last,
+        "phone": (row.get("phone") or "").strip(),
+        "city": (row.get("city") or "").strip(),
+        "state": (row.get("state") or "").strip(),
+        "country": (row.get("country") or "").strip(),
+        "profession": (row.get("credentials") or "").strip(),
+        "organizations": orgs,
+        "source": "practitioner-finder",
+        "tags": tags,
+    }
+
+
+def sync_practitioners_to_people(dry_run=False, limit=None):
+    """Feed the Supabase practitioners directory into the people hub, tagged
+    type:practitioner / type:practitioner-cold + consent. Reads the base table
+    directly (the public view predates the portal columns) and skips rows with
+    no email (can't dedup or automate). Additive + idempotent."""
+    started = _pb_time.time()
+    summary = {"rows_fetched": 0, "skipped_no_email": 0, "people_upserted": 0,
+               "engaged": 0, "cold": 0, "dry_run": bool(dry_run), "elapsed_sec": 0}
+    try:
+        from db_supabase import supabase_cursor
+    except Exception as e:
+        return {"error": f"supabase unavailable: {type(e).__name__}: {e}"}
+    sql = ("SELECT id, name, practice_name, credentials, source_org, phone, "
+           "email, city, state, country, tier, portal_role, wholesale_unlocked_at "
+           "FROM practitioners WHERE email IS NOT NULL AND email <> ''")
+    if limit:
+        sql += f" LIMIT {int(limit)}"
+    with supabase_cursor() as cur:
+        cur.execute(sql)
+        rows = cur.fetchall()
+    summary["rows_fetched"] = len(rows)
+    persons = []
+    for row in rows:
+        person = _practitioner_to_person(dict(row))
+        if not person:
+            summary["skipped_no_email"] += 1
+            continue
+        if "type:practitioner" in person["tags"]:
+            summary["engaged"] += 1
+        else:
+            summary["cold"] += 1
+        persons.append(person)
+    if dry_run:
+        summary["people_upserted"] = len(persons)
+    else:
+        ts = datetime.now(timezone.utc).isoformat()
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            for person in persons:
+                if _upsert_person_additive(cx, person, ts):
+                    summary["people_upserted"] += 1
+            cx.commit()
+    summary["elapsed_sec"] = round(_pb_time.time() - started, 2)
+    return summary
+
+
+@app.route("/admin/sync-practitioner-tags", methods=["POST"])
+def admin_sync_practitioner_tags():
+    """Trigger Supabase practitioners → People hub feeder. Auth + params mirror
+    /admin/sync-pb-tags: X-Cron-Secret/X-Console-Key/?key=, dry_run=1, limit=N."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+    limit = request.args.get("limit")
+    try:
+        summary = sync_practitioners_to_people(
+            dry_run=dry_run, limit=int(limit) if limit else None)
+        return jsonify({"ok": True, "summary": summary})
+    except Exception as e:
+        app.logger.exception("practitioner sync failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
 # Maps question text fragments → GHL tag prefix
 _SCOREAPP_Q_PREFIX = {
     "which system is most in need": "system",
@@ -8113,12 +8300,22 @@ def upsert_people():
     items = request.get_json(force=True) or []
     if isinstance(items, dict):
         items = [items]
+    # Feeders pass ?merge_tags=1 for additive, idempotent upserts (union tags,
+    # never clobber scalars with blanks). The console editor omits it (overwrite).
+    merge_tags = request.args.get("merge_tags", "").lower() in ("1", "true", "yes")
     ts = datetime.now(timezone.utc).isoformat()
     inserted = updated = 0
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         for p in items:
             email = (p.get("email") or "").strip().lower()
             if not email:
+                continue
+            if merge_tags:
+                res = _upsert_person_additive(cx, p, ts)
+                if res == "inserted":
+                    inserted += 1
+                elif res == "updated":
+                    updated += 1
                 continue
             existing = cx.execute("SELECT id FROM people WHERE email=?", (email,)).fetchone()
             fields = {k: p.get(k, "") for k in [
