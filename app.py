@@ -6477,6 +6477,14 @@ _SUPPRESS_TAG_PATTERNS = ("email bounced", "reengagement:bounced",
                           "do not email", "spam complaint", "email unsubscribed")
 
 
+def _is_client_tag(t):
+    """A tag marking an actual client relationship. The hub's order_count isn't
+    populated, so the real client signal lives in tags (e.g. 'client',
+    'nes client'). Matched precisely to avoid 'client-intake'-style false hits."""
+    t = (t or "").lower()
+    return t == "client" or "nes client" in t or t.endswith(" client")
+
+
 def _classify_person(row, tos_agreed=False):
     """Pure rule. Given a people row (tags/order_count/pb_id) + a tos_agreed flag,
     return the set of type:/consent: tags to ADD. Additive only (never removes,
@@ -6492,7 +6500,9 @@ def _classify_person(row, tos_agreed=False):
     low = [t.lower() for t in tagset]
     add = set()
 
-    has_commerce = int(row.get("order_count") or 0) > 0 or bool((row.get("pb_id") or "").strip())
+    has_commerce = (int(row.get("order_count") or 0) > 0
+                    or bool((row.get("pb_id") or "").strip())
+                    or any(_is_client_tag(t) for t in tagset))
     has_type = any(t.startswith("type:") for t in tagset)
     has_consent = any(t.startswith("consent:") for t in tagset)
 

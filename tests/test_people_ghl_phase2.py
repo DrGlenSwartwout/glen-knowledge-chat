@@ -64,6 +64,19 @@ def test_existing_consent_not_downgraded_or_duplicated():
     assert "type:prospect" not in add  # already has a type
 
 
+def test_client_tag_is_client_opted_in():
+    a = _app()
+    for tag in ("client", "nes client", "VIP client"):
+        add = a._classify_person({"tags": [tag], "order_count": 0, "pb_id": ""})
+        assert "type:client" in add and "consent:opted-in" in add, tag
+
+
+def test_client_substring_false_positive_excluded():
+    # 'client-intake-form' is not a client relationship
+    add = _app()._classify_person({"tags": ["client-intake-form"], "order_count": 0, "pb_id": ""})
+    assert "type:client" not in add
+
+
 def test_typed_contact_with_order_also_gets_client():
     add = _app()._classify_person(
         {"tags": ["type:pr-media", "consent:cold-no-consent"], "order_count": 1, "pb_id": ""})
