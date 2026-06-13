@@ -5538,6 +5538,174 @@ def _stripe_checkout_url_for_retail(out, email, slug):
         return ""
 
 
+# ── Reorder cart (logged-in client reorder → existing Stripe/QBO flow) ─────────
+def _stripe_checkout_url_for_reorder(out, email):
+    """Stripe Checkout for a reorder cart; mirrors _stripe_checkout_url_for_retail
+    but the cancel returns to /reorder. Records via /begin/checkout-return (invoice-based)."""
+    try:
+        from dashboard import stripe_pay
+        total_cents = int(round(float(out.get("total") or 0) * 100))
+        if total_cents <= 0:
+            return ""
+        success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
+                   f"?session_id={{CHECKOUT_SESSION_ID}}")
+        sess = stripe_pay.create_checkout_session(
+            total_cents, customer_email=email,
+            description=f"Remedy Match reorder #{out.get('doc_number')}",
+            metadata={"invoice_id": out.get("invoice_id"),
+                      "customer_id": out.get("customer_id"), "kind": "reorder"},
+            success_url=success,
+            cancel_url=f"{PUBLIC_BASE_URL}/reorder")
+        return sess.get("url") or ""
+    except Exception as e:
+        print(f"[stripe-reorder] session create failed: {e!r}", flush=True)
+        return ""
+
+
+def _reorder_email_from_cookie():
+    return (request.cookies.get("rm_reorder_email", "") or "").strip().lower()
+
+
+@app.route("/reorder")
+def reorder_page():
+    return send_from_directory(STATIC, "reorder.html")
+
+
+@app.route("/reorder/request", methods=["POST"])
+def reorder_request():
+    """Email a magic link to start a reorder session. Always 200 (no enumeration)."""
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if email and "@" in email:
+        token = secrets.token_urlsafe(32)
+        now = _now_utc()
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                "VALUES (?,?,?,?,?)",
+                (_hash_token(token), email, "reorder", now.isoformat(),
+                 (now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)).isoformat()))
+            cx.commit()
+        try:
+            send_magic_link_email(email, "", f"{PUBLIC_BASE_URL}/reorder/auth/{token}")
+        except Exception as e:
+            print(f"[reorder] magic link send failed: {e!r}", flush=True)
+    return jsonify({"ok": True})
+
+
+@app.route("/reorder/auth/<token>", methods=["GET"])
+def reorder_auth(token):
+    """Validate the reorder magic link, set the rm_reorder_email cookie, → /reorder."""
+    from flask import redirect as _redirect
+    th = _hash_token((token or "").strip())
+    email = None
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT email, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='reorder'", (th,)).fetchone()
+        if row and not row["consumed_at"]:
+            try:
+                if datetime.fromisoformat(row["expires_at"]) >= _now_utc():
+                    email = row["email"]
+            except Exception:
+                email = None
+        if email:
+            cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
+                       (_now_utc().isoformat(), th))
+            cx.commit()
+    if not email:
+        return ("<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
+                "This reorder link is invalid or has expired. Please request a new one.</p>"), 400
+    resp = _redirect("/reorder", code=302)
+    resp.set_cookie("rm_reorder_email", email, max_age=60 * 60 * 24 * 30,
+                    httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/api/reorder/items", methods=["GET"])
+def api_reorder_items():
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    scope = (request.args.get("scope") or "last").strip().lower()
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        orders = _bos_orders.list_orders_by_email(cx, email)
+    src = orders[:1] if scope == "last" else orders
+    seen, items = set(), []
+    for o in src:
+        for it in (o.get("items") or []):
+            nm = (it.get("name") or "").strip()
+            if not nm or nm.lower() in seen:
+                continue
+            seen.add(nm.lower())
+            slug = _resolve_buy_slug(nm)
+            p = _get_product(slug) if slug else None
+            items.append({
+                "name": nm,
+                "slug": (p.get("slug") if p else None),
+                "current_price_cents": (p.get("price_cents") if p else None),
+                "current_price": (f"${p['price_cents'] / 100:.2f}" if p else None),
+                "qty": int(it.get("qty") or 1),
+                "last_ordered": (o.get("created_at") or "")[:10],
+                "available": bool(p),
+            })
+    return jsonify({"email": email, "scope": scope, "items": items})
+
+
+@app.route("/reorder/checkout", methods=["POST"])
+def reorder_checkout():
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    cart = request.get_json(silent=True) or []
+    if isinstance(cart, dict):
+        cart = cart.get("items", [])
+    lines, items_rec, subtotal_cents = [], [], 0
+    for c in cart:
+        slug = (c.get("slug") or "").strip()
+        try:
+            qty = max(1, min(int(c.get("qty", 1) or 1), 99))
+        except Exception:
+            qty = 1
+        p = _get_product(slug) if slug else None
+        if not p:
+            continue
+        unit_cents = int(_qty_unit_cents(p, qty))
+        subtotal_cents += unit_cents * qty
+        lines.append({"name": p["name"], "amount": round(unit_cents / 100.0, 2),
+                      "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
+        items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"]})
+    if not lines:
+        return jsonify({"ok": False,
+                        "error": "Your cart is empty or those items are no longer available."}), 400
+    try:
+        ship = {}
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
+        if prior:
+            ship = prior[0].get("address") or {}
+        from dashboard import qbo_billing as qb
+        from dashboard import tax as _tax
+        cust = qb.find_or_create_customer(email, ship.get("name", ""))
+        get_cents = _tax.compute_get_cents(subtotal_cents, channel="retail",
+                                           ship_to_state=ship.get("state", ""))
+        inv = qb.create_invoice(cust, lines, allow_online_pay=True, email_to=email)
+        out = {"invoice_id": inv.get("Id"), "customer_id": cust.get("Id"),
+               "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt")}
+        _ingest_order(source="reorder", external_ref=inv.get("Id"), email=email,
+                      name=ship.get("name", ""), items=items_rec,
+                      total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                      address=ship, channel="retail", get_cents=get_cents)
+        stripe_url = _stripe_checkout_url_for_reorder(out, email) if _STRIPE_ACTIVE else ""
+        return jsonify({"ok": True, "stripe_url": stripe_url,
+                        "invoice_id": out["invoice_id"], "total": out["total"]})
+    except Exception as e:
+        app.logger.exception("reorder checkout failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
 def _stripe_checkout_url_for_order(out, email, session_token):
     """Create a Stripe Checkout Session for a wholesale invoice; returns its URL."""
     try:
