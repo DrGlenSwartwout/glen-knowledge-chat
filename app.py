@@ -11413,12 +11413,45 @@ def cron_personal_send():
     expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
     if not expected or key != expected:
         return jsonify({"error": "unauthorized"}), 401
+    dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+    segment = os.environ.get("PERSONAL_EMAIL_SEGMENT", "").strip()
     try:
+        if segment:
+            # Graduated send to a People-hub segment (opted-in only), ramped.
+            from incentive_engine import run_daily_send_for_segment
+            cap = int(os.environ.get("SEND_CAP", "25") or "25")
+            tags = tuple(t.strip() for t in segment.split(",") if t.strip())
+            summary = run_daily_send_for_segment(
+                segment_tags=tags, audience="client", cap=cap, dry_run=dry_run)
+            return jsonify({"ok": True, "mode": "segment", "segment": tags,
+                            "cap": cap, "summary": summary})
         from incentive_engine import run_daily_send_for_beta_cohort
         n = run_daily_send_for_beta_cohort()
-        return jsonify({"ok": True, "sent": n})
+        return jsonify({"ok": True, "mode": "beta", "sent": n})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/unsubscribe", methods=["GET"])
+def unsubscribe():
+    """One-click email unsubscribe (linked in every Personal email footer).
+    Verifies the HMAC token, revokes consent in the people hub, pauses sends."""
+    email = (request.args.get("email", "") or "").strip().lower()
+    token = request.args.get("t", "")
+    from incentive_engine import verify_unsub_token, revoke_consent
+    if not email:
+        return "<p>Missing email.</p>", 400
+    # Token required only when one was issued; accept tokenless legacy links too.
+    if token and not verify_unsub_token(email, token):
+        return "<p>This unsubscribe link is invalid or has expired.</p>", 400
+    revoke_consent(email)
+    return (
+        "<html><body style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
+        "<h2>You're unsubscribed.</h2>"
+        f"<p>{email} will no longer receive these emails. "
+        "If this was a mistake, just reply to any past email and we'll turn them back on.</p>"
+        "<p>In wellness,<br>Dr. Glen &amp; Rae</p></body></html>"
+    ), 200
 
 
 @app.route("/cron/usps-rate-check", methods=["POST"])

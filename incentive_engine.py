@@ -3,6 +3,8 @@ Incentive engine — content selector + send orchestrator + feedback
 processor for the Phase 0 beta. Imported into app.py at module load.
 """
 
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -188,8 +190,8 @@ def generate_personal_email(
         is_beta=is_beta,
         monthly_window=monthly_window,
         unsubscribe_url=(
-            f"https://glen-knowledge-chat.onrender.com/"
-            f"unsubscribe?email={user['email']}&channel=personal"
+            f"{_public_base()}/unsubscribe?email={user['email']}"
+            f"&channel=personal&t={unsubscribe_token(user['email'])}"
         ),
     )
 
@@ -637,69 +639,190 @@ def _record_send(
         cx.commit()
 
 
+def _process_one_user(user, config, audience="client", is_beta=False,
+                      dry_run=False) -> str:
+    """Engagement-gate, generate, send, and record one user's Personal email.
+    Returns: 'sent' | 'would-send' (dry_run) | 'skipped-gate' | 'skipped-stale'.
+    Shared by the beta cohort and the segment orchestrators."""
+    state = _load_user_state(user["id"])
+    audience = state.get("audience_tag") or audience
+    now_iso = datetime.now(timezone.utc).isoformat()
+    paused = bool(state.get("paused_until")) and str(state["paused_until"]) > now_iso
+    if not should_send_today(state, paused=paused):
+        return "skipped-gate"
+
+    from pinecone_content_pool import (
+        candidate_topics_for_audience,
+        fetch_source_text_for_topic,
+    )
+    try:
+        candidate_topics = candidate_topics_for_audience(audience)
+    except Exception as e:
+        print(f"[orch] Pinecone fetch failed for user {user['id']}: {e}", flush=True)
+        candidate_topics = []
+
+    if not candidate_topics:
+        topic = "leaky-gut"
+        topic_source_text = "(content pool unavailable — fallback)"
+    else:
+        chosen = select_topic_for_user(state, candidate_topics, audience)
+        if chosen is None:
+            return "skipped-stale"
+        topic = chosen
+        topic_source_text = (
+            fetch_source_text_for_topic(chosen, audience)
+            or "(no source text fetched)"
+        )
+
+    product = {
+        "name": "Terrain Restore",
+        "url":  "https://truly.vip/terrain-restore",
+        "code": config.get("beta_shared_code", "BETA5"),
+    }
+    email = generate_personal_email(
+        user=user, topic=topic, topic_source_text=topic_source_text,
+        product=product, is_beta=is_beta, audience=audience,
+    )
+    if dry_run:
+        return "would-send"
+    _send_email(user, email["subject"], email["body"])
+    _record_send(
+        user["id"], "personal", topic, product["name"],
+        product["code"], email["subject"], email["body"],
+    )
+    return "sent"
+
+
 def run_daily_send_for_beta_cohort() -> int:
     """Iterate the beta cohort, apply engagement gate, generate + send +
     record for each pass-through user. Returns number sent."""
     config = _load_incentive_config()
     sent = 0
     for user in _list_beta_cohort_users():
-        state = _load_user_state(user["id"])
-        if not should_send_today(state, paused=False):
-            continue
-
-        # Audience routing — Phase 0 default 'client'; Phase 1 enhancement
-        # could read GHL tag from a cached column. For now, default 'client'
-        # for the broad cohort.
-        audience = state.get("audience_tag") or "client"
-
-        # Adaptive topic selection from Pinecone audience-filtered pool
-        from pinecone_content_pool import (
-            candidate_topics_for_audience,
-            fetch_source_text_for_topic,
-        )
-        try:
-            candidate_topics = candidate_topics_for_audience(audience)
-        except Exception as e:
-            print(
-                f"[orch] Pinecone fetch failed for user {user['id']}: {e}",
-                flush=True,
-            )
-            candidate_topics = []
-
-        if not candidate_topics:
-            # Pool empty — fall back to the original stub so beta
-            # subscribers still receive *something* during the warm-up window.
-            topic = "leaky-gut"
-            topic_source_text = "(content pool unavailable — fallback)"
-        else:
-            chosen = select_topic_for_user(state, candidate_topics, audience)
-            if chosen is None:
-                # All candidates stale for this user — skip them today.
-                continue
-            topic = chosen
-            topic_source_text = (
-                fetch_source_text_for_topic(chosen, audience)
-                or "(no source text fetched)"
-            )
-
-        product = {
-            "name": "Terrain Restore",
-            "url":  "https://truly.vip/terrain-restore",
-            "code": config.get("beta_shared_code", "BETA5"),
-        }
-
-        email = generate_personal_email(
-            user=user,
-            topic=topic,
-            topic_source_text=topic_source_text,
-            product=product,
-            is_beta=True,
-            audience=audience,
-        )
-        _send_email(user, email["subject"], email["body"])
-        _record_send(
-            user["id"], "personal", topic, product["name"],
-            product["code"], email["subject"], email["body"],
-        )
-        sent += 1
+        if _process_one_user(user, config, audience="client", is_beta=True) == "sent":
+            sent += 1
     return sent
+
+
+# ── Phase 3: graduate to People-hub segments (opted-in only) ──────────────────
+def _public_base() -> str:
+    return os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
+
+
+def _unsub_secret() -> str:
+    return (os.environ.get("UNSUB_SECRET")
+            or os.environ.get("CONSOLE_SECRET")
+            or "dev-unsub-secret")
+
+
+def unsubscribe_token(email: str) -> str:
+    return hmac.new(_unsub_secret().encode(),
+                    (email or "").strip().lower().encode(),
+                    hashlib.sha256).hexdigest()[:24]
+
+
+def verify_unsub_token(email: str, token: str) -> bool:
+    return hmac.compare_digest(unsubscribe_token(email), (token or ""))
+
+
+# Email-negative tags that must keep someone out of any send (defense-in-depth;
+# the classifier already excludes them from consent:opted-in).
+_NO_SEND_SUBSTRINGS = ("email bounced", "do not email", "unsubscribed", "spam complaint")
+
+
+def _list_segment_cohort(segment_tags=("type:client", "consent:opted-in"),
+                         cap=None) -> list:
+    """People-hub members matching ALL segment_tags (exact JSON-quoted), with an
+    email, not suppressed. Bootstraps each into `users` (segment-bootstrap).
+    Returns full cohort by default; the orchestrator caps SENDS, not cohort, so
+    the ramp introduces new recipients over successive runs."""
+    now = datetime.now(timezone.utc).isoformat()
+    with _sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = _sqlite3.Row
+        clauses = " AND ".join(["tags LIKE ?"] * len(segment_tags))
+        args = [f'%"{t}"%' for t in segment_tags]
+        rows = cx.execute(
+            f"SELECT email, tags FROM people WHERE email<>'' AND {clauses}", args
+        ).fetchall()
+        emails = []
+        for p in rows:
+            email = (p["email"] or "").strip().lower()
+            if not email:
+                continue
+            try:
+                tags = set(json.loads(p["tags"] or "[]"))
+            except Exception:
+                tags = set()
+            low = " ".join(t.lower() for t in tags)
+            if "consent:unsubscribed" in tags or any(s in low for s in _NO_SEND_SUBSTRINGS):
+                continue
+            emails.append(email)
+        emails = list(dict.fromkeys(emails))
+        if cap:
+            emails = emails[:int(cap)]
+        for email in emails:
+            cx.execute(
+                "INSERT OR IGNORE INTO users (email, auth_method, created_at) "
+                "VALUES (?, ?, ?)", (email, "segment-bootstrap", now))
+        cx.commit()
+        if not emails:
+            return []
+        ph = ",".join(["?"] * len(emails))
+        urows = cx.execute(
+            f"SELECT id, email, name FROM users WHERE email IN ({ph})", emails
+        ).fetchall()
+    return [{"id": u["id"], "email": u["email"], "name": u["name"]} for u in urows]
+
+
+def run_daily_send_for_segment(segment_tags=("type:client", "consent:opted-in"),
+                               audience="client", cap=25, dry_run=False) -> dict:
+    """Graduated send: iterate an opted-in People-hub segment, engagement-gate
+    each, send via the shared per-user path, STOP at `cap` sends (the
+    deliverability ramp). Cold/unsubscribed never enter the cohort."""
+    config = _load_incentive_config()
+    summary = {"cohort": 0, "sent": 0, "skipped_gate": 0, "skipped_stale": 0,
+               "capped": False, "dry_run": bool(dry_run)}
+    cohort = _list_segment_cohort(segment_tags, cap=None)
+    summary["cohort"] = len(cohort)
+    for user in cohort:
+        if summary["sent"] >= cap:
+            summary["capped"] = True
+            break
+        status = _process_one_user(user, config, audience=audience,
+                                   is_beta=False, dry_run=dry_run)
+        if status in ("sent", "would-send"):
+            summary["sent"] += 1
+        elif status == "skipped-gate":
+            summary["skipped_gate"] += 1
+        elif status == "skipped-stale":
+            summary["skipped_stale"] += 1
+    return summary
+
+
+def revoke_consent(email: str) -> bool:
+    """One-click unsubscribe: remove consent:opted-in + add consent:unsubscribed
+    in the people hub, and hard-pause the user's Personal email. Idempotent."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    with _sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = _sqlite3.Row
+        row = cx.execute("SELECT id, tags FROM people WHERE email=?", (email,)).fetchone()
+        if row:
+            try:
+                tags = set(json.loads(row["tags"] or "[]"))
+            except Exception:
+                tags = set()
+            tags.discard("consent:opted-in")
+            tags.add("consent:unsubscribed")
+            cx.execute("UPDATE people SET tags=?, updated_at=? WHERE id=?",
+                       (json.dumps(sorted(tags)), now, row["id"]))
+        urow = cx.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+        if urow:
+            cx.execute("INSERT OR IGNORE INTO personal_email_state (user_id) VALUES (?)",
+                       (urow["id"],))
+            cx.execute("UPDATE personal_email_state SET paused_until=? WHERE user_id=?",
+                       ("2099-01-01T00:00:00+00:00", urow["id"]))
+        cx.commit()
+    return True
