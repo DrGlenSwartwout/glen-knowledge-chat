@@ -156,54 +156,19 @@ services:
           name: glen-knowledge-chat
           envVarKey: CRON_SECRET
 
-  # Daily Practice Better → People DB + GHL tag sync. Pulls all PB client
-  # records (~168 today), resolves their relatedTags via /tags, upserts into
-  # the people table, and mirrors tags to GHL in the pb: namespace. Same
-  # cross-container pattern — cron curls the web service where the SQLite
-  # disk + PB OAuth credentials live. Additive-only; never removes tags.
+  # Daily People-hub chain (one cron, to stay under Render's cron-service limit).
+  # run_pb_tag_sync_cron.py now curls THREE web endpoints in sequence:
+  #   1. /admin/sync-pb-tags          (Practice Better → people + GHL pb: tags)
+  #   2. /admin/sync-practitioner-tags (Supabase practitioners → people, tagged)
+  #   3. /admin/sync-people-to-ghl     (classify + mirror opted-in → GHL)
+  # Ordered so tags are fresh before the GHL mirror. Cross-container pattern —
+  # the cron only curls; the work runs in the web container with the disk + creds.
   - type: cron
     name: glen-pb-tag-sync-daily
     runtime: python
     schedule: "0 13 * * *"     # 3 AM HST daily (HST is UTC-10)
     buildCommand: "true"       # stdlib-only, no deps to install
     startCommand: python scripts/run_pb_tag_sync_cron.py
-    envVars:
-      - key: WEB_URL
-        value: https://glen-knowledge-chat.onrender.com
-      - fromService:
-          type: web
-          name: glen-knowledge-chat
-          envVarKey: CRON_SECRET
-
-  # Daily Supabase practitioners → People hub tag sync. Reads the practitioners
-  # directory and upserts each into the people table tagged
-  # type:practitioner / type:practitioner-cold + consent (additive). Keeps the
-  # unified People hub fresh. Same cross-container pattern as the PB sync above.
-  - type: cron
-    name: glen-practitioner-tag-sync-daily
-    runtime: python
-    schedule: "0 14 * * *"     # 4 AM HST daily (HST is UTC-10)
-    buildCommand: "true"       # stdlib-only, no deps to install
-    startCommand: python scripts/run_practitioner_sync_cron.py
-    envVars:
-      - key: WEB_URL
-        value: https://glen-knowledge-chat.onrender.com
-      - fromService:
-          type: web
-          name: glen-knowledge-chat
-          envVarKey: CRON_SECRET
-
-  # Daily People hub → GHL mirror (Phase 2). Classifies existing people
-  # (type:client/prospect + consent from explicit opt-in signals) and enqueues
-  # tag_add ops for the opted-in ones onto the GHL write-queue (drained from the
-  # Mac). Cold/no-consent contacts are never enqueued. Tag mirror only — no
-  # sends. Runs after the practitioner + PB syncs so tags are fresh.
-  - type: cron
-    name: glen-people-ghl-sync-daily
-    runtime: python
-    schedule: "0 15 * * *"     # 5 AM HST daily (HST is UTC-10)
-    buildCommand: "true"       # stdlib-only, no deps to install
-    startCommand: python scripts/run_people_ghl_sync_cron.py
     envVars:
       - key: WEB_URL
         value: https://glen-knowledge-chat.onrender.com
