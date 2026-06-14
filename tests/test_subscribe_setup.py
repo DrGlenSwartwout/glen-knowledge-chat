@@ -36,3 +36,15 @@ def test_subscribe_disabled_when_flag_off(monkeypatch):
     r = c.post("/reorder/subscribe", json={"items":[{"slug":"brain-boost","qty":1}],
                "cadence_months":1, "address":{"state":"CA","country":"US"}})
     assert r.status_code == 400
+
+def test_subscribe_rejected_when_stripe_inactive(monkeypatch):
+    # must 400 BEFORE creating any QBO invoice (no dangling invoice)
+    cap = _setup(monkeypatch); monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", False)
+    inv_called = {"n": 0}
+    monkeypatch.setattr(appmod.qb, "create_invoice",
+                        lambda *a, **k: inv_called.update(n=inv_called["n"] + 1) or {"Id": "X"})
+    c = appmod.app.test_client()
+    r = c.post("/reorder/subscribe", json={"items":[{"slug":"brain-boost","qty":1}],
+               "cadence_months":1, "address":{"state":"CA","country":"US"}})
+    assert r.status_code == 400
+    assert inv_called["n"] == 0          # invoice never created when Stripe is off

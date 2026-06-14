@@ -2738,6 +2738,10 @@ def begin_checkout_return():
                                 _sr = _scx.execute(
                                     "SELECT items_json, ship_json FROM pending_subscriptions WHERE key=?",
                                     (stash_key,)).fetchone()
+                            if not _sr:
+                                app.logger.warning(
+                                    "subscribe stash miss for key=%s — subscription will have "
+                                    "empty items/address", stash_key)
                             items_list = json.loads(_sr["items_json"]) if _sr else []
                             ship_dict  = json.loads(_sr["ship_json"])  if _sr else {}
                         else:
@@ -5904,6 +5908,9 @@ def reorder_subscribe():
         return jsonify({"ok": False, "error": "not signed in"}), 401
     if not _subscriptions_enabled():
         return jsonify({"error": "subscriptions not enabled"}), 400
+    if not _STRIPE_ACTIVE:
+        # Guard BEFORE creating the QBO invoice, else a Stripe outage leaves a dangling invoice.
+        return jsonify({"error": "card payment not active"}), 400
 
     body = request.get_json(silent=True) or {}
     cadence = body.get("cadence_months")
