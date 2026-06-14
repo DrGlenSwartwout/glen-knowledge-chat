@@ -48,3 +48,10 @@ def redeem(cx, email, *, value_cents, order_ref):
     if value_cents > balance(cx, email):
         raise ValueError("redeem exceeds balance")
     return _add(cx, email, -value_cents, "redeem", order_ref)
+
+
+def has_entry(cx, *, order_ref, reason):
+    """True if a ledger row already exists for this order_ref + reason (idempotency guard)."""
+    row = cx.execute("SELECT 1 FROM points_ledger WHERE order_ref=? AND reason=? LIMIT 1",
+                     (order_ref, reason)).fetchone()
+    return row is not None

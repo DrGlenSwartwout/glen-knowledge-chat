@@ -2396,6 +2396,31 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None, channe
     }
 
 
+def _settle_order_points(order, *, order_ref):
+    """On a PAID order: deduct redeemed points, and earn 5% if it was a full-price order.
+    Idempotent per order_ref. Best-effort -- never raises into the return handler."""
+    from dashboard import points as _points
+    email = (order.get("email") or "").strip().lower()
+    if not email:
+        return
+    earn_pct = float(_PRICING_SETTINGS.get("points_earn_pct", 0.05)) if isinstance(_PRICING_SETTINGS, dict) else 0.05
+    redeemed = int(order.get("points_redeemed_cents") or 0)
+    discount = int(order.get("discount_cents") or 0)
+    product_cents = int(order.get("total_cents") or 0) - int(order.get("shipping_cents") or 0)
+    with sqlite3.connect(LOG_DB) as cx:
+        _points.init_points_table(cx)
+        if redeemed > 0 and not _points.has_entry(cx, order_ref=order_ref, reason="redeem"):
+            try:
+                _points.redeem(cx, email, value_cents=redeemed, order_ref=order_ref)
+            except ValueError:
+                pass   # balance already spent elsewhere; don't block the order
+        # Earn only on a full-price order (no discount AND no points used) -- the "full-price only" rule.
+        if discount == 0 and redeemed == 0 and product_cents > 0 \
+                and not _points.has_entry(cx, order_ref=order_ref, reason="earn"):
+            _points.earn(cx, email, full_price_cents=product_cents, earn_pct=earn_pct,
+                         order_ref=order_ref)
+
+
 # Generated/cached product content (ingredients + benefits + learn-more research).
 # Source = Pinecone specific-formulations (page copy) + ingredients (study citations).
 try:
@@ -2709,16 +2734,24 @@ def begin_checkout_return():
                     except Exception as e:
                         print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
                     if pi_id:
+                        _o_for_points = None
                         try:
                             _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
                             try:
                                 _o = _bos_orders.find_order_by_external_ref(_cxo, inv)
                                 if _o:
                                     _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi_id)
+                                    _o_for_points = _o  # plain dict; safe after close
                             finally:
                                 _cxo.close()
                         except Exception as _e:
                             print(f"[begin-return] pi capture: {_e!r}", flush=True)
+                        # ── Points settlement (earn + deduct redeemed) ──
+                        if _o_for_points:
+                            try:
+                                _settle_order_points(_o_for_points, order_ref=inv)
+                            except Exception as _pe:
+                                print(f"[points] settle failed inv={inv}: {_pe!r}", flush=True)
 
                 # ── Subscribe kind: vault the card and create the subscription row ──
                 if md.get("kind") == "subscribe" and pi_id:
