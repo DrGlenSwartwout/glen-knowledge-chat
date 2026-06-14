@@ -10,7 +10,7 @@ _SYSTEM = (
     "Return JSON: {\"reply\": str, \"suggested_slugs\": [slugs from the catalog]}.\n\nCATALOG:\n"
 )
 _URL_RE = re.compile(r"https?://\S+", re.I)
-_BANNED = re.compile(r"\b(truly\.vip|truly\.so|remedymatch|illtowell)\S*", re.I)
+_BANNED = re.compile(r"\b(truly\.vip|truly\.so|remedy[\s-]*match|illtowell)\S*", re.I)
 
 
 def _llm_json(system, messages):
