@@ -33,6 +33,12 @@
   .muted { color:var(--muted); font-size:.9rem; }
   .hide { display:none; }
   .sticky { position:sticky; bottom:0; background:linear-gradient(transparent,var(--bg) 35%); padding-top:1rem; }
+  .points-row { background:#f0f8f5; border:1px solid #c2dfd7; border-radius:8px; padding:.65rem .85rem; margin-bottom:.6rem; font-size:.9rem; color:var(--ink); }
+  .points-row .pts-label { color:var(--glen); font-weight:600; }
+  .points-apply { display:flex; align-items:center; gap:.5rem; margin-top:.45rem; flex-wrap:wrap; }
+  .points-apply label { color:var(--muted); white-space:nowrap; }
+  .points-apply input[type=number] { width:6rem; padding:.35rem .5rem; border:1px solid var(--line); border-radius:6px; font-size:.95rem; }
+  .pts-saving { color:var(--glen); font-size:.85rem; }
 </style>
 </head>
 <body>
@@ -64,6 +70,16 @@
       <div id="allList"></div>
     </div>
     <div class="sticky">
+      <!-- Points balance + apply control (shown only when balance > 0) -->
+      <div class="points-row hide" id="pointsRow">
+        <div>You have <span class="pts-label" id="ptsBalLabel">$0.00</span> in loyalty points.</div>
+        <div class="points-apply">
+          <label for="ptsInput">Apply: $</label>
+          <input type="number" id="ptsInput" min="0" step="0.01" placeholder="0.00"
+                 oninput="onPtsInput()" onblur="clampPts()">
+          <span class="pts-saving hide" id="ptsSaving"></span>
+        </div>
+      </div>
       <div class="bar" style="margin-bottom:.6rem">
         <span class="muted" id="count">0 items selected</span>
         <span class="total" id="total">$0.00</span>
@@ -86,6 +102,7 @@ const cents = c => "$" + (c/100).toFixed(2);
 const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 let rows = {};            // slug -> {..., qty, checked}
 let lastData = [], allData = [];
+let pointsBalanceCents = 0;  // loyalty balance from /api/points/balance
 
 function showSignin(){ $('#sub').textContent=''; $('#signin').classList.remove('hide'); }
 
@@ -126,11 +143,42 @@ async function loadAll(){
   renderAll(); recompute();
 }
 
+function getPtsRedeemCents(){
+  const v = parseFloat($('#ptsInput').value);
+  if (!v || isNaN(v) || v <= 0) return 0;
+  return Math.round(Math.min(v, pointsBalanceCents / 100) * 100);
+}
+
+function onPtsInput(){
+  const redeemCents = getPtsRedeemCents();
+  const savingEl = $('#ptsSaving');
+  if (redeemCents > 0){
+    savingEl.textContent = 'Up to ' + cents(redeemCents) + ' applied at checkout';
+    savingEl.classList.remove('hide');
+  } else {
+    savingEl.classList.add('hide');
+  }
+  recompute();
+}
+
+function clampPts(){
+  const el = $('#ptsInput');
+  const max = pointsBalanceCents / 100;
+  const v = parseFloat(el.value);
+  if (!isNaN(v) && v > max) el.value = max.toFixed(2);
+  onPtsInput();
+}
+
 function recompute(){
   let n=0, c=0;
   Object.values(rows).forEach(r=>{ if(r.checked && r.available){ n++; c += (r.current_price_cents||0)*r.qty; }});
+  const redeemCents = getPtsRedeemCents();
   $('#count').textContent = n + (n===1?' item':' items') + ' selected';
-  $('#total').textContent = cents(c);
+  if (redeemCents > 0 && n > 0){
+    $('#total').innerHTML = '<span style="text-decoration:line-through;color:var(--muted);font-weight:400">' + cents(c) + '</span> ' + cents(Math.max(0, c - redeemCents));
+  } else {
+    $('#total').textContent = cents(c);
+  }
   $('#checkoutBtn').disabled = n===0;
 }
 
@@ -138,11 +186,29 @@ async function checkout(){
   const items = Object.values(rows).filter(r=>r.checked && r.available).map(r=>({slug:r.slug, qty:r.qty}));
   if (!items.length) return;
   $('#checkoutBtn').disabled = true; $('#checkoutBtn').textContent='Starting checkout…';
+  const redeemCents = getPtsRedeemCents();
+  const body = redeemCents > 0 ? {items, points_to_redeem_cents: redeemCents} : {items};
+  // Flatten: server historically expected array at top level; keep backward-compat shape when no points
+  const payload = redeemCents > 0 ? body : items;
   const d = await (await fetch('/reorder/checkout', {method:'POST', credentials:'same-origin',
-            headers:{'Content-Type':'application/json'}, body:JSON.stringify(items)})).json();
+            headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})).json();
   if (d.ok && d.stripe_url){ window.location = d.stripe_url; return; }
   alert(d.error || 'Could not start checkout. Please try again.');
   $('#checkoutBtn').disabled=false; $('#checkoutBtn').textContent='Reorder selected';
+}
+
+async function loadPointsBalance(){
+  try {
+    const r = await fetch('/api/points/balance', {credentials:'same-origin'});
+    if (!r.ok) return;  // 401 or any error → silently hide points UI
+    const d = await r.json();
+    pointsBalanceCents = d.balance_cents || 0;
+    if (pointsBalanceCents > 0){
+      $('#ptsBalLabel').textContent = cents(pointsBalanceCents);
+      $('#ptsInput').max = (pointsBalanceCents / 100).toFixed(2);
+      $('#pointsRow').classList.remove('hide');
+    }
+  } catch(e){ /* network error — hide points UI */ }
 }
 
 async function sendLink(){
@@ -159,10 +225,11 @@ async function init(){
   catch(e){ return showSignin(); }
   if (r.status === 401) return showSignin();
   const d = await r.json();
-  if (!d.items || !d.items.length){ $('#sub').textContent=''; $('#empty').classList.remove('hide'); return; }
-  $('#sub').textContent = 'Pick what you’d like to reorder, set the quantity, and check out in one step.';
-  $('#cart').classList.remove('hide');
+  if (!d.items || !d.items.length){ $(‘#sub’).textContent=’’; $(‘#empty’).classList.remove(‘hide’); return; }
+  $(‘#sub’).textContent = ‘Pick what you’d like to reorder, set the quantity, and check out in one step.’;
+  $(‘#cart’).classList.remove(‘hide’);
   lastData = d.items; d.items.forEach(addRow); renderAll(); recompute();
+  loadPointsBalance();  // fetch & display loyalty balance (silently degrades on error/401)
 }
 init();
 </script>
