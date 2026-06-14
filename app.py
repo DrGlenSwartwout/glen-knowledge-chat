@@ -2270,6 +2270,11 @@ try:
     from dashboard import qbo_billing as qb
 except Exception:
     qb = None  # type: ignore[assignment]
+# Module-level stripe_pay alias so tests can monkeypatch appmod.stripe_pay.*
+try:
+    from dashboard import stripe_pay
+except Exception:
+    stripe_pay = None  # type: ignore[assignment]
 _ALT_PAY = {
     "zelle": {"label": "Zelle (US)",
               "to": os.environ.get("ZELLE_PAY_TO", "(set ZELLE_PAY_TO)"),
@@ -2689,31 +2694,75 @@ def begin_checkout_return():
     paid = "0"
     if sid:
         try:
-            from dashboard import stripe_pay
-            sess = stripe_pay.get_session(sid)
+            from dashboard import stripe_pay as _sp
+            sess = _sp.get_session(sid)
             md = sess.get("metadata") or {}
             slug = md.get("slug", "")
             if sess.get("payment_status") == "paid":
                 paid = "1"
+                pi_id = sess.get("payment_intent")
                 inv, cid = md.get("invoice_id"), md.get("customer_id")
                 if inv and cid:
                     try:
-                        from dashboard import qbo_billing as qb
-                        qb.record_payment(cid, int(sess.get("amount_total") or 0), inv)
+                        from dashboard import qbo_billing as _qb_ret
+                        _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
                     except Exception as e:
                         print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
-                    pi = sess.get("payment_intent")
-                    if pi:
+                    if pi_id:
                         try:
                             _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
                             try:
                                 _o = _bos_orders.find_order_by_external_ref(_cxo, inv)
                                 if _o:
-                                    _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi)
+                                    _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi_id)
                             finally:
                                 _cxo.close()
                         except Exception as _e:
                             print(f"[begin-return] pi capture: {_e!r}", flush=True)
+
+                # ── Subscribe kind: vault the card and create the subscription row ──
+                if md.get("kind") == "subscribe" and pi_id:
+                    try:
+                        from dashboard import subscriptions as _subs_ret
+                        pi_data = _sp.get_payment_intent(pi_id)
+                        stripe_cus = pi_data.get("customer") or ""
+                        stripe_pm  = pi_data.get("payment_method") or ""
+                        cadence    = int(md.get("cadence_months") or 1)
+                        sub_email  = md.get("email") or ""
+
+                        # Recover items + ship from metadata or stash
+                        stash_key = md.get("stash_key")
+                        if stash_key:
+                            with sqlite3.connect(LOG_DB) as _scx:
+                                _scx.row_factory = sqlite3.Row
+                                _sr = _scx.execute(
+                                    "SELECT items_json, ship_json FROM pending_subscriptions WHERE key=?",
+                                    (stash_key,)).fetchone()
+                            items_list = json.loads(_sr["items_json"]) if _sr else []
+                            ship_dict  = json.loads(_sr["ship_json"])  if _sr else {}
+                        else:
+                            items_list = json.loads(md.get("items") or "[]")
+                            ship_dict  = json.loads(md.get("ship")  or "{}")
+
+                        today = _now_utc().strftime("%Y-%m-%d")
+                        next_date = _subs_ret.add_months(today, cadence)
+
+                        with sqlite3.connect(LOG_DB) as _scx2:
+                            _scx2.row_factory = sqlite3.Row
+                            _subs_ret.init_subscriptions_table(_scx2)
+                            _subs_ret.create(
+                                _scx2,
+                                email=sub_email,
+                                stripe_customer_id=stripe_cus,
+                                stripe_payment_method_id=stripe_pm,
+                                items=items_list,
+                                cadence_months=cadence,
+                                ship_address=ship_dict,
+                                next_charge_date=next_date)
+                        print(f"[subscribe-return] subscription created for {sub_email}", flush=True)
+                    except Exception as _se:
+                        print(f"[subscribe-return] failed to create subscription: {_se!r}", flush=True)
+
         except Exception as e:
             print(f"[begin-return] {e!r}", flush=True)
     dest = (f"/begin/buy/{slug}?paid={paid}" if slug else f"/begin?paid={paid}")
@@ -5835,6 +5884,103 @@ def reorder_checkout():
                         "invoice_id": out["invoice_id"], "total": out["total"]})
     except Exception as e:
         app.logger.exception("reorder checkout failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
+# ── Subscription setup flow ────────────────────────────────────────────────────
+
+def _subscriptions_enabled() -> bool:
+    """Return True if SUBSCRIPTIONS_ENABLED is set to a truthy value."""
+    return os.environ.get("SUBSCRIPTIONS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+@app.route("/reorder/subscribe", methods=["POST"])
+def reorder_subscribe():
+    """POST /reorder/subscribe — price the first subscription order, create a QBO invoice,
+    then create a Stripe checkout session with save_card=True so the card is vaulted.
+    On return, /begin/checkout-return writes the subscription row."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    if not _subscriptions_enabled():
+        return jsonify({"error": "subscriptions not enabled"}), 400
+
+    body = request.get_json(silent=True) or {}
+    cadence = body.get("cadence_months")
+    try:
+        cadence = int(cadence)
+        if cadence not in (1, 2, 3):
+            raise ValueError("cadence out of range")
+    except (TypeError, ValueError):
+        return jsonify({"error": "cadence_months must be 1, 2, or 3"}), 400
+
+    cart = body.get("items") or []
+    ship = body.get("address") or {}
+
+    # ── Pricing-engine path (required for subscribe) ──────────────────────────
+    if not os.environ.get("PRICING_ENGINE_CHECKOUT", "").strip().lower() in ("1", "true", "yes", "on"):
+        return jsonify({"error": "PRICING_ENGINE_CHECKOUT must be enabled for subscriptions"}), 400
+
+    try:
+        from dashboard import subscriptions as _subs
+        try:
+            pc = _price_cart(cart, ship=ship, subscriber_tier_pct=_subs.tier_for(0))
+        except CheckoutError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        if not pc["qbo_lines"]:
+            return jsonify({"ok": False,
+                            "error": "Your cart is empty or those items are no longer available."}), 400
+
+        cust = qb.find_or_create_customer(email, ship.get("name", ""))
+        inv = qb.create_invoice(
+            cust,
+            pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+            allow_online_pay=True,
+            email_to=email,
+            discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+
+        # Build metadata; stash items+ship in pending_subscriptions if too long
+        items_json = json.dumps(cart)
+        ship_json = json.dumps(ship)
+        metadata = {
+            "kind": "subscribe",
+            "cadence_months": str(cadence),
+            "email": email,
+            "invoice_id": inv.get("Id") or "",
+            "customer_id": cust.get("Id") or "",
+        }
+        if len(items_json) + len(ship_json) <= 450:
+            metadata["items"] = items_json
+            metadata["ship"] = ship_json
+        else:
+            # Stash in DB and put the key in metadata
+            stash_key = uuid.uuid4().hex
+            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                _cx.execute(
+                    "CREATE TABLE IF NOT EXISTS pending_subscriptions "
+                    "(key TEXT PRIMARY KEY, items_json TEXT, ship_json TEXT, created_at TEXT)")
+                _cx.execute(
+                    "INSERT INTO pending_subscriptions (key, items_json, ship_json, created_at) "
+                    "VALUES (?,?,?,?)",
+                    (stash_key, items_json, ship_json, _now_utc().isoformat()))
+                _cx.commit()
+            metadata["stash_key"] = stash_key
+
+        total_cents = int(round(float(inv.get("TotalAmt") or 0) * 100))
+        success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
+                   f"?session_id={{CHECKOUT_SESSION_ID}}")
+        sess = stripe_pay.create_checkout_session(
+            total_cents,
+            customer_email=email,
+            description=f"Remedy Match subscription setup #{inv.get('DocNumber') or ''}",
+            metadata=metadata,
+            success_url=success,
+            cancel_url=f"{PUBLIC_BASE_URL}/reorder",
+            save_card=True)
+
+        return jsonify({"ok": True, "stripe_url": sess.get("url") or ""})
+    except Exception as e:
+        app.logger.exception("reorder subscribe failed")
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
 
 
