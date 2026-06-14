@@ -5548,6 +5548,7 @@ def practitioner_application():
 from dashboard import practitioner_portal as _pp
 from dashboard import wholesale_checkout as _wc
 from dashboard import dropship_checkout as _dropship
+import dashboard.practitioner_chat as _chat
 
 
 def _send_practitioner_magic_link(to_email, name, magic_url):
@@ -6246,6 +6247,90 @@ def api_client_checkout(code):
             print(f"[client-checkout] stripe failed: {e!r}", flush=True)
 
     return jsonify(out)
+
+
+def _build_ff_catalog():
+    """Return [{slug, name, description}] for all active Functional Formulations.
+    Excludes Pure Powders and info_only items — mirrors /api/client/<code>/catalog."""
+    catalog = []
+    for slug, p in (_PRODUCTS.get("products") or {}).items():
+        if not p or p.get("inactive") or p.get("info_only"):
+            continue
+        if _is_pure_powder(p):
+            continue
+        catalog.append({
+            "slug": slug,
+            "name": p.get("name") or slug,
+            "description": p.get("description") or "",
+        })
+    return catalog
+
+
+@app.route("/api/practitioner/chat", methods=["POST"])
+def api_practitioner_chat():
+    """Practitioner-authenticated product-selection chat scoped to FF catalog.
+    Auth via session token (401 if none). Returns {ok, reply, suggestions}."""
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "authentication required"}), 401
+
+    body = request.get_json(silent=True) or {}
+    message = body.get("message") or ""
+    history = body.get("history") or []
+
+    catalog = _build_ff_catalog()
+    result = _chat.scoped_reply(message, history, catalog)
+
+    suggestions = []
+    for slug in (result.get("suggested_slugs") or []):
+        p = _get_product(slug)
+        if not p:
+            continue
+        suggestions.append({
+            "slug": slug,
+            "name": p.get("name") or slug,
+            "price_cents": _dropship.practitioner_price_for(pid, slug),
+        })
+
+    return jsonify({"ok": True, "reply": result["reply"], "suggestions": suggestions})
+
+
+@app.route("/api/client/<code>/chat", methods=["POST"])
+def api_client_chat(code):
+    """Patient-facing product-selection chat scoped to the practitioner's FF catalog.
+    Resolves the practitioner by dispensary code (404 if unknown).
+    Consent-gated: patient must be a Tier-1 Member (403 need_optin if not).
+    Returns {ok, reply, suggestions} with prices at the practitioner's price."""
+    pid = _pp.practitioner_id_by_dispensary_code(code)
+    if not pid:
+        return jsonify({"ok": False, "error": "unknown dispensary code"}), 404
+
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    _sid = request.cookies.get("amg_session", "")
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please add your name and agree to our Terms "
+                                 "to use the assistant."}), 403
+
+    message = body.get("message") or ""
+    history = body.get("history") or []
+
+    catalog = _build_ff_catalog()
+    result = _chat.scoped_reply(message, history, catalog)
+
+    suggestions = []
+    for slug in (result.get("suggested_slugs") or []):
+        p = _get_product(slug)
+        if not p:
+            continue
+        suggestions.append({
+            "slug": slug,
+            "name": p.get("name") or slug,
+            "price_cents": _dropship.practitioner_price_for(pid, slug),
+        })
+
+    return jsonify({"ok": True, "reply": result["reply"], "suggestions": suggestions})
 
 
 def _stripe_checkout_url_for_retail(out, email, slug):
