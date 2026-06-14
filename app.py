@@ -2398,9 +2398,120 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
     }
 
 
+def _rewards_enabled() -> bool:
+    """True when the rewards/referral system is switched on."""
+    return bool(os.environ.get("REWARDS_TIERS_ENABLED", ""))
+
+
+def _referrer_slug_for_email(cx, email: str):
+    """Return the slug of the most-recent approved affiliate who referred this email, or None."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    row = cx.execute(
+        """SELECT re.utm_source FROM referral_events re
+           JOIN affiliate_signups a ON a.slug = re.utm_source AND a.status = 'approved'
+           WHERE LOWER(re.email) = ?
+           ORDER BY re.received_at DESC LIMIT 1""",
+        (email,)
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _settle_referral(order, *, order_ref: str) -> None:
+    """Credit the referrer (points or cash) on a full-price referred sale.
+    Idempotent per order_ref. Best-effort -- never raises."""
+    if not _rewards_enabled():
+        return
+    try:
+        from dashboard import points as _points
+        from dashboard import rewards as _rewards
+        buyer_email = (order.get("email") or "").strip().lower()
+        if not buyer_email:
+            return
+        product_cents = (int(order.get("total_cents") or 0)
+                         - int(order.get("shipping_cents") or 0)
+                         - int(order.get("get_cents") or 0))
+        # Only credit on full-price sales
+        if int(order.get("discount_cents") or 0) != 0:
+            return
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _points.init_points_table(cx)
+            _rewards.init_affiliate_earnings_table(cx)
+            slug = _referrer_slug_for_email(cx, buyer_email)
+            if not slug:
+                return
+            referrer_email = _rewards.referrer_email_for_slug(cx, slug)
+            if not referrer_email:
+                return
+            # Exclude self-referral
+            if referrer_email.strip().lower() == buyer_email:
+                return
+            settings = _rewards.load_settings({})
+            referral_reward_pct = float(settings["referral_reward_pct"])
+            reward = round(product_cents * referral_reward_pct)
+            if reward <= 0:
+                return
+            mode = _rewards.reward_mode_for_slug(cx, slug)
+            if mode == "points":
+                _points.credit(cx, referrer_email,
+                               value_cents=reward, reason="referral", order_ref=order_ref)
+            else:
+                _rewards.accrue_cash(cx, slug=slug, email=referrer_email,
+                                     order_ref=order_ref, amount_cents=reward)
+            _maybe_raise_cashout_review(cx, slug, mode)
+    except Exception as _e:
+        print(f"[rewards] _settle_referral failed inv={order_ref}: {_e!r}", flush=True)
+
+
+def _maybe_raise_cashout_review(cx, slug: str, mode: str) -> None:
+    """Insert a review todo if the referrer's balance has crossed a threshold band.
+    Idempotent: dedup_key prevents duplicates within the same threshold band."""
+    try:
+        from dashboard import rewards as _rewards
+        from dashboard import points as _points
+        settings = _rewards.load_settings({})
+        threshold = int(settings["cash_out_threshold_cents"])
+        if mode == "cash":
+            amount = _rewards.pending_cash_total(cx, slug)
+        else:
+            referrer_email = _rewards.referrer_email_for_slug(cx, slug)
+            if not referrer_email:
+                return
+            amount = _points.balance(cx, referrer_email)
+        if amount < threshold:
+            return
+        band = amount // threshold
+        dedup_key = f"cashout:{slug}:{band}"
+        cash_value = round(amount * float(settings["cash_out_face_pct"]))
+        if mode == "cash":
+            body = (f"Affiliate '{slug}' has ${amount/100:.2f} pending cash earnings "
+                    f"(threshold ${threshold/100:.2f}). Approve payout via rewards.process_payout.")
+        else:
+            body = (f"Affiliate '{slug}' has {amount} points pending "
+                    f"(threshold {threshold} pts). Cash value at "
+                    f"{int(settings['cash_out_face_pct']*100)}% face: ${cash_value/100:.2f}. "
+                    f"Approve via rewards.process_payout.")
+        from datetime import datetime as _dt, timezone as _tz
+        now = _dt.now(_tz.utc).isoformat()
+        cx.execute(
+            """INSERT INTO todos (created_at, owner, category, title, body, priority, source, dedup_key)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(dedup_key) DO NOTHING""",
+            (now, "glen", "Finance",
+             f"Review ${amount/100:.2f} cash-out for {slug}",
+             body, "high", "affiliate-cashout", dedup_key)
+        )
+        cx.commit()
+    except Exception as _e:
+        print(f"[rewards] _maybe_raise_cashout_review failed slug={slug}: {_e!r}", flush=True)
+
+
 def _settle_order_points(order, *, order_ref):
     """On a PAID order: deduct redeemed points, and earn 5% if it was a full-price order.
-    Idempotent per order_ref. Best-effort -- never raises into the return handler."""
+    Idempotent per order_ref. Best-effort -- never raises into the return handler.
+    Buyer earn is suppressed on an affiliate-acquired first order (REWARDS_TIERS_ENABLED)."""
     from dashboard import points as _points
     email = (order.get("email") or "").strip().lower()
     if not email:
@@ -2414,6 +2525,7 @@ def _settle_order_points(order, *, order_ref):
                      - int(order.get("shipping_cents") or 0)
                      - int(order.get("get_cents") or 0))
     with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
         _points.init_points_table(cx)
         if redeemed > 0 and not _points.has_entry(cx, order_ref=order_ref, reason="redeem"):
             try:
@@ -2421,10 +2533,25 @@ def _settle_order_points(order, *, order_ref):
             except ValueError:
                 pass   # balance already spent elsewhere; don't block the order
         # Earn only on a full-price order (no discount AND no points used) -- the "full-price only" rule.
+        # Additional suppression: skip buyer earn on an affiliate-acquired FIRST order.
         if discount == 0 and redeemed == 0 and product_cents > 0 \
                 and not _points.has_entry(cx, order_ref=order_ref, reason="earn"):
-            _points.earn(cx, email, full_price_cents=product_cents, earn_pct=earn_pct,
-                         order_ref=order_ref)
+            # Suppression gate: if rewards are enabled AND this is buyer's first order
+            # AND there is an attributed referrer, don't give the buyer earn points.
+            suppress = False
+            if _rewards_enabled():
+                try:
+                    order_count = cx.execute(
+                        "SELECT COUNT(*) FROM orders WHERE lower(email)=?",
+                        (email,)
+                    ).fetchone()[0]
+                    if order_count <= 1 and _referrer_slug_for_email(cx, email) is not None:
+                        suppress = True
+                except Exception as _se:
+                    print(f"[rewards] suppression check failed: {_se!r}", flush=True)
+            if not suppress:
+                _points.earn(cx, email, full_price_cents=product_cents, earn_pct=earn_pct,
+                             order_ref=order_ref)
 
 
 # Generated/cached product content (ingredients + benefits + learn-more research).
@@ -2758,6 +2885,11 @@ def begin_checkout_return():
                                 _settle_order_points(_o_for_points, order_ref=inv)
                             except Exception as _pe:
                                 print(f"[points] settle failed inv={inv}: {_pe!r}", flush=True)
+                            # ── Referral crediting (points or cash to referrer) ──
+                            try:
+                                _settle_referral(_o_for_points, order_ref=inv)
+                            except Exception as _re:
+                                print(f"[rewards] referral settle failed inv={inv}: {_re!r}", flush=True)
 
                 # ── Subscribe kind: vault the card and create the subscription row ──
                 if md.get("kind") == "subscribe" and pi_id:
@@ -14826,6 +14958,7 @@ from dashboard import events as _bos_events
 from dashboard import dispatch as _bos_dispatch
 from dashboard import rbac as _bos_rbac
 import dashboard.actions_tasks  # noqa: F401  (registers tasks.* actions)
+import dashboard.actions_rewards  # noqa: F401  (registers rewards.process_payout MONEY_SEND action)
 import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals)
 import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
