@@ -29,6 +29,10 @@ def _seed_sub(cx, *, next_charge_date="2000-01-01", skip_next=False):
     """Insert an active subscription due on next_charge_date and return its id."""
     subs.init_subscriptions_table(cx)
     subs.migrate_add_failed_count(cx)
+    # Clean slate: remove any rows left by a prior test so counts are deterministic
+    # and we don't accumulate test rows in the real subscriptions table.
+    cx.execute("DELETE FROM subscriptions WHERE email='sub-test@example.com'")
+    cx.commit()
     sid = subs.create(
         cx,
         email="sub-test@example.com",
@@ -49,12 +53,13 @@ def _mock_price_cart(monkeypatch):
     monkeypatch.setattr(
         appmod, "_price_cart",
         lambda cart, **k: {
-            "priced": {"total_cents": 5000, "get_cents": 0},
+            # subtotal = discounted product; total = subtotal + get (get absorbed, not charged)
+            "priced": {"subtotal_cents": 5000, "total_cents": 5000, "get_cents": 0},
             "qbo_lines": [{"name": "X", "amount": 50.0, "qty": 1}],
             "items_rec": [{"name": "X", "qty": 1, "desc": "X"}],
             "discount_cents": 0,
             "points_redeemed_cents": 0,
-            "shipping_cents": 0,
+            "shipping_cents": 1265,        # the card must be charged subtotal + shipping
         },
     )
 
@@ -117,9 +122,38 @@ def test_cron_charges_due_subscription_and_advances(monkeypatch):
     # failed_count must be 0 (reset after success)
     assert s.get("failed_count", 0) == 0
 
-    # stripe_pay.charge_off_session must have been called at least once
+    # stripe_pay.charge_off_session must have been called with subtotal + shipping
+    # (GET excluded): 5000 + 1265 = 6265 — NOT 5000, and NOT including any GET.
     assert len(charged_calls) >= 1
+    assert charged_calls[0][2] == 6265
 
+    cx.execute("DELETE FROM subscriptions WHERE email='sub-test@example.com'"); cx.commit()
+    cx.close()
+
+
+def test_skip_cycle_consumes_without_charging(monkeypatch):
+    """A due subscription with skip_next=1 is consumed (date advances, flag clears)
+    WITHOUT a charge and WITHOUT incrementing order_count."""
+    monkeypatch.setenv("SUBSCRIPTIONS_ENABLED", "true")
+    if not (os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET")):
+        monkeypatch.setenv("CONSOLE_SECRET", _cron_secret())
+    charged_calls = []
+    monkeypatch.setattr(appmod.stripe_pay, "charge_off_session",
+                        lambda *a, **k: charged_calls.append(a) or {"id": "x", "status": "succeeded"})
+    _mock_price_cart(monkeypatch); _mock_qb(monkeypatch); _mock_ingest(monkeypatch); _mock_email(monkeypatch)
+
+    cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    sid = _seed_sub(cx, next_charge_date="2000-01-01", skip_next=True)
+
+    c = appmod.app.test_client()
+    r = c.post("/api/cron/charge-subscriptions", headers=_headers())
+    assert r.status_code == 200, r.data
+    assert len(charged_calls) == 0, "a skipped subscription must not be charged"
+    s = subs.get(cx, sid)
+    assert s["order_count"] == 0 and s["skip_next"] == 0     # consumed, not charged
+    assert s["next_charge_date"] != "2000-01-01"             # date advanced
+
+    cx.execute("DELETE FROM subscriptions WHERE email='sub-test@example.com'"); cx.commit()
     cx.close()
 
 

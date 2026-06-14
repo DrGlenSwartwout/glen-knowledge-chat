@@ -12173,6 +12173,16 @@ def cron_charge_subscriptions():
             except Exception as e:
                 print(f"[sub-cron] heads-up sub={sub['id']} error: {e!r}", flush=True)
 
+        # Snapshot the charge list BEFORE consuming skips. list_due (skip_next=0) and
+        # list_skip_due (skip_next=1) are disjoint right now; if we queried due AFTER the
+        # skip pass, a just-consumed sub (skip cleared, date advanced but possibly still
+        # due) would wrongly re-enter the charge loop and get billed for a cycle it skipped.
+        try:
+            due = _subs.list_due(cx, as_of=today)
+        except Exception as e:
+            print(f"[sub-cron] list_due query failed: {e!r}", flush=True)
+            due = []
+
         # ── Pass 2a: Skip cycles ───────────────────────────────────────────────
         try:
             skip_due = _subs.list_skip_due(cx, as_of=today)
@@ -12190,13 +12200,7 @@ def cron_charge_subscriptions():
             except Exception as e:
                 print(f"[sub-cron] consume_skip sub={sub['id']} error: {e!r}", flush=True)
 
-        # ── Pass 2b: Charge due subs ──────────────────────────────────────────
-        try:
-            due = _subs.list_due(cx, as_of=today)
-        except Exception as e:
-            print(f"[sub-cron] list_due query failed: {e!r}", flush=True)
-            due = []
-
+        # ── Pass 2b: Charge the snapshot of due (non-skip) subs ────────────────
         for sub in due:
             sid = sub["id"]
             try:
@@ -12213,10 +12217,13 @@ def cron_charge_subscriptions():
                     failed += 1
                     continue
 
-                total_cents = int(pc["priced"].get("total_cents", 0))
                 discount_cents = int(pc.get("discount_cents", 0))
                 points_redeemed_cents = int(pc.get("points_redeemed_cents", 0))
                 shipping_cents = int(pc.get("shipping_cents", 0))
+                # Charge the discounted product subtotal + shipping. GET is absorbed
+                # (recorded, not billed to the customer), so use subtotal_cents NOT total_cents
+                # (which includes get_cents). This matches the reorder invoice total.
+                total_cents = int(pc["priced"].get("subtotal_cents", 0)) + shipping_cents
 
                 if dry_run:
                     print(f"[sub-cron] DRY charge sub={sid} email={sub['email']}"
@@ -12258,6 +12265,7 @@ def cron_charge_subscriptions():
                         total_cents=total_cents,
                         address=ship,
                         channel="retail",
+                        get_cents=pc["priced"].get("get_cents", 0),
                         discount_cents=discount_cents,
                         points_redeemed_cents=points_redeemed_cents,
                         shipping_cents=shipping_cents,
