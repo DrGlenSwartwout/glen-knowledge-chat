@@ -2360,7 +2360,8 @@ class CheckoutError(Exception):
     """Raised for a checkout the customer must fix (e.g. non-US ship-to)."""
 
 
-def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None, channel="retail"):
+def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
+                points_to_redeem_cents=0, channel="retail"):
     """Price a reorder/checkout cart through the pricing engine + shipping.
     Returns {priced, qbo_lines, discount_cents, points_redeemed_cents, shipping_cents,
     items_rec, subtotal_list_cents}. Raises CheckoutError for non-US ship-to."""
@@ -2384,6 +2385,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None, channe
         box_counts[p["name"]] = box_counts.get(p["name"], 0) + qty
     priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
                               subscriber_tier_pct=subscriber_tier_pct, channel=channel,
+                              points_to_redeem_cents=int(points_to_redeem_cents or 0),
                               ship_to_state=ship.get("state", ""),
                               tax_fn=_tax.compute_get_cents)
     shipping_cents = int(_shipping.quote(box_counts).get("shipping_cents", 0) or 0) if box_counts else 0
@@ -2394,6 +2396,35 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None, channe
         "points_redeemed_cents": priced["points_redeemed_cents"],
         "shipping_cents": shipping_cents,
     }
+
+
+def _settle_order_points(order, *, order_ref):
+    """On a PAID order: deduct redeemed points, and earn 5% if it was a full-price order.
+    Idempotent per order_ref. Best-effort -- never raises into the return handler."""
+    from dashboard import points as _points
+    email = (order.get("email") or "").strip().lower()
+    if not email:
+        return
+    earn_pct = float(_PRICING_SETTINGS.get("points_earn_pct", 0.05)) if isinstance(_PRICING_SETTINGS, dict) else 0.05
+    redeemed = int(order.get("points_redeemed_cents") or 0)
+    discount = int(order.get("discount_cents") or 0)
+    # Earn on PRODUCT spend only: total includes GET (absorbed) when TAX_ENABLED, so net out
+    # both shipping and get_cents to avoid earning points on tax/shipping.
+    product_cents = (int(order.get("total_cents") or 0)
+                     - int(order.get("shipping_cents") or 0)
+                     - int(order.get("get_cents") or 0))
+    with sqlite3.connect(LOG_DB) as cx:
+        _points.init_points_table(cx)
+        if redeemed > 0 and not _points.has_entry(cx, order_ref=order_ref, reason="redeem"):
+            try:
+                _points.redeem(cx, email, value_cents=redeemed, order_ref=order_ref)
+            except ValueError:
+                pass   # balance already spent elsewhere; don't block the order
+        # Earn only on a full-price order (no discount AND no points used) -- the "full-price only" rule.
+        if discount == 0 and redeemed == 0 and product_cents > 0 \
+                and not _points.has_entry(cx, order_ref=order_ref, reason="earn"):
+            _points.earn(cx, email, full_price_cents=product_cents, earn_pct=earn_pct,
+                         order_ref=order_ref)
 
 
 # Generated/cached product content (ingredients + benefits + learn-more research).
@@ -2709,16 +2740,24 @@ def begin_checkout_return():
                     except Exception as e:
                         print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
                     if pi_id:
+                        _o_for_points = None
                         try:
                             _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
                             try:
                                 _o = _bos_orders.find_order_by_external_ref(_cxo, inv)
                                 if _o:
                                     _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi_id)
+                                    _o_for_points = _o  # plain dict; safe after close
                             finally:
                                 _cxo.close()
                         except Exception as _e:
                             print(f"[begin-return] pi capture: {_e!r}", flush=True)
+                        # ── Points settlement (earn + deduct redeemed) ──
+                        if _o_for_points:
+                            try:
+                                _settle_order_points(_o_for_points, order_ref=inv)
+                            except Exception as _pe:
+                                print(f"[points] settle failed inv={inv}: {_pe!r}", flush=True)
 
                 # ── Subscribe kind: vault the card and create the subscription row ──
                 if md.get("kind") == "subscribe" and pi_id:
@@ -5791,6 +5830,18 @@ def api_reorder_items():
     return jsonify({"email": email, "scope": scope, "items": items})
 
 
+@app.route("/api/points/balance", methods=["GET"])
+def api_points_balance():
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    from dashboard import points as _points
+    with sqlite3.connect(LOG_DB) as cx:
+        _points.init_points_table(cx)
+        bal = _points.balance(cx, email)
+    return jsonify({"balance_cents": bal, "balance_dollars": f"{bal/100:.2f}"})
+
+
 @app.route("/reorder/checkout", methods=["POST"])
 def reorder_checkout():
     email = _reorder_email_from_cookie()
@@ -5816,8 +5867,17 @@ def reorder_checkout():
                     prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
                 if prior:
                     ship = prior[0].get("address") or {}
+            # Cap requested redemption to the caller's current balance
+            requested_redeem = int((body.get("points_to_redeem_cents") if isinstance(body, dict) else 0) or 0)
+            if requested_redeem > 0:
+                from dashboard import points as _pts_co
+                with sqlite3.connect(LOG_DB) as _cx_pts:
+                    _pts_co.init_points_table(_cx_pts)
+                    _bal = _pts_co.balance(_cx_pts, email)
+                requested_redeem = min(requested_redeem, _bal)
             try:
-                pc = _price_cart(cart, ship=ship, coupon_pct=_active_coupon_pct())
+                pc = _price_cart(cart, ship=ship, coupon_pct=_active_coupon_pct(),
+                                 points_to_redeem_cents=requested_redeem)
             except CheckoutError as e:
                 return jsonify({"ok": False, "error": str(e)}), 400
             if not pc["qbo_lines"]:
