@@ -15818,6 +15818,40 @@ def api_pricing_preview():
     return jsonify(result)
 
 
+@app.route("/api/console/pricing-settings", methods=["GET", "POST"])
+def api_console_pricing_settings():
+    """Console-gated read/write of the global pricing + rewards tunables, persisted to
+    pricing-settings.json in DATA_DIR (live-reloaded by _pricing_settings)."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import pricing_settings as _ps
+    if request.method == "GET":
+        raw = _pricing_settings()
+        return jsonify({"saved": raw, "effective": _ps.effective(raw),
+                        "defaults": _ps.defaults_view()})
+    # POST
+    payload = request.get_json(silent=True) or {}
+    clean, errors = _ps.validate(payload)
+    if errors:
+        return jsonify({"errors": errors}), 400
+    import tempfile
+    _PRICING_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(_PRICING_SETTINGS_PATH.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(clean, f, indent=2)
+        os.replace(tmp, _PRICING_SETTINGS_PATH)
+    except Exception:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+    _PRICING_SETTINGS_CACHE["mtime"] = None      # force re-read on next access
+    raw = _pricing_settings()
+    return jsonify({"saved": raw, "effective": _ps.effective(raw)})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f"Starting on http://localhost:{port}")
