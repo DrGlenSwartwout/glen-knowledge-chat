@@ -66,16 +66,17 @@ def build_dropship_order(cart: List[dict], practitioner: dict, *,
     subtotal_cents = 0
     for item in cart:
         slug = item["slug"]
-        qty = int(item.get("qty", 1))
+        line_qty = int(item.get("qty", 1))                  # bottles on THIS line
         retail = _retail_for(slug)
+        # base/fee use total_bottles for the blended curve; the line cost uses line_qty.
         dl = dropship_line_cents(retail_cents=retail, qty=total_bottles,
                                  modules=modules, settings=settings)
         unit_cents = dl["unit_cents"]
-        subtotal_cents += unit_cents * qty
+        subtotal_cents += unit_cents * line_qty
         lines.append({
             "name": slug,
             "amount": unit_cents / 100.0,
-            "qty": qty,
+            "qty": line_qty,
             "description": f"{slug} (drop-ship wholesale)",
         })
 
