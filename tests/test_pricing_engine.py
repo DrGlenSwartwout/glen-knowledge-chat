@@ -143,3 +143,59 @@ def test_compute_pure_powder_excluded_from_volume_floored_at_30():
     # volume 0 (excluded); 15% off 4000 = 3400 (floor 3000); points -> 3000 (only 400 used)
     assert r["lines"][0]["line_total_cents"] == 3000
     assert r["points_redeemed_cents"] == 400
+
+
+def test_compute_empty_cart():
+    s = pricing.load_settings({})
+    r = pricing.compute([], settings=s, tax_fn=_fake_tax)
+    assert r["subtotal_cents"] == 0
+    assert r["lines"] == []
+    assert r["total_cents"] == 0
+
+
+def test_compute_zero_qty_line():
+    s = pricing.load_settings({})
+    items = [{"slug": "neuro-mag", "name": "Neuro Mag", "qty": 0,
+              "product": {"slug": "neuro-mag", "price_cents": 7000},
+              "unit_cents": 7000, "months": 1, "volume_eligible": True}]
+    r = pricing.compute(items, settings=s, tax_fn=_fake_tax)
+    assert r["lines"][0]["line_total_cents"] == 0
+    assert r["subtotal_cents"] == 0
+
+
+def test_compute_points_exceed_all_floor_headroom():
+    s = pricing.load_settings({})
+    # Two items, each 7000 list, no other discount applied (0%).
+    # Discount floor = round(7000*0.57) = 3990; points floor = round(7000*0.43) = 3010.
+    # After 0% discount, price stays at 7000 per line.
+    # Reducible headroom per line = 7000 - 3010 = 3990 each; total = 7980.
+    # We request way more than that (20000) → should clamp and only consume 7980.
+    items = [
+        {"slug": "a", "name": "A", "qty": 1,
+         "product": {"slug": "a", "price_cents": 7000},
+         "unit_cents": 7000, "months": 1, "volume_eligible": False},
+        {"slug": "b", "name": "B", "qty": 1,
+         "product": {"slug": "b", "price_cents": 7000},
+         "unit_cents": 7000, "months": 1, "volume_eligible": False},
+    ]
+    r = pricing.compute(items, settings=s, points_to_redeem_cents=20000,
+                        tax_fn=_fake_tax)
+    assert r["lines"][0]["line_total_cents"] == 3010   # clamped at points floor
+    assert r["lines"][1]["line_total_cents"] == 3010   # clamped at points floor
+    assert r["points_redeemed_cents"] == 7980          # total headroom consumed, not 20000
+
+
+def test_unit_floor_unknown_kind_raises():
+    s = pricing.load_settings({})
+    try:
+        pricing.unit_floor_cents({"price_cents": 7000}, 7000, s, "bogus")
+        assert False, "Expected ValueError"
+    except ValueError as e:
+        assert "bogus" in str(e)
+
+
+def test_floor_honors_zero_wholesale():
+    s = pricing.load_settings({})
+    # wholesale_cents=0 is an explicit override; discount floor must be 0, not fall through to pct
+    p = {"slug": "free", "price_cents": 7000, "wholesale_cents": 0}
+    assert pricing.unit_floor_cents(p, 7000, s, "discount") == 0

@@ -28,17 +28,18 @@ def unit_floor_cents(product, list_cents, settings, kind):
     list_cents = int(list_cents)
     whole = product.get("wholesale_cents")
     if kind == "discount":
-        if whole:
+        if whole is not None:
             return int(whole)
         pct = product.get("sku_discount_floor_pct", settings["discount_floor_pct"])
         return int(round(list_cents * pct))
-    # points
-    if whole:
-        allowance = int(round(list_cents * (settings["discount_floor_pct"]
-                                            - settings["points_floor_pct"])))
-        return int(whole) - allowance
-    pct = product.get("sku_points_floor_pct", settings["points_floor_pct"])
-    return int(round(list_cents * pct))
+    if kind == "points":
+        if whole is not None:
+            allowance = int(round(list_cents * (settings["discount_floor_pct"]
+                                                - settings["points_floor_pct"])))
+            return int(whole) - allowance
+        pct = product.get("sku_points_floor_pct", settings["points_floor_pct"])
+        return int(round(list_cents * pct))
+    raise ValueError(f"unknown kind: {kind!r}")
 
 
 def apply_discount(list_cents, pct, floor_cents):
@@ -79,8 +80,12 @@ def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
 
     items: [{"slug","name","qty","product","unit_cents","months","volume_eligible"}]
     Returns a dict with per-line breakdown + order totals.
+
+    Points are allocated greedily in item-list order; the first item consumes points first.
     """
-    base_pct = subscriber_tier_pct if subscriber_tier_pct else (coupon_pct or 0)
+    base_pct = coupon_pct or 0
+    if subscriber_tier_pct is not None:
+        base_pct = subscriber_tier_pct      # subscriber tier wins whenever present, even 0
     total_months = sum(int(it.get("months") or 0) for it in items if it.get("volume_eligible"))
     vpct = volume_pct(total_months, settings)
     points_left = max(0, int(points_to_redeem_cents or 0))
@@ -91,7 +96,7 @@ def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
         qty = int(it["qty"])
         unit_list = int(it["unit_cents"])
         line_list = unit_list * qty
-        line_pct = max(vpct if it.get("volume_eligible") else 0, base_pct)
+        line_pct = max(vpct if it.get("volume_eligible") else 0, base_pct)  # best-of-one: volume only for eligible items; base discount always applies
         disc_floor = unit_floor_cents(p, unit_list, settings, "discount") * qty
         pts_floor = unit_floor_cents(p, unit_list, settings, "points") * qty
 
