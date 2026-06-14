@@ -139,6 +139,34 @@ Shipping is added by the caller at checkout (§A.8), not by the engine.
   charge **USA shipping only** and never quote international postage. Cart shows a note.
   Checkout validates a US ship-to state (drives GET too).
 
+### A.9 Rewards tiers & cash-out (earn/payout layer — Plan 2/3 scope)
+Three referrer/earner tiers, by relationship (tier read from People-hub / GHL tags):
+- **Client affiliates** (customers who refer) → earn **points** on referred sales, applied
+  to their own purchases. Self-serve.
+- **Doctors / practitioners** → earn **points** applied to their purchases; eligible for
+  cash-payout review (below).
+- **Professional influencers** → **cash commission**, individually approved by
+  application/negotiation (the existing affiliate/commission track, not points).
+
+Earn rules:
+- Own purchases: 5% loyalty points on **full-price** spend; **suppressed on an
+  affiliate-acquired first order** (the affiliate owns that acquisition — decision (b)),
+  earned on every order after.
+- Referral: the referrer (client affiliate or doctor) earns referral points when their
+  referred buyer purchases.
+
+Points value asymmetry (deliberate liability lever):
+- **Redeemed on product/service = 100% face value; cash-out = a haircut** (default ~70% of
+  face, console-set) — points are worth more kept in the ecosystem.
+- Cash-out is **not automatic**: when a balance crosses a console threshold it raises a
+  **payout-review task** (Business OS action/Tasks spine) for Glen/Rae to approve; capture
+  W-9 / 1099 tracking there.
+- All redemption (incl. doctors buying at wholesale) stays **bounded by the floors**.
+
+The `points_ledger` (Task 6) is the routing-agnostic balance store under all of this; the
+tiers, referral attribution, cash-out rate, and threshold review are the earn/payout layer
+in Plan 2/3.
+
 ---
 
 ## Part B — Recurring Orders ("Subscribe & Grow")
