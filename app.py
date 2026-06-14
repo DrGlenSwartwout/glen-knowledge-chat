@@ -14310,6 +14310,8 @@ def bos_finance_ar():
 
 @app.route("/api/pricing/preview", methods=["POST"])
 def api_pricing_preview():
+    # Public by design: read-only price preview for the storefront cart JS. Returns only
+    # prices (already public) — no auth needed, no data mutated, no PII echoed.
     from dashboard import pricing as _pricing, tax as _tax
     data = request.get_json(silent=True) or {}
     settings = _pricing.load_settings(_PRICING_SETTINGS)
@@ -14318,7 +14320,10 @@ def api_pricing_preview():
         p = _get_product(it.get("slug"))
         if not p:
             continue                      # unavailable/inactive → skip, never silently mis-price
-        qty = max(1, int(it.get("qty") or 1))
+        try:                              # tolerate junk qty from a public body, default to 1
+            qty = max(1, int(float(it.get("qty") or 1)))
+        except (TypeError, ValueError):
+            qty = 1
         # base = TRUE single-unit list (volume is now a discount candidate, not a base price)
         items.append({
             "slug": p["slug"], "name": p.get("name", p["slug"]), "qty": qty, "product": p,
