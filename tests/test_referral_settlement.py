@@ -85,3 +85,34 @@ def test_discounted_order_no_referral_credit(monkeypatch, tmp_path):
              "discount_cents": 1000, "points_redeemed_cents": 0}
     appmod._settle_referral(order, order_ref="INV5")
     assert points.balance(cx, "doc@x.com") == 0
+
+
+def test_referral_cert_scaled_for_practitioner(monkeypatch, tmp_path):
+    cx = _db(monkeypatch, tmp_path)
+    _refer(cx, "buyer@x.com", "doc", "doc@x.com", ["type:practitioner"])
+    monkeypatch.setattr(appmod._pp, "modules_completed_for_email", lambda e: 12)
+    order = {"email": "buyer@x.com", "total_cents": 6000, "shipping_cents": 0, "get_cents": 0,
+             "discount_cents": 0, "points_redeemed_cents": 0}
+    appmod._settle_referral(order, order_ref="INVC1")
+    assert points.balance(cx, "doc@x.com") == 900        # 15% of 6000
+
+
+def test_referral_base_pct_for_non_practitioner(monkeypatch, tmp_path):
+    cx = _db(monkeypatch, tmp_path)
+    _refer(cx, "buyer@x.com", "doc", "doc@x.com", ["type:practitioner"])
+    monkeypatch.setattr(appmod._pp, "modules_completed_for_email", lambda e: None)
+    order = {"email": "buyer@x.com", "total_cents": 6000, "shipping_cents": 0, "get_cents": 0,
+             "discount_cents": 0, "points_redeemed_cents": 0}
+    appmod._settle_referral(order, order_ref="INVC2")
+    assert points.balance(cx, "doc@x.com") == 300        # 5% of 6000
+
+
+def test_referral_cert_lookup_failure_falls_back_to_base(monkeypatch, tmp_path):
+    cx = _db(monkeypatch, tmp_path)
+    _refer(cx, "buyer@x.com", "doc", "doc@x.com", ["type:practitioner"])
+    def _boom(e): raise RuntimeError("supabase down")
+    monkeypatch.setattr(appmod._pp, "modules_completed_for_email", _boom)
+    order = {"email": "buyer@x.com", "total_cents": 6000, "shipping_cents": 0, "get_cents": 0,
+             "discount_cents": 0, "points_redeemed_cents": 0}
+    appmod._settle_referral(order, order_ref="INVC3")
+    assert points.balance(cx, "doc@x.com") == 300        # base 5% on lookup failure
