@@ -93,6 +93,7 @@ _PRODUCT_ALIASES = _load_json(DATA_DIR / "product-aliases.json",
                               default={"aliases": {}, "store_homepage": "https://remedymatch.com"})
 _COUPONS         = _load_json(DATA_DIR / "coupons.json",
                               default={"default_code": "", "daily_codes": []})
+_PRICING_SETTINGS = _load_json(DATA_DIR / "pricing-settings.json", default={})
 
 
 # ── On-the-fly Rebrandly shortlink creation ──────────────────────────────────
@@ -14305,6 +14306,35 @@ def bos_finance_ar():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
     return jsonify({"ok": True, "data": rows, "summary": summary})
+
+
+@app.route("/api/pricing/preview", methods=["POST"])
+def api_pricing_preview():
+    from dashboard import pricing as _pricing, tax as _tax
+    data = request.get_json(silent=True) or {}
+    settings = _pricing.load_settings(_PRICING_SETTINGS)
+    items = []
+    for it in (data.get("items") or []):
+        p = _get_product(it.get("slug"))
+        if not p:
+            continue                      # unavailable/inactive → skip, never silently mis-price
+        qty = max(1, int(it.get("qty") or 1))
+        # base = TRUE single-unit list (volume is now a discount candidate, not a base price)
+        items.append({
+            "slug": p["slug"], "name": p.get("name", p["slug"]), "qty": qty, "product": p,
+            "unit_cents": int(p.get("price_cents") or 0),
+            "months": qty * int(p.get("months_per_unit", 1)),   # 30-cap bottle = 1 month
+            "volume_eligible": bool(p.get("volume_eligible", True)),  # Pure Powders set False
+        })
+    result = _pricing.compute(
+        items, settings=settings,
+        subscriber_tier_pct=data.get("subscriber_tier_pct"),
+        coupon_pct=data.get("coupon_pct"),
+        points_to_redeem_cents=data.get("points_to_redeem_cents") or 0,
+        channel=data.get("channel", "retail"),
+        ship_to_state=data.get("ship_to_state"),
+        tax_fn=_tax.compute_get_cents)
+    return jsonify(result)
 
 
 if __name__ == "__main__":
