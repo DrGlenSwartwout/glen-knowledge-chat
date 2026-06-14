@@ -20,3 +20,22 @@ def load_settings(overrides):
         if v is not None:
             s[k] = v
     return s
+
+
+def unit_floor_cents(product, list_cents, settings, kind):
+    """Per-unit floor in cents. kind in ('discount','points').
+    Precedence: absolute wholesale_cents > per-SKU pct > global pct."""
+    list_cents = int(list_cents)
+    whole = product.get("wholesale_cents")
+    if kind == "discount":
+        if whole:
+            return int(whole)
+        pct = product.get("sku_discount_floor_pct", settings["discount_floor_pct"])
+        return int(round(list_cents * pct))
+    # points
+    if whole:
+        allowance = int(round(list_cents * (settings["discount_floor_pct"]
+                                            - settings["points_floor_pct"])))
+        return int(whole) - allowance
+    pct = product.get("sku_points_floor_pct", settings["points_floor_pct"])
+    return int(round(list_cents * pct))
