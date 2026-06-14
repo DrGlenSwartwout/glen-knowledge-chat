@@ -2360,7 +2360,8 @@ class CheckoutError(Exception):
     """Raised for a checkout the customer must fix (e.g. non-US ship-to)."""
 
 
-def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None, channel="retail"):
+def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
+                points_to_redeem_cents=0, channel="retail"):
     """Price a reorder/checkout cart through the pricing engine + shipping.
     Returns {priced, qbo_lines, discount_cents, points_redeemed_cents, shipping_cents,
     items_rec, subtotal_list_cents}. Raises CheckoutError for non-US ship-to."""
@@ -2384,6 +2385,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None, channe
         box_counts[p["name"]] = box_counts.get(p["name"], 0) + qty
     priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
                               subscriber_tier_pct=subscriber_tier_pct, channel=channel,
+                              points_to_redeem_cents=int(points_to_redeem_cents or 0),
                               ship_to_state=ship.get("state", ""),
                               tax_fn=_tax.compute_get_cents)
     shipping_cents = int(_shipping.quote(box_counts).get("shipping_cents", 0) or 0) if box_counts else 0
@@ -5861,8 +5863,17 @@ def reorder_checkout():
                     prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
                 if prior:
                     ship = prior[0].get("address") or {}
+            # Cap requested redemption to the caller's current balance
+            requested_redeem = int((body.get("points_to_redeem_cents") if isinstance(body, dict) else 0) or 0)
+            if requested_redeem > 0:
+                from dashboard import points as _pts_co
+                with sqlite3.connect(LOG_DB) as _cx_pts:
+                    _pts_co.init_points_table(_cx_pts)
+                    _bal = _pts_co.balance(_cx_pts, email)
+                requested_redeem = min(requested_redeem, _bal)
             try:
-                pc = _price_cart(cart, ship=ship, coupon_pct=_active_coupon_pct())
+                pc = _price_cart(cart, ship=ship, coupon_pct=_active_coupon_pct(),
+                                 points_to_redeem_cents=requested_redeem)
             except CheckoutError as e:
                 return jsonify({"ok": False, "error": str(e)}), 400
             if not pc["qbo_lines"]:
