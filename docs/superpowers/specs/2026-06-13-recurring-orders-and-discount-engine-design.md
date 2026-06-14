@@ -59,14 +59,20 @@ apply on top of whatever % discount won.
 - (Open default, see §F: member-price vs coupon also follows best-one-wins.)
 
 ### A.3 Floors (percent of list, console-settable)
-- `discount_floor_pct = 0.57` → price after % discount clamps **up** to `list × 0.57`
-  (= wholesale; $40 on $70).
-- `points_floor_pct = 0.43` → price after points clamps **up** to `list × 0.43`
-  ($30 on $70).
-- Per-SKU override: optional absolute `wholesale_cents` per product; when present it
-  overrides `list × discount_floor_pct`, and the points floor becomes
-  `wholesale_cents − points_allowance_cents` (default allowance = the gap implied by the
-  two pct, i.e. `list × (0.57 − 0.43)`).
+- **Global defaults** (apply to every SKU unless overridden): `discount_floor_pct = 0.57`
+  → price after % discount clamps **up** to `list × 0.57` (= wholesale; $40 on $70);
+  `points_floor_pct = 0.43` → price after points clamps **up** to `list × 0.43` ($30 on $70).
+  Confirmed by Glen (2026-06-13): these defaults cover **all Functional Formulations™ and
+  Pure Powders**.
+- **Per-SKU floor override (console-editable, no deploy):** for higher-cost products found
+  on review, a product can carry a **higher floor** than the global. Stored as per-SKU
+  fields on the product record — either override percentages
+  (`sku_discount_floor_pct` / `sku_points_floor_pct`, e.g. 0.70 / 0.60) **or** an absolute
+  `wholesale_cents` (from which the points floor = `wholesale_cents − points_allowance_cents`).
+  When set, that SKU's floors use the override; otherwise the global pct. Added/edited in the
+  **Products console** (new per-product floor fields) so Glen can raise a floor on any item
+  he flags without a code change. The pricing engine reads the per-SKU value first, global
+  default second.
 
 ### A.4 Order of operations (also makes GET tax correct)
 ```
@@ -173,10 +179,11 @@ should be GHL-tracked, route via GHL — flagged in §F).
   (COGS + shipping + fees) on the heaviest / most-expensive SKUs, not just the $70 flagship.
 
 ## D. Console settings (all resettable)
-`discount_floor_pct` (0.57), `points_floor_pct` (0.43), `points_earn_pct` (0.05),
-`points_redeem_per_point_cents`, `points_allowance_cents`, per-SKU `wholesale_cents`
-override, `subscribe_tiers` ([5,10,15]), `cadences` ([1,2,3]), `lead_days` (3),
-`dunning_schedule` ([1,3,5]).
+**Global:** `discount_floor_pct` (0.57), `points_floor_pct` (0.43), `points_earn_pct`
+(0.05), `points_redeem_per_point_cents`, `points_allowance_cents`, `subscribe_tiers`
+([5,10,15]), `cadences` ([1,2,3]), `lead_days` (3), `dunning_schedule` ([1,3,5]).
+**Per-SKU (Products console):** `sku_discount_floor_pct`, `sku_points_floor_pct`, and/or
+absolute `wholesale_cents` — raise the floor on a flagged high-cost product without a deploy.
 
 ## E. Testing
 - **Pricing engine** (the priority): table-driven tests over every combination — subscriber
@@ -199,7 +206,8 @@ override, `subscribe_tiers` ([5,10,15]), `cadences` ([1,2,3]), `lead_days` (3),
 
 ## G. Scope
 - **v1:** fixed cart at signup; 3 cadences; 5/10/15 escalation; vault + scheduler off-session
-  charge; pricing engine + floors + points ledger; heads-up + receipts + dunning; manage
-  portal (skip/pause/cadence/cancel) + Stripe card portal; consent checkbox.
+  charge; pricing engine + global floors + **per-SKU floor override fields in the Products
+  console** + points ledger; heads-up + receipts + dunning; manage portal
+  (skip/pause/cadence/cancel) + Stripe card portal; consent checkbox.
 - **v2:** edit items mid-subscription; annual prepay; biofield-analysis-driven product swaps;
   auto-points-redeem on subscription; gift / multi-address.
