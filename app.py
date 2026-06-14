@@ -2360,6 +2360,43 @@ class CheckoutError(Exception):
     """Raised for a checkout the customer must fix (e.g. non-US ship-to)."""
 
 
+# USPS flat-rate box thresholds by total bottle count (Glen 2026-06-14): <=4 S, <=12 M, else L.
+# Used as a fail-safe when the box-fit catalog can't pick a box; the catalog (when Rae fills it
+# at /admin/shipping) takes precedence via shipping.quote().
+_SHIP_FALLBACK_HARD = {"S": 1300, "M": 2300, "L": 3200}   # rounded rates if even the rates table is down
+
+
+def _fallback_shipping_cents(total_bottles):
+    """Qty-based USPS box fallback (rounded charged rate). Never raises."""
+    n = int(total_bottles or 0)
+    if n <= 0:
+        return 0
+    size = "S" if n <= 4 else ("M" if n <= 12 else "L")
+    try:
+        rates = _shipping.get_current_rates() or {}
+        r = rates.get(size) or {}
+        cents = int(r.get("charged_cents") or r.get("usps_retail_cents") or 0)
+        return cents or _SHIP_FALLBACK_HARD[size]
+    except Exception:
+        return _SHIP_FALLBACK_HARD[size]
+
+
+def _shipping_for_cart(box_counts, total_bottles):
+    """Real USA shipping for a cart, always charged, never breaking checkout.
+    Tries the box-fit catalog (shipping.quote keyed by bottle type); if the catalog
+    is empty / a type is unknown / no box fits, falls back to the qty->box rule."""
+    if not box_counts:
+        return 0
+    try:
+        q = _shipping.quote(box_counts) or {}
+        cents = int(q.get("shipping_cents") or 0)
+        if cents > 0:
+            return cents
+    except Exception as e:
+        print(f"[shipping] quote fell back ({e!r}); using qty rule for {total_bottles} bottles", flush=True)
+    return _fallback_shipping_cents(total_bottles)
+
+
 def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                 points_to_redeem_cents=0, channel="retail"):
     """Price a reorder/checkout cart through the pricing engine + shipping.
@@ -2370,7 +2407,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
     if country not in ("US", "USA", ""):
         raise CheckoutError("We ship to US addresses only — please use a US forwarding address.")
     settings = _pricing.load_settings(_PRICING_SETTINGS)
-    items, qbo_lines, items_rec, box_counts, subtotal_list = [], [], [], {}, 0
+    items, qbo_lines, items_rec, box_counts, subtotal_list, total_bottles = [], [], [], {}, 0, 0
     for c in (cart or []):
         p = _get_product((c.get("slug") or "").strip())
         if not p:
@@ -2382,13 +2419,16 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         qbo_lines.append({"name": p["name"], "amount": round(it["unit_cents"] / 100.0, 2),
                           "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
         items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"]})
-        box_counts[p["name"]] = box_counts.get(p["name"], 0) + qty
+        # shipping.pick_box keys by BOTTLE TYPE (not product name); default-typed if unset.
+        bt = p.get("bottle_type") or "default"
+        box_counts[bt] = box_counts.get(bt, 0) + qty
+        total_bottles += qty
     priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
                               subscriber_tier_pct=subscriber_tier_pct, channel=channel,
                               points_to_redeem_cents=int(points_to_redeem_cents or 0),
                               ship_to_state=ship.get("state", ""),
                               tax_fn=_tax.compute_get_cents)
-    shipping_cents = int(_shipping.quote(box_counts).get("shipping_cents", 0) or 0) if box_counts else 0
+    shipping_cents = _shipping_for_cart(box_counts, total_bottles)
     return {
         "priced": priced, "qbo_lines": qbo_lines, "items_rec": items_rec,
         "subtotal_list_cents": subtotal_list,
