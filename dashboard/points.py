@@ -55,3 +55,9 @@ def has_entry(cx, *, order_ref, reason):
     row = cx.execute("SELECT 1 FROM points_ledger WHERE order_ref=? AND reason=? LIMIT 1",
                      (order_ref, reason)).fetchone()
     return row is not None
+
+
+def credit(cx, email: str, *, value_cents: int, reason: str, order_ref: str) -> None:
+    """Idempotent direct credit — bypasses earn_pct calculation. Safe to call repeatedly."""
+    if not has_entry(cx, order_ref=order_ref, reason=reason):
+        _add(cx, email, value_cents, reason, order_ref)
