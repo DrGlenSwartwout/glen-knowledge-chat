@@ -2320,6 +2320,32 @@ def _get_product(slug):
     return out
 
 
+def _is_pure_powder(p):
+    return "pure powder" in (p.get("name") or "").lower() or "pure-powder" in (p.get("slug") or "")
+
+
+def _engine_item(p, qty):
+    """Build a dashboard.pricing.compute() item from a product dict + quantity.
+    Derives months (months_per_unit*qty, default 1/unit), volume eligibility
+    (all Functional Formulations; Pure Powders + info_only excluded), and the
+    per-SKU floor override for Pure Powders (0.75 -> ~$30)."""
+    qty = max(1, int(qty))
+    months_per_unit = int(p.get("months_per_unit", 1))
+    if "volume_eligible" in p:
+        eligible = bool(p["volume_eligible"])
+    else:
+        eligible = not (_is_pure_powder(p) or p.get("info_only"))
+    prod = dict(p)
+    if _is_pure_powder(p) and "sku_discount_floor_pct" not in prod:
+        prod["sku_discount_floor_pct"] = 0.75
+        prod["sku_points_floor_pct"] = 0.75
+    return {
+        "slug": p.get("slug"), "name": p.get("name", p.get("slug")), "qty": qty,
+        "product": prod, "unit_cents": int(p.get("price_cents") or 0),
+        "months": months_per_unit * qty, "volume_eligible": eligible,
+    }
+
+
 # Generated/cached product content (ingredients + benefits + learn-more research).
 # Source = Pinecone specific-formulations (page copy) + ingredients (study citations).
 try:
