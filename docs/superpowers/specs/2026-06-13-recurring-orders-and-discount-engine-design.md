@@ -24,11 +24,16 @@ They are specified together because B's per-cycle charge must price through A.
 | Cadences | Monthly / every 2 months / every 3 months |
 | Loyalty discount | Escalating by completed-order count: **5% (1st) → 10% (2nd) → 15% (3rd+)** |
 | Tier on skip/pause/cancel | Skip + pause **hold** the tier; cancel **resets** order_count to 0 |
-| % discount stacking | **One % discount applies** — subscriber tier is **exclusive of coupons** (subscriber tier replaces coupons; never two % sources) |
+| % discount stacking | **One % discount applies** = the deepest of {**volume**, subscriber tier, coupon} (best-of-one). Subscriber tier is exclusive of coupons; volume is best-of with both. Never two % sources |
+| Volume pricing | **Smooth months-based curve** (replaces 3/6/12 sharp tiers), **mix-and-match** across SKUs (total bottle-equiv "months" set one discount level), **format-decoupled** (price = months only) |
+| Volume curve shape | Continuous, interpolated through anchors **1mo=100%, 3=86%, 6=71%, 12=57%(=wholesale), flat beyond**; front-loaded; console-tunable knots + cap; **flat-at-total-level** |
+| Volume eligibility | **All Functional Formulations** (capsules + powders + liquids) on the same curve; capsules get format choice (bottle/larger/refill), powders+liquids individual bottles only. **Pure Powders excluded** (flat $40) |
 | Points floor | Points may go **below wholesale** to **43% of list** ($30 on a $70 item) |
 | Discount floor | All % discounts clamp at **57% of list** ($40 = wholesale on a $70 item) |
+| Pure Powders | Flat $40, **off the volume curve**; subscribe + points may still apply down to a **per-SKU $30 floor** (75% of their list) |
 | Points earning | Earn on **full-price spend only** (not on discounted/subscription orders); redeem above the floor |
-| Floor representation | **Percent-of-list** (57% / 43%), per-SKU absolute wholesale override allowed; all console-settable |
+| Floor representation | **Percent-of-list** (57% / 43%), per-SKU pct or absolute wholesale override allowed; all console-settable |
+| Shipping | **Always charged on every order at actual USA cost** — never free, never an incentive. Consolidation savings reach the customer via lower actual shipping (format-driven). **Ship-to US addresses only** (international uses a US forwarder; we charge USA shipping only) |
 | Tax treatment | Points = a **price discount** (reduces the GET tax base), not a tender |
 
 ---
@@ -40,30 +45,36 @@ Floors are the **safety net**, not the primary control. The primary control is *
 discounts may combine**. Most orders should *not* land on a floor.
 
 ### A.2 Discount buckets and additivity
-Three buckets. **At most one % discount total** (per the locked decision), then points.
+**At most one % discount total** = the deepest single candidate (best-of-one), then points.
 
-| Bucket | Examples | Rule |
+| Candidate | Source | Rule |
 |---|---|---|
-| Structural (earned) | Subscribe-&-save tier, member price | one applies |
-| Promotional (public) | Daily coupon (`coupons.json`), seasonal sale, welcome | one, best-wins |
-| Points | Loyalty redemption ($ off) | applies after the % discount |
+| Volume | months-based curve (§A.7) | best-of |
+| Subscriber tier | 5/10/15% by order_count | best-of; exclusive of coupons |
+| Coupon | `coupons.json` daily/seasonal | best-of; one only |
+| Points | loyalty redemption ($ off) | applies after the % discount |
 
-**Exclusivity (locked):** Structural and Promotional do **not** stack. The order's single
-percentage discount = the applicable structural discount **if any** (a subscription order
-always uses its subscriber tier), otherwise the best promotional discount. Points then
-apply on top of whatever % discount won.
+**Best-of-one (locked):** the order's single percentage discount =
+`max(volume_pct, subscriber_tier_pct_or_coupon_pct)`. Subscriber tier and coupon never
+stack with each other; volume is compared against whichever of those applies and the
+deepest wins. Points then apply on top of whatever % won.
 
-- Subscription order → % = subscriber tier (5/10/15). Coupons ignored.
-- One-time order, member → % = member discount.
-- One-time order, non-member → % = best eligible coupon.
+- Subscription order → % = `max(volume, subscriber tier)`. Coupons ignored.
+- One-time order, member → % = `max(volume, member discount)`.
+- One-time order, non-member → % = `max(volume, best coupon)`.
 - (Open default, see §F: member-price vs coupon also follows best-one-wins.)
+
+Because volume is **just another % candidate**, the engine's base stays the **true
+single-unit list** (not a volume-reduced price), so floors always anchor to list and the
+old "floor of a volume price" margin leak cannot occur.
 
 ### A.3 Floors (percent of list, console-settable)
 - **Global defaults** (apply to every SKU unless overridden): `discount_floor_pct = 0.57`
   → price after % discount clamps **up** to `list × 0.57` (= wholesale; $40 on $70);
   `points_floor_pct = 0.43` → price after points clamps **up** to `list × 0.43` ($30 on $70).
-  Confirmed by Glen (2026-06-13): these defaults cover **all Functional Formulations™ and
-  Pure Powders**.
+  Confirmed by Glen (2026-06-13): these defaults cover **all Functional Formulations™**.
+  **Pure Powders** ($40 list) carry a per-SKU floor override at **$30 (75% of list)** for
+  both discount and points, and are excluded from the volume curve (§A.7).
 - **Per-SKU floor override (console-editable, no deploy):** for higher-cost products found
   on review, a product can carry a **higher floor** than the global. Stored as per-SKU
   fields on the product record — either override percentages
@@ -95,11 +106,38 @@ margin-safe); today only one applies so it is moot.
 - Ledger is authoritative (earn/redeem rows), balance = running sum.
 
 ### A.6 The single pricing function (critical)
-`pricing.compute(items, *, email, channel, subscriber_tier=None, coupon=None,
-points_to_redeem=0) -> PriceResult` returning per-line breakdown, order subtotal,
-discount_cents, points_redeemed_cents, get_cents, total_cents, and a human-readable
-`breakdown` for the cart UI + invoice. **Used by all three callers** — cart preview,
+`pricing.compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
+points_to_redeem_cents=0, channel, ship_to_state, tax_fn) -> dict`. It first totals the
+**eligible months** across the cart, derives `volume_pct` from the curve (§A.7), then per
+line applies `max(volume_pct, subscriber_or_coupon_pct)` to the true list, clamps to the
+discount floor, subtracts allocated points, clamps to the points floor, and sums GET tax on
+the discounted subtotal. Returns per-line breakdown + order subtotal, discount_cents,
+points_redeemed_cents, get_cents, total_cents. **Used by all three callers** — cart preview,
 one-time/reorder checkout, and the subscription scheduler — so they can never diverge.
+Shipping is added by the caller at checkout (§A.8), not by the engine.
+
+### A.7 Volume / quantity pricing (months-based, mix-and-match)
+- **Unit = months** (bottle-equivalents): a standard 30-cap bottle = 1 month; larger
+  formats count their multiple (90=3, 180=6, 360=12); each FF powder/liquid bottle = 1.
+- **Mix-and-match:** sum months across **all volume-eligible lines** (all Functional
+  Formulations; Pure Powders and `info_only` items excluded) → one total `M`.
+- **Curve:** `volume_pct(M)` interpolates a console-tunable anchor table — default knots
+  `{1:0%, 3:14%, 6:29%, 12:43%}` off (i.e. 100/86/71/57% of list), flat at 43% beyond 12.
+  Front-loaded, monotonic total cost. `volume_pct` is the same for every eligible line
+  (flat-at-total-level), then enters the best-of-one of §A.2.
+- **Format is decoupled from price:** capsules may be fulfilled as one larger bottle,
+  separate bottles, or cellophane refill packs at the **same price**; powders/liquids are
+  individual bottles only. Format only changes **shipping** (§A.8), which the customer
+  captures as a real saving.
+
+### A.8 Shipping (always charged)
+- **Every order is charged shipping at actual USA cost** (existing USPS flat-rate + box-fit
+  at `/admin/shipping`). Never free, never used as an incentive (not for volume, subscribe,
+  or points). Consolidation (one larger bottle vs many) lowers the real parcel cost, and
+  that saving reaches the customer directly.
+- **Ship-to US addresses only.** International customers enter a US forwarder address; we
+  charge **USA shipping only** and never quote international postage. Cart shows a note.
+  Checkout validates a US ship-to state (drives GET too).
 
 ---
 

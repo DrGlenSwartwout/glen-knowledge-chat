@@ -34,6 +34,7 @@ def test_defaults_present():
     assert s["points_redeem_per_point_cents"] == 5
     assert s["subscribe_tiers"] == [5, 10, 15]
     assert s["cadences"] == [1, 2, 3]
+    assert s["volume_anchors"] == [[1, 0], [3, 14], [6, 29], [12, 43]]
 
 def test_overrides_merge_over_defaults():
     s = pricing.load_settings({"discount_floor_pct": 0.70})
@@ -60,6 +61,8 @@ DEFAULTS = {
     "points_redeem_per_point_cents": 5,   # 1 point = 5 cents (20 points = $1)
     "subscribe_tiers": [5, 10, 15],       # % by completed-order count (1st,2nd,3rd+)
     "cadences": [1, 2, 3],                # months
+    # volume curve: [total_months, pct_off] knots, ascending; linear interp; flat beyond last
+    "volume_anchors": [[1, 0], [3, 14], [6, 29], [12, 43]],
 }
 
 def load_settings(overrides):
@@ -261,73 +264,138 @@ git commit -m "feat(pricing): points redemption clamped to points floor"
 
 ---
 
-### Task 5: `compute()` — price a whole cart (the public API)
+### Task 5: Volume curve + `compute()` — price a whole cart (the public API)
 
 **Files:**
 - Modify: `dashboard/pricing.py`
 - Test: `tests/test_pricing_engine.py`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing test for `volume_pct`**
+
+```python
+def test_volume_pct_at_anchors():
+    s = pricing.load_settings({})
+    assert pricing.volume_pct(1, s) == 0
+    assert pricing.volume_pct(3, s) == 14
+    assert pricing.volume_pct(6, s) == 29
+    assert pricing.volume_pct(12, s) == 43
+
+def test_volume_pct_interpolates_and_caps():
+    s = pricing.load_settings({})
+    assert pricing.volume_pct(2, s) == 7            # halfway 0->14
+    assert pricing.volume_pct(9, s) == 36           # halfway 29->43
+    assert pricing.volume_pct(24, s) == 43          # flat beyond the last knot
+    assert pricing.volume_pct(0, s) == 0
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `... -m pytest tests/test_pricing_engine.py -k volume_pct -v`
+Expected: FAIL with `AttributeError: ... 'volume_pct'`
+
+- [ ] **Step 3: Implement `volume_pct`**
+
+```python
+# add to dashboard/pricing.py
+def volume_pct(months, settings):
+    """Percentage discount for total cart months, linear-interpolated through the
+    console anchor table (ascending [months, pct_off] pairs); flat beyond the last knot."""
+    anchors = settings["volume_anchors"]
+    m = max(0, int(months or 0))
+    if m <= anchors[0][0]:
+        return float(anchors[0][1])
+    for (m0, p0), (m1, p1) in zip(anchors, anchors[1:]):
+        if m <= m1:
+            return p0 + (p1 - p0) * (m - m0) / (m1 - m0)
+    return float(anchors[-1][1])
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `... -m pytest tests/test_pricing_engine.py -k volume_pct -v`
+Expected: PASS (2 passed)
+
+- [ ] **Step 5: Write the failing test for `compute`**
 
 ```python
 def _fake_tax(subtotal_cents, *, channel, ship_to_state, resale_ok=False):
-    # flat 4% for HI in the test, 0 elsewhere
     return int(round(subtotal_cents * 0.04)) if ship_to_state == "HI" else 0
 
 def test_compute_one_line_subscriber_tier_and_points():
     s = pricing.load_settings({})
     items = [{"slug": "neuro-mag", "name": "Neuro Mag", "qty": 1,
-              "product": {"slug": "neuro-mag", "price_cents": 7000}, "unit_cents": 7000}]
+              "product": {"slug": "neuro-mag", "price_cents": 7000},
+              "unit_cents": 7000, "months": 1, "volume_eligible": True}]
     r = pricing.compute(items, settings=s, subscriber_tier_pct=15,
                         points_to_redeem_cents=1000, channel="retail",
                         ship_to_state="HI", tax_fn=_fake_tax)
-    # 15% off 7000 = 5950; points 1000 (floor 3010, ok) -> 4950
+    # M=1 -> volume 0%; best-of(0,15)=15%. 15% off 7000 = 5950; points 1000 -> 4950
     assert r["lines"][0]["line_total_cents"] == 4950
     assert r["discount_cents"] == 1050
     assert r["points_redeemed_cents"] == 1000
-    assert r["subtotal_cents"] == 4950
     assert r["get_cents"] == 198            # round(4950*0.04)
-    assert r["total_cents"] == 4950 + 198
-
-def test_compute_coupon_used_when_no_subscriber_tier():
-    s = pricing.load_settings({})
-    items = [{"slug": "x", "name": "X", "qty": 2,
-              "product": {"slug": "x", "price_cents": 5000}, "unit_cents": 5000}]
-    r = pricing.compute(items, settings=s, coupon_pct=10, channel="retail",
-                        ship_to_state="CA", tax_fn=_fake_tax)
-    # line list = 2*5000=10000; 10% off = 9000 (floor 2*2850=5700 ok)
-    assert r["lines"][0]["line_total_cents"] == 9000
-    assert r["get_cents"] == 0              # not HI
 
 def test_compute_subscriber_tier_beats_coupon_no_stack():
     s = pricing.load_settings({})
     items = [{"slug": "x", "name": "X", "qty": 1,
-              "product": {"slug": "x", "price_cents": 7000}, "unit_cents": 7000}]
-    # both passed; subscriber tier wins, coupon ignored (exclusivity)
+              "product": {"slug": "x", "price_cents": 7000},
+              "unit_cents": 7000, "months": 1, "volume_eligible": True}]
     r = pricing.compute(items, settings=s, subscriber_tier_pct=5, coupon_pct=40,
                         channel="retail", ship_to_state="HI", tax_fn=_fake_tax)
-    assert r["lines"][0]["line_total_cents"] == 6650   # 5% off, NOT 40%
+    assert r["lines"][0]["line_total_cents"] == 6650   # 5% (sub), coupon ignored
+
+def test_compute_volume_mix_and_match_beats_subscriber():
+    s = pricing.load_settings({})
+    # two different SKUs, 3 months each = 6 total -> volume 29% beats 15% tier
+    items = [
+        {"slug": "a", "name": "A", "qty": 1, "product": {"slug": "a", "price_cents": 7000},
+         "unit_cents": 7000, "months": 3, "volume_eligible": True},
+        {"slug": "b", "name": "B", "qty": 1, "product": {"slug": "b", "price_cents": 7000},
+         "unit_cents": 7000, "months": 3, "volume_eligible": True},
+    ]
+    r = pricing.compute(items, settings=s, subscriber_tier_pct=15,
+                        channel="retail", ship_to_state="CA", tax_fn=_fake_tax)
+    assert r["lines"][0]["line_total_cents"] == 4970   # 29% off 7000
+    assert r["lines"][1]["line_total_cents"] == 4970
+
+def test_compute_pure_powder_excluded_from_volume_floored_at_30():
+    s = pricing.load_settings({})
+    # Pure Powder: NOT volume_eligible (months ignored), per-SKU floor 75% of 4000 = 3000
+    items = [{"slug": "pp", "name": "Pure Powder", "qty": 1,
+              "product": {"slug": "pp", "price_cents": 4000,
+                          "sku_discount_floor_pct": 0.75, "sku_points_floor_pct": 0.75},
+              "unit_cents": 4000, "months": 12, "volume_eligible": False}]
+    r = pricing.compute(items, settings=s, subscriber_tier_pct=15,
+                        points_to_redeem_cents=1000, channel="retail",
+                        ship_to_state="CA", tax_fn=_fake_tax)
+    # volume 0 (excluded); 15% off 4000 = 3400 (floor 3000); points -> 3000 (only 400 used)
+    assert r["lines"][0]["line_total_cents"] == 3000
+    assert r["points_redeemed_cents"] == 400
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 6: Run test to verify it fails**
 
 Run: `... -m pytest tests/test_pricing_engine.py -k compute -v`
 Expected: FAIL with `AttributeError: ... 'compute'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **Step 7: Implement `compute`**
 
 ```python
 # add to dashboard/pricing.py
 def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
             points_to_redeem_cents=0, channel="retail", ship_to_state=None,
             resale_ok=False, tax_fn=None):
-    """Price a cart. One % discount only: subscriber tier if present (a subscription
-    order), else the coupon. Points apply after, then GET tax on the discounted subtotal.
+    """Price a cart. The single % discount per line = max(volume_pct, sub-or-coupon).
+    Subscriber tier and coupon never stack (subscriber wins if present). Points apply
+    after, then GET tax on the discounted subtotal. Base is the TRUE single-unit list, so
+    floors always anchor to list.
 
-    items: [{"slug","name","qty","product"(dict from _get_product),"unit_cents"}]
+    items: [{"slug","name","qty","product","unit_cents","months","volume_eligible"}]
     Returns a dict with per-line breakdown + order totals.
     """
-    pct = subscriber_tier_pct if subscriber_tier_pct else (coupon_pct or 0)
+    base_pct = subscriber_tier_pct if subscriber_tier_pct else (coupon_pct or 0)
+    total_months = sum(int(it.get("months") or 0) for it in items if it.get("volume_eligible"))
+    vpct = volume_pct(total_months, settings)
     points_left = max(0, int(points_to_redeem_cents or 0))
     lines, subtotal, total_discount, total_points = [], 0, 0, 0
 
@@ -336,47 +404,47 @@ def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
         qty = int(it["qty"])
         unit_list = int(it["unit_cents"])
         line_list = unit_list * qty
+        line_pct = max(vpct if it.get("volume_eligible") else 0, base_pct)
         disc_floor = unit_floor_cents(p, unit_list, settings, "discount") * qty
         pts_floor = unit_floor_cents(p, unit_list, settings, "points") * qty
 
-        after_disc = apply_discount(line_list, pct, disc_floor)
+        after_disc = apply_discount(line_list, line_pct, disc_floor)
         after_pts, used = apply_points(after_disc, points_left, pts_floor)
         points_left -= used
 
         lines.append({
             "slug": it["slug"], "name": it["name"], "qty": qty,
             "list_cents": line_list, "discount_cents": line_list - after_disc,
-            "points_cents": used, "line_total_cents": after_pts,
+            "points_cents": used, "line_total_cents": after_pts, "pct_applied": line_pct,
         })
         subtotal += after_pts
         total_discount += (line_list - after_disc)
         total_points += used
 
-    get_cents = 0
-    if tax_fn:
-        get_cents = tax_fn(subtotal, channel=channel, ship_to_state=ship_to_state,
-                           resale_ok=resale_ok)
+    get_cents = tax_fn(subtotal, channel=channel, ship_to_state=ship_to_state,
+                       resale_ok=resale_ok) if tax_fn else 0
     return {
         "lines": lines,
         "subtotal_cents": subtotal,
         "discount_cents": total_discount,
         "points_redeemed_cents": total_points,
+        "volume_months": total_months,
+        "volume_pct": vpct,
         "get_cents": get_cents,
         "total_cents": subtotal + get_cents,
-        "discount_pct_applied": pct,
     }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 8: Run test to verify it passes**
 
-Run: `... -m pytest tests/test_pricing_engine.py -k compute -v`
-Expected: PASS (3 passed)
+Run: `... -m pytest tests/test_pricing_engine.py -k "compute or volume_pct" -v`
+Expected: PASS (6 passed)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add dashboard/pricing.py tests/test_pricing_engine.py
-git commit -m "feat(pricing): compute() cart pricing with exclusivity + floors + tax"
+git commit -m "feat(pricing): volume curve + compute() best-of-one with floors and tax"
 ```
 
 ---
@@ -551,8 +619,13 @@ def api_pricing_preview():
         if not p:
             continue                      # unavailable/inactive → skip, never silently mis-price
         qty = max(1, int(it.get("qty") or 1))
-        items.append({"slug": p["slug"], "name": p.get("name", p["slug"]),
-                      "qty": qty, "product": p, "unit_cents": _qty_unit_cents(p, qty)})
+        # base = TRUE single-unit list (volume is now a discount candidate, not a base price)
+        items.append({
+            "slug": p["slug"], "name": p.get("name", p["slug"]), "qty": qty, "product": p,
+            "unit_cents": int(p.get("price_cents") or 0),
+            "months": qty * int(p.get("months_per_unit", 1)),   # 30-cap bottle = 1 month
+            "volume_eligible": bool(p.get("volume_eligible", True)),  # Pure Powders set False
+        })
     result = _pricing.compute(
         items, settings=settings,
         subscriber_tier_pct=data.get("subscriber_tier_pct"),
@@ -592,12 +665,17 @@ Expected: PASS (all)
 
 ```markdown
 # Pricing engine (dashboard/pricing.py)
-Single source of truth for cart pricing. One % discount only (subscriber tier is
-exclusive of coupons). Discount floor 57% of list (wholesale), points floor 43%.
-Override globally in `pricing-settings.json` (DATA_DIR); override a single high-cost
-SKU with `sku_discount_floor_pct` / `sku_points_floor_pct` or absolute `wholesale_cents`
-on the product record. Points (dashboard/points.py) earn 5% of full-price spend only,
-redeem above the floor, and reduce the GET tax base. Preview: POST /api/pricing/preview.
+Single source of truth for cart pricing. The one % discount per line = max(volume, subscriber
+tier or coupon) — best-of-one; subscriber tier never stacks with a coupon. Volume is a smooth
+months-based curve (`volume_anchors`, mix-and-match across all Functional Formulations;
+Pure Powders and `info_only` excluded via `volume_eligible=false`; 30-cap bottle = 1 month,
+larger formats via `months_per_unit`). Base is the true single-unit list, so floors anchor to
+list: discount floor 57% (wholesale), points floor 43%. Override globally in
+`pricing-settings.json` (DATA_DIR); override a single SKU with `sku_discount_floor_pct` /
+`sku_points_floor_pct` or absolute `wholesale_cents` (Pure Powders use 0.75 → $30). Points
+(dashboard/points.py) earn 5% of full-price spend only, redeem above the floor, reduce the GET
+tax base. Shipping is added by the caller at checkout (always charged, actual USA cost, US
+ship-to only), never by the engine. Preview: POST /api/pricing/preview.
 ```
 
 - [ ] **Step 3: Commit**
@@ -611,7 +689,7 @@ git commit -m "docs(pricing): operator notes for the pricing engine"
 
 ## Self-review
 
-- **Spec coverage:** §A.2 exclusivity → Task 5 (`subscriber_tier_pct` beats coupon). §A.3 floors + per-SKU override → Tasks 2,7. §A.4 order of operations → Task 5. §A.5 points earn/redeem → Tasks 4,6. §A.6 single function → Task 5. Console-editable per-SKU floors → fields read in Task 2/7 (the Products-console *edit UI* is a Plan 2 task, noted below). GET-tax-on-discounted-base → Task 5.
+- **Spec coverage:** §A.2 best-of-one (volume vs subscriber vs coupon) → Task 5. §A.3 floors + per-SKU override (incl. Pure Powder 0.75/$30) → Tasks 2,5,7. §A.4 order of operations → Task 5. §A.5 points earn/redeem → Tasks 4,6. §A.6 single function → Task 5. §A.7 volume curve (months, mix-and-match, eligibility) → Tasks 1,5,7. GET-tax-on-discounted-base → Task 5. Console-editable per-SKU floors → fields read in Task 2/7 (the Products-console *edit UI* is a Plan 2 task). §A.8 shipping is a checkout concern (Plan 2), not the engine.
 - **Deferred to Plan 2 (recurring orders):** the Products-console edit UI for per-SKU floor fields; the console editor for `pricing-settings.json`; wiring `compute()` into live `/reorder/checkout` + `/begin/checkout`; subscriptions table, Stripe vault setup, scheduler, dunning, manage portal, emails; earning points on full-price orders at checkout time.
 - **Placeholders:** none — every code step is complete.
 - **Type consistency:** `unit_floor_cents(product, list_cents, settings, kind)`, `apply_discount(list_cents, pct, floor_cents)`, `apply_points(price_cents, points_cents, floor_cents) -> (new, used)`, `compute(...) -> dict` are used identically across Tasks 2–7.
