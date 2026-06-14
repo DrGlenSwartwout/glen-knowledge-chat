@@ -5528,6 +5528,7 @@ def practitioner_application():
 # ── Practitioner wholesale portal (Phase 3: auth + registration + cart) ───────
 from dashboard import practitioner_portal as _pp
 from dashboard import wholesale_checkout as _wc
+from dashboard import dropship_checkout as _dropship
 
 
 def _send_practitioner_magic_link(to_email, name, magic_url):
@@ -5552,6 +5553,13 @@ def _practitioner_session_pid():
 @app.route("/practitioner/portal")
 def practitioner_portal_page():
     return send_from_directory(STATIC, "practitioner-portal.html")
+
+
+@app.route("/practitioner/dropship")
+def practitioner_dropship_page():
+    resp = send_from_directory(STATIC, "practitioner-dropship.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
 
 @app.route("/practitioner/register", methods=["GET"])
@@ -5737,6 +5745,91 @@ def api_practitioner_checkout():
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       address=ship, channel="wholesale", get_cents=out.get("get_cents", 0))
+        if method in ("zelle", "wise"):
+            out["pay_instructions"] = _ALT_PAY.get(method, {})
+        elif method == "card":
+            out["stripe_url"] = _stripe_checkout_url_for_order(out, prac["email"], _session_token)
+    return jsonify(out), (200 if out.get("ok") else 422)
+
+
+@app.route("/api/practitioner/dropship/quote", methods=["GET", "POST"])
+def api_practitioner_dropship_quote():
+    """Return per-line drop-ship wholesale pricing for the practitioner's cart."""
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    data = _pp.portal_data(pid) or {}
+    items = data.get("cart") or []
+    modules = int(data.get("modules_completed", 0) or 0)
+    settings = _dropship._settings()
+    total_bottles = sum(int(it.get("qty", 0)) for it in items)
+    lines = []
+    subtotal_cents = 0
+    for it in items:
+        slug = it["slug"]
+        qty = int(it.get("qty", 1))
+        try:
+            from app import _get_product
+            retail = _get_product(slug)["price_cents"]
+        except Exception:
+            retail = 0
+        if retail and total_bottles > 0:
+            dl = _dropship.dropship_line_cents(
+                retail_cents=retail, qty=total_bottles,
+                modules=modules, settings=settings)
+        else:
+            dl = {"base_cents": 0, "fee_cents": 0, "unit_cents": 0, "line_cents": 0}
+        line_total = dl["unit_cents"] * qty
+        subtotal_cents += line_total
+        lines.append({"slug": slug, "qty": qty, "unit_cents": dl["unit_cents"],
+                      "base_cents": dl["base_cents"], "fee_cents": dl["fee_cents"],
+                      "line_cents": line_total})
+    return jsonify({"ok": True, "lines": lines, "subtotal_cents": subtotal_cents})
+
+
+@app.route("/api/practitioner/dropship/checkout", methods=["POST"])
+def api_practitioner_dropship_checkout():
+    """Practitioner pays drop-ship wholesale; we ship to the patient."""
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    data = _pp.portal_data(pid)
+    if not data:
+        return jsonify({"ok": False, "error": "account not found"}), 404
+    if not data.get("wholesale_unlocked"):
+        return jsonify({"ok": False,
+                        "error": "Finish your first certification module to unlock ordering."}), 403
+    items = data.get("cart") or []
+    if not items:
+        return jsonify({"ok": False, "error": "Your cart is empty."}), 400
+    prac = {"id": pid, "modules_completed": data.get("modules_completed", 0),
+            "email": data.get("email"), "name": data.get("name") or ""}
+    _body = request.get_json(silent=True) or {}
+    method = (_body.get("method") or "zelle").strip().lower()
+    _session_token = (_body.get("token") or "").strip()
+    if method == "card" and not _STRIPE_ACTIVE:
+        method = "zelle"   # card not enabled yet
+    if method not in ("zelle", "wise", "card"):
+        method = "zelle"
+    # Patient shipping address is required for drop-ship.
+    patient_addr_raw = _body.get("patient_address") or {}
+    ship = _normalize_ship_address(patient_addr_raw, fallback_name="")
+    if not ship:
+        return jsonify({"ok": False, "error": "patient_address is required"}), 400
+    try:
+        out = _dropship.build_dropship_order(items, prac, patient_ship=ship, method=method)
+    except Exception as e:
+        print(f"[dropship-checkout] failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "Checkout failed. Please try again."}), 500
+    if out.get("ok"):
+        _pp.cart_clear(pid)
+        _ingest_order(source="dropship",
+                      external_ref=str(out.get("invoice_id") or ""),
+                      email=(prac.get("email") or ""),
+                      name=(prac.get("name") or ""),
+                      total_cents=int(round((out.get("total") or 0) * 100)),
+                      address=ship, channel="wholesale",
+                      get_cents=out.get("get_cents", 0))
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":

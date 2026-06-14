@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Drop-Ship Portal · Remedy Match</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+      --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --radius:14px;
+      --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
+    :root[data-theme="light"]{ --bg:#FBF8F3; --surface:#FFFFFF; --surface-2:#F4ECDE;
+      --border:#E2D9C9; --cream:#1E2A2A; --muted:#5F6B6B; --gold:#B08A3E; --green:#2D7A6A; }
+    *{box-sizing:border-box}
+    body{ margin:0; background:var(--bg); color:var(--cream); font-family:var(--font); line-height:1.6; }
+    .wrap{ max-width:760px; margin:0 auto; padding:34px 20px; }
+    h1,h2{ font-family:var(--heading); font-weight:700; margin:0; }
+    h1{ font-size:24px; } h2{ font-size:17px; }
+    .muted{ color:var(--muted); }
+    .panel{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-top:16px; }
+    input,select{ padding:9px 10px; border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; background:var(--surface-2); color:var(--cream); }
+    input::placeholder{ color:#6f7d6f; }
+    select option{ background:var(--surface-2); }
+    button{ background:var(--green); color:#fff; border:0; border-radius:8px; padding:9px 14px; font-weight:600; cursor:pointer; font-family:inherit; }
+    button.ghost{ background:transparent; color:var(--gold); border:1px solid var(--border); }
+    button:disabled{ opacity:.5; cursor:default; }
+    table{ width:100%; border-collapse:collapse; margin-top:12px; }
+    td,th{ text-align:left; padding:8px 6px; border-bottom:1px solid var(--border); font-size:14px; }
+    th{ color:var(--muted); font-weight:600; }
+    .qty-stepper{ display:flex; align-items:center; gap:6px; }
+    .qty-stepper button{ padding:4px 10px; font-size:14px; }
+    .qty-val{ min-width:32px; text-align:center; font-size:14px; }
+    .total{ font-size:18px; font-weight:700; font-family:var(--heading); margin-top:12px; color:var(--gold); }
+    .notice{ background:var(--surface-2); border:1px solid var(--border); color:var(--gold); border-radius:10px; padding:12px; font-size:14px; margin-top:10px; }
+    .row{ display:flex; gap:8px; align-items:center; }
+    .form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+    .form-grid .full{ grid-column:1/-1; }
+    .form-grid input{ width:100%; }
+    #msg{ margin-top:12px; font-size:14px; color:#8fd6a3; }
+    #msg.err{ color:#e09080; }
+    .auth-notice{ text-align:center; padding:40px 20px; }
+    .auth-notice a{ color:var(--gold); }
+    .billing-note{ font-size:13px; color:var(--muted); margin-top:8px; border-left:3px solid var(--border); padding-left:10px; }
+  </style>
+  <script>(function(){var t=localStorage.getItem('rm-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
+</head>
+<body>
+<div class="wrap">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+    <div>
+      <h1>Drop-Ship Portal</h1>
+      <div class="muted" id="who">Loading&hellip;</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <a href="/practitioner/portal" style="color:var(--gold);font-size:13px">Wholesale portal</a>
+      <button class="ghost" onclick="toggleTheme()" id="theme-toggle" style="white-space:nowrap">Light</button>
+    </div>
+  </div>
+
+  <div id="auth-wall" class="auth-notice" style="display:none">
+    <div style="font-size:18px;font-weight:700;font-family:var(--heading);margin-bottom:10px">Sign in required</div>
+    <p>Please sign in to your practitioner portal first.</p>
+    <a href="/practitioner/portal">Go to practitioner portal &rarr;</a>
+  </div>
+
+  <div id="main-content" style="display:none">
+    <!-- Cart -->
+    <div class="panel">
+      <h2>Your Functional Formulations cart</h2>
+      <div class="muted" style="font-size:13px;margin:4px 0 10px">Adjust quantities below. Drop-ship pricing reflects your total order volume and certification level.</div>
+      <div id="empty-cart" class="notice" style="display:none">Your cart is empty. Add products from your <a href="/practitioner/portal" style="color:var(--gold)">wholesale portal</a> first.</div>
+      <table id="cart-table" style="display:none">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Unit price</th>
+            <th>Qty</th>
+            <th>Line total</th>
+          </tr>
+        </thead>
+        <tbody id="cart-body"></tbody>
+      </table>
+      <div class="total" id="subtotal"></div>
+      <div class="billing-note" id="billing-note" style="display:none">
+        You pay this amount. You bill your patient separately at your own price.
+      </div>
+    </div>
+
+    <!-- Patient shipping address -->
+    <div class="panel">
+      <h2>Patient shipping address</h2>
+      <div class="muted" style="font-size:13px;margin:4px 0 8px">We ship directly to your patient. US addresses only — for international patients, use a US forwarding service.</div>
+      <div class="form-grid">
+        <div class="full">
+          <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Patient name</label>
+          <input id="pat-name" placeholder="Patient full name" style="width:100%">
+        </div>
+        <div class="full">
+          <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Address line 1</label>
+          <input id="addr1" placeholder="Street address" style="width:100%">
+        </div>
+        <div class="full">
+          <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Address line 2 (optional)</label>
+          <input id="addr2" placeholder="Apt, suite, unit, etc." style="width:100%">
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">City</label>
+          <input id="addr-city" placeholder="City" style="width:100%">
+        </div>
+        <div style="display:flex;gap:8px">
+          <div style="flex:1">
+            <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">State</label>
+            <input id="addr-state" placeholder="CA" maxlength="2" style="width:100%;text-transform:uppercase">
+          </div>
+          <div style="flex:1">
+            <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">ZIP</label>
+            <input id="addr-zip" placeholder="90001" style="width:100%">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Payment and checkout -->
+    <div class="panel">
+      <h2>Payment</h2>
+      <div class="muted" style="font-size:13px;margin:4px 0 12px">Choose your payment method and place the drop-ship order.</div>
+      <div>
+        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:6px">Payment method</label>
+        <select id="pay-method" style="width:100%;max-width:320px">
+          <option value="zelle">Zelle (US banks)</option>
+          <option value="wise">Wise (international)</option>
+          <option value="card" id="opt-card" style="display:none">Card</option>
+        </select>
+      </div>
+      <button id="checkout-btn" style="margin-top:16px" disabled>Place drop-ship order</button>
+      <div id="msg"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '';
+var $ = function(id){ return document.getElementById(id); };
+var money = function(c){ return '$' + (Number(c||0)/100).toFixed(2); };
+var cartData = [];  // [{slug, qty, unit_cents, line_cents}]
+var quoteLoaded = false;
+
+function toggleTheme(){
+  var next = document.documentElement.getAttribute('data-theme')==='light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('rm-theme', next);
+  var b=$('theme-toggle'); if(b) b.textContent = next==='light' ? 'Dark' : 'Light';
+}
+(function(){ var t=document.documentElement.getAttribute('data-theme'); var b=$('theme-toggle'); if(b) b.textContent = t==='light' ? 'Dark' : 'Light'; })();
+
+function setMsg(text, isErr){
+  var el = $('msg'); el.textContent = text;
+  el.className = isErr ? 'err' : '';
+}
+
+function renderCart(lines){
+  cartData = lines || [];
+  var tbody = $('cart-body');
+  tbody.innerHTML = '';
+  if(!cartData.length){
+    $('empty-cart').style.display = 'block';
+    $('cart-table').style.display = 'none';
+    $('subtotal').textContent = '';
+    $('billing-note').style.display = 'none';
+    $('checkout-btn').disabled = true;
+    return;
+  }
+  $('empty-cart').style.display = 'none';
+  $('cart-table').style.display = 'table';
+  var total = 0;
+  cartData.forEach(function(it){
+    total += (it.line_cents || 0);
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td style="font-weight:600">'+escHtml(it.slug)+'</td>' +
+      '<td>'+money(it.unit_cents)+'</td>' +
+      '<td>' +
+        '<div class="qty-stepper">' +
+          '<button class="ghost" data-slug="'+escHtml(it.slug)+'" data-dir="-1" onclick="stepQty(this)">&#8722;</button>' +
+          '<span class="qty-val">'+it.qty+'</span>' +
+          '<button class="ghost" data-slug="'+escHtml(it.slug)+'" data-dir="1" onclick="stepQty(this)">&#43;</button>' +
+        '</div>' +
+      '</td>' +
+      '<td>'+money(it.line_cents)+'</td>';
+    tbody.appendChild(tr);
+  });
+  $('subtotal').textContent = 'Drop-ship total: ' + money(total);
+  $('billing-note').style.display = 'block';
+  $('checkout-btn').disabled = false;
+}
+
+function escHtml(s){ return (s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+function stepQty(btn){
+  var slug = btn.getAttribute('data-slug');
+  var dir = parseInt(btn.getAttribute('data-dir'), 10);
+  var it = cartData.filter(function(x){ return x.slug === slug; })[0];
+  if(!it) return;
+  var newQty = Math.max(0, it.qty + dir);
+  // update via cart endpoint then refresh quote
+  fetch('/api/practitioner/cart', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token: TOKEN, slug: slug, qty: newQty})
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if(d.ok) loadQuote();
+  });
+}
+
+function loadQuote(){
+  fetch('/api/practitioner/dropship/quote?token=' + encodeURIComponent(TOKEN))
+    .then(function(r){
+      if(r.status === 401){ showAuthWall(); return null; }
+      return r.json();
+    })
+    .then(function(d){
+      if(!d) return;
+      if(!d.ok){ setMsg(d.error || 'Could not load pricing.', true); return; }
+      renderCart(d.lines);
+      quoteLoaded = true;
+    })
+    .catch(function(){ setMsg('Network error loading quote.', true); });
+}
+
+function loadPortalData(){
+  fetch('/api/practitioner/portal-data?token=' + encodeURIComponent(TOKEN))
+    .then(function(r){
+      if(r.status === 401){ showAuthWall(); return null; }
+      return r.json();
+    })
+    .then(function(d){
+      if(!d) return;
+      if(!d.ok){ showAuthWall(); return; }
+      $('who').textContent = (d.name || '') + (d.practice_name ? ' \xb7 ' + d.practice_name : '');
+      // show/hide card option
+      if(d.stripe_active) $('opt-card').style.display = '';
+      $('auth-wall').style.display = 'none';
+      $('main-content').style.display = 'block';
+      loadQuote();
+    })
+    .catch(function(){ showAuthWall(); });
+}
+
+function showAuthWall(){
+  $('auth-wall').style.display = 'block';
+  $('main-content').style.display = 'none';
+  $('who').textContent = '';
+}
+
+$('checkout-btn').addEventListener('click', function(){
+  if(!quoteLoaded || !cartData.length){
+    setMsg('Cart is empty or not loaded.', true); return;
+  }
+  var name = ($('pat-name').value || '').trim();
+  var addr1 = ($('addr1').value || '').trim();
+  var addr2 = ($('addr2').value || '').trim();
+  var city = ($('addr-city').value || '').trim();
+  var state = ($('addr-state').value || '').trim().toUpperCase();
+  var zip = ($('addr-zip').value || '').trim();
+  if(!name || !addr1 || !city || !state || !zip){
+    setMsg('Please fill in all required patient address fields (name, address, city, state, ZIP).', true);
+    return;
+  }
+  var method = $('pay-method').value || 'zelle';
+  var patient_address = {name: name, street: addr1, city: city, state: state, zip: zip, country: 'US'};
+  if(addr2) patient_address.address2 = addr2;
+
+  $('checkout-btn').disabled = true;
+  setMsg('Placing your drop-ship order…', false);
+
+  fetch('/api/practitioner/dropship/checkout', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token: TOKEN, method: method, patient_address: patient_address})
+  })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.ok){
+        if(d.stripe_url){ window.location.href = d.stripe_url; return; }
+        var inv = d.invoice_id || d.doc_number || '';
+        var tot = typeof d.total === 'number' ? money(Math.round(d.total * 100)) : '';
+        var m = 'Order placed' + (inv ? ' — Invoice #' + inv : '') + (tot ? ' for ' + tot : '') + '.';
+        if(d.pay_instructions && d.pay_instructions.to){
+          m += ' Pay by ' + (d.pay_instructions.label || method) + ': ' + d.pay_instructions.to;
+          if(inv) m += ' (memo: Invoice #' + inv + ')';
+          m += '.';
+        }
+        setMsg(m, false);
+        // reload quote to reflect cleared cart
+        loadQuote();
+      } else {
+        setMsg(d.error || 'Checkout failed. Please try again.', true);
+        $('checkout-btn').disabled = false;
+      }
+    })
+    .catch(function(){
+      setMsg('Network error. Please try again.', true);
+      $('checkout-btn').disabled = false;
+    });
+});
+
+loadPortalData();
+</script>
+</body>
+</html>
