@@ -34,6 +34,16 @@ def test_resolve_selling_rejects_below_map():
     with pytest.raises(pp.MapViolation):
         pp.resolve_selling_cents({"markup_pct": -10}, retail_cents=7000, map_cents=6700)      # $63 < MAP
 
+def test_resolve_selling_edge_cases():
+    # exactly at MAP is allowed (strict-less-than floor)
+    assert pp.resolve_selling_cents({"price_cents": 6700}, retail_cents=7000, map_cents=6700) == 6700
+    # markup_pct 0 resolves to retail (not the empty-default branch), and clears MAP here
+    assert pp.resolve_selling_cents({"markup_pct": 0}, retail_cents=7000, map_cents=6700) == 7000
+    # an explicit price_cents 0 is honored (not treated as unset) -> below MAP -> raises
+    import pytest
+    with pytest.raises(pp.MapViolation):
+        pp.resolve_selling_cents({"price_cents": 0}, retail_cents=7000, map_cents=6700)
+
 def test_companion_figure_helper():
     # given a dollar price, report the implied markup %, and vice versa, for the UI
     assert pp.markup_pct_for(8400, 7000) == 20.0
@@ -54,8 +64,8 @@ def test_quote_line_qty_uses_blended_volume():
     # 12 bottles uncertified -> base $47.11/bottle; selling $80 each
     q = pp.quote_line(selling_cents=8000, qty=12, modules=0, settings=s)
     assert q["base_cents"] == 4711
-    assert q["fee_cents"] == round(0.33 * (8000 - 4711))
-    assert q["margin_cents"] == 8000 - 4711 - q["fee_cents"]
+    assert q["fee_cents"] == 1085          # round(0.33 * 3289) — hard value, not the formula
+    assert q["margin_cents"] == 2204       # 8000 - 4711 - 1085
 
 def test_margin_never_negative():
     s = pp.load_settings({})

@@ -51,7 +51,11 @@ def resolve_selling_cents(price_input, *, retail_cents, map_cents):
 def quote_line(*, selling_cents, qty, modules, settings):
     """Per-bottle economics for a drop-ship line. base = blended at this qty+cert;
     fee = 33% of markup; margin = selling - base - fee (>=0); dropship_wholesale = base+fee
-    (what the practitioner pays in practitioner-paid mode)."""
+    (what the practitioner pays in practitioner-paid mode).
+
+    NOTE: `selling_cents` must already have passed MAP validation via
+    `resolve_selling_cents` — quote_line does NOT re-check MAP (the advertised-price floor
+    is enforced at price resolution, before a quote is ever built)."""
     base = drop_ship_base_cents(qty, modules)
     fee = service_fee_cents(selling_cents, base, settings)
     margin = max(0, int(selling_cents) - base - fee)
