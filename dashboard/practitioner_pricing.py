@@ -47,3 +47,18 @@ def resolve_selling_cents(price_input, *, retail_cents, map_cents):
     if s < int(map_cents):
         raise MapViolation(f"{s} below MAP {map_cents}")
     return s
+
+def quote_line(*, selling_cents, qty, modules, settings):
+    """Per-bottle economics for a drop-ship line. base = blended at this qty+cert;
+    fee = 33% of markup; margin = selling - base - fee (>=0); dropship_wholesale = base+fee
+    (what the practitioner pays in practitioner-paid mode)."""
+    base = drop_ship_base_cents(qty, modules)
+    fee = service_fee_cents(selling_cents, base, settings)
+    margin = max(0, int(selling_cents) - base - fee)
+    return {
+        "line_selling_cents": int(selling_cents),
+        "base_cents": base,
+        "fee_cents": fee,
+        "margin_cents": margin,
+        "dropship_wholesale_cents": base + fee,
+    }

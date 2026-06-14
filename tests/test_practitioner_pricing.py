@@ -38,3 +38,26 @@ def test_companion_figure_helper():
     # given a dollar price, report the implied markup %, and vice versa, for the UI
     assert pp.markup_pct_for(8400, 7000) == 20.0
     assert pp.price_for_markup(20, 7000) == 8400
+
+def test_margin_and_dropship_wholesale():
+    s = pp.load_settings({})
+    # S=$80, base=$50 -> fee $9.90 -> margin $20.10; practitioner-paid pays base+fee=$59.90
+    q = pp.quote_line(selling_cents=8000, qty=1, modules=0, settings=s)
+    assert q["base_cents"] == 5000
+    assert q["fee_cents"] == 990
+    assert q["margin_cents"] == 2010
+    assert q["dropship_wholesale_cents"] == 5990       # what practitioner-paid mode pays us
+    assert q["line_selling_cents"] == 8000
+
+def test_quote_line_qty_uses_blended_volume():
+    s = pp.load_settings({})
+    # 12 bottles uncertified -> base $47.11/bottle; selling $80 each
+    q = pp.quote_line(selling_cents=8000, qty=12, modules=0, settings=s)
+    assert q["base_cents"] == 4711
+    assert q["fee_cents"] == round(0.33 * (8000 - 4711))
+    assert q["margin_cents"] == 8000 - 4711 - q["fee_cents"]
+
+def test_margin_never_negative():
+    s = pp.load_settings({})
+    q = pp.quote_line(selling_cents=5000, qty=1, modules=0, settings=s)   # S == base, fee 0
+    assert q["margin_cents"] == 0
