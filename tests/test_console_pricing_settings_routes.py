@@ -86,3 +86,12 @@ def test_post_rejects_invalid(tmp_path, monkeypatch):
     assert r.status_code == 400
     assert any("discount_floor_pct" in e for e in r.get_json()["errors"])
     assert not _app._PRICING_SETTINGS_PATH.exists()
+
+
+def test_console_page_served_no_store(tmp_path, monkeypatch):
+    _app = _client(tmp_path, monkeypatch)
+    c = _app.app.test_client()
+    r = c.get("/console/pricing-settings")
+    assert r.status_code == 200
+    assert b"Pricing" in r.data
+    assert "no-store" in r.headers.get("Cache-Control", "")

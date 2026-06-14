@@ -6030,6 +6030,14 @@ def practitioner_settings_page():
     return resp
 
 
+@app.route("/console/pricing-settings")
+def console_pricing_settings_page():
+    resp = send_from_directory(STATIC, "console-pricing-settings.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/practitioner/settings", methods=["GET"])
 def api_practitioner_settings_get():
     pid = _practitioner_session_pid()

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pricing Settings - Business OS</title>
+<style>
+  :root { --bg:#0a150d; --surface:#111f16; --surface2:#162318; --border:#21472d;
+          --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --red:#c0432b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--cream);
+         font-family:"Open Sans",system-ui,sans-serif; padding:24px; }
+  body > :not(.op-nav-bar):not(.op-nav-sub):not(#gate):not(script):not(style) {
+    max-width:1280px; margin-left:auto; margin-right:auto; }
+  h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+  .panel { background:var(--surface); border:1px solid var(--border); border-radius:12px;
+           padding:18px; margin-bottom:16px; }
+  .panel h2 { font-family:"Raleway",sans-serif; font-size:15px; margin-bottom:12px; }
+  label { display:block; font-size:13px; font-weight:600; margin:12px 0 4px; }
+  .hint { color:var(--muted); font-size:11px; font-weight:400; margin-top:3px; line-height:1.4; }
+  input { width:100%; padding:9px 11px; background:var(--bg); color:var(--cream);
+          border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; }
+  .field { min-width:0; }
+  table { width:100%; border-collapse:collapse; margin-top:6px; }
+  th { text-align:left; color:var(--muted); font-size:11px; font-weight:600;
+       text-transform:uppercase; letter-spacing:.04em; padding:4px 6px; }
+  td { padding:4px 6px; }
+  td input { padding:7px 9px; }
+  .btn { font-size:13px; border:1px solid var(--border); background:transparent;
+         color:var(--cream); border-radius:8px; padding:9px 16px; cursor:pointer; font-family:inherit; }
+  .btn:hover { border-color:var(--gold); color:var(--gold); }
+  .btn.primary { background:var(--gold); color:#0a150d; border-color:var(--gold); font-weight:600; }
+  .btn.small { font-size:12px; padding:6px 12px; }
+  .actions { display:flex; gap:10px; margin-top:18px; align-items:center; flex-wrap:wrap; }
+  #status { font-size:13px; color:var(--green); min-height:18px; }
+  #status.err { color:var(--red); white-space:pre-wrap; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; line-height:1.4; }
+  pre { background:var(--surface2); border:1px solid var(--border); border-radius:8px;
+        padding:12px; font-size:13px; color:var(--cream); white-space:pre-wrap;
+        word-break:break-word; margin-top:10px; }
+  #gate { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; }
+  #gate input { max-width:280px; }
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="bos" data-sub="pricing-settings"></script>
+  <div id="gate"><div style="text-align:center">
+    <p style="margin-bottom:10px;color:var(--muted)">Enter console key</p>
+    <input id="key" type="password" placeholder="console key" />
+    <button onclick="unlock()" style="padding:10px 14px;margin-left:6px;border-radius:8px;border:1px solid var(--border);background:var(--gold);color:#0a150d;cursor:pointer">Unlock</button>
+  </div></div>
+
+  <h1>Pricing Settings</h1>
+  <div class="sub">Edit the pricing engine and rewards go-live tunables. Changes apply to the next order.</div>
+
+  <div class="panel">
+    <h2>Discounts &amp; points</h2>
+    <div class="grid">
+      <div class="field">
+        <label>Wholesale / discount floor (% of list)</label>
+        <input id="discount_floor_pct" type="number" step="0.01" />
+        <div class="hint" id="hint_discount_floor_pct"></div>
+      </div>
+      <div class="field">
+        <label>Points floor (% of list)</label>
+        <input id="points_floor_pct" type="number" step="0.01" />
+        <div class="hint" id="hint_points_floor_pct"></div>
+      </div>
+      <div class="field">
+        <label>Points earned (% of full-price spend)</label>
+        <input id="points_earn_pct" type="number" step="0.01" />
+        <div class="hint" id="hint_points_earn_pct"></div>
+      </div>
+      <div class="field">
+        <label>Point redemption value (cents per point)</label>
+        <input id="points_redeem_per_point_cents" type="number" step="1" min="0" />
+        <div class="hint" id="hint_points_redeem_per_point_cents"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Volume curve</h2>
+    <table>
+      <thead><tr><th>Months</th><th>Discount (%)</th><th></th></tr></thead>
+      <tbody id="anchors"></tbody>
+    </table>
+    <div class="actions">
+      <button class="btn small" onclick="addAnchor()">Add anchor</button>
+    </div>
+    <div class="note">Linear-interpolated volume discount by total cart months; first row should be [1, 0].</div>
+  </div>
+
+  <div class="panel">
+    <h2>Subscriptions</h2>
+    <div class="grid">
+      <div class="field">
+        <label>Subscribe tiers (% off, comma-separated)</label>
+        <input id="subscribe_tiers" type="text" placeholder="5, 10, 15" />
+        <div class="hint">Whole percents, for example 5, 10, 15.</div>
+      </div>
+      <div class="field">
+        <label>Cadences (months, comma-separated)</label>
+        <input id="cadences" type="text" placeholder="1, 2, 3" />
+        <div class="hint">Shipping cadences in months, for example 1, 2, 3.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Rewards &amp; referrals</h2>
+    <div class="grid">
+      <div class="field">
+        <label>Referral reward (% of referred sale)</label>
+        <input id="referral_reward_pct" type="number" step="0.01" />
+        <div class="hint" id="hint_referral_reward_pct"></div>
+      </div>
+      <div class="field">
+        <label>Cash-out face value (% paid out)</label>
+        <input id="cash_out_face_pct" type="number" step="0.01" />
+        <div class="hint" id="hint_cash_out_face_pct"></div>
+      </div>
+      <div class="field">
+        <label>Cash-out review threshold ($)</label>
+        <input id="cash_out_threshold_cents" type="number" step="0.01" min="0" />
+        <div class="hint" id="hint_cash_out_threshold_cents"></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" onclick="save()">Save</button>
+      <button class="btn" onclick="resetToDefaults()">Reset to defaults</button>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Preview</h2>
+    <div class="grid">
+      <div class="field">
+        <label>Product slug</label>
+        <input id="pv_slug" type="text" placeholder="capsule" />
+      </div>
+      <div class="field">
+        <label>Quantity</label>
+        <input id="pv_qty" type="number" step="1" min="1" value="1" />
+      </div>
+      <div class="field">
+        <label>Subscriber tier (% off, optional)</label>
+        <input id="pv_tier" type="number" step="0.01" placeholder="optional" />
+      </div>
+      <div class="field">
+        <label>Points to redeem ($, optional)</label>
+        <input id="pv_points" type="number" step="0.01" placeholder="optional" />
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn" onclick="preview()">Preview price</button>
+    </div>
+    <div class="note">Save first, then preview to see the new pricing. The preview reads the live engine.</div>
+    <pre id="pv_out" style="display:none"></pre>
+  </div>
+
+<script>
+  var DEFAULTS = {};
+
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  (function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; load(); }
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+  function show(msg, isErr){
+    var s = document.getElementById('status');
+    s.textContent = msg; s.className = isErr ? 'err' : '';
+  }
+
+  function getEl(id){ return document.getElementById(id); }
+  function setVal(id, v){ getEl(id).value = (v==null ? '' : v); }
+  function getNum(id){ var v = getEl(id).value; return v === '' ? null : Number(v); }
+
+  // ----- volume anchors table -----
+  function anchorRow(months, pct){
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><input class="a-months" type="number" step="1" min="1" value="'+esc(months)+'"></td>'
+                 + '<td><input class="a-pct" type="number" step="0.01" min="0" max="100" value="'+esc(pct)+'"></td>'
+                 + '<td><button class="btn small" type="button">Remove</button></td>';
+    tr.querySelector('button').addEventListener('click', function(){ tr.remove(); });
+    return tr;
+  }
+  function setAnchors(rows){
+    var body = getEl('anchors');
+    body.innerHTML = '';
+    (rows || []).forEach(function(r){ body.appendChild(anchorRow(r[0], r[1])); });
+  }
+  function addAnchor(){ getEl('anchors').appendChild(anchorRow(1, 0)); }
+  function readAnchors(){
+    var out = [];
+    getEl('anchors').querySelectorAll('tr').forEach(function(tr){
+      var m = tr.querySelector('.a-months').value;
+      var p = tr.querySelector('.a-pct').value;
+      if (m === '' && p === '') return;
+      out.push([Number(m), Number(p)]);
+    });
+    return out;
+  }
+
+  // ----- CSV inputs -----
+  function setCsv(id, arr){ getEl(id).value = (arr || []).join(', '); }
+  function readCsv(id){
+    var v = getEl(id).value || '';
+    return v.split(',').map(function(s){ return s.trim(); })
+            .filter(function(s){ return s !== ''; }).map(Number);
+  }
+
+  // ----- populate from a file-shape object -----
+  function populate(eff){
+    eff = eff || {};
+    var r = eff.rewards || {};
+    // fractions -> percent
+    setVal('discount_floor_pct', eff.discount_floor_pct != null ? eff.discount_floor_pct * 100 : '');
+    setVal('points_floor_pct', eff.points_floor_pct != null ? eff.points_floor_pct * 100 : '');
+    setVal('points_earn_pct', eff.points_earn_pct != null ? eff.points_earn_pct * 100 : '');
+    setVal('referral_reward_pct', r.referral_reward_pct != null ? r.referral_reward_pct * 100 : '');
+    setVal('cash_out_face_pct', r.cash_out_face_pct != null ? r.cash_out_face_pct * 100 : '');
+    // cents as-is
+    setVal('points_redeem_per_point_cents', eff.points_redeem_per_point_cents);
+    // cents -> dollars
+    setVal('cash_out_threshold_cents', r.cash_out_threshold_cents != null ? r.cash_out_threshold_cents / 100 : '');
+    // table + csv
+    setAnchors(eff.volume_anchors);
+    setCsv('subscribe_tiers', eff.subscribe_tiers);
+    setCsv('cadences', eff.cadences);
+  }
+
+  function setHint(id, val){
+    var el = getEl('hint_' + id);
+    if (el) el.textContent = (val == null ? '' : 'Default: ' + val);
+  }
+  function fillHints(d){
+    d = d || {};
+    var r = d.rewards || {};
+    setHint('discount_floor_pct', d.discount_floor_pct != null ? (d.discount_floor_pct*100) + '%' : null);
+    setHint('points_floor_pct', d.points_floor_pct != null ? (d.points_floor_pct*100) + '%' : null);
+    setHint('points_earn_pct', d.points_earn_pct != null ? (d.points_earn_pct*100) + '%' : null);
+    setHint('points_redeem_per_point_cents', d.points_redeem_per_point_cents != null ? d.points_redeem_per_point_cents + ' cents' : null);
+    setHint('referral_reward_pct', r.referral_reward_pct != null ? (r.referral_reward_pct*100) + '%' : null);
+    setHint('cash_out_face_pct', r.cash_out_face_pct != null ? (r.cash_out_face_pct*100) + '%' : null);
+    setHint('cash_out_threshold_cents', r.cash_out_threshold_cents != null ? '$' + (r.cash_out_threshold_cents/100) : null);
+  }
+
+  async function load(){
+    try {
+      var res = await fetch('/api/console/pricing-settings', {headers:hdr()});
+      if (res.status === 401){ document.getElementById('gate').style.display='flex'; return; }
+      var data = await res.json();
+      DEFAULTS = data.defaults || {};
+      fillHints(DEFAULTS);
+      populate(data.effective || {});
+    } catch(e){ show('Error loading: ' + e, true); }
+  }
+
+  function buildPayload(){
+    var out = {
+      discount_floor_pct: getNum('discount_floor_pct') != null ? getNum('discount_floor_pct') / 100 : null,
+      points_floor_pct: getNum('points_floor_pct') != null ? getNum('points_floor_pct') / 100 : null,
+      points_earn_pct: getNum('points_earn_pct') != null ? getNum('points_earn_pct') / 100 : null,
+      points_redeem_per_point_cents: getNum('points_redeem_per_point_cents'),
+      subscribe_tiers: readCsv('subscribe_tiers'),
+      cadences: readCsv('cadences'),
+      volume_anchors: readAnchors(),
+      rewards: {
+        referral_reward_pct: getNum('referral_reward_pct') != null ? getNum('referral_reward_pct') / 100 : null,
+        cash_out_threshold_cents: getNum('cash_out_threshold_cents') != null ? Math.round(getNum('cash_out_threshold_cents') * 100) : null,
+        cash_out_face_pct: getNum('cash_out_face_pct') != null ? getNum('cash_out_face_pct') / 100 : null
+      }
+    };
+    return out;
+  }
+
+  async function save(){
+    show('Saving...', false);
+    try {
+      var res = await fetch('/api/console/pricing-settings', {method:'POST', headers:hdr(), body:JSON.stringify(buildPayload())});
+      if (res.status === 401){ document.getElementById('gate').style.display='flex'; return; }
+      var body = await res.json();
+      if (res.status === 200){
+        show('Saved. Applies to the next order.', false);
+        populate(body.effective || body.saved || {});
+      } else {
+        var errs = (body.errors || ['Save failed.']);
+        show(errs.join('\n'), true);
+      }
+    } catch(e){ show('Error saving: ' + e, true); }
+  }
+
+  function resetToDefaults(){
+    populate(DEFAULTS);
+    show('Loaded defaults into the form. Press Save to apply.', false);
+  }
+
+  async function preview(){
+    var out = getEl('pv_out');
+    var slug = (getEl('pv_slug').value || '').trim();
+    var qty = Number(getEl('pv_qty').value || 1);
+    var tier = getNum('pv_tier');
+    var pts = getNum('pv_points');
+    var body = {
+      items: [{ slug: slug, qty: qty }],
+      subscriber_tier_pct: tier,
+      points_to_redeem_cents: pts != null ? Math.round(pts * 100) : 0
+    };
+    try {
+      var res = await fetch('/api/pricing/preview', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+      var data = await res.json();
+      out.style.display = 'block';
+      if (res.status !== 200){ out.textContent = 'Error: ' + JSON.stringify(data, null, 2); return; }
+      var lines = '';
+      (data.items || data.lines || []).forEach(function(li){
+        var unit = li.unit_price_cents != null ? li.unit_price_cents : li.unit_cents;
+        lines += '  ' + esc(li.slug || '') + ' x' + (li.qty != null ? li.qty : '')
+              + '  unit: ' + (unit != null ? '$' + (unit/100).toFixed(2) : '?') + '\n';
+      });
+      var txt = 'Lines:\n' + (lines || '  (none)\n')
+              + 'Discount: ' + (data.discount_cents != null ? '$' + (data.discount_cents/100).toFixed(2) : '?') + '\n'
+              + 'Points redeemed: ' + (data.points_redeemed_cents != null ? '$' + (data.points_redeemed_cents/100).toFixed(2) : '?') + '\n'
+              + 'Total: ' + (data.total_cents != null ? '$' + (data.total_cents/100).toFixed(2) : (data.total != null ? data.total : '?')) + '\n\n'
+              + 'Raw:\n' + JSON.stringify(data, null, 2);
+      out.textContent = txt;
+    } catch(e){ out.style.display='block'; out.textContent = 'Error: ' + e; }
+  }
+
+  if (key()) { document.getElementById('gate').style.display='none'; load(); }
+</script>
+</body>
+</html>
