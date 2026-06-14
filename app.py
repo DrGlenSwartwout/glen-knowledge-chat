@@ -5985,6 +5985,13 @@ def api_practitioner_assist():
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@app.route("/practitioner/settings")
+def practitioner_settings_page():
+    resp = send_from_directory(STATIC, "practitioner-settings.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/practitioner/settings", methods=["GET"])
 def api_practitioner_settings_get():
     pid = _practitioner_session_pid()
