@@ -81,3 +81,33 @@ def test_validate_partial_payload_only_validates_present_keys():
     clean, errors = ps.validate({"points_earn_pct": 0.06})
     assert errors == []
     assert clean == {"points_earn_pct": 0.06}
+
+
+def test_defaults_view_includes_referral_cert_anchors():
+    d = ps.defaults_view()
+    assert d["rewards"]["referral_cert_anchors"] == [[0, 5], [6, 10], [12, 15]]
+    # must be a copy, not the shared module default
+    d["rewards"]["referral_cert_anchors"][0][1] = 99
+    assert _rewards.DEFAULTS["referral_cert_anchors"][0][1] == 5
+
+
+def test_validate_accepts_referral_cert_anchors():
+    clean, errors = ps.validate({"rewards": {"referral_cert_anchors": [[0, 5], [4, 9], [12, 15]]}})
+    assert errors == []
+    assert clean["rewards"]["referral_cert_anchors"] == [[0, 5], [4, 9], [12, 15]]
+
+
+def test_validate_rejects_bad_referral_cert_anchors():
+    _, e = ps.validate({"rewards": {"referral_cert_anchors": [[4, 9], [0, 5]]}})   # not ascending
+    assert any("referral_cert_anchors" in x for x in e)
+    _, e = ps.validate({"rewards": {"referral_cert_anchors": [[0, 150]]}})         # pct > 100
+    assert any("referral_cert_anchors" in x for x in e)
+    _, e = ps.validate({"rewards": {"referral_cert_anchors": [[-1, 5]]}})          # modules < 0
+    assert any("referral_cert_anchors" in x for x in e)
+
+
+def test_volume_anchors_still_validated_after_refactor():
+    _, e = ps.validate({"volume_anchors": [[3, 14], [1, 0]]})   # not ascending
+    assert any("volume_anchors" in x for x in e)
+    clean, e2 = ps.validate({"volume_anchors": [[1, 0], [3, 14]]})
+    assert e2 == [] and clean["volume_anchors"] == [[1, 0], [3, 14]]
