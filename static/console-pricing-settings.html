@@ -129,6 +129,15 @@
         <div class="hint" id="hint_cash_out_threshold_cents"></div>
       </div>
     </div>
+    <label>Referral reward by certification (modules to %)</label>
+    <table>
+      <thead><tr><th>Modules</th><th>Reward (%)</th><th></th></tr></thead>
+      <tbody id="rca_anchors"></tbody>
+    </table>
+    <div class="actions">
+      <button class="btn small" onclick="addReferralCertAnchor()">Add anchor</button>
+    </div>
+    <div class="hint">How a referring practitioner's reward % scales with completed certification modules. A non-practitioner referrer always earns the base referral reward above.</div>
     <div class="actions">
       <button class="btn primary" onclick="save()">Save</button>
       <button class="btn" onclick="resetToDefaults()">Reset to defaults</button>
@@ -207,6 +216,32 @@
     return out;
   }
 
+  // ----- referral cert anchors table -----
+  function referralCertRow(modules, pct){
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><input class="rca-modules" type="number" step="1" min="0" value="'+esc(modules)+'"></td>'
+                 + '<td><input class="rca-pct" type="number" step="0.01" min="0" max="100" value="'+esc(pct)+'"></td>'
+                 + '<td><button class="btn small" type="button">Remove</button></td>';
+    tr.querySelector('button').addEventListener('click', function(){ tr.remove(); });
+    return tr;
+  }
+  function setReferralCertAnchors(rows){
+    var body = getEl('rca_anchors');
+    body.innerHTML = '';
+    (rows || []).forEach(function(r){ body.appendChild(referralCertRow(r[0], r[1])); });
+  }
+  function addReferralCertAnchor(){ getEl('rca_anchors').appendChild(referralCertRow(0, 0)); }
+  function readReferralCertAnchors(){
+    var out = [];
+    getEl('rca_anchors').querySelectorAll('tr').forEach(function(tr){
+      var m = tr.querySelector('.rca-modules').value;
+      var p = tr.querySelector('.rca-pct').value;
+      if (m === '' && p === '') return;
+      out.push([Number(m), Number(p)]);
+    });
+    return out;
+  }
+
   // ----- CSV inputs -----
   function setCsv(id, arr){ getEl(id).value = (arr || []).join(', '); }
   function readCsv(id){
@@ -231,6 +266,7 @@
     setVal('cash_out_threshold_cents', r.cash_out_threshold_cents != null ? r.cash_out_threshold_cents / 100 : '');
     // table + csv
     setAnchors(eff.volume_anchors);
+    setReferralCertAnchors(r.referral_cert_anchors != null ? r.referral_cert_anchors : ((DEFAULTS.rewards||{}).referral_cert_anchors));
     setCsv('subscribe_tiers', eff.subscribe_tiers);
     setCsv('cadences', eff.cadences);
   }
@@ -274,7 +310,8 @@
       rewards: {
         referral_reward_pct: getNum('referral_reward_pct') != null ? getNum('referral_reward_pct') / 100 : null,
         cash_out_threshold_cents: getNum('cash_out_threshold_cents') != null ? Math.round(getNum('cash_out_threshold_cents') * 100) : null,
-        cash_out_face_pct: getNum('cash_out_face_pct') != null ? getNum('cash_out_face_pct') / 100 : null
+        cash_out_face_pct: getNum('cash_out_face_pct') != null ? getNum('cash_out_face_pct') / 100 : null,
+        referral_cert_anchors: readReferralCertAnchors()
       }
     };
     return out;
