@@ -18,6 +18,7 @@ next order without a redeploy.
 | Referral reward | `rewards.referral_reward_pct` | fraction of a referred full-price sale credited to the referrer | 0.05 |
 | Cash-out review threshold | `rewards.cash_out_threshold_cents` | balance (in cents) that raises a cash-out review todo | 10000 ($100) |
 | Cash-out face value | `rewards.cash_out_face_pct` | fraction of accrued balance actually paid out on cash-out | 0.70 |
+| Referral reward by certification | `rewards.referral_cert_anchors` | `[modules_completed, pct]` knots, ascending; interpolated, flat beyond the last. Applies ONLY when the referrer is a practitioner (interpolated by their completed modules); a non-practitioner referrer stays at the base `referral_reward_pct`. Gated by `REWARDS_TIERS_ENABLED`. Curve pct is whole percentage points. | [[0,5],[6,10],[12,15]] |
 
 Per-SKU floor / MAP overrides are **not** here: they live on the product record
 (`wholesale_cents`, `sku_discount_floor_pct`, `sku_points_floor_pct`) read by

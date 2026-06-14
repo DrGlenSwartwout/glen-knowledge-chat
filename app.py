@@ -2483,6 +2483,22 @@ def _referrer_slug_for_email(cx, email: str):
     return row[0] if row else None
 
 
+def _referral_pct_for_referrer(referrer_email, settings):
+    """Cert-scaled referral FRACTION. If the referrer is a practitioner, interpolate their
+    modules_completed through referral_cert_anchors; otherwise (or on any lookup error) the
+    base referral_reward_pct. Best-effort: never raises."""
+    from dashboard import rewards as _rewards
+    base = float(settings.get("referral_reward_pct", 0.05))
+    try:
+        modules = _pp.modules_completed_for_email(referrer_email)
+        if modules is None:
+            return base
+        return _rewards.referral_pct_for_modules(modules, settings)
+    except Exception as _e:
+        print(f"[rewards] cert lookup failed for {referrer_email}: {_e!r}", flush=True)
+        return base
+
+
 def _settle_referral(order, *, order_ref: str) -> None:
     """Credit the referrer (points or cash) on a full-price referred sale.
     Idempotent per order_ref. Best-effort -- never raises."""
@@ -2514,7 +2530,7 @@ def _settle_referral(order, *, order_ref: str) -> None:
             if referrer_email.strip().lower() == buyer_email:
                 return
             settings = _rewards.load_settings(_rewards_settings())
-            referral_reward_pct = float(settings["referral_reward_pct"])
+            referral_reward_pct = _referral_pct_for_referrer(referrer_email, settings)
             reward = round(product_cents * referral_reward_pct)
             if reward <= 0:
                 return

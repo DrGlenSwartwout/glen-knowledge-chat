@@ -50,3 +50,28 @@ def test_settings_defaults():
     assert s["referral_reward_pct"] == 0.05
     assert s["cash_out_threshold_cents"] == 10000
     assert s["cash_out_face_pct"] == 0.70
+
+
+def test_referral_pct_for_modules_interpolates():
+    from dashboard import rewards
+    s = rewards.load_settings({})            # defaults include referral_cert_anchors
+    assert rewards.referral_pct_for_modules(0, s) == 0.05     # 5%
+    assert rewards.referral_pct_for_modules(6, s) == 0.10     # 10%
+    assert rewards.referral_pct_for_modules(12, s) == 0.15    # 15%
+    assert abs(rewards.referral_pct_for_modules(3, s) - 0.075) < 1e-9   # midpoint
+    assert rewards.referral_pct_for_modules(99, s) == 0.15    # flat beyond last
+    assert rewards.referral_pct_for_modules(-4, s) == 0.05    # clamp at 0
+
+
+def test_referral_pct_for_modules_falls_back_to_flat_when_no_anchors():
+    from dashboard import rewards
+    s = rewards.load_settings({"referral_cert_anchors": None})
+    s2 = dict(s); s2.pop("referral_cert_anchors", None)
+    assert rewards.referral_pct_for_modules(12, s2) == s2["referral_reward_pct"]
+
+
+def test_referral_pct_for_modules_bad_anchors_falls_back():
+    from dashboard import rewards
+    s = dict(rewards.load_settings({}))
+    s["referral_cert_anchors"] = "garbage"
+    assert rewards.referral_pct_for_modules(12, s) == s["referral_reward_pct"]

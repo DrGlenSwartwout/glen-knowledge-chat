@@ -16,6 +16,9 @@ DEFAULTS = {
     "referral_reward_pct": 0.05,
     "cash_out_threshold_cents": 10000,
     "cash_out_face_pct": 0.70,
+    # referral reward by certification: [modules_completed, whole-pct] knots, ascending;
+    # linear-interpolated, flat beyond the last. modules 0 == base 5% (same as a plain affiliate).
+    "referral_cert_anchors": [[0, 5], [6, 10], [12, 15]],
 }
 
 
@@ -26,6 +29,30 @@ def load_settings(overrides: dict) -> dict:
         if value is not None:
             settings[key] = value
     return settings
+
+
+def referral_pct_for_modules(modules, settings):
+    """Referral reward FRACTION (0-1) for a practitioner with `modules` completed,
+    interpolated through settings['referral_cert_anchors'] ([modules, whole-pct] knots,
+    ascending; flat beyond the last). Falls back to the flat referral_reward_pct when the
+    anchors are absent or malformed."""
+    flat = float(settings.get("referral_reward_pct", 0.05))
+    anchors = settings.get("referral_cert_anchors")
+    try:
+        if not anchors:
+            return flat
+        m = max(0, int(modules or 0))
+        if m <= anchors[0][0]:
+            pct = float(anchors[0][1])
+        else:
+            pct = float(anchors[-1][1])
+            for (m0, p0), (m1, p1) in zip(anchors, anchors[1:]):
+                if m <= m1:
+                    pct = p0 + (p1 - p0) * (m - m0) / (m1 - m0)
+                    break
+        return pct / 100.0
+    except Exception:
+        return flat
 
 
 # ---------------------------------------------------------------------------
