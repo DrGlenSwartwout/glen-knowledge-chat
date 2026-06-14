@@ -5684,6 +5684,18 @@ def api_practitioner_portal_data():
     if data.get("dispensary_code"):
         data["dispensary_link"] = f"{PUBLIC_BASE_URL}/dispensary/{data['dispensary_code']}"
     data["stripe_active"] = _STRIPE_ACTIVE
+    # Include practitioner's branding (best-effort — never crash portal-data)
+    branding = {}
+    try:
+        from dashboard import practitioner_settings as _ps
+        with sqlite3.connect(LOG_DB) as _cx:
+            _cx.row_factory = sqlite3.Row
+            _ps.init_settings_table(_cx)
+            _s = _ps.get_settings(_cx, pid)
+            branding = _s.get("branding") or {}
+    except Exception:
+        pass
+    data["branding"] = branding
     return jsonify({"ok": True, **data})
 
 
@@ -6101,13 +6113,26 @@ def dispensary_landing(code):
 @app.route("/api/client/<code>/catalog")
 def api_client_catalog(code):
     """Return sellable Functional Formulations at the practitioner's price (>= MAP).
-    Used by practitioner-client.html to populate the product list at page load."""
+    Used by practitioner-client.html to populate the product list at page load.
+    Also returns the practitioner's branding (may be empty dict if not set)."""
     pid = _pp.practitioner_id_by_dispensary_code(code)
     if not pid:
         return jsonify({"ok": False, "error": "unknown dispensary code"}), 404
 
     data = _pp.portal_data(pid) or {}
     practice_name = (data.get("practice_name") or data.get("name") or "Your Practitioner")
+
+    # Load practitioner branding (best-effort — never crash the catalog)
+    branding = {}
+    try:
+        from dashboard import practitioner_settings as _ps
+        with sqlite3.connect(LOG_DB) as _cx:
+            _cx.row_factory = sqlite3.Row
+            _ps.init_settings_table(_cx)
+            _settings = _ps.get_settings(_cx, pid)
+            branding = _settings.get("branding") or {}
+    except Exception:
+        pass
 
     items = []
     for slug, p in (_PRODUCTS.get("products") or {}).items():
@@ -6120,7 +6145,7 @@ def api_client_catalog(code):
         items.append({"slug": slug, "name": name, "price_cents": price_cents})
 
     items.sort(key=lambda x: x["name"])
-    return jsonify({"ok": True, "practice_name": practice_name, "items": items})
+    return jsonify({"ok": True, "practice_name": practice_name, "branding": branding, "items": items})
 
 
 @app.route("/api/client/<code>/checkout", methods=["POST"])

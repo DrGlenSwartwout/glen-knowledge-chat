@@ -48,7 +48,10 @@
 <body>
 <div class="wrap">
   <div id="head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
-    <div><h1>Wholesale Portal</h1><div class="muted" id="who">Loading…</div></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <img id="brand-logo" src="" alt="" style="display:none;width:40px;height:40px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,.08)">
+      <div><h1>Wholesale Portal</h1><div class="muted" id="who">Loading…</div></div>
+    </div>
     <button id="theme-toggle" class="ghost" onclick="toggleTheme()" style="white-space:nowrap">Light</button>
   </div>
   <div class="cards">
@@ -147,8 +150,28 @@ function md(text){
   return h;
 }
 
+function applyBranding(b){
+  if(!b) return;
+  if(b.brand_color_1 && /^#[0-9a-fA-F]{3,6}$/.test(b.brand_color_1)){
+    document.documentElement.style.setProperty('--green', b.brand_color_1);
+  }
+  if(b.brand_color_2 && /^#[0-9a-fA-F]{3,6}$/.test(b.brand_color_2)){
+    document.documentElement.style.setProperty('--gold', b.brand_color_2);
+  }
+  if(b.logo_url){
+    var logoEl = document.getElementById('brand-logo');
+    if(logoEl){
+      logoEl.src = b.logo_url;
+      logoEl.style.display = 'inline-block';
+      logoEl.onerror = function(){ logoEl.style.display = 'none'; };
+    }
+  }
+}
+
 function render(d){
-  $('who').textContent = (d.name || '') + (d.practice_name ? ' · ' + d.practice_name : '');
+  var practiceName = (d.branding && d.branding.practice_name) || d.practice_name || '';
+  $('who').textContent = (d.name || '') + (practiceName ? ' · ' + practiceName : '');
+  applyBranding(d.branding);
   $('modules').textContent = (d.modules_completed||0) + ' / 12';
   $('wallet').textContent = money(d.wallet_balance_cents);
   var unlocked = !!d.wholesale_unlocked;

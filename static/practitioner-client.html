@@ -14,6 +14,7 @@
     --ink: #1a1a1a;
     --muted: #6b6b6b;
     --glen: #2f7d6b;
+    --accent: #b08a3e;
     --gold: #b08a3e;
     --radius: 12px;
     --font: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
@@ -27,6 +28,55 @@
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
   }
+  /* ── Branding header ───────────────────────────────────────────── */
+  .brand-header {
+    background: var(--glen);
+    color: #fff;
+    padding: 18px 20px;
+  }
+  .brand-header-inner {
+    max-width: 640px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .brand-logo {
+    width: 52px;
+    height: 52px;
+    object-fit: contain;
+    border-radius: 8px;
+    background: rgba(255,255,255,.15);
+    flex-shrink: 0;
+  }
+  .brand-photo {
+    width: 52px;
+    height: 52px;
+    object-fit: cover;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.5);
+    flex-shrink: 0;
+  }
+  .brand-text { flex: 1; min-width: 0; }
+  .brand-practice-name {
+    font-size: 1rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .brand-contact {
+    font-size: .78rem;
+    opacity: .85;
+    margin-top: 1px;
+  }
+  .brand-weblink {
+    font-size: .78rem;
+    opacity: .8;
+    margin-top: 1px;
+  }
+  .brand-weblink a { color: #fff; }
+  /* legacy brandbar (fallback/RM default when no branding set) */
   .brandbar {
     max-width: 640px;
     margin: 0 auto;
@@ -303,7 +353,21 @@
 </head>
 <body>
 
-<div class="brandbar">
+<!-- Branded header — shown when practitioner has branding set -->
+<div id="brand-header" class="brand-header" style="display:none">
+  <div class="brand-header-inner">
+    <img id="brand-logo" class="brand-logo" src="" alt="" style="display:none">
+    <img id="brand-photo" class="brand-photo" src="" alt="" style="display:none">
+    <div class="brand-text">
+      <div class="brand-practice-name" id="brand-practice-name"></div>
+      <div class="brand-contact" id="brand-contact" style="display:none"></div>
+      <div class="brand-weblink" id="brand-weblink" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Default RM brandbar — shown when no custom branding -->
+<div class="brandbar" id="rm-brandbar">
   <span class="brand-dot"></span>
   <span class="brand-name" id="practice-name">Loading&hellip;</span>
 </div>
@@ -450,6 +514,68 @@
   function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
   function cents(c) { return '$' + (c / 100).toFixed(2); }
 
+  // ── Apply branding (white-label) ─────────────────────────────────────────────
+  function applyBranding(branding, practiceName) {
+    var b = branding || {};
+    var hasCustom = b.practice_name || b.logo_url || b.photo_url || b.contact_email || b.web_link;
+
+    if (hasCustom) {
+      // Apply brand colors to CSS vars
+      if (b.brand_color_1 && /^#[0-9a-fA-F]{3,6}$/.test(b.brand_color_1)) {
+        document.documentElement.style.setProperty('--glen', b.brand_color_1);
+      }
+      if (b.brand_color_2 && /^#[0-9a-fA-F]{3,6}$/.test(b.brand_color_2)) {
+        document.documentElement.style.setProperty('--accent', b.brand_color_2);
+        document.documentElement.style.setProperty('--gold', b.brand_color_2);
+      }
+
+      // Show branded header, hide RM default
+      document.getElementById('brand-header').style.display = 'block';
+      document.getElementById('rm-brandbar').style.display = 'none';
+
+      // Practice name
+      var displayName = b.practice_name || practiceName;
+      document.getElementById('brand-practice-name').textContent = displayName;
+
+      // Logo
+      if (b.logo_url) {
+        var logo = document.getElementById('brand-logo');
+        logo.src = b.logo_url;
+        logo.alt = displayName + ' logo';
+        logo.style.display = 'block';
+        logo.onerror = function () { logo.style.display = 'none'; };
+      }
+
+      // Photo
+      if (b.photo_url) {
+        var photo = document.getElementById('brand-photo');
+        photo.src = b.photo_url;
+        photo.alt = displayName;
+        photo.style.display = 'block';
+        photo.onerror = function () { photo.style.display = 'none'; };
+      }
+
+      // Contact
+      if (b.contact_email) {
+        var contact = document.getElementById('brand-contact');
+        contact.textContent = b.contact_email;
+        contact.style.display = 'block';
+      }
+
+      // Web link
+      if (b.web_link) {
+        var weblink = document.getElementById('brand-weblink');
+        weblink.innerHTML = '<a href="' + esc(b.web_link) + '" target="_blank" rel="noopener">' + esc(b.web_link) + '</a>';
+        weblink.style.display = 'block';
+      }
+    } else {
+      // No custom branding — show RM default brandbar
+      document.getElementById('rm-brandbar').style.display = '';
+      document.getElementById('brand-header').style.display = 'none';
+      document.getElementById('practice-name').textContent = practiceName;
+    }
+  }
+
   // ── Load catalog ─────────────────────────────────────────────────────────────
   fetch(BASE + '/api/client/' + encodeURIComponent(code) + '/catalog', { credentials: 'same-origin' })
     .then(function (r) {
@@ -464,10 +590,10 @@
       }
       catalog = data.items;
       var pName = data.practice_name || 'Your Practitioner';
-      document.getElementById('practice-name').textContent = pName;
-      document.title = 'Order · ' + pName;
+      applyBranding(data.branding, pName);
+      document.title = 'Order · ' + (((data.branding || {}).practice_name) || pName);
       document.getElementById('sub').textContent =
-        'Professional-grade formulations recommended by ' + pName + ', shipped directly to you.';
+        'Professional-grade formulations recommended by ' + (((data.branding || {}).practice_name) || pName) + ', shipped directly to you.';
       renderProducts();
       wireForm();
       show('main');
