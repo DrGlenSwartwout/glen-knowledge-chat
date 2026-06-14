@@ -18,3 +18,8 @@ def drop_ship_base_cents(qty, modules_completed):
     """Per-bottle blended wholesale base for a drop-ship of `qty` bottles at the
     practitioner's certification level (same curve as wholesale stocking)."""
     return _wp.blended_unit_price_cents(int(qty), int(modules_completed), _wp.DEFAULT_B)
+
+def service_fee_cents(selling_cents, base_cents, settings):
+    """Flat fee = fee_pct of the markup (selling - base), never negative. Drop-ship only."""
+    markup = max(0, int(selling_cents) - int(base_cents))
+    return int(round(settings["fee_pct"] * markup))
