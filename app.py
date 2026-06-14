@@ -3034,6 +3034,25 @@ def begin_checkout_return():
                     except Exception as _se:
                         print(f"[subscribe-return] failed to create subscription: {_se!r}", flush=True)
 
+                # ── Client kind: credit practitioner margin to wallet ──
+                try:
+                    if md.get("kind") == "client":
+                        from dashboard import wallet as _wallet_ret
+                        _pid   = md.get("practitioner_id")
+                        _marg  = int(md.get("margin_cents") or 0)
+                        _inv   = md.get("invoice_id")
+                        _wallet_ret.earn_dropship_margin(
+                            _pid, _marg, qbo_invoice_id=_inv)
+                        if hasattr(_pp, "record_dispensary_order"):
+                            _pp.record_dispensary_order(
+                                _pid,
+                                invoice_id=_inv,
+                                credit_earned_cents=_marg,
+                            )
+                except Exception as _ce:
+                    app.logger.exception(
+                        "client margin credit failed: %s", _ce)
+
         except Exception as e:
             print(f"[begin-return] {e!r}", flush=True)
     dest = (f"/begin/buy/{slug}?paid={paid}" if slug else f"/begin?paid={paid}")
