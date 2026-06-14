@@ -5555,6 +5555,13 @@ def practitioner_portal_page():
     return send_from_directory(STATIC, "practitioner-portal.html")
 
 
+@app.route("/practitioner/dropship")
+def practitioner_dropship_page():
+    resp = send_from_directory(STATIC, "practitioner-dropship.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/practitioner/register", methods=["GET"])
 def practitioner_register_page():
     return send_from_directory(STATIC, "practitioner-register.html")
