@@ -2785,27 +2785,32 @@ def begin_checkout(slug):
                         "error": "Please add your name and agree to our Terms "
                                  "to place an order."}), 403
     session_id = request.cookies.get("amg_session", "")
-    try:
+    if os.environ.get("PRICING_ENGINE_CHECKOUT", "").strip().lower() in ("1", "true", "yes", "on"):
         from dashboard import qbo_billing as qb
+        try:
+            redeem = int((data.get("points_to_redeem_cents") or 0))
+        except (TypeError, ValueError):
+            redeem = 0
+        if redeem > 0:
+            from dashboard import points as _points
+            with sqlite3.connect(LOG_DB) as _bcx:
+                _points.init_points_table(_bcx)
+                redeem = min(redeem, _points.balance(_bcx, email))
+        try:
+            pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
+                             coupon_pct=_active_coupon_pct(),
+                             points_to_redeem_cents=redeem)
+        except CheckoutError as ce:
+            return jsonify({"ok": False, "error": str(ce)}), 400
         cust = qb.find_or_create_customer(email, name)
-        unit = round(_qty_unit_cents(p, qty) / 100.0, 2)   # capsule quantity tiers
-        desc = p["name"]
-        fmt_label = next((f["label"] for f in _FORMATS if f["id"] == fmt), "")
-        if fmt and fmt != "bottle" and fmt_label:
-            desc = f"{p['name']} ({fmt_label})"
         allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
-        from dashboard import tax as _tax
-        subtotal_cents = int(_qty_unit_cents(p, qty)) * qty
-        # Absorb-and-track: GET is recorded on the order (below), NOT added to the
-        # invoice — the customer pays the all-in price.
-        get_cents = _tax.compute_get_cents(
-            subtotal_cents, channel="retail", ship_to_state=ship.get("state", ""))
-        inv = qb.create_invoice(
-            cust,
-            [{"name": p["name"], "amount": unit, "qty": qty,
-              "item_id": p.get("qbo_item_id"), "description": desc}],
-            allow_online_pay=allow_online, email_to=email)
-        # best-effort journey log (never break checkout)
+        inv = qb.create_invoice(cust, pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+                                allow_online_pay=allow_online, email_to=email,
+                                discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+        out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
+               "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt"),
+               "method": method, "customer_id": cust.get("Id"),
+               "pay_link": qb.get_invoice_pay_link(inv)}
         try:
             with _db_lock, sqlite3.connect(LOG_DB) as cx:
                 cx.execute("INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
@@ -2815,22 +2820,17 @@ def begin_checkout(slug):
                 cx.commit()
         except Exception:
             pass
-        out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
-               "doc_number": inv.get("DocNumber"),
-               "total": inv.get("TotalAmt"), "method": method,
-               "pay_link": qb.get_invoice_pay_link(inv)}
-        out["customer_id"] = cust.get("Id")
         _ingest_order(source="funnel", external_ref=inv.get("Id"), email=email, name=name,
-                      items=[{"name": p["name"], "qty": qty, "desc": desc}],
+                      items=pc["items_rec"],
                       total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
-                      address=ship, channel="retail", get_cents=get_cents)
+                      address=ship, channel="retail", get_cents=pc["priced"]["get_cents"],
+                      discount_cents=pc["discount_cents"],
+                      points_redeemed_cents=pc["points_redeemed_cents"],
+                      shipping_cents=pc["shipping_cents"])
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
-            out["earns_points"] = True   # awarded on confirmed payment (reconciliation, Phase 2)
         elif method == "card" and _STRIPE_ACTIVE:
             out["stripe_url"] = _stripe_checkout_url_for_retail(out, email, slug)
-        # dispensary attribution: credit the referring practitioner $20/bottle (best-effort,
-        # idempotent on the invoice id; never break a customer checkout)
         try:
             disp = (request.cookies.get("rm_dispensary") or "").strip()
             if disp:
@@ -2838,8 +2838,63 @@ def begin_checkout(slug):
         except Exception as e:
             print(f"[dispensary] hook: {e!r}", flush=True)
         return jsonify(out)
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    # else: legacy body unchanged
+    else:
+        try:
+            from dashboard import qbo_billing as qb
+            cust = qb.find_or_create_customer(email, name)
+            unit = round(_qty_unit_cents(p, qty) / 100.0, 2)   # capsule quantity tiers
+            desc = p["name"]
+            fmt_label = next((f["label"] for f in _FORMATS if f["id"] == fmt), "")
+            if fmt and fmt != "bottle" and fmt_label:
+                desc = f"{p['name']} ({fmt_label})"
+            allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
+            from dashboard import tax as _tax
+            subtotal_cents = int(_qty_unit_cents(p, qty)) * qty
+            # Absorb-and-track: GET is recorded on the order (below), NOT added to the
+            # invoice — the customer pays the all-in price.
+            get_cents = _tax.compute_get_cents(
+                subtotal_cents, channel="retail", ship_to_state=ship.get("state", ""))
+            inv = qb.create_invoice(
+                cust,
+                [{"name": p["name"], "amount": unit, "qty": qty,
+                  "item_id": p.get("qbo_item_id"), "description": desc}],
+                allow_online_pay=allow_online, email_to=email)
+            # best-effort journey log (never break checkout)
+            try:
+                with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                    cx.execute("INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                               "VALUES (?,?,?,?,?,?,?)",
+                               (begin_funnel._now(), session_id, email, "purchase",
+                                f"buy-{slug}-{method}", "", ""))
+                    cx.commit()
+            except Exception:
+                pass
+            out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
+                   "doc_number": inv.get("DocNumber"),
+                   "total": inv.get("TotalAmt"), "method": method,
+                   "pay_link": qb.get_invoice_pay_link(inv)}
+            out["customer_id"] = cust.get("Id")
+            _ingest_order(source="funnel", external_ref=inv.get("Id"), email=email, name=name,
+                          items=[{"name": p["name"], "qty": qty, "desc": desc}],
+                          total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                          address=ship, channel="retail", get_cents=get_cents)
+            if method in ("zelle", "wise"):
+                out["pay_instructions"] = _ALT_PAY.get(method, {})
+                out["earns_points"] = True   # awarded on confirmed payment (reconciliation, Phase 2)
+            elif method == "card" and _STRIPE_ACTIVE:
+                out["stripe_url"] = _stripe_checkout_url_for_retail(out, email, slug)
+            # dispensary attribution: credit the referring practitioner $20/bottle (best-effort,
+            # idempotent on the invoice id; never break a customer checkout)
+            try:
+                disp = (request.cookies.get("rm_dispensary") or "").strip()
+                if disp:
+                    _record_dispensary_sale(disp, email, qty, inv.get("Id"))
+            except Exception as e:
+                print(f"[dispensary] hook: {e!r}", flush=True)
+            return jsonify(out)
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/begin/checkout-return")
