@@ -54,3 +54,69 @@ def apply_points(price_cents, points_cents, floor_cents):
     reducible = max(0, price_cents - int(floor_cents))
     used = min(max(0, int(points_cents)), reducible)
     return price_cents - used, used
+
+
+def volume_pct(months, settings):
+    """Percentage discount for total cart months, linear-interpolated through the
+    console anchor table (ascending [months, pct_off] pairs); flat beyond the last knot."""
+    anchors = settings["volume_anchors"]
+    m = max(0, int(months or 0))
+    if m <= anchors[0][0]:
+        return float(anchors[0][1])
+    for (m0, p0), (m1, p1) in zip(anchors, anchors[1:]):
+        if m <= m1:
+            return p0 + (p1 - p0) * (m - m0) / (m1 - m0)
+    return float(anchors[-1][1])
+
+
+def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
+            points_to_redeem_cents=0, channel="retail", ship_to_state=None,
+            resale_ok=False, tax_fn=None):
+    """Price a cart. The single % discount per line = max(volume_pct, sub-or-coupon).
+    Subscriber tier and coupon never stack (subscriber wins if present). Points apply
+    after, then GET tax on the discounted subtotal. Base is the TRUE single-unit list, so
+    floors always anchor to list.
+
+    items: [{"slug","name","qty","product","unit_cents","months","volume_eligible"}]
+    Returns a dict with per-line breakdown + order totals.
+    """
+    base_pct = subscriber_tier_pct if subscriber_tier_pct else (coupon_pct or 0)
+    total_months = sum(int(it.get("months") or 0) for it in items if it.get("volume_eligible"))
+    vpct = volume_pct(total_months, settings)
+    points_left = max(0, int(points_to_redeem_cents or 0))
+    lines, subtotal, total_discount, total_points = [], 0, 0, 0
+
+    for it in items:
+        p = it["product"]
+        qty = int(it["qty"])
+        unit_list = int(it["unit_cents"])
+        line_list = unit_list * qty
+        line_pct = max(vpct if it.get("volume_eligible") else 0, base_pct)
+        disc_floor = unit_floor_cents(p, unit_list, settings, "discount") * qty
+        pts_floor = unit_floor_cents(p, unit_list, settings, "points") * qty
+
+        after_disc = apply_discount(line_list, line_pct, disc_floor)
+        after_pts, used = apply_points(after_disc, points_left, pts_floor)
+        points_left -= used
+
+        lines.append({
+            "slug": it["slug"], "name": it["name"], "qty": qty,
+            "list_cents": line_list, "discount_cents": line_list - after_disc,
+            "points_cents": used, "line_total_cents": after_pts, "pct_applied": line_pct,
+        })
+        subtotal += after_pts
+        total_discount += (line_list - after_disc)
+        total_points += used
+
+    get_cents = tax_fn(subtotal, channel=channel, ship_to_state=ship_to_state,
+                       resale_ok=resale_ok) if tax_fn else 0
+    return {
+        "lines": lines,
+        "subtotal_cents": subtotal,
+        "discount_cents": total_discount,
+        "points_redeemed_cents": total_points,
+        "volume_months": total_months,
+        "volume_pct": vpct,
+        "get_cents": get_cents,
+        "total_cents": subtotal + get_cents,
+    }

@@ -68,3 +68,78 @@ def test_points_clamped_at_floor_partial_use():
 
 def test_points_none_requested():
     assert pricing.apply_points(5950, 0, 3010) == (5950, 0)
+
+
+def test_volume_pct_at_anchors():
+    s = pricing.load_settings({})
+    assert pricing.volume_pct(1, s) == 0
+    assert pricing.volume_pct(3, s) == 14
+    assert pricing.volume_pct(6, s) == 29
+    assert pricing.volume_pct(12, s) == 43
+
+
+def test_volume_pct_interpolates_and_caps():
+    s = pricing.load_settings({})
+    assert pricing.volume_pct(2, s) == 7            # halfway 0->14
+    assert pricing.volume_pct(9, s) == 36           # halfway 29->43
+    assert pricing.volume_pct(24, s) == 43          # flat beyond the last knot
+    assert pricing.volume_pct(0, s) == 0
+
+
+def _fake_tax(subtotal_cents, *, channel, ship_to_state, resale_ok=False):
+    return int(round(subtotal_cents * 0.04)) if ship_to_state == "HI" else 0
+
+
+def test_compute_one_line_subscriber_tier_and_points():
+    s = pricing.load_settings({})
+    items = [{"slug": "neuro-mag", "name": "Neuro Mag", "qty": 1,
+              "product": {"slug": "neuro-mag", "price_cents": 7000},
+              "unit_cents": 7000, "months": 1, "volume_eligible": True}]
+    r = pricing.compute(items, settings=s, subscriber_tier_pct=15,
+                        points_to_redeem_cents=1000, channel="retail",
+                        ship_to_state="HI", tax_fn=_fake_tax)
+    # M=1 -> volume 0%; best-of(0,15)=15%. 15% off 7000 = 5950; points 1000 -> 4950
+    assert r["lines"][0]["line_total_cents"] == 4950
+    assert r["discount_cents"] == 1050
+    assert r["points_redeemed_cents"] == 1000
+    assert r["get_cents"] == 198            # round(4950*0.04)
+
+
+def test_compute_subscriber_tier_beats_coupon_no_stack():
+    s = pricing.load_settings({})
+    items = [{"slug": "x", "name": "X", "qty": 1,
+              "product": {"slug": "x", "price_cents": 7000},
+              "unit_cents": 7000, "months": 1, "volume_eligible": True}]
+    r = pricing.compute(items, settings=s, subscriber_tier_pct=5, coupon_pct=40,
+                        channel="retail", ship_to_state="HI", tax_fn=_fake_tax)
+    assert r["lines"][0]["line_total_cents"] == 6650   # 5% (sub), coupon ignored
+
+
+def test_compute_volume_mix_and_match_beats_subscriber():
+    s = pricing.load_settings({})
+    # two different SKUs, 3 months each = 6 total -> volume 29% beats 15% tier
+    items = [
+        {"slug": "a", "name": "A", "qty": 1, "product": {"slug": "a", "price_cents": 7000},
+         "unit_cents": 7000, "months": 3, "volume_eligible": True},
+        {"slug": "b", "name": "B", "qty": 1, "product": {"slug": "b", "price_cents": 7000},
+         "unit_cents": 7000, "months": 3, "volume_eligible": True},
+    ]
+    r = pricing.compute(items, settings=s, subscriber_tier_pct=15,
+                        channel="retail", ship_to_state="CA", tax_fn=_fake_tax)
+    assert r["lines"][0]["line_total_cents"] == 4970   # 29% off 7000
+    assert r["lines"][1]["line_total_cents"] == 4970
+
+
+def test_compute_pure_powder_excluded_from_volume_floored_at_30():
+    s = pricing.load_settings({})
+    # Pure Powder: NOT volume_eligible (months ignored), per-SKU floor 75% of 4000 = 3000
+    items = [{"slug": "pp", "name": "Pure Powder", "qty": 1,
+              "product": {"slug": "pp", "price_cents": 4000,
+                          "sku_discount_floor_pct": 0.75, "sku_points_floor_pct": 0.75},
+              "unit_cents": 4000, "months": 12, "volume_eligible": False}]
+    r = pricing.compute(items, settings=s, subscriber_tier_pct=15,
+                        points_to_redeem_cents=1000, channel="retail",
+                        ship_to_state="CA", tax_fn=_fake_tax)
+    # volume 0 (excluded); 15% off 4000 = 3400 (floor 3000); points -> 3000 (only 400 used)
+    assert r["lines"][0]["line_total_cents"] == 3000
+    assert r["points_redeemed_cents"] == 400
