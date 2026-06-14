@@ -5991,6 +5991,165 @@ def reorder_subscribe():
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
 
 
+# ── Subscription manage-plan portal ──────────────────────────────────────────
+
+@app.route("/subscription")
+def subscription_page():
+    """Serve the self-serve subscription management page."""
+    return send_from_directory(STATIC, "subscription.html")
+
+
+def _get_sub_authed(sub_id, cookie_email):
+    """Return (sub_dict, error_response) for the given sub_id.
+    Verifies the subscription belongs to cookie_email.
+    Returns (sub, None) on success; (None, response) on failure.
+    """
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        sub = _subs.get(cx, int(sub_id))
+    if sub is None:
+        return None, (jsonify({"error": "not found"}), 404)
+    if sub["email"].strip().lower() != cookie_email.strip().lower():
+        return None, (jsonify({"error": "forbidden"}), 403)
+    return sub, None
+
+
+@app.route("/api/subscription/details", methods=["GET"])
+def api_subscription_details():
+    """Return the caller's active subscriptions with tier/status info."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _subs.init_subscriptions_table(cx)
+        rows = _subs.get_active_by_email(cx, email)
+    result = []
+    for s in rows:
+        result.append({
+            "id": s["id"],
+            "email": s["email"],
+            "status": s["status"],
+            "cadence_months": s["cadence_months"],
+            "next_charge_date": s["next_charge_date"],
+            "current_tier_pct": _subs.tier_for(s["order_count"]),
+            "order_count": s["order_count"],
+            "items": s.get("items") or [],
+            "skip_next": bool(s["skip_next"]),
+        })
+    return jsonify({"subscriptions": result})
+
+
+@app.route("/api/subscription/skip", methods=["POST"])
+def api_subscription_skip():
+    """Skip the next charge cycle for the caller's subscription."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("id")
+    sub, err = _get_sub_authed(sub_id, email)
+    if err:
+        return err
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        _subs.set_skip_next(cx, sub_id, True)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/subscription/resume-skip", methods=["POST"])
+def api_subscription_resume_skip():
+    """Clear the skip-next flag for the caller's subscription."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("id")
+    sub, err = _get_sub_authed(sub_id, email)
+    if err:
+        return err
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        _subs.set_skip_next(cx, sub_id, False)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/subscription/pause", methods=["POST"])
+def api_subscription_pause():
+    """Pause the caller's subscription."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("id")
+    sub, err = _get_sub_authed(sub_id, email)
+    if err:
+        return err
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        _subs.set_status(cx, sub_id, "paused")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/subscription/resume", methods=["POST"])
+def api_subscription_resume():
+    """Resume a paused subscription."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("id")
+    sub, err = _get_sub_authed(sub_id, email)
+    if err:
+        return err
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        _subs.set_status(cx, sub_id, "active")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/subscription/cancel", methods=["POST"])
+def api_subscription_cancel():
+    """Cancel the caller's subscription."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("id")
+    sub, err = _get_sub_authed(sub_id, email)
+    if err:
+        return err
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        _subs.set_status(cx, sub_id, "cancelled")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/subscription/cadence", methods=["POST"])
+def api_subscription_cadence():
+    """Change the cadence (1, 2, or 3 months) for the caller's subscription."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("id")
+    try:
+        cadence = int(body.get("cadence_months") or 0)
+        if cadence not in (1, 2, 3):
+            raise ValueError("out of range")
+    except (TypeError, ValueError):
+        return jsonify({"error": "cadence_months must be 1, 2, or 3"}), 400
+    sub, err = _get_sub_authed(sub_id, email)
+    if err:
+        return err
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        _subs.set_cadence(cx, sub_id, cadence)
+    return jsonify({"ok": True})
+
+
 def _stripe_checkout_url_for_order(out, email, session_token):
     """Create a Stripe Checkout Session for a wholesale invoice; returns its URL."""
     try:
