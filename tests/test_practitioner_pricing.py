@@ -18,3 +18,23 @@ def test_service_fee_flat_33pct_of_markup():
     assert pp.service_fee_cents(8000, 5000, s) == 990    # 33% of (80-50)=30 -> $9.90
     assert pp.service_fee_cents(5000, 5000, s) == 0      # no markup -> no fee
     assert pp.service_fee_cents(4000, 5000, s) == 0      # negative markup clamps to 0
+
+def test_resolve_selling_from_dollars_and_percent():
+    # retail $70, MAP $67
+    assert pp.resolve_selling_cents({"price_cents": 8000}, retail_cents=7000, map_cents=6700) == 8000
+    # +20% over retail -> $84
+    assert pp.resolve_selling_cents({"markup_pct": 20}, retail_cents=7000, map_cents=6700) == 8400
+    # default to retail when nothing set
+    assert pp.resolve_selling_cents({}, retail_cents=7000, map_cents=6700) == 7000
+
+def test_resolve_selling_rejects_below_map():
+    import pytest
+    with pytest.raises(pp.MapViolation):
+        pp.resolve_selling_cents({"price_cents": 6000}, retail_cents=7000, map_cents=6700)   # $60 < MAP
+    with pytest.raises(pp.MapViolation):
+        pp.resolve_selling_cents({"markup_pct": -10}, retail_cents=7000, map_cents=6700)      # $63 < MAP
+
+def test_companion_figure_helper():
+    # given a dollar price, report the implied markup %, and vice versa, for the UI
+    assert pp.markup_pct_for(8400, 7000) == 20.0
+    assert pp.price_for_markup(20, 7000) == 8400

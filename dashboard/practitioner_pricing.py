@@ -23,3 +23,27 @@ def service_fee_cents(selling_cents, base_cents, settings):
     """Flat fee = fee_pct of the markup (selling - base), never negative. Drop-ship only."""
     markup = max(0, int(selling_cents) - int(base_cents))
     return int(round(settings["fee_pct"] * markup))
+
+class MapViolation(ValueError):
+    """Selling price resolves below the Minimum Advertised Price."""
+
+def price_for_markup(markup_pct, retail_cents):
+    return int(round(int(retail_cents) * (1 + float(markup_pct) / 100.0)))
+
+def markup_pct_for(price_cents, retail_cents):
+    if not retail_cents:
+        return 0.0
+    return round((int(price_cents) - int(retail_cents)) / int(retail_cents) * 100.0, 1)
+
+def resolve_selling_cents(price_input, *, retail_cents, map_cents):
+    """price_input: {"price_cents": int} OR {"markup_pct": number} OR {} (default retail).
+    Returns the selling price in cents; raises MapViolation if it is below MAP (advertised)."""
+    if price_input.get("price_cents") is not None:
+        s = int(price_input["price_cents"])
+    elif price_input.get("markup_pct") is not None:
+        s = price_for_markup(price_input["markup_pct"], retail_cents)
+    else:
+        s = int(retail_cents)
+    if s < int(map_cents):
+        raise MapViolation(f"{s} below MAP {map_cents}")
+    return s
