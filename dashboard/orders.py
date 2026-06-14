@@ -28,6 +28,9 @@ def init_orders_table(cx):
             status TEXT NOT NULL DEFAULT 'new',
             tracking_number TEXT, shipment_id INTEGER,
             notes TEXT, updated_at TEXT,
+            discount_cents INTEGER NOT NULL DEFAULT 0,
+            points_redeemed_cents INTEGER NOT NULL DEFAULT 0,
+            shipping_cents INTEGER NOT NULL DEFAULT 0,
             UNIQUE(source, external_ref)
         )
     """)
@@ -46,16 +49,23 @@ def init_orders_table(cx):
         cx.execute("ALTER TABLE orders ADD COLUMN get_cents INTEGER DEFAULT 0")
     except Exception:
         pass
+    for col in ("discount_cents", "points_redeemed_cents", "shipping_cents"):
+        try:
+            cx.execute(f"ALTER TABLE orders ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass  # already present (created by the CREATE TABLE above or prior migration)
     cx.commit()
 
 
 def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
                  items=None, total_cents=0, address=None, channel="retail",
-                 status="new", get_cents=0):
+                 status="new", get_cents=0,
+                 discount_cents=0, points_redeemed_cents=0, shipping_cents=0):
     """Idempotent on (source, external_ref). Inserts a new order, or updates the
     soft fields of an existing one WITHOUT regressing its lifecycle status.
     items and address are only overwritten when explicitly provided (not None).
-    get_cents = absorbed Hawai'i GET owed (recorded, not charged)."""
+    get_cents = absorbed Hawai'i GET owed (recorded, not charged).
+    discount_cents / points_redeemed_cents / shipping_cents = pricing breakdown."""
     ref = str(external_ref or "").strip()
     if not ref:
         raise ValueError("external_ref required")
@@ -64,9 +74,11 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
     if row:
         # Only overwrite items_json / address_json when caller provides them.
         sets = ["email=?", "name=?", "phone=?", "total_cents=?", "channel=?",
-                "get_cents=?", "updated_at=?"]
+                "get_cents=?", "discount_cents=?", "points_redeemed_cents=?",
+                "shipping_cents=?", "updated_at=?"]
         vals = [email, name, phone, int(total_cents or 0), channel,
-                int(get_cents or 0), _now()]
+                int(get_cents or 0), int(discount_cents or 0),
+                int(points_redeemed_cents or 0), int(shipping_cents or 0), _now()]
         if items is not None:
             sets.insert(3, "items_json=?")
             vals.insert(3, json.dumps(items))
@@ -79,11 +91,13 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
         return row[0]
     cur = cx.execute(
         "INSERT INTO orders (created_at, source, external_ref, channel, email, name, "
-        "phone, items_json, total_cents, address_json, status, get_cents) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "phone, items_json, total_cents, address_json, status, get_cents, "
+        "discount_cents, points_redeemed_cents, shipping_cents) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (_now(), source, ref, channel, email, name, phone,
          json.dumps(items or []), int(total_cents or 0), json.dumps(address or {}),
-         status, int(get_cents or 0)))
+         status, int(get_cents or 0),
+         int(discount_cents or 0), int(points_redeemed_cents or 0), int(shipping_cents or 0)))
     cx.commit()
     return cur.lastrowid
 
