@@ -17,6 +17,22 @@ def _key() -> str:
     return k
 
 
+def _post(path: str, params: dict) -> dict:
+    """POST form-encoded params to the Stripe API. Returns the parsed JSON dict."""
+    url = path if path.startswith("http") else f"{STRIPE_API}{path}"
+    r = requests.post(url, data=params, auth=(_key(), ""), timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+
+def _get(path: str) -> dict:
+    """GET from the Stripe API. Returns the parsed JSON dict."""
+    url = path if path.startswith("http") else f"{STRIPE_API}{path}"
+    r = requests.get(url, auth=(_key(), ""), timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+
 def _checkout_params(amount_cents, *, customer_email, description, metadata,
                      success_url, cancel_url, currency="usd") -> dict:
     """Pure: build the form params for a one-time-payment Checkout Session."""
@@ -40,25 +56,49 @@ def _checkout_params(amount_cents, *, customer_email, description, metadata,
 
 
 def create_checkout_session(amount_cents, *, customer_email, description, metadata,
-                            success_url, cancel_url) -> dict:
+                            success_url, cancel_url, save_card=False) -> dict:
     params = _checkout_params(amount_cents, customer_email=customer_email,
                               description=description, metadata=metadata,
                               success_url=success_url, cancel_url=cancel_url)
-    r = requests.post(f"{STRIPE_API}/checkout/sessions", data=params,
-                      auth=(_key(), ""), timeout=20)
-    r.raise_for_status()
-    j = r.json()
+    if save_card:
+        params["customer_creation"] = "always"
+        params["payment_intent_data[setup_future_usage]"] = "off_session"
+    j = _post("/checkout/sessions", params)
     return {"id": j.get("id"), "url": j.get("url")}
 
 
 def get_session(session_id) -> dict:
-    r = requests.get(f"{STRIPE_API}/checkout/sessions/{session_id}",
-                     auth=(_key(), ""), timeout=20)
-    r.raise_for_status()
-    j = r.json()
+    j = _get(f"/checkout/sessions/{session_id}")
     return {"id": j.get("id"), "payment_status": j.get("payment_status"),
             "amount_total": j.get("amount_total"), "metadata": j.get("metadata") or {},
             "payment_intent": j.get("payment_intent")}
+
+
+def get_payment_intent(pi_id: str) -> dict:
+    """Retrieve a PaymentIntent. Returns {id, customer, payment_method, status}."""
+    j = _get(f"/payment_intents/{pi_id}")
+    return {"id": j.get("id"), "customer": j.get("customer"),
+            "payment_method": j.get("payment_method"), "status": j.get("status")}
+
+
+def charge_off_session(customer_id, payment_method_id, amount_cents, *,
+                       description, metadata) -> dict:
+    """Charge a vaulted card off-session. Returns {id, status, decline_code?, error?}.
+    status: 'succeeded' | 'requires_action' | 'failed'."""
+    params = {
+        "amount": str(int(amount_cents)), "currency": "usd",
+        "customer": customer_id, "payment_method": payment_method_id,
+        "off_session": "true", "confirm": "true", "description": description or "",
+    }
+    for k, v in (metadata or {}).items():
+        params[f"metadata[{k}]"] = str(v)
+    resp = _post("/payment_intents", params)
+    err = resp.get("error")
+    if err:
+        return {"id": None, "status": "failed",
+                "decline_code": err.get("decline_code") or err.get("code"),
+                "error": err.get("message")}
+    return {"id": resp.get("id"), "status": resp.get("status")}
 
 
 def refund(payment_intent, amount_cents=None):
@@ -67,7 +107,5 @@ def refund(payment_intent, amount_cents=None):
     data = {"payment_intent": str(payment_intent)}
     if amount_cents is not None:
         data["amount"] = int(amount_cents)
-    r = requests.post(f"{STRIPE_API}/refunds", data=data, auth=(_key(), ""), timeout=20)
-    r.raise_for_status()
-    j = r.json()
+    j = _post("/refunds", data)
     return {"id": j.get("id"), "status": j.get("status"), "amount": j.get("amount")}
