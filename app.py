@@ -5785,6 +5785,7 @@ def reorder_checkout():
                           points_redeemed_cents=pc["points_redeemed_cents"],
                           shipping_cents=pc["shipping_cents"])
             out = {"invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
+                   "customer_id": cust.get("Id"),   # needed by /begin/checkout-return to record the QBO payment
                    "total": inv.get("TotalAmt")}
             stripe_url = _stripe_checkout_url_for_reorder(out, email) if _STRIPE_ACTIVE else ""
             return jsonify({"ok": True, "stripe_url": stripe_url, **out})

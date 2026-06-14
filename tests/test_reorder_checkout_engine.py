@@ -27,3 +27,5 @@ def test_reorder_checkout_uses_engine_discount(monkeypatch):
     assert captured["kw"]["discount_cents"] == 12180
     assert captured["order"]["discount_cents"] == 12180
     assert captured["order"]["shipping_cents"] == 2295
+    # customer_id must be echoed so /begin/checkout-return can record the QBO payment
+    assert r.get_json()["customer_id"] == "C1"
