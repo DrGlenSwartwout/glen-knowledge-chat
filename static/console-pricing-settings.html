@@ -317,13 +317,16 @@
       var data = await res.json();
       out.style.display = 'block';
       if (res.status !== 200){ out.textContent = 'Error: ' + JSON.stringify(data, null, 2); return; }
+      function dollars(c){ return c != null ? '$' + (c/100).toFixed(2) : '?'; }
       var lines = '';
-      (data.items || data.lines || []).forEach(function(li){
-        var unit = li.unit_price_cents != null ? li.unit_price_cents : li.unit_cents;
-        lines += '  ' + esc(li.slug || '') + ' x' + (li.qty != null ? li.qty : '')
-              + '  unit: ' + (unit != null ? '$' + (unit/100).toFixed(2) : '?') + '\n';
+      (data.lines || []).forEach(function(li){
+        lines += '  ' + esc(li.name || li.slug || '') + ' x' + (li.qty != null ? li.qty : '')
+              + '  list: ' + dollars(li.list_cents)
+              + '  line total: ' + dollars(li.line_total_cents)
+              + (li.pct_applied != null ? '  (' + li.pct_applied + '% off)' : '') + '\n';
       });
       var txt = 'Lines:\n' + (lines || '  (none)\n')
+              + 'Subtotal: ' + dollars(data.subtotal_cents) + '\n'
               + 'Discount: ' + (data.discount_cents != null ? '$' + (data.discount_cents/100).toFixed(2) : '?') + '\n'
               + 'Points redeemed: ' + (data.points_redeemed_cents != null ? '$' + (data.points_redeemed_cents/100).toFixed(2) : '?') + '\n'
               + 'Total: ' + (data.total_cents != null ? '$' + (data.total_cents/100).toFixed(2) : (data.total != null ? data.total : '?')) + '\n\n'
