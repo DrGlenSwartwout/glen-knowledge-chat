@@ -7,11 +7,20 @@ invoiced at the practitioner's price S and the practitioner's margin (S - base -
 is returned for wallet crediting on payment."""
 from __future__ import annotations
 
+import os
+import sqlite3
+from pathlib import Path
 from typing import List
 
 from dashboard import practitioner_pricing as _pp
 from dashboard import qbo_billing as qb
 from dashboard import wallet
+
+# Resolve LOG_DB the same way practitioner_portal.py does — respects DATA_DIR in prod.
+_LOG_DB = str(
+    Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent)))
+    / "chat_log.db"
+)
 
 
 def _settings():
@@ -128,21 +137,28 @@ def build_dropship_order(cart: List[dict], practitioner: dict, *,
 def _practitioner_price_cents(pid: str, slug: str, retail: int) -> int:
     """Return the practitioner's stored selling price for (pid, slug) in cents.
 
-    Falls back to `retail` when no price has been stored.
-    The price-setting UI (Plan 4) will write to a practitioner_settings table;
-    this stub is the read side.
-
-    TODO: load from practitioner_settings table once the settings UI is built.
+    Resolution: per-SKU override → default markup % → retail; clamped to MAP.
+    Falls back to max(retail, MAP) on any error so a settings problem never
+    crashes a checkout.
     """
-    # Stub: always return retail until Plan 4's price-setting UI persists a price.
-    price = retail
-
-    # MAP clamp: if the returned price falls below MAP, raise to MAP.
+    from dashboard import practitioner_settings as _ps
     settings = _settings()
     map_floor = int(settings.get("map_default_cents", 6700))
-    if price < map_floor:
-        price = map_floor
-    return price
+    try:
+        cx = sqlite3.connect(_LOG_DB)
+        cx.row_factory = sqlite3.Row
+        _ps.init_settings_table(cx)
+        try:
+            return _ps.price_cents_for(
+                cx, pid, slug,
+                retail_cents=retail,
+                map_cents=map_floor,
+            )
+        finally:
+            cx.close()
+    except Exception:
+        # Best-effort fallback: never crash a checkout due to a settings error.
+        return max(retail, map_floor)
 
 
 def practitioner_price_for(pid: str, slug: str) -> int:

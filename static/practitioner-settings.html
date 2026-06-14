@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Practice Settings · Remedy Match</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+      --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --radius:14px;
+      --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
+    :root[data-theme="light"]{ --bg:#FBF8F3; --surface:#FFFFFF; --surface-2:#F4ECDE;
+      --border:#E2D9C9; --cream:#1E2A2A; --muted:#5F6B6B; --gold:#B08A3E; --green:#2D7A6A; }
+    *{box-sizing:border-box}
+    body{ margin:0; background:var(--bg); color:var(--cream); font-family:var(--font); line-height:1.6; }
+    .wrap{ max-width:760px; margin:0 auto; padding:34px 20px 60px; }
+    h1,h2{ font-family:var(--heading); font-weight:700; margin:0; }
+    h1{ font-size:24px; } h2{ font-size:17px; }
+    .muted{ color:var(--muted); font-size:13px; }
+    .panel{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-top:16px; }
+    label.field-label{ display:block; font-size:12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; margin-top:12px; }
+    label.field-label:first-child{ margin-top:0; }
+    input[type=text], input[type=url], input[type=email], input[type=number]{
+      padding:9px 10px; border:1px solid var(--border); border-radius:8px; font-size:14px;
+      font-family:inherit; background:var(--surface-2); color:var(--cream); width:100%; }
+    input::placeholder{ color:#6f7d6f; }
+    input[type=color]{ width:48px; height:38px; padding:2px 4px; border:1px solid var(--border);
+      border-radius:8px; background:var(--surface-2); cursor:pointer; }
+    .color-row{ display:flex; align-items:center; gap:10px; }
+    .color-hex{ width:110px; font-family:monospace; }
+    button.primary{ background:var(--green); color:#fff; border:0; border-radius:8px;
+      padding:9px 20px; font-weight:600; cursor:pointer; font-family:inherit; font-size:14px; }
+    button.ghost{ background:transparent; color:var(--gold); border:1px solid var(--border);
+      border-radius:8px; padding:9px 14px; font-weight:600; cursor:pointer; font-family:inherit; font-size:14px; }
+    button:disabled{ opacity:.5; cursor:default; }
+    .msg{ margin-top:12px; font-size:13px; min-height:1.2em; }
+    .msg.ok{ color:#8fd6a3; }
+    .msg.err{ color:#e09080; }
+    .warn-map{ color:var(--gold); font-size:12px; margin-top:4px; display:none; }
+    .companion{ color:var(--muted); font-size:12px; margin-top:4px; }
+    .auth-notice{ text-align:center; padding:60px 20px; }
+    .auth-notice a{ color:var(--gold); }
+    .sku-row{ display:grid; grid-template-columns:1fr 140px 100px; gap:8px; align-items:start; margin-top:8px; }
+    .sku-label{ font-size:13px; padding-top:10px; color:var(--cream); }
+    .add-sku-row{ margin-top:12px; display:flex; gap:8px; }
+    .add-sku-row input{ flex:1; }
+    /* Preview swatch */
+    .preview-bar{ height:10px; border-radius:5px; margin-top:10px;
+      background:linear-gradient(90deg,var(--preview-c1,#3d8a52) 50%,var(--preview-c2,#d4a843) 50%); }
+    .row-nav{ display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .nav-links{ display:flex; gap:12px; font-size:13px; }
+    .nav-links a{ color:var(--gold); text-decoration:none; }
+    .clamped-note{ background:rgba(212,168,67,.12); border:1px solid var(--border);
+      border-radius:8px; padding:10px 12px; font-size:12px; color:var(--gold); margin-top:10px; }
+  </style>
+  <script>(function(){var t=localStorage.getItem('rm-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- nav header -->
+  <div class="row-nav">
+    <div>
+      <h1>Practice Settings</h1>
+      <div class="muted" id="who" style="margin-top:4px">Loading&hellip;</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div class="nav-links">
+        <a href="/practitioner/portal">Wholesale</a>
+        <a href="/practitioner/dropship">Drop-Ship</a>
+      </div>
+      <button class="ghost" onclick="toggleTheme()" id="theme-toggle">Light</button>
+    </div>
+  </div>
+
+  <!-- auth wall -->
+  <div id="auth-wall" class="auth-notice" style="display:none">
+    <div style="font-size:18px;font-weight:700;font-family:var(--heading);margin-bottom:10px">Sign in required</div>
+    <p>Please sign in to your practitioner portal first.</p>
+    <a href="/practitioner/portal">Go to practitioner portal &rarr;</a>
+  </div>
+
+  <div id="main-content" style="display:none">
+
+    <!-- ── Pricing ─────────────────────────────────────────────────── -->
+    <div class="panel">
+      <h2>Pricing</h2>
+      <div class="muted" style="margin-top:6px">Set your default markup over retail. You can also set a specific dollar price per SKU. Prices are always at or above the MAP minimum of $67.</div>
+
+      <label class="field-label" style="margin-top:16px">Default markup % (applied to all SKUs without a per-SKU override)</label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="number" id="default-markup" step="0.1" min="-99" max="500" placeholder="0" style="width:120px">
+        <span class="companion" id="markup-companion"></span>
+      </div>
+      <div class="warn-map" id="markup-warn-map">This markup puts some products below MAP ($67). They will be sold at $67 minimum.</div>
+
+      <div style="margin-top:18px">
+        <div style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Per-SKU overrides (cents)</div>
+        <div class="muted">Enter exact dollar price (in cents, e.g. 7500 for $75.00). Leave blank to use the default markup above. Prices below $67 will be raised to MAP.</div>
+        <div id="sku-rows"></div>
+        <div class="add-sku-row">
+          <input type="text" id="new-slug" placeholder="product-slug">
+          <input type="number" id="new-price" placeholder="price in cents" min="0" style="width:150px">
+          <button class="ghost" onclick="addSku()">Add override</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Branding ────────────────────────────────────────────────── -->
+    <div class="panel">
+      <h2>Branding</h2>
+      <div class="muted" style="margin-top:6px">White-label your dispensary page. Fields you fill in replace the Remedy Match defaults on your client link.</div>
+
+      <label class="field-label">Practice name</label>
+      <input type="text" id="practice-name" placeholder="e.g. Sunrise Wellness">
+
+      <label class="field-label">Contact details (shown to patients)</label>
+      <input type="text" id="contact-email" placeholder="e.g. dr@yourpractice.com or (555) 000-1234">
+
+      <label class="field-label">Web link (practice website)</label>
+      <input type="url" id="web-link" placeholder="https://yourpractice.com">
+
+      <label class="field-label">Logo URL (v1 — paste a public image URL)</label>
+      <input type="url" id="logo-url" placeholder="https://yoursite.com/logo.png">
+
+      <label class="field-label">Practitioner photo URL (shown on client page)</label>
+      <input type="url" id="photo-url" placeholder="https://yoursite.com/photo.jpg">
+
+      <label class="field-label" style="margin-top:16px">Brand color 1 (header / primary)</label>
+      <div class="color-row">
+        <input type="color" id="color1-pick" value="#3d8a52">
+        <input type="text" id="color1-hex" class="color-hex" placeholder="#3d8a52" maxlength="7">
+      </div>
+
+      <label class="field-label" style="margin-top:12px">Brand color 2 (accent)</label>
+      <div class="color-row">
+        <input type="color" id="color2-pick" value="#d4a843">
+        <input type="text" id="color2-hex" class="color-hex" placeholder="#d4a843" maxlength="7">
+      </div>
+
+      <div class="preview-bar" id="preview-bar" style="margin-top:16px"></div>
+      <div class="muted" style="margin-top:4px">Color preview</div>
+    </div>
+
+    <!-- ── Save ───────────────────────────────────────────────────── -->
+    <div style="margin-top:20px;display:flex;align-items:center;gap:16px">
+      <button class="primary" id="save-btn" onclick="saveSettings()">Save settings</button>
+      <div class="msg" id="save-msg"></div>
+    </div>
+    <div class="clamped-note" id="clamped-note" style="display:none"></div>
+
+  </div><!-- /main-content -->
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var TOKEN = new URLSearchParams(location.search).get('token') || '';
+  var MAP_CENTS = 6700;  // $67 minimum
+  var RETAIL_CENTS = 7000; // approximate retail for companion calc (~$70)
+
+  // ── Theme toggle ─────────────────────────────────────────────────────────────
+  function toggleTheme() {
+    var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('rm-theme', next);
+    var b = document.getElementById('theme-toggle');
+    if (b) b.textContent = next === 'light' ? 'Dark' : 'Light';
+  }
+  window.toggleTheme = toggleTheme;
+  (function () {
+    var t = document.documentElement.getAttribute('data-theme');
+    var b = document.getElementById('theme-toggle');
+    if (b) b.textContent = t === 'light' ? 'Dark' : 'Light';
+  })();
+
+  // ── Auth header ──────────────────────────────────────────────────────────────
+  function authHeaders() {
+    var h = { 'Content-Type': 'application/json' };
+    if (TOKEN) h['X-Practitioner-Token'] = TOKEN;
+    return h;
+  }
+
+  // ── SKU overrides state ──────────────────────────────────────────────────────
+  var skuOverrides = {};  // slug -> cents (integer)
+
+  function renderSkuRows() {
+    var container = document.getElementById('sku-rows');
+    var slugs = Object.keys(skuOverrides);
+    if (!slugs.length) {
+      container.innerHTML = '<div class="muted" style="font-size:12px;padding:8px 0">No per-SKU overrides set. All products use the default markup above.</div>';
+      return;
+    }
+    container.innerHTML = slugs.map(function (slug) {
+      var cents = skuOverrides[slug];
+      var belowMap = cents < MAP_CENTS;
+      return '<div class="sku-row" id="sku-' + esc(slug) + '">'
+        + '<div class="sku-label">' + esc(slug) + (belowMap ? ' <span style="color:var(--gold)">(will be raised to $67)</span>' : '') + '</div>'
+        + '<input type="number" value="' + cents + '" min="0" style="width:100%"'
+        + '  onchange="updateSku(' + JSON.stringify(slug) + ',this.value)"'
+        + '  oninput="updateSku(' + JSON.stringify(slug) + ',this.value)">'
+        + '<button class="ghost" style="padding:6px 10px;font-size:12px" onclick="removeSku(' + JSON.stringify(slug) + ')">Remove</button>'
+        + '</div>';
+    }).join('');
+  }
+
+  window.updateSku = function (slug, val) {
+    var n = parseInt(val, 10);
+    if (!isNaN(n)) { skuOverrides[slug] = n; renderSkuRows(); }
+  };
+
+  window.removeSku = function (slug) {
+    delete skuOverrides[slug];
+    renderSkuRows();
+  };
+
+  window.addSku = function () {
+    var slug = document.getElementById('new-slug').value.trim();
+    var priceStr = document.getElementById('new-price').value.trim();
+    if (!slug) { alert('Enter a product slug.'); return; }
+    var cents = parseInt(priceStr, 10);
+    if (isNaN(cents) || cents < 0) { alert('Enter a valid price in cents (e.g. 7500 for $75.00).'); return; }
+    skuOverrides[slug] = cents;
+    document.getElementById('new-slug').value = '';
+    document.getElementById('new-price').value = '';
+    renderSkuRows();
+  };
+
+  // ── Markup companion ($ equivalent) ─────────────────────────────────────────
+  function updateMarkupCompanion() {
+    var pct = parseFloat(document.getElementById('default-markup').value);
+    var comp = document.getElementById('markup-companion');
+    var warn = document.getElementById('markup-warn-map');
+    if (isNaN(pct)) { comp.textContent = ''; warn.style.display = 'none'; return; }
+    var price = Math.round(RETAIL_CENTS * (1 + pct / 100));
+    comp.textContent = '≈ $' + (price / 100).toFixed(2) + ' on a $' + (RETAIL_CENTS / 100).toFixed(2) + ' retail item';
+    if (price < MAP_CENTS) {
+      warn.style.display = 'block';
+    } else {
+      warn.style.display = 'none';
+    }
+  }
+  document.getElementById('default-markup').addEventListener('input', updateMarkupCompanion);
+
+  // ── Color pickers ─────────────────────────────────────────────────────────────
+  function wireColor(pickId, hexId, previewVar) {
+    var pick = document.getElementById(pickId);
+    var hex = document.getElementById(hexId);
+    pick.addEventListener('input', function () {
+      hex.value = pick.value;
+      updatePreview();
+    });
+    hex.addEventListener('input', function () {
+      var v = hex.value.trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) { pick.value = v; }
+      updatePreview();
+    });
+  }
+
+  function updatePreview() {
+    var c1 = document.getElementById('color1-hex').value.trim() || '#3d8a52';
+    var c2 = document.getElementById('color2-hex').value.trim() || '#d4a843';
+    var bar = document.getElementById('preview-bar');
+    bar.style.background = 'linear-gradient(90deg,' + c1 + ' 50%,' + c2 + ' 50%)';
+  }
+
+  wireColor('color1-pick', 'color1-hex', '--preview-c1');
+  wireColor('color2-pick', 'color2-hex', '--preview-c2');
+
+  function setColorPair(hex1, hex2) {
+    var p1 = document.getElementById('color1-pick');
+    var h1 = document.getElementById('color1-hex');
+    var p2 = document.getElementById('color2-pick');
+    var h2 = document.getElementById('color2-hex');
+    if (hex1 && /^#[0-9a-fA-F]{6}$/.test(hex1)) { p1.value = hex1; h1.value = hex1; }
+    if (hex2 && /^#[0-9a-fA-F]{6}$/.test(hex2)) { p2.value = hex2; h2.value = hex2; }
+    updatePreview();
+  }
+
+  // ── Escape HTML ──────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ── Load settings ─────────────────────────────────────────────────────────────
+  fetch('/api/practitioner/settings', { credentials: 'same-origin', headers: authHeaders() })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data.ok) {
+        document.getElementById('auth-wall').style.display = 'block';
+        return;
+      }
+      document.getElementById('main-content').style.display = 'block';
+
+      // Pricing
+      var pricing = data.pricing || {};
+      document.getElementById('default-markup').value = pricing.default_markup_pct || 0;
+      updateMarkupCompanion();
+      skuOverrides = Object.assign({}, pricing.overrides || {});
+      renderSkuRows();
+
+      // Branding
+      var b = data.branding || {};
+      document.getElementById('practice-name').value = b.practice_name || '';
+      document.getElementById('contact-email').value = b.contact_email || '';
+      document.getElementById('web-link').value = b.web_link || '';
+      document.getElementById('logo-url').value = b.logo_url || '';
+      document.getElementById('photo-url').value = b.photo_url || '';
+      setColorPair(b.brand_color_1, b.brand_color_2);
+    })
+    .catch(function () {
+      document.getElementById('auth-wall').style.display = 'block';
+    });
+
+  // ── Save settings ─────────────────────────────────────────────────────────────
+  window.saveSettings = function () {
+    var btn = document.getElementById('save-btn');
+    var msgEl = document.getElementById('save-msg');
+    var clampedEl = document.getElementById('clamped-note');
+    btn.disabled = true;
+    msgEl.className = 'msg';
+    msgEl.textContent = 'Saving…';
+    clampedEl.style.display = 'none';
+
+    var markupPct = parseFloat(document.getElementById('default-markup').value);
+    if (isNaN(markupPct)) { markupPct = 0; }
+
+    var payload = {
+      branding: {
+        practice_name: document.getElementById('practice-name').value.trim(),
+        contact_email: document.getElementById('contact-email').value.trim(),
+        web_link: document.getElementById('web-link').value.trim(),
+        logo_url: document.getElementById('logo-url').value.trim(),
+        photo_url: document.getElementById('photo-url').value.trim(),
+        brand_color_1: document.getElementById('color1-hex').value.trim(),
+        brand_color_2: document.getElementById('color2-hex').value.trim(),
+      },
+      pricing: {
+        default_markup_pct: markupPct,
+        overrides: skuOverrides,
+      },
+    };
+
+    fetch('/api/practitioner/settings', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        btn.disabled = false;
+        if (!data.ok) {
+          msgEl.className = 'msg err';
+          msgEl.textContent = data.error || 'Save failed.';
+          return;
+        }
+        msgEl.className = 'msg ok';
+        msgEl.textContent = 'Settings saved.';
+
+        // Refresh SKU overrides from server response (with MAP clamps applied)
+        if (data.pricing && data.pricing.overrides) {
+          skuOverrides = Object.assign({}, data.pricing.overrides);
+          renderSkuRows();
+        }
+
+        // Show clamped notification
+        var clamped = data.clamped || [];
+        if (clamped.length) {
+          var notes = clamped.map(function (c) {
+            return c.slug + ': requested $' + (c.requested_cents / 100).toFixed(2)
+              + ', raised to $' + (c.clamped_to_cents / 100).toFixed(2) + ' (MAP minimum).';
+          });
+          clampedEl.textContent = 'Some prices were raised to the $67 MAP minimum: ' + notes.join(' ');
+          clampedEl.style.display = 'block';
+        }
+      })
+      .catch(function () {
+        btn.disabled = false;
+        msgEl.className = 'msg err';
+        msgEl.textContent = 'Network error — please try again.';
+      });
+  };
+
+})();
+</script>
+</body>
+</html>

@@ -5684,6 +5684,18 @@ def api_practitioner_portal_data():
     if data.get("dispensary_code"):
         data["dispensary_link"] = f"{PUBLIC_BASE_URL}/dispensary/{data['dispensary_code']}"
     data["stripe_active"] = _STRIPE_ACTIVE
+    # Include practitioner's branding (best-effort — never crash portal-data)
+    branding = {}
+    try:
+        from dashboard import practitioner_settings as _ps
+        with sqlite3.connect(LOG_DB) as _cx:
+            _cx.row_factory = sqlite3.Row
+            _ps.init_settings_table(_cx)
+            _s = _ps.get_settings(_cx, pid)
+            branding = _s.get("branding") or {}
+    except Exception:
+        pass
+    data["branding"] = branding
     return jsonify({"ok": True, **data})
 
 
@@ -5985,6 +5997,83 @@ def api_practitioner_assist():
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@app.route("/practitioner/settings")
+def practitioner_settings_page():
+    resp = send_from_directory(STATIC, "practitioner-settings.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/practitioner/settings", methods=["GET"])
+def api_practitioner_settings_get():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    from dashboard import practitioner_settings as _ps
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ps.init_settings_table(cx)
+        settings = _ps.get_settings(cx, pid)
+    return jsonify({"ok": True, "branding": settings["branding"], "pricing": settings["pricing"]})
+
+
+@app.route("/api/practitioner/settings", methods=["POST"])
+def api_practitioner_settings_post():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    from dashboard import practitioner_settings as _ps
+    from dashboard import practitioner_pricing as _ppr
+    body = request.get_json(silent=True) or {}
+    branding_in = body.get("branding") or {}
+    pricing_in = body.get("pricing") or {}
+
+    # Validate markup_pct is numeric
+    markup_pct = pricing_in.get("default_markup_pct", 0)
+    try:
+        markup_pct = float(markup_pct)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "default_markup_pct must be numeric"}), 400
+
+    # Validate and clamp per-SKU overrides to MAP
+    map_cents = _ppr.DEFAULTS["map_default_cents"]
+    overrides_in = pricing_in.get("overrides") or {}
+    clamped = []
+    overrides_out = {}
+    for slug, price_val in overrides_in.items():
+        try:
+            price_val = int(price_val)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": f"override price for {slug!r} must be an integer (cents)"}), 400
+        if price_val < map_cents:
+            clamped.append({"slug": slug, "requested_cents": price_val, "clamped_to_cents": map_cents})
+            price_val = map_cents
+        overrides_out[slug] = price_val
+
+    # Validate branding fields are strings
+    for field in ("practice_name", "contact_email", "web_link", "logo_url", "photo_url",
+                  "brand_color_1", "brand_color_2"):
+        val = branding_in.get(field)
+        if val is not None and not isinstance(val, str):
+            return jsonify({"ok": False, "error": f"branding field {field!r} must be a string"}), 400
+
+    branding_clean = {k: v for k, v in branding_in.items()
+                      if k in ("practice_name", "contact_email", "web_link",
+                               "logo_url", "photo_url", "brand_color_1", "brand_color_2")}
+    pricing_clean = {"default_markup_pct": markup_pct, "overrides": overrides_out}
+
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ps.init_settings_table(cx)
+        if branding_clean:
+            _ps.set_branding(cx, pid, branding_clean)
+        _ps.set_pricing(cx, pid, pricing_clean)
+        settings = _ps.get_settings(cx, pid)
+
+    return jsonify({"ok": True, "branding": settings["branding"],
+                    "pricing": settings["pricing"], "clamped": clamped})
+
+
 def _record_dispensary_sale(code, customer_email, bottles, invoice_id):
     """Attribute a drop-ship sale to a practitioner by dispensary code and credit
     $20/bottle Wellness Credit. Idempotent on the client invoice id."""
@@ -6024,13 +6113,26 @@ def dispensary_landing(code):
 @app.route("/api/client/<code>/catalog")
 def api_client_catalog(code):
     """Return sellable Functional Formulations at the practitioner's price (>= MAP).
-    Used by practitioner-client.html to populate the product list at page load."""
+    Used by practitioner-client.html to populate the product list at page load.
+    Also returns the practitioner's branding (may be empty dict if not set)."""
     pid = _pp.practitioner_id_by_dispensary_code(code)
     if not pid:
         return jsonify({"ok": False, "error": "unknown dispensary code"}), 404
 
     data = _pp.portal_data(pid) or {}
     practice_name = (data.get("practice_name") or data.get("name") or "Your Practitioner")
+
+    # Load practitioner branding (best-effort — never crash the catalog)
+    branding = {}
+    try:
+        from dashboard import practitioner_settings as _ps
+        with sqlite3.connect(LOG_DB) as _cx:
+            _cx.row_factory = sqlite3.Row
+            _ps.init_settings_table(_cx)
+            _settings = _ps.get_settings(_cx, pid)
+            branding = _settings.get("branding") or {}
+    except Exception:
+        pass
 
     items = []
     for slug, p in (_PRODUCTS.get("products") or {}).items():
@@ -6043,7 +6145,7 @@ def api_client_catalog(code):
         items.append({"slug": slug, "name": name, "price_cents": price_cents})
 
     items.sort(key=lambda x: x["name"])
-    return jsonify({"ok": True, "practice_name": practice_name, "items": items})
+    return jsonify({"ok": True, "practice_name": practice_name, "branding": branding, "items": items})
 
 
 @app.route("/api/client/<code>/checkout", methods=["POST"])

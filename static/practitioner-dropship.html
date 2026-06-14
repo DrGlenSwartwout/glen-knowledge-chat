@@ -50,9 +50,12 @@
 <body>
 <div class="wrap">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
-    <div>
-      <h1>Drop-Ship Portal</h1>
-      <div class="muted" id="who">Loading&hellip;</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <img id="brand-logo" src="" alt="" style="display:none;width:40px;height:40px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,.08)">
+      <div>
+        <h1>Drop-Ship Portal</h1>
+        <div class="muted" id="who">Loading&hellip;</div>
+      </div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <a href="/practitioner/portal" style="color:var(--gold);font-size:13px">Wholesale portal</a>
@@ -230,6 +233,26 @@ function loadQuote(){
     .catch(function(){ setMsg('Network error loading quote.', true); });
 }
 
+function applyBranding(b){
+  if(!b) return;
+  // Brand colors
+  if(b.brand_color_1 && /^#[0-9a-fA-F]{3,6}$/.test(b.brand_color_1)){
+    document.documentElement.style.setProperty('--green', b.brand_color_1);
+  }
+  if(b.brand_color_2 && /^#[0-9a-fA-F]{3,6}$/.test(b.brand_color_2)){
+    document.documentElement.style.setProperty('--gold', b.brand_color_2);
+  }
+  // Logo
+  if(b.logo_url){
+    var logoEl = document.getElementById('brand-logo');
+    if(logoEl){
+      logoEl.src = b.logo_url;
+      logoEl.style.display = 'inline-block';
+      logoEl.onerror = function(){ logoEl.style.display = 'none'; };
+    }
+  }
+}
+
 function loadPortalData(){
   fetch('/api/practitioner/portal-data?token=' + encodeURIComponent(TOKEN))
     .then(function(r){
@@ -239,7 +262,9 @@ function loadPortalData(){
     .then(function(d){
       if(!d) return;
       if(!d.ok){ showAuthWall(); return; }
-      $('who').textContent = (d.name || '') + (d.practice_name ? ' \xb7 ' + d.practice_name : '');
+      var practiceName = (d.branding && d.branding.practice_name) || d.practice_name || '';
+      $('who').textContent = (d.name || '') + (practiceName ? ' \xb7 ' + practiceName : '');
+      applyBranding(d.branding);
       // show/hide card option
       if(d.stripe_active) $('opt-card').style.display = '';
       $('auth-wall').style.display = 'none';
