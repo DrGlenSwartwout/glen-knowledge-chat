@@ -16,6 +16,18 @@ def test_has_entry_detects_prior_earn():
     assert points.has_entry(cx, order_ref="INV1", reason="redeem") is False
 
 
+def test_settle_points_earn_base_excludes_get_and_shipping(monkeypatch, tmp_path):
+    db = str(tmp_path / "t.db")
+    monkeypatch.setattr(appmod, "LOG_DB", db)
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    points.init_points_table(cx); cx.commit()
+    # total 7565 = product 6000 + shipping 1265 + get 300; earn base must be 6000 → 300 pts
+    order = {"email": "a@x.com", "total_cents": 7565, "shipping_cents": 1265,
+             "get_cents": 300, "discount_cents": 0, "points_redeemed_cents": 0}
+    appmod._settle_order_points(order, order_ref="INVG")
+    assert points.balance(cx, "a@x.com") == 300      # NOT 313 (would include the $3 GET)
+
+
 def test_settle_points_earns_on_full_price(monkeypatch, tmp_path):
     db = str(tmp_path / "t.db")
     monkeypatch.setattr(appmod, "LOG_DB", db)

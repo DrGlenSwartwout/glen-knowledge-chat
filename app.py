@@ -2408,7 +2408,11 @@ def _settle_order_points(order, *, order_ref):
     earn_pct = float(_PRICING_SETTINGS.get("points_earn_pct", 0.05)) if isinstance(_PRICING_SETTINGS, dict) else 0.05
     redeemed = int(order.get("points_redeemed_cents") or 0)
     discount = int(order.get("discount_cents") or 0)
-    product_cents = int(order.get("total_cents") or 0) - int(order.get("shipping_cents") or 0)
+    # Earn on PRODUCT spend only: total includes GET (absorbed) when TAX_ENABLED, so net out
+    # both shipping and get_cents to avoid earning points on tax/shipping.
+    product_cents = (int(order.get("total_cents") or 0)
+                     - int(order.get("shipping_cents") or 0)
+                     - int(order.get("get_cents") or 0))
     with sqlite3.connect(LOG_DB) as cx:
         _points.init_points_table(cx)
         if redeemed > 0 and not _points.has_entry(cx, order_ref=order_ref, reason="redeem"):
