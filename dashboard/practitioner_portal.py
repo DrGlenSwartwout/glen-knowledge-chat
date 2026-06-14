@@ -404,6 +404,20 @@ def find_practitioner_id_by_email(email) -> Optional[str]:
     return str(row["id"]) if row else None
 
 
+def modules_completed_for_email(email) -> Optional[int]:
+    """modules_completed for the practitioner with this email, or None if the email is
+    blank or not a practitioner. Null modules count as 0."""
+    if not email:
+        return None
+    from db_supabase import supabase_cursor
+    with supabase_cursor() as cur:
+        cur.execute("SELECT modules_completed FROM practitioners "
+                    "WHERE lower(email)=lower(%s) AND portal_role IS NOT NULL LIMIT 1",
+                    (str(email).strip(),))
+        row = cur.fetchone()
+    return int(row["modules_completed"] or 0) if row else None
+
+
 def register_practitioner(clean: dict, *, now=None) -> Tuple[str, bool]:
     """Insert or link a practitioners row for a portal registrant. Licensed unlock
     immediately; coaches stay locked until the first module is committed. Returns

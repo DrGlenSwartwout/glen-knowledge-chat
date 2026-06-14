@@ -243,3 +243,24 @@ def test_register_coach_stays_locked(fake_supabase):
     pid, unlocked = register_practitioner(clean, now=datetime(2026, 6, 1))
     assert unlocked is False
     assert fake_supabase.inserts[0][-1] is None            # locked until first module
+
+
+def test_modules_completed_for_email(monkeypatch):
+    import db_supabase
+    from dashboard import practitioner_portal as pp
+
+    class _Cur:
+        def __init__(self, row): self._row = row
+        def execute(self, *a, **k): self._a = a
+        def fetchone(self): return self._row
+
+    monkeypatch.setattr(db_supabase, "supabase_cursor", lambda: _FakeCtx(_Cur({"modules_completed": 9})))
+    assert pp.modules_completed_for_email("doc@x.com") == 9
+
+    monkeypatch.setattr(db_supabase, "supabase_cursor", lambda: _FakeCtx(_Cur({"modules_completed": None})))
+    assert pp.modules_completed_for_email("doc@x.com") == 0
+
+    monkeypatch.setattr(db_supabase, "supabase_cursor", lambda: _FakeCtx(_Cur(None)))
+    assert pp.modules_completed_for_email("nobody@x.com") is None
+
+    assert pp.modules_completed_for_email("") is None
