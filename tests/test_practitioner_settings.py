@@ -14,6 +14,7 @@ def test_defaults_when_unset():
     cx = _cx()
     s = ps.get_settings(cx, "p1")
     assert s["branding"] == {} and s["pricing"] == {"default_markup_pct": 0, "overrides": {}}
+    assert s["chat_enabled"] is False
 
 
 def test_set_and_get_roundtrip():

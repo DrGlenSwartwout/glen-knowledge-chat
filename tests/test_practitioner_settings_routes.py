@@ -50,6 +50,7 @@ def test_get_defaults_for_fresh_practitioner(monkeypatch, client):
     assert data["ok"] is True
     assert data["branding"] == {}
     assert data["pricing"] == {"default_markup_pct": 0, "overrides": {}}
+    assert data["chat_enabled"] is False
 
 
 # ── POST writes branding + pricing, GET reads them back ──────────────────────

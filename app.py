@@ -6015,7 +6015,8 @@ def api_practitioner_settings_get():
         cx.row_factory = sqlite3.Row
         _ps.init_settings_table(cx)
         settings = _ps.get_settings(cx, pid)
-    return jsonify({"ok": True, "branding": settings["branding"], "pricing": settings["pricing"]})
+    return jsonify({"ok": True, "branding": settings["branding"], "pricing": settings["pricing"],
+                    "chat_enabled": settings.get("chat_enabled", False)})
 
 
 @app.route("/api/practitioner/settings", methods=["POST"])
@@ -6063,16 +6064,21 @@ def api_practitioner_settings_post():
                                "logo_url", "photo_url", "brand_color_1", "brand_color_2")}
     pricing_clean = {"default_markup_pct": markup_pct, "overrides": overrides_out}
 
+    # chat_enabled is a top-level bool field (not nested under branding or pricing)
+    chat_enabled_in = body.get("chat_enabled")
+    chat_enabled = bool(chat_enabled_in) if chat_enabled_in is not None else None
+
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ps.init_settings_table(cx)
-        if branding_clean:
-            _ps.set_branding(cx, pid, branding_clean)
+        _ps.set_branding(cx, pid, branding_clean, chat_enabled=chat_enabled)
         _ps.set_pricing(cx, pid, pricing_clean)
         settings = _ps.get_settings(cx, pid)
 
     return jsonify({"ok": True, "branding": settings["branding"],
-                    "pricing": settings["pricing"], "clamped": clamped})
+                    "pricing": settings["pricing"],
+                    "chat_enabled": settings.get("chat_enabled", False),
+                    "clamped": clamped})
 
 
 def _record_dispensary_sale(code, customer_email, bottles, invoice_id):
@@ -6123,8 +6129,9 @@ def api_client_catalog(code):
     data = _pp.portal_data(pid) or {}
     practice_name = (data.get("practice_name") or data.get("name") or "Your Practitioner")
 
-    # Load practitioner branding (best-effort — never crash the catalog)
+    # Load practitioner branding and settings (best-effort — never crash the catalog)
     branding = {}
+    chat_enabled = False
     try:
         from dashboard import practitioner_settings as _ps
         with sqlite3.connect(LOG_DB) as _cx:
@@ -6132,6 +6139,7 @@ def api_client_catalog(code):
             _ps.init_settings_table(_cx)
             _settings = _ps.get_settings(_cx, pid)
             branding = _settings.get("branding") or {}
+            chat_enabled = bool(_settings.get("chat_enabled", False))
     except Exception:
         pass
 
@@ -6146,7 +6154,8 @@ def api_client_catalog(code):
         items.append({"slug": slug, "name": name, "price_cents": price_cents})
 
     items.sort(key=lambda x: x["name"])
-    return jsonify({"ok": True, "practice_name": practice_name, "branding": branding, "items": items})
+    return jsonify({"ok": True, "practice_name": practice_name, "branding": branding,
+                    "chat_enabled": chat_enabled, "items": items})
 
 
 @app.route("/api/client/<code>/checkout", methods=["POST"])
