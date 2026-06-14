@@ -93,7 +93,30 @@ _PRODUCT_ALIASES = _load_json(DATA_DIR / "product-aliases.json",
                               default={"aliases": {}, "store_homepage": "https://remedymatch.com"})
 _COUPONS         = _load_json(DATA_DIR / "coupons.json",
                               default={"default_code": "", "daily_codes": []})
-_PRICING_SETTINGS = _load_json(DATA_DIR / "pricing-settings.json", default={})
+_PRICING_SETTINGS_PATH = DATA_DIR / "pricing-settings.json"
+_PRICING_SETTINGS_CACHE = {"mtime": None, "data": {}}
+
+
+def _pricing_settings():
+    """Live-reloaded pricing+rewards overrides from pricing-settings.json.
+    Re-reads only when the file's mtime changes, so a console edit takes effect on the
+    next order without a redeploy. Returns {} when the file is absent (engine then uses
+    the built-in pricing.DEFAULTS)."""
+    try:
+        mt = _PRICING_SETTINGS_PATH.stat().st_mtime
+    except OSError:
+        _PRICING_SETTINGS_CACHE["mtime"] = None
+        _PRICING_SETTINGS_CACHE["data"] = {}
+        return {}
+    if _PRICING_SETTINGS_CACHE["mtime"] != mt:
+        _PRICING_SETTINGS_CACHE["data"] = _load_json(_PRICING_SETTINGS_PATH, default={})
+        _PRICING_SETTINGS_CACHE["mtime"] = mt
+    return _PRICING_SETTINGS_CACHE["data"]
+
+
+def _rewards_settings():
+    """Rewards-engine overrides (nested under 'rewards' in pricing-settings.json)."""
+    return (_pricing_settings().get("rewards") or {})
 
 
 # ── On-the-fly Rebrandly shortlink creation ──────────────────────────────────
@@ -2406,7 +2429,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
     country = (ship.get("country") or "US").strip().upper()
     if country not in ("US", "USA", ""):
         raise CheckoutError("We ship to US addresses only — please use a US forwarding address.")
-    settings = _pricing.load_settings(_PRICING_SETTINGS)
+    settings = _pricing.load_settings(_pricing_settings())
     items, qbo_lines, items_rec, box_counts, subtotal_list, total_bottles = [], [], [], {}, 0, 0
     for c in (cart or []):
         p = _get_product((c.get("slug") or "").strip())
@@ -2488,7 +2511,7 @@ def _settle_referral(order, *, order_ref: str) -> None:
             # Exclude self-referral
             if referrer_email.strip().lower() == buyer_email:
                 return
-            settings = _rewards.load_settings({})
+            settings = _rewards.load_settings(_rewards_settings())
             referral_reward_pct = float(settings["referral_reward_pct"])
             reward = round(product_cents * referral_reward_pct)
             if reward <= 0:
@@ -2511,7 +2534,7 @@ def _maybe_raise_cashout_review(cx, slug: str, mode: str) -> None:
     try:
         from dashboard import rewards as _rewards
         from dashboard import points as _points
-        settings = _rewards.load_settings({})
+        settings = _rewards.load_settings(_rewards_settings())
         threshold = int(settings["cash_out_threshold_cents"])
         if mode == "cash":
             amount = _rewards.pending_cash_total(cx, slug)
@@ -2556,7 +2579,7 @@ def _settle_order_points(order, *, order_ref):
     email = (order.get("email") or "").strip().lower()
     if not email:
         return
-    earn_pct = float(_PRICING_SETTINGS.get("points_earn_pct", 0.05)) if isinstance(_PRICING_SETTINGS, dict) else 0.05
+    earn_pct = float(_pricing_settings().get("points_earn_pct", 0.05))
     redeemed = int(order.get("points_redeemed_cents") or 0)
     discount = int(order.get("discount_cents") or 0)
     # Earn on PRODUCT spend only: total includes GET (absorbed) when TAX_ENABLED, so net out
@@ -15767,7 +15790,7 @@ def api_pricing_preview():
     # prices (already public) — no auth needed, no data mutated, no PII echoed.
     from dashboard import pricing as _pricing, tax as _tax
     data = request.get_json(silent=True) or {}
-    settings = _pricing.load_settings(_PRICING_SETTINGS)
+    settings = _pricing.load_settings(_pricing_settings())
     items = []
     for it in (data.get("items") or []):
         p = _get_product(it.get("slug"))
