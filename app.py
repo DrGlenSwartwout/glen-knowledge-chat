@@ -3034,6 +3034,25 @@ def begin_checkout_return():
                     except Exception as _se:
                         print(f"[subscribe-return] failed to create subscription: {_se!r}", flush=True)
 
+                # ── Client kind: credit practitioner margin to wallet ──
+                try:
+                    if md.get("kind") == "client":
+                        from dashboard import wallet as _wallet_ret
+                        _pid   = md.get("practitioner_id")
+                        _marg  = int(md.get("margin_cents") or 0)
+                        _inv   = md.get("invoice_id")
+                        _wallet_ret.earn_dropship_margin(
+                            _pid, _marg, qbo_invoice_id=_inv)
+                        if hasattr(_pp, "record_dispensary_order"):
+                            _pp.record_dispensary_order(
+                                _pid,
+                                invoice_id=_inv,
+                                credit_earned_cents=_marg,
+                            )
+                except Exception as _ce:
+                    app.logger.exception(
+                        "client margin credit failed: %s", _ce)
+
         except Exception as e:
             print(f"[begin-return] {e!r}", flush=True)
     dest = (f"/begin/buy/{slug}?paid={paid}" if slug else f"/begin?paid={paid}")
@@ -5989,13 +6008,142 @@ def _record_dispensary_sale(code, customer_email, bottles, invoice_id):
 
 @app.route("/dispensary/<code>")
 def dispensary_landing(code):
-    """Set the dispensary-attribution cookie and land the patient in the funnel."""
-    from flask import redirect as _redir
-    resp = _redir("/begin")
-    if re.match(r"^[A-Za-z0-9_-]{1,64}$", code or ""):
-        resp.set_cookie("rm_dispensary", code, max_age=90 * 24 * 3600,
-                        samesite="Lax", secure=request.is_secure)
+    """Set the dispensary-attribution cookie and serve the branded client page.
+    Invalid codes (no matching practitioner) return 404."""
+    pid = _pp.practitioner_id_by_dispensary_code(code)
+    if not pid:
+        return jsonify({"ok": False, "error": "unknown dispensary code"}), 404
+    if not re.match(r"^[A-Za-z0-9_-]{1,64}$", code or ""):
+        return jsonify({"ok": False, "error": "invalid dispensary code"}), 404
+    resp = send_from_directory(STATIC, "practitioner-client.html")
+    resp.set_cookie("rm_dispensary", code, max_age=90 * 24 * 3600,
+                    samesite="Lax", secure=request.is_secure)
     return resp
+
+
+@app.route("/api/client/<code>/catalog")
+def api_client_catalog(code):
+    """Return sellable Functional Formulations at the practitioner's price (>= MAP).
+    Used by practitioner-client.html to populate the product list at page load."""
+    pid = _pp.practitioner_id_by_dispensary_code(code)
+    if not pid:
+        return jsonify({"ok": False, "error": "unknown dispensary code"}), 404
+
+    data = _pp.portal_data(pid) or {}
+    practice_name = (data.get("practice_name") or data.get("name") or "Your Practitioner")
+
+    items = []
+    for slug, p in (_PRODUCTS.get("products") or {}).items():
+        if not p or p.get("inactive") or p.get("info_only"):
+            continue
+        if _is_pure_powder(p):
+            continue
+        price_cents = _dropship.practitioner_price_for(pid, slug)
+        name = p.get("name") or slug
+        items.append({"slug": slug, "name": name, "price_cents": price_cents})
+
+    items.sort(key=lambda x: x["name"])
+    return jsonify({"ok": True, "practice_name": practice_name, "items": items})
+
+
+@app.route("/api/client/<code>/checkout", methods=["POST"])
+def api_client_checkout(code):
+    """Patient-paid dispensary checkout: patient buys at the practitioner's price,
+    we ship to the patient, and the practitioner's margin is credited to their wallet
+    on payment (Task 3 / checkout-return). Consent-gated: patient must be a Tier-1
+    Member (ToS agreed + identified) before placing an order."""
+    # 1. Resolve practitioner by dispensary code.
+    pid = _pp.practitioner_id_by_dispensary_code(code)
+    if not pid:
+        return jsonify({"ok": False, "error": "unknown dispensary code"}), 404
+
+    data = _pp.portal_data(pid) or {}
+
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    method = (body.get("method") or "zelle").strip().lower()
+    items = body.get("items") or []
+
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+
+    # 2. Consent gate — mirrors begin_checkout exactly: session cookie + email.
+    _sid = request.cookies.get("amg_session", "")
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please add your name and agree to our Terms "
+                                 "to place an order."}), 403
+
+    # 3. Normalize and validate shipping address.
+    ship = _normalize_ship_address(body.get("address") or {}, fallback_name=name)
+    country = (ship.get("country") or "US").strip().upper()
+    if country not in ("US", "USA", ""):
+        return jsonify({"ok": False,
+                        "error": "We ship to US addresses only — please use a US forwarding address."}), 400
+
+    # 4. Build order structs.
+    patient = {"email": email, "name": name, "ship": ship}
+    prac = {
+        "id": pid,
+        "modules_completed": data.get("modules_completed", 0),
+        "dispensary_code": code,
+    }
+
+    if method not in ("zelle", "wise", "card"):
+        method = "zelle"
+    if method == "card" and not _STRIPE_ACTIVE:
+        method = "zelle"
+
+    # 5. Build the patient-paid order (invoice billed to the patient at S).
+    try:
+        out = _dropship.build_client_order(items, prac, patient=patient, method=method)
+    except Exception as e:
+        print(f"[client-checkout] build failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "Checkout failed. Please try again."}), 500
+
+    if not out.get("ok"):
+        return jsonify(out), 422
+
+    # 6. Record order in BOS.
+    _ingest_order(source="dispensary",
+                  external_ref=str(out.get("invoice_id") or ""),
+                  email=email,
+                  name=name,
+                  total_cents=int(round((out.get("total") or 0) * 100)),
+                  address=ship,
+                  channel="retail",
+                  get_cents=out.get("get_cents", 0))
+
+    # 7. Payment method: alt-pay or Stripe.
+    # Stripe metadata carries kind/practitioner_id/margin_cents/invoice_id so the
+    # checkout-return handler (Task 3) can credit the margin to the wallet.
+    if method in ("zelle", "wise"):
+        out["pay_instructions"] = _ALT_PAY.get(method, {})
+    elif method == "card" and _STRIPE_ACTIVE:
+        try:
+            from dashboard import stripe_pay as _sp
+            total_cents = int(round((out.get("total") or 0) * 100))
+            if total_cents > 0:
+                success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
+                           f"?session_id={{CHECKOUT_SESSION_ID}}")
+                sess = _sp.create_checkout_session(
+                    total_cents, customer_email=email,
+                    description=f"Remedy Match dispensary order #{out.get('invoice_id')}",
+                    metadata={
+                        "kind": "client",
+                        "practitioner_id": pid,
+                        "margin_cents": str(out.get("margin_cents", 0)),
+                        "invoice_id": str(out.get("invoice_id") or ""),
+                        "customer_id": str(out.get("customer_id") or ""),
+                    },
+                    success_url=success,
+                    cancel_url=f"{PUBLIC_BASE_URL}/dispensary/{code}")
+                out["stripe_url"] = sess.get("url") or ""
+        except Exception as e:
+            print(f"[client-checkout] stripe failed: {e!r}", flush=True)
+
+    return jsonify(out)
 
 
 def _stripe_checkout_url_for_retail(out, email, slug):
