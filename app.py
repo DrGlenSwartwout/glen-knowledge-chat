@@ -2265,6 +2265,11 @@ _PRODUCTS = _load_json(DATA_DIR / "products.json",
 # Card/ACH online payment is gated until QuickBooks Payments is activated.
 _QBO_PAYMENTS_ACTIVE = os.environ.get("QBO_PAYMENTS_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
+# Module-level qb alias so tests can monkeypatch appmod.qb.* and the engine path references it.
+try:
+    from dashboard import qbo_billing as qb
+except Exception:
+    qb = None  # type: ignore[assignment]
 _ALT_PAY = {
     "zelle": {"label": "Zelle (US)",
               "to": os.environ.get("ZELLE_PAY_TO", "(set ZELLE_PAY_TO)"),
@@ -5606,6 +5611,18 @@ def _stripe_checkout_url_for_retail(out, email, slug):
 
 
 # ── Reorder cart (logged-in client reorder → existing Stripe/QBO flow) ─────────
+def _shipping_line(shipping_cents):
+    if not shipping_cents:
+        return []
+    return [{"name": "Shipping (USPS)", "amount": round(int(shipping_cents) / 100.0, 2),
+             "qty": 1, "description": "USPS shipping"}]
+
+
+def _active_coupon_pct():
+    """Return the daily coupon discount_percent if a coupon is active today, else None."""
+    return _COUPONS.get("_discount_percent", 0) if get_today_coupon_code() else None
+
+
 def _stripe_checkout_url_for_reorder(out, email):
     """Stripe Checkout for a reorder cart; mirrors _stripe_checkout_url_for_retail
     but the cancel returns to /reorder. Records via /begin/checkout-return (invoice-based)."""
@@ -5725,9 +5742,56 @@ def reorder_checkout():
     email = _reorder_email_from_cookie()
     if not email:
         return jsonify({"ok": False, "error": "not signed in"}), 401
-    cart = request.get_json(silent=True) or []
-    if isinstance(cart, dict):
-        cart = cart.get("items", [])
+    body = request.get_json(silent=True) or []
+    # body may be a list (legacy) or a dict {items, address}
+    if isinstance(body, dict):
+        cart = body.get("items", [])
+        body_address = body.get("address") or {}
+    else:
+        cart = body
+        body_address = {}
+
+    # ── Pricing-engine path (feature flag) ────────────────────────────────────
+    if os.environ.get("PRICING_ENGINE_CHECKOUT", "").strip().lower() in ("1", "true", "yes", "on"):
+        try:
+            # Prefer address from request body; fall back to last order on file
+            ship = body_address or {}
+            if not ship:
+                with sqlite3.connect(LOG_DB) as cx:
+                    cx.row_factory = sqlite3.Row
+                    prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
+                if prior:
+                    ship = prior[0].get("address") or {}
+            try:
+                pc = _price_cart(cart, ship=ship, coupon_pct=_active_coupon_pct())
+            except CheckoutError as e:
+                return jsonify({"ok": False, "error": str(e)}), 400
+            if not pc["qbo_lines"]:
+                return jsonify({"ok": False,
+                                "error": "Your cart is empty or those items are no longer available."}), 400
+            cust = qb.find_or_create_customer(email, ship.get("name", ""))
+            inv = qb.create_invoice(
+                cust,
+                pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+                allow_online_pay=True,
+                email_to=email,
+                discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+            _ingest_order(source="reorder", external_ref=inv.get("Id"), email=email,
+                          name=ship.get("name", ""), items=pc["items_rec"],
+                          total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                          address=ship, channel="retail",
+                          get_cents=pc["priced"].get("get_cents", 0),
+                          discount_cents=pc["discount_cents"],
+                          points_redeemed_cents=pc["points_redeemed_cents"],
+                          shipping_cents=pc["shipping_cents"])
+            out = {"invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
+                   "total": inv.get("TotalAmt")}
+            stripe_url = _stripe_checkout_url_for_reorder(out, email) if _STRIPE_ACTIVE else ""
+            return jsonify({"ok": True, "stripe_url": stripe_url, **out})
+        except Exception as e:
+            app.logger.exception("reorder checkout (engine) failed")
+            return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+    # ── Legacy path (existing code, unchanged) ────────────────────────────────
     lines, items_rec, subtotal_cents = [], [], 0
     for c in cart:
         slug = (c.get("slug") or "").strip()
@@ -5753,12 +5817,12 @@ def reorder_checkout():
             prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
         if prior:
             ship = prior[0].get("address") or {}
-        from dashboard import qbo_billing as qb
+        from dashboard import qbo_billing as _qb_local
         from dashboard import tax as _tax
-        cust = qb.find_or_create_customer(email, ship.get("name", ""))
+        cust = _qb_local.find_or_create_customer(email, ship.get("name", ""))
         get_cents = _tax.compute_get_cents(subtotal_cents, channel="retail",
                                            ship_to_state=ship.get("state", ""))
-        inv = qb.create_invoice(cust, lines, allow_online_pay=True, email_to=email)
+        inv = _qb_local.create_invoice(cust, lines, allow_online_pay=True, email_to=email)
         out = {"invoice_id": inv.get("Id"), "customer_id": cust.get("Id"),
                "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt")}
         _ingest_order(source="reorder", external_ref=inv.get("Id"), email=email,
@@ -14170,7 +14234,7 @@ def _normalize_ship_address(addr, fallback_name=""):
 
 def _ingest_order(*, source, external_ref, email="", name="", phone="",
                   items=None, total_cents=0, address=None, channel="retail",
-                  get_cents=0):
+                  get_cents=0, discount_cents=0, points_redeemed_cents=0, shipping_cents=0):
     """Best-effort: record an order into the BOS orders table. Never raises into
     a checkout path. get_cents = absorbed Hawai'i GET owed (recorded, not charged)."""
     try:
@@ -14179,7 +14243,10 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
             _bos_orders.upsert_order(
                 cx, source=source, external_ref=external_ref, email=email, name=name,
                 phone=phone, items=items or [], total_cents=int(total_cents or 0),
-                address=address or {}, channel=channel, get_cents=int(get_cents or 0))
+                address=address or {}, channel=channel, get_cents=int(get_cents or 0),
+                discount_cents=int(discount_cents or 0),
+                points_redeemed_cents=int(points_redeemed_cents or 0),
+                shipping_cents=int(shipping_cents or 0))
         finally:
             cx.close()
     except Exception as e:
