@@ -2346,6 +2346,46 @@ def _engine_item(p, qty):
     }
 
 
+class CheckoutError(Exception):
+    """Raised for a checkout the customer must fix (e.g. non-US ship-to)."""
+
+
+def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None, channel="retail"):
+    """Price a reorder/checkout cart through the pricing engine + shipping.
+    Returns {priced, qbo_lines, discount_cents, points_redeemed_cents, shipping_cents,
+    items_rec, subtotal_list_cents}. Raises CheckoutError for non-US ship-to."""
+    from dashboard import pricing as _pricing, tax as _tax
+    country = (ship.get("country") or "US").strip().upper()
+    if country not in ("US", "USA", ""):
+        raise CheckoutError("We ship to US addresses only — please use a US forwarding address.")
+    settings = _pricing.load_settings(_PRICING_SETTINGS)
+    items, qbo_lines, items_rec, box_counts, subtotal_list = [], [], [], {}, 0
+    for c in (cart or []):
+        p = _get_product((c.get("slug") or "").strip())
+        if not p:
+            continue
+        qty = max(1, min(int(c.get("qty", 1) or 1), 99))
+        it = _engine_item(p, qty)
+        items.append(it)
+        subtotal_list += it["unit_cents"] * qty
+        qbo_lines.append({"name": p["name"], "amount": round(it["unit_cents"] / 100.0, 2),
+                          "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
+        items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"]})
+        box_counts[p["name"]] = box_counts.get(p["name"], 0) + qty
+    priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
+                              subscriber_tier_pct=subscriber_tier_pct, channel=channel,
+                              ship_to_state=ship.get("state", ""),
+                              tax_fn=_tax.compute_get_cents)
+    shipping_cents = int(_shipping.quote(box_counts).get("shipping_cents", 0) or 0) if box_counts else 0
+    return {
+        "priced": priced, "qbo_lines": qbo_lines, "items_rec": items_rec,
+        "subtotal_list_cents": subtotal_list,
+        "discount_cents": priced["discount_cents"],
+        "points_redeemed_cents": priced["points_redeemed_cents"],
+        "shipping_cents": shipping_cents,
+    }
+
+
 # Generated/cached product content (ingredients + benefits + learn-more research).
 # Source = Pinecone specific-formulations (page copy) + ingredients (study citations).
 try:
