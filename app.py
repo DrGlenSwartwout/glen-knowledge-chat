@@ -5985,6 +5985,76 @@ def api_practitioner_assist():
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@app.route("/api/practitioner/settings", methods=["GET"])
+def api_practitioner_settings_get():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    from dashboard import practitioner_settings as _ps
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ps.init_settings_table(cx)
+        settings = _ps.get_settings(cx, pid)
+    return jsonify({"ok": True, "branding": settings["branding"], "pricing": settings["pricing"]})
+
+
+@app.route("/api/practitioner/settings", methods=["POST"])
+def api_practitioner_settings_post():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    from dashboard import practitioner_settings as _ps
+    from dashboard import practitioner_pricing as _ppr
+    body = request.get_json(silent=True) or {}
+    branding_in = body.get("branding") or {}
+    pricing_in = body.get("pricing") or {}
+
+    # Validate markup_pct is numeric
+    markup_pct = pricing_in.get("default_markup_pct", 0)
+    try:
+        markup_pct = float(markup_pct)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "default_markup_pct must be numeric"}), 400
+
+    # Validate and clamp per-SKU overrides to MAP
+    map_cents = _ppr.DEFAULTS["map_default_cents"]
+    overrides_in = pricing_in.get("overrides") or {}
+    clamped = []
+    overrides_out = {}
+    for slug, price_val in overrides_in.items():
+        try:
+            price_val = int(price_val)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": f"override price for {slug!r} must be an integer (cents)"}), 400
+        if price_val < map_cents:
+            clamped.append({"slug": slug, "requested_cents": price_val, "clamped_to_cents": map_cents})
+            price_val = map_cents
+        overrides_out[slug] = price_val
+
+    # Validate branding fields are strings
+    for field in ("practice_name", "contact_email", "web_link", "logo_url", "photo_url",
+                  "brand_color_1", "brand_color_2"):
+        val = branding_in.get(field)
+        if val is not None and not isinstance(val, str):
+            return jsonify({"ok": False, "error": f"branding field {field!r} must be a string"}), 400
+
+    branding_clean = {k: v for k, v in branding_in.items()
+                      if k in ("practice_name", "contact_email", "web_link",
+                               "logo_url", "photo_url", "brand_color_1", "brand_color_2")}
+    pricing_clean = {"default_markup_pct": markup_pct, "overrides": overrides_out}
+
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ps.init_settings_table(cx)
+        if branding_clean:
+            _ps.set_branding(cx, pid, branding_clean)
+        _ps.set_pricing(cx, pid, pricing_clean)
+        settings = _ps.get_settings(cx, pid)
+
+    return jsonify({"ok": True, "branding": settings["branding"],
+                    "pricing": settings["pricing"], "clamped": clamped})
+
+
 def _record_dispensary_sale(code, customer_email, bottles, invoice_id):
     """Attribute a drop-ship sale to a practitioner by dispensary code and credit
     $20/bottle Wellness Credit. Idempotent on the client invoice id."""
