@@ -2270,6 +2270,11 @@ try:
     from dashboard import qbo_billing as qb
 except Exception:
     qb = None  # type: ignore[assignment]
+# Module-level stripe_pay alias so tests can monkeypatch appmod.stripe_pay.*
+try:
+    from dashboard import stripe_pay
+except Exception:
+    stripe_pay = None  # type: ignore[assignment]
 _ALT_PAY = {
     "zelle": {"label": "Zelle (US)",
               "to": os.environ.get("ZELLE_PAY_TO", "(set ZELLE_PAY_TO)"),
@@ -2689,31 +2694,80 @@ def begin_checkout_return():
     paid = "0"
     if sid:
         try:
-            from dashboard import stripe_pay
-            sess = stripe_pay.get_session(sid)
+            from dashboard import stripe_pay as _sp
+            sess = _sp.get_session(sid)
             md = sess.get("metadata") or {}
             slug = md.get("slug", "")
             if sess.get("payment_status") == "paid":
                 paid = "1"
+                pi_id = sess.get("payment_intent")
                 inv, cid = md.get("invoice_id"), md.get("customer_id")
                 if inv and cid:
                     try:
-                        from dashboard import qbo_billing as qb
-                        qb.record_payment(cid, int(sess.get("amount_total") or 0), inv)
+                        from dashboard import qbo_billing as _qb_ret
+                        _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
                     except Exception as e:
                         print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
-                    pi = sess.get("payment_intent")
-                    if pi:
+                    if pi_id:
                         try:
                             _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
                             try:
                                 _o = _bos_orders.find_order_by_external_ref(_cxo, inv)
                                 if _o:
-                                    _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi)
+                                    _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi_id)
                             finally:
                                 _cxo.close()
                         except Exception as _e:
                             print(f"[begin-return] pi capture: {_e!r}", flush=True)
+
+                # ── Subscribe kind: vault the card and create the subscription row ──
+                if md.get("kind") == "subscribe" and pi_id:
+                    try:
+                        from dashboard import subscriptions as _subs_ret
+                        pi_data = _sp.get_payment_intent(pi_id)
+                        stripe_cus = pi_data.get("customer") or ""
+                        stripe_pm  = pi_data.get("payment_method") or ""
+                        cadence    = int(md.get("cadence_months") or 1)
+                        sub_email  = md.get("email") or ""
+
+                        # Recover items + ship from metadata or stash
+                        stash_key = md.get("stash_key")
+                        if stash_key:
+                            with sqlite3.connect(LOG_DB) as _scx:
+                                _scx.row_factory = sqlite3.Row
+                                _sr = _scx.execute(
+                                    "SELECT items_json, ship_json FROM pending_subscriptions WHERE key=?",
+                                    (stash_key,)).fetchone()
+                            if not _sr:
+                                app.logger.warning(
+                                    "subscribe stash miss for key=%s — subscription will have "
+                                    "empty items/address", stash_key)
+                            items_list = json.loads(_sr["items_json"]) if _sr else []
+                            ship_dict  = json.loads(_sr["ship_json"])  if _sr else {}
+                        else:
+                            items_list = json.loads(md.get("items") or "[]")
+                            ship_dict  = json.loads(md.get("ship")  or "{}")
+
+                        today = _now_utc().strftime("%Y-%m-%d")
+                        next_date = _subs_ret.add_months(today, cadence)
+
+                        with sqlite3.connect(LOG_DB) as _scx2:
+                            _scx2.row_factory = sqlite3.Row
+                            _subs_ret.init_subscriptions_table(_scx2)
+                            _subs_ret.create(
+                                _scx2,
+                                email=sub_email,
+                                stripe_customer_id=stripe_cus,
+                                stripe_payment_method_id=stripe_pm,
+                                items=items_list,
+                                cadence_months=cadence,
+                                ship_address=ship_dict,
+                                next_charge_date=next_date,
+                                order_count=1)   # the setup checkout already placed order #1 (5%)
+                        print(f"[subscribe-return] subscription created for {sub_email}", flush=True)
+                    except Exception as _se:
+                        print(f"[subscribe-return] failed to create subscription: {_se!r}", flush=True)
+
         except Exception as e:
             print(f"[begin-return] {e!r}", flush=True)
     dest = (f"/begin/buy/{slug}?paid={paid}" if slug else f"/begin?paid={paid}")
@@ -5836,6 +5890,269 @@ def reorder_checkout():
     except Exception as e:
         app.logger.exception("reorder checkout failed")
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
+# ── Subscription setup flow ────────────────────────────────────────────────────
+
+def _subscriptions_enabled() -> bool:
+    """Return True if SUBSCRIPTIONS_ENABLED is set to a truthy value."""
+    return os.environ.get("SUBSCRIPTIONS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+@app.route("/reorder/subscribe", methods=["POST"])
+def reorder_subscribe():
+    """POST /reorder/subscribe — price the first subscription order, create a QBO invoice,
+    then create a Stripe checkout session with save_card=True so the card is vaulted.
+    On return, /begin/checkout-return writes the subscription row."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    if not _subscriptions_enabled():
+        return jsonify({"error": "subscriptions not enabled"}), 400
+    if not _STRIPE_ACTIVE:
+        # Guard BEFORE creating the QBO invoice, else a Stripe outage leaves a dangling invoice.
+        return jsonify({"error": "card payment not active"}), 400
+
+    body = request.get_json(silent=True) or {}
+    cadence = body.get("cadence_months")
+    try:
+        cadence = int(cadence)
+        if cadence not in (1, 2, 3):
+            raise ValueError("cadence out of range")
+    except (TypeError, ValueError):
+        return jsonify({"error": "cadence_months must be 1, 2, or 3"}), 400
+
+    cart = body.get("items") or []
+    ship = body.get("address") or {}
+
+    # ── Pricing-engine path (required for subscribe) ──────────────────────────
+    if not os.environ.get("PRICING_ENGINE_CHECKOUT", "").strip().lower() in ("1", "true", "yes", "on"):
+        return jsonify({"error": "PRICING_ENGINE_CHECKOUT must be enabled for subscriptions"}), 400
+
+    try:
+        from dashboard import subscriptions as _subs
+        try:
+            pc = _price_cart(cart, ship=ship, subscriber_tier_pct=_subs.tier_for(0))
+        except CheckoutError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        if not pc["qbo_lines"]:
+            return jsonify({"ok": False,
+                            "error": "Your cart is empty or those items are no longer available."}), 400
+
+        cust = qb.find_or_create_customer(email, ship.get("name", ""))
+        inv = qb.create_invoice(
+            cust,
+            pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+            allow_online_pay=True,
+            email_to=email,
+            discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+
+        # Build metadata; stash items+ship in pending_subscriptions if too long
+        items_json = json.dumps(cart)
+        ship_json = json.dumps(ship)
+        metadata = {
+            "kind": "subscribe",
+            "cadence_months": str(cadence),
+            "email": email,
+            "invoice_id": inv.get("Id") or "",
+            "customer_id": cust.get("Id") or "",
+        }
+        if len(items_json) + len(ship_json) <= 450:
+            metadata["items"] = items_json
+            metadata["ship"] = ship_json
+        else:
+            # Stash in DB and put the key in metadata
+            stash_key = uuid.uuid4().hex
+            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                _cx.execute(
+                    "CREATE TABLE IF NOT EXISTS pending_subscriptions "
+                    "(key TEXT PRIMARY KEY, items_json TEXT, ship_json TEXT, created_at TEXT)")
+                _cx.execute(
+                    "INSERT INTO pending_subscriptions (key, items_json, ship_json, created_at) "
+                    "VALUES (?,?,?,?)",
+                    (stash_key, items_json, ship_json, _now_utc().isoformat()))
+                _cx.commit()
+            metadata["stash_key"] = stash_key
+
+        total_cents = int(round(float(inv.get("TotalAmt") or 0) * 100))
+        success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
+                   f"?session_id={{CHECKOUT_SESSION_ID}}")
+        sess = stripe_pay.create_checkout_session(
+            total_cents,
+            customer_email=email,
+            description=f"Remedy Match subscription setup #{inv.get('DocNumber') or ''}",
+            metadata=metadata,
+            success_url=success,
+            cancel_url=f"{PUBLIC_BASE_URL}/reorder",
+            save_card=True)
+
+        return jsonify({"ok": True, "stripe_url": sess.get("url") or ""})
+    except Exception as e:
+        app.logger.exception("reorder subscribe failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
+# ── Subscription manage-plan portal ──────────────────────────────────────────
+
+@app.route("/subscription")
+def subscription_page():
+    """Serve the self-serve subscription management page."""
+    return send_from_directory(STATIC, "subscription.html")
+
+
+def _get_sub_authed(sub_id, cookie_email):
+    """Return (sub_dict, error_response) for the given sub_id.
+    Verifies the subscription belongs to cookie_email.
+    Returns (sub, None) on success; (None, response) on failure.
+    """
+    from dashboard import subscriptions as _subs
+    try:
+        sub_id = int(sub_id)
+    except (TypeError, ValueError):
+        return None, (jsonify({"error": "invalid id"}), 400)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        sub = _subs.get(cx, sub_id)
+    if sub is None:
+        return None, (jsonify({"error": "not found"}), 404)
+    if sub["email"].strip().lower() != cookie_email.strip().lower():
+        return None, (jsonify({"error": "forbidden"}), 403)
+    return sub, None
+
+
+@app.route("/api/subscription/details", methods=["GET"])
+def api_subscription_details():
+    """Return the caller's active subscriptions with tier/status info."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _subs.init_subscriptions_table(cx)
+        rows = _subs.get_manageable_by_email(cx, email)   # active + paused, so paused can be resumed
+    result = []
+    for s in rows:
+        result.append({
+            "id": s["id"],
+            "email": s["email"],
+            "status": s["status"],
+            "cadence_months": s["cadence_months"],
+            "next_charge_date": s["next_charge_date"],
+            "current_tier_pct": _subs.tier_for(s["order_count"]),
+            "order_count": s["order_count"],
+            "items": s.get("items") or [],
+            "skip_next": bool(s["skip_next"]),
+        })
+    return jsonify({"subscriptions": result})
+
+
+@app.route("/api/subscription/skip", methods=["POST"])
+def api_subscription_skip():
+    """Skip the next charge cycle for the caller's subscription."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("id")
+    sub, err = _get_sub_authed(sub_id, email)
+    if err:
+        return err
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        _subs.set_skip_next(cx, sub_id, True)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/subscription/resume-skip", methods=["POST"])
+def api_subscription_resume_skip():
+    """Clear the skip-next flag for the caller's subscription."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("id")
+    sub, err = _get_sub_authed(sub_id, email)
+    if err:
+        return err
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        _subs.set_skip_next(cx, sub_id, False)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/subscription/pause", methods=["POST"])
+def api_subscription_pause():
+    """Pause the caller's subscription."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("id")
+    sub, err = _get_sub_authed(sub_id, email)
+    if err:
+        return err
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        _subs.set_status(cx, sub_id, "paused")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/subscription/resume", methods=["POST"])
+def api_subscription_resume():
+    """Resume a paused subscription."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("id")
+    sub, err = _get_sub_authed(sub_id, email)
+    if err:
+        return err
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        _subs.set_status(cx, sub_id, "active")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/subscription/cancel", methods=["POST"])
+def api_subscription_cancel():
+    """Cancel the caller's subscription."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("id")
+    sub, err = _get_sub_authed(sub_id, email)
+    if err:
+        return err
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        _subs.set_status(cx, sub_id, "cancelled")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/subscription/cadence", methods=["POST"])
+def api_subscription_cadence():
+    """Change the cadence (1, 2, or 3 months) for the caller's subscription."""
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("id")
+    try:
+        cadence = int(body.get("cadence_months") or 0)
+        if cadence not in (1, 2, 3):
+            raise ValueError("out of range")
+    except (TypeError, ValueError):
+        return jsonify({"error": "cadence_months must be 1, 2, or 3"}), 400
+    sub, err = _get_sub_authed(sub_id, email)
+    if err:
+        return err
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        _subs.set_cadence(cx, sub_id, cadence)
+    return jsonify({"ok": True})
 
 
 def _stripe_checkout_url_for_order(out, email, session_token):
@@ -11889,6 +12206,283 @@ def api_regenerate_briefings():
         return ok({"summary": regenerate_all()})
     except Exception as e:
         return fail(e, status=500)
+
+
+# ── Subscription email helper ─────────────────────────────────────────────────
+
+def _send_subscription_email(to_email: str, kind: str, data: dict):
+    """Send a subscription lifecycle email. Best-effort — NEVER raises.
+
+    kind: 'heads_up' | 'receipt' | 'payment_failed' | 'setup_confirm'
+    data: dict with relevant context fields (next_charge_date, amount, etc.)
+    Returns (sent_via, error_or_none) same shape as _send_full_report_email.
+    """
+    try:
+        charge_date = data.get("next_charge_date", "")
+        amount_str = ""
+        raw_cents = data.get("total_cents")
+        if raw_cents is not None:
+            amount_str = f"${int(raw_cents) / 100:.2f}"
+
+        if kind == "heads_up":
+            subject = f"Reminder: your Remedy Match subscription charges on {charge_date}"
+            body = (
+                f"Hi,\n\n"
+                f"Just a quick heads-up — your next Remedy Match subscription order will be "
+                f"charged automatically on {charge_date}.\n\n"
+                f"If you need to skip or pause, visit your subscription portal before that date.\n\n"
+                f"In wellness,\nDr. Glen"
+            )
+        elif kind == "receipt":
+            inv_id = data.get("invoice_id", "")
+            body = (
+                f"Hi,\n\n"
+                f"Your Remedy Match subscription order has been processed successfully.\n\n"
+                f"Amount charged: {amount_str}\n"
+                + (f"Invoice: {inv_id}\n" if inv_id else "")
+                + f"\nYour next order will ship on {charge_date}.\n\n"
+                f"Thank you for your continued trust.\n\n"
+                f"In wellness,\nDr. Glen"
+            )
+            subject = f"Your Remedy Match subscription order is confirmed — {amount_str}"
+        elif kind == "payment_failed":
+            fail_count = data.get("failed_count", 1)
+            subject = "Action needed: Remedy Match subscription payment failed"
+            body = (
+                f"Hi,\n\n"
+                f"We were unable to process your Remedy Match subscription payment"
+                + (f" ({amount_str})" if amount_str else "")
+                + f".\n\n"
+                f"This is attempt {fail_count}. After 3 failed attempts your subscription "
+                f"will be placed on hold.\n\n"
+                f"Please update your payment method or contact us so we can get this sorted out.\n\n"
+                f"In wellness,\nDr. Glen"
+            )
+        elif kind == "setup_confirm":
+            subject = "Welcome to Remedy Match Subscribe & Grow"
+            body = (
+                f"Hi,\n\n"
+                f"Your Remedy Match subscription is now active. Your first order has been placed "
+                f"and your card is securely vaulted for future cycles.\n\n"
+                f"Your next charge date: {charge_date}\n\n"
+                f"You can skip, pause, or cancel anytime through your subscription portal.\n\n"
+                f"In wellness,\nDr. Glen"
+            )
+        else:
+            subject = f"Remedy Match subscription update"
+            body = f"Subscription update ({kind}).\n\nIn wellness,\nDr. Glen"
+
+        return _send_full_report_email(to_email, "", subject, body)
+    except Exception as e:
+        print(f"[sub-email] kind={kind} to={to_email} failed: {e!r}", flush=True)
+        return ("error", str(e))
+
+
+# ── Daily subscription charge scheduler ──────────────────────────────────────
+
+@app.route("/api/cron/charge-subscriptions", methods=["POST"])
+def cron_charge_subscriptions():
+    """Daily charge scheduler for active subscriptions.
+
+    Auth: X-Cron-Secret header matching CRON_SECRET (or CONSOLE_SECRET fallback).
+    Supports ?dry_run=1 — computes + logs without charging or mutating.
+
+    Two passes:
+      1. Heads-up: send 3-day advance notice emails for upcoming charges.
+      2. Charge: process due subs (skip skipped, charge active, dun failed).
+
+    Returns {ok, charged, skipped, failed, notified, dry_run}.
+    """
+    key = request.headers.get("X-Cron-Secret", "")
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+
+    if not _subscriptions_enabled():
+        return jsonify({"ok": True, "skipped": 0, "charged": 0, "failed": 0,
+                        "notified": 0, "dry_run": False,
+                        "message": "subscriptions disabled"}), 200
+
+    dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+
+    from dashboard import subscriptions as _subs
+    from datetime import date as _date
+
+    today = _date.today().isoformat()  # YYYY-MM-DD
+
+    charged = skipped = failed = notified = 0
+
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        # Run idempotent migration to ensure failed_count column exists
+        _subs.migrate_add_failed_count(cx)
+
+        # ── Pass 1: Heads-up emails (3-day advance notice) ────────────────────
+        try:
+            upcoming = _subs.list_heads_up_due(cx, as_of=today, lead_days=3)
+        except Exception as e:
+            print(f"[sub-cron] heads-up query failed: {e!r}", flush=True)
+            upcoming = []
+
+        for sub in upcoming:
+            try:
+                if not dry_run:
+                    _send_subscription_email(
+                        sub["email"], "heads_up",
+                        {"next_charge_date": sub["next_charge_date"]})
+                    _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
+                notified += 1
+                print(f"[sub-cron] heads-up {'(dry)' if dry_run else ''}"
+                      f" sub={sub['id']} date={sub['next_charge_date']}", flush=True)
+            except Exception as e:
+                print(f"[sub-cron] heads-up sub={sub['id']} error: {e!r}", flush=True)
+
+        # Snapshot the charge list BEFORE consuming skips. list_due (skip_next=0) and
+        # list_skip_due (skip_next=1) are disjoint right now; if we queried due AFTER the
+        # skip pass, a just-consumed sub (skip cleared, date advanced but possibly still
+        # due) would wrongly re-enter the charge loop and get billed for a cycle it skipped.
+        try:
+            due = _subs.list_due(cx, as_of=today)
+        except Exception as e:
+            print(f"[sub-cron] list_due query failed: {e!r}", flush=True)
+            due = []
+
+        # ── Pass 2a: Skip cycles ───────────────────────────────────────────────
+        try:
+            skip_due = _subs.list_skip_due(cx, as_of=today)
+        except Exception as e:
+            print(f"[sub-cron] skip-due query failed: {e!r}", flush=True)
+            skip_due = []
+
+        for sub in skip_due:
+            try:
+                if not dry_run:
+                    _subs.consume_skip(cx, sub["id"])
+                skipped += 1
+                print(f"[sub-cron] skip {'(dry)' if dry_run else ''}"
+                      f" sub={sub['id']}", flush=True)
+            except Exception as e:
+                print(f"[sub-cron] consume_skip sub={sub['id']} error: {e!r}", flush=True)
+
+        # ── Pass 2b: Charge the snapshot of due (non-skip) subs ────────────────
+        for sub in due:
+            sid = sub["id"]
+            try:
+                items = sub.get("items") or []
+                ship = sub.get("ship_address") or {}
+                order_count = sub.get("order_count", 0)
+                tier_pct = _subs.tier_for(order_count)
+
+                # Price the order
+                try:
+                    pc = _price_cart(items, ship=ship, subscriber_tier_pct=tier_pct)
+                except CheckoutError as ce:
+                    print(f"[sub-cron] price_cart sub={sid}: {ce!r}", flush=True)
+                    failed += 1
+                    continue
+
+                discount_cents = int(pc.get("discount_cents", 0))
+                points_redeemed_cents = int(pc.get("points_redeemed_cents", 0))
+                shipping_cents = int(pc.get("shipping_cents", 0))
+                # Charge the discounted product subtotal + shipping. GET is absorbed
+                # (recorded, not billed to the customer), so use subtotal_cents NOT total_cents
+                # (which includes get_cents). This matches the reorder invoice total.
+                total_cents = int(pc["priced"].get("subtotal_cents", 0)) + shipping_cents
+
+                if dry_run:
+                    print(f"[sub-cron] DRY charge sub={sid} email={sub['email']}"
+                          f" amount={total_cents}", flush=True)
+                    charged += 1
+                    continue
+
+                # Charge off-session
+                res = stripe_pay.charge_off_session(
+                    sub["stripe_customer_id"],
+                    sub["stripe_payment_method_id"],
+                    total_cents,
+                    description="Remedy Match subscription",
+                    metadata={"sub": str(sid)},
+                )
+
+                if res.get("status") == "succeeded":
+                    # Build QBO invoice
+                    try:
+                        cust = qb.find_or_create_customer(sub["email"], "")
+                        inv = qb.create_invoice(
+                            cust,
+                            pc["qbo_lines"] + _shipping_line(shipping_cents),
+                            allow_online_pay=False,
+                            email_to=sub["email"],
+                            discount_cents=discount_cents + points_redeemed_cents,
+                        )
+                        inv_id = inv.get("Id", "")
+                    except Exception as qe:
+                        print(f"[sub-cron] QBO invoice sub={sid}: {qe!r}", flush=True)
+                        inv_id = ""
+
+                    # Record the order
+                    _ingest_order(
+                        source="subscription",
+                        external_ref=res.get("id") or inv_id,
+                        email=sub["email"],
+                        items=pc.get("items_rec") or [],
+                        total_cents=total_cents,
+                        address=ship,
+                        channel="retail",
+                        get_cents=pc["priced"].get("get_cents", 0),
+                        discount_cents=discount_cents,
+                        points_redeemed_cents=points_redeemed_cents,
+                        shipping_cents=shipping_cents,
+                    )
+
+                    _subs.advance_after_charge(cx, sid)
+                    _subs.reset_failed_count(cx, sid)
+
+                    # Advance to get next_charge_date for receipt email
+                    updated = _subs.get(cx, sid)
+                    _send_subscription_email(sub["email"], "receipt", {
+                        "total_cents": total_cents,
+                        "invoice_id": inv_id,
+                        "next_charge_date": updated["next_charge_date"] if updated else "",
+                    })
+                    charged += 1
+                    print(f"[sub-cron] charged sub={sid} pi={res.get('id')}"
+                          f" amount={total_cents}", flush=True)
+
+                else:
+                    # Failed or requires_action — dun
+                    _subs.bump_failed_count(cx, sid)
+                    updated = _subs.get(cx, sid)
+                    new_fail_count = (updated or {}).get("failed_count", 1)
+
+                    if new_fail_count >= 3:
+                        _subs.set_status(cx, sid, "past_due")
+                        print(f"[sub-cron] past_due sub={sid} after {new_fail_count} failures",
+                              flush=True)
+
+                    _send_subscription_email(sub["email"], "payment_failed", {
+                        "total_cents": total_cents,
+                        "failed_count": new_fail_count,
+                        "status": res.get("status"),
+                        "decline_code": res.get("decline_code"),
+                    })
+                    failed += 1
+                    print(f"[sub-cron] payment failed sub={sid}"
+                          f" status={res.get('status')} fail_count={new_fail_count}",
+                          flush=True)
+
+            except Exception as e:
+                print(f"[sub-cron] sub={sid} unexpected error: {e!r}", flush=True)
+                failed += 1
+
+    return jsonify({
+        "ok": True,
+        "charged": charged,
+        "skipped": skipped,
+        "failed": failed,
+        "notified": notified,
+        "dry_run": dry_run,
+    })
 
 
 # ── One-time Gmail token upload (helper for first-time setup on Render) ───────

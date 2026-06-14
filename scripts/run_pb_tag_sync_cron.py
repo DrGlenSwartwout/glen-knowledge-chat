@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Daily People-hub sync chain (Render cron worker).
+"""Daily People-hub + subscription sync chain (Render cron worker).
 
-Curls three web-service endpoints in sequence (the work runs in the web
+Curls four web-service endpoints in sequence (the work runs in the web
 container, where the persistent disk + PB/Supabase/GHL creds live):
 
-  1. /admin/sync-pb-tags           Practice Better -> people + GHL pb: tags
-  2. /admin/sync-practitioner-tags Supabase practitioners -> people (tagged)
-  3. /admin/sync-people-to-ghl     classify existing people + mirror opted-in -> GHL
+  1. /admin/sync-pb-tags            Practice Better -> people + GHL pb: tags
+  2. /admin/sync-practitioner-tags  Supabase practitioners -> people (tagged)
+  3. /admin/sync-people-to-ghl      classify existing people + mirror opted-in -> GHL
+  4. /api/cron/charge-subscriptions daily subscription charges + heads-up emails
 
 Consolidated into one cron (was three) to stay under Render's cron-service
 limit; ordered so tags are fresh before the GHL mirror. Each step is additive +
@@ -33,6 +34,7 @@ STEPS = [
     ("/admin/sync-pb-tags", "PB tags"),
     ("/admin/sync-practitioner-tags", "practitioner tags"),
     ("/admin/sync-people-to-ghl", "classify + GHL mirror"),
+    ("/api/cron/charge-subscriptions", "subscription charges"),
 ]
 
 

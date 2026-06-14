@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Your Plan · Remedy Match</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#6b6b6b; --line:#e6e2da; --glen:#2f7d6b; --bg:#faf8f4; --warn:#c0392b; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:var(--ink);
+         background:var(--bg); margin:0; line-height:1.5; }
+  .wrap { max-width:40rem; margin:0 auto; padding:2rem 1.25rem 5rem; }
+  h1 { font-size:1.5rem; margin:.2rem 0 .25rem; }
+  .sub { color:var(--muted); margin:0 0 1.5rem; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:1rem 1.1rem; margin-bottom:1rem; }
+  .sub-card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:1.1rem 1.2rem; margin-bottom:1rem; }
+  .sub-card h3 { margin:0 0 .5rem; font-size:1rem; }
+  .sub-meta { color:var(--muted); font-size:.9rem; margin:.15rem 0; }
+  .tier-badge { display:inline-block; background:#e8f4f1; color:var(--glen); border-radius:6px;
+                padding:.15rem .5rem; font-size:.82rem; font-weight:600; margin-left:.4rem; }
+  .actions { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.85rem; }
+  button.secondary { background:#fff; color:var(--glen); border:1px solid var(--glen);
+                     border-radius:8px; padding:.45rem .85rem; font-size:.88rem; cursor:pointer; }
+  button.secondary:hover { background:#e8f4f1; }
+  button.danger { background:#fff; color:var(--warn); border:1px solid var(--warn);
+                  border-radius:8px; padding:.45rem .85rem; font-size:.88rem; cursor:pointer; }
+  button.danger:hover { background:#fdf0ef; }
+  button.primary { background:var(--glen); color:#fff; border:0; border-radius:10px;
+                   padding:.8rem 1.2rem; font-size:1rem; cursor:pointer; width:100%; }
+  button.primary:disabled { opacity:.45; cursor:default; }
+  button.link { background:none; border:0; color:var(--glen); cursor:pointer; padding:.4rem 0; font-size:.95rem; }
+  input[type=email] { width:100%; padding:.8rem; border:1px solid var(--line); border-radius:10px; font-size:1rem; }
+  select { padding:.45rem .7rem; border:1px solid var(--line); border-radius:8px; font-size:.88rem; }
+  .muted { color:var(--muted); font-size:.9rem; }
+  .note { background:#faf6e4; border:1px solid #e8d88a; border-radius:8px; padding:.7rem .9rem;
+          font-size:.88rem; color:#6b5a10; margin-top:.75rem; }
+  .hide { display:none; }
+  .status-active  { color:var(--glen); font-weight:600; }
+  .status-paused  { color:#e67e22; font-weight:600; }
+  .status-cancelled { color:var(--warn); font-weight:600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Your Plan</h1>
+  <p class="sub" id="sub">One moment&hellip;</p>
+
+  <!-- Sign-in state -->
+  <div id="signin" class="card hide">
+    <p>Enter the email linked to your subscription and we'll send you a secure link to manage your plan.</p>
+    <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+    <p></p>
+    <button class="primary" id="sendBtn" onclick="sendLink()">Email me my plan link</button>
+    <p id="sent" class="muted hide">Check your inbox for your secure link (it expires in 15 minutes).</p>
+  </div>
+
+  <!-- Subscriptions list -->
+  <div id="plans" class="hide">
+    <div id="subList"></div>
+    <div class="note">
+      To update your payment card, please <a href="mailto:support@remedymatch.com">contact us</a> and we'll send you a secure update link.
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="empty" class="card hide">
+    <p>We don't have any active subscriptions on file for this email address.</p>
+    <p><a href="https://remedymatch.com">Browse the store &rarr;</a></p>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function showSignin(){ $('#sub').textContent=''; $('#signin').classList.remove('hide'); }
+
+function tierLabel(pct){ return pct + '% subscriber discount'; }
+function statusClass(st){ return 'status-' + (st||'active').replace(/[^a-z]/g,''); }
+
+function renderSubs(subs){
+  $('#subList').innerHTML = subs.map(s => {
+    const statusText = {'active':'Active','paused':'Paused','cancelled':'Cancelled'}[s.status] || s.status;
+    const itemNames = (s.items||[]).map(i => esc(i.slug||i.name||'item') + (i.qty>1?' ×'+i.qty:'')).join(', ');
+    const cadenceLabel = {1:'Monthly',2:'Every 2 months',3:'Quarterly'}[s.cadence_months] || s.cadence_months+' months';
+    const skipLabel = s.skip_next ? ' · <em>Next charge skipped</em>' : '';
+
+    const pauseBtn = s.status === 'active'
+      ? `<button class="secondary" onclick="pause(${s.id})">Pause</button>`
+      : s.status === 'paused'
+        ? `<button class="secondary" onclick="resumeSub(${s.id})">Resume</button>`
+        : '';
+    const skipBtn = s.status === 'active'
+      ? (s.skip_next
+          ? `<button class="secondary" onclick="resumeSkip(${s.id})">Undo skip</button>`
+          : `<button class="secondary" onclick="skip(${s.id})">Skip next</button>`)
+      : '';
+    const cancelBtn = s.status !== 'cancelled'
+      ? `<button class="danger" onclick="cancelSub(${s.id})">Cancel</button>`
+      : '';
+
+    return `<div class="sub-card" id="sub-${s.id}">
+      <h3>${esc(itemNames) || 'Subscription'} <span class="tier-badge">${tierLabel(s.current_tier_pct)}</span></h3>
+      <p class="sub-meta"><span class="${statusClass(s.status)}">${statusText}</span>${skipLabel}</p>
+      <p class="sub-meta">Cadence: ${cadenceLabel}</p>
+      <p class="sub-meta">Next charge: ${esc(s.next_charge_date)}</p>
+      <div class="actions">
+        ${skipBtn}
+        ${pauseBtn}
+        <select id="cad-${s.id}" onchange="changeCadence(${s.id},this.value)">
+          <option value="">Change cadence…</option>
+          <option value="1"${s.cadence_months===1?' selected':''}>Monthly</option>
+          <option value="2"${s.cadence_months===2?' selected':''}>Every 2 months</option>
+          <option value="3"${s.cadence_months===3?' selected':''}>Quarterly</option>
+        </select>
+        ${cancelBtn}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function apiPost(path, body){
+  const r = await fetch(path, {method:'POST', credentials:'same-origin',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  return {ok: r.ok, status: r.status, data: await r.json()};
+}
+
+async function reload(){
+  const r = await fetch('/api/subscription/details', {credentials:'same-origin'});
+  if (r.status === 401){ showSignin(); return; }
+  const d = await r.json();
+  renderSubs(d.subscriptions || []);
+}
+
+async function skip(id){
+  const {ok} = await apiPost('/api/subscription/skip', {id});
+  if (ok) reload(); else alert('Could not skip. Please try again.');
+}
+async function resumeSkip(id){
+  const {ok} = await apiPost('/api/subscription/resume-skip', {id});
+  if (ok) reload(); else alert('Could not undo skip. Please try again.');
+}
+async function pause(id){
+  if (!confirm('Pause this subscription? You can resume it any time.')) return;
+  const {ok} = await apiPost('/api/subscription/pause', {id});
+  if (ok) reload(); else alert('Could not pause. Please try again.');
+}
+async function resumeSub(id){
+  const {ok} = await apiPost('/api/subscription/resume', {id});
+  if (ok) reload(); else alert('Could not resume. Please try again.');
+}
+async function cancelSub(id){
+  if (!confirm('Cancel this subscription? Your loyalty tier will reset if you re-subscribe.')) return;
+  const {ok} = await apiPost('/api/subscription/cancel', {id});
+  if (ok) reload(); else alert('Could not cancel. Please try again.');
+}
+async function changeCadence(id, cadence_months){
+  if (!cadence_months) return;
+  const cm = parseInt(cadence_months);
+  const {ok} = await apiPost('/api/subscription/cadence', {id, cadence_months: cm});
+  if (ok) reload(); else alert('Could not update cadence. Please try again.');
+}
+
+async function sendLink(){
+  const email = $('#email').value.trim();
+  if (!email || email.indexOf('@')<0){ $('#email').focus(); return; }
+  $('#sendBtn').disabled = true;
+  await fetch('/reorder/request', {method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({email})});
+  $('#sent').classList.remove('hide');
+}
+
+async function init(){
+  let r;
+  try { r = await fetch('/api/subscription/details', {credentials:'same-origin'}); }
+  catch(e){ return showSignin(); }
+  if (r.status === 401) return showSignin();
+  const d = await r.json();
+  const subs = d.subscriptions || [];
+  if (!subs.length){
+    $('#sub').textContent = '';
+    $('#empty').classList.remove('hide');
+    return;
+  }
+  $('#sub').textContent = 'Manage your Subscribe & Grow plan below.';
+  $('#plans').classList.remove('hide');
+  renderSubs(subs);
+}
+init();
+</script>
+</body>
+</html>
