@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Order · Functional Formulations</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<style>
+  :root {
+    --bg: #faf8f4;
+    --surface: #ffffff;
+    --border: #e6e2da;
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --glen: #2f7d6b;
+    --gold: #b08a3e;
+    --radius: 12px;
+    --font: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .brandbar {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 28px 20px 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--glen);
+    flex-shrink: 0;
+  }
+  .brand-name {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 0 20px 5rem;
+  }
+  h1 { font-size: 1.6rem; font-weight: 700; margin: 0 0 .35rem; }
+  .sub { color: var(--muted); margin: 0 0 1.5rem; font-size: .95rem; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.2rem;
+    margin-bottom: 1rem;
+  }
+  .card-title {
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: .85rem;
+  }
+
+  /* Product list */
+  .product-row {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .65rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .product-row:last-child { border-bottom: 0; }
+  .product-name { flex: 1; min-width: 0; font-weight: 500; }
+  .product-price { color: var(--glen); font-weight: 600; white-space: nowrap; font-size: .95rem; }
+  .qty-ctrl {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+  }
+  .qty-ctrl button {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: 6px;
+    font-size: 1rem;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .qty-ctrl button:hover { border-color: var(--glen); }
+  .qty-ctrl input {
+    width: 42px;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    height: 28px;
+    font-size: .9rem;
+  }
+  .add-btn {
+    font-size: .8rem;
+    padding: .35rem .75rem;
+    border: 1px solid var(--glen);
+    background: transparent;
+    color: var(--glen);
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .add-btn.in-cart {
+    background: var(--glen);
+    color: #fff;
+  }
+
+  /* Cart summary */
+  .cart-items { margin-bottom: .75rem; }
+  .cart-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: .9rem;
+    padding: .3rem 0;
+    color: var(--muted);
+  }
+  .cart-total {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 700;
+    font-size: 1.1rem;
+    border-top: 1px solid var(--border);
+    padding-top: .6rem;
+    margin-top: .4rem;
+  }
+
+  /* Forms */
+  .field { margin-bottom: 1rem; }
+  .field label {
+    display: block;
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: .4rem;
+  }
+  input[type=text], input[type=email] {
+    width: 100%;
+    padding: .7rem .85rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: .95rem;
+    color: var(--ink);
+    background: var(--bg);
+    outline: none;
+    transition: border-color .15s;
+  }
+  input:focus { border-color: var(--glen); }
+  input::placeholder { color: #aaa; }
+  .row2 { display: flex; gap: .75rem; }
+  .row2 .field { flex: 1; }
+  .field-sm { max-width: 100px; flex: none !important; }
+
+  /* Consent */
+  .consent-row {
+    display: flex;
+    gap: .75rem;
+    align-items: flex-start;
+    padding: .85rem;
+    background: #f0f9f5;
+    border: 1px solid #c2dfd7;
+    border-radius: 8px;
+    font-size: .9rem;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  .consent-row input[type=checkbox] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--glen);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .consent-row a { color: var(--glen); }
+
+  /* Payment methods */
+  .methods { display: flex; flex-direction: column; gap: .6rem; }
+  .method-opt {
+    display: flex;
+    align-items: flex-start;
+    gap: .65rem;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: .8rem 1rem;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .method-opt:hover { border-color: var(--glen); }
+  .method-opt.active { border-color: var(--glen); background: #f0f9f5; }
+  .method-opt input[type=radio] {
+    accent-color: var(--glen);
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin-top: 3px;
+  }
+  .method-title { font-weight: 600; font-size: .95rem; }
+  .method-sub { font-size: .8rem; color: var(--muted); margin-top: .15rem; }
+
+  /* Sticky pay button */
+  .sticky-pay {
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(transparent, var(--bg) 35%);
+    padding-top: 1rem;
+  }
+  .pay-btn {
+    width: 100%;
+    padding: .9rem 1.2rem;
+    background: var(--glen);
+    color: #fff;
+    border: 0;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .2s;
+  }
+  .pay-btn:hover { opacity: .9; }
+  .pay-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  .inline-msg {
+    font-size: .85rem;
+    color: #c0392b;
+    min-height: 1em;
+    margin-top: .5rem;
+    text-align: center;
+  }
+
+  /* US note */
+  .us-note { font-size: .8rem; color: var(--muted); margin-top: .5rem; line-height: 1.5; }
+
+  /* Confirmation */
+  .confirm-card {
+    background: #f0f9f5;
+    border: 1px solid var(--glen);
+    border-radius: var(--radius);
+    padding: 1.3rem 1.4rem;
+  }
+  .confirm-eyebrow {
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--glen);
+    margin-bottom: .5rem;
+  }
+  .confirm-head { font-size: 1.15rem; font-weight: 700; margin-bottom: .75rem; }
+  .pay-detail-label { font-size: .8rem; color: var(--muted); }
+  .pay-detail-to { font-size: 1.1rem; font-weight: 700; color: var(--glen); margin: .2rem 0 .5rem; word-break: break-word; }
+  .pay-detail-note { font-size: .875rem; color: var(--ink); line-height: 1.6; }
+  .pay-link-btn {
+    display: inline-block;
+    margin-top: 1rem;
+    background: var(--glen);
+    color: #fff;
+    border-radius: 8px;
+    padding: .7rem 1.4rem;
+    font-size: .95rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .email-note { font-size: .8rem; color: var(--muted); margin-top: .85rem; line-height: 1.55; }
+
+  /* Loading / errors */
+  .loading-state { text-align: center; color: var(--muted); padding: 3rem 1rem; }
+  .error-state { color: #c0392b; padding: 1.5rem; text-align: center; }
+
+  .hidden { display: none !important; }
+
+  footer {
+    margin-top: 3rem;
+    padding: 1.5rem 20px 2.5rem;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+  .foot-note { font-size: .78rem; color: var(--muted); max-width: 520px; margin: 0 auto; line-height: 1.7; }
+
+  @media (max-width: 480px) {
+    h1 { font-size: 1.35rem; }
+    .row2 { flex-direction: column; gap: 0; }
+    .field-sm { max-width: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="brandbar">
+  <span class="brand-dot"></span>
+  <span class="brand-name" id="practice-name">Loading&hellip;</span>
+</div>
+
+<div class="wrap">
+  <div id="loading-state" class="loading-state">Loading products&hellip;</div>
+  <div id="error-state" class="error-state hidden">Unable to load this dispensary. The link may be incorrect.</div>
+
+  <div id="main" class="hidden">
+    <h1>Order your supplements</h1>
+    <p class="sub" id="sub">Professional-grade formulations recommended by your practitioner, shipped directly to you.</p>
+
+    <!-- Product list -->
+    <div class="card">
+      <div class="card-title">Available formulations</div>
+      <div id="product-list"></div>
+    </div>
+
+    <!-- Cart summary (shown once cart has items) -->
+    <div class="card hidden" id="cart-card">
+      <div class="card-title">Your order</div>
+      <div id="cart-items" class="cart-items"></div>
+      <div class="cart-total">
+        <span>Total</span>
+        <span id="cart-total">$0.00</span>
+      </div>
+    </div>
+
+    <!-- Patient details -->
+    <div class="card">
+      <div class="card-title">Your details</div>
+      <div class="field">
+        <label>Full name</label>
+        <input type="text" id="name" placeholder="Your name" autocomplete="name">
+      </div>
+      <div class="field">
+        <label>Email <span style="color:#c0392b">*</span></label>
+        <input type="email" id="email" placeholder="your@email.com" autocomplete="email" required>
+      </div>
+    </div>
+
+    <!-- Shipping address -->
+    <div class="card">
+      <div class="card-title">Shipping address</div>
+      <div class="field">
+        <label>Street address</label>
+        <input type="text" id="ship-street" placeholder="123 Main St" autocomplete="shipping street-address">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>City</label>
+          <input type="text" id="ship-city" placeholder="City" autocomplete="shipping address-level2">
+        </div>
+        <div class="field field-sm">
+          <label>State</label>
+          <input type="text" id="ship-state" placeholder="OR" maxlength="2" autocomplete="shipping address-level1" style="text-transform:uppercase">
+        </div>
+        <div class="field field-sm">
+          <label>ZIP</label>
+          <input type="text" id="ship-zip" placeholder="97201" inputmode="numeric" autocomplete="shipping postal-code">
+        </div>
+      </div>
+      <p class="us-note">US addresses only. If you are outside the US, please use a US forwarding service.</p>
+    </div>
+
+    <!-- Terms of Service consent (gates the pay button) -->
+    <div class="card">
+      <div class="card-title">Agreement</div>
+      <label class="consent-row">
+        <input type="checkbox" id="tos-check">
+        <span>I understand this is wellness coaching and education, not medical advice, and I agree to the
+          <a href="https://remedymatch.com/info/terms-and-conditions" target="_blank" rel="noopener">Terms &amp; Conditions</a>.</span>
+      </label>
+    </div>
+
+    <!-- Payment method -->
+    <div class="card">
+      <div class="card-title">Payment method</div>
+      <div class="methods" id="methods">
+        <label class="method-opt" data-method="zelle">
+          <input type="radio" name="method" value="zelle">
+          <span>
+            <div class="method-title">Zelle (US)</div>
+            <div class="method-sub">Fee-free. Payment details appear right after you order.</div>
+          </span>
+        </label>
+        <label class="method-opt" data-method="wise">
+          <input type="radio" name="method" value="wise">
+          <span>
+            <div class="method-title">Wise (International)</div>
+            <div class="method-sub">Fee-free across borders. Payment details appear after you order.</div>
+          </span>
+        </label>
+        <label class="method-opt hidden" id="method-card" data-method="card">
+          <input type="radio" name="method" value="card">
+          <span>
+            <div class="method-title">Credit / debit card</div>
+            <div class="method-sub">Secure card checkout opens on the next screen.</div>
+          </span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Sticky pay button -->
+    <div class="sticky-pay">
+      <button class="pay-btn" id="pay-btn" disabled>Place your order</button>
+      <div class="inline-msg" id="inline-msg"></div>
+    </div>
+
+    <!-- Confirmation (hidden until order placed) -->
+    <div class="confirm-card hidden" id="confirm">
+      <div class="confirm-eyebrow">Order received</div>
+      <div class="confirm-head" id="confirm-head"></div>
+      <div id="pay-detail" class="hidden">
+        <div class="pay-detail-label" id="pd-label"></div>
+        <div class="pay-detail-to" id="pd-to"></div>
+        <div class="pay-detail-note" id="pd-note"></div>
+      </div>
+      <a class="pay-link-btn hidden" id="pay-link" href="#" target="_blank" rel="noopener">Pay securely &rarr;</a>
+      <div class="email-note" id="email-note"></div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <p class="foot-note">Shared in the spirit of education and self-understanding. This space offers wellness and educational guidance. It is not a substitute for diagnosis or medical care from your own provider. Individual results will vary.</p>
+</footer>
+
+<script src="/static/optin-gate.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var code = location.pathname.split('/').filter(Boolean).pop() || '';
+  var BASE = location.origin;
+  var catalog = [];       // [{slug, name, price_cents}]
+  var cart = {};          // slug -> qty
+  var chosenMethod = '';
+  var ordering = false;
+
+  function $(sel) { return document.querySelector(sel); }
+  function show(id) { var el = document.getElementById(id); if (el) el.classList.remove('hidden'); }
+  function hide(id) { var el = document.getElementById(id); if (el) el.classList.add('hidden'); }
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function cents(c) { return '$' + (c / 100).toFixed(2); }
+
+  // ── Load catalog ─────────────────────────────────────────────────────────────
+  fetch(BASE + '/api/client/' + encodeURIComponent(code) + '/catalog', { credentials: 'same-origin' })
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      hide('loading-state');
+      if (!data.ok || !data.items || !data.items.length) {
+        show('error-state');
+        return;
+      }
+      catalog = data.items;
+      var pName = data.practice_name || 'Your Practitioner';
+      document.getElementById('practice-name').textContent = pName;
+      document.title = 'Order · ' + pName;
+      document.getElementById('sub').textContent =
+        'Professional-grade formulations recommended by ' + pName + ', shipped directly to you.';
+      renderProducts();
+      wireForm();
+      show('main');
+    })
+    .catch(function () {
+      hide('loading-state');
+      show('error-state');
+    });
+
+  // ── Render product list ───────────────────────────────────────────────────────
+  function renderProducts() {
+    var list = document.getElementById('product-list');
+    list.innerHTML = catalog.map(function (p) {
+      var inCart = (cart[p.slug] || 0) > 0;
+      return '<div class="product-row" id="pr-' + esc(p.slug) + '">'
+        + '<span class="product-name">' + esc(p.name) + '</span>'
+        + '<span class="product-price">' + cents(p.price_cents) + '</span>'
+        + '<div class="qty-ctrl" id="qc-' + esc(p.slug) + '" style="' + (inCart ? '' : 'display:none') + '">'
+        + '  <button type="button" onclick="bumpCart(' + JSON.stringify(p.slug) + ',-1)">&#8722;</button>'
+        + '  <input type="number" min="1" max="99" value="' + (cart[p.slug] || 1) + '"'
+        + '    onchange="setCart(' + JSON.stringify(p.slug) + ',this.value)"'
+        + '    oninput="setCart(' + JSON.stringify(p.slug) + ',this.value)">'
+        + '  <button type="button" onclick="bumpCart(' + JSON.stringify(p.slug) + ',1)">&#43;</button>'
+        + '</div>'
+        + '<button class="add-btn' + (inCart ? ' in-cart' : '') + '" id="ab-' + esc(p.slug) + '"'
+        + '  type="button" onclick="toggleCart(' + JSON.stringify(p.slug) + ')">'
+        + (inCart ? 'Added' : 'Add') + '</button>'
+        + '</div>';
+    }).join('');
+  }
+
+  window.toggleCart = function (slug) {
+    if (cart[slug]) {
+      delete cart[slug];
+    } else {
+      cart[slug] = 1;
+    }
+    renderProducts();
+    renderCartSummary();
+    refreshPayState();
+  };
+
+  window.bumpCart = function (slug, delta) {
+    var q = (cart[slug] || 0) + delta;
+    if (q <= 0) { delete cart[slug]; } else { cart[slug] = Math.min(99, q); }
+    renderProducts();
+    renderCartSummary();
+    refreshPayState();
+  };
+
+  window.setCart = function (slug, val) {
+    var q = parseInt(val, 10);
+    if (!q || q < 1) { delete cart[slug]; } else { cart[slug] = Math.min(99, q); }
+    renderCartSummary();
+    refreshPayState();
+  };
+
+  // ── Cart summary ──────────────────────────────────────────────────────────────
+  function renderCartSummary() {
+    var slugs = Object.keys(cart);
+    if (!slugs.length) { hide('cart-card'); return; }
+    show('cart-card');
+    var total = 0;
+    var rows = '';
+    slugs.forEach(function (slug) {
+      var p = catalog.find(function (x) { return x.slug === slug; });
+      if (!p) return;
+      var qty = cart[slug] || 0;
+      var line = p.price_cents * qty;
+      total += line;
+      rows += '<div class="cart-row"><span>' + esc(p.name) + ' &times; ' + qty + '</span><span>' + cents(line) + '</span></div>';
+    });
+    document.getElementById('cart-items').innerHTML = rows;
+    document.getElementById('cart-total').textContent = cents(total);
+  }
+
+  function cartTotal() {
+    return Object.keys(cart).reduce(function (acc, slug) {
+      var p = catalog.find(function (x) { return x.slug === slug; });
+      return acc + (p ? p.price_cents * (cart[slug] || 0) : 0);
+    }, 0);
+  }
+
+  function cartItems() {
+    return Object.keys(cart).map(function (slug) {
+      return { slug: slug, qty: cart[slug] };
+    });
+  }
+
+  // ── Form wiring ───────────────────────────────────────────────────────────────
+  function wireForm() {
+    // Payment method toggles.
+    document.querySelectorAll('input[name="method"]').forEach(function (r) {
+      r.addEventListener('change', function () {
+        chosenMethod = r.value;
+        document.querySelectorAll('.method-opt').forEach(function (o) { o.classList.remove('active'); });
+        var lab = r.closest('.method-opt');
+        if (lab) lab.classList.add('active');
+        clearMsg();
+        refreshPayState();
+      });
+    });
+
+    // Email + ToS gate the pay button.
+    document.getElementById('email').addEventListener('input', function () { clearMsg(); refreshPayState(); });
+    document.getElementById('tos-check').addEventListener('change', function () { clearMsg(); refreshPayState(); });
+    document.getElementById('pay-btn').addEventListener('click', placeOrder);
+
+    refreshPayState();
+  }
+
+  function emailValid() {
+    var v = (document.getElementById('email').value || '').trim();
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  }
+
+  function tosChecked() {
+    return document.getElementById('tos-check').checked;
+  }
+
+  function refreshPayState() {
+    var hasCart = Object.keys(cart).length > 0;
+    var ready = hasCart && emailValid() && tosChecked() && !!chosenMethod && !ordering;
+    document.getElementById('pay-btn').disabled = !ready;
+  }
+
+  function clearMsg() { document.getElementById('inline-msg').textContent = ''; }
+  function setMsg(t) { document.getElementById('inline-msg').textContent = t; }
+
+  // ── Place order ───────────────────────────────────────────────────────────────
+  function placeOrder() {
+    if (ordering) return;
+
+    var items = cartItems();
+    if (!items.length) { setMsg('Please add at least one product to your order.'); return; }
+
+    if (!emailValid()) {
+      setMsg('Please enter a valid email address.');
+      document.getElementById('email').focus();
+      return;
+    }
+
+    if (!tosChecked()) {
+      setMsg('Please check the Terms box to continue.');
+      document.getElementById('tos-check').focus();
+      return;
+    }
+
+    if (!chosenMethod) {
+      setMsg('Please choose a payment method.');
+      return;
+    }
+
+    var street = (document.getElementById('ship-street').value || '').trim();
+    var city = (document.getElementById('ship-city').value || '').trim();
+    var state = (document.getElementById('ship-state').value || '').trim();
+    var zip = (document.getElementById('ship-zip').value || '').trim();
+    if (!street || !city || !state || !zip) {
+      setMsg('Please fill in your full shipping address.');
+      document.getElementById('ship-street').focus();
+      return;
+    }
+
+    var email = (document.getElementById('email').value || '').trim();
+    var name = (document.getElementById('name').value || '').trim();
+
+    // Before sending to checkout, register the ToS agreement via /begin/unlock.
+    // This makes is_member() return true so the consent gate passes.
+    ordering = true;
+    var btn = document.getElementById('pay-btn');
+    btn.disabled = true;
+    btn.textContent = 'One moment…';
+    clearMsg();
+
+    fetch(BASE + '/begin/unlock', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        trigger: 'tos',
+        first_name: name.split(' ')[0] || name,
+        last_name: name.split(' ').slice(1).join(' ') || '',
+        email: email,
+        tos: true
+      })
+    })
+    .then(function (r) { return r.ok ? r.json().catch(function () { return {}; }) : {}; })
+    .catch(function () { return {}; })
+    .then(function () {
+      // Now attempt the checkout.
+      return fetch(BASE + '/api/client/' + encodeURIComponent(code) + '/checkout', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email,
+          name: name,
+          method: chosenMethod,
+          address: { name: name, street: street, city: city, state: state, zip: zip, country: 'US' },
+          items: items
+        })
+      });
+    })
+    .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; }); })
+    .then(function (data) {
+      ordering = false;
+      btn.textContent = 'Place your order';
+
+      // need_optin: unlock failed (shouldn't normally happen here since we pre-unlock above,
+      // but show the OptinGate as a fallback).
+      if (data && data.need_optin && window.OptinGate) {
+        OptinGate.show({
+          base: BASE,
+          onAgree: function (info) {
+            // Retry once the user has agreed via the modal.
+            document.getElementById('email').value = info.email || email;
+            document.getElementById('name').value = (info.first + ' ' + info.last).trim() || name;
+            document.getElementById('tos-check').checked = true;
+            refreshPayState();
+            placeOrder();
+          }
+        });
+        return;
+      }
+
+      if (!data || !data.ok) {
+        setMsg((data && data.error) || 'Something went wrong. Please try again.');
+        refreshPayState();
+        return;
+      }
+
+      showConfirmation(data);
+    })
+    .catch(function (e) {
+      ordering = false;
+      btn.textContent = 'Place your order';
+      setMsg('Connection error: ' + e.message + '. Please try again.');
+      refreshPayState();
+    });
+  }
+
+  // ── Confirmation ──────────────────────────────────────────────────────────────
+  function showConfirmation(data) {
+    // Scroll checkout form out and show confirmation.
+    hide('cart-card');
+    var sticky = document.querySelector('.sticky-pay');
+    if (sticky) sticky.style.display = 'none';
+
+    if (data.method === 'card' && data.stripe_url) {
+      window.location.href = data.stripe_url;
+      return;
+    }
+
+    var head = document.getElementById('confirm-head');
+    var total = (data.total != null) ? '$' + Number(data.total).toFixed(2) : '';
+    head.textContent = 'Invoice ' + (data.invoice_id ? '#' + data.invoice_id : '') + ' created' + (total ? ' for ' + total : '') + '.';
+
+    if (data.pay_instructions) {
+      var pi = data.pay_instructions;
+      if (pi.label) document.getElementById('pd-label').textContent = pi.label;
+      if (pi.to) document.getElementById('pd-to').textContent = pi.to;
+      if (pi.note) document.getElementById('pd-note').textContent = pi.note;
+      if (pi.to || pi.label || pi.note) show('pay-detail');
+    }
+
+    var emailNote = document.getElementById('email-note');
+    if (data.method === 'card') {
+      // Stripe URL unavailable.
+      emailNote.textContent = 'Card payment is being set up. Your invoice details are on their way to your email.';
+    } else {
+      emailNote.textContent = 'A copy of this invoice is on its way to your email.';
+    }
+
+    show('confirm');
+    document.getElementById('confirm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+})();
+</script>
+</body>
+</html>

@@ -6008,13 +6008,42 @@ def _record_dispensary_sale(code, customer_email, bottles, invoice_id):
 
 @app.route("/dispensary/<code>")
 def dispensary_landing(code):
-    """Set the dispensary-attribution cookie and land the patient in the funnel."""
-    from flask import redirect as _redir
-    resp = _redir("/begin")
-    if re.match(r"^[A-Za-z0-9_-]{1,64}$", code or ""):
-        resp.set_cookie("rm_dispensary", code, max_age=90 * 24 * 3600,
-                        samesite="Lax", secure=request.is_secure)
+    """Set the dispensary-attribution cookie and serve the branded client page.
+    Invalid codes (no matching practitioner) return 404."""
+    pid = _pp.practitioner_id_by_dispensary_code(code)
+    if not pid:
+        return jsonify({"ok": False, "error": "unknown dispensary code"}), 404
+    if not re.match(r"^[A-Za-z0-9_-]{1,64}$", code or ""):
+        return jsonify({"ok": False, "error": "invalid dispensary code"}), 404
+    resp = send_from_directory(STATIC, "practitioner-client.html")
+    resp.set_cookie("rm_dispensary", code, max_age=90 * 24 * 3600,
+                    samesite="Lax", secure=request.is_secure)
     return resp
+
+
+@app.route("/api/client/<code>/catalog")
+def api_client_catalog(code):
+    """Return sellable Functional Formulations at the practitioner's price (>= MAP).
+    Used by practitioner-client.html to populate the product list at page load."""
+    pid = _pp.practitioner_id_by_dispensary_code(code)
+    if not pid:
+        return jsonify({"ok": False, "error": "unknown dispensary code"}), 404
+
+    data = _pp.portal_data(pid) or {}
+    practice_name = (data.get("practice_name") or data.get("name") or "Your Practitioner")
+
+    items = []
+    for slug, p in (_PRODUCTS.get("products") or {}).items():
+        if not p or p.get("inactive") or p.get("info_only"):
+            continue
+        if _is_pure_powder(p):
+            continue
+        price_cents = _dropship.practitioner_price_for(pid, slug)
+        name = p.get("name") or slug
+        items.append({"slug": slug, "name": name, "price_cents": price_cents})
+
+    items.sort(key=lambda x: x["name"])
+    return jsonify({"ok": True, "practice_name": practice_name, "items": items})
 
 
 @app.route("/api/client/<code>/checkout", methods=["POST"])
