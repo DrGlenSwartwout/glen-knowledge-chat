@@ -1,22 +1,11 @@
 import json
 import importlib
 
-import pytest
-
-
-@pytest.fixture(autouse=True)
-def _clean_settings_file():
-    # app.py resolves _PRICING_SETTINGS_PATH from its module dir (it does not honor the
-    # DATA_DIR env var for this path), so all tests share one real file. Remove it before
-    # and after each test so test order can't leak a settings file between cases.
-    import app as _app
-    p = _app._PRICING_SETTINGS_PATH
-    p.unlink(missing_ok=True)
-    yield
-    p.unlink(missing_ok=True)
-
 
 def _client(tmp_path, monkeypatch):
+    # Point DATA_DIR at a fresh tmp dir and reload so _PRICING_SETTINGS_PATH (which honors
+    # the env DATA_DIR) resolves under tmp_path -- each test is isolated and never touches
+    # the real persistent settings file.
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     import app as _app
     importlib.reload(_app)
