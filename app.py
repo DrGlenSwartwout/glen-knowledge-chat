@@ -6005,9 +6005,13 @@ def _get_sub_authed(sub_id, cookie_email):
     Returns (sub, None) on success; (None, response) on failure.
     """
     from dashboard import subscriptions as _subs
+    try:
+        sub_id = int(sub_id)
+    except (TypeError, ValueError):
+        return None, (jsonify({"error": "invalid id"}), 400)
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
-        sub = _subs.get(cx, int(sub_id))
+        sub = _subs.get(cx, sub_id)
     if sub is None:
         return None, (jsonify({"error": "not found"}), 404)
     if sub["email"].strip().lower() != cookie_email.strip().lower():
@@ -6025,7 +6029,7 @@ def api_subscription_details():
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _subs.init_subscriptions_table(cx)
-        rows = _subs.get_active_by_email(cx, email)
+        rows = _subs.get_manageable_by_email(cx, email)   # active + paused, so paused can be resumed
     result = []
     for s in rows:
         result.append({

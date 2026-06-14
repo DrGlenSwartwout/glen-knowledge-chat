@@ -146,6 +146,16 @@ def get_active_by_email(cx, email: str) -> list[dict]:
     return [_row_to_dict(r) for r in rows]
 
 
+def get_manageable_by_email(cx, email: str) -> list[dict]:
+    """Return a member's manageable subscriptions (active + paused, NOT cancelled),
+    so the portal can show — and let them resume — a paused plan."""
+    rows = cx.execute(
+        "SELECT * FROM subscriptions WHERE email = ? AND status != 'cancelled'"
+        " ORDER BY id", (email,)
+    ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
 def list_due(cx, *, as_of: str) -> list[dict]:
     """Return active subscriptions (skip_next=0) whose next_charge_date <= as_of,
     ordered by next_charge_date ascending."""
