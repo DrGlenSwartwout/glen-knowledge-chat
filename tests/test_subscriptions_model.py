@@ -8,6 +8,18 @@ def _cx():
     subs.init_subscriptions_table(cx); return cx
 
 
+def test_create_with_order_count_sets_escalation_correctly():
+    # The setup checkout placed order #1 (5%), so the sub is created with order_count=1,
+    # making the FIRST scheduled charge tier_for(1)=10% (order #2) — the intended curve.
+    cx = _cx()
+    sid = subs.create(cx, email="a@x.com", stripe_customer_id="c", stripe_payment_method_id="p",
+                      items=[], cadence_months=1, ship_address={}, next_charge_date="2026-07-01",
+                      order_count=1)
+    s = subs.get(cx, sid)
+    assert s["order_count"] == 1
+    assert subs.tier_for(s["order_count"]) == 10     # first scheduled charge = 10%, not 5% again
+
+
 def test_add_months_edge_cases():
     assert subs.add_months("2026-01-31", 1) == "2026-02-28"   # day clamp, non-leap
     assert subs.add_months("2024-01-31", 1) == "2024-02-29"   # leap-year clamp

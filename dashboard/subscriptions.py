@@ -110,8 +110,14 @@ def _row_to_dict(row) -> dict:
 def create(cx, *, email: str, stripe_customer_id: str,
            stripe_payment_method_id: str, items: list,
            cadence_months: int, ship_address: dict,
-           next_charge_date: str) -> int:
-    """Insert a new active subscription and return its id."""
+           next_charge_date: str, order_count: int = 0) -> int:
+    """Insert a new active subscription and return its id.
+
+    order_count is the number of orders ALREADY placed on this subscription. At
+    sign-up the setup checkout charges the 1st order (at tier_for(0)=5%), so the
+    subscription is created with order_count=1 — that way the first SCHEDULED charge
+    reads tier_for(1)=10% (the 2nd order), giving the intended 5%/10%/15% curve.
+    """
     now = _now_iso()
     cur = cx.execute(
         """INSERT INTO subscriptions
@@ -119,9 +125,9 @@ def create(cx, *, email: str, stripe_customer_id: str,
                 items_json, cadence_months, status, order_count,
                 next_charge_date, ship_address_json, skip_next,
                 created_at, updated_at)
-           VALUES (?,?,?,?,?,'active',0,?,?,0,?,?)""",
+           VALUES (?,?,?,?,?,'active',?,?,?,0,?,?)""",
         (email, stripe_customer_id, stripe_payment_method_id,
-         json.dumps(items or []), cadence_months,
+         json.dumps(items or []), cadence_months, int(order_count),
          next_charge_date, json.dumps(ship_address or {}),
          now, now),
     )

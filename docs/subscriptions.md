@@ -18,7 +18,10 @@ each cycle through the Plan 2 pricing path (`_price_cart`) at an escalating loya
   off-session (GET absorbed, not billed), then order + QBO invoice + receipt; tier advances.
   Wired into the `glen-pb-tag-sync-daily` cron script (no new Render cron service, to respect
   the Blueprint cron limit) + a standalone `scripts/run_subscriptions_cron.py` for manual runs.
-- **Escalating tier:** order_count 0→5%, 1→10%, 2+→15%. Skip + pause HOLD the tier; cancel resets it.
+- **Escalating tier (by completed-order count):** order #1 (the sign-up/setup order) = 5%,
+  order #2 = 10%, order #3+ = 15%. The setup order counts as order #1, so the subscription is
+  created with `order_count=1` and the first SCHEDULED charge is order #2 at 10%. Skip + pause
+  HOLD the tier; cancel resets it.
 - **Skip/pause/cadence/cancel:** self-serve at `/subscription` (magic-link via the reorder cookie).
   Card updates show a "contact us" note in v1.
 - **Dunning:** a failed/requires-action charge bumps `failed_count`, emails the customer, and never

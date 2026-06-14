@@ -2762,7 +2762,8 @@ def begin_checkout_return():
                                 items=items_list,
                                 cadence_months=cadence,
                                 ship_address=ship_dict,
-                                next_charge_date=next_date)
+                                next_charge_date=next_date,
+                                order_count=1)   # the setup checkout already placed order #1 (5%)
                         print(f"[subscribe-return] subscription created for {sub_email}", flush=True)
                     except Exception as _se:
                         print(f"[subscribe-return] failed to create subscription: {_se!r}", flush=True)
