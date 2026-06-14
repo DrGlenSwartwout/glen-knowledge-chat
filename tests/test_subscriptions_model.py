@@ -8,6 +8,24 @@ def _cx():
     subs.init_subscriptions_table(cx); return cx
 
 
+def test_add_months_edge_cases():
+    assert subs.add_months("2026-01-31", 1) == "2026-02-28"   # day clamp, non-leap
+    assert subs.add_months("2024-01-31", 1) == "2024-02-29"   # leap-year clamp
+    assert subs.add_months("2024-02-29", 12) == "2025-02-28"  # leap day into non-leap
+    assert subs.add_months("2026-12-15", 1) == "2027-01-15"   # Dec -> Jan year rollover
+    assert subs.add_months("2026-07-01", 2) == "2026-09-01"   # plain
+
+
+def test_set_cadence_and_next_charge_date():
+    cx = _cx()
+    sid = subs.create(cx, email="a@x.com", stripe_customer_id="c", stripe_payment_method_id="p",
+                      items=[], cadence_months=1, ship_address={}, next_charge_date="2026-07-01")
+    subs.set_cadence(cx, sid, 3)
+    subs.set_next_charge_date(cx, sid, "2026-10-01")
+    s = subs.get(cx, sid)
+    assert s["cadence_months"] == 3 and s["next_charge_date"] == "2026-10-01"
+
+
 def test_tier_for_escalates_and_caps():
     assert subs.tier_for(0) == 5
     assert subs.tier_for(1) == 10

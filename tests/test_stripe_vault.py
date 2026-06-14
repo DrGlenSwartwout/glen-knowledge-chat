@@ -1,4 +1,5 @@
 # tests/test_stripe_vault.py
+import requests
 from dashboard import stripe_pay
 
 
@@ -38,11 +39,24 @@ def test_charge_off_session_params(monkeypatch):
     assert out["status"] == "succeeded"
 
 
-def test_charge_off_session_card_declined(monkeypatch):
+def test_charge_off_session_card_declined_http_402(monkeypatch):
+    # Realistic: a real decline is HTTP 402 → _post calls raise_for_status() → HTTPError.
     def fake_post(path, params):
-        return {"error": {"type": "card_error", "code": "card_declined",
-                          "decline_code": "insufficient_funds"}}
+        resp = _Resp({"error": {"type": "card_error", "code": "card_declined",
+                                "decline_code": "insufficient_funds",
+                                "message": "Your card has insufficient funds."}})
+        raise requests.HTTPError(response=resp)
     monkeypatch.setattr(stripe_pay, "_post", fake_post)
     out = stripe_pay.charge_off_session("cus_1", "pm_1", 5000, description="x", metadata={})
     assert out["status"] == "failed"
     assert out["decline_code"] == "insufficient_funds"
+    assert out["error"] == "Your card has insufficient funds."
+
+
+def test_charge_off_session_requires_action(monkeypatch):
+    # 3DS/SCA: Stripe returns a 200 body with status 'requires_action' (no exception).
+    monkeypatch.setattr(stripe_pay, "_post",
+                        lambda path, params: {"id": "pi_2", "status": "requires_action"})
+    out = stripe_pay.charge_off_session("cus_1", "pm_1", 5000, description="x", metadata={})
+    assert out["status"] == "requires_action"
+    assert out["id"] == "pi_2"

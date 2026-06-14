@@ -92,12 +92,24 @@ def charge_off_session(customer_id, payment_method_id, amount_cents, *,
     }
     for k, v in (metadata or {}).items():
         params[f"metadata[{k}]"] = str(v)
-    resp = _post("/payment_intents", params)
-    err = resp.get("error")
-    if err:
+
+    def _failed(err):
         return {"id": None, "status": "failed",
                 "decline_code": err.get("decline_code") or err.get("code"),
                 "error": err.get("message")}
+    try:
+        resp = _post("/payment_intents", params)
+    except requests.HTTPError as e:
+        # A real card decline is HTTP 402 with {"error": {...}} — _post raised before
+        # returning, so parse the error off the response here instead of propagating.
+        try:
+            err = (e.response.json() or {}).get("error") or {}
+        except Exception:
+            err = {}
+        return _failed(err)
+    err = resp.get("error")          # defensive: some errors arrive 200-with-body
+    if err:
+        return _failed(err)
     return {"id": resp.get("id"), "status": resp.get("status")}
 
 
