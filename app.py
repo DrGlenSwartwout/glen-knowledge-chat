@@ -93,7 +93,9 @@ _PRODUCT_ALIASES = _load_json(DATA_DIR / "product-aliases.json",
                               default={"aliases": {}, "store_homepage": "https://remedymatch.com"})
 _COUPONS         = _load_json(DATA_DIR / "coupons.json",
                               default={"default_code": "", "daily_codes": []})
-_PRICING_SETTINGS_PATH = DATA_DIR / "pricing-settings.json"
+# Runtime-written + must survive redeploys, so it lives on the env-DATA_DIR persistent
+# disk (same root as LOG_DB / _CLIPS_DIR), NOT the repo's read-only DATA_DIR baseline.
+_PRICING_SETTINGS_PATH = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "pricing-settings.json"
 _PRICING_SETTINGS_CACHE = {"mtime": None, "data": {}}
 
 
