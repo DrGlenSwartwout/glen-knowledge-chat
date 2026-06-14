@@ -45,3 +45,12 @@ def apply_discount(list_cents, pct, floor_cents):
     """Apply a single percentage discount, never below floor_cents."""
     discounted = int(round(int(list_cents) * (1 - (pct or 0) / 100.0)))
     return max(discounted, int(floor_cents))
+
+
+def apply_points(price_cents, points_cents, floor_cents):
+    """Subtract points (in redemption-value cents) but never below floor_cents.
+    Returns (new_price_cents, points_actually_used_cents)."""
+    price_cents = int(price_cents)
+    reducible = max(0, price_cents - int(floor_cents))
+    used = min(max(0, int(points_cents)), reducible)
+    return price_cents - used, used

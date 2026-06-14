@@ -54,3 +54,17 @@ def test_discount_clamped_to_floor():
 
 def test_zero_discount_is_list():
     assert pricing.apply_discount(7000, 0, 3990) == 7000
+
+
+def test_points_reduce_above_floor():
+    # price 5950, points 1000, floor 3010 → 4950, used 1000
+    assert pricing.apply_points(5950, 1000, 3010) == (4950, 1000)
+
+
+def test_points_clamped_at_floor_partial_use():
+    # price 4000, want 2000 off, floor 3010 → only 990 usable → 3010, used 990
+    assert pricing.apply_points(4000, 2000, 3010) == (3010, 990)
+
+
+def test_points_none_requested():
+    assert pricing.apply_points(5950, 0, 3010) == (5950, 0)
