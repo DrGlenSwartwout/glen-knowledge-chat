@@ -5824,6 +5824,18 @@ def api_reorder_items():
     return jsonify({"email": email, "scope": scope, "items": items})
 
 
+@app.route("/api/points/balance", methods=["GET"])
+def api_points_balance():
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    from dashboard import points as _points
+    with sqlite3.connect(LOG_DB) as cx:
+        _points.init_points_table(cx)
+        bal = _points.balance(cx, email)
+    return jsonify({"balance_cents": bal, "balance_dollars": f"{bal/100:.2f}"})
+
+
 @app.route("/reorder/checkout", methods=["POST"])
 def reorder_checkout():
     email = _reorder_email_from_cookie()
