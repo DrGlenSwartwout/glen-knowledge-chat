@@ -240,3 +240,77 @@ def set_next_charge_date(cx, sub_id: int, date: str) -> None:
         (date, _now_iso(), sub_id),
     )
     cx.commit()
+
+
+# ---------------------------------------------------------------------------
+# failed_count column (added in Task 4 — idempotent migration)
+# ---------------------------------------------------------------------------
+
+def migrate_add_failed_count(cx) -> None:
+    """Add failed_count column to subscriptions table if it doesn't exist yet.
+    Safe to call on every startup — the ALTER is inside a try/except."""
+    try:
+        cx.execute(
+            "ALTER TABLE subscriptions ADD COLUMN failed_count INTEGER NOT NULL DEFAULT 0"
+        )
+        cx.commit()
+    except Exception:
+        pass  # column already exists — ignore
+
+
+def bump_failed_count(cx, sub_id: int) -> None:
+    """Increment failed_count by 1. Used by the charge scheduler on payment failure."""
+    cx.execute(
+        "UPDATE subscriptions SET failed_count = COALESCE(failed_count, 0) + 1, updated_at=?"
+        " WHERE id=?",
+        (_now_iso(), sub_id),
+    )
+    cx.commit()
+
+
+def reset_failed_count(cx, sub_id: int) -> None:
+    """Reset failed_count to 0 after a successful charge."""
+    cx.execute(
+        "UPDATE subscriptions SET failed_count = 0, updated_at=? WHERE id=?",
+        (_now_iso(), sub_id),
+    )
+    cx.commit()
+
+
+def list_skip_due(cx, *, as_of: str) -> list[dict]:
+    """Return active subscriptions with skip_next=1 whose next_charge_date <= as_of.
+    These are excluded from list_due but still need to be advanced (skipped cycle)."""
+    rows = cx.execute(
+        """SELECT * FROM subscriptions
+           WHERE status = 'active'
+             AND skip_next = 1
+             AND next_charge_date <= ?
+           ORDER BY next_charge_date ASC""",
+        (as_of,),
+    ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def list_heads_up_due(cx, *, as_of: str, lead_days: int = 3) -> list[dict]:
+    """Return active subscriptions whose next_charge_date is within lead_days days
+    and whose last_notified_date differs from next_charge_date (i.e. haven't been
+    notified for this upcoming charge yet)."""
+    rows = cx.execute(
+        """SELECT * FROM subscriptions
+           WHERE status = 'active'
+             AND next_charge_date > ?
+             AND next_charge_date <= date(?, '+' || ? || ' days')
+             AND (last_notified_date IS NULL OR last_notified_date != next_charge_date)
+           ORDER BY next_charge_date ASC""",
+        (as_of, as_of, str(lead_days)),
+    ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def set_last_notified_date(cx, sub_id: int, date: str) -> None:
+    """Record that a heads-up email was sent for the upcoming next_charge_date."""
+    cx.execute(
+        "UPDATE subscriptions SET last_notified_date=?, updated_at=? WHERE id=?",
+        (date, _now_iso(), sub_id),
+    )
+    cx.commit()
