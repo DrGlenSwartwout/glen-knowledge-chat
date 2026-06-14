@@ -40,3 +40,17 @@ def test_floor_uses_absolute_wholesale_override():
     p = {"slug": "fixed", "price_cents": 7000, "wholesale_cents": 4200}
     assert pricing.unit_floor_cents(p, 7000, s, "discount") == 4200
     assert pricing.unit_floor_cents(p, 7000, s, "points") == 3220     # 4200 - 980
+
+
+def test_discount_applied_above_floor():
+    # 15% off 7000 = 5950, above the 3990 floor → 5950
+    assert pricing.apply_discount(7000, 15, 3990) == 5950
+
+
+def test_discount_clamped_to_floor():
+    # 50% off 7000 = 3500, below the 3990 floor → clamp to 3990
+    assert pricing.apply_discount(7000, 50, 3990) == 3990
+
+
+def test_zero_discount_is_list():
+    assert pricing.apply_discount(7000, 0, 3990) == 7000

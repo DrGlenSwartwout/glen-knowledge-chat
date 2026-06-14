@@ -39,3 +39,9 @@ def unit_floor_cents(product, list_cents, settings, kind):
         return int(whole) - allowance
     pct = product.get("sku_points_floor_pct", settings["points_floor_pct"])
     return int(round(list_cents * pct))
+
+
+def apply_discount(list_cents, pct, floor_cents):
+    """Apply a single percentage discount, never below floor_cents."""
+    discounted = int(round(int(list_cents) * (1 - (pct or 0) / 100.0)))
+    return max(discounted, int(floor_cents))
