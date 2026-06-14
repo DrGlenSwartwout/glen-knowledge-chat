@@ -185,6 +185,23 @@ def earn_dropship(practitioner_id, bottles, *, qbo_invoice_id=None, ref=None) ->
                   qbo_invoice_id=qbo_invoice_id, note=ref)
 
 
+def earn_dropship_margin(practitioner_id, margin_cents, *, qbo_invoice_id, ref=None) -> int:
+    """Credit the actual margin earned on a drop-ship dispensary sale.
+
+    margin_cents is the per-line margin (selling − base − fee) computed by
+    ``practitioner_pricing.quote_line``.  Idempotent per ``qbo_invoice_id``
+    (a second call with the same invoice is a silent no-op, so webhook retries
+    are safe).  Credit-only — there is no path from credit to cash.
+
+    Replaces the flat ``earn_dropship`` ($20/bottle) once Plan 3 cuts over
+    the dispensary hook; the old function is kept for backward compatibility
+    until that cutover.
+    """
+    amt = max(0, int(margin_cents))
+    return _apply(practitioner_id, "earn_dropship_margin", lambda _bal: amt,
+                  qbo_invoice_id=qbo_invoice_id, note=ref)
+
+
 def earn_amount_fee_free_cents(order_total_cents: int) -> int:
     return math.floor(EARN_FEE_FREE_PCT * max(0, int(order_total_cents)))
 
