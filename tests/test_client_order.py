@@ -74,6 +74,53 @@ def test_build_client_order_empty_cart_rejected(monkeypatch):
                                   patient=patient, method="card")["ok"] is False
 
 
+# ── _practitioner_price_cents — real settings store ──────────────────────────
+
+def test_practitioner_price_cents_uses_stored_markup(tmp_path, monkeypatch):
+    """_practitioner_price_cents reads a stored 20 % markup: 7000 * 1.20 = 8400."""
+    import sqlite3
+    from dashboard import practitioner_settings as ps
+    from dashboard import dropship_checkout as dc
+
+    db_path = str(tmp_path / "chat_log.db")
+    # Seed the settings DB with a 20% markup for practitioner "p1".
+    cx = sqlite3.connect(db_path)
+    cx.row_factory = sqlite3.Row
+    ps.init_settings_table(cx)
+    ps.set_pricing(cx, "p1", {"default_markup_pct": 20, "overrides": {}})
+    cx.close()
+
+    monkeypatch.setattr(dc, "_LOG_DB", db_path)
+    assert dc._practitioner_price_cents("p1", "brain-boost", 7000) == 8400
+
+
+def test_practitioner_price_cents_no_settings_returns_retail(tmp_path, monkeypatch):
+    """With no stored settings, _practitioner_price_cents returns retail (≥ MAP)."""
+    import sqlite3
+    from dashboard import practitioner_settings as ps
+    from dashboard import dropship_checkout as dc
+
+    db_path = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db_path)
+    cx.row_factory = sqlite3.Row
+    ps.init_settings_table(cx)
+    cx.close()
+
+    monkeypatch.setattr(dc, "_LOG_DB", db_path)
+    # No settings row → markup=0 → price = retail (7000) → clamped to max(7000, 6700)
+    assert dc._practitioner_price_cents("p1", "brain-boost", 7000) == 7000
+
+
+def test_practitioner_price_cents_fallback_on_error(monkeypatch):
+    """Any DB error falls back to max(retail, MAP) without raising."""
+    from dashboard import dropship_checkout as dc
+
+    monkeypatch.setattr(dc, "_LOG_DB", "/nonexistent/path/chat_log.db")
+    # Fallback: max(7000, 6700) = 7000
+    result = dc._practitioner_price_cents("p1", "brain-boost", 7000)
+    assert result == 7000
+
+
 def test_build_client_order_get_recorded_not_charged(monkeypatch):
     """GET comes back in the result but is never added to invoice lines."""
     cart = [{"slug": "brain-boost", "qty": 1}]
