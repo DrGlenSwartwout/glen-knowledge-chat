@@ -5548,6 +5548,7 @@ def practitioner_application():
 from dashboard import practitioner_portal as _pp
 from dashboard import wholesale_checkout as _wc
 from dashboard import dropship_checkout as _dropship
+import dashboard.practitioner_chat as _chat
 
 
 def _send_practitioner_magic_link(to_email, name, magic_url):
@@ -6014,7 +6015,8 @@ def api_practitioner_settings_get():
         cx.row_factory = sqlite3.Row
         _ps.init_settings_table(cx)
         settings = _ps.get_settings(cx, pid)
-    return jsonify({"ok": True, "branding": settings["branding"], "pricing": settings["pricing"]})
+    return jsonify({"ok": True, "branding": settings["branding"], "pricing": settings["pricing"],
+                    "chat_enabled": settings.get("chat_enabled", False)})
 
 
 @app.route("/api/practitioner/settings", methods=["POST"])
@@ -6062,16 +6064,21 @@ def api_practitioner_settings_post():
                                "logo_url", "photo_url", "brand_color_1", "brand_color_2")}
     pricing_clean = {"default_markup_pct": markup_pct, "overrides": overrides_out}
 
+    # chat_enabled is a top-level bool field (not nested under branding or pricing)
+    chat_enabled_in = body.get("chat_enabled")
+    chat_enabled = bool(chat_enabled_in) if chat_enabled_in is not None else None
+
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ps.init_settings_table(cx)
-        if branding_clean:
-            _ps.set_branding(cx, pid, branding_clean)
+        _ps.set_branding(cx, pid, branding_clean, chat_enabled=chat_enabled)
         _ps.set_pricing(cx, pid, pricing_clean)
         settings = _ps.get_settings(cx, pid)
 
     return jsonify({"ok": True, "branding": settings["branding"],
-                    "pricing": settings["pricing"], "clamped": clamped})
+                    "pricing": settings["pricing"],
+                    "chat_enabled": settings.get("chat_enabled", False),
+                    "clamped": clamped})
 
 
 def _record_dispensary_sale(code, customer_email, bottles, invoice_id):
@@ -6122,8 +6129,9 @@ def api_client_catalog(code):
     data = _pp.portal_data(pid) or {}
     practice_name = (data.get("practice_name") or data.get("name") or "Your Practitioner")
 
-    # Load practitioner branding (best-effort — never crash the catalog)
+    # Load practitioner branding and settings (best-effort — never crash the catalog)
     branding = {}
+    chat_enabled = False
     try:
         from dashboard import practitioner_settings as _ps
         with sqlite3.connect(LOG_DB) as _cx:
@@ -6131,6 +6139,7 @@ def api_client_catalog(code):
             _ps.init_settings_table(_cx)
             _settings = _ps.get_settings(_cx, pid)
             branding = _settings.get("branding") or {}
+            chat_enabled = bool(_settings.get("chat_enabled", False))
     except Exception:
         pass
 
@@ -6145,7 +6154,8 @@ def api_client_catalog(code):
         items.append({"slug": slug, "name": name, "price_cents": price_cents})
 
     items.sort(key=lambda x: x["name"])
-    return jsonify({"ok": True, "practice_name": practice_name, "branding": branding, "items": items})
+    return jsonify({"ok": True, "practice_name": practice_name, "branding": branding,
+                    "chat_enabled": chat_enabled, "items": items})
 
 
 @app.route("/api/client/<code>/checkout", methods=["POST"])
@@ -6246,6 +6256,90 @@ def api_client_checkout(code):
             print(f"[client-checkout] stripe failed: {e!r}", flush=True)
 
     return jsonify(out)
+
+
+def _build_ff_catalog():
+    """Return [{slug, name, description}] for all active Functional Formulations.
+    Excludes Pure Powders and info_only items — mirrors /api/client/<code>/catalog."""
+    catalog = []
+    for slug, p in (_PRODUCTS.get("products") or {}).items():
+        if not p or p.get("inactive") or p.get("info_only"):
+            continue
+        if _is_pure_powder(p):
+            continue
+        catalog.append({
+            "slug": slug,
+            "name": p.get("name") or slug,
+            "description": p.get("description") or "",
+        })
+    return catalog
+
+
+@app.route("/api/practitioner/chat", methods=["POST"])
+def api_practitioner_chat():
+    """Practitioner-authenticated product-selection chat scoped to FF catalog.
+    Auth via session token (401 if none). Returns {ok, reply, suggestions}."""
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "authentication required"}), 401
+
+    body = request.get_json(silent=True) or {}
+    message = body.get("message") or ""
+    history = body.get("history") or []
+
+    catalog = _build_ff_catalog()
+    result = _chat.scoped_reply(message, history, catalog)
+
+    suggestions = []
+    for slug in (result.get("suggested_slugs") or []):
+        p = _get_product(slug)
+        if not p:
+            continue
+        suggestions.append({
+            "slug": slug,
+            "name": p.get("name") or slug,
+            "price_cents": _dropship.practitioner_price_for(pid, slug),
+        })
+
+    return jsonify({"ok": True, "reply": result["reply"], "suggestions": suggestions})
+
+
+@app.route("/api/client/<code>/chat", methods=["POST"])
+def api_client_chat(code):
+    """Patient-facing product-selection chat scoped to the practitioner's FF catalog.
+    Resolves the practitioner by dispensary code (404 if unknown).
+    Consent-gated: patient must be a Tier-1 Member (403 need_optin if not).
+    Returns {ok, reply, suggestions} with prices at the practitioner's price."""
+    pid = _pp.practitioner_id_by_dispensary_code(code)
+    if not pid:
+        return jsonify({"ok": False, "error": "unknown dispensary code"}), 404
+
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    _sid = request.cookies.get("amg_session", "")
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please add your name and agree to our Terms "
+                                 "to use the assistant."}), 403
+
+    message = body.get("message") or ""
+    history = body.get("history") or []
+
+    catalog = _build_ff_catalog()
+    result = _chat.scoped_reply(message, history, catalog)
+
+    suggestions = []
+    for slug in (result.get("suggested_slugs") or []):
+        p = _get_product(slug)
+        if not p:
+            continue
+        suggestions.append({
+            "slug": slug,
+            "name": p.get("name") or slug,
+            "price_cents": _dropship.practitioner_price_for(pid, slug),
+        })
+
+    return jsonify({"ok": True, "reply": result["reply"], "suggestions": suggestions})
 
 
 def _stripe_checkout_url_for_retail(out, email, slug):

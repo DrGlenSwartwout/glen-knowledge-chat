@@ -145,6 +145,26 @@
       <div class="muted" style="margin-top:4px">Color preview</div>
     </div>
 
+    <!-- ── Patient support chat ─────────────────────────────────── -->
+    <div class="panel">
+      <h2>Patient support chat</h2>
+      <div class="muted" style="margin-top:6px">
+        When enabled, a product-assistant chat widget appears on your patient dispensary page,
+        letting patients ask questions about your recommended formulations and add products to
+        their cart directly from the chat.
+      </div>
+      <div style="margin-top:16px;display:flex;align-items:center;gap:14px">
+        <label class="toggle-label" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <span style="position:relative;display:inline-block;width:44px;height:24px">
+            <input type="checkbox" id="chat-enabled" style="opacity:0;width:0;height:0;position:absolute">
+            <span id="toggle-track" style="position:absolute;inset:0;border-radius:12px;background:var(--border);transition:background .2s;cursor:pointer" onclick="document.getElementById('chat-enabled').click()"></span>
+            <span id="toggle-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .2s;pointer-events:none"></span>
+          </span>
+          <span id="chat-enabled-label" style="font-size:14px">Off</span>
+        </label>
+      </div>
+    </div>
+
     <!-- ── Save ───────────────────────────────────────────────────── -->
     <div style="margin-top:20px;display:flex;align-items:center;gap:16px">
       <button class="primary" id="save-btn" onclick="saveSettings()">Save settings</button>
@@ -286,6 +306,22 @@
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  // ── Chat toggle wiring ────────────────────────────────────────────────────────
+  function setChatToggle(enabled) {
+    var chk = document.getElementById('chat-enabled');
+    var track = document.getElementById('toggle-track');
+    var thumb = document.getElementById('toggle-thumb');
+    var label = document.getElementById('chat-enabled-label');
+    chk.checked = !!enabled;
+    track.style.background = enabled ? 'var(--green)' : 'var(--border)';
+    thumb.style.left = enabled ? '23px' : '3px';
+    label.textContent = enabled ? 'On' : 'Off';
+  }
+
+  document.getElementById('chat-enabled').addEventListener('change', function () {
+    setChatToggle(this.checked);
+  });
+
   // ── Load settings ─────────────────────────────────────────────────────────────
   fetch('/api/practitioner/settings', { credentials: 'same-origin', headers: authHeaders() })
     .then(function (r) { return r.json(); })
@@ -311,6 +347,9 @@
       document.getElementById('logo-url').value = b.logo_url || '';
       document.getElementById('photo-url').value = b.photo_url || '';
       setColorPair(b.brand_color_1, b.brand_color_2);
+
+      // Chat enabled toggle
+      setChatToggle(!!data.chat_enabled);
     })
     .catch(function () {
       document.getElementById('auth-wall').style.display = 'block';
@@ -343,6 +382,7 @@
         default_markup_pct: markupPct,
         overrides: skuOverrides,
       },
+      chat_enabled: document.getElementById('chat-enabled').checked,
     };
 
     fetch('/api/practitioner/settings', {
@@ -367,6 +407,9 @@
           skuOverrides = Object.assign({}, data.pricing.overrides);
           renderSkuRows();
         }
+
+        // Refresh toggle from server response
+        setChatToggle(!!data.chat_enabled);
 
         // Show clamped notification
         var clamped = data.clamped || [];
