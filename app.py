@@ -93,7 +93,32 @@ _PRODUCT_ALIASES = _load_json(DATA_DIR / "product-aliases.json",
                               default={"aliases": {}, "store_homepage": "https://remedymatch.com"})
 _COUPONS         = _load_json(DATA_DIR / "coupons.json",
                               default={"default_code": "", "daily_codes": []})
-_PRICING_SETTINGS = _load_json(DATA_DIR / "pricing-settings.json", default={})
+# Runtime-written + must survive redeploys, so it lives on the env-DATA_DIR persistent
+# disk (same root as LOG_DB / _CLIPS_DIR), NOT the repo's read-only DATA_DIR baseline.
+_PRICING_SETTINGS_PATH = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "pricing-settings.json"
+_PRICING_SETTINGS_CACHE = {"mtime": None, "data": {}}
+
+
+def _pricing_settings():
+    """Live-reloaded pricing+rewards overrides from pricing-settings.json.
+    Re-reads only when the file's mtime changes, so a console edit takes effect on the
+    next order without a redeploy. Returns {} when the file is absent (engine then uses
+    the built-in pricing.DEFAULTS)."""
+    try:
+        mt = _PRICING_SETTINGS_PATH.stat().st_mtime
+    except OSError:
+        _PRICING_SETTINGS_CACHE["mtime"] = None
+        _PRICING_SETTINGS_CACHE["data"] = {}
+        return {}
+    if _PRICING_SETTINGS_CACHE["mtime"] != mt:
+        _PRICING_SETTINGS_CACHE["data"] = _load_json(_PRICING_SETTINGS_PATH, default={})
+        _PRICING_SETTINGS_CACHE["mtime"] = mt
+    return _PRICING_SETTINGS_CACHE["data"]
+
+
+def _rewards_settings():
+    """Rewards-engine overrides (nested under 'rewards' in pricing-settings.json)."""
+    return (_pricing_settings().get("rewards") or {})
 
 
 # ── On-the-fly Rebrandly shortlink creation ──────────────────────────────────
@@ -2406,7 +2431,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
     country = (ship.get("country") or "US").strip().upper()
     if country not in ("US", "USA", ""):
         raise CheckoutError("We ship to US addresses only — please use a US forwarding address.")
-    settings = _pricing.load_settings(_PRICING_SETTINGS)
+    settings = _pricing.load_settings(_pricing_settings())
     items, qbo_lines, items_rec, box_counts, subtotal_list, total_bottles = [], [], [], {}, 0, 0
     for c in (cart or []):
         p = _get_product((c.get("slug") or "").strip())
@@ -2488,7 +2513,7 @@ def _settle_referral(order, *, order_ref: str) -> None:
             # Exclude self-referral
             if referrer_email.strip().lower() == buyer_email:
                 return
-            settings = _rewards.load_settings({})
+            settings = _rewards.load_settings(_rewards_settings())
             referral_reward_pct = float(settings["referral_reward_pct"])
             reward = round(product_cents * referral_reward_pct)
             if reward <= 0:
@@ -2511,7 +2536,7 @@ def _maybe_raise_cashout_review(cx, slug: str, mode: str) -> None:
     try:
         from dashboard import rewards as _rewards
         from dashboard import points as _points
-        settings = _rewards.load_settings({})
+        settings = _rewards.load_settings(_rewards_settings())
         threshold = int(settings["cash_out_threshold_cents"])
         if mode == "cash":
             amount = _rewards.pending_cash_total(cx, slug)
@@ -2556,7 +2581,7 @@ def _settle_order_points(order, *, order_ref):
     email = (order.get("email") or "").strip().lower()
     if not email:
         return
-    earn_pct = float(_PRICING_SETTINGS.get("points_earn_pct", 0.05)) if isinstance(_PRICING_SETTINGS, dict) else 0.05
+    earn_pct = float(_pricing_settings().get("points_earn_pct", 0.05))
     redeemed = int(order.get("points_redeemed_cents") or 0)
     discount = int(order.get("discount_cents") or 0)
     # Earn on PRODUCT spend only: total includes GET (absorbed) when TAX_ENABLED, so net out
@@ -6002,6 +6027,14 @@ def api_practitioner_assist():
 def practitioner_settings_page():
     resp = send_from_directory(STATIC, "practitioner-settings.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/console/pricing-settings")
+def console_pricing_settings_page():
+    resp = send_from_directory(STATIC, "console-pricing-settings.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
     return resp
 
 
@@ -15767,7 +15800,7 @@ def api_pricing_preview():
     # prices (already public) — no auth needed, no data mutated, no PII echoed.
     from dashboard import pricing as _pricing, tax as _tax
     data = request.get_json(silent=True) or {}
-    settings = _pricing.load_settings(_PRICING_SETTINGS)
+    settings = _pricing.load_settings(_pricing_settings())
     items = []
     for it in (data.get("items") or []):
         p = _get_product(it.get("slug"))
@@ -15793,6 +15826,40 @@ def api_pricing_preview():
         ship_to_state=data.get("ship_to_state"),
         tax_fn=_tax.compute_get_cents)
     return jsonify(result)
+
+
+@app.route("/api/console/pricing-settings", methods=["GET", "POST"])
+def api_console_pricing_settings():
+    """Console-gated read/write of the global pricing + rewards tunables, persisted to
+    pricing-settings.json in DATA_DIR (live-reloaded by _pricing_settings)."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import pricing_settings as _ps
+    if request.method == "GET":
+        raw = _pricing_settings()
+        return jsonify({"saved": raw, "effective": _ps.effective(raw),
+                        "defaults": _ps.defaults_view()})
+    # POST
+    payload = request.get_json(silent=True) or {}
+    clean, errors = _ps.validate(payload)
+    if errors:
+        return jsonify({"errors": errors}), 400
+    import tempfile
+    _PRICING_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(_PRICING_SETTINGS_PATH.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(clean, f, indent=2)
+        os.replace(tmp, _PRICING_SETTINGS_PATH)
+    except Exception:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+    _PRICING_SETTINGS_CACHE["mtime"] = None      # force re-read on next access
+    raw = _pricing_settings()
+    return jsonify({"saved": raw, "effective": _ps.effective(raw)})
 
 
 if __name__ == "__main__":
