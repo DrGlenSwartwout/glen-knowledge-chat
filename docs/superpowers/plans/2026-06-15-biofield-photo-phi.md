@@ -120,7 +120,7 @@ def purge_expired_photos(cx, *, photo_root, retention_days, now_ts):
 **Files:** Modify `static/biofield-ready.html`, `docs/biofield-gate.md`
 
 - [ ] **Step 1:** In `static/biofield-ready.html`, near the photo upload control, add the consent notice (small, muted text):
-  > "To prepare your Biofield Analysis, Dr. Glen's team uses a clear photo of your face to visualize you during remote biofield testing. By uploading it you consent to us storing it securely and using it only for your analysis and program design. We keep it private, never share or display it, and delete it after your analysis is complete. You can ask us to delete it any time."
+  > "To prepare your Biofield Analysis, Dr. Glen's team uses a clear photo of your face to visualize you during remote biofield testing. By uploading it you consent to us storing it securely and using it only for your analysis and program design. We keep it private, never share or display it. You can ask us to delete it any time."
   No em dashes, no ALL CAPS. Verify the page still parses (`html.parser`).
 - [ ] **Step 2:** Append a "PHI / photo handling" section to `docs/biofield-gate.md`: private storage (already), the **console-gated viewer** (`/admin/biofield/photo?email=&key=`) as the team's only retrieval path, the **retention sweep** (`/api/cron/biofield-photo-purge`, `BIOFIELD_PHOTO_RETENTION_DAYS` default 30 — schedule a periodic hit), the **consent notice** on the gate + the matching ToS clause, and the open HIPAA-posture note (Glen/Rae/counsel; Render encrypts at rest, no BAA by default).
 - [ ] **Step 3:** Suite green: `… -m pytest tests/test_biofield_photo_purge.py tests/test_biofield_photo_routes.py tests/test_biofield_gate_routes.py -q`.
