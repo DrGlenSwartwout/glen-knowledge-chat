@@ -7112,6 +7112,105 @@ def api_biofield_book():
                     "booking_url": os.environ.get("BIOFIELD_BOOKING_URL", "")})
 
 
+# ── Certification bonus Biofields (ships dark behind CERT_BONUS_ENABLED) ───────
+
+def _cert_bonus_enabled() -> bool:
+    return os.environ.get("CERT_BONUS_ENABLED", "").strip().lower() \
+        in ("1", "true", "yes", "on")
+
+
+@app.route("/api/cert/commitment", methods=["POST"])
+def api_cert_commitment():
+    """Admin: set or clear a certification commitment. Console-key gated.
+
+    Body: {email, kind, started_at, clear?}. Returns the commitment dict."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+    from dashboard import cert_bonus
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        cert_bonus.init_tables(cx)
+        if body.get("clear"):
+            cert_bonus.clear_commitment(cx, email)
+        else:
+            cert_bonus.set_commitment(
+                cx, email,
+                kind=(body.get("kind") or "").strip(),
+                started_at=(body.get("started_at") or "").strip(),
+            )
+        commitment = cert_bonus.get_commitment(cx, email)
+    return jsonify({"ok": True, "commitment": commitment})
+
+
+@app.route("/api/cron/biofield-bonuses", methods=["POST"])
+def cron_biofield_bonuses():
+    """Daily sweep: grant due certification bonus Biofields concierge-style.
+
+    Auth: X-Cron-Secret (== CRON_SECRET, falls back to CONSOLE_SECRET).
+    For each active commitment, grants are monthly (1..12, one per elapsed
+    month) plus one per completed module (level 1..12). Each new grant records
+    an idempotent ledger row and drops a todos task. ?dry_run=1 counts only."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    if not _cert_bonus_enabled():
+        return jsonify({"ok": True, "granted": 0, "message": "disabled"})
+
+    from dashboard import cert_bonus
+    dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+    _init_todos_table()
+    from datetime import date as _date, datetime as _dt, timezone as _tz
+    today = _date.today().isoformat()
+
+    granted_total = 0
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        cert_bonus.init_tables(cx)
+        for c in cert_bonus.list_active(cx):
+            email = c["email"]
+            try:
+                modules = _pp.modules_completed_for_email(email) or 0
+            except Exception:
+                modules = 0
+            due = cert_bonus.due_bonuses(
+                started_at=c["started_at"],
+                modules_completed=modules,
+                granted=cert_bonus.granted_pairs(cx, email),
+                today=today,
+            )
+            for kind, idx in due:
+                if dry_run:
+                    granted_total += 1
+                    continue
+                now = _dt.now(_tz.utc).isoformat()
+                cur = cx.execute(
+                    """INSERT INTO todos (created_at, owner, category, title, body,
+                                          priority, source, dedup_key)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(dedup_key) DO NOTHING""",
+                    (now, "glen", "biofield-bonus",
+                     f"Biofield bonus due — {email} ({kind} {idx})",
+                     (f"Certification bonus Biofield earned by {email} "
+                      f"({kind} {idx}). Schedule and run the Biofield analysis "
+                      "for the client as part of their certification benefit."),
+                     "normal", "cert-bonus",
+                     f"cert-bonus-{email}-{kind}-{idx}"))
+                todo_id = cur.lastrowid
+                cert_bonus.record_grant(cx, email, kind=kind, idx=idx, todo_id=todo_id)
+                granted_total += 1
+        cx.commit()
+    return jsonify({"ok": True, "granted": granted_total, "dry_run": bool(dry_run)})
+
+
 @app.route("/api/reorder/items", methods=["GET"])
 def api_reorder_items():
     email = _reorder_email_from_cookie()
