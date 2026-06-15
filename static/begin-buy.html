@@ -328,6 +328,14 @@
 
         <p class="reassure">A simple one-time purchase. Your invoice and payment are recorded in QuickBooks, and a copy is emailed to you. Zelle and Wise are fee-free and earn extra loyalty points.</p>
 
+        <label class="method-opt hidden" id="group-bundle-opt" style="cursor:pointer;">
+          <input type="checkbox" id="group-bundle-check" />
+          <span class="m-text">
+            <span class="m-title">Add live group coaching</span>
+            <span class="m-sub" id="group-bundle-sub">Up to 3 months free with your program, then $99/mo, cancel anytime.</span>
+          </span>
+        </label>
+
         <div class="buy-wrap">
           <button class="buy-btn" id="buy-btn" disabled>Place your order</button>
           <div class="inline-msg" id="inline-msg"></div>
@@ -473,6 +481,12 @@
         show('method-card');
       } else {
         show('card-soon');
+      }
+
+      // Live group coaching opt-in (only when the bundle is enabled). The grant
+      // applies on card checkout; the server ignores group_bundle if the flag is off.
+      if (p.group_bundle_enabled) {
+        show('group-bundle-opt');
       }
 
       show('checkout');
@@ -667,6 +681,8 @@
         address: { name: (document.getElementById('name').value || '').trim(),
                    street: _street, city: _city, state: _state, zip: _zip, country: 'US' }
       };
+      var _gb = document.getElementById('group-bundle-check');
+      if (_gb && _gb.checked) { payload.group_bundle = true; }
 
       fetch(BASE + '/begin/checkout/' + encodeURIComponent(slug), {
         method: 'POST',
