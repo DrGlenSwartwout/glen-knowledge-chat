@@ -36,6 +36,16 @@
                  color:var(--cream); border-radius:6px; padding:3px 9px; cursor:pointer; }
   .acts button:hover { border-color:var(--gold); color:var(--gold); }
   .acts button.cancel:hover { border-color:var(--red); color:var(--red); }
+  .bo-badge { display:inline-block; font-size:10px; font-weight:600; color:var(--red);
+              border:1px solid var(--red); border-radius:5px; padding:1px 5px; margin-left:6px; }
+  details.fulfill { margin-top:8px; font-size:12px; border-top:1px solid var(--border); padding-top:7px; }
+  details.fulfill summary { cursor:pointer; color:var(--muted); font-size:11px; }
+  .ffline { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 0; color:var(--cream); }
+  .ffline.ok { color:var(--muted); }
+  .ffline input { width:50px; padding:2px 4px; border:1px solid var(--border); background:var(--surface); color:var(--cream); border-radius:5px; }
+  button.ff-rec { font-size:11px; border:1px solid var(--border); background:transparent; color:var(--cream);
+                  border-radius:6px; padding:3px 9px; cursor:pointer; margin-top:4px; }
+  button.ff-rec:hover { border-color:var(--gold); color:var(--gold); }
   #gate { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; }
   #gate input { padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--cream); }
 </style>
@@ -80,11 +90,41 @@
     else if (o.status==='packed') acts = btn(o.id,'orders.create_label','Create label') + ' ' + shipBtn(o.id);
     else if (o.status==='shipped') acts = btn(o.id,'orders.send_tracking','Send tracking') + ' ' + btn(o.id,'orders.mark_done','Delivered');
     if (o.status!=='done' && o.status!=='cancelled') acts += ' <button class="cancel" onclick="act('+Number(o.id)+',\'orders.cancel\',{})">Cancel</button>';
-    return '<div class="card"><div class="who">'+esc(o.name||o.email||'Order #'+o.id)+'</div>'
+    var bo = Number(o.backorder_units||0);
+    // Backorder only applies once an order is paid + in fulfillment (new/packed/
+    // shipped) — never on an unpaid proposed/confirmed invoice (all-unfulfilled).
+    var ful = (o.status==='new' || o.status==='packed' || o.status==='shipped');
+    var badge = (ful && bo>0) ? ' <span class="bo-badge">&#9650; '+bo+' backordered</span>' : '';
+    return '<div class="card"><div class="who">'+esc(o.name||o.email||'Order #'+o.id)+badge+'</div>'
       + '<div class="meta">'+(items?items+'<br>':'')
       + (total?total+' &middot; ':'')+'<span class="src">'+esc(o.source)+'</span> &middot; <span class="age'+(isOld(o.created_at)?' old':'')+'">'+age+'</span>'
       + (o.tracking_number?'<br>tracking '+esc(o.tracking_number):'')+'</div>'
+      + fulfillHtml(o)
       + '<div class="acts">'+acts+'</div></div>';
+  }
+  // Per-line partial fulfillment (Phase 2): record qty shipped; shortfall stays backordered.
+  function showFulfill(o){ return o.status==='new' || o.status==='packed' || o.status==='shipped'; }
+  function fulfillHtml(o){
+    if (!showFulfill(o)) return '';
+    var rows = (o.fulfillment||[]).map(function(f){
+      var it = (o.items||[])[f.index] || {};
+      var name = esc(it.name||('Line '+(f.index+1)));
+      if (Number(f.backordered)<=0) return '<div class="ffline ok">'+name+' &mdash; sent '+f.fulfilled+'/'+f.ordered+' &#10003;</div>';
+      return '<div class="ffline"><span>'+name+' &mdash; sent '+f.fulfilled+'/'+f.ordered+'</span>'
+        + '<input type="number" min="0" max="'+f.backordered+'" value="0" id="ff-'+Number(o.id)+'-'+f.index+'"></div>';
+    }).join('');
+    if (!rows) return '';
+    return '<details class="fulfill"><summary>Fulfill lines</summary>'+rows
+      + '<button class="ff-rec" onclick="fulfillLines('+Number(o.id)+')">Record shipment</button></details>';
+  }
+  function fulfillLines(id){
+    var lines = [];
+    document.querySelectorAll('[id^="ff-'+id+'-"]').forEach(function(inp){
+      var q = parseInt(inp.value||'0',10);
+      if (q>0) lines.push({index: parseInt(inp.id.split('-').pop(),10), qty: q});
+    });
+    if (!lines.length){ alert('Enter a quantity to ship on at least one line.'); return; }
+    act(id, 'orders.fulfill_lines', {lines: lines});
   }
   function btn(id,key,label){ return '<button onclick="act('+Number(id)+',\''+key+'\',{})">'+label+'</button>'; }
   function shipBtn(id){ return '<button onclick="ship('+Number(id)+')">Ship + tracking</button>'; }

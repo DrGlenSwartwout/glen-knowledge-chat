@@ -74,6 +74,20 @@ def products_signal(cx=None, actor=None):
         return {"level": GRAY, "summary": "Not yet wired", "top_actions": [], "count": 0}
     if total == 0:
         return {"level": GRAY, "summary": "No catalog", "top_actions": [], "count": 0}
+    # Backorders take priority — they're an action (reorder) Rae needs to take.
+    if cx is not None:
+        try:
+            from dashboard.orders import backorder_rollup
+            bo = backorder_rollup(cx)
+            units = sum(b["units_backordered"] for b in bo)
+            if units > 0:
+                return {"level": AMBER,
+                        "summary": f"{units} unit{'s' if units != 1 else ''} on backorder "
+                                   f"({len(bo)} product{'s' if len(bo) != 1 else ''})",
+                        "top_actions": [{"label": "Reorder list", "href": "/console/products#backorders"}],
+                        "count": units}
+        except Exception:
+            pass
     if stale:
         return {"level": AMBER, "summary": f"{stale} sales page{'s' if stale != 1 else ''} to update",
                 "top_actions": [{"label": "Open products", "href": "/console/products"}], "count": stale}
