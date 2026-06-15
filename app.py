@@ -13165,6 +13165,7 @@ def cron_charge_subscriptions():
         cx.row_factory = sqlite3.Row
         # Run idempotent migration to ensure failed_count column exists
         _subs.migrate_add_failed_count(cx)
+        _subs.migrate_add_membership_columns(cx)
 
         # ── Pass 1: Heads-up emails (3-day advance notice) ────────────────────
         try:
@@ -13217,6 +13218,49 @@ def cron_charge_subscriptions():
         for sub in due:
             sid = sub["id"]
             try:
+                if sub.get("kind") == "membership":
+                    amount_cents = int(sub.get("amount_cents") or 0)
+                    if amount_cents <= 0:
+                        continue
+                    if dry_run:
+                        print(f"[sub-cron] DRY membership charge sub={sid} "
+                              f"email={sub['email']} amount={amount_cents}", flush=True)
+                        charged += 1
+                        continue
+                    res = stripe_pay.charge_off_session(
+                        sub["stripe_customer_id"], sub["stripe_payment_method_id"],
+                        amount_cents, description="Remedy Match live group coaching",
+                        metadata={"sub": str(sid), "kind": "membership"})
+                    if res.get("status") == "succeeded":
+                        try:
+                            cust = qb.find_or_create_customer(sub["email"], "")
+                            inv = qb.create_invoice(
+                                cust,
+                                [{"name": "Live Group Coaching", "amount": amount_cents / 100.0,
+                                  "qty": 1, "description": "Live Group Coaching (monthly)"}],
+                                allow_online_pay=False, email_to=sub["email"])
+                            inv_id = inv.get("Id", "")
+                        except Exception as qe:
+                            print(f"[sub-cron] membership QBO sub={sid}: {qe!r}", flush=True)
+                            inv_id = ""
+                        _ingest_order(source="membership", external_ref=res.get("id") or inv_id,
+                                      email=sub["email"], items=[], total_cents=amount_cents,
+                                      address={}, channel="retail")
+                        _subs.advance_after_charge(cx, sid)
+                        _subs.reset_failed_count(cx, sid)
+                        updated = _subs.get(cx, sid)
+                        try:
+                            _send_subscription_email(sub["email"], "receipt", {
+                                "total_cents": amount_cents, "invoice_id": inv_id,
+                                "next_charge_date": updated["next_charge_date"] if updated else ""})
+                        except Exception as ee:
+                            print(f"[sub-cron] membership email sub={sid}: {ee!r}", flush=True)
+                        charged += 1
+                    else:
+                        _subs.bump_failed_count(cx, sid)
+                        failed += 1
+                    continue
+
                 items = sub.get("items") or []
                 ship = sub.get("ship_address") or {}
                 order_count = sub.get("order_count", 0)
