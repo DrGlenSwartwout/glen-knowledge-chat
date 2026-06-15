@@ -38,11 +38,18 @@ approval).
    membership-flavored receipt; the heads-up pass sends a membership-flavored 3-day reminder.
 4. **Cancel**: `set_status(...,'cancelled')` — excluded from `list_due`/`list_heads_up_due`.
 
-## Flag + open item
+## Qualifying gate (decided 2026-06-15)
+The offer applies **only to a paid Biofield Analysis client** — the program must be one designed
+by a paid Biofield (the free E4L voice scan does NOT qualify). Among those clients, **any 1+ month
+order qualifies** (support = months purchased, 1:1, cap 3; no order-size threshold). Enforced
+server-side at the checkout route via `_has_paid_biofield(email)` (a `biofield_readiness` payment
+on record: our checkout, a confirmed PB receipt, or a cert comp) — a non-client who checks the box
+simply gets no grant (never charged). **Forward-looking:** existing pre-gate Biofield clients
+qualify once they have a recorded paid Biofield (e.g. their next Biofield through the gate, or an
+admin `seed_paid(via="manual")`). No backfill at launch.
+
+## Flag
 - `GROUP_BUNDLE_ENABLED` (env, default off) gates the checkout opt-in, the grant, and the page checkbox.
-- **Before flipping it on:** confirm what qualifies as a program order — every remedy order, only
-  Biofield-designed programs, or a minimum size — so a one-bottle buyer isn't offered a $99/mo
-  membership. (Deferred; the dark flag keeps it safe until decided.)
 
 ## Deferred (v2)
 QBO-Payments recurring rail; proration; more than one membership per email; richer member-portal

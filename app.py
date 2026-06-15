@@ -3126,11 +3126,14 @@ def begin_checkout(slug):
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card" and _STRIPE_ACTIVE:
-            # Group-bundle opt-in: when the flag is on AND the buyer opted in AND the
-            # cart carries >=1 program month, grant 1 free live-group month per program
-            # month (capped at 3). Vaults the card so the membership can auto-continue.
+            # Group-bundle opt-in: when the flag is on AND the buyer opted in AND the buyer
+            # is a PAID Biofield Analysis client (designed-program gate; the free E4L scan
+            # does not qualify) AND the cart carries >=1 program month, grant 1 free
+            # live-group month per program month (capped at 3). Vaults the card so the
+            # membership can auto-continue.
             _gb_months = 0
-            if os.environ.get("GROUP_BUNDLE_ENABLED") and bool(data.get("group_bundle")):
+            if (os.environ.get("GROUP_BUNDLE_ENABLED") and bool(data.get("group_bundle"))
+                    and _has_paid_biofield(email)):
                 from dashboard import group_bundle
                 _gb_months = group_bundle.included_group_months(
                     pc["priced"].get("volume_months", 0))
@@ -6929,6 +6932,27 @@ def _biofield_email():
     if user and user.get("email"):
         return user["email"].strip().lower()
     return ""
+
+
+def _has_paid_biofield(email):
+    """True when this email has a PAID Biofield Analysis on record — the group-bundle
+    qualifying gate. The free E4L voice scan does NOT qualify; only a paid Biofield-designed
+    program (a biofield_readiness payment: our checkout, a confirmed PB receipt, or a cert
+    comp). Forward-looking: existing pre-gate Biofield clients qualify once they have a
+    recorded paid Biofield. Best-effort, never raises."""
+    if not email:
+        return False
+    try:
+        from dashboard import biofield_store as _bf
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _bf.init_table(cx)
+            row = cx.execute(
+                "SELECT paid_at FROM biofield_readiness WHERE lower(email)=lower(?)",
+                (str(email).strip(),)).fetchone()
+            return bool(row and row["paid_at"])
+    except Exception:
+        return False
 
 
 def _biofield_has_intake(email):
