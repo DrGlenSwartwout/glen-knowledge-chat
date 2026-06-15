@@ -4,85 +4,117 @@
   <link rel="icon" type="image/png" href="/static/favicon.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>New Manual Order — Shipping Quote</title>
+<title>Order Entry — Proposed Invoice</title>
 <style>
   :root {
-    --bg: #0a150d;
-    --surface: #111f16;
-    --border: #21472d;
-    --text: #fdf4d8;
-    --muted: #a89870;
-    --accent: #d4a843;
-    --accent-light: #e8c876;
-    --green: #3d8a52;
-    --amber: #d4a843;
-    --red: #cc4b2c;
-    --radius: 10px;
+    --bg:#0a150d; --surface:#111f16; --border:#21472d; --text:#fdf4d8;
+    --muted:#a89870; --accent:#d4a843; --accent-light:#e8c876;
+    --green:#3d8a52; --red:#cc4b2c; --radius:10px;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
-  #wrap { max-width: 720px; margin: 0 auto; padding: 32px 16px; }
-
-  header { margin-bottom: 28px; }
-  h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
-  header p { color: var(--muted); font-size: 13px; }
-  header a { color: var(--accent-light); text-decoration: none; }
-
-  .section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
-  .section h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
-
-  .bottle-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
-  .bottle-row:last-child { border-bottom: none; }
-  .bottle-name { flex: 1; }
-  .bottle-name strong { display: block; }
-  .bottle-name span { color: var(--muted); font-size: 12px; }
-  .bottle-row input[type="number"] { background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; width: 80px; font-size: 14px; text-align: center; }
-  .bottle-row .stepper { display: flex; align-items: center; gap: 6px; }
-  .bottle-row .stepper button { width: 30px; height: 32px; padding: 0; background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 6px; cursor: pointer; font-size: 16px; }
-  .bottle-row .stepper button:hover { background: rgba(124, 92, 191, 0.1); }
-
-  #quote { background: linear-gradient(135deg, rgba(124,92,191,0.12), rgba(124,92,191,0.04)); border: 1px solid var(--accent); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
-  #quote.empty { border-color: var(--border); background: var(--surface); text-align: center; color: var(--muted); padding: 40px 20px; }
-  #quote.error { border-color: var(--amber); background: rgba(210, 153, 34, 0.06); color: var(--amber); }
-  #quote .quote-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
-  #quote .box { font-size: 15px; margin-bottom: 12px; }
-  #quote .box strong { color: var(--accent-light); font-weight: 700; }
-  #quote .cost { font-size: 36px; font-weight: 800; color: var(--accent-light); line-height: 1; }
-  #quote .effective { font-size: 11px; color: var(--muted); margin-top: 8px; }
-
-  .actions { display: flex; gap: 10px; margin-top: 16px; }
-  button.primary { background: var(--accent); color: white; border: none; border-radius: 6px; padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
-  button.primary:hover { background: var(--accent-light); }
-  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 10px 16px; font-size: 13px; cursor: pointer; }
-  button.ghost:hover { background: rgba(255,255,255,0.04); }
-
-  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
-  #toast.show { opacity: 1; }
-  #toast.error { border-color: var(--red); color: var(--red); }
-  #toast.ok { border-color: var(--green); color: var(--green); }
-
-  .auth-warn { background: rgba(248, 81, 73, 0.08); border: 1px solid var(--red); border-radius: 8px; padding: 14px; color: var(--red); margin-bottom: 20px; display: none; }
-  .empty-catalog { color: var(--muted); text-align: center; padding: 24px; }
-  .empty-catalog a { color: var(--accent-light); }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; min-height:100vh; }
+  #wrap { max-width:760px; margin:0 auto; padding:32px 16px; }
+  header { margin-bottom:24px; }
+  h1 { font-size:24px; font-weight:800; margin-bottom:6px; }
+  header p { color:var(--muted); font-size:13px; }
+  header a { color:var(--accent-light); text-decoration:none; }
+  .section { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:18px; }
+  .section h2 { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:14px; }
+  label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:8px 0 4px; }
+  input, select { background:#0d1117; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:9px 10px; font-size:14px; width:100%; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .grid3 { display:grid; grid-template-columns:2fr 1fr 1fr; gap:12px; }
+  .results { border:1px solid var(--border); border-radius:6px; margin-top:6px; max-height:200px; overflow:auto; }
+  .results div { padding:8px 10px; cursor:pointer; border-bottom:1px solid var(--border); }
+  .results div:hover { background:rgba(212,168,67,.1); }
+  .results div:last-child { border-bottom:none; }
+  .results .sub { color:var(--muted); font-size:12px; }
+  table.lines { width:100%; border-collapse:collapse; }
+  table.lines th { text-align:left; font-size:10px; text-transform:uppercase; color:var(--muted); padding:6px 6px; border-bottom:1px solid var(--border); }
+  table.lines td { padding:6px 6px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  table.lines input { width:100%; }
+  .addline { display:grid; grid-template-columns:2fr .7fr 1fr auto; gap:8px; margin-top:12px; align-items:end; }
+  .totals { margin-top:14px; font-size:14px; }
+  .totals .row { display:flex; justify-content:space-between; padding:3px 0; color:var(--muted); }
+  .totals .row.grand { color:var(--accent-light); font-weight:800; font-size:18px; border-top:1px solid var(--border); margin-top:6px; padding-top:8px; }
+  button.primary { background:var(--accent); color:#1a1206; border:none; border-radius:6px; padding:11px 18px; font-size:14px; font-weight:700; cursor:pointer; }
+  button.primary:hover { background:var(--accent-light); }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:9px 14px; font-size:13px; cursor:pointer; }
+  button.mini { background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:6px 10px; font-size:12px; cursor:pointer; }
+  button.mini:hover { color:var(--text); }
+  #invoice { display:none; background:linear-gradient(135deg,rgba(212,168,67,.12),rgba(212,168,67,.03)); border:1px solid var(--accent); border-radius:var(--radius); padding:22px; margin-bottom:18px; }
+  #invoice h2 { color:var(--accent-light); }
+  #invoice pre { white-space:pre-wrap; font-family:ui-monospace,Menlo,monospace; font-size:13px; color:var(--text); }
+  .inv-actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+  .auth-warn { background:rgba(204,75,44,.08); border:1px solid var(--red); border-radius:8px; padding:14px; color:var(--red); margin-bottom:20px; display:none; }
+  #toast { position:fixed; bottom:20px; right:20px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 16px; font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; }
+  #toast.show { opacity:1; } #toast.error { border-color:var(--red); color:var(--red); } #toast.ok { border-color:var(--green); color:var(--green); }
 </style>
 </head>
 <body>
 <script src="/static/op-nav.js" data-active="bos" data-sub="neworder"></script>
 <div id="wrap">
   <header>
-    <h1>New Manual Order — Shipping Quote</h1>
-    <p>Enter the order's bottle counts; the tool picks the smallest USPS Flat Rate box and looks up the shipping cost. Manage the catalog at <a href="/admin/shipping">Shipping Settings</a>.</p>
+    <h1>Order Entry — Proposed Invoice</h1>
+    <p>Create an in-house order. This produces a <strong>proposed invoice</strong> — confirm it with the customer, then record payment (Credit card / Zelle / Wise). It then enters the <a href="/console/orders">fulfillment board</a>.</p>
   </header>
 
-  <div id="auth-warn" class="auth-warn">
-    Missing or invalid console key. Append <code>?key=YOUR_CONSOLE_SECRET</code> to the URL.
-  </div>
+  <div id="auth-warn" class="auth-warn">Missing or invalid console key. Append <code>?key=YOUR_CONSOLE_SECRET</code> to the URL.</div>
 
-  <div id="quote" class="empty">Pick bottles below to see the box size + shipping cost.</div>
+  <div id="invoice"></div>
 
   <div class="section">
-    <h2>Order Bottles</h2>
-    <div id="bottles"></div>
+    <h2>Customer</h2>
+    <label>Search existing (name / email / phone)</label>
+    <input id="cust-search" placeholder="Start typing…" autocomplete="off">
+    <div id="cust-results" class="results" style="display:none"></div>
+    <input type="hidden" id="person_id">
+    <div class="grid2" style="margin-top:10px">
+      <div><label>Name</label><input id="c-name"></div>
+      <div><label>Email</label><input id="c-email" type="email"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Phone</label><input id="c-phone"></div>
+      <div><label>Address line 1</label><input id="a-addr1"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Address line 2</label><input id="a-addr2"></div>
+      <div><label>City</label><input id="a-city"></div>
+    </div>
+    <div class="grid3">
+      <div><label>State</label><input id="a-state" maxlength="2"></div>
+      <div><label>ZIP</label><input id="a-zip"></div>
+      <div><label>Country</label><input id="a-country" value="US"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Line items</h2>
+    <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Unit $</th><th>Line</th><th></th></tr></thead>
+      <tbody id="lines"></tbody></table>
+    <div class="addline">
+      <div><label>Add product</label><select id="prod-pick"></select></div>
+      <div><label>Qty</label><input id="prod-qty" type="number" min="1" value="1"></div>
+      <div><label>Unit $ (override)</label><input id="prod-unit" type="number" step="0.01" placeholder="catalog"></div>
+      <div><button class="ghost" onclick="addLine()">Add</button></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Pricing &amp; payment</h2>
+    <div class="grid2">
+      <div><label>Order discount $ (blank = rule-based)</label><input id="o-discount" type="number" step="0.01" placeholder="auto"></div>
+      <div><label>Payment method</label>
+        <select id="o-method"><option>Credit card</option><option>Zelle</option><option>Wise</option></select></div>
+    </div>
+    <div class="totals">
+      <div class="row"><span>Subtotal</span><span id="t-sub">$0.00</span></div>
+      <div class="row"><span>Discount</span><span id="t-disc">—</span></div>
+      <div class="row"><span>Shipping</span><span id="t-ship">computed on create</span></div>
+      <div class="row"><span>Hawai‘i GET (recorded, absorbed)</span><span id="t-get">—</span></div>
+      <div class="row grand"><span>Total</span><span id="t-total">$0.00</span></div>
+    </div>
+    <div style="margin-top:16px"><button class="primary" onclick="createInvoice()">Create proposed invoice</button></div>
   </div>
 </div>
 
@@ -92,156 +124,141 @@
 const _urlKey = new URLSearchParams(location.search).get("key");
 if (_urlKey) localStorage.setItem("console_key", _urlKey);
 const KEY = _urlKey || localStorage.getItem("console_key") || "";
-const HEADERS = { "Content-Type": "application/json", "X-Console-Key": KEY };
-let BOTTLES = [];           // catalog
-const ORDER = {};           // bottle_name → qty
+const HEADERS = { "Content-Type":"application/json", "X-Console-Key":KEY };
+let CATALOG = [];          // [{slug,name,price_cents}]
+let LINES = [];            // [{slug,name,qty,unit_cents}]
+let LAST_ORDER = null;     // {order_id, external_ref, totals}
 
-function toast(msg, kind="ok") {
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.className = "show " + kind;
-  setTimeout(() => t.className = kind, 2000);
+function toast(msg, kind="ok"){ const t=document.getElementById("toast"); t.textContent=msg; t.className="show "+kind; setTimeout(()=>t.className=kind,2200); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const dollars = c => "$"+((c||0)/100).toFixed(2);
+const $ = id => document.getElementById(id);
+
+async function loadCatalog(){
+  const r = await fetch("/api/products", { headers:HEADERS });
+  if (r.status===401){ $("auth-warn").style.display="block"; throw new Error("unauthorized"); }
+  CATALOG = ((await r.json()).products)||[];
+  const sel = $("prod-pick"); sel.innerHTML = CATALOG.map(p=>
+    `<option value="${esc(p.slug)}">${esc(p.name)} — ${dollars(p.price_cents)}</option>`).join("");
 }
 
-async function api(path, opts={}) {
-  const r = await fetch(path, { headers: HEADERS, ...opts });
-  if (r.status === 401) {
-    document.getElementById("auth-warn").style.display = "block";
-    throw new Error("unauthorized");
-  }
+// ── customer search ──
+let searchTimer=null;
+$("cust-search").addEventListener("input", function(){
+  clearTimeout(searchTimer); const q=this.value.trim();
+  if (q.length<2){ $("cust-results").style.display="none"; return; }
+  searchTimer=setTimeout(()=>doSearch(q), 200);
+});
+async function doSearch(q){
+  try{
+    const r = await fetch("/api/customers/search?q="+encodeURIComponent(q), {headers:HEADERS});
+    const people = (await r.json()).people||[];
+    const box=$("cust-results");
+    if (!people.length){ box.style.display="none"; return; }
+    box.innerHTML = people.map((p,i)=>`<div data-i="${i}"><strong>${esc(p.name||p.email)}</strong>`
+      +`<div class="sub">${esc(p.email||'')} ${p.phone?'· '+esc(p.phone):''} ${p.city?'· '+esc(p.city)+', '+esc(p.state||''):''}</div></div>`).join("");
+    box.style.display="block";
+    Array.from(box.children).forEach(el=>el.onclick=()=>pickPerson(people[+el.dataset.i]));
+  }catch(e){ /* ignore */ }
+}
+function pickPerson(p){
+  $("person_id").value=p.id||""; $("c-name").value=p.name||""; $("c-email").value=p.email||"";
+  $("c-phone").value=p.phone||""; $("a-addr1").value=p.address1||""; $("a-addr2").value=p.address2||"";
+  $("a-city").value=p.city||""; $("a-state").value=p.state||""; $("a-zip").value=p.zip||""; $("a-country").value=p.country||"US";
+  $("cust-results").style.display="none"; $("cust-search").value=p.name||p.email||"";
+}
+
+// ── line items ──
+function addLine(){
+  const slug=$("prod-pick").value; const p=CATALOG.find(x=>x.slug===slug); if(!p) return;
+  const qty=Math.max(1, parseInt($("prod-qty").value,10)||1);
+  const ovRaw=$("prod-unit").value.trim();
+  const unit_cents = ovRaw!=="" ? Math.round(parseFloat(ovRaw)*100) : (p.price_cents||0);
+  LINES.push({slug, name:p.name, qty, unit_cents});
+  $("prod-qty").value=1; $("prod-unit").value="";
+  renderLines();
+}
+function renderLines(){
+  const tb=$("lines");
+  tb.innerHTML = LINES.map((l,i)=>`<tr>
+    <td>${esc(l.name)}</td>
+    <td><input type="number" min="1" value="${l.qty}" onchange="editLine(${i},'qty',this.value)" style="width:70px"></td>
+    <td><input type="number" step="0.01" value="${(l.unit_cents/100).toFixed(2)}" onchange="editLine(${i},'unit',this.value)" style="width:90px"></td>
+    <td>${dollars(l.qty*l.unit_cents)}</td>
+    <td><button class="mini" onclick="rmLine(${i})">✕</button></td></tr>`).join("");
+  recalc();
+}
+function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||1); else LINES[i].unit_cents=Math.round(parseFloat(v)*100)||0; renderLines(); }
+function rmLine(i){ LINES.splice(i,1); renderLines(); }
+function recalc(){
+  const sub=LINES.reduce((s,l)=>s+l.qty*l.unit_cents,0);
+  $("t-sub").textContent=dollars(sub);
+  const dRaw=$("o-discount").value.trim();
+  $("t-disc").textContent = dRaw!=="" ? "-"+dollars(Math.round(parseFloat(dRaw)*100)) : "rule-based (on create)";
+  const disc = dRaw!=="" ? Math.round(parseFloat(dRaw)*100) : 0;
+  $("t-total").textContent=dollars(Math.max(0,sub-disc))+" + shipping";
+}
+$("o-discount").addEventListener("input", recalc);
+
+// ── create / lifecycle ──
+async function createInvoice(){
+  if (!LINES.length){ toast("Add at least one line item","error"); return; }
+  const dRaw=$("o-discount").value.trim();
+  const body = {
+    customer:{ person_id: $("person_id").value||null, name:$("c-name").value, email:$("c-email").value, phone:$("c-phone").value,
+      address:{ address1:$("a-addr1").value, address2:$("a-addr2").value, city:$("a-city").value,
+                state:$("a-state").value, zip:$("a-zip").value, country:$("a-country").value||"US" } },
+    lines: LINES.map(l=>({slug:l.slug, qty:l.qty, unit_cents:l.unit_cents})),
+    method: $("o-method").value,
+  };
+  if (dRaw!=="") body.discount_cents = Math.round(parseFloat(dRaw)*100);
+  try{
+    const r = await fetch("/api/orders/manual", {method:"POST", headers:HEADERS, body:JSON.stringify(body)});
+    const j = await r.json();
+    if (!j.ok){ toast(j.error||"failed","error"); return; }
+    LAST_ORDER=j; showInvoice(j); toast("Proposed invoice created");
+  }catch(e){ toast(e.message,"error"); }
+}
+function showInvoice(j){
+  const t=j.totals||{};
+  $("t-disc").textContent = t.discount_cents? "-"+dollars(t.discount_cents):"—";
+  $("t-ship").textContent = dollars(t.shipping_cents);
+  $("t-get").textContent  = dollars(t.get_cents)+" (absorbed)";
+  $("t-total").textContent= dollars(t.total_cents);
+  const lines=(j.lines||[]).map(l=>`  ${l.qty} × ${l.name}  @ ${dollars(l.unit_cents)} = ${dollars(l.line_cents)}`).join("\n");
+  const summary=`PROPOSED INVOICE  ${j.external_ref}\nCustomer: ${$("c-name").value} <${$("c-email").value}>\n\n${lines}\n\n`
+    +`Subtotal: ${dollars(t.subtotal_cents)}\nDiscount: ${t.discount_cents?'-'+dollars(t.discount_cents):'$0.00'}\n`
+    +`Shipping: ${dollars(t.shipping_cents)}\nGET (absorbed): ${dollars(t.get_cents)}\nTOTAL: ${dollars(t.total_cents)}\n`
+    +`Payment method: ${$("o-method").value}`;
+  const inv=$("invoice");
+  inv.innerHTML=`<h2>Proposed invoice ${esc(j.external_ref)} created</h2><pre>${esc(summary)}</pre>`
+    +`<div class="inv-actions">`
+    +`<button class="primary" onclick="lifecycle('orders.confirm',{})">Confirm</button>`
+    +`<button class="ghost" onclick="recordPayment()">Record payment</button>`
+    +`<button class="mini" onclick="copyInv()">Copy</button>`
+    +`<a class="mini" href="/console/orders?key=${encodeURIComponent(KEY)}" style="text-decoration:none">Open orders board</a></div>`;
+  inv.style.display="block"; window.scrollTo({top:0,behavior:"smooth"});
+}
+async function lifecycle(key, params){
+  if (!LAST_ORDER) return;
+  params.order_id = LAST_ORDER.order_id;
+  const r = await fetch("/api/action/"+key, {method:"POST", headers:HEADERS, body:JSON.stringify(params)});
   const j = await r.json();
-  if (!j.ok) throw new Error(j.error || "request failed");
-  return j.data;
+  if (j && (j.status==="denied"||j.ok===false)) { toast("Action failed: "+(j.reason||j.error||""),"error"); return; }
+  toast(key==="orders.confirm" ? "Invoice confirmed" : "Payment recorded — in fulfillment");
 }
-
-const fmtDollars = c => c == null ? "—" : "$" + Math.round(c / 100);
-const SIZE_LABEL = { S: "Small", M: "Medium", L: "Large" };
-
-async function loadBottles() {
-  BOTTLES = await api("/api/shipping/bottles");
-  const container = document.getElementById("bottles");
-  container.innerHTML = "";
-  if (!BOTTLES.length) {
-    container.innerHTML = `<div class="empty-catalog">No bottles in the catalog yet. <a href="/admin/shipping?key=${encodeURIComponent(KEY)}">Add some on the settings page</a>.</div>`;
-    return;
-  }
-  for (const b of BOTTLES) {
-    ORDER[b.name] = 0;
-    const row = document.createElement("div");
-    row.className = "bottle-row";
-    row.innerHTML = `
-      <div class="bottle-name">
-        <strong>${b.name}</strong>
-        ${b.notes ? `<span>${b.notes}</span>` : ""}
-      </div>
-      <div class="stepper">
-        <button type="button" data-bottle="${b.name}" data-delta="-1">−</button>
-        <input type="number" min="0" value="0" data-bottle="${b.name}">
-        <button type="button" data-bottle="${b.name}" data-delta="1">+</button>
-      </div>`;
-    container.appendChild(row);
-  }
-  for (const btn of container.querySelectorAll("button")) {
-    btn.addEventListener("click", onStep);
-  }
-  for (const inp of container.querySelectorAll("input")) {
-    inp.addEventListener("change", onInputChange);
-  }
+function recordPayment(){
+  const a=prompt("Amount in dollars (blank = invoice total):","");
+  const p={ method: $("o-method").value };
+  if (a && !isNaN(parseFloat(a))) p.amount_cents=Math.round(parseFloat(a)*100);
+  lifecycle("orders.record_payment", p);
 }
+function copyInv(){ const txt=$("invoice").querySelector("pre").textContent;
+  navigator.clipboard.writeText(txt).then(()=>toast("Copied"),()=>toast("Clipboard blocked","error")); }
 
-function onStep(ev) {
-  const name = ev.target.dataset.bottle;
-  const delta = parseInt(ev.target.dataset.delta, 10);
-  const inp = document.querySelector(`input[data-bottle="${name}"]`);
-  const next = Math.max(0, parseInt(inp.value, 10) + delta);
-  inp.value = next;
-  ORDER[name] = next;
-  refreshQuote();
-}
-
-function onInputChange(ev) {
-  const name = ev.target.dataset.bottle;
-  const v = Math.max(0, parseInt(ev.target.value, 10) || 0);
-  ev.target.value = v;
-  ORDER[name] = v;
-  refreshQuote();
-}
-
-let quoteTimer = null;
-function refreshQuote() {
-  // Debounce — Rae may step quickly
-  clearTimeout(quoteTimer);
-  quoteTimer = setTimeout(doQuote, 150);
-}
-
-async function doQuote() {
-  const bottles = Object.fromEntries(
-    Object.entries(ORDER).filter(([, qty]) => qty > 0)
-  );
-  const quoteEl = document.getElementById("quote");
-  if (Object.keys(bottles).length === 0) {
-    quoteEl.className = "empty";
-    quoteEl.innerHTML = "Pick bottles below to see the box size + shipping cost.";
-    return;
-  }
-  try {
-    const result = await api("/api/shipping/quote", {
-      method: "POST",
-      body: JSON.stringify({ bottles }),
-    });
-    if (result.error) {
-      quoteEl.className = "error";
-      quoteEl.innerHTML = `<div class="quote-label">Cannot quote</div><div>${result.error}</div>`;
-      return;
-    }
-    quoteEl.className = "";
-    const items = Object.entries(bottles).map(([n, q]) => `${q} × ${n}`).join(", ");
-    quoteEl.innerHTML = `
-      <div class="quote-label">Shipping Quote</div>
-      <div class="box">Order: ${items} → <strong>${SIZE_LABEL[result.box_size]} Flat Rate Box</strong></div>
-      <div class="cost">${fmtDollars(result.shipping_cents)}</div>
-      <div class="effective">USPS rate effective ${result.rate_effective_date}</div>
-      <div class="actions">
-        <button class="primary" onclick="copySummary()">Copy summary</button>
-        <button class="ghost" onclick="resetOrder()">New order</button>
-      </div>`;
-  } catch (e) {
-    quoteEl.className = "error";
-    quoteEl.innerHTML = `<div class="quote-label">Error</div><div>${e.message}</div>`;
-  }
-}
-
-function copySummary() {
-  const bottles = Object.entries(ORDER).filter(([, q]) => q > 0);
-  const items = bottles.map(([n, q]) => `  • ${q} × ${n}`).join("\n");
-  const quoteEl = document.getElementById("quote");
-  const cost = quoteEl.querySelector(".cost")?.textContent || "";
-  const box = quoteEl.querySelector("strong")?.textContent || "";
-  const summary = `Order:\n${items}\n\nShipping: ${box} — ${cost}\n`;
-  navigator.clipboard.writeText(summary).then(
-    () => toast("Copied to clipboard"),
-    () => toast("Clipboard blocked", "error"),
-  );
-}
-
-function resetOrder() {
-  for (const inp of document.querySelectorAll(".bottle-row input")) {
-    inp.value = 0;
-    ORDER[inp.dataset.bottle] = 0;
-  }
-  refreshQuote();
-}
-
-async function init() {
-  if (!KEY) {
-    document.getElementById("auth-warn").style.display = "block";
-    return;
-  }
-  try {
-    await loadBottles();
-  } catch (e) {
-    if (e.message !== "unauthorized") toast(e.message, "error");
-  }
+async function init(){
+  if (!KEY){ $("auth-warn").style.display="block"; return; }
+  try{ await loadCatalog(); }catch(e){ if(e.message!=="unauthorized") toast(e.message,"error"); }
 }
 init();
 </script>

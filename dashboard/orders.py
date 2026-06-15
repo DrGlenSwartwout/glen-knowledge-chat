@@ -6,8 +6,11 @@ on import (see Task 2)."""
 import json
 from datetime import datetime, timezone, timedelta
 
-ORDER_STATUSES = ("new", "packed", "shipped", "done", "cancelled")
+ORDER_STATUSES = ("proposed", "confirmed", "paid",
+                  "new", "packed", "shipped", "done", "cancelled")
 _OPEN = ("new", "packed")  # unfulfilled
+# Pre-fulfillment lead-in for in-house proposed invoices (before the kanban).
+_PRE_FULFILL = ("proposed", "confirmed")
 
 
 def _now():
@@ -54,12 +57,24 @@ def init_orders_table(cx):
             cx.execute(f"ALTER TABLE orders ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass  # already present (created by the CREATE TABLE above or prior migration)
+    # In-house order-entry / proposed-invoice fields (Phase 1).
+    for ddl in (
+        "ALTER TABLE orders ADD COLUMN person_id INTEGER",
+        "ALTER TABLE orders ADD COLUMN pay_method TEXT",
+        "ALTER TABLE orders ADD COLUMN pay_status TEXT DEFAULT 'unpaid'",
+        "ALTER TABLE orders ADD COLUMN paid_at TEXT",
+        "ALTER TABLE orders ADD COLUMN paid_cents INTEGER DEFAULT 0",
+    ):
+        try:
+            cx.execute(ddl)
+        except Exception:
+            pass  # already present
     cx.commit()
 
 
 def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
                  items=None, total_cents=0, address=None, channel="retail",
-                 status="new", get_cents=0,
+                 status="new", get_cents=0, person_id=None,
                  discount_cents=0, points_redeemed_cents=0, shipping_cents=0):
     """Idempotent on (source, external_ref). Inserts a new order, or updates the
     soft fields of an existing one WITHOUT regressing its lifecycle status.
@@ -85,18 +100,22 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
         if address is not None:
             sets.append("address_json=?")
             vals.append(json.dumps(address))
+        if person_id is not None:
+            sets.append("person_id=?")
+            vals.append(int(person_id))
         vals.append(row[0])
         cx.execute(f"UPDATE orders SET {', '.join(sets)} WHERE id=?", vals)
         cx.commit()
         return row[0]
     cur = cx.execute(
         "INSERT INTO orders (created_at, source, external_ref, channel, email, name, "
-        "phone, items_json, total_cents, address_json, status, get_cents, "
+        "phone, items_json, total_cents, address_json, status, get_cents, person_id, "
         "discount_cents, points_redeemed_cents, shipping_cents) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (_now(), source, ref, channel, email, name, phone,
          json.dumps(items or []), int(total_cents or 0), json.dumps(address or {}),
          status, int(get_cents or 0),
+         (int(person_id) if person_id is not None else None),
          int(discount_cents or 0), int(points_redeemed_cents or 0), int(shipping_cents or 0)))
     cx.commit()
     return cur.lastrowid
@@ -246,6 +265,60 @@ action(key="orders.mark_done", module="orders", title="Mark done",
 action(key="orders.cancel", module="orders", title="Cancel order",
        description="Cancel an order.", risk_tier=LOW_WRITE,
        permission=(OWNER, OPS, VA))(_status_action("cancelled", "cancelled"))
+
+
+def set_order_payment(cx, order_id, *, method, amount_cents):
+    """Record payment on an order: mark paid + capture method/amount/time, and
+    drop it into the fulfillment board as 'new'. No money is moved (Phase 1)."""
+    cur = cx.execute(
+        "UPDATE orders SET status='new', pay_status='paid', pay_method=?, "
+        "paid_cents=?, paid_at=?, updated_at=? WHERE id=?",
+        (str(method or ""), int(amount_cents or 0), _now(), _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def _confirm_exec(params, ctx):
+    cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+    if cx is None:
+        raise ValueError("no db connection")
+    oid = int(params["order_id"])
+    order = get_order(cx, oid)
+    if not order:
+        raise ValueError(f"order #{oid} not found")
+    if order.get("status") != "proposed":
+        raise ValueError(f"order #{oid} is '{order.get('status')}', not a proposed invoice")
+    set_order_status(cx, oid, "confirmed")
+    return {"order_id": oid, "status": "confirmed",
+            "message": f"Proposed invoice #{oid} confirmed — awaiting payment."}
+
+
+def _record_payment_exec(params, ctx):
+    cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+    if cx is None:
+        raise ValueError("no db connection")
+    oid = int(params["order_id"])
+    order = get_order(cx, oid)
+    if not order:
+        raise ValueError(f"order #{oid} not found")
+    if order.get("status") not in _PRE_FULFILL:
+        raise ValueError(f"order #{oid} is '{order.get('status')}'; payment is recorded on a "
+                         "proposed/confirmed invoice")
+    method = str(params.get("method", "")).strip()
+    amount_cents = int(params.get("amount_cents") or order.get("total_cents") or 0)
+    set_order_payment(cx, oid, method=method, amount_cents=amount_cents)
+    return {"order_id": oid, "status": "new", "pay_status": "paid",
+            "pay_method": method, "paid_cents": amount_cents,
+            "message": f"Payment recorded for order #{oid}"
+                       + (f" via {method}" if method else "") + " — now in fulfillment."}
+
+
+action(key="orders.confirm", module="orders", title="Confirm proposed invoice",
+       description="Mark a proposed invoice confirmed (customer agreed).",
+       risk_tier=LOW_WRITE, permission=(OWNER,))(_confirm_exec)
+action(key="orders.record_payment", module="orders", title="Record payment",
+       description="Record payment on a proposed/confirmed invoice and move it into fulfillment.",
+       risk_tier=LOW_WRITE, permission=(OWNER,))(_record_payment_exec)
 
 
 def _set_tracking_exec(params, ctx):
