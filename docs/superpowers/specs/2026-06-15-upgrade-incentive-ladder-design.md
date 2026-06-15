@@ -31,6 +31,8 @@ A Biofield + designed remedy program **includes live-group access: 1 month per p
 - **Biofield alone includes 0 months** — the patient must implement with a designed program to earn support.
 - **Cap ~3 months** (Glen's max recommended length for one program). Past 3 months the patient re-Biofields and a fresh program is designed, which **starts a new support window**.
 - **Auto-continue:** with a card on file, when the included window ends the live-group membership **auto-continues at $99/mo (founders) unless cancelled.** Clear disclosure + easy cancel + a reminder before the first charge.
+- **Rail (decided 2026-06-15):** Stripe vault + the Subscribe-and-Grow scheduler (`subscriptions` table + the charge cron), since Stripe is live and QBO Payments is not yet approved (Rae's call; QBO recurring stays a future option). Auto-continue rides a new `kind='membership'` flat-amount subscription.
+- **Compliance (required):** auto-charging after a free trial is a negative-option offer, so the trial **requires an explicit opt-in at checkout** ("add live group: N months free, then $99/mo, cancel anytime"), clear terms, a pre-charge reminder, and one-click cancel. Not auto-enrolled silently from a purchase.
 - **Net effect:** live group is effectively free while the patient stays on the quarterly Biofield → 3-month-program → re-Biofield cycle. The $99/mo auto-charge monetizes the gap when they lapse out of the cycle. Rewards staying on protocol AND captures lapse revenue.
 
 **Reuse:** the included-months count reads off the pricing engine's existing `volume_months` (one source of truth, reinforces the "more program = bigger discount AND more coaching" AOV story). Auto-continue reuses the Subscribe-and-Grow **Stripe card vault + own scheduler** and the existing Group Coaching subscription (`_MEMBERSHIP_TIERS`). Window-stacking: a new program purchased mid-window extends the included window.
@@ -46,10 +48,9 @@ Studio.com pays us creator rev-share on every participant, including ones we ref
 ### Flow B — us → Studio.com
 "Join at **studio.com/drglen**, get your **first month of live group free.**" Pays us twice: rev-share on the Studio.com signup + the live-group month costs ~$0 marginal.
 
-**Confirmation** (Glen to check his Studio.com dashboard for which is possible; design supports either):
-1. **Email-match (preferred):** if the creator dashboard exports subscriber emails, match our member's email against the Studio.com participant feed → auto-grant the free month.
-2. **Receipt screenshot:** member uploads their Studio.com receipt via our chat (image/PDF OCR already built) → confirm → grant.
-3. **Self-attest + spot-check:** they tell us; bonus is ~$0 so abuse downside is trivial.
+**Confirmation** (resolved 2026-06-15: the Studio.com creator dashboard does **not** expose subscriber emails, so email-match is out):
+1. **Receipt screenshot (primary):** member uploads their Studio.com receipt via our chat (image/PDF OCR already built) → confirm → grant.
+2. **Self-attest + spot-check (fallback):** they tell us; bonus is ~$0 so abuse downside is trivial.
 
 The grant = one free month of the live-group subscription (Mechanic 1 infra), then normal $99/mo auto-continue.
 
