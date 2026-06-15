@@ -235,6 +235,127 @@ def set_order_label(cx, order_id, label_url, tracking_number=None):
     return cur.rowcount > 0
 
 
+# --- Per-line partial fulfillment + backorder tracking (Phase 2) ---
+# Each shipment of a line is one row in order_fulfillments. A line's backorder =
+# its ordered qty minus the sum of its fulfillment events; cleared when 0.
+
+def init_fulfillments_table(cx):
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS order_fulfillments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL,
+            line_index INTEGER NOT NULL,
+            slug TEXT,
+            qty INTEGER NOT NULL,
+            fulfilled_at TEXT NOT NULL,
+            note TEXT
+        )
+    """)
+    cx.execute("CREATE INDEX IF NOT EXISTS idx_fulfill_order ON order_fulfillments(order_id)")
+    cx.execute("CREATE INDEX IF NOT EXISTS idx_fulfill_slug ON order_fulfillments(slug)")
+    cx.commit()
+
+
+def fulfilled_qty(cx, order_id, line_index):
+    row = cx.execute(
+        "SELECT COALESCE(SUM(qty),0) FROM order_fulfillments WHERE order_id=? AND line_index=?",
+        (order_id, int(line_index))).fetchone()
+    return int(row[0] or 0)
+
+
+def record_fulfillment(cx, order_id, line_index, slug, qty, at=None, note=None):
+    """Record one partial-shipment event for a line. Clamps so cumulative
+    fulfilled never exceeds the line's ordered qty. Returns the qty actually
+    recorded after clamping (0 if the line is already fully fulfilled)."""
+    qty = int(qty or 0)
+    if qty <= 0:
+        return 0
+    order = get_order(cx, order_id)
+    if not order:
+        raise ValueError(f"order #{order_id} not found")
+    li = int(line_index)
+    items = order.get("items") or []
+    ordered = int(items[li].get("qty") or 0) if 0 <= li < len(items) else 0
+    qty = min(qty, max(0, ordered - fulfilled_qty(cx, order_id, li)))
+    if qty <= 0:
+        return 0
+    if not slug and 0 <= li < len(items):
+        slug = items[li].get("slug") or ""
+    cx.execute(
+        "INSERT INTO order_fulfillments (order_id, line_index, slug, qty, fulfilled_at, note) "
+        "VALUES (?,?,?,?,?,?)",
+        (order_id, li, slug or "", qty, at or _now(), note))
+    cx.commit()
+    return qty
+
+
+def fulfillment_for_order(cx, order_id):
+    """Per-line fulfillment state: [{index, slug, name, ordered, fulfilled,
+    backordered, events:[{qty, fulfilled_at}]}]."""
+    order = get_order(cx, order_id)
+    if not order:
+        return []
+    by_line = {}
+    for e in cx.execute(
+            "SELECT line_index, qty, fulfilled_at FROM order_fulfillments "
+            "WHERE order_id=? ORDER BY id", (order_id,)).fetchall():
+        by_line.setdefault(int(e[0]), []).append({"qty": int(e[1]), "fulfilled_at": e[2]})
+    out = []
+    for i, it in enumerate(order.get("items") or []):
+        evs = by_line.get(i, [])
+        ordered = int(it.get("qty") or 0)
+        filled = sum(x["qty"] for x in evs)
+        out.append({"index": i, "slug": it.get("slug") or "", "name": it.get("name") or "",
+                    "ordered": ordered, "fulfilled": filled,
+                    "backordered": max(0, ordered - filled), "events": evs})
+    return out
+
+
+def order_backorder_units(cx, order_id):
+    return sum(l["backordered"] for l in fulfillment_for_order(cx, order_id))
+
+
+# Pre-payment invoices (proposed/confirmed) are not committed demand, so they are
+# excluded from the reorder rollup along with done/cancelled.
+_NOT_BACKORDERABLE = ("done", "cancelled", "proposed", "confirmed")
+
+
+def backorder_rollup(cx):
+    """Per-product backordered units across committed, open orders — the reorder
+    worklist. Returns [{slug, name, units_backordered, order_count}] desc."""
+    placeholders = ",".join("?" * len(_NOT_BACKORDERABLE))
+    rows = cx.execute(
+        f"SELECT id, items_json FROM orders WHERE status NOT IN ({placeholders})",
+        _NOT_BACKORDERABLE).fetchall()
+    filled = {}
+    for e in cx.execute(
+            "SELECT order_id, line_index, COALESCE(SUM(qty),0) FROM order_fulfillments "
+            "GROUP BY order_id, line_index").fetchall():
+        filled[(int(e[0]), int(e[1]))] = int(e[2])
+    agg = {}
+    for r in rows:
+        oid = int(r[0])
+        try:
+            items = json.loads(r[1] or "[]")
+        except Exception:
+            items = []
+        for i, it in enumerate(items):
+            back = max(0, int(it.get("qty") or 0) - filled.get((oid, i), 0))
+            if back <= 0:
+                continue
+            key = it.get("slug") or it.get("name") or f"line-{i}"
+            a = agg.setdefault(key, {"slug": it.get("slug") or "",
+                                     "name": it.get("name") or key,
+                                     "units_backordered": 0, "orders": set()})
+            a["units_backordered"] += back
+            a["orders"].add(oid)
+    out = [{"slug": a["slug"], "name": a["name"],
+            "units_backordered": a["units_backordered"], "order_count": len(a["orders"])}
+           for a in agg.values()]
+    out.sort(key=lambda x: x["units_backordered"], reverse=True)
+    return out
+
+
 # --- Lifecycle actions + Home signal (register on import) ---
 from dashboard.actions import action, LOW_WRITE
 from dashboard.rbac import OWNER, OPS, VA
@@ -363,6 +484,44 @@ def _create_label_exec(params, ctx):
 action(key="orders.create_label", module="orders", title="Create shipping label",
        description="Buy a USPS label (EasyPost) or hand off to Click-N-Ship.",
        risk_tier=LOW_WRITE, permission=(OWNER, OPS, VA))(_create_label_exec)
+
+
+def _fulfill_lines_exec(params, ctx):
+    """Record a shipment: qty sent per line. Shortfall stays backordered; when
+    every line is cleared the order is marked done, else it stays shipped."""
+    cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+    if cx is None:
+        raise ValueError("no db connection")
+    oid = int(params["order_id"])
+    order = get_order(cx, oid)
+    if not order:
+        raise ValueError(f"order #{oid} not found")
+    note = params.get("note")
+    recorded = []
+    for ln in (params.get("lines") or []):
+        try:
+            idx = int(ln.get("index"))
+            q = int(ln.get("qty") or 0)
+        except (TypeError, ValueError):
+            continue
+        got = record_fulfillment(cx, oid, idx, ln.get("slug"), q, note=note)
+        if got > 0:
+            recorded.append({"index": idx, "qty": got})
+    if not recorded:
+        raise ValueError("no quantities to record")
+    back = order_backorder_units(cx, oid)
+    new_status = "done" if back <= 0 else "shipped"
+    set_order_status(cx, oid, new_status)
+    sent = sum(r["qty"] for r in recorded)
+    return {"order_id": oid, "fulfilled": recorded, "backorder_units": back,
+            "status": new_status,
+            "message": f"Order #{oid}: recorded {sent} unit(s) shipped"
+                       + (f", {back} still backordered." if back else " — fully fulfilled.")}
+
+
+action(key="orders.fulfill_lines", module="orders", title="Record shipment (fulfill lines)",
+       description="Record qty shipped per line; backorder = ordered minus fulfilled.",
+       risk_tier=LOW_WRITE, permission=(OWNER, OPS, VA))(_fulfill_lines_exec)
 
 
 def _gmail_send_tracking(to, subject, html):

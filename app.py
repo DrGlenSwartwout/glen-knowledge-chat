@@ -16505,6 +16505,7 @@ def _init_bos_orders():
     cx = _sqlite3.connect(LOG_DB)
     try:
         _bos_orders.init_orders_table(cx)
+        _bos_orders.init_fulfillments_table(cx)
     finally:
         cx.close()
 
@@ -16807,11 +16808,34 @@ def bos_orders_create():
         cx = _sqlite3.connect(LOG_DB)
         cx.row_factory = _sqlite3.Row
         try:
-            rows = _bos_orders.list_orders(
-                cx, status=request.args.get("status"),
-                limit=min(int(request.args.get("limit", 200) or 200), 500))
-        except (TypeError, ValueError):
-            rows = _bos_orders.list_orders(cx)
+            try:
+                rows = _bos_orders.list_orders(
+                    cx, status=request.args.get("status"),
+                    limit=min(int(request.args.get("limit", 200) or 200), 500))
+            except (TypeError, ValueError):
+                rows = _bos_orders.list_orders(cx)
+            # Annotate each order with per-line fulfillment + backorder units, using a
+            # single grouped query over order_fulfillments (no per-order round-trips).
+            try:
+                filled = {}
+                for e in cx.execute(
+                        "SELECT order_id, line_index, COALESCE(SUM(qty),0) FROM order_fulfillments "
+                        "GROUP BY order_id, line_index").fetchall():
+                    filled[(int(e[0]), int(e[1]))] = int(e[2])
+                for o in rows:
+                    oid = int(o.get("id"))
+                    back = 0
+                    flines = []
+                    for i, it in enumerate(o.get("items") or []):
+                        ordered = int(it.get("qty") or 0)
+                        f = filled.get((oid, i), 0)
+                        bo = max(0, ordered - f)
+                        back += bo
+                        flines.append({"index": i, "ordered": ordered, "fulfilled": f, "backordered": bo})
+                    o["fulfillment"] = flines
+                    o["backorder_units"] = back
+            except Exception as _e:
+                print(f"[orders] backorder annotate skipped: {_e!r}", flush=True)
         finally:
             cx.close()
         return jsonify({"ok": True, "data": rows})
@@ -16831,6 +16855,21 @@ def bos_orders_create():
     finally:
         cx.close()
     return jsonify({"ok": True, "order_id": oid})
+
+
+@app.route("/api/backorders", methods=["GET"])
+def bos_backorders():
+    """Reorder worklist: per-product units backordered across open orders."""
+    actor = _bos_actor()
+    if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        data = _bos_orders.backorder_rollup(cx)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "data": data})
 
 
 @app.route("/console/finance")
