@@ -2836,6 +2836,103 @@ def qbo_content_refresh(slug):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ── Biofield ($300 points-redeemable service checkout) ───────────────────────
+BIOFIELD_PRICE_CENTS = 30000   # $300 Causal Biofield Analysis (service, no shipping)
+_BIOFIELD_ITEM_NAME = "Causal Biofield Analysis"
+
+
+def _biofield_enabled() -> bool:
+    return os.environ.get("BIOFIELD_CHECKOUT_ENABLED", "").strip().lower() \
+        in ("1", "true", "yes", "on")
+
+
+def _price_biofield(points_to_redeem_cents=0):
+    """Price the single $300 Biofield service line through the engine.
+
+    A service item has no bottle_type and is volume-ineligible, so it yields NO
+    shipping. We build the engine line directly (not via _price_cart, which keys
+    shipping off bottle counts) so shipping_cents is always 0. Points are applied
+    by the engine and clamped at the per-SKU points floor (43% of list)."""
+    from dashboard import pricing as _pricing, tax as _tax
+    settings = _pricing.load_settings(_pricing_settings())
+    product = {"slug": "biofield-analysis", "name": _BIOFIELD_ITEM_NAME,
+               "volume_eligible": False}
+    item = {"slug": "biofield-analysis", "name": _BIOFIELD_ITEM_NAME, "qty": 1,
+            "product": product, "unit_cents": BIOFIELD_PRICE_CENTS,
+            "months": 0, "volume_eligible": False}
+    priced = _pricing.compute([item], settings=settings,
+                              points_to_redeem_cents=int(points_to_redeem_cents or 0),
+                              channel="retail", ship_to_state=None,
+                              tax_fn=_tax.compute_get_cents)
+    qbo_lines = [{"name": _BIOFIELD_ITEM_NAME,
+                  "amount": round(BIOFIELD_PRICE_CENTS / 100.0, 2), "qty": 1,
+                  "description": _BIOFIELD_ITEM_NAME}]
+    items_rec = [{"name": _BIOFIELD_ITEM_NAME, "qty": 1, "desc": _BIOFIELD_ITEM_NAME}]
+    return {"priced": priced, "qbo_lines": qbo_lines, "items_rec": items_rec,
+            "discount_cents": priced["discount_cents"],
+            "points_redeemed_cents": priced["points_redeemed_cents"],
+            "shipping_cents": 0}
+
+
+@app.route("/biofield/checkout", methods=["POST"])
+def biofield_checkout():
+    """Sell the $300 Biofield as a points-redeemable service. Ships dark behind
+    BIOFIELD_CHECKOUT_ENABLED. On payment, /begin/checkout-return (kind=biofield)
+    seeds the readiness record and routes the customer to the readiness gate."""
+    if not _biofield_enabled():
+        return jsonify({"ok": False, "error": "Biofield checkout is not available."}), 404
+    data  = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    name  = (data.get("name") or "").strip()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    if not _STRIPE_ACTIVE:
+        return jsonify({"ok": False, "error": "card payment not active"}), 400
+    try:
+        redeem = int(data.get("points_to_redeem_cents") or 0)
+    except (TypeError, ValueError):
+        redeem = 0
+    if redeem > 0:
+        from dashboard import points as _points
+        with sqlite3.connect(LOG_DB) as _bcx:
+            _points.init_points_table(_bcx)
+            redeem = min(redeem, _points.balance(_bcx, email))
+    pc = _price_biofield(points_to_redeem_cents=redeem)
+    charged_cents = pc["priced"]["total_cents"]
+    redeemed = pc["points_redeemed_cents"]
+
+    from dashboard import qbo_billing as qb
+    cust = qb.find_or_create_customer(email, name)
+    inv = qb.create_invoice(cust, pc["qbo_lines"], allow_online_pay=_QBO_PAYMENTS_ACTIVE,
+                            email_to=email,
+                            discount_cents=pc["discount_cents"] + redeemed)
+    out = {"ok": True, "invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
+           "customer_id": cust.get("Id"), "total": inv.get("TotalAmt")}
+
+    _ingest_order(source="biofield", external_ref=inv.get("Id"), email=email, name=name,
+                  items=pc["items_rec"], total_cents=charged_cents, channel="retail",
+                  get_cents=pc["priced"]["get_cents"], discount_cents=pc["discount_cents"],
+                  points_redeemed_cents=redeemed, shipping_cents=0)
+    try:
+        from dashboard import stripe_pay
+        success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
+                   f"?session_id={{CHECKOUT_SESSION_ID}}")
+        metadata = {"kind": "biofield", "email": email,
+                    "invoice_id": inv.get("Id") or "",
+                    "customer_id": cust.get("Id") or "",
+                    "points_redeemed_cents": str(int(redeemed))}
+        sess = stripe_pay.create_checkout_session(
+            charged_cents, customer_email=email,
+            description=f"{_BIOFIELD_ITEM_NAME} #{inv.get('DocNumber') or ''}",
+            metadata=metadata, success_url=success,
+            cancel_url=f"{PUBLIC_BASE_URL}/begin")
+        out["stripe_url"] = sess.get("url") or ""
+    except Exception as e:
+        print(f"[biofield] session create failed: {e!r}", flush=True)
+        out["stripe_url"] = ""
+    return jsonify(out)
+
+
 @app.route("/begin/checkout/<slug>", methods=["POST"])
 def begin_checkout(slug):
     p = _get_product(slug)
@@ -2996,12 +3093,14 @@ def begin_checkout_return():
     sid = (request.args.get("session_id") or "").strip()
     slug = ""
     paid = "0"
+    _kind = ""
     if sid:
         try:
             from dashboard import stripe_pay as _sp
             sess = _sp.get_session(sid)
             md = sess.get("metadata") or {}
             slug = md.get("slug", "")
+            _kind = md.get("kind", "")
             if sess.get("payment_status") == "paid":
                 paid = "1"
                 pi_id = sess.get("payment_intent")
@@ -3183,8 +3282,39 @@ def begin_checkout_return():
                     app.logger.exception(
                         "client margin credit failed: %s", _ce)
 
+                # ── Biofield kind: seed readiness + settle points (best-effort) ──
+                if md.get("kind") == "biofield":
+                    try:
+                        from dashboard import biofield_store as _bf
+                        bf_email = (md.get("email") or "").strip().lower()
+                        bf_inv = md.get("invoice_id") or ""
+                        if bf_email:
+                            _bcx = _sqlite3.connect(LOG_DB)
+                            try:
+                                _bf.init_table(_bcx)
+                                _bf.seed_paid(_bcx, bf_email, via="stripe", order_ref=bf_inv)
+                            finally:
+                                _bcx.close()
+                            # Settle loyalty points on the recorded order (idempotent).
+                            try:
+                                _bcxo = _sqlite3.connect(LOG_DB); _bcxo.row_factory = _sqlite3.Row
+                                try:
+                                    _bo = _bos_orders.find_order_by_external_ref(_bcxo, bf_inv)
+                                finally:
+                                    _bcxo.close()
+                                if _bo:
+                                    _settle_order_points(_bo, order_ref=bf_inv)
+                            except Exception as _bpe:
+                                print(f"[biofield] points settle failed inv={bf_inv}: {_bpe!r}",
+                                      flush=True)
+                    except Exception as _be:
+                        print(f"[biofield] return seed failed: {_be!r}", flush=True)
+
         except Exception as e:
             print(f"[begin-return] {e!r}", flush=True)
+    # Biofield checkouts land on the readiness gate; everything else returns to the funnel.
+    if _kind == "biofield":
+        return _redir(f"/biofield/ready?paid={paid}")
     dest = (f"/begin/buy/{slug}?paid={paid}" if slug else f"/begin?paid={paid}")
     return _redir(dest)
 
