@@ -34,8 +34,21 @@ above + the Mechanic 1 pre-charge reminder + one-click cancel (the membership ca
 - `STUDIO_BRIDGE_ENABLED` (default off) — gates the claim API + the return grant.
 - Reuses the Mechanic 1 membership rail + charge cron + `BIOFIELD`/group `MEMBERSHIP_AMOUNT_CENTS` ($99).
 
+## Flow A — clinical-wedge welcome (`/studio`)
+A welcome landing page (`/studio` → `static/studio-welcome.html`) that layers Dr. Glen's clinical
+wedge on Studio.com users: a free Biofield voice scan + remedy match (`Truly.VIP/E4L`, the thing a
+phone app can't do), the deeper remedy-aware AI Q&A (`/begin`), free membership + courses
+(`/begin`), and the Flow B free first month of live group (`/studio/claim`). It reuses existing
+destinations — no new backend. It stamps a last-touch `rm_ref=studio` attribution cookie (only when
+no real affiliate ref is set) + an `amg_session`, so any later membership/order is attributed
+`source=studio`. The flywheel: Studio.com pays us rev-share on participants, and the wedge converts
+their users into our Biofield / remedy / live-group revenue.
+
+Note: the `/studio` page itself is public positioning (harmless before launch); the "first month
+free" card links to `/studio/claim`, which is gated by `STUDIO_BRIDGE_ENABLED` and degrades
+gracefully (disabled) until the flag is on. Gate the whole page too if a fully-dark launch is wanted.
+
 ## Deferred
-- **Flow A** (capture Studio.com users with our clinical wedge — free voice scan + remedy match +
-  membership) — handled as positioning / a landing reusing the existing free funnel + Truly.VIP/E4L,
-  not net-new code here.
+- A dedicated Studio-user onboarding sequence / Studio-specific concierge mode (the generic funnel +
+  chat suffice for now).
 - Auto-verify of the Studio signup (no email export); refund/clawback of an un-charged free month.
