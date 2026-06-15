@@ -2837,6 +2837,108 @@ def qbo_content_refresh(slug):
 
 
 # ── Biofield ($300 points-redeemable service checkout) ───────────────────────
+# ── Studio.com bridge (Flow B) ────────────────────────────────────────────────
+# A customer who joined studio.com/drglen claims a free first month of live group
+# coaching. We vault their card (Stripe mode=setup, $0 charge) and create a
+# membership subscription whose first $99/mo charge lands one month out. The
+# charge cron then bills it off-session. Ships dark behind STUDIO_BRIDGE_ENABLED.
+def _studio_enabled() -> bool:
+    return os.environ.get("STUDIO_BRIDGE_ENABLED", "").strip().lower() \
+        in ("1", "true", "yes", "on")
+
+
+@app.route("/api/studio/claim", methods=["POST"])
+def api_studio_claim():
+    """Record a pending studio.com/drglen claim and start a $0 card-vault setup
+    session. The free month is granted on /studio/claim-return."""
+    if not _studio_enabled():
+        return jsonify({"ok": False, "error": "Studio claim is not available."}), 404
+    data  = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    name  = (data.get("name") or "").strip()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+
+    # ── Consent gate ── claiming requires Tier-1 Membership (ToS agreed +
+    # identified). Enforced at the API so it can't be bypassed. The front-end
+    # shows the soft opt-in on need_optin.
+    _sid = request.cookies.get("amg_session", "")
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please add your name and agree to our Terms "
+                                 "to claim your free month."}), 403
+
+    # Optional proof of purchase (best-effort — ignored if absent).
+    has_receipt = bool((data.get("receipt") or "").strip())
+
+    from dashboard import studio_bridge as _sbr
+    try:
+        with sqlite3.connect(LOG_DB) as _cx:
+            _sbr.init_table(_cx)
+            _sbr.record_pending(
+                _cx, email,
+                signup_via=("receipt" if has_receipt else "self-attest"))
+    except Exception as e:
+        print(f"[studio] record_pending failed: {e!r}", flush=True)
+
+    try:
+        from dashboard import stripe_pay
+        sess = stripe_pay.create_setup_session(
+            customer_email=email,
+            metadata={"kind": "studio_bridge", "email": email},
+            success_url=(f"{PUBLIC_BASE_URL}/studio/claim-return"
+                         f"?session_id={{CHECKOUT_SESSION_ID}}"),
+            cancel_url=f"{PUBLIC_BASE_URL}/studio/claim")
+    except Exception as e:
+        print(f"[studio] setup session create failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "Could not start the claim."}), 502
+    return jsonify({"ok": True, "stripe_url": sess.get("url", "")})
+
+
+@app.route("/studio/claim-return")
+def studio_claim_return():
+    """Stripe setup return: read the vaulted card off the SetupIntent and create
+    the membership subscription (free month now, first $99 charge one month out).
+    Idempotent via studio_bridge.already_granted. Best-effort — never 500s."""
+    sid = (request.args.get("session_id") or "").strip()
+    if _studio_enabled() and sid:
+        try:
+            from dashboard import (stripe_pay, studio_bridge as _sbr,
+                                    subscriptions as _subs, group_bundle as _gb)
+            import datetime as _dt
+            sess  = stripe_pay.get_session(sid)
+            email = ((sess.get("metadata") or {}).get("email") or "").strip().lower()
+            si    = stripe_pay.get_setup_intent(sess.get("setup_intent"))
+            cus   = si.get("customer")
+            pm    = si.get("payment_method")
+            with sqlite3.connect(LOG_DB) as _cx:
+                _cx.row_factory = sqlite3.Row
+                _sbr.init_table(_cx)
+                _subs.init_subscriptions_table(_cx)
+                _subs.migrate_add_membership_columns(_cx)
+                if email and cus and pm and not _sbr.already_granted(_cx, email):
+                    next_date = _subs.add_months(
+                        _dt.date.today().isoformat(), 1)
+                    sub_id = _subs.create_membership(
+                        _cx, email=email, stripe_customer_id=cus,
+                        stripe_payment_method_id=pm,
+                        amount_cents=_gb.MEMBERSHIP_AMOUNT_CENTS,
+                        next_charge_date=next_date)
+                    _sbr.mark_granted(_cx, email, sub_id)
+                    print(f"[studio] free month granted for {email} sub={sub_id}",
+                          flush=True)
+        except Exception as e:
+            print(f"[studio] claim-return grant failed: {e!r}", flush=True)
+    return redirect("/studio/claim?done=1")
+
+
+@app.route("/studio/claim")
+def studio_claim_page():
+    resp = send_from_directory(STATIC, "studio-claim.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 BIOFIELD_PRICE_CENTS = 30000   # $300 Causal Biofield Analysis (service, no shipping)
 _BIOFIELD_ITEM_NAME = "Causal Biofield Analysis"
 
