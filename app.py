@@ -13145,27 +13145,53 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
         if raw_cents is not None:
             amount_str = f"${int(raw_cents) / 100:.2f}"
 
+        is_membership = data.get("kind") == "membership"
+
         if kind == "heads_up":
-            subject = f"Reminder: your Remedy Match subscription charges on {charge_date}"
-            body = (
-                f"Hi,\n\n"
-                f"Just a quick heads-up — your next Remedy Match subscription order will be "
-                f"charged automatically on {charge_date}.\n\n"
-                f"If you need to skip or pause, visit your subscription portal before that date.\n\n"
-                f"In wellness,\nDr. Glen"
-            )
+            if is_membership:
+                subject = "Your live group coaching renews in 3 days"
+                body = (
+                    f"Hi,\n\n"
+                    f"Just a quick heads-up about your live group coaching. On {charge_date} "
+                    + (f"your card will be charged {amount_str} for the coming month of coaching"
+                       if amount_str else "your card will be charged for the coming month of coaching")
+                    + f".\n\n"
+                    f"If you need to make a change, visit your member portal before that date.\n\n"
+                    f"In wellness,\nDr. Glen"
+                )
+            else:
+                subject = f"Reminder: your Remedy Match subscription charges on {charge_date}"
+                body = (
+                    f"Hi,\n\n"
+                    f"Just a quick heads-up — your next Remedy Match subscription order will be "
+                    f"charged automatically on {charge_date}.\n\n"
+                    f"If you need to skip or pause, visit your subscription portal before that date.\n\n"
+                    f"In wellness,\nDr. Glen"
+                )
         elif kind == "receipt":
             inv_id = data.get("invoice_id", "")
-            body = (
-                f"Hi,\n\n"
-                f"Your Remedy Match subscription order has been processed successfully.\n\n"
-                f"Amount charged: {amount_str}\n"
-                + (f"Invoice: {inv_id}\n" if inv_id else "")
-                + f"\nYour next order will ship on {charge_date}.\n\n"
-                f"Thank you for your continued trust.\n\n"
-                f"In wellness,\nDr. Glen"
-            )
-            subject = f"Your Remedy Match subscription order is confirmed — {amount_str}"
+            if is_membership:
+                subject = f"Your live group coaching payment — {amount_str}"
+                body = (
+                    f"Hi,\n\n"
+                    f"Your live group coaching payment has been processed successfully.\n\n"
+                    f"Amount charged: {amount_str}\n"
+                    + (f"Invoice: {inv_id}\n" if inv_id else "")
+                    + f"\nYour next payment date: {charge_date}\n\n"
+                    f"Thank you for being part of the group.\n\n"
+                    f"In wellness,\nDr. Glen"
+                )
+            else:
+                body = (
+                    f"Hi,\n\n"
+                    f"Your Remedy Match subscription order has been processed successfully.\n\n"
+                    f"Amount charged: {amount_str}\n"
+                    + (f"Invoice: {inv_id}\n" if inv_id else "")
+                    + f"\nYour next order will ship on {charge_date}.\n\n"
+                    f"Thank you for your continued trust.\n\n"
+                    f"In wellness,\nDr. Glen"
+                )
+                subject = f"Your Remedy Match subscription order is confirmed — {amount_str}"
         elif kind == "payment_failed":
             fail_count = data.get("failed_count", 1)
             subject = "Action needed: Remedy Match subscription payment failed"
@@ -13251,7 +13277,9 @@ def cron_charge_subscriptions():
                 if not dry_run:
                     _send_subscription_email(
                         sub["email"], "heads_up",
-                        {"next_charge_date": sub["next_charge_date"]})
+                        {"next_charge_date": sub["next_charge_date"],
+                         "kind": sub.get("kind", "product"),
+                         "total_cents": sub.get("amount_cents")})
                     _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
                 notified += 1
                 print(f"[sub-cron] heads-up {'(dry)' if dry_run else ''}"
@@ -13324,6 +13352,7 @@ def cron_charge_subscriptions():
                         try:
                             _send_subscription_email(sub["email"], "receipt", {
                                 "total_cents": amount_cents, "invoice_id": inv_id,
+                                "kind": "membership",
                                 "next_charge_date": updated["next_charge_date"] if updated else ""})
                         except Exception as ee:
                             print(f"[sub-cron] membership email sub={sid}: {ee!r}", flush=True)
@@ -13408,6 +13437,7 @@ def cron_charge_subscriptions():
                     _send_subscription_email(sub["email"], "receipt", {
                         "total_cents": total_cents,
                         "invoice_id": inv_id,
+                        "kind": sub.get("kind", "product"),
                         "next_charge_date": updated["next_charge_date"] if updated else "",
                     })
                     charged += 1
