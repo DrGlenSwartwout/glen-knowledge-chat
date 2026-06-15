@@ -695,6 +695,14 @@
         </div>
       </div>
     </div>
+    <!-- Codebase (lines of code built — total, per-repo segments, logic estimate) -->
+    <div id="codebase-section" style="margin-bottom:24px">
+      <div class="cal-header">
+        <span class="cal-title">Codebase</span>
+        <span id="cb-asof" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+      <div class="ref-stats" id="cb-stats"></div>
+    </div>
     <!-- Calendar -->
     <div id="cal-section">
       <div class="cal-header">
@@ -1043,6 +1051,36 @@ function renderMcPending(list) {
 async function mcAct(id, what) {
   await apiFetch('/api/events/' + id + '/' + what, { method: 'POST' });
   loadMissionControl();
+}
+
+// ── Codebase stat card ──────────────────────────────────────────────────────────
+// Reads the snapshot written by the vault script "02 Skills/count-loc.py".
+// (Render can't see the vault, so the combined figure ships as data, not live.)
+async function loadCodebaseStats() {
+  try {
+    const r = await fetch('/static/codebase-stats.json', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    const seg = d.segments || {};
+    const fmt = function(n){ return Number(n || 0).toLocaleString(); };
+    const cards = [
+      ['Total lines', d.total,         ''],
+      ['Vault',       seg.vault,       'AI-Training'],
+      ['deploy-chat', seg.deploy_chat, 'this app'],
+      ['Logic est.',  d.logic,         'excl. data loaders'],
+    ];
+    const host = document.getElementById('cb-stats');
+    if (host) {
+      host.innerHTML = cards.map(function(c){
+        return '<div class="ref-stat-card"><div class="ref-stat-num">' + fmt(c[1]) + '</div>'
+          + '<div class="ref-stat-label">' + c[0] + '</div>'
+          + (c[2] ? '<div class="ref-stat-last">' + c[2] + '</div>' : '')
+          + '</div>';
+      }).join('');
+    }
+    const asof = document.getElementById('cb-asof');
+    if (asof && d.as_of) asof.textContent = 'as of ' + d.as_of;
+  } catch (e) { /* leave card empty on error */ }
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -2547,6 +2585,7 @@ async function refresh(restoreScrollY) {
     if (mcSection) mcSection.style.display = '';
     loadMissionControl();   // fire-and-forget; self-renders into the banner
   }
+  loadCodebaseStats();      // fire-and-forget; renders the Codebase stat card
   renderCalendar(calEvents);
   restoreCalAlerts(calEvents);
   renderTodos(todos);

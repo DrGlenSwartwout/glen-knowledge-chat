@@ -1,0 +1,29 @@
+{
+  "as_of": "2026-06-15",
+  "total": 427368,
+  "logic": 217502,
+  "segments": {
+    "vault": 286130,
+    "deploy_chat": 141238
+  },
+  "by_ext": {
+    "vault": {
+      "html": 28490,
+      "py": 242728,
+      "sql": 13407,
+      "sh": 1505
+    },
+    "deploy_chat": {
+      "py": 72516,
+      "html": 66611,
+      "sql": 247,
+      "sh": 28,
+      "css": 42,
+      "js": 1794
+    }
+  },
+  "logic_excludes": {
+    "data_loader_scripts": 209866
+  },
+  "note": "Snapshot; refresh with: python \"02 Skills/count-loc.py\""
+}
