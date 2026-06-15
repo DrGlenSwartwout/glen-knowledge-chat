@@ -2836,6 +2836,103 @@ def qbo_content_refresh(slug):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ── Biofield ($300 points-redeemable service checkout) ───────────────────────
+BIOFIELD_PRICE_CENTS = 30000   # $300 Causal Biofield Analysis (service, no shipping)
+_BIOFIELD_ITEM_NAME = "Causal Biofield Analysis"
+
+
+def _biofield_enabled() -> bool:
+    return os.environ.get("BIOFIELD_CHECKOUT_ENABLED", "").strip().lower() \
+        in ("1", "true", "yes", "on")
+
+
+def _price_biofield(points_to_redeem_cents=0):
+    """Price the single $300 Biofield service line through the engine.
+
+    A service item has no bottle_type and is volume-ineligible, so it yields NO
+    shipping. We build the engine line directly (not via _price_cart, which keys
+    shipping off bottle counts) so shipping_cents is always 0. Points are applied
+    by the engine and clamped at the per-SKU points floor (43% of list)."""
+    from dashboard import pricing as _pricing, tax as _tax
+    settings = _pricing.load_settings(_pricing_settings())
+    product = {"slug": "biofield-analysis", "name": _BIOFIELD_ITEM_NAME,
+               "volume_eligible": False}
+    item = {"slug": "biofield-analysis", "name": _BIOFIELD_ITEM_NAME, "qty": 1,
+            "product": product, "unit_cents": BIOFIELD_PRICE_CENTS,
+            "months": 0, "volume_eligible": False}
+    priced = _pricing.compute([item], settings=settings,
+                              points_to_redeem_cents=int(points_to_redeem_cents or 0),
+                              channel="retail", ship_to_state=None,
+                              tax_fn=_tax.compute_get_cents)
+    qbo_lines = [{"name": _BIOFIELD_ITEM_NAME,
+                  "amount": round(BIOFIELD_PRICE_CENTS / 100.0, 2), "qty": 1,
+                  "description": _BIOFIELD_ITEM_NAME}]
+    items_rec = [{"name": _BIOFIELD_ITEM_NAME, "qty": 1, "desc": _BIOFIELD_ITEM_NAME}]
+    return {"priced": priced, "qbo_lines": qbo_lines, "items_rec": items_rec,
+            "discount_cents": priced["discount_cents"],
+            "points_redeemed_cents": priced["points_redeemed_cents"],
+            "shipping_cents": 0}
+
+
+@app.route("/biofield/checkout", methods=["POST"])
+def biofield_checkout():
+    """Sell the $300 Biofield as a points-redeemable service. Ships dark behind
+    BIOFIELD_CHECKOUT_ENABLED. On payment, /begin/checkout-return (kind=biofield)
+    seeds the readiness record and routes the customer to the readiness gate."""
+    if not _biofield_enabled():
+        return jsonify({"ok": False, "error": "Biofield checkout is not available."}), 404
+    data  = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    name  = (data.get("name") or "").strip()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    if not _STRIPE_ACTIVE:
+        return jsonify({"ok": False, "error": "card payment not active"}), 400
+    try:
+        redeem = int(data.get("points_to_redeem_cents") or 0)
+    except (TypeError, ValueError):
+        redeem = 0
+    if redeem > 0:
+        from dashboard import points as _points
+        with sqlite3.connect(LOG_DB) as _bcx:
+            _points.init_points_table(_bcx)
+            redeem = min(redeem, _points.balance(_bcx, email))
+    pc = _price_biofield(points_to_redeem_cents=redeem)
+    charged_cents = pc["priced"]["total_cents"]
+    redeemed = pc["points_redeemed_cents"]
+
+    from dashboard import qbo_billing as qb
+    cust = qb.find_or_create_customer(email, name)
+    inv = qb.create_invoice(cust, pc["qbo_lines"], allow_online_pay=_QBO_PAYMENTS_ACTIVE,
+                            email_to=email,
+                            discount_cents=pc["discount_cents"] + redeemed)
+    out = {"ok": True, "invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
+           "customer_id": cust.get("Id"), "total": inv.get("TotalAmt")}
+
+    _ingest_order(source="biofield", external_ref=inv.get("Id"), email=email, name=name,
+                  items=pc["items_rec"], total_cents=charged_cents, channel="retail",
+                  get_cents=pc["priced"]["get_cents"], discount_cents=pc["discount_cents"],
+                  points_redeemed_cents=redeemed, shipping_cents=0)
+    try:
+        from dashboard import stripe_pay
+        success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
+                   f"?session_id={{CHECKOUT_SESSION_ID}}")
+        metadata = {"kind": "biofield", "email": email,
+                    "invoice_id": inv.get("Id") or "",
+                    "customer_id": cust.get("Id") or "",
+                    "points_redeemed_cents": str(int(redeemed))}
+        sess = stripe_pay.create_checkout_session(
+            charged_cents, customer_email=email,
+            description=f"{_BIOFIELD_ITEM_NAME} #{inv.get('DocNumber') or ''}",
+            metadata=metadata, success_url=success,
+            cancel_url=f"{PUBLIC_BASE_URL}/begin")
+        out["stripe_url"] = sess.get("url") or ""
+    except Exception as e:
+        print(f"[biofield] session create failed: {e!r}", flush=True)
+        out["stripe_url"] = ""
+    return jsonify(out)
+
+
 @app.route("/begin/checkout/<slug>", methods=["POST"])
 def begin_checkout(slug):
     p = _get_product(slug)
@@ -2996,12 +3093,14 @@ def begin_checkout_return():
     sid = (request.args.get("session_id") or "").strip()
     slug = ""
     paid = "0"
+    _kind = ""
     if sid:
         try:
             from dashboard import stripe_pay as _sp
             sess = _sp.get_session(sid)
             md = sess.get("metadata") or {}
             slug = md.get("slug", "")
+            _kind = md.get("kind", "")
             if sess.get("payment_status") == "paid":
                 paid = "1"
                 pi_id = sess.get("payment_intent")
@@ -3183,8 +3282,39 @@ def begin_checkout_return():
                     app.logger.exception(
                         "client margin credit failed: %s", _ce)
 
+                # ── Biofield kind: seed readiness + settle points (best-effort) ──
+                if md.get("kind") == "biofield":
+                    try:
+                        from dashboard import biofield_store as _bf
+                        bf_email = (md.get("email") or "").strip().lower()
+                        bf_inv = md.get("invoice_id") or ""
+                        if bf_email:
+                            _bcx = _sqlite3.connect(LOG_DB)
+                            try:
+                                _bf.init_table(_bcx)
+                                _bf.seed_paid(_bcx, bf_email, via="stripe", order_ref=bf_inv)
+                            finally:
+                                _bcx.close()
+                            # Settle loyalty points on the recorded order (idempotent).
+                            try:
+                                _bcxo = _sqlite3.connect(LOG_DB); _bcxo.row_factory = _sqlite3.Row
+                                try:
+                                    _bo = _bos_orders.find_order_by_external_ref(_bcxo, bf_inv)
+                                finally:
+                                    _bcxo.close()
+                                if _bo:
+                                    _settle_order_points(_bo, order_ref=bf_inv)
+                            except Exception as _bpe:
+                                print(f"[biofield] points settle failed inv={bf_inv}: {_bpe!r}",
+                                      flush=True)
+                    except Exception as _be:
+                        print(f"[biofield] return seed failed: {_be!r}", flush=True)
+
         except Exception as e:
             print(f"[begin-return] {e!r}", flush=True)
+    # Biofield checkouts land on the readiness gate; everything else returns to the funnel.
+    if _kind == "biofield":
+        return _redir(f"/biofield/ready?paid={paid}")
     dest = (f"/begin/buy/{slug}?paid={paid}" if slug else f"/begin?paid={paid}")
     return _redir(dest)
 
@@ -6658,6 +6788,226 @@ def reorder_auth(token):
     resp.set_cookie("rm_reorder_email", email, max_age=60 * 60 * 24 * 30,
                     httponly=True, samesite="Lax", secure=request.is_secure)
     return resp
+
+
+# ── Biofield readiness gate ─────────────────────────────────────────────────
+# After paying for the $300 Causal Biofield Analysis, the customer lands on a
+# readiness gate. It must show 3 items (photo on file / intake / fresh voice
+# scan) and unlock a booking link only when all are satisfied. PHI: client
+# photos are stored under DATA_DIR (NOT static / never web-served).
+
+def _biofield_data_dir():
+    """Runtime data root (same root LOG_DB uses). PHI photos live here, never
+    under the static/web-served dir."""
+    return Path(os.environ.get("DATA_DIR", str(Path(__file__).parent)))
+
+
+def _biofield_email():
+    """Resolve the gate's email from the biofield magic-link cookie, falling
+    back to an authenticated member session if one exists."""
+    em = (request.cookies.get("rm_biofield_email", "") or "").strip().lower()
+    if em:
+        return em
+    user = get_authenticated_user(request)
+    if user and user.get("email"):
+        return user["email"].strip().lower()
+    return ""
+
+
+def _biofield_has_intake(email):
+    """True when an inbound_leads intake row exists for this email (mirrors the
+    intake query in the client-profile builder)."""
+    if not email:
+        return False
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute(
+                "SELECT 1 FROM inbound_leads "
+                "WHERE email=? AND source IN ('scoreapp','practice-better','concierge') "
+                "LIMIT 1", (email,)).fetchone()
+            return bool(row)
+    except Exception:
+        return False
+
+
+@app.route("/biofield/ready")
+def biofield_ready_page():
+    """Serve the readiness-gate page (no-store; PHI-adjacent)."""
+    resp = send_from_directory(STATIC, "biofield-ready.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/biofield/request", methods=["POST"])
+def biofield_request():
+    """Email a magic link to start a biofield readiness session. Always 200
+    (no email enumeration leak). Mirrors /reorder/request."""
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if email and "@" in email:
+        token = secrets.token_urlsafe(32)
+        now = _now_utc()
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                "VALUES (?,?,?,?,?)",
+                (_hash_token(token), email, "biofield", now.isoformat(),
+                 (now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)).isoformat()))
+            cx.commit()
+        try:
+            send_magic_link_email(email, "",
+                                  f"{PUBLIC_BASE_URL}/biofield/auth/{token}")
+        except Exception as e:
+            print(f"[biofield] magic link send failed: {e!r}", flush=True)
+    return jsonify({"ok": True})
+
+
+@app.route("/biofield/auth/<token>", methods=["GET"])
+def biofield_auth(token):
+    """Validate the biofield magic link, set the rm_biofield_email cookie,
+    redirect to /biofield/ready. Mirrors /reorder/auth/<token>."""
+    from flask import redirect as _redirect
+    th = _hash_token((token or "").strip())
+    email = None
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT email, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='biofield'", (th,)).fetchone()
+        if row and not row["consumed_at"]:
+            try:
+                if datetime.fromisoformat(row["expires_at"]) >= _now_utc():
+                    email = row["email"]
+            except Exception:
+                email = None
+        if email:
+            cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
+                       (_now_utc().isoformat(), th))
+            cx.commit()
+    if not email:
+        return ("<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
+                "This sign-in link is invalid or has expired. Please request a new one.</p>"), 400
+    resp = _redirect("/biofield/ready", code=302)
+    resp.set_cookie("rm_biofield_email", email, max_age=60 * 60 * 24 * 30,
+                    httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/api/biofield/ready", methods=["GET"])
+def api_biofield_ready():
+    if not _biofield_enabled():
+        return jsonify({"error": "not available"}), 404
+    email = _biofield_email()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    from dashboard import biofield_store as _bf, biofield_gate as _gate
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _bf.init_table(cx)
+        st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake)
+    if st.get("booking_unlocked"):
+        st["booking_url"] = os.environ.get("BIOFIELD_BOOKING_URL", "")
+    return jsonify(st)
+
+
+@app.route("/api/biofield/photo", methods=["POST"])
+def api_biofield_photo():
+    """Accept a client photo (PHI). Stored to a PRIVATE path under DATA_DIR,
+    never under the static/web-served dir."""
+    if not _biofield_enabled():
+        return jsonify({"error": "not available"}), 404
+    email = _biofield_email()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    f = request.files.get("file")
+    if not f or not (f.filename or "").strip():
+        return jsonify({"ok": False, "error": "file required"}), 400
+    ctype = (f.mimetype or "").lower()
+    if not ctype.startswith("image/"):
+        return jsonify({"ok": False, "error": "image file required"}), 400
+    blob = f.read()
+    if len(blob) > 10 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "file too large"}), 400
+    ext = {"image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg",
+           "image/webp": "webp", "image/gif": "gif", "image/heic": "heic"}.get(
+        ctype, "img")
+    photo_dir = _biofield_data_dir() / "biofield-photos"
+    photo_dir.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(email.encode("utf-8")).hexdigest()
+    path = photo_dir / f"{digest}.{ext}"
+    path.write_bytes(blob)
+    from dashboard import biofield_store as _bf
+    with sqlite3.connect(LOG_DB) as cx:
+        _bf.init_table(cx)
+        _bf.set_photo_on_file(cx, email, str(path))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/biofield/confirm", methods=["POST"])
+def api_biofield_confirm():
+    if not _biofield_enabled():
+        return jsonify({"error": "not available"}), 404
+    email = _biofield_email()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    data = request.get_json(silent=True) or {}
+    item = (data.get("item") or "").strip().lower()
+    from dashboard import biofield_store as _bf, biofield_gate as _gate
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _bf.init_table(cx)
+        if item == "scan":
+            _bf.set_scan_confirmed(cx, email, True)
+        elif item == "intake":
+            _bf.set_intake_confirmed(cx, email, True)
+        elif item == "payment":
+            ref = (data.get("receipt") or "").strip() or "pb-selfattest"
+            _bf.seed_paid(cx, email, via="pb", order_ref=ref)
+        else:
+            return jsonify({"ok": False, "error": "unknown item"}), 400
+        st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake)
+    if st.get("booking_unlocked"):
+        st["booking_url"] = os.environ.get("BIOFIELD_BOOKING_URL", "")
+    return jsonify(st)
+
+
+@app.route("/api/biofield/book", methods=["POST"])
+def api_biofield_book():
+    """Once the gate is unlocked, mark the session booked and drop a 48-hour
+    prep task for the team, returning the booking URL. Idempotent: the todo's
+    dedup_key makes a repeat call a no-op."""
+    if not _biofield_enabled():
+        return jsonify({"error": "not available"}), 404
+    email = _biofield_email()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    from dashboard import biofield_store as _bf, biofield_gate as _gate
+    _init_todos_table()
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _bf.init_table(cx)
+        st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake)
+        if not st.get("booking_unlocked"):
+            return jsonify(st), 409
+        _bf.set_booked(cx, email)
+        row = _bf.get(cx, email)
+        order_ref = (row["order_ref"] if row and row["order_ref"] else "") or email
+        from datetime import datetime as _dt, timezone as _tz
+        now = _dt.now(_tz.utc).isoformat()
+        cx.execute(
+            """INSERT INTO todos (created_at, owner, category, title, body, priority, source, dedup_key)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(dedup_key) DO NOTHING""",
+            (now, "glen", "biofield",
+             f"Biofield prep due 48h — {email}",
+             (f"Biofield analysis booked for {email} (order_ref {order_ref}). "
+              "Prep due within 48 hours. On file and confirmed: payment, photo, "
+              "intake, scan. Run the biofield analysis, design the program, and "
+              "prepare the client report ahead of the session."),
+             "high", "biofield", f"biofield-prep-{email}-{order_ref}"))
+        cx.commit()
+    return jsonify({"ok": True,
+                    "booking_url": os.environ.get("BIOFIELD_BOOKING_URL", "")})
 
 
 @app.route("/api/reorder/items", methods=["GET"])
