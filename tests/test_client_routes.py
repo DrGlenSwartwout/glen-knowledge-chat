@@ -90,7 +90,7 @@ def test_happy_path_zelle_returns_200_and_records_order(client, monkeypatch):
                         lambda pid, **kw: {"modules_completed": 2, "dispensary_code": "ABC123"})
     monkeypatch.setattr(appmod, "is_member", lambda session_id, email: True)
     monkeypatch.setattr(appmod._dropship, "build_client_order",
-                        lambda items, prac, *, patient, method: dict(_BUILD_CLIENT_ORDER_OK))
+                        lambda items, prac, *, patient, method, **kw: dict(_BUILD_CLIENT_ORDER_OK))
     monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", False)
 
     captured = {}
