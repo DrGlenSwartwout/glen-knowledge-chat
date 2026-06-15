@@ -28,9 +28,9 @@ with Glen), so each bonus becomes an ops task the team runs. Auto-seeding the se
 a cert bonus is a possible later option.
 
 ## Flags / ops
-- `CERT_BONUS_ENABLED` (default off) gates the cron (the admin endpoint is console-gated regardless).
-- Schedule a daily hit to `/api/cron/biofield-bonuses` with the `X-Cron-Secret` header
-  (`CRON_SECRET`, falls back to `CONSOLE_SECRET`).
+- `CERT_BONUS_ENABLED` (default off) gates the sweep (the admin commitment endpoint is console-gated regardless).
+- **Scheduling: built in.** The sweep (`_run_biofield_bonuses`) runs **daily in-process at 15:00 UTC (5am HST)** via the app's `BackgroundScheduler` (registered in `_start_scheduler`, alongside the hourly console push) — no external cron needed. It's flag-gated, so it's a harmless no-op until `CERT_BONUS_ENABLED` is on + there is ≥1 cert commitment.
+- The same logic is also exposed at `POST /api/cron/biofield-bonuses` (X-Cron-Secret; `?dry_run=1`) for manual/on-demand runs and verification.
 
 ## Deferred
 PIF vs 12-month behavioral differences (same schedule for now); practitioner notification beyond
