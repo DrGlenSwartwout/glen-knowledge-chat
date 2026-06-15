@@ -43,7 +43,19 @@ access controls before go-live.
 - `BIOFIELD_BOOKING_URL` — the booking link revealed when ready (PB scheduler / Zoom).
 - `_STRIPE_ACTIVE` required for the card checkout (mirrors the other paid flows).
 
-## Deferred (2b)
-Real E4L scan-freshness auto-verify (needs the scan data mirrored to a server-reachable store);
-Practice Better intake/photo/payment API; auto-drafting the analysis via the
-`dr-glen-swartwout-e4l-scan-remedy-matcher` agent; refund/expiry of an unbooked paid Biofield.
+## Phase 2b — scan auto-verify (built)
+The scan item now auto-verifies (no longer self-confirm-only). Path:
+1. The local e4l ingestion DB (`~/AI-Training/e4l.db`, see [[project_e4l_scan_ingestion]]) is the
+   only place scan dates live — Render can't read it.
+2. `02 Skills/push-e4l-scan-freshness.py` reads `email -> MAX(scan_date)` and POSTs it to
+   `POST /api/e4l/scan-freshness` (X-Cron-Secret). Wire it into the e4l ingestion cron
+   (`e4l-daily-watch.sh` after vectorize, or a small launchd) once the endpoint is live.
+3. The server stores it in `scan_freshness` (sqlite, persistent disk); the Biofield gate's
+   `_biofield_has_fresh_scan(email)` checks `is_fresh(..., window_days=7)`.
+4. `gate_state` greens the scan item if a fresh scan is detected OR the patient self-confirms
+   (self-confirm stays as the fallback). The ingest endpoint is secret-gated and can be
+   populated before the gate flag goes live.
+
+## Deferred
+Practice Better intake/photo/payment API; auto-photo verification; auto-drafting the analysis via
+the `dr-glen-swartwout-e4l-scan-remedy-matcher` agent; refund/expiry of an unbooked paid Biofield.
