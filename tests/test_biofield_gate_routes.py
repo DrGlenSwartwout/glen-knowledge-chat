@@ -142,6 +142,94 @@ def test_routes_disabled_when_flag_off(monkeypatch, tmp_path):
     assert r.status_code in (403, 404)
 
 
+def _count_biofield_todos(db, email):
+    cx = sqlite3.connect(db)
+    try:
+        try:
+            n = cx.execute(
+                "SELECT COUNT(*) FROM todos WHERE category='biofield' "
+                "AND dedup_key LIKE ?", (f"biofield-prep-{email}%",)).fetchone()[0]
+        except sqlite3.OperationalError:
+            n = 0  # todos table not yet created -> zero rows
+        return n
+    finally:
+        cx.close()
+
+
+def _unlock(db, email="p@x.com"):
+    cx = sqlite3.connect(db)
+    biofield_store.seed_paid(cx, email, via="stripe", order_ref="INV1")
+    biofield_store.set_photo_on_file(cx, email, "/tmp/x.png")
+    biofield_store.set_intake_confirmed(cx, email, True)
+    biofield_store.set_scan_confirmed(cx, email, True)
+    cx.close()
+
+
+def test_book_unauthenticated_401(monkeypatch, tmp_path):
+    _db(monkeypatch, tmp_path)
+    c = appmod.app.test_client()
+    r = c.post("/api/biofield/book")
+    assert r.status_code == 401
+
+
+def test_book_flag_off_404(monkeypatch, tmp_path):
+    db = _db(monkeypatch, tmp_path)
+    _unlock(db)
+    monkeypatch.delenv("BIOFIELD_CHECKOUT_ENABLED", raising=False)
+    c = _auth_client()
+    r = c.post("/api/biofield/book")
+    assert r.status_code == 404
+
+
+def test_book_blocked_when_not_unlocked(monkeypatch, tmp_path):
+    db = _db(monkeypatch, tmp_path)
+    # paid only -- items still needed, gate not unlocked
+    cx = sqlite3.connect(db)
+    biofield_store.seed_paid(cx, "p@x.com", via="stripe", order_ref="INV1")
+    cx.close()
+    c = _auth_client()
+    r = c.post("/api/biofield/book")
+    assert r.status_code == 409, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["booking_unlocked"] is False
+    # no todo created, booked_at still null
+    assert _count_biofield_todos(db, "p@x.com") == 0
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    row = biofield_store.get(cx, "p@x.com")
+    cx.close()
+    assert row["booked_at"] is None
+
+
+def test_book_unlocked_creates_one_todo_and_books(monkeypatch, tmp_path):
+    db = _db(monkeypatch, tmp_path)
+    monkeypatch.setenv("BIOFIELD_BOOKING_URL", "https://book.example/biofield")
+    _unlock(db)
+    c = _auth_client()
+    r = c.post("/api/biofield/book")
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["booking_url"] == "https://book.example/biofield"
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    row = biofield_store.get(cx, "p@x.com")
+    cx.close()
+    assert row["booked_at"] is not None
+    assert _count_biofield_todos(db, "p@x.com") == 1
+
+
+def test_book_idempotent_no_duplicate_todo(monkeypatch, tmp_path):
+    db = _db(monkeypatch, tmp_path)
+    monkeypatch.setenv("BIOFIELD_BOOKING_URL", "https://book.example/biofield")
+    _unlock(db)
+    c = _auth_client()
+    r1 = c.post("/api/biofield/book")
+    assert r1.status_code == 200, r1.get_data(as_text=True)
+    r2 = c.post("/api/biofield/book")
+    assert r2.status_code == 200, r2.get_data(as_text=True)
+    assert r2.get_json()["ok"] is True
+    assert _count_biofield_todos(db, "p@x.com") == 1
+
+
 def test_ready_page_served_no_store(monkeypatch, tmp_path):
     _db(monkeypatch, tmp_path)
     c = appmod.app.test_client()

@@ -6971,6 +6971,45 @@ def api_biofield_confirm():
     return jsonify(st)
 
 
+@app.route("/api/biofield/book", methods=["POST"])
+def api_biofield_book():
+    """Once the gate is unlocked, mark the session booked and drop a 48-hour
+    prep task for the team, returning the booking URL. Idempotent: the todo's
+    dedup_key makes a repeat call a no-op."""
+    if not _biofield_enabled():
+        return jsonify({"error": "not available"}), 404
+    email = _biofield_email()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    from dashboard import biofield_store as _bf, biofield_gate as _gate
+    _init_todos_table()
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _bf.init_table(cx)
+        st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake)
+        if not st.get("booking_unlocked"):
+            return jsonify(st), 409
+        _bf.set_booked(cx, email)
+        row = _bf.get(cx, email)
+        order_ref = (row["order_ref"] if row and row["order_ref"] else "") or email
+        from datetime import datetime as _dt, timezone as _tz
+        now = _dt.now(_tz.utc).isoformat()
+        cx.execute(
+            """INSERT INTO todos (created_at, owner, category, title, body, priority, source, dedup_key)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(dedup_key) DO NOTHING""",
+            (now, "glen", "biofield",
+             f"Biofield prep due 48h — {email}",
+             (f"Biofield analysis booked for {email} (order_ref {order_ref}). "
+              "Prep due within 48 hours. On file and confirmed: payment, photo, "
+              "intake, scan. Run the biofield analysis, design the program, and "
+              "prepare the client report ahead of the session."),
+             "high", "biofield", f"biofield-prep-{email}-{order_ref}"))
+        cx.commit()
+    return jsonify({"ok": True,
+                    "booking_url": os.environ.get("BIOFIELD_BOOKING_URL", "")})
+
+
 @app.route("/api/reorder/items", methods=["GET"])
 def api_reorder_items():
     email = _reorder_email_from_cookie()
