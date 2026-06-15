@@ -191,6 +191,34 @@
     margin-top: .4rem;
   }
 
+  /* Rewards / points */
+  .points-block {
+    margin-top: .75rem;
+    padding-top: .75rem;
+    border-top: 1px solid var(--border);
+  }
+  .points-line {
+    font-size: .9rem;
+    font-weight: 600;
+    color: var(--glen);
+    margin-bottom: .5rem;
+  }
+  .points-apply {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    font-size: .9rem;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .points-apply input[type=checkbox] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--glen);
+    flex-shrink: 0;
+  }
+  .points-note { font-size: .78rem; color: var(--muted); margin-top: .4rem; line-height: 1.5; }
+
   /* Forms */
   .field { margin-bottom: 1rem; }
   .field label {
@@ -394,6 +422,15 @@
         <span>Total</span>
         <span id="cart-total">$0.00</span>
       </div>
+      <!-- Channel-locked rewards (shown only when enabled + balance > 0) -->
+      <div id="points-block" class="points-block hidden">
+        <div class="points-line" id="points-line"></div>
+        <label class="points-apply">
+          <input type="checkbox" id="points-check">
+          <span>Apply my points</span>
+        </label>
+        <p class="points-note">Points apply to card orders and come off your total. Your practitioner is paid in full.</p>
+      </div>
     </div>
 
     <!-- Patient details -->
@@ -507,6 +544,10 @@
   var cart = {};          // slug -> qty
   var chosenMethod = '';
   var ordering = false;
+  var pointsEnabled = false;   // from catalog: CLIENT_POINTS_ENABLED
+  var pointsBalance = 0;       // cents, practitioner-scoped
+  var practiceName = '';       // for the rewards line
+  var lastPointsEmail = '';    // dedupe balance fetches
 
   function $(sel) { return document.querySelector(sel); }
   function show(id) { var el = document.getElementById(id); if (el) el.classList.remove('hidden'); }
@@ -589,7 +630,9 @@
         return;
       }
       catalog = data.items;
+      pointsEnabled = !!data.client_points_enabled;
       var pName = data.practice_name || 'Your Practitioner';
+      practiceName = (((data.branding || {}).practice_name) || pName);
       applyBranding(data.branding, pName);
       document.title = 'Order · ' + (((data.branding || {}).practice_name) || pName);
       document.getElementById('sub').textContent =
@@ -701,11 +744,61 @@
     });
 
     // Email + ToS gate the pay button.
-    document.getElementById('email').addEventListener('input', function () { clearMsg(); refreshPayState(); });
-    document.getElementById('tos-check').addEventListener('change', function () { clearMsg(); refreshPayState(); });
+    document.getElementById('email').addEventListener('input', function () { clearMsg(); refreshPayState(); maybeLoadPoints(); });
+    document.getElementById('tos-check').addEventListener('change', function () { clearMsg(); refreshPayState(); maybeLoadPoints(); });
     document.getElementById('pay-btn').addEventListener('click', placeOrder);
 
+    // Re-evaluate pay state when the rewards toggle changes.
+    var pc = document.getElementById('points-check');
+    if (pc) pc.addEventListener('change', refreshPayState);
+
     refreshPayState();
+  }
+
+  // ── Channel-locked rewards balance ────────────────────────────────────────────
+  // Once the patient has identified (valid email + ToS agreed), fetch their
+  // practitioner-scoped balance and offer to apply it (card orders only).
+  function maybeLoadPoints() {
+    if (!pointsEnabled) return;
+    if (!emailValid() || !tosChecked()) return;
+    var email = (document.getElementById('email').value || '').trim().toLowerCase();
+    if (!email || email === lastPointsEmail) return;
+    lastPointsEmail = email;
+
+    fetch(BASE + '/api/client/' + encodeURIComponent(code) + '/points', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email })
+    })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .catch(function () { return null; })
+    .then(function (data) {
+      if (!data || !data.ok || !data.client_points_enabled) { pointsBalance = 0; }
+      else { pointsBalance = data.balance_cents || 0; }
+      renderPoints();
+      refreshPayState();
+    });
+  }
+
+  function renderPoints() {
+    var block = document.getElementById('points-block');
+    if (!block) return;
+    if (!pointsEnabled || pointsBalance <= 0) {
+      block.classList.add('hidden');
+      var pc = document.getElementById('points-check');
+      if (pc) pc.checked = false;
+      return;
+    }
+    document.getElementById('points-line').textContent =
+      'You have ' + cents(pointsBalance) + ' in ' + (practiceName || 'practitioner') + ' rewards.';
+    block.classList.remove('hidden');
+  }
+
+  function applyPointsCents() {
+    var pc = document.getElementById('points-check');
+    if (pointsEnabled && pointsBalance > 0 && pc && pc.checked) return pointsBalance;
+    return 0;
   }
 
   function emailValid() {
@@ -796,7 +889,8 @@
           name: name,
           method: chosenMethod,
           address: { name: name, street: street, city: city, state: state, zip: zip, country: 'US' },
-          items: items
+          items: items,
+          points_to_redeem_cents: applyPointsCents()
         })
       });
     })

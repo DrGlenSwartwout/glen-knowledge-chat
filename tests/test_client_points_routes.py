@@ -150,3 +150,78 @@ def test_flag_off_no_points(monkeypatch, tmp_path):
         cx.row_factory = sqlite3.Row
         _points.init_points_table(cx)
         assert _points.balance(cx, "p@x.com", scope="dispensary:42") == 0
+
+
+# ── POST /api/client/<code>/points — balance endpoint ─────────────────────────
+
+def _points_client():
+    appmod.app.config["TESTING"] = True
+    appmod.app.config["SECRET_KEY"] = "test"
+    return appmod.app.test_client()
+
+
+def test_points_unknown_code_returns_404(monkeypatch):
+    """Unknown dispensary code → 404."""
+    monkeypatch.setattr(appmod._pp, "practitioner_id_by_dispensary_code",
+                        lambda code: None)
+    resp = _points_client().post("/api/client/BADCODE/points",
+                                 json={"email": "p@x.com"},
+                                 content_type="application/json")
+    assert resp.status_code == 404
+    assert resp.get_json()["ok"] is False
+
+
+def test_points_non_member_returns_403(monkeypatch):
+    """Patient who isn't a member (no consent) → 403 with need_optin."""
+    monkeypatch.setattr(appmod._pp, "practitioner_id_by_dispensary_code",
+                        lambda code: "42")
+    monkeypatch.setattr(appmod, "is_member", lambda session_id, email: False)
+    resp = _points_client().post("/api/client/ABC123/points",
+                                 json={"email": "p@x.com"},
+                                 content_type="application/json")
+    assert resp.status_code == 403
+    data = resp.get_json()
+    assert data["ok"] is False
+    assert data.get("need_optin") is True
+
+
+def test_points_member_returns_scoped_balance(monkeypatch, tmp_path):
+    """Member, flag on, seeded scoped balance → 200 with balance_cents + flag."""
+    db = str(tmp_path / "points-route.db")
+    monkeypatch.setattr(appmod, "LOG_DB", db)
+    monkeypatch.setenv("CLIENT_POINTS_ENABLED", "1")
+    monkeypatch.setattr(appmod._pp, "practitioner_id_by_dispensary_code",
+                        lambda code: "42")
+    monkeypatch.setattr(appmod, "is_member", lambda session_id, email: True)
+
+    with sqlite3.connect(db) as cx:
+        cx.row_factory = sqlite3.Row
+        _points.init_points_table(cx)
+        _points.credit(cx, "p@x.com", value_cents=500,
+                       reason="earn:dispensary", order_ref="S1",
+                       scope="dispensary:42")
+
+    resp = _points_client().post("/api/client/ABC123/points",
+                                 json={"email": "p@x.com"},
+                                 content_type="application/json")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["ok"] is True
+    assert data["balance_cents"] == 500
+    assert data["client_points_enabled"] is True
+
+
+# ── GET /api/client/<code>/catalog — exposes the flag ─────────────────────────
+
+def test_catalog_exposes_client_points_flag(monkeypatch):
+    """Catalog response carries client_points_enabled (True when flag is set)."""
+    monkeypatch.setenv("CLIENT_POINTS_ENABLED", "1")
+    monkeypatch.setattr(appmod._pp, "practitioner_id_by_dispensary_code",
+                        lambda code: "42")
+    monkeypatch.setattr(appmod._pp, "portal_data",
+                        lambda pid, **kw: {"practice_name": "Test Clinic"})
+    resp = _points_client().get("/api/client/ABC123/catalog")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["ok"] is True
+    assert data["client_points_enabled"] is True

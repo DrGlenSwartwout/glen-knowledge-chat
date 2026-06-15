@@ -6232,7 +6232,9 @@ def api_client_catalog(code):
 
     items.sort(key=lambda x: x["name"])
     return jsonify({"ok": True, "practice_name": practice_name, "branding": branding,
-                    "chat_enabled": chat_enabled, "items": items})
+                    "chat_enabled": chat_enabled,
+                    "client_points_enabled": bool(os.environ.get("CLIENT_POINTS_ENABLED")),
+                    "items": items})
 
 
 @app.route("/api/client/<code>/checkout", methods=["POST"])
@@ -6355,6 +6357,30 @@ def api_client_checkout(code):
             print(f"[client-checkout] stripe failed: {e!r}", flush=True)
 
     return jsonify(out)
+
+
+@app.route("/api/client/<code>/points", methods=["POST"])
+def api_client_points(code):
+    """Patient's practitioner-scoped loyalty balance (consent-gated, flag-aware)."""
+    pid = _pp.practitioner_id_by_dispensary_code(code)
+    if not pid:
+        return jsonify({"ok": False, "error": "unknown dispensary code"}), 404
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    _sid = request.cookies.get("amg_session", "")
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True}), 403
+    enabled = bool(os.environ.get("CLIENT_POINTS_ENABLED"))
+    bal = 0
+    if enabled:
+        from dashboard import points as _points
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _points.init_points_table(cx)
+            bal = _points.balance(cx, email, scope=f"dispensary:{pid}")
+    return jsonify({"ok": True, "balance_cents": bal, "client_points_enabled": enabled})
 
 
 def _build_ff_catalog():
