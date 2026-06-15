@@ -274,6 +274,45 @@ def migrate_add_failed_count(cx) -> None:
         pass  # column already exists — ignore
 
 
+def migrate_add_membership_columns(cx) -> None:
+    """Add kind + amount_cents columns if missing. Safe on every startup."""
+    for ddl in (
+        "ALTER TABLE subscriptions ADD COLUMN kind TEXT NOT NULL DEFAULT 'product'",
+        "ALTER TABLE subscriptions ADD COLUMN amount_cents INTEGER NOT NULL DEFAULT 0",
+    ):
+        try:
+            cx.execute(ddl)
+            cx.commit()
+        except Exception:
+            pass
+
+
+def create_membership(cx, *, email, stripe_customer_id, stripe_payment_method_id,
+                      amount_cents, next_charge_date, cadence_months=1) -> int:
+    """Insert an active flat-amount membership subscription (no product items).
+    The first charge lands on next_charge_date (= end of any free window)."""
+    now = _now_iso()
+    cur = cx.execute(
+        """INSERT INTO subscriptions
+               (email, stripe_customer_id, stripe_payment_method_id, items_json,
+                cadence_months, status, order_count, next_charge_date, ship_address_json,
+                skip_next, created_at, updated_at, kind, amount_cents)
+           VALUES (?,?,?,?,?,'active',0,?,?,0,?,?, 'membership', ?)""",
+        (email, stripe_customer_id, stripe_payment_method_id, "[]",
+         int(cadence_months), next_charge_date, "{}", now, now, int(amount_cents)),
+    )
+    cx.commit()
+    return cur.lastrowid
+
+
+def active_memberships_by_email(cx, email) -> list:
+    rows = cx.execute(
+        "SELECT * FROM subscriptions WHERE email=? AND status='active' AND kind='membership'"
+        " ORDER BY id", (email,)
+    ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
 def bump_failed_count(cx, sub_id: int) -> None:
     """Increment failed_count by 1. Used by the charge scheduler on payment failure."""
     cx.execute(
