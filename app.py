@@ -6790,6 +6790,187 @@ def reorder_auth(token):
     return resp
 
 
+# ── Biofield readiness gate ─────────────────────────────────────────────────
+# After paying for the $300 Causal Biofield Analysis, the customer lands on a
+# readiness gate. It must show 3 items (photo on file / intake / fresh voice
+# scan) and unlock a booking link only when all are satisfied. PHI: client
+# photos are stored under DATA_DIR (NOT static / never web-served).
+
+def _biofield_data_dir():
+    """Runtime data root (same root LOG_DB uses). PHI photos live here, never
+    under the static/web-served dir."""
+    return Path(os.environ.get("DATA_DIR", str(Path(__file__).parent)))
+
+
+def _biofield_email():
+    """Resolve the gate's email from the biofield magic-link cookie, falling
+    back to an authenticated member session if one exists."""
+    em = (request.cookies.get("rm_biofield_email", "") or "").strip().lower()
+    if em:
+        return em
+    user = get_authenticated_user(request)
+    if user and user.get("email"):
+        return user["email"].strip().lower()
+    return ""
+
+
+def _biofield_has_intake(email):
+    """True when an inbound_leads intake row exists for this email (mirrors the
+    intake query in the client-profile builder)."""
+    if not email:
+        return False
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute(
+                "SELECT 1 FROM inbound_leads "
+                "WHERE email=? AND source IN ('scoreapp','practice-better','concierge') "
+                "LIMIT 1", (email,)).fetchone()
+            return bool(row)
+    except Exception:
+        return False
+
+
+@app.route("/biofield/ready")
+def biofield_ready_page():
+    """Serve the readiness-gate page (no-store; PHI-adjacent)."""
+    resp = send_from_directory(STATIC, "biofield-ready.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/biofield/request", methods=["POST"])
+def biofield_request():
+    """Email a magic link to start a biofield readiness session. Always 200
+    (no email enumeration leak). Mirrors /reorder/request."""
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if email and "@" in email:
+        token = secrets.token_urlsafe(32)
+        now = _now_utc()
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                "VALUES (?,?,?,?,?)",
+                (_hash_token(token), email, "biofield", now.isoformat(),
+                 (now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)).isoformat()))
+            cx.commit()
+        try:
+            send_magic_link_email(email, "",
+                                  f"{PUBLIC_BASE_URL}/biofield/auth/{token}")
+        except Exception as e:
+            print(f"[biofield] magic link send failed: {e!r}", flush=True)
+    return jsonify({"ok": True})
+
+
+@app.route("/biofield/auth/<token>", methods=["GET"])
+def biofield_auth(token):
+    """Validate the biofield magic link, set the rm_biofield_email cookie,
+    redirect to /biofield/ready. Mirrors /reorder/auth/<token>."""
+    from flask import redirect as _redirect
+    th = _hash_token((token or "").strip())
+    email = None
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT email, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='biofield'", (th,)).fetchone()
+        if row and not row["consumed_at"]:
+            try:
+                if datetime.fromisoformat(row["expires_at"]) >= _now_utc():
+                    email = row["email"]
+            except Exception:
+                email = None
+        if email:
+            cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
+                       (_now_utc().isoformat(), th))
+            cx.commit()
+    if not email:
+        return ("<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
+                "This sign-in link is invalid or has expired. Please request a new one.</p>"), 400
+    resp = _redirect("/biofield/ready", code=302)
+    resp.set_cookie("rm_biofield_email", email, max_age=60 * 60 * 24 * 30,
+                    httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/api/biofield/ready", methods=["GET"])
+def api_biofield_ready():
+    if not _biofield_enabled():
+        return jsonify({"error": "not available"}), 404
+    email = _biofield_email()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    from dashboard import biofield_store as _bf, biofield_gate as _gate
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _bf.init_table(cx)
+        st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake)
+    if st.get("booking_unlocked"):
+        st["booking_url"] = os.environ.get("BIOFIELD_BOOKING_URL", "")
+    return jsonify(st)
+
+
+@app.route("/api/biofield/photo", methods=["POST"])
+def api_biofield_photo():
+    """Accept a client photo (PHI). Stored to a PRIVATE path under DATA_DIR,
+    never under the static/web-served dir."""
+    if not _biofield_enabled():
+        return jsonify({"error": "not available"}), 404
+    email = _biofield_email()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    f = request.files.get("file")
+    if not f or not (f.filename or "").strip():
+        return jsonify({"ok": False, "error": "file required"}), 400
+    ctype = (f.mimetype or "").lower()
+    if not ctype.startswith("image/"):
+        return jsonify({"ok": False, "error": "image file required"}), 400
+    blob = f.read()
+    if len(blob) > 10 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "file too large"}), 400
+    ext = {"image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg",
+           "image/webp": "webp", "image/gif": "gif", "image/heic": "heic"}.get(
+        ctype, "img")
+    photo_dir = _biofield_data_dir() / "biofield-photos"
+    photo_dir.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(email.encode("utf-8")).hexdigest()
+    path = photo_dir / f"{digest}.{ext}"
+    path.write_bytes(blob)
+    from dashboard import biofield_store as _bf
+    with sqlite3.connect(LOG_DB) as cx:
+        _bf.init_table(cx)
+        _bf.set_photo_on_file(cx, email, str(path))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/biofield/confirm", methods=["POST"])
+def api_biofield_confirm():
+    if not _biofield_enabled():
+        return jsonify({"error": "not available"}), 404
+    email = _biofield_email()
+    if not email:
+        return jsonify({"error": "not signed in"}), 401
+    data = request.get_json(silent=True) or {}
+    item = (data.get("item") or "").strip().lower()
+    from dashboard import biofield_store as _bf, biofield_gate as _gate
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _bf.init_table(cx)
+        if item == "scan":
+            _bf.set_scan_confirmed(cx, email, True)
+        elif item == "intake":
+            _bf.set_intake_confirmed(cx, email, True)
+        elif item == "payment":
+            ref = (data.get("receipt") or "").strip() or "pb-selfattest"
+            _bf.seed_paid(cx, email, via="pb", order_ref=ref)
+        else:
+            return jsonify({"ok": False, "error": "unknown item"}), 400
+        st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake)
+    if st.get("booking_unlocked"):
+        st["booking_url"] = os.environ.get("BIOFIELD_BOOKING_URL", "")
+    return jsonify(st)
+
+
 @app.route("/api/reorder/items", methods=["GET"])
 def api_reorder_items():
     email = _reorder_email_from_cookie()

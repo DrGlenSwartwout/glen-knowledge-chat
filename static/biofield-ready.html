@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Biofield Readiness · Remedy Match</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#6b6b6b; --line:#e6e2da; --glen:#2f7d6b; --bg:#faf8f4; --ok:#2f7d6b; --wait:#b08400; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:var(--ink);
+         background:var(--bg); margin:0; line-height:1.5; }
+  .wrap { max-width:40rem; margin:0 auto; padding:2rem 1.25rem 5rem; }
+  h1 { font-size:1.5rem; margin:.2rem 0 .25rem; }
+  .sub { color:var(--muted); margin:0 0 1.5rem; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:1rem 1.1rem; margin-bottom:1rem; }
+  .item { display:flex; align-items:flex-start; gap:.75rem; padding:.85rem 0; border-bottom:1px solid var(--line); }
+  .item:last-child { border-bottom:0; }
+  .dot { width:18px; height:18px; border-radius:50%; flex:none; margin-top:.2rem; background:#d9d4ca; }
+  .dot.green { background:var(--ok); }
+  .item .body { flex:1; min-width:0; }
+  .item .body b { display:block; }
+  .item .body small { color:var(--muted); display:block; margin-bottom:.4rem; }
+  .status { font-size:.8rem; font-weight:600; }
+  .status.green { color:var(--ok); }
+  .status.needed { color:var(--wait); }
+  button.primary { background:var(--glen); color:#fff; border:0; border-radius:10px; padding:.8rem 1.2rem; font-size:1rem; cursor:pointer; width:100%; }
+  button.primary:disabled { opacity:.45; cursor:default; }
+  button.small { background:#fff; border:1px solid var(--glen); color:var(--glen); border-radius:8px; padding:.45rem .8rem; font-size:.9rem; cursor:pointer; }
+  a.linkbtn { display:inline-block; color:var(--glen); font-size:.92rem; text-decoration:underline; margin-right:.75rem; }
+  input[type=text] { width:100%; padding:.55rem .7rem; border:1px solid var(--line); border-radius:8px; font-size:.95rem; margin:.35rem 0; }
+  input[type=file] { font-size:.92rem; margin:.35rem 0; }
+  .muted { color:var(--muted); font-size:.9rem; }
+  .hide { display:none; }
+  .booknote { text-align:center; color:var(--muted); font-size:.9rem; margin-top:.6rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Your Biofield session readiness</h1>
+  <p class="sub" id="sub">Three quick things to have ready before we book your Causal Biofield Analysis.</p>
+
+  <div id="signin" class="card hide">
+    <p>Enter the email you used at checkout, and we will send you a secure link to your readiness page.</p>
+    <input id="email" type="text" placeholder="you@example.com" autocomplete="email">
+    <p></p>
+    <button class="primary" onclick="sendLink()">Email me my secure link</button>
+    <p id="sent" class="muted hide">Check your inbox for your secure link. It expires in 15 minutes.</p>
+  </div>
+
+  <div id="gate" class="hide">
+    <div class="card">
+      <div class="item">
+        <span class="dot" id="dot-photo"></span>
+        <div class="body">
+          <b>Recent photo on file</b>
+          <small>A clear, recent photo of yourself. This is private and stored securely.</small>
+          <div id="photo-actions">
+            <input type="file" id="photoFile" accept="image/*">
+            <button class="small" onclick="uploadPhoto()">Upload photo</button>
+          </div>
+          <span class="status" id="st-photo"></span>
+        </div>
+      </div>
+
+      <div class="item">
+        <span class="dot" id="dot-intake"></span>
+        <div class="body">
+          <b>Intake completed</b>
+          <small>Your intake questionnaire helps us prepare. We detect it automatically once it is in.</small>
+          <div id="intake-actions">
+            <a class="linkbtn" href="https://healing.scoreapp.com" target="_blank" rel="noopener">Complete intake</a>
+            <button class="small" onclick="confirmItem('intake')">I completed my intake</button>
+          </div>
+          <span class="status" id="st-intake"></span>
+        </div>
+      </div>
+
+      <div class="item">
+        <span class="dot" id="dot-scan"></span>
+        <div class="body">
+          <b>Fresh voice scan</b>
+          <small>Record a fresh voice scan within the last 7 days so your reading reflects today.</small>
+          <div id="scan-actions">
+            <a class="linkbtn" href="/journal" target="_blank" rel="noopener">Record a fresh voice scan</a>
+            <button class="small" onclick="confirmItem('scan')">I recorded a fresh scan</button>
+          </div>
+          <span class="status" id="st-scan"></span>
+        </div>
+      </div>
+
+      <div class="item" id="pay-item">
+        <span class="dot" id="dot-pay"></span>
+        <div class="body">
+          <b>Payment</b>
+          <small>If you paid inside Practice Better, confirm it here with your receipt reference.</small>
+          <div id="pay-actions">
+            <input type="text" id="receipt" placeholder="Practice Better receipt reference (optional)">
+            <button class="small" onclick="confirmPayment()">I paid in Practice Better</button>
+          </div>
+          <span class="status" id="st-pay"></span>
+        </div>
+      </div>
+    </div>
+
+    <button class="primary hide" id="bookBtn" onclick="goBook()">Book your session</button>
+    <p class="booknote hide" id="bookLocked">Your Book your session button appears here once all three items are green.</p>
+  </div>
+</div>
+
+<script>
+let BOOK_URL = "";
+
+async function load() {
+  let r;
+  try { r = await fetch("/api/biofield/ready", { credentials: "same-origin" }); }
+  catch (e) { return; }
+  if (r.status === 401) {
+    document.getElementById("signin").classList.remove("hide");
+    document.getElementById("sub").textContent =
+      "Sign in to see your readiness page.";
+    return;
+  }
+  if (!r.ok) {
+    document.getElementById("sub").textContent =
+      "This page is not available right now.";
+    return;
+  }
+  const st = await r.json();
+  render(st);
+}
+
+function setItem(key, ok) {
+  document.getElementById("dot-" + key).classList.toggle("green", ok);
+  const s = document.getElementById("st-" + key);
+  s.textContent = ok ? "Ready" : "Needed";
+  s.className = "status " + (ok ? "green" : "needed");
+}
+
+function render(st) {
+  document.getElementById("gate").classList.remove("hide");
+  document.getElementById("signin").classList.add("hide");
+
+  const it = st.items || {};
+  setItem("photo", (it.photo || {}).status === "green");
+  setItem("intake", (it.intake || {}).status === "green");
+  setItem("scan", (it.scan || {}).status === "green");
+  setItem("pay", !!st.paid);
+
+  const bookBtn = document.getElementById("bookBtn");
+  const locked = document.getElementById("bookLocked");
+  if (st.booking_unlocked) {
+    BOOK_URL = st.booking_url || "";
+    bookBtn.classList.remove("hide");
+    locked.classList.add("hide");
+  } else {
+    bookBtn.classList.add("hide");
+    locked.classList.remove("hide");
+  }
+}
+
+async function sendLink() {
+  const email = (document.getElementById("email").value || "").trim();
+  if (!email) return;
+  await fetch("/biofield/request", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    credentials: "same-origin", body: JSON.stringify({ email })
+  });
+  document.getElementById("sent").classList.remove("hide");
+}
+
+async function confirmItem(item) {
+  const r = await fetch("/api/biofield/confirm", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    credentials: "same-origin", body: JSON.stringify({ item })
+  });
+  if (r.ok) render(await r.json());
+}
+
+async function confirmPayment() {
+  const receipt = (document.getElementById("receipt").value || "").trim();
+  const r = await fetch("/api/biofield/confirm", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ item: "payment", receipt })
+  });
+  if (r.ok) render(await r.json());
+}
+
+async function uploadPhoto() {
+  const f = document.getElementById("photoFile").files[0];
+  if (!f) return;
+  const fd = new FormData();
+  fd.append("file", f);
+  const r = await fetch("/api/biofield/photo", {
+    method: "POST", credentials: "same-origin", body: fd
+  });
+  if (r.ok) load();
+}
+
+function goBook() {
+  if (BOOK_URL) window.location.href = BOOK_URL;
+}
+
+load();
+</script>
+</body>
+</html>
