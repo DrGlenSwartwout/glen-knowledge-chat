@@ -3090,6 +3090,34 @@ def begin_checkout_return():
                                 invoice_id=_inv,
                                 credit_earned_cents=_marg,
                             )
+                        if os.environ.get("CLIENT_POINTS_ENABLED"):
+                            try:
+                                from dashboard import points as _points_ret
+                                p_email = (md.get("patient_email") or "").strip().lower()
+                                redeemed = int(md.get("points_redeemed_cents") or 0)
+                                subtotal = int(md.get("subtotal_cents") or 0)
+                                scope = f"dispensary:{_pid}"
+                                if p_email:
+                                    with sqlite3.connect(LOG_DB) as _pcx:
+                                        _pcx.row_factory = sqlite3.Row
+                                        _points_ret.init_points_table(_pcx)
+                                        if redeemed > 0:
+                                            # redeem() writes reason "redeem"; guard on that
+                                            # so a re-run of the same invoice does not double-redeem.
+                                            if not _points_ret.has_entry(_pcx, order_ref=_inv,
+                                                    reason="redeem", scope=scope):
+                                                take = min(redeemed,
+                                                           _points_ret.balance(_pcx, p_email, scope=scope))
+                                                if take > 0:
+                                                    _points_ret.redeem(_pcx, p_email, value_cents=take,
+                                                                       order_ref=_inv, scope=scope)
+                                        elif subtotal > 0:
+                                            earn_pct = float(_pricing_settings().get("points_earn_pct", 0.05))
+                                            _points_ret.credit(_pcx, p_email,
+                                                value_cents=round(subtotal * earn_pct),
+                                                reason="earn:dispensary", order_ref=_inv, scope=scope)
+                            except Exception as _pe:
+                                app.logger.exception("client points settle failed: %s", _pe)
                 except Exception as _ce:
                     app.logger.exception(
                         "client margin credit failed: %s", _ce)
@@ -6257,8 +6285,27 @@ def api_client_checkout(code):
         method = "zelle"
 
     # 5. Build the patient-paid order (invoice billed to the patient at S).
+    # Patient channel-locked points (flag-gated, card only): resolve scoped
+    # balance + requested redemption so build_client_order can fee-cap-discount.
+    redeem_req, bal_cents = 0, 0
+    _scope = f"dispensary:{pid}"
+    if os.environ.get("CLIENT_POINTS_ENABLED") and method == "card":
+        try:
+            redeem_req = max(0, int(body.get("points_to_redeem_cents") or 0))
+        except (TypeError, ValueError):
+            redeem_req = 0
+        try:
+            from dashboard import points as _points
+            with sqlite3.connect(LOG_DB) as _bcx:
+                _bcx.row_factory = sqlite3.Row
+                _points.init_points_table(_bcx)
+                bal_cents = _points.balance(_bcx, email, scope=_scope)
+        except Exception:
+            bal_cents = 0
     try:
-        out = _dropship.build_client_order(items, prac, patient=patient, method=method)
+        out = _dropship.build_client_order(items, prac, patient=patient, method=method,
+                                           points_to_redeem_cents=redeem_req,
+                                           points_balance_cents=bal_cents)
     except Exception as e:
         print(f"[client-checkout] build failed: {e!r}", flush=True)
         return jsonify({"ok": False, "error": "Checkout failed. Please try again."}), 500
@@ -6297,6 +6344,9 @@ def api_client_checkout(code):
                         "margin_cents": str(out.get("margin_cents", 0)),
                         "invoice_id": str(out.get("invoice_id") or ""),
                         "customer_id": str(out.get("customer_id") or ""),
+                        "patient_email": email,
+                        "subtotal_cents": str(out.get("subtotal_cents", 0)),
+                        "points_redeemed_cents": str(out.get("points_redeemed_cents", 0)),
                     },
                     success_url=success,
                     cancel_url=f"{PUBLIC_BASE_URL}/dispensary/{code}")
