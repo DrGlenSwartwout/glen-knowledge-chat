@@ -16655,6 +16655,12 @@ def api_orders_manual():
     else:
         discount_cents = engine_discount
     total_cents = max(0, subtotal_list - discount_cents) + shipping_cents
+    # Points apply at the bottom of the invoice, against the total (capped so it
+    # never goes negative). Stored as points_redeemed_cents.
+    points_redeemed_cents = 0
+    if body.get("points_redeem_cents") not in (None, ""):
+        points_redeemed_cents = max(0, min(int(body.get("points_redeem_cents")), total_cents))
+        total_cents -= points_redeemed_cents
     person_id = customer.get("person_id")
     cx = _sqlite3.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
@@ -16675,13 +16681,15 @@ def api_orders_manual():
                      "address2": ship["address2"], "city": ship["city"],
                      "state": ship["state"], "zip": ship["zip"], "country": ship["country"]},
             channel="retail", get_cents=get_cents,
-            discount_cents=discount_cents, shipping_cents=shipping_cents)
+            discount_cents=discount_cents, shipping_cents=shipping_cents,
+            points_redeemed_cents=points_redeemed_cents)
     finally:
         cx.close()
     return jsonify({"ok": True, "order_id": oid, "external_ref": ext,
                     "method": (body.get("method") or ""),
                     "totals": {"subtotal_cents": subtotal_list, "discount_cents": discount_cents,
                                "shipping_cents": shipping_cents, "get_cents": get_cents,
+                               "points_redeemed_cents": points_redeemed_cents,
                                "total_cents": total_cents},
                     "lines": items_rec})
 
@@ -16770,7 +16778,10 @@ def bos_orders_page():
 def bos_products_list():
     if _bos_actor() is None:
         return jsonify({"error": "unauthorized"}), 401
-    return jsonify({"products": _bos_products.catalog()})
+    # ?all=1 → every sellable SKU (remedymatch.com catalog), not just the
+    # ingredient-enriched subset. Used by the in-house order-entry picker.
+    all_skus = request.args.get("all") in ("1", "true", "yes")
+    return jsonify({"products": _bos_products.catalog(with_ingredients_only=not all_skus)})
 
 
 @app.route("/api/products/stale")
