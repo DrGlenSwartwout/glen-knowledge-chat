@@ -15,8 +15,10 @@ import os
 import re
 import json
 import uuid
+import time
 import secrets
 import sqlite3
+import mimetypes
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
@@ -7117,6 +7119,54 @@ def api_biofield_photo():
         _bf.init_table(cx)
         _bf.set_photo_on_file(cx, email, str(path))
     return jsonify({"ok": True})
+
+
+@app.route("/admin/biofield/photo", methods=["GET"])
+def admin_biofield_photo():
+    """Console-gated PHI photo viewer. Returns the raw image bytes for the team
+    to review. Hard path guard: only ever serves a file that resolves INSIDE the
+    private biofield-photos dir (never a symlink/abs path pointing elsewhere)."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import biofield_store as _bf
+    email = (request.args.get("email") or "").strip()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _bf.init_table(cx)
+        row = _bf.get(cx, email)
+    path_str = (row or {}).get("photo_path")
+    if not path_str:
+        return jsonify({"error": "no photo on file"}), 404
+    photo_dir = (_biofield_data_dir() / "biofield-photos").resolve()
+    fp = Path(path_str).resolve()
+    if photo_dir not in fp.parents or not fp.is_file():
+        return jsonify({"error": "no photo on file"}), 404
+    mt = mimetypes.guess_type(str(fp))[0] or "application/octet-stream"
+    return Response(fp.read_bytes(), mimetype=mt)
+
+
+@app.route("/api/cron/biofield-photo-purge", methods=["POST"])
+def cron_biofield_photo_purge():
+    """Retention purge: delete PHI photos older than BIOFIELD_PHOTO_RETENTION_DAYS
+    (default 30) by file mtime and clear their DB flags. Auth: X-Cron-Secret
+    (== CRON_SECRET, falls back to CONSOLE_SECRET)."""
+    key = request.headers.get("X-Cron-Secret", "")
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import biofield_store as _bf
+    days = int(os.environ.get("BIOFIELD_PHOTO_RETENTION_DAYS", "30"))
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _bf.init_table(cx)
+        n = _bf.purge_expired_photos(
+            cx, photo_root=str(_biofield_data_dir() / "biofield-photos"),
+            retention_days=days, now_ts=time.time())
+    return jsonify({"ok": True, "purged": n})
 
 
 @app.route("/api/biofield/confirm", methods=["POST"])
