@@ -67,6 +67,31 @@ def create_checkout_session(amount_cents, *, customer_email, description, metada
     return {"id": j.get("id"), "url": j.get("url")}
 
 
+def create_setup_session(*, customer_email, metadata, success_url, cancel_url) -> dict:
+    """Stripe Checkout in mode=setup — vaults a card with NO charge (for later
+    off-session use). Returns {id, url}."""
+    params = {
+        "mode": "setup",
+        "customer_email": customer_email,
+        "success_url": success_url,
+        "cancel_url": cancel_url,
+        "payment_method_types[0]": "card",
+    }
+    for k, v in (metadata or {}).items():
+        if v is None:
+            continue
+        params[f"metadata[{k}]"] = str(v)
+    j = _post("/checkout/sessions", params)
+    return {"id": j.get("id"), "url": j.get("url")}
+
+
+def get_setup_intent(si_id: str) -> dict:
+    """Retrieve a SetupIntent. Returns {id, customer, payment_method, status}."""
+    j = _get(f"/setup_intents/{si_id}")
+    return {"id": j.get("id"), "customer": j.get("customer"),
+            "payment_method": j.get("payment_method"), "status": j.get("status")}
+
+
 def get_session(session_id) -> dict:
     j = _get(f"/checkout/sessions/{session_id}")
     return {"id": j.get("id"), "payment_status": j.get("payment_status"),
