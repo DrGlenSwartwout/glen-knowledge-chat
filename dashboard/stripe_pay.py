@@ -96,7 +96,8 @@ def get_session(session_id) -> dict:
     j = _get(f"/checkout/sessions/{session_id}")
     return {"id": j.get("id"), "payment_status": j.get("payment_status"),
             "amount_total": j.get("amount_total"), "metadata": j.get("metadata") or {},
-            "payment_intent": j.get("payment_intent")}
+            "payment_intent": j.get("payment_intent"),
+            "setup_intent": j.get("setup_intent")}
 
 
 def get_payment_intent(pi_id: str) -> dict:
