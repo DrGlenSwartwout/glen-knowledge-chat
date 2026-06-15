@@ -6947,6 +6947,40 @@ def _biofield_has_intake(email):
         return False
 
 
+def _biofield_has_fresh_scan(email):
+    """True when the server-side scan-freshness index (pushed by the local e4l
+    ingestion) has a scan within the gate window for this email."""
+    try:
+        from dashboard import scan_freshness as _sf
+        import datetime as _dt
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _sf.init_table(cx)
+            return _sf.is_fresh(cx, email, today=_dt.date.today().isoformat(),
+                                window_days=7)
+    except Exception:
+        return False
+
+
+@app.route("/api/e4l/scan-freshness", methods=["POST"])
+def api_e4l_scan_freshness():
+    """Ingest the latest voice-scan dates from the local e4l pipeline so the
+    Biofield gate can auto-verify a fresh scan. Auth: X-Cron-Secret (== CRON_SECRET,
+    falls back to CONSOLE_SECRET). Body: {"rows":[{email,last_scan_date}, ...]}."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    rows = ((request.get_json(silent=True) or {}).get("rows") or [])[:5000]
+    from dashboard import scan_freshness as _sf
+    with sqlite3.connect(LOG_DB) as cx:
+        _sf.init_table(cx)
+        _sf.upsert(cx, rows)
+    return jsonify({"ok": True, "upserted": len(rows)})
+
+
 @app.route("/biofield/ready")
 def biofield_ready_page():
     """Serve the readiness-gate page (no-store; PHI-adjacent)."""
@@ -7021,7 +7055,8 @@ def api_biofield_ready():
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _bf.init_table(cx)
-        st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake)
+        st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake,
+                              has_fresh_scan=_biofield_has_fresh_scan)
     if st.get("booking_unlocked"):
         st["booking_url"] = os.environ.get("BIOFIELD_BOOKING_URL", "")
     return jsonify(st)
@@ -7082,7 +7117,8 @@ def api_biofield_confirm():
             _bf.seed_paid(cx, email, via="pb", order_ref=ref)
         else:
             return jsonify({"ok": False, "error": "unknown item"}), 400
-        st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake)
+        st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake,
+                              has_fresh_scan=_biofield_has_fresh_scan)
     if st.get("booking_unlocked"):
         st["booking_url"] = os.environ.get("BIOFIELD_BOOKING_URL", "")
     return jsonify(st)
@@ -7103,7 +7139,8 @@ def api_biofield_book():
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _bf.init_table(cx)
-        st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake)
+        st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake,
+                              has_fresh_scan=_biofield_has_fresh_scan)
         if not st.get("booking_unlocked"):
             return jsonify(st), 409
         _bf.set_booked(cx, email)
