@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claim Your Free Month of Live Group Coaching</title>
+  <style>
+    :root { --ink:#1a2433; --muted:#5b6776; --line:#e3e8ef; --brand:#2f6f5e; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
+      Roboto,Helvetica,Arial,sans-serif; color:var(--ink); background:#f6f8fa;
+      line-height:1.5; }
+    .wrap { max-width:560px; margin:0 auto; padding:40px 20px 64px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:14px;
+      padding:28px; box-shadow:0 1px 3px rgba(16,24,40,.06); }
+    h1 { font-size:1.5rem; margin:0 0 8px; }
+    .lede { color:var(--muted); margin:0 0 20px; }
+    label { display:block; font-weight:600; font-size:.92rem; margin:16px 0 6px; }
+    input[type=text], input[type=email] { width:100%; padding:11px 12px;
+      border:1px solid var(--line); border-radius:9px; font-size:1rem; }
+    .check { display:flex; gap:10px; align-items:flex-start; margin:16px 0 0;
+      font-weight:400; font-size:.95rem; }
+    .check input { margin-top:3px; }
+    .disclosure { background:#f0f5f3; border:1px solid #d6e4df; border-radius:9px;
+      padding:12px 14px; margin:20px 0 0; font-size:.9rem; color:var(--muted); }
+    button { margin-top:22px; width:100%; padding:13px 16px; border:0;
+      border-radius:10px; background:var(--brand); color:#fff; font-size:1.02rem;
+      font-weight:600; cursor:pointer; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .err { color:#b42318; font-size:.92rem; margin-top:12px; min-height:1.1em; }
+    .done { color:var(--brand); font-weight:600; margin-top:12px; }
+    .file { margin-top:6px; font-size:.9rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Claim your free month of live group coaching</h1>
+      <p class="lede">Joined at studio.com/drglen? Claim your first month of live
+        group coaching free.</p>
+
+      <div id="doneBanner" class="done" style="display:none">
+        You are all set. Your free month is active and your seat is confirmed.
+      </div>
+
+      <form id="claimForm">
+        <label for="name">Your name</label>
+        <input id="name" name="name" type="text" autocomplete="name" required>
+
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email" required>
+
+        <label for="receipt" class="file">Studio receipt (optional)</label>
+        <input id="receipt" name="receipt" type="text"
+               placeholder="Paste your Studio receipt or order number">
+
+        <label class="check">
+          <input id="attest" type="checkbox" required>
+          <span>I joined at studio.com/drglen.</span>
+        </label>
+
+        <label class="check">
+          <input id="consent" type="checkbox" required>
+          <span>I agree to the Terms of Service and to receive coaching
+            communications.</span>
+        </label>
+
+        <div class="disclosure">
+          After your free month, live group continues at $99/mo unless you cancel.
+          You can cancel anytime before the next charge.
+        </div>
+
+        <button id="submitBtn" type="submit">Claim my free month</button>
+        <div id="err" class="err"></div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      if (params.get("done") === "1") {
+        document.getElementById("doneBanner").style.display = "block";
+        document.getElementById("claimForm").style.display = "none";
+        return;
+      }
+      var form = document.getElementById("claimForm");
+      var btn = document.getElementById("submitBtn");
+      var errEl = document.getElementById("err");
+
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        errEl.textContent = "";
+        btn.disabled = true;
+        var payload = {
+          name: document.getElementById("name").value.trim(),
+          email: document.getElementById("email").value.trim().toLowerCase(),
+          receipt: document.getElementById("receipt").value.trim()
+        };
+        try {
+          var res = await fetch("/api/studio/claim", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          var data = await res.json();
+          if (res.ok && data.ok && data.stripe_url) {
+            window.location.href = data.stripe_url;
+            return;
+          }
+          if (data && data.need_optin) {
+            errEl.textContent = "Please add your name and agree to the Terms to continue.";
+          } else {
+            errEl.textContent = (data && data.error) || "Something went wrong. Please try again.";
+          }
+        } catch (ex) {
+          errEl.textContent = "Network error. Please try again.";
+        }
+        btn.disabled = false;
+      });
+    })();
+  </script>
+</body>
+</html>
