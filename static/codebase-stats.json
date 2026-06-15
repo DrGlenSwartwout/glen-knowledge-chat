@@ -1,10 +1,10 @@
 {
   "as_of": "2026-06-15",
-  "total": 427368,
-  "logic": 217502,
+  "total": 427649,
+  "logic": 217783,
   "segments": {
     "vault": 286130,
-    "deploy_chat": 141238
+    "deploy_chat": 141519
   },
   "by_ext": {
     "vault": {
@@ -14,8 +14,8 @@
       "sh": 1505
     },
     "deploy_chat": {
-      "py": 72516,
-      "html": 66611,
+      "py": 72755,
+      "html": 66653,
       "sql": 247,
       "sh": 28,
       "css": 42,
