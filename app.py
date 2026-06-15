@@ -2768,6 +2768,7 @@ def begin_product_data(slug):
         "how_it_works": how,
         "info_only": bool(p.get("info_only")), "affiliate_url": p.get("affiliate_url", ""),
         "payments_active": _QBO_PAYMENTS_ACTIVE or _STRIPE_ACTIVE,
+        "group_bundle_enabled": bool(os.environ.get("GROUP_BUNDLE_ENABLED")),
         "learn_url": f"/begin/learn/{slug}",
         "qty_pricing": qty_tiers, "formats": formats,
         "open_sections": _read_open_sections(
@@ -2911,7 +2912,16 @@ def begin_checkout(slug):
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card" and _STRIPE_ACTIVE:
-            out["stripe_url"] = _stripe_checkout_url_for_retail(out, email, slug)
+            # Group-bundle opt-in: when the flag is on AND the buyer opted in AND the
+            # cart carries >=1 program month, grant 1 free live-group month per program
+            # month (capped at 3). Vaults the card so the membership can auto-continue.
+            _gb_months = 0
+            if os.environ.get("GROUP_BUNDLE_ENABLED") and bool(data.get("group_bundle")):
+                from dashboard import group_bundle
+                _gb_months = group_bundle.included_group_months(
+                    pc["priced"].get("volume_months", 0))
+            out["stripe_url"] = _stripe_checkout_url_for_retail(
+                out, email, slug, group_bundle_months=_gb_months)
         try:
             disp = (request.cookies.get("rm_dispensary") or "").strip()
             if disp:
@@ -3074,6 +3084,57 @@ def begin_checkout_return():
                         print(f"[subscribe-return] subscription created for {sub_email}", flush=True)
                     except Exception as _se:
                         print(f"[subscribe-return] failed to create subscription: {_se!r}", flush=True)
+
+                # ── Group bundle: grant the free live-group window (flag-gated) ──
+                # Best-effort, never raises. A per-invoice marker makes a literal
+                # re-run of the SAME return a no-op; a genuinely new program order
+                # (new invoice) extends an existing membership's window instead of
+                # creating a second row.
+                if os.environ.get("GROUP_BUNDLE_ENABLED") and int(md.get("grant_group_months") or 0) > 0 and pi_id:
+                    try:
+                        from dashboard import subscriptions as _subs_gb, group_bundle as _gb
+                        from datetime import date as _date_gb
+                        n = int(md.get("grant_group_months"))
+                        g_email = (md.get("email") or "").strip().lower()
+                        g_invoice = (md.get("invoice_id") or pi_id or "").strip()
+                        if g_email:
+                            pi_d = _sp.get_payment_intent(pi_id)
+                            g_cus = pi_d.get("customer") or ""
+                            g_pm  = pi_d.get("payment_method") or ""
+                            with sqlite3.connect(LOG_DB) as _gcx:
+                                _gcx.row_factory = sqlite3.Row
+                                _subs_gb.init_subscriptions_table(_gcx)
+                                _subs_gb.migrate_add_membership_columns(_gcx)
+                                _gcx.execute(
+                                    "CREATE TABLE IF NOT EXISTS group_bundle_grants "
+                                    "(invoice_id TEXT PRIMARY KEY, created_at TEXT)")
+                                _gcx.commit()
+                                # Idempotency: skip if this invoice/pi was already granted.
+                                already = _gcx.execute(
+                                    "SELECT 1 FROM group_bundle_grants WHERE invoice_id=?",
+                                    (g_invoice,)).fetchone()
+                                if not already:
+                                    existing = _subs_gb.active_memberships_by_email(_gcx, g_email)
+                                    if existing:
+                                        cur = existing[0]
+                                        _subs_gb.set_next_charge_date(
+                                            _gcx, cur["id"],
+                                            _subs_gb.add_months(cur["next_charge_date"], n))
+                                    elif g_cus and g_pm:
+                                        start = _subs_gb.add_months(_date_gb.today().isoformat(), n)
+                                        _subs_gb.create_membership(
+                                            _gcx, email=g_email, stripe_customer_id=g_cus,
+                                            stripe_payment_method_id=g_pm,
+                                            amount_cents=_gb.MEMBERSHIP_AMOUNT_CENTS,
+                                            next_charge_date=start)
+                                    _gcx.execute(
+                                        "INSERT INTO group_bundle_grants (invoice_id, created_at) "
+                                        "VALUES (?,?)", (g_invoice, _now_utc().isoformat()))
+                                    _gcx.commit()
+                                    print(f"[group-bundle] granted {n}mo to {g_email} inv={g_invoice}",
+                                          flush=True)
+                    except Exception as _ge:
+                        app.logger.exception("group bundle grant failed: %s", _ge)
 
                 # ── Client kind: credit practitioner margin to wallet ──
                 try:
@@ -6467,10 +6528,14 @@ def api_client_chat(code):
     return jsonify({"ok": True, "reply": result["reply"], "suggestions": suggestions})
 
 
-def _stripe_checkout_url_for_retail(out, email, slug):
+def _stripe_checkout_url_for_retail(out, email, slug, group_bundle_months=0):
     """Create a Stripe Checkout Session for a retail funnel order; returns its URL.
     Captures invoice_id/customer_id/slug in metadata so the return handler records
-    the QBO payment and the PaymentIntent (for refunds)."""
+    the QBO payment and the PaymentIntent (for refunds).
+
+    When group_bundle_months > 0 (caller decided the buyer opted in and the flag is
+    on), vault the card (save_card=True) and stamp grant_group_months + email so the
+    return handler grants the free live-group window and starts the $99/mo membership."""
     try:
         from dashboard import stripe_pay
         total_cents = int(round(float(out.get("total") or 0) * 100))
@@ -6478,14 +6543,21 @@ def _stripe_checkout_url_for_retail(out, email, slug):
             return ""
         success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
                    f"?session_id={{CHECKOUT_SESSION_ID}}")
+        metadata = {"invoice_id": out.get("invoice_id"),
+                    "customer_id": out.get("customer_id"),
+                    "kind": "retail", "slug": slug}
+        save_card = False
+        if group_bundle_months and int(group_bundle_months) > 0:
+            metadata["grant_group_months"] = str(int(group_bundle_months))
+            metadata["email"] = email
+            save_card = True
         sess = stripe_pay.create_checkout_session(
             total_cents, customer_email=email,
             description=f"Remedy Match order #{out.get('doc_number')}",
-            metadata={"invoice_id": out.get("invoice_id"),
-                      "customer_id": out.get("customer_id"),
-                      "kind": "retail", "slug": slug},
+            metadata=metadata,
             success_url=success,
-            cancel_url=f"{PUBLIC_BASE_URL}/begin/buy/{slug}")
+            cancel_url=f"{PUBLIC_BASE_URL}/begin/buy/{slug}",
+            save_card=save_card)
         return sess.get("url") or ""
     except Exception as e:
         print(f"[stripe-retail] session create failed: {e!r}", flush=True)
