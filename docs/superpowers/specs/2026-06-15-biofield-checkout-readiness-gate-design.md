@@ -13,7 +13,7 @@
 - **Sell Biofield as a $300 checkout item in our funnel** (Option A), points-redeemable via the existing engine path (`points_to_redeem_cents`). Flow becomes pay-then-book. Practice Better remains a valid alternate payment path.
 - **Post-payment readiness gate** with **hybrid confirmation**: auto-check what we can read server-side, otherwise the customer provides it in the gate. Booking unlocks only when all three items are green.
 - **Three gate items** (each: green if confirmed on file, else an action):
-  - **Photo** — green if a photo is already on file for the email; else **upload in the gate**.
+  - **Photo** — a **face photo** (used to visualize the client during remote biofield testing; any photo showing the face, cropped to the face). Green if one is confirmed on file; else **upload in the gate** (our gate becomes the cleanest canonical capture — today photos are scattered across GHL, FMP, email, and social links, and the PB intake form can't accept uploads).
   - **Intake** — green if present in `inbound_leads` (source practice-better/scoreapp/concierge); else a "complete your intake" link + self-confirm.
   - **Fresh voice scan** — green if a scan **within 7 days** is detectable (E4L, best-effort); else a scan link (Truly.VIP/E4L) + self-confirm.
 - **Payment paths:** our Stripe checkout (clean trigger → gate). A **Practice Better payer** reaches the same gate via a magic link and confirms payment by uploading the PB receipt (the Studio.com receipt-upload pattern) or Rae marks them paid. No Practice Better integration required.
@@ -52,8 +52,8 @@
 Behind `BIOFIELD_CHECKOUT_ENABLED` (default off) — the funnel item, the gate, and the routes ship dark until the flow + PHI storage are reviewed.
 
 ## Open items / deferred
-- **E4L server reachability** for the scan-freshness auto-check — confirm whether the deployed funnel can query E4L (`e4l.db` is likely local; portal.e4l.com API?). If not, the scan item is self-confirm in 2a; auto in 2b.
-- Exact **photo spec** (face? eyes? how many) + upload instructions — Glen to specify; the gate upload supports one or more images.
+- **E4L server reachability** — RESOLVED: scan data is collected to a **local** `~/AI-Training/e4l.db` (vault, Mac) by the `com.glen.e4l-email-trigger` launchd cron (verified + fixed 2026-06-15 — it had been failing on a zsh word-split bug). The deployed Render funnel cannot read that local DB, so the **scan item is self-confirm in 2a**; 2b needs scan-freshness synced/exposed to the server (Supabase mirror or an E4L API).
+- **Photo spec** RESOLVED: a face photo (remote-biofield visualization), cropped to the face; the gate upload supports one or more images.
 - The **booking link/tool** (PB scheduler vs Zoom vs Calendly) — a configurable URL for now.
 - Whether intake/photo are truly required for **every** Biofield or only some.
 - Refunds, expiry of an un-booked paid Biofield, re-scan reminders.
