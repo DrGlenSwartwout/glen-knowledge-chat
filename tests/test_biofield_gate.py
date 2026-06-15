@@ -51,3 +51,24 @@ def test_already_booked_still_reports_unlocked_true():
     st = bg.gate_state(cx, "p@x.com", has_intake=lambda e: True)
     assert st["booking_unlocked"] is True
     assert st["booked"] is True
+
+
+def test_gate_scan_green_via_fresh_scan_auto():
+    import sqlite3
+    from dashboard import biofield_store as bs, biofield_gate as bg
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    bs.init_table(cx)
+    bs.seed_paid(cx, "p@x.com", via="stripe", order_ref="INV1")
+    bs.set_photo_on_file(cx, "p@x.com", "x.jpg")
+    st = bg.gate_state(cx, "p@x.com", has_intake=lambda e: True, has_fresh_scan=lambda e: True)
+    assert st["items"]["scan"]["status"] == "green"
+    assert st["booking_unlocked"] is True
+
+
+def test_gate_scan_needed_when_no_fresh_checker_and_not_confirmed():
+    import sqlite3
+    from dashboard import biofield_store as bs, biofield_gate as bg
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    bs.init_table(cx); bs.seed_paid(cx, "p@x.com", via="stripe", order_ref="INV1")
+    st = bg.gate_state(cx, "p@x.com", has_intake=lambda e: True)  # no has_fresh_scan
+    assert st["items"]["scan"]["status"] == "needed"
