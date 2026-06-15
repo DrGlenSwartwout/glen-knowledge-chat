@@ -38,6 +38,13 @@ a path reference + an on-file flag live in the `biofield_readiness` table. Uploa
 `image/*` + a 10 MB cap; the filename is a hash of the email (no user-controlled path). Review
 access controls before go-live.
 
+## PHI / photo handling
+- **Private storage:** `DATA_DIR/biofield-photos/<sha256(email)>.<ext>` — never under `static/`, never web-served. The gate API only returns a boolean (`photo_on_file`), never the path or bytes.
+- **Team retrieval:** `GET /admin/biofield/photo?email=<email>&key=<CONSOLE_SECRET>` — the only way to view a stored photo, console-gated + path-guarded (resolves strictly inside the photo dir; a path outside it 404s).
+- **Retention:** `POST /api/cron/biofield-photo-purge` (X-Cron-Secret) deletes photo files older than `BIOFIELD_PHOTO_RETENTION_DAYS` (default 30) by file mtime and clears the flag. Schedule it periodically (daily) once live.
+- **Consent:** the gate's photo step carries a notice (face photo for remote biofield testing, stored securely, private, deletable on request); mirror it in the Member intake/ToS. Patients can request deletion any time (`biofield_store.clear_photo`).
+- **Open (Glen/Rae/counsel):** HIPAA posture — Render encrypts disks at rest and access is console-gated, but there is no BAA with Render by default; decide whether these wellness photos carry a covered-entity obligation.
+
 ## Config / flags
 - `BIOFIELD_CHECKOUT_ENABLED` (default off) — gates the checkout + every `/api/biofield/*` route.
 - `BIOFIELD_BOOKING_URL` — the booking link revealed when ready (PB scheduler / Zoom).

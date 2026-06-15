@@ -94,6 +94,35 @@ def set_booked(cx, email):
     cx.commit()
 
 
+def clear_photo(cx, email):
+    cx.execute("UPDATE biofield_readiness SET photo_on_file=0, photo_path=NULL, updated_at=? "
+               "WHERE lower(email)=lower(?)", (_now(), str(email).strip()))
+    cx.commit()
+
+
+def purge_expired_photos(cx, *, photo_root, retention_days, now_ts):
+    """Delete photo files older than retention_days (by file mtime) and clear their DB
+    flag. Returns the count deleted. No-op + 0 if the dir is missing."""
+    from pathlib import Path as _P
+    root = _P(photo_root)
+    if not root.is_dir():
+        return 0
+    cutoff = now_ts - retention_days * 86400
+    n = 0
+    for f in root.iterdir():
+        try:
+            if f.is_file() and f.stat().st_mtime < cutoff:
+                path_str = str(f)
+                f.unlink()
+                cx.execute("UPDATE biofield_readiness SET photo_on_file=0, photo_path=NULL, "
+                           "updated_at=? WHERE photo_path=?", (_now(), path_str))
+                n += 1
+        except OSError:
+            continue
+    cx.commit()
+    return n
+
+
 def get(cx, email):
     row = cx.execute(
         "SELECT * FROM biofield_readiness WHERE email=?", (email,)
