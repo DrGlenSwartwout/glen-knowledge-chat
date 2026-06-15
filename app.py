@@ -10508,6 +10508,12 @@ def _init_people_table():
                 synced_at        TEXT DEFAULT ''
             )
         """)
+        # In-house customer records (order-entry Phase 1): full shipping address.
+        for _col in ("address1", "address2", "zip"):
+            try:
+                cx.execute(f"ALTER TABLE people ADD COLUMN {_col} TEXT DEFAULT ''")
+            except Exception:
+                pass  # already present
         cx.commit()
 
 _init_people_table()
@@ -16570,6 +16576,124 @@ def bos_action(key):
     return jsonify(res)
 
 
+# ── In-house order entry (Phase 1: proposed invoice) — OWNER only ───────────────
+@app.route("/api/customers/search", methods=["GET"])
+def api_customers_search():
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import customers as _cust
+    q = (request.args.get("q") or "").strip()
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        people = _cust.find_people(cx, q, limit=10)
+        # Fill a missing street address from the contact's last shipped-to order.
+        for p in people:
+            if not (p.get("address1") or "").strip():
+                last = _cust.last_address_for(cx, p.get("email"))
+                for k in ("address1", "address2", "city", "state", "zip", "country"):
+                    if last.get(k) and not (p.get(k) or "").strip():
+                        p[k] = last[k]
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "people": people})
+
+
+@app.route("/api/orders/manual", methods=["POST"])
+def api_orders_manual():
+    """Create a proposed invoice (in-house order entry). Computes rule-based
+    pricing (discount/shipping/GET) with per-line + order-level override, builds
+    structured line items, links/saves the customer record, inserts a 'proposed'
+    order. Payment is recorded later via the orders.record_payment action."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import customers as _cust
+    body = request.get_json(silent=True) or {}
+    customer = body.get("customer") or {}
+    lines_in = body.get("lines") or []
+    if not lines_in:
+        return jsonify({"ok": False, "error": "no line items"}), 400
+    addr_in = customer.get("address") or {}
+    ship = {
+        "name": customer.get("name") or "",
+        "street": addr_in.get("address1") or addr_in.get("street") or "",
+        "address2": addr_in.get("address2") or "",
+        "city": addr_in.get("city") or "", "state": addr_in.get("state") or "",
+        "zip": addr_in.get("zip") or "", "country": (addr_in.get("country") or "US").upper(),
+    }
+    # Build cart + structured line items (list price, or per-line override).
+    cart, items_rec, subtotal_list = [], [], 0
+    for ln in lines_in:
+        slug = (ln.get("slug") or "").strip()
+        p = _get_product(slug)
+        if not p:
+            continue
+        qty = max(1, min(int(ln.get("qty") or 1), 99))
+        ov = ln.get("unit_cents")
+        unit_cents = int(ov if ov not in (None, "") else (p.get("price_cents") or 0))
+        line_cents = unit_cents * qty
+        subtotal_list += line_cents
+        cart.append({"slug": slug, "qty": qty})
+        items_rec.append({"slug": slug, "name": p["name"], "qty": qty,
+                          "unit_cents": unit_cents, "line_cents": line_cents})
+    if not cart:
+        return jsonify({"ok": False, "error": "no valid products"}), 400
+    # Rule-based pricing: engine proposes discount; shipping + absorbed GET.
+    try:
+        pc = _price_cart(cart, ship=ship, channel="retail")
+        engine_discount = int(pc.get("discount_cents") or 0)
+        shipping_cents = int(pc.get("shipping_cents") or 0)
+        get_cents = int((pc.get("priced") or {}).get("get_cents") or 0)
+    except CheckoutError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        print(f"[orders.manual] pricing fell back: {e!r}", flush=True)
+        engine_discount, shipping_cents, get_cents = 0, 0, 0
+    if body.get("discount_cents") not in (None, ""):
+        discount_cents = max(0, int(body.get("discount_cents")))
+    else:
+        discount_cents = engine_discount
+    total_cents = max(0, subtotal_list - discount_cents) + shipping_cents
+    # Points apply at the bottom of the invoice, against the total (capped so it
+    # never goes negative). Stored as points_redeemed_cents.
+    points_redeemed_cents = 0
+    if body.get("points_redeem_cents") not in (None, ""):
+        points_redeemed_cents = max(0, min(int(body.get("points_redeem_cents")), total_cents))
+        total_cents -= points_redeemed_cents
+    person_id = customer.get("person_id")
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        if not person_id and (customer.get("email") or "").strip():
+            person_id = _cust.find_or_create_by_email(
+                cx, email=customer.get("email"), name=customer.get("name"),
+                phone=customer.get("phone"))
+        if person_id:
+            _cust.upsert_person_address(cx, person_id, {**addr_in, "phone": customer.get("phone")})
+        ext = "INH-" + uuid.uuid4().hex[:10].upper()
+        oid = _bos_orders.upsert_order(
+            cx, source="in-house", external_ref=ext, status="proposed",
+            email=(customer.get("email") or ""), name=(customer.get("name") or ""),
+            phone=(customer.get("phone") or ""), person_id=person_id,
+            items=items_rec, total_cents=total_cents,
+            address={"name": ship["name"], "street": ship["street"],
+                     "address2": ship["address2"], "city": ship["city"],
+                     "state": ship["state"], "zip": ship["zip"], "country": ship["country"]},
+            channel="retail", get_cents=get_cents,
+            discount_cents=discount_cents, shipping_cents=shipping_cents,
+            points_redeemed_cents=points_redeemed_cents)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "order_id": oid, "external_ref": ext,
+                    "method": (body.get("method") or ""),
+                    "totals": {"subtotal_cents": subtotal_list, "discount_cents": discount_cents,
+                               "shipping_cents": shipping_cents, "get_cents": get_cents,
+                               "points_redeemed_cents": points_redeemed_cents,
+                               "total_cents": total_cents},
+                    "lines": items_rec})
+
+
 @app.route("/api/events", methods=["GET"])
 def bos_events():
     actor = _bos_actor()
@@ -16654,7 +16778,10 @@ def bos_orders_page():
 def bos_products_list():
     if _bos_actor() is None:
         return jsonify({"error": "unauthorized"}), 401
-    return jsonify({"products": _bos_products.catalog()})
+    # ?all=1 → every sellable SKU (remedymatch.com catalog), not just the
+    # ingredient-enriched subset. Used by the in-house order-entry picker.
+    all_skus = request.args.get("all") in ("1", "true", "yes")
+    return jsonify({"products": _bos_products.catalog(with_ingredients_only=not all_skus)})
 
 
 @app.route("/api/products/stale")

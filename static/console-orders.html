@@ -18,7 +18,8 @@
     max-width:1280px; margin-left:auto; margin-right:auto; }
   h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
   .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
-  .cols { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; align-items:start; }
+  .cols { display:grid; grid-template-columns:repeat(6,1fr); gap:14px; align-items:start; }
+  @media (max-width:1100px){ .cols { grid-template-columns:repeat(3,1fr); } }
   .col { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px; }
   .col h2 { font-family:"Raleway",sans-serif; font-size:13px; letter-spacing:.08em;
             text-transform:uppercase; color:var(--muted); margin-bottom:10px; }
@@ -52,7 +53,8 @@
   <div class="cols" id="board"></div>
 
 <script>
-  var LANES = [["new","New"],["packed","Packed"],["shipped","Shipped"],["done","Done"]];
+  var LANES = [["proposed","Proposed"],["confirmed","Confirmed"],
+               ["new","New"],["packed","Packed"],["shipped","Shipped"],["done","Done"]];
   function key(){ return localStorage.getItem('console_key') || ''; }
   // Auto-unlock: if arriving with ?key= (from the ops nav), seed the console key once.
   (function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
@@ -72,7 +74,9 @@
     var items = (o.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||''); }).join(', ');
     var age = ageStr(o.created_at);
     var acts = '';
-    if (o.status==='new')     acts = btn(o.id,'orders.mark_packed','Pack');
+    if (o.status==='proposed') acts = btn(o.id,'orders.confirm','Confirm') + ' ' + payBtn(o.id);
+    else if (o.status==='confirmed') acts = payBtn(o.id);
+    else if (o.status==='new')     acts = btn(o.id,'orders.mark_packed','Pack');
     else if (o.status==='packed') acts = btn(o.id,'orders.create_label','Create label') + ' ' + shipBtn(o.id);
     else if (o.status==='shipped') acts = btn(o.id,'orders.send_tracking','Send tracking') + ' ' + btn(o.id,'orders.mark_done','Delivered');
     if (o.status!=='done' && o.status!=='cancelled') acts += ' <button class="cancel" onclick="act('+Number(o.id)+',\'orders.cancel\',{})">Cancel</button>';
@@ -84,6 +88,15 @@
   }
   function btn(id,key,label){ return '<button onclick="act('+Number(id)+',\''+key+'\',{})">'+label+'</button>'; }
   function shipBtn(id){ return '<button onclick="ship('+Number(id)+')">Ship + tracking</button>'; }
+  function payBtn(id){ return '<button onclick="recordPay('+Number(id)+')">Record payment</button>'; }
+  function recordPay(id){
+    var m = prompt('Payment method (Credit card / Zelle / Wise):','Zelle');
+    if (m===null) return;
+    var a = prompt('Amount in dollars (blank = invoice total):','');
+    var p = { method: m };
+    if (a && !isNaN(parseFloat(a))) p.amount_cents = Math.round(parseFloat(a)*100);
+    act(id, 'orders.record_payment', p);
+  }
 
   async function load(){
     var r = await fetch('/api/orders?limit=300', {headers:hdr()});
