@@ -2579,13 +2579,16 @@ async function refresh(restoreScrollY) {
 
   // Mission Control (Business OS signals) is Glen/Rae only — hide it on Shaira's page.
   const mcSection = document.getElementById('mc-section');
+  const cbSection = document.getElementById('codebase-section');
   if (currentOwner === 'shaira') {
     if (mcSection) mcSection.style.display = 'none';
+    if (cbSection) cbSection.style.display = 'none';
   } else {
     if (mcSection) mcSection.style.display = '';
     loadMissionControl();   // fire-and-forget; self-renders into the banner
+    if (cbSection) cbSection.style.display = '';
+    loadCodebaseStats();    // fire-and-forget; renders the Codebase stat card
   }
-  loadCodebaseStats();      // fire-and-forget; renders the Codebase stat card
   renderCalendar(calEvents);
   restoreCalAlerts(calEvents);
   renderTodos(todos);
