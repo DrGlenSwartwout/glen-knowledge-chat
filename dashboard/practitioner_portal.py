@@ -458,6 +458,35 @@ def register_practitioner(clean: dict, *, now=None) -> Tuple[str, bool]:
     return str(pid), unlocked_at is not None
 
 
+def upsert_cert_student(email, *, name="", modules_completed=0) -> Tuple[str, int]:
+    """Create or update a certification-student practitioner record (portal_role 'coach'
+    + modules_completed, 0-12). Used by the cert-student admin action so the cert-bonus
+    level grants + cert-tiered referral (both read modules_completed_for_email) work.
+    Does NOT clobber an existing portal_role (a cert student who is already a licensed
+    practitioner keeps that role); only ensures the role is set so the readers see them."""
+    from db_supabase import supabase_cursor
+    email = str(email or "").strip()
+    mc = max(0, min(int(modules_completed or 0), 12))
+    name = str(name or "").strip()
+    with supabase_cursor() as cur:
+        cur.execute("SELECT id FROM practitioners WHERE lower(email)=lower(%s) LIMIT 1", (email,))
+        row = cur.fetchone()
+        if row:
+            pid = row["id"]
+            cur.execute(
+                "UPDATE practitioners SET portal_role=COALESCE(portal_role, 'coach'), "
+                "tier=COALESCE(tier, 'panel_in_cert'), modules_completed=%s, "
+                "name=COALESCE(NULLIF(name,''), %s), updated_at=now() WHERE id=%s",
+                (mc, name, pid))
+        else:
+            cur.execute(
+                "INSERT INTO practitioners (tier, name, email, portal_role, modules_completed) "
+                "VALUES ('panel_in_cert', %s, %s, 'coach', %s) RETURNING id",
+                (name, email, mc))
+            pid = cur.fetchone()["id"]
+    return str(pid), mc
+
+
 def unlock_wholesale(practitioner_id, *, now=None) -> None:
     """Flip a coach to unlocked once their first module is committed."""
     from db_supabase import supabase_cursor

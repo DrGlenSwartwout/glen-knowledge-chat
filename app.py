@@ -7288,6 +7288,29 @@ def api_cert_commitment():
     return jsonify({"ok": True, "commitment": commitment})
 
 
+@app.route("/api/cert/student", methods=["POST"])
+def api_cert_student():
+    """Console-gated: create/update a certification student's practitioner record
+    (portal_role coach + modules_completed 0-12). Feeds the cert bonus + cert referral."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    name = (body.get("name") or "").strip()
+    try:
+        modules = int(body.get("modules_completed", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "modules_completed must be an integer"}), 400
+    from dashboard import practitioner_portal as _pp
+    pid, mc = _pp.upsert_cert_student(email, name=name, modules_completed=modules)
+    return jsonify({"ok": True, "practitioner_id": pid, "email": email,
+                    "modules_completed": mc})
+
+
 def _run_biofield_bonuses(dry_run=False):
     """Sweep active certification commitments and grant due bonus Biofields concierge-style
     (one todos task + idempotent ledger row per grant). Flag-gated (CERT_BONUS_ENABLED) — a
