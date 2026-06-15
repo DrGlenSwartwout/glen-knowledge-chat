@@ -2939,6 +2939,21 @@ def studio_claim_page():
     return resp
 
 
+@app.route("/studio")
+def studio_welcome():
+    resp = send_from_directory(STATIC, "studio-welcome.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    # last-touch attribution: only stamp source=studio when no real referral is set
+    if not (request.cookies.get("rm_ref") or "").strip():
+        resp.set_cookie("rm_ref", "studio", max_age=90 * 24 * 3600,
+                        samesite="Lax", secure=request.is_secure)
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=365 * 24 * 3600,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 BIOFIELD_PRICE_CENTS = 30000   # $300 Causal Biofield Analysis (service, no shipping)
 _BIOFIELD_ITEM_NAME = "Causal Biofield Analysis"
 
