@@ -496,6 +496,10 @@ def _fulfill_lines_exec(params, ctx):
     order = get_order(cx, oid)
     if not order:
         raise ValueError(f"order #{oid} not found")
+    if order.get("status") not in ("new", "packed", "shipped"):
+        raise ValueError(
+            f"order #{oid} is '{order.get('status')}' — only paid orders in "
+            "fulfillment (new/packed/shipped) can be fulfilled")
     note = params.get("note")
     recorded = []
     for ln in (params.get("lines") or []):
