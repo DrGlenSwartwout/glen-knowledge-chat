@@ -89,36 +89,35 @@ def test_viewer_path_guard_blocks_outside_file(monkeypatch, tmp_path):
     assert r.status_code == 404
 
 
-# ── purge cron ──────────────────────────────────────────────────────────────
+# ── on-request delete (console-gated; the ONLY deletion path — no auto purge) ──
 
-def test_purge_cron_no_secret_401(monkeypatch, tmp_path):
+def test_photo_delete_no_key_401_when_secret_set(monkeypatch, tmp_path):
     _db(monkeypatch, tmp_path)
-    monkeypatch.setenv("CRON_SECRET", "test-cron-secret")
+    if not getattr(appmod, "CONSOLE_SECRET", ""):
+        return
     c = appmod.app.test_client()
-    r = c.post("/api/cron/biofield-photo-purge")
-    assert r.status_code == 401
-    r = c.post("/api/cron/biofield-photo-purge",
-               headers={"X-Cron-Secret": "wrong"})
+    r = c.post("/admin/biofield/photo/delete?email=p@x.com")
     assert r.status_code == 401
 
 
-def test_purge_cron_deletes_old_photo(monkeypatch, tmp_path):
+def test_photo_delete_removes_file_and_flag(monkeypatch, tmp_path):
     db = _db(monkeypatch, tmp_path)
-    monkeypatch.setenv("CRON_SECRET", "test-cron-secret")
-    monkeypatch.setenv("BIOFIELD_PHOTO_RETENTION_DAYS", "30")
-    p = _seed_photo(db, tmp_path, "old-purge@x.com")
-    now = time.time()
-    os.utime(p, (now - 40 * 86400, now - 40 * 86400))
+    p = _seed_photo(db, tmp_path, "del@x.com")
+    assert p.exists()
     c = appmod.app.test_client()
-    r = c.post("/api/cron/biofield-photo-purge",
-               headers={"X-Cron-Secret": "test-cron-secret"})
+    r = c.post("/admin/biofield/photo/delete?email=del@x.com", headers=_key_headers())
     assert r.status_code == 200, r.get_data(as_text=True)
     body = r.get_json()
-    assert body["ok"] is True
-    assert body["purged"] == 1
-    assert not p.exists()
-    cx = sqlite3.connect(db)
-    cx.row_factory = sqlite3.Row
-    row = biofield_store.get(cx, "old-purge@x.com")
-    cx.close()
-    assert not row["photo_on_file"]
+    assert body["ok"] is True and body["deleted_file"] is True
+    assert not p.exists()                       # file actually removed
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    row = biofield_store.get(cx, "del@x.com"); cx.close()
+    assert not row["photo_on_file"] and not row["photo_path"]   # flag + path cleared
+
+
+def test_photo_delete_no_photo_still_ok(monkeypatch, tmp_path):
+    _db(monkeypatch, tmp_path)
+    c = appmod.app.test_client()
+    r = c.post("/admin/biofield/photo/delete?email=none@x.com", headers=_key_headers())
+    assert r.status_code == 200
+    assert r.get_json()["deleted_file"] is False

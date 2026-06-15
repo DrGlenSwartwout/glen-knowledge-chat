@@ -41,7 +41,7 @@ access controls before go-live.
 ## PHI / photo handling
 - **Private storage:** `DATA_DIR/biofield-photos/<sha256(email)>.<ext>` — never under `static/`, never web-served. The gate API only returns a boolean (`photo_on_file`), never the path or bytes.
 - **Team retrieval:** `GET /admin/biofield/photo?email=<email>&key=<CONSOLE_SECRET>` — the only way to view a stored photo, console-gated + path-guarded (resolves strictly inside the photo dir; a path outside it 404s).
-- **Retention:** `POST /api/cron/biofield-photo-purge` (X-Cron-Secret) deletes photo files older than `BIOFIELD_PHOTO_RETENTION_DAYS` (default 30) by file mtime and clears the flag. Schedule it periodically (daily) once live.
+- **Retention:** photos are **kept on file indefinitely** — a face photo is reused across a client's Biofield cycles, so the photo prerequisite stays green for repeat orders. **No time-based purge is scheduled** (decision 2026-06-15). Deletion is **on request only** (rare): `POST /admin/biofield/photo/delete?email=&key=` (console-gated, path-guarded) removes the file + clears the flag. (`biofield_store.purge_expired_photos` remains as a dormant helper if a fixed retention policy is ever required.)
 - **Consent:** the gate's photo step carries a notice (face photo for remote biofield testing, stored securely, private, deletable on request); mirror it in the Member intake/ToS. Patients can request deletion any time (`biofield_store.clear_photo`).
 - **Open (Glen/Rae/counsel):** HIPAA posture — Render encrypts disks at rest and access is console-gated, but there is no BAA with Render by default; decide whether these wellness photos carry a covered-entity obligation.
 

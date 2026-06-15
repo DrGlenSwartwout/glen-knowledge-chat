@@ -7149,24 +7149,38 @@ def admin_biofield_photo():
     return Response(fp.read_bytes(), mimetype=mt)
 
 
-@app.route("/api/cron/biofield-photo-purge", methods=["POST"])
-def cron_biofield_photo_purge():
-    """Retention purge: delete PHI photos older than BIOFIELD_PHOTO_RETENTION_DAYS
-    (default 30) by file mtime and clear their DB flags. Auth: X-Cron-Secret
-    (== CRON_SECRET, falls back to CONSOLE_SECRET)."""
-    key = request.headers.get("X-Cron-Secret", "")
-    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
-    if not expected or key != expected:
-        return jsonify({"error": "unauthorized"}), 401
+@app.route("/admin/biofield/photo/delete", methods=["POST"])
+def admin_biofield_photo_delete():
+    """Console-gated ON-REQUEST photo deletion (only when a patient asks). Removes the
+    file AND clears the DB flag, path-guarded to the private photo dir. Photos are
+    otherwise kept on file indefinitely (a face photo is reused across Biofield cycles);
+    there is no time-based purge."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
     from dashboard import biofield_store as _bf
-    days = int(os.environ.get("BIOFIELD_PHOTO_RETENTION_DAYS", "30"))
+    email = (request.args.get("email")
+             or (request.get_json(silent=True) or {}).get("email") or "").strip()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    deleted_file = False
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _bf.init_table(cx)
-        n = _bf.purge_expired_photos(
-            cx, photo_root=str(_biofield_data_dir() / "biofield-photos"),
-            retention_days=days, now_ts=time.time())
-    return jsonify({"ok": True, "purged": n})
+        row = _bf.get(cx, email)
+        path_str = (row or {}).get("photo_path")
+        if path_str:
+            photo_dir = (_biofield_data_dir() / "biofield-photos").resolve()
+            fp = Path(path_str).resolve()
+            if photo_dir in fp.parents and fp.is_file():
+                try:
+                    fp.unlink()
+                    deleted_file = True
+                except OSError:
+                    pass
+        _bf.clear_photo(cx, email)
+    return jsonify({"ok": True, "deleted_file": deleted_file})
 
 
 @app.route("/api/biofield/confirm", methods=["POST"])
