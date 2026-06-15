@@ -7288,25 +7288,15 @@ def api_cert_commitment():
     return jsonify({"ok": True, "commitment": commitment})
 
 
-@app.route("/api/cron/biofield-bonuses", methods=["POST"])
-def cron_biofield_bonuses():
-    """Daily sweep: grant due certification bonus Biofields concierge-style.
-
-    Auth: X-Cron-Secret (== CRON_SECRET, falls back to CONSOLE_SECRET).
-    For each active commitment, grants are monthly (1..12, one per elapsed
-    month) plus one per completed module (level 1..12). Each new grant records
-    an idempotent ledger row and drops a todos task. ?dry_run=1 counts only."""
-    key = (request.headers.get("X-Cron-Secret", "")
-           or request.headers.get("X-Console-Key", "")
-           or request.args.get("key", ""))
-    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
-    if not expected or key != expected:
-        return jsonify({"error": "unauthorized"}), 401
+def _run_biofield_bonuses(dry_run=False):
+    """Sweep active certification commitments and grant due bonus Biofields concierge-style
+    (one todos task + idempotent ledger row per grant). Flag-gated (CERT_BONUS_ENABLED) — a
+    no-op when off. Returns {ok, granted, ...}. Called by both the cron route and the daily
+    in-process scheduler job."""
     if not _cert_bonus_enabled():
-        return jsonify({"ok": True, "granted": 0, "message": "disabled"})
+        return {"ok": True, "granted": 0, "message": "disabled"}
 
     from dashboard import cert_bonus
-    dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
     _init_todos_table()
     from datetime import date as _date, datetime as _dt, timezone as _tz
     today = _date.today().isoformat()
@@ -7348,7 +7338,23 @@ def cron_biofield_bonuses():
                 cert_bonus.record_grant(cx, email, kind=kind, idx=idx, todo_id=todo_id)
                 granted_total += 1
         cx.commit()
-    return jsonify({"ok": True, "granted": granted_total, "dry_run": bool(dry_run)})
+    return {"ok": True, "granted": granted_total, "dry_run": bool(dry_run)}
+
+
+@app.route("/api/cron/biofield-bonuses", methods=["POST"])
+def cron_biofield_bonuses():
+    """Cron sweep for certification bonus Biofields (also runs daily in-process via the
+    scheduler). Auth: X-Cron-Secret (== CRON_SECRET, falls back to CONSOLE_SECRET).
+    Monthly (1..12, one per elapsed month) + one per completed module; idempotent ledger
+    + todos task per grant. ?dry_run=1 counts only. Flag-gated by CERT_BONUS_ENABLED."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+    return jsonify(_run_biofield_bonuses(dry_run=dry_run))
 
 
 @app.route("/api/reorder/items", methods=["GET"])
@@ -13526,8 +13532,12 @@ def _start_scheduler():
         scheduler = BackgroundScheduler()
         scheduler.add_job(_run_cron, "interval", hours=1, id="console_push",
                           next_run_time=datetime.now(timezone.utc))
+        # Certification bonus Biofields: daily sweep at 15:00 UTC (5am HST). Flag-gated
+        # (CERT_BONUS_ENABLED) inside _run_biofield_bonuses, so this is a safe no-op until on.
+        scheduler.add_job(_run_biofield_bonuses, "cron", hour=15, minute=0,
+                          id="biofield_bonuses")
         scheduler.start()
-        print("[CRON] Scheduler started — hourly push active")
+        print("[CRON] Scheduler started — hourly push + daily biofield-bonuses active")
     except Exception as e:
         print(f"[CRON] Scheduler failed to start: {e}")
 
