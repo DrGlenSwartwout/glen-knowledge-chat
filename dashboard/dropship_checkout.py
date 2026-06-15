@@ -168,7 +168,8 @@ def practitioner_price_for(pid: str, slug: str) -> int:
 
 
 def build_client_order(cart: List[dict], practitioner: dict, *,
-                       patient: dict, method=None) -> dict:
+                       patient: dict, method=None,
+                       points_to_redeem_cents=0, points_balance_cents=0) -> dict:
     """Price + invoice a patient-paid (dispensary) cart at the practitioner's price S.
 
     The patient is the QBO customer and pays S per bottle.  The practitioner's
@@ -201,6 +202,7 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
     lines = []
     subtotal_cents = 0
     total_margin_cents = 0
+    total_fee_cents = 0
 
     for item in cart:
         slug = item["slug"]
@@ -212,6 +214,7 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
                            modules=modules, settings=settings)
         subtotal_cents += s_cents * line_qty
         total_margin_cents += q["margin_cents"] * line_qty
+        total_fee_cents += q["fee_cents"] * line_qty
         lines.append({
             "name": slug,
             "amount": s_cents / 100.0,   # patient is charged S
@@ -226,7 +229,14 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
     get_cents = _tax.compute_get_cents(subtotal_cents, channel="dispensary",
                                        ship_to_state=ship.get("state", ""))
 
-    inv = qb.create_invoice(cust, lines, email_to=patient["email"])
+    # Fee-capped patient points redemption: never below product base (RM keeps
+    # selling at >= base + the practitioner's full margin); RM absorbs the discount.
+    redeem_cents = max(0, min(int(points_to_redeem_cents or 0),
+                              int(points_balance_cents or 0),
+                              total_fee_cents))
+
+    inv = qb.create_invoice(cust, lines, email_to=patient["email"],
+                            discount_cents=redeem_cents)
     invoice_id = inv.get("Id")
 
     return {
@@ -236,6 +246,8 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
         "customer_id": cust.get("Id"),
         "ship_to": ship,
         "source": "dispensary",
+        "subtotal_cents": subtotal_cents,
         "margin_cents": total_margin_cents,
+        "points_redeemed_cents": redeem_cents,
         "get_cents": get_cents,
     }
