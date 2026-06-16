@@ -98,3 +98,8 @@ def test_catalog_returns_products(client):
     j = c.get("/api/console/biofield-portal/catalog?key=test-secret").get_json()
     assert isinstance(j["products"], list) and j["products"]
     assert "slug" in j["products"][0] and "name" in j["products"][0]
+
+
+def test_page_served(client):
+    c, _ = client
+    assert c.get("/console/biofield-portal").status_code == 200

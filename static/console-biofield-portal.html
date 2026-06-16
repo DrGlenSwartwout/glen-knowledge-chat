@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Biofield Portal · Console</title>
+<script src="/static/op-nav.js" defer></script>
+<style>
+  :root{--brand:#7c5cbf;--ink:#23202e;--muted:#6b6480;--line:#e3dff0;--bg:#f6f4fb;--ok:#2f7d6b;--err:#9a3b3b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:840px;margin:0 auto;padding:18px 16px 80px}
+  h1{font-size:1.35rem;margin:.4rem 0 .2rem}
+  .sub{color:var(--muted);margin:0 0 1rem}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+  .card h2{font-size:1rem;margin:0 0 .7rem}
+  label{display:block;font-size:.8rem;color:var(--muted);margin:.5rem 0 .2rem}
+  input,textarea,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}
+  textarea{resize:vertical;min-height:54px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row > div{flex:1;min-width:120px}
+  .btn{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
+  .btn.ghost{background:#efeaf8;color:var(--brand)}
+  .btn.sm{padding:5px 10px;font-size:.82rem}
+  .btn:disabled{opacity:.5;cursor:default}
+  .layer,.reitem{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:#faf9fe}
+  .layer .top,.reitem .top{display:flex;gap:10px;align-items:center;margin-bottom:6px}
+  .layer .top input{width:64px}
+  .x{margin-left:auto;background:#f4eef0;color:var(--err);border:0;border-radius:6px;padding:4px 9px;cursor:pointer}
+  .muted{color:var(--muted)} .small{font-size:.84rem}
+  .status{padding:10px 12px;border-radius:8px;margin:10px 0;display:none}
+  .status.ok{background:#e9f6f1;color:var(--ok);display:block}
+  .status.bad{background:#f8ecec;color:var(--err);display:block}
+  #gate{max-width:420px;margin:14vh auto;text-align:center}
+  a.preview{display:inline-block;margin-left:10px;color:var(--brand);font-weight:600}
+</style>
+</head>
+<body data-active="bos" data-sub="biofield">
+  <div id="gate" class="card" style="display:none">
+    <h2>Console key</h2>
+    <input id="key" type="password" placeholder="CONSOLE_SECRET">
+    <p><button class="btn" onclick="unlock()">Unlock</button></p>
+  </div>
+
+  <div id="app" class="wrap" style="display:none">
+    <h1>Biofield Portal Editor</h1>
+    <p class="sub">Compose or edit a client's healing-home portal, then publish. Paste your narrative skill's <code>portal-seed.json</code> to pre-fill.</p>
+
+    <div class="card">
+      <h2>Client</h2>
+      <div class="row">
+        <div><label>Email</label><input id="email" type="email" placeholder="client@example.com"></div>
+        <div><label>Name</label><input id="name" type="text" placeholder="Full name"></div>
+        <div style="flex:0 0 auto;align-self:flex-end"><button class="btn ghost" onclick="loadExisting()">Load existing</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Paste portal-seed.json (optional)</h2>
+      <textarea id="paste" placeholder='{"greeting": "...", "video": {...}, "layers": [...], "reorder_items": [...]}'></textarea>
+      <p style="margin:.6rem 0 0"><button class="btn ghost" onclick="fillFromPaste()">Fill form from JSON</button>
+        <span id="pasteErr" class="small" style="color:var(--err)"></span></p>
+    </div>
+
+    <div class="card">
+      <h2>Greeting &amp; video</h2>
+      <label>Greeting</label><textarea id="greeting" placeholder="Aloha [name] 🌺 ..."></textarea>
+      <div class="row">
+        <div><label>Video URL</label><input id="videoUrl" type="url" placeholder="https://app.heygen.com/share/..."></div>
+        <div><label>Video button label</label><input id="videoLabel" type="text" placeholder="Watch your Biofield walkthrough"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Healing path layers</h2>
+      <div id="layers"></div>
+      <button class="btn ghost sm" onclick="addLayer()">+ Add layer</button>
+    </div>
+
+    <div class="card">
+      <h2>Reorder remedies</h2>
+      <datalist id="catalog"></datalist>
+      <div id="reitems"></div>
+      <button class="btn ghost sm" onclick="addItem()">+ Add remedy</button>
+      <label style="margin-top:.8rem">Pricing note (optional)</label>
+      <input id="pricingNote" type="text" placeholder="Your certified-practitioner price.">
+    </div>
+
+    <div id="status" class="status"></div>
+    <p>
+      <button class="btn" id="pubBtn" onclick="publish(false)">Publish to portal</button>
+      <button class="btn ghost" onclick="publish(true)">Publish &amp; email client</button>
+      <a id="previewLink" class="preview" target="_blank" rel="noopener" style="display:none">Preview portal ↗</a>
+    </p>
+  </div>
+
+<script>
+function key(){ return localStorage.getItem('console_key') || ''; }
+(function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
+function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value);
+  document.getElementById('gate').style.display='none'; boot(); }
+
+const $ = id => document.getElementById(id);
+const val = id => ($(id).value || "").trim();
+
+function boot(){
+  if(!key()){ $('gate').style.display='block'; return; }
+  $('app').style.display='block';
+  loadCatalog();
+  if($('#layers') && $('layers').children.length===0) addLayer();
+}
+
+async function api(method, path, body){
+  const opt = {method, headers:{'X-Console-Key':key()}};
+  if(body){ opt.headers['Content-Type']='application/json'; opt.body=JSON.stringify(body); }
+  const r = await fetch(path, opt);
+  return {ok:r.ok, status:r.status, json: await r.json().catch(()=>({}))};
+}
+
+async function loadCatalog(){
+  const r = await api('GET', '/api/console/biofield-portal/catalog');
+  if(!r.ok) return;
+  const dl = $('catalog'); dl.innerHTML='';
+  (r.json.products||[]).forEach(p=>{
+    if(!p.slug) return;
+    const o=document.createElement('option');
+    o.value=p.slug; o.label=`${p.name||p.slug} — $${((p.price_cents||0)/100).toFixed(2)}`;
+    dl.appendChild(o);
+  });
+}
+
+// ── Layers ────────────────────────────────────────────────────────────────
+function addLayer(L){
+  L = L || {};
+  const i = $('layers').children.length + 1;
+  const el = document.createElement('div'); el.className='layer';
+  el.innerHTML = `
+    <div class="top">
+      <input class="ln" type="number" min="1" value="${L.n!=null?L.n:i}" title="layer order">
+      <input class="lt" type="text" placeholder="Layer title" value="${esc(L.title||'')}" style="flex:1">
+      <button class="x" onclick="this.closest('.layer').remove()">delete</button>
+    </div>
+    <textarea class="lm" placeholder="Meaning — what this layer addresses">${esc(L.meaning||'')}</textarea>
+    <input class="lr" type="text" placeholder="Remedy (free text)" value="${esc(L.remedy||'')}" style="margin-top:6px">
+    <input class="ld" type="text" placeholder="Dosing protocol" value="${esc(L.dosing||'')}" style="margin-top:6px">`;
+  $('layers').appendChild(el);
+}
+function collectLayers(){
+  return [...$('layers').children].map(el=>({
+    n: parseInt(el.querySelector('.ln').value)||null,
+    title: el.querySelector('.lt').value.trim(),
+    meaning: el.querySelector('.lm').value.trim(),
+    remedy: el.querySelector('.lr').value.trim(),
+    dosing: el.querySelector('.ld').value.trim(),
+  })).filter(L=>L.title).sort((a,b)=>(a.n||0)-(b.n||0));
+}
+
+// ── Reorder items ───────────────────────────────────────────────────────────
+function addItem(it){
+  it = it || {};
+  const el = document.createElement('div'); el.className='reitem';
+  el.innerHTML = `
+    <div class="top">
+      <input class="rs" list="catalog" placeholder="product-slug" value="${esc(it.slug||'')}" style="flex:1">
+      <input class="rq" type="number" min="1" value="${it.qty||1}" style="width:64px" title="qty">
+      <input class="rp" type="number" min="0" placeholder="¢ override" value="${it.price_cents!=null?it.price_cents:''}" style="width:110px" title="price override (cents)">
+      <button class="x" onclick="this.closest('.reitem').remove()">delete</button>
+    </div>`;
+  $('reitems').appendChild(el);
+}
+function collectItems(){
+  return [...$('reitems').children].map(el=>{
+    const slug = el.querySelector('.rs').value.trim();
+    if(!slug) return null;
+    const o = {slug, qty: parseInt(el.querySelector('.rq').value)||1};
+    const p = el.querySelector('.rp').value.trim();
+    if(p!=='') o.price_cents = parseInt(p);
+    return o;
+  }).filter(Boolean);
+}
+
+// ── Paste import ────────────────────────────────────────────────────────────
+function fillFromPaste(){
+  $('pasteErr').textContent='';
+  let d;
+  try{ d = JSON.parse($('paste').value); }
+  catch(e){ $('pasteErr').textContent='Not valid JSON — form left unchanged.'; return; }
+  populate(d);
+}
+function populate(d){
+  $('greeting').value = d.greeting||'';
+  $('videoUrl').value = (d.video&&d.video.url)||'';
+  $('videoLabel').value = (d.video&&d.video.label)||'';
+  $('pricingNote').value = d.pricing_note||'';
+  $('layers').innerHTML=''; (d.layers||[]).forEach(addLayer);
+  if($('layers').children.length===0) addLayer();
+  $('reitems').innerHTML=''; (d.reorder_items||[]).forEach(addItem);
+}
+
+// ── Load / publish ──────────────────────────────────────────────────────────
+async function loadExisting(){
+  const email = val('email');
+  if(!email){ setStatus('Enter an email first.', false); return; }
+  const r = await api('GET', `/api/console/biofield-portal?email=${encodeURIComponent(email)}`);
+  if(!r.ok){ setStatus('Could not load.', false); return; }
+  if(!r.json.found){ setStatus('No portal yet for that email — fill the form to create one.', true); return; }
+  $('name').value = r.json.name||'';
+  populate(r.json.content||{});
+  setStatus('Loaded existing portal — edit and republish (the link stays the same).', true);
+}
+
+function buildContent(){
+  const c = { greeting: val('greeting'), layers: collectLayers() };
+  const vu = val('videoUrl');
+  if(vu) c.video = { url: vu, label: val('videoLabel') || 'Watch your Biofield walkthrough' };
+  const items = collectItems(); if(items.length) c.reorder_items = items;
+  const pn = val('pricingNote'); if(pn) c.pricing_note = pn;
+  return c;
+}
+
+async function publish(send){
+  const email = val('email');
+  if(!email){ setStatus('Email is required.', false); return; }
+  const content = buildContent();
+  if(!(content.layers.length || (content.video&&content.video.url) || content.greeting)){
+    setStatus('Add at least one layer, a video, or a greeting.', false); return; }
+  $('pubBtn').disabled = true;
+  const r = await api('POST', '/api/console/biofield-portal',
+    {email, name: val('name'), content, send});
+  $('pubBtn').disabled = false;
+  if(!r.ok){ setStatus(r.json.error || 'Publish failed.', false); return; }
+  const link = $('previewLink');
+  if(r.json.url){ link.href = r.json.url; link.style.display='inline-block'; }
+  setStatus((r.json.updated ? 'Updated — same link.' : 'Published! New portal link created.')
+    + (r.json.emailed ? ' Email sent to the client.' : '') + (r.json.url ? '  ' + r.json.url : ''), true);
+}
+
+function setStatus(msg, ok){ const s=$('status'); s.textContent=msg; s.className='status '+(ok?'ok':'bad'); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+boot();
+</script>
+</body>
+</html>

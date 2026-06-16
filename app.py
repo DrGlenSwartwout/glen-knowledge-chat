@@ -6575,6 +6575,14 @@ def practitioner_settings_page():
     return resp
 
 
+@app.route("/console/biofield-portal")
+def console_biofield_portal_page():
+    resp = send_from_directory(STATIC, "console-biofield-portal.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/console/pricing-settings")
 def console_pricing_settings_page():
     resp = send_from_directory(STATIC, "console-pricing-settings.html")
