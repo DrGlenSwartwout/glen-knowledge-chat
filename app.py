@@ -8009,6 +8009,31 @@ def api_cert_show_contact():
     return jsonify({"ok": True, "email": email, "show_contact": show, "updated": updated})
 
 
+@app.route("/api/cert/portal-invite", methods=["POST"])
+def api_cert_portal_invite():
+    """Console-gated: email a cert participant their practitioner-portal magic link."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    pid = _pp.id_for_email(email)
+    if not pid:
+        return jsonify({"ok": True, "sent": False, "reason": "no practitioner record"})
+    try:
+        name = _pp.name_for_email(email) or ""
+        magic = _pp.create_magic_link_token(pid, email)
+        _send_practitioner_magic_link(
+            email, name, f"{PUBLIC_BASE_URL}/practitioner/login-verify?token={magic}")
+    except Exception as e:
+        print(f"[cert-portal-invite] failed for {email}: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "send failed"}), 500
+    return jsonify({"ok": True, "sent": True, "email": email})
+
+
 def _run_biofield_bonuses(dry_run=False):
     """Sweep active certification commitments and grant due bonus Biofields concierge-style
     (one todos task + idempotent ledger row per grant). Flag-gated (CERT_BONUS_ENABLED) — a
