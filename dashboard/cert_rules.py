@@ -73,7 +73,11 @@ def evaluate(submissions):
       - "credited_modules": list[int]  (the module ids credited on approval)
       - "formats": list[str]           (format keys from FORMATS)
 
-    Returns a dict; `complete` is the AND of every rule.
+    Returns a dict. `complete` is the AND of the four completion rules:
+    >= MIN_SUBMISSIONS approved, no missing modules, has_written, has_video.
+    `multi_modality` is informational only (it does NOT gate completion): the
+    minimum modality rule is specifically written + video, per the program
+    framework's "minimum (B)" requirement.
     """
     subs = list(submissions or [])
     approved_count = len(subs)
