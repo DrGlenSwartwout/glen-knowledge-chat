@@ -172,6 +172,23 @@ def test_approve_syncs_modules_completed(client, monkeypatch):
     assert calls.get("modules_completed") == 2  # 2 distinct modules covered
 
 
+def test_approve_ignores_non_numeric_credited(client, monkeypatch):
+    c, appmod = _auth_client(client)
+    monkeypatch_pp(appmod, monkeypatch)
+    c.post("/api/cert/submit", json={
+        "title": "t", "url": "https://e.com/p", "formats": ["article"],
+        "modules": [1, 2], "permission": True})
+    from dashboard import practitioner_portal as pp
+    monkeypatch.setattr(pp, "upsert_cert_student", lambda email, **kw: ("pid", 0))
+    sid = c.get("/api/cert/mine").get_json()["submissions"][0]["id"]
+    key = _console_key(appmod)
+    # a junk value must not 500 the handler — it is skipped
+    r = c.post("/api/cert/review/approve?key=" + key,
+               json={"id": sid, "credited_modules": [1, "two", 2]})
+    assert r.status_code == 200
+    assert r.get_json()["modules_covered"] == 2
+
+
 def test_publish_requires_approved_and_permission(client, monkeypatch):
     c, appmod = _auth_client(client)
     monkeypatch_pp(appmod, monkeypatch)

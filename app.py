@@ -7220,7 +7220,8 @@ def api_cert_review_approve():
         return jsonify({"error": "Unauthorized"}), 401
     body = request.get_json(silent=True) or {}
     sid = (body.get("id") or "").strip()
-    credited = [int(m) for m in (body.get("credited_modules") or []) if str(m).strip()]
+    credited = [int(m) for m in (body.get("credited_modules") or [])
+                if str(m).strip().isdigit()]
     note = (body.get("note") or "").strip() or None
     from dashboard import cert_submissions as _cs
     with sqlite3.connect(LOG_DB) as cx:
