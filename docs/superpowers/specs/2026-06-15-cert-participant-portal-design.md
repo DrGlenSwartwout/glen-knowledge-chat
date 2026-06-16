@@ -32,7 +32,8 @@ Give each certification participant a personal portal — reusing the practition
 - New `POST /api/practitioner/personal/quote` and `POST /api/practitioner/personal/checkout`, session-gated, available to any `coach`/`panel_in_cert`/`panel_certified` (or licensed) **without** the `wholesale_unlocked` block.
 - Pricing: reuse `order_quote(items, {"modules_completed": N})` (cert-level). Ships to the participant. Tax applied (not resale-exempt — these participants have no resale cert at this stage).
 - Reuse the existing `wholesale_cart` table for the cart, or a parallel personal cart. (Implementer picks the lower-friction reuse; cart semantics are identical.)
-- v1 sanity guard: a per-order quantity ceiling to discourage using personal orders as a resale workaround (e.g. ≤ a large-box quantity per SKU). Log if hit.
+- **No per-order quantity cap** (Glen 2026-06-15).
+- **Wallet (Glen 2026-06-15):** personal orders may **redeem** wallet credit (reuse the existing up-to-50% `ORDER_REDEEM_PCT`), and **earn 3.5%** of the charged amount when paid by a fee-free method (Zelle/Wise). Add `PERSONAL_EARN_FEE_FREE_PCT = 0.035` (distinct from the existing 3% `EARN_FEE_FREE_PCT`; do not change that). Card-paid personal orders earn nothing.
 
 ### 2. Resale activation (gates drop-ship + wholesale)
 - The drop-ship routes (`/api/practitioner/dropship/*`, dispensary-code generation) and the wholesale checkout stay gated on `wholesale_unlocked`.
@@ -59,6 +60,6 @@ Give each certification participant a personal portal — reusing the practition
 - White-label branding polish; client-page MAP tuning (already exists).
 - Automated resale-license verification (manual approval stays).
 
-## Open questions for Glen
-1. Personal-order **quantity ceiling** — any per-order cap you want (or none in v1)?
-2. Should personal orders **earn/redeem wallet credit**, or keep the wallet tied to reselling only? (Recommend: redeem allowed, earn only on reselling — matches the current wallet model.)
+## Decisions (Glen 2026-06-15)
+1. No per-order quantity cap.
+2. Personal orders redeem wallet credit (existing up-to-50%) and earn 3.5% on fee-free (Zelle/Wise) payment (`PERSONAL_EARN_FEE_FREE_PCT = 0.035`); card-paid earns nothing.
