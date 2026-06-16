@@ -7296,6 +7296,70 @@ def api_client_portal_view(token):
     return jsonify(view)
 
 
+# ── Scaffolded client login (DARK behind CLIENT_LOGIN_ENABLED) ────────────────
+# The real-login drop-in: magic-link email -> one-time token -> client session
+# cookie, targeting portal_identity's session branch. Every route 404s while the
+# flag is off, so the emailed /portal/<token> link stays the only client auth.
+# These static routes outrank the dynamic /portal/<token> rule when registered.
+
+@app.route("/portal/login", methods=["GET"])
+def client_login_page():
+    if not _client_login_enabled():
+        return ("Not found", 404)
+    return send_from_directory(STATIC, "client-login.html")
+
+
+@app.route("/portal/login-request", methods=["POST"])
+def client_login_request():
+    if not _client_login_enabled():
+        return jsonify({"error": "not found"}), 404
+    from dashboard import portal_identity as _pi
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if "@" in email:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute("SELECT id, name FROM people WHERE email=?", (email,)).fetchone()
+            if row:
+                magic = _pi.create_client_magic_link(cx, row[0], email)
+                try:
+                    _send_full_report_email(
+                        email, row[1] or "", "Your Remedy Match sign-in link",
+                        "Aloha,\n\nClick to sign in to your healing home:\n"
+                        f"{PUBLIC_BASE_URL}/portal/login-verify?token={magic}\n\n"
+                        "This link expires in 15 minutes.")
+                except Exception as e:
+                    print(f"[client-login] email failed: {e!r}", flush=True)
+    # No account enumeration: same response whether or not the email exists.
+    return jsonify({"ok": True,
+                    "message": "If that email has a portal, a sign-in link is on its way."})
+
+
+@app.route("/portal/login-verify", methods=["GET"])
+def client_login_verify():
+    from flask import redirect as _redir, make_response as _mkresp
+    if not _client_login_enabled():
+        return ("Not found", 404)
+    from dashboard import portal_identity as _pi
+    token = (request.args.get("token") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        pid = _pi.consume_client_magic_link(cx, token) if token else None
+        if not pid:
+            return _redir("/portal/login?error=link")
+        sess = _pi.create_client_session(cx, pid, "")
+    resp = _mkresp(_redir("/portal/me"))
+    resp.set_cookie("rm_portal_session", sess, max_age=30 * 86400,
+                    httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/portal/me", methods=["GET"])
+def client_portal_me():
+    # Tokenless portal home for a logged-in client; the page reads the session
+    # cookie via /api/portal/me/view. Dark until login is enabled.
+    if not _client_login_enabled():
+        return ("Not found", 404)
+    return send_from_directory(STATIC, "client-portal.html")
+
+
 @app.route("/admin/portal/upsert", methods=["POST"])
 def admin_client_portal_upsert():
     """Seed/update a client portal on the live DB (the bridge, since Render can't
@@ -7315,8 +7379,20 @@ def admin_client_portal_upsert():
     if token is None:
         return jsonify({"ok": True, "updated": True, "portal_id": pid,
                         "note": "existing portal updated; prior link unchanged"})
-    return jsonify({"ok": True, "token": token,
-                    "url": f"{PUBLIC_BASE_URL}/portal/{token}", "portal_id": pid})
+    url = f"{PUBLIC_BASE_URL}/portal/{token}"
+    emailed = False
+    if body.get("send"):
+        try:
+            _send_full_report_email(
+                email, name, "Your personal healing home is ready 🌺",
+                f"Aloha {name or ''},\n\nYour personal healing home is ready — your "
+                f"biofield walkthrough, your healing path, and your remedies, all in "
+                f"one place:\n\n{url}\n\nWith aloha,\nDr. Glen & Rae")
+            emailed = True
+        except Exception as e:
+            print(f"[portal-upsert] send failed: {e!r}", flush=True)
+    return jsonify({"ok": True, "token": token, "url": url,
+                    "portal_id": pid, "emailed": emailed})
 
 
 # ── Certification work-product portal ───────────────────────────────────────

@@ -84,6 +84,22 @@ def test_client_session_roundtrip(tmp_path):
     assert ident.auth_method == "session"
 
 
+def test_client_magic_link_is_one_time(tmp_path):
+    from dashboard import portal_identity as pi
+    cx = sqlite3.connect(str(tmp_path / "t.db"))
+    pi._ensure_people_table(cx)
+    cx.execute(
+        "INSERT INTO people (email, name, roles, created_at, updated_at) VALUES (?,?,?,?,?)",
+        ("ml@example.com", "ML", '["client"]', "t", "t"))
+    cx.commit()
+    pid = cx.execute("SELECT id FROM people WHERE email=?", ("ml@example.com",)).fetchone()[0]
+
+    link = pi.create_client_magic_link(cx, pid, "ml@example.com")
+    assert pi.consume_client_magic_link(cx, link) == pid
+    # one-time: a second consume fails
+    assert pi.consume_client_magic_link(cx, link) is None
+
+
 def test_resolve_identity_uses_token_branch(tmp_path):
     from dashboard import portal_identity as pi
     cx = sqlite3.connect(str(tmp_path / "t.db"))

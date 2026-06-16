@@ -125,6 +125,57 @@ def create_client_session(cx, person_id, email="", *, ttl_days=CLIENT_SESSION_TT
     return tok
 
 
+_MAGIC_PURPOSE = "client_magic_link"
+CLIENT_MAGIC_TTL_MIN = 15
+
+
+def create_client_magic_link(cx, person_id, email="", *, ttl_min=CLIENT_MAGIC_TTL_MIN) -> str:
+    """Mint a one-time login link token for a client (emailed by /portal/login).
+    Dark: only minted/consumed when CLIENT_LOGIN_ENABLED is on."""
+    tok = secrets.token_urlsafe(32)
+    _ensure_auth_tokens(cx)
+    now = datetime.now(timezone.utc)
+    exp = now + timedelta(minutes=ttl_min)
+    cx.execute(
+        "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
+        "VALUES (?,?,?,?,?,?)",
+        (_hash(tok), email, _MAGIC_PURPOSE,
+         json.dumps({"person_id": person_id, "email": email}),
+         now.isoformat(), exp.isoformat()),
+    )
+    cx.commit()
+    return tok
+
+
+def consume_client_magic_link(cx, token) -> "int | None":
+    """Validate a one-time magic-link, mark it consumed, return the person_id."""
+    if not token:
+        return None
+    _ensure_auth_tokens(cx)
+    row = cx.execute(
+        "SELECT extra, expires_at, consumed_at FROM auth_tokens "
+        "WHERE token_hash=? AND purpose=?",
+        (_hash(token), _MAGIC_PURPOSE),
+    ).fetchone()
+    if not row:
+        return None
+    extra, expires_at, consumed_at = row
+    if consumed_at:
+        return None
+    try:
+        if datetime.fromisoformat(expires_at.rstrip("Z")) < datetime.now(timezone.utc):
+            return None
+    except Exception:
+        return None
+    cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
+               (datetime.now(timezone.utc).isoformat(), _hash(token)))
+    cx.commit()
+    try:
+        return (json.loads(extra) or {}).get("person_id")
+    except Exception:
+        return None
+
+
 def identity_from_session(cx, session_token) -> "Identity | None":
     if not session_token:
         return None
