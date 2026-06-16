@@ -6983,6 +6983,100 @@ def reorder_auth(token):
     return resp
 
 
+# ── Tokenized per-client portal ("Create Your Own Healing Adventure") ────────
+# One durable row per client (dashboard/client_portal.py); the token is the only
+# auth — no login, mirroring /invoice/<token>. Inherently dark: no route is
+# reachable until a token is minted via /admin/portal/upsert (CONSOLE_SECRET) and
+# shared with the client. First client: Brooke Webb.
+
+def _portal_console_ok():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return False
+    return True
+
+
+@app.route("/portal/<token>")
+def client_portal_page(token):
+    return send_from_directory(STATIC, "client-portal.html")
+
+
+@app.route("/api/portal/<token>")
+def api_client_portal(token):
+    from dashboard import client_portal as _cp
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _cp.get_portal_by_token(cx, token)
+    if not portal:
+        return jsonify({"error": "not found"}), 404
+    content = dict(portal.get("content") or {})
+    # Enrich reorder slugs with catalog name + price for display.
+    display = []
+    for it in (content.get("reorder_items") or []):
+        slug = (it.get("slug") or "").strip()
+        p = _get_product(slug) if slug else None
+        display.append({
+            "slug": slug,
+            "qty": int(it.get("qty", 1) or 1),
+            "name": (p or {}).get("name", slug),
+            "price_cents": (p or {}).get("price_cents"),
+            "available": bool(p),
+        })
+    return jsonify({
+        "name": portal.get("name"),
+        "greeting": content.get("greeting", ""),
+        "video": content.get("video") or {},
+        "layers": content.get("layers") or [],
+        "reorder_items": display,
+    })
+
+
+@app.route("/api/portal/<token>/start-reorder", methods=["POST"])
+def api_client_portal_start_reorder(token):
+    """Sign the client into the existing reorder flow (set rm_reorder_email from
+    their token) and hand back their pre-loaded cart. The page then POSTs these
+    items to the live /reorder/checkout, so the revenue-critical checkout path is
+    reused unchanged."""
+    from dashboard import client_portal as _cp
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _cp.get_portal_by_token(cx, token)
+    if not portal:
+        return jsonify({"error": "not found"}), 404
+    email = (portal.get("email") or "").strip().lower()
+    items = [{"slug": (it.get("slug") or "").strip(), "qty": int(it.get("qty", 1) or 1)}
+             for it in ((portal.get("content") or {}).get("reorder_items") or [])
+             if (it.get("slug") or "").strip()]
+    resp = jsonify({"ok": True, "items": items})
+    resp.set_cookie("rm_reorder_email", email, max_age=60 * 60 * 24 * 30,
+                    httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/admin/portal/upsert", methods=["POST"])
+def admin_client_portal_upsert():
+    """Seed/update a client portal on the live DB (the bridge, since Render can't
+    read the local vault). Console-secret gated; reusable for every future client."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    content = body.get("content") or {}
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    from dashboard import client_portal as _cp
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        token, pid = _cp.upsert_portal(cx, email, name, content)
+    if token is None:
+        return jsonify({"ok": True, "updated": True, "portal_id": pid,
+                        "note": "existing portal updated; prior link unchanged"})
+    return jsonify({"ok": True, "token": token,
+                    "url": f"{PUBLIC_BASE_URL}/portal/{token}", "portal_id": pid})
+
+
 # ── Certification work-product portal ───────────────────────────────────────
 # Cert students submit published work here; Glen reviews behind two gates
 # (approve -> publish). Student-facing surface gates behind CERT_PORTAL_ENABLED.

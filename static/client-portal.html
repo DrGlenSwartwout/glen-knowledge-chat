@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Your Healing Home · Remedy Match</title>
+<style>
+  :root{
+    --brand:#7c5cbf; --brand-soft:#efeaf8; --ink:#2b2740; --muted:#6b6480;
+    --line:#e7e3f0; --card:#ffffff; --bg:#f7f5fb; --ok:#2f7d6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:640px;margin:0 auto;padding:24px 18px 64px}
+  .hero{text-align:center;padding:18px 8px 6px}
+  .hello{font-size:1.6rem;font-weight:700;margin:.2rem 0 .4rem}
+  .sub{color:var(--muted);margin:0 auto;max-width:34rem}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:18px 18px;margin:16px 0;box-shadow:0 1px 2px rgba(40,30,70,.04)}
+  .card h2{font-size:1.05rem;margin:0 0 .6rem;letter-spacing:.01em}
+  .video-card{text-align:center;background:linear-gradient(180deg,#fff, #faf8ff)}
+  .btn{display:inline-block;background:var(--brand);color:#fff;border:0;cursor:pointer;
+    font-size:1rem;font-weight:600;border-radius:10px;padding:13px 22px;text-decoration:none}
+  .btn:active{transform:translateY(1px)}
+  .btn.full{display:block;width:100%;text-align:center}
+  /* journey path */
+  .path{position:relative;margin:6px 0 0;padding:0}
+  .layer{position:relative;padding:2px 0 18px 40px}
+  .layer:before{content:"";position:absolute;left:13px;top:6px;bottom:-6px;width:2px;background:var(--line)}
+  .layer:last-child:before{display:none}
+  .node{position:absolute;left:4px;top:2px;width:20px;height:20px;border-radius:50%;
+    background:var(--brand-soft);border:2px solid var(--brand);color:var(--brand);
+    font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .layer h3{margin:0 0 .15rem;font-size:1rem}
+  .layer .mean{color:var(--muted);margin:.1rem 0 .4rem}
+  .rx{font-size:.92rem;background:var(--brand-soft);border-radius:8px;padding:8px 10px}
+  .rx b{color:var(--brand)}
+  .dose{display:block;color:var(--muted);font-size:.86rem;margin-top:2px}
+  .reitem{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line)}
+  .reitem:last-child{border-bottom:0}
+  .reitem .nm{font-weight:600}
+  .reitem .pr{color:var(--muted);white-space:nowrap}
+  .muted{color:var(--muted)} .small{font-size:.86rem}
+  .foot{text-align:center;color:var(--muted);font-size:.86rem;margin-top:26px}
+  .state{max-width:32rem;margin:18vh auto;text-align:center;color:var(--muted);padding:0 18px}
+  .err{color:#9a3b3b}
+  #loading{opacity:.6}
+</style>
+</head>
+<body>
+  <div id="app" class="wrap" hidden></div>
+  <div id="loading" class="state">Loading your healing home…</div>
+  <div id="notfound" class="state" hidden>
+    <p class="err">We couldn’t find that link.</p>
+    <p>Please check the link Dr. Glen &amp; Rae sent you, or reach out and we’ll send a fresh one.</p>
+  </div>
+
+<script>
+const token = location.pathname.split("/").filter(Boolean).pop();
+const $ = (h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;};
+const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money = (c)=> (c==null? "" : "$"+(c/100).toFixed(2));
+
+async function load(){
+  let data;
+  try{
+    const r = await fetch(`/api/portal/${encodeURIComponent(token)}`);
+    if(!r.ok) throw new Error("nf");
+    data = await r.json();
+  }catch(e){
+    document.getElementById("loading").hidden = true;
+    document.getElementById("notfound").hidden = false;
+    return;
+  }
+  render(data);
+}
+
+function render(d){
+  const app = document.getElementById("app");
+  const first = (d.name||"").split(" ")[0] || "friend";
+  let html = `
+    <div class="hero">
+      <div class="hello">Aloha ${esc(first)} 🌺</div>
+      <p class="sub">${esc(d.greeting || "This is your personal healing home — your video, your healing path, and your remedies, all in one place.")}</p>
+    </div>`;
+
+  if(d.video && d.video.url){
+    html += `
+      <div class="card video-card">
+        <h2>Your personal Biofield walkthrough</h2>
+        <p class="muted small">A few minutes, just for you — Dr. Glen walks you through your scan.</p>
+        <a class="btn" href="${esc(d.video.url)}" target="_blank" rel="noopener">▶ ${esc(d.video.label||"Watch your video")}</a>
+      </div>`;
+  }
+
+  if(Array.isArray(d.layers) && d.layers.length){
+    let path = "";
+    d.layers.forEach((L,i)=>{
+      path += `
+        <div class="layer">
+          <div class="node">${esc(L.n!=null?L.n:i+1)}</div>
+          <h3>${esc(L.title||"")}</h3>
+          ${L.meaning?`<div class="mean">${esc(L.meaning)}</div>`:""}
+          ${L.remedy?`<div class="rx"><b>${esc(L.remedy)}</b>${L.dosing?`<span class="dose">${esc(L.dosing)}</span>`:""}</div>`:""}
+        </div>`;
+    });
+    html += `<div class="card"><h2>Your healing path</h2>
+      <p class="muted small">From the surface layer down to the deepest root — we support them in order, and the whole chain unwinds.</p>
+      <div class="path">${path}</div></div>`;
+  }
+
+  if(Array.isArray(d.reorder_items) && d.reorder_items.length){
+    let rows = "";
+    d.reorder_items.forEach(it=>{
+      rows += `<div class="reitem"><span class="nm">${esc(it.name||it.slug)}${it.qty>1?` ×${esc(it.qty)}`:""}</span><span class="pr">${esc(money(it.price_cents))}</span></div>`;
+    });
+    html += `<div class="card"><h2>Reorder your remedies</h2>
+      <div>${rows}</div>
+      <p class="muted small" style="margin:.7rem 0 1rem">Shipping calculated at checkout.</p>
+      <button class="btn full" id="reorderBtn">Reorder my remedies</button>
+      <p class="small err" id="reorderErr" hidden></p></div>`;
+  }
+
+  html += `<div class="foot">With aloha,<br><b>Dr. Glen &amp; Rae</b> · Remedy Match LLC</div>`;
+
+  app.innerHTML = html;
+  document.getElementById("loading").hidden = true;
+  app.hidden = false;
+
+  const btn = document.getElementById("reorderBtn");
+  if(btn) btn.addEventListener("click", reorder);
+}
+
+async function reorder(){
+  const btn = document.getElementById("reorderBtn");
+  const err = document.getElementById("reorderErr");
+  err.hidden = true; btn.disabled = true; const label = btn.textContent; btn.textContent = "Setting up your order…";
+  try{
+    // 1) sign into reorder + get pre-loaded cart
+    const s = await fetch(`/api/portal/${encodeURIComponent(token)}/start-reorder`, {method:"POST"});
+    const sj = await s.json();
+    if(!s.ok || !sj.items || !sj.items.length) throw new Error("Could not load your remedies.");
+    // 2) hand off to the existing live reorder checkout
+    const c = await fetch(`/reorder/checkout`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({items: sj.items})
+    });
+    const cj = await c.json();
+    if(cj.stripe_url){ location.href = cj.stripe_url; return; }
+    throw new Error(cj.error || "Checkout is temporarily unavailable. Please reach out to us and we’ll help.");
+  }catch(e){
+    err.textContent = e.message || "Something went wrong. Please reach out and we’ll help.";
+    err.hidden = false; btn.disabled = false; btn.textContent = label;
+  }
+}
+
+load();
+</script>
+</body>
+</html>
