@@ -3243,6 +3243,9 @@ def begin_checkout_return():
                                     amount_cents=int(sess.get("amount_total") or 0))
                                 if pi_id:
                                     _bos_orders.set_order_stripe_pi(_cxih, _oih["id"], pi_id)
+                                # Settle points (redeem applied + earn), idempotent.
+                                _bos_orders.settle_order_points(
+                                    _cxih, _bos_orders.get_order(_cxih, _oih["id"]))
                         finally:
                             _cxih.close()
                     except Exception as _e:
@@ -16627,17 +16630,22 @@ def api_customers_search():
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard import customers as _cust
+    from dashboard import points as _points
     q = (request.args.get("q") or "").strip()
     cx = _sqlite3.connect(LOG_DB)
     try:
         people = _cust.find_people(cx, q, limit=10)
-        # Fill a missing street address from the contact's last shipped-to order.
+        _points.init_points_table(cx)
+        # Fill a missing street address from the contact's last shipped-to order,
+        # and surface the contact's redeemable points balance (email-keyed, lowercased).
         for p in people:
             if not (p.get("address1") or "").strip():
                 last = _cust.last_address_for(cx, p.get("email"))
                 for k in ("address1", "address2", "city", "state", "zip", "country"):
                     if last.get(k) and not (p.get(k) or "").strip():
                         p[k] = last[k]
+            email = (p.get("email") or "").strip().lower()
+            p["points_balance_cents"] = _points.balance(cx, email) if email else 0
     finally:
         cx.close()
     return jsonify({"ok": True, "people": people})
@@ -16699,11 +16707,20 @@ def api_orders_manual():
     else:
         discount_cents = engine_discount
     total_cents = max(0, subtotal_list - discount_cents) + shipping_cents
-    # Points apply at the bottom of the invoice, against the total (capped so it
-    # never goes negative). Stored as points_redeemed_cents.
+    # Points apply at the bottom of the invoice, against the total. Server is the
+    # ONLY authority on the amount: capped to the total AND to the customer's actual
+    # redeemable balance (email-keyed, lowercased) — never trust the client number.
     points_redeemed_cents = 0
     if body.get("points_redeem_cents") not in (None, ""):
-        points_redeemed_cents = max(0, min(int(body.get("points_redeem_cents")), total_cents))
+        from dashboard import points as _points
+        _pemail = (customer.get("email") or "").strip().lower()
+        _pcx = _sqlite3.connect(LOG_DB)
+        try:
+            _points.init_points_table(_pcx)
+            _pbal = _points.balance(_pcx, _pemail) if _pemail else 0
+        finally:
+            _pcx.close()
+        points_redeemed_cents = max(0, min(int(body.get("points_redeem_cents")), total_cents, _pbal))
         total_cents -= points_redeemed_cents
     person_id = customer.get("person_id")
     cx = _sqlite3.connect(LOG_DB)
@@ -16753,11 +16770,26 @@ def _invoice_order_for_token(token):
         cx.close()
 
 
+def _invoice_points_balance(order):
+    """Customer's redeemable points balance (email-keyed, lowercased to match the ledger)."""
+    from dashboard import points as _points
+    email = (order.get("email") or "").strip().lower()
+    if not email:
+        return 0
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _points.init_points_table(cx)
+        return _points.balance(cx, email)
+    finally:
+        cx.close()
+
+
 def _invoice_summary(order):
     """Customer-safe view — no person_id, notes, phone, or full address."""
     lines = order.get("items") or []
     subtotal = sum(int(l.get("line_cents") or 0) for l in lines)
     return {
+        "points_balance_cents": _invoice_points_balance(order),
         "external_ref": order.get("external_ref"),
         "name": order.get("name") or "",
         "lines": [{"slug": l.get("slug"), "name": l.get("name"), "qty": int(l.get("qty") or 0),
@@ -16832,7 +16864,9 @@ def api_invoice_update(token):
         print(f"[invoice.update] pricing fell back: {e!r}", flush=True)
         discount_cents, shipping_cents, get_cents = 0, 0, 0
     total_cents = max(0, subtotal_list - discount_cents) + shipping_cents
-    points = min(int(order.get("points_redeemed_cents") or 0), total_cents)
+    # Carry points forward, re-capped to the new total AND the live balance.
+    points = min(int(order.get("points_redeemed_cents") or 0), total_cents,
+                 _invoice_points_balance(order))
     total_cents -= points
     cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
@@ -16854,6 +16888,37 @@ def api_invoice_update(token):
                           f"new total ${total_cents/100:,.2f}.")
     except Exception as _e:
         print(f"[invoice] owner notify skipped: {_e!r}", flush=True)
+    return jsonify({"ok": True, "order": _invoice_summary(updated)})
+
+
+@app.route("/api/invoice/<token>/apply-points", methods=["POST"])
+def api_invoice_apply_points(token):
+    """Customer applies points against the invoice total. Server is the ONLY
+    authority on the amount: capped to the pre-points total AND the live balance.
+    Persisted as points_redeemed_cents so it's redeemed at payment."""
+    order = _invoice_order_for_token(token)
+    if not order:
+        return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    if order.get("status") not in ("proposed", "confirmed"):
+        return jsonify({"ok": False, "error": "this invoice can no longer be changed"}), 409
+    requested = max(0, int((request.get_json(silent=True) or {}).get("cents") or 0))
+    # Work from the pre-points (gross) total so re-applying is idempotent.
+    gross_total = int(order.get("total_cents") or 0) + int(order.get("points_redeemed_cents") or 0)
+    new_points = max(0, min(requested, gross_total, _invoice_points_balance(order)))
+    new_total = gross_total - new_points
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _bos_orders.upsert_order(
+            cx, source=order["source"], external_ref=order["external_ref"],
+            email=order.get("email") or "", name=order.get("name") or "",
+            phone=order.get("phone") or "", person_id=order.get("person_id"),
+            items=order.get("items"), total_cents=new_total, address=order.get("address") or {},
+            channel="retail", get_cents=int(order.get("get_cents") or 0),
+            discount_cents=int(order.get("discount_cents") or 0),
+            points_redeemed_cents=new_points, shipping_cents=int(order.get("shipping_cents") or 0))
+        updated = _bos_orders.get_order(cx, order["id"])
+    finally:
+        cx.close()
     return jsonify({"ok": True, "order": _invoice_summary(updated)})
 
 

@@ -114,11 +114,25 @@ function renderLines() {
 }
 function renderTotals() {
   const t = ORDER;
+  let pointsRow = t.points_redeemed_cents ? row('Points','-'+money(t.points_redeemed_cents),true) : '';
+  // When the invoice is still editable and the customer has a balance, let them apply points.
+  const bal = Number(t.points_balance_cents||0);
+  if (t.editable && bal>0){
+    pointsRow = '<div class="row"><span>Points (avail '+money(bal)+')</span><span>'
+      + '<input id="pts-in" type="number" min="0" step="0.01" style="width:80px" value="'+((t.points_redeemed_cents||0)/100).toFixed(2)+'">'
+      + ' <button onclick="applyPoints()">Apply</button></span></div>';
+  }
   $('totals').innerHTML =
     row('Subtotal', t.subtotal_cents) + (t.discount_cents?row('Discount','-'+money(t.discount_cents),true):'')
     + row('Shipping', t.shipping_cents) + (t.get_cents?row('Hawai‘i GET (absorbed)', t.get_cents):'')
-    + (t.points_redeemed_cents?row('Points','-'+money(t.points_redeemed_cents),true):'')
+    + pointsRow
     + '<div class="row grand"><span>Total</span><span>'+money(t.total_cents)+'</span></div>';
+}
+async function applyPoints(){
+  const cents = Math.max(0, Math.round(parseFloat(($('pts-in')||{}).value||'0')*100));
+  const r = await fetch(API+'/apply-points', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({cents})});
+  const j = await r.json(); if(!j.ok){ alert(j.error||'could not apply points'); return; }
+  ORDER=j.order; renderTotals();
 }
 function row(label, v, raw){ return '<div class="row"><span>'+label+'</span><span>'+(raw?v:money(v))+'</span></div>'; }
 function fillAdd(){ $('add-sel').innerHTML = '<option value="">+ add a product…</option>' +

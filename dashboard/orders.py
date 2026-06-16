@@ -420,6 +420,41 @@ def mark_invoice_sent(cx, order_id):
     return cur.rowcount > 0
 
 
+def settle_order_points(cx, order, *, scope="rm", earn_pct=0.05):
+    """On a PAID in-house order: redeem the points the customer applied and earn
+    on full-price product spend. Idempotent per external_ref (guarded by
+    points.has_entry), best-effort — never raises into the payment path. Email is
+    lowercased to match the ledger (the funnel settler lowercases on write).
+
+    Earn mirrors the funnel rule (full-price only: no discount AND no points used)
+    but omits the affiliate-first-order suppression — in-house manual orders are
+    not affiliate-acquired, so that gate is a no-op for them."""
+    from dashboard import points as _points
+    email = (order.get("email") or "").strip().lower()
+    ref = (order.get("external_ref") or "").strip()
+    if not email or not ref:
+        return
+    redeemed = int(order.get("points_redeemed_cents") or 0)
+    discount = int(order.get("discount_cents") or 0)
+    # Product spend nets out shipping + absorbed GET so points aren't earned on tax/shipping.
+    product_cents = (int(order.get("total_cents") or 0)
+                     - int(order.get("shipping_cents") or 0)
+                     - int(order.get("get_cents") or 0))
+    try:
+        _points.init_points_table(cx)
+        if redeemed > 0 and not _points.has_entry(cx, order_ref=ref, reason="redeem", scope=scope):
+            try:
+                _points.redeem(cx, email, value_cents=redeemed, order_ref=ref, scope=scope)
+            except ValueError:
+                pass  # balance already spent elsewhere; don't block the payment
+        if discount == 0 and redeemed == 0 and product_cents > 0 \
+                and not _points.has_entry(cx, order_ref=ref, reason="earn", scope=scope):
+            _points.earn(cx, email, full_price_cents=product_cents, earn_pct=earn_pct,
+                         order_ref=ref, scope=scope)
+    except Exception as e:  # pragma: no cover - never crash the payment path
+        print(f"[orders] points settle skipped for {ref}: {e!r}", flush=True)
+
+
 def _invoice_paylink_enabled():
     return os.environ.get("INVOICE_PAYLINK_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
@@ -497,6 +532,8 @@ def _record_payment_exec(params, ctx):
     method = str(params.get("method", "")).strip()
     amount_cents = int(params.get("amount_cents") or order.get("total_cents") or 0)
     set_order_payment(cx, oid, method=method, amount_cents=amount_cents)
+    # Settle points now that it's paid: redeem applied points + earn (idempotent).
+    settle_order_points(cx, get_order(cx, oid))
     return {"order_id": oid, "status": "new", "pay_status": "paid",
             "pay_method": method, "paid_cents": amount_cents,
             "message": f"Payment recorded for order #{oid}"
