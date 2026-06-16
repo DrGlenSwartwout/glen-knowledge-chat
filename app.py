@@ -6997,6 +6997,30 @@ def _portal_console_ok():
     return True
 
 
+def _portal_priced_lines(items):
+    """Build QBO invoice lines from a portal's reorder items, honoring an optional
+    per-item ``price_cents`` override (the client's practitioner-special price);
+    falls back to catalog/volume pricing when no override is present.
+    Returns ``(lines, items_rec, subtotal_cents)``."""
+    lines, items_rec, subtotal_cents = [], [], 0
+    for it in (items or []):
+        slug = (it.get("slug") or "").strip()
+        p = _get_product(slug) if slug else None
+        if not p:
+            continue
+        try:
+            qty = max(1, min(int(it.get("qty", 1) or 1), 99))
+        except Exception:
+            qty = 1
+        override = it.get("price_cents")
+        unit_cents = int(override) if override is not None else int(_qty_unit_cents(p, qty))
+        subtotal_cents += unit_cents * qty
+        lines.append({"name": p["name"], "amount": round(unit_cents / 100.0, 2),
+                      "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
+        items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"]})
+    return lines, items_rec, subtotal_cents
+
+
 @app.route("/portal/<token>")
 def client_portal_page(token):
     return send_from_directory(STATIC, "client-portal.html")
@@ -7011,16 +7035,23 @@ def api_client_portal(token):
     if not portal:
         return jsonify({"error": "not found"}), 404
     content = dict(portal.get("content") or {})
-    # Enrich reorder slugs with catalog name + price for display.
+    # Enrich reorder slugs with catalog name + price. A per-item price_cents
+    # override is the client's personal (practitioner-special) price; the catalog
+    # price rides along as regular_price_cents so the page can strike it through.
     display = []
     for it in (content.get("reorder_items") or []):
         slug = (it.get("slug") or "").strip()
         p = _get_product(slug) if slug else None
+        regular = (p or {}).get("price_cents")
+        override = it.get("price_cents")
+        special = int(override) if override is not None else regular
         display.append({
             "slug": slug,
             "qty": int(it.get("qty", 1) or 1),
             "name": (p or {}).get("name", slug),
-            "price_cents": (p or {}).get("price_cents"),
+            "price_cents": special,
+            "regular_price_cents": regular,
+            "is_special": bool(override is not None and regular is not None and int(override) < int(regular)),
             "available": bool(p),
         })
     return jsonify({
@@ -7028,16 +7059,17 @@ def api_client_portal(token):
         "greeting": content.get("greeting", ""),
         "video": content.get("video") or {},
         "layers": content.get("layers") or [],
+        "pricing_note": content.get("pricing_note", ""),
         "reorder_items": display,
     })
 
 
-@app.route("/api/portal/<token>/start-reorder", methods=["POST"])
-def api_client_portal_start_reorder(token):
-    """Sign the client into the existing reorder flow (set rm_reorder_email from
-    their token) and hand back their pre-loaded cart. The page then POSTs these
-    items to the live /reorder/checkout, so the revenue-critical checkout path is
-    reused unchanged."""
+@app.route("/api/portal/<token>/checkout", methods=["POST"])
+def api_client_portal_checkout(token):
+    """Build a real live Stripe checkout for the client's pre-loaded remedies at
+    their portal price (per-item practitioner-special override honored). Mirrors
+    the legacy reorder path but with custom pricing, so the live /reorder/checkout
+    stays untouched."""
     from dashboard import client_portal as _cp
     with sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
@@ -7045,13 +7077,38 @@ def api_client_portal_start_reorder(token):
     if not portal:
         return jsonify({"error": "not found"}), 404
     email = (portal.get("email") or "").strip().lower()
-    items = [{"slug": (it.get("slug") or "").strip(), "qty": int(it.get("qty", 1) or 1)}
-             for it in ((portal.get("content") or {}).get("reorder_items") or [])
-             if (it.get("slug") or "").strip()]
-    resp = jsonify({"ok": True, "items": items})
-    resp.set_cookie("rm_reorder_email", email, max_age=60 * 60 * 24 * 30,
-                    httponly=True, samesite="Lax", secure=request.is_secure)
-    return resp
+    items = (portal.get("content") or {}).get("reorder_items") or []
+    lines, items_rec, _subtotal = _portal_priced_lines(items)
+    if not lines:
+        return jsonify({"error": "Your remedies are no longer available — please reach out and we'll help."}), 400
+    if not _STRIPE_ACTIVE:
+        return jsonify({"error": "Card checkout is temporarily unavailable. Please reach out and we'll help."}), 503
+    try:
+        from dashboard import qbo_billing as _qb_local
+        ship = {}
+        try:
+            with sqlite3.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
+            if prior:
+                ship = prior[0].get("address") or {}
+        except Exception:
+            ship = {}  # no prior order / address on file — proceed; collected at checkout
+        cust = _qb_local.find_or_create_customer(email, ship.get("name", ""))
+        inv = _qb_local.create_invoice(cust, lines, allow_online_pay=True, email_to=email)
+        out = {"invoice_id": inv.get("Id"), "customer_id": cust.get("Id"),
+               "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt")}
+        _ingest_order(source="portal-reorder", external_ref=inv.get("Id"), email=email,
+                      name=ship.get("name", ""), items=items_rec,
+                      total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                      address=ship, channel="retail")
+        stripe_url = _stripe_checkout_url_for_reorder(out, email)
+        if not stripe_url:
+            return jsonify({"error": _CARD_UNAVAILABLE}), 502
+        return jsonify({"ok": True, "stripe_url": stripe_url})
+    except Exception as e:
+        app.logger.exception("portal checkout failed")
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
 
 
 @app.route("/admin/portal/upsert", methods=["POST"])
