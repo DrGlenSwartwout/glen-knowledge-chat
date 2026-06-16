@@ -106,7 +106,7 @@
       <div><label>Order discount $ (blank = rule-based)</label><input id="o-discount" type="number" step="0.01" placeholder="auto"></div>
       <div><label>Payment method</label>
         <select id="o-method"><option>Credit card</option><option>Zelle</option><option>Wise</option></select></div>
-      <div><label>Points to apply $ (off the total)</label><input id="o-points" type="number" step="0.01" placeholder="0"></div>
+      <div><label>Points to apply $ (off the total)</label><input id="o-points" type="number" step="0.01" placeholder="0"><small id="o-points-avail" style="display:block;color:var(--muted);margin-top:3px"></small></div>
     </div>
     <div class="totals">
       <div class="row"><span>Subtotal</span><span id="t-sub">$0.00</span></div>
@@ -130,6 +130,7 @@ const HEADERS = { "Content-Type":"application/json", "X-Console-Key":KEY };
 let CATALOG = [];          // [{slug,name,price_cents}]
 let LINES = [];            // [{slug,name,qty,unit_cents}]
 let LAST_ORDER = null;     // {order_id, external_ref, totals}
+let POINTS_BAL = 0;        // selected customer's redeemable points balance (cents)
 
 function toast(msg, kind="ok"){ const t=document.getElementById("toast"); t.textContent=msg; t.className="show "+kind; setTimeout(()=>t.className=kind,2200); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -168,6 +169,12 @@ function pickPerson(p){
   $("c-phone").value=p.phone||""; $("a-addr1").value=p.address1||""; $("a-addr2").value=p.address2||"";
   $("a-city").value=p.city||""; $("a-state").value=p.state||""; $("a-zip").value=p.zip||""; $("a-country").value=p.country||"US";
   $("cust-results").style.display="none"; $("cust-search").value=p.name||p.email||"";
+  // Auto-pull the customer's redeemable points balance and apply it (capped on recalc).
+  POINTS_BAL = Number(p.points_balance_cents||0);
+  $("o-points-avail").textContent = POINTS_BAL>0 ? ("Points available: "+dollars(POINTS_BAL)+" — auto-applied") : "No points available";
+  $("o-points").max = (POINTS_BAL/100).toFixed(2);
+  if (POINTS_BAL>0){ const sub=LINES.reduce((s,l)=>s+l.qty*l.unit_cents,0); const disc=($("o-discount").value.trim()!=="")?Math.round(parseFloat($("o-discount").value)*100):0; $("o-points").value=(Math.min(POINTS_BAL,Math.max(0,sub-disc))/100).toFixed(2); }
+  recalc();
 }
 
 // ── line items ──
@@ -199,7 +206,10 @@ function recalc(){
   $("t-disc").textContent = dRaw!=="" ? "-"+dollars(Math.round(parseFloat(dRaw)*100)) : "rule-based (on create)";
   const disc = dRaw!=="" ? Math.round(parseFloat(dRaw)*100) : 0;
   const pRaw=$("o-points").value.trim();
-  const pts = pRaw!=="" ? Math.round(parseFloat(pRaw)*100) : 0;
+  // Cap points to the customer's balance and the discounted subtotal (server re-caps too).
+  let pts = pRaw!=="" ? Math.round(parseFloat(pRaw)*100) : 0;
+  const ceil = Math.min(POINTS_BAL, Math.max(0,sub-disc));
+  if (pts>ceil){ pts=ceil; $("o-points").value=(pts/100).toFixed(2); }
   $("t-points").textContent = pts ? "-"+dollars(pts) : "—";
   $("t-total").textContent=dollars(Math.max(0,Math.max(0,sub-disc)-pts))+" + shipping";
 }
