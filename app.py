@@ -7049,6 +7049,9 @@ def api_cert_submit():
     if not modules:
         return jsonify({"ok": False, "error":
                         "select at least one module topic"}), 400
+    if url and not url.lower().startswith(("http://", "https://")):
+        return jsonify({"ok": False, "error":
+                        "link must start with http:// or https://"}), 400
     # resolve a previously-uploaded file (path-guarded inside the cert dir)
     file_path = ""
     if file_token:
@@ -7111,7 +7114,9 @@ def api_cert_upload():
         return jsonify({"ok": False, "error": "file too large (max 10MB)"}), 400
     cert_dir = _cert_data_dir() / "cert-files"
     cert_dir.mkdir(parents=True, exist_ok=True)
-    token = f"{hashlib.sha256((email + f.filename).encode()).hexdigest()[:24]}.{ext}"
+    # Unique per upload so a re-upload never silently overwrites a prior file.
+    token = (f"{hashlib.sha256((email + f.filename).encode()).hexdigest()[:16]}"
+             f"-{uuid.uuid4().hex[:8]}.{ext}")
     (cert_dir / token).write_bytes(blob)
     return jsonify({"ok": True, "file_token": token})
 

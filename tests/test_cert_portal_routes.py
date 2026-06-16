@@ -83,9 +83,15 @@ def test_submit_requires_cookie(client):
     assert r.status_code == 401
 
 
-def test_submit_requires_permission(client):
+def test_mine_requires_cookie(client):
+    c, _ = client
+    r = c.get("/api/cert/mine")
+    assert r.status_code == 401
+
+
+def test_submit_requires_permission(client, monkeypatch):
     c, appmod = _auth_client(client)
-    monkeypatch_pp(appmod)
+    monkeypatch_pp(appmod, monkeypatch)
     r = c.post("/api/cert/submit", json={
         "title": "My case", "description": "d", "url": "https://e.com/p",
         "formats": ["article"], "modules": [1], "permission": False})
@@ -93,9 +99,9 @@ def test_submit_requires_permission(client):
     assert "permission" in r.get_json()["error"].lower()
 
 
-def test_submit_requires_module_and_link(client):
+def test_submit_requires_module_and_link(client, monkeypatch):
     c, appmod = _auth_client(client)
-    monkeypatch_pp(appmod)
+    monkeypatch_pp(appmod, monkeypatch)
     # no module
     r = c.post("/api/cert/submit", json={
         "title": "t", "url": "https://e.com/p", "formats": ["article"],
@@ -108,9 +114,9 @@ def test_submit_requires_module_and_link(client):
     assert r.status_code == 400
 
 
-def test_submit_creates_row_and_mine_lists_it(client):
+def test_submit_creates_row_and_mine_lists_it(client, monkeypatch):
     c, appmod = _auth_client(client)
-    monkeypatch_pp(appmod)
+    monkeypatch_pp(appmod, monkeypatch)
     r = c.post("/api/cert/submit", json={
         "title": "My case", "description": "what happened",
         "url": "https://e.com/p", "formats": ["article", "demo_video"],
@@ -126,6 +132,7 @@ def test_submit_creates_row_and_mine_lists_it(client):
 
 
 # Helper: monkeypatch the practitioner lookups used by submit/approve/publish.
-def monkeypatch_pp(appmod):
+# Takes pytest's monkeypatch fixture so the stub is torn down after each test.
+def monkeypatch_pp(appmod, monkeypatch):
     from dashboard import practitioner_portal as pp
-    pp.id_for_email = lambda email: "p-test"
+    monkeypatch.setattr(pp, "id_for_email", lambda email: "p-test")
