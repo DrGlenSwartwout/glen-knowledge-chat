@@ -56,8 +56,18 @@ def test_view_composes_account_orders_points_and_stub(tmp_path):
     assert view["orders"]["items"][0]["status"] == "paid"
     # no biofield content seeded → block hidden, not errored
     assert view["biofield"]["visible"] is False
-    # sales/upgrade is a reserved stub seam (feature #2)
-    assert view["upgrade"] == {"enabled": False, "placeholder": True}
+    # no offer flags passed -> upgrade disabled (block hidden)
+    assert view["upgrade"] == {"enabled": False}
+
+
+def test_view_surfaces_first_eligible_offer(tmp_path):
+    from dashboard import portal_view as pv
+    cx = _conn(tmp_path)
+    pid = _add_person(cx, "off@example.com", "Offer Client")
+    view = pv.get_portal_view(cx, pid, offers_enabled_keys={"live_group", "biofield"})
+    assert view["upgrade"]["enabled"] is True
+    assert view["upgrade"]["offer"]["key"] == "live_group"
+    assert view["upgrade"]["offer"]["price_cents"] == 9900
 
 
 def test_view_shows_biofield_when_portal_content_present(tmp_path):

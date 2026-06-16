@@ -187,11 +187,15 @@ function render(d, v){
     html += `<div class="card"><h2>Your orders</h2><div>${rows}</div></div>`;
   }
 
-  // Sales / upgrade — reserved seam (feature #2). Renders a quiet placeholder so
-  // the section exists in the shell before it has content.
-  if(v && v.upgrade && v.upgrade.placeholder){
-    html += `<div class="card soon"><h2>What's next for you</h2>
-      <p class="muted small">Personalized next steps and offers are on their way to your healing home.</p></div>`;
+  // Sales / upgrade (feature #2): the single next eligible ladder rung + CTA.
+  if(v && v.upgrade && v.upgrade.enabled && v.upgrade.offer){
+    const o = v.upgrade.offer;
+    const price = esc(money(o.price_cents)) + (o.period?esc(o.period):"");
+    html += `<div class="card"><h2>What's next for you</h2>
+      <div class="reitem"><span class="nm">${esc(o.title)}</span><span class="pr sp">${price}</span></div>
+      <p class="muted small" style="margin:.5rem 0 1rem">${esc(o.blurb)}</p>
+      <button class="btn full" id="offerBtn" data-path="${esc(o.checkout_path)}">${esc(o.cta_label)}</button>
+      <p class="small err" id="offerErr" hidden></p></div>`;
   }
 
   html += `<div class="foot">With aloha,<br><b>Dr. Glen &amp; Rae</b> · Remedy Match LLC</div>`;
@@ -202,6 +206,25 @@ function render(d, v){
 
   const btn = document.getElementById("reorderBtn");
   if(btn) btn.addEventListener("click", reorder);
+
+  const obtn = document.getElementById("offerBtn");
+  if(obtn) obtn.addEventListener("click", ()=>startOffer(obtn));
+}
+
+async function startOffer(btn){
+  const err = document.getElementById("offerErr");
+  const path = btn.getAttribute("data-path");
+  err.hidden = true; btn.disabled = true; const label = btn.textContent; btn.textContent = "One moment…";
+  try{
+    // Carry the same path segment ("me" or a token) so the server resolves identity.
+    const url = `${path}${path.includes("?")?"&":"?"}token=${encodeURIComponent(seg)}`;
+    const r = await fetch(url, {method:"POST"});
+    const j = await r.json();
+    if(j.stripe_url){ location.href = j.stripe_url; return; }
+    throw new Error(j.error || "This isn't available right now. Please reach out and we'll help.");
+  }catch(e){
+    err.textContent = e.message; err.hidden = false; btn.disabled = false; btn.textContent = label;
+  }
 }
 
 async function reorder(){

@@ -157,7 +157,7 @@ def test_api_portal_view_returns_role_aware_blocks(client):
     assert "Client" in j["account"]["role_badges"]
     assert j["orders"]["visible"] is True
     assert j["biofield"]["visible"] is True       # seeded portal has layers/video
-    assert j["upgrade"] == {"enabled": False, "placeholder": True}
+    assert j["upgrade"] == {"enabled": False}  # offers dark by default
     assert j["auth_method"] == "token"            # session login is dark
 
 
@@ -165,6 +165,16 @@ def test_api_portal_view_bad_token_404(client):
     c, _ = client
     r = c.get("/api/portal/not-a-real-token/view")
     assert r.status_code == 404
+
+
+def test_view_endpoint_includes_eligible_offer(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_enabled_offer_keys", lambda: {"live_group", "biofield"})
+    _seed_person(appmod, "vo@example.com", "VO")
+    tok = _seed_portal(appmod, email="vo@example.com", name="VO")
+    j = c.get(f"/api/portal/{tok}/view").get_json()
+    assert j["upgrade"]["enabled"] is True
+    assert j["upgrade"]["offer"]["key"] == "live_group"
 
 
 # ── Tokenless /portal/me (logged-in home) resolves content via session ───────
@@ -229,6 +239,47 @@ def test_portal_checkout_resolves_via_session(client, monkeypatch):
     r = c.post("/api/portal/me/checkout")
     assert r.status_code == 200
     assert r.get_json()["stripe_url"] == "https://checkout.stripe/me"
+
+
+# ── Group-join offer checkout (mirrors the studio card-vault flow) ───────────
+
+def test_group_join_checkout_dark_by_default(client):
+    c, _ = client
+    assert c.post("/portal/offer/live-group/checkout").status_code == 404
+
+
+def test_group_join_checkout_returns_stripe_url(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_portal_offers_enabled", lambda: True)
+    _seed_person(appmod, "gj@example.com", "GJ")
+    tok = _seed_portal(appmod, email="gj@example.com", name="GJ")
+    from dashboard import stripe_pay
+    monkeypatch.setattr(stripe_pay, "create_setup_session",
+                        lambda **k: {"url": "https://checkout.stripe/grp"})
+    r = c.post(f"/portal/offer/live-group/checkout?token={tok}")
+    assert r.status_code == 200
+    assert r.get_json()["stripe_url"] == "https://checkout.stripe/grp"
+
+
+def test_group_join_return_creates_membership(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_portal_offers_enabled", lambda: True)
+    from dashboard import stripe_pay, subscriptions as subs
+    monkeypatch.setattr(stripe_pay, "get_session",
+                        lambda sid: {"metadata": {"email": "gj2@example.com"},
+                                     "setup_intent": "si_1"})
+    monkeypatch.setattr(stripe_pay, "get_setup_intent",
+                        lambda si: {"customer": "cus_1", "payment_method": "pm_1"})
+    r = c.get("/portal/offer/live-group/return?session_id=sess_1",
+              follow_redirects=False)
+    assert r.status_code in (302, 303)
+    import sqlite3 as _sq
+    cx = _sq.connect(appmod.LOG_DB)
+    cx.row_factory = _sq.Row  # active_memberships_by_email does dict(row)
+    subs.init_subscriptions_table(cx)
+    subs.migrate_add_membership_columns(cx)
+    assert subs.active_memberships_by_email(cx, "gj2@example.com")
+    cx.close()
 
 
 # ── Scaffolded client login (dark behind CLIENT_LOGIN_ENABLED) ───────────────
