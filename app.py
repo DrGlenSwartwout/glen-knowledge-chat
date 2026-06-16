@@ -5996,6 +5996,7 @@ def practitioner_application():
 from dashboard import practitioner_portal as _pp
 from dashboard import wholesale_checkout as _wc
 from dashboard import dropship_checkout as _dropship
+from dashboard import wallet as _wallet
 import dashboard.practitioner_chat as _chat
 
 
@@ -6225,6 +6226,97 @@ def api_practitioner_checkout():
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       address=ship, channel="wholesale", get_cents=out.get("get_cents", 0))
+        if method in ("zelle", "wise"):
+            out["pay_instructions"] = _ALT_PAY.get(method, {})
+        elif method == "card":
+            out["stripe_url"] = _stripe_checkout_url_for_order(out, prac["email"], _session_token)
+    return jsonify(out), (200 if out.get("ok") else 422)
+
+
+# ── Personal ordering for cert participants ────────────────────────────────────
+# A near-clone of the wholesale checkout above, with TWO crucial differences:
+#   (a) NO wholesale_unlocked gate — any valid practitioner session may order for
+#       themselves at cert-level pricing; and
+#   (b) NEVER resale-exempt (resale_ok=False) — personal purchases are taxed.
+# Fee-free (zelle/wise) orders earn 3.5% Wellness Credit. To avoid double-crediting,
+# build_order is called with method=None (which suppresses its OWN internal 3%
+# fee-free earn), and the route credits the full 3.5% itself.
+
+@app.route("/api/practitioner/personal/quote", methods=["POST"])
+def api_practitioner_personal_quote():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    data = _pp.portal_data(pid) or {}
+    # portal_data already prices the cart at the participant's cert level.
+    return jsonify({"ok": True, "quote": data.get("quote"),
+                    "wallet_balance_cents": data.get("wallet_balance_cents")})
+
+
+@app.route("/api/practitioner/personal/checkout", methods=["POST"])
+def api_practitioner_personal_checkout():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    data = _pp.portal_data(pid)
+    if not data:
+        return jsonify({"ok": False, "error": "account not found"}), 404
+    # NOTE: no wholesale_unlocked gate here — personal ordering is always allowed.
+    items = data.get("cart") or []
+    if not items:
+        return jsonify({"ok": False, "error": "Your cart is empty."}), 400
+    prac = {"id": pid, "modules_completed": data.get("modules_completed", 0),
+            "email": data.get("email"), "name": data.get("name") or ""}
+    _body = request.get_json(silent=True) or {}
+    method = (_body.get("method") or "zelle").strip().lower()
+    _session_token = (_body.get("token") or "").strip()
+    if method == "card" and not _STRIPE_ACTIVE:
+        method = "zelle"   # card not enabled yet
+    if method not in ("zelle", "wise", "card"):
+        method = "zelle"
+    ship = _normalize_ship_address(_body.get("address") or {}, fallback_name=prac["name"])
+    resale_ok = False   # personal purchases are taxed; never resale-exempt
+    try:
+        # method=None suppresses build_order's internal 3% fee-free earn so we can
+        # credit the 3.5% PERSONAL rate below without double-crediting. The real
+        # payment method is kept in `method` for the pay-instructions/Stripe tail.
+        out = _wc.build_order(items, prac, method=None,
+                              ship_to_state=ship.get("state", ""), resale_ok=resale_ok)
+    except Exception as e:
+        print(f"[practitioner-personal-checkout] failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "Checkout failed. Please try again."}), 500
+    if out.get("ok"):
+        _pp.cart_clear(pid)
+        try:
+            _pp.record_order(pid, invoice_id=out.get("invoice_id"),
+                             doc_number=out.get("doc_number"),
+                             total_cents=int(round((out.get("total") or 0) * 100)),
+                             credit_cents=out.get("credit_redeemed_cents", 0))
+        except Exception as e:
+            print(f"[practitioner-personal-checkout] record_order failed: {e!r}", flush=True)
+        _ingest_order(source="personal",
+                      external_ref=str(out.get("invoice_id") or out.get("Id") or ""),
+                      email=(prac.get("email") if isinstance(prac, dict) else "") or "",
+                      name=(prac.get("name") if isinstance(prac, dict) else "") or "",
+                      total_cents=int(round((out.get("total") or 0) * 100)),
+                      address=ship, channel="personal", get_cents=out.get("get_cents", 0))
+        # Personal fee-free earn: 3.5% of the charged amount (zelle/wise), else 0.
+        # build_order was called with method=None above, so it did NOT credit its
+        # own 3% — this is the only earn for this order. We credit the explicit
+        # amount via earn_dropship_margin: the codebase's explicit-amount,
+        # invoice-idempotent earned-credit primitive (the named entry_type aside,
+        # it is the public seam for crediting a precise earned amount).
+        charged_cents = int(round((out.get("total") or 0) * 100))
+        earn = _wallet.personal_earn_cents(charged_cents, method)
+        if earn > 0:
+            try:
+                _wallet.earn_dropship_margin(
+                    pid, earn,
+                    qbo_invoice_id=str(out.get("invoice_id") or ""),
+                    ref="personal fee-free earn 3.5%")
+            except Exception as e:
+                print(f"[practitioner-personal-checkout] earn credit failed: {e!r}",
+                      flush=True)
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":
