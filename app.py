@@ -6074,8 +6074,12 @@ def api_practitioner_register():
                                  credit_cents=mo.get("credit_redeemed_cents", 0))
             except Exception:
                 pass
-            _pp.unlock_wholesale(pid)
-            unlocked = True
+            # NOTE: coaches no longer auto-unlock reselling here. Reselling
+            # (drop-ship + wholesale ordering) is now gated behind a resale
+            # license: a coach submits one via /api/practitioner/resale-apply,
+            # then Glen/Rae approve via /admin/wholesale. `unlocked` stays as
+            # register_practitioner returned it (False for coaches; licensed
+            # registrants are unlocked there, independent of this branch).
         except Exception as e:
             print(f"[practitioner-register] module invoice failed: {e!r}", flush=True)
     try:
@@ -6095,6 +6099,33 @@ def api_practitioner_register():
         pass
     return jsonify({"ok": True, "wholesale_unlocked": unlocked, "module_pay": module_pay,
                     "message": "Check your email for a sign-in link."}), 201
+
+
+@app.route("/api/practitioner/resale-apply", methods=["POST"])
+def api_practitioner_resale_apply():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    rln = (body.get("resale_license_number") or "").strip()
+    state = (body.get("license_state") or "").strip()
+    if not rln:
+        return jsonify({"ok": False, "error": "resale license number required"}), 400
+    try:
+        _pp.submit_resale_for_pid(pid, rln, state)
+    except Exception as e:
+        print(f"[resale-apply] failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "submission failed"}), 500
+    # notify Rae (best-effort; mirror the existing apply route's admin email)
+    try:
+        _send_full_report_email(
+            os.environ.get("RAE_EMAIL", "suerae1111@gmail.com"), "Rae",
+            "Resale license submitted for reselling activation",
+            f"Practitioner {pid} submitted resale license {rln} ({state}). "
+            f"Approve at {PUBLIC_BASE_URL}/admin/wholesale.")
+    except Exception:
+        pass
+    return jsonify({"ok": True, "status": "pending"})
 
 
 @app.route("/practitioner/login-request", methods=["POST"])
