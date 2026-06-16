@@ -547,6 +547,20 @@ def unlock_wholesale(practitioner_id, *, now=None) -> None:
         )
 
 
+def submit_resale_for_pid(practitioner_id, resale_license_number, license_state="", *, now=None) -> None:
+    """A logged-in coach submits a resale license to request reselling activation.
+    Sets application_status='pending' + the license fields on their EXISTING record
+    (does not create a new row). Admin approval (decide_application) then unlocks."""
+    from db_supabase import supabase_cursor
+    with supabase_cursor() as cur:
+        cur.execute(
+            "UPDATE practitioners SET application_status='pending', "
+            "resale_license_number=%s, license_state=%s, "
+            "application_submitted_at=now(), updated_at=now() WHERE id=%s",
+            (str(resale_license_number or "").strip(),
+             str(license_state or "").strip(), str(practitioner_id)))
+
+
 # ── Tier-2 wholesale application + approval ────────────────────────────────────
 # A third path to wholesale, ALONGSIDE licensed-on-register and coach-on-module:
 # a resale-license holder applies (agreeing to the ToS), Glen/Rae approve, and the

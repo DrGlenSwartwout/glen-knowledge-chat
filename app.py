@@ -5996,6 +5996,7 @@ def practitioner_application():
 from dashboard import practitioner_portal as _pp
 from dashboard import wholesale_checkout as _wc
 from dashboard import dropship_checkout as _dropship
+from dashboard import wallet as _wallet
 import dashboard.practitioner_chat as _chat
 
 
@@ -6073,8 +6074,12 @@ def api_practitioner_register():
                                  credit_cents=mo.get("credit_redeemed_cents", 0))
             except Exception:
                 pass
-            _pp.unlock_wholesale(pid)
-            unlocked = True
+            # NOTE: coaches no longer auto-unlock reselling here. Reselling
+            # (drop-ship + wholesale ordering) is now gated behind a resale
+            # license: a coach submits one via /api/practitioner/resale-apply,
+            # then Glen/Rae approve via /admin/wholesale. `unlocked` stays as
+            # register_practitioner returned it (False for coaches; licensed
+            # registrants are unlocked there, independent of this branch).
         except Exception as e:
             print(f"[practitioner-register] module invoice failed: {e!r}", flush=True)
     try:
@@ -6094,6 +6099,33 @@ def api_practitioner_register():
         pass
     return jsonify({"ok": True, "wholesale_unlocked": unlocked, "module_pay": module_pay,
                     "message": "Check your email for a sign-in link."}), 201
+
+
+@app.route("/api/practitioner/resale-apply", methods=["POST"])
+def api_practitioner_resale_apply():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    rln = (body.get("resale_license_number") or "").strip()
+    state = (body.get("license_state") or "").strip()
+    if not rln:
+        return jsonify({"ok": False, "error": "resale license number required"}), 400
+    try:
+        _pp.submit_resale_for_pid(pid, rln, state)
+    except Exception as e:
+        print(f"[resale-apply] failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "submission failed"}), 500
+    # notify Rae (best-effort; mirror the existing apply route's admin email)
+    try:
+        _send_full_report_email(
+            os.environ.get("RAE_EMAIL", "suerae1111@gmail.com"), "Rae",
+            "Resale license submitted for reselling activation",
+            f"Practitioner {pid} submitted resale license {rln} ({state}). "
+            f"Approve at {PUBLIC_BASE_URL}/admin/wholesale.")
+    except Exception:
+        pass
+    return jsonify({"ok": True, "status": "pending"})
 
 
 @app.route("/practitioner/login-request", methods=["POST"])
@@ -6225,6 +6257,96 @@ def api_practitioner_checkout():
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       address=ship, channel="wholesale", get_cents=out.get("get_cents", 0))
+        if method in ("zelle", "wise"):
+            out["pay_instructions"] = _ALT_PAY.get(method, {})
+        elif method == "card":
+            out["stripe_url"] = _stripe_checkout_url_for_order(out, prac["email"], _session_token)
+    return jsonify(out), (200 if out.get("ok") else 422)
+
+
+# ── Personal ordering for cert participants ────────────────────────────────────
+# A near-clone of the wholesale checkout above, with TWO crucial differences:
+#   (a) NO wholesale_unlocked gate — any valid practitioner session may order for
+#       themselves at cert-level pricing; and
+#   (b) NEVER resale-exempt (resale_ok=False) — personal purchases are taxed.
+# Fee-free (zelle/wise) orders earn 3.5% Wellness Credit. To avoid double-crediting,
+# build_order is called with method=None (which suppresses its OWN internal 3%
+# fee-free earn), and the route credits the full 3.5% itself.
+
+@app.route("/api/practitioner/personal/quote", methods=["POST"])
+def api_practitioner_personal_quote():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    data = _pp.portal_data(pid) or {}
+    # portal_data already prices the cart at the participant's cert level.
+    return jsonify({"ok": True, "quote": data.get("quote"),
+                    "wallet_balance_cents": data.get("wallet_balance_cents")})
+
+
+@app.route("/api/practitioner/personal/checkout", methods=["POST"])
+def api_practitioner_personal_checkout():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    data = _pp.portal_data(pid)
+    if not data:
+        return jsonify({"ok": False, "error": "account not found"}), 404
+    # NOTE: no wholesale_unlocked gate here — personal ordering is always allowed.
+    items = data.get("cart") or []
+    if not items:
+        return jsonify({"ok": False, "error": "Your cart is empty."}), 400
+    prac = {"id": pid, "modules_completed": data.get("modules_completed", 0),
+            "email": data.get("email"), "name": data.get("name") or ""}
+    _body = request.get_json(silent=True) or {}
+    method = (_body.get("method") or "zelle").strip().lower()
+    _session_token = (_body.get("token") or "").strip()
+    if method == "card" and not _STRIPE_ACTIVE:
+        method = "zelle"   # card not enabled yet
+    if method not in ("zelle", "wise", "card"):
+        method = "zelle"
+    ship = _normalize_ship_address(_body.get("address") or {}, fallback_name=prac["name"])
+    resale_ok = False   # personal purchases are taxed; never resale-exempt
+    try:
+        # method=None suppresses build_order's internal 3% fee-free earn so we can
+        # credit the 3.5% PERSONAL rate below without double-crediting. The real
+        # payment method is kept in `method` for the pay-instructions/Stripe tail.
+        out = _wc.build_order(items, prac, method=None,
+                              ship_to_state=ship.get("state", ""), resale_ok=resale_ok)
+    except Exception as e:
+        print(f"[practitioner-personal-checkout] failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "Checkout failed. Please try again."}), 500
+    if out.get("ok"):
+        _pp.cart_clear(pid)
+        try:
+            _pp.record_order(pid, invoice_id=out.get("invoice_id"),
+                             doc_number=out.get("doc_number"),
+                             total_cents=int(round((out.get("total") or 0) * 100)),
+                             credit_cents=out.get("credit_redeemed_cents", 0))
+        except Exception as e:
+            print(f"[practitioner-personal-checkout] record_order failed: {e!r}", flush=True)
+        _ingest_order(source="personal",
+                      external_ref=str(out.get("invoice_id") or out.get("Id") or ""),
+                      email=(prac.get("email") if isinstance(prac, dict) else "") or "",
+                      name=(prac.get("name") if isinstance(prac, dict) else "") or "",
+                      total_cents=int(round((out.get("total") or 0) * 100)),
+                      address=ship, channel="personal", get_cents=out.get("get_cents", 0))
+        # Personal fee-free earn: 3.5% of the charged amount (zelle/wise), else 0.
+        # build_order was called with method=None above, so it did NOT credit its
+        # own 3% — this is the only earn for this order. Credit the explicit 3.5%
+        # via earn_personal (its own ledger entry_type, so reconciliation never
+        # conflates it with drop-ship margin). Idempotent per invoice.
+        charged_cents = int(round((out.get("total") or 0) * 100))
+        earn = _wallet.personal_earn_cents(charged_cents, method)
+        if earn > 0:
+            try:
+                _wallet.earn_personal(
+                    pid, earn,
+                    qbo_invoice_id=str(out.get("invoice_id") or ""),
+                    note="personal fee-free earn 3.5%")
+            except Exception as e:
+                print(f"[practitioner-personal-checkout] earn credit failed: {e!r}",
+                      flush=True)
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":
@@ -6471,8 +6593,22 @@ def api_practitioner_settings_get():
         cx.row_factory = sqlite3.Row
         _ps.init_settings_table(cx)
         settings = _ps.get_settings(cx, pid)
+
+    # show_contact lives on the Supabase practitioners row, not the SQLite
+    # settings table. Read it directly; never let a failure 500 the page.
+    show_contact = False
+    try:
+        from db_supabase import supabase_cursor
+        with supabase_cursor() as cur:
+            cur.execute("SELECT show_contact FROM practitioners WHERE id=%s", (pid,))
+            row = cur.fetchone()
+            show_contact = bool(row and row["show_contact"])
+    except Exception as e:
+        print(f"[practitioner-settings] show_contact read failed: {e!r}", flush=True)
+
     return jsonify({"ok": True, "branding": settings["branding"], "pricing": settings["pricing"],
-                    "chat_enabled": settings.get("chat_enabled", False)})
+                    "chat_enabled": settings.get("chat_enabled", False),
+                    "show_contact": show_contact})
 
 
 @app.route("/api/practitioner/settings", methods=["POST"])
@@ -6531,10 +6667,27 @@ def api_practitioner_settings_post():
         _ps.set_pricing(cx, pid, pricing_clean)
         settings = _ps.get_settings(cx, pid)
 
-    return jsonify({"ok": True, "branding": settings["branding"],
-                    "pricing": settings["pricing"],
-                    "chat_enabled": settings.get("chat_enabled", False),
-                    "clamped": clamped})
+    # show_contact lives on the Supabase practitioners row. Only touch it when
+    # the key is present, so saving branding/pricing alone never resets it.
+    # Never let a Supabase failure 500 the whole settings save (log + continue).
+    show_contact_out = None
+    if "show_contact" in body:
+        show_contact_out = bool(body.get("show_contact"))
+        try:
+            from db_supabase import supabase_cursor
+            with supabase_cursor() as cur:
+                cur.execute("UPDATE practitioners SET show_contact=%s, updated_at=now() "
+                            "WHERE id=%s", (show_contact_out, pid))
+        except Exception as e:
+            print(f"[practitioner-settings] show_contact write failed: {e!r}", flush=True)
+
+    resp = {"ok": True, "branding": settings["branding"],
+            "pricing": settings["pricing"],
+            "chat_enabled": settings.get("chat_enabled", False),
+            "clamped": clamped}
+    if show_contact_out is not None:
+        resp["show_contact"] = show_contact_out
+    return jsonify(resp)
 
 
 def _record_dispensary_sale(code, customer_email, bottles, invoice_id):
@@ -7911,6 +8064,31 @@ def api_cert_show_contact():
     except Exception as e:
         return jsonify({"error": f"update failed: {e}"}), 500
     return jsonify({"ok": True, "email": email, "show_contact": show, "updated": updated})
+
+
+@app.route("/api/cert/portal-invite", methods=["POST"])
+def api_cert_portal_invite():
+    """Console-gated: email a cert participant their practitioner-portal magic link."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    pid = _pp.id_for_email(email)
+    if not pid:
+        return jsonify({"ok": True, "sent": False, "reason": "no practitioner record"})
+    try:
+        name = _pp.name_for_email(email) or ""
+        magic = _pp.create_magic_link_token(pid, email)
+        _send_practitioner_magic_link(
+            email, name, f"{PUBLIC_BASE_URL}/practitioner/login-verify?token={magic}")
+    except Exception as e:
+        print(f"[cert-portal-invite] failed for {email}: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "send failed"}), 500
+    return jsonify({"ok": True, "sent": True, "email": email})
 
 
 def _run_biofield_bonuses(dry_run=False):
