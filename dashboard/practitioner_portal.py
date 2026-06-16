@@ -302,11 +302,14 @@ def _insert_token(tok, purpose, extra, ttl_seconds, now=None, db_path=None) -> N
         cx.commit()
 
 
-def create_magic_link_token(practitioner_id, email="", *, now=None, db_path=None) -> str:
+def create_magic_link_token(practitioner_id, email="", *, ttl_min=None, now=None, db_path=None) -> str:
+    """Mint a practitioner magic-link token. Defaults to the short interactive
+    login TTL (MAGIC_TTL_MIN); pass ttl_min for a longer-lived link (e.g. an
+    emailed invite that won't be clicked within 15 minutes)."""
     tok = secrets.token_urlsafe(32)
     _insert_token(tok, "practitioner_magic_link",
                   {"practitioner_id": str(practitioner_id), "email": email},
-                  MAGIC_TTL_MIN * 60, now, db_path)
+                  int(ttl_min or MAGIC_TTL_MIN) * 60, now, db_path)
     return tok
 
 

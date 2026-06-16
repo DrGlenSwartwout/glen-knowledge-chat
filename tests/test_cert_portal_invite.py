@@ -45,7 +45,8 @@ def test_known_email_sends_link(client, monkeypatch):
     c, appmod = client
     monkeypatch.setattr(appmod._pp, "id_for_email", lambda email: "pid1")
     monkeypatch.setattr(appmod._pp, "name_for_email", lambda email: "Dr X")
-    monkeypatch.setattr(appmod._pp, "create_magic_link_token", lambda pid, email: "tok")
+    monkeypatch.setattr(appmod._pp, "create_magic_link_token",
+                        lambda pid, email, **kw: "tok")
 
     calls = []
 
