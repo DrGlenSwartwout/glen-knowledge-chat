@@ -81,6 +81,16 @@ def client(monkeypatch):
     return appmod.app.test_client(), appmod, build_order, ingest, earn
 
 
+# ── 0. the portal page still serves ─────────────────────────────────────────────
+
+def test_portal_page_serves():
+    import app as appmod
+    appmod.app.config["TESTING"] = True
+    r = appmod.app.test_client().get("/practitioner/portal")
+    assert r.status_code == 200
+    assert b"Practitioner Portal" in r.data
+
+
 # ── 1. not signed in → 401 on quote + checkout ─────────────────────────────────
 
 def test_quote_not_signed_in(client):
