@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Cert Review</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:60rem;margin:1.5rem auto;padding:0 1rem;color:#1c2b2b}
+  .sub{border:1px solid #dde;border-radius:.5rem;padding:.7rem;margin:.6rem 0}
+  .pill{display:inline-block;padding:.1rem .5rem;border-radius:1rem;font-size:.78rem;background:#eef3f2;margin-right:.3rem}
+  button{background:#1b6b5e;color:#fff;border:0;border-radius:.4rem;padding:.4rem .8rem;font:inherit;cursor:pointer;margin-right:.4rem}
+  button.alt{background:#eef3f2;color:#1b6b5e}
+  a{color:#1b6b5e} .hint{color:#667;font-size:.85rem}
+  input.note{width:60%;padding:.3rem;border:1px solid #bcc;border-radius:.3rem}
+  label.cm{font-size:.82rem;margin-right:.5rem;white-space:nowrap}
+</style>
+</head>
+<body>
+<h1>Certification Review</h1>
+<p class="hint">Approve credits the modules (private). Publish pushes it to the proof library.</p>
+<div>Filter:
+  <select id="status" onchange="load()">
+    <option value="">all</option><option>submitted</option><option>approved</option>
+    <option>published</option><option>returned</option>
+  </select>
+</div>
+<div id="list"></div>
+<script>
+const KEY = new URLSearchParams(location.search).get('key') || '';
+let MODULES=[];
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function q(p){return p+(p.includes('?')?'&':'?')+'key='+encodeURIComponent(KEY);}
+async function load(){
+  const st=document.getElementById('status').value;
+  const r=await fetch(q('/api/cert/review/list'+(st?('?status='+st):'')));
+  if(r.status===401){document.getElementById('list').innerHTML='<p>Add ?key=CONSOLE_SECRET to the URL.</p>';return;}
+  const d=await r.json(); MODULES=d.modules;
+  document.getElementById('list').innerHTML=d.submissions.map(s=>card(s,d.rollups[s.email])).join('')||'<p class="hint">Nothing here.</p>';
+}
+function card(s,roll){
+  const checks=MODULES.map(m=>`<label class="cm"><input type="checkbox" class="cm-${esc(s.id)}" value="${m.id}" ${(s.credited_modules||s.modules||[]).includes(m.id)?'checked':''}/> ${m.id}</label>`).join('');
+  const safeUrl=(s.url&&/^https?:\/\//i.test(s.url))?s.url:'';
+  const link=safeUrl?`<a href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">link</a>`:(s.file_path?'(file on server)':'(no link)');
+  const r=roll?`<span class="hint">${esc(s.email)}: ${roll.approved_count}/12 approved · ${roll.modules_covered.length}/12 modules · W${roll.has_written?'✓':'✗'} V${roll.has_video?'✓':'✗'}${roll.complete?' · COMPLETE':''}</span>`:'';
+  return `<div class="sub"><b>${esc(s.title)||'(untitled)'}</b> <span class="pill">${esc(s.status)}</span> ${link}<br>
+    <span class="hint">${esc(s.description)}</span><br>${r}<br>
+    <div style="margin:.4rem 0">${checks}</div>
+    <input class="note" id="note-${esc(s.id)}" placeholder="reviewer note (optional)"/><br>
+    <div style="margin-top:.4rem">
+      <button onclick="act('approve','${esc(s.id)}')">Approve</button>
+      <button class="alt" onclick="act('return','${esc(s.id)}')">Return</button>
+      <button onclick="act('publish','${esc(s.id)}')">Publish</button>
+    </div></div>`;
+}
+async function act(kind,id){
+  const note=document.getElementById('note-'+id).value;
+  const body={id,note};
+  if(kind==='approve'){body.credited_modules=[...document.querySelectorAll('.cm-'+id+':checked')].map(x=>parseInt(x.value));}
+  const r=await fetch(q('/api/cert/review/'+kind),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();
+  if(!d.ok){alert(d.error||'error');return;}
+  load();
+}
+load();
+</script>
+</body>
+</html>

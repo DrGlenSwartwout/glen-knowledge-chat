@@ -142,6 +142,12 @@ def _console_key(appmod):
     return appmod.CONSOLE_SECRET or ""
 
 
+def test_console_cert_page_served(client):
+    c, _ = client
+    r = c.get("/console/cert")
+    assert r.status_code == 200
+
+
 def test_review_list_console_gated(client):
     c, appmod = client
     r = c.get("/api/cert/review/list")  # no key

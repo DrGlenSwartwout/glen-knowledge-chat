@@ -17440,6 +17440,13 @@ def bos_orders_page():
     return resp
 
 
+@app.route("/console/cert")
+def bos_cert_page():
+    resp = send_from_directory(STATIC, "console-cert.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/products")
 def bos_products_list():
     if _bos_actor() is None:
