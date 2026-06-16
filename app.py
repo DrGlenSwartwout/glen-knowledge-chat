@@ -6593,8 +6593,22 @@ def api_practitioner_settings_get():
         cx.row_factory = sqlite3.Row
         _ps.init_settings_table(cx)
         settings = _ps.get_settings(cx, pid)
+
+    # show_contact lives on the Supabase practitioners row, not the SQLite
+    # settings table. Read it directly; never let a failure 500 the page.
+    show_contact = False
+    try:
+        from db_supabase import supabase_cursor
+        with supabase_cursor() as cur:
+            cur.execute("SELECT show_contact FROM practitioners WHERE id=%s", (pid,))
+            row = cur.fetchone()
+            show_contact = bool(row and row["show_contact"])
+    except Exception as e:
+        print(f"[practitioner-settings] show_contact read failed: {e!r}", flush=True)
+
     return jsonify({"ok": True, "branding": settings["branding"], "pricing": settings["pricing"],
-                    "chat_enabled": settings.get("chat_enabled", False)})
+                    "chat_enabled": settings.get("chat_enabled", False),
+                    "show_contact": show_contact})
 
 
 @app.route("/api/practitioner/settings", methods=["POST"])
@@ -6653,10 +6667,27 @@ def api_practitioner_settings_post():
         _ps.set_pricing(cx, pid, pricing_clean)
         settings = _ps.get_settings(cx, pid)
 
-    return jsonify({"ok": True, "branding": settings["branding"],
-                    "pricing": settings["pricing"],
-                    "chat_enabled": settings.get("chat_enabled", False),
-                    "clamped": clamped})
+    # show_contact lives on the Supabase practitioners row. Only touch it when
+    # the key is present, so saving branding/pricing alone never resets it.
+    # Never let a Supabase failure 500 the whole settings save (log + continue).
+    show_contact_out = None
+    if "show_contact" in body:
+        show_contact_out = bool(body.get("show_contact"))
+        try:
+            from db_supabase import supabase_cursor
+            with supabase_cursor() as cur:
+                cur.execute("UPDATE practitioners SET show_contact=%s, updated_at=now() "
+                            "WHERE id=%s", (show_contact_out, pid))
+        except Exception as e:
+            print(f"[practitioner-settings] show_contact write failed: {e!r}", flush=True)
+
+    resp = {"ok": True, "branding": settings["branding"],
+            "pricing": settings["pricing"],
+            "chat_enabled": settings.get("chat_enabled", False),
+            "clamped": clamped}
+    if show_contact_out is not None:
+        resp["show_contact"] = show_contact_out
+    return jsonify(resp)
 
 
 def _record_dispensary_sale(code, customer_email, bottles, invoice_id):
