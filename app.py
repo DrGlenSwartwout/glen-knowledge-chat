@@ -15196,6 +15196,13 @@ def practitioner_finder_search():
         fellowship_only=fellowship_only,
         countries=None if international else [country],
     )
+    # Certification-track practitioners: never expose raw email/phone in the
+    # public payload — contact is routed through the inquiry form (which fetches
+    # the address server-side). Website + cert level stay visible.
+    for r in results:
+        if r.get("tier") in ("panel_in_cert", "panel_certified"):
+            r["email"] = None
+            r["phone"] = None
     return jsonify({"count": len(results), "practitioners": results,
                     "search_center": {"lat": lat, "lng": lng}})
 
