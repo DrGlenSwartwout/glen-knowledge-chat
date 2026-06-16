@@ -51,6 +51,20 @@
   .state{max-width:32rem;margin:18vh auto;text-align:center;color:var(--muted);padding:0 18px}
   .err{color:#9a3b3b}
   #loading{opacity:.6}
+  /* role badges + account */
+  .badges{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:.4rem 0 0}
+  .badge{background:var(--brand-soft);color:var(--brand);border-radius:999px;
+    font-size:.74rem;font-weight:700;padding:3px 10px;letter-spacing:.02em}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line)}
+  .kv:last-child{border-bottom:0}
+  .kv .k{color:var(--muted)} .kv .v{font-weight:600;text-align:right}
+  /* order history */
+  .ord{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .ord:last-child{border-bottom:0}
+  .ord .od{color:var(--muted);font-size:.86rem}
+  .pill{font-size:.72rem;font-weight:700;border-radius:999px;padding:2px 9px;background:#eef6f2;color:var(--ok)}
+  .soon{border-style:dashed;background:linear-gradient(180deg,#fff,#faf8ff);text-align:center}
+  .soon .muted{margin:.2rem 0 0}
 </style>
 </head>
 <body>
@@ -78,17 +92,38 @@ async function load(){
     document.getElementById("notfound").hidden = false;
     return;
   }
-  render(data);
+  // Role-aware blocks (account / orders / upgrade) come from the identity seam.
+  // Best-effort: if it's unavailable the page still renders biofield + reorder.
+  let view = null;
+  try{
+    const v = await fetch(`/api/portal/${encodeURIComponent(token)}/view`);
+    if(v.ok) view = await v.json();
+  }catch(e){ /* non-fatal */ }
+  render(data, view);
 }
 
-function render(d){
+function render(d, v){
   const app = document.getElementById("app");
   const first = (d.name||"").split(" ")[0] || "friend";
+  const badges = (v && v.account && v.account.role_badges) || [];
   let html = `
     <div class="hero">
       <div class="hello">Aloha ${esc(first)} 🌺</div>
       <p class="sub">${esc(d.greeting || "This is your personal healing home — your video, your healing path, and your remedies, all in one place.")}</p>
+      ${badges.length?`<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>`:""}
     </div>`;
+
+  // Account snapshot — always shown when we have an identity.
+  if(v && v.account){
+    const a = v.account;
+    const addr = a.address||{};
+    const cityline = [addr.city, addr.state, addr.zip].filter(Boolean).join(", ");
+    html += `<div class="card"><h2>Your account</h2>
+      <div class="kv"><span class="k">Email</span><span class="v">${esc(a.email||"")}</span></div>
+      ${cityline?`<div class="kv"><span class="k">Location</span><span class="v">${esc(cityline)}</span></div>`:""}
+      ${a.points_cents?`<div class="kv"><span class="k">Reward points</span><span class="v">${esc(money(a.points_cents))}</span></div>`:""}
+    </div>`;
+  }
 
   if(d.video && d.video.url){
     html += `
@@ -130,6 +165,25 @@ function render(d){
       <p class="muted small" style="margin:.7rem 0 1rem">Shipping calculated at checkout.</p>
       <button class="btn full" id="reorderBtn">Reorder my remedies</button>
       <p class="small err" id="reorderErr" hidden></p></div>`;
+  }
+
+  // Order history — role-gated (clients) by the view assembler.
+  if(v && v.orders && v.orders.visible && Array.isArray(v.orders.items) && v.orders.items.length){
+    let rows = "";
+    v.orders.items.slice(0,8).forEach(o=>{
+      const date = (o.date||"").slice(0,10);
+      rows += `<div class="ord"><span><span class="nm">${esc(money(o.total_cents))}</span>
+        <span class="od">${esc(date)}</span></span>
+        <span class="pill">${esc(o.status||"")}</span></div>`;
+    });
+    html += `<div class="card"><h2>Your orders</h2><div>${rows}</div></div>`;
+  }
+
+  // Sales / upgrade — reserved seam (feature #2). Renders a quiet placeholder so
+  // the section exists in the shell before it has content.
+  if(v && v.upgrade && v.upgrade.placeholder){
+    html += `<div class="card soon"><h2>What's next for you</h2>
+      <p class="muted small">Personalized next steps and offers are on their way to your healing home.</p></div>`;
   }
 
   html += `<div class="foot">With aloha,<br><b>Dr. Glen &amp; Rae</b> · Remedy Match LLC</div>`;

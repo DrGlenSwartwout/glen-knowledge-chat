@@ -109,6 +109,40 @@ def test_admin_upsert_creates_and_returns_token(client):
     assert r2.status_code == 200
 
 
+# ── Role-aware view endpoint (identity seam + view assembler) ────────────────
+
+def _seed_person(appmod, email, name="C", roles='["client"]'):
+    from dashboard import portal_identity as pi
+    cx = sqlite3.connect(appmod.LOG_DB)
+    pi._ensure_people_table(cx)
+    cx.execute(
+        "INSERT OR IGNORE INTO people (email, name, roles, created_at, updated_at) "
+        "VALUES (?,?,?,?,?)", (email, name, roles, "t", "t"))
+    cx.commit()
+    cx.close()
+
+
+def test_api_portal_view_returns_role_aware_blocks(client):
+    c, appmod = client
+    _seed_person(appmod, "view@example.com", "View Client")
+    tok = _seed_portal(appmod, email="view@example.com", name="View Client")
+    r = c.get(f"/api/portal/{tok}/view")
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["account"]["email"] == "view@example.com"
+    assert "Client" in j["account"]["role_badges"]
+    assert j["orders"]["visible"] is True
+    assert j["biofield"]["visible"] is True       # seeded portal has layers/video
+    assert j["upgrade"] == {"enabled": False, "placeholder": True}
+    assert j["auth_method"] == "token"            # session login is dark
+
+
+def test_api_portal_view_bad_token_404(client):
+    c, _ = client
+    r = c.get("/api/portal/not-a-real-token/view")
+    assert r.status_code == 404
+
+
 # ── Practitioner-special pricing ────────────────────────────────────────────
 
 def test_priced_lines_honor_per_item_override():

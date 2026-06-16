@@ -7150,6 +7150,14 @@ def _portal_console_ok():
     return True
 
 
+def _client_login_enabled() -> bool:
+    """Real client login (magic-link → session cookie) is dark by default. While
+    off, the emailed /portal/<token> link is the only auth and resolve_identity
+    ignores any session cookie. Flip this flag (next slice) to light up login."""
+    return os.environ.get("CLIENT_LOGIN_ENABLED", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _portal_priced_lines(items):
     """Build QBO invoice lines from a portal's reorder items, honoring an optional
     per-item ``price_cents`` override (the client's practitioner-special price);
@@ -7262,6 +7270,30 @@ def api_client_portal_checkout(token):
     except Exception as e:
         app.logger.exception("portal checkout failed")
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+
+
+@app.route("/api/portal/<token>/view")
+def api_client_portal_view(token):
+    """Role-aware portal payload: account + orders + biofield + a reserved
+    sales/upgrade stub, composed through the identity seam. The page renders
+    whichever blocks come back. Today identity comes from the path token; the
+    (dark) session cookie is honored only when CLIENT_LOGIN_ENABLED is on."""
+    from dashboard import client_portal as _cp
+    from dashboard import portal_identity as _pi
+    from dashboard import portal_view as _pv
+    sess = request.cookies.get("rm_portal_session", "")
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        ident = _pi.resolve_identity(
+            cx, token=token, session_token=sess,
+            client_login_enabled=_client_login_enabled())
+        if ident is None:
+            return jsonify({"error": "not found"}), 404
+        view = _pv.get_portal_view(cx, ident.person_id)
+    if view is None:
+        return jsonify({"error": "not found"}), 404
+    view["auth_method"] = ident.auth_method
+    return jsonify(view)
 
 
 @app.route("/admin/portal/upsert", methods=["POST"])
