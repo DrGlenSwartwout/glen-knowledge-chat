@@ -2347,6 +2347,40 @@ def _qty_unit_cents(p, qty):
     return p.get("price_cents", 6997)
 
 
+def _inhouse_ff_unit_cents(p, total_ff_qty, settings):
+    """Effective in-house unit price (cents) for a $69.97 functional-formulation
+    capsule (_qty_eligible): the order-wide volume rate driven by the TOTAL FF
+    capsule quantity (1 bottle = 1 month). The linear volume curve is monotonic,
+    so the total-quantity rate is the best price each FF line can get. Clamped at
+    the wholesale discount floor so a console max above 43% can't breach it.
+    Non-eligible products return their list price (callers handle overrides)."""
+    if not _qty_eligible(p):
+        return int(p.get("price_cents") or 0)
+    from dashboard import pricing as _pricing
+    pct = _pricing.volume_pct(int(total_ff_qty or 0), settings)
+    eff = int(round(6997 * (1 - (pct or 0) / 100.0)))
+    floor = int(round(6997 * float(settings.get("discount_floor_pct", 0.57))))
+    return max(eff, floor)
+
+
+def _inhouse_total_ff_qty(lines_in):
+    """Sum of qty across $69.97 functional-formulation lines in the cart."""
+    tot = 0
+    for ln in lines_in:
+        p = _get_product((ln.get("slug") or "").strip())
+        if p and _qty_eligible(p):
+            tot += max(1, min(int(ln.get("qty") or 1), 99))
+    return tot
+
+
+def _inhouse_line_unit_cents(p, override, total_ff_qty, settings):
+    """Per-line unit price for the in-house form: an explicit owner override wins;
+    else FF capsules get the volume rate, everything else its list price."""
+    if override not in (None, ""):
+        return int(override)
+    return _inhouse_ff_unit_cents(p, total_ff_qty, settings)
+
+
 # Recurring membership tiers (Group Coaching). One QBO Item, price set per tier.
 _MEMBERSHIP_ITEM = "Group Coaching Membership"
 _MEMBERSHIP_TIERS = {
@@ -17062,7 +17096,12 @@ def api_orders_manual():
         "city": addr_in.get("city") or "", "state": addr_in.get("state") or "",
         "zip": addr_in.get("zip") or "", "country": (addr_in.get("country") or "US").upper(),
     }
-    # Build cart + structured line items (list price, or per-line override).
+    # Build cart + structured line items. FF capsules ($69.97) are priced at the
+    # order-wide volume rate per line (see _inhouse_ff_unit_cents); an explicit
+    # unit override wins; everything else is its list price.
+    from dashboard import pricing as _pricing
+    settings = _pricing.load_settings(_pricing_settings())
+    total_ff_qty = _inhouse_total_ff_qty(lines_in)
     cart, items_rec, subtotal_list = [], [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
@@ -17070,8 +17109,7 @@ def api_orders_manual():
         if not p:
             continue
         qty = max(1, min(int(ln.get("qty") or 1), 99))
-        ov = ln.get("unit_cents")
-        unit_cents = int(ov if ov not in (None, "") else (p.get("price_cents") or 0))
+        unit_cents = _inhouse_line_unit_cents(p, ln.get("unit_cents"), total_ff_qty, settings)
         line_cents = unit_cents * qty
         subtotal_list += line_cents
         cart.append({"slug": slug, "qty": qty})
@@ -17079,21 +17117,20 @@ def api_orders_manual():
                           "unit_cents": unit_cents, "line_cents": line_cents})
     if not cart:
         return jsonify({"ok": False, "error": "no valid products"}), 400
-    # Rule-based pricing: engine proposes discount; shipping + absorbed GET.
+    # Volume is already baked into the per-line FF prices above, so the order does
+    # NOT apply the engine's months-volume discount — only a manual order discount.
+    # _price_cart is used solely for shipping + absorbed GET.
     try:
         pc = _price_cart(cart, ship=ship, channel="retail")
-        engine_discount = int(pc.get("discount_cents") or 0)
         shipping_cents = int(pc.get("shipping_cents") or 0)
         get_cents = int((pc.get("priced") or {}).get("get_cents") or 0)
     except CheckoutError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
         print(f"[orders.manual] pricing fell back: {e!r}", flush=True)
-        engine_discount, shipping_cents, get_cents = 0, 0, 0
-    if body.get("discount_cents") not in (None, ""):
-        discount_cents = max(0, int(body.get("discount_cents")))
-    else:
-        discount_cents = engine_discount
+        shipping_cents, get_cents = 0, 0
+    discount_cents = (max(0, int(body.get("discount_cents")))
+                      if body.get("discount_cents") not in (None, "") else 0)
     total_cents = max(0, subtotal_list - discount_cents) + shipping_cents
     # Points apply at the bottom of the invoice, against the total. Server is the
     # ONLY authority on the amount: capped to the total AND to the customer's actual
@@ -17141,6 +17178,42 @@ def api_orders_manual():
                                "points_redeemed_cents": points_redeemed_cents,
                                "total_cents": total_cents},
                     "lines": items_rec})
+
+
+@app.route("/api/orders/price-preview", methods=["POST"])
+def api_orders_price_preview():
+    """OWNER: live per-line pricing for the order-entry form. Same authority as
+    /api/orders/manual — FF capsules get the order-wide volume rate, others list
+    price, owner overrides honored. Server is the single source of truth."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import pricing as _pricing
+    settings = _pricing.load_settings(_pricing_settings())
+    lines_in = (request.get_json(silent=True) or {}).get("lines") or []
+    total_ff_qty = _inhouse_total_ff_qty(lines_in)
+    vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2)
+    out_lines, subtotal = [], 0
+    for ln in lines_in:
+        slug = (ln.get("slug") or "").strip()
+        p = _get_product(slug)
+        if not p:
+            continue
+        qty = max(1, min(int(ln.get("qty") or 1), 99))
+        ov = ln.get("unit_cents")
+        is_ff = _qty_eligible(p)
+        list_cents = int(p.get("price_cents") or 0)
+        unit = _inhouse_line_unit_cents(p, ov, total_ff_qty, settings)
+        overridden = ov not in (None, "")
+        line_cents = unit * qty
+        subtotal += line_cents
+        out_lines.append({
+            "slug": slug, "qty": qty, "is_ff": is_ff, "list_cents": list_cents,
+            "effective_unit_cents": unit, "line_cents": line_cents,
+            "vol_pct": (vol_pct if (is_ff and not overridden) else 0),
+            "savings_cents": max(0, list_cents - unit)})
+    return jsonify({"ok": True, "total_ff_qty": total_ff_qty,
+                    "subtotal_cents": subtotal, "lines": out_lines})
 
 
 # ── Customer invoice pay-link (Phase 3) — PUBLIC, token-scoped ─────────────────

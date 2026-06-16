@@ -90,7 +90,7 @@
 
   <div class="section">
     <h2>Line items</h2>
-    <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Unit $</th><th>Line</th><th></th></tr></thead>
+    <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Unit $</th><th>Vol price</th><th>Line</th><th></th></tr></thead>
       <tbody id="lines"></tbody></table>
     <div class="addline">
       <div><label>Add product</label><select id="prod-pick"></select></div>
@@ -128,9 +128,11 @@ if (_urlKey) localStorage.setItem("console_key", _urlKey);
 const KEY = _urlKey || localStorage.getItem("console_key") || "";
 const HEADERS = { "Content-Type":"application/json", "X-Console-Key":KEY };
 let CATALOG = [];          // [{slug,name,price_cents}]
-let LINES = [];            // [{slug,name,qty,unit_cents}]
+let LINES = [];            // [{slug,name,qty,unit_cents,edited}]
 let LAST_ORDER = null;     // {order_id, external_ref, totals}
 let POINTS_BAL = 0;        // selected customer's redeemable points balance (cents)
+let PREVIEW = {subtotal_cents:null, lines:[]};  // server price preview
+let previewTimer = null;
 
 function toast(msg, kind="ok"){ const t=document.getElementById("toast"); t.textContent=msg; t.className="show "+kind; setTimeout(()=>t.className=kind,2200); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -182,8 +184,9 @@ function addLine(){
   const slug=$("prod-pick").value; const p=CATALOG.find(x=>x.slug===slug); if(!p) return;
   const qty=Math.max(1, parseInt($("prod-qty").value,10)||1);
   const ovRaw=$("prod-unit").value.trim();
-  const unit_cents = ovRaw!=="" ? Math.round(parseFloat(ovRaw)*100) : (p.price_cents||0);
-  LINES.push({slug, name:p.name, qty, unit_cents});
+  const edited = ovRaw!=="";
+  const unit_cents = edited ? Math.round(parseFloat(ovRaw)*100) : (p.price_cents||0);
+  LINES.push({slug, name:p.name, qty, unit_cents, edited});
   $("prod-qty").value=1; $("prod-unit").value="";
   renderLines();
 }
@@ -192,15 +195,43 @@ function renderLines(){
   tb.innerHTML = LINES.map((l,i)=>`<tr>
     <td>${esc(l.name)}</td>
     <td><input type="number" min="1" value="${l.qty}" onchange="editLine(${i},'qty',this.value)" style="width:70px"></td>
-    <td><input type="number" step="0.01" value="${(l.unit_cents/100).toFixed(2)}" onchange="editLine(${i},'unit',this.value)" style="width:90px"></td>
-    <td>${dollars(l.qty*l.unit_cents)}</td>
+    <td><input id="u-${i}" type="number" step="0.01" value="${(l.unit_cents/100).toFixed(2)}" onchange="editLine(${i},'unit',this.value)" style="width:90px"></td>
+    <td id="vp-${i}" style="font-size:12px;color:var(--muted)">…</td>
+    <td id="ln-${i}">${dollars(l.qty*l.unit_cents)}</td>
     <td><button class="mini" onclick="rmLine(${i})">✕</button></td></tr>`).join("");
+  refreshPreview();
   recalc();
 }
-function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||1); else LINES[i].unit_cents=Math.round(parseFloat(v)*100)||0; renderLines(); }
+function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||1); else { LINES[i].unit_cents=Math.round(parseFloat(v)*100)||0; LINES[i].edited=true; } renderLines(); }
 function rmLine(i){ LINES.splice(i,1); renderLines(); }
+// Send a line's unit_cents only when the owner manually overrode it; otherwise
+// let the server price it (FF capsules get the volume rate).
+function linesPayload(){ return LINES.map(l=> l.edited ? {slug:l.slug, qty:l.qty, unit_cents:l.unit_cents} : {slug:l.slug, qty:l.qty}); }
+function refreshPreview(){
+  clearTimeout(previewTimer);
+  if (!LINES.length){ PREVIEW={subtotal_cents:0, lines:[]}; recalc(); return; }
+  previewTimer = setTimeout(async ()=>{
+    try{
+      const r = await fetch("/api/orders/price-preview", {method:"POST", headers:HEADERS, body:JSON.stringify({lines:linesPayload()})});
+      const j = await r.json(); if (!j.ok) return;
+      PREVIEW = {subtotal_cents:j.subtotal_cents, lines:j.lines};
+      (j.lines||[]).forEach((pl,i)=>{
+        if (!LINES[i]) return;
+        if (!LINES[i].edited){ LINES[i].unit_cents = pl.effective_unit_cents; const ui=$("u-"+i); if (ui) ui.value=(pl.effective_unit_cents/100).toFixed(2); }
+        const vp=$("vp-"+i);
+        if (vp){
+          if (pl.is_ff && pl.savings_cents>0){ vp.innerHTML = `<strong style="color:var(--text)">${dollars(pl.effective_unit_cents)}</strong> <span style="color:var(--green)">−${pl.vol_pct}%</span> <span style="text-decoration:line-through;opacity:.6">${dollars(pl.list_cents)}</span>`; }
+          else if (pl.is_ff){ vp.textContent = dollars(pl.effective_unit_cents); }
+          else { vp.textContent = "—"; }
+        }
+        const ln=$("ln-"+i); if (ln) ln.textContent = dollars(LINES[i].qty*LINES[i].unit_cents);
+      });
+      recalc();
+    }catch(e){ /* keep client estimate */ }
+  }, 250);
+}
 function recalc(){
-  const sub=LINES.reduce((s,l)=>s+l.qty*l.unit_cents,0);
+  const sub = (PREVIEW && PREVIEW.subtotal_cents!=null) ? PREVIEW.subtotal_cents : LINES.reduce((s,l)=>s+l.qty*l.unit_cents,0);
   $("t-sub").textContent=dollars(sub);
   const dRaw=$("o-discount").value.trim();
   $("t-disc").textContent = dRaw!=="" ? "-"+dollars(Math.round(parseFloat(dRaw)*100)) : "rule-based (on create)";
@@ -224,7 +255,7 @@ async function createInvoice(){
     customer:{ person_id: $("person_id").value||null, name:$("c-name").value, email:$("c-email").value, phone:$("c-phone").value,
       address:{ address1:$("a-addr1").value, address2:$("a-addr2").value, city:$("a-city").value,
                 state:$("a-state").value, zip:$("a-zip").value, country:$("a-country").value||"US" } },
-    lines: LINES.map(l=>({slug:l.slug, qty:l.qty, unit_cents:l.unit_cents})),
+    lines: linesPayload(),
     method: $("o-method").value,
   };
   if (dRaw!=="") body.discount_cents = Math.round(parseFloat(dRaw)*100);
