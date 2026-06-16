@@ -7351,6 +7351,34 @@ def api_console_biofield_publish():
                     "updated": token is None, "emailed": emailed})
 
 
+@app.route("/api/console/biofield-portal", methods=["GET"])
+def api_console_biofield_load():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"found": False, "content": {}})
+    from dashboard import client_portal as _cp
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        rec = _cp.get_portal_content_by_email(cx, email)
+    if not rec:
+        return jsonify({"found": False, "name": "", "content": {}, "has_token": False})
+    return jsonify({"found": True, "name": rec.get("name") or "",
+                    "content": rec.get("content") or {}, "has_token": True})
+
+
+@app.route("/api/console/biofield-portal/catalog", methods=["GET"])
+def api_console_biofield_catalog():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    items = []
+    for p in _bos_products.catalog(with_ingredients_only=False):
+        items.append({"slug": p.get("slug"), "name": p.get("name"),
+                      "price_cents": p.get("price_cents")})
+    return jsonify({"products": items})
+
+
 @app.route("/api/portal/<token>/view")
 def api_client_portal_view(token):
     """Role-aware portal payload: account + orders + biofield + a reserved
