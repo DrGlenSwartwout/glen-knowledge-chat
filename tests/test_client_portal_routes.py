@@ -167,6 +167,70 @@ def test_api_portal_view_bad_token_404(client):
     assert r.status_code == 404
 
 
+# ── Tokenless /portal/me (logged-in home) resolves content via session ───────
+
+def _login_cookie(appmod, email, name="Me"):
+    """Enable login, seed a person, and return a valid rm_portal_session value."""
+    from dashboard import portal_identity as pi
+    _seed_person(appmod, email, name)
+    cx = sqlite3.connect(appmod.LOG_DB)
+    pid = cx.execute("SELECT id FROM people WHERE email=?", (email,)).fetchone()[0]
+    sess = pi.create_client_session(cx, pid, email)
+    cx.commit()
+    cx.close()
+    return sess
+
+
+def test_api_portal_content_resolves_via_session(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_client_login_enabled", lambda: True)
+    sess = _login_cookie(appmod, "me@example.com", "Me Client")
+    # the same person also has biofield/reorder portal content
+    _seed_portal(appmod, email="me@example.com", name="Me Client")
+    c.set_cookie("rm_portal_session", sess)
+
+    r = c.get("/api/portal/me")
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["name"] == "Me Client"
+    assert j["reorder_items"][0]["slug"] == "nous-energy"
+
+
+def test_api_portal_me_without_session_is_404(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_client_login_enabled", lambda: True)
+    r = c.get("/api/portal/me")
+    assert r.status_code == 404
+
+
+def test_portal_me_page_served_when_enabled(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_client_login_enabled", lambda: True)
+    assert c.get("/portal/me").status_code == 200
+
+
+def test_portal_checkout_resolves_via_session(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_client_login_enabled", lambda: True)
+    sess = _login_cookie(appmod, "co@example.com", "CO")
+    _seed_portal(appmod, email="co@example.com", name="CO", content={
+        "greeting": "hi", "video": {}, "layers": [],
+        "reorder_items": [{"slug": "nous-energy", "qty": 1, "price_cents": 2500}]})
+    from dashboard import qbo_billing
+    monkeypatch.setattr(qbo_billing, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
+    monkeypatch.setattr(qbo_billing, "create_invoice",
+                        lambda cust, lines, **kw: {"Id": "INV1", "DocNumber": "1", "TotalAmt": 25.0})
+    monkeypatch.setattr(appmod, "_ingest_order", lambda *a, **k: None)
+    monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", True)
+    monkeypatch.setattr(appmod, "_stripe_checkout_url_for_reorder",
+                        lambda out, email: "https://checkout.stripe/me")
+    c.set_cookie("rm_portal_session", sess)
+
+    r = c.post("/api/portal/me/checkout")
+    assert r.status_code == 200
+    assert r.get_json()["stripe_url"] == "https://checkout.stripe/me"
+
+
 # ── Scaffolded client login (dark behind CLIENT_LOGIN_ENABLED) ───────────────
 
 def test_client_login_routes_dark_by_default(client):

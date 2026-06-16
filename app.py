@@ -7182,6 +7182,27 @@ def _portal_priced_lines(items):
     return lines, items_rec, subtotal_cents
 
 
+def _portal_record_for(cx, token):
+    """A portal content record by path token, OR — when client login is live —
+    by the rm_portal_session cookie (the tokenless /portal/me logged-in home).
+    Returns {email, name, content} or None. The token path is unchanged, so
+    emailed /portal/<token> links keep working exactly as before."""
+    from dashboard import client_portal as _cp
+    portal = _cp.get_portal_by_token(cx, token)
+    if portal:
+        return portal
+    if _client_login_enabled():
+        from dashboard import portal_identity as _pi
+        sess = request.cookies.get("rm_portal_session", "")
+        ident = _pi.identity_from_session(cx, sess) if sess else None
+        if ident:
+            rec = _cp.get_portal_content_by_email(cx, ident.email)
+            if rec:
+                return {"email": ident.email, "name": rec.get("name"),
+                        "content": rec.get("content")}
+    return None
+
+
 @app.route("/portal/<token>")
 def client_portal_page(token):
     return send_from_directory(STATIC, "client-portal.html")
@@ -7192,7 +7213,7 @@ def api_client_portal(token):
     from dashboard import client_portal as _cp
     with sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
-        portal = _cp.get_portal_by_token(cx, token)
+        portal = _portal_record_for(cx, token)
     if not portal:
         return jsonify({"error": "not found"}), 404
     content = dict(portal.get("content") or {})
@@ -7234,7 +7255,7 @@ def api_client_portal_checkout(token):
     from dashboard import client_portal as _cp
     with sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
-        portal = _cp.get_portal_by_token(cx, token)
+        portal = _portal_record_for(cx, token)
     if not portal:
         return jsonify({"error": "not found"}), 404
     email = (portal.get("email") or "").strip().lower()

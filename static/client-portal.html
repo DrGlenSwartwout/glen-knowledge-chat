@@ -76,35 +76,43 @@
   </div>
 
 <script>
-const token = location.pathname.split("/").filter(Boolean).pop();
+// The last path segment is either an emailed portal token or the literal "me"
+// (the tokenless logged-in home, authed by the rm_portal_session cookie). Tokens
+// are url-safe base64 and never equal "me", so this disambiguates cleanly.
+const seg = location.pathname.split("/").filter(Boolean).pop();
+const isMe = (seg === "me");
+const token = seg; // reused by reorder()/checkout; "me" resolves via the session
 const $ = (h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;};
 const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const money = (c)=> (c==null? "" : "$"+(c/100).toFixed(2));
 
+function notFound(){
+  document.getElementById("loading").hidden = true;
+  // A logged-out /portal/me visitor is sent to sign in; a bad token shows help.
+  if(isMe){ location.href = "/portal/login"; return; }
+  document.getElementById("notfound").hidden = false;
+}
+
 async function load(){
-  let data;
-  try{
-    const r = await fetch(`/api/portal/${encodeURIComponent(token)}`);
-    if(!r.ok) throw new Error("nf");
-    data = await r.json();
-  }catch(e){
-    document.getElementById("loading").hidden = true;
-    document.getElementById("notfound").hidden = false;
-    return;
-  }
-  // Role-aware blocks (account / orders / upgrade) come from the identity seam.
-  // Best-effort: if it's unavailable the page still renders biofield + reorder.
-  let view = null;
-  try{
-    const v = await fetch(`/api/portal/${encodeURIComponent(token)}/view`);
-    if(v.ok) view = await v.json();
-  }catch(e){ /* non-fatal */ }
+  // Two independent sources: content (biofield + reorder, token-or-session) and
+  // the role-aware view (account/orders/upgrade, identity seam). Which one MUST
+  // succeed depends on the page: a token link lives on its content; the logged-in
+  // /me home lives on its session (the view), and biofield content is optional.
+  const fetchJson = async (u)=>{ try{ const r=await fetch(u); return r.ok?await r.json():null; }catch(e){ return null; } };
+  const [data, view] = await Promise.all([
+    fetchJson(`/api/portal/${encodeURIComponent(seg)}`),
+    fetchJson(`/api/portal/${encodeURIComponent(seg)}/view`),
+  ]);
+  const ok = isMe ? !!view : !!data;
+  if(!ok){ notFound(); return; }
   render(data, view);
 }
 
 function render(d, v){
+  d = d || {};
   const app = document.getElementById("app");
-  const first = (d.name||"").split(" ")[0] || "friend";
+  const displayName = d.name || (v && v.account && v.account.name) || "";
+  const first = (displayName||"").split(" ")[0] || "friend";
   const badges = (v && v.account && v.account.role_badges) || [];
   let html = `
     <div class="hero">
