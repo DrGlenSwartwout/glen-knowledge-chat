@@ -564,13 +564,22 @@ def send_reply(thread_id: str, body: str, override_to: Optional[str] = None) -> 
     return {"id": sent.get("id"), "threadId": sent.get("threadId"), "labels": sent.get("labelIds", [])}
 
 
-def send_email(to_email: str, subject: str, body: str, from_name: Optional[str] = None) -> dict:
+def send_email(to_email: str, subject: str, body: str, from_name: Optional[str] = None,
+               html: Optional[str] = None) -> dict:
     """Generic Gmail send — used by /full-report so it doesn't need SMTP creds.
 
     Sends as plain text from drglenswartwout@gmail.com (the authorized account).
+    When `html` is given, sends multipart/alternative (plain `body` + HTML);
+    callers that omit `html` are unchanged.
     """
     svc = _get_gmail_service()
-    mime = MIMEText(body, "plain", "utf-8")
+    if html:
+        from email.mime.multipart import MIMEMultipart
+        mime = MIMEMultipart("alternative")
+        mime.attach(MIMEText(body, "plain", "utf-8"))
+        mime.attach(MIMEText(html, "html", "utf-8"))
+    else:
+        mime = MIMEText(body, "plain", "utf-8")
     mime["To"] = to_email
     mime["Subject"] = subject
     if from_name:

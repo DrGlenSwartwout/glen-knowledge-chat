@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Invoice — Remedy Match</title>
+<style>
+  :root { --bg:#f6f5fb; --surface:#fff; --border:#e6e3f0; --muted:#6b6480; --brand:#7c5cbf; --brand2:#a07fe0; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:#1c1830; margin:0; }
+  .wrap { max-width:640px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:20px; margin:0 0 2px; }
+  .ref { color:var(--muted); font-size:13px; margin-bottom:18px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 12px; }
+  .line { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); }
+  .line:last-child { border-bottom:0; }
+  .line .nm { flex:1; font-size:14px; }
+  .line .pr { color:var(--muted); font-size:13px; min-width:72px; text-align:right; }
+  .qty { display:flex; align-items:center; gap:6px; }
+  .qty button { width:26px; height:26px; border:1px solid var(--border); background:#fff; border-radius:6px; cursor:pointer; font-size:15px; }
+  .qty input { width:40px; text-align:center; padding:4px; border:1px solid var(--border); border-radius:6px; }
+  .totals { font-size:14px; }
+  .totals .row { display:flex; justify-content:space-between; padding:4px 0; }
+  .totals .grand { font-weight:700; font-size:17px; border-top:1px solid var(--border); margin-top:6px; padding-top:8px; }
+  select, input[type=text] { padding:8px; border:1px solid var(--border); border-radius:8px; font-size:14px; }
+  button.primary { background:var(--brand); color:#fff; border:0; border-radius:8px; padding:11px 18px; font-size:14px; font-weight:600; cursor:pointer; }
+  button.ghost { background:#fff; color:var(--brand); border:1px solid var(--border); border-radius:8px; padding:9px 14px; font-size:13px; cursor:pointer; }
+  .pay-methods { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .pay-methods label { border:1px solid var(--border); border-radius:8px; padding:8px 14px; cursor:pointer; font-size:14px; }
+  .pay-methods input { margin-right:6px; }
+  .notice { background:#fff7e6; border:1px solid #f0d9a0; color:#8a6d2f; padding:10px 12px; border-radius:8px; font-size:13px; margin-bottom:12px; }
+  .paid { background:#e9f8ee; border:1px solid #a8e0bd; color:#2f7d4f; padding:12px; border-radius:8px; text-align:center; font-weight:600; }
+  #chatlog { max-height:200px; overflow:auto; font-size:13px; margin-bottom:10px; }
+  #chatlog .u { color:var(--brand); } #chatlog .a { color:#1c1830; margin-bottom:8px; }
+  .sugg button { margin:4px 4px 0 0; }
+  .row-add { display:flex; gap:8px; margin-top:10px; }
+  .muted { color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Your Remedy Match invoice</h1>
+  <div class="ref" id="ref">Loading…</div>
+
+  <div id="paid-banner" class="paid" style="display:none">This invoice is paid. Mahalo! 🌿</div>
+
+  <div class="card">
+    <h2>Items</h2>
+    <div id="lines"></div>
+    <div class="row-add" id="add-row" style="display:none">
+      <select id="add-sel"><option value="">+ add a product…</option></select>
+      <button class="ghost" onclick="addProduct()">Add</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Summary</h2>
+    <div class="totals" id="totals"></div>
+  </div>
+
+  <div class="card" id="chat-card">
+    <h2>Questions? Chat about products</h2>
+    <div id="chatlog"></div>
+    <div class="sugg" id="sugg"></div>
+    <div class="row-add">
+      <input type="text" id="chat-in" placeholder="Ask a question…" style="flex:1" onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="ghost" onclick="sendChat()">Send</button>
+    </div>
+  </div>
+
+  <div class="card" id="pay-card">
+    <h2>Pay</h2>
+    <div id="pay-notice"></div>
+    <div class="pay-methods" id="pay-methods">
+      <label><input type="radio" name="m" value="card" checked>Credit card</label>
+      <label><input type="radio" name="m" value="zelle">Zelle</label>
+      <label><input type="radio" name="m" value="wise">Wise</label>
+    </div>
+    <div id="pay-instr" class="notice" style="display:none"></div>
+    <button class="primary" id="pay-btn" onclick="pay()">Pay now</button>
+    <button class="ghost" id="claim-btn" style="display:none" onclick="claim()">I’ve sent payment</button>
+    <div id="pay-msg" class="muted" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<script>
+const TOKEN = location.pathname.split('/').filter(Boolean).pop();
+const API = '/api/invoice/' + TOKEN;
+let ORDER = null, LINES = [], CATALOG = [], curMethod = 'card';
+const $ = id => document.getElementById(id);
+const money = c => '$' + (Number(c||0)/100).toFixed(2);
+
+async function load() {
+  const r = await fetch(API);
+  if (!r.ok) { $('ref').textContent = 'This invoice link is invalid or expired.'; return; }
+  const j = await r.json(); ORDER = j.order;
+  $('ref').textContent = 'Invoice ' + (ORDER.external_ref||'') + ' · for ' + (ORDER.name||'you');
+  LINES = ORDER.lines.map(l => ({slug:l.slug, name:l.name, qty:l.qty, unit_cents:l.unit_cents}));
+  if (ORDER.pay_status === 'paid' || !ORDER.editable) {
+    $('paid-banner').style.display = ORDER.pay_status==='paid' ? 'block' : 'none';
+  }
+  renderLines(); renderTotals(); setupPay();
+  try { const cr = await fetch('/api/products?all=1'); CATALOG = (await cr.json()).products||[]; fillAdd(); } catch(e){}
+}
+function renderLines() {
+  $('lines').innerHTML = LINES.map((l,i) =>
+    '<div class="line"><span class="nm">'+esc(l.name)+'</span>'
+    + (ORDER.editable ? '<span class="qty"><button onclick="bump('+i+',-1)">−</button>'
+        + '<input type="number" min="0" value="'+l.qty+'" onchange="setQty('+i+',this.value)">'
+        + '<button onclick="bump('+i+',1)">+</button></span>' : '<span class="muted">×'+l.qty+'</span>')
+    + '<span class="pr">'+money(l.unit_cents*l.qty)+'</span></div>').join('') || '<div class="muted">No items.</div>';
+  $('add-row').style.display = ORDER.editable ? 'flex' : 'none';
+}
+function renderTotals() {
+  const t = ORDER;
+  $('totals').innerHTML =
+    row('Subtotal', t.subtotal_cents) + (t.discount_cents?row('Discount','-'+money(t.discount_cents),true):'')
+    + row('Shipping', t.shipping_cents) + (t.get_cents?row('Hawai‘i GET (absorbed)', t.get_cents):'')
+    + (t.points_redeemed_cents?row('Points','-'+money(t.points_redeemed_cents),true):'')
+    + '<div class="row grand"><span>Total</span><span>'+money(t.total_cents)+'</span></div>';
+}
+function row(label, v, raw){ return '<div class="row"><span>'+label+'</span><span>'+(raw?v:money(v))+'</span></div>'; }
+function fillAdd(){ $('add-sel').innerHTML = '<option value="">+ add a product…</option>' +
+  CATALOG.map(p=>'<option value="'+p.slug+'">'+esc(p.name)+' — '+money(p.price_cents||0)+'</option>').join(''); }
+function bump(i,d){ LINES[i].qty=Math.max(0,LINES[i].qty+d); pushUpdate(); }
+function setQty(i,v){ LINES[i].qty=Math.max(0,parseInt(v)||0); pushUpdate(); }
+function addProduct(){ const s=$('add-sel').value; if(!s)return; const p=CATALOG.find(x=>x.slug===s);
+  const ex=LINES.find(l=>l.slug===s); if(ex){ex.qty++;} else LINES.push({slug:s,name:p.name,qty:1,unit_cents:p.price_cents||0}); pushUpdate(); }
+async function pushUpdate(){
+  const lines = LINES.filter(l=>l.qty>0).map(l=>({slug:l.slug, qty:l.qty}));
+  const r = await fetch(API+'/update', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({lines})});
+  const j = await r.json(); if(!j.ok){ alert(j.error||'update failed'); return; }
+  ORDER=j.order; LINES=ORDER.lines.map(l=>({slug:l.slug,name:l.name,qty:l.qty,unit_cents:l.unit_cents}));
+  renderLines(); renderTotals();
+}
+function setupPay(){
+  if (ORDER.pay_status==='paid' || !ORDER.editable){ $('pay-card').style.display='none'; return; }
+  if (!ORDER.paylink_enabled){ $('pay-notice').innerHTML='<div class="notice">Online payment isn’t enabled yet — we’ll be in touch.</div>'; $('pay-btn').disabled=true; return; }
+  document.querySelectorAll('input[name=m]').forEach(el=>el.onchange=()=>{curMethod=el.value; $('claim-btn').style.display='none'; $('pay-instr').style.display='none';});
+}
+async function pay(){
+  $('pay-msg').textContent='…';
+  const r = await fetch(API+'/pay', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({method:curMethod})});
+  const j = await r.json(); if(!j.ok){ $('pay-msg').textContent=j.error||'payment unavailable'; return; }
+  $('pay-msg').textContent='';
+  if (j.method==='card' && j.url){ location.href=j.url; return; }
+  if (j.instructions){ $('pay-instr').textContent=j.instructions; $('pay-instr').style.display='block'; $('claim-btn').style.display='inline-block'; }
+}
+async function claim(){
+  const r = await fetch(API+'/claim-paid', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({method:curMethod})});
+  const j = await r.json(); $('pay-msg').textContent = j.message || (j.error||'');
+}
+let HIST=[];
+async function sendChat(){
+  const m=$('chat-in').value.trim(); if(!m)return; $('chat-in').value='';
+  $('chatlog').innerHTML += '<div class="u">You: '+esc(m)+'</div>'; HIST.push({role:'user',content:m});
+  const r=await fetch(API+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m,history:HIST})});
+  const j=await r.json(); if(!j.ok){return;}
+  $('chatlog').innerHTML += '<div class="a">'+esc(j.reply||'')+'</div>'; HIST.push({role:'assistant',content:j.reply||''});
+  $('chatlog').scrollTop=$('chatlog').scrollHeight;
+  $('sugg').innerHTML = (j.suggestions||[]).map(s=>'<button class="ghost" onclick="addBySlug(\''+s.slug+'\')">+ '+esc(s.name)+' '+money(s.price_cents)+'</button>').join('');
+}
+function addBySlug(slug){ const p=CATALOG.find(x=>x.slug===slug)|| {slug,name:slug,price_cents:0}; const ex=LINES.find(l=>l.slug===slug); if(ex)ex.qty++; else LINES.push({slug,name:p.name,qty:1,unit_cents:p.price_cents||0}); pushUpdate(); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+load();
+</script>
+</body>
+</html>

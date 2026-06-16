@@ -366,6 +366,29 @@ def practitioner_id_from_session(token, *, now=None, db_path=None) -> Optional[s
         return None
 
 
+# ── customer invoice tokens (public pay-link; one token ⇄ one order) ───────────
+
+def create_order_invoice_token(order_id, *, ttl_days=30, now=None, db_path=None) -> str:
+    """Mint a single-order, non-consuming token for the public /invoice/<token>
+    pay page. Reuses the shared auth_tokens table (purpose 'order_invoice')."""
+    tok = secrets.token_urlsafe(32)
+    _insert_token(tok, "order_invoice", {"order_id": str(order_id)},
+                  int(ttl_days) * 86400, now, db_path)
+    return tok
+
+
+def order_id_from_invoice_token(token, *, now=None, db_path=None) -> Optional[str]:
+    """Return the order_id for a valid (non-expired) invoice token, else None.
+    Non-consuming: the customer can revisit the link until it expires."""
+    extra = _valid_token_row(token, "order_invoice", now=now, db_path=db_path)
+    if extra is None:
+        return None
+    try:
+        return (json.loads(extra) or {}).get("order_id")
+    except Exception:
+        return None
+
+
 # ── registration (two-door) ───────────────────────────────────────────────────
 
 def validate_registration(payload: dict) -> Tuple[Optional[dict], Optional[str]]:
