@@ -79,7 +79,7 @@ def build_search_sql(
                address1, city, state, postal, country,
                lat, lng, geocode_quality,
                photo_url, bio, accepting_new_patients, telehealth,
-               accepts_inquiries, modules_completed,
+               accepts_inquiries, modules_completed, show_contact,
                earth_distance(ll_to_earth(lat, lng), ll_to_earth(%s, %s)) / {MILES_TO_METERS:.4f}
                  AS distance_miles
         FROM v_practitioners_public

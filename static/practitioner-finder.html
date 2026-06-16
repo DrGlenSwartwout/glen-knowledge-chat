@@ -827,10 +827,15 @@
           ? `Certification: Level ${p.modules_completed}/12`
           : 'In certification process';
         parts.push(`<div style="margin-top:0.4rem;color:var(--gold)">${escapeHtml(certLine)}</div>`);
-        parts.push('<div style="color:var(--muted);font-size:0.85rem;margin-top:0.2rem">To reach this practitioner, select them in the results list and use "Send inquiry".</div>');
+        // Only show the inquiry-form note when no direct contact is published
+        // (when the practitioner opts in, the API returns email/phone and the
+        // direct links below make the note redundant).
+        if (!p.email && !p.phone) {
+          parts.push('<div style="color:var(--muted);font-size:0.85rem;margin-top:0.2rem">To reach this practitioner, select them in the results list and use "Send inquiry".</div>');
+        }
       }
-      if (!isCert && p.phone) parts.push(`<div style="margin-top:0.4rem"><a href="tel:${escapeHtml(p.phone)}" style="color:var(--gold)">${escapeHtml(p.phone)}</a></div>`);
-      if (!isCert && p.email) parts.push(`<div><a href="mailto:${escapeHtml(p.email)}" style="color:var(--gold)">${escapeHtml(p.email)}</a></div>`);
+      if (p.phone) parts.push(`<div style="margin-top:0.4rem"><a href="tel:${escapeHtml(p.phone)}" style="color:var(--gold)">${escapeHtml(p.phone)}</a></div>`);
+      if (p.email) parts.push(`<div><a href="mailto:${escapeHtml(p.email)}" style="color:var(--gold)">${escapeHtml(p.email)}</a></div>`);
       if (p.website) parts.push(`<div><a href="${escapeHtml(p.website)}" target="_blank" rel="noopener" style="color:var(--gold)">${escapeHtml(p.website)}</a></div>`);
       if (p.source_org) {
         parts.push(`<div style="margin-top:1rem;color:var(--muted);font-size:0.85rem">Source: ${escapeHtml(p.source_org)}</div>`);

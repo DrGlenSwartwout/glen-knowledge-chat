@@ -7738,6 +7738,30 @@ def api_cert_student():
                     "modules_completed": mc})
 
 
+@app.route("/api/cert/show-contact", methods=["POST"])
+def api_cert_show_contact():
+    """Console-gated: set a practitioner's public contact visibility in the finder
+    (show_contact). Default is hidden; flip true to publish their email/phone."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    show = bool(body.get("show", False))
+    try:
+        from db_supabase import supabase_cursor
+        with supabase_cursor() as cur:
+            cur.execute("UPDATE practitioners SET show_contact=%s, updated_at=now() "
+                        "WHERE lower(email)=lower(%s)", (show, email))
+            updated = cur.rowcount
+    except Exception as e:
+        return jsonify({"error": f"update failed: {e}"}), 500
+    return jsonify({"ok": True, "email": email, "show_contact": show, "updated": updated})
+
+
 def _run_biofield_bonuses(dry_run=False):
     """Sweep active certification commitments and grant due bonus Biofields concierge-style
     (one todos task + idempotent ledger row per grant). Flag-gated (CERT_BONUS_ENABLED) — a
@@ -15196,6 +15220,14 @@ def practitioner_finder_search():
         fellowship_only=fellowship_only,
         countries=None if international else [country],
     )
+    # Certification-track practitioners: never expose raw email/phone in the
+    # public payload — contact is routed through the inquiry form (which fetches
+    # the address server-side). Website + cert level stay visible.
+    for r in results:
+        if r.get("tier") in ("panel_in_cert", "panel_certified") and not r.get("show_contact"):
+            r["email"] = None
+            r["phone"] = None
+        r.pop("show_contact", None)
     return jsonify({"count": len(results), "practitioners": results,
                     "search_center": {"lat": lat, "lng": lng}})
 
