@@ -119,3 +119,45 @@ def test_send_email_html_is_multipart_and_plain_still_works(monkeypatch):
     inbox.send_email("a@b.com", "Hi", "plain only")
     raw2 = base64.urlsafe_b64decode(captured["raw"]).decode()
     assert "text/html" not in raw2 and "multipart" not in raw2
+
+
+def test_card_pay_stripe_failure_returns_502_not_500(monkeypatch, tmp_path):
+    """A Stripe error on the card path must degrade to a clean JSON 502, never a 500."""
+    import importlib, sqlite3
+    from pathlib import Path
+    repo = Path(__file__).resolve().parent.parent
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+    try:
+        app_module = importlib.import_module("app")
+    except Exception as e:
+        pytest.skip(f"app not importable: {e}")
+
+    db = str(tmp_path / "pay.db")
+    # Tokens (chat_log.db) + orders (LOG_DB) share one sqlite file for the test.
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    from dashboard import practitioner_portal as PP
+    monkeypatch.setattr(PP, "_LOG_DB", Path(db))
+    from dashboard import orders as O
+
+    cx = sqlite3.connect(db)
+    O.init_orders_table(cx)
+    oid = O.upsert_order(cx, source="in-house", external_ref="INH-PAYTEST",
+                         status="proposed", email="t@example.com", total_cents=14314)
+    cx.commit(); cx.close()
+    token = PP.create_order_invoice_token(oid, db_path=db)
+
+    # Enable the flag + Stripe, but make the Stripe session call blow up.
+    monkeypatch.setattr(app_module, "INVOICE_PAYLINK_ENABLED", True)
+    monkeypatch.setattr(app_module, "_STRIPE_ACTIVE", True)
+    from dashboard import stripe_pay
+    def _boom(*a, **k):
+        raise RuntimeError("stripe 401 unauthorized")
+    monkeypatch.setattr(stripe_pay, "create_checkout_session", _boom)
+
+    client = app_module.app.test_client()
+    r = client.post(f"/api/invoice/{token}/pay", json={"method": "card"})
+    assert r.status_code == 502, f"expected clean 502, got {r.status_code}"
+    body = r.get_json()
+    assert body and body.get("ok") is False
+    assert "unavailable" in body.get("error", "").lower()
