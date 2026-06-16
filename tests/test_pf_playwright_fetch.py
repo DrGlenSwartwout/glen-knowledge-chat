@@ -26,6 +26,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# Skip this whole module cleanly (not a collection error) when playwright is
+# not installed — the import below pulls in playwright.sync_api.
+pytest.importorskip("playwright")
+
 from scrapers.practitioner_finder.playwright_fetch import (
     DEFAULT_SLEEP_S,
     DEFAULT_TIMEOUT_MS,
