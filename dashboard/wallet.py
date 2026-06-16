@@ -211,7 +211,7 @@ def personal_earn_cents(charged_cents, method):
     """Wallet credit a cert participant earns on a PERSONAL order: 3.5% of the
     charged amount when paid fee-free (Zelle/Wise), else 0."""
     if (method or "").strip().lower() in ("zelle", "wise"):
-        return round(int(charged_cents or 0) * PERSONAL_EARN_FEE_FREE_PCT)
+        return math.floor(max(0, int(charged_cents or 0)) * PERSONAL_EARN_FEE_FREE_PCT)
     return 0
 
 
