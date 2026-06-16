@@ -8,8 +8,10 @@ DEFAULTS = {
     "points_redeem_per_point_cents": 5,   # 1 point = 5 cents (20 points = $1)
     "subscribe_tiers": [5, 10, 15],       # % by completed-order count (1st,2nd,3rd+)
     "cadences": [1, 2, 3],                # months
-    # volume curve: [total_months, pct_off] knots, ascending; linear interp; flat beyond last
-    "volume_anchors": [[1, 0], [3, 14], [6, 29], [12, 43]],
+    # volume curve: [total_months, pct_off] knots, ascending; linear interp; flat beyond last.
+    # A smooth LINEAR ramp from 1 unit (0%) to 12 units (max), flat at the max beyond 12.
+    # Two knots = one straight line; edit the last row's % in the console to set the max.
+    "volume_anchors": [[1, 0], [12, 43]],
 }
 
 

@@ -1,3 +1,5 @@
+import pytest
+
 from dashboard import pricing
 
 
@@ -9,7 +11,7 @@ def test_defaults_present():
     assert s["points_redeem_per_point_cents"] == 5
     assert s["subscribe_tiers"] == [5, 10, 15]
     assert s["cadences"] == [1, 2, 3]
-    assert s["volume_anchors"] == [[1, 0], [3, 14], [6, 29], [12, 43]]
+    assert s["volume_anchors"] == [[1, 0], [12, 43]]   # linear ramp 1→12, max 43%
 
 
 def test_overrides_merge_over_defaults():
@@ -71,17 +73,19 @@ def test_points_none_requested():
 
 
 def test_volume_pct_at_anchors():
+    # Linear ramp 0% @1 unit -> 43% @12 units (the two anchors), flat beyond.
     s = pricing.load_settings({})
     assert pricing.volume_pct(1, s) == 0
-    assert pricing.volume_pct(3, s) == 14
-    assert pricing.volume_pct(6, s) == 29
     assert pricing.volume_pct(12, s) == 43
+    # interior points fall on the straight line: 43*(n-1)/11
+    assert pricing.volume_pct(3, s) == pytest.approx(43 * 2 / 11)    # ≈7.818
+    assert pricing.volume_pct(6, s) == pytest.approx(43 * 5 / 11)    # ≈19.545
 
 
 def test_volume_pct_interpolates_and_caps():
     s = pricing.load_settings({})
-    assert pricing.volume_pct(2, s) == 7            # halfway 0->14
-    assert pricing.volume_pct(9, s) == 36           # halfway 29->43
+    assert pricing.volume_pct(2, s) == pytest.approx(43 * 1 / 11)    # ≈3.909
+    assert pricing.volume_pct(9, s) == pytest.approx(43 * 8 / 11)    # ≈31.273
     assert pricing.volume_pct(24, s) == 43          # flat beyond the last knot
     assert pricing.volume_pct(0, s) == 0
 
@@ -117,7 +121,7 @@ def test_compute_subscriber_tier_beats_coupon_no_stack():
 
 def test_compute_volume_mix_and_match_beats_subscriber():
     s = pricing.load_settings({})
-    # two different SKUs, 3 months each = 6 total -> volume 29% beats 15% tier
+    # two different SKUs, 3 months each = 6 total -> volume 43*5/11≈19.55% beats 15% tier
     items = [
         {"slug": "a", "name": "A", "qty": 1, "product": {"slug": "a", "price_cents": 7000},
          "unit_cents": 7000, "months": 3, "volume_eligible": True},
@@ -126,8 +130,8 @@ def test_compute_volume_mix_and_match_beats_subscriber():
     ]
     r = pricing.compute(items, settings=s, subscriber_tier_pct=15,
                         channel="retail", ship_to_state="CA", tax_fn=_fake_tax)
-    assert r["lines"][0]["line_total_cents"] == 4970   # 29% off 7000
-    assert r["lines"][1]["line_total_cents"] == 4970
+    assert r["lines"][0]["line_total_cents"] == 5632   # ~19.55% off 7000 (linear curve at 6 units)
+    assert r["lines"][1]["line_total_cents"] == 5632
 
 
 def test_compute_pure_powder_excluded_from_volume_floored_at_30():

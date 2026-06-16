@@ -8,13 +8,12 @@ def _stub_products(monkeypatch):
 
 def test_price_cart_volume_and_shipping(monkeypatch):
     _stub_products(monkeypatch)
-    # 6 months total -> 29% volume off each 7000
-    # line_total_cents = 7000*6*(1-0.29) = 29820
-    # discount_cents = 7000*6 - 29820 = 12180 = 6*(7000-4970)
+    # 6 units total -> linear volume 43*5/11 ≈ 19.545% off the 42000 line
+    # line_total_cents = round(42000*(1-0.19545)) = 33791; discount = 42000 - 33791 = 8209
     monkeypatch.setattr(appmod._shipping, "quote", lambda b: {"shipping_cents": 2295, "box": "M"})
     out = appmod._price_cart([{"slug":"brain-boost","qty":6}], ship={"state":"CA","country":"US"})
-    assert out["priced"]["lines"][0]["line_total_cents"] == 29820
-    assert out["discount_cents"] == 6 * (7000 - 4970)         # engine discount, list - net
+    assert out["priced"]["lines"][0]["line_total_cents"] == 33791
+    assert out["discount_cents"] == 8209                      # engine discount, list - net
     assert out["shipping_cents"] == 2295
     # QBO lines carry LIST price (qty applied by QBO), discount is separate
     assert out["qbo_lines"][0]["amount"] == 70.0 and out["qbo_lines"][0]["qty"] == 6
