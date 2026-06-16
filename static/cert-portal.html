@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Certification Portal</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem;color:#1c2b2b;line-height:1.5}
+  h1{font-size:1.4rem} h2{font-size:1.1rem;margin-top:2rem}
+  fieldset{border:1px solid #cdd;border-radius:.5rem;margin:.75rem 0;padding:.75rem}
+  legend{font-weight:600;padding:0 .35rem}
+  label.chk{display:block;font-size:.92rem;margin:.15rem 0}
+  input[type=text],input[type=email],textarea{width:100%;padding:.5rem;border:1px solid #bcc;border-radius:.4rem;font:inherit}
+  .row{margin:.6rem 0}
+  button{background:#1b6b5e;color:#fff;border:0;border-radius:.4rem;padding:.55rem 1rem;font:inherit;cursor:pointer}
+  button.secondary{background:#eef3f2;color:#1b6b5e}
+  .pill{display:inline-block;padding:.1rem .5rem;border-radius:1rem;font-size:.8rem;background:#eef3f2}
+  .ok{color:#1b6b5e;font-weight:600}.bad{color:#a23}
+  .sub{border:1px solid #dde;border-radius:.5rem;padding:.6rem;margin:.5rem 0}
+  .hint{color:#667;font-size:.85rem}
+</style>
+</head>
+<body>
+<h1>Certification Work-Product Portal</h1>
+<div id="login">
+  <p>Enter your email and we'll send you a sign-in link.</p>
+  <div class="row"><input type="email" id="email" placeholder="you@example.com"/></div>
+  <button onclick="requestLink()">Email me a sign-in link</button>
+  <p id="login-msg" class="hint"></p>
+</div>
+
+<div id="app" style="display:none">
+  <p>Progress: <span id="progress"></span></p>
+
+  <h2>Submit a project</h2>
+  <div class="row"><input type="text" id="title" placeholder="Title"/></div>
+  <div class="row"><textarea id="description" rows="3" placeholder="What is this project about? (context, result)"></textarea></div>
+  <div class="row"><input type="text" id="url" placeholder="Link to the published work (social, YouTube, article…)"/></div>
+  <div class="row hint">A public post, video, or article counts as published. Or upload a written doc / image:</div>
+  <div class="row"><input type="file" id="file" accept="image/*,application/pdf"/> <span id="file-msg" class="hint"></span></div>
+
+  <fieldset><legend>Module topics covered (check all that apply)</legend>
+    <div id="modules"></div>
+    <div class="row"><input type="text" id="module_other" placeholder="Other topic (optional)"/></div>
+  </fieldset>
+
+  <fieldset><legend>Format(s) used (check all that apply)</legend>
+    <div id="formats"></div>
+    <div class="row"><input type="text" id="format_other" placeholder="Other format (optional)"/></div>
+  </fieldset>
+
+  <div class="row"><input type="text" id="topic_angle" placeholder="Topic angle (optional): goal / transformation / modality…"/></div>
+  <label class="chk"><input type="checkbox" id="permission"/> I grant permission to publish and reuse this work in whole or part.</label>
+  <div class="row"><button onclick="submitProject()">Submit project</button> <span id="submit-msg" class="hint"></span></div>
+
+  <h2>My submissions</h2>
+  <div id="list"></div>
+</div>
+
+<script>
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+async function requestLink(){
+  const email=document.getElementById('email').value.trim();
+  await fetch('/cert/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
+  document.getElementById('login-msg').textContent="If that email is registered, a sign-in link is on its way.";
+}
+async function load(){
+  const r=await fetch('/api/cert/mine');
+  if(r.status===401){return;} // stay on login
+  const d=await r.json();
+  document.getElementById('login').style.display='none';
+  document.getElementById('app').style.display='block';
+  // checkboxes
+  document.getElementById('modules').innerHTML=d.modules.map(m=>
+    `<label class="chk"><input type="checkbox" class="mod" value="${m.id}"/> ${m.id}. ${esc(m.label)}</label>`).join('');
+  document.getElementById('formats').innerHTML=d.formats.map(f=>
+    `<label class="chk"><input type="checkbox" class="fmt" value="${esc(f.key)}"/> ${esc(f.label)}</label>`).join('');
+  renderProgress(d.progress);
+  renderList(d.submissions);
+}
+function renderProgress(p){
+  const w=p.has_written?'✓':'✗', v=p.has_video?'✓':'✗';
+  document.getElementById('progress').innerHTML=
+    `<span class="pill">${p.approved_count}/12 approved</span> `+
+    `<span class="pill">${p.modules_covered.length}/12 modules</span> `+
+    `<span class="pill">written ${w}</span> <span class="pill">video ${v}</span> `+
+    (p.complete?'<span class="ok">— complete!</span>':'');
+}
+function renderList(subs){
+  document.getElementById('list').innerHTML = subs.length? subs.map(s=>
+    `<div class="sub"><b>${esc(s.title)||'(untitled)'}</b> <span class="pill">${esc(s.status)}</span><br>`+
+    `<span class="hint">${esc((s.modules||[]).join(', '))||'no modules'} · ${esc((s.formats||[]).join(', '))||'no format'}</span>`+
+    (s.review_note?`<br><span class="hint">Note: ${esc(s.review_note)}</span>`:'')+`</div>`).join('')
+    : '<p class="hint">No submissions yet.</p>';
+}
+async function uploadFile(){
+  const f=document.getElementById('file').files[0];
+  if(!f){return "";}
+  const fd=new FormData(); fd.append('file', f);
+  const r=await fetch('/api/cert/upload',{method:'POST',body:fd});
+  const d=await r.json();
+  if(!d.ok){document.getElementById('file-msg').textContent=d.error||'upload failed';return "";}
+  document.getElementById('file-msg').textContent='uploaded';
+  return d.file_token||"";
+}
+async function submitProject(){
+  const msg=document.getElementById('submit-msg'); msg.textContent='…';
+  const file_token = await uploadFile();
+  const modules=[...document.querySelectorAll('.mod:checked')].map(x=>parseInt(x.value));
+  const formats=[...document.querySelectorAll('.fmt:checked')].map(x=>x.value);
+  const payload={
+    title:document.getElementById('title').value,
+    description:document.getElementById('description').value,
+    url:document.getElementById('url').value,
+    file_token, modules, formats,
+    module_other:document.getElementById('module_other').value,
+    format_other:document.getElementById('format_other').value,
+    topic_angle:document.getElementById('topic_angle').value,
+    permission:document.getElementById('permission').checked};
+  const r=await fetch('/api/cert/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const d=await r.json();
+  if(!d.ok){msg.textContent=d.error||'error';return;}
+  msg.textContent='submitted ✓';
+  ['title','description','url','module_other','format_other','topic_angle'].forEach(id=>document.getElementById(id).value='');
+  document.querySelectorAll('.mod:checked,.fmt:checked').forEach(x=>x.checked=false);
+  document.getElementById('permission').checked=false;
+  document.getElementById('file').value='';
+  document.getElementById('file-msg').textContent='';
+  load();
+}
+load();
+</script>
+</body>
+</html>

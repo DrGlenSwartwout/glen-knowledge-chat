@@ -6935,6 +6935,362 @@ def reorder_auth(token):
     return resp
 
 
+# ── Certification work-product portal ───────────────────────────────────────
+# Cert students submit published work here; Glen reviews behind two gates
+# (approve -> publish). Student-facing surface gates behind CERT_PORTAL_ENABLED.
+# The auth_tokens table is created at startup by _init_auth_tables().
+
+
+def _cert_portal_enabled() -> bool:
+    return os.environ.get("CERT_PORTAL_ENABLED", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _cert_data_dir():
+    """Runtime data root (same root LOG_DB uses). Uploaded files live here,
+    never under the static/web-served dir."""
+    return Path(os.environ.get("DATA_DIR", str(Path(__file__).parent)))
+
+
+def _cert_email_from_cookie():
+    return (request.cookies.get("rm_cert_email", "") or "").strip().lower()
+
+
+@app.route("/cert")
+def cert_portal_page():
+    if not _cert_portal_enabled():
+        return ("Not found", 404)
+    resp = send_from_directory(STATIC, "cert-portal.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/cert/login", methods=["POST"])
+def cert_login():
+    """Email a magic link to the cert portal. Always 200 (no enumeration)."""
+    if not _cert_portal_enabled():
+        return jsonify({"ok": False, "error": "not available"}), 404
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if email and "@" in email:
+        token = secrets.token_urlsafe(32)
+        now = _now_utc()
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                "VALUES (?,?,?,?,?)",
+                (_hash_token(token), email, "cert_portal", now.isoformat(),
+                 (now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)).isoformat()))
+            cx.commit()
+        try:
+            send_magic_link_email(email, "", f"{PUBLIC_BASE_URL}/cert/auth/{token}")
+        except Exception as e:
+            print(f"[cert] magic link send failed: {e!r}", flush=True)
+    return jsonify({"ok": True})
+
+
+@app.route("/cert/auth/<token>", methods=["GET"])
+def cert_auth(token):
+    """Validate the cert magic link, set rm_cert_email cookie, -> /cert."""
+    from flask import redirect as _redirect
+    if not _cert_portal_enabled():
+        return ("Not found", 404)
+    th = _hash_token((token or "").strip())
+    email = None
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT email, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='cert_portal'", (th,)).fetchone()
+        if row and not row["consumed_at"]:
+            try:
+                if datetime.fromisoformat(row["expires_at"]) >= _now_utc():
+                    email = row["email"]
+            except Exception:
+                email = None
+        if email:
+            cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
+                       (_now_utc().isoformat(), th))
+            cx.commit()
+    if not email:
+        return ("<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
+                "This certification portal link is invalid or has expired. "
+                "Please request a new one.</p>"), 400
+    resp = _redirect("/cert", code=302)
+    resp.set_cookie("rm_cert_email", email, max_age=60 * 60 * 24 * 30,
+                    httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/api/cert/submit", methods=["POST"])
+def api_cert_submit():
+    if not _cert_portal_enabled():
+        return jsonify({"ok": False, "error": "not available"}), 404
+    email = _cert_email_from_cookie()
+    if not email:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    title = (body.get("title") or "").strip()
+    url = (body.get("url") or "").strip()
+    file_token = (body.get("file_token") or "").strip()
+    formats = [str(x) for x in (body.get("formats") or [])]
+    modules = []
+    for m in (body.get("modules") or []):
+        try:
+            modules.append(int(m))
+        except (TypeError, ValueError):
+            pass
+    permission = bool(body.get("permission"))
+
+    if not title:
+        return jsonify({"ok": False, "error": "title required"}), 400
+    if not permission:
+        return jsonify({"ok": False, "error":
+                        "permission to publish is required to submit"}), 400
+    if not modules:
+        return jsonify({"ok": False, "error":
+                        "select at least one module topic"}), 400
+    if url and not url.lower().startswith(("http://", "https://")):
+        return jsonify({"ok": False, "error":
+                        "link must start with http:// or https://"}), 400
+    # resolve a previously-uploaded file (path-guarded inside the cert dir)
+    file_path = ""
+    if file_token:
+        cand = (_cert_data_dir() / "cert-files" / file_token).resolve()
+        root = (_cert_data_dir() / "cert-files").resolve()
+        if str(cand).startswith(str(root)) and cand.is_file():
+            file_path = str(cand)
+    if not url and not file_path:
+        return jsonify({"ok": False, "error":
+                        "provide a link to the published work or upload a file"}), 400
+
+    from dashboard import practitioner_portal as _pp, cert_submissions as _cs
+    try:
+        pid = _pp.id_for_email(email) or ""
+    except Exception:
+        pid = ""
+    sid = uuid.uuid4().hex
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_tables(cx)
+        _cs.create(
+            cx, sid=sid, email=email, practitioner_id=pid, title=title,
+            description=(body.get("description") or "").strip(), url=url,
+            file_path=file_path, formats=formats,
+            format_other=(body.get("format_other") or "").strip(),
+            modules=modules, module_other=(body.get("module_other") or "").strip(),
+            topic_angle=(body.get("topic_angle") or "").strip(),
+            permission=permission)
+        sub = _cs.get(cx, sid)
+    # best-effort notifications (never block)
+    try:
+        _send_inquiry_email(email, "We received your certification submission",
+                            f"Thanks — '{title}' is in the review queue.")
+        notify = os.environ.get("CERT_NOTIFY_EMAIL", "drglenswartwout@gmail.com")
+        _send_inquiry_email(notify, "New certification submission",
+                            f"{email} submitted '{title}'. Review in /console/cert.")
+    except Exception as e:
+        print(f"[cert] submit notify failed: {e!r}", flush=True)
+    return jsonify({"ok": True, "submission": sub})
+
+
+@app.route("/api/cert/upload", methods=["POST"])
+def api_cert_upload():
+    if not _cert_portal_enabled():
+        return jsonify({"ok": False, "error": "not available"}), 404
+    email = _cert_email_from_cookie()
+    if not email:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    f = request.files.get("file")
+    if not f or not (f.filename or "").strip():
+        return jsonify({"ok": False, "error": "file required"}), 400
+    ctype = (f.mimetype or "").lower()
+    ext = {"image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg",
+           "image/webp": "webp", "image/gif": "gif",
+           "application/pdf": "pdf"}.get(ctype)
+    if not ext:
+        return jsonify({"ok": False, "error": "image or PDF only"}), 400
+    blob = f.read()
+    if len(blob) > 10 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "file too large (max 10MB)"}), 400
+    cert_dir = _cert_data_dir() / "cert-files"
+    cert_dir.mkdir(parents=True, exist_ok=True)
+    # Unique per upload so a re-upload never silently overwrites a prior file.
+    token = (f"{hashlib.sha256((email + f.filename).encode()).hexdigest()[:16]}"
+             f"-{uuid.uuid4().hex[:8]}.{ext}")
+    (cert_dir / token).write_bytes(blob)
+    return jsonify({"ok": True, "file_token": token})
+
+
+@app.route("/api/cert/mine", methods=["GET"])
+def api_cert_mine():
+    if not _cert_portal_enabled():
+        return jsonify({"ok": False, "error": "not available"}), 404
+    email = _cert_email_from_cookie()
+    if not email:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    from dashboard import cert_submissions as _cs, cert_rules as _cr
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_tables(cx)
+        subs = _cs.list_for_email(cx, email)
+    counted = [s for s in subs if s["status"] in ("approved", "published")]
+    prog = _cr.evaluate(counted)
+    prog["modules_covered"] = sorted(prog["modules_covered"])  # JSON-safe
+    return jsonify({"ok": True, "submissions": subs, "progress": prog,
+                    "modules": _cr.MODULES, "formats": _cr.FORMATS})
+
+
+def _cert_console_ok():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return False
+    return True
+
+
+def _cert_sync_modules(cx, email):
+    """Recompute covered modules from this email's approved+published submissions
+    and sync modules_completed on the practitioner record. Best-effort."""
+    from dashboard import cert_submissions as _cs, cert_rules as _cr
+    subs = [s for s in _cs.list_for_email(cx, email)
+            if s["status"] in ("approved", "published")]
+    covered = _cr.evaluate(subs)["modules_covered"]
+    try:
+        from dashboard import practitioner_portal as _pp
+        _pp.upsert_cert_student(email, modules_completed=len(covered))
+    except Exception as e:
+        print(f"[cert] modules sync failed for {email}: {e!r}", flush=True)
+    return len(covered)
+
+
+def _cert_publish_to_proof(sub, name):
+    """Embed + upsert one vector into the case-studies namespace. Returns the id."""
+    title = sub.get("title") or "Practitioner case"
+    desc = (sub.get("description") or "").strip()
+    text = (title + ". " + desc).strip()
+    vec = embed(text)
+    vid = "cert-" + sub["id"]
+    cond = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or ("cert-" + sub["id"][:8])
+    excerpt = desc[:240]
+    _idx.upsert(vectors=[{
+        "id": vid,
+        "values": vec,
+        "metadata": {
+            "condition": cond,
+            "text": excerpt or title,
+            "title": title,
+            "url": sub.get("url") or "",
+            "source": "cert-submission",
+            "name": name or "",
+        },
+    }], namespace="case-studies")
+    return vid
+
+
+@app.route("/api/cert/review/list", methods=["GET"])
+def api_cert_review_list():
+    if not _cert_console_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import cert_submissions as _cs, cert_rules as _cr
+    status = (request.args.get("status") or "").strip() or None
+    email = (request.args.get("email") or "").strip() or None
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_tables(cx)
+        if email:
+            subs = _cs.list_for_email(cx, email)
+        else:
+            subs = _cs.list_by_status(cx, status)
+        # per-student rollups
+        emails = sorted({s["email"] for s in subs})
+        rollups = {}
+        for em in emails:
+            counted = [s for s in _cs.list_for_email(cx, em)
+                       if s["status"] in ("approved", "published")]
+            p = _cr.evaluate(counted)
+            p["modules_covered"] = sorted(p["modules_covered"])
+            rollups[em] = p
+    return jsonify({"ok": True, "submissions": subs, "rollups": rollups,
+                    "modules": _cr.MODULES, "formats": _cr.FORMATS})
+
+
+@app.route("/api/cert/review/approve", methods=["POST"])
+def api_cert_review_approve():
+    if not _cert_console_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    sid = (body.get("id") or "").strip()
+    credited = [int(m) for m in (body.get("credited_modules") or [])
+                if str(m).strip().isdigit()]
+    note = (body.get("note") or "").strip() or None
+    from dashboard import cert_submissions as _cs
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_tables(cx)
+        sub = _cs.get(cx, sid)
+        if not sub:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        if not credited:
+            credited = list(sub.get("modules") or [])
+        _cs.set_status(cx, sid, "approved", credited_modules=credited,
+                       review_note=note)
+        covered = _cert_sync_modules(cx, sub["email"])
+    try:
+        _send_inquiry_email(sub["email"], "Your certification submission was approved",
+                            f"'{sub.get('title')}' is approved. Modules covered so far: {covered}/12.")
+    except Exception as e:
+        print(f"[cert] approve notify failed: {e!r}", flush=True)
+    return jsonify({"ok": True, "id": sid, "modules_covered": covered})
+
+
+@app.route("/api/cert/review/return", methods=["POST"])
+def api_cert_review_return():
+    if not _cert_console_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    sid = (body.get("id") or "").strip()
+    note = (body.get("note") or "").strip() or "Please revise and resubmit."
+    from dashboard import cert_submissions as _cs
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_tables(cx)
+        if not _cs.get(cx, sid):
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _cs.set_status(cx, sid, "returned", review_note=note)
+    return jsonify({"ok": True, "id": sid})
+
+
+@app.route("/api/cert/review/publish", methods=["POST"])
+def api_cert_review_publish():
+    if not _cert_console_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    sid = (body.get("id") or "").strip()
+    from dashboard import cert_submissions as _cs
+    from dashboard import practitioner_portal as _pp
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_tables(cx)
+        sub = _cs.get(cx, sid)
+        if not sub:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        if sub["status"] not in ("approved", "published"):
+            return jsonify({"ok": False, "error": "approve before publishing"}), 400
+        if not sub.get("permission"):
+            return jsonify({"ok": False, "error": "no publish permission on file"}), 400
+        try:
+            name = _pp.name_for_email(sub["email"])
+        except Exception:
+            name = ""
+        try:
+            vid = _cert_publish_to_proof(sub, name)
+        except Exception as e:
+            print(f"[cert] publish upsert failed: {e!r}", flush=True)
+            return jsonify({"ok": False, "error": "publish failed; retry"}), 502
+        _cs.set_status(cx, sid, "published", case_study_id=vid)
+    return jsonify({"ok": True, "id": sid, "case_study_id": vid})
+
+
 # ── Biofield readiness gate ─────────────────────────────────────────────────
 # After paying for the $300 Causal Biofield Analysis, the customer lands on a
 # readiness gate. It must show 3 items (photo on file / intake / fresh voice
@@ -17091,6 +17447,13 @@ def bos_home_page():
 @app.route("/console/orders")
 def bos_orders_page():
     resp = send_from_directory(STATIC, "console-orders.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/console/cert")
+def bos_cert_page():
+    resp = send_from_directory(STATIC, "console-cert.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
 
