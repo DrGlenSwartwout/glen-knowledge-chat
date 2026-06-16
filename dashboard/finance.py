@@ -134,7 +134,19 @@ def money_signal(cx, actor=None):
         s = finance_summary()
     except Exception:
         return {"level": GRAY, "summary": "Not yet wired", "top_actions": [], "count": 0}
-    return money_signal_from(s, cash_floor=_cash_floor())
+    res = money_signal_from(s, cash_floor=_cash_floor())
+    # Recent Stripe card-payment failures take over the cell (revenue at risk).
+    try:
+        from dashboard import stripe_alerts as _sa
+        n = _sa.recent_failure_count(cx, minutes=30)
+    except Exception:
+        n = 0
+    if n:
+        return {**res, "level": RED,
+                "summary": f"⚠ Card payments failing ({n} in last 30m) — " + res.get("summary", ""),
+                "top_actions": ([{"label": "Investigate card failures", "href": "/console/orders"}]
+                                + (res.get("top_actions") or []))[:3]}
+    return res
 
 
 def _void_invoice_exec(params, ctx):
