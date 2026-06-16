@@ -157,7 +157,7 @@ def test_api_portal_view_returns_role_aware_blocks(client):
     assert "Client" in j["account"]["role_badges"]
     assert j["orders"]["visible"] is True
     assert j["biofield"]["visible"] is True       # seeded portal has layers/video
-    assert j["upgrade"] == {"enabled": False, "placeholder": True}
+    assert j["upgrade"] == {"enabled": False}  # offers dark by default
     assert j["auth_method"] == "token"            # session login is dark
 
 

@@ -11,6 +11,7 @@ Order/points/biofield reads are defensive: a failure degrades to an empty block.
 import json
 
 from dashboard import client_portal as _cp
+from dashboard import portal_offers as _po
 
 # roles → human-friendly badge labels. Roles not listed fall back to Title Case.
 _BADGE = {
@@ -75,7 +76,20 @@ def _biofield_block(cx, email):
     }
 
 
-def get_portal_view(cx, person_id):
+def _upgrade_block(cx, email, roles, enabled_keys):
+    """The single next eligible ladder rung, or disabled when none/flags off."""
+    if not enabled_keys:
+        return {"enabled": False}
+    try:
+        offers = _po.next_offers(cx, email, roles, enabled_keys=enabled_keys)
+    except Exception:
+        offers = []
+    if not offers:
+        return {"enabled": False}
+    return {"enabled": True, "offer": offers[0]}
+
+
+def get_portal_view(cx, person_id, *, offers_enabled_keys=None):
     import sqlite3
     cx.row_factory = sqlite3.Row
     prow = cx.execute("SELECT * FROM people WHERE id=?", (person_id,)).fetchone()
@@ -104,5 +118,5 @@ def get_portal_view(cx, person_id):
         "account": account,
         "orders": _orders_block(cx, email, roles),
         "biofield": _biofield_block(cx, email),
-        "upgrade": {"enabled": False, "placeholder": True},
+        "upgrade": _upgrade_block(cx, email, roles, offers_enabled_keys),
     }
