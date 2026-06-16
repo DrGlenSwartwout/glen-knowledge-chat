@@ -29,3 +29,30 @@ def test_reorder_checkout_uses_engine_discount(monkeypatch):
     assert captured["order"]["shipping_cents"] == 2295
     # customer_id must be echoed so /begin/checkout-return can record the QBO payment
     assert r.get_json()["customer_id"] == "C1"
+
+
+def test_reorder_checkout_card_failure_surfaces_payment_error(monkeypatch):
+    _setup(monkeypatch)
+    monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", True)
+    # Stripe failed -> helper swallowed it + returned "" (the _alert_stripe path).
+    monkeypatch.setattr(appmod, "_stripe_checkout_url_for_reorder", lambda *a, **k: "")
+    c = appmod.app.test_client()
+    r = c.post("/reorder/checkout", json={"items": [{"slug": "brain-boost", "qty": 6}],
+                                          "address": {"state": "CA", "country": "US", "name": "A"}})
+    assert r.status_code == 200            # graceful, not a 500
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["stripe_url"] == ""
+    assert body["payment_error"] == appmod._CARD_UNAVAILABLE
+
+
+def test_reorder_checkout_success_has_no_payment_error(monkeypatch):
+    _setup(monkeypatch)  # mocks the helper -> a real URL
+    monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", True)
+    c = appmod.app.test_client()
+    r = c.post("/reorder/checkout", json={"items": [{"slug": "brain-boost", "qty": 6}],
+                                          "address": {"state": "CA", "country": "US", "name": "A"}})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["stripe_url"] == "https://stripe/x"
+    assert "payment_error" not in body     # success shape unchanged

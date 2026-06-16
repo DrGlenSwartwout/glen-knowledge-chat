@@ -193,7 +193,7 @@ async function checkout(){
   const d = await (await fetch('/reorder/checkout', {method:'POST', credentials:'same-origin',
             headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})).json();
   if (d.ok && d.stripe_url){ window.location = d.stripe_url; return; }
-  alert(d.error || 'Could not start checkout. Please try again.');
+  alert(d.payment_error || d.error || 'Could not start checkout. Please try again.');
   $('#checkoutBtn').disabled=false; $('#checkoutBtn').textContent='Reorder selected';
 }
 

@@ -1108,7 +1108,8 @@
     var emailNote = document.getElementById('email-note');
     if (data.method === 'card') {
       // Stripe URL unavailable.
-      emailNote.textContent = 'Card payment is being set up. Your invoice details are on their way to your email.';
+      emailNote.textContent = data.payment_error ||
+        'Card payment is being set up. Your invoice details are on their way to your email.';
     } else {
       emailNote.textContent = 'A copy of this invoice is on its way to your email.';
     }
