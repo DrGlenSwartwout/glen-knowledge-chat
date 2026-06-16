@@ -6691,6 +6691,7 @@ def api_client_checkout(code):
                 out["stripe_url"] = sess.get("url") or ""
         except Exception as e:
             print(f"[client-checkout] stripe failed: {e!r}", flush=True)
+            _alert_stripe("client-checkout", e)
 
     return jsonify(out)
 
@@ -6836,6 +6837,7 @@ def _stripe_checkout_url_for_retail(out, email, slug, group_bundle_months=0):
         return sess.get("url") or ""
     except Exception as e:
         print(f"[stripe-retail] session create failed: {e!r}", flush=True)
+        _alert_stripe("retail", e)
         return ""
 
 
@@ -6872,6 +6874,7 @@ def _stripe_checkout_url_for_reorder(out, email):
         return sess.get("url") or ""
     except Exception as e:
         print(f"[stripe-reorder] session create failed: {e!r}", flush=True)
+        _alert_stripe("reorder", e)
         return ""
 
 
@@ -7839,6 +7842,7 @@ def _stripe_checkout_url_for_order(out, email, session_token):
         return sess.get("url") or ""
     except Exception as e:
         print(f"[stripe] session create failed: {e!r}", flush=True)
+        _alert_stripe("stripe-generic", e)
         return ""
 
 
@@ -16523,6 +16527,20 @@ import dashboard.module_signals as _bos_module_signals  # noqa: F401 (registers 
 import dashboard.products as _bos_products  # noqa: F401 (registers products signal + action; replaces module_signals' products signal)
 import dashboard.easypost as _bos_easypost  # noqa: F401
 import dashboard.ghl_queue as _bos_ghl_queue  # noqa: F401 (registers crm enqueue actions)
+from dashboard import stripe_alerts as _stripe_alerts  # noqa: F401 (Stripe-failure alerting)
+
+
+def _alert_stripe(context, err):
+    """Best-effort: record a Stripe session-create failure (throttled owner email
+    + console signal). Runs inside checkout except blocks — must never raise."""
+    try:
+        cx = _sqlite3.connect(LOG_DB)
+        try:
+            _stripe_alerts.record_failure(cx, context, str(err))
+        finally:
+            cx.close()
+    except Exception as _e:
+        print(f"[stripe-alert] skipped: {_e!r}", flush=True)
 
 
 def _init_bos_ghl_queue():
@@ -16552,6 +16570,7 @@ def _init_bos_orders():
     try:
         _bos_orders.init_orders_table(cx)
         _bos_orders.init_fulfillments_table(cx)
+        _stripe_alerts.init_stripe_alerts_table(cx)
     finally:
         cx.close()
 
@@ -16953,6 +16972,7 @@ def api_invoice_pay(token):
             url = sess.get("url")
         except Exception as e:
             app.logger.warning(f"[invoice.pay] stripe session failed for {ext}: {e!r}")
+            _alert_stripe("invoice-card", e)
             url = None
         if not url:
             return jsonify({"ok": False, "error": _card_unavailable}), 502
