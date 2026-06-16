@@ -16899,6 +16899,8 @@ def api_invoice_claim_paid(token):
     order = _invoice_order_for_token(token)
     if not order:
         return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    if order.get("pay_status") == "paid" or order.get("status") not in ("proposed", "confirmed"):
+        return jsonify({"ok": False, "error": "this invoice is already paid"}), 409
     method = ((request.get_json(silent=True) or {}).get("method") or "").strip().lower()
     if method not in ("zelle", "wise"):
         return jsonify({"ok": False, "error": "unknown payment method"}), 400
