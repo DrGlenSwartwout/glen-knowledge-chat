@@ -11,6 +11,9 @@ def client(monkeypatch, tmp_path):
     # then build the canonical auth/user tables there via the app's own init.
     monkeypatch.setattr(appmod, "LOG_DB", str(tmp_path / "chat_log.db"))
     appmod._init_auth_tables()
+    # Never send real email/contacts during tests.
+    monkeypatch.setattr(appmod, "send_magic_link_email", lambda *a, **k: ("test", None))
+    monkeypatch.setattr(appmod, "_send_inquiry_email", lambda *a, **k: True)
     appmod.app.config["TESTING"] = True
     return appmod.app.test_client(), appmod
 
@@ -64,3 +67,65 @@ def test_portal_404_when_flag_off(client, monkeypatch):
     monkeypatch.setattr(appmod, "_cert_portal_enabled", lambda: False)
     r = c.get("/cert")
     assert r.status_code == 404
+
+
+def _auth_client(client):
+    """Return a test client that already holds the rm_cert_email cookie."""
+    c, appmod = client
+    tok = _mint_cert_token(appmod, "doc@x.com")
+    c.get(f"/cert/auth/{tok}")
+    return c, appmod
+
+
+def test_submit_requires_cookie(client):
+    c, _ = client
+    r = c.post("/api/cert/submit", json={"title": "x"})
+    assert r.status_code == 401
+
+
+def test_submit_requires_permission(client):
+    c, appmod = _auth_client(client)
+    monkeypatch_pp(appmod)
+    r = c.post("/api/cert/submit", json={
+        "title": "My case", "description": "d", "url": "https://e.com/p",
+        "formats": ["article"], "modules": [1], "permission": False})
+    assert r.status_code == 400
+    assert "permission" in r.get_json()["error"].lower()
+
+
+def test_submit_requires_module_and_link(client):
+    c, appmod = _auth_client(client)
+    monkeypatch_pp(appmod)
+    # no module
+    r = c.post("/api/cert/submit", json={
+        "title": "t", "url": "https://e.com/p", "formats": ["article"],
+        "modules": [], "permission": True})
+    assert r.status_code == 400
+    # no url and no file
+    r = c.post("/api/cert/submit", json={
+        "title": "t", "url": "", "formats": ["article"],
+        "modules": [1], "permission": True})
+    assert r.status_code == 400
+
+
+def test_submit_creates_row_and_mine_lists_it(client):
+    c, appmod = _auth_client(client)
+    monkeypatch_pp(appmod)
+    r = c.post("/api/cert/submit", json={
+        "title": "My case", "description": "what happened",
+        "url": "https://e.com/p", "formats": ["article", "demo_video"],
+        "modules": [1, 2], "topic_angle": "transformation", "permission": True})
+    assert r.status_code == 200
+    sid = r.get_json()["submission"]["id"]
+    assert sid
+    r2 = c.get("/api/cert/mine")
+    body = r2.get_json()
+    assert any(s["id"] == sid for s in body["submissions"])
+    # progress rollup present; nothing approved yet so 0 covered
+    assert body["progress"]["approved_count"] == 0
+
+
+# Helper: monkeypatch the practitioner lookups used by submit/approve/publish.
+def monkeypatch_pp(appmod):
+    from dashboard import practitioner_portal as pp
+    pp.id_for_email = lambda email: "p-test"

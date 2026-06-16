@@ -441,6 +441,32 @@ def modules_completed_for_email(email) -> Optional[int]:
     return int(row["modules_completed"] or 0) if row else None
 
 
+def id_for_email(email) -> Optional[str]:
+    """practitioner_id for this email, or None. Best-effort (never raises)."""
+    try:
+        from db_supabase import supabase_cursor
+        with supabase_cursor() as cur:
+            cur.execute("SELECT id FROM practitioners WHERE lower(email)=lower(%s) "
+                        "LIMIT 1", (str(email or "").strip(),))
+            row = cur.fetchone()
+            return str(row["id"]) if row else None
+    except Exception:
+        return None
+
+
+def name_for_email(email) -> str:
+    """practitioner display name for this email, or '' (best-effort)."""
+    try:
+        from db_supabase import supabase_cursor
+        with supabase_cursor() as cur:
+            cur.execute("SELECT name FROM practitioners WHERE lower(email)=lower(%s) "
+                        "LIMIT 1", (str(email or "").strip(),))
+            row = cur.fetchone()
+            return str((row or {}).get("name") or "").strip()
+    except Exception:
+        return ""
+
+
 def register_practitioner(clean: dict, *, now=None) -> Tuple[str, bool]:
     """Insert or link a practitioners row for a portal registrant. Licensed unlock
     immediately; coaches stay locked until the first module is committed. Returns

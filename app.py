@@ -7021,6 +7021,120 @@ def cert_auth(token):
     return resp
 
 
+@app.route("/api/cert/submit", methods=["POST"])
+def api_cert_submit():
+    if not _cert_portal_enabled():
+        return jsonify({"ok": False, "error": "not available"}), 404
+    email = _cert_email_from_cookie()
+    if not email:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    title = (body.get("title") or "").strip()
+    url = (body.get("url") or "").strip()
+    file_token = (body.get("file_token") or "").strip()
+    formats = [str(x) for x in (body.get("formats") or [])]
+    modules = []
+    for m in (body.get("modules") or []):
+        try:
+            modules.append(int(m))
+        except (TypeError, ValueError):
+            pass
+    permission = bool(body.get("permission"))
+
+    if not title:
+        return jsonify({"ok": False, "error": "title required"}), 400
+    if not permission:
+        return jsonify({"ok": False, "error":
+                        "permission to publish is required to submit"}), 400
+    if not modules:
+        return jsonify({"ok": False, "error":
+                        "select at least one module topic"}), 400
+    # resolve a previously-uploaded file (path-guarded inside the cert dir)
+    file_path = ""
+    if file_token:
+        cand = (_cert_data_dir() / "cert-files" / file_token).resolve()
+        root = (_cert_data_dir() / "cert-files").resolve()
+        if str(cand).startswith(str(root)) and cand.is_file():
+            file_path = str(cand)
+    if not url and not file_path:
+        return jsonify({"ok": False, "error":
+                        "provide a link to the published work or upload a file"}), 400
+
+    from dashboard import practitioner_portal as _pp, cert_submissions as _cs
+    try:
+        pid = _pp.id_for_email(email) or ""
+    except Exception:
+        pid = ""
+    sid = uuid.uuid4().hex
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_tables(cx)
+        _cs.create(
+            cx, sid=sid, email=email, practitioner_id=pid, title=title,
+            description=(body.get("description") or "").strip(), url=url,
+            file_path=file_path, formats=formats,
+            format_other=(body.get("format_other") or "").strip(),
+            modules=modules, module_other=(body.get("module_other") or "").strip(),
+            topic_angle=(body.get("topic_angle") or "").strip(),
+            permission=permission)
+        sub = _cs.get(cx, sid)
+    # best-effort notifications (never block)
+    try:
+        _send_inquiry_email(email, "We received your certification submission",
+                            f"Thanks — '{title}' is in the review queue.")
+        notify = os.environ.get("CERT_NOTIFY_EMAIL", "drglenswartwout@gmail.com")
+        _send_inquiry_email(notify, "New certification submission",
+                            f"{email} submitted '{title}'. Review in /console/cert.")
+    except Exception as e:
+        print(f"[cert] submit notify failed: {e!r}", flush=True)
+    return jsonify({"ok": True, "submission": sub})
+
+
+@app.route("/api/cert/upload", methods=["POST"])
+def api_cert_upload():
+    if not _cert_portal_enabled():
+        return jsonify({"ok": False, "error": "not available"}), 404
+    email = _cert_email_from_cookie()
+    if not email:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    f = request.files.get("file")
+    if not f or not (f.filename or "").strip():
+        return jsonify({"ok": False, "error": "file required"}), 400
+    ctype = (f.mimetype or "").lower()
+    ext = {"image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg",
+           "image/webp": "webp", "image/gif": "gif",
+           "application/pdf": "pdf"}.get(ctype)
+    if not ext:
+        return jsonify({"ok": False, "error": "image or PDF only"}), 400
+    blob = f.read()
+    if len(blob) > 10 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "file too large (max 10MB)"}), 400
+    cert_dir = _cert_data_dir() / "cert-files"
+    cert_dir.mkdir(parents=True, exist_ok=True)
+    token = f"{hashlib.sha256((email + f.filename).encode()).hexdigest()[:24]}.{ext}"
+    (cert_dir / token).write_bytes(blob)
+    return jsonify({"ok": True, "file_token": token})
+
+
+@app.route("/api/cert/mine", methods=["GET"])
+def api_cert_mine():
+    if not _cert_portal_enabled():
+        return jsonify({"ok": False, "error": "not available"}), 404
+    email = _cert_email_from_cookie()
+    if not email:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    from dashboard import cert_submissions as _cs, cert_rules as _cr
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_tables(cx)
+        subs = _cs.list_for_email(cx, email)
+    counted = [s for s in subs if s["status"] in ("approved", "published")]
+    prog = _cr.evaluate(counted)
+    prog["modules_covered"] = sorted(prog["modules_covered"])  # JSON-safe
+    return jsonify({"ok": True, "submissions": subs, "progress": prog,
+                    "modules": _cr.MODULES, "formats": _cr.FORMATS})
+
+
 # ── Biofield readiness gate ─────────────────────────────────────────────────
 # After paying for the $300 Causal Biofield Analysis, the customer lands on a
 # readiness gate. It must show 3 items (photo on file / intake / fresh voice
