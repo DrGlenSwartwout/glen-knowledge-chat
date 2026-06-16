@@ -56,6 +56,28 @@ def test_search_sql_with_tier_filter():
     assert ["eyehealing"] in params
 
 
+def test_search_sql_selects_modules_completed():
+    """The Certification list shows each student's level, so modules_completed
+    must be returned for every search result (null for non-cert rows)."""
+    sql, _ = build_search_sql(
+        lat=21.0, lng=-157.0, radius_miles=50,
+        specialties=None, tiers=None, limit=200,
+    )
+    assert "modules_completed" in sql
+
+
+def test_search_sql_cert_tier_filter():
+    """Selecting the Certification category filters by tier = ANY(...) with the
+    cert tiers, exactly as the frontend's tier[] params drive it."""
+    sql, params = build_search_sql(
+        lat=21.0, lng=-157.0, radius_miles=50,
+        specialties=None, tiers=["panel_in_cert", "panel_certified"], limit=200,
+    )
+    assert "tier = ANY(%s)" in sql
+    assert "modules_completed" in sql
+    assert ["panel_in_cert", "panel_certified"] in params
+
+
 def test_search_sql_fellowship_only_adds_clause():
     sql, params = build_search_sql(
         lat=21.0, lng=-157.0, radius_miles=50,

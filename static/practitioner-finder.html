@@ -468,6 +468,7 @@
       <button class="chip" data-parent="eye_care" aria-pressed="false">Eye Care</button>
       <button class="chip" data-parent="dental" aria-pressed="false">Dental</button>
       <button class="chip" data-parent="holistic_health" aria-pressed="false">Holistic Health</button>
+      <button class="chip" data-parent="certification" aria-pressed="false">Certification</button>
       <button class="chip" data-parent="__all__" aria-pressed="false">Show All</button>
       <button class="chip fellow-toggle" id="fellow-toggle" aria-pressed="false"
               title="Show only practitioners with org-vetted fellowship credentials (FCOVD, MIAOMT, MIABDM, FOWNS, etc.)">
@@ -504,6 +505,13 @@
       <button class="sub-chip" data-sub="anti_aging_regenerative" aria-pressed="false">Anti-Aging / Regenerative</button>
       <button class="sub-chip" data-sub="homeopathy" aria-pressed="false">Homeopathy</button>
       <button class="sub-chip" data-sub="biocommunication" aria-pressed="false">EVOX / Biocommunication</button>
+    </div>
+  </div>
+  <div class="drill-down" id="drill-certification">
+    <div class="sub-chips">
+      <button class="sub-chip" data-sub="__all__" aria-pressed="true">All Certification</button>
+      <button class="sub-chip" data-sub="panel_in_cert" aria-pressed="false">In Progress</button>
+      <button class="sub-chip" data-sub="panel_certified" aria-pressed="false">Certified</button>
     </div>
   </div>
 
@@ -670,7 +678,12 @@
       params.set('country', countrySelect.value || 'US');
       params.set('location', location);
       params.set('radius_miles', radius);
-      if (filterState.parent && filterState.parent !== '__all__') {
+      if (filterState.parent === 'certification') {
+        const tiers = (filterState.sub === '__all__')
+          ? ['panel_in_cert', 'panel_certified']
+          : [filterState.sub];
+        tiers.forEach(t => params.append('tier[]', t));
+      } else if (filterState.parent && filterState.parent !== '__all__') {
         if (filterState.sub === '__all__') {
           params.append('specialties[]', filterState.parent);
         } else {
@@ -721,6 +734,8 @@
         card.className = 'result-card';
         card.dataset.practitionerId = p.id;
 
+        const isCert = p.tier === 'panel_in_cert' || p.tier === 'panel_certified';
+
         // Build heading with fellow badge + vr badge using createElement
         const h3 = document.createElement('h3');
         h3.textContent = p.name;
@@ -745,6 +760,12 @@
         meta.className = 'meta';
         const metaParts = [];
         if (p.credentials) metaParts.push(escapeHtml(p.credentials));
+        if (isCert) {
+          const lvl = (typeof p.modules_completed === 'number' && p.modules_completed >= 1)
+            ? 'Level ' + p.modules_completed + '/12'
+            : 'In certification';
+          metaParts.push(lvl);
+        }
         const loc = [p.city ? escapeHtml(p.city) : '', p.state ? escapeHtml(p.state) : ''].filter(Boolean).join(', ');
         if (loc) metaParts.push(loc);
         if (typeof p.distance_miles === 'number') metaParts.push(p.distance_miles.toFixed(1) + ' mi');
@@ -787,6 +808,7 @@
     function openSidePanel(p) {
       const panel = document.getElementById('side-panel');
       const content = document.getElementById('side-panel-content');
+      const isCert = p.tier === 'panel_in_cert' || p.tier === 'panel_certified';
       const parts = [];
       const fellowBadge = p.fellowship_level
         ? `<span class="fellow-badge" title="Org-vetted fellowship credential">Fellow</span>`
@@ -800,8 +822,15 @@
       if (p.geocode_quality && p.geocode_quality !== 'full') {
         parts.push('<div style="color:var(--muted);font-size:0.85rem;margin-top:0.2rem">Approximate. Call the practice for the exact address.</div>');
       }
-      if (p.phone) parts.push(`<div style="margin-top:0.4rem"><a href="tel:${escapeHtml(p.phone)}" style="color:var(--gold)">${escapeHtml(p.phone)}</a></div>`);
-      if (p.email) parts.push(`<div><a href="mailto:${escapeHtml(p.email)}" style="color:var(--gold)">${escapeHtml(p.email)}</a></div>`);
+      if (isCert) {
+        const certLine = (typeof p.modules_completed === 'number' && p.modules_completed >= 1)
+          ? `Certification: Level ${p.modules_completed}/12`
+          : 'In certification process';
+        parts.push(`<div style="margin-top:0.4rem;color:var(--gold)">${escapeHtml(certLine)}</div>`);
+        parts.push('<div style="color:var(--muted);font-size:0.85rem;margin-top:0.2rem">To reach this practitioner, select them in the results list and use "Send inquiry".</div>');
+      }
+      if (!isCert && p.phone) parts.push(`<div style="margin-top:0.4rem"><a href="tel:${escapeHtml(p.phone)}" style="color:var(--gold)">${escapeHtml(p.phone)}</a></div>`);
+      if (!isCert && p.email) parts.push(`<div><a href="mailto:${escapeHtml(p.email)}" style="color:var(--gold)">${escapeHtml(p.email)}</a></div>`);
       if (p.website) parts.push(`<div><a href="${escapeHtml(p.website)}" target="_blank" rel="noopener" style="color:var(--gold)">${escapeHtml(p.website)}</a></div>`);
       if (p.source_org) {
         parts.push(`<div style="margin-top:1rem;color:var(--muted);font-size:0.85rem">Source: ${escapeHtml(p.source_org)}</div>`);
