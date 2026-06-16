@@ -5,22 +5,51 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <title>Sign in · Remedy Match</title>
+<script>
+  (function(){var t=localStorage.getItem('rm_portal_theme');
+    if(!t) t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';
+    document.documentElement.setAttribute('data-theme',t);})();
+</script>
 <style>
-  :root{--brand:#7c5cbf;--brand-soft:#efeaf8;--ink:#2b2740;--muted:#6b6480;--line:#e7e3f0;--bg:#f7f5fb}
+  /* Brand palette — deep green + gold (matches the client portal + live funnel). */
+  :root[data-theme="dark"]{
+    --bg:#0a150d; --card:#13241a; --line:#274033; --ink:#f3efe2; --muted:#9fb0a4;
+    --brand:#5bbf9e; --btn-bg:#d4a843; --btn-fg:#0a150d; --shadow:0 1px 2px rgba(0,0,0,.30);
+  }
+  :root[data-theme="light"]{
+    --bg:#FBF8F3; --card:#ffffff; --line:#e7e1d4; --ink:#1E2A2A; --muted:#6b7268;
+    --brand:#2f6f5e; --btn-bg:#2f6f5e; --btn-fg:#ffffff; --shadow:0 1px 2px rgba(40,40,30,.06);
+  }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
-    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    transition:background .25s ease,color .25s ease}
   .wrap{max-width:420px;margin:14vh auto;padding:0 18px;text-align:center}
-  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px 20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px 20px;box-shadow:var(--shadow)}
   h1{font-size:1.3rem;margin:.2rem 0 .6rem}
   p.sub{color:var(--muted);margin:0 0 1rem}
-  input{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:10px;font-size:1rem;margin:0 0 12px}
-  .btn{display:block;width:100%;background:var(--brand);color:#fff;border:0;cursor:pointer;
+  input{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:10px;font-size:1rem;margin:0 0 12px;
+    background:var(--card);color:var(--ink)}
+  .btn{display:block;width:100%;background:var(--btn-bg);color:var(--btn-fg);border:0;cursor:pointer;
     font-size:1rem;font-weight:600;border-radius:10px;padding:13px 18px}
   .msg{color:var(--brand);margin-top:12px;min-height:1.4em}
+  .theme-toggle{position:fixed;top:14px;right:14px;width:40px;height:40px;border-radius:50%;
+    border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;font-size:1.1rem;
+    display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow)}
 </style>
 </head>
 <body>
+  <button class="theme-toggle" id="themeToggle" aria-label="Toggle light or dark mode" title="Toggle light/dark">🌙</button>
+  <script>
+    (function(){var btn=document.getElementById('themeToggle');
+      function sync(){btn.textContent=document.documentElement.getAttribute('data-theme')==='dark'?'☀️':'🌙';}
+      sync();
+      btn.addEventListener('click',function(){
+        var next=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+        document.documentElement.setAttribute('data-theme',next);
+        localStorage.setItem('rm_portal_theme',next);sync();});
+    })();
+  </script>
   <div class="wrap"><div class="card">
     <h1>Welcome to your healing home 🌺</h1>
     <p class="sub">Enter your email and we'll send you a sign-in link.</p>
