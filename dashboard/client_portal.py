@@ -84,3 +84,20 @@ def get_portal_by_token(cx, token: str):
     except Exception:
         content = {}
     return {"email": row[0], "name": row[1], "content": content}
+
+
+def get_portal_content_by_email(cx, email):
+    """A client's portal content keyed by email (for the unified portal view,
+    which resolves identity first and then reads the biofield block). Returns
+    ``{"name", "content"}`` or ``None`` when the client has no portal yet."""
+    email = (email or "").strip().lower()
+    row = cx.execute(
+        "SELECT name, content_json FROM client_portals WHERE email=?", (email,)
+    ).fetchone()
+    if not row:
+        return None
+    try:
+        content = json.loads(row[1] or "{}")
+    except Exception:
+        content = {}
+    return {"name": row[0], "content": content}
