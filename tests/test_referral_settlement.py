@@ -22,6 +22,11 @@ def _db(monkeypatch, tmp_path):
     points.init_points_table(cx)
     rewards.init_affiliate_earnings_table(cx)
     monkeypatch.setenv("REWARDS_TIERS_ENABLED", "true")
+    # Isolate from live Supabase: the cert-tiered referral pct calls
+    # modules_completed_for_email, which otherwise hits the real practitioners
+    # table (non-deterministic). Default to None (base pct); the cert-scaling
+    # tests override this explicitly after _db().
+    monkeypatch.setattr(appmod._pp, "modules_completed_for_email", lambda e: None)
     return cx
 
 
