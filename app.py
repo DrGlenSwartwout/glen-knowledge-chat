@@ -6935,6 +6935,98 @@ def reorder_auth(token):
     return resp
 
 
+# ── Certification work-product portal ───────────────────────────────────────
+# Cert students submit published work here; Glen reviews behind two gates
+# (approve -> publish). Student-facing surface gates behind CERT_PORTAL_ENABLED.
+
+_CERT_AUTH_TOKENS_DDL = (
+    "CREATE TABLE IF NOT EXISTS auth_tokens (token_hash TEXT PRIMARY KEY, "
+    "email TEXT, purpose TEXT NOT NULL, extra TEXT, created_at TEXT NOT NULL, "
+    "expires_at TEXT NOT NULL, consumed_at TEXT)")
+
+
+def _cert_portal_enabled() -> bool:
+    return os.environ.get("CERT_PORTAL_ENABLED", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _cert_data_dir():
+    """Runtime data root (same root LOG_DB uses). Uploaded files live here,
+    never under the static/web-served dir."""
+    return Path(os.environ.get("DATA_DIR", str(Path(__file__).parent)))
+
+
+def _cert_email_from_cookie():
+    return (request.cookies.get("rm_cert_email", "") or "").strip().lower()
+
+
+@app.route("/cert")
+def cert_portal_page():
+    if not _cert_portal_enabled():
+        return ("Not found", 404)
+    resp = send_from_directory(STATIC, "cert-portal.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/cert/login", methods=["POST"])
+def cert_login():
+    """Email a magic link to the cert portal. Always 200 (no enumeration)."""
+    if not _cert_portal_enabled():
+        return jsonify({"ok": False, "error": "not available"}), 404
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if email and "@" in email:
+        token = secrets.token_urlsafe(32)
+        now = _now_utc()
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(_CERT_AUTH_TOKENS_DDL)
+            cx.execute(
+                "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                "VALUES (?,?,?,?,?)",
+                (_hash_token(token), email, "cert_portal", now.isoformat(),
+                 (now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)).isoformat()))
+            cx.commit()
+        try:
+            send_magic_link_email(email, "", f"{PUBLIC_BASE_URL}/cert/auth/{token}")
+        except Exception as e:
+            print(f"[cert] magic link send failed: {e!r}", flush=True)
+    return jsonify({"ok": True})
+
+
+@app.route("/cert/auth/<token>", methods=["GET"])
+def cert_auth(token):
+    """Validate the cert magic link, set rm_cert_email cookie, -> /cert."""
+    from flask import redirect as _redirect
+    if not _cert_portal_enabled():
+        return ("Not found", 404)
+    th = _hash_token((token or "").strip())
+    email = None
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        cx.execute(_CERT_AUTH_TOKENS_DDL)
+        row = cx.execute(
+            "SELECT email, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='cert_portal'", (th,)).fetchone()
+        if row and not row["consumed_at"]:
+            try:
+                if datetime.fromisoformat(row["expires_at"]) >= _now_utc():
+                    email = row["email"]
+            except Exception:
+                email = None
+        if email:
+            cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
+                       (_now_utc().isoformat(), th))
+            cx.commit()
+    if not email:
+        return ("<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
+                "This certification portal link is invalid or has expired. "
+                "Please request a new one.</p>"), 400
+    resp = _redirect("/cert", code=302)
+    resp.set_cookie("rm_cert_email", email, max_age=60 * 60 * 24 * 30,
+                    httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 # ── Biofield readiness gate ─────────────────────────────────────────────────
 # After paying for the $300 Causal Biofield Analysis, the customer lands on a
 # readiness gate. It must show 3 items (photo on file / intake / fresh voice
