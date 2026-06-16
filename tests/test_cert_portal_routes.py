@@ -7,8 +7,10 @@ import pytest
 def client(monkeypatch, tmp_path):
     monkeypatch.setenv("CERT_PORTAL_ENABLED", "true")
     import app as appmod
-    # Hermetic sqlite: point LOG_DB at a tmp file so tests never touch the dev db.
+    # Hermetic sqlite: point LOG_DB at a tmp file so tests never touch the dev db,
+    # then build the canonical auth/user tables there via the app's own init.
     monkeypatch.setattr(appmod, "LOG_DB", str(tmp_path / "chat_log.db"))
+    appmod._init_auth_tables()
     appmod.app.config["TESTING"] = True
     return appmod.app.test_client(), appmod
 
@@ -20,9 +22,6 @@ def _mint_cert_token(appmod, email):
     tok = secrets.token_urlsafe(16)
     now = appmod._now_utc()
     with sqlite3.connect(appmod.LOG_DB) as cx:
-        cx.execute("CREATE TABLE IF NOT EXISTS auth_tokens (token_hash TEXT PRIMARY KEY, "
-                   "email TEXT, purpose TEXT NOT NULL, extra TEXT, created_at TEXT NOT NULL, "
-                   "expires_at TEXT NOT NULL, consumed_at TEXT)")
         cx.execute(
             "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
             "VALUES (?,?,?,?,?)",

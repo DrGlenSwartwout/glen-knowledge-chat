@@ -6938,11 +6938,7 @@ def reorder_auth(token):
 # ── Certification work-product portal ───────────────────────────────────────
 # Cert students submit published work here; Glen reviews behind two gates
 # (approve -> publish). Student-facing surface gates behind CERT_PORTAL_ENABLED.
-
-_CERT_AUTH_TOKENS_DDL = (
-    "CREATE TABLE IF NOT EXISTS auth_tokens (token_hash TEXT PRIMARY KEY, "
-    "email TEXT, purpose TEXT NOT NULL, extra TEXT, created_at TEXT NOT NULL, "
-    "expires_at TEXT NOT NULL, consumed_at TEXT)")
+# The auth_tokens table is created at startup by _init_auth_tables().
 
 
 def _cert_portal_enabled() -> bool:
@@ -6979,7 +6975,6 @@ def cert_login():
         token = secrets.token_urlsafe(32)
         now = _now_utc()
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
-            cx.execute(_CERT_AUTH_TOKENS_DDL)
             cx.execute(
                 "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
                 "VALUES (?,?,?,?,?)",
@@ -7003,7 +6998,6 @@ def cert_auth(token):
     email = None
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
-        cx.execute(_CERT_AUTH_TOKENS_DDL)
         row = cx.execute(
             "SELECT email, expires_at, consumed_at FROM auth_tokens "
             "WHERE token_hash=? AND purpose='cert_portal'", (th,)).fetchone()
