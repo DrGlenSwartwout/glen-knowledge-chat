@@ -16934,18 +16934,29 @@ def api_invoice_pay(token):
     method = ((request.get_json(silent=True) or {}).get("method") or "card").strip().lower()
     amount = int(order.get("total_cents") or 0)  # SERVER amount only
     if method == "card":
+        _card_unavailable = ("Card payment is temporarily unavailable — "
+                             "please use Zelle or Wise, or contact us.")
         if not _STRIPE_ACTIVE:
-            return jsonify({"ok": False, "error": "card payment is unavailable"}), 503
+            return jsonify({"ok": False, "error": _card_unavailable}), 503
         from dashboard import stripe_pay as _sp
         ext = order.get("external_ref")
-        sess = _sp.create_checkout_session(
-            amount, customer_email=order.get("email") or "",
-            description=f"Remedy Match invoice {ext}",
-            metadata={"kind": "in-house", "order_id": str(order["id"]),
-                      "invoice_id": ext, "customer_id": ""},
-            success_url=f"{PUBLIC_BASE_URL}/begin/checkout-return?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{PUBLIC_BASE_URL}/invoice/{token}")
-        return jsonify({"ok": True, "method": "card", "url": sess.get("url")})
+        # A Stripe failure (bad key, API error, timeout) must NOT 500 a paying
+        # customer — degrade to a clean message pointing at Zelle/Wise.
+        try:
+            sess = _sp.create_checkout_session(
+                amount, customer_email=order.get("email") or "",
+                description=f"Remedy Match invoice {ext}",
+                metadata={"kind": "in-house", "order_id": str(order["id"]),
+                          "invoice_id": ext, "customer_id": ""},
+                success_url=f"{PUBLIC_BASE_URL}/begin/checkout-return?session_id={{CHECKOUT_SESSION_ID}}",
+                cancel_url=f"{PUBLIC_BASE_URL}/invoice/{token}")
+            url = sess.get("url")
+        except Exception as e:
+            app.logger.warning(f"[invoice.pay] stripe session failed for {ext}: {e!r}")
+            url = None
+        if not url:
+            return jsonify({"ok": False, "error": _card_unavailable}), 502
+        return jsonify({"ok": True, "method": "card", "url": url})
     if method in ("zelle", "wise"):
         amt = "$%.2f" % (amount / 100)
         if method == "zelle":
