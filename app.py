@@ -7158,6 +7158,24 @@ def _client_login_enabled() -> bool:
         "1", "true", "yes", "on")
 
 
+def _portal_offers_enabled() -> bool:
+    """Master flag for the portal 'What's next' offer surface. Dark by default."""
+    return os.environ.get("PORTAL_OFFERS_ENABLED", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _enabled_offer_keys() -> set:
+    """Which ladder rungs are purchasable right now (master + per-rung flags)."""
+    if not _portal_offers_enabled():
+        return set()
+    keys = set()
+    if os.environ.get("SUBSCRIPTIONS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on"):
+        keys.add("live_group")
+    if os.environ.get("BIOFIELD_CHECKOUT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on"):
+        keys.add("biofield")
+    return keys
+
+
 def _portal_priced_lines(items):
     """Build QBO invoice lines from a portal's reorder items, honoring an optional
     per-item ``price_cents`` override (the client's practitioner-special price);
@@ -7379,6 +7397,66 @@ def client_portal_me():
     if not _client_login_enabled():
         return ("Not found", 404)
     return send_from_directory(STATIC, "client-portal.html")
+
+
+# ── Portal "What's next" offer checkouts (dark behind PORTAL_OFFERS_ENABLED) ──
+# The Live Group rung has no standalone checkout elsewhere, so we add one here:
+# a $0 Stripe setup session vaults the card; the membership row is created on
+# return and billed monthly by the subscriptions scheduler. Mirrors /api/studio.
+
+@app.route("/portal/offer/live-group/checkout", methods=["POST"])
+def portal_group_join_checkout():
+    if not _portal_offers_enabled():
+        return jsonify({"error": "not found"}), 404
+    token = request.args.get("token", "") or (request.get_json(silent=True) or {}).get("token", "")
+    sess_cookie = request.cookies.get("rm_portal_session", "")
+    from dashboard import portal_identity as _pi
+    with sqlite3.connect(LOG_DB) as cx:
+        ident = _pi.resolve_identity(cx, token=token, session_token=sess_cookie,
+                                     client_login_enabled=_client_login_enabled())
+    if ident is None:
+        return jsonify({"error": "not found"}), 404
+    try:
+        from dashboard import stripe_pay
+        sess = stripe_pay.create_setup_session(
+            customer_email=ident.email,
+            metadata={"kind": "group_join", "email": ident.email},
+            success_url=(f"{PUBLIC_BASE_URL}/portal/offer/live-group/return"
+                         f"?session_id={{CHECKOUT_SESSION_ID}}"),
+            cancel_url=f"{PUBLIC_BASE_URL}/portal/me")
+    except Exception:
+        app.logger.exception("group-join setup session failed")
+        return jsonify({"error": "Could not start checkout. Please reach out and we'll help."}), 502
+    return jsonify({"ok": True, "stripe_url": sess.get("url", "")})
+
+
+@app.route("/portal/offer/live-group/return")
+def portal_group_join_return():
+    """Stripe setup return: vault the card and create the membership (first charge
+    one cycle out, billed by the subscriptions scheduler). Idempotent; never 500s."""
+    from flask import redirect as _redir
+    sid = (request.args.get("session_id") or "").strip()
+    if _portal_offers_enabled() and sid:
+        try:
+            from dashboard import stripe_pay, subscriptions as _subs, portal_offers as _po
+            import datetime as _dt
+            sess = stripe_pay.get_session(sid)
+            email = ((sess.get("metadata") or {}).get("email") or "").strip().lower()
+            si = stripe_pay.get_setup_intent(sess.get("setup_intent"))
+            cus, pm = si.get("customer"), si.get("payment_method")
+            with sqlite3.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                _subs.init_subscriptions_table(cx)
+                _subs.migrate_add_membership_columns(cx)
+                if email and cus and pm and not _subs.active_memberships_by_email(cx, email):
+                    next_date = _subs.add_months(_dt.date.today().isoformat(), 1)
+                    _subs.create_membership(
+                        cx, email=email, stripe_customer_id=cus,
+                        stripe_payment_method_id=pm,
+                        amount_cents=_po.MEMBERSHIP_PRICE_CENTS, next_charge_date=next_date)
+        except Exception as e:
+            print(f"[group-join] return failed: {e!r}", flush=True)
+    return _redir("/portal/me?joined=1")
 
 
 @app.route("/admin/portal/upsert", methods=["POST"])
