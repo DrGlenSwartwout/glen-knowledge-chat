@@ -6575,6 +6575,14 @@ def practitioner_settings_page():
     return resp
 
 
+@app.route("/console/biofield-portal")
+def console_biofield_portal_page():
+    resp = send_from_directory(STATIC, "console-biofield-portal.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/console/pricing-settings")
 def console_pricing_settings_page():
     resp = send_from_directory(STATIC, "console-pricing-settings.html")
@@ -7309,6 +7317,74 @@ def api_client_portal_checkout(token):
     except Exception as e:
         app.logger.exception("portal checkout failed")
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+
+
+def _biofield_content_clean(content):
+    """Drop blank layers (no title); return (clean_content, has_content)."""
+    content = dict(content or {})
+    layers = [L for L in (content.get("layers") or []) if (L.get("title") or "").strip()]
+    content["layers"] = layers
+    has = bool(layers or (content.get("video") or {}).get("url") or (content.get("greeting") or "").strip())
+    return content, has
+
+
+@app.route("/api/console/biofield-portal", methods=["POST"])
+def api_console_biofield_publish():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    content, has = _biofield_content_clean(body.get("content") or {})
+    if not has:
+        return jsonify({"error": "Add some content — at least one layer, a video, or a greeting."}), 400
+    from dashboard import client_portal as _cp
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        token, pid = _cp.upsert_portal(cx, email, name, content)
+    url = f"{PUBLIC_BASE_URL}/portal/{token}" if token else None
+    emailed = False
+    if token and body.get("send"):
+        try:
+            _send_full_report_email(
+                email, name, "Your personal healing home is ready 🌺",
+                f"Aloha {name or ''},\n\nYour personal healing home is ready:\n\n{url}\n\n"
+                f"With aloha,\nDr. Glen & Rae")
+            emailed = True
+        except Exception as e:
+            print(f"[biofield-publish] send failed: {e!r}", flush=True)
+    return jsonify({"ok": True, "token": token, "url": url, "portal_id": pid,
+                    "updated": token is None, "emailed": emailed})
+
+
+@app.route("/api/console/biofield-portal", methods=["GET"])
+def api_console_biofield_load():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"found": False, "content": {}})
+    from dashboard import client_portal as _cp
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        rec = _cp.get_portal_content_by_email(cx, email)
+    if not rec:
+        return jsonify({"found": False, "name": "", "content": {}, "has_token": False})
+    return jsonify({"found": True, "name": rec.get("name") or "",
+                    "content": rec.get("content") or {}, "has_token": True})
+
+
+@app.route("/api/console/biofield-portal/catalog", methods=["GET"])
+def api_console_biofield_catalog():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    items = []
+    for p in _bos_products.catalog(with_ingredients_only=False):
+        items.append({"slug": p.get("slug"), "name": p.get("name"),
+                      "price_cents": p.get("price_cents")})
+    return jsonify({"products": items})
 
 
 @app.route("/api/portal/<token>/view")

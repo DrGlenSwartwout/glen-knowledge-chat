@@ -74,6 +74,7 @@
     { id: "finance",  label: "Finance",   href: "/console/finance" + qs },
     { id: "crm",      label: "CRM",       href: "/console/crm" + qs },
     { id: "products", label: "Products",  href: "/console/products" + qs },
+    { id: "biofield", label: "Biofield",  href: "/console/biofield-portal" + qs },
     { id: "shipping", label: "Shipping",  href: "/admin/shipping" + qs },
     { id: "neworder", label: "New Order", href: "/orders/new" + qs },
   ];
