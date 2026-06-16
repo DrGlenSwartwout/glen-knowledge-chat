@@ -7140,6 +7140,156 @@ def api_cert_mine():
                     "modules": _cr.MODULES, "formats": _cr.FORMATS})
 
 
+def _cert_console_ok():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return False
+    return True
+
+
+def _cert_sync_modules(cx, email):
+    """Recompute covered modules from this email's approved+published submissions
+    and sync modules_completed on the practitioner record. Best-effort."""
+    from dashboard import cert_submissions as _cs, cert_rules as _cr
+    subs = [s for s in _cs.list_for_email(cx, email)
+            if s["status"] in ("approved", "published")]
+    covered = _cr.evaluate(subs)["modules_covered"]
+    try:
+        from dashboard import practitioner_portal as _pp
+        _pp.upsert_cert_student(email, modules_completed=len(covered))
+    except Exception as e:
+        print(f"[cert] modules sync failed for {email}: {e!r}", flush=True)
+    return len(covered)
+
+
+def _cert_publish_to_proof(sub, name):
+    """Embed + upsert one vector into the case-studies namespace. Returns the id."""
+    title = sub.get("title") or "Practitioner case"
+    desc = (sub.get("description") or "").strip()
+    text = (title + ". " + desc).strip()
+    vec = embed(text)
+    vid = "cert-" + sub["id"]
+    cond = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or ("cert-" + sub["id"][:8])
+    excerpt = desc[:240]
+    _idx.upsert(vectors=[{
+        "id": vid,
+        "values": vec,
+        "metadata": {
+            "condition": cond,
+            "text": excerpt or title,
+            "title": title,
+            "url": sub.get("url") or "",
+            "source": "cert-submission",
+            "name": name or "",
+        },
+    }], namespace="case-studies")
+    return vid
+
+
+@app.route("/api/cert/review/list", methods=["GET"])
+def api_cert_review_list():
+    if not _cert_console_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import cert_submissions as _cs, cert_rules as _cr
+    status = (request.args.get("status") or "").strip() or None
+    email = (request.args.get("email") or "").strip() or None
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_tables(cx)
+        if email:
+            subs = _cs.list_for_email(cx, email)
+        else:
+            subs = _cs.list_by_status(cx, status)
+        # per-student rollups
+        emails = sorted({s["email"] for s in subs})
+        rollups = {}
+        for em in emails:
+            counted = [s for s in _cs.list_for_email(cx, em)
+                       if s["status"] in ("approved", "published")]
+            p = _cr.evaluate(counted)
+            p["modules_covered"] = sorted(p["modules_covered"])
+            rollups[em] = p
+    return jsonify({"ok": True, "submissions": subs, "rollups": rollups,
+                    "modules": _cr.MODULES, "formats": _cr.FORMATS})
+
+
+@app.route("/api/cert/review/approve", methods=["POST"])
+def api_cert_review_approve():
+    if not _cert_console_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    sid = (body.get("id") or "").strip()
+    credited = [int(m) for m in (body.get("credited_modules") or []) if str(m).strip()]
+    note = (body.get("note") or "").strip() or None
+    from dashboard import cert_submissions as _cs
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_tables(cx)
+        sub = _cs.get(cx, sid)
+        if not sub:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        if not credited:
+            credited = list(sub.get("modules") or [])
+        _cs.set_status(cx, sid, "approved", credited_modules=credited,
+                       review_note=note)
+        covered = _cert_sync_modules(cx, sub["email"])
+    try:
+        _send_inquiry_email(sub["email"], "Your certification submission was approved",
+                            f"'{sub.get('title')}' is approved. Modules covered so far: {covered}/12.")
+    except Exception as e:
+        print(f"[cert] approve notify failed: {e!r}", flush=True)
+    return jsonify({"ok": True, "id": sid, "modules_covered": covered})
+
+
+@app.route("/api/cert/review/return", methods=["POST"])
+def api_cert_review_return():
+    if not _cert_console_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    sid = (body.get("id") or "").strip()
+    note = (body.get("note") or "").strip() or "Please revise and resubmit."
+    from dashboard import cert_submissions as _cs
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_tables(cx)
+        if not _cs.get(cx, sid):
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _cs.set_status(cx, sid, "returned", review_note=note)
+    return jsonify({"ok": True, "id": sid})
+
+
+@app.route("/api/cert/review/publish", methods=["POST"])
+def api_cert_review_publish():
+    if not _cert_console_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    sid = (body.get("id") or "").strip()
+    from dashboard import cert_submissions as _cs
+    from dashboard import practitioner_portal as _pp
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_tables(cx)
+        sub = _cs.get(cx, sid)
+        if not sub:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        if sub["status"] not in ("approved", "published"):
+            return jsonify({"ok": False, "error": "approve before publishing"}), 400
+        if not sub.get("permission"):
+            return jsonify({"ok": False, "error": "no publish permission on file"}), 400
+        try:
+            name = _pp.name_for_email(sub["email"])
+        except Exception:
+            name = ""
+        try:
+            vid = _cert_publish_to_proof(sub, name)
+        except Exception as e:
+            print(f"[cert] publish upsert failed: {e!r}", flush=True)
+            return jsonify({"ok": False, "error": "publish failed; retry"}), 502
+        _cs.set_status(cx, sid, "published", case_study_id=vid)
+    return jsonify({"ok": True, "id": sid, "case_study_id": vid})
+
+
 # ── Biofield readiness gate ─────────────────────────────────────────────────
 # After paying for the $300 Causal Biofield Analysis, the customer lands on a
 # readiness gate. It must show 3 items (photo on file / intake / fresh voice

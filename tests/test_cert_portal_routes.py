@@ -136,3 +136,63 @@ def test_submit_creates_row_and_mine_lists_it(client, monkeypatch):
 def monkeypatch_pp(appmod, monkeypatch):
     from dashboard import practitioner_portal as pp
     monkeypatch.setattr(pp, "id_for_email", lambda email: "p-test")
+
+
+def _console_key(appmod):
+    return appmod.CONSOLE_SECRET or ""
+
+
+def test_review_list_console_gated(client):
+    c, appmod = client
+    r = c.get("/api/cert/review/list")  # no key
+    if appmod.CONSOLE_SECRET:
+        assert r.status_code == 401
+    else:
+        assert r.status_code == 200
+
+
+def test_approve_syncs_modules_completed(client, monkeypatch):
+    c, appmod = _auth_client(client)
+    monkeypatch_pp(appmod, monkeypatch)
+    # create a submission covering modules 1,2
+    c.post("/api/cert/submit", json={
+        "title": "t", "url": "https://e.com/p", "formats": ["article"],
+        "modules": [1, 2], "permission": True})
+    # capture upsert sync call
+    calls = {}
+    from dashboard import practitioner_portal as pp
+    monkeypatch.setattr(pp, "upsert_cert_student",
+                        lambda email, **kw: calls.update(kw) or ("pid", kw.get("modules_completed", 0)))
+    # find the submission id
+    sid = c.get("/api/cert/mine").get_json()["submissions"][0]["id"]
+    key = _console_key(appmod)
+    r = c.post("/api/cert/review/approve?key=" + key,
+               json={"id": sid, "credited_modules": [1, 2]})
+    assert r.status_code == 200
+    assert calls.get("modules_completed") == 2  # 2 distinct modules covered
+
+
+def test_publish_requires_approved_and_permission(client, monkeypatch):
+    c, appmod = _auth_client(client)
+    monkeypatch_pp(appmod, monkeypatch)
+    c.post("/api/cert/submit", json={
+        "title": "t", "url": "https://e.com/p", "formats": ["article"],
+        "modules": [1], "permission": True})
+    sid = c.get("/api/cert/mine").get_json()["submissions"][0]["id"]
+    key = _console_key(appmod)
+    # publish before approve → 400
+    r = c.post("/api/cert/review/publish?key=" + key, json={"id": sid})
+    assert r.status_code == 400
+    # approve, then stub embed + pinecone, then publish
+    c.post("/api/cert/review/approve?key=" + key,
+           json={"id": sid, "credited_modules": [1]})
+    monkeypatch.setattr(appmod, "embed", lambda text: [0.0] * 1536)
+    captured = {}
+    monkeypatch.setattr(appmod._idx, "upsert",
+                        lambda **kw: captured.update(kw))
+    from dashboard import practitioner_portal as pp
+    monkeypatch.setattr(pp, "name_for_email", lambda email: "Dr Test")
+    r = c.post("/api/cert/review/publish?key=" + key, json={"id": sid})
+    assert r.status_code == 200
+    assert captured.get("namespace") == "case-studies"
+    assert captured["vectors"][0]["id"] == "cert-" + sid
