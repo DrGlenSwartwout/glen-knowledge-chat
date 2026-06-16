@@ -215,6 +215,16 @@ def personal_earn_cents(charged_cents, method):
     return 0
 
 
+def earn_personal(practitioner_id, amount_cents, *, qbo_invoice_id, note=None) -> int:
+    """Credit a cert participant's fee-free earn on a PERSONAL order (3.5% of the
+    charged amount, computed by personal_earn_cents). Distinct ledger entry_type
+    ('earn_personal') so reconciliation never conflates it with drop-ship margin.
+    Idempotent per qbo_invoice_id; credit-only."""
+    amt = max(0, int(amount_cents))
+    return _apply(practitioner_id, "earn_personal", lambda _bal: amt,
+                  qbo_invoice_id=qbo_invoice_id, note=note)
+
+
 def earn_fee_free(practitioner_id, order_total_cents, qbo_invoice_id, *, note=None) -> int:
     """Credit 3% of a wholesale order paid by a fee-free method (Zelle/Wise).
     Idempotent per invoice."""

@@ -73,7 +73,7 @@ def client(monkeypatch):
 
     # explicit-amount, invoice-idempotent earned-credit primitive
     earn = _Recorder(ret=420)
-    monkeypatch.setattr(appmod._wallet, "earn_dropship_margin", earn)
+    monkeypatch.setattr(appmod._wallet, "earn_personal", earn)
 
     monkeypatch.setattr(appmod._pp, "cart_clear", lambda pid: None)
     monkeypatch.setattr(appmod._pp, "record_order", lambda *a, **k: None)

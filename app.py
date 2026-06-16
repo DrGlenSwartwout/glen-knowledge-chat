@@ -6302,18 +6302,17 @@ def api_practitioner_personal_checkout():
                       address=ship, channel="personal", get_cents=out.get("get_cents", 0))
         # Personal fee-free earn: 3.5% of the charged amount (zelle/wise), else 0.
         # build_order was called with method=None above, so it did NOT credit its
-        # own 3% — this is the only earn for this order. We credit the explicit
-        # amount via earn_dropship_margin: the codebase's explicit-amount,
-        # invoice-idempotent earned-credit primitive (the named entry_type aside,
-        # it is the public seam for crediting a precise earned amount).
+        # own 3% — this is the only earn for this order. Credit the explicit 3.5%
+        # via earn_personal (its own ledger entry_type, so reconciliation never
+        # conflates it with drop-ship margin). Idempotent per invoice.
         charged_cents = int(round((out.get("total") or 0) * 100))
         earn = _wallet.personal_earn_cents(charged_cents, method)
         if earn > 0:
             try:
-                _wallet.earn_dropship_margin(
+                _wallet.earn_personal(
                     pid, earn,
                     qbo_invoice_id=str(out.get("invoice_id") or ""),
-                    ref="personal fee-free earn 3.5%")
+                    note="personal fee-free earn 3.5%")
             except Exception as e:
                 print(f"[practitioner-personal-checkout] earn credit failed: {e!r}",
                       flush=True)
