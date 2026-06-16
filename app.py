@@ -8082,7 +8082,8 @@ def api_cert_portal_invite():
         return jsonify({"ok": True, "sent": False, "reason": "no practitioner record"})
     try:
         name = _pp.name_for_email(email) or ""
-        magic = _pp.create_magic_link_token(pid, email)
+        # Invite link is emailed (not clicked within 15 min), so give it a 7-day TTL.
+        magic = _pp.create_magic_link_token(pid, email, ttl_min=7 * 24 * 60)
         _send_practitioner_magic_link(
             email, name, f"{PUBLIC_BASE_URL}/practitioner/login-verify?token={magic}")
     except Exception as e:
