@@ -41,7 +41,11 @@
   .reitem{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line)}
   .reitem:last-child{border-bottom:0}
   .reitem .nm{font-weight:600}
-  .reitem .pr{color:var(--muted);white-space:nowrap}
+  .reitem .pr{color:var(--ink);white-space:nowrap}
+  .reg{color:var(--muted);text-decoration:line-through;margin-right:6px;font-size:.86rem}
+  .sp{color:var(--brand);font-weight:700}
+  .note{background:var(--brand-soft);border-radius:8px;padding:9px 11px;margin:0 0 .7rem;color:var(--ink)}
+  .note b{color:var(--brand)}
   .muted{color:var(--muted)} .small{font-size:.86rem}
   .foot{text-align:center;color:var(--muted);font-size:.86rem;margin-top:26px}
   .state{max-width:32rem;margin:18vh auto;text-align:center;color:var(--muted);padding:0 18px}
@@ -114,9 +118,14 @@ function render(d){
   if(Array.isArray(d.reorder_items) && d.reorder_items.length){
     let rows = "";
     d.reorder_items.forEach(it=>{
-      rows += `<div class="reitem"><span class="nm">${esc(it.name||it.slug)}${it.qty>1?` ×${esc(it.qty)}`:""}</span><span class="pr">${esc(money(it.price_cents))}</span></div>`;
+      const price = (it.is_special && it.regular_price_cents)
+        ? `<span class="reg">${esc(money(it.regular_price_cents))}</span><span class="sp">${esc(money(it.price_cents))}</span>`
+        : `${esc(money(it.price_cents))}`;
+      rows += `<div class="reitem"><span class="nm">${esc(it.name||it.slug)}${it.qty>1?` ×${esc(it.qty)}`:""}</span><span class="pr">${price}</span></div>`;
     });
+    const note = d.pricing_note ? `<p class="note small">${esc(d.pricing_note)}</p>` : "";
     html += `<div class="card"><h2>Reorder your remedies</h2>
+      ${note}
       <div>${rows}</div>
       <p class="muted small" style="margin:.7rem 0 1rem">Shipping calculated at checkout.</p>
       <button class="btn full" id="reorderBtn">Reorder my remedies</button>
@@ -138,15 +147,8 @@ async function reorder(){
   const err = document.getElementById("reorderErr");
   err.hidden = true; btn.disabled = true; const label = btn.textContent; btn.textContent = "Setting up your order…";
   try{
-    // 1) sign into reorder + get pre-loaded cart
-    const s = await fetch(`/api/portal/${encodeURIComponent(token)}/start-reorder`, {method:"POST"});
-    const sj = await s.json();
-    if(!s.ok || !sj.items || !sj.items.length) throw new Error("Could not load your remedies.");
-    // 2) hand off to the existing live reorder checkout
-    const c = await fetch(`/reorder/checkout`, {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({items: sj.items})
-    });
+    // One call: builds a live Stripe checkout at the client's portal price.
+    const c = await fetch(`/api/portal/${encodeURIComponent(token)}/checkout`, {method:"POST"});
     const cj = await c.json();
     if(cj.stripe_url){ location.href = cj.stripe_url; return; }
     throw new Error(cj.error || "Checkout is temporarily unavailable. Please reach out to us and we’ll help.");
