@@ -4,6 +4,7 @@ lifecycle: new -> packed -> shipped -> done (+ cancelled). Functions take a
 sqlite connection for testability. Lifecycle actions + the Home signal register
 on import (see Task 2)."""
 import json
+import os
 from datetime import datetime, timezone, timedelta
 
 ORDER_STATUSES = ("proposed", "confirmed", "paid",
@@ -64,6 +65,8 @@ def init_orders_table(cx):
         "ALTER TABLE orders ADD COLUMN pay_status TEXT DEFAULT 'unpaid'",
         "ALTER TABLE orders ADD COLUMN paid_at TEXT",
         "ALTER TABLE orders ADD COLUMN paid_cents INTEGER DEFAULT 0",
+        # Phase 3: customer pay-link invoice send timestamp.
+        "ALTER TABLE orders ADD COLUMN invoice_sent_at TEXT",
     ):
         try:
             cx.execute(ddl)
@@ -399,6 +402,72 @@ def set_order_payment(cx, order_id, *, method, amount_cents):
     return cur.rowcount > 0
 
 
+def set_order_payment_claimed(cx, order_id, *, method):
+    """Customer says they sent an off-platform payment (Zelle/Wise). Marks the
+    invoice 'claimed' (pending OWNER confirmation) — does NOT mark it paid or
+    move it into fulfillment; the OWNER confirms receipt via orders.record_payment."""
+    cur = cx.execute(
+        "UPDATE orders SET pay_status='claimed', pay_method=?, updated_at=? WHERE id=?",
+        (str(method or ""), _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def mark_invoice_sent(cx, order_id):
+    cur = cx.execute("UPDATE orders SET invoice_sent_at=?, updated_at=? WHERE id=?",
+                     (_now(), _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def _invoice_paylink_enabled():
+    return os.environ.get("INVOICE_PAYLINK_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _send_invoice_exec(params, ctx):
+    """OWNER: email the customer a tokenized pay-link for a proposed/confirmed
+    invoice. Flag-gated (INVOICE_PAYLINK_ENABLED) — real customer email."""
+    cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+    if cx is None:
+        raise ValueError("no db connection")
+    if not _invoice_paylink_enabled():
+        raise ValueError("invoice pay-link is disabled (INVOICE_PAYLINK_ENABLED off)")
+    oid = int(params["order_id"])
+    order = get_order(cx, oid)
+    if not order:
+        raise ValueError(f"order #{oid} not found")
+    if order.get("status") not in _PRE_FULFILL:
+        raise ValueError(f"order #{oid} is '{order.get('status')}' — only a proposed/confirmed "
+                         "invoice can be sent")
+    email = (order.get("email") or "").strip()
+    if not email:
+        raise ValueError(f"order #{oid} has no customer email")
+    from dashboard.practitioner_portal import create_order_invoice_token
+    from dashboard import inbox as _inbox
+    base = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
+    tok = create_order_invoice_token(oid)
+    link = f"{base}/invoice/{tok}"
+    name = order.get("name") or "there"
+    ref = order.get("external_ref") or f"#{oid}"
+    total = f"${(int(order.get('total_cents') or 0))/100:,.2f}"
+    plain = (f"Hi {name},\n\nYour invoice {ref} is ready ({total}). View, adjust, ask "
+             f"questions, and pay here:\n{link}\n\nMahalo,\nDr. Glen Swartwout")
+    html = (f"<p>Hi {name},</p><p>Your invoice <b>{ref}</b> is ready "
+            f"(<b>{total}</b>). You can review it, adjust quantities, ask questions, "
+            f"and pay securely here:</p>"
+            f"<p><a href='{link}' style='background:#7c5cbf;color:#fff;padding:10px 18px;"
+            f"border-radius:6px;text-decoration:none'>View &amp; pay your invoice</a></p>"
+            f"<p>Mahalo,<br>Dr. Glen Swartwout</p>")
+    try:
+        _inbox.send_email(email, f"Your Remedy Match invoice {ref}", plain,
+                          from_name="Dr. Glen Swartwout", html=html)
+    except Exception as e:
+        raise ValueError(f"could not send invoice email: {e}")
+    mark_invoice_sent(cx, oid)
+    return {"order_id": oid, "link": link,
+            "message": f"Invoice {ref} emailed to {email}."}
+
+
 def _confirm_exec(params, ctx):
     cx = (ctx or {}).get("cx") or (params or {}).get("cx")
     if cx is None:
@@ -440,6 +509,9 @@ action(key="orders.confirm", module="orders", title="Confirm proposed invoice",
 action(key="orders.record_payment", module="orders", title="Record payment",
        description="Record payment on a proposed/confirmed invoice and move it into fulfillment.",
        risk_tier=LOW_WRITE, permission=(OWNER,))(_record_payment_exec)
+action(key="orders.send_invoice", module="orders", title="Send invoice to customer",
+       description="Email the customer a pay-link for a proposed/confirmed invoice.",
+       risk_tier=LOW_WRITE, permission=(OWNER, OPS))(_send_invoice_exec)
 
 
 def _set_tracking_exec(params, ctx):

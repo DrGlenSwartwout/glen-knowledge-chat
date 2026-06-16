@@ -2292,6 +2292,9 @@ _PRODUCTS = _load_json(DATA_DIR / "products.json",
 # Card/ACH online payment is gated until QuickBooks Payments is activated.
 _QBO_PAYMENTS_ACTIVE = os.environ.get("QBO_PAYMENTS_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
+# Phase 3: customer-facing emailed invoice pay-link. OFF until tested in prod —
+# gates the OWNER "Send invoice" action and the public /invoice pay endpoints.
+INVOICE_PAYLINK_ENABLED = os.environ.get("INVOICE_PAYLINK_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Module-level qb alias so tests can monkeypatch appmod.qb.* and the engine path references it.
 try:
     from dashboard import qbo_billing as qb
@@ -3227,6 +3230,23 @@ def begin_checkout_return():
                 paid = "1"
                 pi_id = sess.get("payment_intent")
                 inv, cid = md.get("invoice_id"), md.get("customer_id")
+                # In-house pay-link (Phase 3): a card payment on an in-house proposed/
+                # confirmed invoice auto-records as paid and drops into fulfillment.
+                if _kind == "in-house" and inv:
+                    try:
+                        _cxih = _sqlite3.connect(LOG_DB); _cxih.row_factory = _sqlite3.Row
+                        try:
+                            _oih = _bos_orders.find_order_by_external_ref(_cxih, inv)
+                            if _oih:
+                                _bos_orders.set_order_payment(
+                                    _cxih, _oih["id"], method="card",
+                                    amount_cents=int(sess.get("amount_total") or 0))
+                                if pi_id:
+                                    _bos_orders.set_order_stripe_pi(_cxih, _oih["id"], pi_id)
+                        finally:
+                            _cxih.close()
+                    except Exception as _e:
+                        print(f"[begin-return] in-house pay record: {_e!r}", flush=True)
                 if inv and cid:
                     try:
                         from dashboard import qbo_billing as _qb_ret
@@ -16716,6 +16736,205 @@ def api_orders_manual():
                                "points_redeemed_cents": points_redeemed_cents,
                                "total_cents": total_cents},
                     "lines": items_rec})
+
+
+# ── Customer invoice pay-link (Phase 3) — PUBLIC, token-scoped ─────────────────
+# Auth is the per-order token ONLY (never the console key). All pricing is
+# recomputed server-side; client-sent prices are ignored; the Stripe amount comes
+# from the order's server-side total. One token ⇄ one order.
+def _invoice_order_for_token(token):
+    oid = _pp.order_id_from_invoice_token(token)
+    if not oid:
+        return None
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        return _bos_orders.get_order(cx, int(oid))
+    finally:
+        cx.close()
+
+
+def _invoice_summary(order):
+    """Customer-safe view — no person_id, notes, phone, or full address."""
+    lines = order.get("items") or []
+    subtotal = sum(int(l.get("line_cents") or 0) for l in lines)
+    return {
+        "external_ref": order.get("external_ref"),
+        "name": order.get("name") or "",
+        "lines": [{"slug": l.get("slug"), "name": l.get("name"), "qty": int(l.get("qty") or 0),
+                   "unit_cents": int(l.get("unit_cents") or 0),
+                   "line_cents": int(l.get("line_cents") or 0)} for l in lines],
+        "subtotal_cents": subtotal,
+        "discount_cents": int(order.get("discount_cents") or 0),
+        "shipping_cents": int(order.get("shipping_cents") or 0),
+        "get_cents": int(order.get("get_cents") or 0),
+        "points_redeemed_cents": int(order.get("points_redeemed_cents") or 0),
+        "total_cents": int(order.get("total_cents") or 0),
+        "status": order.get("status"),
+        "pay_status": order.get("pay_status") or "unpaid",
+        "editable": order.get("status") in ("proposed", "confirmed"),
+        "pay_enabled": bool(INVOICE_PAYLINK_ENABLED and _STRIPE_ACTIVE),
+        "paylink_enabled": bool(INVOICE_PAYLINK_ENABLED),
+    }
+
+
+@app.route("/invoice/<token>")
+def invoice_page(token):
+    if not _pp.order_id_from_invoice_token(token):
+        return ("<!doctype html><meta charset=utf-8><title>Invoice</title>"
+                "<div style='font-family:sans-serif;max-width:480px;margin:80px auto;text-align:center'>"
+                "<h2>This invoice link is invalid or has expired.</h2>"
+                "<p>Please contact us for a fresh link.</p></div>"), 403
+    resp = send_from_directory(STATIC, "invoice.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/invoice/<token>", methods=["GET"])
+def api_invoice_get(token):
+    order = _invoice_order_for_token(token)
+    if not order:
+        return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    return jsonify({"ok": True, "order": _invoice_summary(order)})
+
+
+@app.route("/api/invoice/<token>/update", methods=["POST"])
+def api_invoice_update(token):
+    order = _invoice_order_for_token(token)
+    if not order:
+        return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    if order.get("status") not in ("proposed", "confirmed"):
+        return jsonify({"ok": False, "error": "this invoice can no longer be changed"}), 409
+    body = request.get_json(silent=True) or {}
+    cart, items_rec, subtotal_list = [], [], 0
+    for ln in (body.get("lines") or []):
+        slug = (ln.get("slug") or "").strip()
+        p = _get_product(slug)
+        if not p:
+            continue
+        qty = max(0, min(int(ln.get("qty") or 0), 99))
+        if qty <= 0:
+            continue
+        unit_cents = int(p.get("price_cents") or 0)  # SERVER price only — ignore client
+        line_cents = unit_cents * qty
+        subtotal_list += line_cents
+        cart.append({"slug": slug, "qty": qty})
+        items_rec.append({"slug": slug, "name": p["name"], "qty": qty,
+                          "unit_cents": unit_cents, "line_cents": line_cents})
+    if not cart:
+        return jsonify({"ok": False, "error": "no valid items"}), 400
+    ship = order.get("address") or {}
+    try:
+        pc = _price_cart(cart, ship=ship, channel="retail")
+        discount_cents = int(pc.get("discount_cents") or 0)
+        shipping_cents = int(pc.get("shipping_cents") or 0)
+        get_cents = int((pc.get("priced") or {}).get("get_cents") or 0)
+    except Exception as e:
+        print(f"[invoice.update] pricing fell back: {e!r}", flush=True)
+        discount_cents, shipping_cents, get_cents = 0, 0, 0
+    total_cents = max(0, subtotal_list - discount_cents) + shipping_cents
+    points = min(int(order.get("points_redeemed_cents") or 0), total_cents)
+    total_cents -= points
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _bos_orders.upsert_order(
+            cx, source=order["source"], external_ref=order["external_ref"],
+            email=order.get("email") or "", name=order.get("name") or "",
+            phone=order.get("phone") or "", person_id=order.get("person_id"),
+            items=items_rec, total_cents=total_cents, address=ship, channel="retail",
+            get_cents=get_cents, discount_cents=discount_cents,
+            points_redeemed_cents=points, shipping_cents=shipping_cents)
+        updated = _bos_orders.get_order(cx, order["id"])
+    finally:
+        cx.close()
+    try:
+        from dashboard import inbox as _inbox
+        _inbox.send_email("drglenswartwout@gmail.com",
+                          f"Invoice {order.get('external_ref')} changed by customer",
+                          f"Customer updated invoice {order.get('external_ref')} — "
+                          f"new total ${total_cents/100:,.2f}.")
+    except Exception as _e:
+        print(f"[invoice] owner notify skipped: {_e!r}", flush=True)
+    return jsonify({"ok": True, "order": _invoice_summary(updated)})
+
+
+@app.route("/api/invoice/<token>/pay", methods=["POST"])
+def api_invoice_pay(token):
+    order = _invoice_order_for_token(token)
+    if not order:
+        return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    if order.get("pay_status") == "paid" or order.get("status") not in ("proposed", "confirmed"):
+        return jsonify({"ok": False, "error": "this invoice is already paid"}), 409
+    if not INVOICE_PAYLINK_ENABLED:
+        return jsonify({"ok": False, "error": "online payment is not enabled yet"}), 403
+    method = ((request.get_json(silent=True) or {}).get("method") or "card").strip().lower()
+    amount = int(order.get("total_cents") or 0)  # SERVER amount only
+    if method == "card":
+        if not _STRIPE_ACTIVE:
+            return jsonify({"ok": False, "error": "card payment is unavailable"}), 503
+        from dashboard import stripe_pay as _sp
+        ext = order.get("external_ref")
+        sess = _sp.create_checkout_session(
+            amount, customer_email=order.get("email") or "",
+            description=f"Remedy Match invoice {ext}",
+            metadata={"kind": "in-house", "order_id": str(order["id"]),
+                      "invoice_id": ext, "customer_id": ""},
+            success_url=f"{PUBLIC_BASE_URL}/begin/checkout-return?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{PUBLIC_BASE_URL}/invoice/{token}")
+        return jsonify({"ok": True, "method": "card", "url": sess.get("url")})
+    if method in ("zelle", "wise"):
+        amt = "$%.2f" % (amount / 100)
+        if method == "zelle":
+            to = os.environ.get("ZELLE_PAY_TO", "drglenswartwout@gmail.com")
+            instr = f"Send {amt} via Zelle to {to}, then tap “I’ve sent payment”."
+        else:
+            link = os.environ.get("WISE_PAY_LINK", "")
+            instr = (f"Pay {amt} via Wise" + (f": {link}" if link else " — we’ll email you Wise details")
+                     + ", then tap “I’ve sent payment”.")
+        return jsonify({"ok": True, "method": method, "instructions": instr})
+    return jsonify({"ok": False, "error": "unknown payment method"}), 400
+
+
+@app.route("/api/invoice/<token>/claim-paid", methods=["POST"])
+def api_invoice_claim_paid(token):
+    order = _invoice_order_for_token(token)
+    if not order:
+        return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    method = ((request.get_json(silent=True) or {}).get("method") or "").strip().lower()
+    if method not in ("zelle", "wise"):
+        return jsonify({"ok": False, "error": "unknown payment method"}), 400
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _bos_orders.set_order_payment_claimed(cx, order["id"], method=method)
+    finally:
+        cx.close()
+    try:
+        from dashboard import inbox as _inbox
+        _inbox.send_email(
+            "drglenswartwout@gmail.com",
+            f"Payment claimed: invoice {order.get('external_ref')}",
+            f"{order.get('name') or 'A customer'} reports sending "
+            f"${int(order.get('total_cents') or 0)/100:,.2f} via {method} for invoice "
+            f"{order.get('external_ref')}. Confirm receipt, then Record payment.")
+    except Exception as _e:
+        print(f"[invoice] claim notify skipped: {_e!r}", flush=True)
+    return jsonify({"ok": True, "message": "Thanks — we’ll confirm your payment shortly."})
+
+
+@app.route("/api/invoice/<token>/chat", methods=["POST"])
+def api_invoice_chat(token):
+    if not _pp.order_id_from_invoice_token(token):
+        return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    body = request.get_json(silent=True) or {}
+    catalog = _build_ff_catalog()
+    result = _chat.scoped_reply(body.get("message") or "", body.get("history") or [], catalog)
+    suggestions = []
+    for slug in (result.get("suggested_slugs") or []):
+        p = _get_product(slug)
+        if not p:
+            continue
+        suggestions.append({"slug": slug, "name": p.get("name") or slug,
+                            "price_cents": p.get("price_cents") or 0})
+    return jsonify({"ok": True, "reply": result.get("reply", ""), "suggestions": suggestions})
 
 
 @app.route("/api/events", methods=["GET"])
