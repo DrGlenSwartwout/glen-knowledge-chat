@@ -63,13 +63,16 @@ def test_home_signals_route(monkeypatch, tmp_path):
     assert tasks["level"] == "red"  # an open high-priority todo
 
 
-def test_home_page_served(monkeypatch, tmp_path):
+def test_home_page_redirects_to_console(monkeypatch, tmp_path):
     app_module = _load_app()
     monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "p.db"))
     client = app_module.app.test_client()
-    r = client.get("/console/home")
-    assert r.status_code == 200
-    assert b"Home" in r.data or b"home" in r.data
+    # /console/home was retired (#53): the 9 signal cells now live on the
+    # /console front door, so the old path 302-redirects there, preserving ?key=.
+    r = client.get("/console/home?key=abc")
+    assert r.status_code == 302
+    loc = r.headers.get("Location", "")
+    assert "/console" in loc and "key=abc" in loc
 
 
 def test_orders_list_and_board(monkeypatch, tmp_path):
