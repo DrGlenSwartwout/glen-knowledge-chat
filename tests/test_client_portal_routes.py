@@ -167,6 +167,16 @@ def test_api_portal_view_bad_token_404(client):
     assert r.status_code == 404
 
 
+def test_view_endpoint_includes_eligible_offer(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_enabled_offer_keys", lambda: {"live_group", "biofield"})
+    _seed_person(appmod, "vo@example.com", "VO")
+    tok = _seed_portal(appmod, email="vo@example.com", name="VO")
+    j = c.get(f"/api/portal/{tok}/view").get_json()
+    assert j["upgrade"]["enabled"] is True
+    assert j["upgrade"]["offer"]["key"] == "live_group"
+
+
 # ── Tokenless /portal/me (logged-in home) resolves content via session ───────
 
 def _login_cookie(appmod, email, name="Me"):

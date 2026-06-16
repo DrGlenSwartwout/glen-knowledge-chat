@@ -7328,7 +7328,8 @@ def api_client_portal_view(token):
             client_login_enabled=_client_login_enabled())
         if ident is None:
             return jsonify({"error": "not found"}), 404
-        view = _pv.get_portal_view(cx, ident.person_id)
+        view = _pv.get_portal_view(cx, ident.person_id,
+                                   offers_enabled_keys=_enabled_offer_keys())
     if view is None:
         return jsonify({"error": "not found"}), 404
     view["auth_method"] = ident.auth_method
