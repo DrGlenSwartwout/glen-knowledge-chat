@@ -2292,6 +2292,11 @@ _PRODUCTS = _load_json(DATA_DIR / "products.json",
 # Card/ACH online payment is gated until QuickBooks Payments is activated.
 _QBO_PAYMENTS_ACTIVE = os.environ.get("QBO_PAYMENTS_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
+# Shown to the customer when Stripe was active but no checkout URL came back
+# (create_checkout_session failed) — so the Pay button surfaces a clear message
+# instead of silently no-opping. _alert_stripe() already notifies Glen.
+_CARD_UNAVAILABLE = ("Card payment is temporarily unavailable — please try again "
+                     "shortly, use another payment method, or contact us.")
 # Phase 3: customer-facing emailed invoice pay-link. OFF until tested in prod —
 # gates the OWNER "Send invoice" action and the public /invoice pay endpoints.
 INVOICE_PAYLINK_ENABLED = os.environ.get("INVOICE_PAYLINK_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
@@ -3144,6 +3149,8 @@ def begin_checkout(slug):
                     pc["priced"].get("volume_months", 0))
             out["stripe_url"] = _stripe_checkout_url_for_retail(
                 out, email, slug, group_bundle_months=_gb_months)
+            if _STRIPE_ACTIVE and not out.get("stripe_url"):
+                out["payment_error"] = _CARD_UNAVAILABLE
         try:
             disp = (request.cookies.get("rm_dispensary") or "").strip()
             if disp:
@@ -3197,6 +3204,8 @@ def begin_checkout(slug):
                 out["earns_points"] = True   # awarded on confirmed payment (reconciliation, Phase 2)
             elif method == "card" and _STRIPE_ACTIVE:
                 out["stripe_url"] = _stripe_checkout_url_for_retail(out, email, slug)
+                if not out.get("stripe_url"):
+                    out["payment_error"] = _CARD_UNAVAILABLE
             # dispensary attribution: credit the referring practitioner $20/bottle (best-effort,
             # idempotent on the invoice id; never break a customer checkout)
             try:
@@ -6692,6 +6701,8 @@ def api_client_checkout(code):
         except Exception as e:
             print(f"[client-checkout] stripe failed: {e!r}", flush=True)
             _alert_stripe("client-checkout", e)
+            out["stripe_url"] = ""
+            out["payment_error"] = _CARD_UNAVAILABLE
 
     return jsonify(out)
 
@@ -7865,7 +7876,8 @@ def reorder_checkout():
                    "customer_id": cust.get("Id"),   # needed by /begin/checkout-return to record the QBO payment
                    "total": inv.get("TotalAmt")}
             stripe_url = _stripe_checkout_url_for_reorder(out, email) if _STRIPE_ACTIVE else ""
-            return jsonify({"ok": True, "stripe_url": stripe_url, **out})
+            _pe = {"payment_error": _CARD_UNAVAILABLE} if (_STRIPE_ACTIVE and not stripe_url) else {}
+            return jsonify({"ok": True, "stripe_url": stripe_url, **out, **_pe})
         except Exception as e:
             app.logger.exception("reorder checkout (engine) failed")
             return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
@@ -7908,8 +7920,9 @@ def reorder_checkout():
                       total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
                       address=ship, channel="retail", get_cents=get_cents)
         stripe_url = _stripe_checkout_url_for_reorder(out, email) if _STRIPE_ACTIVE else ""
+        _pe = {"payment_error": _CARD_UNAVAILABLE} if (_STRIPE_ACTIVE and not stripe_url) else {}
         return jsonify({"ok": True, "stripe_url": stripe_url,
-                        "invoice_id": out["invoice_id"], "total": out["total"]})
+                        "invoice_id": out["invoice_id"], "total": out["total"], **_pe})
     except Exception as e:
         app.logger.exception("reorder checkout failed")
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500

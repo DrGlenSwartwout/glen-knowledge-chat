@@ -735,6 +735,7 @@
             'A copy of your invoice is on its way to your email as well.';
         } else {
           document.getElementById('cc-email-note').textContent =
+            data.payment_error ||
             'Card payment isn’t enabled yet. Please use Zelle or Wise to complete this order, and they earn you extra points too.';
         }
       } else {
