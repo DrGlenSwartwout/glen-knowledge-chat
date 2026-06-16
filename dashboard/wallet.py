@@ -25,6 +25,7 @@ from typing import Callable, List, Optional
 EARN_RATE_ORDER = 0.0                     # wholesale orders earn nothing (dial kept)
 DROPSHIP_CREDIT_PER_BOTTLE_CENTS = 2000   # $20/bottle credit on drop-ship sales
 EARN_FEE_FREE_PCT = 0.03                   # 3% credit when an order is paid fee-free (Zelle/Wise)
+PERSONAL_EARN_FEE_FREE_PCT = 0.035        # 3.5% credit on PERSONAL orders paid fee-free (Zelle/Wise)
 MODULE_TUITION_CENTS = 29700              # $297
 # Products carry high fixed cost, so credit covers at most half a product order.
 # Training has minimal marginal cost, so credit can cover a whole module. Credit is
@@ -204,6 +205,14 @@ def earn_dropship_margin(practitioner_id, margin_cents, *, qbo_invoice_id, ref=N
 
 def earn_amount_fee_free_cents(order_total_cents: int) -> int:
     return math.floor(EARN_FEE_FREE_PCT * max(0, int(order_total_cents)))
+
+
+def personal_earn_cents(charged_cents, method):
+    """Wallet credit a cert participant earns on a PERSONAL order: 3.5% of the
+    charged amount when paid fee-free (Zelle/Wise), else 0."""
+    if (method or "").strip().lower() in ("zelle", "wise"):
+        return round(int(charged_cents or 0) * PERSONAL_EARN_FEE_FREE_PCT)
+    return 0
 
 
 def earn_fee_free(practitioner_id, order_total_cents, qbo_invoice_id, *, note=None) -> int:
