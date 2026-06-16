@@ -64,6 +64,9 @@ def test_search_sql_selects_modules_completed():
         specialties=None, tiers=None, limit=200,
     )
     assert "modules_completed" in sql
+    # The API also gates contact visibility per-record, so show_contact must be
+    # returned for every row (the route strips it after redaction).
+    assert "show_contact" in sql
 
 
 def test_search_sql_cert_tier_filter():
