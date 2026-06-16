@@ -109,6 +109,90 @@ def test_admin_upsert_creates_and_returns_token(client):
     assert r2.status_code == 200
 
 
+def test_admin_upsert_emails_link_when_send_true(client, monkeypatch):
+    c, appmod = client
+    sent = {}
+    monkeypatch.setattr(appmod, "_send_full_report_email",
+                        lambda to, name, subj, body, **k: sent.update(to=to, body=body))
+    r = c.post("/admin/portal/upsert?key=test-secret",
+               json={"email": "send@y.com", "name": "S", "content": {"greeting": "hi"},
+                     "send": True})
+    assert r.status_code == 200
+    tok = r.get_json()["token"]
+    assert sent["to"] == "send@y.com"
+    assert tok in sent["body"]  # the emailed link contains the freshly-minted token
+
+
+def test_admin_upsert_does_not_email_by_default(client, monkeypatch):
+    c, appmod = client
+    sent = {}
+    monkeypatch.setattr(appmod, "_send_full_report_email",
+                        lambda *a, **k: sent.update(called=True))
+    c.post("/admin/portal/upsert?key=test-secret",
+           json={"email": "nosend@y.com", "name": "N", "content": {}})
+    assert "called" not in sent
+
+
+# ── Role-aware view endpoint (identity seam + view assembler) ────────────────
+
+def _seed_person(appmod, email, name="C", roles='["client"]'):
+    from dashboard import portal_identity as pi
+    cx = sqlite3.connect(appmod.LOG_DB)
+    pi._ensure_people_table(cx)
+    cx.execute(
+        "INSERT OR IGNORE INTO people (email, name, roles, created_at, updated_at) "
+        "VALUES (?,?,?,?,?)", (email, name, roles, "t", "t"))
+    cx.commit()
+    cx.close()
+
+
+def test_api_portal_view_returns_role_aware_blocks(client):
+    c, appmod = client
+    _seed_person(appmod, "view@example.com", "View Client")
+    tok = _seed_portal(appmod, email="view@example.com", name="View Client")
+    r = c.get(f"/api/portal/{tok}/view")
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["account"]["email"] == "view@example.com"
+    assert "Client" in j["account"]["role_badges"]
+    assert j["orders"]["visible"] is True
+    assert j["biofield"]["visible"] is True       # seeded portal has layers/video
+    assert j["upgrade"] == {"enabled": False, "placeholder": True}
+    assert j["auth_method"] == "token"            # session login is dark
+
+
+def test_api_portal_view_bad_token_404(client):
+    c, _ = client
+    r = c.get("/api/portal/not-a-real-token/view")
+    assert r.status_code == 404
+
+
+# ── Scaffolded client login (dark behind CLIENT_LOGIN_ENABLED) ───────────────
+
+def test_client_login_routes_dark_by_default(client):
+    c, _ = client
+    assert c.get("/portal/login").status_code == 404
+    assert c.get("/portal/login-verify?token=x").status_code == 404
+    assert c.post("/portal/login-request", json={"email": "a@b.com"}).status_code == 404
+    assert c.get("/portal/me").status_code == 404
+
+
+def test_client_login_verify_sets_session_when_enabled(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_client_login_enabled", lambda: True)
+    _seed_person(appmod, "li@example.com", "LI")
+    from dashboard import portal_identity as pi
+    cx = sqlite3.connect(appmod.LOG_DB)
+    pid = cx.execute("SELECT id FROM people WHERE email=?", ("li@example.com",)).fetchone()[0]
+    magic = pi.create_client_magic_link(cx, pid, "li@example.com")
+    cx.commit()
+    cx.close()
+
+    r = c.get(f"/portal/login-verify?token={magic}", follow_redirects=False)
+    assert r.status_code in (302, 303)
+    assert "rm_portal_session=" in r.headers.get("Set-Cookie", "")
+
+
 # ── Practitioner-special pricing ────────────────────────────────────────────
 
 def test_priced_lines_honor_per_item_override():
