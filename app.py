@@ -7344,6 +7344,14 @@ def api_console_biofield_publish():
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         token, pid = _cp.upsert_portal(cx, email, name, content)
+        _cp.set_biofield_status(cx, email, "confirmed")
+        try:
+            from dashboard import ghl_queue as _gq
+            _gq.init_ghl_queue_table(cx)
+            _gq.enqueue(cx, op="tag_add", email=email,
+                        payload={"tags": ["e4l:confirmed"]}, actor="console")
+        except Exception as e:
+            print(f"[biofield-publish] confirm tag failed: {e!r}", flush=True)
     url = f"{PUBLIC_BASE_URL}/portal/{token}" if token else None
     emailed = False
     if token and body.get("send"):
@@ -7374,6 +7382,23 @@ def api_console_biofield_load():
         return jsonify({"found": False, "name": "", "content": {}, "has_token": False})
     return jsonify({"found": True, "name": rec.get("name") or "",
                     "content": rec.get("content") or {}, "has_token": True})
+
+
+@app.route("/api/console/biofield/review-queue", methods=["GET"])
+def api_console_biofield_review_queue():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import client_portal as _cp
+    queue = []
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        rows = cx.execute("SELECT email, name, updated_at FROM client_portals").fetchall()
+        for r in rows:
+            if _cp.get_biofield_status(cx, r["email"]) == "requested":
+                queue.append({"email": r["email"], "name": r["name"],
+                              "requested_at": r["updated_at"]})
+    return jsonify({"queue": queue})
 
 
 @app.route("/api/console/biofield-portal/import-fmp", methods=["POST"])

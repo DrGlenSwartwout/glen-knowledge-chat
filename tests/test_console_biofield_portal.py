@@ -136,3 +136,34 @@ def test_import_fmp_requires_key(client):
     c, _ = client
     r = c.post("/api/console/biofield-portal/import-fmp", json={"email": "e@x.com"})
     assert r.status_code == 401
+
+
+# ── Review queue + confirm-on-publish ────────────────────────────────────────
+
+def test_review_queue_lists_only_requested(client):
+    c, appmod = client
+    from dashboard import client_portal as cp
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cp.init_client_portal_table(cx)
+    cp.upsert_portal(cx, "req@y.com", "Req", {"biofield_status": "requested", "layers": []})
+    cp.upsert_portal(cx, "drft@y.com", "Drft", {"biofield_status": "ai_draft", "layers": []})
+    cx.close()
+    j = c.get("/api/console/biofield/review-queue?key=test-secret").get_json()
+    emails = [r["email"] for r in j["queue"]]
+    assert "req@y.com" in emails and "drft@y.com" not in emails
+
+
+def test_review_queue_requires_key(client):
+    c, _ = client
+    assert c.get("/api/console/biofield/review-queue").status_code == 401
+
+
+def test_publish_confirms_status(client):
+    c, appmod = client
+    r = c.post("/api/console/biofield-portal?key=test-secret",
+               json={"email": "cf@y.com", "name": "CF",
+                     "content": {"layers": [{"n": 1, "title": "Calm", "remedy": "R"}]}})
+    assert r.status_code == 200
+    from dashboard import client_portal as cp
+    cx = sqlite3.connect(appmod.LOG_DB)
+    assert cp.get_biofield_status(cx, "cf@y.com") == "confirmed"
