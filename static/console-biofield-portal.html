@@ -97,6 +97,7 @@
       <datalist id="catalog"></datalist>
       <div id="reitems"></div>
       <button class="btn ghost sm" onclick="addItem()">+ Add remedy</button>
+      <button class="btn ghost sm" onclick="syncOrderFromLayers()">Sync order list from layers</button>
       <label style="margin-top:.8rem">Pricing note (optional)</label>
       <input id="pricingNote" type="text" placeholder="Your certified-practitioner price.">
     </div>
@@ -117,6 +118,7 @@ function unlock(){ localStorage.setItem('console_key', document.getElementById('
 
 const $ = id => document.getElementById(id);
 const val = id => ($(id).value || "").trim();
+let CAT_BY_NAME = {};
 
 function boot(){
   if(!key()){ $('gate').style.display='flex'; return; }
@@ -135,9 +137,10 @@ async function api(method, path, body){
 async function loadCatalog(){
   const r = await api('GET', '/api/console/biofield-portal/catalog');
   if(!r.ok) return;
-  const dl = $('catalog'); dl.innerHTML='';
+  const dl = $('catalog'); dl.innerHTML=''; CAT_BY_NAME={};
   (r.json.products||[]).forEach(p=>{
     if(!p.slug) return;
+    CAT_BY_NAME[(p.name||'').trim().toLowerCase()] = p.slug;
     const o=document.createElement('option');
     o.value=p.slug; o.label=`${p.name||p.slug} — $${((p.price_cents||0)/100).toFixed(2)}`;
     dl.appendChild(o);
@@ -149,6 +152,7 @@ function addLayer(L){
   L = L || {};
   const i = $('layers').children.length + 1;
   const el = document.createElement('div'); el.className='layer';
+  el.dataset.patterns = JSON.stringify((L && L.patterns) || []);
   el.innerHTML = `
     <div class="top">
       <input class="ln" type="number" min="1" value="${L.n!=null?L.n:i}" title="layer order">
@@ -167,6 +171,7 @@ function collectLayers(){
     meaning: el.querySelector('.lm').value.trim(),
     remedy: el.querySelector('.lr').value.trim(),
     dosing: el.querySelector('.ld').value.trim(),
+    patterns: JSON.parse(el.dataset.patterns || '[]'),
   })).filter(L=>L.title).sort((a,b)=>(a.n||0)-(b.n||0));
 }
 
@@ -192,6 +197,18 @@ function collectItems(){
     if(p!=='') o.price_cents = parseInt(p);
     return o;
   }).filter(Boolean);
+}
+function syncOrderFromLayers(){
+  const layers = collectLayers();
+  const existing = {}; collectItems().forEach(it => existing[it.slug] = it);  // keep qty/price
+  const slugs = [];
+  layers.forEach(L => (L.remedy||'').split('+').forEach(part => {
+    const slug = CAT_BY_NAME[part.trim().toLowerCase()];
+    if(slug && !slugs.includes(slug)) slugs.push(slug);
+  }));
+  $('reitems').innerHTML = '';
+  slugs.forEach(slug => addItem(existing[slug] || {slug, qty: 1}));
+  setStatus(`Order list synced from layers — ${slugs.length} item(s).`, true);
 }
 
 // ── Paste import ────────────────────────────────────────────────────────────
