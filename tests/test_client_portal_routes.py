@@ -431,3 +431,23 @@ def test_content_endpoint_reveals_remedies_when_confirmed(client):
         "layers": [{"n": 1, "title": "Calm", "meaning": "m", "remedy": "Nous Energy", "dosing": "1/day"}]})
     j = c.get(f"/api/portal/{tok}").get_json()
     assert j["blurred"] is False and j["layers"][0]["remedy"] == "Nous Energy"
+
+
+def test_content_endpoint_reports_newest_and_scan_date_param(client):
+    c, appmod = client
+    from dashboard import portal_biofield_reports as R
+    import sqlite3, datetime
+    tok = _seed_portal(appmod, "ms@y.com", "MS", {"layers": []})  # ensures token row
+    cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx)
+    today = datetime.date.today().isoformat()
+    old = (datetime.date.today() - datetime.timedelta(days=60)).isoformat()
+    R.upsert_report(cx, "ms@y.com", today, "s1",
+                    {"layers": [{"n": 1, "title": "New", "remedy": "Y", "dosing": "2"}]}, "interested")
+    R.upsert_report(cx, "ms@y.com", old, "s0",
+                    {"layers": [{"n": 1, "title": "Old", "remedy": "X", "dosing": "1"}]}, "confirmed")
+    cx.close()
+    j = c.get(f"/api/portal/{tok}").get_json()
+    assert j["scan_date"] == today and j["scan_dates"] == [today, old]
+    assert j["blurred"] is True and "remedy" not in j["layers"][0]
+    j2 = c.get(f"/api/portal/{tok}?scan_date={old}").get_json()
+    assert j2["scan_date"] == old and j2["blurred"] is False and j2["layers"][0]["remedy"] == "X"
