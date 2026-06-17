@@ -212,3 +212,30 @@ def test_review_queue_lists_requested_reports_with_dates(client):
     j = c.get("/api/console/biofield/review-queue?key=test-secret").get_json()
     hits = [(x["email"], x.get("scan_date")) for x in j["queue"]]
     assert ("rq@y.com", today) in hits and all(e != "rq2@y.com" for e, _ in hits)
+
+
+def test_load_returns_scan_dates_and_selected_report(client):
+    c, appmod = client
+    from dashboard import portal_biofield_reports as R
+    import sqlite3, datetime
+    cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx)
+    today = datetime.date.today().isoformat()
+    old = (datetime.date.today() - datetime.timedelta(days=40)).isoformat()
+    R.upsert_report(cx, "ld@y.com", today, "s1", {"layers": [{"n": 1, "title": "New", "remedy": "Y"}]}, "ai_draft")
+    R.upsert_report(cx, "ld@y.com", old, "s0", {"layers": [{"n": 1, "title": "Old", "remedy": "X"}]}, "confirmed")
+    cx.close()
+    j = c.get("/api/console/biofield-portal?key=test-secret&email=ld@y.com").get_json()
+    assert j["found"] and j["scan_dates"] == [today, old] and j["scan_date"] == today
+    assert j["content"]["layers"][0]["title"] == "New" and j["content"]["layers"][0]["remedy"] == "Y"
+    j2 = c.get("/api/console/biofield-portal?key=test-secret&email=ld@y.com&scan_date=" + old).get_json()
+    assert j2["scan_date"] == old and j2["content"]["layers"][0]["title"] == "Old"
+
+
+def test_load_legacy_no_reports_unchanged(client):
+    c, appmod = client
+    from dashboard import client_portal as cp
+    import sqlite3
+    cx = sqlite3.connect(appmod.LOG_DB); cp.init_client_portal_table(cx)
+    cp.upsert_portal(cx, "lg2@y.com", "Lg2", {"layers": [{"n": 1, "title": "Legacy"}]}); cx.close()
+    j = c.get("/api/console/biofield-portal?key=test-secret&email=lg2@y.com").get_json()
+    assert j["found"] and j["scan_dates"] == [] and j["content"]["layers"][0]["title"] == "Legacy"
