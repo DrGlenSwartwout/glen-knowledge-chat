@@ -69,12 +69,24 @@ def _biofield_block(cx, email):
     has = bool(content.get("greeting") or content.get("layers") or content.get("video"))
     if not has:
         return {"visible": False}
+    # Legacy portals (no biofield_status) are treated as confirmed → render fully.
+    status = content.get("biofield_status") or "confirmed"
+    confirmed = status == "confirmed"
+    layers = []
+    for L in (content.get("layers") or []):
+        item = {"n": L.get("n"), "title": L.get("title", ""), "meaning": L.get("meaning", "")}
+        if confirmed:  # unconfirmed remedies NEVER leave the server
+            item["remedy"] = L.get("remedy", "")
+            item["dosing"] = L.get("dosing", "")
+        layers.append(item)
     return {
         "visible": True,
+        "status": status,
+        "blurred": not confirmed,
         "greeting": content.get("greeting", ""),
         "video": content.get("video") or {},
-        "layers": content.get("layers") or [],
-        "pricing_note": content.get("pricing_note", ""),
+        "layers": layers,
+        "pricing_note": content.get("pricing_note", "") if confirmed else "",
     }
 
 

@@ -7262,12 +7262,24 @@ def api_client_portal(token):
             "is_special": bool(override is not None and regular is not None and int(override) < int(regular)),
             "available": bool(p),
         })
+    # Mirror the /view blur: never send unconfirmed remedies over the wire.
+    bf_status = content.get("biofield_status") or "confirmed"
+    bf_confirmed = bf_status == "confirmed"
+    bf_layers = []
+    for L in (content.get("layers") or []):
+        item = {"n": L.get("n"), "title": L.get("title", ""), "meaning": L.get("meaning", "")}
+        if bf_confirmed:
+            item["remedy"] = L.get("remedy", "")
+            item["dosing"] = L.get("dosing", "")
+        bf_layers.append(item)
     return jsonify({
         "name": portal.get("name"),
+        "biofield_status": bf_status,
+        "blurred": not bf_confirmed,
         "greeting": content.get("greeting", ""),
         "video": content.get("video") or {},
-        "layers": content.get("layers") or [],
-        "pricing_note": content.get("pricing_note", ""),
+        "layers": bf_layers,
+        "pricing_note": content.get("pricing_note", "") if bf_confirmed else "",
         "reorder_items": display,
     })
 
@@ -7344,6 +7356,14 @@ def api_console_biofield_publish():
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         token, pid = _cp.upsert_portal(cx, email, name, content)
+        _cp.set_biofield_status(cx, email, "confirmed")
+        try:
+            from dashboard import ghl_queue as _gq
+            _gq.init_ghl_queue_table(cx)
+            _gq.enqueue(cx, op="tag_add", email=email,
+                        payload={"tags": ["e4l:confirmed"]}, actor="console")
+        except Exception as e:
+            print(f"[biofield-publish] confirm tag failed: {e!r}", flush=True)
     url = f"{PUBLIC_BASE_URL}/portal/{token}" if token else None
     emailed = False
     if token and body.get("send"):
@@ -7374,6 +7394,23 @@ def api_console_biofield_load():
         return jsonify({"found": False, "name": "", "content": {}, "has_token": False})
     return jsonify({"found": True, "name": rec.get("name") or "",
                     "content": rec.get("content") or {}, "has_token": True})
+
+
+@app.route("/api/console/biofield/review-queue", methods=["GET"])
+def api_console_biofield_review_queue():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import client_portal as _cp
+    queue = []
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        rows = cx.execute("SELECT email, name, updated_at FROM client_portals").fetchall()
+        for r in rows:
+            if _cp.get_biofield_status(cx, r["email"]) == "requested":
+                queue.append({"email": r["email"], "name": r["name"],
+                              "requested_at": r["updated_at"]})
+    return jsonify({"queue": queue})
 
 
 @app.route("/api/console/biofield-portal/import-fmp", methods=["POST"])
@@ -7427,6 +7464,38 @@ def api_client_portal_view(token):
         return jsonify({"error": "not found"}), 404
     view["auth_method"] = ident.auth_method
     return jsonify(view)
+
+
+def _biofield_transition(token, new_status, tag):
+    from dashboard import client_portal as _cp
+    from dashboard import portal_identity as _pi
+    from dashboard import ghl_queue as _gq
+    sess = request.cookies.get("rm_portal_session", "")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _pi._ensure_people_table(cx)
+        ident = _pi.resolve_identity(
+            cx, token=token, session_token=sess,
+            client_login_enabled=_client_login_enabled())
+        if ident is None or not _cp.set_biofield_status(cx, ident.email, new_status):
+            return jsonify({"error": "not found"}), 404
+        try:
+            _gq.init_ghl_queue_table(cx)
+            _gq.enqueue(cx, op="tag_add", email=ident.email,
+                        payload={"tags": [tag]}, actor="portal")
+        except Exception as e:
+            print(f"[biofield-transition] ghl enqueue failed: {e!r}", flush=True)
+    return jsonify({"ok": True, "status": new_status})
+
+
+@app.route("/api/portal/<token>/biofield/interest", methods=["POST"])
+def api_portal_biofield_interest(token):
+    return _biofield_transition(token, "interested", "e4l:interested")
+
+
+@app.route("/api/portal/<token>/biofield/request", methods=["POST"])
+def api_portal_biofield_request(token):
+    return _biofield_transition(token, "requested", "e4l:requested")
 
 
 # ── Scaffolded client login (DARK behind CLIENT_LOGIN_ENABLED) ────────────────

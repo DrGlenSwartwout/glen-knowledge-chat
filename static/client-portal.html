@@ -91,6 +91,16 @@
   .pill{font-size:.72rem;font-weight:700;border-radius:999px;padding:2px 9px;background:var(--brand-soft);color:var(--ok)}
   .soon{border-style:dashed;background:linear-gradient(180deg,var(--card),var(--card2));text-align:center}
   .soon .muted{margin:.2rem 0 0}
+  /* biofield disclosure + pending-remedy placeholder */
+  .disclose{color:var(--muted);font-size:.78rem;margin:.4rem 0 0;display:flex;align-items:center;gap:6px;letter-spacing:.01em}
+  .disclose svg{flex:0 0 auto;opacity:.8}
+  .rx-pending{margin-top:.9rem;border:1px dashed var(--line);border-radius:8px;
+    background:var(--brand-soft);padding:12px 14px;opacity:.72;position:relative}
+  .rx-pending .ph{filter:blur(4px);user-select:none;pointer-events:none;color:var(--brand);font-weight:700}
+  .rx-pending .ph .dose{filter:blur(3px);display:block;color:var(--muted);font-weight:400;font-size:.86rem;margin-top:3px}
+  .rx-pending .lock{position:relative;color:var(--ink);font-size:.92rem;margin-top:.6rem;display:flex;align-items:flex-start;gap:7px}
+  .rx-pending .lock svg{flex:0 0 auto;margin-top:2px;color:var(--brand)}
+  .rx-pending .req{color:var(--muted);font-size:.86rem;margin:.6rem 0 0}
 </style>
 </head>
 <body>
@@ -126,6 +136,9 @@ const token = seg; // reused by reorder()/checkout; "me" resolves via the sessio
 const $ = (h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;};
 const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const money = (c)=> (c==null? "" : "$"+(c/100).toFixed(2));
+// Inline SVG icons (no emoji), matching the page's stroked-icon style.
+const ICON_INFO = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>';
+const ICON_LOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 
 function notFound(){
   document.getElementById("loading").hidden = true;
@@ -192,20 +205,60 @@ function render(d, v){
       </div>`;
   }
 
-  if(Array.isArray(d.layers) && d.layers.length){
-    let path = "";
-    d.layers.forEach((L,i)=>{
-      path += `
-        <div class="layer">
-          <div class="node">${esc(L.n!=null?L.n:i+1)}</div>
-          <h3>${esc(L.title||"")}</h3>
-          ${L.meaning?`<div class="mean">${esc(L.meaning)}</div>`:""}
-          ${L.remedy?`<div class="rx"><b>${esc(L.remedy)}</b>${L.dosing?`<span class="dose">${esc(L.dosing)}</span>`:""}</div>`:""}
-        </div>`;
-    });
-    html += `<div class="card"><h2>Your healing path</h2>
-      <p class="muted small">From the surface layer down to the deepest root — we support them in order, and the whole chain unwinds.</p>
-      <div class="path">${path}</div></div>`;
+  // Biofield "healing path" — server-gated by status. Remedies/dosing never reach
+  // the page until Dr. Glen has confirmed (status === "confirmed"); the earlier
+  // states reveal the patterns and a two-click path to request the matches.
+  // Prefer the status-aware view block; fall back to the legacy flat content
+  // (treated as confirmed) so older token links keep rendering fully.
+  const bf = (v && v.biofield && v.biofield.visible) ? v.biofield
+    : (Array.isArray(d.layers) && d.layers.length
+        ? {visible:true, status:"confirmed", blurred:false, layers:d.layers, pricing_note:d.pricing_note||""}
+        : null);
+  if(bf){
+    const status = bf.status || "confirmed";
+    const layers = Array.isArray(bf.layers) ? bf.layers : [];
+    const disclose = `<p class="disclose">${ICON_INFO}AI-generated, pending Dr. Glen's review.</p>`;
+
+    if(status === "ai_draft"){
+      // First click: show the greeting + that the analysis is ready. No layers yet.
+      html += `<div class="card"><h2>Your scan analysis</h2>
+        ${bf.greeting?`<p class="muted" style="margin:.1rem 0 .6rem">${esc(bf.greeting)}</p>`:""}
+        <p style="margin:.1rem 0 1rem">Your biofield scan analysis is ready — your healing path, mapped from the surface layer down to the deepest root.</p>
+        <button class="btn full" id="bfInterestBtn">View your scan analysis</button>
+        ${disclose}</div>`;
+    } else {
+      // interested / requested / confirmed all render the patterns.
+      let path = "";
+      layers.forEach((L,i)=>{
+        path += `
+          <div class="layer">
+            <div class="node">${esc(L.n!=null?L.n:i+1)}</div>
+            <h3>${esc(L.title||"")}</h3>
+            ${L.meaning?`<div class="mean">${esc(L.meaning)}</div>`:""}
+            ${L.remedy?`<div class="rx"><b>${esc(L.remedy)}</b>${L.dosing?`<span class="dose">${esc(L.dosing)}</span>`:""}</div>`:""}
+          </div>`;
+      });
+      let extra = "";
+      if(status !== "confirmed"){
+        // Blurred placeholder remedy card + the second click (or its pending note).
+        const action = (status === "interested")
+          ? `<button class="btn full" id="bfRequestBtn" style="margin-top:.7rem">Request my remedy matches</button>`
+          : `<p class="req">Requested — Dr. Glen is confirming your matches.</p>`;
+        extra = `
+          <div class="rx-pending" aria-hidden="false">
+            <div class="ph">Remedy match<span class="dose">Personalized dosing</span></div>
+            <div class="lock">${ICON_LOCK}<span>Your remedy matches are being confirmed by Dr. Glen.</span></div>
+            ${action}
+          </div>`;
+      } else if(bf.pricing_note){
+        extra = `<p class="note small" style="margin-top:.7rem">${esc(bf.pricing_note)}</p>`;
+      }
+      html += `<div class="card"><h2>Your healing path</h2>
+        <p class="muted small">From the surface layer down to the deepest root — we support them in order, and the whole chain unwinds.</p>
+        <div class="path">${path}</div>
+        ${extra}
+        ${status !== "confirmed" ? disclose : ""}</div>`;
+    }
   }
 
   if(Array.isArray(d.reorder_items) && d.reorder_items.length){
@@ -259,6 +312,25 @@ function render(d, v){
 
   const obtn = document.getElementById("offerBtn");
   if(obtn) obtn.addEventListener("click", ()=>startOffer(obtn));
+
+  const ibtn = document.getElementById("bfInterestBtn");
+  if(ibtn) ibtn.addEventListener("click", ()=>advanceBiofield(ibtn, "interest"));
+
+  const rbtn = document.getElementById("bfRequestBtn");
+  if(rbtn) rbtn.addEventListener("click", ()=>advanceBiofield(rbtn, "request"));
+}
+
+async function advanceBiofield(btn, step){
+  // POST the transition, then re-run the page load so it re-fetches /view and
+  // renders the next state. The token (seg) is the same segment /view uses.
+  btn.disabled = true; const label = btn.textContent; btn.textContent = "One moment…";
+  try{
+    const r = await fetch(`/api/portal/${encodeURIComponent(seg)}/biofield/${step}`, {method:"POST"});
+    if(!r.ok) throw new Error();
+    await load();
+  }catch(e){
+    btn.disabled = false; btn.textContent = label;
+  }
 }
 
 async function startOffer(btn){

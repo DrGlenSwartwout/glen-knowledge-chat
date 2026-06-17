@@ -375,3 +375,59 @@ def test_portal_checkout_bad_token_404(client):
     c, _ = client
     r = c.post("/api/portal/not-a-real-token/checkout")
     assert r.status_code == 404
+
+
+# ── Biofield interest/request transitions (+ GHL tags) ──────────────────────
+
+def test_biofield_interest_and_request_transitions(client):
+    c, appmod = client
+    from dashboard import client_portal as cp
+    email = "transition@example.com"
+    tok = _seed_portal(appmod, email=email, name="T Client", content={
+        "biofield_status": "ai_draft", "greeting": "hi",
+        "layers": [{"n": 1, "title": "Calm", "meaning": "m",
+                    "remedy": "R", "dosing": "d"}]})
+
+    r1 = c.post(f"/api/portal/{tok}/biofield/interest")
+    assert r1.status_code == 200
+    cx = sqlite3.connect(appmod.LOG_DB)
+    assert cp.get_biofield_status(cx, email) == "interested"
+    cx.close()
+
+    r2 = c.post(f"/api/portal/{tok}/biofield/request")
+    assert r2.status_code == 200
+    cx = sqlite3.connect(appmod.LOG_DB)
+    assert cp.get_biofield_status(cx, email) == "requested"
+
+    rows = cx.execute("SELECT payload_json FROM ghl_write_queue").fetchall()
+    cx.close()
+    blob = "".join(r[0] for r in rows)
+    assert "e4l:interested" in blob
+    assert "e4l:requested" in blob
+
+
+def test_biofield_transition_bad_token_404(client):
+    c, _ = client
+    r = c.post("/api/portal/bogustoken/biofield/interest")
+    assert r.status_code == 404
+
+
+def test_content_endpoint_blurs_remedies_until_confirmed(client):
+    c, appmod = client
+    tok = _seed_portal(appmod, "blur@y.com", "Blur", {
+        "biofield_status": "interested",
+        "layers": [{"n": 1, "title": "Calm", "meaning": "m", "remedy": "Nous Energy", "dosing": "1/day"}]})
+    j = c.get(f"/api/portal/{tok}").get_json()
+    assert j["blurred"] is True and j["biofield_status"] == "interested"
+    L = j["layers"][0]
+    assert L["title"] == "Calm" and L["meaning"] == "m"
+    assert "remedy" not in L and "dosing" not in L
+
+
+def test_content_endpoint_reveals_remedies_when_confirmed(client):
+    c, appmod = client
+    tok = _seed_portal(appmod, "rev@y.com", "Rev", {
+        "biofield_status": "confirmed",
+        "layers": [{"n": 1, "title": "Calm", "meaning": "m", "remedy": "Nous Energy", "dosing": "1/day"}]})
+    j = c.get(f"/api/portal/{tok}").get_json()
+    assert j["blurred"] is False and j["layers"][0]["remedy"] == "Nous Energy"

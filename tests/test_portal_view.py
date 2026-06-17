@@ -105,6 +105,31 @@ def test_view_shows_biofield_when_portal_content_present(tmp_path):
     assert view["biofield"]["video"]["url"].endswith("/x")
 
 
+def test_biofield_block_blurs_remedies_until_confirmed(tmp_path):
+    from dashboard import portal_view as pv
+    from dashboard import client_portal as cp
+    cx = _conn(tmp_path)
+    pid = _add_person(cx, "bf@example.com", "BF")
+    cp.upsert_portal(cx, "bf@example.com", "BF", {"biofield_status": "interested", "greeting": "hi",
+        "layers": [{"n": 1, "title": "Calm", "meaning": "m", "remedy": "Nous Energy", "dosing": "1/day"}]})
+    bf = pv.get_portal_view(cx, pid)["biofield"]
+    assert bf["status"] == "interested" and bf["blurred"] is True
+    assert bf["layers"][0]["title"] == "Calm" and bf["layers"][0]["meaning"] == "m"   # shown
+    assert "remedy" not in bf["layers"][0] and "dosing" not in bf["layers"][0]        # withheld
+
+
+def test_biofield_block_reveals_remedies_when_confirmed(tmp_path):
+    from dashboard import portal_view as pv
+    from dashboard import client_portal as cp
+    cx = _conn(tmp_path)
+    pid = _add_person(cx, "cf@example.com", "CF")
+    cp.upsert_portal(cx, "cf@example.com", "CF", {"biofield_status": "confirmed", "greeting": "hi",
+        "layers": [{"n": 1, "title": "Calm", "meaning": "m", "remedy": "Nous Energy", "dosing": "1/day"}]})
+    bf = pv.get_portal_view(cx, pid)["biofield"]
+    assert bf["status"] == "confirmed" and bf["blurred"] is False
+    assert bf["layers"][0]["remedy"] == "Nous Energy"
+
+
 def test_view_unknown_person_is_none(tmp_path):
     from dashboard import portal_view as pv
     cx = _conn(tmp_path)
