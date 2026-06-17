@@ -7426,6 +7426,46 @@ def api_console_biofield_review_queue():
     return jsonify({"queue": queue})
 
 
+def _init_biofield_corrections(cx):
+    cx.execute("""CREATE TABLE IF NOT EXISTS biofield_corrections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, scan_date TEXT,
+        content_json TEXT, created_at TEXT)""")
+    cx.commit()
+
+
+def _log_biofield_correction(cx, email, scan_date, content):
+    _init_biofield_corrections(cx)
+    cx.execute("INSERT INTO biofield_corrections (email, scan_date, content_json, created_at) "
+               "VALUES (?,?,?,?)",
+               ((email or "").strip().lower(), scan_date or "",
+                json.dumps(content or {}), datetime.utcnow().isoformat() + "Z"))
+    cx.commit()
+
+
+@app.route("/api/console/biofield/corrections", methods=["GET"])
+def api_console_biofield_corrections():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    since = (request.args.get("since") or "").strip()
+    out = []
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _init_biofield_corrections(cx)
+        q = "SELECT email, scan_date, content_json, created_at FROM biofield_corrections"
+        args = ()
+        if since:
+            q += " WHERE created_at >= ?"; args = (since,)
+        q += " ORDER BY created_at ASC"
+        for r in cx.execute(q, args).fetchall():
+            try:
+                content = json.loads(r["content_json"] or "{}")
+            except Exception:
+                content = {}
+            out.append({"email": r["email"], "scan_date": r["scan_date"],
+                        "content": content, "created_at": r["created_at"]})
+    return jsonify({"corrections": out})
+
+
 @app.route("/api/console/biofield-portal/import-fmp", methods=["POST"])
 def api_console_biofield_import_fmp():
     """Pull a client's FMP Causal Chain Report, build portal layers + AI-drafted

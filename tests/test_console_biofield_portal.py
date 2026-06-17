@@ -167,3 +167,19 @@ def test_publish_confirms_status(client):
     from dashboard import client_portal as cp
     cx = sqlite3.connect(appmod.LOG_DB)
     assert cp.get_biofield_status(cx, "cf@y.com") == "confirmed"
+
+
+def test_corrections_logged_and_listable(client):
+    c, appmod = client
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        appmod._log_biofield_correction(cx, "corr@y.com", "2026-06-05",
+                                        {"layers": [{"n": 1, "title": "T", "remedy": "Real FF"}]})
+    j = c.get("/api/console/biofield/corrections?key=test-secret&since=2000-01-01").get_json()
+    hit = [x for x in j["corrections"] if x["email"] == "corr@y.com" and x["scan_date"] == "2026-06-05"]
+    assert hit and hit[0]["content"]["layers"][0]["remedy"] == "Real FF"
+
+
+def test_corrections_requires_key(client):
+    c, _ = client
+    assert c.get("/api/console/biofield/corrections").status_code == 401
