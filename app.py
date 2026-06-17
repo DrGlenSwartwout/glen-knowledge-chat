@@ -7721,6 +7721,12 @@ def admin_client_portal_upsert():
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         token, pid = _cp.upsert_portal(cx, email, name, content)
+        scan_date = (body.get("scan_date") or "").strip()
+        if scan_date:
+            from dashboard import portal_biofield_reports as _pbr
+            _pbr.init_table(cx)
+            _pbr.upsert_report(cx, email, scan_date, (body.get("scan_id") or ""),
+                               content, content.get("biofield_status") or "ai_draft")
     if token is None:
         return jsonify({"ok": True, "updated": True, "portal_id": pid,
                         "note": "existing portal updated; prior link unchanged"})

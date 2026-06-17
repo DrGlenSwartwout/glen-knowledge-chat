@@ -471,3 +471,16 @@ def test_transition_targets_scan_date_and_rejects_out_of_window(client):
     r2 = c.post(f"/api/portal/{tok}/biofield/request", json={"scan_date": old})
     assert r2.status_code == 409
     assert R.get_report(cx, "tw@y.com", old)["status"] == "ai_draft"
+
+
+def test_admin_upsert_with_scan_date_writes_report(client):
+    c, appmod = client
+    from dashboard import portal_biofield_reports as R
+    import sqlite3
+    r = c.post("/admin/portal/upsert?key=test-secret", json={
+        "email": "ad@y.com", "name": "Ad", "scan_date": "2026-06-05", "scan_id": "s9",
+        "content": {"biofield_status": "ai_draft", "layers": [{"n": 1, "title": "T", "remedy": "R"}]}})
+    assert r.status_code == 200
+    cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx)
+    rep = R.get_report(cx, "ad@y.com", "2026-06-05")
+    assert rep is not None and rep["status"] == "ai_draft" and rep["scan_id"] == "s9"
