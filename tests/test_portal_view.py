@@ -70,6 +70,22 @@ def test_view_surfaces_first_eligible_offer(tmp_path):
     assert view["upgrade"]["offer"]["price_cents"] == 9900
 
 
+def test_orders_block_excludes_cancelled(tmp_path):
+    from dashboard import portal_view as pv
+    cx = _conn(tmp_path)
+    pid = _add_person(cx, "co@example.com", "C")
+    for ext, status in (("a", "paid"), ("b", "cancelled")):
+        cx.execute(
+            "INSERT INTO orders (source, external_ref, email, items_json, total_cents, status, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            ("test", ext, "co@example.com", "[]", 1000, status, "2026-06-01", "2026-06-01"))
+    cx.commit()
+    view = pv.get_portal_view(cx, pid)
+    statuses = [o["status"] for o in view["orders"]["items"]]
+    assert "cancelled" not in statuses
+    assert statuses == ["paid"]
+
+
 def test_view_shows_biofield_when_portal_content_present(tmp_path):
     from dashboard import portal_view as pv
     from dashboard import client_portal as cp
