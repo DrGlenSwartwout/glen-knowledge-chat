@@ -104,7 +104,7 @@
     <div class="card">
       <h2>Healing path layers</h2>
       <div id="layers"></div>
-      <button class="btn ghost sm" onclick="addLayer()">+ Add layer</button>
+      <button class="btn ghost sm" onclick="addLayer(); renderFindings()">+ Add layer</button>
     </div>
 
     <div id="unbalanced" class="card" style="display:none"></div>
@@ -210,7 +210,7 @@ function addLayer(L){
     <div class="top">
       <input class="ln" type="number" min="1" value="${L.n!=null?L.n:i}" title="layer order">
       <input class="lt" type="text" placeholder="Layer title" value="${esc(L.title||'')}" style="flex:1">
-      <button class="x" onclick="this.closest('.layer').remove()">delete</button>
+      <button class="x" onclick="this.closest('.layer').remove(); renderFindings()">delete</button>
     </div>
     <textarea class="lm" placeholder="Meaning — what this layer addresses">${esc(L.meaning||'')}</textarea>
     <input class="lr" type="text" placeholder="Remedy (free text)" value="${esc(L.remedy||'')}" style="margin-top:6px">
@@ -308,7 +308,12 @@ function renderFindings(){
     + `<button class="btn ghost sm" onclick="addLayerForSelected()">Add a layer for selected</button> `
     + `<button class="btn ghost sm" onclick="document.querySelectorAll('.ufx').forEach(c=>c.checked=true)">Select all</button></div>`;
 }
-function addLayerForSelected(){ /* stub — replaced in a later task */ }
+function addLayerForSelected(){
+  const codes = [...document.querySelectorAll('.ufx:checked')].map(c=>c.value);
+  if(!codes.length){ setStatus('Select one or more stresses first.', false); return; }
+  addLayer({patterns: codes, title: '', meaning: ''});
+  renderFindings();
+}
 
 function populate(d){
   $('greeting').value = d.greeting||'';
