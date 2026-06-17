@@ -7429,6 +7429,38 @@ def api_client_portal_view(token):
     return jsonify(view)
 
 
+def _biofield_transition(token, new_status, tag):
+    from dashboard import client_portal as _cp
+    from dashboard import portal_identity as _pi
+    from dashboard import ghl_queue as _gq
+    sess = request.cookies.get("rm_portal_session", "")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _pi._ensure_people_table(cx)
+        ident = _pi.resolve_identity(
+            cx, token=token, session_token=sess,
+            client_login_enabled=_client_login_enabled())
+        if ident is None or not _cp.set_biofield_status(cx, ident.email, new_status):
+            return jsonify({"error": "not found"}), 404
+        try:
+            _gq.init_ghl_queue_table(cx)
+            _gq.enqueue(cx, op="tag_add", email=ident.email,
+                        payload={"tags": [tag]}, actor="portal")
+        except Exception as e:
+            print(f"[biofield-transition] ghl enqueue failed: {e!r}", flush=True)
+    return jsonify({"ok": True, "status": new_status})
+
+
+@app.route("/api/portal/<token>/biofield/interest", methods=["POST"])
+def api_portal_biofield_interest(token):
+    return _biofield_transition(token, "interested", "e4l:interested")
+
+
+@app.route("/api/portal/<token>/biofield/request", methods=["POST"])
+def api_portal_biofield_request(token):
+    return _biofield_transition(token, "requested", "e4l:requested")
+
+
 # ── Scaffolded client login (DARK behind CLIENT_LOGIN_ENABLED) ────────────────
 # The real-login drop-in: magic-link email -> one-time token -> client session
 # cookie, targeting portal_identity's session branch. Every route 404s while the
