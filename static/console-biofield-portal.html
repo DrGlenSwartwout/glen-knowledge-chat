@@ -42,6 +42,12 @@
   #gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;text-align:center}
   #gate .card{min-width:300px}
   a.preview{display:inline-block;margin-left:10px;color:var(--gold);font-weight:600}
+  .ac{position:absolute;z-index:60;background:var(--surface2);border:1px solid var(--border);
+    border-radius:8px;max-height:240px;overflow:auto;min-width:240px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+  .ac-item{padding:8px 11px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border)}
+  .ac-item:last-child{border-bottom:0}
+  .ac-item:hover{background:var(--surface);color:var(--gold)}
+  .ac-item .em{color:var(--muted);font-size:.82em}
 </style>
 </head>
 <body>
@@ -52,6 +58,7 @@
     <p style="margin-top:10px"><button class="btn" onclick="unlock()">Unlock</button></p>
   </div></div>
 
+  <div id="clientac" class="ac" style="display:none"></div>
   <div id="app" class="wrap" style="display:none">
     <h1>Biofield Portal Editor</h1>
     <p class="sub">Compose or edit a client's healing-home portal, then publish. Paste your narrative skill's <code>portal-seed.json</code> to pre-fill.</p>
@@ -93,7 +100,7 @@
     </div>
 
     <div class="card">
-      <h2>Reorder remedies</h2>
+      <h2>Order remedies</h2>
       <datalist id="catalog"></datalist>
       <div id="reitems"></div>
       <button class="btn ghost sm" onclick="addItem()">+ Add remedy</button>
@@ -125,6 +132,41 @@ function boot(){
   $('app').style.display='block';
   loadCatalog();
   if($('#layers') && $('layers').children.length===0) addLayer();
+  $('email').addEventListener('input', clientSearch);
+  $('name').addEventListener('input', clientSearch);
+  document.addEventListener('click', e=>{
+    if(!e.target.closest('#clientac') && e.target!==$('email') && e.target!==$('name')) acHide();
+  });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') acHide(); });
+}
+
+// ── Client type-ahead (name OR email; matches first/last name too, server-side) ──
+let _acTimer=null;
+function acHide(){ const d=$('clientac'); if(d){ d.style.display='none'; d.innerHTML=''; } }
+function clientSearch(ev){
+  const input=ev.target, q=(input.value||'').trim();
+  clearTimeout(_acTimer);
+  if(q.length<2){ acHide(); return; }
+  _acTimer=setTimeout(async ()=>{
+    const r=await api('GET', `/api/people?q=${encodeURIComponent(q)}&limit=8`);
+    const people=(r.ok && r.json.people) || [];
+    if(!people.length){ acHide(); return; }
+    const d=$('clientac');
+    d.innerHTML=people.map(p=>{
+      const nm=esc(p.name || [p.first_name,p.last_name].filter(Boolean).join(' ') || '(no name)');
+      return `<div class="ac-item" data-email="${esc(p.email||'')}" data-name="${esc(p.name||'')}">`
+           + `${nm} <span class="em">${esc(p.email||'')}</span></div>`;
+    }).join('');
+    const rect=input.getBoundingClientRect();
+    d.style.left=(rect.left+window.scrollX)+'px';
+    d.style.top=(rect.bottom+window.scrollY+2)+'px';
+    d.style.width=rect.width+'px';
+    d.style.display='block';
+    d.querySelectorAll('.ac-item').forEach(it=>it.onclick=()=>{
+      $('email').value=it.dataset.email; $('name').value=it.dataset.name;
+      acHide(); loadExisting();
+    });
+  }, 250);
 }
 
 async function api(method, path, body){
