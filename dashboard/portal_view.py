@@ -45,6 +45,8 @@ def _orders_block(cx, email, roles):
         from dashboard import orders as _o
         cx.row_factory = sqlite3.Row
         for o in _o.list_orders_by_email(cx, email, limit=50):
+            if (o.get("status") or "") == "cancelled":
+                continue  # clients never see cancelled orders
             items.append({
                 "id": o.get("id"),
                 "date": o.get("created_at", ""),
