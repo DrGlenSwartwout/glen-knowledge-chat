@@ -484,3 +484,24 @@ def test_admin_upsert_with_scan_date_writes_report(client):
     cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx)
     rep = R.get_report(cx, "ad@y.com", "2026-06-05")
     assert rep is not None and rep["status"] == "ai_draft" and rep["scan_id"] == "s9"
+
+
+def test_admin_delete_portal_removes_all_traces(client):
+    c, appmod = client
+    from dashboard import client_portal as cp, portal_biofield_reports as R
+    import sqlite3
+    cx = sqlite3.connect(appmod.LOG_DB); cp.init_client_portal_table(cx); R.init_table(cx)
+    cp.upsert_portal(cx, "del@y.com", "Del", {"layers": []})
+    R.upsert_report(cx, "del@y.com", "2026-06-05", "s", {"layers": []}, "ai_draft")
+    appmod._log_biofield_correction(cx, "del@y.com", "2026-06-05", {"layers": []})
+    cx.close()
+    r = c.post("/admin/portal/delete?key=test-secret", json={"email": "del@y.com"})
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    cx = sqlite3.connect(appmod.LOG_DB)
+    assert cp.get_portal_content_by_email(cx, "del@y.com") is None
+    assert R.list_report_dates(cx, "del@y.com") == []
+
+
+def test_admin_delete_requires_key(client):
+    c, _ = client
+    assert c.post("/admin/portal/delete", json={"email": "x@y.com"}).status_code == 401
