@@ -451,3 +451,23 @@ def test_content_endpoint_reports_newest_and_scan_date_param(client):
     assert j["blurred"] is True and "remedy" not in j["layers"][0]
     j2 = c.get(f"/api/portal/{tok}?scan_date={old}").get_json()
     assert j2["scan_date"] == old and j2["blurred"] is False and j2["layers"][0]["remedy"] == "X"
+
+
+def test_transition_targets_scan_date_and_rejects_out_of_window(client):
+    c, appmod = client
+    from dashboard import portal_biofield_reports as R
+    import sqlite3, datetime
+    tok = _seed_portal(appmod, "tw@y.com", "TW", {"layers": []})
+    cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx)
+    today = datetime.date.today().isoformat()
+    old = (datetime.date.today() - datetime.timedelta(days=60)).isoformat()
+    R.upsert_report(cx, "tw@y.com", today, "s1", {"layers": []}, "ai_draft")
+    R.upsert_report(cx, "tw@y.com", old, "s0", {"layers": []}, "ai_draft")
+    cx.close()
+    r = c.post(f"/api/portal/{tok}/biofield/request", json={"scan_date": today})
+    assert r.status_code == 200 and r.get_json()["status"] == "requested"
+    cx = sqlite3.connect(appmod.LOG_DB)
+    assert R.get_report(cx, "tw@y.com", today)["status"] == "requested"
+    r2 = c.post(f"/api/portal/{tok}/biofield/request", json={"scan_date": old})
+    assert r2.status_code == 409
+    assert R.get_report(cx, "tw@y.com", old)["status"] == "ai_draft"

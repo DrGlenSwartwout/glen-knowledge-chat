@@ -7482,16 +7482,30 @@ def api_client_portal_view(token):
 def _biofield_transition(token, new_status, tag):
     from dashboard import client_portal as _cp
     from dashboard import portal_identity as _pi
+    from dashboard import portal_biofield_reports as _pbr
     from dashboard import ghl_queue as _gq
+    import datetime as _dt
     sess = request.cookies.get("rm_portal_session", "")
+    body = request.get_json(silent=True) or {}
+    req_date = (body.get("scan_date") or request.args.get("scan_date") or "").strip()
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _pi._ensure_people_table(cx)
-        ident = _pi.resolve_identity(
-            cx, token=token, session_token=sess,
-            client_login_enabled=_client_login_enabled())
-        if ident is None or not _cp.set_biofield_status(cx, ident.email, new_status):
+        _pbr.init_table(cx)
+        ident = _pi.resolve_identity(cx, token=token, session_token=sess,
+                                     client_login_enabled=_client_login_enabled())
+        if ident is None:
             return jsonify({"error": "not found"}), 404
+        dates = _pbr.list_report_dates(cx, ident.email)
+        if dates:
+            picked = req_date if req_date in dates else dates[0]
+            if not _pbr.is_actionable(picked, _dt.date.today().isoformat()):
+                return jsonify({"error": "scan no longer actionable"}), 409
+            if not _pbr.set_report_status(cx, ident.email, picked, new_status):
+                return jsonify({"error": "not found"}), 404
+        else:
+            if not _cp.set_biofield_status(cx, ident.email, new_status):
+                return jsonify({"error": "not found"}), 404
         try:
             _gq.init_ghl_queue_table(cx)
             _gq.enqueue(cx, op="tag_add", email=ident.email,
