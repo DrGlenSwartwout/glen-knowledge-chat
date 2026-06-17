@@ -5,44 +5,52 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <title>Biofield Portal · Console</title>
-<script src="/static/op-nav.js" defer></script>
+<link rel="icon" type="image/png" href="/static/favicon.png">
 <style>
-  :root{--brand:#7c5cbf;--ink:#23202e;--muted:#6b6480;--line:#e3dff0;--bg:#f6f4fb;--ok:#2f7d6b;--err:#9a3b3b}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-  .wrap{max-width:840px;margin:0 auto;padding:18px 16px 80px}
-  h1{font-size:1.35rem;margin:.4rem 0 .2rem}
-  .sub{color:var(--muted);margin:0 0 1rem}
-  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
-  .card h2{font-size:1rem;margin:0 0 .7rem}
-  label{display:block;font-size:.8rem;color:var(--muted);margin:.5rem 0 .2rem}
-  input,textarea,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}
+  /* Shared Business OS console theme — deep green + gold, matching the other tabs. */
+  :root{--bg:#0a150d;--surface:#111f16;--surface2:#162318;--border:#21472d;
+        --cream:#fdf4d8;--muted:#a89870;--gold:#d4a843;--green:#3d8a52;--err:#c0432b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--cream);font-family:"Open Sans",system-ui,sans-serif;padding:24px}
+  /* Center page content (full-width nav preserved), like the other consoles. */
+  body > :not(.op-nav-bar):not(.op-nav-sub):not(#gate):not(script):not(style){
+    max-width:900px;margin-left:auto;margin-right:auto}
+  h1{font-family:"Raleway",sans-serif;font-size:22px;margin:.4rem 0 .2rem;color:var(--cream)}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 1rem}
+  code{color:var(--gold)}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin:14px 0}
+  .card h2{font-family:"Raleway",sans-serif;font-size:15px;margin:0 0 .7rem}
+  label{display:block;font-size:.78rem;color:var(--muted);margin:.5rem 0 .2rem}
+  input,textarea,select{width:100%;padding:9px 11px;background:var(--bg);color:var(--cream);
+    border:1px solid var(--border);border-radius:8px;font:inherit;font-size:14px}
   textarea{resize:vertical;min-height:54px}
   .row{display:flex;gap:10px;flex-wrap:wrap}
   .row > div{flex:1;min-width:120px}
-  .btn{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-  .btn.ghost{background:#efeaf8;color:var(--brand)}
+  .btn{background:var(--gold);color:var(--bg);border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer}
+  .btn.ghost{background:transparent;border:1px solid var(--border);color:var(--cream);font-weight:600}
+  .btn.ghost:hover{border-color:var(--gold);color:var(--gold)}
   .btn.sm{padding:5px 10px;font-size:.82rem}
   .btn:disabled{opacity:.5;cursor:default}
-  .layer,.reitem{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:#faf9fe}
+  .layer,.reitem{border:1px solid var(--border);border-radius:10px;padding:10px;margin:8px 0;background:var(--surface2)}
   .layer .top,.reitem .top{display:flex;gap:10px;align-items:center;margin-bottom:6px}
   .layer .top input{width:64px}
-  .x{margin-left:auto;background:#f4eef0;color:var(--err);border:0;border-radius:6px;padding:4px 9px;cursor:pointer}
+  .x{margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--err);border-radius:6px;padding:4px 9px;cursor:pointer}
   .muted{color:var(--muted)} .small{font-size:.84rem}
-  .status{padding:10px 12px;border-radius:8px;margin:10px 0;display:none}
-  .status.ok{background:#e9f6f1;color:var(--ok);display:block}
-  .status.bad{background:#f8ecec;color:var(--err);display:block}
-  #gate{max-width:420px;margin:14vh auto;text-align:center}
-  a.preview{display:inline-block;margin-left:10px;color:var(--brand);font-weight:600}
+  .status{padding:10px 12px;border-radius:8px;margin:10px 0;display:none;font-size:13px}
+  .status.ok{background:var(--surface2);border:1px solid var(--green);color:var(--green);display:block}
+  .status.bad{background:var(--surface2);border:1px solid var(--err);color:var(--err);display:block}
+  #gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;text-align:center}
+  #gate .card{min-width:300px}
+  a.preview{display:inline-block;margin-left:10px;color:var(--gold);font-weight:600}
 </style>
 </head>
-<body data-active="bos" data-sub="biofield">
-  <div id="gate" class="card" style="display:none">
+<body>
+<script src="/static/op-nav.js" data-active="bos" data-sub="biofield"></script>
+  <div id="gate" style="display:none"><div class="card" style="min-width:300px">
     <h2>Console key</h2>
     <input id="key" type="password" placeholder="CONSOLE_SECRET">
-    <p><button class="btn" onclick="unlock()">Unlock</button></p>
-  </div>
+    <p style="margin-top:10px"><button class="btn" onclick="unlock()">Unlock</button></p>
+  </div></div>
 
   <div id="app" class="wrap" style="display:none">
     <h1>Biofield Portal Editor</h1>
@@ -107,7 +115,7 @@ const $ = id => document.getElementById(id);
 const val = id => ($(id).value || "").trim();
 
 function boot(){
-  if(!key()){ $('gate').style.display='block'; return; }
+  if(!key()){ $('gate').style.display='flex'; return; }
   $('app').style.display='block';
   loadCatalog();
   if($('#layers') && $('layers').children.length===0) addLayer();
