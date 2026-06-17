@@ -7376,6 +7376,23 @@ def api_console_biofield_load():
                     "content": rec.get("content") or {}, "has_token": True})
 
 
+@app.route("/api/console/biofield-portal/import-fmp", methods=["POST"])
+def api_console_biofield_import_fmp():
+    """Pull a client's FMP Causal Chain Report, build portal layers + AI-drafted
+    prose, and return content to pre-fill the editor (review-then-publish)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    from dashboard import fmp_biofield as _fb
+    content = _fb.import_content(email, (body.get("name") or "").strip())
+    if content is None:
+        return jsonify({"found": False})
+    return jsonify({"found": True, "content": content})
+
+
 @app.route("/api/console/biofield-portal/catalog", methods=["GET"])
 def api_console_biofield_catalog():
     if not _portal_console_ok():
