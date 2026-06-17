@@ -8,9 +8,11 @@ absent/unavailable data hides its block rather than erroring.
 Self-contained (takes a `cx`, never imports `app`) so it unit-tests in isolation.
 Order/points/biofield reads are defensive: a failure degrades to an empty block.
 """
+import datetime
 import json
 
 from dashboard import client_portal as _cp
+from dashboard import portal_biofield_reports as _pbr
 from dashboard import portal_offers as _po
 
 # roles → human-friendly badge labels. Roles not listed fall back to Title Case.
@@ -58,19 +60,39 @@ def _orders_block(cx, email, roles):
     return {"visible": True, "items": items}
 
 
-def _biofield_block(cx, email):
-    """The 'healing adventure' map — reuses the existing client_portals content,
-    now rendered as one section of the shell rather than the whole page."""
+def _biofield_block(cx, email, scan_date=None):
+    """The 'healing adventure' map — per-scan from portal_biofield_reports
+    (newest by default, or an explicit scan_date), falling back to the legacy
+    client_portals content as a single confirmed report when no rows exist."""
+    try:
+        _pbr.init_table(cx)
+        dates = _pbr.list_report_dates(cx, email)
+    except Exception:
+        dates = []
+    if dates:
+        picked = scan_date if (scan_date in dates) else dates[0]
+        rep = _pbr.get_report(cx, email, picked) or {}
+        content = rep.get("content") or {}
+        status = rep.get("status") or "confirmed"
+        today = datetime.date.today().isoformat()
+        actionable = (status != "confirmed") and _pbr.is_actionable(picked, today)
+        return _assemble_biofield(content, status, scan_date=picked,
+                                  scan_dates=dates, actionable=actionable)
+    # Legacy fallback: single confirmed report, no tabs.
     try:
         rec = _cp.get_portal_content_by_email(cx, email)
     except Exception:
         rec = None
     content = (rec or {}).get("content") or {}
-    has = bool(content.get("greeting") or content.get("layers") or content.get("video"))
-    if not has:
+    if not (content.get("greeting") or content.get("layers") or content.get("video")):
         return {"visible": False}
     # Legacy portals (no biofield_status) are treated as confirmed → render fully.
     status = content.get("biofield_status") or "confirmed"
+    return _assemble_biofield(content, status, scan_date=None,
+                              scan_dates=[], actionable=False)
+
+
+def _assemble_biofield(content, status, *, scan_date, scan_dates, actionable):
     confirmed = status == "confirmed"
     layers = []
     for L in (content.get("layers") or []):
@@ -79,15 +101,10 @@ def _biofield_block(cx, email):
             item["remedy"] = L.get("remedy", "")
             item["dosing"] = L.get("dosing", "")
         layers.append(item)
-    return {
-        "visible": True,
-        "status": status,
-        "blurred": not confirmed,
-        "greeting": content.get("greeting", ""),
-        "video": content.get("video") or {},
-        "layers": layers,
-        "pricing_note": content.get("pricing_note", "") if confirmed else "",
-    }
+    return {"visible": True, "status": status, "blurred": not confirmed,
+            "actionable": actionable, "scan_date": scan_date, "scan_dates": scan_dates,
+            "greeting": content.get("greeting", ""), "video": content.get("video") or {},
+            "layers": layers, "pricing_note": content.get("pricing_note", "") if confirmed else ""}
 
 
 def _upgrade_block(cx, email, roles, enabled_keys):
@@ -103,7 +120,7 @@ def _upgrade_block(cx, email, roles, enabled_keys):
     return {"enabled": True, "offer": offers[0]}
 
 
-def get_portal_view(cx, person_id, *, offers_enabled_keys=None):
+def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None):
     import sqlite3
     cx.row_factory = sqlite3.Row
     prow = cx.execute("SELECT * FROM people WHERE id=?", (person_id,)).fetchone()
@@ -131,6 +148,6 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None):
         "roles": roles,
         "account": account,
         "orders": _orders_block(cx, email, roles),
-        "biofield": _biofield_block(cx, email),
+        "biofield": _biofield_block(cx, email, scan_date=scan_date),
         "upgrade": _upgrade_block(cx, email, roles, offers_enabled_keys),
     }
