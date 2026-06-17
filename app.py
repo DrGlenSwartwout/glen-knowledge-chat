@@ -7758,6 +7758,28 @@ def admin_client_portal_upsert():
                     "portal_id": pid, "emailed": emailed})
 
 
+@app.route("/admin/portal/delete", methods=["POST"])
+def admin_client_portal_delete():
+    """Remove a client portal and ALL its biofield traces (reports + corrections),
+    keyed by email. Console-secret gated. For clearing test/erroneous portals."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    from dashboard import client_portal as _cp
+    from dashboard import portal_biofield_reports as _pbr
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _pbr.init_table(cx)
+        _init_biofield_corrections(cx)
+        n1 = cx.execute("DELETE FROM client_portals WHERE email=?", (email,)).rowcount
+        n2 = cx.execute("DELETE FROM portal_biofield_reports WHERE email=?", (email,)).rowcount
+        n3 = cx.execute("DELETE FROM biofield_corrections WHERE email=?", (email,)).rowcount
+        cx.commit()
+    return jsonify({"ok": True, "deleted": {"portals": n1, "reports": n2, "corrections": n3}})
+
+
 # ── Certification work-product portal ───────────────────────────────────────
 # Cert students submit published work here; Glen reviews behind two gates
 # (approve -> publish). Student-facing surface gates behind CERT_PORTAL_ENABLED.
