@@ -7360,6 +7360,7 @@ def api_console_biofield_publish():
     body = request.get_json(silent=True) or {}
     email = (body.get("email") or "").strip().lower()
     name = (body.get("name") or "").strip()
+    scan_date = (body.get("scan_date") or "").strip()
     if not email:
         return jsonify({"error": "email required"}), 400
     content, has = _biofield_content_clean(body.get("content") or {})
@@ -7377,6 +7378,12 @@ def api_console_biofield_publish():
                         payload={"tags": ["e4l:confirmed"]}, actor="console")
         except Exception as e:
             print(f"[biofield-publish] confirm tag failed: {e!r}", flush=True)
+        if scan_date:
+            from dashboard import portal_biofield_reports as _pbr
+            _pbr.init_table(cx)
+            _pbr.upsert_report(cx, email, scan_date,
+                               (body.get("scan_id") or ""), content, "confirmed")
+        _log_biofield_correction(cx, email, scan_date, content)
     url = f"{PUBLIC_BASE_URL}/portal/{token}" if token else None
     emailed = False
     if token and body.get("send"):
@@ -7414,15 +7421,24 @@ def api_console_biofield_review_queue():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import client_portal as _cp
+    from dashboard import portal_biofield_reports as _pbr
     queue = []
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
-        rows = cx.execute("SELECT email, name, updated_at FROM client_portals").fetchall()
+        _pbr.init_table(cx)
+        names = {r["email"]: r["name"] for r in
+                 cx.execute("SELECT email, name FROM client_portals").fetchall()}
+        rows = cx.execute("SELECT email, scan_date, updated_at FROM portal_biofield_reports "
+                          "WHERE status='requested' ORDER BY updated_at DESC").fetchall()
         for r in rows:
-            if _cp.get_biofield_status(cx, r["email"]) == "requested":
+            queue.append({"email": r["email"], "name": names.get(r["email"], ""),
+                          "scan_date": r["scan_date"], "requested_at": r["updated_at"]})
+        for r in cx.execute("SELECT email, name, updated_at FROM client_portals").fetchall():
+            if _cp.get_biofield_status(cx, r["email"]) == "requested" \
+               and not _pbr.list_report_dates(cx, r["email"]):
                 queue.append({"email": r["email"], "name": r["name"],
-                              "requested_at": r["updated_at"]})
+                              "scan_date": None, "requested_at": r["updated_at"]})
     return jsonify({"queue": queue})
 
 

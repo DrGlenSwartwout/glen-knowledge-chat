@@ -183,3 +183,32 @@ def test_corrections_logged_and_listable(client):
 def test_corrections_requires_key(client):
     c, _ = client
     assert c.get("/api/console/biofield/corrections").status_code == 401
+
+
+def test_publish_writes_dated_report_and_logs_correction(client):
+    c, appmod = client
+    from dashboard import portal_biofield_reports as R
+    import sqlite3
+    r = c.post("/api/console/biofield-portal?key=test-secret", json={
+        "email": "pub@y.com", "name": "Pub", "scan_date": "2026-06-05",
+        "content": {"layers": [{"n": 1, "title": "Calm", "remedy": "Real FF"}]}})
+    assert r.status_code == 200
+    cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx)
+    rep = R.get_report(cx, "pub@y.com", "2026-06-05")
+    assert rep is not None and rep["status"] == "confirmed"
+    j = c.get("/api/console/biofield/corrections?key=test-secret&since=2000-01-01").get_json()
+    assert any(x["email"] == "pub@y.com" and x["scan_date"] == "2026-06-05" for x in j["corrections"])
+
+
+def test_review_queue_lists_requested_reports_with_dates(client):
+    c, appmod = client
+    from dashboard import portal_biofield_reports as R
+    import sqlite3, datetime
+    cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx)
+    today = datetime.date.today().isoformat()
+    R.upsert_report(cx, "rq@y.com", today, "s1", {"layers": []}, "requested")
+    R.upsert_report(cx, "rq2@y.com", today, "s2", {"layers": []}, "ai_draft")
+    cx.close()
+    j = c.get("/api/console/biofield/review-queue?key=test-secret").get_json()
+    hits = [(x["email"], x.get("scan_date")) for x in j["queue"]]
+    assert ("rq@y.com", today) in hits and all(e != "rq2@y.com" for e, _ in hits)
