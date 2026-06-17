@@ -7262,12 +7262,24 @@ def api_client_portal(token):
             "is_special": bool(override is not None and regular is not None and int(override) < int(regular)),
             "available": bool(p),
         })
+    # Mirror the /view blur: never send unconfirmed remedies over the wire.
+    bf_status = content.get("biofield_status") or "confirmed"
+    bf_confirmed = bf_status == "confirmed"
+    bf_layers = []
+    for L in (content.get("layers") or []):
+        item = {"n": L.get("n"), "title": L.get("title", ""), "meaning": L.get("meaning", "")}
+        if bf_confirmed:
+            item["remedy"] = L.get("remedy", "")
+            item["dosing"] = L.get("dosing", "")
+        bf_layers.append(item)
     return jsonify({
         "name": portal.get("name"),
+        "biofield_status": bf_status,
+        "blurred": not bf_confirmed,
         "greeting": content.get("greeting", ""),
         "video": content.get("video") or {},
-        "layers": content.get("layers") or [],
-        "pricing_note": content.get("pricing_note", ""),
+        "layers": bf_layers,
+        "pricing_note": content.get("pricing_note", "") if bf_confirmed else "",
         "reorder_items": display,
     })
 

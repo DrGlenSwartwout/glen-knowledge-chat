@@ -410,3 +410,24 @@ def test_biofield_transition_bad_token_404(client):
     c, _ = client
     r = c.post("/api/portal/bogustoken/biofield/interest")
     assert r.status_code == 404
+
+
+def test_content_endpoint_blurs_remedies_until_confirmed(client):
+    c, appmod = client
+    tok = _seed_portal(appmod, "blur@y.com", "Blur", {
+        "biofield_status": "interested",
+        "layers": [{"n": 1, "title": "Calm", "meaning": "m", "remedy": "Nous Energy", "dosing": "1/day"}]})
+    j = c.get(f"/api/portal/{tok}").get_json()
+    assert j["blurred"] is True and j["biofield_status"] == "interested"
+    L = j["layers"][0]
+    assert L["title"] == "Calm" and L["meaning"] == "m"
+    assert "remedy" not in L and "dosing" not in L
+
+
+def test_content_endpoint_reveals_remedies_when_confirmed(client):
+    c, appmod = client
+    tok = _seed_portal(appmod, "rev@y.com", "Rev", {
+        "biofield_status": "confirmed",
+        "layers": [{"n": 1, "title": "Calm", "meaning": "m", "remedy": "Nous Energy", "dosing": "1/day"}]})
+    j = c.get(f"/api/portal/{tok}").get_json()
+    assert j["blurred"] is False and j["layers"][0]["remedy"] == "Nous Energy"
