@@ -40,6 +40,8 @@
     padding:18px 18px;margin:16px 0;box-shadow:var(--shadow)}
   .card h2{font-size:1.05rem;margin:0 0 .6rem;letter-spacing:.01em}
   .video-card{text-align:center;background:linear-gradient(180deg,var(--card),var(--card2))}
+  .video-wrap{position:relative;width:100%;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:#000;margin-top:.3rem}
+  .video-wrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
   .btn{display:inline-block;background:var(--btn-bg);color:var(--btn-fg);border:0;cursor:pointer;
     font-size:1rem;font-weight:600;border-radius:10px;padding:13px 22px;text-decoration:none}
   .btn:active{transform:translateY(1px)}
@@ -171,11 +173,21 @@ function render(d, v){
   }
 
   if(d.video && d.video.url){
+    // HeyGen: embed the clean player inline (NOT the /share/ page, which exposes
+    // "more in this folder" — i.e. other clients' videos). Convert share/owner
+    // links to the bare /embeds/<id> player. Non-HeyGen URLs fall back to a link.
+    const hg = d.video.url.match(/heygen\.com\/(?:share|embeds|videos)\/(?:[a-z0-9-]*-)?([a-f0-9]{32}|[A-Za-z0-9_-]{8,})/i);
+    let inner;
+    if(hg){
+      inner = `<div class="video-wrap"><iframe src="https://app.heygen.com/embeds/${esc(hg[1])}" allow="encrypted-media; fullscreen" allowfullscreen loading="lazy" title="Your message from Dr. Glen"></iframe></div>`;
+    } else {
+      inner = `<a class="btn" href="${esc(d.video.url)}" target="_blank" rel="noopener">▶ ${esc(d.video.label||"Watch your video")}</a>`;
+    }
     html += `
       <div class="card video-card">
-        <h2>Your personal Biofield walkthrough</h2>
+        <h2>Your personal message from Dr. Glen</h2>
         <p class="muted small">A few minutes, just for you — Dr. Glen walks you through your scan.</p>
-        <a class="btn" href="${esc(d.video.url)}" target="_blank" rel="noopener">▶ ${esc(d.video.label||"Watch your video")}</a>
+        ${inner}
       </div>`;
   }
 
