@@ -48,6 +48,14 @@
   .ac-item:last-child{border-bottom:0}
   .ac-item:hover{background:var(--surface);color:var(--gold)}
   .ac-item .em{color:var(--muted);font-size:.82em}
+  .stresses{margin-top:8px;border-top:1px dashed var(--border);padding-top:6px}
+  .slabel{color:var(--muted);font-size:.74rem;margin-bottom:3px}
+  .finding{font-size:13px;padding:3px 0}
+  .fhead{cursor:pointer} .fcode{color:var(--gold);font-weight:700}
+  .fx{color:var(--muted);margin-left:4px;font-size:.8em}
+  .fdesc{display:none;color:var(--muted);font-size:.86em;margin:2px 0 4px 12px;white-space:pre-wrap}
+  .finding.open .fdesc{display:block}
+  #unbalanced .finding .fhead input{margin-right:6px;width:auto}
 </style>
 </head>
 <body>
@@ -99,6 +107,8 @@
       <button class="btn ghost sm" onclick="addLayer()">+ Add layer</button>
     </div>
 
+    <div id="unbalanced" class="card" style="display:none"></div>
+
     <div class="card">
       <h2>Order remedies</h2>
       <datalist id="catalog"></datalist>
@@ -126,6 +136,7 @@ function unlock(){ localStorage.setItem('console_key', document.getElementById('
 const $ = id => document.getElementById(id);
 const val = id => ($(id).value || "").trim();
 let CAT_BY_NAME = {};
+let FINDINGS = {}; let FINDINGS_LIST = [];
 
 function boot(){
   if(!key()){ $('gate').style.display='flex'; return; }
@@ -261,6 +272,44 @@ function fillFromPaste(){
   catch(e){ $('pasteErr').textContent='Not valid JSON — form left unchanged.'; return; }
   populate(d);
 }
+// ── Findings (stress patterns) ───────────────────────────────────────────────
+function findingLine(f, checkbox){
+  const cb = checkbox ? `<input type="checkbox" class="ufx" value="${esc(f.code)}">` : '';
+  const note = f.clinical_notes ? ('\n' + f.clinical_notes) : '';
+  return `<div class="finding"><div class="fhead" onclick="this.parentNode.classList.toggle('open')">`
+       + `${cb}<span class="fcode">[${esc(f.code)}]</span> ${esc(f.name||'')}`
+       + `${f.rank!=null?(' · #'+f.rank):''}<span class="fx">▾</span></div>`
+       + `<div class="fdesc">${esc((f.description||'(no description)') + note)}</div></div>`;
+}
+function renderFindings(){
+  const layers = [...$('layers').children];
+  if(!FINDINGS_LIST.length){
+    layers.forEach(el=>{ const b=el.querySelector('.stresses'); if(b) b.remove(); });
+    $('unbalanced').style.display='none'; $('unbalanced').innerHTML=''; return;
+  }
+  const balanced = new Set();
+  layers.forEach(el=>{
+    const codes = JSON.parse(el.dataset.patterns||'[]');
+    codes.forEach(c=>balanced.add(c));
+    let box = el.querySelector('.stresses');
+    if(!box){ box=document.createElement('div'); box.className='stresses'; el.appendChild(box); }
+    box.innerHTML = codes.length
+      ? '<div class="slabel">Stresses this balances:</div>'
+        + codes.map(c=>FINDINGS[c]?findingLine(FINDINGS[c],false):'').join('')
+      : '';
+  });
+  const unb = FINDINGS_LIST.filter(f=>!balanced.has(f.code));
+  const panel = $('unbalanced');
+  if(!unb.length){ panel.style.display='none'; panel.innerHTML=''; return; }
+  panel.style.display='block';
+  panel.innerHTML = `<h2>Unbalanced stresses (${unb.length})</h2>`
+    + unb.map(f=>findingLine(f,true)).join('')
+    + `<div style="margin-top:.6rem">`
+    + `<button class="btn ghost sm" onclick="addLayerForSelected()">Add a layer for selected</button> `
+    + `<button class="btn ghost sm" onclick="document.querySelectorAll('.ufx').forEach(c=>c.checked=true)">Select all</button></div>`;
+}
+function addLayerForSelected(){ /* stub — replaced in a later task */ }
+
 function populate(d){
   $('greeting').value = d.greeting||'';
   $('videoUrl').value = (d.video&&d.video.url)||'';
@@ -269,6 +318,9 @@ function populate(d){
   $('layers').innerHTML=''; (d.layers||[]).forEach(addLayer);
   if($('layers').children.length===0) addLayer();
   $('reitems').innerHTML=''; (d.reorder_items||[]).forEach(addItem);
+  FINDINGS_LIST = d.findings || []; FINDINGS = {};
+  FINDINGS_LIST.forEach(f=>{ FINDINGS[f.code]=f; });
+  renderFindings();
 }
 
 // ── Load / publish ──────────────────────────────────────────────────────────
@@ -315,6 +367,7 @@ function buildContent(){
   if(vu) c.video = { url: vu, label: val('videoLabel') || 'Watch your Biofield walkthrough' };
   const items = collectItems(); if(items.length) c.reorder_items = items;
   const pn = val('pricingNote'); if(pn) c.pricing_note = pn;
+  if(FINDINGS_LIST.length) c.findings = FINDINGS_LIST;
   return c;
 }
 
