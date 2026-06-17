@@ -63,6 +63,10 @@
         <div><label>Name</label><input id="name" type="text" placeholder="Full name"></div>
         <div style="flex:0 0 auto;align-self:flex-end"><button class="btn ghost" onclick="loadExisting()">Load existing</button></div>
         <div style="flex:0 0 auto;align-self:flex-end"><button class="btn" onclick="importFmp()">Import from FMP</button></div>
+        <div id="scanWrap" style="flex:0 0 auto;align-self:flex-end;display:none">
+          <label>Scan date</label>
+          <select id="scanSel" onchange="loadExisting(this.value)"></select>
+        </div>
       </div>
     </div>
 
@@ -209,20 +213,35 @@ function populate(d){
 }
 
 // ── Load / publish ──────────────────────────────────────────────────────────
-async function loadExisting(){
+let curScanDate = "";
+async function loadExisting(scanDate){
   const email = val('email');
   if(!email){ setStatus('Enter an email first.', false); return; }
-  const r = await api('GET', `/api/console/biofield-portal?email=${encodeURIComponent(email)}`);
+  let url = `/api/console/biofield-portal?email=${encodeURIComponent(email)}`;
+  if(scanDate) url += `&scan_date=${encodeURIComponent(scanDate)}`;
+  const r = await api('GET', url);
   if(!r.ok){ setStatus('Could not load.', false); return; }
-  if(!r.json.found){ setStatus('No portal yet for that email — fill the form to create one.', true); return; }
+  if(!r.json.found){ setStatus('No portal yet for that email — fill the form to create one.', true);
+    $('scanWrap').style.display='none'; curScanDate=""; return; }
   $('name').value = r.json.name||'';
   populate(r.json.content||{});
-  setStatus('Loaded existing portal — edit and republish (the link stays the same).', true);
+  const dates = r.json.scan_dates || [];
+  curScanDate = r.json.scan_date || "";
+  const wrap = $('scanWrap'), sel = $('scanSel');
+  if(dates.length){
+    sel.innerHTML = dates.map(d=>`<option value="${esc(d)}"${d===curScanDate?' selected':''}>${esc(d)}</option>`).join('');
+    wrap.style.display='';
+  } else { wrap.style.display='none'; }
+  const stat = r.json.status ? ` [${r.json.status}]` : '';
+  setStatus(curScanDate
+    ? `Loaded scan ${curScanDate}${stat} — edit and Publish to confirm this report.`
+    : 'Loaded existing portal — edit and republish (the link stays the same).', true);
 }
 
 async function importFmp(){
   const email = val('email');
   if(!email){ setStatus('Enter the client’s email first.', false); return; }
+  curScanDate=""; $('scanWrap').style.display='none';
   setStatus('Pulling the Causal Chain Report from FMP and drafting the write-up…', true);
   const r = await api('POST', '/api/console/biofield-portal/import-fmp', {email, name: val('name')});
   if(!r.ok){ setStatus((r.json && r.json.error) || 'Import failed.', false); return; }
@@ -247,8 +266,9 @@ async function publish(send){
   if(!(content.layers.length || (content.video&&content.video.url) || content.greeting)){
     setStatus('Add at least one layer, a video, or a greeting.', false); return; }
   $('pubBtn').disabled = true;
-  const r = await api('POST', '/api/console/biofield-portal',
-    {email, name: val('name'), content, send});
+  const body = {email, name: val('name'), content, send};
+  if(curScanDate) body.scan_date = curScanDate;
+  const r = await api('POST', '/api/console/biofield-portal', body);
   $('pubBtn').disabled = false;
   if(!r.ok){ setStatus(r.json.error || 'Publish failed.', false); return; }
   const link = $('previewLink');

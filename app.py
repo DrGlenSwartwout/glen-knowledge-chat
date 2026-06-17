@@ -7407,13 +7407,25 @@ def api_console_biofield_load():
     if not email:
         return jsonify({"found": False, "content": {}})
     from dashboard import client_portal as _cp
+    from dashboard import portal_biofield_reports as _pbr
+    req_date = (request.args.get("scan_date") or "").strip()
     with sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
+        _pbr.init_table(cx)
+        dates = _pbr.list_report_dates(cx, email)
         rec = _cp.get_portal_content_by_email(cx, email)
+        if dates:
+            picked = req_date if req_date in dates else dates[0]
+            rep = _pbr.get_report(cx, email, picked) or {}
+            return jsonify({"found": True, "name": (rec or {}).get("name") or "",
+                            "content": rep.get("content") or {}, "status": rep.get("status") or "",
+                            "scan_date": picked, "scan_dates": dates, "has_token": bool(rec)})
     if not rec:
-        return jsonify({"found": False, "name": "", "content": {}, "has_token": False})
+        return jsonify({"found": False, "name": "", "content": {}, "has_token": False,
+                        "scan_dates": [], "scan_date": None})
     return jsonify({"found": True, "name": rec.get("name") or "",
-                    "content": rec.get("content") or {}, "has_token": True})
+                    "content": rec.get("content") or {}, "has_token": True,
+                    "scan_dates": [], "scan_date": None})
 
 
 @app.route("/api/console/biofield/review-queue", methods=["GET"])
