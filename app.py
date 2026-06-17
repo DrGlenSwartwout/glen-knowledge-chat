@@ -7243,43 +7243,56 @@ def api_client_portal(token):
     if not portal:
         return jsonify({"error": "not found"}), 404
     content = dict(portal.get("content") or {})
-    # Enrich reorder slugs with catalog name + price. A per-item price_cents
-    # override is the client's personal (practitioner-special) price; the catalog
-    # price rides along as regular_price_cents so the page can strike it through.
+    from dashboard import portal_biofield_reports as _pbr
+    import datetime as _dt
+    email_for_reports = (portal.get("email") or "").strip().lower()
+    cx_r = sqlite3.connect(LOG_DB)
+    _pbr.init_table(cx_r)
+    dates = _pbr.list_report_dates(cx_r, email_for_reports) if email_for_reports else []
+    req_date = (request.args.get("scan_date") or "").strip()
+    if dates:
+        picked = req_date if req_date in dates else dates[0]
+        rep = _pbr.get_report(cx_r, email_for_reports, picked) or {}
+        bf_content = rep.get("content") or {}
+        bf_status = rep.get("status") or "confirmed"
+        bf_scan_date, bf_scan_dates = picked, dates
+        bf_actionable = (bf_status != "confirmed") and _pbr.is_actionable(
+            picked, _dt.date.today().isoformat())
+    else:
+        bf_content = content
+        bf_status = content.get("biofield_status") or "confirmed"
+        bf_scan_date, bf_scan_dates, bf_actionable = None, [], False
+    cx_r.close()
+    bf_confirmed = bf_status == "confirmed"
+    bf_layers = []
+    for L in (bf_content.get("layers") or []):
+        item = {"n": L.get("n"), "title": L.get("title", ""), "meaning": L.get("meaning", "")}
+        if bf_confirmed:
+            item["remedy"] = L.get("remedy", "")
+            item["dosing"] = L.get("dosing", "")
+        bf_layers.append(item)
+    reorder_src = bf_content.get("reorder_items") if dates else content.get("reorder_items")
     display = []
-    for it in (content.get("reorder_items") or []):
+    for it in (reorder_src or []):
         slug = (it.get("slug") or "").strip()
         p = _get_product(slug) if slug else None
         regular = (p or {}).get("price_cents")
         override = it.get("price_cents")
         special = int(override) if override is not None else regular
         display.append({
-            "slug": slug,
-            "qty": int(it.get("qty", 1) or 1),
-            "name": (p or {}).get("name", slug),
-            "price_cents": special,
+            "slug": slug, "qty": int(it.get("qty", 1) or 1),
+            "name": (p or {}).get("name", slug), "price_cents": special,
             "regular_price_cents": regular,
             "is_special": bool(override is not None and regular is not None and int(override) < int(regular)),
-            "available": bool(p),
-        })
-    # Mirror the /view blur: never send unconfirmed remedies over the wire.
-    bf_status = content.get("biofield_status") or "confirmed"
-    bf_confirmed = bf_status == "confirmed"
-    bf_layers = []
-    for L in (content.get("layers") or []):
-        item = {"n": L.get("n"), "title": L.get("title", ""), "meaning": L.get("meaning", "")}
-        if bf_confirmed:
-            item["remedy"] = L.get("remedy", "")
-            item["dosing"] = L.get("dosing", "")
-        bf_layers.append(item)
+            "available": bool(p)})
     return jsonify({
         "name": portal.get("name"),
-        "biofield_status": bf_status,
-        "blurred": not bf_confirmed,
-        "greeting": content.get("greeting", ""),
-        "video": content.get("video") or {},
+        "biofield_status": bf_status, "blurred": not bf_confirmed,
+        "actionable": bf_actionable, "scan_date": bf_scan_date, "scan_dates": bf_scan_dates,
+        "greeting": bf_content.get("greeting", ""),
+        "video": bf_content.get("video") or {},
         "layers": bf_layers,
-        "pricing_note": content.get("pricing_note", "") if bf_confirmed else "",
+        "pricing_note": bf_content.get("pricing_note", "") if bf_confirmed else "",
         "reorder_items": display,
     })
 
@@ -7347,6 +7360,7 @@ def api_console_biofield_publish():
     body = request.get_json(silent=True) or {}
     email = (body.get("email") or "").strip().lower()
     name = (body.get("name") or "").strip()
+    scan_date = (body.get("scan_date") or "").strip()
     if not email:
         return jsonify({"error": "email required"}), 400
     content, has = _biofield_content_clean(body.get("content") or {})
@@ -7364,6 +7378,12 @@ def api_console_biofield_publish():
                         payload={"tags": ["e4l:confirmed"]}, actor="console")
         except Exception as e:
             print(f"[biofield-publish] confirm tag failed: {e!r}", flush=True)
+        if scan_date:
+            from dashboard import portal_biofield_reports as _pbr
+            _pbr.init_table(cx)
+            _pbr.upsert_report(cx, email, scan_date,
+                               (body.get("scan_id") or ""), content, "confirmed")
+        _log_biofield_correction(cx, email, scan_date, content)
     url = f"{PUBLIC_BASE_URL}/portal/{token}" if token else None
     emailed = False
     if token and body.get("send"):
@@ -7401,16 +7421,65 @@ def api_console_biofield_review_queue():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import client_portal as _cp
+    from dashboard import portal_biofield_reports as _pbr
     queue = []
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
-        rows = cx.execute("SELECT email, name, updated_at FROM client_portals").fetchall()
+        _pbr.init_table(cx)
+        names = {r["email"]: r["name"] for r in
+                 cx.execute("SELECT email, name FROM client_portals").fetchall()}
+        rows = cx.execute("SELECT email, scan_date, updated_at FROM portal_biofield_reports "
+                          "WHERE status='requested' ORDER BY updated_at DESC").fetchall()
         for r in rows:
-            if _cp.get_biofield_status(cx, r["email"]) == "requested":
+            queue.append({"email": r["email"], "name": names.get(r["email"], ""),
+                          "scan_date": r["scan_date"], "requested_at": r["updated_at"]})
+        for r in cx.execute("SELECT email, name, updated_at FROM client_portals").fetchall():
+            if _cp.get_biofield_status(cx, r["email"]) == "requested" \
+               and not _pbr.list_report_dates(cx, r["email"]):
                 queue.append({"email": r["email"], "name": r["name"],
-                              "requested_at": r["updated_at"]})
+                              "scan_date": None, "requested_at": r["updated_at"]})
     return jsonify({"queue": queue})
+
+
+def _init_biofield_corrections(cx):
+    cx.execute("""CREATE TABLE IF NOT EXISTS biofield_corrections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, scan_date TEXT,
+        content_json TEXT, created_at TEXT)""")
+    cx.commit()
+
+
+def _log_biofield_correction(cx, email, scan_date, content):
+    _init_biofield_corrections(cx)
+    cx.execute("INSERT INTO biofield_corrections (email, scan_date, content_json, created_at) "
+               "VALUES (?,?,?,?)",
+               ((email or "").strip().lower(), scan_date or "",
+                json.dumps(content or {}), datetime.utcnow().isoformat() + "Z"))
+    cx.commit()
+
+
+@app.route("/api/console/biofield/corrections", methods=["GET"])
+def api_console_biofield_corrections():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    since = (request.args.get("since") or "").strip()
+    out = []
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _init_biofield_corrections(cx)
+        q = "SELECT email, scan_date, content_json, created_at FROM biofield_corrections"
+        args = ()
+        if since:
+            q += " WHERE created_at >= ?"; args = (since,)
+        q += " ORDER BY created_at ASC"
+        for r in cx.execute(q, args).fetchall():
+            try:
+                content = json.loads(r["content_json"] or "{}")
+            except Exception:
+                content = {}
+            out.append({"email": r["email"], "scan_date": r["scan_date"],
+                        "content": content, "created_at": r["created_at"]})
+    return jsonify({"corrections": out})
 
 
 @app.route("/api/console/biofield-portal/import-fmp", methods=["POST"])
@@ -7469,16 +7538,30 @@ def api_client_portal_view(token):
 def _biofield_transition(token, new_status, tag):
     from dashboard import client_portal as _cp
     from dashboard import portal_identity as _pi
+    from dashboard import portal_biofield_reports as _pbr
     from dashboard import ghl_queue as _gq
+    import datetime as _dt
     sess = request.cookies.get("rm_portal_session", "")
+    body = request.get_json(silent=True) or {}
+    req_date = (body.get("scan_date") or request.args.get("scan_date") or "").strip()
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _pi._ensure_people_table(cx)
-        ident = _pi.resolve_identity(
-            cx, token=token, session_token=sess,
-            client_login_enabled=_client_login_enabled())
-        if ident is None or not _cp.set_biofield_status(cx, ident.email, new_status):
+        _pbr.init_table(cx)
+        ident = _pi.resolve_identity(cx, token=token, session_token=sess,
+                                     client_login_enabled=_client_login_enabled())
+        if ident is None:
             return jsonify({"error": "not found"}), 404
+        dates = _pbr.list_report_dates(cx, ident.email)
+        if dates:
+            picked = req_date if req_date in dates else dates[0]
+            if not _pbr.is_actionable(picked, _dt.date.today().isoformat()):
+                return jsonify({"error": "scan no longer actionable"}), 409
+            if not _pbr.set_report_status(cx, ident.email, picked, new_status):
+                return jsonify({"error": "not found"}), 404
+        else:
+            if not _cp.set_biofield_status(cx, ident.email, new_status):
+                return jsonify({"error": "not found"}), 404
         try:
             _gq.init_ghl_queue_table(cx)
             _gq.enqueue(cx, op="tag_add", email=ident.email,
@@ -7638,6 +7721,12 @@ def admin_client_portal_upsert():
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         token, pid = _cp.upsert_portal(cx, email, name, content)
+        scan_date = (body.get("scan_date") or "").strip()
+        if scan_date:
+            from dashboard import portal_biofield_reports as _pbr
+            _pbr.init_table(cx)
+            _pbr.upsert_report(cx, email, scan_date, (body.get("scan_id") or ""),
+                               content, content.get("biofield_status") or "ai_draft")
     if token is None:
         return jsonify({"ok": True, "updated": True, "portal_id": pid,
                         "note": "existing portal updated; prior link unchanged"})

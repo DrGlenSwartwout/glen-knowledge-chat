@@ -2,6 +2,7 @@
 """The role-aware view assembler: one payload composed from the unified person
 row + orders + points + the existing biofield portal content. Visibility is
 driven by roles; absent data hides its block (never errors)."""
+import datetime
 import json
 import sqlite3
 
@@ -134,3 +135,36 @@ def test_view_unknown_person_is_none(tmp_path):
     from dashboard import portal_view as pv
     cx = _conn(tmp_path)
     assert pv.get_portal_view(cx, 99999) is None
+
+
+def test_biofield_uses_reports_newest_default_with_tabs(tmp_path):
+    from dashboard import portal_view as pv, portal_biofield_reports as R
+    import datetime
+    cx = _conn(tmp_path); R.init_table(cx)
+    pid = _add_person(cx, "m@example.com", "M")
+    today = datetime.date.today()
+    new_d = today.isoformat()
+    old_d = (today - datetime.timedelta(days=60)).isoformat()
+    R.upsert_report(cx, "m@example.com", old_d, "s0",
+                    {"layers": [{"n": 1, "title": "Old", "meaning": "o", "remedy": "X", "dosing": "1"}]}, "ai_draft")
+    R.upsert_report(cx, "m@example.com", new_d, "s1",
+                    {"layers": [{"n": 1, "title": "New", "meaning": "n", "remedy": "Y", "dosing": "2"}]}, "interested")
+    bf = pv.get_portal_view(cx, pid)["biofield"]            # default newest
+    assert bf["scan_date"] == new_d and bf["scan_dates"] == [new_d, old_d]
+    assert bf["status"] == "interested" and bf["blurred"] is True and bf["actionable"] is True
+    assert "remedy" not in bf["layers"][0]
+    bf_old = pv.get_portal_view(cx, pid, scan_date=old_d)["biofield"]
+    assert bf_old["scan_date"] == old_d and bf_old["actionable"] is False
+    assert "remedy" not in bf_old["layers"][0]              # old + unconfirmed -> blurred, no CTA
+
+
+def test_biofield_legacy_fallback_when_no_reports(tmp_path):
+    from dashboard import portal_view as pv
+    from dashboard import client_portal as cp
+    cx = _conn(tmp_path)
+    pid = _add_person(cx, "leg@example.com", "Leg")
+    cp.upsert_portal(cx, "leg@example.com", "Leg",
+                     {"layers": [{"n": 1, "title": "C", "meaning": "m", "remedy": "R", "dosing": "d"}]})
+    bf = pv.get_portal_view(cx, pid)["biofield"]
+    assert bf["scan_dates"] == [] and bf["blurred"] is False
+    assert bf["layers"][0]["remedy"] == "R"

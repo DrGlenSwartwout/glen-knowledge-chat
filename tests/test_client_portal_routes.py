@@ -431,3 +431,56 @@ def test_content_endpoint_reveals_remedies_when_confirmed(client):
         "layers": [{"n": 1, "title": "Calm", "meaning": "m", "remedy": "Nous Energy", "dosing": "1/day"}]})
     j = c.get(f"/api/portal/{tok}").get_json()
     assert j["blurred"] is False and j["layers"][0]["remedy"] == "Nous Energy"
+
+
+def test_content_endpoint_reports_newest_and_scan_date_param(client):
+    c, appmod = client
+    from dashboard import portal_biofield_reports as R
+    import sqlite3, datetime
+    tok = _seed_portal(appmod, "ms@y.com", "MS", {"layers": []})  # ensures token row
+    cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx)
+    today = datetime.date.today().isoformat()
+    old = (datetime.date.today() - datetime.timedelta(days=60)).isoformat()
+    R.upsert_report(cx, "ms@y.com", today, "s1",
+                    {"layers": [{"n": 1, "title": "New", "remedy": "Y", "dosing": "2"}]}, "interested")
+    R.upsert_report(cx, "ms@y.com", old, "s0",
+                    {"layers": [{"n": 1, "title": "Old", "remedy": "X", "dosing": "1"}]}, "confirmed")
+    cx.close()
+    j = c.get(f"/api/portal/{tok}").get_json()
+    assert j["scan_date"] == today and j["scan_dates"] == [today, old]
+    assert j["blurred"] is True and "remedy" not in j["layers"][0]
+    j2 = c.get(f"/api/portal/{tok}?scan_date={old}").get_json()
+    assert j2["scan_date"] == old and j2["blurred"] is False and j2["layers"][0]["remedy"] == "X"
+
+
+def test_transition_targets_scan_date_and_rejects_out_of_window(client):
+    c, appmod = client
+    from dashboard import portal_biofield_reports as R
+    import sqlite3, datetime
+    tok = _seed_portal(appmod, "tw@y.com", "TW", {"layers": []})
+    cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx)
+    today = datetime.date.today().isoformat()
+    old = (datetime.date.today() - datetime.timedelta(days=60)).isoformat()
+    R.upsert_report(cx, "tw@y.com", today, "s1", {"layers": []}, "ai_draft")
+    R.upsert_report(cx, "tw@y.com", old, "s0", {"layers": []}, "ai_draft")
+    cx.close()
+    r = c.post(f"/api/portal/{tok}/biofield/request", json={"scan_date": today})
+    assert r.status_code == 200 and r.get_json()["status"] == "requested"
+    cx = sqlite3.connect(appmod.LOG_DB)
+    assert R.get_report(cx, "tw@y.com", today)["status"] == "requested"
+    r2 = c.post(f"/api/portal/{tok}/biofield/request", json={"scan_date": old})
+    assert r2.status_code == 409
+    assert R.get_report(cx, "tw@y.com", old)["status"] == "ai_draft"
+
+
+def test_admin_upsert_with_scan_date_writes_report(client):
+    c, appmod = client
+    from dashboard import portal_biofield_reports as R
+    import sqlite3
+    r = c.post("/admin/portal/upsert?key=test-secret", json={
+        "email": "ad@y.com", "name": "Ad", "scan_date": "2026-06-05", "scan_id": "s9",
+        "content": {"biofield_status": "ai_draft", "layers": [{"n": 1, "title": "T", "remedy": "R"}]}})
+    assert r.status_code == 200
+    cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx)
+    rep = R.get_report(cx, "ad@y.com", "2026-06-05")
+    assert rep is not None and rep["status"] == "ai_draft" and rep["scan_id"] == "s9"
