@@ -103,3 +103,36 @@ def test_catalog_returns_products(client):
 def test_page_served(client):
     c, _ = client
     assert c.get("/console/biofield-portal").status_code == 200
+
+
+# ── Import from FMP ──────────────────────────────────────────────────────────
+
+def test_import_fmp_returns_content(client, monkeypatch):
+    c, _ = client
+    from dashboard import fmp_biofield
+    monkeypatch.setattr(fmp_biofield, "import_content",
+        lambda email, name="", tags=None: {"greeting": "G",
+            "layers": [{"n": 1, "title": "Calm", "meaning": "m", "remedy": "R", "dosing": "d"}],
+            "video": {}, "reorder_items": [], "pricing_note": ""})
+    r = c.post("/api/console/biofield-portal/import-fmp?key=test-secret",
+               json={"email": "e@x.com", "name": "O"})
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["found"] is True
+    assert j["content"]["layers"][0]["title"] == "Calm"
+
+
+def test_import_fmp_not_found(client, monkeypatch):
+    c, _ = client
+    from dashboard import fmp_biofield
+    monkeypatch.setattr(fmp_biofield, "import_content", lambda *a, **k: None)
+    r = c.post("/api/console/biofield-portal/import-fmp?key=test-secret",
+               json={"email": "nobody@x.com"})
+    assert r.status_code == 200
+    assert r.get_json()["found"] is False
+
+
+def test_import_fmp_requires_key(client):
+    c, _ = client
+    r = c.post("/api/console/biofield-portal/import-fmp", json={"email": "e@x.com"})
+    assert r.status_code == 401

@@ -54,6 +54,7 @@
         <div><label>Email</label><input id="email" type="email" placeholder="client@example.com"></div>
         <div><label>Name</label><input id="name" type="text" placeholder="Full name"></div>
         <div style="flex:0 0 auto;align-self:flex-end"><button class="btn ghost" onclick="loadExisting()">Load existing</button></div>
+        <div style="flex:0 0 auto;align-self:flex-end"><button class="btn" onclick="importFmp()">Import from FMP</button></div>
       </div>
     </div>
 
@@ -209,6 +210,17 @@ async function loadExisting(){
   $('name').value = r.json.name||'';
   populate(r.json.content||{});
   setStatus('Loaded existing portal — edit and republish (the link stays the same).', true);
+}
+
+async function importFmp(){
+  const email = val('email');
+  if(!email){ setStatus('Enter the client’s email first.', false); return; }
+  setStatus('Pulling the Causal Chain Report from FMP and drafting the write-up…', true);
+  const r = await api('POST', '/api/console/biofield-portal/import-fmp', {email, name: val('name')});
+  if(!r.ok){ setStatus((r.json && r.json.error) || 'Import failed.', false); return; }
+  if(!r.json.found){ setStatus('No biofield test found in FMP for that email.', false); return; }
+  populate(r.json.content||{});
+  setStatus('Imported from FMP — review the layers and the drafted greeting/meanings, then Publish.', true);
 }
 
 function buildContent(){
