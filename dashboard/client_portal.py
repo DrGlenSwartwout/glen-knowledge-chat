@@ -101,3 +101,28 @@ def get_portal_content_by_email(cx, email):
     except Exception:
         content = {}
     return {"name": row[0], "content": content}
+
+
+def get_biofield_status(cx, email):
+    """The biofield review status; legacy/hand-built portals (no field) = 'confirmed'."""
+    rec = get_portal_content_by_email(cx, email)
+    if not rec:
+        return None
+    return (rec.get("content") or {}).get("biofield_status") or "confirmed"
+
+
+def set_biofield_status(cx, email, status):
+    """Set content.biofield_status in place. Returns False if no portal for that email."""
+    email = (email or "").strip().lower()
+    row = cx.execute("SELECT content_json FROM client_portals WHERE email=?", (email,)).fetchone()
+    if not row:
+        return False
+    try:
+        content = json.loads(row[0] or "{}")
+    except Exception:
+        content = {}
+    content["biofield_status"] = status
+    cx.execute("UPDATE client_portals SET content_json=?, updated_at=? WHERE email=?",
+               (json.dumps(content), _now_iso(), email))
+    cx.commit()
+    return True
