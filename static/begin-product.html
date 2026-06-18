@@ -92,6 +92,18 @@
     /* ── Placeholder containers (Task 6 fills) ── */
     #sp-images{ min-height:2px; }
 
+    /* ── Miron bottle-science rotator (Task 6) ── */
+    .miron-rotator{ margin-top:16px; }
+    .miron-rotator img{ width:100%; border-radius:9px; display:block; }
+    .miron-controls{ display:flex; align-items:center; gap:10px; margin-top:10px; }
+    .miron-btn{ background:transparent; border:1px solid var(--border); color:var(--muted);
+      border-radius:6px; padding:5px 13px; font-size:14px; cursor:pointer; line-height:1;
+      transition:border-color .15s, color .15s; }
+    .miron-btn:hover{ border-color:var(--gold); color:var(--gold); }
+    .miron-science-link{ font-size:13px; color:var(--gold); text-decoration:underline;
+      text-underline-offset:3px; display:inline-block; margin-top:10px; }
+    .miron-science-link:hover{ opacity:0.8; }
+
     /* ── Utility ── */
     .loading{ text-align:center; color:var(--muted); padding:48px 18px; font-size:15px; }
     .notfound{ text-align:center; padding:54px 18px; }
@@ -276,7 +288,7 @@
       return td;
     }
 
-    function renderComparisonBody(body){
+    function renderComparisonBody(body, mironAssets){
       var wrap = document.createElement('div');
 
       // Guard: if no comparison data, show nothing (silent — section may still open)
@@ -298,8 +310,7 @@
       th0.setAttribute('scope', 'col');
       hrow.appendChild(th0);
       // Three product columns
-      var colKeys = ['ours', 'pro', 'mass'];
-      body.columns.forEach(function(colLabel, i){
+      body.columns.forEach(function(colLabel){
         var th = document.createElement('th');
         th.setAttribute('scope', 'col');
         th.textContent = colLabel;
@@ -334,6 +345,103 @@
         callout.textContent = body.excipient_callout;
         wrap.appendChild(callout);
       }
+
+      // ── Miron bottle-science rotator (Task 6) ─────────────────────────────
+      var assets = Array.isArray(mironAssets) ? mironAssets : [];
+      if (assets.length > 0){
+        var rotator = document.createElement('div');
+        rotator.className = 'miron-rotator';
+
+        if (assets.length === 1){
+          // Single static image — no timer, no controls
+          var img = document.createElement('img');
+          img.src = assets[0].src;
+          img.alt = assets[0].alt || '';
+          img.onerror = function(){ this.style.display = 'none'; };
+          rotator.appendChild(img);
+        } else {
+          // 2+ assets: slider — track which are still alive (not errored)
+          var imgs = [];
+          var currentIdx = 0;
+          var intervalId = null;
+          var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+          var imgWrap = document.createElement('div');
+
+          assets.forEach(function(asset, i){
+            var img = document.createElement('img');
+            img.src = asset.src;
+            img.alt = asset.alt || '';
+            img.style.display = i === 0 ? 'block' : 'none';
+            img.onerror = function(){
+              this.style.display = 'none';
+              // Mark this slot as dead
+              imgs[i] = null;
+              // If currently shown, advance to next alive image
+              if (currentIdx === i) advance(1);
+            };
+            imgs.push(img);
+            imgWrap.appendChild(img);
+          });
+          rotator.appendChild(imgWrap);
+
+          function showImg(idx){
+            // Find nearest alive image in direction; bail if all dead
+            var tried = 0;
+            while (tried < imgs.length){
+              if (imgs[idx] !== null){ break; }
+              idx = (idx + 1) % imgs.length;
+              tried++;
+            }
+            if (tried === imgs.length) return; // all errored — show nothing
+            imgs.forEach(function(img, j){
+              if (img) img.style.display = j === idx ? 'block' : 'none';
+            });
+            currentIdx = idx;
+          }
+
+          function advance(dir){
+            var next = (currentIdx + dir + imgs.length) % imgs.length;
+            showImg(next);
+          }
+
+          // Prev/next controls
+          var controls = document.createElement('div');
+          controls.className = 'miron-controls';
+          var prevBtn = document.createElement('button');
+          prevBtn.type = 'button';
+          prevBtn.className = 'miron-btn';
+          prevBtn.setAttribute('aria-label', 'Previous image');
+          prevBtn.textContent = '‹ Prev';
+          prevBtn.addEventListener('click', function(){ advance(-1); });
+          var nextBtn = document.createElement('button');
+          nextBtn.type = 'button';
+          nextBtn.className = 'miron-btn';
+          nextBtn.setAttribute('aria-label', 'Next image');
+          nextBtn.textContent = 'Next ›';
+          nextBtn.addEventListener('click', function(){ advance(1); });
+          controls.appendChild(prevBtn);
+          controls.appendChild(nextBtn);
+          rotator.appendChild(controls);
+
+          // Auto-rotate unless reduced-motion requested
+          if (!reducedMotion){
+            intervalId = setInterval(function(){ advance(1); }, 9000);
+          }
+        }
+
+        // "Learn the science" link
+        var sciLink = document.createElement('a');
+        sciLink.href = 'https://skepticalreviews.com/bottles';
+        sciLink.target = '_blank';
+        sciLink.rel = 'noopener';
+        sciLink.className = 'miron-science-link';
+        sciLink.textContent = 'Learn the science ↗';
+        rotator.appendChild(sciLink);
+
+        wrap.appendChild(rotator);
+      }
+      // ── end Miron rotator ──────────────────────────────────────────────────
 
       return wrap;
     }
@@ -377,13 +485,13 @@
       return wrap;
     }
 
-    function buildSectionBody(sec, ctaUrl){
+    function buildSectionBody(sec, ctaUrl, mironAssets){
       switch(sec.id){
         case 'intro':       return renderIntroBody(sec.body);
         case 'description': return renderDescriptionBody(sec.body);
         case 'video':       return renderVideoBody(sec.body);
         case 'ingredients': return renderIngredientsBody(sec.body);
-        case 'comparison':  return renderComparisonBody(sec.body);
+        case 'comparison':  return renderComparisonBody(sec.body, mironAssets);
         case 'research':    return renderResearchBody(sec.body);
         case 'images':      return renderImagesBody();
         case 'cta':         return renderCtaBody(ctaUrl);
@@ -396,7 +504,7 @@
     }
 
     // ── Build accordion DOM ──────────────────────────────────────────────────
-    function buildAccordion(sec, openSet, ctaUrl){
+    function buildAccordion(sec, openSet, ctaUrl, mironAssets){
       var div = document.createElement('div');
       div.className = 'acc';
       div.setAttribute('data-sec', sec.id);
@@ -443,7 +551,7 @@
       function ensureRendered(){
         if (_rendered) return;
         _rendered = true;
-        bodyDiv.appendChild(buildSectionBody(sec, ctaUrl));
+        bodyDiv.appendChild(buildSectionBody(sec, ctaUrl, mironAssets));
       }
 
       // Open state: intro always open, others from openSet
@@ -492,6 +600,7 @@
 
       var openSet = Array.isArray(data.open_sections) ? data.open_sections : [];
       var ctaUrl = data.cta_url || ('/begin/buy/' + encodeURIComponent(slug));
+      var mironAssets = Array.isArray(data.miron_assets) ? data.miron_assets : [];
       var container = document.getElementById('sp-sections');
 
       (data.sections || []).forEach(function(sec){
@@ -499,7 +608,7 @@
           // CTA is always-visible — rendered as a persistent block, not an accordion
           container.appendChild(buildCtaBlock(ctaUrl));
         } else {
-          container.appendChild(buildAccordion(sec, openSet, ctaUrl));
+          container.appendChild(buildAccordion(sec, openSet, ctaUrl, mironAssets));
         }
       });
 
