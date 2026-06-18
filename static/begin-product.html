@@ -64,7 +64,7 @@
     .sp-videos{ display:flex; flex-direction:column; gap:12px; }
     .sp-video-item{ position:relative; width:100%; padding-bottom:56.25%; border-radius:9px; overflow:hidden; background:#000; }
     .sp-video-item iframe{ position:absolute; inset:0; width:100%; height:100%; border:none; }
-    .sp-video-item video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+    .sp-video-item video{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
     .sp-video-cap{ font-size:13px; color:var(--muted); margin-top:4px; }
     .sp-video-empty{ font-size:13.5px; color:var(--muted); font-style:italic; }
 
@@ -222,6 +222,9 @@
         var isStr = typeof v === 'string';
         var src = isStr ? v : (v.src || v.url || '');
         if (!src) return;
+        // Group the video frame + its caption so the caption stays with its own video.
+        var group = document.createElement('div');
+        group.className = 'sp-video-group';
         var outer = document.createElement('div');
         outer.className = 'sp-video-item';
         var isMp4 = !isStr && (v.provider === 'mp4' || src.slice(-4) === '.mp4');
@@ -235,8 +238,7 @@
           outer.appendChild(vid);
         } else {
           // YouTube / embed iframe (string or object without mp4)
-          var url = isStr ? src : src;
-          var embedUrl = url.replace('watch?v=','embed/').replace('youtu.be/','youtube.com/embed/');
+          var embedUrl = src.replace('watch?v=','embed/').replace('youtu.be/','youtube.com/embed/');
           var iframe = document.createElement('iframe');
           iframe.src = embedUrl;
           iframe.setAttribute('allowfullscreen', '');
@@ -244,13 +246,14 @@
           iframe.setAttribute('title', 'Product video');
           outer.appendChild(iframe);
         }
-        wrap.appendChild(outer);
+        group.appendChild(outer);
         if (!isStr && (v.title || v.kind === 'educational')) {
           var cap = document.createElement('p');
           cap.className = 'sp-video-cap';
           cap.textContent = v.title || '';
-          wrap.appendChild(cap);
+          group.appendChild(cap);
         }
+        wrap.appendChild(group);
       });
       return wrap;
     }
