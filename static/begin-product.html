@@ -145,8 +145,12 @@
     }
 
     // ── Section preference persistence (existing endpoint) ───────────────────
+    // Only POST ids that _SECTIONS accepts: description, video, ingredients,
+    // comparison, research, images. Never POST intro (not a user toggle) or cta.
+    var _PERSISTABLE = { description:1, video:1, ingredients:1, comparison:1, research:1, images:1 };
     var _prefSent = {};
     function rememberOpen(secId){
+      if (!_PERSISTABLE[secId]) return;
       if (_prefSent[secId]) return;
       _prefSent[secId] = true;
       try {
@@ -372,6 +376,19 @@
       return div;
     }
 
+    // ── Build persistent CTA block (not an accordion) ────────────────────────
+    function buildCtaBlock(ctaUrl){
+      var wrap = document.createElement('div');
+      wrap.className = 'sp-cta-wrap';
+      wrap.id = 'sp-cta-block';
+      var a = document.createElement('a');
+      a.href = ctaUrl || '#';
+      a.className = 'cta-btn mc-open';
+      a.textContent = 'Order';
+      wrap.appendChild(a);
+      return wrap;
+    }
+
     // ── Render product ────────────────────────────────────────────────────────
     function renderProduct(data){
       document.getElementById('sp-name').textContent = data.name || 'Your remedy';
@@ -387,7 +404,12 @@
       var container = document.getElementById('sp-sections');
 
       (data.sections || []).forEach(function(sec){
-        container.appendChild(buildAccordion(sec, openSet, ctaUrl));
+        if (sec.id === 'cta'){
+          // CTA is always-visible — rendered as a persistent block, not an accordion
+          container.appendChild(buildCtaBlock(ctaUrl));
+        } else {
+          container.appendChild(buildAccordion(sec, openSet, ctaUrl));
+        }
       });
 
       show('sp-product');
