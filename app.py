@@ -7291,6 +7291,9 @@ def api_client_portal(token):
             "regular_price_cents": regular,
             "is_special": bool(override is not None and regular is not None and int(override) < int(regular)),
             "available": bool(p)})
+    client_findings = [{"code": f.get("code", ""), "name": f.get("name", ""),
+                        "description": f.get("description", ""), "rank": f.get("rank")}
+                       for f in (bf_content.get("findings") or [])]
     return jsonify({
         "name": portal.get("name"),
         "biofield_status": bf_status, "blurred": not bf_confirmed,
@@ -7298,6 +7301,7 @@ def api_client_portal(token):
         "greeting": bf_content.get("greeting", ""),
         "video": bf_content.get("video") or {},
         "layers": bf_layers,
+        "findings": client_findings,
         "pricing_note": bf_content.get("pricing_note", "") if bf_confirmed else "",
         "reorder_items": display,
     })

@@ -120,6 +120,13 @@
   @keyframes ppspin{to{transform:rotate(360deg)}}
   @media (prefers-reduced-motion: reduce){.spinner{animation-duration:2.4s}}
   .prep .prepline{color:var(--muted);margin:.2rem auto 0;max-width:26rem}
+  /* first-view live unfold: patterns then layers assemble (CSS-staggered) */
+  .reveal{opacity:0;transform:translateY(8px);animation:rvl .5s ease forwards}
+  @keyframes rvl{to{opacity:1;transform:none}}
+  .pat-wrap{margin:.6rem 0}
+  .pat-chip{display:inline-block;margin:3px 5px 3px 0;padding:4px 10px;border-radius:14px;
+    background:var(--brand-soft);border:1px solid var(--line,#21472d);font-size:.85rem}
+  @media (prefers-reduced-motion: reduce){.reveal{animation:none;opacity:1;transform:none}}
 </style>
 </head>
 <body>
@@ -299,6 +306,34 @@ function render(d, v){
     const layers = Array.isArray(bf.layers) ? bf.layers : [];
     const disclose = `<p class="disclose">${ICON_INFO}AI-generated, pending Dr. Glen's review.</p>`;
 
+    // First-view live unfold — the stress patterns appear first (as chips), then the
+    // healing-path layers assemble one at a time. Plays ONCE per scan (a localStorage
+    // guard keyed on the scan date); confirmed analyses and return visits render
+    // static. We only animate the patterns + layer interpretation — remedies stay
+    // blurred. Staggering is pure CSS animation-delay (one render pass, no setTimeouts).
+    const scanDate = bf.scan_date || (v && v.biofield && v.biofield.scan_date) || d.scan_date || null;
+    const findings = Array.isArray(d.findings) ? d.findings : [];
+    const findingsCount = findings.length;
+    const ukey = "rvl:" + (scanDate || "current");
+    let firstTime = false;
+    if(status !== "confirmed"){
+      try{ firstTime = !localStorage.getItem(ukey); }catch(e){ firstTime = false; }
+    }
+    // Helpers: a reveal class (only on first view) and a per-element delay style.
+    const rvlCls = firstTime ? " reveal" : "";
+    const layerDelay = (i)=> firstTime
+      ? ` style="animation-delay:${(findingsCount*120 + 300 + i*400)}ms"` : "";
+    // Patterns block (chips) — staged before the layers on first view.
+    const patternsBlock = (firstTime && findingsCount)
+      ? `<p class="muted small${rvlCls}" style="margin:.2rem 0 .2rem">Your scan identified these stress patterns</p>
+         <div class="pat-wrap">${findings.map((f,i)=>
+           `<span class="pat-chip reveal" style="animation-delay:${i*120}ms">${esc(f.name||f.code||"")}</span>`
+         ).join("")}</div>`
+      : "";
+    // Set the guard once, in this render pass, so the unfold does not replay on the
+    // next poll/re-render. Only flips when we are actually rendering the analysis.
+    if(firstTime){ try{ localStorage.setItem(ukey, "1"); }catch(e){} }
+
     // Scan-date tabs — only when more than one scan exists. First 3 as pills, the
     // rest reachable via a "More dates" dropdown carrying every date.
     let tabs = "";
@@ -322,8 +357,9 @@ function render(d, v){
         : `<p class="scan-old">This analysis is from an earlier scan.</p>`;
       html += `<div class="card"><h2>Your scan analysis</h2>
         ${tabs}
-        ${bf.greeting?`<p class="muted" style="margin:.1rem 0 .6rem">${esc(bf.greeting)}</p>`:""}
-        <p style="margin:.1rem 0 1rem">Your biofield scan analysis is ready — your healing path, mapped from the surface layer down to the deepest root.</p>
+        ${patternsBlock}
+        ${bf.greeting?`<p class="muted${rvlCls}" style="margin:.1rem 0 .6rem${firstTime?";animation-delay:"+(findingsCount*120+300)+"ms":""}">${esc(bf.greeting)}</p>`:""}
+        <p class="${rvlCls.trim()}" style="margin:.1rem 0 1rem${firstTime?";animation-delay:"+(findingsCount*120+300)+"ms":""}">Your biofield scan analysis is ready — your healing path, mapped from the surface layer down to the deepest root.</p>
         ${cta}
         ${disclose}</div>`;
     } else {
@@ -331,7 +367,7 @@ function render(d, v){
       let path = "";
       layers.forEach((L,i)=>{
         path += `
-          <div class="layer">
+          <div class="layer${rvlCls}"${layerDelay(i)}>
             <div class="node">${esc(L.n!=null?L.n:i+1)}</div>
             <h3>${esc(L.title||"")}</h3>
             ${L.meaning?`<div class="mean">${esc(L.meaning)}</div>`:""}
@@ -361,6 +397,7 @@ function render(d, v){
       }
       html += `<div class="card"><h2>Your healing path</h2>
         ${tabs}
+        ${patternsBlock}
         <p class="muted small">From the surface layer down to the deepest root — we support them in order, and the whole chain unwinds.</p>
         <div class="path">${path}</div>
         ${extra}

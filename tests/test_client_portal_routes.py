@@ -522,3 +522,29 @@ def test_reissue_link_404_when_no_portal(client):
     c, _ = client
     assert c.post("/admin/portal/reissue-link?key=test-secret",
                   json={"email": "nobody@y.com"}).status_code == 404
+
+
+def test_content_endpoint_returns_findings_without_clinical_notes(client):
+    c, appmod = client
+    from dashboard import portal_biofield_reports as R
+    import sqlite3, datetime
+    tok = _seed_portal(appmod, "fd@y.com", "FD", {"layers": []})
+    cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx)
+    R.upsert_report(cx, "fd@y.com", datetime.date.today().isoformat(), "s1",
+        {"layers": [{"n": 1, "title": "T", "remedy": "R", "patterns": ["ED4"]}],
+         "findings": [{"code": "ED4", "name": "Nerve Driver",
+                       "description": "supports nerve impulses", "rank": 1,
+                       "clinical_notes": "SECRET clinician note"}]}, "interested")
+    cx.close()
+    j = c.get(f"/api/portal/{tok}").get_json()
+    assert j["findings"][0]["name"] == "Nerve Driver"
+    assert j["findings"][0]["description"] == "supports nerve impulses"
+    assert j["findings"][0]["code"] == "ED4" and j["findings"][0]["rank"] == 1
+    assert "clinical_notes" not in j["findings"][0]
+
+
+def test_content_endpoint_findings_empty_when_none(client):
+    c, appmod = client
+    tok = _seed_portal(appmod, "nf@y.com", "NF", {"layers": [{"n": 1, "title": "X"}]})
+    j = c.get(f"/api/portal/{tok}").get_json()
+    assert j["findings"] == []
