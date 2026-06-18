@@ -136,7 +136,7 @@ generated, simulated reveal where cached). Each viewer's open/closed state is re
 |---|---------|---------|-------|
 | 1 | **Intro — functional description** | **open** | One-paragraph "what this does for you," rendered first. |
 | 2 | **Basic description** | collapsed (renders first among drop-downs) | Fuller plain-language overview. |
-| 3 | **Video** | collapsed | Product video (hero). An **"education videos" slot** sits beneath for supplementary pieces (e.g. the bottle-science video). |
+| 3 | **Video** | collapsed | A **multi-source video list**: product hero video, then **educational videos** (e.g. the bottle-science video), then **approved user-generated videos** about the product. The hero + educational entries are page content; the UGC entries are read from the reviews store (Spec 2) so an approved customer video appears here automatically. |
 | 4 | **Ingredients** | collapsed | Label-format panel per Glen's convention (`Compound Class: Common Name (Latin) dose %DV`, elemental/IU rules, no-excipient ethos). |
 | 5 | **Comparison table** | collapsed | See below. Strongest differentiator — earns the high spot. |
 | 6 | **Research** | collapsed | Citations / links. |
@@ -200,9 +200,10 @@ science" reference.
 
 ## Interface to the future reviews/referral spec (Spec 2)
 
-- The page's **testimonial** and **featured-video** sections read from a **reviews store**
-  (read-only contract here; Spec 2 populates it). Empty store → those sections hide
-  gracefully.
+- The page's **testimonial** section and the **user-generated-video** entries of the video
+  list (section 3) read from a **reviews store** (read-only contract here; Spec 2 populates
+  it). Empty store → those entries simply don't render; the video list still shows the hero +
+  educational videos.
 - **Image 👍/👎, section-open state, and the "rate both → 1 credit" reward** are captured
   into the viewer profile now. The credit **redeems through the existing points/pricing
   engine on order**, using the same idempotent order-settlement path as points
