@@ -7835,15 +7835,22 @@ def admin_client_portal_delete():
         return jsonify({"error": "email required"}), 400
     from dashboard import client_portal as _cp
     from dashboard import portal_biofield_reports as _pbr
+    from dashboard import notify_state as _ns
+    from dashboard import process_queue as _pq
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _pbr.init_table(cx)
         _init_biofield_corrections(cx)
+        _ns.init_table(cx)
+        _pq.init_table(cx)
         n1 = cx.execute("DELETE FROM client_portals WHERE email=?", (email,)).rowcount
         n2 = cx.execute("DELETE FROM portal_biofield_reports WHERE email=?", (email,)).rowcount
         n3 = cx.execute("DELETE FROM biofield_corrections WHERE email=?", (email,)).rowcount
+        n4 = cx.execute("DELETE FROM portal_notify_state WHERE email=?", (email,)).rowcount
+        n5 = cx.execute("DELETE FROM portal_process_requests WHERE email=?", (email,)).rowcount
         cx.commit()
-    return jsonify({"ok": True, "deleted": {"portals": n1, "reports": n2, "corrections": n3}})
+    return jsonify({"ok": True, "deleted": {"portals": n1, "reports": n2, "corrections": n3,
+                                            "notify_state": n4, "process_requests": n5}})
 
 
 @app.route("/admin/portal/reissue-link", methods=["POST"])

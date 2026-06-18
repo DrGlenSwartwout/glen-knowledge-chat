@@ -560,3 +560,19 @@ def test_content_endpoint_returns_notify_on(client):
     cx = sqlite3.connect(appmod.LOG_DB); N.set_opt(cx, "non@y.com", "out"); cx.commit()
     j2 = c.get(f"/api/portal/{tok}").get_json()
     assert j2["notify_on"] is False                    # opted out
+
+
+def test_admin_delete_clears_notify_and_process_rows(client):
+    c, appmod = client
+    from dashboard import notify_state as N, process_queue as Q
+    import sqlite3
+    _seed_portal(appmod, "wipe@y.com", "Wipe", {"layers": []})
+    cx = sqlite3.connect(appmod.LOG_DB)
+    N.set_opt(cx, "wipe@y.com", "in"); Q.enqueue(cx, "wipe@y.com", "2026-06-05"); cx.close()
+    r = c.post("/admin/portal/delete?key=test-secret", json={"email": "wipe@y.com"})
+    assert r.status_code == 200
+    d = r.get_json()["deleted"]
+    assert d["notify_state"] == 1 and d["process_requests"] == 1
+    cx = sqlite3.connect(appmod.LOG_DB)
+    assert N.get_state(cx, "wipe@y.com")["opt_status"] == "default"   # row gone -> default
+    assert all(p["email"] != "wipe@y.com" for p in Q.list_pending(cx))
