@@ -121,8 +121,8 @@ Keyed off the funnel's existing member identity (the name+email soft opt-in alre
 advice/checkout). Stored in the viewer's profile:
 
 - which sections they have opened (restored on return),
-- their image 👍/👎 ratings,
-- the "rated both images" credit (redeemed on order — see Rewards).
+- their image pair picks (which variant they preferred in each within-type pair),
+- the "picked in both pairs" credit (redeemed on order — see Rewards).
 
 ---
 
@@ -140,7 +140,7 @@ generated, simulated reveal where cached). Each viewer's open/closed state is re
 | 4 | **Ingredients** | collapsed | Label-format panel per Glen's convention (`Compound Class: Common Name (Latin) dose %DV`, elemental/IU rules, no-excipient ethos). |
 | 5 | **Comparison table** | collapsed | See below. Strongest differentiator — earns the high spot. |
 | 6 | **Research** | collapsed | Citations / links. |
-| 7 | **Images + community feedback** | collapsed | The 2 rated images; placed low to avoid friction before the CTA. See below. |
+| 7 | **Images + community feedback** | collapsed | Two within-type pairs (botanical pair, mechanism pair); viewer picks a favorite in each (forced choice + "neither" escape); placed low to avoid friction before the CTA. Champion-challenger loop replaces losers over time. See below. |
 | 8 | **Order CTA** | persistent / prominent | → `/begin/buy/<slug>` in-funnel checkout. |
 
 Across the top of any unreviewed page: the **AI-generated caveat banner** — "Generated from
@@ -166,11 +166,29 @@ Dr. Glen's knowledge base — pending his personal review for final approval."
 
 ### Two image systems (distinct)
 
-**System 1 — rated community-feedback images (section 7).** Exactly **2** images: one
-Mode A botanical-lifestyle + one Mode B mechanism. Each has an optional 👍/👎. **Static while
-being rated.** Framing: "You help shape Dr. Glen's program — rate these and earn a credit
-toward this product." Rate both → **1 credit, redeemable only when the viewer orders that
-product** (anti-gaming; self-funding). Ratings + credit stored in the viewer profile.
+**System 1 — community-feedback images (section 7), pairwise forced-choice + champion-challenger.**
+Show **two pairs**: a Mode A botanical-lifestyle pair and a Mode B mechanism pair (4 images
+total, but pairs are **within-type** — never botanical vs mechanism). For each pair the viewer
+**picks the one they prefer** (forced choice, optionally one pair at a time to reduce load),
+with a **"neither / show me something else"** escape. Framing: "You help shape Dr. Glen's
+program — pick your favorite and earn a credit toward this product." Picking in both pairs →
+**1 credit, redeemable only when the viewer orders that product** (anti-gaming; self-funding).
+Picks + credit stored in the viewer profile.
+
+Rationale: pairwise A/B preference is a stronger, lower-noise signal than absolute 👍/👎 ratings
+and is lower-friction (one click), so it converges on fewer responses. (This supersedes the
+earlier per-image thumbs-up/down design.)
+
+**Champion-challenger loop (auto-optimization).** Each image variant tracks wins/losses per
+pair. When one image of a pair reaches a **clear preference** (a significance bar: minimum
+sample + win-rate confidence — NOT 3 clicks), it becomes the champion and the **loser is
+replaced by a freshly rendered challenger** (a new image-studio render, via the Phase-3 image
+watcher). Guardrails: (1) **convergence cap** — once a champion beats **K successive
+challengers**, stop generating for that pair (good enough; bounds Flux cost); (2) **cadence
+cap** — at most one challenger render per pair per N days; (3) the "neither" escape lets a
+weak pair be refreshed so the tournament isn't merely optimizing "best of two mediocre."
+**Traffic-gated by design:** high-traffic products converge fast; long-tail products sit near
+their seed renders (acceptable). Champion images also become the page's default hero imagery.
 
 **System 2 — packaging / bottle-science visuals (brand assets, not rated).** The Miron
 biophotonic violet-glass graphics + bottle shots, near the bottle/comparison area.
@@ -204,8 +222,8 @@ science" reference.
   list (section 3) read from a **reviews store** (read-only contract here; Spec 2 populates
   it). Empty store → those entries simply don't render; the video list still shows the hero +
   educational videos.
-- **Image 👍/👎, section-open state, and the "rate both → 1 credit" reward** are captured
-  into the viewer profile now. The credit **redeems through the existing points/pricing
+- **Image pair-picks, section-open state, and the "pick in both pairs → 1 credit" reward** are
+  captured into the viewer profile now. The credit **redeems through the existing points/pricing
   engine on order**, using the same idempotent order-settlement path as points
   (`settle_order_points`-style), which is what protects against gaming.
 
