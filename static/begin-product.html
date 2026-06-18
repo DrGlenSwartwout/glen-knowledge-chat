@@ -73,8 +73,23 @@
       transition:opacity .25s var(--ease), transform .25s var(--ease); }
     .cta-btn:hover{ opacity:0.9; transform:translateY(-1px); }
 
-    /* ── Placeholder containers (Tasks 5 + 6 fill) ── */
-    #sp-comparison{ font-size:13px; color:var(--muted); font-style:italic; padding:4px 0; }
+    /* ── Comparison table (Task 5) ── */
+    .sp-cmp-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .sp-cmp-table{ width:100%; border-collapse:collapse; font-size:13px; }
+    .sp-cmp-table th{ font-family:var(--heading); font-weight:600; font-size:12px; letter-spacing:0.06em;
+      color:var(--muted); text-align:center; padding:8px 10px 10px; border-bottom:1px solid var(--border);
+      vertical-align:bottom; line-height:1.35; }
+    .sp-cmp-table th:first-child{ text-align:left; }
+    .sp-cmp-table td{ padding:9px 10px; border-bottom:1px solid rgba(33,71,45,0.3);
+      text-align:center; vertical-align:top; }
+    .sp-cmp-table td:first-child{ text-align:left; font-size:13px; color:var(--cream); opacity:0.9; font-weight:600; }
+    .sp-cmp-table tr:last-child td{ border-bottom:none; }
+    .sp-cmp-cell{ display:flex; flex-direction:column; align-items:center; gap:4px; }
+    .sp-cmp-note{ font-size:11.5px; color:var(--muted); line-height:1.4; max-width:140px; text-align:center; }
+    .sp-cmp-callout{ margin-top:12px; font-size:12px; color:var(--muted); opacity:0.8; line-height:1.6;
+      padding-top:10px; border-top:1px solid rgba(33,71,45,0.3); }
+
+    /* ── Placeholder containers (Task 6 fills) ── */
     #sp-images{ min-height:2px; }
 
     /* ── Utility ── */
@@ -237,13 +252,89 @@
       return ul;
     }
 
-    function renderComparisonBody(){
-      // Task 5 fills this container — render minimal placeholder only
+    // ── SVG glyphs for comparison table ─────────────────────────────────────
+    var _CMP_SVG = {
+      ok: '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-label="meets" role="img" xmlns="http://www.w3.org/2000/svg"><title>meets</title><path d="M4 9l3.5 3.5L14 6" stroke="#3d8a52" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      warn: '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-label="partial" role="img" xmlns="http://www.w3.org/2000/svg"><title>partial</title><path d="M5 9h8" stroke="#d4a843" stroke-width="2.2" stroke-linecap="round"/></svg>',
+      bad: '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-label="does not meet" role="img" xmlns="http://www.w3.org/2000/svg"><title>does not meet</title><path d="M5.5 5.5l7 7M12.5 5.5l-7 7" stroke="#c0392b" stroke-width="2.2" stroke-linecap="round"/></svg>'
+    };
+
+    function _cmpCell(status, note){
+      var td = document.createElement('td');
+      var inner = document.createElement('div');
+      inner.className = 'sp-cmp-cell';
+      var glyph = document.createElement('span');
+      glyph.innerHTML = _CMP_SVG[status] || _CMP_SVG.warn;
+      inner.appendChild(glyph);
+      if (note){
+        var n = document.createElement('span');
+        n.className = 'sp-cmp-note';
+        n.textContent = note;
+        inner.appendChild(n);
+      }
+      td.appendChild(inner);
+      return td;
+    }
+
+    function renderComparisonBody(body){
       var wrap = document.createElement('div');
-      var ph = document.createElement('div');
-      ph.id = 'sp-comparison';
-      ph.textContent = 'loading comparison…';
-      wrap.appendChild(ph);
+
+      // Guard: if no comparison data, show nothing (silent — section may still open)
+      if (!body || !Array.isArray(body.columns) || !Array.isArray(body.rows)){
+        return wrap;
+      }
+
+      var tableWrap = document.createElement('div');
+      tableWrap.className = 'sp-cmp-wrap';
+
+      var table = document.createElement('table');
+      table.className = 'sp-cmp-table';
+
+      // Header row
+      var thead = document.createElement('thead');
+      var hrow = document.createElement('tr');
+      // First column header (row labels — no label)
+      var th0 = document.createElement('th');
+      th0.setAttribute('scope', 'col');
+      hrow.appendChild(th0);
+      // Three product columns
+      var colKeys = ['ours', 'pro', 'mass'];
+      body.columns.forEach(function(colLabel, i){
+        var th = document.createElement('th');
+        th.setAttribute('scope', 'col');
+        th.textContent = colLabel;
+        hrow.appendChild(th);
+      });
+      thead.appendChild(hrow);
+      table.appendChild(thead);
+
+      // Body rows
+      var tbody = document.createElement('tbody');
+      body.rows.forEach(function(row){
+        var tr = document.createElement('tr');
+        // Row label
+        var td0 = document.createElement('td');
+        td0.textContent = row.label || '';
+        tr.appendChild(td0);
+        // Three status cells
+        tr.appendChild(_cmpCell(row.ours, row.ours_note || null));
+        tr.appendChild(_cmpCell(row.pro,  row.pro_note  || null));
+        tr.appendChild(_cmpCell(row.mass, row.mass_note || null));
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+
+      tableWrap.appendChild(table);
+      wrap.appendChild(tableWrap);
+
+      // Excipient callout
+      if (body.excipient_callout){
+        var callout = document.createElement('p');
+        callout.className = 'sp-cmp-callout';
+        callout.textContent = body.excipient_callout;
+        wrap.appendChild(callout);
+      }
+
       return wrap;
     }
 
@@ -292,7 +383,7 @@
         case 'description': return renderDescriptionBody(sec.body);
         case 'video':       return renderVideoBody(sec.body);
         case 'ingredients': return renderIngredientsBody(sec.body);
-        case 'comparison':  return renderComparisonBody();
+        case 'comparison':  return renderComparisonBody(sec.body);
         case 'research':    return renderResearchBody(sec.body);
         case 'images':      return renderImagesBody();
         case 'cta':         return renderCtaBody(ctaUrl);
