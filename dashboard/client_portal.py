@@ -88,6 +88,25 @@ def reissue_token(cx, email):
     return token
 
 
+def ensure_token(cx, email, name=""):
+    """Stable raw token for notification links. Creates a pending portal if the
+    client has none. The raw token is held in portal_notify_state so the link is
+    re-sendable without rotating it each scan. Returns the raw token."""
+    from dashboard import notify_state as _ns
+    email = (email or "").strip().lower()
+    st = _ns.get_state(cx, email)
+    if st.get("portal_token"):
+        return st["portal_token"]
+    if not cx.execute("SELECT 1 FROM client_portals WHERE email=?", (email,)).fetchone():
+        upsert_portal(cx, email, name, {"biofield_status": "pending"})
+    token = secrets.token_urlsafe(32)
+    cx.execute("UPDATE client_portals SET token_hash=?, updated_at=? WHERE email=?",
+               (_hash(token), _now_iso(), email))
+    _ns.set_token(cx, email, token)
+    cx.commit()
+    return token
+
+
 def get_portal_by_token(cx, token: str):
     th = _hash(token)
     row = cx.execute(

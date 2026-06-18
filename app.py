@@ -7242,6 +7242,12 @@ def api_client_portal(token):
         portal = _portal_record_for(cx, token)
     if not portal:
         return jsonify({"error": "not found"}), 404
+    try:
+        from dashboard import notify_state as _ns
+        with _db_lock, sqlite3.connect(LOG_DB) as _cxe:
+            _ns.mark_engaged(_cxe, (portal.get("email") or ""))
+    except Exception as e:
+        print(f"[engaged] {e!r}", flush=True)
     content = dict(portal.get("content") or {})
     from dashboard import portal_biofield_reports as _pbr
     import datetime as _dt
@@ -7295,6 +7301,35 @@ def api_client_portal(token):
         "pricing_note": bf_content.get("pricing_note", "") if bf_confirmed else "",
         "reorder_items": display,
     })
+
+
+@app.route("/api/portal/<token>/notify-pref", methods=["POST"])
+def api_portal_notify_pref(token):
+    from dashboard import client_portal as _cp, notify_state as _ns
+    pref = ((request.get_json(silent=True) or {}).get("pref") or "").strip().lower()
+    if pref not in ("in", "out"):
+        return jsonify({"error": "pref must be in|out"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        portal = _cp.get_portal_by_token(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        _ns.set_opt(cx, portal["email"], pref)
+    return jsonify({"ok": True, "pref": pref})
+
+
+@app.route("/sms/inbound", methods=["POST"])
+def sms_inbound():
+    from dashboard import notify_state as _ns
+    frm = (request.form.get("From") or request.values.get("From") or "").strip()
+    body = (request.form.get("Body") or request.values.get("Body") or "").strip().upper()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        email = _ns.email_by_phone(cx, frm)
+        if email:
+            if body in ("STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "QUIT"):
+                _ns.set_opt(cx, email, "out")
+            elif body in ("START", "YES", "UNSTOP"):
+                _ns.set_opt(cx, email, "in")
+    return ("", 204)
 
 
 @app.route("/api/portal/<token>/checkout", methods=["POST"])
@@ -7811,6 +7846,38 @@ def admin_portal_reissue_link():
         except Exception as e:
             print(f"[reissue-link] send failed: {e!r}", flush=True)
     return jsonify({"ok": True, "url": url, "emailed": emailed})
+
+
+@app.route("/api/admin/notify-state", methods=["POST"])
+def api_admin_notify_state():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import client_portal as _cp, notify_state as _ns
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        if body.get("phone"):
+            _ns.set_phone(cx, email, body["phone"])
+        token = _cp.ensure_token(cx, email, body.get("name") or "")
+        d = _ns.decide(_ns.get_state(cx, email))
+    return jsonify({**d, "url": f"{PUBLIC_BASE_URL}/portal/{token}",
+                    "unsubscribe": f"{PUBLIC_BASE_URL}/unsubscribe?token={token}"})
+
+
+@app.route("/api/admin/notify-sent", methods=["POST"])
+def api_admin_notify_sent():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import notify_state as _ns
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _ns.incr_notify(cx, email)
+    return jsonify({"ok": True})
 
 
 # ── Certification work-product portal ───────────────────────────────────────
@@ -15111,6 +15178,22 @@ def unsubscribe():
     Verifies the HMAC token, revokes consent in the people hub, pauses sends."""
     email = (request.args.get("email", "") or "").strip().lower()
     token = request.args.get("t", "")
+    # Portal-notification unsubscribe: a stable portal token (?token=...) opts the
+    # client out of Healing Oasis scan notifications (separate from email-consent).
+    portal_token = (request.args.get("token", "") or "").strip()
+    if portal_token and not email:
+        from dashboard import client_portal as _cp, notify_state as _ns
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            portal = _cp.get_portal_by_token(cx, portal_token)
+            if portal:
+                _ns.set_opt(cx, portal["email"], "out")
+        return (
+            "<html><body style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
+            "<h2>You're unsubscribed.</h2>"
+            "<p>You will no longer receive Healing Oasis scan notifications. "
+            "You can re-enable them anytime from your portal.</p>"
+            "<p>In wellness,<br>Dr. Glen &amp; Rae</p></body></html>"
+        ), 200
     from incentive_engine import verify_unsub_token, revoke_consent
     if not email:
         return "<p>Missing email.</p>", 400
