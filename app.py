@@ -7340,6 +7340,29 @@ def sms_inbound():
     return ("", 204)
 
 
+@app.route("/sms/status", methods=["POST"])
+def sms_status():
+    from dashboard import sms_delivery as _sd
+    f = request.form if request.form else request.values
+    sid = (f.get("MessageSid") or "").strip()
+    if sid:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _sd.record(cx, sid, f.get("To") or "", f.get("MessageStatus") or "",
+                       f.get("ErrorCode") or "")
+    return ("", 204)
+
+
+@app.route("/api/admin/sms-deliveries", methods=["GET"])
+def api_admin_sms_deliveries():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import sms_delivery as _sd
+    failed = request.args.get("failed") in ("1", "true", "yes")
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = _sd.recent(cx, limit=int(request.args.get("limit", 100)), failed_only=failed)
+    return jsonify({"deliveries": rows})
+
+
 @app.route("/api/portal/<token>/checkout", methods=["POST"])
 def api_client_portal_checkout(token):
     """Build a real live Stripe checkout for the client's pre-loaded remedies at
