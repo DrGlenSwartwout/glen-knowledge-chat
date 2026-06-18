@@ -2050,7 +2050,8 @@ def begin_match_chat():
                 match_evt = {"name": obj["name"], "kind": obj.get("kind", ""),
                              "why": obj.get("why", ""), "url": url, "url_source": src,
                              "buy_url": (f"/begin/buy/{buy_slug}" if buy_slug else ""),
-                             "search_url": "" if url else _store_search_url(obj["name"])}
+                             "search_url": "" if url else _store_search_url(obj["name"]),
+                             "product_url": _sales_page_url(obj["name"])}
         except Exception as e:
             print(f"[match] extract: {e!r}", flush=True)
         # Withhold the named product + Buy button until the visitor is a Member
@@ -2292,6 +2293,7 @@ _PRODUCTS = _load_json(DATA_DIR / "products.json",
 # Card/ACH online payment is gated until QuickBooks Payments is activated.
 _QBO_PAYMENTS_ACTIVE = os.environ.get("QBO_PAYMENTS_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
+_SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").lower() in ("1", "true", "yes")
 # Shown to the customer when Stripe was active but no checkout URL came back
 # (create_checkout_session failed) — so the Pay button surfaces a clear message
 # instead of silently no-opping. _alert_stripe() already notifies Glen.
@@ -2773,6 +2775,15 @@ def _resolve_buy_slug(name):
         if pn and (nl == pn or (len(nl) > 4 and (nl in pn or pn in nl))):
             return slug
     return None
+
+
+def _sales_page_url(name):
+    """New-format in-funnel sales page URL for an in-catalog remedy, or '' if
+    disabled / off-catalog. Flag-gated so we can ship dark."""
+    if not _SALES_PAGES_ENABLED:
+        return ""
+    slug = _resolve_buy_slug(name)
+    return f"/begin/product/{slug}" if slug else ""
 
 
 @app.route("/begin/buy/<slug>")
