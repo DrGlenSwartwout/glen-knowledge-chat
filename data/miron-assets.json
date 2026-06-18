@@ -1,2 +1,7 @@
 { "assets": [ {"src": "/static/media/miron-violetglass.jpg",
-               "alt": "Miron biophotonic violet glass jar held to the light — the violet glass filters the light spectrum that degrades actives"} ] }
+               "alt": "Miron biophotonic violet glass jar held to the light — the violet glass filters the light spectrum that degrades actives"} ],
+  "story": [
+    "The protective power of violet glass traces back to Ancient Egypt, where precious essences and natural healing preparations were kept in violet glass vessels — Cleopatra is reputed to have kept the aloe vera she rubbed on her skin each day in violet glass jars.",
+    "In Eastern tradition, the color violet represents the harmony of the universe: blue and red, Yin and Yang. Yin — the stored energy that preserves matter; Yang — solar energy, outgoing and free."
+  ]
+}

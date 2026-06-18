@@ -55,6 +55,8 @@ def test_product_page_data_shape(client):
     assert "Packaging" in rows and "Microplastic exposure" in rows
     assert "stearates" in comp["excipient_callout"].lower()
     assert len(comp["columns"]) == 3  # ours + 2 anonymized archetypes
+    assert isinstance(data["miron_story"], list)
+    assert any("violet glass" in s.lower() for s in data["miron_story"])
 
 def test_match_to_product_page_roundtrip(client):
     appmod = client[1]

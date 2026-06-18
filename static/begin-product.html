@@ -103,6 +103,7 @@
     .miron-science-link{ font-size:13px; color:var(--gold); text-decoration:underline;
       text-underline-offset:3px; display:inline-block; margin-top:10px; }
     .miron-science-link:hover{ opacity:0.8; }
+    .sp-miron-story{ font-size:13px; color:var(--muted); line-height:1.6; margin-top:10px; }
 
     /* ── Utility ── */
     .loading{ text-align:center; color:var(--muted); padding:48px 18px; font-size:15px; }
@@ -288,7 +289,7 @@
       return td;
     }
 
-    function renderComparisonBody(body, mironAssets){
+    function renderComparisonBody(body, mironAssets, mironStory){
       var wrap = document.createElement('div');
 
       // Guard: if no comparison data, show nothing (silent — section may still open)
@@ -440,6 +441,16 @@
         rotator.appendChild(sciLink);
 
         wrap.appendChild(rotator);
+
+        // Heritage caption paragraphs
+        var story = Array.isArray(mironStory) ? mironStory : [];
+        story.forEach(function(text){
+          if (!text) return;
+          var p = document.createElement('p');
+          p.className = 'sp-miron-story';
+          p.textContent = text;
+          wrap.appendChild(p);
+        });
       }
       // ── end Miron rotator ──────────────────────────────────────────────────
 
@@ -485,13 +496,13 @@
       return wrap;
     }
 
-    function buildSectionBody(sec, ctaUrl, mironAssets){
+    function buildSectionBody(sec, ctaUrl, mironAssets, mironStory){
       switch(sec.id){
         case 'intro':       return renderIntroBody(sec.body);
         case 'description': return renderDescriptionBody(sec.body);
         case 'video':       return renderVideoBody(sec.body);
         case 'ingredients': return renderIngredientsBody(sec.body);
-        case 'comparison':  return renderComparisonBody(sec.body, mironAssets);
+        case 'comparison':  return renderComparisonBody(sec.body, mironAssets, mironStory);
         case 'research':    return renderResearchBody(sec.body);
         case 'images':      return renderImagesBody();
         case 'cta':         return renderCtaBody(ctaUrl);
@@ -504,7 +515,7 @@
     }
 
     // ── Build accordion DOM ──────────────────────────────────────────────────
-    function buildAccordion(sec, openSet, ctaUrl, mironAssets){
+    function buildAccordion(sec, openSet, ctaUrl, mironAssets, mironStory){
       var div = document.createElement('div');
       div.className = 'acc';
       div.setAttribute('data-sec', sec.id);
@@ -551,7 +562,7 @@
       function ensureRendered(){
         if (_rendered) return;
         _rendered = true;
-        bodyDiv.appendChild(buildSectionBody(sec, ctaUrl, mironAssets));
+        bodyDiv.appendChild(buildSectionBody(sec, ctaUrl, mironAssets, mironStory));
       }
 
       // Open state: intro always open, others from openSet
@@ -601,6 +612,7 @@
       var openSet = Array.isArray(data.open_sections) ? data.open_sections : [];
       var ctaUrl = data.cta_url || ('/begin/buy/' + encodeURIComponent(slug));
       var mironAssets = Array.isArray(data.miron_assets) ? data.miron_assets : [];
+      var mironStory = Array.isArray(data.miron_story) ? data.miron_story : [];
       var container = document.getElementById('sp-sections');
 
       (data.sections || []).forEach(function(sec){
@@ -608,7 +620,7 @@
           // CTA is always-visible — rendered as a persistent block, not an accordion
           container.appendChild(buildCtaBlock(ctaUrl));
         } else {
-          container.appendChild(buildAccordion(sec, openSet, ctaUrl, mironAssets));
+          container.appendChild(buildAccordion(sec, openSet, ctaUrl, mironAssets, mironStory));
         }
       });
 
