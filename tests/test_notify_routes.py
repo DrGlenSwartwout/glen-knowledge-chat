@@ -87,3 +87,21 @@ def test_ensure_token_link_actually_loads(client):
                json={"email": "ld@y.com", "name": "LD"}).get_json()
     tok = j["url"].rstrip("/").split("/")[-1]
     assert c.get(f"/api/portal/{tok}").status_code == 200      # the minted token resolves
+
+
+def test_sms_status_records_delivery(client):
+    c, appmod = client
+    c.post("/sms/status", data={"MessageSid": "SMx", "MessageStatus": "delivered",
+                                "To": "+18085550000", "ErrorCode": ""})
+    j = c.get("/api/admin/sms-deliveries?key=test-secret").get_json()
+    assert any(d["message_sid"] == "SMx" and d["status"] == "delivered" for d in j["deliveries"])
+
+
+def test_sms_deliveries_failed_filter_and_auth(client):
+    c, _ = client
+    c.post("/sms/status", data={"MessageSid": "SMok", "MessageStatus": "delivered", "To": "+1"})
+    c.post("/sms/status", data={"MessageSid": "SMbad", "MessageStatus": "failed", "To": "+2", "ErrorCode": "30007"})
+    j = c.get("/api/admin/sms-deliveries?key=test-secret&failed=1").get_json()
+    sids = [d["message_sid"] for d in j["deliveries"]]
+    assert "SMbad" in sids and "SMok" not in sids
+    assert c.get("/api/admin/sms-deliveries").status_code == 401      # gated
