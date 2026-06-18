@@ -111,6 +111,15 @@
     border-radius:999px;font-size:.8rem;font-weight:600;padding:5px 10px;cursor:pointer;
     font-family:inherit}
   .scan-old{color:var(--muted);font-size:.82rem;margin:0 0 .6rem}
+  /* cold-portal "preparing your analysis" state */
+  .prep{text-align:center;background:linear-gradient(180deg,var(--card),var(--card2))}
+  .prep h2{margin:0 0 .2rem}
+  .spinner{width:34px;height:34px;margin:14px auto 12px;border-radius:50%;
+    border:3px solid var(--line);border-top-color:var(--brand);
+    animation:ppspin .9s linear infinite}
+  @keyframes ppspin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion: reduce){.spinner{animation-duration:2.4s}}
+  .prep .prepline{color:var(--muted);margin:.2rem auto 0;max-width:26rem}
 </style>
 </head>
 <body>
@@ -148,6 +157,13 @@ const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&l
 const money = (c)=> (c==null? "" : "$"+(c/100).toFixed(2));
 // The biofield scan the page is currently viewing (null = newest, server default).
 let selectedScanDate = null;
+// Cold-portal "Preparing your analysis…" state. A fresh portal is created with
+// biofield_status === "pending" and no analysis yet; we post one process-request
+// (a local watcher synthesizes + publishes the draft) and poll until it lands.
+let _ppPosted = false;
+let _ppPolls = 0;
+let _ppTimer = null;
+const PP_MAX = 20; // 20 polls × 6s ≈ 2 min before we fall back to the SMS line.
 // "2026-06-05" -> "Jun 5, 2026" (parsed as local midnight so the day never slips).
 const fmtDate = (d)=>{
   if(!d) return "";
@@ -181,6 +197,20 @@ async function load(){
   const ok = isMe ? !!view : !!data;
   if(!ok){ notFound(); return; }
   render(data, view);
+}
+
+// Poll loop for the cold-portal "Preparing your analysis…" state. Each tick
+// re-fetches via load(); when the watcher has published the draft, the status is
+// no longer "pending" and render() stops the timer. After PP_MAX ticks (~2 min)
+// we give up the spinner and show the "we'll text you" line (request stays queued).
+function pollPending(){
+  _ppPolls++;
+  if(_ppPolls > PP_MAX){
+    clearInterval(_ppTimer); _ppTimer = null;
+    load(); // final re-render swaps the spinner for the "we'll text you" line.
+    return;
+  }
+  load();
 }
 
 function render(d, v){
@@ -226,12 +256,40 @@ function render(d, v){
       </div>`;
   }
 
+  // Cold portal: a freshly-created link arrives with biofield_status === "pending"
+  // and no analysis. Show a "Preparing your analysis…" card, post ONE
+  // process-request (a local watcher synthesizes + publishes the ai_draft), and
+  // poll load() until the status flips. Once it does, this branch is skipped and
+  // the normal biofield render below takes over — so polling is stopped there.
+  const isPending = (d.biofield_status === "pending");
+  if(isPending){
+    const capped = _ppPolls > PP_MAX;
+    const line = capped
+      ? "Still working on your analysis — we'll text you the moment it's ready."
+      : "This usually takes about a minute — it will appear right here.";
+    html += `<div class="card prep"><h2>Preparing your analysis…</h2>
+      ${capped ? "" : '<div class="spinner" aria-hidden="true"></div>'}
+      <p class="prepline">${esc(line)}</p></div>`;
+    // Kick the producer once per page load, then poll.
+    if(!_ppPosted){
+      _ppPosted = true;
+      fetch(`/api/portal/${encodeURIComponent(seg)}/process-request`, {
+        method:"POST", headers:{"Content-Type":"application/json"}, body:"{}",
+      }).catch(()=>{});
+    }
+    if(!_ppTimer && !capped){ _ppTimer = setInterval(pollPending, 6000); }
+  } else if(_ppTimer){
+    // The analysis has landed (or we navigated away from pending) — stop polling.
+    clearInterval(_ppTimer); _ppTimer = null;
+  }
+
   // Biofield "healing path" — server-gated by status. Remedies/dosing never reach
   // the page until Dr. Glen has confirmed (status === "confirmed"); the earlier
   // states reveal the patterns and a two-click path to request the matches.
   // Prefer the status-aware view block; fall back to the legacy flat content
   // (treated as confirmed) so older token links keep rendering fully.
-  const bf = (v && v.biofield && v.biofield.visible) ? v.biofield
+  const bf = isPending ? null
+    : (v && v.biofield && v.biofield.visible) ? v.biofield
     : (Array.isArray(d.layers) && d.layers.length
         ? {visible:true, status:"confirmed", blurred:false, layers:d.layers, pricing_note:d.pricing_note||""}
         : null);

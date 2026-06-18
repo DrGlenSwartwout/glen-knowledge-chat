@@ -7862,8 +7862,9 @@ def api_admin_notify_state():
         if body.get("phone"):
             _ns.set_phone(cx, email, body["phone"])
         token = _cp.ensure_token(cx, email, body.get("name") or "")
-        d = _ns.decide(_ns.get_state(cx, email))
-    return jsonify({**d, "url": f"{PUBLIC_BASE_URL}/portal/{token}",
+        st = _ns.get_state(cx, email)
+        d = _ns.decide(st)
+    return jsonify({**d, "engaged": st["engaged"], "url": f"{PUBLIC_BASE_URL}/portal/{token}",
                     "unsubscribe": f"{PUBLIC_BASE_URL}/unsubscribe?token={token}"})
 
 
@@ -7877,6 +7878,41 @@ def api_admin_notify_sent():
         return jsonify({"error": "email required"}), 400
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _ns.incr_notify(cx, email)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/portal/<token>/process-request", methods=["POST"])
+def api_portal_process_request(token):
+    from dashboard import client_portal as _cp, process_queue as _pq
+    scan_date = ((request.get_json(silent=True) or {}).get("scan_date") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        portal = _cp.get_portal_by_token(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        _pq.enqueue(cx, portal["email"], scan_date)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/process-requests", methods=["GET"])
+def api_admin_process_requests():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import process_queue as _pq
+    with sqlite3.connect(LOG_DB) as cx:
+        pending = _pq.list_pending(cx)
+    return jsonify({"pending": pending})
+
+
+@app.route("/api/admin/process-request/done", methods=["POST"])
+def api_admin_process_request_done():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import process_queue as _pq
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _pq.mark_done(cx, email)
     return jsonify({"ok": True})
 
 
