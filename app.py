@@ -15257,7 +15257,7 @@ def unsubscribe():
         return (
             "<html><body style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
             "<h2>You're unsubscribed.</h2>"
-            "<p>You will no longer receive Healing Oasis scan notifications. "
+            "<p>You will no longer receive Remedy Match scan notifications. "
             "You can re-enable them anytime from your portal.</p>"
             "<p>In wellness,<br>Dr. Glen &amp; Rae</p></body></html>"
         ), 200
