@@ -1,0 +1,13 @@
+{
+  "columns": ["This formula", "A leading professional-channel formula", "A top-selling mass-market formula"],
+  "excipient_callout": "Industry note: a product can legally contain up to ~3% stearates (and other flow agents) with no label disclosure.",
+  "rows": [
+    {"label": "Ingredient form quality", "ours": "ok", "pro": "warn", "mass": "bad"},
+    {"label": "Excipient-free", "ours": "ok", "pro": "warn", "mass": "bad"},
+    {"label": "Completeness (no key actives missing)", "ours": "ok", "pro": "warn", "mass": "bad"},
+    {"label": "Packaging", "ours": "ok", "pro": "bad", "mass": "bad",
+     "ours_note": "Miron biophotonic violet glass", "pro_note": "plastic / clear glass", "mass_note": "plastic"},
+    {"label": "Microplastic exposure", "ours": "ok", "pro": "bad", "mass": "bad",
+     "ours_note": "none", "pro_note": "likely", "mass_note": "likely"}
+  ]
+}

@@ -37,3 +37,20 @@ def test_product_page_404_unknown_slug(client):
     appmod = client[1]
     c = appmod.app.test_client()
     assert c.get("/begin/product/nope-not-real").status_code == 404
+
+def test_product_page_data_shape(client):
+    appmod = client[1]
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    c = appmod.app.test_client()
+    data = c.get(f"/begin/product-page-data/{slug}").get_json()
+    ids = [s["id"] for s in data["sections"]]
+    assert ids == ["intro", "description", "video", "ingredients",
+                   "comparison", "research", "images", "cta"]
+    assert next(s for s in data["sections"] if s["id"] == "intro")["default_open"] is True
+    assert all(s["default_open"] is False for s in data["sections"] if s["id"] != "intro")
+    assert data["cta_url"] == f"/begin/buy/{slug}"
+    # comparison carries packaging + microplastics rows and the category excipient callout
+    rows = {r["label"] for r in data["comparison"]["rows"]}
+    assert "Packaging" in rows and "Microplastic exposure" in rows
+    assert "stearates" in data["comparison"]["excipient_callout"].lower()
+    assert len(data["comparison"]["columns"]) == 3  # ours + 2 anonymized archetypes

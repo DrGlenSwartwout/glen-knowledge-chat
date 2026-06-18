@@ -91,10 +91,14 @@ def _load_json(path: Path, default):
         print(f"[warn] could not load {path}: {e}", flush=True)
     return default
 
-_PRODUCT_ALIASES = _load_json(DATA_DIR / "product-aliases.json",
-                              default={"aliases": {}, "store_homepage": "https://remedymatch.com"})
-_COUPONS         = _load_json(DATA_DIR / "coupons.json",
-                              default={"default_code": "", "daily_codes": []})
+_PRODUCT_ALIASES  = _load_json(DATA_DIR / "product-aliases.json",
+                               default={"aliases": {}, "store_homepage": "https://remedymatch.com"})
+_COUPONS          = _load_json(DATA_DIR / "coupons.json",
+                               default={"default_code": "", "daily_codes": []})
+_SALES_ARCHETYPES = _load_json(DATA_DIR / "sales-page-archetypes.json",
+                               default={"columns": [], "rows": [], "excipient_callout": ""})
+_MIRON_ASSETS     = _load_json(DATA_DIR / "miron-assets.json",
+                               default={"assets": []})
 # Runtime-written + must survive redeploys, so it lives on the env-DATA_DIR persistent
 # disk (same root as LOG_DB / _CLIPS_DIR), NOT the repo's read-only DATA_DIR baseline.
 _PRICING_SETTINGS_PATH = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "pricing-settings.json"
@@ -2841,6 +2845,36 @@ def begin_product_data(slug):
         "open_sections": _read_open_sections(
             request.cookies.get("amg_session", ""),
             (get_authenticated_user(request) or {}).get("email", "")),
+    })
+
+
+@app.route("/begin/product-page-data/<slug>")
+def begin_product_page_data(slug):
+    p = _get_product(slug)
+    if not p:
+        return jsonify({"error": "not found"}), 404
+    card = _product_card(p) if not p.get("info_only") else {}
+    how = "" if p.get("info_only") else _product_how(p)
+    ingredients = p.get("ingredients") or card.get("ingredients", [])
+    intro = p.get("intro") or (card.get("description", "") or "").split(". ")[0]
+    sections = [
+        {"id": "intro",       "title": "What this does",  "default_open": True,  "body": intro},
+        {"id": "description", "title": "Overview",        "default_open": False,
+         "body": p.get("description") or card.get("description", "")},
+        {"id": "video",       "title": "Watch",           "default_open": False, "body": {"videos": p.get("videos", [])}},
+        {"id": "ingredients", "title": "What's inside",   "default_open": False, "body": {"ingredients": ingredients}},
+        {"id": "comparison",  "title": "How it compares", "default_open": False, "body": {}},
+        {"id": "research",    "title": "The research",    "default_open": False,
+         "body": {"how_it_works": how, "learn_url": f"/begin/learn/{slug}"}},
+        {"id": "images",      "title": "Help shape this", "default_open": False, "body": {"images": p.get("page_images", [])}},
+        {"id": "cta",         "title": "Order",           "default_open": False, "body": {}},
+    ]
+    return jsonify({
+        "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
+        "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
+        "sections": sections, "comparison": _SALES_ARCHETYPES, "miron_assets": _MIRON_ASSETS["assets"],
+        "open_sections": _read_open_sections(request.cookies.get("amg_session", ""),
+                                             (get_authenticated_user(request) or {}).get("email", "")),
     })
 
 
