@@ -7848,6 +7848,38 @@ def admin_portal_reissue_link():
     return jsonify({"ok": True, "url": url, "emailed": emailed})
 
 
+@app.route("/api/admin/notify-state", methods=["POST"])
+def api_admin_notify_state():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import client_portal as _cp, notify_state as _ns
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        if body.get("phone"):
+            _ns.set_phone(cx, email, body["phone"])
+        token = _cp.ensure_token(cx, email, body.get("name") or "")
+        d = _ns.decide(_ns.get_state(cx, email))
+    return jsonify({**d, "url": f"{PUBLIC_BASE_URL}/portal/{token}",
+                    "unsubscribe": f"{PUBLIC_BASE_URL}/unsubscribe?token={token}"})
+
+
+@app.route("/api/admin/notify-sent", methods=["POST"])
+def api_admin_notify_sent():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import notify_state as _ns
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _ns.incr_notify(cx, email)
+    return jsonify({"ok": True})
+
+
 # ── Certification work-product portal ───────────────────────────────────────
 # Cert students submit published work here; Glen reviews behind two gates
 # (approve -> publish). Student-facing surface gates behind CERT_PORTAL_ENABLED.

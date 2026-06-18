@@ -59,3 +59,31 @@ def test_open_marks_engaged(client):
     import sqlite3
     from dashboard import notify_state as N
     assert N.get_state(sqlite3.connect(appmod.LOG_DB), "e@y.com")["engaged"] is True
+
+
+def test_admin_notify_state_returns_decision_and_link(client):
+    c, appmod = client
+    j = c.post("/api/admin/notify-state?key=test-secret",
+               json={"email": "ns@y.com", "name": "NS"}).get_json()
+    assert j["eligible"] is True and j["variant"] == 0
+    assert j["url"].startswith("https://") and "/portal/" in j["url"]
+    assert "token=" in j["unsubscribe"]
+    url1 = j["url"]
+    j2 = c.post("/api/admin/notify-state?key=test-secret", json={"email": "ns@y.com"}).get_json()
+    assert j2["url"] == url1                                   # stable: same link, not rotated
+    c.post("/api/admin/notify-sent?key=test-secret", json={"email": "ns@y.com"})
+    j3 = c.post("/api/admin/notify-state?key=test-secret", json={"email": "ns@y.com"}).get_json()
+    assert j3["variant"] == 1                                  # taper advanced
+
+
+def test_admin_notify_state_requires_key(client):
+    c, _ = client
+    assert c.post("/api/admin/notify-state", json={"email": "x@y.com"}).status_code == 401
+
+
+def test_ensure_token_link_actually_loads(client):
+    c, appmod = client
+    j = c.post("/api/admin/notify-state?key=test-secret",
+               json={"email": "ld@y.com", "name": "LD"}).get_json()
+    tok = j["url"].rstrip("/").split("/")[-1]
+    assert c.get(f"/api/portal/{tok}").status_code == 200      # the minted token resolves
