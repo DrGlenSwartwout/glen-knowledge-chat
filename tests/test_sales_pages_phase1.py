@@ -55,6 +55,16 @@ def test_product_page_data_shape(client):
     assert "stearates" in data["comparison"]["excipient_callout"].lower()
     assert len(data["comparison"]["columns"]) == 3  # ours + 2 anonymized archetypes
 
+def test_match_to_product_page_roundtrip(client):
+    appmod = client[1]
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._PRODUCTS["products"][slug]["name"]
+    assert appmod._sales_page_url(name) == f"/begin/product/{slug}"
+    c = appmod.app.test_client()
+    assert c.get(f"/begin/product/{slug}").status_code == 200
+    data = c.get(f"/begin/product-page-data/{slug}").get_json()
+    assert data["cta_url"] == f"/begin/buy/{slug}"
+
 def test_section_pref_accepts_new_section_ids(client):
     """POST /begin/section-pref must accept the new sales-page section ids."""
     appmod = client[1]
