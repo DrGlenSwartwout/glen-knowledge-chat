@@ -2798,6 +2798,18 @@ def begin_buy_page(slug):
     return resp
 
 
+@app.route("/begin/product/<slug>")
+def begin_product_page(slug):
+    if not _get_product(slug):
+        return ("", 404)
+    resp = send_from_directory(STATIC, "begin-product.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 @app.route("/begin/product-data/<slug>")
 def begin_product_data(slug):
     p = _get_product(slug)
