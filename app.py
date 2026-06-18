@@ -2293,7 +2293,7 @@ _PRODUCTS = _load_json(DATA_DIR / "products.json",
 # Card/ACH online payment is gated until QuickBooks Payments is activated.
 _QBO_PAYMENTS_ACTIVE = os.environ.get("QBO_PAYMENTS_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
-_SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").lower() in ("1", "true", "yes")
+_SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").strip().lower() in ("1", "true", "yes")
 # Shown to the customer when Stripe was active but no checkout URL came back
 # (create_checkout_session failed) — so the Pay button surfaces a clear message
 # instead of silently no-opping. _alert_stripe() already notifies Glen.
