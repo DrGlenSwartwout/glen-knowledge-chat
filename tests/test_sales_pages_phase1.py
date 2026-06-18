@@ -68,6 +68,21 @@ def test_match_to_product_page_roundtrip(client):
     data = c.get(f"/begin/product-page-data/{slug}").get_json()
     assert data["cta_url"] == f"/begin/buy/{slug}"
 
+def test_video_section_includes_miron_mp4(client):
+    """Video section body must include the Miron educational mp4 entry."""
+    appmod = client[1]
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    c = appmod.app.test_client()
+    data = c.get(f"/begin/product-page-data/{slug}").get_json()
+    video_sec = next(s for s in data["sections"] if s["id"] == "video")
+    vids = video_sec["body"]["videos"]
+    mp4_entries = [v for v in vids if isinstance(v, dict) and v.get("provider") == "mp4"]
+    assert mp4_entries, "expected at least one mp4 entry in video section"
+    miron = next((v for v in mp4_entries if "miron-glassmaking.mp4" in v.get("src", "")), None)
+    assert miron is not None, "miron-glassmaking.mp4 not found in video section"
+    assert miron["provider"] == "mp4"
+    assert miron["kind"] == "educational"
+
 def test_section_pref_accepts_new_section_ids(client):
     """POST /begin/section-pref must accept the new sales-page section ids."""
     appmod = client[1]

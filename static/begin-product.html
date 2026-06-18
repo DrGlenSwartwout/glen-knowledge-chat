@@ -64,6 +64,8 @@
     .sp-videos{ display:flex; flex-direction:column; gap:12px; }
     .sp-video-item{ position:relative; width:100%; padding-bottom:56.25%; border-radius:9px; overflow:hidden; background:#000; }
     .sp-video-item iframe{ position:absolute; inset:0; width:100%; height:100%; border:none; }
+    .sp-video-item video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+    .sp-video-cap{ font-size:13px; color:var(--muted); margin-top:4px; }
     .sp-video-empty{ font-size:13.5px; color:var(--muted); font-style:italic; }
 
     /* ── CTA section ── */
@@ -217,19 +219,38 @@
       var wrap = document.createElement('div');
       wrap.className = 'sp-videos';
       videos.forEach(function(v){
-        var url = typeof v === 'string' ? v : (v.url || v.src || '');
-        if (!url) return;
-        // Convert YouTube watch URLs to embed
-        var embedUrl = url.replace('watch?v=','embed/').replace('youtu.be/','youtube.com/embed/');
+        var isStr = typeof v === 'string';
+        var src = isStr ? v : (v.src || v.url || '');
+        if (!src) return;
         var outer = document.createElement('div');
         outer.className = 'sp-video-item';
-        var iframe = document.createElement('iframe');
-        iframe.src = embedUrl;
-        iframe.setAttribute('allowfullscreen', '');
-        iframe.setAttribute('loading', 'lazy');
-        iframe.setAttribute('title', 'Product video');
-        outer.appendChild(iframe);
+        var isMp4 = !isStr && (v.provider === 'mp4' || src.slice(-4) === '.mp4');
+        if (isMp4) {
+          var vid = document.createElement('video');
+          vid.className = 'sp-video-el';
+          vid.src = src;
+          vid.controls = true;
+          vid.preload = 'metadata';
+          vid.setAttribute('playsinline', '');
+          outer.appendChild(vid);
+        } else {
+          // YouTube / embed iframe (string or object without mp4)
+          var url = isStr ? src : src;
+          var embedUrl = url.replace('watch?v=','embed/').replace('youtu.be/','youtube.com/embed/');
+          var iframe = document.createElement('iframe');
+          iframe.src = embedUrl;
+          iframe.setAttribute('allowfullscreen', '');
+          iframe.setAttribute('loading', 'lazy');
+          iframe.setAttribute('title', 'Product video');
+          outer.appendChild(iframe);
+        }
         wrap.appendChild(outer);
+        if (!isStr && (v.title || v.kind === 'educational')) {
+          var cap = document.createElement('p');
+          cap.className = 'sp-video-cap';
+          cap.textContent = v.title || '';
+          wrap.appendChild(cap);
+        }
       });
       return wrap;
     }

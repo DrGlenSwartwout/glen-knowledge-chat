@@ -2857,11 +2857,15 @@ def begin_product_page_data(slug):
     how = "" if p.get("info_only") else _product_how(p)
     ingredients = p.get("ingredients") or card.get("ingredients", [])
     intro = p.get("intro") or (card.get("description", "") or "").split(". ")[0]
+    _vids = list(p.get("videos", []))
+    _mv = _MIRON_ASSETS.get("video")
+    if _mv and _mv.get("src"):
+        _vids.append({"src": _mv["src"], "title": _mv.get("title", ""), "provider": "mp4", "kind": "educational"})
     sections = [
         {"id": "intro",       "title": "What this does",  "default_open": True,  "body": intro},
         {"id": "description", "title": "Overview",        "default_open": False,
          "body": p.get("description") or card.get("description", "")},
-        {"id": "video",       "title": "Watch",           "default_open": False, "body": {"videos": p.get("videos", [])}},
+        {"id": "video",       "title": "Watch",           "default_open": False, "body": {"videos": _vids}},
         {"id": "ingredients", "title": "What's inside",   "default_open": False, "body": {"ingredients": ingredients}},
         {"id": "comparison",  "title": "How it compares", "default_open": False, "body": _SALES_ARCHETYPES},
         {"id": "research",    "title": "The research",    "default_open": False,
