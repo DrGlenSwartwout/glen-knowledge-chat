@@ -548,3 +548,15 @@ def test_content_endpoint_findings_empty_when_none(client):
     tok = _seed_portal(appmod, "nf@y.com", "NF", {"layers": [{"n": 1, "title": "X"}]})
     j = c.get(f"/api/portal/{tok}").get_json()
     assert j["findings"] == []
+
+
+def test_content_endpoint_returns_notify_on(client):
+    c, appmod = client
+    import sqlite3
+    from dashboard import notify_state as N
+    tok = _seed_portal(appmod, "non@y.com", "Non", {"layers": []})
+    j = c.get(f"/api/portal/{tok}").get_json()
+    assert j["notify_on"] is True                      # default = subscribed
+    cx = sqlite3.connect(appmod.LOG_DB); N.set_opt(cx, "non@y.com", "out"); cx.commit()
+    j2 = c.get(f"/api/portal/{tok}").get_json()
+    assert j2["notify_on"] is False                    # opted out

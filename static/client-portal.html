@@ -229,7 +229,7 @@ function render(d, v){
   let html = `
     <div class="hero">
       <div class="hello">Aloha ${esc(first)}</div>
-      <p class="sub">${esc(d.greeting || "This is your personal healing home — your video, your healing path, and your remedies, all in one place.")}</p>
+      <p class="sub">${esc(d.greeting || "This is your personal healing home: your video, your healing path, and your remedies, all in one place.")}</p>
       ${badges.length?`<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>`:""}
     </div>`;
 
@@ -272,9 +272,9 @@ function render(d, v){
   if(isPending){
     const capped = _ppPolls > PP_MAX;
     const line = capped
-      ? "Still working on your analysis — we'll text you the moment it's ready."
-      : "This usually takes about a minute — it will appear right here.";
-    html += `<div class="card prep"><h2>Preparing your analysis…</h2>
+      ? "Still working on your Biofield Analysis, we'll text you the moment it's ready."
+      : "This usually takes about a minute. It will appear right here.";
+    html += `<div class="card prep"><h2>Preparing your Biofield Analysis…</h2>
       ${capped ? "" : '<div class="spinner" aria-hidden="true"></div>'}
       <p class="prepline">${esc(line)}</p></div>`;
     // Kick the producer once per page load, then poll.
@@ -359,7 +359,7 @@ function render(d, v){
         ${tabs}
         ${patternsBlock}
         ${bf.greeting?`<p class="muted${rvlCls}" style="margin:.1rem 0 .6rem${firstTime?";animation-delay:"+(findingsCount*120+300)+"ms":""}">${esc(bf.greeting)}</p>`:""}
-        <p class="${rvlCls.trim()}" style="margin:.1rem 0 1rem${firstTime?";animation-delay:"+(findingsCount*120+300)+"ms":""}">Your biofield scan analysis is ready — your healing path, mapped from the surface layer down to the deepest root.</p>
+        <p class="${rvlCls.trim()}" style="margin:.1rem 0 1rem${firstTime?";animation-delay:"+(findingsCount*120+300)+"ms":""}">Your Biofield Analysis is ready: your healing path, mapped from the surface layer down to the deepest root.</p>
         ${cta}
         ${disclose}</div>`;
     } else {
@@ -384,7 +384,7 @@ function render(d, v){
             ? `<button class="btn full" id="bfRequestBtn" data-scan="${esc(curDate||"")}" style="margin-top:.7rem">Request my remedy matches</button>`
             : `<p class="scan-old" style="margin-top:.7rem">This analysis is from an earlier scan.</p>`;
         } else {
-          action = `<p class="req">Requested — Dr. Glen is confirming your matches.</p>`;
+          action = `<p class="req">Requested. Dr. Glen is confirming your matches.</p>`;
         }
         extra = `
           <div class="rx-pending" aria-hidden="false">
@@ -398,7 +398,7 @@ function render(d, v){
       html += `<div class="card"><h2>Your healing path</h2>
         ${tabs}
         ${patternsBlock}
-        <p class="muted small">From the surface layer down to the deepest root — we support them in order, and the whole chain unwinds.</p>
+        <p class="muted small">From the surface layer down to the deepest root, we support them in order, and the whole chain unwinds.</p>
         <div class="path">${path}</div>
         ${extra}
         ${status !== "confirmed" ? disclose : ""}</div>`;
@@ -445,6 +445,15 @@ function render(d, v){
       <p class="small err" id="offerErr" hidden></p></div>`;
   }
 
+  // Notification preference: lets a client see and change their opt status,
+  // so anyone who unsubscribed via the email link can re-subscribe here.
+  if(typeof d.notify_on !== "undefined"){
+    const on = !!d.notify_on;
+    html += `<div class="card notifpref">
+      <p class="muted small" id="notifLine" style="margin:.2rem 0 .8rem">Healing Oasis notifications: <b>${on?"On":"Off"}</b></p>
+      <button class="btn${on?"":" full"}" id="notifBtn" data-on="${on?"1":"0"}">${on?"Turn off":"Turn on"}</button></div>`;
+  }
+
   html += `<div class="foot">With aloha,<br><b>Dr. Glen &amp; Rae</b> · Remedy Match LLC</div>`;
 
   app.innerHTML = html;
@@ -469,6 +478,26 @@ function render(d, v){
     t.addEventListener("click", ()=>selectScan(t.getAttribute("data-scan"))));
   const ssel = document.getElementById("bfScanSel");
   if(ssel) ssel.addEventListener("change", ()=>selectScan(ssel.value));
+
+  const nbtn = document.getElementById("notifBtn");
+  if(nbtn) nbtn.addEventListener("click", ()=>setNotifyPref(nbtn));
+}
+
+async function setNotifyPref(btn){
+  // Toggle the client's notification opt status, then re-render to reflect it.
+  const turningOn = btn.getAttribute("data-on") === "0";
+  btn.disabled = true; const label = btn.textContent; btn.textContent = "One moment…";
+  try{
+    const r = await fetch(`/api/portal/${encodeURIComponent(seg)}/notify-pref`, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({pref: turningOn ? "in" : "out"}),
+    });
+    if(!r.ok) throw new Error();
+    await load();
+  }catch(e){
+    btn.disabled = false; btn.textContent = label;
+  }
 }
 
 async function advanceBiofield(btn, step){

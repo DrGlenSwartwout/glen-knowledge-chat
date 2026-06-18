@@ -7294,6 +7294,9 @@ def api_client_portal(token):
     client_findings = [{"code": f.get("code", ""), "name": f.get("name", ""),
                         "description": f.get("description", ""), "rank": f.get("rank")}
                        for f in (bf_content.get("findings") or [])]
+    from dashboard import notify_state as _ns
+    with sqlite3.connect(LOG_DB) as _cxn:
+        notify_on = (_ns.get_state(_cxn, email_for_reports)["opt_status"] != "out") if email_for_reports else True
     return jsonify({
         "name": portal.get("name"),
         "biofield_status": bf_status, "blurred": not bf_confirmed,
@@ -7304,6 +7307,7 @@ def api_client_portal(token):
         "findings": client_findings,
         "pricing_note": bf_content.get("pricing_note", "") if bf_confirmed else "",
         "reorder_items": display,
+        "notify_on": notify_on,
     })
 
 
