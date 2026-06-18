@@ -450,7 +450,7 @@ function render(d, v){
   if(typeof d.notify_on !== "undefined"){
     const on = !!d.notify_on;
     html += `<div class="card notifpref">
-      <p class="muted small" id="notifLine" style="margin:.2rem 0 .8rem">Healing Oasis notifications: <b>${on?"On":"Off"}</b></p>
+      <p class="muted small" id="notifLine" style="margin:.2rem 0 .8rem">Remedy Match notifications: <b>${on?"On":"Off"}</b></p>
       <button class="btn${on?"":" full"}" id="notifBtn" data-on="${on?"1":"0"}">${on?"Turn off":"Turn on"}</button></div>`;
   }
 
