@@ -285,7 +285,10 @@
       const searchUrl = (match.search_url || '').trim();
       const amazon = /amzn\.to|amazon\.[a-z.]+/i.test(url);
 
-      if (buyUrl) {
+      const productUrl = (match.product_url || '').trim();
+      if (productUrl) {
+        html += '<a class="mc-open" href="' + escAttr(productUrl) + '">View ' + escHtml(match.name) + ' →</a>';
+      } else if (buyUrl) {
         // In our catalog: the primary action is our own QuickBooks checkout.
         html += '<a class="mc-open" href="' + escAttr(buyUrl) + '">Buy ' + escHtml(match.name) + ' →</a>';
         if (url) html += '<a class="mc-search" href="' + escAttr(url) + '" target="_blank" rel="noopener" style="margin-left:10px;">View details ↗</a>';
