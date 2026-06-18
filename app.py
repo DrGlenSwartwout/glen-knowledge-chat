@@ -2863,7 +2863,7 @@ def begin_product_page_data(slug):
          "body": p.get("description") or card.get("description", "")},
         {"id": "video",       "title": "Watch",           "default_open": False, "body": {"videos": p.get("videos", [])}},
         {"id": "ingredients", "title": "What's inside",   "default_open": False, "body": {"ingredients": ingredients}},
-        {"id": "comparison",  "title": "How it compares", "default_open": False, "body": {}},
+        {"id": "comparison",  "title": "How it compares", "default_open": False, "body": _SALES_ARCHETYPES},
         {"id": "research",    "title": "The research",    "default_open": False,
          "body": {"how_it_works": how, "learn_url": f"/begin/learn/{slug}"}},
         {"id": "images",      "title": "Help shape this", "default_open": False, "body": {"images": p.get("page_images", [])}},
@@ -2872,7 +2872,7 @@ def begin_product_page_data(slug):
     return jsonify({
         "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
         "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
-        "sections": sections, "comparison": _SALES_ARCHETYPES, "miron_assets": _MIRON_ASSETS["assets"],
+        "sections": sections, "miron_assets": _MIRON_ASSETS["assets"],
         "open_sections": _read_open_sections(request.cookies.get("amg_session", ""),
                                              (get_authenticated_user(request) or {}).get("email", "")),
     })

@@ -50,10 +50,11 @@ def test_product_page_data_shape(client):
     assert all(s["default_open"] is False for s in data["sections"] if s["id"] != "intro")
     assert data["cta_url"] == f"/begin/buy/{slug}"
     # comparison carries packaging + microplastics rows and the category excipient callout
-    rows = {r["label"] for r in data["comparison"]["rows"]}
+    comp = next(s for s in data["sections"] if s["id"] == "comparison")["body"]
+    rows = {r["label"] for r in comp["rows"]}
     assert "Packaging" in rows and "Microplastic exposure" in rows
-    assert "stearates" in data["comparison"]["excipient_callout"].lower()
-    assert len(data["comparison"]["columns"]) == 3  # ours + 2 anonymized archetypes
+    assert "stearates" in comp["excipient_callout"].lower()
+    assert len(comp["columns"]) == 3  # ours + 2 anonymized archetypes
 
 def test_match_to_product_page_roundtrip(client):
     appmod = client[1]
