@@ -72,6 +72,22 @@ def upsert_portal(cx, email: str, name: str, content: dict):
     return token, cur.lastrowid
 
 
+def reissue_token(cx, email):
+    """Mint a FRESH token for an existing portal (rotates token_hash; the old link
+    stops working). Content is unchanged. Returns the new raw token, or None if
+    there is no portal for that email. Use to re-share a link when the original
+    token (stored only as a one-way hash) can't be recovered."""
+    email = (email or "").strip().lower()
+    row = cx.execute("SELECT id FROM client_portals WHERE email=?", (email,)).fetchone()
+    if not row:
+        return None
+    token = secrets.token_urlsafe(32)
+    cx.execute("UPDATE client_portals SET token_hash=?, updated_at=? WHERE id=?",
+               (_hash(token), _now_iso(), row[0]))
+    cx.commit()
+    return token
+
+
 def get_portal_by_token(cx, token: str):
     th = _hash(token)
     row = cx.execute(
