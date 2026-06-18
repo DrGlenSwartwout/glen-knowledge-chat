@@ -7780,6 +7780,39 @@ def admin_client_portal_delete():
     return jsonify({"ok": True, "deleted": {"portals": n1, "reports": n2, "corrections": n3}})
 
 
+@app.route("/admin/portal/reissue-link", methods=["POST"])
+def admin_portal_reissue_link():
+    """Mint a fresh token for an existing portal and return its URL (the original
+    token is stored only as a one-way hash and can't be recovered). The old link
+    stops working. Console-secret gated. Optional send=true emails the new link."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    from dashboard import client_portal as _cp
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        token = _cp.reissue_token(cx, email)
+        rec = _cp.get_portal_content_by_email(cx, email)
+    if not token:
+        return jsonify({"error": "no portal for that email"}), 404
+    url = f"{PUBLIC_BASE_URL}/portal/{token}"
+    emailed = False
+    if body.get("send"):
+        try:
+            name = (rec or {}).get("name") or ""
+            _send_full_report_email(
+                email, name, "Your Healing Oasis portal link",
+                f"Aloha {name or ''},\n\nHere's your personal Healing Oasis portal:\n\n{url}\n\n"
+                f"With aloha,\nDr. Glen & Rae")
+            emailed = True
+        except Exception as e:
+            print(f"[reissue-link] send failed: {e!r}", flush=True)
+    return jsonify({"ok": True, "url": url, "emailed": emailed})
+
+
 # ── Certification work-product portal ───────────────────────────────────────
 # Cert students submit published work here; Glen reviews behind two gates
 # (approve -> publish). Student-facing surface gates behind CERT_PORTAL_ENABLED.

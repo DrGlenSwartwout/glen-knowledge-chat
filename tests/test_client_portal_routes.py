@@ -505,3 +505,20 @@ def test_admin_delete_portal_removes_all_traces(client):
 def test_admin_delete_requires_key(client):
     c, _ = client
     assert c.post("/admin/portal/delete", json={"email": "x@y.com"}).status_code == 401
+
+
+def test_reissue_link_rotates_token(client):
+    c, appmod = client
+    tok = _seed_portal(appmod, "ri@y.com", "RI", {"layers": []})
+    r = c.post("/admin/portal/reissue-link?key=test-secret", json={"email": "ri@y.com"})
+    assert r.status_code == 200
+    newtok = (r.get_json()["url"]).rstrip("/").split("/")[-1]
+    assert newtok and newtok != tok
+    assert c.get(f"/api/portal/{tok}").status_code == 404          # old link dead
+    assert c.get(f"/api/portal/{newtok}").status_code == 200       # new link works
+
+
+def test_reissue_link_404_when_no_portal(client):
+    c, _ = client
+    assert c.post("/admin/portal/reissue-link?key=test-secret",
+                  json={"email": "nobody@y.com"}).status_code == 404
