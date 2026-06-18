@@ -1,4 +1,415 @@
-<!-- static/begin-product.html (stub; Task 4 fills it in) -->
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>begin-product</title></head>
-<body><div id="sp-root" data-slug=""></div></body></html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Product · Dr. Glen Swartwout</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+      --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+      --maxw:760px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1);
+      --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{ background:var(--bg); color:var(--cream); font-family:var(--font);
+      font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased;
+      background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%);
+      background-attachment:fixed; }
+    h1,h2,h3{ font-family:var(--heading); font-weight:600; line-height:1.25; letter-spacing:-0.01em; }
+    a{ color:inherit; text-decoration:none; }
+    .shell{ max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+    .brandbar{ max-width:var(--maxw); margin:0 auto; padding:30px 24px 8px; display:flex; align-items:center; justify-content:center; gap:14px; }
+    .brand-mark{ width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 4px rgba(212,168,67,0.12); }
+    .brand-name{ font-family:var(--heading); font-weight:600; font-size:13px; letter-spacing:0.32em; color:var(--muted); }
+
+    .eyebrow{ font-family:var(--heading); font-weight:600; font-size:12px; letter-spacing:0.34em; color:var(--green); margin-bottom:14px; }
+
+    /* ── Product header ── */
+    .product{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+      padding:28px 28px 26px; margin-top:34px; }
+    .p-name{ font-family:var(--heading); font-weight:700; font-size:clamp(22px,4.6vw,29px); color:var(--cream); line-height:1.25; }
+    .p-price{ display:inline-block; margin-top:14px; font-family:var(--heading); font-weight:600; font-size:14px;
+      letter-spacing:0.04em; color:var(--gold); border:1px solid rgba(212,168,67,0.4); border-radius:999px; padding:5px 16px; }
+
+    /* ── Accordions ── */
+    .sections{ margin-top:24px; }
+    .acc{ border:1px solid var(--border); border-radius:11px; margin-bottom:10px; overflow:hidden; background:var(--surface-2); }
+    .acc-head{ width:100%; display:flex; flex-direction:column; gap:3px; background:transparent; border:none; cursor:pointer;
+      padding:13px 16px; text-align:left; font-family:var(--heading); color:var(--cream); }
+    .acc-toprow{ display:flex; align-items:center; gap:10px; width:100%; }
+    .acc-title{ font-weight:700; font-size:14.5px; }
+    .acc-caret{ margin-left:auto; color:var(--gold); transition:transform .2s var(--ease); font-size:11px; }
+    .acc-teaser{ font-family:var(--font); font-weight:400; font-size:12.5px; color:var(--muted); line-height:1.4; }
+    .acc.open .acc-caret{ transform:rotate(180deg); }
+    .acc.open .acc-teaser{ display:none; }
+    .acc-body{ display:none; padding:4px 16px 16px; }
+    .acc.open .acc-body{ display:block; }
+
+    /* ── Section body styles ── */
+    .sp-text{ font-size:14.5px; color:var(--cream); opacity:0.93; line-height:1.68; }
+    .sp-ingredients{ list-style:none; margin:0; padding:0; }
+    .sp-ingredients li{ font-size:13.5px; color:var(--cream); opacity:0.9; padding:7px 0;
+      border-bottom:1px solid rgba(33,71,45,0.4); line-height:1.5; }
+    .sp-ingredients li:last-child{ border-bottom:none; }
+    .sp-ing-name{ font-weight:600; }
+    .sp-ing-dose{ color:var(--muted); font-size:12.5px; margin-left:6px; }
+    .sp-how{ font-size:14px; color:var(--cream); opacity:0.93; line-height:1.68; white-space:pre-wrap; margin-bottom:14px; }
+    .learn-more{ display:inline-flex; align-items:center; gap:7px; font-family:var(--heading);
+      font-weight:600; font-size:13.5px; color:var(--gold); border:1px solid rgba(212,168,67,0.4);
+      border-radius:999px; padding:9px 18px; transition:border-color .2s var(--ease), background .2s var(--ease); }
+    .learn-more:hover{ border-color:var(--gold); background:rgba(212,168,67,0.08); }
+    .sp-videos{ display:flex; flex-direction:column; gap:12px; }
+    .sp-video-item{ position:relative; width:100%; padding-bottom:56.25%; border-radius:9px; overflow:hidden; background:#000; }
+    .sp-video-item iframe{ position:absolute; inset:0; width:100%; height:100%; border:none; }
+    .sp-video-empty{ font-size:13.5px; color:var(--muted); font-style:italic; }
+
+    /* ── CTA section ── */
+    .sp-cta-wrap{ padding:6px 0 4px; }
+    .cta-btn{ display:inline-block; background:var(--gold); color:#0a150d; font-family:var(--heading);
+      font-weight:700; font-size:15px; letter-spacing:0.03em; padding:14px 34px; border-radius:999px;
+      transition:opacity .25s var(--ease), transform .25s var(--ease); }
+    .cta-btn:hover{ opacity:0.9; transform:translateY(-1px); }
+
+    /* ── Placeholder containers (Tasks 5 + 6 fill) ── */
+    #sp-comparison{ font-size:13px; color:var(--muted); font-style:italic; padding:4px 0; }
+    #sp-images{ min-height:2px; }
+
+    /* ── Utility ── */
+    .loading{ text-align:center; color:var(--muted); padding:48px 18px; font-size:15px; }
+    .notfound{ text-align:center; padding:54px 18px; }
+    .notfound .glyph{ font-size:28px; color:var(--gold); opacity:0.5; }
+    .notfound p{ color:var(--muted); font-size:15px; max-width:420px; margin:12px auto 0; line-height:1.65; }
+    .back{ display:inline-block; margin-top:18px; color:var(--muted); font-size:13px; }
+    .back:hover{ color:var(--gold); }
+    .hidden{ display:none !important; }
+
+    footer{ margin-top:48px; padding:28px 24px 44px; text-align:center; border-top:1px solid rgba(33,71,45,0.5); }
+    .foot-note{ font-size:12.5px; color:var(--muted); opacity:0.7; max-width:540px; margin:0 auto; line-height:1.7; }
+
+    @media(max-width:560px){
+      body{ font-size:16px; }
+      .shell{ padding:0 18px; }
+      .product{ padding:22px 18px 20px; }
+      .cta-btn{ width:100%; text-align:center; display:block; }
+    }
+  </style>
+  <script src="/static/theme-toggle.js"></script>
+</head>
+<body>
+  <div class="brandbar">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;&middot;&nbsp; Healing&nbsp;Oasis</span>
+  </div>
+
+  <section class="shell">
+    <div id="sp-loading" class="loading">Loading&hellip;</div>
+
+    <div id="sp-notfound" class="notfound hidden">
+      <div class="glyph" aria-hidden="true">&#10022;</div>
+      <p>I couldn&rsquo;t find that product. The link may have changed.</p>
+      <div><a class="back" href="/begin">&larr; Back to the beginning</a></div>
+    </div>
+
+    <div id="sp-product" class="product hidden">
+      <p class="eyebrow">Your remedy</p>
+      <h1 class="p-name" id="sp-name"></h1>
+      <span class="p-price" id="sp-price"></span>
+
+      <div id="sp-sections" class="sections"></div>
+    </div>
+
+    <div id="sp-back" class="hidden" style="text-align:center;">
+      <a class="back" href="/begin">&larr; Back to the beginning</a>
+    </div>
+  </section>
+
+  <footer>
+    <p class="foot-note">Shared in the spirit of education and self-understanding. This space offers wellness and
+      educational guidance. It is not a substitute for diagnosis or medical care from your own provider. Individual results will vary.</p>
+    <p class="foot-note">Some recommendations include affiliate links. As an Amazon Associate, Healing Oasis earns from qualifying purchases.</p>
+  </footer>
+
+  <script src="/ref-capture.js"></script>
+  <script>
+    var BASE = window.location.origin;
+    var slug = location.pathname.split('/').filter(Boolean).pop() || '';
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function show(id){ var e = document.getElementById(id); if (e) e.classList.remove('hidden'); }
+    function hide(id){ var e = document.getElementById(id); if (e) e.classList.add('hidden'); }
+    function escHtml(s){
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── Section preference persistence (existing endpoint) ───────────────────
+    var _prefSent = {};
+    function rememberOpen(secId){
+      if (_prefSent[secId]) return;
+      _prefSent[secId] = true;
+      try {
+        fetch(BASE + '/begin/section-pref', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ section: secId })
+        });
+      } catch(e){}
+    }
+
+    // ── Render section bodies (lazy on first open) ────────────────────────────
+    function renderIntroBody(body){
+      var p = document.createElement('p');
+      p.className = 'sp-text';
+      p.textContent = typeof body === 'string' ? body : '';
+      return p;
+    }
+
+    function renderDescriptionBody(body){
+      var p = document.createElement('p');
+      p.className = 'sp-text';
+      p.textContent = typeof body === 'string' ? body : '';
+      return p;
+    }
+
+    function renderVideoBody(body){
+      var videos = (body && Array.isArray(body.videos)) ? body.videos : [];
+      if (!videos.length){
+        var p = document.createElement('p');
+        p.className = 'sp-video-empty';
+        p.textContent = 'No video available yet.';
+        return p;
+      }
+      var wrap = document.createElement('div');
+      wrap.className = 'sp-videos';
+      videos.forEach(function(v){
+        var url = typeof v === 'string' ? v : (v.url || v.src || '');
+        if (!url) return;
+        // Convert YouTube watch URLs to embed
+        var embedUrl = url.replace('watch?v=','embed/').replace('youtu.be/','youtube.com/embed/');
+        var outer = document.createElement('div');
+        outer.className = 'sp-video-item';
+        var iframe = document.createElement('iframe');
+        iframe.src = embedUrl;
+        iframe.setAttribute('allowfullscreen', '');
+        iframe.setAttribute('loading', 'lazy');
+        iframe.setAttribute('title', 'Product video');
+        outer.appendChild(iframe);
+        wrap.appendChild(outer);
+      });
+      return wrap;
+    }
+
+    function renderIngredientsBody(body){
+      var ings = (body && Array.isArray(body.ingredients)) ? body.ingredients : [];
+      if (!ings.length){
+        var p = document.createElement('p');
+        p.className = 'sp-text';
+        p.textContent = 'Ingredient details coming soon.';
+        return p;
+      }
+      var ul = document.createElement('ul');
+      ul.className = 'sp-ingredients';
+      ings.forEach(function(ing){
+        var li = document.createElement('li');
+        if (ing && typeof ing === 'object'){
+          var nm = document.createElement('span');
+          nm.className = 'sp-ing-name';
+          nm.textContent = ing.name || '';
+          li.appendChild(nm);
+          if (ing.dose){
+            var ds = document.createElement('span');
+            ds.className = 'sp-ing-dose';
+            ds.textContent = ing.dose;
+            li.appendChild(ds);
+          }
+        } else {
+          li.textContent = String(ing);
+        }
+        ul.appendChild(li);
+      });
+      return ul;
+    }
+
+    function renderComparisonBody(){
+      // Task 5 fills this container — render minimal placeholder only
+      var wrap = document.createElement('div');
+      var ph = document.createElement('div');
+      ph.id = 'sp-comparison';
+      ph.textContent = 'loading comparison…';
+      wrap.appendChild(ph);
+      return wrap;
+    }
+
+    function renderResearchBody(body){
+      var frag = document.createDocumentFragment();
+      if (body && body.how_it_works){
+        var hw = document.createElement('p');
+        hw.className = 'sp-how';
+        hw.textContent = body.how_it_works;
+        frag.appendChild(hw);
+      }
+      var learnUrl = (body && body.learn_url) ? body.learn_url : ('/begin/learn/' + encodeURIComponent(slug));
+      var link = document.createElement('a');
+      link.href = learnUrl;
+      link.className = 'learn-more';
+      link.textContent = 'The research ↗';
+      frag.appendChild(link);
+      var wrap = document.createElement('div');
+      wrap.appendChild(frag);
+      return wrap;
+    }
+
+    function renderImagesBody(){
+      // Tasks 6 / Phase 4 fill this container — render minimal placeholder only
+      var wrap = document.createElement('div');
+      var ph = document.createElement('div');
+      ph.id = 'sp-images';
+      wrap.appendChild(ph);
+      return wrap;
+    }
+
+    function renderCtaBody(ctaUrl){
+      var wrap = document.createElement('div');
+      wrap.className = 'sp-cta-wrap';
+      var a = document.createElement('a');
+      a.href = ctaUrl || '#';
+      a.className = 'cta-btn';
+      a.textContent = 'Order';
+      wrap.appendChild(a);
+      return wrap;
+    }
+
+    function buildSectionBody(sec, ctaUrl){
+      switch(sec.id){
+        case 'intro':       return renderIntroBody(sec.body);
+        case 'description': return renderDescriptionBody(sec.body);
+        case 'video':       return renderVideoBody(sec.body);
+        case 'ingredients': return renderIngredientsBody(sec.body);
+        case 'comparison':  return renderComparisonBody();
+        case 'research':    return renderResearchBody(sec.body);
+        case 'images':      return renderImagesBody();
+        case 'cta':         return renderCtaBody(ctaUrl);
+        default:
+          var p = document.createElement('p');
+          p.className = 'sp-text';
+          p.textContent = typeof sec.body === 'string' ? sec.body : '';
+          return p;
+      }
+    }
+
+    // ── Build accordion DOM ──────────────────────────────────────────────────
+    function buildAccordion(sec, openSet, ctaUrl){
+      var div = document.createElement('div');
+      div.className = 'acc';
+      div.setAttribute('data-sec', sec.id);
+      div.id = 'sp-acc-' + sec.id;
+
+      var btn = document.createElement('button');
+      btn.className = 'acc-head';
+      btn.type = 'button';
+
+      var toprow = document.createElement('span');
+      toprow.className = 'acc-toprow';
+      var titleSpan = document.createElement('span');
+      titleSpan.className = 'acc-title';
+      titleSpan.textContent = sec.title || sec.id;
+      var caret = document.createElement('span');
+      caret.className = 'acc-caret';
+      caret.setAttribute('aria-hidden', 'true');
+      caret.innerHTML = '&#9662;';
+      toprow.appendChild(titleSpan);
+      toprow.appendChild(caret);
+      btn.appendChild(toprow);
+
+      if (sec.id !== 'intro' && sec.id !== 'cta'){
+        var teaser = document.createElement('span');
+        teaser.className = 'acc-teaser';
+        // Teaser text per section
+        switch(sec.id){
+          case 'description': teaser.textContent = 'Overview of what this does'; break;
+          case 'video':       teaser.textContent = 'Watch how it works'; break;
+          case 'ingredients': teaser.textContent = 'Full ingredient list'; break;
+          case 'comparison':  teaser.textContent = 'See how it stacks up'; break;
+          case 'research':    teaser.textContent = 'Studies behind the key ingredients'; break;
+          case 'images':      teaser.textContent = 'Product photos'; break;
+          default:            teaser.textContent = ''; break;
+        }
+        btn.appendChild(teaser);
+      }
+
+      var bodyDiv = document.createElement('div');
+      bodyDiv.className = 'acc-body';
+
+      var _rendered = false;
+
+      function ensureRendered(){
+        if (_rendered) return;
+        _rendered = true;
+        bodyDiv.appendChild(buildSectionBody(sec, ctaUrl));
+      }
+
+      // Open state: intro always open, others from openSet
+      var shouldOpen = sec.default_open || openSet.indexOf(sec.id) >= 0;
+      if (shouldOpen){
+        div.classList.add('open');
+        ensureRendered();
+      }
+
+      btn.addEventListener('click', function(){
+        var willOpen = !div.classList.contains('open');
+        div.classList.toggle('open');
+        if (willOpen){
+          ensureRendered();
+          rememberOpen(sec.id);
+        }
+      });
+
+      div.appendChild(btn);
+      div.appendChild(bodyDiv);
+      return div;
+    }
+
+    // ── Render product ────────────────────────────────────────────────────────
+    function renderProduct(data){
+      document.getElementById('sp-name').textContent = data.name || 'Your remedy';
+      document.title = (data.name || 'Product') + ' · Dr. Glen Swartwout';
+      if (data.price){
+        document.getElementById('sp-price').textContent = data.price;
+      } else {
+        hide('sp-price');
+      }
+
+      var openSet = Array.isArray(data.open_sections) ? data.open_sections : [];
+      var ctaUrl = data.cta_url || ('/begin/buy/' + encodeURIComponent(slug));
+      var container = document.getElementById('sp-sections');
+
+      (data.sections || []).forEach(function(sec){
+        container.appendChild(buildAccordion(sec, openSet, ctaUrl));
+      });
+
+      show('sp-product');
+      show('sp-back');
+    }
+
+    // ── Fetch and boot ────────────────────────────────────────────────────────
+    fetch(BASE + '/begin/product-page-data/' + encodeURIComponent(slug), { credentials: 'same-origin' })
+      .then(function(resp){
+        hide('sp-loading');
+        if (resp.status === 404){ show('sp-notfound'); return null; }
+        if (!resp.ok){ show('sp-notfound'); return null; }
+        return resp.json();
+      })
+      .then(function(data){
+        if (!data) return;
+        renderProduct(data);
+      })
+      .catch(function(){
+        hide('sp-loading');
+        show('sp-notfound');
+      });
+  </script>
+</body>
+</html>

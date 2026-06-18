@@ -54,3 +54,16 @@ def test_product_page_data_shape(client):
     assert "Packaging" in rows and "Microplastic exposure" in rows
     assert "stearates" in data["comparison"]["excipient_callout"].lower()
     assert len(data["comparison"]["columns"]) == 3  # ours + 2 anonymized archetypes
+
+def test_section_pref_accepts_new_section_ids(client):
+    """POST /begin/section-pref must accept the new sales-page section ids."""
+    appmod = client[1]
+    c = appmod.app.test_client()
+    c.set_cookie("amg_session", "testsession123")
+    for sec in ("comparison", "description", "video", "images"):
+        r = c.post("/begin/section-pref",
+                   json={"section": sec},
+                   headers={"Content-Type": "application/json"})
+        assert r.status_code == 200, f"section '{sec}' should return 200, got {r.status_code}"
+        data = r.get_json()
+        assert data and data.get("ok"), f"section '{sec}' should return ok=true"

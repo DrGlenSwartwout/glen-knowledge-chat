@@ -2725,7 +2725,7 @@ with sqlite3.connect(LOG_DB) as _cx:
     _cx.execute("""CREATE TABLE IF NOT EXISTS section_prefs (
         session_id TEXT PRIMARY KEY, email TEXT, opened TEXT, updated_at TEXT)""")
     _cx.execute("CREATE INDEX IF NOT EXISTS idx_section_prefs_email ON section_prefs(email)")
-_SECTIONS = ("ingredients", "how", "research")
+_SECTIONS = ("ingredients", "how", "research", "description", "video", "comparison", "images")
 
 
 def _read_open_sections(session_id, email=""):
