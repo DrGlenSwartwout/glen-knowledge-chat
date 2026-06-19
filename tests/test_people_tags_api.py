@@ -103,3 +103,17 @@ def test_endpoint_400_malformed(client, db_path):
         headers={"X-Console-Key": "testkey"},
     )
     assert r.status_code == 400
+
+
+def test_tags_list_requires_key(client, db_path):
+    _seed(db_path, "a@b.com", ["type:client"])
+    r = client.get("/api/people/tags")
+    assert r.status_code == 401
+
+
+def test_tags_list_returns_sorted_distinct(client, db_path):
+    _seed(db_path, "a@b.com", ["type:client", "OD"])
+    _seed(db_path, "b@b.com", ["type:client", "tier:pro-influencer"])
+    r = client.get("/api/people/tags", headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    assert r.get_json()["tags"] == ["OD", "tier:pro-influencer", "type:client"]
