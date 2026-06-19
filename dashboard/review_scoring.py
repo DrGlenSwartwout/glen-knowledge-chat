@@ -89,3 +89,36 @@ def score_video(client, product, transcript, *, strip=lambda s: s):
         }
     except Exception as e:  # noqa: BLE001
         return _safe_video_default(f"scoring error: {e}")
+
+
+def build_gift_prompt(review_text, product, order_history, catalog):
+    name = (product or {}).get("name", "")
+    items = "\n".join(f"- {g['sku']}: {g.get('label','')} ({g.get('description','')})" for g in catalog)
+    hist = ", ".join(order_history or []) or "(none)"
+    system = ("You pick a thank-you gift for a customer who left an excellent video review of "
+              "Dr. Glen Swartwout's supplements. Choose ONE gift from the catalog that best fits this "
+              "person. Return ONLY a JSON object: {\"sku\": <one catalog sku>, \"reason\": <short why>}.")
+    user = (f"Reviewed product: {name}\nTheir recent orders: {hist}\n\nReview:\n{review_text or '(none)'}\n\n"
+            f"Gift catalog:\n{items}\n\nReturn only the JSON object.")
+    return system, user
+
+
+def suggest_gift(client, review_text, product, order_history, catalog, *, strip=lambda s: s):
+    if not catalog:
+        return None
+    valid = {g["sku"] for g in catalog}
+    system, user = build_gift_prompt(review_text, product, order_history, catalog)
+    try:
+        msg = client.messages.create(model=_MODEL, max_tokens=200, system=system,
+                                      messages=[{"role": "user", "content": user}])
+        text = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text").strip()
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end < 0:
+            return None
+        data = json.loads(text[start:end + 1])
+        sku = data.get("sku")
+        if sku not in valid:
+            return None
+        return {"sku": sku, "reason": strip(str(data.get("reason", "")))[:300]}
+    except Exception:  # noqa: BLE001
+        return None

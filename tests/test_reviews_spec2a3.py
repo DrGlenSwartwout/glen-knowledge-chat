@@ -52,3 +52,60 @@ def test_suggested_queue():
     rg.set_status(cx, a, "approved")
     q = rg.suggested_queue(cx)
     assert [g["review_id"] for g in q] == [2]                        # only still-suggested
+
+
+from dashboard import review_scoring as rs
+
+
+class _Blk:
+    def __init__(self, t): self.type = "text"; self.text = t
+
+
+class _Msg:
+    def __init__(self, t): self.content = [_Blk(t)]
+
+
+class _FakeClient:
+    def __init__(self, payload): self._p = payload
+    @property
+    def messages(self):
+        outer = self
+        class _M:
+            def create(self, **kw): return _Msg(outer._p)
+        return _M()
+
+
+_CAT = [{"sku": "gift-tuningfork", "label": "Tuning fork", "description": "sound/energy"},
+        {"sku": "gift-nightlight", "label": "Red nightlight", "description": "sleep"}]
+
+
+def test_build_gift_prompt_includes_catalog_and_history():
+    system, user = rs.build_gift_prompt("loved it, sleep better", {"name": "Longevity"},
+                                        ["Magnesium", "Neuro"], _CAT)
+    assert "gift-tuningfork" in user and "Longevity" in user and "Magnesium" in user
+
+
+def test_suggest_gift_returns_valid_sku():
+    c = _FakeClient('{"sku": "gift-nightlight", "reason": "they mentioned sleep"}')
+    out = rs.suggest_gift(c, "sleep better", {"name": "X"}, [], _CAT)
+    assert out == {"sku": "gift-nightlight", "reason": "they mentioned sleep"}
+
+
+def test_suggest_gift_none_on_invalid_sku():
+    c = _FakeClient('{"sku": "gift-nope", "reason": "x"}')
+    assert rs.suggest_gift(c, "t", {"name": "X"}, [], _CAT) is None
+
+
+def test_suggest_gift_none_on_empty_catalog():
+    c = _FakeClient('{"sku": "gift-nightlight", "reason": "x"}')
+    assert rs.suggest_gift(c, "t", {"name": "X"}, [], []) is None
+
+
+def test_suggest_gift_none_on_bad_json():
+    assert rs.suggest_gift(_FakeClient("not json"), "t", {"name": "X"}, [], _CAT) is None
+
+
+def test_suggest_gift_strips_dashes():
+    c = _FakeClient('{"sku": "gift-tuningfork", "reason": "good — fit"}')
+    out = rs.suggest_gift(c, "t", {"name": "X"}, [], _CAT, strip=lambda s: s.replace("—", ","))
+    assert "—" not in out["reason"]
