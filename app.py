@@ -2315,6 +2315,16 @@ _REVIEWS_ENABLED = os.environ.get("REVIEWS_ENABLED", "").strip().lower() in ("1"
 _REVIEWS_VIDEO = os.environ.get("REVIEWS_VIDEO", "").strip().lower() in ("1", "true", "yes")
 _REVIEWS_VIDEO_TRIM = os.environ.get("REVIEWS_VIDEO_TRIM", "").strip().lower() in ("1", "true", "yes")
 _REVIEWS_GIFTS = os.environ.get("REVIEWS_GIFTS", "").strip().lower() in ("1", "true", "yes")
+_REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "yes")
+
+
+def _referral_pct():
+    try:
+        return int(os.environ.get("REFERRAL_PCT", "10"))
+    except (TypeError, ValueError):
+        return 10
+
+
 _REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
 _REVIEW_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".m4v")
 _REVIEW_VIDEO_MAX_BYTES = 100 * 1024 * 1024
@@ -7654,6 +7664,41 @@ def _shipping_line(shipping_cents):
 def _active_coupon_pct():
     """Return the daily coupon discount_percent if a coupon is active today, else None."""
     return _COUPONS.get("_discount_percent", 0) if get_today_coupon_code() else None
+
+
+def _resolve_checkout_coupon_pct(referral_code, referee_email):
+    """Return (effective_coupon_pct, referral_ctx|None). A valid referral code yields
+    max(referral_pct, daily); otherwise the daily coupon with no referral context."""
+    daily = _active_coupon_pct()
+    code = (referral_code or "").strip()
+    if not _REFERRALS or not code or not (referee_email or "").strip():
+        return daily, None
+    try:
+        from dashboard import referrals as _rf
+        with sqlite3.connect(LOG_DB) as cx:
+            res = _rf.resolve(cx, code, referee_email, pct=_referral_pct())
+        if not res:
+            return daily, None
+        eff = max(res["coupon_pct"], daily or 0)
+        return eff, {"code": code, "owner_email": res["owner_email"]}
+    except Exception as e:  # noqa: BLE001 - referral never blocks checkout
+        print(f"[referrals] resolve failed: {e}", flush=True)
+        return daily, None
+
+
+@app.route("/api/referral/my-code", methods=["GET"])
+def api_referral_my_code():
+    if not _REFERRALS:
+        return ("", 404)
+    au = get_authenticated_user(request) or {}
+    email = (au.get("email") or _reorder_email_from_cookie() or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "no email"}), 400
+    from dashboard import referrals as _rf
+    with sqlite3.connect(LOG_DB) as cx:
+        code = _rf.get_or_create_code(cx, email)
+    return jsonify({"ok": True, "code": code,
+                    "share_text": f"Use my code {code} for 10% off at illtowell.com"})
 
 
 def _stripe_checkout_url_for_reorder(out, email):

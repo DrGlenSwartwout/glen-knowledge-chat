@@ -37,3 +37,56 @@ def test_one_redemption_per_referee_ever():
     # a second redemption by the same referee is a no-op insert, and resolve now blocks
     assert rf.record_redemption(cx, code, "owner@x.com", "friend@x.com", "INV-2") is False
     assert rf.resolve(cx, code, "friend@x.com", pct=10) is None
+
+
+import importlib
+
+
+def _reload_ref_app(monkeypatch, tmp_path, referrals="true"):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("REFERRALS", referrals)
+    monkeypatch.setenv("REFERRAL_PCT", "10")
+    import app as appmod
+    importlib.reload(appmod)
+    return appmod
+
+
+def test_resolve_checkout_coupon_pct(monkeypatch, tmp_path):
+    appmod = _reload_ref_app(monkeypatch, tmp_path)
+    monkeypatch.setattr(appmod, "_active_coupon_pct", lambda: None)
+    import sqlite3
+    from dashboard import referrals as rf
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        code = rf.get_or_create_code(cx, "owner@x.com")
+    # valid referee -> referral pct + ctx
+    pct, ctx = appmod._resolve_checkout_coupon_pct(code, "friend@x.com")
+    assert pct == 10 and ctx == {"code": code, "owner_email": "owner@x.com"}
+    # self-referral -> falls back to daily (None here), no ctx
+    pct, ctx = appmod._resolve_checkout_coupon_pct(code, "owner@x.com")
+    assert pct is None and ctx is None
+    # daily coupon beats a smaller referral -> max wins
+    monkeypatch.setattr(appmod, "_active_coupon_pct", lambda: 15)
+    pct, ctx = appmod._resolve_checkout_coupon_pct(code, "friend@x.com")
+    assert pct == 15 and ctx == {"code": code, "owner_email": "owner@x.com"}
+
+
+def test_resolve_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_ref_app(monkeypatch, tmp_path, referrals="false")
+    monkeypatch.setattr(appmod, "_active_coupon_pct", lambda: 5)
+    pct, ctx = appmod._resolve_checkout_coupon_pct("ANYCODE", "friend@x.com")
+    assert pct == 5 and ctx is None          # referral ignored when flag off
+
+
+def test_my_code_endpoint(monkeypatch, tmp_path):
+    appmod = _reload_ref_app(monkeypatch, tmp_path)
+    c = appmod.app.test_client()
+    c.set_cookie("rm_reorder_email", "owner@x.com")     # _reorder_email_from_cookie source
+    r1 = c.get("/api/referral/my-code").get_json()
+    r2 = c.get("/api/referral/my-code").get_json()
+    assert r1["code"] and r1["code"] == r2["code"]       # stable
+
+
+def test_my_code_404_when_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_ref_app(monkeypatch, tmp_path, referrals="false")
+    c = appmod.app.test_client(); c.set_cookie("rm_reorder_email", "owner@x.com")
+    assert c.get("/api/referral/my-code").status_code == 404
