@@ -156,3 +156,25 @@ def test_full_phase2_file_and_flag_default(monkeypatch, tmp_path):
     assert appmod._SALES_AI_COPY_ENABLED is False
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     assert appmod.app.test_client().get(f"/begin/product-page-gen/{slug}/intro").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Task 4 (Finding 1): em-dash strip applied to streamed + persisted text
+# ---------------------------------------------------------------------------
+
+def test_gen_strips_em_dash_from_streamed_and_persisted(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    monkeypatch.setattr(appmod, "_product_card", lambda p: {"ingredients": []})
+    # Model emits a token with an em dash
+    monkeypatch.setattr(appmod, "_cl", _FakeCl(["Calm — focused."]))
+    body = _frames(appmod.app.test_client().get(f"/begin/product-page-gen/{slug}/intro"))
+    # Streamed SSE body must not contain an em dash
+    assert "—" not in body, "Em dash found in streamed SSE body"
+    # Persisted text must not contain an em dash
+    import sqlite3
+    from dashboard import sales_pages as sp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        persisted = sp.get_section(cx, slug, "intro")
+    assert persisted is not None, "Nothing was persisted"
+    assert "—" not in persisted, "Em dash found in persisted section text"

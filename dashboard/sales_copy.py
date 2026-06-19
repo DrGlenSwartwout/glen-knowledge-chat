@@ -4,7 +4,7 @@ COMPLIANCE = (
     "Use structure/function language only (supports, promotes, helps maintain). "
     "Do NOT claim to diagnose, treat, cure, or prevent any disease. Make no medical "
     "claims and cite no invented studies. This is educational and not a substitute for "
-    "medical advice."
+    "medical advice. Do not use em dashes; use commas."
 )
 
 SECTION_BRIEFS = {

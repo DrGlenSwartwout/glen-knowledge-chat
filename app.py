@@ -2917,8 +2917,12 @@ def begin_product_page_gen(slug, section):
         import sqlite3 as _sq
         from dashboard import sales_pages as _sp
         try:
-            with _sq.connect(LOG_DB) as cx:
-                cached = _sp.get_section(cx, slug, section)
+            try:
+                with _sq.connect(LOG_DB) as cx:
+                    cached = _sp.get_section(cx, slug, section)
+            except Exception as _dbe:
+                print(f"[sales-gen] cache read failed (degrading to generate): {_dbe}", flush=True)
+                cached = None
             if cached:
                 yield sse({"token": cached})
                 yield sse({"done": True, "cached": True})
@@ -2935,6 +2939,7 @@ def begin_product_page_gen(slug, section):
                 messages=[{"role": "user", "content": user}],
             ) as stream:
                 for tok in stream.text_stream:
+                    tok = _strip_dash(tok)
                     acc.append(tok)
                     yield sse({"token": tok})
             text = "".join(acc).strip()
