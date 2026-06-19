@@ -16,3 +16,4 @@ beautifulsoup4
 numpy
 scikit-learn
 boto3
+imageio-ffmpeg

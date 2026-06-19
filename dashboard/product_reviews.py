@@ -17,7 +17,7 @@ def init_table(cx):
         "reviewed_at TEXT, reviewed_by TEXT, UNIQUE(product_slug, email))")
     for _col in ("video_points INTEGER DEFAULT 0", "transcript TEXT DEFAULT ''",
                  "video_status TEXT DEFAULT ''", "publish_risk INTEGER DEFAULT 0",
-                 "video_verdict TEXT DEFAULT ''"):
+                 "video_verdict TEXT DEFAULT ''", "video_orig_ref TEXT DEFAULT ''"):
         try:
             cx.execute(f"ALTER TABLE product_reviews ADD COLUMN {_col}")
         except sqlite3.OperationalError:
@@ -132,3 +132,16 @@ def has_successful_video(cx, email):
     return cx.execute(
         "SELECT 1 FROM product_reviews WHERE email=? AND video_points>0 AND status='approved' LIMIT 1",
         (e,)).fetchone() is not None
+
+
+def set_trimmed(cx, review_id, trimmed_ref):
+    init_table(cx)
+    cur = cx.cursor(); cur.row_factory = sqlite3.Row
+    row = cur.execute("SELECT video_ref, video_orig_ref FROM product_reviews WHERE id=?",
+                      (review_id,)).fetchone()
+    if not row:
+        return
+    orig = row["video_orig_ref"] or row["video_ref"] or ""
+    cx.execute("UPDATE product_reviews SET video_ref=?, video_orig_ref=? WHERE id=?",
+               (trimmed_ref, orig, review_id))
+    cx.commit()
