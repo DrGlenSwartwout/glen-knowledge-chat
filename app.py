@@ -2298,6 +2298,7 @@ _PRODUCTS = _load_json(DATA_DIR / "products.json",
 _QBO_PAYMENTS_ACTIVE = os.environ.get("QBO_PAYMENTS_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 _SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").strip().lower() in ("1", "true", "yes")
+_SALES_AI_COPY_ENABLED = os.environ.get("SALES_PAGES_AI_COPY", "").strip().lower() in ("1", "true", "yes")
 # Shown to the customer when Stripe was active but no checkout URL came back
 # (create_checkout_session failed) — so the Pay button surfaces a clear message
 # instead of silently no-opping. _alert_stripe() already notifies Glen.
@@ -2873,6 +2874,25 @@ def begin_product_page_data(slug):
         {"id": "images",      "title": "Help shape this", "default_open": False, "body": {"images": p.get("page_images", [])}},
         {"id": "cta",         "title": "Order",           "default_open": False, "body": {}},
     ]
+    if _SALES_AI_COPY_ENABLED:
+        import sqlite3 as _sq
+        from dashboard import sales_pages as _sp
+        try:
+            with _sq.connect(LOG_DB) as _cx:
+                for _s in sections:
+                    if _s["id"] not in ("intro", "description", "research"):
+                        continue
+                    _draft = _sp.get_section(_cx, slug, _s["id"])
+                    if _draft:
+                        _s["ai"] = "cached"
+                        if _s["id"] == "research" and isinstance(_s["body"], dict):
+                            _s["body"]["how_it_works"] = _draft
+                        else:
+                            _s["body"] = _draft
+                    else:
+                        _s["ai"] = "pending"
+        except Exception as _e:
+            print(f"[sales-ai] page-data marker skipped: {_e}", flush=True)
     return jsonify({
         "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
         "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
@@ -2881,6 +2901,63 @@ def begin_product_page_data(slug):
         "open_sections": _read_open_sections(request.cookies.get("amg_session", ""),
                                              (get_authenticated_user(request) or {}).get("email", "")),
     })
+
+
+@app.route("/begin/product-page-gen/<slug>/<section>")
+def begin_product_page_gen(slug, section):
+    """SSE endpoint: stream (or serve cached) AI-generated copy for one narrative section."""
+    from dashboard import sales_copy as _sc
+    if not _SALES_AI_COPY_ENABLED or section not in _sc.NARRATIVE_SECTIONS:
+        return ("", 404)
+    p = _get_product(slug)
+    if not p:
+        return ("", 404)
+
+    def generate():
+        import sqlite3 as _sq
+        from dashboard import sales_pages as _sp
+        try:
+            try:
+                with _sq.connect(LOG_DB) as cx:
+                    cached = _sp.get_section(cx, slug, section)
+            except Exception as _dbe:
+                print(f"[sales-gen] cache read failed (degrading to generate): {_dbe}", flush=True)
+                cached = None
+            if cached:
+                yield sse({"token": cached})
+                yield sse({"done": True, "cached": True})
+                return
+            prod = dict(p)
+            if not prod.get("ingredients"):
+                prod["ingredients"] = (_product_card(p) or {}).get("ingredients", [])
+            system, user = _sc.build_section_prompt(section, prod)
+            acc = []
+            with _cl.messages.stream(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=600,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            ) as stream:
+                for tok in stream.text_stream:
+                    tok = _strip_dash(tok)
+                    acc.append(tok)
+                    yield sse({"token": tok})
+            text = "".join(acc).strip()
+            if text:
+                try:
+                    with _sq.connect(LOG_DB) as cx:
+                        _sp.upsert_section(cx, slug, section, text, model="claude-haiku-4-5-20251001")
+                except Exception as e:
+                    print(f"[sales-gen] cache write failed: {e}", flush=True)
+            yield sse({"done": True})
+        except Exception as e:
+            print(f"[sales-gen] {e}", flush=True)
+            yield sse({"error": True})
+
+    resp = Response(stream_with_context(generate()), content_type="text/event-stream")
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["X-Accel-Buffering"] = "no"
+    return resp
 
 
 @app.route("/begin/learn/<slug>")
