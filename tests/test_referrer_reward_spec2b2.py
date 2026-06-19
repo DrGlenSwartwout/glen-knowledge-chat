@@ -117,3 +117,77 @@ def test_mark_rewarded_overwrites_on_retry():
         ("friend@x.com",)
     ).fetchone()
     assert row[0] == 200
+
+
+# ---------------------------------------------------------------------------
+# Task 2: _referrer_reward_pct + _settle_referrer_reward
+# ---------------------------------------------------------------------------
+
+import importlib
+
+
+def _reload_reward_app(monkeypatch, tmp_path, pct="10", referrals="true"):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("REFERRALS", referrals)
+    monkeypatch.setenv("REFERRER_REWARD_PCT", pct)
+    import app as appmod
+    importlib.reload(appmod)
+    return appmod
+
+
+def _seed_redemption(appmod, order_ref="INV-1", owner="owner@x.com", referee="friend@x.com"):
+    import sqlite3
+    from dashboard import referrals as rf
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rf.record_redemption(cx, "CODE1", owner, referee, order_ref)
+
+
+def _order(order_ref="INV-1", referee="friend@x.com", total=7000, shipping=1300, get=0):
+    return {"email": referee, "total_cents": total, "shipping_cents": shipping, "get_cents": get}
+
+
+def test_settle_referrer_reward_credits_pct(monkeypatch, tmp_path):
+    appmod = _reload_reward_app(monkeypatch, tmp_path, pct="10")
+    _seed_redemption(appmod)
+    import sqlite3
+    from dashboard import points, referrals as rf
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        credited = appmod._settle_referrer_reward(cx, _order(), "INV-1")
+    # product spend = 7000 - 1300 - 0 = 5700; 10% = 570
+    assert credited == 570
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert points.balance(cx, "owner@x.com") == 570
+        assert rf.redemption_by_order_ref(cx, "INV-1")["rewarded_at"]
+    # idempotent: a second settle credits nothing more
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert appmod._settle_referrer_reward(cx, _order(), "INV-1") == 0
+        assert points.balance(cx, "owner@x.com") == 570
+
+
+def test_no_reward_when_pct_zero(monkeypatch, tmp_path):
+    appmod = _reload_reward_app(monkeypatch, tmp_path, pct="0")
+    _seed_redemption(appmod)
+    import sqlite3
+    from dashboard import points
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert appmod._settle_referrer_reward(cx, _order(), "INV-1") == 0
+        assert points.balance(cx, "owner@x.com") == 0
+
+
+def test_no_reward_without_redemption(monkeypatch, tmp_path):
+    appmod = _reload_reward_app(monkeypatch, tmp_path, pct="10")
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert appmod._settle_referrer_reward(cx, _order(order_ref="OTHER"), "OTHER") == 0
+
+
+def test_zero_product_cents_stamps_no_credit(monkeypatch, tmp_path):
+    appmod = _reload_reward_app(monkeypatch, tmp_path, pct="10")
+    _seed_redemption(appmod)
+    import sqlite3
+    from dashboard import points, referrals as rf
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        # all shipping -> product_cents 0
+        credited = appmod._settle_referrer_reward(cx, _order(total=1300, shipping=1300), "INV-1")
+        assert credited == 0 and points.balance(cx, "owner@x.com") == 0
+        assert rf.redemption_by_order_ref(cx, "INV-1")["rewarded_at"]   # stamped, won't retry

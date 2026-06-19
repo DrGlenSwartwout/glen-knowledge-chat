@@ -2326,6 +2326,13 @@ def _referral_pct():
         return 10
 
 
+def _referrer_reward_pct():
+    try:
+        return max(0, int(os.environ.get("REFERRER_REWARD_PCT", "0")))
+    except (TypeError, ValueError):
+        return 0
+
+
 _REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
 _REVIEW_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".m4v")
 _REVIEW_VIDEO_MAX_BYTES = 100 * 1024 * 1024
@@ -2670,6 +2677,30 @@ def _maybe_raise_cashout_review(cx, slug: str, mode: str) -> None:
         print(f"[rewards] _maybe_raise_cashout_review failed slug={slug}: {_e!r}", flush=True)
 
 
+def _settle_referrer_reward(cx, order, order_ref):
+    """On a paid referral order: credit the referrer pct% of the referee's product spend.
+    Returns cents credited (0 if none). Idempotent per referee; never raises into the caller."""
+    if not _REFERRALS:
+        return 0
+    from dashboard import referrals as _rf, points as _points
+    _points.init_points_table(cx)
+    pct = _referrer_reward_pct()
+    if pct <= 0:
+        return 0
+    red = _rf.redemption_by_order_ref(cx, order_ref)
+    if not red or (red.get("rewarded_at") or "") or not (red.get("owner_email") or "").strip():
+        return 0
+    product_cents = max(0, int(order.get("total_cents") or 0)
+                        - int(order.get("shipping_cents") or 0)
+                        - int(order.get("get_cents") or 0))
+    reward = product_cents * pct // 100
+    if reward > 0:
+        _points.credit(cx, red["owner_email"], value_cents=reward, reason="referral_reward",
+                       order_ref=f"referral:{red['referee_email']}")
+    _rf.mark_rewarded(cx, red["referee_email"], reward_cents=reward)
+    return reward
+
+
 def _settle_order_points(order, *, order_ref):
     """On a PAID order: deduct redeemed points, and earn 5% if it was a full-price order.
     Idempotent per order_ref. Best-effort -- never raises into the return handler.
@@ -2727,6 +2758,11 @@ def _settle_order_points(order, *, order_ref):
                                    reason="image_pick", order_ref=f"imgpick_{_islug}")
         except Exception as _ipe:
             print(f"[img-pick] credit skipped: {_ipe!r}", flush=True)
+        # ── 2b-2: referrer reward (pct of referee's product spend on a paid referral order) ──
+        try:
+            _settle_referrer_reward(cx, order, order_ref)
+        except Exception as _rre:
+            print(f"[referrals] referrer reward skipped: {_rre!r}", flush=True)
 
 
 # Generated/cached product content (ingredients + benefits + learn-more research).
