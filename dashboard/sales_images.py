@@ -54,3 +54,14 @@ def display_images(cx, slug):
         if img["kind"] in out and out[img["kind"]] is None:
             out[img["kind"]] = img["filename"]
     return out
+
+def list_image_slugs(cx):
+    init_tables(cx)
+    return [r[0] for r in cx.execute(
+        "SELECT DISTINCT product_slug FROM sales_page_images WHERE state='ready'").fetchall()]
+
+def next_variant(cx, slug, kind):
+    init_tables(cx)
+    r = cx.execute("SELECT MAX(variant) FROM sales_page_images WHERE product_slug=? AND kind=?",
+                   (slug, kind)).fetchone()
+    return (r[0] or 0) + 1

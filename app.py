@@ -2302,6 +2302,11 @@ _SALES_AI_COPY_ENABLED = os.environ.get("SALES_PAGES_AI_COPY", "").strip().lower
 _SALES_AI_IMAGES_ENABLED = os.environ.get("SALES_PAGES_AI_IMAGES", "").strip().lower() in ("1", "true", "yes")
 _SALES_IMAGE_PICK_ENABLED = os.environ.get("SALES_PAGES_IMAGE_PICK", "").strip().lower() in ("1", "true", "yes")
 _IMAGE_PICK_REWARD_CENTS = int(os.environ.get("IMAGE_PICK_REWARD_CENTS", "100"))
+_SALES_IMAGE_TOURNAMENT_ENABLED = os.environ.get("SALES_PAGES_IMAGE_TOURNAMENT", "").strip().lower() in ("1", "true", "yes")
+_TOURNEY_MIN_VOTES = int(os.environ.get("IMAGE_TOURNAMENT_MIN_VOTES", "10"))
+_TOURNEY_MARGIN = float(os.environ.get("IMAGE_TOURNAMENT_MARGIN", "0.65"))
+_TOURNEY_K = int(os.environ.get("IMAGE_TOURNAMENT_CONVERGE_K", "3"))
+_TOURNEY_CADENCE_DAYS = int(os.environ.get("IMAGE_TOURNAMENT_CADENCE_DAYS", "3"))
 # Shown to the customer when Stripe was active but no checkout URL came back
 # (create_checkout_session failed) — so the Pay button surfaces a clear message
 # instead of silently no-opping. _alert_stripe() already notifies Glen.
@@ -2948,6 +2953,21 @@ def begin_product_page_data(slug):
                          for im in sorted(_by_kind.get(_k, []), key=lambda x: x["variant"])]
                 if len(_opts) >= 2:
                     _pick[_k] = {"chosen": _picks.get(_k) if (_picks.get(_k) or 0) >= 1 else None, "options": _opts}
+            # Phase 4b: restrict the pick options to the active champion/challenger pair
+            if _SALES_IMAGE_TOURNAMENT_ENABLED:
+                from dashboard import sales_image_pairs as _sp4b
+                with _sq3.connect(LOG_DB) as _cxp:
+                    for _k in _sip3.IMAGE_KINDS:
+                        _vs = [im["variant"] for im in _all if im["kind"] == _k]
+                        _pr = _sp4b.ensure_pair(_cxp, slug, _k, _vs)
+                        if not _pr:
+                            continue
+                        if _pr["converged"]:
+                            _pick.pop(_k, None)          # converged -> no picking; champion shows as hero
+                            continue
+                        if _k in _pick:
+                            _active = {_pr["champion_variant"], _pr["challenger_variant"]}
+                            _pick[_k]["options"] = [o for o in _pick[_k]["options"] if o["variant"] in _active]
             if _pick:
                 _img_sec3 = next((s for s in sections if s["id"] == "images"), None)
                 if _img_sec3 is not None and isinstance(_img_sec3["body"], dict):
@@ -15245,6 +15265,100 @@ def _drain_sales_image_queue():
             (_si.mark_done if ok else _si.mark_failed)(cx, slug)
 
 
+def _render_challenger(slug, kind, product):
+    """Render ONE new image variant for the tournament challenger slot.
+
+    Called from the Task-4 tournament evaluator (scheduler job).  Mirrors the
+    per-variant inner loop of _drain_sales_image_queue but for a single slug/kind.
+
+    Returns the new variant number on success, or None on any failure (best-effort).
+    """
+    from dashboard import sales_images as _si, sales_image_prompts as _sip, replicate_client as _rc
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            variant = _si.next_variant(cx, slug, kind)
+        prompt = _sip.build_one_prompt(kind, variant)
+        data = _rc.generate_image(prompt)
+        dest = _SALES_IMG_DIR / slug
+        dest.mkdir(parents=True, exist_ok=True)
+        fname = f"{kind}-{variant}.png"
+        (dest / fname).write_bytes(data)
+        with sqlite3.connect(LOG_DB) as cx:
+            _si.record_image(cx, slug, kind, variant, fname)
+        return variant
+    except Exception as e:
+        print(f"[tournament] challenger render {slug} {kind} failed: {e}", flush=True)
+        return None
+
+
+def _tourney_cadence_ok(last_render_at):
+    """Return True if enough time has elapsed since last_render_at (or it is empty)."""
+    if not last_render_at:
+        return True
+    try:
+        import datetime as _dt
+        t = _dt.datetime.fromisoformat(last_render_at)
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=_dt.timezone.utc)
+        return (_dt.datetime.now(_dt.timezone.utc) - t).total_seconds() >= _TOURNEY_CADENCE_DAYS * 86400
+    except Exception:
+        return True
+
+
+def _run_image_tournament():
+    """Scheduler job: per product×kind, evaluate head-to-head votes and advance the tournament."""
+    if not _SALES_IMAGE_TOURNAMENT_ENABLED:
+        return
+    from dashboard import sales_images as _si, sales_votes as _sv, sales_image_pairs as _sp, sales_image_prompts as _sip
+    import datetime as _dt
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            slugs = _si.list_image_slugs(cx)
+    except Exception as e:
+        print(f"[tournament] slug read failed: {e}", flush=True)
+        return
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    for slug in slugs:
+        p = _get_product(slug)
+        if not p:
+            continue
+        for kind in _sip.IMAGE_KINDS:
+            try:
+                with sqlite3.connect(LOG_DB) as cx:
+                    variants = [im["variant"] for im in _si.get_images(cx, slug) if im["kind"] == kind]
+                    pair = _sp.ensure_pair(cx, slug, kind, variants)
+                if not pair or pair["converged"]:
+                    continue
+                champ, chall = pair["champion_variant"], pair["challenger_variant"]
+                with sqlite3.connect(LOG_DB) as cx:
+                    a, b = _sv.pair_counts(cx, slug, kind, champ, chall, since=pair["last_render_at"])
+                total = a + b
+                if total < _TOURNEY_MIN_VOTES or (max(a, b) / total) < _TOURNEY_MARGIN:
+                    continue
+                if not _tourney_cadence_ok(pair["last_render_at"]):
+                    continue
+                if a >= b:  # champion defends
+                    defenses = pair["defenses"] + 1
+                    if defenses >= _TOURNEY_K:
+                        with sqlite3.connect(LOG_DB) as cx:
+                            _sp.set_pair(cx, slug, kind, champion=champ, challenger=chall,
+                                         defenses=defenses, converged=True, last_render_at=pair["last_render_at"])
+                    else:
+                        newv = _render_challenger(slug, kind, p)
+                        if newv:
+                            with sqlite3.connect(LOG_DB) as cx:
+                                _sp.set_pair(cx, slug, kind, champion=champ, challenger=newv,
+                                             defenses=defenses, converged=False, last_render_at=now)
+                else:  # challenger wins -> new champion
+                    newv = _render_challenger(slug, kind, p)
+                    if newv:
+                        with sqlite3.connect(LOG_DB) as cx:
+                            _sp.set_pair(cx, slug, kind, champion=chall, challenger=newv,
+                                         defenses=0, converged=False, last_render_at=now)
+            except Exception as e:
+                print(f"[tournament] {slug} {kind} failed: {e}", flush=True)
+
+
 def _run_cron():
     """Run the console push logic in-process on Render (no Mac needed)."""
     import importlib.util, sys as _sys, tempfile, base64 as _b64
@@ -15311,6 +15425,7 @@ def _start_scheduler():
         scheduler.add_job(_run_biofield_bonuses, "cron", hour=15, minute=0,
                           id="biofield_bonuses")
         scheduler.add_job(_drain_sales_image_queue, "interval", minutes=1, id="sales_image_gen")
+        scheduler.add_job(_run_image_tournament, "interval", hours=24, id="sales_image_tournament")
         scheduler.start()
         print("[CRON] Scheduler started — hourly push + daily biofield-bonuses active")
     except Exception as e:

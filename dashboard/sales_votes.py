@@ -48,3 +48,16 @@ def tally(cx, slug):
     for kind, var, n in rows:
         out.setdefault(kind, {})[var] = n
     return out
+
+def pair_counts(cx, slug, kind, a, b, since=""):
+    init_table(cx)
+    if since:
+        rows = cx.execute("SELECT chosen_variant, COUNT(*) FROM sales_page_votes WHERE product_slug=? "
+                          "AND kind=? AND chosen_variant IN (?,?) AND updated_at>=? GROUP BY chosen_variant",
+                          (slug, kind, a, b, since)).fetchall()
+    else:
+        rows = cx.execute("SELECT chosen_variant, COUNT(*) FROM sales_page_votes WHERE product_slug=? "
+                          "AND kind=? AND chosen_variant IN (?,?) GROUP BY chosen_variant",
+                          (slug, kind, a, b)).fetchall()
+    d = {v: n for v, n in rows}
+    return (d.get(a, 0), d.get(b, 0))
