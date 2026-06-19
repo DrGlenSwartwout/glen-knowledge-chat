@@ -55,3 +55,39 @@ def test_existing_order_preserved_minus_removals():
 
 def test_non_string_inputs_ignored():
     assert set_person_tags(["a", 5, None], add=[7, "b"]) == ["a", "b"]
+
+
+from dashboard.people import distinct_tags
+
+
+def test_distinct_union_and_sorted():
+    rows = [["type:client", "OD"], ["type:client", "tier:pro-influencer"]]
+    assert distinct_tags(rows) == ["OD", "tier:pro-influencer", "type:client"]
+
+
+def test_distinct_accepts_json_strings():
+    rows = ['["a", "b"]', '["b", "c"]']
+    assert distinct_tags(rows) == ["a", "b", "c"]
+
+
+def test_distinct_mixed_list_and_string():
+    rows = [["a"], '["b"]']
+    assert distinct_tags(rows) == ["a", "b"]
+
+
+def test_distinct_skips_malformed_json():
+    rows = ['["a"]', "not json", None, 5]
+    assert distinct_tags(rows) == ["a"]
+
+
+def test_distinct_strips_and_drops_empty():
+    rows = [["  a  ", "", "   "]]
+    assert distinct_tags(rows) == ["a"]
+
+
+def test_distinct_case_sensitive_ascii_order():
+    assert distinct_tags([["od", "OD"]]) == ["OD", "od"]
+
+
+def test_distinct_empty():
+    assert distinct_tags([]) == []
