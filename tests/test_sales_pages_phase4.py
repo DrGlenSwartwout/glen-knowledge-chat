@@ -97,3 +97,37 @@ def test_page_data_no_pick_when_flag_off(monkeypatch, tmp_path):
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     body = next(s for s in appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()["sections"] if s["id"]=="images")["body"]
     assert "pick" not in body
+
+
+# ---------------------------------------------------------------------------
+# Task 4: image-pick reward at order settlement
+# ---------------------------------------------------------------------------
+
+def test_credit_granted_once_on_order_when_both_picked(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    from dashboard import sales_votes as sv, points as pts
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        sv.record_pick(cx, slug, "botanical", 1, "sQ", "buyer@x.co")
+        sv.record_pick(cx, slug, "mechanism", 1, "sQ", "buyer@x.co")
+    order = {"email": "buyer@x.co", "items": [{"slug": slug, "name": "X"}],
+             "total_cents": 0, "shipping_cents": 0, "get_cents": 0,
+             "points_redeemed_cents": 0, "discount_cents": 0}
+    appmod._settle_order_points(order, order_ref="INV-1")
+    appmod._settle_order_points(order, order_ref="INV-1")  # idempotent re-settle
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert pts.has_entry(cx, order_ref=f"imgpick_{slug}", reason="image_pick") is True
+
+def test_no_credit_when_only_one_pair_or_other_product(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    from dashboard import sales_votes as sv, points as pts
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        sv.record_pick(cx, slug, "botanical", 1, "sR", "b2@x.co")  # only one pair
+    appmod._settle_order_points({"email": "b2@x.co", "items": [{"slug": slug}],
+        "total_cents":0,"shipping_cents":0,"get_cents":0,"points_redeemed_cents":0,"discount_cents":0},
+        order_ref="INV-2")
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert pts.has_entry(cx, order_ref=f"imgpick_{slug}", reason="image_pick") is False

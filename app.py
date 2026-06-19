@@ -2687,6 +2687,19 @@ def _settle_order_points(order, *, order_ref):
             if not suppress:
                 _points.earn(cx, email, full_price_cents=product_cents, earn_pct=earn_pct,
                              order_ref=order_ref)
+        # ── Phase 4: image-pick reward (1 point per product the buyer picked both pairs for) ──
+        try:
+            from dashboard import sales_votes as _sv4
+            for _it in (order.get("items") or []):
+                _islug = (_it.get("slug") or "").strip()
+                if not _islug:
+                    continue
+                if _sv4.picked_both(cx, _islug, email=email) and not _points.has_entry(
+                        cx, order_ref=f"imgpick_{_islug}", reason="image_pick"):
+                    _points.credit(cx, email, value_cents=_IMAGE_PICK_REWARD_CENTS,
+                                   reason="image_pick", order_ref=f"imgpick_{_islug}")
+        except Exception as _ipe:
+            print(f"[img-pick] credit skipped: {_ipe!r}", flush=True)
 
 
 # Generated/cached product content (ingredients + benefits + learn-more research).
