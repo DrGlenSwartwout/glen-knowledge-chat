@@ -2313,6 +2313,7 @@ _TOURNEY_K = int(os.environ.get("IMAGE_TOURNAMENT_CONVERGE_K", "3"))
 _TOURNEY_CADENCE_DAYS = int(os.environ.get("IMAGE_TOURNAMENT_CADENCE_DAYS", "3"))
 _REVIEWS_ENABLED = os.environ.get("REVIEWS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _REVIEWS_VIDEO = os.environ.get("REVIEWS_VIDEO", "").strip().lower() in ("1", "true", "yes")
+_REVIEWS_VIDEO_TRIM = os.environ.get("REVIEWS_VIDEO_TRIM", "").strip().lower() in ("1", "true", "yes")
 _REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
 _REVIEW_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".m4v")
 _REVIEW_VIDEO_MAX_BYTES = 100 * 1024 * 1024
@@ -15605,7 +15606,10 @@ def _drain_review_videos():
                 with sqlite3.connect(LOG_DB) as cx:
                     _pr.set_video_result(cx, rid, 0, "", "failed"); _vj.mark(cx, rid, "failed")
                 continue
-            transcript = (_jb._whisper_transcribe(str(path)) or {}).get("text", "")
+            _whisper = _jb._whisper_transcribe(str(path)) or {}
+            transcript = _whisper.get("text", "")
+            _words = _whisper.get("words", []) or []
+            _duration = _whisper.get("duration") or 0
             prod = _get_product(r["product_slug"]) or {"name": r["product_slug"]}
             sc = _rs.score_video(_cl, prod, transcript, strip=_strip_dash)
             written = int(r.get("ai_score") or 0)
@@ -15625,6 +15629,18 @@ def _drain_review_videos():
                                      publish_risk=1 if sc["publish_risk"] else 0,
                                      video_verdict=sc["risk_reasons"])
                 _vj.mark(cx, rid, "done")
+            if _REVIEWS_VIDEO_TRIM:
+                try:
+                    from dashboard import video_trim as _vt
+                    win = _vt.compute_trim_window(_words, _duration)
+                    if win:
+                        _src = path
+                        _dst = _REVIEW_MEDIA_DIR / r["product_slug"] / (_src.stem + "-trim.mp4")
+                        if _vt.trim_video(str(_src), str(_dst), win[0], win[1]):
+                            with sqlite3.connect(LOG_DB) as cx:
+                                _pr.set_trimmed(cx, rid, _dst.name)
+                except Exception as e:  # noqa: BLE001 - trim never undoes a credited score
+                    print(f"[reviews-video] trim failed rid={rid}: {e}", flush=True)
         except Exception as e:  # noqa: BLE001 - one job's failure never aborts the sweep
             print(f"[reviews-video] job {rid} failed: {e}", flush=True)
             try:

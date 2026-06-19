@@ -81,3 +81,103 @@ def test_set_trimmed_preserves_original_once():
     pr.set_trimmed(cx, rid, "orig-trim2.mp4")
     r = pr.get_review(cx, rid)
     assert r["video_ref"] == "orig-trim2.mp4" and r["video_orig_ref"] == "orig.webm"
+
+
+import importlib
+
+
+def _reload_trim_app(monkeypatch, tmp_path, trim="true"):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("REVIEWS_ENABLED", "true")
+    monkeypatch.setenv("REVIEWS_VIDEO", "true")
+    monkeypatch.setenv("REVIEWS_VIDEO_TRIM", trim)
+    import app as appmod
+    importlib.reload(appmod)
+    return appmod
+
+
+def _seed_video_job(appmod, slug, ref="v.webm"):
+    import sqlite3
+    from dashboard import product_reviews as pr, review_video_jobs as vj
+    d = appmod._REVIEW_MEDIA_DIR / slug; d.mkdir(parents=True, exist_ok=True)
+    (d / ref).write_bytes(b"FAKEVIDEO")
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, slug, "b@x.com", "B", 5, video_kind="upload", video_ref=ref)
+        vj.enqueue(cx, rid)
+    return rid
+
+
+def _patch_transcribe_and_score(monkeypatch, words):
+    import journal_blueprint
+    monkeypatch.setattr(journal_blueprint, "_whisper_transcribe",
+                        lambda p: {"text": "hello there", "duration": 12.0, "words": words})
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_video", lambda *a, **k: {
+        "video_points": 4, "publish_risk": False, "risk_reasons": "", "recommend_publish": True})
+
+
+def test_worker_trims_and_repoints(monkeypatch, tmp_path):
+    appmod = _reload_trim_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    rid = _seed_video_job(appmod, slug)
+    _patch_transcribe_and_score(monkeypatch, [{"word": "hi", "start": 2.0, "end": 2.4},
+                                              {"word": "there", "start": 2.4, "end": 9.0}])
+    from dashboard import video_trim as vt
+    def fake_trim(src, dst, start, end, **kw):
+        open(dst, "wb").write(b"TRIMMED"); return True
+    monkeypatch.setattr(vt, "trim_video", fake_trim)
+    appmod._drain_review_videos()
+    import sqlite3
+    from dashboard import product_reviews as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        r = pr.get_review(cx, rid)
+    assert r["video_ref"].endswith("-trim.mp4") and r["video_orig_ref"] == "v.webm"
+    assert r["video_points"] == 4 and r["video_status"] == "scored"   # scoring unaffected
+
+
+def test_worker_trim_failure_keeps_original(monkeypatch, tmp_path):
+    appmod = _reload_trim_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    rid = _seed_video_job(appmod, slug)
+    _patch_transcribe_and_score(monkeypatch, [{"word": "hi", "start": 2.0, "end": 2.4},
+                                              {"word": "there", "start": 2.4, "end": 9.0}])
+    from dashboard import video_trim as vt
+    monkeypatch.setattr(vt, "trim_video", lambda *a, **k: False)
+    appmod._drain_review_videos()
+    import sqlite3
+    from dashboard import product_reviews as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        r = pr.get_review(cx, rid)
+    assert r["video_ref"] == "v.webm" and (r["video_orig_ref"] or "") == ""   # unchanged
+    assert r["video_points"] == 4                                             # points intact
+
+
+def test_worker_no_trim_when_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_trim_app(monkeypatch, tmp_path, trim="false")
+    assert appmod._REVIEWS_VIDEO_TRIM is False
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    rid = _seed_video_job(appmod, slug)
+    _patch_transcribe_and_score(monkeypatch, [{"word": "hi", "start": 2.0, "end": 9.0}])
+    from dashboard import video_trim as vt
+    called = {"n": 0}
+    monkeypatch.setattr(vt, "trim_video", lambda *a, **k: called.__setitem__("n", called["n"] + 1) or True)
+    appmod._drain_review_videos()
+    import sqlite3
+    from dashboard import product_reviews as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert pr.get_review(cx, rid)["video_ref"] == "v.webm"
+    assert called["n"] == 0
+
+
+def test_worker_no_trim_when_no_words(monkeypatch, tmp_path):
+    appmod = _reload_trim_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    rid = _seed_video_job(appmod, slug)
+    _patch_transcribe_and_score(monkeypatch, [])   # no words -> compute returns None
+    from dashboard import video_trim as vt
+    monkeypatch.setattr(vt, "trim_video", lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not trim")))
+    appmod._drain_review_videos()
+    import sqlite3
+    from dashboard import product_reviews as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert pr.get_review(cx, rid)["video_ref"] == "v.webm"
