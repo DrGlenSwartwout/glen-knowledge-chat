@@ -6994,6 +6994,31 @@ def api_console_sales_page_load(slug):
                     "sections": sections, "live_url": f"/begin/product/{slug}"})
 
 
+@app.route("/console/reviews")
+def console_reviews_page():
+    resp = send_from_directory(STATIC, "console-reviews.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/api/console/reviews", methods=["GET"])
+def api_console_reviews_list():
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    from dashboard import product_reviews as _pr
+    with sqlite3.connect(LOG_DB) as cx:
+        pending = _pr.pending_queue(cx)
+    for r in pending:
+        r["product_name"] = (_get_product(r["product_slug"]) or {}).get("name", r["product_slug"])
+        if r.get("video_kind") == "upload" and r.get("video_ref"):
+            r["video_url"] = f"/review-media/{r['product_slug']}/{r['video_ref']}"
+        elif r.get("video_kind") == "link":
+            r["video_url"] = r.get("video_ref")
+    return jsonify({"ok": True, "pending": pending, "recent": []})
+
+
 @app.route("/console/pricing-settings")
 def console_pricing_settings_page():
     resp = send_from_directory(STATIC, "console-pricing-settings.html")
@@ -18653,6 +18678,10 @@ from dashboard import sales_pages_actions as _spa
 _spa.register()
 _spa.configure(client=_cl, get_product=_get_product,
                product_card=_product_card, strip_dash=_strip_dash)
+
+# ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────
+from dashboard import reviews_actions as _ra
+_ra.register()
 
 
 # ── In-house order entry (Phase 1: proposed invoice) — OWNER only ───────────────

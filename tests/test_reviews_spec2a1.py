@@ -229,3 +229,33 @@ def test_reorder_items_reviewed_true_when_flag_off(monkeypatch, tmp_path):
     item = next((i for i in d["items"] if i.get("slug") == slug), None)
     assert item is not None
     assert item["reviewed"] is True
+
+
+from dashboard.rbac import Actor, OWNER
+
+
+def test_review_actions_approve_reject_feature(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    import sqlite3
+    from dashboard import product_reviews as pr
+    from dashboard import dispatch as d
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, "x", "a@x.com", "Ann", 5, body="b")
+        res = d.dispatch_action(cx, "reviews.approve", {"id": rid},
+                                Actor(role=OWNER, name="Glen"), source="panel")
+        assert res["status"] == "done" and pr.get_review(cx, rid)["status"] == "approved"
+        d.dispatch_action(cx, "reviews.feature", {"id": rid, "on": True},
+                          Actor(role=OWNER, name="Glen"), source="panel")
+        assert pr.get_review(cx, rid)["featured"] == 1
+
+
+def test_console_reviews_endpoint(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    import dashboard as _d
+    _d.CONSOLE_SECRET = ""  # pass-through when unset
+    import sqlite3
+    from dashboard import product_reviews as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        pr.upsert_review(cx, "x", "a@x.com", "Ann", 5, body="b")
+    body = appmod.app.test_client().get("/api/console/reviews").get_json()
+    assert body["ok"] and any(r["email"] == "a@x.com" for r in body["pending"])
