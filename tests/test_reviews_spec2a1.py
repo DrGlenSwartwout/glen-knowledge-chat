@@ -53,3 +53,54 @@ def test_pending_queue_only_pending():
     pr.set_status(cx, a, "approved")
     q = pr.pending_queue(cx)
     assert [r["email"] for r in q] == ["b@x.com"]
+
+
+from dashboard import review_scoring as rs
+
+
+class _Blk:
+    def __init__(self, t): self.type = "text"; self.text = t
+
+
+class _Msg:
+    def __init__(self, t): self.content = [_Blk(t)]
+
+
+class _FakeClient:
+    def __init__(self, payload): self._p = payload
+    @property
+    def messages(self):
+        outer = self
+        class _M:
+            def create(self, **kw): return _Msg(outer._p)
+        return _M()
+
+
+def test_build_prompt_mentions_product_and_rules():
+    system, user = rs.build_review_prompt({"name": "Longevity"}, "helped my energy")
+    assert "Longevity" in user and "helped my energy" in user
+    assert "structure" in (system + user).lower() or "disease" in (system + user).lower()
+
+
+def test_score_review_quality_points():
+    c = _FakeClient('{"compliance_ok": true, "reasons": "specific", "quality_points": 2, "recommend_publish": true}')
+    out = rs.score_review(c, {"name": "X"}, "Detailed, specific, authentic review of my experience.")
+    assert out["compliance_ok"] is True and out["quality_points"] == 2 and out["recommend_publish"] is True
+
+
+def test_score_review_gates_disease_claim():
+    c = _FakeClient('{"compliance_ok": false, "reasons": "disease claim", "quality_points": 0, "recommend_publish": false}')
+    out = rs.score_review(c, {"name": "X"}, "This cured my cancer in two weeks!")
+    assert out["compliance_ok"] is False and out["quality_points"] == 0
+
+
+def test_score_review_bad_json_safe_default():
+    c = _FakeClient("not json at all")
+    out = rs.score_review(c, {"name": "X"}, "whatever")
+    assert out["compliance_ok"] is False and out["quality_points"] == 0
+
+
+def test_score_review_strips_dashes_in_reasons():
+    c = _FakeClient('{"compliance_ok": true, "reasons": "good — solid", "quality_points": 1, "recommend_publish": true}')
+    out = rs.score_review(c, {"name": "X"}, "ok", strip=lambda s: s.replace("—", ","))
+    assert "—" not in out["reasons"]
