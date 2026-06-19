@@ -176,3 +176,11 @@ def test_page_data_images_flag_off(monkeypatch, tmp_path):
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     img = next(s for s in appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()["sections"] if s["id"]=="images")["body"]
     assert "state" not in img
+
+def test_flag_defaults_off(monkeypatch, tmp_path):
+    monkeypatch.delenv("SALES_PAGES_AI_IMAGES", raising=False)
+    monkeypatch.setenv("DATA_DIR", str(tmp_path)); monkeypatch.setenv("SALES_PAGES_ENABLED", "true")
+    import importlib, app as appmod; importlib.reload(appmod)
+    assert appmod._SALES_AI_IMAGES_ENABLED is False
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    assert appmod.app.test_client().post(f"/begin/product-image-gen/{slug}").status_code == 404
