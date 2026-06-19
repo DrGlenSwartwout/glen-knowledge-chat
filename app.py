@@ -2713,6 +2713,7 @@ try:
     from dashboard import product_content as _product_content
     with sqlite3.connect(LOG_DB) as _cx:
         _product_content.init_product_content_table(_cx)
+        _product_content.purge_refusal_cache(_cx)  # self-heal pre-fix cached refusals
 except Exception as _pce:
     _product_content = None
     print(f"[product_content] init failed: {_pce}", flush=True)

@@ -65,6 +65,24 @@ def init_product_content_table(cx):
     """)
 
 
+def purge_refusal_cache(cx):
+    """Delete cached rows that captured a model refusal (the pre-fix Longevity bug:
+    empty page copy made the model reply 'I'm unable to proceed... sections are
+    empty', which got cached and served). Cleared rows regenerate, now grounded in
+    products.json, on next view. Idempotent; safe to run at every startup."""
+    try:
+        cur = cx.execute(
+            "DELETE FROM generated_product_content WHERE "
+            "lower(content_json) LIKE '%unable to proceed%' "
+            "OR lower(content_json) LIKE '%sections are empty%'")
+        if cur.rowcount:
+            print(f"[product_content] purged {cur.rowcount} cached refusal row(s)", flush=True)
+        return cur.rowcount
+    except Exception as e:
+        print(f"[product_content] purge_refusal_cache failed: {e}", flush=True)
+        return 0
+
+
 def _cache_get(slug, ctype):
     try:
         with sqlite3.connect(LOG_DB) as cx:
@@ -121,6 +139,32 @@ def _page_text(product):
     md0 = matches[0].metadata or {}
     return {"text": text, "url": md0.get("url", ""), "price": md0.get("price", ""),
             "n_chunks": len(matches)}
+
+
+def _page_text_from_product(product):
+    """Fallback page copy synthesized from products.json (description + ingredient
+    list) for products whose panel is missing from Pinecone (truncated scrape) or
+    when embeddings/Pinecone are unavailable. Returns {text, url, price, n_chunks}
+    or None when there is no manual data to ground on."""
+    desc = (product.get("description") or "").strip()
+    lines = []
+    for it in (product.get("ingredients") or []):
+        if isinstance(it, dict):
+            nm = (it.get("name") or "").strip()
+            dose = (it.get("dose") or "").strip()
+            if nm:
+                lines.append(f"{nm} {dose}".strip())
+        elif isinstance(it, str) and it.strip():
+            lines.append(it.strip())
+    if not desc and not lines:
+        return None
+    parts = []
+    if desc:
+        parts.append(desc)
+    if lines:
+        parts.append("Ingredients:\n" + "\n".join(lines))
+    return {"text": "\n\n".join(parts).strip(), "url": product.get("url", ""),
+            "price": "", "n_chunks": 0}
 
 
 def _research_sources(name, k=8):
@@ -211,6 +255,10 @@ def _generate_learn_more(product, page, sources):
     idx, cl, embed = _clients()
     name = product.get("name", "")
     page_text = (page or {}).get("text", "")
+    if not page_text and not sources:
+        # No grounding material at all: never send an empty prompt (the model would
+        # return a refusal, which used to get cached and served on the public page).
+        return {"markdown": ""}
     src_block = "\n".join(
         f"- [{s['ingredient']}] {s['study_title']} ({s['publication']} {s['year']}) {s['url']}\n  {s['text']}"
         for s in sources) or "(no research sources retrieved)"
@@ -262,7 +310,7 @@ def get_or_generate(product, content_type, force=False):
         if hit:
             return hit
 
-    page = _page_text(product)
+    page = _page_text(product) or _page_text_from_product(product)
     if content_type == "card":
         content = _generate_card(product, page)
         sources = []
