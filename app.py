@@ -2309,6 +2309,8 @@ _TOURNEY_K = int(os.environ.get("IMAGE_TOURNAMENT_CONVERGE_K", "3"))
 _TOURNEY_CADENCE_DAYS = int(os.environ.get("IMAGE_TOURNAMENT_CADENCE_DAYS", "3"))
 _REVIEWS_ENABLED = os.environ.get("REVIEWS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
+_REVIEW_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".m4v")
+_REVIEW_VIDEO_MAX_BYTES = 100 * 1024 * 1024
 # Shown to the customer when Stripe was active but no checkout URL came back
 # (create_checkout_session failed) — so the Pay button surfaces a clear message
 # instead of silently no-opping. _alert_stripe() already notifies Glen.
@@ -3126,6 +3128,12 @@ def api_submit_review():
     f = request.files.get("video") if request.files else None
     if f and f.filename:
         safe = re.sub(r"[^\w.\-]", "_", f.filename)[-80:]
+        ext = Path(safe).suffix.lower()
+        if ext not in _REVIEW_VIDEO_EXTS:
+            return jsonify({"ok": False, "error": "unsupported video type"}), 400
+        f.seek(0, 2); size = f.tell(); f.seek(0)
+        if size > _REVIEW_VIDEO_MAX_BYTES:
+            return jsonify({"ok": False, "error": "video too large"}), 400
         d = _REVIEW_MEDIA_DIR / slug
         d.mkdir(parents=True, exist_ok=True)
         f.save(str(d / safe))
@@ -3158,12 +3166,13 @@ def api_submit_review():
 
 @app.route("/review-media/<slug>/<filename>")
 def review_media(slug, filename):
-    if not re.match(r'^[\w.\-]+$', filename):
+    if not re.match(r'^[\w\-]+$', slug) or not re.match(r'^[\w.\-]+$', filename):
         return ("", 404)
-    d = _REVIEW_MEDIA_DIR / slug
-    if not (d / filename).exists():
+    base = _REVIEW_MEDIA_DIR.resolve()
+    target = (base / slug / filename).resolve()
+    if base not in target.parents or not target.exists():
         return ("", 404)
-    return send_from_directory(str(d), filename)
+    return send_from_directory(str(target.parent), target.name)
 
 
 # ── Review invite tokens (Task 7) ─────────────────────────────────────────────

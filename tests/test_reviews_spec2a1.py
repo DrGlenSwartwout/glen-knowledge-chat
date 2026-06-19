@@ -329,6 +329,91 @@ def test_review_token_route_404_garbage(monkeypatch, tmp_path):
     assert r.status_code == 404
 
 
+# ── Fix wave 1 (whole-branch review): security tests ─────────────────────────
+
+def test_review_media_rejects_bad_slug(monkeypatch, tmp_path):
+    """Path-traversal slugs and non-existent files → 404."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    c = appmod.app.test_client()
+    # URL-encoded traversal: ..%2F..%2Fetc → Flask decodes to ../.. slug
+    r = c.get("/review-media/..%2F..%2Fetc/passwd")
+    assert r.status_code == 404
+    # Literal '..' slug (allowed by Flask's routing but rejected by our guard)
+    r2 = c.get("/review-media/../etc/passwd")
+    assert r2.status_code == 404
+    # Normal slug, non-existent file → still 404
+    r3 = c.get("/review-media/longevity/nonexistent.mp4")
+    assert r3.status_code == 404
+
+
+def test_upload_rejects_bad_extension(monkeypatch, tmp_path):
+    """Uploading a non-video file → 400; nothing saved to disk."""
+    import io
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_review", lambda *a, **k: {
+        "compliance_ok": True, "reasons": "ok", "quality_points": 1, "recommend_publish": True})
+    c = appmod.app.test_client()
+    data = {
+        "slug": slug, "rating": "5", "body": "great", "email": "buyer@x.com",
+        "video": (io.BytesIO(b"x"), "evil.exe"),
+    }
+    r = c.post("/api/reviews", data=data, content_type="multipart/form-data")
+    assert r.status_code == 400
+    resp = r.get_json()
+    assert resp["ok"] is False and "unsupported" in resp["error"]
+    # Nothing saved to disk
+    media_dir = appmod._REVIEW_MEDIA_DIR / slug
+    assert not media_dir.exists() or not any(media_dir.iterdir())
+
+
+def test_upload_rejects_oversize(monkeypatch, tmp_path):
+    """Uploading a video that exceeds the size cap → 400."""
+    import io
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_review", lambda *a, **k: {
+        "compliance_ok": True, "reasons": "ok", "quality_points": 1, "recommend_publish": True})
+    # Lower the cap to 4 bytes so we can test with a small payload
+    monkeypatch.setattr(appmod, "_REVIEW_VIDEO_MAX_BYTES", 4)
+    c = appmod.app.test_client()
+    data = {
+        "slug": slug, "rating": "5", "body": "great", "email": "buyer@x.com",
+        "video": (io.BytesIO(b"0123456789"), "clip.mp4"),  # 10 bytes > cap of 4
+    }
+    r = c.post("/api/reviews", data=data, content_type="multipart/form-data")
+    assert r.status_code == 400
+    resp = r.get_json()
+    assert resp["ok"] is False and "too large" in resp["error"]
+
+
+def test_upload_valid_mp4_succeeds(monkeypatch, tmp_path):
+    """A small valid .mp4 upload goes through and is saved."""
+    import io
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_review", lambda *a, **k: {
+        "compliance_ok": True, "reasons": "ok", "quality_points": 2, "recommend_publish": True})
+    c = appmod.app.test_client()
+    data = {
+        "slug": slug, "rating": "5", "body": "great video", "email": "buyer@x.com",
+        "video": (io.BytesIO(b"\x00\x01\x02\x03"), "clip.mp4"),
+    }
+    r = c.post("/api/reviews", data=data, content_type="multipart/form-data")
+    assert r.status_code == 200
+    resp = r.get_json()
+    assert resp["ok"] is True
+
+
 def test_send_review_invite_no_raise(monkeypatch, tmp_path):
     """_send_review_invite calls send_email with correct structure and does not raise."""
     appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="true")

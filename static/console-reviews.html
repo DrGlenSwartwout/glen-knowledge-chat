@@ -100,7 +100,7 @@ async function loadList(){
       <div class="meta">
         <span class="product">${esc(rv.product_name || rv.product_slug)}</span>
         <span class="stars">${esc(stars(rv.rating))}</span>
-        <span class="author">${esc(rv.display_name || rv.email)}</span>
+        <span class="author">${esc(rv.email)}</span>
       </div>
       <div class="body">${esc(rv.body || '')}</div>
       ${videoBlock}
