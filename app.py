@@ -2897,6 +2897,34 @@ def begin_product_page_data(slug):
         {"id": "images",      "title": "Help shape this", "default_open": False, "body": {"images": p.get("page_images", [])}},
         {"id": "cta",         "title": "Order",           "default_open": False, "body": {}},
     ]
+    if _REVIEWS_ENABLED:
+        from dashboard import product_reviews as _pr
+        try:
+            with sqlite3.connect(LOG_DB) as _rcx:
+                _agg = _pr.aggregate(_rcx, slug)
+                _approved = _pr.approved_for_slug(_rcx, slug)
+            _revs = [{"name": (r.get("name") or "A verified buyer"),
+                      "rating": r.get("rating"), "body": r.get("body") or ""}
+                     for r in _approved if (r.get("body") or "").strip()]
+            _rsec = {"id": "reviews", "title": "What people are saying", "default_open": False,
+                     "body": {"aggregate": _agg, "reviews": _revs,
+                              "disclaimer": "Individual results vary."}}
+            _ri = next((i for i, s in enumerate(sections) if s["id"] == "research"), len(sections) - 1)
+            sections.insert(_ri + 1, _rsec)
+            # approved UGC videos -> existing video section
+            _ugc = [r for r in _approved if (r.get("video_kind") in ("link", "upload")) and r.get("video_ref")]
+            if _ugc:
+                _vsec = next((s for s in sections if s["id"] == "video"), None)
+                if _vsec and isinstance(_vsec.get("body"), dict):
+                    for r in _ugc:
+                        _src = (r["video_ref"] if r["video_kind"] == "link"
+                                else f"/review-media/{slug}/{r['video_ref']}")
+                        _prov = "link" if r["video_kind"] == "link" else "mp4"
+                        _vsec["body"].setdefault("videos", []).append(
+                            {"src": _src, "title": f"Review from {r.get('name') or 'a verified buyer'}",
+                             "provider": _prov, "kind": "ugc"})
+        except Exception as _e:
+            print(f"[reviews] page-data section skipped: {_e}", flush=True)
     _ai_state = "none"
     if _SALES_AI_COPY_ENABLED:
         import sqlite3 as _sq

@@ -722,6 +722,48 @@
       return wrap;
     }
 
+    function renderReviewsBody(body){
+      var wrap = document.createElement('div');
+      wrap.className = 'sp-reviews';
+      var agg = (body && body.aggregate) ? body.aggregate : {count: 0, avg: 0};
+      var reviews = (body && Array.isArray(body.reviews)) ? body.reviews : [];
+      // Aggregate bar: ★ glyphs + count
+      if (agg.count > 0){
+        var aggEl = document.createElement('p');
+        aggEl.className = 'sp-reviews-agg';
+        var fullStars = Math.round(agg.avg);
+        var stars = '';
+        for (var i = 0; i < 5; i++) stars += (i < fullStars) ? '★' : '☆';
+        aggEl.textContent = stars + ' (' + agg.count + ' review' + (agg.count !== 1 ? 's' : '') + ')';
+        wrap.appendChild(aggEl);
+      }
+      // Individual reviews
+      reviews.forEach(function(r){
+        var card = document.createElement('div');
+        card.className = 'sp-review-card';
+        var header = document.createElement('p');
+        header.className = 'sp-review-header';
+        var rating = typeof r.rating === 'number' ? r.rating : 0;
+        var rStars = '';
+        for (var j = 0; j < 5; j++) rStars += (j < rating) ? '★' : '☆';
+        header.textContent = (r.name || 'A verified buyer') + '  ' + rStars;
+        card.appendChild(header);
+        var bodyEl = document.createElement('p');
+        bodyEl.className = 'sp-review-body';
+        bodyEl.textContent = r.body || '';   // textContent escapes user input
+        card.appendChild(bodyEl);
+        wrap.appendChild(card);
+      });
+      // Disclaimer
+      if (body && body.disclaimer){
+        var disc = document.createElement('p');
+        disc.className = 'sp-reviews-disclaimer';
+        disc.textContent = body.disclaimer;
+        wrap.appendChild(disc);
+      }
+      return wrap;
+    }
+
     function buildSectionBody(sec, ctaUrl, mironAssets, mironStory){
       switch(sec.id){
         case 'intro':       return renderIntroBody(sec.body);
@@ -730,6 +772,7 @@
         case 'ingredients': return renderIngredientsBody(sec.body);
         case 'comparison':  return renderComparisonBody(sec.body, mironAssets, mironStory);
         case 'research':    return renderResearchBody(sec.body);
+        case 'reviews':     return renderReviewsBody(sec.body);
         case 'images':      return renderImagesBody(sec.body);
         case 'cta':         return renderCtaBody(ctaUrl);
         default:
@@ -774,6 +817,7 @@
           case 'ingredients': teaser.textContent = 'Full ingredient list'; break;
           case 'comparison':  teaser.textContent = 'See how it stacks up'; break;
           case 'research':    teaser.textContent = 'Studies behind the key ingredients'; break;
+          case 'reviews':     teaser.textContent = 'Verified buyer experiences'; break;
           case 'images':      teaser.textContent = 'Product photos'; break;
           default:            teaser.textContent = ''; break;
         }

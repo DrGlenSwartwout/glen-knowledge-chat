@@ -259,3 +259,31 @@ def test_console_reviews_endpoint(monkeypatch, tmp_path):
         pr.upsert_review(cx, "x", "a@x.com", "Ann", 5, body="b")
     body = appmod.app.test_client().get("/api/console/reviews").get_json()
     assert body["ok"] and any(r["email"] == "a@x.com" for r in body["pending"])
+
+
+def test_page_data_reviews_section_only_approved(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    import sqlite3
+    from dashboard import product_reviews as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        a = pr.upsert_review(cx, slug, "a@x.com", "Ann", 5, body="approved one")
+        pr.upsert_review(cx, slug, "b@x.com", "Bob", 1, body="pending one")
+        pr.set_status(cx, a, "approved")
+    data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
+    sec = next((s for s in data["sections"] if s["id"] == "reviews"), None)
+    assert sec is not None
+    bodies = [r["body"] for r in sec["body"]["reviews"]]
+    assert "approved one" in bodies and "pending one" not in bodies
+    assert sec["body"]["aggregate"]["count"] == 1 and sec["body"]["aggregate"]["avg"] == 5.0
+    assert "Individual results vary" in sec["body"]["disclaimer"]
+    # section order: reviews comes right after research
+    ids = [s["id"] for s in data["sections"]]
+    assert ids.index("reviews") == ids.index("research") + 1
+
+
+def test_page_data_no_reviews_section_when_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
+    assert all(s["id"] != "reviews" for s in data["sections"])
