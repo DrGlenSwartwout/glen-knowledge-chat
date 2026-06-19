@@ -1,8 +1,16 @@
 import sqlite3
+import pytest
 from dashboard import sales_images as si
 from dashboard import sales_image_prompts as sip
+from dashboard import replicate_client as rc
 
 def _cx(): return sqlite3.connect(":memory:")
+
+class _Resp:
+    def __init__(self, js=None, content=b"", status=200): self._js=js; self.content=content; self.status_code=status
+    def json(self): return self._js
+    def raise_for_status(self):
+        if self.status_code >= 400: raise RuntimeError("http %d" % self.status_code)
 
 def test_queue_enqueue_pending_done():
     cx = _cx()
@@ -42,3 +50,26 @@ def test_prompts_ground_in_ingredients_and_name():
     # botanical references the lifestyle scene; mechanism references the protective-field concept
     assert "kitchen" in p["botanical"][0].lower()
     assert "cell" in p["mechanism"][0].lower() or "field" in p["mechanism"][0].lower()
+
+def test_generate_image_returns_bytes(monkeypatch):
+    calls = {"post": 0, "get": 0}
+    def fake_post(url, **kw):
+        calls["post"] += 1
+        return _Resp(js={"status": "succeeded", "output": "https://img/x.png", "urls": {"get": "https://api/get"}})
+    def fake_get(url, **kw):
+        calls["get"] += 1
+        return _Resp(content=b"PNGBYTES")
+    monkeypatch.setattr(rc.requests, "post", fake_post)
+    monkeypatch.setattr(rc.requests, "get", fake_get)
+    out = rc.generate_image("a prompt", token="tok")
+    assert out == b"PNGBYTES" and calls["post"] == 1
+
+def test_generate_image_raises_on_failed_status(monkeypatch):
+    monkeypatch.setattr(rc.requests, "post", lambda url, **kw: _Resp(js={"status": "failed", "urls": {"get": "g"}}))
+    with pytest.raises(Exception):
+        rc.generate_image("p", token="tok")
+
+def test_generate_image_requires_token(monkeypatch):
+    monkeypatch.delenv("REPLICATE_API_TOKEN", raising=False)
+    with pytest.raises(Exception):
+        rc.generate_image("p")
