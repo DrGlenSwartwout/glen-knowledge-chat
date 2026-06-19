@@ -1,5 +1,6 @@
 import datetime
 import secrets
+import sqlite3
 
 
 def _now():
@@ -32,7 +33,7 @@ def get_or_create_code(cx, email):
                        (e, code, _now()))
             cx.commit()
             return code
-        except Exception:  # noqa: BLE001 - UNIQUE collision, retry
+        except sqlite3.IntegrityError:  # UNIQUE collision on code, retry
             continue
     raise RuntimeError("could not mint a unique referral code")
 

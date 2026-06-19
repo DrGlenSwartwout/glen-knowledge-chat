@@ -7714,7 +7714,7 @@ def api_referral_my_code():
     with sqlite3.connect(LOG_DB) as cx:
         code = _rf.get_or_create_code(cx, email)
     return jsonify({"ok": True, "code": code,
-                    "share_text": f"Use my code {code} for 10% off at illtowell.com"})
+                    "share_text": f"Use my code {code} for {_referral_pct()}% off at illtowell.com"})
 
 
 def _stripe_checkout_url_for_reorder(out, email):
