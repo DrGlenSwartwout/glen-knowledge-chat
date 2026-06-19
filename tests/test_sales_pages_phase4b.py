@@ -163,3 +163,12 @@ def test_page_data_uses_active_pair_and_converged(monkeypatch, tmp_path):
     bvars = sorted(o["variant"] for o in body["pick"]["botanical"]["options"])
     assert bvars == [1, 3]                        # active pair, not 1&2
     assert "mechanism" not in body["pick"]        # converged -> no pick for mechanism
+
+
+def test_flag_defaults_off(monkeypatch, tmp_path):
+    monkeypatch.delenv("SALES_PAGES_IMAGE_TOURNAMENT", raising=False)
+    monkeypatch.setenv("DATA_DIR", str(tmp_path)); monkeypatch.setenv("SALES_PAGES_ENABLED","true")
+    monkeypatch.setenv("SALES_PAGES_AI_IMAGES","true"); monkeypatch.setenv("SALES_PAGES_IMAGE_PICK","true")
+    import importlib, app as appmod; importlib.reload(appmod)
+    assert appmod._SALES_IMAGE_TOURNAMENT_ENABLED is False
+    appmod._run_image_tournament()  # no-op, no raise
