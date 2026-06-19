@@ -1,4 +1,5 @@
 import datetime
+import sqlite3
 
 
 def _now():
@@ -18,8 +19,9 @@ def init_table(cx):
 
 
 def _row(cx, where, args):
-    cx.row_factory = __import__("sqlite3").Row
-    r = cx.execute(f"SELECT * FROM product_reviews WHERE {where}", args).fetchone()
+    cur = cx.cursor()
+    cur.row_factory = sqlite3.Row
+    r = cur.execute(f"SELECT * FROM product_reviews WHERE {where}", args).fetchone()
     return dict(r) if r else None
 
 
@@ -80,8 +82,9 @@ def get_review(cx, review_id):
 
 def approved_for_slug(cx, slug):
     init_table(cx)
-    cx.row_factory = __import__("sqlite3").Row
-    rows = cx.execute(
+    cur = cx.cursor()
+    cur.row_factory = sqlite3.Row
+    rows = cur.execute(
         "SELECT * FROM product_reviews WHERE product_slug=? AND status='approved' "
         "ORDER BY featured DESC, created_at DESC, id DESC", (slug,)).fetchall()
     return [dict(r) for r in rows]
@@ -98,8 +101,9 @@ def aggregate(cx, slug):
 
 def pending_queue(cx, limit=100):
     init_table(cx)
-    cx.row_factory = __import__("sqlite3").Row
-    rows = cx.execute(
+    cur = cx.cursor()
+    cur.row_factory = sqlite3.Row
+    rows = cur.execute(
         "SELECT * FROM product_reviews WHERE status='pending' ORDER BY created_at DESC, id DESC LIMIT ?",
         (limit,)).fetchall()
     return [dict(r) for r in rows]
