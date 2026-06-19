@@ -78,7 +78,7 @@ FEEDBACK_VIEW_URL   = os.environ.get("FEEDBACK_VIEW_URL",   "https://Truly.VIP/F
 # vector space). With no fallback set it behaves as a single client. See
 # dashboard/openai_failover.py.
 from dashboard.openai_failover import build_openai_client as _build_openai_client
-from dashboard.people import set_person_tags
+from dashboard.people import set_person_tags, distinct_tags
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -13024,6 +13024,17 @@ def add_person_note(person_id):
         """, (f"[{ts}] {note}", f"[{ts}] {note}", person_id))
         cx.commit()
     return jsonify({"ok": True})
+
+
+@app.route("/api/people/tags", methods=["GET"])
+def list_person_tags_route():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = cx.execute("SELECT tags FROM people").fetchall()
+    return jsonify({"tags": distinct_tags([r[0] for r in rows])})
 
 
 @app.route("/api/people/<int:person_id>/tags", methods=["POST"])
