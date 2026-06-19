@@ -32,7 +32,9 @@ Pairwise forced-choice over the 2 variants/type + a "neither" escape; pick in **
 - Returns `{"ok": true, "picks": {botanical, mechanism}, "both_picked": bool}`.
 
 ### Credit at order settlement
-In `_settle_order_points(order, *, order_ref)` (app.py:2644), after existing points logic: if the order's product matches a slug for which the ordering viewer **picked both pairs**, grant **1 point** via `points.credit(cx, email, value_cents=<1 point>, reason="image_pick", order_ref=f"imgpick_{slug}", scope="rm")`. Idempotent via `points.has_entry(order_ref=f"imgpick_{slug}", reason="image_pick")` — granted at most once per (person, product). Match votes by the order email OR the order's `amg_session` (so an anonymous picker who later identifies at checkout still earns it). The order-completion caller passes the current `session_id` to the settlement helper (small signature add) or `_settle_order_points` reads it from `request` when in a request context.
+The order row carries `email`, `person_id`, and `items` (list of `{slug,...}` from `items_json`) — but NOT the `amg_session`. So credit attribution is **email-based**. To still cover the "picked anonymously, then identified, then ordered" path, `record_pick` **backfills email** onto that session's prior anonymous votes whenever a pick is made with a known email (one `UPDATE … WHERE session_id=? AND email=''`).
+
+In `_settle_order_points(order, *, order_ref)` (app.py:2644), after the existing earn/redeem logic, for each `item` in `order["items"]`: if `sales_votes.picked_both(cx, item["slug"], email=order_email)` and not already granted, `points.credit(cx, order_email, value_cents=<1 point>, reason="image_pick", order_ref=f"imgpick_{item['slug']}", scope="rm")`. Idempotent via `points.has_entry(order_ref=f"imgpick_{slug}", reason="image_pick")` — at most once per (email, product). Wrapped in try/except so a vote-lookup error never blocks normal order settlement. (A pure-anonymous picker who never identifies before ordering misses the credit — accepted minor gap.)
 
 ### Page-data + frontend
 - `begin_product_page_data`: when `SALES_PAGES_IMAGE_PICK` is on AND both variants exist for a kind AND the viewer hasn't picked it → the images body gains `pick: {botanical: [{variant,url}×2]|null, mechanism: [...]|null, picked: {botanical, mechanism}, both_picked}`. If the viewer has picked a kind, that kind's **chosen** image is the hero shown (their vote reflected back); unpicked kinds show the pair to choose. Flag off → exactly the Phase-3 images body (no `pick` field).
@@ -45,7 +47,7 @@ In `_settle_order_points(order, *, order_ref)` (app.py:2644), after existing poi
 1. Viewer opens images (flag on, 2 variants exist) → sees botanical pair + mechanism pair.
 2. Picks one per pair (or "neither") → each pick upserts a vote keyed on session (+ email if known); the chosen image replaces the pair.
 3. Both picked → "credit earned" note; the credit is **held** (a vote record), not yet a point.
-4. Viewer later orders the product → `_settle_order_points` finds both-pair votes for them (by email or session) → grants 1 point, once.
+4. Viewer later orders the product → `_settle_order_points` finds both-pair votes for them (by email; email backfilled onto their session's votes at pick time) → grants 1 point, once per (email, product).
 
 ## Error handling
 
