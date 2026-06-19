@@ -26,19 +26,20 @@ An in-browser recorder on the review form (record/preview/re-record) that submit
 - **Points math:** video scored **0–5**; review total = **`min(5, written_points + video_points)`** (a great video alone reaches 5). `written_points` = the 2a-1 `ai_score`.
 - **Processing:** Render-side background worker (the `_drain_sales_image_queue` + APScheduler pattern). Async — points arrive seconds after submit.
 - **Flag:** new **`REVIEWS_VIDEO`** (default off), requires `REVIEWS_ENABLED` on. Lets text reviews go live before video, and gates the OpenAI-cost worker + record UI.
+- **Compliance decouples from points (Glen, revised):** a genuine, well-made video **earns its quality points even if it makes a disease-cure claim** — the AI instead raises a **publish-risk warning + reasons** for the human moderator (who gates publication). Only genuinely low-effort/spam/abusive transcripts score 0 (the 0–5 quality rubric handles that). Points reward effort; publication stays human-gated with the AI risk flag surfaced.
 
 ---
 
 ## Architecture
 
 ### Schema (extend 2a-1 `product_reviews`, additive)
-Add columns (lazy `ALTER`, like Phase 5): `video_points INTEGER DEFAULT 0`, `transcript TEXT DEFAULT ''`, `video_status TEXT DEFAULT ''` (`''` | `pending` | `scored` | `failed`). `ai_score` continues to hold the **written** points. New functions in `dashboard/product_reviews.py`: `set_video_result(cx, id, video_points, transcript, status)`, `has_successful_video(cx, email) -> bool` (any of this email's reviews with `video_points > 0` and `status='approved'`).
+Add columns (lazy `ALTER`, like Phase 5): `video_points INTEGER DEFAULT 0`, `transcript TEXT DEFAULT ''`, `video_status TEXT DEFAULT ''` (`''` | `pending` | `scored` | `failed`), `publish_risk INTEGER DEFAULT 0`, `video_verdict TEXT DEFAULT ''` (the publish-risk reasons). `ai_score` continues to hold the **written** points. New functions in `dashboard/product_reviews.py`: `set_video_result(cx, id, video_points, transcript, status, publish_risk=0, video_verdict='')`, `has_successful_video(cx, email) -> bool` (any of this email's reviews with `video_points > 0` and `status='approved'`).
 
 ### Video-job queue — `dashboard/review_video_jobs.py` (SQLite)
 `review_video_jobs(review_id INTEGER PRIMARY KEY, status TEXT DEFAULT 'pending', enqueued_at TEXT, done_at TEXT)`. Functions `init_table`, `enqueue(cx, review_id)`, `claim_pending(cx, limit) -> [review_id]`, `mark(cx, review_id, status)`. Idempotent enqueue (PK = review_id; re-submit re-enqueues by resetting status to pending).
 
 ### AI video scoring — extend `dashboard/review_scoring.py`
-`build_video_prompt(product, transcript) -> (system, user)` (pure) + `score_video(client, product, transcript, *, strip=lambda s: s) -> {"compliance_ok": bool, "reasons": str, "video_points": int(0..5), "recommend_publish": bool}`. Same fail-closed contract as `score_review` (any parse error/exception → safe default with `video_points=0`, `compliance_ok=False`). Quality rewards a clear, specific, authentic spoken experience; the compliance gate rejects disease-cure claims/PII/abuse. Dashes stripped from `reasons`.
+`build_video_prompt(product, transcript) -> (system, user)` (pure) + `score_video(client, product, transcript, *, strip=lambda s: s) -> {"video_points": int(0..5), "publish_risk": bool, "risk_reasons": str, "recommend_publish": bool}`. Same fail-closed contract as `score_review` (any parse error/exception → safe default with `video_points=0`, `publish_risk=False`, `recommend_publish=False`). `video_points` rewards a clear, specific, authentic spoken experience (low-effort/spam/abusive/gibberish → 0). **`publish_risk=True` + `risk_reasons`** flags disease-cure claims / PII / risky statements for the human moderator — this does **NOT** reduce `video_points`. `recommend_publish` is the AI's publish suggestion (false when `publish_risk`). Dashes stripped from `risk_reasons`.
 
 ### Enqueue (extend `POST /api/reviews`)
 When `REVIEWS_VIDEO` is on and the submitted review has `video_kind in ("upload",)` (recorded videos arrive as uploads), after the synchronous written scoring, set `video_status='pending'` and `review_video_jobs.enqueue(rid)`. The response includes `video_status:"pending"`. (Link videos: no enqueue, no auto points.)
@@ -48,8 +49,8 @@ Flag-gated (`REVIEWS_VIDEO`); no-op when off. Registered in `_start_scheduler` o
 1. Load the review; resolve the stored file `DATA_DIR/review-media/<slug>/<video_ref>` (skip + mark failed if missing or `video_kind != 'upload'`).
 2. Transcribe via `journal_blueprint._whisper_transcribe(path)` → transcript text.
 3. `score_video(_cl, product, transcript, strip=_strip_dash)` — the Anthropic haiku client, same as the written `score_review` (Whisper/OpenAI is used only for the transcription in step 2).
-4. On `compliance_ok`: `total = min(5, ai_score + video_points)`; credit `delta = max(0, total - ai_score)` dollars under `order_ref=f"review:{rid}:video"`, `reason=f"review:{slug}"` (idempotent via `points.has_entry`); `set_points(rid, total)`. On gate-fail: `video_points=0`, no credit.
-5. `set_video_result(rid, video_points, transcript, 'scored')` (or `'failed'` on exception); `review_video_jobs.mark(rid, 'done'|'failed')`. Wrap each job so one failure never aborts the sweep; all Whisper/AI calls stay in the worker (never a web request).
+4. Credit on quality (NOT compliance-gated): `total = min(5, ai_score + video_points)`; credit `delta = max(0, total - ai_score)` dollars under `order_ref=f"review:{rid}:video"`, `reason=f"review:{slug}"` (idempotent via `points.has_entry`); `set_points(rid, total)`. A disease-claim video still earns points; `publish_risk` only warns the moderator. `video_points=0` (spam/low-effort) → no credit.
+5. `set_video_result(rid, video_points, transcript, 'scored', publish_risk, risk_reasons)` (or status `'failed'` on exception); `review_video_jobs.mark(rid, 'done'|'failed')`. Wrap each job so one failure never aborts the sweep; all Whisper/AI calls stay in the worker (never a web request).
 
 ### Recording UI (front-end, `static/begin-product.html` review form)
 `MediaRecorder`-based recorder: Record / Stop / Preview / Re-record, producing a `.webm` (or `.mp4` on Safari) blob posted to `/api/reviews` as the `video` file part. The allowed length comes from a new `GET /api/reviews/limits?slug=&email=` (or is embedded in page-data) returning `{max_seconds}` from a server-side `_allowed_video_seconds(email) -> 90 or 300` (300 when `has_successful_video`). The recorder auto-stops at `max_seconds`. Upload-path videos remain bounded by the 2a-1 100 MB size cap. NO emoji.
@@ -62,7 +63,7 @@ Flag-gated (`REVIEWS_VIDEO`); no-op when off. Registered in `_start_scheduler` o
 ## Data flow
 1. Buyer records (≤ their allowed length) or uploads a video on the review form → `POST /api/reviews` (verified buyer, 2a-1 path) stores the file, scores any written text synchronously, and (if `REVIEWS_VIDEO`) enqueues a video job; response says scoring is pending.
 2. The scheduler drains the job: Whisper transcript → `score_video` → credit the video delta (idempotent) → store transcript/score → mark done.
-3. The console `/api/console/reviews` row now shows the transcript + video score for moderation; the page total/points update.
+3. The console `/api/console/reviews` row now shows the transcript + video score **and any `publish_risk` warning + reasons** prominently for moderation; the page total/points update. The moderator gates publication with the risk flag in view.
 
 ## Error handling
 - Missing file / non-upload kind → mark the job failed, `video_status='failed'`, no points.
@@ -74,8 +75,8 @@ Flag-gated (`REVIEWS_VIDEO`); no-op when off. Registered in `_start_scheduler` o
 ## Testing
 - **Schema/data:** `set_video_result`, `has_successful_video` (true only with video_points>0 AND approved); additive columns present.
 - **Queue:** enqueue/claim/mark; idempotent enqueue.
-- **`score_video` (fake client):** quality→points(0-5); disease-claim transcript gate-fails (video_points 0); dashes stripped; never raises.
-- **Worker (mock `_whisper_transcribe` + mock scorer):** scored path credits `min(5, written+video)` delta idempotently (no double-credit on re-run), gate-fail credits nothing, missing file → failed; flag-off → no-op.
+- **`score_video` (fake client):** quality→points(0-5); a disease-claim transcript still returns `video_points > 0` AND `publish_risk=True` + reasons (points NOT zeroed); a spam/low-effort transcript → `video_points 0`; dashes stripped; never raises.
+- **Worker (mock `_whisper_transcribe` + mock scorer):** scored path credits `min(5, written+video)` delta idempotently (no double-credit on re-run); a disease-claim (publish_risk) video still credits its points + persists the risk flag; a spam video credits nothing; missing file → failed; flag-off → no-op.
 - **Enqueue on submit:** an upload-video review enqueues a job + `video_status:"pending"`; a link video does not; written-only does not.
 - **Length helper:** 90 default, 300 after a successful video review.
 - Follow deploy-chat test isolation (tmp `$DATA_DIR/chat_log.db`; mock Supabase; importorskip playwright; `importlib.reload` + idempotent registration). Recorder UI = manual visual pass. NO emoji; no em dashes in generated text.
@@ -86,3 +87,4 @@ Flag-gated (`REVIEWS_VIDEO`); no-op when off. Registered in `_start_scheduler` o
 ## Notes
 - Reuses `journal_blueprint._whisper_transcribe` (Whisper-1, accepts the video file directly), the OpenAI client, the points ledger, the 2a-1 review schema/upload/serve, and the APScheduler worker pattern. No new pip/external dependency for 2a-2 (the bundled-ffmpeg dep enters in 2a-2b for trim).
 - Whisper cost is ~$0.006/min; the 90s default + ≤3-jobs/tick worker bound cost.
+- **Written/video compliance inconsistency (deliberate scope boundary):** the merged 2a-1 written scorer still *zeroes* points on a compliance miss, whereas 2a-2 video awards points + flags publish-risk. Aligning the written path to the same points-vs-publication decoupling is a small follow-up, not part of this PR (keeps 2a-2 from re-opening merged 2a-1 code).
