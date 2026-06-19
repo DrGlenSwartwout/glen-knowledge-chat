@@ -2961,6 +2961,27 @@ def begin_product_page_gen(slug, section):
     return resp
 
 
+@app.route("/begin/product-image/<slug>/<filename>")
+def begin_product_image(slug, filename):
+    if not re.match(r'^[\w\-]+\.png$', filename):
+        return ("", 404)
+    d = _SALES_IMG_DIR / slug
+    if not (d / filename).exists():
+        return ("", 404)
+    return send_from_directory(str(d), filename, mimetype="image/png")
+
+
+@app.route("/begin/product-image-gen/<slug>", methods=["POST"])
+def begin_product_image_gen(slug):
+    if not _SALES_AI_IMAGES_ENABLED or not _get_product(slug):
+        return ("", 404)
+    from dashboard import sales_images as _si
+    with sqlite3.connect(LOG_DB) as cx:
+        _si.enqueue(cx, slug)
+        state = _si.queue_state(cx, slug)
+    return jsonify({"ok": True, "state": state})
+
+
 @app.route("/begin/learn/<slug>")
 def begin_learn_page(slug):
     """Research page — the 3rd Buy-button surface."""

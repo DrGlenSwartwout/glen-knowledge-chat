@@ -122,3 +122,27 @@ def test_worker_marks_failed_on_error(monkeypatch, tmp_path):
     appmod._drain_sales_image_queue()
     with sqlite3.connect(appmod.LOG_DB) as cx:
         assert si.queue_state(cx, slug) == "failed"
+
+
+def test_enqueue_route_and_404_when_flag_off(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    c = appmod.app.test_client()
+    r = c.post(f"/begin/product-image-gen/{slug}")
+    assert r.status_code == 200 and r.get_json().get("ok") is True
+    from dashboard import sales_images as si
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx: assert si.queue_state(cx, slug) == "pending"
+    # flag off
+    off = _reload(monkeypatch, tmp_path, imgs="false")
+    assert off.app.test_client().post(f"/begin/product-image-gen/{slug}").status_code == 404
+
+def test_serve_image_route(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    d = appmod._SALES_IMG_DIR / slug; d.mkdir(parents=True, exist_ok=True)
+    (d / "botanical-1.png").write_bytes(b"\x89PNG\r\n")
+    c = appmod.app.test_client()
+    assert c.get(f"/begin/product-image/{slug}/botanical-1.png").status_code == 200
+    assert c.get(f"/begin/product-image/{slug}/missing.png").status_code == 404
+    assert c.get(f"/begin/product-image/{slug}/../evil.png").status_code in (400, 404)
