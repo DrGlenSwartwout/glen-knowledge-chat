@@ -2300,6 +2300,8 @@ _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "t
 _SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _SALES_AI_COPY_ENABLED = os.environ.get("SALES_PAGES_AI_COPY", "").strip().lower() in ("1", "true", "yes")
 _SALES_AI_IMAGES_ENABLED = os.environ.get("SALES_PAGES_AI_IMAGES", "").strip().lower() in ("1", "true", "yes")
+_SALES_IMAGE_PICK_ENABLED = os.environ.get("SALES_PAGES_IMAGE_PICK", "").strip().lower() in ("1", "true", "yes")
+_IMAGE_PICK_REWARD_CENTS = int(os.environ.get("IMAGE_PICK_REWARD_CENTS", "100"))
 # Shown to the customer when Stripe was active but no checkout URL came back
 # (create_checkout_session failed) — so the Pay button surfaces a clear message
 # instead of silently no-opping. _alert_stripe() already notifies Glen.
@@ -3002,6 +3004,36 @@ def begin_product_image_gen(slug):
         _si.enqueue(cx, slug)
         state = _si.queue_state(cx, slug)
     return jsonify({"ok": True, "state": state})
+
+
+@app.route("/begin/product-image-pick/<slug>", methods=["POST"])
+def begin_product_image_pick(slug):
+    from dashboard import sales_image_prompts as _sip
+    if not _SALES_IMAGE_PICK_ENABLED or not _get_product(slug):
+        return ("", 404)
+    data = request.get_json(silent=True) or {}
+    kind = (data.get("kind") or "").strip()
+    if kind not in _sip.IMAGE_KINDS:
+        return jsonify({"ok": False}), 400
+    raw = data.get("variant")
+    if raw == "neither":
+        variant = 0
+    else:
+        try:
+            variant = int(raw)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False}), 400
+        if variant < 1:
+            return jsonify({"ok": False}), 400
+    session_id = request.cookies.get("amg_session", "")
+    au = get_authenticated_user(request)
+    email = ((au or {}).get("email") or "").strip().lower() if au else ""
+    from dashboard import sales_votes as _sv
+    with sqlite3.connect(LOG_DB) as cx:
+        _sv.record_pick(cx, slug, kind, variant, session_id, email)
+        picks = _sv.get_picks(cx, slug, session_id=session_id, email=email)
+        both = _sv.picked_both(cx, slug, session_id=session_id, email=email)
+    return jsonify({"ok": True, "picks": picks, "both_picked": both})
 
 
 @app.route("/begin/learn/<slug>")
