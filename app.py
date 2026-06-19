@@ -2316,6 +2316,16 @@ _REVIEWS_ENABLED = os.environ.get("REVIEWS_ENABLED", "").strip().lower() in ("1"
 _REVIEWS_VIDEO = os.environ.get("REVIEWS_VIDEO", "").strip().lower() in ("1", "true", "yes")
 _REVIEWS_VIDEO_TRIM = os.environ.get("REVIEWS_VIDEO_TRIM", "").strip().lower() in ("1", "true", "yes")
 _REVIEWS_GIFTS = os.environ.get("REVIEWS_GIFTS", "").strip().lower() in ("1", "true", "yes")
+_REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "yes")
+
+
+def _referral_pct():
+    try:
+        return int(os.environ.get("REFERRAL_PCT", "10"))
+    except (TypeError, ValueError):
+        return 10
+
+
 _REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
 _REVIEW_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".m4v")
 _REVIEW_VIDEO_MAX_BYTES = 100 * 1024 * 1024
@@ -3642,9 +3652,10 @@ def begin_checkout(slug):
             with sqlite3.connect(LOG_DB) as _bcx:
                 _points.init_points_table(_bcx)
                 redeem = min(redeem, _points.balance(_bcx, email))
+        _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(data.get("referral_code"), email)
         try:
             pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
-                             coupon_pct=_active_coupon_pct(),
+                             coupon_pct=_ref_pct,
                              points_to_redeem_cents=redeem)
         except CheckoutError as ce:
             return jsonify({"ok": False, "error": str(ce)}), 400
@@ -3653,6 +3664,7 @@ def begin_checkout(slug):
         inv = qb.create_invoice(cust, pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
                                 allow_online_pay=allow_online, email_to=email,
                                 discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+        _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
         out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
                "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt"),
                "method": method, "customer_id": cust.get("Id"),
@@ -7657,6 +7669,55 @@ def _active_coupon_pct():
     return _COUPONS.get("_discount_percent", 0) if get_today_coupon_code() else None
 
 
+def _resolve_checkout_coupon_pct(referral_code, referee_email):
+    """Return (effective_coupon_pct, referral_ctx|None). A valid referral code yields
+    max(referral_pct, daily); otherwise the daily coupon with no referral context."""
+    daily = _active_coupon_pct()
+    code = (referral_code or "").strip()
+    if not _REFERRALS or not code or not (referee_email or "").strip():
+        return daily, None
+    try:
+        from dashboard import referrals as _rf
+        with sqlite3.connect(LOG_DB) as cx:
+            res = _rf.resolve(cx, code, referee_email, pct=_referral_pct())
+        if not res:
+            return daily, None
+        eff = max(res["coupon_pct"], daily or 0)
+        return eff, {"code": code, "owner_email": res["owner_email"]}
+    except Exception as e:  # noqa: BLE001 - referral never blocks checkout
+        print(f"[referrals] resolve failed: {e}", flush=True)
+        return daily, None
+
+
+def _record_referral_if_any(referral_ctx, referee_email, order_ref):
+    """Record a single referral redemption for this order, best-effort. Returns True if recorded."""
+    if not _REFERRALS or not referral_ctx:
+        return False
+    try:
+        from dashboard import referrals as _rf
+        with sqlite3.connect(LOG_DB) as cx:
+            return _rf.record_redemption(cx, referral_ctx["code"], referral_ctx["owner_email"],
+                                         referee_email, order_ref)
+    except Exception as e:  # noqa: BLE001 - referral never blocks order creation
+        print(f"[referrals] record failed: {e}", flush=True)
+        return False
+
+
+@app.route("/api/referral/my-code", methods=["GET"])
+def api_referral_my_code():
+    if not _REFERRALS:
+        return ("", 404)
+    au = get_authenticated_user(request) or {}
+    email = (au.get("email") or _reorder_email_from_cookie() or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "no email"}), 400
+    from dashboard import referrals as _rf
+    with sqlite3.connect(LOG_DB) as cx:
+        code = _rf.get_or_create_code(cx, email)
+    return jsonify({"ok": True, "code": code,
+                    "share_text": f"Use my code {code} for {_referral_pct()}% off at illtowell.com"})
+
+
 def _stripe_checkout_url_for_reorder(out, email):
     """Stripe Checkout for a reorder cart; mirrors _stripe_checkout_url_for_retail
     but the cancel returns to /reorder. Records via /begin/checkout-return (invoice-based)."""
@@ -9513,8 +9574,10 @@ def reorder_checkout():
                     _pts_co.init_points_table(_cx_pts)
                     _bal = _pts_co.balance(_cx_pts, email)
                 requested_redeem = min(requested_redeem, _bal)
+            _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(
+                body.get("referral_code") if isinstance(body, dict) else None, email)
             try:
-                pc = _price_cart(cart, ship=ship, coupon_pct=_active_coupon_pct(),
+                pc = _price_cart(cart, ship=ship, coupon_pct=_ref_pct,
                                  points_to_redeem_cents=requested_redeem)
             except CheckoutError as e:
                 return jsonify({"ok": False, "error": str(e)}), 400
@@ -9536,6 +9599,7 @@ def reorder_checkout():
                           discount_cents=pc["discount_cents"],
                           points_redeemed_cents=pc["points_redeemed_cents"],
                           shipping_cents=pc["shipping_cents"])
+            _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
             out = {"invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
                    "customer_id": cust.get("Id"),   # needed by /begin/checkout-return to record the QBO payment
                    "total": inv.get("TotalAmt")}
