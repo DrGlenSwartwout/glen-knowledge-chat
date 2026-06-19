@@ -3651,9 +3651,10 @@ def begin_checkout(slug):
             with sqlite3.connect(LOG_DB) as _bcx:
                 _points.init_points_table(_bcx)
                 redeem = min(redeem, _points.balance(_bcx, email))
+        _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(data.get("referral_code"), email)
         try:
             pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
-                             coupon_pct=_active_coupon_pct(),
+                             coupon_pct=_ref_pct,
                              points_to_redeem_cents=redeem)
         except CheckoutError as ce:
             return jsonify({"ok": False, "error": str(ce)}), 400
@@ -3662,6 +3663,7 @@ def begin_checkout(slug):
         inv = qb.create_invoice(cust, pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
                                 allow_online_pay=allow_online, email_to=email,
                                 discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+        _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
         out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
                "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt"),
                "method": method, "customer_id": cust.get("Id"),
@@ -7686,6 +7688,20 @@ def _resolve_checkout_coupon_pct(referral_code, referee_email):
         return daily, None
 
 
+def _record_referral_if_any(referral_ctx, referee_email, order_ref):
+    """Record a single referral redemption for this order, best-effort. Returns True if recorded."""
+    if not _REFERRALS or not referral_ctx:
+        return False
+    try:
+        from dashboard import referrals as _rf
+        with sqlite3.connect(LOG_DB) as cx:
+            return _rf.record_redemption(cx, referral_ctx["code"], referral_ctx["owner_email"],
+                                         referee_email, order_ref)
+    except Exception as e:  # noqa: BLE001 - referral never blocks order creation
+        print(f"[referrals] record failed: {e}", flush=True)
+        return False
+
+
 @app.route("/api/referral/my-code", methods=["GET"])
 def api_referral_my_code():
     if not _REFERRALS:
@@ -9557,8 +9573,10 @@ def reorder_checkout():
                     _pts_co.init_points_table(_cx_pts)
                     _bal = _pts_co.balance(_cx_pts, email)
                 requested_redeem = min(requested_redeem, _bal)
+            _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(
+                body.get("referral_code") if isinstance(body, dict) else None, email)
             try:
-                pc = _price_cart(cart, ship=ship, coupon_pct=_active_coupon_pct(),
+                pc = _price_cart(cart, ship=ship, coupon_pct=_ref_pct,
                                  points_to_redeem_cents=requested_redeem)
             except CheckoutError as e:
                 return jsonify({"ok": False, "error": str(e)}), 400
@@ -9580,6 +9598,7 @@ def reorder_checkout():
                           discount_cents=pc["discount_cents"],
                           points_redeemed_cents=pc["points_redeemed_cents"],
                           shipping_cents=pc["shipping_cents"])
+            _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
             out = {"invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
                    "customer_id": cust.get("Id"),   # needed by /begin/checkout-return to record the QBO payment
                    "total": inv.get("TotalAmt")}

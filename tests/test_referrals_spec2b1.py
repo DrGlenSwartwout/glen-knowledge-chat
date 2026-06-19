@@ -90,3 +90,24 @@ def test_my_code_404_when_flag_off(monkeypatch, tmp_path):
     appmod = _reload_ref_app(monkeypatch, tmp_path, referrals="false")
     c = appmod.app.test_client(); c.set_cookie("rm_reorder_email", "owner@x.com")
     assert c.get("/api/referral/my-code").status_code == 404
+
+
+def test_record_referral_if_any(monkeypatch, tmp_path):
+    appmod = _reload_ref_app(monkeypatch, tmp_path)
+    import sqlite3
+    from dashboard import referrals as rf
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        code = rf.get_or_create_code(cx, "owner@x.com")
+    ctx = {"code": code, "owner_email": "owner@x.com"}
+    assert appmod._record_referral_if_any(ctx, "friend@x.com", "INV-1") is True
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert rf.has_redeemed(cx, "friend@x.com") is True
+    # None ctx -> no-op; second time for same referee -> False (already redeemed)
+    assert appmod._record_referral_if_any(None, "friend@x.com", "INV-2") is False
+    assert appmod._record_referral_if_any(ctx, "friend@x.com", "INV-2") is False
+
+
+def test_record_referral_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_ref_app(monkeypatch, tmp_path, referrals="false")
+    ctx = {"code": "X", "owner_email": "owner@x.com"}
+    assert appmod._record_referral_if_any(ctx, "friend@x.com", "INV-1") is False
