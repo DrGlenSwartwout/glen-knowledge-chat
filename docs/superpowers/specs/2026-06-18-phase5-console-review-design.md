@@ -32,7 +32,7 @@ A console page (Business OS sub-tab) to review draft sales-page copy. Per produc
 New `dashboard/sales_pages_actions.py` (or registered inline), all RBAC `(OWNER, OPS)`, `risk_tier=LOW_WRITE`:
 - `sales_pages.approve` `{slug}` → `set_state(cx, slug, "approved", by=actor.name)`; logs an event.
 - `sales_pages.regenerate` `{slug}` → calls `_regenerate_sales_copy(slug)`; returns the new content; logs an event.
-- `sales_pages.edit` `{slug, section, text}` → `upsert_section(cx, slug, section, text)` (state stays draft); logs an event.
+- `sales_pages.edit` `{slug, section, text}` → `upsert_section(cx, slug, section, text)` then `set_state(cx, slug, "draft")` (any edit returns the page to draft — edited copy must be re-approved); logs an event.
 
 ### Console API + UI
 - `GET /api/console/sales-pages` (console-key gated) → `list_draft_pages` rows (slug, name, which sections present, state).
