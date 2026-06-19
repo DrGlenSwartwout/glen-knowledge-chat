@@ -161,10 +161,21 @@ def test_page_data_ai_state_none_when_no_page(monkeypatch, tmp_path):
     assert data["ai_state"] == "none"
 
 
+def test_page_data_ai_state_none_when_copy_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path, copy="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    from dashboard import sales_pages as sp2
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        sp2.upsert_section(cx, slug, "intro", "draft copy")
+        sp2.set_state(cx, slug, "approved", by="Glen")
+    # flag off: the AI-copy block is skipped entirely, so ai_state stays the "none" default
+    data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
+    assert data["ai_state"] == "none"
+
+
 def test_page_data_ai_state_reflects_state(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
-    import sqlite3
     from dashboard import sales_pages as sp2
     with sqlite3.connect(appmod.LOG_DB) as cx:
         sp2.upsert_section(cx, slug, "intro", "draft copy")
@@ -179,7 +190,6 @@ def test_page_data_ai_state_reflects_state(monkeypatch, tmp_path):
 def test_dispatch_approve_flips_state(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
-    import sqlite3
     from dashboard import sales_pages as sp2
     from dashboard import dispatch as d
     from dashboard.rbac import Actor, OWNER
@@ -197,7 +207,6 @@ def test_console_list_and_load(monkeypatch, tmp_path):
     import dashboard as _d
     _d.CONSOLE_SECRET = ""  # auth passes through when unset
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
-    import sqlite3
     from dashboard import sales_pages as sp2
     with sqlite3.connect(appmod.LOG_DB) as cx:
         sp2.upsert_section(cx, slug, "intro", "draft copy")
