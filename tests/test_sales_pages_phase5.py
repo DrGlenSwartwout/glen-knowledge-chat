@@ -1,3 +1,4 @@
+import importlib
 import sqlite3
 import pytest
 from dashboard import sales_pages as sp
@@ -142,9 +143,6 @@ def test_exec_regenerate_sets_draft_and_writes_copy():
 def test_register_idempotent():
     spa.register()
     spa.register()  # second call must not raise duplicate-key
-
-
-import importlib
 
 
 def _reload_app(monkeypatch, tmp_path, copy="true"):
