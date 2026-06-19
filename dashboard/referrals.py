@@ -17,7 +17,7 @@ def init_tables(cx):
     cx.execute("CREATE TABLE IF NOT EXISTS referral_redemptions ("
                "referee_email TEXT PRIMARY KEY, code TEXT, owner_email TEXT, "
                "order_ref TEXT, created_at TEXT)")
-    # Additive columns — lazy ALTER, idempotent (OperationalError = column already exists)
+    # Additive columns: lazy ALTER, idempotent (OperationalError = column already exists)
     for col, typedef in [("rewarded_at", "TEXT"), ("reward_cents", "INTEGER")]:
         try:
             cx.execute(f"ALTER TABLE referral_redemptions ADD COLUMN {col} {typedef}")
