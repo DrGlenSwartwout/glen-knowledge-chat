@@ -30,6 +30,15 @@
   .review-row .ai-block .rec.yes{ color:var(--ok); }
   .review-row .ai-block .rec.no{ color:var(--err); }
   .review-row .pts{ font-size:13px; color:var(--muted); margin-bottom:8px; }
+  .review-row .video-block{ margin:8px 0; padding:8px 10px; border-radius:6px;
+                             background:#1a1e2a; font-size:13px; }
+  .review-row .video-block .video-pts{ color:var(--muted); }
+  .review-row .video-block .video-transcript{ color:var(--muted); margin-top:4px;
+                                              font-style:italic; white-space:pre-wrap; }
+  .review-row .publish-risk{ margin:8px 0; padding:8px 12px; border-radius:6px;
+                              background:#2a1a1e; border:1px solid var(--err);
+                              font-size:13px; font-weight:600; color:var(--err); }
+  .review-row .publish-risk .risk-icon{ margin-right:5px; }
   .row{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
   .btn{ border:0; border-radius:8px; padding:7px 14px; font:inherit; cursor:pointer;
         font-size:13px; }
@@ -93,8 +102,17 @@ async function loadList(){
     const aiYes = rv.ai_recommend_publish;
     const recLabel = aiYes ? 'Recommend: publish' : 'Recommend: hold';
     const recCls = aiYes ? 'yes' : 'no';
-    const videoBlock = rv.video_url
+    const videoLinkBlock = rv.video_url
       ? `<div><a class="video-link" href="${esc(rv.video_url)}" target="_blank" rel="noopener">Video link &#8599;</a></div>`
+      : '';
+    const videoScoredBlock = rv.video_status === 'scored'
+      ? `<div class="video-block">
+           <span class="video-pts">Video score: ${esc(rv.video_points != null ? rv.video_points : 0)} pts</span>
+           ${rv.transcript ? `<div class="video-transcript">${esc(rv.transcript)}</div>` : ''}
+         </div>`
+      : '';
+    const publishRiskBlock = rv.publish_risk
+      ? `<div class="publish-risk"><span class="risk-icon">!</span>PUBLISH RISK: ${esc(rv.video_verdict || '')}</div>`
       : '';
     return `<div class="review-row" id="row-${i}">
       <div class="meta">
@@ -103,7 +121,9 @@ async function loadList(){
         <span class="author">${esc(rv.email)}</span>
       </div>
       <div class="body">${esc(rv.body || '')}</div>
-      ${videoBlock}
+      ${videoLinkBlock}
+      ${publishRiskBlock}
+      ${videoScoredBlock}
       <div class="ai-block">
         <span class="rec ${recCls}">${esc(recLabel)}</span>
         ${rv.ai_verdict ? ` &mdash; ${esc(rv.ai_verdict)}` : ''}

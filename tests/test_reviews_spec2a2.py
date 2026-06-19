@@ -236,3 +236,23 @@ def test_worker_noop_when_flag_off(monkeypatch, tmp_path):
     appmod = _reload_video_app(monkeypatch, tmp_path, video="false")
     assert appmod._REVIEWS_VIDEO is False
     appmod._drain_review_videos()   # no raise
+
+
+# ---------------------------------------------------------------------------
+# Task 5: console API exposes video fields
+# ---------------------------------------------------------------------------
+
+def test_console_reviews_exposes_video_fields(monkeypatch, tmp_path):
+    appmod = _reload_video_app(monkeypatch, tmp_path)
+    import dashboard as _d
+    _d.CONSOLE_SECRET = ""
+    import sqlite3
+    from dashboard import product_reviews as pr
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, slug, "a@x.com", "Ann", 5, video_kind="upload", video_ref="v.webm")
+        pr.set_video_result(cx, rid, 4, "spoken transcript", "scored", publish_risk=1, video_verdict="disease claim")
+    rows = appmod.app.test_client().get("/api/console/reviews").get_json()["pending"]
+    row = next(r for r in rows if r["email"] == "a@x.com")
+    assert row["video_points"] == 4 and row["transcript"] == "spoken transcript"
+    assert row["publish_risk"] == 1 and row["video_verdict"] == "disease claim"
