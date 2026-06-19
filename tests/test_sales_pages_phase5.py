@@ -1,5 +1,7 @@
 import sqlite3
 from dashboard import sales_pages as sp
+from dashboard import sales_pages_actions as spa
+from dashboard.rbac import Actor, OWNER
 
 
 def _cx():
@@ -38,3 +40,92 @@ def test_list_draft_pages_includes_content_excludes_empty():
     assert "with-copy" in slugs and "empty" not in slugs
     row = next(r for r in rows if r["slug"] == "with-copy")
     assert row["state"] == "draft" and row["sections"] == ["intro"]
+
+
+class _Blk:
+    def __init__(self, text):
+        self.type = "text"
+        self.text = text
+
+
+class _Msg:
+    def __init__(self, text):
+        self.content = [_Blk(text)]
+
+
+class _FakeMessages:
+    def create(self, **kw):
+        # echo the section brief marker so each call is distinct-enough; em dash on purpose
+        return _Msg("Supports vitality — grounded in the stack.")
+
+
+class _FakeClient:
+    def __init__(self):
+        self.messages = _FakeMessages()
+
+
+def _configure_fake():
+    spa.configure(client=_FakeClient(),
+                  get_product=lambda s: {"name": "Test", "ingredients": [{"name": "Magnesium"}]},
+                  product_card=lambda p: {"ingredients": p.get("ingredients", [])},
+                  strip_dash=lambda s: s.replace("—", ","))
+
+
+def test_regenerate_copy_strips_dashes_all_sections():
+    _configure_fake()
+    out = spa.regenerate_copy("x")
+    assert set(out.keys()) == {"intro", "description", "research"}
+    assert all("—" not in v and v for v in out.values())
+
+
+def test_regenerate_copy_none_without_product():
+    spa.configure(client=_FakeClient(), get_product=lambda s: None,
+                  product_card=lambda p: {}, strip_dash=lambda s: s)
+    assert spa.regenerate_copy("nope") is None
+
+
+def test_exec_edit_forces_draft():
+    _configure_fake()
+    spa.register()
+    cx = _cx()
+    sp.upsert_section(cx, "x", "intro", "old")
+    sp.set_state(cx, "x", "approved", by="Glen")
+    from dashboard.actions import get_action
+    act = get_action("sales_pages.edit")
+    act.executor({"slug": "x", "section": "intro", "text": "new copy"},
+                 {"cx": cx, "actor": Actor(role=OWNER, name="Glen")})
+    page = sp.get_page(cx, "x")
+    assert page["content"]["intro"] == "new copy"
+    # any edit returns the page to draft: edited copy must be re-approved before the
+    # banner drops again (Approve is the single deliberate publish step).
+    assert page["state"] == "draft"
+
+
+def test_exec_approve_sets_approved():
+    _configure_fake()
+    spa.register()
+    cx = _cx()
+    sp.upsert_section(cx, "x", "intro", "hi")
+    from dashboard.actions import get_action
+    get_action("sales_pages.approve").executor(
+        {"slug": "x"}, {"cx": cx, "actor": Actor(role=OWNER, name="Glen")})
+    assert sp.get_page(cx, "x")["state"] == "approved"
+
+
+def test_exec_regenerate_sets_draft_and_writes_copy():
+    _configure_fake()
+    spa.register()
+    cx = _cx()
+    sp.upsert_section(cx, "x", "intro", "old")
+    sp.set_state(cx, "x", "approved", by="Glen")
+    from dashboard.actions import get_action
+    res = get_action("sales_pages.regenerate").executor(
+        {"slug": "x"}, {"cx": cx, "actor": Actor(role=OWNER, name="Glen")})
+    page = sp.get_page(cx, "x")
+    assert page["state"] == "draft"
+    assert page["content"]["intro"] == res["content"]["intro"]
+
+
+def test_register_idempotent():
+    spa.register()
+    spa.register()  # second call must not raise duplicate-key
