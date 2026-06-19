@@ -42,12 +42,22 @@ def test_pair_counts_only_active_variants_and_since():
     assert sv.pair_counts(cx, "x", "botanical", 1, 2) == (1, 1)
 
 
+def test_pair_counts_since_filters_old_votes():
+    cx = _cx()
+    # all four picks land "now"; a future `since` excludes everything
+    sv.record_pick(cx, "x", "botanical", 1, "s1")
+    sv.record_pick(cx, "x", "botanical", 2, "s2")
+    assert sv.pair_counts(cx, "x", "botanical", 1, 2, since="9999-01-01T00:00:00+00:00") == (0, 0)
+    # an epoch-old `since` keeps both
+    assert sv.pair_counts(cx, "x", "botanical", 1, 2, since="0001-01-01T00:00:00+00:00") == (1, 1)
+
+
 def test_build_one_prompt_varies_and_keeps_constraints():
     p3 = sip.build_one_prompt("botanical", 3)
     p4 = sip.build_one_prompt("botanical", 4)
     assert "no text" in p3.lower() and "bottles" in p3.lower()
     assert "kitchen" in p3.lower()
-    assert p3 != p4 or True  # styles cycle; at minimum a valid prompt string
+    assert p3 != p4  # variant indices 3 and 4 cycle to distinct styles
     assert isinstance(p3, str) and len(p3) > 40
 
 
