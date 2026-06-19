@@ -250,6 +250,10 @@
   .tag-add { display:inline-flex; gap:4px; align-items:center; margin-top:4px; }
   .tag-add input { font-size:11px; padding:2px 6px; border:1px solid var(--border); border-radius:4px; background:var(--bg, #111); color:inherit; }
   .tag-add button { font-size:11px; padding:2px 8px; cursor:pointer; border:1px solid var(--border); border-radius:4px; background:var(--border); color:inherit; }
+  .tag-suggest { position:relative; display:inline-block; }
+  .tag-suggest-list { position:absolute; left:0; top:100%; z-index:50; min-width:160px; max-height:200px; overflow-y:auto; background:var(--bg, #111); border:1px solid var(--border); border-radius:4px; margin-top:2px; box-shadow:0 4px 12px rgba(0,0,0,.4); }
+  .tag-suggest-list .tsi { padding:4px 8px; font-size:11px; cursor:pointer; white-space:nowrap; }
+  .tag-suggest-list .tsi:hover { background:var(--border); }
   .ptag.system  { background:#1a2a40; color:#7ab8f5; }
   .ptag.phase   { background:#1a2a1a; color:#7af57a; }
   .ptag.concern { background:#2a1a1a; color:#f57a7a; }
@@ -831,6 +835,8 @@ const API = '';
 const BASE = '';   // same-origin; restores ${BASE}/api/... template fetches below
 let currentOwner = 'glen';
 let consoleKey = '';
+let _detailTags = [];
+let _allTagsCache = null;
 let countdown = 1800;
 let countdownTimer;
 let WS_META = {};   // todo_id → {phase, time_total_seconds, pending_asks} for owners with a Workspace
@@ -1809,10 +1815,43 @@ function _escAttr(s) {
   return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
 }
 function _renderTagEditor(id, tags) {
+  _detailTags = tags.slice();
   const chips = tags.map(t =>
     `<span class="ptag ${_ptagCls(t)}">${_esc(t)}<button class="ptag-x" title="Remove" onclick="removePersonTag(${id}, '${_escAttr(t)}')">×</button></span>`
   ).join('');
-  return `${chips}<span class="tag-add"><input id="tag-add-input" type="text" placeholder="e.g. tier:pro-influencer" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addPersonTag(${id});}"><button onclick="addPersonTag(${id})">Add</button></span>`;
+  return `${chips}<span class="tag-add"><span class="tag-suggest"><input id="tag-add-input" type="text" placeholder="e.g. tier:pro-influencer" autocomplete="off" oninput="_onTagInput(${id})" onkeydown="if(event.key==='Enter'){event.preventDefault();addPersonTag(${id});}else if(event.key==='Escape'){_hideTagSuggest();}" onblur="setTimeout(_hideTagSuggest, 150)"><div class="tag-suggest-list" id="tag-suggest-list" style="display:none"></div></span><button onclick="addPersonTag(${id})">Add</button></span>`;
+}
+async function _fetchAllTags() {
+  if (_allTagsCache) return _allTagsCache;
+  try {
+    const res = await fetch(`${BASE}/api/people/tags`, { headers:{'X-Console-Key':consoleKey} });
+    _allTagsCache = res.ok ? ((await res.json()).tags || []) : [];
+  } catch { _allTagsCache = []; }
+  return _allTagsCache;
+}
+function _hideTagSuggest() {
+  const el = document.getElementById('tag-suggest-list');
+  if (el) el.style.display = 'none';
+}
+async function _onTagInput(id) {
+  const inp = document.getElementById('tag-add-input');
+  const list = document.getElementById('tag-suggest-list');
+  if (!inp || !list) return;
+  const q = (inp.value || '').trim().toLowerCase();
+  if (!q) { list.style.display = 'none'; return; }
+  const all = await _fetchAllTags();
+  const have = new Set(_detailTags);
+  const matches = all.filter(t => t.toLowerCase().includes(q) && !have.has(t)).slice(0, 10);
+  if (!matches.length) { list.style.display = 'none'; return; }
+  list.innerHTML = matches.map(t =>
+    `<div class="tsi" onmousedown="event.preventDefault();_pickTagSuggest(${id}, '${_escAttr(t)}')">${_esc(t)}</div>`
+  ).join('');
+  list.style.display = 'block';
+}
+async function _pickTagSuggest(id, tag) {
+  _hideTagSuggest();
+  const tags = await _postTagDelta(id, [tag], []);
+  if (tags) { _allTagsCache = null; _rerenderTags(id, tags); }
 }
 async function _postTagDelta(id, add, remove) {
   const res = await fetch(`${BASE}/api/people/${id}/tags`, {
@@ -1834,7 +1873,7 @@ async function addPersonTag(id) {
   const val = (inp && inp.value || '').trim();
   if (!val) return;
   const tags = await _postTagDelta(id, [val], []);
-  if (tags) _rerenderTags(id, tags);
+  if (tags) { _allTagsCache = null; _hideTagSuggest(); _rerenderTags(id, tags); }
 }
 async function removePersonTag(id, tag) {
   const tags = await _postTagDelta(id, [], [tag]);
