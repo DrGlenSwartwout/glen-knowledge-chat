@@ -2311,6 +2311,10 @@ _TOURNEY_MIN_VOTES = int(os.environ.get("IMAGE_TOURNAMENT_MIN_VOTES", "10"))
 _TOURNEY_MARGIN = float(os.environ.get("IMAGE_TOURNAMENT_MARGIN", "0.65"))
 _TOURNEY_K = int(os.environ.get("IMAGE_TOURNAMENT_CONVERGE_K", "3"))
 _TOURNEY_CADENCE_DAYS = int(os.environ.get("IMAGE_TOURNAMENT_CADENCE_DAYS", "3"))
+_REVIEWS_ENABLED = os.environ.get("REVIEWS_ENABLED", "").strip().lower() in ("1", "true", "yes")
+_REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
+_REVIEW_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".m4v")
+_REVIEW_VIDEO_MAX_BYTES = 100 * 1024 * 1024
 # Shown to the customer when Stripe was active but no checkout URL came back
 # (create_checkout_session failed) — so the Pay button surfaces a clear message
 # instead of silently no-opping. _alert_stripe() already notifies Glen.
@@ -2900,6 +2904,34 @@ def begin_product_page_data(slug):
         {"id": "images",      "title": "Help shape this", "default_open": False, "body": {"images": p.get("page_images", [])}},
         {"id": "cta",         "title": "Order",           "default_open": False, "body": {}},
     ]
+    if _REVIEWS_ENABLED:
+        from dashboard import product_reviews as _pr
+        try:
+            with sqlite3.connect(LOG_DB) as _rcx:
+                _agg = _pr.aggregate(_rcx, slug)
+                _approved = _pr.approved_for_slug(_rcx, slug)
+            _revs = [{"name": (r.get("name") or "A verified buyer"),
+                      "rating": r.get("rating"), "body": r.get("body") or ""}
+                     for r in _approved if (r.get("body") or "").strip()]
+            _rsec = {"id": "reviews", "title": "What people are saying", "default_open": False,
+                     "body": {"aggregate": _agg, "reviews": _revs,
+                              "disclaimer": "Individual results vary."}}
+            _ri = next((i for i, s in enumerate(sections) if s["id"] == "research"), len(sections) - 1)
+            sections.insert(_ri + 1, _rsec)
+            # approved UGC videos -> existing video section
+            _ugc = [r for r in _approved if (r.get("video_kind") in ("link", "upload")) and r.get("video_ref")]
+            if _ugc:
+                _vsec = next((s for s in sections if s["id"] == "video"), None)
+                if _vsec and isinstance(_vsec.get("body"), dict):
+                    for r in _ugc:
+                        _src = (r["video_ref"] if r["video_kind"] == "link"
+                                else f"/review-media/{slug}/{r['video_ref']}")
+                        _prov = "link" if r["video_kind"] == "link" else "mp4"
+                        _vsec["body"].setdefault("videos", []).append(
+                            {"src": _src, "title": f"Review from {r.get('name') or 'a verified buyer'}",
+                             "provider": _prov, "kind": "ugc"})
+        except Exception as _e:
+            print(f"[reviews] page-data section skipped: {_e}", flush=True)
     _ai_state = "none"
     if _SALES_AI_COPY_ENABLED:
         import sqlite3 as _sq
@@ -3059,6 +3091,164 @@ def begin_product_image(slug, filename):
     if not (d / filename).exists():
         return ("", 404)
     return send_from_directory(str(d), filename, mimetype="image/png")
+
+
+_REVIEW_PAID_STATUSES = ("paid", "new", "packed", "shipped", "done")
+
+
+def _review_verified_buyer(cx, email, slug):
+    from dashboard import orders as _o
+    cx.row_factory = sqlite3.Row
+    for o in _o.list_orders_by_email(cx, email):
+        if (o.get("status") or "").lower() not in _REVIEW_PAID_STATUSES:
+            continue
+        for it in (o.get("items") or []):
+            if _resolve_buy_slug((it.get("name") or "").strip()) == slug:
+                return True
+    return False
+
+
+@app.route("/api/reviews", methods=["POST"])
+def api_submit_review():
+    if not _REVIEWS_ENABLED:
+        return ("", 404)
+    data = request.get_json(silent=True) or request.form
+    slug = (data.get("slug") or "").strip()
+    p = _get_product(slug)
+    if not p:
+        return jsonify({"ok": False, "error": "unknown product"}), 404
+    au = get_authenticated_user(request) or {}
+    email = ((data.get("email") or au.get("email") or "")).strip().lower()
+    name = (data.get("name") or au.get("name") or "").strip()
+    try:
+        rating = int(data.get("rating") or 0)
+    except (TypeError, ValueError):
+        rating = 0
+    if not email or rating < 1 or rating > 5:
+        return jsonify({"ok": False, "error": "email and rating 1-5 required"}), 400
+    body = (data.get("body") or "").strip()
+
+    # optional video: link (video_url) or upload (file 'video')
+    video_kind, video_ref = "", ""
+    f = request.files.get("video") if request.files else None
+    if f and f.filename:
+        safe = re.sub(r"[^\w.\-]", "_", f.filename)[-80:]
+        ext = Path(safe).suffix.lower()
+        if ext not in _REVIEW_VIDEO_EXTS:
+            return jsonify({"ok": False, "error": "unsupported video type"}), 400
+        f.seek(0, 2); size = f.tell(); f.seek(0)
+        if size > _REVIEW_VIDEO_MAX_BYTES:
+            return jsonify({"ok": False, "error": "video too large"}), 400
+        d = _REVIEW_MEDIA_DIR / slug
+        d.mkdir(parents=True, exist_ok=True)
+        f.save(str(d / safe))
+        video_kind, video_ref = "upload", safe
+    elif (data.get("video_url") or "").strip():
+        video_kind, video_ref = "link", (data.get("video_url") or "").strip()[:500]
+
+    from dashboard import product_reviews as _pr
+    from dashboard import review_scoring as _rs
+    from dashboard import points as _points
+    with sqlite3.connect(LOG_DB) as cx:
+        _points.init_points_table(cx)
+        if not _review_verified_buyer(cx, email, slug):
+            return jsonify({"ok": False, "error": "no verified purchase"}), 403
+        rid = _pr.upsert_review(cx, slug, email, name, rating, body, video_kind, video_ref)
+        score = _rs.score_review(_cl, p, body, strip=_strip_dash) if body else {
+            "compliance_ok": True, "reasons": "", "quality_points": 0, "recommend_publish": False}
+        _pr.set_ai_result(cx, rid, score["quality_points"], score["reasons"], score["recommend_publish"])
+        pts = min(5, score["quality_points"]) if score["compliance_ok"] else 0
+        if pts > 0:
+            try:
+                _points.credit(cx, email, value_cents=pts * 100,
+                               reason=f"review:{slug}", order_ref=f"review:{rid}")
+            except Exception as e:  # noqa: BLE001 - points never block the submit
+                print(f"[reviews] points credit failed rid={rid}: {e}", flush=True)
+                pts = 0
+        _pr.set_points(cx, rid, pts)
+        return jsonify({"ok": True, "review_id": rid, "points_awarded": pts, "status": "pending"})
+
+
+@app.route("/review-media/<slug>/<filename>")
+def review_media(slug, filename):
+    if not re.match(r'^[\w\-]+$', slug) or not re.match(r'^[\w.\-]+$', filename):
+        return ("", 404)
+    base = _REVIEW_MEDIA_DIR.resolve()
+    target = (base / slug / filename).resolve()
+    if base not in target.parents or not target.exists():
+        return ("", 404)
+    return send_from_directory(str(target.parent), target.name)
+
+
+# ── Review invite tokens (Task 7) ─────────────────────────────────────────────
+
+def _init_review_link_tokens():
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "CREATE TABLE IF NOT EXISTS review_link_tokens "
+            "(token TEXT PRIMARY KEY, email TEXT, product_slug TEXT, created_at TEXT)"
+        )
+        cx.commit()
+
+_init_review_link_tokens()
+
+
+def _review_token_mint(email: str, slug: str) -> str:
+    """Mint a random token bound to (email, slug), store it, return the plaintext token."""
+    tok = secrets.token_urlsafe(24)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT OR IGNORE INTO review_link_tokens (token, email, product_slug, created_at) "
+            "VALUES (?,?,?,?)",
+            (tok, (email or "").strip().lower(), slug, _now_utc().isoformat()),
+        )
+        cx.commit()
+    return tok
+
+
+def _review_token_verify(tok: str):
+    """Look up a review invite token. Returns (email, slug) or (None, None) for unknown tokens."""
+    if not tok:
+        return (None, None)
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email, product_slug FROM review_link_tokens WHERE token=?", (tok,)
+        ).fetchone()
+    if not row:
+        return (None, None)
+    return (row[0], row[1])
+
+
+@app.route("/review/<token>")
+def review_form_page(token):
+    if not _REVIEWS_ENABLED:
+        return ("", 404)
+    email, slug = _review_token_verify(token)
+    if not email or not _get_product(slug):
+        return ("Invalid or expired link.", 404)
+    return redirect(f"/begin/product/{slug}?review=1&rt={token}")
+
+
+def _send_review_invite(email: str, name: str, slug: str):
+    """Send a post-purchase review invite email (best-effort; never raises)."""
+    try:
+        from dashboard import inbox as _inbox
+        p = _get_product(slug) or {}
+        tok = _review_token_mint(email, slug)
+        url = f"{PUBLIC_BASE_URL}/review/{tok}"
+        subject = f"How is your {p.get('name', 'order')}? Share a quick review"
+        body = (
+            f"Aloha {name or ''},\n\n"
+            f"If you have a moment, I would love your honest review of "
+            f"{p.get('name', 'your recent order')}. "
+            f"It helps others and earns you store credit:\n\n{url}\n\n"
+            f"In wellness,\nDr. Glen & Rae"
+        )
+        _inbox.send_email(
+            email, subject, _strip_dash(body), from_name="Dr. Glen Swartwout"
+        )
+    except Exception as _e:
+        print(f"[reviews] _send_review_invite failed for {email}/{slug}: {_e!r}", flush=True)
 
 
 @app.route("/begin/product-image-gen/<slug>", methods=["POST"])
@@ -6917,6 +7107,31 @@ def api_console_sales_page_load(slug):
                     "sections": sections, "live_url": f"/begin/product/{slug}"})
 
 
+@app.route("/console/reviews")
+def console_reviews_page():
+    resp = send_from_directory(STATIC, "console-reviews.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/api/console/reviews", methods=["GET"])
+def api_console_reviews_list():
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    from dashboard import product_reviews as _pr
+    with sqlite3.connect(LOG_DB) as cx:
+        pending = _pr.pending_queue(cx)
+    for r in pending:
+        r["product_name"] = (_get_product(r["product_slug"]) or {}).get("name", r["product_slug"])
+        if r.get("video_kind") == "upload" and r.get("video_ref"):
+            r["video_url"] = f"/review-media/{r['product_slug']}/{r['video_ref']}"
+        elif r.get("video_kind") == "link":
+            r["video_url"] = r.get("video_ref")
+    return jsonify({"ok": True, "pending": pending, "recent": []})
+
+
 @app.route("/console/pricing-settings")
 def console_pricing_settings_page():
     resp = send_from_directory(STATIC, "console-pricing-settings.html")
@@ -9190,6 +9405,18 @@ def api_reorder_items():
                 "last_ordered": (o.get("created_at") or "")[:10],
                 "available": bool(p),
             })
+    # Annotate each item with whether the buyer has already reviewed it.
+    # Open a dedicated short connection — the orders cx is already closed.
+    from dashboard import product_reviews as _pr
+    with sqlite3.connect(LOG_DB) as rcx:
+        for it in items:
+            s = it.get("slug")
+            if not _REVIEWS_ENABLED:
+                it["reviewed"] = True
+            elif s:
+                it["reviewed"] = _pr.has_reviewed(rcx, s, email)
+            else:
+                it["reviewed"] = True  # unavailable item; no slug to review
     return jsonify({"email": email, "scope": scope, "items": items})
 
 
@@ -18564,6 +18791,10 @@ from dashboard import sales_pages_actions as _spa
 _spa.register()
 _spa.configure(client=_cl, get_product=_get_product,
                product_card=_product_card, strip_dash=_strip_dash)
+
+# ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────
+from dashboard import reviews_actions as _ra
+_ra.register()
 
 
 # ── In-house order entry (Phase 1: proposed invoice) — OWNER only ───────────────

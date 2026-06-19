@@ -39,6 +39,12 @@
   .points-apply label { color:var(--muted); white-space:nowrap; }
   .points-apply input[type=number] { width:6rem; padding:.35rem .5rem; border:1px solid var(--line); border-radius:6px; font-size:.95rem; }
   .pts-saving { color:var(--glen); font-size:.85rem; }
+  .star-gate { font-size:.85rem; color:var(--muted); margin-top:.3rem; }
+  .star-gate .stars { letter-spacing:.1rem; cursor:pointer; color:#bbb; }
+  .star-gate .stars span { transition:color .1s; }
+  .star-gate .stars span.lit { color:#e8a020; }
+  .star-gate .submit-star { font-size:.8rem; color:var(--glen); cursor:pointer;
+    background:none; border:none; padding:0; text-decoration:underline; margin-left:.4rem; }
 </style>
 </head>
 <body>
@@ -103,12 +109,25 @@ const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 let rows = {};            // slug -> {..., qty, checked}
 let lastData = [], allData = [];
 let pointsBalanceCents = 0;  // loyalty balance from /api/points/balance
+let starRatings = {};    // slug -> chosen star rating (0 = none chosen)
 
 function showSignin(){ $('#sub').textContent=''; $('#signin').classList.remove('hide'); }
 
 function addRow(it){
   if (!it.slug) it.slug = '__na__' + it.name;   // unavailable items kept distinct, not checkable
   if (!(it.slug in rows)) rows[it.slug] = {...it, checked:false, qty: it.qty || 1};
+  if (!(it.slug in starRatings)) starRatings[it.slug] = 0;
+}
+
+function starHtml(slug, reviewed){
+  if (reviewed) return '';
+  const chosen = starRatings[slug] || 0;
+  const stars = [1,2,3,4,5].map(n =>
+    `<span class="${n<=chosen?'lit':''}" onclick="setStar('${slug}',${n})">&#9733;</span>`
+  ).join('');
+  return `<div class="star-gate">Rate before reordering: <span class="stars">${stars}</span>`
+    + (chosen > 0 ? `<button class="submit-star" onclick="submitStar('${slug}')">Submit &#9654;</button>` : '')
+    + `</div>`;
 }
 
 function renderList(sel, items){
@@ -116,9 +135,12 @@ function renderList(sel, items){
     const r = rows[it.slug] || rows['__na__'+it.name];
     if (!it.available) return `<div class="row un"><input type="checkbox" disabled>
       <div class="nm"><b>${esc(it.name)}</b><small>no longer available</small></div></div>`;
-    return `<div class="row">
-      <input type="checkbox" ${r.checked?'checked':''} onchange="check('${it.slug}',this.checked)">
-      <div class="nm"><b>${esc(it.name)}</b><small>${it.current_price} · last ordered ${it.last_ordered||''}</small></div>
+    const needsReview = it.reviewed === false;
+    return `<div class="row" id="row-${it.slug}">
+      <input type="checkbox" ${r.checked&&!needsReview?'checked':''} ${needsReview?'disabled title="Rate this product first"':''}
+        onchange="check('${it.slug}',this.checked)">
+      <div class="nm"><b>${esc(it.name)}</b><small>${it.current_price} · last ordered ${it.last_ordered||''}</small>
+        ${starHtml(it.slug, !needsReview)}</div>
       <div class="qty">
         <button onclick="bump('${it.slug}',-1)">−</button>
         <input type="number" min="1" max="99" value="${r.qty}" onchange="setQty('${it.slug}',this.value)">
@@ -128,10 +150,29 @@ function renderList(sel, items){
 }
 
 function renderAll(){ renderList('#lastList', lastData); if (allData.length) renderList('#allList', allData); }
+
+function setStar(slug, n){ starRatings[slug] = n; renderAll(); }
+
+async function submitStar(slug){
+  const rating = starRatings[slug];
+  if (!rating) return;
+  const email = document.cookie.match(/rm_reorder_email=([^;]+)/)?.[1] || '';
+  const r = await fetch('/api/reviews', {method:'POST', credentials:'same-origin',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({slug, rating, email})});
+  if (r.ok || r.status === 400){
+    // Mark reviewed locally so gate lifts without a full reload
+    const markReviewed = arr => arr.forEach(it => { if(it.slug===slug) it.reviewed=true; });
+    markReviewed(lastData); markReviewed(allData);
+    rows[slug].checked = true;
+    renderAll(); recompute();
+  }
+}
+
 function check(slug,v){ rows[slug].checked=v; recompute(); }
 function setQty(slug,v){ rows[slug].qty=Math.max(1,Math.min(99,parseInt(v)||1)); renderAll(); recompute(); }
 function bump(slug,d){ rows[slug].qty=Math.max(1,Math.min(99,(rows[slug].qty||1)+d)); renderAll(); recompute(); }
-function toggleAll(v){ Object.values(rows).forEach(r=>{ if(r.available) r.checked=v; }); renderAll(); recompute(); }
+function toggleAll(v){ Object.values(rows).forEach(r=>{ if(r.available && r.reviewed!==false) r.checked=v; }); renderAll(); recompute(); }
 
 async function loadAll(){
   $('#seeAllBtn').disabled = true;

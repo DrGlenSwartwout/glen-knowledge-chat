@@ -1,0 +1,432 @@
+import sqlite3
+from dashboard import product_reviews as pr
+
+
+def _cx():
+    return sqlite3.connect(":memory:")
+
+
+def test_upsert_and_done_state():
+    cx = _cx()
+    rid = pr.upsert_review(cx, "longevity", "a@x.com", "Ann", 5, body="great")
+    assert isinstance(rid, int)
+    assert pr.has_reviewed(cx, "longevity", "a@x.com") is True
+    assert pr.has_reviewed(cx, "longevity", "b@x.com") is False
+    # re-submit updates the same row (UNIQUE slug,email) and re-moderates
+    rid2 = pr.upsert_review(cx, "longevity", "a@x.com", "Ann", 4, body="updated")
+    assert rid2 == rid
+    row = pr.get_review(cx, rid)
+    assert row["rating"] == 4 and row["body"] == "updated" and row["status"] == "pending"
+
+
+def test_ai_points_status_feature_setters():
+    cx = _cx()
+    rid = pr.upsert_review(cx, "x", "a@x.com", "Ann", 5, body="b")
+    pr.set_ai_result(cx, rid, 2, "ok", 1)
+    pr.set_points(cx, rid, 2)
+    pr.set_status(cx, rid, "approved", by="Glen")
+    pr.set_featured(cx, rid, True)
+    r = pr.get_review(cx, rid)
+    assert r["ai_score"] == 2 and r["points_awarded"] == 2
+    assert r["status"] == "approved" and r["reviewed_by"] == "Glen" and r["featured"] == 1
+
+
+def test_approved_for_slug_and_aggregate_exclude_unapproved():
+    cx = _cx()
+    a = pr.upsert_review(cx, "x", "a@x.com", "Ann", 4, body="a")
+    b = pr.upsert_review(cx, "x", "b@x.com", "Bob", 2, body="b")
+    c = pr.upsert_review(cx, "x", "c@x.com", "Cy", 5, body="c")
+    pr.set_status(cx, a, "approved"); pr.set_status(cx, c, "approved")
+    pr.set_status(cx, b, "rejected")
+    pr.set_featured(cx, c, True)
+    rows = pr.approved_for_slug(cx, "x")
+    assert [r["email"] for r in rows] == ["c@x.com", "a@x.com"]   # featured first
+    agg = pr.aggregate(cx, "x")
+    assert agg["count"] == 2 and agg["avg"] == 4.5                 # (4+5)/2
+    assert pr.aggregate(cx, "none") == {"count": 0, "avg": 0.0}
+
+
+def test_pending_queue_only_pending():
+    cx = _cx()
+    a = pr.upsert_review(cx, "x", "a@x.com", "Ann", 4, body="a")
+    b = pr.upsert_review(cx, "x", "b@x.com", "Bob", 5, body="b")
+    pr.set_status(cx, a, "approved")
+    q = pr.pending_queue(cx)
+    assert [r["email"] for r in q] == ["b@x.com"]
+
+
+from dashboard import review_scoring as rs
+
+
+class _Blk:
+    def __init__(self, t): self.type = "text"; self.text = t
+
+
+class _Msg:
+    def __init__(self, t): self.content = [_Blk(t)]
+
+
+class _FakeClient:
+    def __init__(self, payload): self._p = payload
+    @property
+    def messages(self):
+        outer = self
+        class _M:
+            def create(self, **kw): return _Msg(outer._p)
+        return _M()
+
+
+def test_build_prompt_mentions_product_and_rules():
+    system, user = rs.build_review_prompt({"name": "Longevity"}, "helped my energy")
+    assert "Longevity" in user and "helped my energy" in user
+    assert "structure" in (system + user).lower() or "disease" in (system + user).lower()
+
+
+def test_score_review_quality_points():
+    c = _FakeClient('{"compliance_ok": true, "reasons": "specific", "quality_points": 2, "recommend_publish": true}')
+    out = rs.score_review(c, {"name": "X"}, "Detailed, specific, authentic review of my experience.")
+    assert out["compliance_ok"] is True and out["quality_points"] == 2 and out["recommend_publish"] is True
+
+
+def test_score_review_gates_disease_claim():
+    c = _FakeClient('{"compliance_ok": false, "reasons": "disease claim", "quality_points": 0, "recommend_publish": false}')
+    out = rs.score_review(c, {"name": "X"}, "This cured my cancer in two weeks!")
+    assert out["compliance_ok"] is False and out["quality_points"] == 0
+
+
+def test_score_review_bad_json_safe_default():
+    c = _FakeClient("not json at all")
+    out = rs.score_review(c, {"name": "X"}, "whatever")
+    assert out["compliance_ok"] is False and out["quality_points"] == 0
+
+
+def test_score_review_strips_dashes_in_reasons():
+    c = _FakeClient('{"compliance_ok": true, "reasons": "good — solid", "quality_points": 1, "recommend_publish": true}')
+    out = rs.score_review(c, {"name": "X"}, "ok", strip=lambda s: s.replace("—", ","))
+    assert "—" not in out["reasons"]
+
+
+import importlib
+
+
+def _reload_reviews_app(monkeypatch, tmp_path, enabled="true"):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("REVIEWS_ENABLED", enabled)
+    import app as appmod
+    importlib.reload(appmod)
+    return appmod
+
+
+def _seed_paid_order(appmod, email, product_name):
+    import sqlite3
+    from dashboard import orders as o
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        o.upsert_order(cx, source="test", external_ref=f"t-{email}", email=email,
+                       items=[{"name": product_name, "qty": 1}], total_cents=7000, status="paid")
+
+
+def test_submit_requires_verified_buyer(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    c = appmod.app.test_client()
+    r = c.post("/api/reviews", json={"slug": slug, "rating": 5, "body": "great",
+                                     "email": "stranger@x.com"})
+    assert r.status_code == 403
+
+
+def test_submit_scores_and_credits_points(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    # fake the scorer to pass with 2 points
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_review", lambda *a, **k: {
+        "compliance_ok": True, "reasons": "ok", "quality_points": 2, "recommend_publish": True})
+    c = appmod.app.test_client()
+    r = c.post("/api/reviews", json={"slug": slug, "rating": 5, "body": "specific and useful",
+                                     "email": "buyer@x.com"}).get_json()
+    assert r["ok"] and r["points_awarded"] == 2 and r["status"] == "pending"
+    import sqlite3
+    from dashboard import points
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert points.balance(cx, "buyer@x.com") == 200   # 2 points * 100c
+    # idempotent: re-submit does not double-credit
+    c.post("/api/reviews", json={"slug": slug, "rating": 4, "body": "edit", "email": "buyer@x.com"})
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert points.balance(cx, "buyer@x.com") == 200
+
+
+def test_submit_gate_fail_no_points(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_review", lambda *a, **k: {
+        "compliance_ok": False, "reasons": "disease claim", "quality_points": 0, "recommend_publish": False})
+    c = appmod.app.test_client()
+    r = c.post("/api/reviews", json={"slug": slug, "rating": 5, "body": "cured my disease",
+                                     "email": "buyer@x.com"}).get_json()
+    assert r["ok"] and r["points_awarded"] == 0
+    import sqlite3
+    from dashboard import points
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert points.balance(cx, "buyer@x.com") == 0
+
+
+def test_submit_404_when_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    r = appmod.app.test_client().post("/api/reviews", json={"slug": slug, "rating": 5})
+    assert r.status_code == 404
+
+
+# ── Task 4: reorder items annotated with reviewed flag ────────────────────────
+
+def test_reorder_items_reviewed_annotation_false_when_no_review(monkeypatch, tmp_path):
+    """Unreviewed item -> reviewed=False when flag on."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="true")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    c = appmod.app.test_client()
+    c.set_cookie("rm_reorder_email", "buyer@x.com")
+    d = c.get("/api/reorder/items").get_json()
+    assert d and "items" in d
+    item = next((i for i in d["items"] if i.get("slug") == slug), None)
+    assert item is not None, f"slug {slug!r} not in reorder items"
+    assert item["reviewed"] is False
+
+
+def test_reorder_items_reviewed_annotation_true_after_review(monkeypatch, tmp_path):
+    """After submitting a review, reviewed=True."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="true")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    import sqlite3
+    from dashboard import product_reviews as _pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        _pr.upsert_review(cx, slug, "buyer@x.com", "Buyer", 5, body="great")
+    c = appmod.app.test_client()
+    c.set_cookie("rm_reorder_email", "buyer@x.com")
+    d = c.get("/api/reorder/items").get_json()
+    item = next((i for i in d["items"] if i.get("slug") == slug), None)
+    assert item is not None
+    assert item["reviewed"] is True
+
+
+def test_reorder_items_reviewed_true_when_flag_off(monkeypatch, tmp_path):
+    """When REVIEWS_ENABLED=false, reviewed is always True (gate inert)."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    c = appmod.app.test_client()
+    c.set_cookie("rm_reorder_email", "buyer@x.com")
+    d = c.get("/api/reorder/items").get_json()
+    item = next((i for i in d["items"] if i.get("slug") == slug), None)
+    assert item is not None
+    assert item["reviewed"] is True
+
+
+from dashboard.rbac import Actor, OWNER
+
+
+def test_review_actions_approve_reject_feature(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    import sqlite3
+    from dashboard import product_reviews as pr
+    from dashboard import dispatch as d
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, "x", "a@x.com", "Ann", 5, body="b")
+        res = d.dispatch_action(cx, "reviews.approve", {"id": rid},
+                                Actor(role=OWNER, name="Glen"), source="panel")
+        assert res["status"] == "done" and pr.get_review(cx, rid)["status"] == "approved"
+        d.dispatch_action(cx, "reviews.feature", {"id": rid, "on": True},
+                          Actor(role=OWNER, name="Glen"), source="panel")
+        assert pr.get_review(cx, rid)["featured"] == 1
+
+
+def test_console_reviews_endpoint(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    import dashboard as _d
+    _d.CONSOLE_SECRET = ""  # pass-through when unset
+    import sqlite3
+    from dashboard import product_reviews as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        pr.upsert_review(cx, "x", "a@x.com", "Ann", 5, body="b")
+    body = appmod.app.test_client().get("/api/console/reviews").get_json()
+    assert body["ok"] and any(r["email"] == "a@x.com" for r in body["pending"])
+
+
+def test_page_data_reviews_section_only_approved(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    import sqlite3
+    from dashboard import product_reviews as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        a = pr.upsert_review(cx, slug, "a@x.com", "Ann", 5, body="approved one")
+        pr.upsert_review(cx, slug, "b@x.com", "Bob", 1, body="pending one")
+        pr.set_status(cx, a, "approved")
+    data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
+    sec = next((s for s in data["sections"] if s["id"] == "reviews"), None)
+    assert sec is not None
+    bodies = [r["body"] for r in sec["body"]["reviews"]]
+    assert "approved one" in bodies and "pending one" not in bodies
+    assert sec["body"]["aggregate"]["count"] == 1 and sec["body"]["aggregate"]["avg"] == 5.0
+    assert "Individual results vary" in sec["body"]["disclaimer"]
+    # section order: reviews comes right after research
+    ids = [s["id"] for s in data["sections"]]
+    assert ids.index("reviews") == ids.index("research") + 1
+
+
+def test_page_data_no_reviews_section_when_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
+    assert all(s["id"] != "reviews" for s in data["sections"])
+
+
+# ── Task 7: post-purchase email review link ────────────────────────────────────
+
+def test_review_token_roundtrip(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    tok = appmod._review_token_mint("buyer@x.com", slug)
+    email, got_slug = appmod._review_token_verify(tok)
+    assert email == "buyer@x.com" and got_slug == slug
+    assert appmod._review_token_verify("garbage") == (None, None)
+
+
+def test_review_token_route_404_when_flag_off(monkeypatch, tmp_path):
+    """GET /review/<token> returns 404 when REVIEWS_ENABLED is false."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    tok = appmod._review_token_mint("buyer@x.com", slug)
+    c = appmod.app.test_client()
+    r = c.get(f"/review/{tok}")
+    assert r.status_code == 404
+
+
+def test_review_token_route_redirects_when_valid(monkeypatch, tmp_path):
+    """GET /review/<token> redirects to the product page when flag is on and token valid."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="true")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    tok = appmod._review_token_mint("buyer@x.com", slug)
+    c = appmod.app.test_client()
+    r = c.get(f"/review/{tok}")
+    assert r.status_code in (301, 302)
+    assert f"/begin/product/{slug}" in r.headers.get("Location", "")
+
+
+def test_review_token_route_404_garbage(monkeypatch, tmp_path):
+    """GET /review/<garbage> returns 404."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="true")
+    c = appmod.app.test_client()
+    r = c.get("/review/not-a-real-token")
+    assert r.status_code == 404
+
+
+# ── Fix wave 1 (whole-branch review): security tests ─────────────────────────
+
+def test_review_media_rejects_bad_slug(monkeypatch, tmp_path):
+    """Path-traversal slugs and non-existent files → 404."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    c = appmod.app.test_client()
+    # URL-encoded traversal: ..%2F..%2Fetc → Flask decodes to ../.. slug
+    r = c.get("/review-media/..%2F..%2Fetc/passwd")
+    assert r.status_code == 404
+    # Literal '..' slug (allowed by Flask's routing but rejected by our guard)
+    r2 = c.get("/review-media/../etc/passwd")
+    assert r2.status_code == 404
+    # Normal slug, non-existent file → still 404
+    r3 = c.get("/review-media/longevity/nonexistent.mp4")
+    assert r3.status_code == 404
+
+
+def test_upload_rejects_bad_extension(monkeypatch, tmp_path):
+    """Uploading a non-video file → 400; nothing saved to disk."""
+    import io
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_review", lambda *a, **k: {
+        "compliance_ok": True, "reasons": "ok", "quality_points": 1, "recommend_publish": True})
+    c = appmod.app.test_client()
+    data = {
+        "slug": slug, "rating": "5", "body": "great", "email": "buyer@x.com",
+        "video": (io.BytesIO(b"x"), "evil.exe"),
+    }
+    r = c.post("/api/reviews", data=data, content_type="multipart/form-data")
+    assert r.status_code == 400
+    resp = r.get_json()
+    assert resp["ok"] is False and "unsupported" in resp["error"]
+    # Nothing saved to disk
+    media_dir = appmod._REVIEW_MEDIA_DIR / slug
+    assert not media_dir.exists() or not any(media_dir.iterdir())
+
+
+def test_upload_rejects_oversize(monkeypatch, tmp_path):
+    """Uploading a video that exceeds the size cap → 400."""
+    import io
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_review", lambda *a, **k: {
+        "compliance_ok": True, "reasons": "ok", "quality_points": 1, "recommend_publish": True})
+    # Lower the cap to 4 bytes so we can test with a small payload
+    monkeypatch.setattr(appmod, "_REVIEW_VIDEO_MAX_BYTES", 4)
+    c = appmod.app.test_client()
+    data = {
+        "slug": slug, "rating": "5", "body": "great", "email": "buyer@x.com",
+        "video": (io.BytesIO(b"0123456789"), "clip.mp4"),  # 10 bytes > cap of 4
+    }
+    r = c.post("/api/reviews", data=data, content_type="multipart/form-data")
+    assert r.status_code == 400
+    resp = r.get_json()
+    assert resp["ok"] is False and "too large" in resp["error"]
+
+
+def test_upload_valid_mp4_succeeds(monkeypatch, tmp_path):
+    """A small valid .mp4 upload goes through and is saved."""
+    import io
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_review", lambda *a, **k: {
+        "compliance_ok": True, "reasons": "ok", "quality_points": 2, "recommend_publish": True})
+    c = appmod.app.test_client()
+    data = {
+        "slug": slug, "rating": "5", "body": "great video", "email": "buyer@x.com",
+        "video": (io.BytesIO(b"\x00\x01\x02\x03"), "clip.mp4"),
+    }
+    r = c.post("/api/reviews", data=data, content_type="multipart/form-data")
+    assert r.status_code == 200
+    resp = r.get_json()
+    assert resp["ok"] is True
+
+
+def test_send_review_invite_no_raise(monkeypatch, tmp_path):
+    """_send_review_invite calls send_email with correct structure and does not raise."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="true")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    calls = []
+    from dashboard import inbox as _inbox
+    monkeypatch.setattr(_inbox, "send_email",
+                        lambda *a, **kw: calls.append((a, kw)) or (True, None))
+    appmod._send_review_invite("buyer@x.com", "Aloha Tester", slug)
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    # to_email, subject, body
+    assert args[0] == "buyer@x.com"
+    body = args[2]
+    assert "Aloha" in body and "In wellness" in body
+    assert "—" not in body  # no em dash

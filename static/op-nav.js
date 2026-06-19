@@ -8,7 +8,7 @@
  * Business OS sub-tabs: when data-active="bos", a secondary row of the BOS module
  * boards renders under the main bar. Mark the active board with data-sub, e.g.
  *   <script src="/static/op-nav.js" data-active="bos" data-sub="finance"></script>
- * Valid data-sub values: "orders" | "finance" | "crm" | "products" | "biofield" | "sales" | "shipping" | "neworder"
+ * Valid data-sub values: "orders" | "finance" | "crm" | "products" | "biofield" | "sales" | "reviews" | "shipping" | "neworder"
  * (Shipping = /admin/shipping, New Order = /orders/new — folded in from the old
  *  standalone top tabs. The old "home" board is retired; its signals now live on
  *  the /console front door.)
@@ -76,6 +76,7 @@
     { id: "products", label: "Products",  href: "/console/products" + qs },
     { id: "biofield", label: "Biofield",  href: "/console/biofield-portal" + qs },
     { id: "sales",    label: "Sales Pages", href: "/console/sales-pages" + qs },
+    { id: "reviews",  label: "Reviews",    href: "/console/reviews" + qs },
     { id: "shipping", label: "Shipping",  href: "/admin/shipping" + qs },
     { id: "neworder", label: "New Order", href: "/orders/new" + qs },
   ];
