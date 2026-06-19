@@ -2307,6 +2307,8 @@ _TOURNEY_MIN_VOTES = int(os.environ.get("IMAGE_TOURNAMENT_MIN_VOTES", "10"))
 _TOURNEY_MARGIN = float(os.environ.get("IMAGE_TOURNAMENT_MARGIN", "0.65"))
 _TOURNEY_K = int(os.environ.get("IMAGE_TOURNAMENT_CONVERGE_K", "3"))
 _TOURNEY_CADENCE_DAYS = int(os.environ.get("IMAGE_TOURNAMENT_CADENCE_DAYS", "3"))
+_REVIEWS_ENABLED = os.environ.get("REVIEWS_ENABLED", "").strip().lower() in ("1", "true", "yes")
+_REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
 # Shown to the customer when Stripe was active but no checkout URL came back
 # (create_checkout_session failed) — so the Pay button surfaces a clear message
 # instead of silently no-opping. _alert_stripe() already notifies Glen.
@@ -3054,6 +3056,86 @@ def begin_product_image(slug, filename):
     if not (d / filename).exists():
         return ("", 404)
     return send_from_directory(str(d), filename, mimetype="image/png")
+
+
+_REVIEW_PAID_STATUSES = ("paid", "new", "packed", "shipped", "done")
+
+
+def _review_verified_buyer(cx, email, slug):
+    from dashboard import orders as _o
+    cx.row_factory = sqlite3.Row
+    for o in _o.list_orders_by_email(cx, email):
+        if (o.get("status") or "").lower() not in _REVIEW_PAID_STATUSES:
+            continue
+        for it in (o.get("items") or []):
+            if _resolve_buy_slug((it.get("name") or "").strip()) == slug:
+                return True
+    return False
+
+
+@app.route("/api/reviews", methods=["POST"])
+def api_submit_review():
+    if not _REVIEWS_ENABLED:
+        return ("", 404)
+    data = request.get_json(silent=True) or request.form
+    slug = (data.get("slug") or "").strip()
+    p = _get_product(slug)
+    if not p:
+        return jsonify({"ok": False, "error": "unknown product"}), 404
+    au = get_authenticated_user(request) or {}
+    email = ((data.get("email") or au.get("email") or "")).strip().lower()
+    name = (data.get("name") or au.get("name") or "").strip()
+    try:
+        rating = int(data.get("rating") or 0)
+    except (TypeError, ValueError):
+        rating = 0
+    if not email or rating < 1 or rating > 5:
+        return jsonify({"ok": False, "error": "email and rating 1-5 required"}), 400
+    body = (data.get("body") or "").strip()
+
+    # optional video: link (video_url) or upload (file 'video')
+    video_kind, video_ref = "", ""
+    f = request.files.get("video") if request.files else None
+    if f and f.filename:
+        safe = re.sub(r"[^\w.\-]", "_", f.filename)[-80:]
+        d = _REVIEW_MEDIA_DIR / slug
+        d.mkdir(parents=True, exist_ok=True)
+        f.save(str(d / safe))
+        video_kind, video_ref = "upload", safe
+    elif (data.get("video_url") or "").strip():
+        video_kind, video_ref = "link", (data.get("video_url") or "").strip()[:500]
+
+    from dashboard import product_reviews as _pr
+    from dashboard import review_scoring as _rs
+    from dashboard import points as _points
+    with sqlite3.connect(LOG_DB) as cx:
+        _points.init_points_table(cx)
+        if not _review_verified_buyer(cx, email, slug):
+            return jsonify({"ok": False, "error": "no verified purchase"}), 403
+        rid = _pr.upsert_review(cx, slug, email, name, rating, body, video_kind, video_ref)
+        score = _rs.score_review(_cl, p, body, strip=_strip_dash) if body else {
+            "compliance_ok": True, "reasons": "", "quality_points": 0, "recommend_publish": False}
+        _pr.set_ai_result(cx, rid, score["quality_points"], score["reasons"], score["recommend_publish"])
+        pts = min(5, score["quality_points"]) if score["compliance_ok"] else 0
+        if pts > 0:
+            try:
+                _points.credit(cx, email, value_cents=pts * 100,
+                               reason=f"review:{slug}", order_ref=f"review:{rid}")
+            except Exception as e:  # noqa: BLE001 - points never block the submit
+                print(f"[reviews] points credit failed rid={rid}: {e}", flush=True)
+                pts = 0
+        _pr.set_points(cx, rid, pts)
+        return jsonify({"ok": True, "review_id": rid, "points_awarded": pts, "status": "pending"})
+
+
+@app.route("/review-media/<slug>/<filename>")
+def review_media(slug, filename):
+    if not re.match(r'^[\w.\-]+$', filename):
+        return ("", 404)
+    d = _REVIEW_MEDIA_DIR / slug
+    if not (d / filename).exists():
+        return ("", 404)
+    return send_from_directory(str(d), filename)
 
 
 @app.route("/begin/product-image-gen/<slug>", methods=["POST"])

@@ -104,3 +104,79 @@ def test_score_review_strips_dashes_in_reasons():
     c = _FakeClient('{"compliance_ok": true, "reasons": "good — solid", "quality_points": 1, "recommend_publish": true}')
     out = rs.score_review(c, {"name": "X"}, "ok", strip=lambda s: s.replace("—", ","))
     assert "—" not in out["reasons"]
+
+
+import importlib
+
+
+def _reload_reviews_app(monkeypatch, tmp_path, enabled="true"):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("REVIEWS_ENABLED", enabled)
+    import app as appmod
+    importlib.reload(appmod)
+    return appmod
+
+
+def _seed_paid_order(appmod, email, product_name):
+    import sqlite3
+    from dashboard import orders as o
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        o.upsert_order(cx, source="test", external_ref=f"t-{email}", email=email,
+                       items=[{"name": product_name, "qty": 1}], total_cents=7000, status="paid")
+
+
+def test_submit_requires_verified_buyer(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    c = appmod.app.test_client()
+    r = c.post("/api/reviews", json={"slug": slug, "rating": 5, "body": "great",
+                                     "email": "stranger@x.com"})
+    assert r.status_code == 403
+
+
+def test_submit_scores_and_credits_points(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    # fake the scorer to pass with 2 points
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_review", lambda *a, **k: {
+        "compliance_ok": True, "reasons": "ok", "quality_points": 2, "recommend_publish": True})
+    c = appmod.app.test_client()
+    r = c.post("/api/reviews", json={"slug": slug, "rating": 5, "body": "specific and useful",
+                                     "email": "buyer@x.com"}).get_json()
+    assert r["ok"] and r["points_awarded"] == 2 and r["status"] == "pending"
+    import sqlite3
+    from dashboard import points
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert points.balance(cx, "buyer@x.com") == 200   # 2 points * 100c
+    # idempotent: re-submit does not double-credit
+    c.post("/api/reviews", json={"slug": slug, "rating": 4, "body": "edit", "email": "buyer@x.com"})
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert points.balance(cx, "buyer@x.com") == 200
+
+
+def test_submit_gate_fail_no_points(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_review", lambda *a, **k: {
+        "compliance_ok": False, "reasons": "disease claim", "quality_points": 0, "recommend_publish": False})
+    c = appmod.app.test_client()
+    r = c.post("/api/reviews", json={"slug": slug, "rating": 5, "body": "cured my disease",
+                                     "email": "buyer@x.com"}).get_json()
+    assert r["ok"] and r["points_awarded"] == 0
+    import sqlite3
+    from dashboard import points
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert points.balance(cx, "buyer@x.com") == 0
+
+
+def test_submit_404_when_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    r = appmod.app.test_client().post("/api/reviews", json={"slug": slug, "rating": 5})
+    assert r.status_code == 404
