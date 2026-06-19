@@ -3166,7 +3166,9 @@ def api_submit_review():
             except Exception as e:  # noqa: BLE001 - points never block the submit
                 print(f"[reviews] points credit failed rid={rid}: {e}", flush=True)
                 pts = 0
-        _pr.set_points(cx, rid, pts)
+        _existing = _pr.get_review(cx, rid)
+        _vp = int((_existing or {}).get("video_points") or 0)
+        _pr.set_points(cx, rid, min(5, pts + _vp))
         _video_status = ""
         if _REVIEWS_VIDEO and video_kind == "upload" and video_ref:
             from dashboard import review_video_jobs as _vj
@@ -15614,7 +15616,7 @@ def _drain_review_videos():
                     try:
                         _points.init_points_table(cx)
                         _points.credit(cx, r["email"], value_cents=delta * 100,
-                                       reason=f"review:{r['product_slug']}",
+                                       reason=f"review:{r['product_slug']}:video",
                                        order_ref=f"review:{rid}:video")
                     except Exception as e:  # noqa: BLE001 - points never block job completion
                         print(f"[reviews-video] credit failed rid={rid}: {e}", flush=True)

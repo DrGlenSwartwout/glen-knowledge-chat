@@ -256,3 +256,69 @@ def test_console_reviews_exposes_video_fields(monkeypatch, tmp_path):
     row = next(r for r in rows if r["email"] == "a@x.com")
     assert row["video_points"] == 4 and row["transcript"] == "spoken transcript"
     assert row["publish_risk"] == 1 and row["video_verdict"] == "disease claim"
+
+
+# ---------------------------------------------------------------------------
+# Fix wave 1 (whole-branch review): points_awarded display drift + video credit reason
+# ---------------------------------------------------------------------------
+
+def test_points_awarded_survives_textonly_resubmit(monkeypatch, tmp_path):
+    """Fix 1: text-only re-submit after a scored video must keep points_awarded == video_points."""
+    appmod = _reload_video_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@fix1.com", name)
+
+    from dashboard import review_scoring as rs_mod
+    import journal_blueprint
+    import sqlite3
+    from dashboard import product_reviews as pr, points
+
+    # Step 1: submit a video review
+    monkeypatch.setattr(rs_mod, "score_review", lambda *a, **k: {
+        "compliance_ok": True, "reasons": "", "quality_points": 1, "recommend_publish": True})
+    import io
+    c = appmod.app.test_client()
+    data = {"slug": slug, "rating": "5", "body": "great product", "email": "buyer@fix1.com"}
+    data["video"] = (io.BytesIO(b"FAKEWEBMDATA"), "clip.webm")
+    r1 = c.post("/api/reviews", data=data, content_type="multipart/form-data").get_json()
+    assert r1 and r1.get("ok"), f"initial video submit failed: {r1}"
+    rid = r1["review_id"]
+
+    # Step 2: run the video worker (mock transcribe + score_video → 5 video_points)
+    d = appmod._REVIEW_MEDIA_DIR / slug
+    d.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rev = pr.get_review(cx, rid)
+    vref = rev.get("video_ref") or "clip.webm"
+    (d / vref).write_bytes(b"FAKEWEBMDATA")
+
+    monkeypatch.setattr(journal_blueprint, "_whisper_transcribe", lambda p: {"text": "good"})
+    monkeypatch.setattr(rs_mod, "score_video", lambda *a, **k: {
+        "video_points": 5, "publish_risk": False, "risk_reasons": "", "recommend_publish": True})
+    appmod._drain_review_videos()
+
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        r = pr.get_review(cx, rid)
+        assert r["points_awarded"] == 5, f"expected 5 after video scoring, got {r['points_awarded']}"
+        bal_after_video = points.balance(cx, "buyer@fix1.com")
+
+    # Step 3: re-submit text-only (no video part) — should NOT drop points_awarded to 0
+    monkeypatch.setattr(rs_mod, "score_review", lambda *a, **k: {
+        "compliance_ok": True, "reasons": "", "quality_points": 1, "recommend_publish": True})
+    r2 = c.post("/api/reviews", json={
+        "slug": slug, "rating": "5", "body": "updated review text", "email": "buyer@fix1.com"
+    }).get_json()
+    assert r2 and r2.get("ok"), f"text-only re-submit failed: {r2}"
+
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        r = pr.get_review(cx, rid)
+        assert r["points_awarded"] == 5, (
+            f"Fix 1 regression: points_awarded dropped to {r['points_awarded']} after text-only re-submit; "
+            "expected 5 (video_points preserved in display total)"
+        )
+        # Ledger balance unchanged — no double-credit on re-submit
+        bal_after_resubmit = points.balance(cx, "buyer@fix1.com")
+    assert bal_after_resubmit == bal_after_video, (
+        f"Ledger changed on text-only re-submit: was {bal_after_video}, now {bal_after_resubmit}"
+    )
