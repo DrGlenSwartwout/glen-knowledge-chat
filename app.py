@@ -2298,6 +2298,7 @@ _PRODUCTS = _load_json(DATA_DIR / "products.json",
 _QBO_PAYMENTS_ACTIVE = os.environ.get("QBO_PAYMENTS_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 _SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").strip().lower() in ("1", "true", "yes")
+_SALES_AI_COPY_ENABLED = os.environ.get("SALES_PAGES_AI_COPY", "").strip().lower() in ("1", "true", "yes")
 # Shown to the customer when Stripe was active but no checkout URL came back
 # (create_checkout_session failed) — so the Pay button surfaces a clear message
 # instead of silently no-opping. _alert_stripe() already notifies Glen.
@@ -2873,6 +2874,25 @@ def begin_product_page_data(slug):
         {"id": "images",      "title": "Help shape this", "default_open": False, "body": {"images": p.get("page_images", [])}},
         {"id": "cta",         "title": "Order",           "default_open": False, "body": {}},
     ]
+    if _SALES_AI_COPY_ENABLED:
+        import sqlite3 as _sq
+        from dashboard import sales_pages as _sp
+        try:
+            with _sq.connect(LOG_DB) as _cx:
+                for _s in sections:
+                    if _s["id"] not in ("intro", "description", "research"):
+                        continue
+                    _draft = _sp.get_section(_cx, slug, _s["id"])
+                    if _draft:
+                        _s["ai"] = "cached"
+                        if _s["id"] == "research" and isinstance(_s["body"], dict):
+                            _s["body"]["how_it_works"] = _draft
+                        else:
+                            _s["body"] = _draft
+                    else:
+                        _s["ai"] = "pending"
+        except Exception as _e:
+            print(f"[sales-ai] page-data marker skipped: {_e}", flush=True)
     return jsonify({
         "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
         "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",

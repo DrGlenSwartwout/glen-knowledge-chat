@@ -35,3 +35,47 @@ def test_prompt_grounds_in_product_name_and_ingredients():
 
 def test_narrative_sections_are_exactly_three():
     assert sc.NARRATIVE_SECTIONS == ("intro", "description", "research")
+
+
+# ---------------------------------------------------------------------------
+# Task 3: SALES_PAGES_AI_COPY flag + page-data ai markers
+# ---------------------------------------------------------------------------
+
+import importlib
+import os
+import pytest
+
+
+def _reload_app(monkeypatch, tmp_path, ai="true"):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SALES_PAGES_ENABLED", "true")
+    monkeypatch.setenv("SALES_PAGES_AI_COPY", ai)
+    import app as appmod
+    importlib.reload(appmod)
+    return appmod
+
+
+def test_page_data_marks_narrative_pending_when_no_draft(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
+    nar = {s["id"]: s for s in data["sections"] if s["id"] in ("intro", "description", "research")}
+    assert all(s.get("ai") == "pending" for s in nar.values())
+
+
+def test_page_data_serves_cached_draft(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    from dashboard import sales_pages as sp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        sp.upsert_section(cx, slug, "intro", "Cached intro copy.")
+    data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
+    intro = next(s for s in data["sections"] if s["id"] == "intro")
+    assert intro["ai"] == "cached" and intro["body"] == "Cached intro copy."
+
+
+def test_page_data_no_ai_field_when_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path, ai="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
+    assert all("ai" not in s for s in data["sections"])
