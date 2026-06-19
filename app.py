@@ -7173,6 +7173,8 @@ def api_console_gift_catalog():
     bad = _sales_console_ok()
     if bad:
         return bad
+    if not _REVIEWS_GIFTS:
+        return jsonify({"ok": True, "catalog": []})
     from dashboard import review_gifts as _rg
     return jsonify({"ok": True, "catalog": _rg.load_catalog()})
 
