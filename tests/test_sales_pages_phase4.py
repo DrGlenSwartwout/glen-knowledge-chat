@@ -131,3 +131,17 @@ def test_no_credit_when_only_one_pair_or_other_product(monkeypatch, tmp_path):
         order_ref="INV-2")
     with sqlite3.connect(appmod.LOG_DB) as cx:
         assert pts.has_entry(cx, order_ref=f"imgpick_{slug}", reason="image_pick") is False
+
+
+# ---------------------------------------------------------------------------
+# Task 6: flag default OFF + integration
+# ---------------------------------------------------------------------------
+
+def test_flag_defaults_off(monkeypatch, tmp_path):
+    monkeypatch.delenv("SALES_PAGES_IMAGE_PICK", raising=False)
+    monkeypatch.setenv("DATA_DIR", str(tmp_path)); monkeypatch.setenv("SALES_PAGES_ENABLED", "true")
+    monkeypatch.setenv("SALES_PAGES_AI_IMAGES", "true")
+    import importlib, app as appmod; importlib.reload(appmod)
+    assert appmod._SALES_IMAGE_PICK_ENABLED is False
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    assert appmod.app.test_client().post(f"/begin/product-image-pick/{slug}", json={"kind":"botanical","variant":1}).status_code == 404
