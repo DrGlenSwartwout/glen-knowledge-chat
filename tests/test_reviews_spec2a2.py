@@ -94,3 +94,62 @@ def test_score_video_strips_dashes():
     c = _FakeClient('{"video_points": 3, "publish_risk": true, "risk_reasons": "risk — here", "recommend_publish": false}')
     out = rs.score_video(c, {"name": "X"}, "x", strip=lambda s: s.replace("—", ","))
     assert "—" not in out["risk_reasons"]
+
+
+# ---------------------------------------------------------------------------
+# Task 3: REVIEWS_VIDEO flag, enqueue-on-submit, length-limits endpoint
+# ---------------------------------------------------------------------------
+import importlib
+import io
+
+
+def _reload_video_app(monkeypatch, tmp_path, video="true"):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("REVIEWS_ENABLED", "true")
+    monkeypatch.setenv("REVIEWS_VIDEO", video)
+    import app as appmod
+    importlib.reload(appmod)
+    return appmod
+
+
+def _seed_paid_order(appmod, email, product_name):
+    import sqlite3
+    from dashboard import orders as o
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        o.upsert_order(cx, source="test", external_ref=f"t-{email}", email=email,
+                       items=[{"name": product_name, "qty": 1}], total_cents=7000, status="paid")
+
+
+def test_upload_review_enqueues_video_job(monkeypatch, tmp_path):
+    appmod = _reload_video_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    from dashboard import review_scoring as rs_mod
+    monkeypatch.setattr(rs_mod, "score_review", lambda *a, **k: {
+        "compliance_ok": True, "reasons": "", "quality_points": 1, "recommend_publish": True})
+    c = appmod.app.test_client()
+    data = {"slug": slug, "rating": "5", "body": "nice", "email": "buyer@x.com"}
+    data["video"] = (io.BytesIO(b"FAKEWEBMDATA"), "clip.webm")
+    r = c.post("/api/reviews", data=data, content_type="multipart/form-data").get_json()
+    assert r is not None and r.get("ok"), f"submit failed: {r}"
+    import sqlite3
+    from dashboard import review_video_jobs as vj
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert r["review_id"] in vj.claim_pending(cx), "job not enqueued"
+    assert r.get("video_status") == "pending"
+
+
+def test_limits_endpoint_90_then_300(monkeypatch, tmp_path):
+    appmod = _reload_video_app(monkeypatch, tmp_path)
+    c = appmod.app.test_client()
+    base = c.get("/api/reviews/limits?email=new@x.com").get_json()
+    assert base["max_seconds"] == 90
+    import sqlite3
+    from dashboard import product_reviews as pr_mod
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr_mod.upsert_review(cx, "x", "vet@x.com", "V", 5, video_kind="upload", video_ref="v.webm")
+        pr_mod.set_video_result(cx, rid, 5, "t", "scored")
+        pr_mod.set_status(cx, rid, "approved")
+    up = c.get("/api/reviews/limits?email=vet@x.com").get_json()
+    assert up["max_seconds"] == 300

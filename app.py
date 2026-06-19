@@ -2312,6 +2312,7 @@ _TOURNEY_MARGIN = float(os.environ.get("IMAGE_TOURNAMENT_MARGIN", "0.65"))
 _TOURNEY_K = int(os.environ.get("IMAGE_TOURNAMENT_CONVERGE_K", "3"))
 _TOURNEY_CADENCE_DAYS = int(os.environ.get("IMAGE_TOURNAMENT_CADENCE_DAYS", "3"))
 _REVIEWS_ENABLED = os.environ.get("REVIEWS_ENABLED", "").strip().lower() in ("1", "true", "yes")
+_REVIEWS_VIDEO = os.environ.get("REVIEWS_VIDEO", "").strip().lower() in ("1", "true", "yes")
 _REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
 _REVIEW_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".m4v")
 _REVIEW_VIDEO_MAX_BYTES = 100 * 1024 * 1024
@@ -3166,7 +3167,15 @@ def api_submit_review():
                 print(f"[reviews] points credit failed rid={rid}: {e}", flush=True)
                 pts = 0
         _pr.set_points(cx, rid, pts)
-        return jsonify({"ok": True, "review_id": rid, "points_awarded": pts, "status": "pending"})
+        _video_status = ""
+        if _REVIEWS_VIDEO and video_kind == "upload" and video_ref:
+            from dashboard import review_video_jobs as _vj
+            from dashboard import product_reviews as _pr2
+            _pr2.set_video_result(cx, rid, 0, "", "pending")
+            _vj.enqueue(cx, rid)
+            _video_status = "pending"
+        return jsonify({"ok": True, "review_id": rid, "points_awarded": pts,
+                        "status": "pending", "video_status": _video_status})
 
 
 @app.route("/review-media/<slug>/<filename>")
@@ -3178,6 +3187,24 @@ def review_media(slug, filename):
     if base not in target.parents or not target.exists():
         return ("", 404)
     return send_from_directory(str(target.parent), target.name)
+
+
+def _allowed_video_seconds(email):
+    from dashboard import product_reviews as _pr
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            return 300 if _pr.has_successful_video(cx, email) else 90
+    except Exception:
+        return 90
+
+
+@app.route("/api/reviews/limits", methods=["GET"])
+def api_review_limits():
+    if not _REVIEWS_VIDEO:
+        return jsonify({"max_seconds": 0})
+    au = get_authenticated_user(request) or {}
+    email = ((request.args.get("email") or au.get("email") or "")).strip().lower()
+    return jsonify({"max_seconds": _allowed_video_seconds(email)})
 
 
 # ── Review invite tokens (Task 7) ─────────────────────────────────────────────
