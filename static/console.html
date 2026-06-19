@@ -245,6 +245,11 @@
   .person-card-email { font-size:12px; color:var(--muted); margin-top:1px; }
   .person-card-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
   .ptag { font-size:10px; padding:2px 7px; border-radius:10px; background:var(--border); color:var(--muted); }
+  .ptag-x { background:none; border:none; color:inherit; cursor:pointer; font-size:12px; line-height:1; padding:0 0 0 4px; opacity:.7; }
+  .ptag-x:hover { opacity:1; color:#e06b6b; }
+  .tag-add { display:inline-flex; gap:4px; align-items:center; margin-top:4px; }
+  .tag-add input { font-size:11px; padding:2px 6px; border:1px solid var(--border); border-radius:4px; background:var(--bg, #111); color:inherit; }
+  .tag-add button { font-size:11px; padding:2px 8px; cursor:pointer; border:1px solid var(--border); border-radius:4px; background:var(--border); color:inherit; }
   .ptag.system  { background:#1a2a40; color:#7ab8f5; }
   .ptag.phase   { background:#1a2a1a; color:#7af57a; }
   .ptag.concern { background:#2a1a1a; color:#f57a7a; }
@@ -1789,14 +1794,51 @@ function _personCard(p) {
 function _parseTags(raw) {
   try { return JSON.parse(raw||'[]'); } catch { return (raw||'').split(',').filter(Boolean); }
 }
+function _ptagCls(tag) {
+  return tag.startsWith('system:') ? 'system' : tag.startsWith('phase:') ? 'phase' :
+         tag.startsWith('concern:') ? 'concern' : tag.startsWith('source:') ? 'source' :
+         tag.startsWith('type:') ? 'type' : tag.startsWith('consent:') ? 'consent' : '';
+}
 function _renderPtag(tag) {
-  const cls = tag.startsWith('system:') ? 'system' : tag.startsWith('phase:') ? 'phase' :
-              tag.startsWith('concern:') ? 'concern' : tag.startsWith('source:') ? 'source' :
-              tag.startsWith('type:') ? 'type' : tag.startsWith('consent:') ? 'consent' : '';
-  return `<span class="ptag ${cls}">${_esc(tag)}</span>`;
+  return `<span class="ptag ${_ptagCls(tag)}">${_esc(tag)}</span>`;
 }
 function _esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function _escAttr(s) {
+  return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+}
+function _renderTagEditor(id, tags) {
+  const chips = tags.map(t =>
+    `<span class="ptag ${_ptagCls(t)}">${_esc(t)}<button class="ptag-x" title="Remove" onclick="removePersonTag(${id}, '${_escAttr(t)}')">×</button></span>`
+  ).join('');
+  return `${chips}<span class="tag-add"><input id="tag-add-input" type="text" placeholder="e.g. tier:pro-influencer" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addPersonTag(${id});}"><button onclick="addPersonTag(${id})">Add</button></span>`;
+}
+async function _postTagDelta(id, add, remove) {
+  const res = await fetch(`${BASE}/api/people/${id}/tags`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Console-Key':consoleKey},
+    body: JSON.stringify({add, remove})
+  });
+  if (!res.ok) { alert('Tag update failed'); return null; }
+  return (await res.json()).tags;
+}
+function _rerenderTags(id, tags) {
+  const box = document.getElementById('detail-tags-box');
+  if (box) box.innerHTML = _renderTagEditor(id, tags);
+  const inp = document.getElementById('tag-add-input');
+  if (inp) inp.focus();
+}
+async function addPersonTag(id) {
+  const inp = document.getElementById('tag-add-input');
+  const val = (inp && inp.value || '').trim();
+  if (!val) return;
+  const tags = await _postTagDelta(id, [val], []);
+  if (tags) _rerenderTags(id, tags);
+}
+async function removePersonTag(id, tag) {
+  const tags = await _postTagDelta(id, [], [tag]);
+  if (tags) _rerenderTags(id, tags);
 }
 
 async function loadPersonDetail(id) {
@@ -1826,7 +1868,7 @@ function renderPersonDetail(p, household) {
     <div class="detail-header">
       <div class="detail-name">${_esc(p.name||(p.first_name+' '+p.last_name).trim()||p.email)}</div>
       <div class="detail-sub">${_esc(p.email)}${p.phone?' · '+_esc(p.phone):''}${loc?' · '+_esc(loc):''}</div>
-      <div class="detail-tags">${tags.map(_renderPtag).join('')}</div>
+      <div class="detail-tags" id="detail-tags-box">${_renderTagEditor(p.id, tags)}</div>
     </div>
     <div class="detail-tabs">
       <button class="detail-tab active" onclick="showDetailPane('overview',this)">Overview</button>
