@@ -17,6 +17,12 @@ def init_tables(cx):
     cx.execute("CREATE TABLE IF NOT EXISTS referral_redemptions ("
                "referee_email TEXT PRIMARY KEY, code TEXT, owner_email TEXT, "
                "order_ref TEXT, created_at TEXT)")
+    # Additive columns — lazy ALTER, idempotent (OperationalError = column already exists)
+    for col, typedef in [("rewarded_at", "TEXT"), ("reward_cents", "INTEGER")]:
+        try:
+            cx.execute(f"ALTER TABLE referral_redemptions ADD COLUMN {col} {typedef}")
+        except Exception:
+            pass  # column already present
     cx.commit()
 
 
@@ -67,3 +73,23 @@ def record_redemption(cx, code, owner_email, referee_email, order_ref):
         (_norm(referee_email), code, _norm(owner_email), order_ref or "", _now()))
     cx.commit()
     return cur.rowcount > 0
+
+
+def redemption_by_order_ref(cx, order_ref):
+    """Return the referral_redemptions row matching order_ref as a dict, or None."""
+    init_tables(cx)
+    cx.row_factory = sqlite3.Row
+    row = cx.execute(
+        "SELECT * FROM referral_redemptions WHERE order_ref=?", (order_ref or "",)
+    ).fetchone()
+    cx.row_factory = None
+    return dict(row) if row else None
+
+
+def mark_rewarded(cx, referee_email, *, reward_cents):
+    """Stamp rewarded_at=now and reward_cents on the referee's redemption row."""
+    init_tables(cx)
+    cx.execute(
+        "UPDATE referral_redemptions SET rewarded_at=?, reward_cents=? WHERE referee_email=?",
+        (_now(), int(reward_cents), _norm(referee_email)))
+    cx.commit()
