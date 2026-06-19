@@ -522,6 +522,7 @@
       var wrap = document.createElement('div');
 
       function renderImages(images){
+        wrap.className = '';
         wrap.innerHTML = '';
         (images || []).forEach(function(img){
           var el = document.createElement('img');
@@ -565,9 +566,11 @@
       if (body.state === 'ready'){
         renderImages(body.images);
       } else if (body.state === 'generating'){
+        wrap.className = 'loading';
         wrap.textContent = 'Generating product imagery…';
         startPoll();
       } else if (body.state === 'none'){
+        wrap.className = 'loading';
         wrap.textContent = 'Generating product imagery…';
         if (!_enqueueGuard){
           _enqueueGuard = true;
