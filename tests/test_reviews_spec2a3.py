@@ -196,3 +196,45 @@ def test_worker_gift_flag_off(monkeypatch, tmp_path):
     from dashboard import review_gifts as rg
     with sqlite3.connect(appmod.LOG_DB) as cx:
         assert rg.get_for_review(cx, rid) is None
+
+
+from dashboard.rbac import Actor, OWNER
+
+
+def test_gift_actions_approve_swap_reject(monkeypatch, tmp_path):
+    appmod = _reload_gift_app(monkeypatch, tmp_path)
+    import sqlite3
+    from dashboard import product_reviews as pr, review_gifts as rg
+    from dashboard import dispatch as d
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, "x", "a@x.com", "Ann", 5, video_kind="upload", video_ref="v.webm")
+        gid = rg.add_suggestion(cx, rid, "a@x.com", "gift-nightlight", "Night light", "r")
+        # approve with a swap sku
+        res = d.dispatch_action(cx, "reviews.gift_approve", {"review_id": rid, "sku": "gift-tuningfork"},
+                                Actor(role=OWNER, name="Glen"), source="panel")
+        assert res["status"] == "done"
+        g = rg.get_for_review(cx, rid)
+        assert g["status"] == "approved" and g["gift_sku"] == "gift-tuningfork" and g["approved_by"] == "Glen"
+        # reject path on a fresh review
+        rid2 = pr.upsert_review(cx, "x", "b@x.com", "Bob", 5, video_kind="upload", video_ref="v.webm")
+        g2 = rg.add_suggestion(cx, rid2, "b@x.com", "gift-nightlight", "Night light", "r")
+        d.dispatch_action(cx, "reviews.gift_reject", {"review_id": rid2},
+                          Actor(role=OWNER, name="Glen"), source="panel")
+        assert rg.get_for_review(cx, rid2)["status"] == "rejected"
+
+
+def test_console_reviews_includes_gift_and_catalog(monkeypatch, tmp_path):
+    appmod = _reload_gift_app(monkeypatch, tmp_path)
+    import dashboard as _d
+    _d.CONSOLE_SECRET = ""
+    import sqlite3
+    from dashboard import product_reviews as pr, review_gifts as rg
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, "x", "a@x.com", "Ann", 5, video_kind="upload", video_ref="v.webm")
+        rg.add_suggestion(cx, rid, "a@x.com", "gift-nightlight", "Night light", "fits sleep")
+    c = appmod.app.test_client()
+    rows = c.get("/api/console/reviews").get_json()["pending"]
+    row = next(r for r in rows if r["email"] == "a@x.com")
+    assert row["gift"]["gift_sku"] == "gift-nightlight" and row["gift"]["status"] == "suggested"
+    cat = c.get("/api/console/gift-catalog").get_json()["catalog"]
+    assert any(g["sku"] == "gift-tuningfork" for g in cat)

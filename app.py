@@ -7160,7 +7160,21 @@ def api_console_reviews_list():
             r["video_url"] = f"/review-media/{r['product_slug']}/{r['video_ref']}"
         elif r.get("video_kind") == "link":
             r["video_url"] = r.get("video_ref")
+    if _REVIEWS_GIFTS:
+        from dashboard import review_gifts as _rg
+        with sqlite3.connect(LOG_DB) as cx:
+            for r in pending:
+                r["gift"] = _rg.get_for_review(cx, r["id"])
     return jsonify({"ok": True, "pending": pending, "recent": []})
+
+
+@app.route("/api/console/gift-catalog", methods=["GET"])
+def api_console_gift_catalog():
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    from dashboard import review_gifts as _rg
+    return jsonify({"ok": True, "catalog": _rg.load_catalog()})
 
 
 @app.route("/console/pricing-settings")
