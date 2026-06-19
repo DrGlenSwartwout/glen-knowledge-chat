@@ -106,6 +106,7 @@
       text-underline-offset:3px; display:inline-block; margin-top:10px; }
     .miron-science-link:hover{ opacity:0.8; }
     .sp-miron-story{ font-size:13px; color:var(--muted); line-height:1.6; margin-top:10px; }
+    .sp-product-img{ width:100%; border-radius:9px; display:block; margin-bottom:10px; }
 
     /* ── Utility ── */
     .loading{ text-align:center; color:var(--muted); padding:48px 18px; font-size:15px; }
@@ -517,12 +518,68 @@
       return wrap;
     }
 
-    function renderImagesBody(){
-      // Tasks 6 / Phase 4 fill this container — render minimal placeholder only
+    function renderImagesBody(body){
       var wrap = document.createElement('div');
-      var ph = document.createElement('div');
-      ph.id = 'sp-images';
-      wrap.appendChild(ph);
+
+      function renderImages(images){
+        wrap.className = '';
+        wrap.innerHTML = '';
+        (images || []).forEach(function(img){
+          var el = document.createElement('img');
+          el.className = 'sp-product-img';
+          el.src = img.url;
+          el.alt = (img.kind || 'product') + ' image of the product';
+          wrap.appendChild(el);
+        });
+      }
+
+      if (!body || !body.state){
+        var ph = document.createElement('div');
+        ph.id = 'sp-images';
+        wrap.appendChild(ph);
+        return wrap;
+      }
+
+      var _enqueueGuard = false;
+
+      function startPoll(){
+        var polls = 0;
+        var timer = setInterval(function(){
+          polls++;
+          if (polls > 12){ clearInterval(timer); return; }
+          fetch(BASE + '/begin/product-page-data/' + slug, {credentials: 'same-origin'})
+            .then(function(r){ return r.json(); })
+            .then(function(data){
+              var sections = data.sections || [];
+              for (var i = 0; i < sections.length; i++){
+                if (sections[i].id === 'images' && sections[i].body && sections[i].body.state === 'ready'){
+                  clearInterval(timer);
+                  renderImages(sections[i].body.images);
+                  return;
+                }
+              }
+            })
+            .catch(function(){});
+        }, 4000);
+      }
+
+      if (body.state === 'ready'){
+        renderImages(body.images);
+      } else if (body.state === 'generating'){
+        wrap.className = 'loading';
+        wrap.textContent = 'Generating product imagery…';
+        startPoll();
+      } else if (body.state === 'none'){
+        wrap.className = 'loading';
+        wrap.textContent = 'Generating product imagery…';
+        if (!_enqueueGuard){
+          _enqueueGuard = true;
+          fetch(BASE + '/begin/product-image-gen/' + slug, {method: 'POST', credentials: 'same-origin'})
+            .catch(function(){});
+        }
+        startPoll();
+      }
+
       return wrap;
     }
 
@@ -545,7 +602,7 @@
         case 'ingredients': return renderIngredientsBody(sec.body);
         case 'comparison':  return renderComparisonBody(sec.body, mironAssets, mironStory);
         case 'research':    return renderResearchBody(sec.body);
-        case 'images':      return renderImagesBody();
+        case 'images':      return renderImagesBody(sec.body);
         case 'cta':         return renderCtaBody(ctaUrl);
         default:
           var p = document.createElement('p');

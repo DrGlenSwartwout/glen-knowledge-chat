@@ -1,0 +1,209 @@
+import importlib
+import sqlite3
+import pathlib
+import pytest
+from dashboard import sales_images as si
+from dashboard import sales_image_prompts as sip
+from dashboard import replicate_client as rc
+
+
+def _reload(monkeypatch, tmp_path, imgs="true"):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path)); monkeypatch.setenv("SALES_PAGES_ENABLED", "true")
+    monkeypatch.setenv("SALES_PAGES_AI_IMAGES", imgs)
+    import app as appmod; importlib.reload(appmod); return appmod
+
+def _cx(): return sqlite3.connect(":memory:")
+
+class _Resp:
+    def __init__(self, js=None, content=b"", status=200): self._js=js; self.content=content; self.status_code=status
+    def json(self): return self._js
+    def raise_for_status(self):
+        if self.status_code >= 400: raise RuntimeError("http %d" % self.status_code)
+
+def test_queue_enqueue_pending_done():
+    cx = _cx()
+    si.enqueue(cx, "longevity")
+    assert si.list_pending(cx) == ["longevity"]
+    assert si.queue_state(cx, "longevity") == "pending"
+    si.mark_done(cx, "longevity")
+    assert si.list_pending(cx) == []
+    assert si.queue_state(cx, "longevity") == "done"
+
+def test_enqueue_idempotent_resets_to_pending():
+    cx = _cx()
+    si.enqueue(cx, "energy"); si.mark_failed(cx, "energy")
+    si.enqueue(cx, "energy")
+    assert si.queue_state(cx, "energy") == "pending"
+
+def test_record_and_display_first_ready_per_kind():
+    cx = _cx()
+    si.record_image(cx, "longevity", "botanical", 1, "botanical-1.png")
+    si.record_image(cx, "longevity", "botanical", 2, "botanical-2.png")
+    si.record_image(cx, "longevity", "mechanism", 1, "mechanism-1.png")
+    disp = si.display_images(cx, "longevity")
+    assert disp == {"botanical": "botanical-1.png", "mechanism": "mechanism-1.png"}
+    assert len(si.get_images(cx, "longevity")) == 3
+
+def test_prompts_two_modes_two_variants_each():
+    p = sip.build_image_prompts({"name": "Longevity", "ingredients": [{"name": "Resveratrol"}]})
+    assert set(p.keys()) == {"botanical", "mechanism"}
+    assert len(p["botanical"]) == 2 and len(p["mechanism"]) == 2
+    # variants within a kind are distinct
+    assert p["botanical"][0] != p["botanical"][1]
+
+def test_prompts_ground_in_ingredients_and_name():
+    p = sip.build_image_prompts({"name": "Longevity", "ingredients": [{"name": "Resveratrol"}, "Quercetin"]})
+    joined = " ".join(p["botanical"] + p["mechanism"])
+    assert "Resveratrol" in joined and "Quercetin" in joined
+    # botanical references the lifestyle scene; mechanism references the protective-field concept
+    assert "kitchen" in p["botanical"][0].lower()
+    assert "cell" in p["mechanism"][0].lower() or "field" in p["mechanism"][0].lower()
+
+def test_generate_image_returns_bytes(monkeypatch):
+    calls = {"post": 0, "get": 0}
+    def fake_post(url, **kw):
+        calls["post"] += 1
+        return _Resp(js={"status": "succeeded", "output": "https://img/x.png", "urls": {"get": "https://api/get"}})
+    def fake_get(url, **kw):
+        calls["get"] += 1
+        return _Resp(content=b"PNGBYTES")
+    monkeypatch.setattr(rc.requests, "post", fake_post)
+    monkeypatch.setattr(rc.requests, "get", fake_get)
+    out = rc.generate_image("a prompt", token="tok")
+    assert out == b"PNGBYTES" and calls["post"] == 1
+
+def test_generate_image_raises_on_failed_status(monkeypatch):
+    monkeypatch.setattr(rc.requests, "post", lambda url, **kw: _Resp(js={"status": "failed", "urls": {"get": "g"}}))
+    with pytest.raises(Exception):
+        rc.generate_image("p", token="tok")
+
+def test_generate_image_requires_token(monkeypatch):
+    monkeypatch.delenv("REPLICATE_API_TOKEN", raising=False)
+    with pytest.raises(Exception):
+        rc.generate_image("p")
+
+
+def test_worker_generates_and_records(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    monkeypatch.setattr(appmod, "_product_card", lambda p: {"ingredients": [{"name": "Resveratrol"}]})
+    from dashboard import replicate_client as rc
+    monkeypatch.setattr(rc, "generate_image", lambda prompt, **kw: b"PNG")
+    from dashboard import sales_images as si
+    with sqlite3.connect(appmod.LOG_DB) as cx: si.enqueue(cx, slug)
+    appmod._drain_sales_image_queue()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert si.queue_state(cx, slug) == "done"
+        assert len(si.get_images(cx, slug)) == 4
+    files = list((appmod._SALES_IMG_DIR / slug).glob("*.png"))
+    assert len(files) == 4
+
+
+def test_worker_flag_off_noop(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path, imgs="false")
+    assert appmod._SALES_AI_IMAGES_ENABLED is False
+    from dashboard import sales_images as si
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    with sqlite3.connect(appmod.LOG_DB) as cx: si.enqueue(cx, slug)
+    appmod._drain_sales_image_queue()  # flag off → no-op
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert si.queue_state(cx, slug) == "pending"
+
+
+def test_worker_marks_failed_on_error(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    monkeypatch.setattr(appmod, "_product_card", lambda p: {"ingredients": []})
+    from dashboard import replicate_client as rc
+    def boom(prompt, **kw): raise RuntimeError("replicate down")
+    monkeypatch.setattr(rc, "generate_image", boom)
+    from dashboard import sales_images as si
+    with sqlite3.connect(appmod.LOG_DB) as cx: si.enqueue(cx, slug)
+    appmod._drain_sales_image_queue()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert si.queue_state(cx, slug) == "failed"
+
+
+def test_enqueue_route_and_404_when_flag_off(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    c = appmod.app.test_client()
+    r = c.post(f"/begin/product-image-gen/{slug}")
+    assert r.status_code == 200 and r.get_json().get("ok") is True
+    from dashboard import sales_images as si
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx: assert si.queue_state(cx, slug) == "pending"
+    # flag off
+    off = _reload(monkeypatch, tmp_path, imgs="false")
+    assert off.app.test_client().post(f"/begin/product-image-gen/{slug}").status_code == 404
+
+def test_serve_image_route(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    d = appmod._SALES_IMG_DIR / slug; d.mkdir(parents=True, exist_ok=True)
+    (d / "botanical-1.png").write_bytes(b"\x89PNG\r\n")
+    c = appmod.app.test_client()
+    assert c.get(f"/begin/product-image/{slug}/botanical-1.png").status_code == 200
+    assert c.get(f"/begin/product-image/{slug}/missing.png").status_code == 404
+    assert c.get(f"/begin/product-image/{slug}/../evil.png").status_code in (400, 404)
+
+
+def test_page_data_images_states(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    c = appmod.app.test_client()
+    # none
+    d = c.get(f"/begin/product-page-data/{slug}").get_json()
+    img = next(s for s in d["sections"] if s["id"] == "images")["body"]
+    assert img.get("state") == "none"
+    # generating
+    import sqlite3
+    from dashboard import sales_images as si
+    with sqlite3.connect(appmod.LOG_DB) as cx: si.enqueue(cx, slug)
+    img = next(s for s in c.get(f"/begin/product-page-data/{slug}").get_json()["sections"] if s["id"]=="images")["body"]
+    assert img.get("state") == "generating"
+    # ready
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        si.record_image(cx, slug, "botanical", 1, "botanical-1.png")
+        si.record_image(cx, slug, "mechanism", 1, "mechanism-1.png")
+    img = next(s for s in c.get(f"/begin/product-page-data/{slug}").get_json()["sections"] if s["id"]=="images")["body"]
+    assert img.get("state") == "ready"
+    urls = [i["url"] for i in img["images"]]
+    assert f"/begin/product-image/{slug}/botanical-1.png" in urls
+
+def test_page_data_images_flag_off(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path, imgs="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    img = next(s for s in appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()["sections"] if s["id"]=="images")["body"]
+    assert "state" not in img
+
+def test_flag_defaults_off(monkeypatch, tmp_path):
+    monkeypatch.delenv("SALES_PAGES_AI_IMAGES", raising=False)
+    monkeypatch.setenv("DATA_DIR", str(tmp_path)); monkeypatch.setenv("SALES_PAGES_ENABLED", "true")
+    import importlib, app as appmod; importlib.reload(appmod)
+    assert appmod._SALES_AI_IMAGES_ENABLED is False
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    assert appmod.app.test_client().post(f"/begin/product-image-gen/{slug}").status_code == 404
+
+
+def test_enqueue_route_skips_reenqueue_when_images_exist(monkeypatch, tmp_path):
+    """Enqueue route must return state='done' and NOT reset the queue to pending
+    when ready images already exist on disk (cost/abuse guard regression test)."""
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    from dashboard import sales_images as si
+    import sqlite3
+    # Record both image kinds so display_images returns non-None values
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        si.record_image(cx, slug, "botanical", 1, "botanical-1.png")
+        si.record_image(cx, slug, "mechanism", 1, "mechanism-1.png")
+    # POST the enqueue route — should short-circuit without creating a pending row
+    c = appmod.app.test_client()
+    r = c.post(f"/begin/product-image-gen/{slug}")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data.get("ok") is True
+    assert data.get("state") == "done"
+    # The queue row must NOT be pending (either None or some other state)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert si.queue_state(cx, slug) != "pending"
