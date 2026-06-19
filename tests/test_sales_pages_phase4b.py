@@ -146,3 +146,20 @@ def test_tournament_flag_off_noop(monkeypatch, tmp_path, tour="false"):
     with sqlite3.connect(appmod.LOG_DB) as cx:
         pair = sp.get_pair(cx, slug, "botanical")
     assert pair["defenses"] == 0
+
+
+def test_page_data_uses_active_pair_and_converged(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    from dashboard import sales_images as si, sales_image_pairs as sp
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        for v in (1, 2, 3): si.record_image(cx, slug, "botanical", v, f"botanical-{v}.png")
+        for v in (1, 2): si.record_image(cx, slug, "mechanism", v, f"mechanism-{v}.png")
+        sp.set_pair(cx, slug, "botanical", champion=1, challenger=3, defenses=1, converged=False, last_render_at="T")
+        sp.set_pair(cx, slug, "mechanism", champion=1, challenger=2, defenses=3, converged=True, last_render_at="T")
+    c = appmod.app.test_client(); c.set_cookie("amg_session", "sZ")
+    body = next(s for s in c.get(f"/begin/product-page-data/{slug}").get_json()["sections"] if s["id"]=="images")["body"]
+    bvars = sorted(o["variant"] for o in body["pick"]["botanical"]["options"])
+    assert bvars == [1, 3]                        # active pair, not 1&2
+    assert "mechanism" not in body["pick"]        # converged -> no pick for mechanism

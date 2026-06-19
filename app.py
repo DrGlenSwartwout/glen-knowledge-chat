@@ -2953,6 +2953,21 @@ def begin_product_page_data(slug):
                          for im in sorted(_by_kind.get(_k, []), key=lambda x: x["variant"])]
                 if len(_opts) >= 2:
                     _pick[_k] = {"chosen": _picks.get(_k) if (_picks.get(_k) or 0) >= 1 else None, "options": _opts}
+            # Phase 4b: restrict the pick options to the active champion/challenger pair
+            if _SALES_IMAGE_TOURNAMENT_ENABLED:
+                from dashboard import sales_image_pairs as _sp4b
+                with _sq3.connect(LOG_DB) as _cxp:
+                    for _k in _sip3.IMAGE_KINDS:
+                        _vs = [im["variant"] for im in _all if im["kind"] == _k]
+                        _pr = _sp4b.ensure_pair(_cxp, slug, _k, _vs)
+                        if not _pr:
+                            continue
+                        if _pr["converged"]:
+                            _pick.pop(_k, None)          # converged -> no picking; champion shows as hero
+                            continue
+                        if _k in _pick:
+                            _active = {_pr["champion_variant"], _pr["challenger_variant"]}
+                            _pick[_k]["options"] = [o for o in _pick[_k]["options"] if o["variant"] in _active]
             if _pick:
                 _img_sec3 = next((s for s in sections if s["id"] == "images"), None)
                 if _img_sec3 is not None and isinstance(_img_sec3["body"], dict):
