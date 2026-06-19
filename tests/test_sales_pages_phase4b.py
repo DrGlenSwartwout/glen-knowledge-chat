@@ -78,3 +78,71 @@ def test_render_challenger_creates_next_variant(monkeypatch, tmp_path):
     assert (appmod._SALES_IMG_DIR / slug / "botanical-3.png").exists()
     with sqlite3.connect(appmod.LOG_DB) as cx:
         assert any(im["variant"] == 3 for im in si.get_images(cx, slug))
+
+
+import datetime
+
+
+def _seed_pair(appmod, slug, kind, votes_champ, votes_chall, since=""):
+    from dashboard import sales_images as si, sales_votes as sv, sales_image_pairs as sp
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        si.record_image(cx, slug, kind, 1, f"{kind}-1.png")
+        si.record_image(cx, slug, kind, 2, f"{kind}-2.png")
+        sp.set_pair(cx, slug, kind, champion=1, challenger=2, defenses=0, converged=False, last_render_at=since)
+        for i in range(votes_champ): sv.record_pick(cx, slug, kind, 1, f"c{i}")
+        for i in range(votes_chall): sv.record_pick(cx, slug, kind, 2, f"h{i}")
+
+
+def test_tournament_champion_defends_and_renders(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    _seed_pair(appmod, slug, "botanical", 9, 1)   # champion clear winner, 10 votes
+    _seed_pair(appmod, slug, "mechanism", 9, 1)
+    from dashboard import replicate_client as rc
+    monkeypatch.setattr(rc, "generate_image", lambda prompt, **kw: b"PNG")
+    appmod._run_image_tournament()
+    from dashboard import sales_image_pairs as sp
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        pair = sp.get_pair(cx, slug, "botanical")
+    assert pair["defenses"] == 1 and pair["challenger_variant"] == 3  # challenger replaced
+
+
+def test_tournament_below_min_votes_no_change(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    _seed_pair(appmod, slug, "botanical", 3, 1)  # only 4 votes (< MIN 10)
+    appmod._run_image_tournament()
+    from dashboard import sales_image_pairs as sp
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        pair = sp.get_pair(cx, slug, "botanical")
+    assert pair["defenses"] == 0 and pair["challenger_variant"] == 2
+
+
+def test_tournament_converges_at_K(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    _seed_pair(appmod, slug, "botanical", 9, 1)
+    from dashboard import sales_image_pairs as sp
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx:  # already at K-1 defenses
+        sp.set_pair(cx, slug, "botanical", champion=1, challenger=2, defenses=2, converged=False, last_render_at="")
+    appmod._run_image_tournament()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        pair = sp.get_pair(cx, slug, "botanical")
+    assert pair["converged"] is True
+
+
+def test_tournament_flag_off_noop(monkeypatch, tmp_path, tour="false"):
+    appmod = _reload(monkeypatch, tmp_path, tour="false")
+    assert appmod._SALES_IMAGE_TOURNAMENT_ENABLED is False
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    _seed_pair(appmod, slug, "botanical", 9, 1)
+    appmod._run_image_tournament()  # no-op
+    from dashboard import sales_image_pairs as sp
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        pair = sp.get_pair(cx, slug, "botanical")
+    assert pair["defenses"] == 0
