@@ -1,3 +1,4 @@
+import os
 import subprocess
 
 
@@ -40,9 +41,12 @@ def trim_video(src_path, dst_path, start, end, *, runner=None):
     try:
         cmd = [_ffmpeg_exe(), "-y", "-ss", str(start), "-to", str(end), "-i", str(src_path),
                "-c:v", "libx264", "-c:a", "aac", "-movflags", "+faststart", str(dst_path)]
-        import os
         res = run(cmd, capture_output=True, timeout=300)
-        return getattr(res, "returncode", 1) == 0 and os.path.exists(str(dst_path))
+        ok = getattr(res, "returncode", 1) == 0 and os.path.exists(str(dst_path))
+        if not ok:
+            print(f"[video-trim] ffmpeg did not produce output (rc={getattr(res,'returncode',None)}) "
+                  f"for {dst_path}", flush=True)
+        return ok
     except Exception as e:  # noqa: BLE001
         print(f"[video-trim] failed: {e}", flush=True)
         return False
