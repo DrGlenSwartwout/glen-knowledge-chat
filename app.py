@@ -18958,6 +18958,11 @@ def api_customers_search():
                         p[k] = last[k]
             email = (p.get("email") or "").strip().lower()
             p["points_balance_cents"] = _points.balance(cx, email) if email else 0
+        if _REVIEWS_GIFTS:
+            from dashboard import review_gifts as _rg
+            for _p in people:
+                _pe = (_p.get("email") or "").strip().lower()
+                _p["pending_gifts"] = [{"label": g["gift_label"]} for g in _rg.pending_for(cx, _pe)] if _pe else []
     finally:
         cx.close()
     return jsonify({"ok": True, "people": people})
@@ -19007,6 +19012,22 @@ def api_orders_manual():
                           "unit_cents": unit_cents, "line_cents": line_cents})
     if not cart:
         return jsonify({"ok": False, "error": "no valid products"}), 400
+    # Approved review gifts: append as $0 lines AFTER subtotal is computed (no price impact).
+    _gift_rows = []
+    _gift_email = (customer.get("email") or "").strip().lower()
+    if _REVIEWS_GIFTS and _gift_email:
+        try:
+            from dashboard import review_gifts as _rg
+            _gcx = _sqlite3.connect(LOG_DB)
+            try:
+                _gift_rows = _rg.pending_for(_gcx, _gift_email)
+            finally:
+                _gcx.close()
+            for _g in _gift_rows:
+                items_rec.append({"slug": _g["gift_sku"], "name": _g["gift_label"] + " (gift)",
+                                  "qty": 1, "unit_cents": 0, "line_cents": 0, "gift": True})
+        except Exception as e:  # noqa: BLE001 - gift never blocks order creation
+            print(f"[orders.manual] gift add failed: {e}", flush=True); _gift_rows = []
     # Volume is already baked into the per-line FF prices above, so the order does
     # NOT apply the engine's months-volume discount — only a manual order discount.
     # _price_cart is used solely for shipping + absorbed GET.
@@ -19059,6 +19080,10 @@ def api_orders_manual():
             channel="retail", get_cents=get_cents,
             discount_cents=discount_cents, shipping_cents=shipping_cents,
             points_redeemed_cents=points_redeemed_cents)
+        if _gift_rows and oid:
+            from dashboard import review_gifts as _rg2
+            for _g in _gift_rows:
+                _rg2.mark_fulfilled(cx, _g["id"], oid)
     finally:
         cx.close()
     return jsonify({"ok": True, "order_id": oid, "external_ref": ext,

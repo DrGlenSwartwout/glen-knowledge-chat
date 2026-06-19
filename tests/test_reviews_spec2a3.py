@@ -238,3 +238,41 @@ def test_console_reviews_includes_gift_and_catalog(monkeypatch, tmp_path):
     assert row["gift"]["gift_sku"] == "gift-nightlight" and row["gift"]["status"] == "suggested"
     cat = c.get("/api/console/gift-catalog").get_json()["catalog"]
     assert any(g["sku"] == "gift-tuningfork" for g in cat)
+
+
+def test_order_entry_adds_gift_line_and_fulfills(monkeypatch, tmp_path):
+    appmod = _reload_gift_app(monkeypatch, tmp_path)
+    # the in-house order route is OWNER-gated; resolve_actor returns OWNER for the console key
+    import dashboard as _d
+    _d.CONSOLE_SECRET = "k"; appmod.CONSOLE_SECRET = "k"
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    p = appmod._get_product(slug)
+    import sqlite3
+    from dashboard import review_gifts as rg
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        gid = rg.add_suggestion(cx, 1, "buyer@x.com", "gift-nightlight", "Red nightlight", "r")
+        rg.set_status(cx, gid, "approved", by="Glen")
+    c = appmod.app.test_client()
+    body = {"customer": {"email": "buyer@x.com", "name": "Buyer",
+                         "address": {"street": "1 A St", "city": "Hilo", "state": "HI", "zip": "96720"}},
+            "lines": [{"slug": slug, "qty": 1}]}
+    r = c.post("/api/orders/manual", json=body, headers={"X-Console-Key": "k"}).get_json()
+    assert r["ok"]
+    oid = r["order_id"]
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import orders as o
+        order = o.list_orders_by_email(cx, "buyer@x.com")[0]
+        names = [it.get("name", "") for it in order["items"]]
+        assert any("Red nightlight" in n for n in names)            # $0 gift line present
+        gift_lines = [it for it in order["items"] if it.get("gift")]
+        assert gift_lines and gift_lines[0]["unit_cents"] == 0
+        assert rg.get_for_review(cx, 1)["fulfilled_order_id"] == oid  # marked fulfilled
+        assert rg.pending_for(cx, "buyer@x.com") == []
+    # a SECOND order does not re-add the gift
+    r2 = c.post("/api/orders/manual", json=body, headers={"X-Console-Key": "k"}).get_json()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import orders as o
+        order2 = [x for x in o.list_orders_by_email(cx, "buyer@x.com") if x["id"] == r2["order_id"]][0]
+        assert not any(it.get("gift") for it in order2["items"])
