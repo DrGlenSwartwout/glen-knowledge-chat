@@ -153,3 +153,86 @@ def test_limits_endpoint_90_then_300(monkeypatch, tmp_path):
         pr_mod.set_status(cx, rid, "approved")
     up = c.get("/api/reviews/limits?email=vet@x.com").get_json()
     assert up["max_seconds"] == 300
+
+
+# ---------------------------------------------------------------------------
+# Task 4: _drain_review_videos worker + points credit
+# ---------------------------------------------------------------------------
+
+def test_worker_scores_and_credits_delta(monkeypatch, tmp_path):
+    appmod = _reload_video_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    import sqlite3
+    from dashboard import product_reviews as pr, review_video_jobs as vj, points
+    # seed a review whose written already credited 2, with a video file on disk
+    d = appmod._REVIEW_MEDIA_DIR / slug
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "v.webm").write_bytes(b"FAKEVIDEO")
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, slug, "buyer@x.com", "B", 5, body="written",
+                               video_kind="upload", video_ref="v.webm")
+        pr.set_ai_result(cx, rid, 2, "ok", 1)          # written = 2
+        pr.set_points(cx, rid, 2)
+        points.init_points_table(cx); points.credit(cx, "buyer@x.com", value_cents=200,
+                                                    reason=f"review:{slug}", order_ref=f"review:{rid}")
+        vj.enqueue(cx, rid)
+    import journal_blueprint
+    monkeypatch.setattr(journal_blueprint, "_whisper_transcribe", lambda p: {"text": "great spoken review"})
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_video", lambda *a, **k: {
+        "video_points": 5, "publish_risk": False, "risk_reasons": "", "recommend_publish": True})
+    appmod._drain_review_videos()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        r = pr.get_review(cx, rid)
+        assert r["video_points"] == 5 and r["video_status"] == "scored"
+        assert r["points_awarded"] == 5                       # min(5, 2+5)
+        assert points.balance(cx, "buyer@x.com") == 500        # 200 written + 300 video delta
+        assert vj.claim_pending(cx) == []                      # job done
+    # idempotent: re-running does not double-credit
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        vj.enqueue(cx, rid)
+    appmod._drain_review_videos()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert points.balance(cx, "buyer@x.com") == 500
+
+
+def test_worker_disease_claim_still_credits_and_flags(monkeypatch, tmp_path):
+    appmod = _reload_video_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    import sqlite3
+    from dashboard import product_reviews as pr, review_video_jobs as vj, points
+    d = appmod._REVIEW_MEDIA_DIR / slug; d.mkdir(parents=True, exist_ok=True)
+    (d / "v.webm").write_bytes(b"X")
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, slug, "b@x.com", "B", 5, video_kind="upload", video_ref="v.webm")
+        pr.set_ai_result(cx, rid, 0, "", 0); pr.set_points(cx, rid, 0)
+        points.init_points_table(cx); vj.enqueue(cx, rid)
+    import journal_blueprint
+    monkeypatch.setattr(journal_blueprint, "_whisper_transcribe", lambda p: {"text": "cured my disease"})
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_video", lambda *a, **k: {
+        "video_points": 4, "publish_risk": True, "risk_reasons": "disease cure claim", "recommend_publish": False})
+    appmod._drain_review_videos()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        r = pr.get_review(cx, rid)
+        assert r["video_points"] == 4 and r["publish_risk"] == 1 and "disease" in r["video_verdict"].lower()
+        assert points.balance(cx, "b@x.com") == 400            # credited despite risk
+
+
+def test_worker_missing_file_marks_failed(monkeypatch, tmp_path):
+    appmod = _reload_video_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    import sqlite3
+    from dashboard import product_reviews as pr, review_video_jobs as vj
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, slug, "b@x.com", "B", 5, video_kind="upload", video_ref="gone.webm")
+        vj.enqueue(cx, rid)
+    appmod._drain_review_videos()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert pr.get_review(cx, rid)["video_status"] == "failed"
+
+
+def test_worker_noop_when_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_video_app(monkeypatch, tmp_path, video="false")
+    assert appmod._REVIEWS_VIDEO is False
+    appmod._drain_review_videos()   # no raise

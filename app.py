@@ -15578,6 +15578,60 @@ def _drain_sales_image_queue():
             (_si.mark_done if ok else _si.mark_failed)(cx, slug)
 
 
+def _drain_review_videos():
+    """Scheduler job: transcribe + AI-score review videos, credit points (off web workers)."""
+    if not _REVIEWS_VIDEO:
+        return
+    from dashboard import review_video_jobs as _vj, product_reviews as _pr
+    from dashboard import review_scoring as _rs, points as _points
+    import journal_blueprint as _jb
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            pending = _vj.claim_pending(cx, 3)
+    except Exception as e:
+        print(f"[reviews-video] queue read failed: {e}", flush=True); return
+    for rid in pending:
+        try:
+            with sqlite3.connect(LOG_DB) as cx:
+                r = _pr.get_review(cx, rid)
+            if not r or r.get("video_kind") != "upload" or not r.get("video_ref"):
+                with sqlite3.connect(LOG_DB) as cx:
+                    _pr.set_video_result(cx, rid, 0, "", "failed"); _vj.mark(cx, rid, "failed")
+                continue
+            path = _REVIEW_MEDIA_DIR / r["product_slug"] / r["video_ref"]
+            if not path.exists():
+                with sqlite3.connect(LOG_DB) as cx:
+                    _pr.set_video_result(cx, rid, 0, "", "failed"); _vj.mark(cx, rid, "failed")
+                continue
+            transcript = (_jb._whisper_transcribe(str(path)) or {}).get("text", "")
+            prod = _get_product(r["product_slug"]) or {"name": r["product_slug"]}
+            sc = _rs.score_video(_cl, prod, transcript, strip=_strip_dash)
+            written = int(r.get("ai_score") or 0)
+            total = min(5, written + sc["video_points"])
+            delta = max(0, total - written)
+            with sqlite3.connect(LOG_DB) as cx:
+                if delta > 0:
+                    try:
+                        _points.init_points_table(cx)
+                        _points.credit(cx, r["email"], value_cents=delta * 100,
+                                       reason=f"review:{r['product_slug']}",
+                                       order_ref=f"review:{rid}:video")
+                    except Exception as e:  # noqa: BLE001 - points never block job completion
+                        print(f"[reviews-video] credit failed rid={rid}: {e}", flush=True)
+                _pr.set_points(cx, rid, total)
+                _pr.set_video_result(cx, rid, sc["video_points"], transcript, "scored",
+                                     publish_risk=1 if sc["publish_risk"] else 0,
+                                     video_verdict=sc["risk_reasons"])
+                _vj.mark(cx, rid, "done")
+        except Exception as e:  # noqa: BLE001 - one job's failure never aborts the sweep
+            print(f"[reviews-video] job {rid} failed: {e}", flush=True)
+            try:
+                with sqlite3.connect(LOG_DB) as cx:
+                    _pr.set_video_result(cx, rid, 0, "", "failed"); _vj.mark(cx, rid, "failed")
+            except Exception:
+                pass
+
+
 def _render_challenger(slug, kind, product):
     """Render ONE new image variant for the tournament challenger slot.
 
@@ -15738,6 +15792,7 @@ def _start_scheduler():
         scheduler.add_job(_run_biofield_bonuses, "cron", hour=15, minute=0,
                           id="biofield_bonuses")
         scheduler.add_job(_drain_sales_image_queue, "interval", minutes=1, id="sales_image_gen")
+        scheduler.add_job(_drain_review_videos, "interval", minutes=1, id="review_videos")
         scheduler.add_job(_run_image_tournament, "interval", hours=24, id="sales_image_tournament")
         scheduler.start()
         print("[CRON] Scheduler started — hourly push + daily biofield-bonuses active")
