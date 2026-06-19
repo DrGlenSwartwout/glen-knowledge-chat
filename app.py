@@ -2299,6 +2299,7 @@ _QBO_PAYMENTS_ACTIVE = os.environ.get("QBO_PAYMENTS_ACTIVE", "").strip().lower()
 _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 _SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _SALES_AI_COPY_ENABLED = os.environ.get("SALES_PAGES_AI_COPY", "").strip().lower() in ("1", "true", "yes")
+_SALES_AI_IMAGES_ENABLED = os.environ.get("SALES_PAGES_AI_IMAGES", "").strip().lower() in ("1", "true", "yes")
 # Shown to the customer when Stripe was active but no checkout URL came back
 # (create_checkout_session failed) — so the Pay button surfaces a clear message
 # instead of silently no-opping. _alert_stripe() already notifies Glen.
@@ -11826,6 +11827,8 @@ def ingest_transcript():
 # ── Clip hosting (temporary storage for Creatomate) ──────────────────────────
 _CLIPS_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "clips"
 _CLIPS_DIR.mkdir(exist_ok=True)
+_SALES_IMG_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "sales-images"
+_SALES_IMG_DIR.mkdir(parents=True, exist_ok=True)
 
 @app.route("/clips/upload", methods=["PUT"])
 def clips_upload():
@@ -15090,6 +15093,43 @@ def put_token(name):
 
 
 # ── Background cron scheduler ─────────────────────────────────────────────────
+def _drain_sales_image_queue():
+    """Scheduler job: render queued product images via Replicate (off web workers)."""
+    if not _SALES_AI_IMAGES_ENABLED:
+        return
+    from dashboard import sales_images as _si, sales_image_prompts as _sip, replicate_client as _rc
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            pending = _si.list_pending(cx)[:2]   # cap per tick (Replicate spend)
+    except Exception as e:
+        print(f"[sales-img] queue read failed: {e}", flush=True); return
+    for slug in pending:
+        p = _get_product(slug)
+        if not p:
+            with sqlite3.connect(LOG_DB) as cx: _si.mark_failed(cx, slug)
+            continue
+        prod = dict(p)
+        if not prod.get("ingredients"):
+            prod["ingredients"] = (_product_card(p) or {}).get("ingredients", [])
+        prompts = _sip.build_image_prompts(prod)
+        dest = _SALES_IMG_DIR / slug
+        dest.mkdir(parents=True, exist_ok=True)
+        ok = 0
+        for kind in _sip.IMAGE_KINDS:
+            for variant, prompt in enumerate(prompts[kind], start=1):
+                try:
+                    data = _rc.generate_image(prompt)
+                    fname = f"{kind}-{variant}.png"
+                    (dest / fname).write_bytes(data)
+                    with sqlite3.connect(LOG_DB) as cx:
+                        _si.record_image(cx, slug, kind, variant, fname)
+                    ok += 1
+                except Exception as e:
+                    print(f"[sales-img] {slug} {kind}-{variant} failed: {e}", flush=True)
+        with sqlite3.connect(LOG_DB) as cx:
+            (_si.mark_done if ok else _si.mark_failed)(cx, slug)
+
+
 def _run_cron():
     """Run the console push logic in-process on Render (no Mac needed)."""
     import importlib.util, sys as _sys, tempfile, base64 as _b64
@@ -15155,6 +15195,7 @@ def _start_scheduler():
         # (CERT_BONUS_ENABLED) inside _run_biofield_bonuses, so this is a safe no-op until on.
         scheduler.add_job(_run_biofield_bonuses, "cron", hour=15, minute=0,
                           id="biofield_bonuses")
+        scheduler.add_job(_drain_sales_image_queue, "interval", minutes=1, id="sales_image_gen")
         scheduler.start()
         print("[CRON] Scheduler started — hourly push + daily biofield-bonuses active")
     except Exception as e:

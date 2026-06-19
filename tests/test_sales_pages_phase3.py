@@ -1,8 +1,16 @@
+import importlib
 import sqlite3
+import pathlib
 import pytest
 from dashboard import sales_images as si
 from dashboard import sales_image_prompts as sip
 from dashboard import replicate_client as rc
+
+
+def _reload(monkeypatch, tmp_path, imgs="true"):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path)); monkeypatch.setenv("SALES_PAGES_ENABLED", "true")
+    monkeypatch.setenv("SALES_PAGES_AI_IMAGES", imgs)
+    import app as appmod; importlib.reload(appmod); return appmod
 
 def _cx(): return sqlite3.connect(":memory:")
 
@@ -73,3 +81,44 @@ def test_generate_image_requires_token(monkeypatch):
     monkeypatch.delenv("REPLICATE_API_TOKEN", raising=False)
     with pytest.raises(Exception):
         rc.generate_image("p")
+
+
+def test_worker_generates_and_records(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    monkeypatch.setattr(appmod, "_product_card", lambda p: {"ingredients": [{"name": "Resveratrol"}]})
+    from dashboard import replicate_client as rc
+    monkeypatch.setattr(rc, "generate_image", lambda prompt, **kw: b"PNG")
+    from dashboard import sales_images as si
+    with sqlite3.connect(appmod.LOG_DB) as cx: si.enqueue(cx, slug)
+    appmod._drain_sales_image_queue()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert si.queue_state(cx, slug) == "done"
+        assert len(si.get_images(cx, slug)) == 4
+    files = list((appmod._SALES_IMG_DIR / slug).glob("*.png"))
+    assert len(files) == 4
+
+
+def test_worker_flag_off_noop(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path, imgs="false")
+    assert appmod._SALES_AI_IMAGES_ENABLED is False
+    from dashboard import sales_images as si
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    with sqlite3.connect(appmod.LOG_DB) as cx: si.enqueue(cx, slug)
+    appmod._drain_sales_image_queue()  # flag off → no-op
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert si.queue_state(cx, slug) == "pending"
+
+
+def test_worker_marks_failed_on_error(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    monkeypatch.setattr(appmod, "_product_card", lambda p: {"ingredients": []})
+    from dashboard import replicate_client as rc
+    def boom(prompt, **kw): raise RuntimeError("replicate down")
+    monkeypatch.setattr(rc, "generate_image", boom)
+    from dashboard import sales_images as si
+    with sqlite3.connect(appmod.LOG_DB) as cx: si.enqueue(cx, slug)
+    appmod._drain_sales_image_queue()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert si.queue_state(cx, slug) == "failed"
