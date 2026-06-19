@@ -142,3 +142,52 @@ def test_exec_regenerate_sets_draft_and_writes_copy():
 def test_register_idempotent():
     spa.register()
     spa.register()  # second call must not raise duplicate-key
+
+
+import importlib
+
+
+def _reload_app(monkeypatch, tmp_path, copy="true"):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SALES_PAGES_ENABLED", "true")
+    monkeypatch.setenv("SALES_PAGES_AI_COPY", copy)
+    import app as appmod
+    importlib.reload(appmod)
+    return appmod
+
+
+def test_page_data_ai_state_none_when_no_page(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
+    assert data["ai_state"] == "none"
+
+
+def test_page_data_ai_state_reflects_state(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    import sqlite3
+    from dashboard import sales_pages as sp2
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        sp2.upsert_section(cx, slug, "intro", "draft copy")
+    data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
+    assert data["ai_state"] == "draft"
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        sp2.set_state(cx, slug, "approved", by="Glen")
+    data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
+    assert data["ai_state"] == "approved"
+
+
+def test_dispatch_approve_flips_state(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    import sqlite3
+    from dashboard import sales_pages as sp2
+    from dashboard import dispatch as d
+    from dashboard.rbac import Actor, OWNER
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        sp2.upsert_section(cx, slug, "intro", "draft copy")
+        res = d.dispatch_action(cx, "sales_pages.approve", {"slug": slug},
+                                Actor(role=OWNER, name="Glen"), source="panel")
+        assert res["status"] == "done"
+        assert sp2.get_page(cx, slug)["state"] == "approved"

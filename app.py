@@ -2895,6 +2895,7 @@ def begin_product_page_data(slug):
         {"id": "images",      "title": "Help shape this", "default_open": False, "body": {"images": p.get("page_images", [])}},
         {"id": "cta",         "title": "Order",           "default_open": False, "body": {}},
     ]
+    _ai_state = "none"
     if _SALES_AI_COPY_ENABLED:
         import sqlite3 as _sq
         from dashboard import sales_pages as _sp
@@ -2912,6 +2913,8 @@ def begin_product_page_data(slug):
                             _s["body"] = _draft
                     else:
                         _s["ai"] = "pending"
+                _pg = _sp.get_page(_cx, slug)
+                _ai_state = _pg["state"] if _pg else "none"
         except Exception as _e:
             print(f"[sales-ai] page-data marker skipped: {_e}", flush=True)
     if _SALES_AI_IMAGES_ENABLED:
@@ -2978,6 +2981,7 @@ def begin_product_page_data(slug):
     return jsonify({
         "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
         "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
+        "ai_state": _ai_state,
         "sections": sections, "miron_assets": _MIRON_ASSETS["assets"],
         "miron_story": _MIRON_ASSETS.get("story", []),
         "open_sections": _read_open_sections(request.cookies.get("amg_session", ""),
@@ -18498,6 +18502,13 @@ def bos_action(key):
     finally:
         cx.close()
     return jsonify(res)
+
+
+# ── Phase 5: sales-page review actions (approve/edit/regenerate) ──────────────
+from dashboard import sales_pages_actions as _spa
+_spa.register()
+_spa.configure(client=_cl, get_product=_get_product,
+               product_card=_product_card, strip_dash=_strip_dash)
 
 
 # ── In-house order entry (Phase 1: proposed invoice) — OWNER only ───────────────
