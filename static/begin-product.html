@@ -193,10 +193,25 @@
       } catch(e){}
     }
 
+    // ── SSE streaming for ai:"pending" narrative sections ────────────────────
+    function streamSection(section, el){
+      if (el.dataset.streamed) return; el.dataset.streamed = '1';
+      var es = new EventSource(BASE + '/begin/product-page-gen/' + encodeURIComponent(slug) + '/' + section);
+      var first = true, buf = '';
+      es.onmessage = function(e){
+        var d; try { d = JSON.parse(e.data); } catch(_) { return; }
+        if (d.error){ es.close(); return; }
+        if (d.token){ if (first){ el.textContent=''; first=false; } buf += d.token; el.textContent = buf; }
+        if (d.done){ es.close(); }
+      };
+      es.onerror = function(){ es.close(); };
+    }
+
     // ── Render section bodies (lazy on first open) ────────────────────────────
     function renderIntroBody(body){
       var p = document.createElement('p');
       p.className = 'sp-text';
+      p.setAttribute('data-ai-text', '1');
       p.textContent = typeof body === 'string' ? body : '';
       return p;
     }
@@ -204,6 +219,7 @@
     function renderDescriptionBody(body){
       var p = document.createElement('p');
       p.className = 'sp-text';
+      p.setAttribute('data-ai-text', '1');
       p.textContent = typeof body === 'string' ? body : '';
       return p;
     }
@@ -486,6 +502,7 @@
       if (body && body.how_it_works){
         var hw = document.createElement('p');
         hw.className = 'sp-how';
+        hw.setAttribute('data-ai-text', '1');
         hw.textContent = body.how_it_works;
         frag.appendChild(hw);
       }
@@ -587,6 +604,10 @@
         if (_rendered) return;
         _rendered = true;
         bodyDiv.appendChild(buildSectionBody(sec, ctaUrl, mironAssets, mironStory));
+        if (sec.ai === 'pending'){
+          var textEl = bodyDiv.querySelector('[data-ai-text]');
+          if (textEl) streamSection(sec.id, textEl);
+        }
       }
 
       // Open state: intro always open, others from openSet
@@ -638,6 +659,14 @@
       var mironAssets = Array.isArray(data.miron_assets) ? data.miron_assets : [];
       var mironStory = Array.isArray(data.miron_story) ? data.miron_story : [];
       var container = document.getElementById('sp-sections');
+
+      var hasAi = (data.sections || []).some(function(s){ return s.ai !== undefined; });
+      if (hasAi){
+        var banner = document.createElement('p');
+        banner.style.cssText = 'font-size:12px;color:var(--muted);opacity:0.75;margin-bottom:10px;line-height:1.5;';
+        banner.textContent = "Generated from Dr. Glen’s knowledge base — pending his personal review for final approval.";
+        container.appendChild(banner);
+      }
 
       (data.sections || []).forEach(function(sec){
         if (sec.id === 'cta'){
