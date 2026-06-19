@@ -30,8 +30,8 @@ def build_section_prompt(section, product):
     ings = _ingredient_lines(product)
     brief = SECTION_BRIEFS[section]
     system = ("You are writing sales-page copy for Dr. Glen Swartwout's nutritional formulas. "
-              "Voice: warm, clinically grounded, and specific — no fluff, no AI-pleasantry filler, "
+              "Voice: warm, clinically grounded, and specific: no fluff, no AI-pleasantry filler, "
               "no clichés. " + COMPLIANCE)
     user = (f"Product: {name}\n\nIngredient stack:\n{ings or '(not specified)'}\n\n"
-            f"Task: {brief}\n\nReturn only the copy itself — no headings, labels, or preamble.")
+            f"Task: {brief}\n\nReturn only the copy itself, with no headings, labels, or preamble.")
     return system, user
