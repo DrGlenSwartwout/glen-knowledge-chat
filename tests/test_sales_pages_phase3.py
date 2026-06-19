@@ -146,3 +146,33 @@ def test_serve_image_route(monkeypatch, tmp_path):
     assert c.get(f"/begin/product-image/{slug}/botanical-1.png").status_code == 200
     assert c.get(f"/begin/product-image/{slug}/missing.png").status_code == 404
     assert c.get(f"/begin/product-image/{slug}/../evil.png").status_code in (400, 404)
+
+
+def test_page_data_images_states(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    c = appmod.app.test_client()
+    # none
+    d = c.get(f"/begin/product-page-data/{slug}").get_json()
+    img = next(s for s in d["sections"] if s["id"] == "images")["body"]
+    assert img.get("state") == "none"
+    # generating
+    import sqlite3
+    from dashboard import sales_images as si
+    with sqlite3.connect(appmod.LOG_DB) as cx: si.enqueue(cx, slug)
+    img = next(s for s in c.get(f"/begin/product-page-data/{slug}").get_json()["sections"] if s["id"]=="images")["body"]
+    assert img.get("state") == "generating"
+    # ready
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        si.record_image(cx, slug, "botanical", 1, "botanical-1.png")
+        si.record_image(cx, slug, "mechanism", 1, "mechanism-1.png")
+    img = next(s for s in c.get(f"/begin/product-page-data/{slug}").get_json()["sections"] if s["id"]=="images")["body"]
+    assert img.get("state") == "ready"
+    urls = [i["url"] for i in img["images"]]
+    assert f"/begin/product-image/{slug}/botanical-1.png" in urls
+
+def test_page_data_images_flag_off(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path, imgs="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    img = next(s for s in appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()["sections"] if s["id"]=="images")["body"]
+    assert "state" not in img

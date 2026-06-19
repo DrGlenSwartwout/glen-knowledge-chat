@@ -2894,6 +2894,25 @@ def begin_product_page_data(slug):
                         _s["ai"] = "pending"
         except Exception as _e:
             print(f"[sales-ai] page-data marker skipped: {_e}", flush=True)
+    if _SALES_AI_IMAGES_ENABLED:
+        import sqlite3 as _sq2
+        from dashboard import sales_images as _si2
+        try:
+            with _sq2.connect(LOG_DB) as _cx2:
+                _disp = _si2.display_images(_cx2, slug)
+                _qstate = _si2.queue_state(_cx2, slug)
+            _imgs = [{"kind": k, "url": f"/begin/product-image/{slug}/{fn}"}
+                     for k, fn in _disp.items() if fn]
+            _img_sec = next((s for s in sections if s["id"] == "images"), None)
+            if _img_sec is not None:
+                if _imgs:
+                    _img_sec["body"] = {"images": _imgs, "state": "ready"}
+                elif _qstate == "pending":
+                    _img_sec["body"] = {"images": [], "state": "generating"}
+                else:
+                    _img_sec["body"] = {"images": [], "state": "none"}
+        except Exception as _e:
+            print(f"[sales-img] page-data marker skipped: {_e}", flush=True)
     return jsonify({
         "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
         "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
