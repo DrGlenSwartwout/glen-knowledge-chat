@@ -78,6 +78,7 @@ FEEDBACK_VIEW_URL   = os.environ.get("FEEDBACK_VIEW_URL",   "https://Truly.VIP/F
 # vector space). With no fallback set it behaves as a single client. See
 # dashboard/openai_failover.py.
 from dashboard.openai_failover import build_openai_client as _build_openai_client
+from dashboard.people import set_person_tags
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -12959,6 +12960,37 @@ def add_person_note(person_id):
         """, (f"[{ts}] {note}", f"[{ts}] {note}", person_id))
         cx.commit()
     return jsonify({"ok": True})
+
+
+@app.route("/api/people/<int:person_id>/tags", methods=["POST"])
+def update_person_tags_route(person_id):
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "bad request"}), 400
+    add = body.get("add", [])
+    remove = body.get("remove", [])
+    if (not isinstance(add, list) or not isinstance(remove, list)
+            or not all(isinstance(t, str) for t in add)
+            or not all(isinstance(t, str) for t in remove)):
+        return jsonify({"error": "add/remove must be lists of strings"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT tags FROM people WHERE id=?", (person_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "not found"}), 404
+        try:
+            current = json.loads(row[0] or "[]")
+            if not isinstance(current, list):
+                current = []
+        except (ValueError, TypeError):
+            current = []
+        new_tags = set_person_tags(current, add, remove)
+        cx.execute("UPDATE people SET tags=? WHERE id=?", (json.dumps(new_tags), person_id))
+        cx.commit()
+    return jsonify({"ok": True, "tags": new_tags})
 
 
 # ── Household endpoints ────────────────────────────────────────────────────────
