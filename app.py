@@ -27,7 +27,6 @@ from typing import Optional, Tuple
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context, render_template_string, redirect
 from flask_cors import CORS
 from pinecone import Pinecone
-from openai import OpenAI
 import anthropic
 import boto3 as _boto3
 import begin_funnel
@@ -74,7 +73,12 @@ FEEDBACK_SUBMIT_URL = os.environ.get("FEEDBACK_SUBMIT_URL", "https://Truly.VIP/R
 FEEDBACK_VIEW_URL   = os.environ.get("FEEDBACK_VIEW_URL",   "https://Truly.VIP/Feedback")
 
 # ── Module-level API clients (initialized once at startup) ────────────────────
-_oa  = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+# Embeddings client with multi-key failover: on a 429/quota/auth failure of the
+# primary OPENAI_API_KEY it falls over to OPENAI_API_KEY_FALLBACK (same model, same
+# vector space). With no fallback set it behaves as a single client. See
+# dashboard/openai_failover.py.
+from dashboard.openai_failover import build_openai_client as _build_openai_client
+_oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
 _cl  = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
@@ -2713,6 +2717,7 @@ try:
     from dashboard import product_content as _product_content
     with sqlite3.connect(LOG_DB) as _cx:
         _product_content.init_product_content_table(_cx)
+        _product_content.purge_refusal_cache(_cx)  # self-heal pre-fix cached refusals
 except Exception as _pce:
     _product_content = None
     print(f"[product_content] init failed: {_pce}", flush=True)
