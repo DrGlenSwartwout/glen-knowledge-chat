@@ -109,3 +109,90 @@ def test_suggest_gift_strips_dashes():
     c = _FakeClient('{"sku": "gift-tuningfork", "reason": "good — fit"}')
     out = rs.suggest_gift(c, "t", {"name": "X"}, [], _CAT, strip=lambda s: s.replace("—", ","))
     assert "—" not in out["reason"]
+
+
+import importlib
+
+
+def _reload_gift_app(monkeypatch, tmp_path, gifts="true"):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("REVIEWS_ENABLED", "true")
+    monkeypatch.setenv("REVIEWS_VIDEO", "true")
+    monkeypatch.setenv("REVIEWS_GIFTS", gifts)
+    import app as appmod
+    importlib.reload(appmod)
+    return appmod
+
+
+def _seed_scored_video(appmod, slug, email="b@x.com", video_points=5, written=0):
+    import sqlite3
+    from dashboard import product_reviews as pr, review_video_jobs as vj
+    d = appmod._REVIEW_MEDIA_DIR / slug; d.mkdir(parents=True, exist_ok=True)
+    (d / "v.webm").write_bytes(b"X")
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, slug, email, "B", 5, video_kind="upload", video_ref="v.webm")
+        pr.set_ai_result(cx, rid, written, "", 0); pr.set_points(cx, rid, written)
+        vj.enqueue(cx, rid)
+    return rid
+
+
+def _patch_pipeline(monkeypatch, video_points=5, gift_sku="gift-nightlight"):
+    import journal_blueprint
+    monkeypatch.setattr(journal_blueprint, "_whisper_transcribe",
+                        lambda p: {"text": "great review", "duration": 12.0, "words": []})
+    from dashboard import review_scoring as rs
+    monkeypatch.setattr(rs, "score_video", lambda *a, **k: {
+        "video_points": video_points, "publish_risk": False, "risk_reasons": "", "recommend_publish": True})
+    monkeypatch.setattr(rs, "suggest_gift", lambda *a, **k: ({"sku": gift_sku, "reason": "fits"} if gift_sku else None))
+
+
+def test_worker_suggests_gift_at_5_points(monkeypatch, tmp_path):
+    appmod = _reload_gift_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    rid = _seed_scored_video(appmod, slug)
+    _patch_pipeline(monkeypatch, video_points=5)
+    appmod._drain_review_videos()
+    import sqlite3
+    from dashboard import review_gifts as rg
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        g = rg.get_for_review(cx, rid)
+    assert g is not None and g["status"] == "suggested" and g["gift_sku"] == "gift-nightlight"
+
+
+def test_worker_no_gift_under_5(monkeypatch, tmp_path):
+    appmod = _reload_gift_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    rid = _seed_scored_video(appmod, slug)
+    _patch_pipeline(monkeypatch, video_points=3)        # total 3
+    appmod._drain_review_videos()
+    import sqlite3
+    from dashboard import review_gifts as rg
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert rg.get_for_review(cx, rid) is None
+
+
+def test_worker_monthly_cap(monkeypatch, tmp_path):
+    appmod = _reload_gift_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    import sqlite3
+    from dashboard import review_gifts as rg
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rg.add_suggestion(cx, 999, "b@x.com", "gift-toothbrush", "Toothbrush", "earlier")  # within 30d
+    rid = _seed_scored_video(appmod, slug, email="b@x.com")
+    _patch_pipeline(monkeypatch, video_points=5)
+    appmod._drain_review_videos()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert rg.get_for_review(cx, rid) is None        # capped
+
+
+def test_worker_gift_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_gift_app(monkeypatch, tmp_path, gifts="false")
+    assert appmod._REVIEWS_GIFTS is False
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    rid = _seed_scored_video(appmod, slug)
+    _patch_pipeline(monkeypatch, video_points=5)
+    appmod._drain_review_videos()
+    import sqlite3
+    from dashboard import review_gifts as rg
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert rg.get_for_review(cx, rid) is None

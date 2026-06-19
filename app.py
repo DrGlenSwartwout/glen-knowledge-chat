@@ -2314,6 +2314,7 @@ _TOURNEY_CADENCE_DAYS = int(os.environ.get("IMAGE_TOURNAMENT_CADENCE_DAYS", "3")
 _REVIEWS_ENABLED = os.environ.get("REVIEWS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _REVIEWS_VIDEO = os.environ.get("REVIEWS_VIDEO", "").strip().lower() in ("1", "true", "yes")
 _REVIEWS_VIDEO_TRIM = os.environ.get("REVIEWS_VIDEO_TRIM", "").strip().lower() in ("1", "true", "yes")
+_REVIEWS_GIFTS = os.environ.get("REVIEWS_GIFTS", "").strip().lower() in ("1", "true", "yes")
 _REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
 _REVIEW_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".m4v")
 _REVIEW_VIDEO_MAX_BYTES = 100 * 1024 * 1024
@@ -15641,6 +15642,29 @@ def _drain_review_videos():
                                 _pr.set_trimmed(cx, rid, _dst.name)
                 except Exception as e:  # noqa: BLE001 - trim never undoes a credited score
                     print(f"[reviews-video] trim failed rid={rid}: {e}", flush=True)
+            if _REVIEWS_GIFTS and total == 5:
+                try:
+                    from dashboard import review_gifts as _rg
+                    from dashboard import orders as _o2
+                    with sqlite3.connect(LOG_DB) as cx:
+                        _has_gift = _rg.get_for_review(cx, rid) is not None
+                        _capped = _rg.recent_active_gift(cx, r["email"], 30)
+                    if not _has_gift and not _capped:
+                        _cat = _rg.load_catalog()
+                        with sqlite3.connect(LOG_DB) as cx:
+                            cx.row_factory = sqlite3.Row
+                            _hist = []
+                            for _o in _o2.list_orders_by_email(cx, r["email"], limit=5):
+                                for _it in (_o.get("items") or []):
+                                    if _it.get("name"):
+                                        _hist.append(_it["name"])
+                        _sg = _rs.suggest_gift(_cl, transcript, prod, _hist[:10], _cat, strip=_strip_dash)
+                        if _sg:
+                            _lbl = _rg.catalog_by_sku().get(_sg["sku"], {}).get("label", _sg["sku"])
+                            with sqlite3.connect(LOG_DB) as cx:
+                                _rg.add_suggestion(cx, rid, r["email"], _sg["sku"], _lbl, _sg["reason"])
+                except Exception as e:  # noqa: BLE001 - gift never blocks scoring/credit/trim
+                    print(f"[reviews-video] gift suggest failed rid={rid}: {e}", flush=True)
         except Exception as e:  # noqa: BLE001 - one job's failure never aborts the sweep
             print(f"[reviews-video] job {rid} failed: {e}", flush=True)
             try:
