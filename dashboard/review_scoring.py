@@ -45,3 +45,47 @@ def score_review(client, product, body, *, strip=lambda s: s):
         }
     except Exception as e:  # noqa: BLE001
         return _safe_default(f"scoring error: {e}")
+
+
+_VIDEO_RISK = (
+    "Set publish_risk=true with a short risk_reasons when the spoken review claims to diagnose, "
+    "treat, cure, or prevent a disease, names a disease as cured, or contains personal contact info "
+    "(PII). This flags a PUBLISHING risk for a human reviewer; it does NOT lower video_points."
+)
+
+
+def build_video_prompt(product, transcript):
+    name = (product or {}).get("name", "")
+    system = (
+        "You score the transcript of a short spoken customer video review of Dr. Glen Swartwout's "
+        "supplements. Return ONLY a JSON object with keys: video_points (integer 0..5), "
+        "publish_risk (bool), risk_reasons (short string), recommend_publish (bool). "
+        "video_points rewards a clear, specific, authentic spoken experience; low-effort, vague, "
+        "spammy, or abusive transcripts score 0. " + _VIDEO_RISK)
+    user = (f"Product: {name}\n\nVideo transcript:\n{transcript or '(empty)'}\n\n"
+            "Return only the JSON object, no prose.")
+    return system, user
+
+
+def _safe_video_default(reasons):
+    return {"video_points": 0, "publish_risk": False, "risk_reasons": reasons, "recommend_publish": False}
+
+
+def score_video(client, product, transcript, *, strip=lambda s: s):
+    system, user = build_video_prompt(product, transcript)
+    try:
+        msg = client.messages.create(model=_MODEL, max_tokens=300, system=system,
+                                      messages=[{"role": "user", "content": user}])
+        text = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text").strip()
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end < 0:
+            return _safe_video_default("unparseable scoring response")
+        data = json.loads(text[start:end + 1])
+        return {
+            "video_points": max(0, min(5, int(data.get("video_points", 0)))),
+            "publish_risk": bool(data.get("publish_risk")),
+            "risk_reasons": strip(str(data.get("risk_reasons", "")))[:500],
+            "recommend_publish": bool(data.get("recommend_publish")),
+        }
+    except Exception as e:  # noqa: BLE001
+        return _safe_video_default(f"scoring error: {e}")

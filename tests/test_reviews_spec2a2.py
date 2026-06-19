@@ -35,3 +35,62 @@ def test_video_job_queue_roundtrip():
     assert vj.claim_pending(cx) == [12]
     vj.enqueue(cx, 11)   # re-enqueue resets to pending
     assert set(vj.claim_pending(cx)) == {11, 12}
+
+
+# ---------------------------------------------------------------------------
+# Task 2: score_video
+# ---------------------------------------------------------------------------
+from dashboard import review_scoring as rs
+
+
+class _Blk:
+    def __init__(self, t): self.type = "text"; self.text = t
+
+
+class _Msg:
+    def __init__(self, t): self.content = [_Blk(t)]
+
+
+class _FakeClient:
+    def __init__(self, payload): self._p = payload
+    @property
+    def messages(self):
+        outer = self
+        class _M:
+            def create(self, **kw): return _Msg(outer._p)
+        return _M()
+
+
+def test_build_video_prompt_includes_transcript():
+    system, user = rs.build_video_prompt({"name": "Longevity"}, "I felt more energy in two weeks")
+    assert "Longevity" in user and "energy in two weeks" in user
+
+
+def test_score_video_quality_points():
+    c = _FakeClient('{"video_points": 5, "publish_risk": false, "risk_reasons": "", "recommend_publish": true}')
+    out = rs.score_video(c, {"name": "X"}, "clear specific authentic spoken review")
+    assert out["video_points"] == 5 and out["publish_risk"] is False and out["recommend_publish"] is True
+
+
+def test_score_video_disease_claim_still_scores_but_flags_risk():
+    c = _FakeClient('{"video_points": 4, "publish_risk": true, "risk_reasons": "claims to cure disease", "recommend_publish": false}')
+    out = rs.score_video(c, {"name": "X"}, "this cured my illness completely")
+    assert out["video_points"] == 4               # NOT zeroed
+    assert out["publish_risk"] is True and "cure" in out["risk_reasons"].lower()
+
+
+def test_score_video_spam_zero():
+    c = _FakeClient('{"video_points": 0, "publish_risk": false, "risk_reasons": "low effort", "recommend_publish": false}')
+    out = rs.score_video(c, {"name": "X"}, "uhh idk")
+    assert out["video_points"] == 0
+
+
+def test_score_video_bad_json_safe_default():
+    out = rs.score_video(_FakeClient("not json"), {"name": "X"}, "x")
+    assert out["video_points"] == 0 and out["publish_risk"] is False and out["recommend_publish"] is False
+
+
+def test_score_video_strips_dashes():
+    c = _FakeClient('{"video_points": 3, "publish_risk": true, "risk_reasons": "risk — here", "recommend_publish": false}')
+    out = rs.score_video(c, {"name": "X"}, "x", strip=lambda s: s.replace("—", ","))
+    assert "—" not in out["risk_reasons"]
