@@ -142,3 +142,17 @@ def test_gen_error_frame_on_claude_failure(monkeypatch, tmp_path):
     monkeypatch.setattr(appmod, "_cl", _FakeCl([], boom=True))
     body = _frames(appmod.app.test_client().get(f"/begin/product-page-gen/{slug}/intro"))
     assert '"error": true' in body
+
+
+# ---------------------------------------------------------------------------
+# Task 6: integration sanity + flag default
+# ---------------------------------------------------------------------------
+
+def test_full_phase2_file_and_flag_default(monkeypatch, tmp_path):
+    # flag unset → disabled
+    monkeypatch.delenv("SALES_PAGES_AI_COPY", raising=False)
+    monkeypatch.setenv("DATA_DIR", str(tmp_path)); monkeypatch.setenv("SALES_PAGES_ENABLED", "true")
+    import importlib, app as appmod; importlib.reload(appmod)
+    assert appmod._SALES_AI_COPY_ENABLED is False
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    assert appmod.app.test_client().get(f"/begin/product-page-gen/{slug}/intro").status_code == 404
