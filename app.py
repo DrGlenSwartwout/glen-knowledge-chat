@@ -91,10 +91,14 @@ def _load_json(path: Path, default):
         print(f"[warn] could not load {path}: {e}", flush=True)
     return default
 
-_PRODUCT_ALIASES = _load_json(DATA_DIR / "product-aliases.json",
-                              default={"aliases": {}, "store_homepage": "https://remedymatch.com"})
-_COUPONS         = _load_json(DATA_DIR / "coupons.json",
-                              default={"default_code": "", "daily_codes": []})
+_PRODUCT_ALIASES  = _load_json(DATA_DIR / "product-aliases.json",
+                               default={"aliases": {}, "store_homepage": "https://remedymatch.com"})
+_COUPONS          = _load_json(DATA_DIR / "coupons.json",
+                               default={"default_code": "", "daily_codes": []})
+_SALES_ARCHETYPES = _load_json(DATA_DIR / "sales-page-archetypes.json",
+                               default={"columns": [], "rows": [], "excipient_callout": ""})
+_MIRON_ASSETS     = _load_json(DATA_DIR / "miron-assets.json",
+                               default={"assets": []})
 # Runtime-written + must survive redeploys, so it lives on the env-DATA_DIR persistent
 # disk (same root as LOG_DB / _CLIPS_DIR), NOT the repo's read-only DATA_DIR baseline.
 _PRICING_SETTINGS_PATH = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "pricing-settings.json"
@@ -2050,7 +2054,8 @@ def begin_match_chat():
                 match_evt = {"name": obj["name"], "kind": obj.get("kind", ""),
                              "why": obj.get("why", ""), "url": url, "url_source": src,
                              "buy_url": (f"/begin/buy/{buy_slug}" if buy_slug else ""),
-                             "search_url": "" if url else _store_search_url(obj["name"])}
+                             "search_url": "" if url else _store_search_url(obj["name"]),
+                             "product_url": _sales_page_url(obj["name"])}
         except Exception as e:
             print(f"[match] extract: {e!r}", flush=True)
         # Withhold the named product + Buy button until the visitor is a Member
@@ -2292,6 +2297,7 @@ _PRODUCTS = _load_json(DATA_DIR / "products.json",
 # Card/ACH online payment is gated until QuickBooks Payments is activated.
 _QBO_PAYMENTS_ACTIVE = os.environ.get("QBO_PAYMENTS_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
+_SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").strip().lower() in ("1", "true", "yes")
 # Shown to the customer when Stripe was active but no checkout URL came back
 # (create_checkout_session failed) — so the Pay button surfaces a clear message
 # instead of silently no-opping. _alert_stripe() already notifies Glen.
@@ -2719,7 +2725,7 @@ with sqlite3.connect(LOG_DB) as _cx:
     _cx.execute("""CREATE TABLE IF NOT EXISTS section_prefs (
         session_id TEXT PRIMARY KEY, email TEXT, opened TEXT, updated_at TEXT)""")
     _cx.execute("CREATE INDEX IF NOT EXISTS idx_section_prefs_email ON section_prefs(email)")
-_SECTIONS = ("ingredients", "how", "research")
+_SECTIONS = ("ingredients", "how", "research", "description", "video", "comparison", "images")
 
 
 def _read_open_sections(session_id, email=""):
@@ -2775,11 +2781,32 @@ def _resolve_buy_slug(name):
     return None
 
 
+def _sales_page_url(name):
+    """New-format in-funnel sales page URL for an in-catalog remedy, or '' if
+    disabled / off-catalog. Flag-gated so we can ship dark."""
+    if not _SALES_PAGES_ENABLED:
+        return ""
+    slug = _resolve_buy_slug(name)
+    return f"/begin/product/{slug}" if slug else ""
+
+
 @app.route("/begin/buy/<slug>")
 def begin_buy_page(slug):
     if not _get_product(slug):
         return ("", 404)
     resp = send_from_directory(STATIC, "begin-buy.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/product/<slug>")
+def begin_product_page(slug):
+    if not _get_product(slug):
+        return ("", 404)
+    resp = send_from_directory(STATIC, "begin-product.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     if not request.cookies.get("amg_session"):
         resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
@@ -2818,6 +2845,41 @@ def begin_product_data(slug):
         "open_sections": _read_open_sections(
             request.cookies.get("amg_session", ""),
             (get_authenticated_user(request) or {}).get("email", "")),
+    })
+
+
+@app.route("/begin/product-page-data/<slug>")
+def begin_product_page_data(slug):
+    p = _get_product(slug)
+    if not p:
+        return jsonify({"error": "not found"}), 404
+    card = _product_card(p) if not p.get("info_only") else {}
+    how = "" if p.get("info_only") else _product_how(p)
+    ingredients = p.get("ingredients") or card.get("ingredients", [])
+    intro = p.get("intro") or (card.get("description", "") or "").split(". ")[0]
+    _vids = list(p.get("videos", []))
+    _mv = _MIRON_ASSETS.get("video")
+    if _mv and _mv.get("src"):
+        _vids.append({"src": _mv["src"], "title": _mv.get("title", ""), "provider": "mp4", "kind": "educational"})
+    sections = [
+        {"id": "intro",       "title": "What this does",  "default_open": True,  "body": intro},
+        {"id": "description", "title": "Overview",        "default_open": False,
+         "body": p.get("description") or card.get("description", "")},
+        {"id": "video",       "title": "Watch",           "default_open": False, "body": {"videos": _vids}},
+        {"id": "ingredients", "title": "What's inside",   "default_open": False, "body": {"ingredients": ingredients}},
+        {"id": "comparison",  "title": "How it compares", "default_open": False, "body": _SALES_ARCHETYPES},
+        {"id": "research",    "title": "The research",    "default_open": False,
+         "body": {"how_it_works": how, "learn_url": f"/begin/learn/{slug}"}},
+        {"id": "images",      "title": "Help shape this", "default_open": False, "body": {"images": p.get("page_images", [])}},
+        {"id": "cta",         "title": "Order",           "default_open": False, "body": {}},
+    ]
+    return jsonify({
+        "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
+        "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
+        "sections": sections, "miron_assets": _MIRON_ASSETS["assets"],
+        "miron_story": _MIRON_ASSETS.get("story", []),
+        "open_sections": _read_open_sections(request.cookies.get("amg_session", ""),
+                                             (get_authenticated_user(request) or {}).get("email", "")),
     })
 
 
