@@ -846,7 +846,7 @@
       var container = document.getElementById('sp-sections');
 
       var hasAi = (data.sections || []).some(function(s){ return s.ai !== undefined; });
-      if (hasAi){
+      if (hasAi && data.ai_state !== 'approved'){
         var banner = document.createElement('p');
         banner.style.cssText = 'font-size:12px;color:var(--muted);opacity:0.75;margin-bottom:10px;line-height:1.5;';
         banner.textContent = "Generated from Dr. Glen’s knowledge base, pending his personal review for final approval.";

@@ -2895,6 +2895,7 @@ def begin_product_page_data(slug):
         {"id": "images",      "title": "Help shape this", "default_open": False, "body": {"images": p.get("page_images", [])}},
         {"id": "cta",         "title": "Order",           "default_open": False, "body": {}},
     ]
+    _ai_state = "none"
     if _SALES_AI_COPY_ENABLED:
         import sqlite3 as _sq
         from dashboard import sales_pages as _sp
@@ -2912,6 +2913,8 @@ def begin_product_page_data(slug):
                             _s["body"] = _draft
                     else:
                         _s["ai"] = "pending"
+                _pg = _sp.get_page(_cx, slug)
+                _ai_state = _pg["state"] if _pg else "none"
         except Exception as _e:
             print(f"[sales-ai] page-data marker skipped: {_e}", flush=True)
     if _SALES_AI_IMAGES_ENABLED:
@@ -2978,6 +2981,7 @@ def begin_product_page_data(slug):
     return jsonify({
         "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
         "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
+        "ai_state": _ai_state,
         "sections": sections, "miron_assets": _MIRON_ASSETS["assets"],
         "miron_story": _MIRON_ASSETS.get("story", []),
         "open_sections": _read_open_sections(request.cookies.get("amg_session", ""),
@@ -6856,6 +6860,56 @@ def console_biofield_portal_page():
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
     return resp
+
+
+def _sales_console_ok():
+    """Phase-5 console gate. Returns None if authorized, else a 401 (response, status).
+    Gates on dashboard.CONSOLE_SECRET -- the SAME secret the /api/action write path uses
+    (via _bos_actor), so the read endpoints and write actions share one secret source."""
+    import dashboard as _dashboard
+    if _dashboard.CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != _dashboard.CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    return None
+
+
+@app.route("/console/sales-pages")
+def console_sales_pages_page():
+    resp = send_from_directory(STATIC, "console-sales-pages.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/api/console/sales-pages", methods=["GET"])
+def api_console_sales_pages_list():
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    from dashboard import sales_pages as _sp
+    with sqlite3.connect(LOG_DB) as cx:
+        pages = _sp.list_draft_pages(cx)
+    for pg in pages:
+        pg["name"] = (_get_product(pg["slug"]) or {}).get("name", pg["slug"])
+    return jsonify({"ok": True, "pages": pages})
+
+
+@app.route("/api/console/sales-page/<slug>", methods=["GET"])
+def api_console_sales_page_load(slug):
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    from dashboard import sales_pages as _sp
+    from dashboard import sales_copy as _sc
+    p = _get_product(slug)
+    with sqlite3.connect(LOG_DB) as cx:
+        page = _sp.get_page(cx, slug)
+    content = (page or {}).get("content", {})
+    sections = [{"id": s, "text": content.get(s, "")} for s in _sc.NARRATIVE_SECTIONS]
+    return jsonify({"ok": True, "slug": slug, "name": (p or {}).get("name", slug),
+                    "state": (page or {}).get("state", "none"),
+                    "sections": sections, "live_url": f"/begin/product/{slug}"})
 
 
 @app.route("/console/pricing-settings")
@@ -18498,6 +18552,13 @@ def bos_action(key):
     finally:
         cx.close()
     return jsonify(res)
+
+
+# ── Phase 5: sales-page review actions (approve/edit/regenerate) ──────────────
+from dashboard import sales_pages_actions as _spa
+_spa.register()
+_spa.configure(client=_cl, get_product=_get_product,
+               product_card=_product_card, strip_dash=_strip_dash)
 
 
 # ── In-house order entry (Phase 1: proposed invoice) — OWNER only ───────────────
