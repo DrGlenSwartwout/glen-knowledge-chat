@@ -48,6 +48,16 @@
   .btn:disabled{ opacity:.5; cursor:default; }
   .action-status{ font-size:12px; color:var(--muted); margin-top:6px; }
   .empty{ color:var(--muted); padding:20px 0; }
+  .gift-block{ margin:8px 0; padding:8px 12px; border-radius:6px; background:#1a2218;
+               border:1px solid #3a5a30; font-size:13px; }
+  .gift-block .gift-label{ font-weight:600; color:var(--ok); }
+  .gift-block .gift-reason{ color:var(--muted); margin-left:6px; }
+  .gift-block .gift-actions{ margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .btn.gift-approve{ background:var(--ok); color:#fff; }
+  .btn.gift-reject{ background:var(--err); color:#fff; }
+  .btn.gift-swap{ background:var(--accent); color:#fff; }
+  select.gift-sku-select{ font:inherit; font-size:13px; border-radius:6px; padding:5px 8px;
+                           background:var(--card); color:var(--fg); border:1px solid var(--line); }
   #gate{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
          background:var(--bg); z-index:50; }
 </style>
@@ -87,10 +97,37 @@ function stars(n){
   return s;
 }
 
+var _catalog = [];
+
+async function loadCatalog(){
+  const r = await api('GET', '/api/console/gift-catalog');
+  if(r.ok && r.json.catalog) _catalog = r.json.catalog;
+}
+
+function giftBlock(rv, i){
+  if(!rv.gift) return '';
+  const g = rv.gift;
+  if(g.status !== 'suggested') return '';
+  const opts = _catalog.map(c =>
+    `<option value="${esc(c.sku)}"${c.sku===g.gift_sku?' selected':''}>${esc(c.label)}</option>`
+  ).join('');
+  return `<div class="gift-block" id="gift-block-${i}">
+    Suggested gift: <span class="gift-label">${esc(g.gift_label)}</span>
+    <span class="gift-reason">&mdash; ${esc(g.reason)}</span>
+    <div class="gift-actions">
+      <button class="btn gift-approve" onclick="actGiftApprove(${rv.id}, ${i})">Approve</button>
+      <select class="gift-sku-select" id="gift-sku-${i}">${opts}</select>
+      <button class="btn gift-swap" onclick="actGiftSwap(${rv.id}, ${i})">Swap + Approve</button>
+      <button class="btn gift-reject" onclick="actGift(${rv.id}, 'reviews.gift_reject', {review_id:${rv.id}}, ${i})">Reject</button>
+    </div>
+    <div class="action-status" id="gift-status-${i}"></div>
+  </div>`;
+}
+
 function boot(){
   if(!key()){ $('gate').style.display='flex'; return; }
   $('app').style.display='block';
-  loadList();
+  loadCatalog().then(loadList);
 }
 
 async function loadList(){
@@ -129,6 +166,7 @@ async function loadList(){
         ${rv.ai_verdict ? ` &mdash; ${esc(rv.ai_verdict)}` : ''}
       </div>
       <div class="pts">Points awarded: ${esc(rv.points_awarded != null ? rv.points_awarded : 0)}</div>
+      ${giftBlock(rv, i)}
       <div class="row">
         <button class="btn approve" onclick="act(${rv.id}, 'reviews.approve', {id:${rv.id}}, ${i})">Approve</button>
         <button class="btn reject"  onclick="act(${rv.id}, 'reviews.reject',  {id:${rv.id}}, ${i})">Reject</button>
@@ -137,6 +175,28 @@ async function loadList(){
       <div class="action-status" id="status-${i}"></div>
     </div>`;
   }).join('');
+}
+
+async function actGift(rid, actionKey, params, rowIdx){
+  const statusEl = $('gift-status-'+rowIdx);
+  if(statusEl) statusEl.textContent = 'Working...';
+  const r = await api('POST', '/api/action/'+actionKey, params);
+  if(r.ok && r.json.status==='done'){
+    const blk = $('gift-block-'+rowIdx);
+    if(blk) blk.innerHTML = '<span style="color:var(--muted)">Gift ' + actionKey.split('.')[1].replace('gift_','') + '.</span>';
+  } else {
+    if(statusEl) statusEl.textContent = 'Failed: ' + (r.json.error || r.status);
+  }
+}
+
+function actGiftApprove(rid, rowIdx){
+  actGift(rid, 'reviews.gift_approve', {review_id: rid}, rowIdx);
+}
+
+function actGiftSwap(rid, rowIdx){
+  const sel = $('gift-sku-'+rowIdx);
+  const sku = sel ? sel.value : '';
+  actGift(rid, 'reviews.gift_approve', {review_id: rid, sku: sku}, rowIdx);
 }
 
 async function act(rid, actionKey, params, rowIdx){
