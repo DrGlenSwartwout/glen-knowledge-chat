@@ -55,3 +55,26 @@ def test_build_image_prompts_unchanged():
     out = sip.build_image_prompts({"name": "X"})
     assert len(out["botanical"]) == 2 and len(out["mechanism"]) == 2
     assert "no text" in out["botanical"][0].lower()
+
+
+import importlib
+
+def _reload(monkeypatch, tmp_path, tour="true"):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path)); monkeypatch.setenv("SALES_PAGES_ENABLED","true")
+    monkeypatch.setenv("SALES_PAGES_AI_IMAGES","true"); monkeypatch.setenv("SALES_PAGES_IMAGE_PICK","true")
+    monkeypatch.setenv("SALES_PAGES_IMAGE_TOURNAMENT", tour)
+    import app as appmod; importlib.reload(appmod); return appmod
+
+def test_render_challenger_creates_next_variant(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    from dashboard import sales_images as si, replicate_client as rc
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        si.record_image(cx, slug, "botanical", 1, "botanical-1.png")
+        si.record_image(cx, slug, "botanical", 2, "botanical-2.png")
+    monkeypatch.setattr(rc, "generate_image", lambda prompt, **kw: b"PNG")
+    v = appmod._render_challenger(slug, "botanical", appmod._get_product(slug))
+    assert v == 3
+    assert (appmod._SALES_IMG_DIR / slug / "botanical-3.png").exists()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert any(im["variant"] == 3 for im in si.get_images(cx, slug))

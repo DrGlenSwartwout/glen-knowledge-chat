@@ -15245,6 +15245,32 @@ def _drain_sales_image_queue():
             (_si.mark_done if ok else _si.mark_failed)(cx, slug)
 
 
+def _render_challenger(slug, kind, product):
+    """Render ONE new image variant for the tournament challenger slot.
+
+    Called from the Task-4 tournament evaluator (scheduler job).  Mirrors the
+    per-variant inner loop of _drain_sales_image_queue but for a single slug/kind.
+
+    Returns the new variant number on success, or None on any failure (best-effort).
+    """
+    from dashboard import sales_images as _si, sales_image_prompts as _sip, replicate_client as _rc
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            variant = _si.next_variant(cx, slug, kind)
+        prompt = _sip.build_one_prompt(kind, variant)
+        data = _rc.generate_image(prompt)
+        dest = _SALES_IMG_DIR / slug
+        dest.mkdir(parents=True, exist_ok=True)
+        fname = f"{kind}-{variant}.png"
+        (dest / fname).write_bytes(data)
+        with sqlite3.connect(LOG_DB) as cx:
+            _si.record_image(cx, slug, kind, variant, fname)
+        return variant
+    except Exception as e:
+        print(f"[tournament] challenger render {slug} {kind} failed: {e}", flush=True)
+        return None
+
+
 def _run_cron():
     """Run the console push logic in-process on Render (no Mac needed)."""
     import importlib.util, sys as _sys, tempfile, base64 as _b64
