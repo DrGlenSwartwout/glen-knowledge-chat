@@ -2996,6 +2996,9 @@ def begin_product_image_gen(slug):
         return ("", 404)
     from dashboard import sales_images as _si
     with sqlite3.connect(LOG_DB) as cx:
+        disp = _si.display_images(cx, slug)
+        if any(disp.values()):                     # already generated → no re-gen
+            return jsonify({"ok": True, "state": "done"})
         _si.enqueue(cx, slug)
         state = _si.queue_state(cx, slug)
     return jsonify({"ok": True, "state": state})

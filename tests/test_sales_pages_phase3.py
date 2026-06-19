@@ -184,3 +184,26 @@ def test_flag_defaults_off(monkeypatch, tmp_path):
     assert appmod._SALES_AI_IMAGES_ENABLED is False
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     assert appmod.app.test_client().post(f"/begin/product-image-gen/{slug}").status_code == 404
+
+
+def test_enqueue_route_skips_reenqueue_when_images_exist(monkeypatch, tmp_path):
+    """Enqueue route must return state='done' and NOT reset the queue to pending
+    when ready images already exist on disk (cost/abuse guard regression test)."""
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    from dashboard import sales_images as si
+    import sqlite3
+    # Record both image kinds so display_images returns non-None values
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        si.record_image(cx, slug, "botanical", 1, "botanical-1.png")
+        si.record_image(cx, slug, "mechanism", 1, "mechanism-1.png")
+    # POST the enqueue route — should short-circuit without creating a pending row
+    c = appmod.app.test_client()
+    r = c.post(f"/begin/product-image-gen/{slug}")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data.get("ok") is True
+    assert data.get("state") == "done"
+    # The queue row must NOT be pending (either None or some other state)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert si.queue_state(cx, slug) != "pending"
