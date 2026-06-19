@@ -9267,6 +9267,18 @@ def api_reorder_items():
                 "last_ordered": (o.get("created_at") or "")[:10],
                 "available": bool(p),
             })
+    # Annotate each item with whether the buyer has already reviewed it.
+    # Open a dedicated short connection — the orders cx is already closed.
+    from dashboard import product_reviews as _pr
+    with sqlite3.connect(LOG_DB) as rcx:
+        for it in items:
+            s = it.get("slug")
+            if not _REVIEWS_ENABLED:
+                it["reviewed"] = True
+            elif s:
+                it["reviewed"] = _pr.has_reviewed(rcx, s, email)
+            else:
+                it["reviewed"] = True  # unavailable item; no slug to review
     return jsonify({"email": email, "scope": scope, "items": items})
 
 

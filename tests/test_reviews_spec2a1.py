@@ -180,3 +180,52 @@ def test_submit_404_when_flag_off(monkeypatch, tmp_path):
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     r = appmod.app.test_client().post("/api/reviews", json={"slug": slug, "rating": 5})
     assert r.status_code == 404
+
+
+# ── Task 4: reorder items annotated with reviewed flag ────────────────────────
+
+def test_reorder_items_reviewed_annotation_false_when_no_review(monkeypatch, tmp_path):
+    """Unreviewed item -> reviewed=False when flag on."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="true")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    c = appmod.app.test_client()
+    c.set_cookie("rm_reorder_email", "buyer@x.com")
+    d = c.get("/api/reorder/items").get_json()
+    assert d and "items" in d
+    item = next((i for i in d["items"] if i.get("slug") == slug), None)
+    assert item is not None, f"slug {slug!r} not in reorder items"
+    assert item["reviewed"] is False
+
+
+def test_reorder_items_reviewed_annotation_true_after_review(monkeypatch, tmp_path):
+    """After submitting a review, reviewed=True."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="true")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    import sqlite3
+    from dashboard import product_reviews as _pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        _pr.upsert_review(cx, slug, "buyer@x.com", "Buyer", 5, body="great")
+    c = appmod.app.test_client()
+    c.set_cookie("rm_reorder_email", "buyer@x.com")
+    d = c.get("/api/reorder/items").get_json()
+    item = next((i for i in d["items"] if i.get("slug") == slug), None)
+    assert item is not None
+    assert item["reviewed"] is True
+
+
+def test_reorder_items_reviewed_true_when_flag_off(monkeypatch, tmp_path):
+    """When REVIEWS_ENABLED=false, reviewed is always True (gate inert)."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    name = appmod._get_product(slug)["name"]
+    _seed_paid_order(appmod, "buyer@x.com", name)
+    c = appmod.app.test_client()
+    c.set_cookie("rm_reorder_email", "buyer@x.com")
+    d = c.get("/api/reorder/items").get_json()
+    item = next((i for i in d["items"] if i.get("slug") == slug), None)
+    assert item is not None
+    assert item["reviewed"] is True
