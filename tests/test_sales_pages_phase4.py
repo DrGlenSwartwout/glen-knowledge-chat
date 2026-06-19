@@ -67,3 +67,33 @@ def test_pick_route_404_when_flag_off(monkeypatch, tmp_path):
     appmod = _reload(monkeypatch, tmp_path, pick="false")
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     assert appmod.app.test_client().post(f"/begin/product-image-pick/{slug}", json={"kind":"botanical","variant":1}).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Task 3: page-data pick state
+# ---------------------------------------------------------------------------
+
+def test_page_data_pick_state(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    from dashboard import sales_images as si
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        si.record_image(cx, slug, "botanical", 1, "botanical-1.png")
+        si.record_image(cx, slug, "botanical", 2, "botanical-2.png")
+        si.record_image(cx, slug, "mechanism", 1, "mechanism-1.png")
+        si.record_image(cx, slug, "mechanism", 2, "mechanism-2.png")
+    c = appmod.app.test_client(); c.set_cookie("amg_session", "sP")
+    body = next(s for s in c.get(f"/begin/product-page-data/{slug}").get_json()["sections"] if s["id"]=="images")["body"]
+    assert "pick" in body
+    assert len(body["pick"]["botanical"]["options"]) == 2
+    assert body["pick"]["botanical"]["chosen"] is None
+    # after a pick, chosen reflects it
+    c.post(f"/begin/product-image-pick/{slug}", json={"kind": "botanical", "variant": 2})
+    body2 = next(s for s in c.get(f"/begin/product-page-data/{slug}").get_json()["sections"] if s["id"]=="images")["body"]
+    assert body2["pick"]["botanical"]["chosen"] == 2
+
+def test_page_data_no_pick_when_flag_off(monkeypatch, tmp_path):
+    appmod = _reload(monkeypatch, tmp_path, pick="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    body = next(s for s in appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()["sections"] if s["id"]=="images")["body"]
+    assert "pick" not in body

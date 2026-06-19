@@ -2915,6 +2915,33 @@ def begin_product_page_data(slug):
                     _img_sec["body"] = {"images": [], "state": "none"}
         except Exception as _e:
             print(f"[sales-img] page-data marker skipped: {_e}", flush=True)
+    if _SALES_IMAGE_PICK_ENABLED:
+        import sqlite3 as _sq3
+        from dashboard import sales_images as _si3, sales_votes as _sv3, sales_image_prompts as _sip3
+        try:
+            _sess = request.cookies.get("amg_session", "")
+            _au = get_authenticated_user(request)
+            _em = ((_au or {}).get("email") or "").strip().lower() if _au else ""
+            with _sq3.connect(LOG_DB) as _cx3:
+                _all = _si3.get_images(_cx3, slug)
+                _picks = _sv3.get_picks(_cx3, slug, session_id=_sess, email=_em)
+                _both = _sv3.picked_both(_cx3, slug, session_id=_sess, email=_em)
+            _by_kind = {}
+            for im in _all:
+                _by_kind.setdefault(im["kind"], []).append(im)
+            _pick = {}
+            for _k in _sip3.IMAGE_KINDS:
+                _opts = [{"variant": im["variant"], "url": f"/begin/product-image/{slug}/{im['filename']}"}
+                         for im in sorted(_by_kind.get(_k, []), key=lambda x: x["variant"])]
+                if len(_opts) >= 2:
+                    _pick[_k] = {"chosen": _picks.get(_k) if (_picks.get(_k) or 0) >= 1 else None, "options": _opts}
+            if _pick:
+                _img_sec3 = next((s for s in sections if s["id"] == "images"), None)
+                if _img_sec3 is not None and isinstance(_img_sec3["body"], dict):
+                    _pick["both_picked"] = _both
+                    _img_sec3["body"]["pick"] = _pick
+        except Exception as _e:
+            print(f"[img-pick] page-data skipped: {_e}", flush=True)
     return jsonify({
         "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
         "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
