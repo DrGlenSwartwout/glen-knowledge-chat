@@ -1,0 +1,56 @@
+import datetime
+
+def _now(): return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+def init_tables(cx):
+    cx.execute("CREATE TABLE IF NOT EXISTS sales_image_queue ("
+               "product_slug TEXT PRIMARY KEY, state TEXT DEFAULT 'pending', "
+               "requested_at TEXT DEFAULT '', updated_at TEXT DEFAULT '')")
+    cx.execute("CREATE TABLE IF NOT EXISTS sales_page_images ("
+               "id INTEGER PRIMARY KEY AUTOINCREMENT, product_slug TEXT, kind TEXT, "
+               "variant INTEGER, filename TEXT, state TEXT DEFAULT 'ready', created_at TEXT DEFAULT '')")
+    cx.commit()
+
+def enqueue(cx, slug):
+    init_tables(cx); now = _now()
+    cx.execute("INSERT INTO sales_image_queue (product_slug, state, requested_at, updated_at) "
+               "VALUES (?, 'pending', ?, ?) ON CONFLICT(product_slug) DO UPDATE SET "
+               "state='pending', requested_at=?, updated_at=?", (slug, now, now, now, now))
+    cx.commit()
+
+def list_pending(cx):
+    init_tables(cx)
+    return [r[0] for r in cx.execute(
+        "SELECT product_slug FROM sales_image_queue WHERE state='pending' ORDER BY requested_at").fetchall()]
+
+def _set_state(cx, slug, state):
+    init_tables(cx)
+    cx.execute("UPDATE sales_image_queue SET state=?, updated_at=? WHERE product_slug=?", (state, _now(), slug))
+    cx.commit()
+
+def mark_done(cx, slug):   _set_state(cx, slug, "done")
+def mark_failed(cx, slug): _set_state(cx, slug, "failed")
+
+def queue_state(cx, slug):
+    init_tables(cx)
+    row = cx.execute("SELECT state FROM sales_image_queue WHERE product_slug=?", (slug,)).fetchone()
+    return row[0] if row else None
+
+def record_image(cx, slug, kind, variant, filename):
+    init_tables(cx)
+    cx.execute("INSERT INTO sales_page_images (product_slug, kind, variant, filename, state, created_at) "
+               "VALUES (?,?,?,?, 'ready', ?)", (slug, kind, int(variant), filename, _now()))
+    cx.commit()
+
+def get_images(cx, slug):
+    init_tables(cx)
+    rows = cx.execute("SELECT kind, variant, filename FROM sales_page_images "
+                      "WHERE product_slug=? AND state='ready' ORDER BY kind, variant", (slug,)).fetchall()
+    return [{"kind": r[0], "variant": r[1], "filename": r[2]} for r in rows]
+
+def display_images(cx, slug):
+    out = {"botanical": None, "mechanism": None}
+    for img in get_images(cx, slug):
+        if img["kind"] in out and out[img["kind"]] is None:
+            out[img["kind"]] = img["filename"]
+    return out
