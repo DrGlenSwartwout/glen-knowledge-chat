@@ -287,3 +287,61 @@ def test_page_data_no_reviews_section_when_flag_off(monkeypatch, tmp_path):
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
     assert all(s["id"] != "reviews" for s in data["sections"])
+
+
+# ── Task 7: post-purchase email review link ────────────────────────────────────
+
+def test_review_token_roundtrip(monkeypatch, tmp_path):
+    appmod = _reload_reviews_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    tok = appmod._review_token_mint("buyer@x.com", slug)
+    email, got_slug = appmod._review_token_verify(tok)
+    assert email == "buyer@x.com" and got_slug == slug
+    assert appmod._review_token_verify("garbage") == (None, None)
+
+
+def test_review_token_route_404_when_flag_off(monkeypatch, tmp_path):
+    """GET /review/<token> returns 404 when REVIEWS_ENABLED is false."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    tok = appmod._review_token_mint("buyer@x.com", slug)
+    c = appmod.app.test_client()
+    r = c.get(f"/review/{tok}")
+    assert r.status_code == 404
+
+
+def test_review_token_route_redirects_when_valid(monkeypatch, tmp_path):
+    """GET /review/<token> redirects to the product page when flag is on and token valid."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="true")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    tok = appmod._review_token_mint("buyer@x.com", slug)
+    c = appmod.app.test_client()
+    r = c.get(f"/review/{tok}")
+    assert r.status_code in (301, 302)
+    assert f"/begin/product/{slug}" in r.headers.get("Location", "")
+
+
+def test_review_token_route_404_garbage(monkeypatch, tmp_path):
+    """GET /review/<garbage> returns 404."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="true")
+    c = appmod.app.test_client()
+    r = c.get("/review/not-a-real-token")
+    assert r.status_code == 404
+
+
+def test_send_review_invite_no_raise(monkeypatch, tmp_path):
+    """_send_review_invite calls send_email with correct structure and does not raise."""
+    appmod = _reload_reviews_app(monkeypatch, tmp_path, enabled="true")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    calls = []
+    from dashboard import inbox as _inbox
+    monkeypatch.setattr(_inbox, "send_email",
+                        lambda *a, **kw: calls.append((a, kw)) or (True, None))
+    appmod._send_review_invite("buyer@x.com", "Aloha Tester", slug)
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    # to_email, subject, body
+    assert args[0] == "buyer@x.com"
+    body = args[2]
+    assert "Aloha" in body and "In wellness" in body
+    assert "—" not in body  # no em dash

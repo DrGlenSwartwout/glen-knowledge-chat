@@ -3166,6 +3166,77 @@ def review_media(slug, filename):
     return send_from_directory(str(d), filename)
 
 
+# ── Review invite tokens (Task 7) ─────────────────────────────────────────────
+
+def _init_review_link_tokens():
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "CREATE TABLE IF NOT EXISTS review_link_tokens "
+            "(token TEXT PRIMARY KEY, email TEXT, product_slug TEXT, created_at TEXT)"
+        )
+        cx.commit()
+
+_init_review_link_tokens()
+
+
+def _review_token_mint(email: str, slug: str) -> str:
+    """Mint a random token bound to (email, slug), store it, return the plaintext token."""
+    tok = secrets.token_urlsafe(24)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT OR IGNORE INTO review_link_tokens (token, email, product_slug, created_at) "
+            "VALUES (?,?,?,?)",
+            (tok, (email or "").strip().lower(), slug, _now_utc().isoformat()),
+        )
+        cx.commit()
+    return tok
+
+
+def _review_token_verify(tok: str):
+    """Look up a review invite token. Returns (email, slug) or (None, None) for unknown tokens."""
+    if not tok:
+        return (None, None)
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email, product_slug FROM review_link_tokens WHERE token=?", (tok,)
+        ).fetchone()
+    if not row:
+        return (None, None)
+    return (row[0], row[1])
+
+
+@app.route("/review/<token>")
+def review_form_page(token):
+    if not _REVIEWS_ENABLED:
+        return ("", 404)
+    email, slug = _review_token_verify(token)
+    if not email or not _get_product(slug):
+        return ("Invalid or expired link.", 404)
+    return redirect(f"/begin/product/{slug}?review=1&rt={token}")
+
+
+def _send_review_invite(email: str, name: str, slug: str):
+    """Send a post-purchase review invite email (best-effort; never raises)."""
+    try:
+        from dashboard import inbox as _inbox
+        p = _get_product(slug) or {}
+        tok = _review_token_mint(email, slug)
+        url = f"{PUBLIC_BASE_URL}/review/{tok}"
+        subject = f"How is your {p.get('name', 'order')}? Share a quick review"
+        body = (
+            f"Aloha {name or ''},\n\n"
+            f"If you have a moment, I would love your honest review of "
+            f"{p.get('name', 'your recent order')}. "
+            f"It helps others and earns you store credit:\n\n{url}\n\n"
+            f"In wellness,\nDr. Glen & Rae"
+        )
+        _inbox.send_email(
+            email, subject, _strip_dash(body), from_name="Dr. Glen Swartwout"
+        )
+    except Exception as _e:
+        print(f"[reviews] _send_review_invite failed for {email}/{slug}: {_e!r}", flush=True)
+
+
 @app.route("/begin/product-image-gen/<slug>", methods=["POST"])
 def begin_product_image_gen(slug):
     if not _SALES_AI_IMAGES_ENABLED or not _get_product(slug):
