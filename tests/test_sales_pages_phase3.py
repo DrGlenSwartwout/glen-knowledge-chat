@@ -51,11 +51,18 @@ def test_prompts_two_modes_two_variants_each():
     # variants within a kind are distinct
     assert p["botanical"][0] != p["botanical"][1]
 
-def test_prompts_ground_in_ingredients_and_name():
+def test_prompts_have_no_text_and_no_product_and_omit_names():
+    # No ingredient/product names in the prompt (they make Flux render garbled text);
+    # every prompt must forbid text + product packaging.
     p = sip.build_image_prompts({"name": "Longevity", "ingredients": [{"name": "Resveratrol"}, "Quercetin"]})
-    joined = " ".join(p["botanical"] + p["mechanism"])
-    assert "Resveratrol" in joined and "Quercetin" in joined
-    # botanical references the lifestyle scene; mechanism references the protective-field concept
+    all_prompts = p["botanical"] + p["mechanism"]
+    joined = " ".join(all_prompts)
+    assert "Longevity" not in joined and "Resveratrol" not in joined and "Quercetin" not in joined
+    for prompt in all_prompts:
+        low = prompt.lower()
+        assert "no text" in low and "no labels" in low
+        assert "bottles" in low  # the no-packaging exclusion names bottles explicitly
+    # scene still on-theme: botanical = lifestyle scene; mechanism = protective-field concept
     assert "kitchen" in p["botanical"][0].lower()
     assert "cell" in p["mechanism"][0].lower() or "field" in p["mechanism"][0].lower()
 
