@@ -189,3 +189,38 @@ def test_dispatch_approve_flips_state(monkeypatch, tmp_path):
                                 Actor(role=OWNER, name="Glen"), source="panel")
         assert res["status"] == "done"
         assert sp2.get_page(cx, slug)["state"] == "approved"
+
+
+def test_console_list_and_load(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    import dashboard as _d
+    _d.CONSOLE_SECRET = ""  # auth passes through when unset
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    import sqlite3
+    from dashboard import sales_pages as sp2
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        sp2.upsert_section(cx, slug, "intro", "draft copy")
+    c = appmod.app.test_client()
+    lst = c.get("/api/console/sales-pages").get_json()
+    assert lst["ok"] and any(p["slug"] == slug for p in lst["pages"])
+    one = c.get(f"/api/console/sales-page/{slug}").get_json()
+    assert one["ok"] and one["state"] == "draft"
+    assert [s["id"] for s in one["sections"]] == ["intro", "description", "research"]
+    assert next(s for s in one["sections"] if s["id"] == "intro")["text"] == "draft copy"
+    assert one["live_url"] == f"/begin/product/{slug}"
+
+
+def test_console_page_served(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    r = appmod.app.test_client().get("/console/sales-pages")
+    assert r.status_code == 200 and b"Sales Pages" in r.data
+
+
+def test_console_list_gated_when_secret_set(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    import dashboard as _d
+    _d.CONSOLE_SECRET = "topsecret"
+    appmod.CONSOLE_SECRET = "topsecret"
+    r = appmod.app.test_client().get("/api/console/sales-pages")  # no key
+    assert r.status_code == 401

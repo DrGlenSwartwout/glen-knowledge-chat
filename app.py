@@ -6862,6 +6862,48 @@ def console_biofield_portal_page():
     return resp
 
 
+@app.route("/console/sales-pages")
+def console_sales_pages_page():
+    resp = send_from_directory(STATIC, "console-sales-pages.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/api/console/sales-pages", methods=["GET"])
+def api_console_sales_pages_list():
+    import dashboard as _dashboard
+    if _dashboard.CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != _dashboard.CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import sales_pages as _sp
+    with sqlite3.connect(LOG_DB) as cx:
+        pages = _sp.list_draft_pages(cx)
+    for pg in pages:
+        pg["name"] = (_get_product(pg["slug"]) or {}).get("name", pg["slug"])
+    return jsonify({"ok": True, "pages": pages})
+
+
+@app.route("/api/console/sales-page/<slug>", methods=["GET"])
+def api_console_sales_page_load(slug):
+    import dashboard as _dashboard
+    if _dashboard.CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != _dashboard.CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import sales_pages as _sp
+    from dashboard import sales_copy as _sc
+    p = _get_product(slug)
+    with sqlite3.connect(LOG_DB) as cx:
+        page = _sp.get_page(cx, slug)
+    content = (page or {}).get("content", {})
+    sections = [{"id": s, "text": content.get(s, "")} for s in _sc.NARRATIVE_SECTIONS]
+    return jsonify({"ok": True, "slug": slug, "name": (p or {}).get("name", slug),
+                    "state": (page or {}).get("state", "none"),
+                    "sections": sections, "live_url": f"/begin/product/{slug}"})
+
+
 @app.route("/console/pricing-settings")
 def console_pricing_settings_page():
     resp = send_from_directory(STATIC, "console-pricing-settings.html")
