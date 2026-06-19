@@ -25,8 +25,8 @@ Per product × kind (`botanical`, `mechanism`), maintain an **active pair** = ch
 
 ### `dashboard/sales_image_pairs.py` — ladder state (SQLite `chat_log.db`)
 - `sales_image_pairs(product_slug, kind, champion_variant, challenger_variant, defenses INTEGER DEFAULT 0, converged INTEGER DEFAULT 0, last_render_at TEXT, updated_at TEXT, PRIMARY KEY(product_slug, kind))`.
-- Functions: `init_table(cx)`, `get_pair(cx, slug, kind) -> dict|None`, `ensure_pair(cx, slug, kind)` (lazily create from the two lowest ready variants in `sales_page_images` — champion = lower variant, challenger = higher), `set_pair(cx, slug, kind, *, champion, challenger, defenses, converged, last_render_at)`.
-- `sales_page_images` gains a nullable `role TEXT` column (champion | challenger | retired) — additive; existing rows default NULL and are treated as available variants.
+- Functions: `init_table(cx)`, `get_pair(cx, slug, kind) -> dict|None`, `ensure_pair(cx, slug, kind, ready_variants)` (lazily create from the two lowest ready variants — champion = lower, challenger = higher; None if <2), `set_pair(cx, slug, kind, *, champion, challenger, defenses, converged, last_render_at)`.
+- The `sales_image_pairs` table is the sole source of truth for the active two variants per (product, kind); "retired" = any variant not in the current pair (no extra `role` column needed).
 
 ### Vote counting (extend `dashboard/sales_votes.py`)
 - `pair_counts(cx, slug, kind, a, b) -> (count_a, count_b)` — picks (`chosen_variant`) equal to `a` or `b` for this product+kind (across all sessions; "neither"/0 excluded). This is the current head-to-head.
