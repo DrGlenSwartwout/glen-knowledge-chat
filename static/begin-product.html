@@ -123,6 +123,54 @@
     .sp-pick-credit{ font-size:13px; color:var(--muted); margin-top:10px; }
     .sp-pick-refreshed{ font-size:13px; color:var(--muted); margin-top:8px; }
 
+    /* ── Reviews ── */
+    .sp-reviews-agg{ font-size:14px; color:var(--gold); margin-bottom:12px; }
+    .sp-review-card{ border-top:1px solid var(--border); padding:12px 0; }
+    .sp-review-header{ font-size:13px; font-weight:600; color:var(--cream); margin-bottom:4px; }
+    .sp-review-body{ font-size:14px; color:var(--cream); opacity:0.88; line-height:1.65; }
+    .sp-reviews-disclaimer{ font-size:12px; color:var(--muted); margin-top:12px; font-style:italic; }
+    /* ── Review submit form ── */
+    .sp-review-form{ margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
+    .sp-review-form h3{ font-size:15px; font-family:var(--heading); font-weight:600; margin-bottom:14px; }
+    .sp-rf-row{ margin-bottom:12px; }
+    .sp-rf-label{ display:block; font-size:12px; color:var(--muted); letter-spacing:.04em;
+                  text-transform:uppercase; margin-bottom:5px; }
+    .sp-rf-input,.sp-rf-textarea{ width:100%; background:var(--bg); border:1px solid var(--border);
+                                   border-radius:7px; color:var(--cream); font:inherit;
+                                   font-size:14px; padding:9px 12px; }
+    .sp-rf-input:focus,.sp-rf-textarea:focus{ outline:none; border-color:var(--gold); }
+    .sp-rf-textarea{ resize:vertical; min-height:80px; line-height:1.55; }
+    .sp-rf-stars{ display:flex; gap:6px; margin-top:2px; }
+    .sp-rf-star{ font-size:22px; color:var(--border); cursor:pointer; transition:color .1s; line-height:1; }
+    .sp-rf-star.lit{ color:var(--gold); }
+    /* ── Video option tabs ── */
+    .sp-rf-video-tabs{ display:flex; gap:6px; margin-bottom:10px; }
+    .sp-rf-vtab{ background:transparent; border:1px solid var(--border); color:var(--muted);
+                 border-radius:6px; padding:5px 12px; font:inherit; font-size:13px;
+                 cursor:pointer; transition:border-color .15s, color .15s; }
+    .sp-rf-vtab.active{ border-color:var(--gold); color:var(--gold); }
+    .sp-rf-vpanel{ display:none; }
+    .sp-rf-vpanel.active{ display:block; }
+    /* ── Recorder UI ── */
+    .sp-rec-controls{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+    .sp-rec-btn{ background:var(--surface); border:1px solid var(--border); color:var(--cream);
+                 border-radius:7px; padding:7px 14px; font:inherit; font-size:13px;
+                 cursor:pointer; transition:border-color .15s, color .15s; }
+    .sp-rec-btn:hover:not(:disabled){ border-color:var(--gold); color:var(--gold); }
+    .sp-rec-btn:disabled{ opacity:.45; cursor:default; }
+    .sp-rec-btn.recording{ border-color:var(--err); color:var(--err); }
+    .sp-rec-status{ font-size:13px; color:var(--muted); min-width:80px; }
+    .sp-rec-preview{ width:100%; max-height:200px; border-radius:7px; background:#000;
+                     display:none; margin-bottom:6px; }
+    .sp-rec-preview.show{ display:block; }
+    /* ── Submit button ── */
+    .sp-rf-submit{ background:var(--gold); color:#0a150d; font-family:var(--heading);
+                   font-weight:700; font-size:14px; border:none; border-radius:999px;
+                   padding:11px 28px; cursor:pointer; transition:opacity .2s; }
+    .sp-rf-submit:hover{ opacity:.88; }
+    .sp-rf-submit:disabled{ opacity:.45; cursor:default; }
+    .sp-rf-msg{ font-size:13px; color:var(--muted); margin-top:8px; min-height:18px; }
+
     /* ── Utility ── */
     .loading{ text-align:center; color:var(--muted); padding:48px 18px; font-size:15px; }
     .notfound{ text-align:center; padding:54px 18px; }
@@ -727,7 +775,7 @@
       wrap.className = 'sp-reviews';
       var agg = (body && body.aggregate) ? body.aggregate : {count: 0, avg: 0};
       var reviews = (body && Array.isArray(body.reviews)) ? body.reviews : [];
-      // Aggregate bar: ★ glyphs + count
+      // Aggregate bar: star glyphs + count
       if (agg.count > 0){
         var aggEl = document.createElement('p');
         aggEl.className = 'sp-reviews-agg';
@@ -761,6 +809,245 @@
         disc.textContent = body.disclaimer;
         wrap.appendChild(disc);
       }
+
+      // ── Leave a review form ───────────────────────────────────────────────
+      var formDiv = document.createElement('div');
+      formDiv.className = 'sp-review-form';
+      var h3 = document.createElement('h3');
+      h3.textContent = 'Leave a review';
+      formDiv.appendChild(h3);
+
+      // Email field
+      var emailRow = document.createElement('div'); emailRow.className = 'sp-rf-row';
+      var emailLbl = document.createElement('label'); emailLbl.className = 'sp-rf-label'; emailLbl.textContent = 'Email (verified buyers only)';
+      var emailInput = document.createElement('input');
+      emailInput.type = 'email'; emailInput.className = 'sp-rf-input'; emailInput.placeholder = 'you@example.com';
+      // Pre-fill from URL param rt or cookie
+      (function(){
+        var m = location.search.match(/[?&]email=([^&]+)/);
+        if (m) emailInput.value = decodeURIComponent(m[1]);
+      })();
+      emailRow.appendChild(emailLbl); emailRow.appendChild(emailInput); formDiv.appendChild(emailRow);
+
+      // Name field
+      var nameRow = document.createElement('div'); nameRow.className = 'sp-rf-row';
+      var nameLbl = document.createElement('label'); nameLbl.className = 'sp-rf-label'; nameLbl.textContent = 'Name (optional)';
+      var nameInput = document.createElement('input');
+      nameInput.type = 'text'; nameInput.className = 'sp-rf-input'; nameInput.placeholder = 'Your name';
+      nameRow.appendChild(nameLbl); nameRow.appendChild(nameInput); formDiv.appendChild(nameRow);
+
+      // Star rating
+      var ratingRow = document.createElement('div'); ratingRow.className = 'sp-rf-row';
+      var ratingLbl = document.createElement('label'); ratingLbl.className = 'sp-rf-label'; ratingLbl.textContent = 'Rating';
+      var starsDiv = document.createElement('div'); starsDiv.className = 'sp-rf-stars';
+      var chosenRating = 0;
+      var starEls = [];
+      for (var si = 1; si <= 5; si++){
+        (function(n){
+          var s = document.createElement('span');
+          s.className = 'sp-rf-star';
+          s.setAttribute('role', 'button');
+          s.setAttribute('aria-label', n + ' star' + (n > 1 ? 's' : ''));
+          s.textContent = '☆';
+          s.addEventListener('click', function(){
+            chosenRating = n;
+            starEls.forEach(function(el, idx){ el.textContent = (idx < n) ? '★' : '☆'; el.classList.toggle('lit', idx < n); });
+          });
+          starsDiv.appendChild(s);
+          starEls.push(s);
+        })(si);
+      }
+      ratingRow.appendChild(ratingLbl); ratingRow.appendChild(starsDiv); formDiv.appendChild(ratingRow);
+
+      // Body / written review
+      var bodyRow = document.createElement('div'); bodyRow.className = 'sp-rf-row';
+      var bodyLbl = document.createElement('label'); bodyLbl.className = 'sp-rf-label'; bodyLbl.textContent = 'Your review (optional)';
+      var bodyTA = document.createElement('textarea');
+      bodyTA.className = 'sp-rf-textarea'; bodyTA.placeholder = 'Tell us how this worked for you.';
+      bodyTA.rows = 4;
+      bodyRow.appendChild(bodyLbl); bodyRow.appendChild(bodyTA); formDiv.appendChild(bodyRow);
+
+      // ── Video section ─────────────────────────────────────────────────────
+      var videoRow = document.createElement('div'); videoRow.className = 'sp-rf-row';
+      var videoLbl = document.createElement('label'); videoLbl.className = 'sp-rf-label'; videoLbl.textContent = 'Video review (optional, earns extra store credit)';
+      videoRow.appendChild(videoLbl);
+
+      // Tab bar
+      var tabBar = document.createElement('div'); tabBar.className = 'sp-rf-video-tabs';
+      var tabs = [['record','Record'],['upload','Upload file'],['link','Paste link']];
+      var panels = {};
+      tabs.forEach(function(tb){
+        var btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'sp-rf-vtab'; btn.textContent = tb[1];
+        btn.dataset.tab = tb[0];
+        btn.addEventListener('click', function(){
+          tabBar.querySelectorAll('.sp-rf-vtab').forEach(function(b){ b.classList.remove('active'); });
+          btn.classList.add('active');
+          Object.keys(panels).forEach(function(k){ panels[k].classList.remove('active'); });
+          panels[tb[0]].classList.add('active');
+        });
+        tabBar.appendChild(btn);
+      });
+      videoRow.appendChild(tabBar);
+
+      // Panel: Record (MediaRecorder)
+      var recPanel = document.createElement('div'); recPanel.className = 'sp-rf-vpanel'; panels['record'] = recPanel;
+      var recPreview = document.createElement('video'); recPreview.className = 'sp-rec-preview'; recPreview.controls = true;
+      recPanel.appendChild(recPreview);
+      var recControls = document.createElement('div'); recControls.className = 'sp-rec-controls';
+      var recBtn = document.createElement('button'); recBtn.type = 'button'; recBtn.className = 'sp-rec-btn'; recBtn.textContent = 'Record';
+      var stopBtn = document.createElement('button'); stopBtn.type = 'button'; stopBtn.className = 'sp-rec-btn'; stopBtn.textContent = 'Stop'; stopBtn.disabled = true;
+      var rerecBtn = document.createElement('button'); rerecBtn.type = 'button'; rerecBtn.className = 'sp-rec-btn'; rerecBtn.textContent = 'Re-record'; rerecBtn.disabled = true;
+      var recStatus = document.createElement('span'); recStatus.className = 'sp-rec-status';
+      recControls.appendChild(recBtn); recControls.appendChild(stopBtn); recControls.appendChild(rerecBtn); recControls.appendChild(recStatus);
+      recPanel.appendChild(recControls);
+      videoRow.appendChild(recPanel);
+
+      // Panel: Upload file
+      var upPanel = document.createElement('div'); upPanel.className = 'sp-rf-vpanel'; panels['upload'] = upPanel;
+      var upInput = document.createElement('input'); upInput.type = 'file'; upInput.accept = 'video/*'; upInput.className = 'sp-rf-input';
+      upPanel.appendChild(upInput);
+      videoRow.appendChild(upPanel);
+
+      // Panel: Link
+      var lnkPanel = document.createElement('div'); lnkPanel.className = 'sp-rf-vpanel'; panels['link'] = lnkPanel;
+      var lnkInput = document.createElement('input'); lnkInput.type = 'url'; lnkInput.className = 'sp-rf-input'; lnkInput.placeholder = 'https://...';
+      lnkPanel.appendChild(lnkInput);
+      videoRow.appendChild(lnkPanel);
+
+      formDiv.appendChild(videoRow);
+
+      // ── MediaRecorder logic ───────────────────────────────────────────────
+      var _recChunks = []; var _recBlob = null; var _recStream = null;
+      var _recorder = null; var _recTimer = null; var _maxSec = 90;
+
+      function _recReset(){
+        _recChunks = []; _recBlob = null;
+        recPreview.classList.remove('show'); recPreview.src = '';
+        recBtn.disabled = false; stopBtn.disabled = true; rerecBtn.disabled = true;
+        recBtn.classList.remove('recording');
+        recStatus.textContent = '';
+      }
+
+      function _recTick(start, maxSec){
+        var elapsed = Math.round((Date.now() - start) / 1000);
+        var rem = maxSec - elapsed;
+        if (rem < 0) rem = 0;
+        recStatus.textContent = 'Recording ' + elapsed + 's / ' + maxSec + 's max';
+        if (rem <= 0 && _recorder && _recorder.state === 'recording'){
+          _recorder.stop();
+        }
+      }
+
+      async function _fetchMaxSec(){
+        var em = (emailInput.value || '').trim();
+        if (!em) return 90;
+        try {
+          var r = await fetch(BASE + '/api/reviews/limits?email=' + encodeURIComponent(em));
+          var j = await r.json();
+          return (j && j.max_seconds > 0) ? j.max_seconds : 90;
+        } catch(e){ return 90; }
+      }
+
+      recBtn.addEventListener('click', async function(){
+        _recBlob = null;
+        try {
+          _maxSec = await _fetchMaxSec();
+          _recStream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
+        } catch(e){
+          recStatus.textContent = 'Camera/mic access denied.';
+          return;
+        }
+        _recChunks = [];
+        var mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus'
+                 : (MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : '');
+        _recorder = mime ? new MediaRecorder(_recStream, {mimeType: mime}) : new MediaRecorder(_recStream);
+        _recorder.ondataavailable = function(e){ if (e.data && e.data.size > 0) _recChunks.push(e.data); };
+        _recorder.onstop = function(){
+          _recStream.getTracks().forEach(function(t){ t.stop(); }); _recStream = null;
+          clearInterval(_recTimer);
+          if (!_recChunks.length){ recStatus.textContent = 'No data captured.'; _recReset(); return; }
+          var blobMime = (_recorder.mimeType || 'video/webm').split(';')[0];
+          _recBlob = new Blob(_recChunks, {type: blobMime});
+          recPreview.src = URL.createObjectURL(_recBlob);
+          recPreview.classList.add('show');
+          recBtn.disabled = true; stopBtn.disabled = true; rerecBtn.disabled = false;
+          recBtn.classList.remove('recording');
+          recStatus.textContent = 'Preview ready.';
+        };
+        _recorder.start();
+        var start = Date.now();
+        _recTimer = setInterval(function(){ _recTick(start, _maxSec); }, 500);
+        recBtn.disabled = true; stopBtn.disabled = false; recBtn.classList.add('recording');
+        recStatus.textContent = 'Recording...';
+      });
+
+      stopBtn.addEventListener('click', function(){
+        if (_recorder && _recorder.state === 'recording'){ _recorder.stop(); }
+        stopBtn.disabled = true;
+        clearInterval(_recTimer);
+      });
+
+      rerecBtn.addEventListener('click', function(){
+        if (recPreview.src){ URL.revokeObjectURL(recPreview.src); }
+        _recReset();
+      });
+
+      // ── Submit ─────────────────────────────────────────────────────────────
+      var submitBtn = document.createElement('button');
+      submitBtn.type = 'button'; submitBtn.className = 'sp-rf-submit'; submitBtn.textContent = 'Submit review';
+      formDiv.appendChild(submitBtn);
+      var msgEl = document.createElement('p'); msgEl.className = 'sp-rf-msg';
+      formDiv.appendChild(msgEl);
+
+      submitBtn.addEventListener('click', function(){
+        var email = (emailInput.value || '').trim();
+        var name = (nameInput.value || '').trim();
+        var rating = chosenRating;
+        var bodyText = (bodyTA.value || '').trim();
+        if (!email){ msgEl.textContent = 'Please enter your email.'; return; }
+        if (!rating){ msgEl.textContent = 'Please choose a star rating.'; return; }
+
+        submitBtn.disabled = true; msgEl.textContent = 'Submitting...';
+
+        var activeTab = '';
+        tabBar.querySelectorAll('.sp-rf-vtab').forEach(function(b){ if (b.classList.contains('active')) activeTab = b.dataset.tab; });
+
+        var fd = new FormData();
+        fd.append('slug', slug);
+        fd.append('email', email);
+        fd.append('name', name);
+        fd.append('rating', String(rating));
+        fd.append('body', bodyText);
+
+        if (activeTab === 'record' && _recBlob){
+          fd.append('video', _recBlob, 'review.webm');
+        } else if (activeTab === 'upload' && upInput.files && upInput.files[0]){
+          fd.append('video', upInput.files[0], upInput.files[0].name);
+        } else if (activeTab === 'link' && lnkInput.value.trim()){
+          fd.append('video_url', lnkInput.value.trim());
+        }
+
+        fetch(BASE + '/api/reviews', {method: 'POST', credentials: 'same-origin', body: fd})
+          .then(function(r){ return r.json(); })
+          .then(function(resp){
+            submitBtn.disabled = false;
+            if (resp && resp.ok){
+              msgEl.textContent = 'Thank you. Your review has been submitted and is awaiting approval.' +
+                (resp.points_awarded > 0 ? ' You earned ' + resp.points_awarded + ' store credit point' + (resp.points_awarded > 1 ? 's' : '') + '.' : '');
+              submitBtn.disabled = true;
+              submitBtn.textContent = 'Submitted';
+            } else {
+              msgEl.textContent = 'Error: ' + ((resp && resp.error) || 'submission failed');
+            }
+          })
+          .catch(function(){
+            submitBtn.disabled = false;
+            msgEl.textContent = 'Network error. Please try again.';
+          });
+      });
+
+      wrap.appendChild(formDiv);
       return wrap;
     }
 

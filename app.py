@@ -2312,6 +2312,7 @@ _TOURNEY_MARGIN = float(os.environ.get("IMAGE_TOURNAMENT_MARGIN", "0.65"))
 _TOURNEY_K = int(os.environ.get("IMAGE_TOURNAMENT_CONVERGE_K", "3"))
 _TOURNEY_CADENCE_DAYS = int(os.environ.get("IMAGE_TOURNAMENT_CADENCE_DAYS", "3"))
 _REVIEWS_ENABLED = os.environ.get("REVIEWS_ENABLED", "").strip().lower() in ("1", "true", "yes")
+_REVIEWS_VIDEO = os.environ.get("REVIEWS_VIDEO", "").strip().lower() in ("1", "true", "yes")
 _REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
 _REVIEW_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".m4v")
 _REVIEW_VIDEO_MAX_BYTES = 100 * 1024 * 1024
@@ -3165,8 +3166,18 @@ def api_submit_review():
             except Exception as e:  # noqa: BLE001 - points never block the submit
                 print(f"[reviews] points credit failed rid={rid}: {e}", flush=True)
                 pts = 0
-        _pr.set_points(cx, rid, pts)
-        return jsonify({"ok": True, "review_id": rid, "points_awarded": pts, "status": "pending"})
+        _existing = _pr.get_review(cx, rid)
+        _vp = int((_existing or {}).get("video_points") or 0)
+        _pr.set_points(cx, rid, min(5, pts + _vp))
+        _video_status = ""
+        if _REVIEWS_VIDEO and video_kind == "upload" and video_ref:
+            from dashboard import review_video_jobs as _vj
+            from dashboard import product_reviews as _pr2
+            _pr2.set_video_result(cx, rid, 0, "", "pending")
+            _vj.enqueue(cx, rid)
+            _video_status = "pending"
+        return jsonify({"ok": True, "review_id": rid, "points_awarded": pts,
+                        "status": "pending", "video_status": _video_status})
 
 
 @app.route("/review-media/<slug>/<filename>")
@@ -3178,6 +3189,24 @@ def review_media(slug, filename):
     if base not in target.parents or not target.exists():
         return ("", 404)
     return send_from_directory(str(target.parent), target.name)
+
+
+def _allowed_video_seconds(email):
+    from dashboard import product_reviews as _pr
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            return 300 if _pr.has_successful_video(cx, email) else 90
+    except Exception:
+        return 90
+
+
+@app.route("/api/reviews/limits", methods=["GET"])
+def api_review_limits():
+    if not _REVIEWS_VIDEO:
+        return jsonify({"max_seconds": 0})
+    au = get_authenticated_user(request) or {}
+    email = ((request.args.get("email") or au.get("email") or "")).strip().lower()
+    return jsonify({"max_seconds": _allowed_video_seconds(email)})
 
 
 # ── Review invite tokens (Task 7) ─────────────────────────────────────────────
@@ -15551,6 +15580,60 @@ def _drain_sales_image_queue():
             (_si.mark_done if ok else _si.mark_failed)(cx, slug)
 
 
+def _drain_review_videos():
+    """Scheduler job: transcribe + AI-score review videos, credit points (off web workers)."""
+    if not _REVIEWS_VIDEO:
+        return
+    from dashboard import review_video_jobs as _vj, product_reviews as _pr
+    from dashboard import review_scoring as _rs, points as _points
+    import journal_blueprint as _jb
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            pending = _vj.claim_pending(cx, 3)
+    except Exception as e:
+        print(f"[reviews-video] queue read failed: {e}", flush=True); return
+    for rid in pending:
+        try:
+            with sqlite3.connect(LOG_DB) as cx:
+                r = _pr.get_review(cx, rid)
+            if not r or r.get("video_kind") != "upload" or not r.get("video_ref"):
+                with sqlite3.connect(LOG_DB) as cx:
+                    _pr.set_video_result(cx, rid, 0, "", "failed"); _vj.mark(cx, rid, "failed")
+                continue
+            path = _REVIEW_MEDIA_DIR / r["product_slug"] / r["video_ref"]
+            if not path.exists():
+                with sqlite3.connect(LOG_DB) as cx:
+                    _pr.set_video_result(cx, rid, 0, "", "failed"); _vj.mark(cx, rid, "failed")
+                continue
+            transcript = (_jb._whisper_transcribe(str(path)) or {}).get("text", "")
+            prod = _get_product(r["product_slug"]) or {"name": r["product_slug"]}
+            sc = _rs.score_video(_cl, prod, transcript, strip=_strip_dash)
+            written = int(r.get("ai_score") or 0)
+            total = min(5, written + sc["video_points"])
+            delta = max(0, total - written)
+            with sqlite3.connect(LOG_DB) as cx:
+                if delta > 0:
+                    try:
+                        _points.init_points_table(cx)
+                        _points.credit(cx, r["email"], value_cents=delta * 100,
+                                       reason=f"review:{r['product_slug']}:video",
+                                       order_ref=f"review:{rid}:video")
+                    except Exception as e:  # noqa: BLE001 - points never block job completion
+                        print(f"[reviews-video] credit failed rid={rid}: {e}", flush=True)
+                _pr.set_points(cx, rid, total)
+                _pr.set_video_result(cx, rid, sc["video_points"], transcript, "scored",
+                                     publish_risk=1 if sc["publish_risk"] else 0,
+                                     video_verdict=sc["risk_reasons"])
+                _vj.mark(cx, rid, "done")
+        except Exception as e:  # noqa: BLE001 - one job's failure never aborts the sweep
+            print(f"[reviews-video] job {rid} failed: {e}", flush=True)
+            try:
+                with sqlite3.connect(LOG_DB) as cx:
+                    _pr.set_video_result(cx, rid, 0, "", "failed"); _vj.mark(cx, rid, "failed")
+            except Exception:
+                pass
+
+
 def _render_challenger(slug, kind, product):
     """Render ONE new image variant for the tournament challenger slot.
 
@@ -15711,6 +15794,7 @@ def _start_scheduler():
         scheduler.add_job(_run_biofield_bonuses, "cron", hour=15, minute=0,
                           id="biofield_bonuses")
         scheduler.add_job(_drain_sales_image_queue, "interval", minutes=1, id="sales_image_gen")
+        scheduler.add_job(_drain_review_videos, "interval", minutes=1, id="review_videos")
         scheduler.add_job(_run_image_tournament, "interval", hours=24, id="sales_image_tournament")
         scheduler.start()
         print("[CRON] Scheduler started — hourly push + daily biofield-bonuses active")

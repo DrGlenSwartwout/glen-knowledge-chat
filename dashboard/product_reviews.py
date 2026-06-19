@@ -15,6 +15,13 @@ def init_table(cx):
         "ai_recommend_publish INTEGER DEFAULT 0, points_awarded INTEGER DEFAULT 0, "
         "status TEXT DEFAULT 'pending', featured INTEGER DEFAULT 0, created_at TEXT, "
         "reviewed_at TEXT, reviewed_by TEXT, UNIQUE(product_slug, email))")
+    for _col in ("video_points INTEGER DEFAULT 0", "transcript TEXT DEFAULT ''",
+                 "video_status TEXT DEFAULT ''", "publish_risk INTEGER DEFAULT 0",
+                 "video_verdict TEXT DEFAULT ''"):
+        try:
+            cx.execute(f"ALTER TABLE product_reviews ADD COLUMN {_col}")
+        except sqlite3.OperationalError:
+            pass
     cx.commit()
 
 
@@ -107,3 +114,21 @@ def pending_queue(cx, limit=100):
         "SELECT * FROM product_reviews WHERE status='pending' ORDER BY created_at DESC, id DESC LIMIT ?",
         (limit,)).fetchall()
     return [dict(r) for r in rows]
+
+
+def set_video_result(cx, review_id, video_points, transcript, status, publish_risk=0, video_verdict=""):
+    init_table(cx)
+    cx.execute(
+        "UPDATE product_reviews SET video_points=?, transcript=?, video_status=?, "
+        "publish_risk=?, video_verdict=? WHERE id=?",
+        (int(video_points), transcript or "", status, 1 if publish_risk else 0,
+         video_verdict or "", review_id))
+    cx.commit()
+
+
+def has_successful_video(cx, email):
+    init_table(cx)
+    e = (email or "").strip().lower()
+    return cx.execute(
+        "SELECT 1 FROM product_reviews WHERE email=? AND video_points>0 AND status='approved' LIMIT 1",
+        (e,)).fetchone() is not None
