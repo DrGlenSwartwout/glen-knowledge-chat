@@ -65,3 +65,19 @@ def test_trim_video_false_on_exception(tmp_path, monkeypatch):
     monkeypatch.setattr(vt, "_ffmpeg_exe", lambda: "/fake/ffmpeg")
     def boom(cmd, **kw): raise OSError("no binary")
     assert vt.trim_video("a", "b", 1.0, 5.0, runner=boom) is False
+
+
+import sqlite3
+from dashboard import product_reviews as pr
+
+
+def test_set_trimmed_preserves_original_once():
+    cx = sqlite3.connect(":memory:")
+    rid = pr.upsert_review(cx, "x", "a@x.com", "Ann", 5, video_kind="upload", video_ref="orig.webm")
+    pr.set_trimmed(cx, rid, "orig-trim.mp4")
+    r = pr.get_review(cx, rid)
+    assert r["video_ref"] == "orig-trim.mp4" and r["video_orig_ref"] == "orig.webm"
+    # a second trim keeps the FIRST original, repoints video_ref again
+    pr.set_trimmed(cx, rid, "orig-trim2.mp4")
+    r = pr.get_review(cx, rid)
+    assert r["video_ref"] == "orig-trim2.mp4" and r["video_orig_ref"] == "orig.webm"
