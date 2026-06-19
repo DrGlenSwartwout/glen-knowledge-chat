@@ -1,4 +1,5 @@
 import datetime
+import sqlite3
 
 
 def _now():
@@ -31,7 +32,7 @@ def record_viewer(cx, slug, email, name=""):
 def viewers_to_email(cx, slug):
     init_table(cx)
     cur = cx.cursor()
-    cur.row_factory = __import__("sqlite3").Row
+    cur.row_factory = sqlite3.Row
     rows = cur.execute(
         "SELECT email, name FROM sales_page_viewers WHERE product_slug=? AND COALESCE(emailed_at,'')='' "
         "ORDER BY first_seen_at", (slug,)).fetchall()
