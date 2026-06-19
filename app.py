@@ -2903,6 +2903,58 @@ def begin_product_page_data(slug):
     })
 
 
+@app.route("/begin/product-page-gen/<slug>/<section>")
+def begin_product_page_gen(slug, section):
+    """SSE endpoint: stream (or serve cached) AI-generated copy for one narrative section."""
+    from dashboard import sales_copy as _sc
+    if not _SALES_AI_COPY_ENABLED or section not in _sc.NARRATIVE_SECTIONS:
+        return ("", 404)
+    p = _get_product(slug)
+    if not p:
+        return ("", 404)
+
+    def generate():
+        import sqlite3 as _sq
+        from dashboard import sales_pages as _sp
+        try:
+            with _sq.connect(LOG_DB) as cx:
+                cached = _sp.get_section(cx, slug, section)
+            if cached:
+                yield sse({"token": cached})
+                yield sse({"done": True, "cached": True})
+                return
+            prod = dict(p)
+            if not prod.get("ingredients"):
+                prod["ingredients"] = (_product_card(p) or {}).get("ingredients", [])
+            system, user = _sc.build_section_prompt(section, prod)
+            acc = []
+            with _cl.messages.stream(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=600,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            ) as stream:
+                for tok in stream.text_stream:
+                    acc.append(tok)
+                    yield sse({"token": tok})
+            text = "".join(acc).strip()
+            if text:
+                try:
+                    with _sq.connect(LOG_DB) as cx:
+                        _sp.upsert_section(cx, slug, section, text, model="claude-haiku-4-5-20251001")
+                except Exception as e:
+                    print(f"[sales-gen] cache write failed: {e}", flush=True)
+            yield sse({"done": True})
+        except Exception as e:
+            print(f"[sales-gen] {e}", flush=True)
+            yield sse({"error": True})
+
+    resp = Response(stream_with_context(generate()), content_type="text/event-stream")
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["X-Accel-Buffering"] = "no"
+    return resp
+
+
 @app.route("/begin/learn/<slug>")
 def begin_learn_page(slug):
     """Research page — the 3rd Buy-button surface."""

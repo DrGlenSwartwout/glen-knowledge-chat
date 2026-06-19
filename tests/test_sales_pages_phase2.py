@@ -79,3 +79,66 @@ def test_page_data_no_ai_field_when_flag_off(monkeypatch, tmp_path):
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     data = appmod.app.test_client().get(f"/begin/product-page-data/{slug}").get_json()
     assert all("ai" not in s for s in data["sections"])
+
+
+# ---------------------------------------------------------------------------
+# Task 4: /begin/product-page-gen SSE endpoint
+# ---------------------------------------------------------------------------
+
+class _FakeStream:
+    def __init__(self, toks): self._toks = toks
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    @property
+    def text_stream(self):
+        for t in self._toks: yield t
+
+class _FakeMessages:
+    def __init__(self, toks, boom=False): self._toks=toks; self.boom=boom; self.calls=0
+    def stream(self, **kw):
+        self.calls += 1
+        if self.boom: raise RuntimeError("claude down")
+        return _FakeStream(self._toks)
+
+class _FakeCl:
+    def __init__(self, toks, boom=False): self.messages=_FakeMessages(toks, boom)
+
+def _frames(resp):
+    return resp.get_data(as_text=True)
+
+def test_gen_streams_and_persists(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    monkeypatch.setattr(appmod, "_product_card", lambda p: {"ingredients": [{"name": "Resveratrol", "dose": "200 mg"}]})
+    monkeypatch.setattr(appmod, "_cl", _FakeCl(["Live ", "intro ", "copy."]))
+    body = _frames(appmod.app.test_client().get(f"/begin/product-page-gen/{slug}/intro"))
+    assert "Live " in body and '"done": true' in body
+    import sqlite3
+    from dashboard import sales_pages as sp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert sp.get_section(cx, slug, "intro") == "Live intro copy."
+
+def test_gen_returns_cached_without_calling_claude(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    import sqlite3
+    from dashboard import sales_pages as sp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        sp.upsert_section(cx, slug, "intro", "Cached copy.")
+    fake = _FakeCl([], boom=True)
+    monkeypatch.setattr(appmod, "_cl", fake)
+    body = _frames(appmod.app.test_client().get(f"/begin/product-page-gen/{slug}/intro"))
+    assert "Cached copy." in body and fake.messages.calls == 0
+
+def test_gen_404_when_flag_off(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path, ai="false")
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    assert appmod.app.test_client().get(f"/begin/product-page-gen/{slug}/intro").status_code == 404
+
+def test_gen_error_frame_on_claude_failure(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    slug = next(iter(appmod._PRODUCTS["products"].keys()))
+    monkeypatch.setattr(appmod, "_product_card", lambda p: {"ingredients": []})
+    monkeypatch.setattr(appmod, "_cl", _FakeCl([], boom=True))
+    body = _frames(appmod.app.test_client().get(f"/begin/product-page-gen/{slug}/intro"))
+    assert '"error": true' in body
