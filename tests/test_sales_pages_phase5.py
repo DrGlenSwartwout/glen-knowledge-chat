@@ -1,7 +1,14 @@
 import sqlite3
+import pytest
 from dashboard import sales_pages as sp
 from dashboard import sales_pages_actions as spa
 from dashboard.rbac import Actor, OWNER
+
+
+@pytest.fixture(autouse=True)
+def _reset_spa_deps():
+    spa._DEPS.clear()
+    yield
 
 
 def _cx():
@@ -82,6 +89,12 @@ def test_regenerate_copy_none_without_product():
     spa.configure(client=_FakeClient(), get_product=lambda s: None,
                   product_card=lambda p: {}, strip_dash=lambda s: s)
     assert spa.regenerate_copy("nope") is None
+
+
+def test_regenerate_copy_none_without_client():
+    spa.configure(client=None, get_product=lambda s: {"name": "x"},
+                  product_card=lambda p: {}, strip_dash=lambda s: s)
+    assert spa.regenerate_copy("x") is None
 
 
 def test_exec_edit_forces_draft():

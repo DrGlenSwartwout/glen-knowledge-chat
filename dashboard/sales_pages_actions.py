@@ -60,7 +60,7 @@ def _exec_edit(params, ctx):
     cx = ctx["cx"]
     _sp.upsert_section(cx, slug, section, params.get("text") or "")
     # any edit returns the page to draft; edited copy must be re-approved (never auto-approves)
-    _sp.set_state(cx, slug, "draft")
+    _sp.set_state(cx, slug, "draft", by=_actor_name(ctx.get("actor")))
     return {"slug": slug, "section": section, "saved": True}
 
 
