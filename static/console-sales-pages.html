@@ -126,20 +126,26 @@ function setStatePill(state){
   el.className = 'pill' + (state==='approved' ? ' approved' : '');
 }
 
-async function act(key, params){
-  const r = await api('POST', '/api/action/'+key, params);
+async function act(actionKey, params){
+  const r = await api('POST', '/api/action/'+actionKey, params);
   return r;
 }
 
 async function saveSection(id){
   const text = $('sec-'+id).value;
+  if(!CURRENT) return;
   $('status').textContent = 'Saving ' + id + '...';
   const r = await act('sales_pages.edit', { slug: CURRENT, section: id, text });
-  $('status').textContent = (r.ok && r.json.status==='done') ? 'Saved ' + id + ' (still draft).' : 'Save failed.';
-  setStatePill('draft');
+  if(r.ok && r.json.status==='done'){
+    setStatePill('draft');
+    $('status').textContent = 'Saved ' + id + ' (still draft).';
+  } else {
+    $('status').textContent = 'Save failed.';
+  }
 }
 
 async function regen(){
+  if(!CURRENT) return;
   $('status').textContent = 'Regenerating all sections...';
   $('btn-regen').disabled = true;
   const r = await act('sales_pages.regenerate', { slug: CURRENT });
@@ -155,6 +161,7 @@ async function regen(){
 }
 
 async function approve(){
+  if(!CURRENT) return;
   $('status').textContent = 'Approving...';
   const r = await act('sales_pages.approve', { slug: CURRENT });
   if(r.ok && r.json.status==='done'){
