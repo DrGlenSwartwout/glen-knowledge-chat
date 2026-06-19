@@ -108,6 +108,21 @@
     .sp-miron-story{ font-size:13px; color:var(--muted); line-height:1.6; margin-top:10px; }
     .sp-product-img{ width:100%; border-radius:9px; display:block; margin-bottom:10px; }
 
+    /* ── Image pick UI ── */
+    .sp-pick-kind{ margin-bottom:18px; }
+    .sp-pick-label{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; }
+    .sp-pick-row{ display:flex; gap:10px; }
+    .sp-pick-opt{ flex:1; }
+    .sp-pick-btn{ background:transparent; border:1px solid var(--border); color:var(--muted);
+      border-radius:6px; padding:5px 13px; font-size:13px; cursor:pointer; width:100%;
+      transition:border-color .15s, color .15s; margin-top:4px; }
+    .sp-pick-btn:hover{ border-color:var(--gold); color:var(--gold); }
+    .sp-pick-neither{ font-size:13px; color:var(--muted); cursor:pointer; background:none; border:none;
+      text-decoration:underline; text-underline-offset:3px; padding:0; margin-top:8px; display:block; }
+    .sp-pick-neither:hover{ color:var(--gold); }
+    .sp-pick-credit{ font-size:13px; color:var(--muted); margin-top:10px; }
+    .sp-pick-refreshed{ font-size:13px; color:var(--muted); margin-top:8px; }
+
     /* ── Utility ── */
     .loading{ text-align:center; color:var(--muted); padding:48px 18px; font-size:15px; }
     .notfound{ text-align:center; padding:54px 18px; }
@@ -518,6 +533,114 @@
       return wrap;
     }
 
+    function renderPick(wrap, pick){
+      wrap.innerHTML = '';
+      var kinds = ['botanical','mechanism'].filter(function(k){ return pick[k]; });
+
+      kinds.forEach(function(kind){
+        var kdata = pick[kind];
+        var kindWrap = document.createElement('div');
+        kindWrap.className = 'sp-pick-kind';
+
+        var lbl = document.createElement('div');
+        lbl.className = 'sp-pick-label';
+        lbl.textContent = kind.charAt(0).toUpperCase() + kind.slice(1) + ' image';
+        kindWrap.appendChild(lbl);
+
+        if (kdata.chosen){
+          // Hero: find the option matching chosen variant
+          var chosen = null;
+          (kdata.options || []).forEach(function(o){ if (o.variant === kdata.chosen) chosen = o; });
+          if (chosen){
+            var img = document.createElement('img');
+            img.className = 'sp-product-img';
+            img.src = chosen.url;
+            img.alt = kind + ' image of the product';
+            kindWrap.appendChild(img);
+          }
+        } else {
+          // Pair + Pick/Neither
+          var row = document.createElement('div');
+          row.className = 'sp-pick-row';
+          (kdata.options || []).forEach(function(opt){
+            var optWrap = document.createElement('div');
+            optWrap.className = 'sp-pick-opt';
+            var img = document.createElement('img');
+            img.className = 'sp-product-img';
+            img.src = opt.url;
+            img.alt = kind + ' image of the product';
+            optWrap.appendChild(img);
+            var btn = document.createElement('button');
+            btn.className = 'sp-pick-btn';
+            btn.textContent = 'Pick this';
+            btn.addEventListener('click', function(){
+              fetch(BASE + '/begin/product-image-pick/' + slug, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                credentials: 'same-origin',
+                body: JSON.stringify({kind: kind, variant: opt.variant})
+              })
+              .then(function(r){ return r.json(); })
+              .then(function(resp){
+                if (resp && resp.ok){
+                  // Update kdata.chosen from resp.picks
+                  var picks = resp.picks || {};
+                  if (picks[kind]) pick[kind].chosen = picks[kind];
+                  // Also propagate other kinds if returned
+                  ['botanical','mechanism'].forEach(function(k){
+                    if (picks[k] && pick[k]) pick[k].chosen = picks[k];
+                  });
+                  pick.both_picked = !!(pick.botanical && pick.botanical.chosen && pick.mechanism && pick.mechanism.chosen);
+                  renderPick(wrap, pick);
+                }
+              })
+              .catch(function(){});
+            });
+            optWrap.appendChild(btn);
+            row.appendChild(optWrap);
+          });
+          kindWrap.appendChild(row);
+
+          var neither = document.createElement('button');
+          neither.className = 'sp-pick-neither';
+          neither.textContent = 'Neither — show me something else';
+          neither.addEventListener('click', function(){
+            fetch(BASE + '/begin/product-image-pick/' + slug, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              credentials: 'same-origin',
+              body: JSON.stringify({kind: kind, variant: 'neither'})
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(resp){
+              if (resp && resp.ok){
+                neither.style.display = 'none';
+                row.style.display = 'none';
+                var msg = document.createElement('p');
+                msg.className = 'sp-pick-refreshed';
+                msg.textContent = "We'll refresh these soon.";
+                kindWrap.appendChild(msg);
+              }
+            })
+            .catch(function(){});
+          });
+          kindWrap.appendChild(neither);
+        }
+
+        wrap.appendChild(kindWrap);
+      });
+
+      // Credit note when both kinds are chosen
+      var bothChosen = pick.both_picked ||
+        (pick.botanical && pick.botanical.chosen && pick.mechanism && pick.mechanism.chosen);
+      if (bothChosen){
+        var credit = document.createElement('p');
+        credit.className = 'sp-pick-credit';
+        credit.textContent = 'Thanks — you\'ve helped shape this, and earned a credit toward this product.';
+        wrap.appendChild(credit);
+      }
+    }
+
     function renderImagesBody(body){
       var wrap = document.createElement('div');
 
@@ -537,6 +660,11 @@
         var ph = document.createElement('div');
         ph.id = 'sp-images';
         wrap.appendChild(ph);
+        return wrap;
+      }
+
+      if (body.pick){
+        renderPick(wrap, body.pick);
         return wrap;
       }
 

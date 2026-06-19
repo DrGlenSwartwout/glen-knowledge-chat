@@ -2300,6 +2300,8 @@ _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "t
 _SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _SALES_AI_COPY_ENABLED = os.environ.get("SALES_PAGES_AI_COPY", "").strip().lower() in ("1", "true", "yes")
 _SALES_AI_IMAGES_ENABLED = os.environ.get("SALES_PAGES_AI_IMAGES", "").strip().lower() in ("1", "true", "yes")
+_SALES_IMAGE_PICK_ENABLED = os.environ.get("SALES_PAGES_IMAGE_PICK", "").strip().lower() in ("1", "true", "yes")
+_IMAGE_PICK_REWARD_CENTS = int(os.environ.get("IMAGE_PICK_REWARD_CENTS", "100"))
 # Shown to the customer when Stripe was active but no checkout URL came back
 # (create_checkout_session failed) — so the Pay button surfaces a clear message
 # instead of silently no-opping. _alert_stripe() already notifies Glen.
@@ -2685,6 +2687,19 @@ def _settle_order_points(order, *, order_ref):
             if not suppress:
                 _points.earn(cx, email, full_price_cents=product_cents, earn_pct=earn_pct,
                              order_ref=order_ref)
+        # ── Phase 4: image-pick reward (1 point per product the buyer picked both pairs for) ──
+        try:
+            from dashboard import sales_votes as _sv4
+            for _it in (order.get("items") or []):
+                _islug = (_it.get("slug") or "").strip()
+                if not _islug:
+                    continue
+                if _sv4.picked_both(cx, _islug, email=email) and not _points.has_entry(
+                        cx, order_ref=f"imgpick_{_islug}", reason="image_pick"):
+                    _points.credit(cx, email, value_cents=_IMAGE_PICK_REWARD_CENTS,
+                                   reason="image_pick", order_ref=f"imgpick_{_islug}")
+        except Exception as _ipe:
+            print(f"[img-pick] credit skipped: {_ipe!r}", flush=True)
 
 
 # Generated/cached product content (ingredients + benefits + learn-more research).
@@ -2913,6 +2928,33 @@ def begin_product_page_data(slug):
                     _img_sec["body"] = {"images": [], "state": "none"}
         except Exception as _e:
             print(f"[sales-img] page-data marker skipped: {_e}", flush=True)
+    if _SALES_IMAGE_PICK_ENABLED:
+        import sqlite3 as _sq3
+        from dashboard import sales_images as _si3, sales_votes as _sv3, sales_image_prompts as _sip3
+        try:
+            _sess = request.cookies.get("amg_session", "")
+            _au = get_authenticated_user(request)
+            _em = ((_au or {}).get("email") or "").strip().lower() if _au else ""
+            with _sq3.connect(LOG_DB) as _cx3:
+                _all = _si3.get_images(_cx3, slug)
+                _picks = _sv3.get_picks(_cx3, slug, session_id=_sess, email=_em)
+                _both = _sv3.picked_both(_cx3, slug, session_id=_sess, email=_em)
+            _by_kind = {}
+            for im in _all:
+                _by_kind.setdefault(im["kind"], []).append(im)
+            _pick = {}
+            for _k in _sip3.IMAGE_KINDS:
+                _opts = [{"variant": im["variant"], "url": f"/begin/product-image/{slug}/{im['filename']}"}
+                         for im in sorted(_by_kind.get(_k, []), key=lambda x: x["variant"])]
+                if len(_opts) >= 2:
+                    _pick[_k] = {"chosen": _picks.get(_k) if (_picks.get(_k) or 0) >= 1 else None, "options": _opts}
+            if _pick:
+                _img_sec3 = next((s for s in sections if s["id"] == "images"), None)
+                if _img_sec3 is not None and isinstance(_img_sec3["body"], dict):
+                    _pick["both_picked"] = _both
+                    _img_sec3["body"]["pick"] = _pick
+        except Exception as _e:
+            print(f"[img-pick] page-data skipped: {_e}", flush=True)
     return jsonify({
         "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
         "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
@@ -3002,6 +3044,36 @@ def begin_product_image_gen(slug):
         _si.enqueue(cx, slug)
         state = _si.queue_state(cx, slug)
     return jsonify({"ok": True, "state": state})
+
+
+@app.route("/begin/product-image-pick/<slug>", methods=["POST"])
+def begin_product_image_pick(slug):
+    from dashboard import sales_image_prompts as _sip
+    if not _SALES_IMAGE_PICK_ENABLED or not _get_product(slug):
+        return ("", 404)
+    data = request.get_json(silent=True) or {}
+    kind = (data.get("kind") or "").strip()
+    if kind not in _sip.IMAGE_KINDS:
+        return jsonify({"ok": False}), 400
+    raw = data.get("variant")
+    if raw == "neither":
+        variant = 0
+    else:
+        try:
+            variant = int(raw)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False}), 400
+        if variant < 1:
+            return jsonify({"ok": False}), 400
+    session_id = request.cookies.get("amg_session", "")
+    au = get_authenticated_user(request)
+    email = ((au or {}).get("email") or "").strip().lower() if au else ""
+    from dashboard import sales_votes as _sv
+    with sqlite3.connect(LOG_DB) as cx:
+        _sv.record_pick(cx, slug, kind, variant, session_id, email)
+        picks = _sv.get_picks(cx, slug, session_id=session_id, email=email)
+        both = _sv.picked_both(cx, slug, session_id=session_id, email=email)
+    return jsonify({"ok": True, "picks": picks, "both_picked": both})
 
 
 @app.route("/begin/learn/<slug>")
