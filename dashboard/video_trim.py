@@ -20,12 +20,9 @@ def compute_trim_window(words, duration, *, lead=0.3, trail=0.7, min_removed=1.0
         end = min(dur, raw_end)
         if end <= start:
             return None
-        # How much we actually cut from the clip (post-clamp)
+        # Skip when speech fills the clip: trimming would re-encode with no real removal.
         removed = start + (dur - end)
-        # How much padding overflowed the clip edges — counts double toward effective removal
-        overflow = max(0.0, -raw_start) + max(0.0, raw_end - dur)
-        effective_removed = removed + 2.0 * overflow
-        if effective_removed < min_removed:
+        if removed < min_removed:
             return None
         return (start, end)
     except (TypeError, ValueError, KeyError, IndexError):

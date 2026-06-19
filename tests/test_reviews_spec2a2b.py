@@ -7,10 +7,17 @@ def test_compute_trim_window_trims_with_padding():
     assert win == (2.0 - 0.3, 9.0 + 0.7)          # (1.7, 9.7), clamped within [0,12]
 
 
-def test_compute_trim_window_clamps_to_clip():
-    words = [{"word": "a", "start": 0.1, "end": 0.2}, {"word": "b", "start": 0.2, "end": 11.9}]
+def test_compute_trim_window_clamps_start_to_zero():
+    # first word near 0: lead pushes start below 0 -> clamped to 0; real trailing trim remains
+    words = [{"word": "a", "start": 0.1, "end": 0.2}, {"word": "b", "start": 0.2, "end": 8.0}]
     win = vt.compute_trim_window(words, 12.0)
-    assert win == (0.0, 12.0)                       # lead/trail clamped to clip bounds
+    assert win == (0.0, 8.0 + 0.7)                  # start clamped to 0, end = last + trail
+
+
+def test_compute_trim_window_none_when_speech_fills_clip():
+    # speech nearly fills the clip -> after clamping, removed < 1.0s -> skip (no pointless re-encode)
+    words = [{"word": "a", "start": 0.1, "end": 0.2}, {"word": "b", "start": 0.2, "end": 11.9}]
+    assert vt.compute_trim_window(words, 12.0) is None
 
 
 def test_compute_trim_window_none_when_no_words():
