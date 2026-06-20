@@ -111,3 +111,19 @@ def test_hero_chat_scripted_greeting_and_no_feedback_controls(monkeypatch, tmp_p
     hero_block = html[hero_start:hero_end]
     assert "Rate" not in hero_block
     assert "feedback" not in hero_block.lower()
+
+
+def test_hero_has_activation_and_bottom_explore(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    html = app_module.app.test_client().get("/begin").get_data(as_text=True)
+    # Bottom explore block + gated link + non-member nudge.
+    assert 'id="explore-bottom"' in html
+    assert 'id="explore-link"' in html
+    assert 'id="explore-nudge"' in html
+    # Activation wiring present (the email field/markup is injected by JS, so
+    # assert the JS that mints it ships in the page).
+    assert "hero-activate-btn" in html
+    assert "unlock('tos'" in html
+    # The old top explore <p> was removed (only the bottom entry remains).
+    assert html.count('href="/begin/explore"') == 1

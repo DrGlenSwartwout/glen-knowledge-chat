@@ -602,9 +602,6 @@
     <p class="shell reveal" style="text-align:center;margin-top:18px;font-size:15px;color:var(--muted);">
       Welcome, <span data-name>there</span>. Let&rsquo;s begin.
     </p>
-    <p class="shell reveal" style="text-align:center;margin-top:10px;font-size:13px;letter-spacing:0.04em;">
-      <a href="/begin/explore" style="color:var(--gold);border-bottom:1px solid rgba(212,168,67,0.3);padding-bottom:1px;">Explore everything</a>
-    </p>
   </div>
 
   <!-- BEGIN #1 HERO: headline + sub + video + simplified self-healing chat.
@@ -672,7 +669,7 @@
       <iframe id="begin-chat" src="/embed?mode=funnel" title="Ask Dr. Glen" loading="eager"
         style="width:100%; height:520px; max-height:74vh; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface);"></iframe>
       <p class="reveal" style="text-align:center;margin-top:14px;font-size:14px;color:var(--muted);">
-        Prefer to browse? <a href="/begin/explore" style="color:var(--gold);border-bottom:1px solid rgba(212,168,67,0.35);">See everything</a>.
+        Prefer to browse? See everything below.
       </p>
     </section>
   </section>
@@ -825,6 +822,7 @@
       .then(function(r){ return r.ok ? r.json() : Promise.reject(r); })
       .then(function(st){ STATE = st; applyReveal(st.reveal); personalize(st.first_name);
         renderCards(st.surfaced_cards);
+        if (typeof applyExploreGate === 'function') applyExploreGate();
         return st; });
   }
 
@@ -934,6 +932,70 @@
     });
   })();
 
+  // ---- Begin #1: membership gate for the bottom Explore entry ----
+  function applyExploreGate(){
+    var link = document.getElementById('explore-link');
+    var nudge = document.getElementById('explore-nudge');
+    if (!link || !nudge) return;
+    var member = !!(STATE && STATE.tos_agreed_at);
+    link.style.display = member ? 'inline' : 'none';
+    nudge.style.display = member ? 'none' : 'inline';
+  }
+
+  // ---- Begin #1: email-to-activate prompt, surfaced after a couple exchanges ----
+  (function heroActivate(){
+    var slot = document.getElementById('hero-activate');
+    if (!slot) return;
+    var shown = false;
+
+    window.heroMaybeActivate = function(){
+      if (shown) return;
+      if (STATE && STATE.tos_agreed_at) return;       // already a member
+      if ((window.heroExchanges || 0) < 2) return;    // wait for value first
+      shown = true;
+      slot.innerHTML =
+        '<div style="padding:12px 14px;border-top:1px solid rgba(255,255,255,0.08);">'
+        + '<p style="margin:0 0 8px;font-size:14px;color:var(--muted);">'
+        + 'Want me to save your progress and unlock your free membership? '
+        + 'Add your email and we are set.</p>'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+        + '<input id="hero-email" type="email" placeholder="you@example.com" '
+        + 'style="flex:1;min-width:180px;padding:10px 12px;" />'
+        + '<button class="send-btn" id="hero-activate-btn" type="button" '
+        + 'style="min-width:96px;">Activate</button>'
+        + '</div>'
+        + '<label style="display:flex;gap:7px;align-items:flex-start;margin-top:8px;font-size:12px;color:var(--muted);">'
+        + '<input id="hero-tos" type="checkbox" /> '
+        + '<span>I agree to the <a href="https://remedymatch.com/info/terms-and-conditions" '
+        + 'target="_blank" rel="noopener" style="color:var(--gold);">Terms</a>, and to receive '
+        + 'helpful guidance by email.</span></label>'
+        + '<p id="hero-activate-err" style="display:none;color:#d98;font-size:12px;margin:6px 0 0;"></p>'
+        + '</div>';
+
+      document.getElementById('hero-activate-btn').addEventListener('click', function(){
+        var email = (document.getElementById('hero-email').value || '').trim();
+        var tos = document.getElementById('hero-tos').checked;
+        var err = document.getElementById('hero-activate-err');
+        if (!email || email.indexOf('@') < 1) {
+          err.textContent = 'Please enter a valid email.'; err.style.display = 'block'; return;
+        }
+        if (!tos) {
+          err.textContent = 'Please agree to the Terms to activate.'; err.style.display = 'block'; return;
+        }
+        err.style.display = 'none';
+        var first = (STATE && STATE.first_name) || '';
+        unlock('tos', { email: email, tos: true, first_name: first }).then(function(st){
+          slot.innerHTML = '<p style="padding:12px 14px;font-size:14px;color:var(--gold);margin:0;">'
+            + 'You are in. Your free membership is active.</p>';
+          applyExploreGate();
+        }).catch(function(){
+          err.textContent = 'Could not activate just now. Please try again.';
+          err.style.display = 'block';
+        });
+      });
+    };
+  })();
+
   // ---- arrival: deep-link (?want=) takes priority, else normal state load ----
   (function arrival(){
     var want = '';
@@ -950,6 +1012,7 @@
     fetch('/begin/state',{credentials:'same-origin'}).then(function(r){return r.json();})
       .then(function(st){ STATE=st; applyReveal(st.reveal); personalize(st.first_name);
         renderCards(st.surfaced_cards);
+        if (typeof applyExploreGate === 'function') applyExploreGate();
         if(st.current_rung==='arrival'){ unlock('video'); } })
       .catch(function(){ applyReveal(['layer0','layer1']); });
   })();
@@ -971,6 +1034,7 @@
         applyReveal(st.reveal);
         personalize(st.first_name);
         renderCards(st.surfaced_cards);
+        if (typeof applyExploreGate === 'function') applyExploreGate();
       })
       .catch(function(){});
   });
@@ -1009,5 +1073,13 @@
   <div id="rm-atlas-embed"></div>
   <script src="/atlas.js" data-target="#rm-atlas-embed" data-mode="compact"></script>
 </section>
+  <!-- Begin #1: Explore entry relocated to the bottom, member-gated. -->
+  <section class="shell pad-y" id="explore-bottom" style="text-align:center;">
+    <a id="explore-link" href="/begin/explore"
+       style="color:var(--gold);border-bottom:1px solid rgba(212,168,67,0.35);padding-bottom:1px;display:none;">
+       Explore everything</a>
+    <span id="explore-nudge" style="color:var(--muted);font-size:13px;display:none;">
+      Activate your free membership above to explore everything.</span>
+  </section>
 </body>
 </html>
