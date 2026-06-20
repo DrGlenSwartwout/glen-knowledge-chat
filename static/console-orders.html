@@ -143,7 +143,24 @@
     var r = await fetch('/api/orders?limit=300', {headers:hdr()});
     if (r.status===401){ document.getElementById('gate').style.display='flex'; return; }
     var orders = (await r.json()).data || [];
+    // Header-search deep link (Records mode): /console/orders?q=<ref|name|email>
+    var q = (new URLSearchParams(location.search).get('q') || '').trim().toLowerCase();
+    if (q) {
+      orders = orders.filter(function(o){
+        return [o.external_ref, o.name, o.email].some(function(v){
+          return (v || '').toString().toLowerCase().indexOf(q) >= 0;
+        });
+      });
+    }
     var board = document.getElementById('board'); board.innerHTML='';
+    if (q) {
+      var note = document.createElement('div');
+      note.style.cssText = 'padding:6px 12px;margin-bottom:8px;color:#9aa0b4;font-size:13px';
+      note.innerHTML = 'Filtered by "<b>' + q.replace(/[<>&]/g,'') + '</b>" — '
+        + orders.length + ' match' + (orders.length===1?'':'es')
+        + ' · <a href="/console/orders" style="color:#7c9cff">clear</a>';
+      board.appendChild(note);
+    }
     LANES.forEach(function(l){
       var inLane = orders.filter(function(o){ return o.status===l[0]; });
       var col = document.createElement('div'); col.className='col';

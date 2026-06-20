@@ -7226,6 +7226,84 @@ def api_console_reviews_list():
     return jsonify({"ok": True, "pending": pending, "recent": []})
 
 
+@app.route("/api/console/search", methods=["GET"])
+def api_console_search():
+    """Site-wide Records search for the header search box (Records mode): look up a
+    specific person / product / order. Read-only; gated by the console key the same
+    way /api/people is. Returns groups the dropdown renders, each item carrying a
+    deep link into the matching list page (pre-filtered by ?q=)."""
+    ok, _ctx, code = _auth()
+    if not ok:
+        return jsonify({"error": "unauthorized"}), code
+    from urllib.parse import quote
+    q = (request.args.get("q", "") or "").strip()
+    if not q:
+        return jsonify({"people": [], "products": [], "orders": []})
+    types = [t.strip() for t in (request.args.get("types", "people,products,orders") or "").split(",") if t.strip()]
+    like = f"%{q.lower()}%"
+    out = {"people": [], "products": [], "orders": []}
+
+    # People — reuse the order-entry picker (LIKE on name/email/phone, known first).
+    if "people" in types:
+        try:
+            from dashboard import customers as _cust
+            with sqlite3.connect(LOG_DB) as cx:
+                for p in _cust.find_people(cx, q, limit=6):
+                    nm = (p.get("name")
+                          or (str(p.get("first_name") or "") + " " + str(p.get("last_name") or "")).strip()
+                          or p.get("email") or "Unknown")
+                    sub = " · ".join([x for x in [p.get("email"), p.get("phone")] if x])
+                    out["people"].append({
+                        "title": nm, "subtitle": sub,
+                        "url": "/console?pq=" + quote(p.get("email") or nm),
+                    })
+        except Exception as e:
+            print(f"[console-search] people error: {e}", flush=True)
+
+    # Products — filter the in-memory catalog by name / slug / ingredient.
+    if "products" in types:
+        try:
+            ql = q.lower()
+            for pr in _bos_products.catalog(with_ingredients_only=False, include_inactive=True):
+                if len(out["products"]) >= 6:
+                    break
+                name = (pr.get("name") or "")
+                slug = (pr.get("slug") or "")
+                ing = " ".join(pr.get("ingredients") or [])
+                if ql in name.lower() or ql in slug.lower() or ql in ing.lower():
+                    out["products"].append({
+                        "title": name or slug, "subtitle": slug,
+                        "url": "/console/products?q=" + quote(name or slug),
+                    })
+        except Exception as e:
+            print(f"[console-search] products error: {e}", flush=True)
+
+    # Orders — LIKE on email / name / external_ref, most recent first.
+    if "orders" in types:
+        try:
+            with sqlite3.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                rows = cx.execute(
+                    "SELECT id, external_ref, email, name, total_cents, status FROM orders "
+                    "WHERE lower(coalesce(email,'')) LIKE ? OR lower(coalesce(name,'')) LIKE ? "
+                    "OR lower(coalesce(external_ref,'')) LIKE ? ORDER BY id DESC LIMIT 6",
+                    (like, like, like)).fetchall()
+            for r in rows:
+                d = dict(r)
+                ref = d.get("external_ref") or ("#" + str(d.get("id")))
+                who = d.get("name") or d.get("email") or ""
+                amt = "$%.0f" % ((d.get("total_cents") or 0) / 100.0)
+                sub = " · ".join([x for x in [who, amt, d.get("status")] if x])
+                out["orders"].append({
+                    "title": str(ref), "subtitle": sub,
+                    "url": "/console/orders?q=" + quote(str(ref)),
+                })
+        except Exception as e:
+            print(f"[console-search] orders error: {e}", flush=True)
+
+    return jsonify(out)
+
+
 @app.route("/api/console/gift-catalog", methods=["GET"])
 def api_console_gift_catalog():
     bad = _sales_console_ok()

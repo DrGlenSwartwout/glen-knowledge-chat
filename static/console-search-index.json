@@ -1,0 +1,36 @@
+[
+  { "title": "Console home", "page": "Console", "url": "/console", "keywords": ["home", "dashboard", "front door", "mission control"] },
+  { "title": "Tasks", "page": "Console", "url": "/console", "goto": "tasks", "keywords": ["todo", "to-do", "task list", "work"] },
+  { "title": "People", "page": "Console", "url": "/console", "goto": "people", "keywords": ["contacts", "merges", "directory", "people hub", "crm"] },
+  { "title": "Referrals", "page": "Console", "url": "/console", "goto": "referrals", "keywords": ["referral", "affiliate", "rewards"] },
+  { "title": "Mission Control signals", "page": "Console", "url": "/console", "goto": "signals", "keywords": ["signals", "alerts", "money signal", "status"] },
+  { "title": "Codebase stats", "page": "Console", "url": "/console", "goto": "codebase", "keywords": ["lines of code", "loc", "codebase"] },
+
+  { "title": "Inbox", "page": "Inbox", "url": "/console/inbox", "keywords": ["email", "threads", "messages", "drafts", "reply"] },
+
+  { "title": "Projects", "page": "Projects", "url": "/console/projects", "keywords": ["kanban", "board", "project"] },
+
+  { "title": "Orders", "page": "Orders", "url": "/console/orders", "keywords": ["order list", "invoices", "sales", "fulfillment"] },
+  { "title": "New order", "page": "Orders", "url": "/orders/new", "keywords": ["create order", "order entry", "in-house order"] },
+
+  { "title": "Finance", "page": "Finance", "url": "/console/finance", "keywords": ["money", "revenue", "payments", "stripe", "tax", "get", "general excise", "g-45", "remittance"] },
+
+  { "title": "CRM tools", "page": "CRM", "url": "/console/crm", "keywords": ["tags", "household", "merge", "crm actions"] },
+
+  { "title": "Products", "page": "Products", "url": "/console/products", "keywords": ["catalog", "formulations", "skus"] },
+  { "title": "Catalog", "page": "Products", "url": "/console/products", "goto": "catalog", "keywords": ["catalog", "ingredients", "product list"] },
+  { "title": "Stale GrooveKart pages", "page": "Products", "url": "/console/products", "goto": "stale", "keywords": ["stale", "groovekart", "gk pages", "needs update"] },
+  { "title": "Backorders", "page": "Products", "url": "/console/products", "goto": "backorders", "keywords": ["backorder", "out of stock", "unfulfilled"] },
+
+  { "title": "Reviews", "page": "Reviews", "url": "/console/reviews", "keywords": ["testimonials", "moderation", "review queue", "gifts"] },
+
+  { "title": "Sales Pages", "page": "Sales Pages", "url": "/console/sales-pages", "keywords": ["sales page", "product page", "in-funnel", "ai copy"] },
+
+  { "title": "Pricing settings", "page": "Pricing", "url": "/console/pricing-settings", "keywords": ["price", "discount", "volume curve", "rewards", "subscribe"] },
+
+  { "title": "Biofield portal", "page": "Biofield", "url": "/console/biofield-portal", "keywords": ["biofield", "fmp", "scan", "causal chain"] },
+
+  { "title": "Settings", "page": "Settings", "url": "/console/settings", "keywords": ["config", "preferences", "options"] },
+
+  { "title": "Shared Resources", "page": "Resources", "url": "https://drive.google.com/drive/folders/1_ocXPhFB97d2tMdi7HxMWEUsZD7IW_f0", "external": true, "keywords": ["google drive", "shaira", "docs", "files", "sops", "shared resources"] }
+]
