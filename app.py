@@ -2631,6 +2631,7 @@ _SALES_IMAGE_PICK_ENABLED = os.environ.get("SALES_PAGES_IMAGE_PICK", "").strip()
 _IMAGE_PICK_REWARD_CENTS = int(os.environ.get("IMAGE_PICK_REWARD_CENTS", "100"))
 _SALES_IMAGE_TOURNAMENT_ENABLED = os.environ.get("SALES_PAGES_IMAGE_TOURNAMENT", "").strip().lower() in ("1", "true", "yes")
 _SALES_IMAGE_VARIATIONS_ENABLED = os.environ.get("SALES_PAGES_IMAGE_VARIATIONS", "").strip().lower() in ("1", "true", "yes")
+_SALES_IMAGE_VOTE_ENABLED = os.environ.get("SALES_PAGES_IMAGE_VOTE", "").strip().lower() in ("1", "true", "yes")
 _TOURNEY_MIN_VOTES = int(os.environ.get("IMAGE_TOURNAMENT_MIN_VOTES", "10"))
 _TOURNEY_MARGIN = float(os.environ.get("IMAGE_TOURNAMENT_MARGIN", "0.65"))
 _TOURNEY_K = int(os.environ.get("IMAGE_TOURNAMENT_CONVERGE_K", "3"))
@@ -3358,6 +3359,12 @@ def begin_product_page_data(slug):
                         _grouped = _si2.display_images_grouped(_cx2, slug)
                         _state = _si2.images_grouped_state(_cx2, slug)
                         _img_sec["body"] = {"grouped": _grouped, "state": _state, "target": 8}
+                        if _SALES_IMAGE_VOTE_ENABLED:
+                            from dashboard import sales_votes as _sv2
+                            _vsess = request.cookies.get("amg_session", "")
+                            _vau = get_authenticated_user(request)
+                            _vem = ((_vau or {}).get("email") or "").strip().lower() if _vau else ""
+                            _img_sec["body"]["picks"] = _sv2.get_picks(_cx2, slug, session_id=_vsess, email=_vem)
                     else:
                         _disp = _si2.display_images(_cx2, slug)
                         _qstate = _si2.queue_state(_cx2, slug)
@@ -3931,6 +3938,32 @@ def begin_product_image_pick(slug):
         picks = _sv.get_picks(cx, slug, session_id=session_id, email=email)
         both = _sv.picked_both(cx, slug, session_id=session_id, email=email)
     return jsonify({"ok": True, "picks": picks, "both_picked": both})
+
+
+@app.route("/begin/product-image-vote/<slug>", methods=["POST"])
+def begin_product_image_vote(slug):
+    from dashboard import sales_image_prompts as _sip
+    if not _SALES_IMAGE_VOTE_ENABLED or not _get_product(slug):
+        return ("", 404)
+    data = request.get_json(silent=True) or {}
+    kind = (data.get("kind") or "").strip()
+    if kind not in _sip.IMAGE_KINDS:
+        return jsonify({"ok": False}), 400
+    try:
+        variant = int(data.get("variant"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False}), 400
+    if variant < 1:
+        return jsonify({"ok": False}), 400
+    session_id = request.cookies.get("amg_session", "")
+    au = get_authenticated_user(request)
+    email = ((au or {}).get("email") or "").strip().lower() if au else ""
+    from dashboard import sales_images as _si, sales_votes as _sv
+    with sqlite3.connect(LOG_DB) as cx:
+        pv, mid = _si.tags_for(cx, slug, kind, variant)
+        _sv.record_pick(cx, slug, kind, variant, session_id, email, prompt_variant_id=pv, model_id=mid)
+        picks = _sv.get_picks(cx, slug, session_id=session_id, email=email)
+    return jsonify({"ok": True, "picks": picks})
 
 
 @app.route("/begin/learn/<slug>")

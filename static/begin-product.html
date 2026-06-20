@@ -110,11 +110,16 @@
     .sp-img-group-title{font-weight:600;margin:14px 0 6px;font-size:0.95rem;letter-spacing:.02em}
     .sp-img-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
     @media(min-width:768px){.sp-img-grid{grid-template-columns:repeat(4,1fr)}}
-    .sp-img-tile{margin:0}
+    .sp-img-tile{position:relative;margin:0}
     .sp-img-tile .sp-product-img{width:100%;height:auto;display:block;border-radius:8px}
     .sp-img-cap{font-size:.72rem;opacity:.6;margin-top:4px;text-align:center}
     .sp-img-ph{display:flex;align-items:center;justify-content:center;min-height:120px;
       border-radius:8px;background:rgba(127,127,127,.12);color:rgba(127,127,127,.6);font-size:1.4rem}
+    .sp-img-heart{position:absolute;top:6px;right:6px;border:none;background:rgba(0,0,0,.38);
+      color:#fff;border-radius:50%;width:30px;height:30px;font-size:16px;line-height:30px;
+      text-align:center;cursor:pointer;padding:0}
+    .sp-img-heart.on{background:rgba(220,40,80,.92)}
+    .sp-img-picked .sp-product-img{outline:3px solid rgba(220,40,80,.92);outline-offset:-3px;border-radius:8px}
 
     /* ── Image pick UI ── */
     .sp-pick-kind{ margin-bottom:18px; }
@@ -722,19 +727,34 @@
       var KIND_LABEL = { botanical: 'Botanical', mechanism: 'Mechanism' };
 
       // Grouped (flag on): two labeled grids of up to 4, plus generating placeholders.
-      function renderGrouped(grouped, target){
+      var _picks = {}, _lastGrouped = null, _lastTarget = 8, _voteOn = false;
+
+      function renderGrouped(grouped, target, picks){
+        if (picks !== undefined && picks !== null){ _picks = picks; _voteOn = true; }
+        _lastGrouped = grouped; _lastTarget = target;
         wrap.className = 'sp-img-groups'; wrap.innerHTML = '';
         ['botanical', 'mechanism'].forEach(function(kind){
           var tiles = (grouped && grouped[kind]) || [];
           var sec = document.createElement('div'); sec.className = 'sp-img-group';
           var h = document.createElement('div'); h.className = 'sp-img-group-title';
-          h.textContent = KIND_LABEL[kind] || kind; sec.appendChild(h);
+          h.textContent = (KIND_LABEL[kind] || kind) + (_voteOn ? ' — tap your favorite' : '');
+          sec.appendChild(h);
           var grid = document.createElement('div'); grid.className = 'sp-img-grid';
           tiles.forEach(function(t){
             var fig = document.createElement('figure'); fig.className = 'sp-img-tile';
+            var chosen = (_voteOn && _picks[kind] === t.variant);
+            if (chosen){ fig.className += ' sp-img-picked'; }
             var el = document.createElement('img'); el.className = 'sp-product-img';
             el.src = t.url; el.alt = kind + ' image of the product';
             fig.appendChild(el);
+            if (_voteOn){
+              var btn = document.createElement('button'); btn.type = 'button';
+              btn.className = 'sp-img-heart' + (chosen ? ' on' : '');
+              btn.setAttribute('aria-label', 'Pick this as your favorite');
+              btn.textContent = chosen ? '♥' : '♡';
+              (function(k, v){ btn.addEventListener('click', function(){ vote(k, v); }); })(kind, t.variant);
+              fig.appendChild(btn);
+            }
             if (t.model_label){
               var cap = document.createElement('figcaption'); cap.className = 'sp-img-cap';
               cap.textContent = 'made with ' + t.model_label; fig.appendChild(cap);
@@ -747,6 +767,18 @@
           }
           sec.appendChild(grid); wrap.appendChild(sec);
         });
+      }
+
+      function vote(kind, variant){
+        _picks[kind] = variant;                                  // optimistic
+        renderGrouped(_lastGrouped, _lastTarget, _picks);
+        fetch(BASE + '/begin/product-image-vote/' + slug, {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({kind: kind, variant: variant})
+        }).then(function(r){ return r.json(); })
+          .then(function(d){ if (d && d.picks){ renderGrouped(_lastGrouped, _lastTarget, d.picks); } })
+          .catch(function(){});
       }
 
       if (!body || !body.state){
@@ -770,7 +802,7 @@
               for (var i = 0; i < secs.length; i++){
                 if (secs[i].id === 'images' && secs[i].body){
                   var b = secs[i].body;
-                  if (b.grouped){ renderGrouped(b.grouped, b.target); }
+                  if (b.grouped){ renderGrouped(b.grouped, b.target, b.picks); }
                   if (b.state === 'ready'){ clearInterval(timer); if (!b.grouped){ renderFlat(b.images); } return; }
                   return;
                 }
@@ -785,7 +817,7 @@
       }
 
       if (grouped){                                  // variations flag ON
-        renderGrouped(grouped, body.target);
+        renderGrouped(grouped, body.target, body.picks);
         if (body.state !== 'ready'){ triggerGen(); startPoll(); }
       } else if (body.state === 'ready'){
         renderFlat(body.images);

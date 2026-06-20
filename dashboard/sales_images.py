@@ -163,3 +163,11 @@ def backfill_slugs(cx, arg, all_slugs):
     if arg == "all":
         return list(all_slugs)
     return [arg]
+
+def tags_for(cx, slug, kind, variant):
+    """(prompt_variant_id, model_id) for the ready image at (slug, kind, variant), or (None, None)."""
+    init_tables(cx)
+    r = cx.execute("SELECT prompt_variant_id, model_id FROM sales_page_images "
+                   "WHERE product_slug=? AND kind=? AND variant=? AND state='ready' "
+                   "ORDER BY id DESC LIMIT 1", (slug, kind, int(variant))).fetchone()
+    return (r[0], r[1]) if r else (None, None)
