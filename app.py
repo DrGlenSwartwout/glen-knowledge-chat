@@ -3794,8 +3794,13 @@ def begin_product_image_gen(slug):
         return ("", 404)
     from dashboard import sales_images as _si
     with sqlite3.connect(LOG_DB) as cx:
+        if _SALES_IMAGE_VARIATIONS_ENABLED:
+            if not _si.needs_topup(cx, slug):
+                return jsonify({"ok": True, "state": "done"})
+            _si.enqueue(cx, slug)
+            return jsonify({"ok": True, "state": "generating"})
         disp = _si.display_images(cx, slug)
-        if any(disp.values()):                     # already generated → no re-gen
+        if any(disp.values()):
             return jsonify({"ok": True, "state": "done"})
         _si.enqueue(cx, slug)
         state = _si.queue_state(cx, slug)
@@ -20588,6 +20593,24 @@ def api_console_pricing_settings():
     _PRICING_SETTINGS_CACHE["mtime"] = None      # force re-read on next access
     raw = _pricing_settings()
     return jsonify({"saved": raw, "effective": _ps.effective(raw)})
+
+
+@app.route("/admin/sales-images/backfill", methods=["POST"])
+def admin_sales_images_backfill():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _SALES_IMAGE_VARIATIONS_ENABLED:
+        return jsonify({"ok": False, "error": "variations disabled"}), 400
+    arg = (request.values.get("slug") or "").strip()
+    from dashboard import sales_images as _si
+    with sqlite3.connect(LOG_DB) as cx:
+        targets = _si.backfill_slugs(cx, arg, _si.list_image_slugs(cx) if arg == "all"
+                                     else [arg] if arg else [])
+        enq = []
+        for s in targets:
+            if _si.needs_topup(cx, s):
+                _si.enqueue(cx, s); enq.append(s)
+    return jsonify({"ok": True, "enqueued": enq, "count": len(enq)})
 
 
 if __name__ == "__main__":
