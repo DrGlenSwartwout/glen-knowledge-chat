@@ -71,3 +71,19 @@ def test_dispatch_falls_back_to_flux_on_error(monkeypatch):
     data, used = mods.generate(cx, "imagen-4", "p")
     assert data == b"FALLBACK" and used == "flux-1.1-pro"
     assert calls["n"] == 2
+
+from dashboard import sales_images as si
+from dashboard import sales_image_prompts as sip
+
+def test_record_image_persists_tags_and_counts():
+    cx = _cx()
+    si.record_image(cx, "p", "botanical", 1, "botanical-1.png", prompt_variant_id=3, model_id="imagen-4")
+    si.record_image(cx, "p", "botanical", 2, "botanical-2.png")   # legacy, untagged
+    rows = {r["variant"]: r for r in si.get_images(cx, "p")}
+    assert rows[1]["prompt_variant_id"] == 3 and rows[1]["model_id"] == "imagen-4"
+    assert rows[2]["prompt_variant_id"] is None
+    assert si.tagged_count(cx, "p") == 1
+    assert si.needs_topup(cx, "p") is True
+
+def test_no_text_constant_exposed():
+    assert "No text" in sip.NO_TEXT

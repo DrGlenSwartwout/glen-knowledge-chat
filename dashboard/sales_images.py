@@ -9,6 +9,11 @@ def init_tables(cx):
     cx.execute("CREATE TABLE IF NOT EXISTS sales_page_images ("
                "id INTEGER PRIMARY KEY AUTOINCREMENT, product_slug TEXT, kind TEXT, "
                "variant INTEGER, filename TEXT, state TEXT DEFAULT 'ready', created_at TEXT DEFAULT '')")
+    for _col, _decl in (("prompt_variant_id", "INTEGER"), ("model_id", "TEXT")):
+        try:
+            cx.execute(f"ALTER TABLE sales_page_images ADD COLUMN {_col} {_decl}")
+        except Exception:
+            pass
     cx.commit()
 
 def enqueue(cx, slug):
@@ -36,17 +41,21 @@ def queue_state(cx, slug):
     row = cx.execute("SELECT state FROM sales_image_queue WHERE product_slug=?", (slug,)).fetchone()
     return row[0] if row else None
 
-def record_image(cx, slug, kind, variant, filename):
+def record_image(cx, slug, kind, variant, filename, prompt_variant_id=None, model_id=None):
     init_tables(cx)
-    cx.execute("INSERT INTO sales_page_images (product_slug, kind, variant, filename, state, created_at) "
-               "VALUES (?,?,?,?, 'ready', ?)", (slug, kind, int(variant), filename, _now()))
+    cx.execute("INSERT INTO sales_page_images "
+               "(product_slug, kind, variant, filename, state, created_at, prompt_variant_id, model_id) "
+               "VALUES (?,?,?,?, 'ready', ?, ?, ?)",
+               (slug, kind, int(variant), filename, _now(), prompt_variant_id, model_id))
     cx.commit()
 
 def get_images(cx, slug):
     init_tables(cx)
-    rows = cx.execute("SELECT kind, variant, filename FROM sales_page_images "
-                      "WHERE product_slug=? AND state='ready' ORDER BY kind, variant", (slug,)).fetchall()
-    return [{"kind": r[0], "variant": r[1], "filename": r[2]} for r in rows]
+    rows = cx.execute("SELECT kind, variant, filename, prompt_variant_id, model_id "
+                      "FROM sales_page_images WHERE product_slug=? AND state='ready' "
+                      "ORDER BY kind, variant", (slug,)).fetchall()
+    return [{"kind": r[0], "variant": r[1], "filename": r[2],
+             "prompt_variant_id": r[3], "model_id": r[4]} for r in rows]
 
 def display_images(cx, slug):
     out = {"botanical": None, "mechanism": None}
@@ -65,3 +74,12 @@ def next_variant(cx, slug, kind):
     r = cx.execute("SELECT MAX(variant) FROM sales_page_images WHERE product_slug=? AND kind=?",
                    (slug, kind)).fetchone()
     return (r[0] or 0) + 1
+
+def tagged_count(cx, slug):
+    init_tables(cx)
+    r = cx.execute("SELECT COUNT(*) FROM sales_page_images WHERE product_slug=? AND state='ready' "
+                   "AND prompt_variant_id IS NOT NULL", (slug,)).fetchone()
+    return r[0] if r else 0
+
+def needs_topup(cx, slug, target=8):
+    return tagged_count(cx, slug) < target
