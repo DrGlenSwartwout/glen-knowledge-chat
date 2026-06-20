@@ -76,6 +76,7 @@
     { id: "products", label: "Products",  href: "/console/products" + qs },
     { id: "biofield", label: "Biofield",  href: "/console/biofield-portal" + qs },
     { id: "sales",    label: "Sales Pages", href: "/console/sales-pages" + qs },
+    { id: "biofield-reveals", label: "Biofield Reveals", href: "/console/biofield-reveals" + qs },
     { id: "reviews",  label: "Reviews",    href: "/console/reviews" + qs },
     { id: "shipping", label: "Shipping",  href: "/admin/shipping" + qs },
     { id: "neworder", label: "New Order", href: "/orders/new" + qs },

@@ -1422,6 +1422,160 @@ def begin_path():
     return resp
 
 
+def _biofield_top_payload(row):
+    """Return {name, meaning, buy_url, page_url} from remedies[0]. Never raises."""
+    try:
+        remedies = row.get("remedies") or []
+        if not remedies:
+            return None
+        top = remedies[0]
+        slug = (top.get("slug") or "").strip()
+        buy_url = f"/begin/buy/{slug}" if slug else "/begin/match"
+        page_url = f"/begin/product/{slug}" if slug else "/begin/match"
+        return {"name": top.get("name", ""), "meaning": top.get("meaning", ""), "buy_url": buy_url, "page_url": page_url}
+    except Exception:
+        return None
+
+
+def _biofield_verify_token(th):
+    """Verify a biofield_reveal token hash against auth_tokens.
+    Returns (valid: bool, row: dict|None) where row is the biofield_reveals row.
+    Never raises; on any error returns (False, None)."""
+    from dashboard import biofield_reveals as _br
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            at = cx.execute(
+                "SELECT email, expires_at FROM auth_tokens WHERE token_hash=? AND purpose='biofield_reveal'",
+                (th,)).fetchone()
+            valid = False
+            if at is not None:
+                try:
+                    exp_str = at["expires_at"]
+                    exp_dt = datetime.fromisoformat(exp_str)
+                    if exp_dt.tzinfo is None:
+                        exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                    valid = exp_dt >= datetime.now(timezone.utc)
+                except Exception:
+                    valid = False
+            if not valid:
+                return False, None
+            _br.init_table(cx)
+            _br.init_free_unlocks(cx)
+            row = _br.get_by_token_hash(cx, th)
+            return True, row
+    except Exception as e:
+        print(f"[biofield-reveal] token verify failed: {e!r}", flush=True)
+        return False, None
+
+
+@app.route("/begin/biofield/<token>", methods=["GET"])
+def begin_biofield_reveal(token):
+    """Token-verified Biofield reveal: interpretation always shown + remedies blurred.
+    Top remedy un-blurred free after Glen approves and member requests it (one-time).
+    Sets the biofield gate on member view. Token is NOT consumed (reopenable, 30-day TTL)."""
+    from dashboard import biofield_reveals as _br
+    th = _hash_token((token or "").strip())
+    valid, row = _biofield_verify_token(th)
+
+    html = (STATIC / "begin-biofield.html").read_text()
+
+    _no_store_headers = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
+
+    if not valid or row is None:
+        injection = "<script>window.__REVEAL__ = null;</script>"
+        html = html.replace("</head>", injection + "\n</head>")
+        resp = Response(html, mimetype="text/html", status=200)
+        for k, v in _no_store_headers.items():
+            resp.headers[k] = v
+        return resp
+
+    email = (row.get("email") or "").strip().lower()
+    member = is_member(email=email)
+
+    if not member:
+        # ToS gate: do NOT reveal interpretation or remedies; do NOT set gate
+        payload = {"needs_tos": True, "email": email}
+        _safe = (json.dumps(payload).replace("<", "\\u003c")
+                 .replace(">", "\\u003e").replace("&", "\\u0026"))
+        injection = f"<script>window.__REVEAL__ = {_safe};</script>"
+        html = html.replace("</head>", injection + "\n</head>")
+        resp = Response(html, mimetype="text/html", status=200)
+        for k, v in _no_store_headers.items():
+            resp.headers[k] = v
+        return resp
+
+    # Member path: compute unlock state
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _br.init_free_unlocks(cx)
+            fu_rid = _br.free_unlock_reveal_id(cx, email)
+    except Exception as e:
+        print(f"[biofield-reveal] free-unlock lookup failed: {e!r}", flush=True)
+        fu_rid = None
+
+    first_approved = bool(row.get("first_approved"))
+    top_unlocked = first_approved and fu_rid == row["id"]
+    free_available = first_approved and fu_rid is None
+
+    payload = {
+        "interpretation": row.get("interpretation") or {},
+        "blurred_count": len(row.get("remedies") or []) - (1 if top_unlocked else 0),
+        "first_approved": first_approved,
+        "free_available": free_available,
+        "top_unlocked": top_unlocked,
+        "top": _biofield_top_payload(row) if top_unlocked else None,
+    }
+
+    # Set the biofield gate (idempotent, wrapped) -> Find step 2 fills.
+    _record_entry_unlock("biofield", email)
+
+    # Escape <, >, & so a remedy name containing "</script>" cannot break out
+    _safe = (json.dumps(payload).replace("<", "\\u003c")
+             .replace(">", "\\u003e").replace("&", "\\u0026"))
+    injection = f"<script>window.__REVEAL__ = {_safe};</script>"
+    html = html.replace("</head>", injection + "\n</head>")
+    resp = Response(html, mimetype="text/html", status=200)
+    for k, v in _no_store_headers.items():
+        resp.headers[k] = v
+    return resp
+
+
+@app.route("/begin/biofield/<token>/reveal-top", methods=["POST"])
+def begin_biofield_reveal_top(token):
+    """One-time free top-remedy unblock. Requires member + first_approved + unused free slot."""
+    from dashboard import biofield_reveals as _br
+    try:
+        th = _hash_token((token or "").strip())
+        valid, row = _biofield_verify_token(th)
+        if not valid or row is None:
+            return jsonify({"ok": False, "reason": "invalid"})
+
+        email = (row.get("email") or "").strip().lower()
+
+        if not is_member(email=email):
+            return jsonify({"ok": False, "reason": "tos"})
+
+        if not bool(row.get("first_approved")):
+            return jsonify({"ok": False, "reason": "pending"})
+
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _br.init_free_unlocks(cx)
+            if _br.free_unlock_reveal_id(cx, email) is not None:
+                return jsonify({"ok": False, "reason": "used"})
+            granted = _br.record_free_unlock(cx, email, row["id"])
+
+        if not granted:
+            # Race: another request granted it between our check and insert
+            return jsonify({"ok": False, "reason": "used"})
+
+        top = _biofield_top_payload(row)
+        return jsonify({"ok": True, "top": top})
+    except Exception as e:
+        print(f"[biofield-reveal-top] {e!r}", flush=True)
+        return jsonify({"ok": False, "reason": "error"})
+
+
 @app.route("/begin/state", methods=["GET"])
 def begin_state():
     session_id = (request.cookies.get("amg_session") or "").strip()
@@ -7304,6 +7458,33 @@ def api_console_reviews_list():
     return jsonify({"ok": True, "pending": pending, "recent": []})
 
 
+@app.route("/api/console/biofield-reveals", methods=["GET"])
+def api_console_biofield_reveals():
+    """List pending biofield reveals (first_approved=0) for console review."""
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+    from dashboard import biofield_reveals as _br
+    with sqlite3.connect(LOG_DB) as cx:
+        _br.init_table(cx)
+        drafts = _br.list_pending(cx)
+    return jsonify({"drafts": drafts})
+
+
+@app.route("/console/biofield-reveals", methods=["GET"])
+def console_biofield_reveals_page():
+    """Serve the biofield reveals review console page."""
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+    resp = send_from_directory(STATIC, "console-biofield-reveals.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/console/search", methods=["GET"])
 def api_console_search():
     """Site-wide Records search for the header search box (Records mode): look up a
@@ -9270,6 +9451,52 @@ def api_e4l_scan_freshness():
         if (_r.get("last_scan_date") or _r.get("scan_date") or "").strip():
             _record_entry_unlock("scan", (_r.get("email") or ""))
     return jsonify({"ok": True, "upserted": len(rows)})
+
+
+@app.route("/api/e4l/reveal-draft", methods=["POST"])
+def api_e4l_reveal_draft():
+    """Ingest a Biofield reveal draft (interpretation + ranked remedies). On the
+    first insert, mint the magic link, store the auth_tokens row, and email the
+    owner. Auth: X-Cron-Secret (== CRON_SECRET, falls back to CONSOLE_SECRET)."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    scan_date = (data.get("scan_date") or "").strip()
+    interp = data.get("interpretation") or {}
+    remedies = data.get("remedies") or []
+    if not email or not scan_date or not (interp or remedies):
+        return jsonify({"error": "email, scan_date, and interpretation or remedies required"}), 400
+    from dashboard import biofield_reveals as _br
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _br.init_table(cx)
+            rid, is_new = _br.upsert(cx, email, scan_date, interp, remedies, (data.get("source") or "").strip())
+            if is_new:
+                token = secrets.token_urlsafe(32)
+                _br.set_token(cx, rid, _hash_token(token))
+                now = datetime.now(timezone.utc)
+                cx.execute(
+                    "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) VALUES (?,?,?,?,?)",
+                    (_hash_token(token), email, "biofield_reveal", now.isoformat(),
+                     (now + timedelta(days=30)).isoformat()))
+                cx.commit()
+        if is_new:
+            try:
+                url = f"{PUBLIC_BASE_URL}/begin/biofield/{token}"
+                body = ("Aloha,\n\nYour Biofield Analysis is ready. View your reading here:\n"
+                        f"{url}\n\nIn wellness,\nDr. Glen and Rae\n")
+                _send_inquiry_email(email, "Your Biofield Analysis is ready", body)
+            except Exception as e:
+                print(f"[reveal-draft] notify failed: {e!r}", flush=True)
+        return jsonify({"ok": True, "id": rid})
+    except Exception as e:
+        print(f"[reveal-draft] {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "store failed"}), 500
 
 
 @app.route("/biofield/ready")
@@ -19264,6 +19491,11 @@ from dashboard import sales_pages_actions as _spa
 _spa.register()
 _spa.configure(client=_cl, get_product=_get_product,
                product_card=_product_card, strip_dash=_strip_dash, base_url=PUBLIC_BASE_URL)
+
+# ── Begin #4a: Biofield reveal console actions (edit / approve + magic link) ──
+from dashboard import biofield_reveal_actions as _bra
+_bra.configure()
+_bra.register()
 
 # ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────
 from dashboard import reviews_actions as _ra
