@@ -130,3 +130,26 @@ def test_referral_mycode_member_not_gated(monkeypatch, tmp_path):
     c.set_cookie("rm_reorder_email", "lee@x.com")
     r = c.get("/api/referral/my-code")
     assert r.status_code != 403
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Concierge gate
+# ---------------------------------------------------------------------------
+
+def test_concierge_add_blocked_for_non_member(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    c = app_module.app.test_client()
+    r = c.post("/begin/concierge/add", json={"slug": "some-slug", "invoice_id": "inv123"})
+    assert r.status_code == 403
+    data = r.get_json()
+    assert data.get("need_optin") is True
+
+
+def test_concierge_add_member_not_gated(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    _make_member(app_module, db, "member@test.com", session="s-concierge")
+    c = app_module.app.test_client()
+    c.set_cookie("amg_session", "s-concierge")
+    r = c.post("/begin/concierge/add", json={"slug": "nonexistent", "invoice_id": "inv123"})
+    # must NOT be 403 (may be 400 for unknown slug, but not ToS gate)
+    assert r.status_code != 403

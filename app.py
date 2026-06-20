@@ -4374,6 +4374,7 @@ def begin_concierge_chat():
     bought = _get_product(bought_slug) if bought_slug else None
     session_id = (request.cookies.get("amg_session")
                   or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
+    email = (data.get("email") or "").strip().lower()
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
@@ -4389,6 +4390,9 @@ def begin_concierge_chat():
         print(f"[concierge] retrieval: {e}", flush=True)
 
     def generate():
+        if not is_member(session_id, email):
+            yield sse({"gate": True})
+            return
         messages = []
         for turn in history[-8:]:
             if turn.get("role") in ("user", "assistant") and turn.get("content"):
@@ -4440,6 +4444,11 @@ def begin_concierge_add():
     data = request.get_json(silent=True) or {}
     slug = (data.get("slug") or "").strip()
     invoice_id = (data.get("invoice_id") or "").strip()
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to continue."}), 403
     p = _get_product(slug)
     if not p or p.get("info_only"):
         return jsonify({"ok": False, "error": "not an addable catalog product"}), 400

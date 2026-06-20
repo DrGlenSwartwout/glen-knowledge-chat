@@ -833,7 +833,8 @@
               if (line.indexOf('data:') !== 0) return;
               var payload = line.slice(5).trim(); if(!payload) return;
               var ev; try { ev = JSON.parse(payload); } catch(e){ return; }
-              if (ev.token){ hide('cg-typing'); if(!bubble) bubble = cgAppend('bot',''); assistant += ev.token; bubble.textContent = assistant; document.getElementById('cg-thread').scrollTop = 1e9; }
+              if (ev.gate && window.OptinGate){ hide('cg-typing'); cg.busy = false; OptinGate.show({ base: BASE, onAgree: function(){ streamConcierge(query, firstTurn); } }); return; }
+              else if (ev.token){ hide('cg-typing'); if(!bubble) bubble = cgAppend('bot',''); assistant += ev.token; bubble.textContent = assistant; document.getElementById('cg-thread').scrollTop = 1e9; }
               else if (ev.suggestion){ renderSuggestion(ev.suggestion); }
               else if (ev.error){ hide('cg-typing'); if(!bubble) cgAppend('bot', 'Sorry, I had a hiccup. Tell me what else you are working on and I will suggest something.'); }
             });
@@ -873,6 +874,7 @@
         method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
         body: JSON.stringify({ slug: s.slug, invoice_id: cg.invoiceId })
       }).then(function(r){ return r.json(); }).then(function(d){
+        if (d && d.need_optin && window.OptinGate){ if(btn){ btn.disabled=false; btn.textContent='Add to my order'; } OptinGate.show({ base: BASE, onAgree: function(){ addToOrder(s); } }); return; }
         if (!d || !d.ok){ if(btn){ btn.disabled=false; btn.textContent='Add to my order'; } cgAppend('bot', (d&&d.error)||'I could not add that just now.'); return; }
         cg.total = parseFloat(d.total) || cg.total;
         cg.items.push({ name: d.added, amount: null });
