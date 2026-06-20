@@ -76,3 +76,35 @@ def test_e4l_freshness_ingest_records_scan(monkeypatch, tmp_path):
     with sqlite3.connect(db) as cx:
         st = begin_funnel.get_state(cx, email="e@x.com")
     assert "scan" in st["unlocked_gates"]
+
+
+def test_state_predicates_light_give(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    with sqlite3.connect(db) as cx:
+        cx.execute("CREATE TABLE IF NOT EXISTS affiliate_signups (email TEXT, slug TEXT, status TEXT)")
+        cx.execute("INSERT INTO affiliate_signups (email, slug, status) VALUES (?,?,?)",
+                   ("amb@x.com", "amb", "approved"))
+        cx.commit()
+    client = app_module.app.test_client(); client.set_cookie("amg_session", "s1")
+    # activate so email is on the session row, then read state with that email
+    app_module._record_entry_unlock("quiz", "amb@x.com", first_name="Amb")
+    with sqlite3.connect(db) as cx:
+        import begin_funnel
+        begin_funnel.record_unlock(cx, session_id="s1", trigger="tos",
+                                   email="amb@x.com", tos=True)
+    body = client.get("/begin/state").get_json()
+    give = [c for c in body["journey_map"] if c["key"] == "give"][0]
+    assert give["steps"][0]["done"] is True
+
+
+def test_state_scan_gate_routes_to_portal(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    client = app_module.app.test_client(); client.set_cookie("amg_session", "s2")
+    app_module._record_entry_unlock("scan", "p@x.com")
+    with sqlite3.connect(db) as cx:
+        import begin_funnel
+        begin_funnel.record_unlock(cx, session_id="s2", trigger="tos",
+                                   email="p@x.com", tos=True)
+    body = client.get("/begin/state").get_json()
+    scan = [c for c in body["journey_map"] if c["key"] == "scan"][0]
+    assert scan["href"].startswith("https://portal.e4l.com")

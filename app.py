@@ -385,6 +385,49 @@ def _record_entry_unlock(trigger, email, first_name="", last_name="", ref_slug="
         print(f"[entry-unlock] {trigger} {e!r}", flush=True)
 
 
+def _is_ambassador(cx, email):
+    if not email:
+        return False
+    try:
+        return cx.execute("SELECT 1 FROM affiliate_signups WHERE LOWER(email)=? AND status='approved' LIMIT 1",
+                          (email.lower(),)).fetchone() is not None
+    except Exception:
+        return False
+
+
+def _has_referred_friend(cx, email):
+    if not email:
+        return False
+    try:
+        return cx.execute("SELECT 1 FROM referral_redemptions WHERE LOWER(owner_email)=? LIMIT 1",
+                          (email.lower(),)).fetchone() is not None
+    except Exception:
+        return False
+
+
+def _has_e4l(cx, email, state):
+    if "scan" in set(state.get("unlocked_gates") or ()):
+        return True
+    if not email:
+        return False
+    try:
+        # Check any journey_state row for this email that carries the scan gate
+        for row in cx.execute(
+                "SELECT unlocked_gates FROM journey_state WHERE LOWER(email)=?",
+                (email.lower(),)):
+            if "scan" in set(json.loads(row[0] or "[]")):
+                return True
+    except Exception:
+        pass
+    try:
+        from dashboard import scan_freshness as _sf
+        _sf.init_table(cx)
+        return cx.execute("SELECT 1 FROM scan_freshness WHERE LOWER(email)=? LIMIT 1",
+                          (email.lower(),)).fetchone() is not None
+    except Exception:
+        return False
+
+
 # The line is education vs. recommendation. Education is open to everyone;
 # anything that individualizes (advice about the user's own body/situation) or
 # recommends a specific product/remedy for a health condition is GATED behind
@@ -1390,7 +1433,14 @@ def begin_state():
     query_texts = _recent_query_texts(session_id, email)
     payload = dict(state)
     payload["surfaced_cards"] = begin_funnel.surface(state, query_texts, ref_slug)
-    payload["journey_map"] = begin_funnel.journey_map(state, ref_slug)
+    _sig_email = state.get("email") or email
+    with sqlite3.connect(LOG_DB) as _cx:
+        signals = {
+            "ambassador": _is_ambassador(_cx, _sig_email),
+            "referred_friend": _has_referred_friend(_cx, _sig_email),
+            "has_e4l": _has_e4l(_cx, _sig_email, state),
+        }
+    payload["journey_map"] = begin_funnel.journey_map(state, ref_slug, signals)
     return jsonify(payload)
 
 
