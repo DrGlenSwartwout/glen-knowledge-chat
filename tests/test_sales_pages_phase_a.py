@@ -48,3 +48,26 @@ def test_generate_image_uses_model_ref_url(monkeypatch):
     out = rc.generate_image("hello", token="t", model_ref="google/imagen-4")
     assert out == b"PNGDATA"
     assert "google/imagen-4" in calls["url"]
+
+def test_dispatch_uses_requested_model_ref(monkeypatch):
+    cx = _cx(); mods.seed(cx)
+    seen = {}
+    def fake_gen(prompt, *, aspect_ratio="1:1", model_ref=None, **kw):
+        seen["ref"] = model_ref; return b"IMG"
+    monkeypatch.setattr("dashboard.replicate_client.generate_image", fake_gen)
+    data, used = mods.generate(cx, "recraft-v3", "p")
+    assert data == b"IMG" and used == "recraft-v3"
+    assert seen["ref"] == "recraft-ai/recraft-v3"
+
+def test_dispatch_falls_back_to_flux_on_error(monkeypatch):
+    cx = _cx(); mods.seed(cx)
+    calls = {"n": 0}
+    def flaky(prompt, *, aspect_ratio="1:1", model_ref=None, **kw):
+        calls["n"] += 1
+        if model_ref != "black-forest-labs/flux-1.1-pro":
+            raise RuntimeError("engine down")
+        return b"FALLBACK"
+    monkeypatch.setattr("dashboard.replicate_client.generate_image", flaky)
+    data, used = mods.generate(cx, "imagen-4", "p")
+    assert data == b"FALLBACK" and used == "flux-1.1-pro"
+    assert calls["n"] == 2
