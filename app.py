@@ -1631,6 +1631,41 @@ def begin_biofield_unlock_checkout(token):
         return jsonify({"ok": False, "error": "checkout_failed"}), 200
 
 
+@app.route("/membership/cancel/<token>", methods=["GET"])
+def membership_cancel(token):
+    """One-click cancel via a tokened link minted at biofield-trial grant time."""
+    from dashboard import subscriptions as _subs
+    th = _hash_token((token or "").strip())
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email, expires_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='membership_cancel'",
+            (th,)
+        ).fetchone()
+        email = None
+        if row:
+            try:
+                exp = datetime.fromisoformat((row[1] or "").replace("Z", "+00:00"))
+                if exp >= datetime.now(timezone.utc):
+                    email = row[0]
+            except Exception:
+                pass
+        if email:
+            _subs.init_subscriptions_table(cx)
+            _subs.migrate_add_membership_columns(cx)
+            sub = cx.execute(
+                "SELECT id FROM subscriptions "
+                "WHERE email=? AND kind='membership' AND status='active' "
+                "ORDER BY id DESC LIMIT 1",
+                (email,)
+            ).fetchone()
+            if sub:
+                _subs.set_status(cx, sub[0], "cancelled")
+    resp = send_from_directory(STATIC, "membership-cancel.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/begin/state", methods=["GET"])
 def begin_state():
     session_id = (request.cookies.get("amg_session") or "").strip()
@@ -4593,6 +4628,14 @@ def begin_checkout_return():
                                     _grant_membership(_bc, bt_email, 31, "biofield_trial")
                                     _bc.execute("INSERT INTO biofield_trial_grants (session_id, email, granted_at) VALUES (?,?,?)",
                                                 (sid, bt_email, datetime.utcnow().isoformat() + "Z"))
+                                    # Mint a one-click cancel token (60-day TTL)
+                                    cancel_tok = secrets.token_urlsafe(32)
+                                    _bc.execute(
+                                        "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                                        "VALUES (?,?,?,?,?)",
+                                        (_hash_token(cancel_tok), bt_email, "membership_cancel",
+                                         datetime.now(timezone.utc).isoformat(),
+                                         (datetime.now(timezone.utc) + timedelta(days=60)).isoformat()))
                                     _bc.commit()
                 except Exception as e:
                     print(f"[biofield-trial] grant failed: {e!r}", flush=True)

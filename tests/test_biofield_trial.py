@@ -22,6 +22,12 @@ def _fresh(app_module, monkeypatch, tmp_path):
         biofield_reveals.init_table(cx)
         subscriptions.init_subscriptions_table(cx)
         subscriptions.migrate_add_membership_columns(cx)
+        cx.execute(
+            "CREATE TABLE IF NOT EXISTS auth_tokens "
+            "(token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, purpose TEXT NOT NULL, "
+            "extra TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, consumed_at TEXT)"
+        )
+        cx.commit()
     return db
 
 
@@ -197,3 +203,162 @@ def test_nonpaid_member_no_deep_content(monkeypatch, tmp_path):
     remedies = reveal.get("remedies") or []
     rem_names = [r_["name"] for r_ in remedies]
     assert "Deep1" not in rem_names and "Deep2" not in rem_names, f"Deep remedies leaked: {rem_names}"
+
+
+# ---------------------------------------------------------------------------
+# Task 4: one-click cancel via tokened /membership/cancel/<token>
+# ---------------------------------------------------------------------------
+
+
+def _seed_cancel_token(app_module, db, email="t@x.com"):
+    """Insert an active membership subscription + a membership_cancel auth_token.
+    Returns the plaintext cancel token."""
+    from datetime import datetime, timezone, timedelta
+    from dashboard import subscriptions
+    cancel_tok = "ct_" + __import__("secrets").token_urlsafe(16)
+    th = app_module._hash_token(cancel_tok)
+    with sqlite3.connect(db) as cx:
+        # Ensure auth_tokens table exists
+        cx.execute(
+            "CREATE TABLE IF NOT EXISTS auth_tokens "
+            "(token_hash TEXT, email TEXT, purpose TEXT, created_at TEXT, expires_at TEXT, consumed_at TEXT)")
+        # Create an active membership subscription
+        subscriptions.init_subscriptions_table(cx)
+        subscriptions.migrate_add_membership_columns(cx)
+        subscriptions.create_membership(
+            cx, email=email, stripe_customer_id="cus_test",
+            stripe_payment_method_id="pm_test", amount_cents=9900,
+            next_charge_date="2026-07-20")
+        # Insert the cancel token
+        now = datetime.now(timezone.utc)
+        cx.execute(
+            "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+            "VALUES (?,?,?,?,?)",
+            (th, email, "membership_cancel", now.isoformat(),
+             (now + timedelta(days=60)).isoformat()))
+        cx.commit()
+    return cancel_tok
+
+
+def test_cancel_valid_token_cancels_subscription(monkeypatch, tmp_path):
+    """A valid membership_cancel token cancels the active subscription."""
+    app_module = _load_app()
+    db = _fresh(app_module, monkeypatch, tmp_path)
+    cancel_tok = _seed_cancel_token(app_module, db)
+    r = app_module.app.test_client().get(f"/membership/cancel/{cancel_tok}")
+    assert r.status_code == 200
+    with sqlite3.connect(db) as cx:
+        status = cx.execute(
+            "SELECT status FROM subscriptions WHERE email='t@x.com' AND kind='membership'"
+        ).fetchone()
+    assert status is not None and status[0] == "cancelled", f"Expected cancelled, got {status}"
+
+
+def test_cancel_invalid_token_friendly_no_change(monkeypatch, tmp_path):
+    """An invalid token returns a friendly 200 page; the subscription stays active."""
+    app_module = _load_app()
+    db = _fresh(app_module, monkeypatch, tmp_path)
+    _seed_cancel_token(app_module, db)
+    r = app_module.app.test_client().get("/membership/cancel/notarealtoken")
+    assert r.status_code == 200
+    with sqlite3.connect(db) as cx:
+        status = cx.execute(
+            "SELECT status FROM subscriptions WHERE email='t@x.com' AND kind='membership'"
+        ).fetchone()
+    assert status is not None and status[0] == "active", f"Expected active, got {status}"
+
+
+def test_cancel_idempotent(monkeypatch, tmp_path):
+    """Calling cancel twice leaves the subscription cancelled with no error."""
+    app_module = _load_app()
+    db = _fresh(app_module, monkeypatch, tmp_path)
+    cancel_tok = _seed_cancel_token(app_module, db)
+    c = app_module.app.test_client()
+    r1 = c.get(f"/membership/cancel/{cancel_tok}")
+    r2 = c.get(f"/membership/cancel/{cancel_tok}")
+    assert r1.status_code == 200 and r2.status_code == 200
+    with sqlite3.connect(db) as cx:
+        status = cx.execute(
+            "SELECT status FROM subscriptions WHERE email='t@x.com' AND kind='membership'"
+        ).fetchone()
+    assert status is not None and status[0] == "cancelled", f"Expected cancelled, got {status}"
+
+
+# ---------------------------------------------------------------------------
+# Task 4: one-click cancel
+# ---------------------------------------------------------------------------
+
+def _seed_active_membership(app_module, db, email="t@x.com"):
+    """Seed an active kind='membership' subscription and a membership_cancel auth token.
+    Returns the plaintext cancel token."""
+    import secrets as _s
+    from datetime import datetime, timezone, timedelta
+    from dashboard import subscriptions
+    cancel_tok = "cancel_" + _s.token_urlsafe(16)
+    th = app_module._hash_token(cancel_tok)
+    now = datetime.now(timezone.utc)
+    with sqlite3.connect(db) as cx:
+        subscriptions.init_subscriptions_table(cx)
+        subscriptions.migrate_add_membership_columns(cx)
+        subscriptions.create_membership(
+            cx,
+            email=email,
+            stripe_customer_id="cus_test",
+            stripe_payment_method_id="pm_test",
+            amount_cents=9900,
+            next_charge_date=subscriptions.add_months(now.strftime("%Y-%m-%d"), 1),
+        )
+        cx.execute(
+            "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at)"
+            " VALUES (?,?,?,?,?)",
+            (th, email, "membership_cancel",
+             now.isoformat(),
+             (now + timedelta(days=60)).isoformat()),
+        )
+        cx.commit()
+    return cancel_tok
+
+
+def test_cancel_valid_token_cancels_subscription(monkeypatch, tmp_path):
+    """Valid membership_cancel token -> subscription status becomes 'cancelled'."""
+    app_module = _load_app()
+    db = _fresh(app_module, monkeypatch, tmp_path)
+    cancel_tok = _seed_active_membership(app_module, db)
+    r = app_module.app.test_client().get(f"/membership/cancel/{cancel_tok}")
+    assert r.status_code == 200
+    with sqlite3.connect(db) as cx:
+        status = cx.execute(
+            "SELECT status FROM subscriptions WHERE email='t@x.com' AND kind='membership'"
+        ).fetchone()
+    assert status is not None and status[0] == "cancelled"
+
+
+def test_cancel_invalid_token_friendly_page_no_change(monkeypatch, tmp_path):
+    """Invalid token -> 200 calm page, subscription stays active."""
+    app_module = _load_app()
+    db = _fresh(app_module, monkeypatch, tmp_path)
+    _seed_active_membership(app_module, db)
+    r = app_module.app.test_client().get("/membership/cancel/bogus_token_that_does_not_exist")
+    assert r.status_code == 200
+    with sqlite3.connect(db) as cx:
+        status = cx.execute(
+            "SELECT status FROM subscriptions WHERE email='t@x.com' AND kind='membership'"
+        ).fetchone()
+    assert status is not None and status[0] == "active"
+
+
+def test_cancel_double_cancel_idempotent(monkeypatch, tmp_path):
+    """Calling cancel twice -> still 'cancelled', no error."""
+    app_module = _load_app()
+    db = _fresh(app_module, monkeypatch, tmp_path)
+    cancel_tok = _seed_active_membership(app_module, db)
+    client = app_module.app.test_client()
+    r1 = client.get(f"/membership/cancel/{cancel_tok}")
+    r2 = client.get(f"/membership/cancel/{cancel_tok}")
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    with sqlite3.connect(db) as cx:
+        status = cx.execute(
+            "SELECT status FROM subscriptions WHERE email='t@x.com' AND kind='membership'"
+        ).fetchone()
+    assert status is not None and status[0] == "cancelled"
