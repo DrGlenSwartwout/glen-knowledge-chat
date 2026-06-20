@@ -10667,6 +10667,15 @@ def _init_pb_events_table():
 _init_pb_events_table()
 
 
+# PB internal automations POST completion events; each maps to a journey gate.
+# Confirm the exact event identifiers once the PB automations are configured.
+PB_EVENT_GATES = {
+    "wellness-whispering.completed": "course_ww",
+    "intake.completed":             "intake",
+    "ash-masterclass.completed":    "masterclass",
+}
+
+
 @app.route("/webhook/practice-better", methods=["POST"])
 def pb_webhook():
     if WEBHOOK_SECRET:
@@ -10674,6 +10683,7 @@ def pb_webhook():
         if incoming != WEBHOOK_SECRET:
             return jsonify({"error": "Unauthorized"}), 401
 
+    _init_pb_events_table()
     data       = request.get_json(force=True) or {}
     event_type = data.get("event_type", "unknown")
     pb_email   = data.get("email", "")
@@ -10688,6 +10698,11 @@ def pb_webhook():
             VALUES (?, ?, ?, ?, ?)
         """, (ts, event_type, pb_email, pb_name, raw))
         cx.commit()
+
+    if event_type in PB_EVENT_GATES and pb_email:
+        _parts = pb_name.split(" ", 1) if pb_name else ["", ""]
+        _record_entry_unlock(PB_EVENT_GATES[event_type], pb_email,
+                             _parts[0], _parts[1] if len(_parts) > 1 else "")
 
     # For new member signups → push to GHL E4L pipeline
     if event_type in ("client.created", "client.signup", "member.created", "unknown") and pb_email:

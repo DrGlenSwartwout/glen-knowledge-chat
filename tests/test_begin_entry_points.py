@@ -21,8 +21,21 @@ def _fresh(app_module, monkeypatch, tmp_path):
     import begin_funnel
     with sqlite3.connect(db) as cx:
         begin_funnel.init_journey_tables(cx)
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS inbound_leads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                received_at TEXT, source TEXT, email TEXT,
+                first_name TEXT, last_name TEXT, phone TEXT,
+                raw_json TEXT, ghl_contact_id TEXT,
+                ghl_opp_id TEXT, ghl_error TEXT,
+                last_outbound_at TEXT, tags TEXT, status TEXT
+            )
+        """)
+        cx.commit()
     monkeypatch.setattr(app_module, "ghl_onboard_contact", lambda *a, **k: {"contact_id": "x"})
     monkeypatch.setattr(app_module, "_capture_concierge_referral", lambda *a, **k: None)
+    monkeypatch.setattr(app_module, "_log_inbound_lead", lambda *a, **k: None)
+    monkeypatch.setattr(app_module, "_attribute_conversion_by_email", lambda *a, **k: None)
     return db
 
 
@@ -108,3 +121,29 @@ def test_state_scan_gate_routes_to_portal(monkeypatch, tmp_path):
     body = client.get("/begin/state").get_json()
     scan = [c for c in body["journey_map"] if c["key"] == "scan"][0]
     assert scan["href"].startswith("https://portal.e4l.com")
+
+
+def test_pb_completion_sets_gate(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "WEBHOOK_SECRET", "", raising=False)
+    client = app_module.app.test_client()
+    r = client.post("/webhook/practice-better",
+                    json={"event_type": "wellness-whispering.completed", "email": "g@x.com", "name": "Gee Aitch"})
+    assert r.status_code == 200
+    import begin_funnel
+    with sqlite3.connect(db) as cx:
+        st = begin_funnel.get_state(cx, email="g@x.com")
+    assert "course_ww" in st["unlocked_gates"]
+
+
+def test_pb_unmapped_event_sets_no_gate(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "WEBHOOK_SECRET", "", raising=False)
+    client = app_module.app.test_client()
+    r = client.post("/webhook/practice-better",
+                    json={"event_type": "client.created", "email": "h@x.com", "name": "H"})
+    assert r.status_code == 200
+    import begin_funnel
+    with sqlite3.connect(db) as cx:
+        st = begin_funnel.get_state(cx, email="h@x.com")
+    assert "course_ww" not in st["unlocked_gates"]
