@@ -584,6 +584,8 @@
   .hero-inputbar { display: flex; gap: 8px; padding: 10px; border-top: 1px solid rgba(255,255,255,0.08); }
   .hero-inputbar textarea { flex: 1; resize: none; min-height: 44px; max-height: 120px; padding: 11px 13px; }
   .hero-send { min-width: 64px; }
+  /* Hero headline name-prefix (the comma) stays hidden until a name is known. */
+  .hero-head [data-name-prefix] { display: none; }
   @media (max-width: 760px) {
     .hero-grid { grid-template-columns: 1fr; }
     .hero-head h1 { font-size: 24px; }
@@ -814,6 +816,7 @@
   function personalize(name){
     if(!name) return;
     document.querySelectorAll('[data-name]').forEach(function(el){ el.textContent = name; });
+    document.querySelectorAll('[data-name-prefix]').forEach(function(el){ el.style.display = 'inline'; });
   }
   function unlock(trigger, extra){
     var body = Object.assign({ trigger: trigger, ref: getRef() }, extra||{});
@@ -874,7 +877,7 @@
         credentials: 'same-origin',
         body: JSON.stringify({
           query: query, history: heroHistory.slice(),
-          for_whom: 'self', session_id: '', name: '', email: ''
+          for_whom: 'me', session_id: '', name: '', email: ''
         })
       }).then(function(r){
         if (!r.ok || !r.body) { box.textContent = 'Something went sideways. Please try again.'; return; }
@@ -972,7 +975,10 @@
         + '<p id="hero-activate-err" style="display:none;color:#d98;font-size:12px;margin:6px 0 0;"></p>'
         + '</div>';
 
+      var activating = false;
       document.getElementById('hero-activate-btn').addEventListener('click', function(){
+        if (activating) return;                       // guard against double-submit
+        var btn = this;
         var email = (document.getElementById('hero-email').value || '').trim();
         var tos = document.getElementById('hero-tos').checked;
         var err = document.getElementById('hero-activate-err');
@@ -983,12 +989,14 @@
           err.textContent = 'Please agree to the Terms to activate.'; err.style.display = 'block'; return;
         }
         err.style.display = 'none';
+        activating = true; btn.disabled = true;
         var first = (STATE && STATE.first_name) || '';
         unlock('tos', { email: email, tos: true, first_name: first }).then(function(st){
           slot.innerHTML = '<p style="padding:12px 14px;font-size:14px;color:var(--gold);margin:0;">'
             + 'You are in. Your free membership is active.</p>';
           applyExploreGate();
         }).catch(function(){
+          activating = false; btn.disabled = false;
           err.textContent = 'Could not activate just now. Please try again.';
           err.style.display = 'block';
         });
