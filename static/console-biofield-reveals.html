@@ -16,18 +16,20 @@
   h1{ font-size:20px; margin:0 0 4px; }
   h2{ font-size:14px; margin:0 0 10px; color:var(--muted); font-weight:500; }
   .meta{ font-size:12px; color:var(--muted); margin-bottom:10px; }
+  .section-head{ font-size:13px; font-weight:600; margin:14px 0 6px; color:var(--muted); }
   label{ display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
   input[type=text], textarea{
     width:100%; background:#0c0e12; color:var(--fg);
     border:1px solid var(--line); border-radius:8px; padding:8px; font:inherit;
   }
   textarea{ min-height:70px; resize:vertical; }
+  .remedy-row{ border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:8px; background:#0c0e12; }
+  .remedy-row .tag{ font-size:11px; color:var(--ok); margin-bottom:6px; }
   .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px; }
   .btn{ background:var(--accent); color:#fff; border:0; border-radius:8px;
         padding:8px 14px; font:inherit; cursor:pointer; }
   .btn.ok{ background:var(--ok); }
   .btn.ghost{ background:transparent; color:var(--fg); border:1px solid var(--line); }
-  .blur-count{ font-size:13px; color:var(--muted); }
   .status{ min-height:18px; color:var(--muted); font-size:13px; margin-top:8px; }
   #gate{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
          background:var(--bg); z-index:50; }
@@ -48,7 +50,7 @@
 
 <div id="app" class="wrap">
   <h1>Biofield Reveals</h1>
-  <p style="color:var(--muted);margin:0 0 16px">Review AI-drafted top matches, edit name and meaning, then approve and send.</p>
+  <p style="color:var(--muted);margin:0 0 16px">Edit the interpretation and ranked remedies, then approve to un-blur the top remedy for the visitor.</p>
   <div id="list"></div>
 </div>
 
@@ -85,13 +87,13 @@ async function loadList(){
     el.textContent = 'Could not load (check console key).';
     return;
   }
-  var drafts = r.json.drafts || [];
-  if(!drafts.length){
-    el.textContent = 'No pending drafts.';
+  var rows = r.json.drafts || [];
+  if(!rows.length){
+    el.textContent = 'No pending reveals.';
     return;
   }
   el.innerHTML = '';
-  drafts.forEach(function(d){ el.appendChild(buildCard(d)); });
+  rows.forEach(function(d){ el.appendChild(buildCard(d)); });
 }
 
 function buildCard(d){
@@ -109,30 +111,85 @@ function buildCard(d){
   meta.appendChild(dateSpan);
   wrap.appendChild(meta);
 
-  var nameLabel = document.createElement('label');
-  nameLabel.textContent = 'Top match name';
-  wrap.appendChild(nameLabel);
+  // Interpretation section
+  var interpHead = document.createElement('div');
+  interpHead.className = 'section-head';
+  interpHead.textContent = 'Interpretation (auto-shown to visitor)';
+  wrap.appendChild(interpHead);
 
-  var nameInput = document.createElement('input');
-  nameInput.type = 'text';
-  nameInput.className = 'name-field';
-  nameInput.value = (d.top && d.top.name) ? d.top.name : '';
-  wrap.appendChild(nameInput);
+  var greetingLabel = document.createElement('label');
+  greetingLabel.textContent = 'Greeting';
+  wrap.appendChild(greetingLabel);
 
-  var meaningLabel = document.createElement('label');
-  meaningLabel.textContent = 'Meaning / tagline';
-  wrap.appendChild(meaningLabel);
+  var greetingInput = document.createElement('input');
+  greetingInput.type = 'text';
+  greetingInput.className = 'greeting-field';
+  greetingInput.value = (d.interpretation && d.interpretation.greeting) ? d.interpretation.greeting : '';
+  wrap.appendChild(greetingInput);
 
-  var meaningArea = document.createElement('textarea');
-  meaningArea.className = 'meaning-field';
-  meaningArea.value = (d.top && d.top.meaning) ? d.top.meaning : '';
-  wrap.appendChild(meaningArea);
+  var bodyLabel = document.createElement('label');
+  bodyLabel.textContent = 'Body';
+  wrap.appendChild(bodyLabel);
 
-  var blurEl = document.createElement('p');
-  blurEl.className = 'blur-count';
-  var count = Array.isArray(d.blurred) ? d.blurred.length : 0;
-  blurEl.textContent = count + ' blurred match' + (count === 1 ? '' : 'es') + ' in full analysis';
-  wrap.appendChild(blurEl);
+  var bodyArea = document.createElement('textarea');
+  bodyArea.className = 'body-field';
+  bodyArea.value = (d.interpretation && d.interpretation.body) ? d.interpretation.body : '';
+  wrap.appendChild(bodyArea);
+
+  // Remedies section
+  var remediesHead = document.createElement('div');
+  remediesHead.className = 'section-head';
+  remediesHead.textContent = 'Ranked remedies (all blurred until approved)';
+  wrap.appendChild(remediesHead);
+
+  var remedies = Array.isArray(d.remedies) ? d.remedies : [];
+  var remediesContainer = document.createElement('div');
+  remediesContainer.className = 'remedies-container';
+
+  remedies.forEach(function(rem, idx){
+    var row = document.createElement('div');
+    row.className = 'remedy-row';
+
+    if(idx === 0){
+      var tag = document.createElement('div');
+      tag.className = 'tag';
+      tag.textContent = 'Top remedy - un-blurs when approved';
+      row.appendChild(tag);
+    }
+
+    var nameLabel = document.createElement('label');
+    nameLabel.textContent = 'Name';
+    row.appendChild(nameLabel);
+
+    var nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'remedy-name';
+    nameInput.value = rem.name || '';
+    row.appendChild(nameInput);
+
+    var slugLabel = document.createElement('label');
+    slugLabel.textContent = 'Slug';
+    row.appendChild(slugLabel);
+
+    var slugInput = document.createElement('input');
+    slugInput.type = 'text';
+    slugInput.className = 'remedy-slug';
+    slugInput.value = rem.slug || '';
+    row.appendChild(slugInput);
+
+    var meaningLabel = document.createElement('label');
+    meaningLabel.textContent = 'Meaning';
+    row.appendChild(meaningLabel);
+
+    var meaningArea = document.createElement('textarea');
+    meaningArea.className = 'remedy-meaning';
+    meaningArea.value = rem.meaning || '';
+    row.appendChild(meaningArea);
+
+    remediesContainer.appendChild(row);
+  });
+
+  wrap.appendChild(remediesContainer);
 
   var row = document.createElement('div');
   row.className = 'row';
@@ -145,7 +202,7 @@ function buildCard(d){
 
   var approveBtn = document.createElement('button');
   approveBtn.className = 'btn ok';
-  approveBtn.textContent = 'Approve and send';
+  approveBtn.textContent = 'Approve top remedy';
   approveBtn.onclick = function(){ doApprove(wrap, d.id, approveBtn); };
   row.appendChild(approveBtn);
 
@@ -158,14 +215,28 @@ function buildCard(d){
   return wrap;
 }
 
+function collectRemedies(card){
+  var remedyRows = card.querySelectorAll('.remedy-row');
+  var out = [];
+  remedyRows.forEach(function(row){
+    out.push({
+      name: row.querySelector('.remedy-name').value,
+      slug: row.querySelector('.remedy-slug').value,
+      meaning: row.querySelector('.remedy-meaning').value
+    });
+  });
+  return out;
+}
+
 async function saveEdit(card, id){
-  var name = card.querySelector('.name-field').value;
-  var meaning = card.querySelector('.meaning-field').value;
+  var greeting = card.querySelector('.greeting-field').value;
+  var body = card.querySelector('.body-field').value;
+  var remedies = collectRemedies(card);
   var statusEl = card.querySelector('.status');
   statusEl.textContent = 'Saving...';
-  var r = await api('POST', '/api/action/biofield_reveal.edit', { id: id, name: name, meaning: meaning });
+  var r = await api('POST', '/api/action/biofield_reveal.edit', { id: id, greeting: greeting, body: body, remedies: remedies });
   if(r.ok && r.json.status === 'done'){
-    statusEl.textContent = 'Saved (still draft).';
+    statusEl.textContent = 'Saved (still pending).';
   } else {
     statusEl.textContent = 'Save failed.';
   }
@@ -177,7 +248,7 @@ async function doApprove(card, id, btn){
   btn.disabled = true;
   var r = await api('POST', '/api/action/biofield_reveal.approve', { id: id });
   if(r.ok && r.json.status === 'done'){
-    statusEl.textContent = 'Approved and email sent.';
+    statusEl.textContent = 'Top remedy approved. Visitor can now see it.';
     card.style.opacity = '0.5';
   } else {
     btn.disabled = false;

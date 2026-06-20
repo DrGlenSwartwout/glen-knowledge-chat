@@ -72,12 +72,15 @@ def test_console_list_drafts(monkeypatch, tmp_path):
     monkeypatch.setattr(app_module, "CONSOLE_SECRET", "ck", raising=False)
     from dashboard import biofield_reveals
     with sqlite3.connect(db) as cx:
-        biofield_reveals.upsert_draft(cx, "a@x.com", "2026-06-19", {"name": "Cistus"}, [], "s")
+        biofield_reveals.upsert(cx, "a@x.com", "2026-06-19",
+                                {"greeting": "Aloha", "body": "reading"},
+                                [{"name": "Cistus", "slug": "cistus", "meaning": "calm"}], "s")
     client = app_module.app.test_client()
     r = client.get("/api/console/biofield-reveals?key=ck")
     assert r.status_code == 200
     body = r.get_json()
-    assert body["drafts"][0]["top"]["name"] == "Cistus"
+    assert body["drafts"][0]["interpretation"]["greeting"] == "Aloha"
+    assert body["drafts"][0]["remedies"][0]["name"] == "Cistus"
 
 
 def test_console_page_served(monkeypatch, tmp_path):

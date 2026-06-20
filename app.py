@@ -7379,7 +7379,7 @@ def api_console_biofield_reveals():
     from dashboard import biofield_reveals as _br
     with sqlite3.connect(LOG_DB) as cx:
         _br.init_table(cx)
-        drafts = _br.list_drafts(cx)
+        drafts = _br.list_pending(cx)
     return jsonify({"drafts": drafts})
 
 
@@ -19405,8 +19405,7 @@ _spa.configure(client=_cl, get_product=_get_product,
 
 # ── Begin #4a: Biofield reveal console actions (edit / approve + magic link) ──
 from dashboard import biofield_reveal_actions as _bra
-_bra.configure(base_url=PUBLIC_BASE_URL, send=_send_inquiry_email,
-               hash_token=_hash_token, mint_token=lambda: secrets.token_urlsafe(32))
+_bra.configure()
 _bra.register()
 
 # ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────

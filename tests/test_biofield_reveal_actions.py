@@ -16,7 +16,6 @@ def _mods():
 
 def _cx(tmp_path):
     cx = sqlite3.connect(str(tmp_path / "t.db"))
-    cx.execute("CREATE TABLE IF NOT EXISTS auth_tokens (token_hash TEXT, email TEXT, purpose TEXT, created_at TEXT, expires_at TEXT, consumed_at TEXT)")
     from dashboard import biofield_reveals
     biofield_reveals.init_table(cx)
     return cx
@@ -26,38 +25,22 @@ class _Actor:
     name = "glen"
 
 
-def test_approve_confirms_mints_token_and_sends(tmp_path):
-    br, acts = _mods()
-    cx = _cx(tmp_path)
-    rid = br.upsert_draft(cx, "a@x.com", "2026-06-19", {"name": "Cistus"}, [], "s")
+def test_approve_flips_first_approved_no_email(tmp_path):
+    br, acts = _mods(); cx = _cx(tmp_path)
+    rid, _ = br.upsert(cx, "a@x.com", "2026-06-19", {"greeting": "Hi"}, [{"name": "C"}], "s")
     sent = []
-    acts.configure(base_url="https://x.test",
-                   send=lambda to, subject, body: sent.append((to, subject, body)) or True,
-                   hash_token=lambda t: "H:" + t, mint_token=lambda: "TOK123")
+    acts.configure(send=lambda *a, **k: sent.append(a))
     acts._exec_approve({"id": rid}, {"cx": cx, "actor": _Actor()})
+    assert br.get(cx, rid)["first_approved"] is True
+    assert sent == []  # no email on approve (it went out at ingest)
+
+
+def test_edit_updates_interpretation_and_remedies(tmp_path):
+    br, acts = _mods(); cx = _cx(tmp_path)
+    rid, _ = br.upsert(cx, "a@x.com", "2026-06-19", {"greeting": "Old"}, [{"name": "A"}], "s")
+    acts._exec_edit({"id": rid, "greeting": "New", "body": "b",
+                     "remedies": [{"name": "B", "slug": "b", "meaning": "m"}]},
+                    {"cx": cx, "actor": _Actor()})
     row = br.get(cx, rid)
-    assert row["status"] == "confirmed"
-    at = cx.execute("SELECT email, purpose FROM auth_tokens WHERE token_hash=?", ("H:TOK123",)).fetchone()
-    assert at == ("a@x.com", "biofield_reveal")
-    assert len(sent) == 1 and "/begin/biofield/TOK123" in sent[0][2]
-
-
-def test_approve_never_fails_on_send_error(tmp_path):
-    br, acts = _mods()
-    cx = _cx(tmp_path)
-    rid = br.upsert_draft(cx, "a@x.com", "2026-06-19", {"name": "C"}, [], "s")
-    def _boom(*a, **k):
-        raise RuntimeError("smtp down")
-    acts.configure(base_url="https://x.test", send=_boom,
-                   hash_token=lambda t: "H:" + t, mint_token=lambda: "TOK")
-    acts._exec_approve({"id": rid}, {"cx": cx, "actor": _Actor()})  # must not raise
-    assert br.get(cx, rid)["status"] == "confirmed"
-
-
-def test_edit_updates_top_stays_draft(tmp_path):
-    br, acts = _mods()
-    cx = _cx(tmp_path)
-    rid = br.upsert_draft(cx, "a@x.com", "2026-06-19", {"name": "Old"}, [], "s")
-    acts._exec_edit({"id": rid, "name": "New", "meaning": "warm"}, {"cx": cx, "actor": _Actor()})
-    row = br.get(cx, rid)
-    assert row["status"] == "ai_draft" and row["top"]["name"] == "New" and row["top"]["meaning"] == "warm"
+    assert row["interpretation"]["greeting"] == "New" and row["remedies"][0]["name"] == "B"
+    assert row["first_approved"] is False
