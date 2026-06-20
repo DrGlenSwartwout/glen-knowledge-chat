@@ -1,5 +1,6 @@
 import sqlite3
 from dashboard import sales_votes as sv
+from dashboard import sales_images as si
 
 def _cx(): return sqlite3.connect(":memory:")
 
@@ -25,3 +26,12 @@ def test_record_pick_backward_compatible_without_tags():
     cx = _cx()
     sv.record_pick(cx, "p", "mechanism", 1, "s1")   # 6-arg legacy call (Phase-4 style)
     assert _row(cx, "p", "mechanism", "s1") == (1, None, None)
+
+def test_tags_for_returns_image_tags():
+    cx = _cx()
+    si.record_image(cx, "p", "botanical", 3, "botanical-3.png", prompt_variant_id=5, model_id="recraft-v3")
+    assert si.tags_for(cx, "p", "botanical", 3) == (5, "recraft-v3")
+
+def test_tags_for_missing_slot_returns_none_pair():
+    cx = _cx()
+    assert si.tags_for(cx, "p", "botanical", 2) == (None, None)
