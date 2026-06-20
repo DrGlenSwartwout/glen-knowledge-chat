@@ -1363,6 +1363,7 @@ def begin_state():
     query_texts = _recent_query_texts(session_id, email)
     payload = dict(state)
     payload["surfaced_cards"] = begin_funnel.surface(state, query_texts, ref_slug)
+    payload["journey_map"] = begin_funnel.journey_map(state, ref_slug)
     return jsonify(payload)
 
 
