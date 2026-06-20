@@ -358,6 +358,76 @@ def is_member(session_id="", email=""):
         return False
 
 
+def _entry_session_id(email):
+    import hashlib
+    return "entry:" + hashlib.sha1((email or "").strip().lower().encode()).hexdigest()[:16]
+
+
+def _record_entry_unlock(trigger, email, first_name="", last_name="", ref_slug=""):
+    """Write an entry-point completion to the one record by email. Idempotent
+    (skips an already-present gate); never raises into the caller."""
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    try:
+        sid = _entry_session_id(email)
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            begin_funnel.init_journey_tables(cx)
+            row = cx.execute(
+                "SELECT unlocked_gates FROM journey_state WHERE session_id=?",
+                (sid,)).fetchone()
+            if row and trigger in set(json.loads(row[0] or "[]")):
+                return  # already recorded - no duplicate event
+            begin_funnel.record_unlock(
+                cx, session_id=sid, trigger=trigger, email=email,
+                first_name=first_name, last_name=last_name, ref_slug=ref_slug)
+    except Exception as e:
+        print(f"[entry-unlock] {trigger} {e!r}", flush=True)
+
+
+def _is_ambassador(cx, email):
+    if not email:
+        return False
+    try:
+        return cx.execute("SELECT 1 FROM affiliate_signups WHERE LOWER(email)=? AND status='approved' LIMIT 1",
+                          (email.lower(),)).fetchone() is not None
+    except Exception:
+        return False
+
+
+def _has_referred_friend(cx, email):
+    if not email:
+        return False
+    try:
+        return cx.execute("SELECT 1 FROM referral_redemptions WHERE LOWER(owner_email)=? LIMIT 1",
+                          (email.lower(),)).fetchone() is not None
+    except Exception:
+        return False
+
+
+def _has_e4l(cx, email, state):
+    if "scan" in set(state.get("unlocked_gates") or ()):
+        return True
+    if not email:
+        return False
+    try:
+        # Check any journey_state row for this email that carries the scan gate
+        for row in cx.execute(
+                "SELECT unlocked_gates FROM journey_state WHERE LOWER(email)=?",
+                (email.lower(),)):
+            if "scan" in set(json.loads(row[0] or "[]")):
+                return True
+    except Exception:
+        pass
+    try:
+        from dashboard import scan_freshness as _sf
+        _sf.init_table(cx)
+        return cx.execute("SELECT 1 FROM scan_freshness WHERE LOWER(email)=? LIMIT 1",
+                          (email.lower(),)).fetchone() is not None
+    except Exception:
+        return False
+
+
 # The line is education vs. recommendation. Education is open to everyone;
 # anything that individualizes (advice about the user's own body/situation) or
 # recommends a specific product/remedy for a health condition is GATED behind
@@ -1363,7 +1433,14 @@ def begin_state():
     query_texts = _recent_query_texts(session_id, email)
     payload = dict(state)
     payload["surfaced_cards"] = begin_funnel.surface(state, query_texts, ref_slug)
-    payload["journey_map"] = begin_funnel.journey_map(state, ref_slug)
+    _sig_email = state.get("email") or email
+    with sqlite3.connect(LOG_DB) as _cx:
+        signals = {
+            "ambassador": _is_ambassador(_cx, _sig_email),
+            "referred_friend": _has_referred_friend(_cx, _sig_email),
+            "has_e4l": _has_e4l(_cx, _sig_email, state),
+        }
+    payload["journey_map"] = begin_funnel.journey_map(state, ref_slug, signals)
     return jsonify(payload)
 
 
@@ -9189,6 +9266,9 @@ def api_e4l_scan_freshness():
     with sqlite3.connect(LOG_DB) as cx:
         _sf.init_table(cx)
         _sf.upsert(cx, rows)
+    for _r in rows:
+        if (_r.get("last_scan_date") or _r.get("scan_date") or "").strip():
+            _record_entry_unlock("scan", (_r.get("email") or ""))
     return jsonify({"ok": True, "upserted": len(rows)})
 
 
@@ -10587,6 +10667,15 @@ def _init_pb_events_table():
 _init_pb_events_table()
 
 
+# PB internal automations POST completion events; each maps to a journey gate.
+# Confirm the exact event identifiers once the PB automations are configured.
+PB_EVENT_GATES = {
+    "wellness-whispering.completed": "course_ww",
+    "intake.completed":             "intake",
+    "ash-masterclass.completed":    "masterclass",
+}
+
+
 @app.route("/webhook/practice-better", methods=["POST"])
 def pb_webhook():
     if WEBHOOK_SECRET:
@@ -10594,6 +10683,7 @@ def pb_webhook():
         if incoming != WEBHOOK_SECRET:
             return jsonify({"error": "Unauthorized"}), 401
 
+    _init_pb_events_table()
     data       = request.get_json(force=True) or {}
     event_type = data.get("event_type", "unknown")
     pb_email   = data.get("email", "")
@@ -10608,6 +10698,11 @@ def pb_webhook():
             VALUES (?, ?, ?, ?, ?)
         """, (ts, event_type, pb_email, pb_name, raw))
         cx.commit()
+
+    if event_type in PB_EVENT_GATES and pb_email:
+        _parts = pb_name.split(" ", 1) if pb_name else ["", ""]
+        _record_entry_unlock(PB_EVENT_GATES[event_type], pb_email,
+                             _parts[0], _parts[1] if len(_parts) > 1 else "")
 
     # For new member signups → push to GHL E4L pipeline
     if event_type in ("client.created", "client.signup", "member.created", "unknown") and pb_email:
@@ -11366,6 +11461,8 @@ def scoreapp_webhook():
             )
     except Exception as e:
         print(f"[scoreapp] share-offer send failed: {e!r}", flush=True)
+
+    _record_entry_unlock("quiz", email, first, last, utm_source)
 
     return jsonify({"ok": True, "tags": answer_tags, "ghl": ghl_result,
                     "utm_source": utm_source or None}), 200

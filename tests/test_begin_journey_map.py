@@ -21,45 +21,46 @@ def _state(gates):
     return {"unlocked_gates": list(gates)}
 
 
-def test_no_gates_scan_is_next():
+def test_no_signals_scan_is_next():
     bf = _bf()
     m = bf.journey_map(_state([]), "")
-    assert [c["key"] for c in m] == ["scan", "find", "heal", "earn"]
-    assert [c["status"] for c in m] == ["next", "available", "available", "available"]
+    assert [c["key"] for c in m] == ["scan", "find", "heal", "give"]
+    assert m[0]["status"] == "next" and m[0]["fill"] == 0.0
+    assert all(c["fill"] == 0.0 for c in m)
 
 
-def test_scan_done_find_is_next():
+def test_scan_gate_half_fills_scan():
     bf = _bf()
     m = bf.journey_map(_state(["scan"]), "")
-    assert [c["status"] for c in m] == ["done", "next", "available", "available"]
-
-
-def test_scan_and_question_done_heal_is_next():
-    bf = _bf()
-    m = bf.journey_map(_state(["scan", "question"]), "")
-    assert [c["status"] for c in m] == ["done", "done", "next", "available"]
-
-
-def test_all_gates_done_none_next():
-    bf = _bf()
-    m = bf.journey_map(_state(["scan", "question", "paid_fork", "share_video"]), "")
-    assert [c["status"] for c in m] == ["done", "done", "done", "done"]
-    assert all(c["status"] != "next" for c in m)
-
-
-def test_labels_and_internal_hrefs():
-    bf = _bf()
-    m = bf.journey_map(_state([]), "someslug")
     by = {c["key"]: c for c in m}
-    assert by["scan"]["label"] == "Scan" and by["scan"]["paren"] == "Your Biofield"
-    assert by["find"]["label"] == "Find" and by["find"]["paren"] == "Your Remedy Match"
-    assert by["heal"]["label"] == "Heal" and by["heal"]["paren"] == "the root causes"
-    assert by["earn"]["label"] == "Earn" and by["earn"]["paren"] == "Ambassador"
-    # All four destinations are internal -> hrefs are the bare path (no utm).
-    assert by["scan"]["href"] == "/begin/voice"
-    assert by["find"]["href"] == "/begin/match"
-    assert by["heal"]["href"] == "/begin/ascend"
-    assert by["earn"]["href"] == "/begin/path"
+    assert by["scan"]["fill"] == 0.5 and by["scan"]["status"] == "next"
+
+
+def test_scan_complete_advances_next_to_find():
+    bf = _bf()
+    m = bf.journey_map(_state(["scan", "course_ww"]), "")
+    by = {c["key"]: c for c in m}
+    assert by["scan"]["fill"] == 1.0 and by["scan"]["status"] == "done"
+    assert by["find"]["status"] == "next"
+
+
+def test_give_label_and_predicate_ambassador():
+    bf = _bf()
+    m = bf.journey_map(_state([]), "", {"ambassador": True})
+    by = {c["key"]: c for c in m}
+    assert by["give"]["label"] == "Give"
+    assert by["give"]["fill"] == 0.5
+    assert by["give"]["steps"][0]["done"] is True
+
+
+def test_smart_scan_href():
+    bf = _bf()
+    sign = bf.journey_map(_state([]), "slug", {"has_e4l": False})
+    nos = {c["key"]: c for c in sign}
+    assert nos["scan"]["href"].startswith("https://truly.vip/E4L")
+    have = bf.journey_map(_state([]), "slug", {"has_e4l": True})
+    yes = {c["key"]: c for c in have}
+    assert yes["scan"]["href"].startswith("https://portal.e4l.com")
 
 
 def test_thread_href_external_threads_utm():
@@ -105,7 +106,7 @@ def test_state_payload_includes_journey_map(monkeypatch, tmp_path):
     client.set_cookie("amg_session", "j1")
     body = client.get("/begin/state").get_json()
     jm = body["journey_map"]
-    assert [c["key"] for c in jm] == ["scan", "find", "heal", "earn"]
+    assert [c["key"] for c in jm] == ["scan", "find", "heal", "give"]
     assert jm[0]["status"] == "next"            # nothing done yet
     assert all(set(c) >= {"key", "label", "paren", "href", "status"} for c in jm)
 
@@ -116,9 +117,19 @@ def test_begin_serves_journey_strip(monkeypatch, tmp_path):
     html = app_module.app.test_client().get("/begin").get_data(as_text=True)
     assert 'id="journey-strip"' in html
     assert 'id="journey-cards"' in html
-    for label in ("Scan", "Find", "Heal", "Earn"):
+    for label in ("Scan", "Find", "Heal", "Give"):
         assert label in html
     assert "function renderJourney" in html
+
+
+def test_begin_serves_give_and_fill(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    html = app_module.app.test_client().get("/begin").get_data(as_text=True)
+    assert "Give" in html
+    assert "jc-fill" in html
+    assert "jc-count" in html
+    assert "JOURNEY_TRIGGER" not in html
 
 
 def test_begin_serves_unfold_and_framing(monkeypatch, tmp_path):
