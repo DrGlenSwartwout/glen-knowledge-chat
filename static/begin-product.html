@@ -352,7 +352,7 @@
         var li = document.createElement('li');
         if (ing && typeof ing === 'object'){
           var ingName = ing.name || '';
-          var ingSlug = ing.slug || ingName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+          var ingSlug = ing.slug || ingName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
           var a = document.createElement('a');
           a.setAttribute('href', '/begin/ingredient/' + ingSlug);
           a.setAttribute('target', '_blank');

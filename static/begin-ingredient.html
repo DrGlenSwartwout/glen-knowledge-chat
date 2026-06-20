@@ -258,7 +258,7 @@
       ul.className = 'sp-list';
       studies.forEach(function(s){
         var li = document.createElement('li');
-        if (s.url){
+        if (s.url && /^https?:/i.test(s.url)){
           var a = document.createElement('a');
           a.className = 'study-link';
           a.setAttribute('target', '_blank');
