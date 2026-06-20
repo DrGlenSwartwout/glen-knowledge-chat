@@ -1,6 +1,7 @@
 import sqlite3
 from dashboard import sales_prompt_variations as pv
 from dashboard import sales_image_models as mods
+from dashboard import replicate_client as rc
 
 def _cx(): return sqlite3.connect(":memory:")
 
@@ -29,3 +30,21 @@ def test_seed_creates_three_active_models():
 def test_models_seed_idempotent():
     cx = _cx(); mods.seed(cx); mods.seed(cx)
     assert len(mods.active_models(cx)) == 3
+
+class _Resp:
+    def __init__(self, j=None, content=b""): self._j = j or {}; self.content = content
+    def json(self): return self._j
+    def raise_for_status(self): pass
+
+def test_generate_image_uses_model_ref_url(monkeypatch):
+    calls = {}
+    def fake_post(url, **kw):
+        calls["url"] = url
+        return _Resp({"status": "succeeded", "output": ["http://img/x.png"], "urls": {"get": "http://g"}})
+    def fake_get(url, **kw):
+        return _Resp(content=b"PNGDATA")
+    monkeypatch.setattr(rc.requests, "post", fake_post)
+    monkeypatch.setattr(rc.requests, "get", fake_get)
+    out = rc.generate_image("hello", token="t", model_ref="google/imagen-4")
+    assert out == b"PNGDATA"
+    assert "google/imagen-4" in calls["url"]
