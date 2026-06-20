@@ -5,6 +5,7 @@ IMAGE_KINDS = ("botanical", "mechanism")
 # and explicitly forbid any text or product packaging in the image.
 _NO_TEXT = ("No text, no words, no letters, no numbers, no labels, no captions, no logos, "
             "and no product packaging, bottles, jars, tubes, or containers anywhere in the image.")
+NO_TEXT = _NO_TEXT   # public alias
 
 _BOTANICAL_BODY = ("Photo-quality botanical wellness lifestyle scene: an abundance of fresh herbs, "
                    "green leaves, flowers, roots, and colorful whole botanical ingredients arranged on a "

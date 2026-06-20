@@ -107,6 +107,14 @@
     .miron-science-link:hover{ opacity:0.8; }
     .sp-miron-story{ font-size:13px; color:var(--muted); line-height:1.6; margin-top:10px; }
     .sp-product-img{ width:100%; border-radius:9px; display:block; margin-bottom:10px; }
+    .sp-img-group-title{font-weight:600;margin:14px 0 6px;font-size:0.95rem;letter-spacing:.02em}
+    .sp-img-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    @media(min-width:768px){.sp-img-grid{grid-template-columns:repeat(4,1fr)}}
+    .sp-img-tile{margin:0}
+    .sp-img-tile .sp-product-img{width:100%;height:auto;display:block;border-radius:8px}
+    .sp-img-cap{font-size:.72rem;opacity:.6;margin-top:4px;text-align:center}
+    .sp-img-ph{display:flex;align-items:center;justify-content:center;min-height:120px;
+      border-radius:8px;background:rgba(127,127,127,.12);color:rgba(127,127,127,.6);font-size:1.4rem}
 
     /* ── Image pick UI ── */
     .sp-pick-kind{ margin-bottom:18px; }
@@ -700,70 +708,93 @@
     function renderImagesBody(body){
       var wrap = document.createElement('div');
 
-      function renderImages(images){
-        wrap.className = '';
-        wrap.innerHTML = '';
+      // Legacy (flag off): flat list of 1/kind.
+      function renderFlat(images){
+        wrap.className = ''; wrap.innerHTML = '';
         (images || []).forEach(function(img){
           var el = document.createElement('img');
           el.className = 'sp-product-img';
-          el.src = img.url;
-          el.alt = (img.kind || 'product') + ' image of the product';
+          el.src = img.url; el.alt = (img.kind || 'product') + ' image of the product';
           wrap.appendChild(el);
         });
       }
 
+      var KIND_LABEL = { botanical: 'Botanical', mechanism: 'Mechanism' };
+
+      // Grouped (flag on): two labeled grids of up to 4, plus generating placeholders.
+      function renderGrouped(grouped, target){
+        wrap.className = 'sp-img-groups'; wrap.innerHTML = '';
+        ['botanical', 'mechanism'].forEach(function(kind){
+          var tiles = (grouped && grouped[kind]) || [];
+          var sec = document.createElement('div'); sec.className = 'sp-img-group';
+          var h = document.createElement('div'); h.className = 'sp-img-group-title';
+          h.textContent = KIND_LABEL[kind] || kind; sec.appendChild(h);
+          var grid = document.createElement('div'); grid.className = 'sp-img-grid';
+          tiles.forEach(function(t){
+            var fig = document.createElement('figure'); fig.className = 'sp-img-tile';
+            var el = document.createElement('img'); el.className = 'sp-product-img';
+            el.src = t.url; el.alt = kind + ' image of the product';
+            fig.appendChild(el);
+            if (t.model_label){
+              var cap = document.createElement('figcaption'); cap.className = 'sp-img-cap';
+              cap.textContent = 'made with ' + t.model_label; fig.appendChild(cap);
+            }
+            grid.appendChild(fig);
+          });
+          for (var i = tiles.length; i < 4; i++){       // generating placeholders
+            var ph = document.createElement('div'); ph.className = 'sp-img-tile sp-img-ph';
+            ph.textContent = '…'; grid.appendChild(ph);
+          }
+          sec.appendChild(grid); wrap.appendChild(sec);
+        });
+      }
+
       if (!body || !body.state){
-        var ph = document.createElement('div');
-        ph.id = 'sp-images';
-        wrap.appendChild(ph);
-        return wrap;
+        var ph0 = document.createElement('div'); ph0.id = 'sp-images';
+        wrap.appendChild(ph0); return wrap;
       }
+      if (body.pick){ renderPick(wrap, body.pick); return wrap; }
 
-      if (body.pick){
-        renderPick(wrap, body.pick);
-        return wrap;
-      }
-
+      var grouped = body.grouped;          // present only when variations flag on
       var _enqueueGuard = false;
 
       function startPoll(){
         var polls = 0;
         var timer = setInterval(function(){
           polls++;
-          if (polls > 12){ clearInterval(timer); return; }
+          if (polls > 30){ clearInterval(timer); return; }   // 30 x 4s = 2min for 8 imgs
           fetch(BASE + '/begin/product-page-data/' + slug, {credentials: 'same-origin'})
             .then(function(r){ return r.json(); })
             .then(function(data){
-              var sections = data.sections || [];
-              for (var i = 0; i < sections.length; i++){
-                if (sections[i].id === 'images' && sections[i].body && sections[i].body.state === 'ready'){
-                  clearInterval(timer);
-                  renderImages(sections[i].body.images);
+              var secs = data.sections || [];
+              for (var i = 0; i < secs.length; i++){
+                if (secs[i].id === 'images' && secs[i].body){
+                  var b = secs[i].body;
+                  if (b.grouped){ renderGrouped(b.grouped, b.target); }
+                  if (b.state === 'ready'){ clearInterval(timer); if (!b.grouped){ renderFlat(b.images); } return; }
                   return;
                 }
               }
-            })
-            .catch(function(){});
+            }).catch(function(){});
         }, 4000);
       }
 
-      if (body.state === 'ready'){
-        renderImages(body.images);
-      } else if (body.state === 'generating'){
-        wrap.className = 'loading';
-        wrap.textContent = 'Generating product imagery…';
-        startPoll();
-      } else if (body.state === 'none'){
-        wrap.className = 'loading';
-        wrap.textContent = 'Generating product imagery…';
-        if (!_enqueueGuard){
-          _enqueueGuard = true;
-          fetch(BASE + '/begin/product-image-gen/' + slug, {method: 'POST', credentials: 'same-origin'})
-            .catch(function(){});
-        }
-        startPoll();
+      function triggerGen(){
+        if (_enqueueGuard) return; _enqueueGuard = true;
+        fetch(BASE + '/begin/product-image-gen/' + slug, {method: 'POST', credentials: 'same-origin'}).catch(function(){});
       }
 
+      if (grouped){                                  // variations flag ON
+        renderGrouped(grouped, body.target);
+        if (body.state !== 'ready'){ triggerGen(); startPoll(); }
+      } else if (body.state === 'ready'){
+        renderFlat(body.images);
+      } else if (body.state === 'generating'){
+        wrap.className = 'loading'; wrap.textContent = 'Generating product imagery…'; startPoll();
+      } else if (body.state === 'none'){
+        wrap.className = 'loading'; wrap.textContent = 'Generating product imagery…';
+        triggerGen(); startPoll();
+      }
       return wrap;
     }
 

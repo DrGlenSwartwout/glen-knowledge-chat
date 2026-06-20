@@ -2630,6 +2630,7 @@ _SALES_AI_IMAGES_ENABLED = os.environ.get("SALES_PAGES_AI_IMAGES", "").strip().l
 _SALES_IMAGE_PICK_ENABLED = os.environ.get("SALES_PAGES_IMAGE_PICK", "").strip().lower() in ("1", "true", "yes")
 _IMAGE_PICK_REWARD_CENTS = int(os.environ.get("IMAGE_PICK_REWARD_CENTS", "100"))
 _SALES_IMAGE_TOURNAMENT_ENABLED = os.environ.get("SALES_PAGES_IMAGE_TOURNAMENT", "").strip().lower() in ("1", "true", "yes")
+_SALES_IMAGE_VARIATIONS_ENABLED = os.environ.get("SALES_PAGES_IMAGE_VARIATIONS", "").strip().lower() in ("1", "true", "yes")
 _TOURNEY_MIN_VOTES = int(os.environ.get("IMAGE_TOURNAMENT_MIN_VOTES", "10"))
 _TOURNEY_MARGIN = float(os.environ.get("IMAGE_TOURNAMENT_MARGIN", "0.65"))
 _TOURNEY_K = int(os.environ.get("IMAGE_TOURNAMENT_CONVERGE_K", "3"))
@@ -3350,22 +3351,27 @@ def begin_product_page_data(slug):
         import sqlite3 as _sq2
         from dashboard import sales_images as _si2
         try:
-            with _sq2.connect(LOG_DB) as _cx2:
-                _disp = _si2.display_images(_cx2, slug)
-                _qstate = _si2.queue_state(_cx2, slug)
-            _imgs = [{"kind": k, "url": f"/begin/product-image/{slug}/{fn}"}
-                     for k, fn in _disp.items() if fn]
             _img_sec = next((s for s in sections if s["id"] == "images"), None)
             if _img_sec is not None:
-                if _imgs:
-                    _img_sec["body"] = {"images": _imgs, "state": "ready"}
-                elif _qstate == "pending":
-                    _img_sec["body"] = {"images": [], "state": "generating"}
-                else:
-                    _img_sec["body"] = {"images": [], "state": "none"}
+                with _sq2.connect(LOG_DB) as _cx2:
+                    if _SALES_IMAGE_VARIATIONS_ENABLED:
+                        _grouped = _si2.display_images_grouped(_cx2, slug)
+                        _state = _si2.images_grouped_state(_cx2, slug)
+                        _img_sec["body"] = {"grouped": _grouped, "state": _state, "target": 8}
+                    else:
+                        _disp = _si2.display_images(_cx2, slug)
+                        _qstate = _si2.queue_state(_cx2, slug)
+                        _imgs = [{"kind": k, "url": f"/begin/product-image/{slug}/{fn}"}
+                                 for k, fn in _disp.items() if fn]
+                        if _imgs:
+                            _img_sec["body"] = {"images": _imgs, "state": "ready"}
+                        elif _qstate == "pending":
+                            _img_sec["body"] = {"images": [], "state": "generating"}
+                        else:
+                            _img_sec["body"] = {"images": [], "state": "none"}
         except Exception as _e:
             print(f"[sales-img] page-data marker skipped: {_e}", flush=True)
-    if _SALES_IMAGE_PICK_ENABLED:
+    if _SALES_IMAGE_PICK_ENABLED and not _SALES_IMAGE_VARIATIONS_ENABLED:
         import sqlite3 as _sq3
         from dashboard import sales_images as _si3, sales_votes as _sv3, sales_image_prompts as _sip3
         try:
@@ -3884,8 +3890,13 @@ def begin_product_image_gen(slug):
         return ("", 404)
     from dashboard import sales_images as _si
     with sqlite3.connect(LOG_DB) as cx:
+        if _SALES_IMAGE_VARIATIONS_ENABLED:
+            if not _si.needs_topup(cx, slug):
+                return jsonify({"ok": True, "state": "done"})
+            _si.enqueue(cx, slug)
+            return jsonify({"ok": True, "state": "generating"})
         disp = _si.display_images(cx, slug)
-        if any(disp.values()):                     # already generated → no re-gen
+        if any(disp.values()):
             return jsonify({"ok": True, "state": "done"})
         _si.enqueue(cx, slug)
         state = _si.queue_state(cx, slug)
@@ -16619,11 +16630,25 @@ def _drain_sales_image_queue():
             with sqlite3.connect(LOG_DB) as cx: _si.mark_failed(cx, slug)
             continue
         prod = dict(p)
+        dest = _SALES_IMG_DIR / slug
+        dest.mkdir(parents=True, exist_ok=True)
+        if _SALES_IMAGE_VARIATIONS_ENABLED:
+            from dashboard import sales_image_models as _mods
+            try:
+                with sqlite3.connect(LOG_DB) as cx:
+                    n = _si.generate_missing(
+                        cx, slug, dest,
+                        generate_fn=lambda mid, prompt: _mods.generate(cx, mid, prompt))
+                with sqlite3.connect(LOG_DB) as cx:
+                    _si.mark_done(cx, slug)
+            except Exception as e:
+                print(f"[sales-img] {slug} variation gen failed: {e}", flush=True)
+                with sqlite3.connect(LOG_DB) as cx:
+                    _si.mark_failed(cx, slug)
+            continue
         if not prod.get("ingredients"):
             prod["ingredients"] = (_product_card(p) or {}).get("ingredients", [])
         prompts = _sip.build_image_prompts(prod)
-        dest = _SALES_IMG_DIR / slug
-        dest.mkdir(parents=True, exist_ok=True)
         ok = 0
         for kind in _sip.IMAGE_KINDS:
             for variant, prompt in enumerate(prompts[kind], start=1):
@@ -20723,6 +20748,24 @@ def api_console_pricing_settings():
     _PRICING_SETTINGS_CACHE["mtime"] = None      # force re-read on next access
     raw = _pricing_settings()
     return jsonify({"saved": raw, "effective": _ps.effective(raw)})
+
+
+@app.route("/admin/sales-images/backfill", methods=["POST"])
+def admin_sales_images_backfill():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _SALES_IMAGE_VARIATIONS_ENABLED:
+        return jsonify({"ok": False, "error": "variations disabled"}), 400
+    arg = (request.values.get("slug") or "").strip()
+    from dashboard import sales_images as _si
+    with sqlite3.connect(LOG_DB) as cx:
+        targets = _si.backfill_slugs(cx, arg, _si.list_image_slugs(cx) if arg == "all"
+                                     else [arg] if arg else [])
+        enq = []
+        for s in targets:
+            if _si.needs_topup(cx, s):
+                _si.enqueue(cx, s); enq.append(s)
+    return jsonify({"ok": True, "enqueued": enq, "count": len(enq)})
 
 
 if __name__ == "__main__":
