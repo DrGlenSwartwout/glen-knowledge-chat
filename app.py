@@ -3403,8 +3403,81 @@ def _ingredient_paid_ok(email):
 
 
 def _ingredient_kickoff_build(slug, name):
-    """Best-effort, non-blocking AI draft build (Task 5 fills this in)."""
-    return None
+    """Best-effort, non-blocking AI draft build.
+
+    Spawns a daemon thread (mirrors the funnel _onboard pattern) that:
+    1. Resolves the ingredient (fmp + studies).
+    2. Calls propose_curation to get scores + traditional-use + related-forms.
+    3. Generates the two narrative sections via haiku.
+    4. Writes everything to ingredient_pages as a draft (state stays draft).
+
+    Guards against re-running when a draft already has content.
+    Never raises; wraps all logic in a try/except.
+    """
+    import threading as _threading
+    from dashboard import ingredient_copy as _ic
+    from dashboard import ingredients as _ing
+    from dashboard import ingredient_pages as _ip
+
+    def _build():
+        try:
+            # guard: if a row already has content for both sections, skip
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _ip.init_table(cx)
+                page = _ip.get_page(cx, slug)
+                if page:
+                    content = page.get("content") or {}
+                    if content.get("what_it_is") and content.get("research"):
+                        return  # already built
+
+            info = _ing.resolve(slug)
+            fmp = (info or {}).get("fmp") or {}
+            studies = _ing.research_studies(name)
+            ingredient = {"name": name, "fmp": fmp, "studies": studies}
+
+            # propose curation (scores + traditional-use + related-forms)
+            curation = _ic.propose_curation(ingredient, _cl)
+
+            # generate the two narrative sections
+            sections_text = {}
+            for section in _ic.NARRATIVE_SECTIONS:
+                try:
+                    system, user = _ic.build_section_prompt(section, ingredient)
+                    msg = _cl.messages.create(
+                        model="claude-haiku-4-5-20251001",
+                        max_tokens=800,
+                        system=system,
+                        messages=[{"role": "user", "content": user}],
+                    )
+                    text = "".join(
+                        getattr(b, "text", "")
+                        for b in msg.content
+                        if getattr(b, "type", "") == "text"
+                    ).strip()
+                    text = _strip_dash(text)
+                    sections_text[section] = text
+                except Exception as _sec_err:
+                    print(f"[ingredient-build] section {section} failed: {_sec_err}", flush=True)
+
+            # write everything to the store (state stays draft)
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _ip.init_table(cx)
+                for section, text in sections_text.items():
+                    if text:
+                        _ip.upsert_section(cx, slug, section, text,
+                                           model="claude-haiku-4-5-20251001")
+                _ip.set_scores(cx, slug,
+                               curation.get("research_score"),
+                               curation.get("traditional_score"))
+                if curation.get("traditional_use"):
+                    _ip.set_traditional_use(cx, slug, curation["traditional_use"])
+                if curation.get("related_forms"):
+                    _ip.set_related_forms(cx, slug, curation["related_forms"])
+                _ip.set_name(cx, slug, name)
+        except Exception as exc:  # noqa: BLE001 - background build must never raise
+            print(f"[ingredient-build] {slug}: {exc}", flush=True)
+
+    _threading.Thread(target=_build, daemon=True).start()
 
 
 @app.route("/begin/ingredient/<slug>")
@@ -3446,6 +3519,76 @@ def begin_ingredient_page_data(slug):
     if email:
         _ingredient_kickoff_build(slug, name)
     return jsonify({"slug": slug, "name": name, "state": "preparing"})
+
+
+@app.route("/begin/ingredient-page-gen/<slug>/<section>")
+def begin_ingredient_page_gen(slug, section):
+    """SSE endpoint: stream (or serve cached) AI-generated copy for one ingredient section.
+
+    Mirrors /begin/product-page-gen. Paid-gated (defense in depth) so non-members
+    cannot trigger AI cost. Cache-first: if the section is already stored, serve it
+    from the DB without calling the model again.
+    """
+    from dashboard import ingredient_copy as _ic, ingredient_pages as _ip
+    if section not in _ic.NARRATIVE_SECTIONS:
+        return ("", 404)
+    # paid gate
+    email = _ingredient_viewer_email()
+    if not _ingredient_paid_ok(email):
+        return ("", 403)
+    from dashboard import ingredients as _ing
+    info = _ing.resolve(slug)
+    if not info:
+        return ("", 404)
+    name = info["name"]
+
+    def generate():
+        import sqlite3 as _sq
+        try:
+            try:
+                with _db_lock, _sq.connect(LOG_DB) as cx:
+                    _ip.init_table(cx)
+                    cached = _ip.get_section(cx, slug, section)
+            except Exception as _dbe:
+                print(f"[ingredient-gen] cache read failed: {_dbe}", flush=True)
+                cached = None
+            if cached:
+                yield sse({"token": cached})
+                yield sse({"done": True, "cached": True})
+                return
+            fmp = info.get("fmp") or {}
+            studies = _ing.research_studies(name)
+            ingredient = {"name": name, "fmp": fmp, "studies": studies}
+            system, user = _ic.build_section_prompt(section, ingredient)
+            acc = []
+            with _cl.messages.stream(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=800,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            ) as stream:
+                for tok in stream.text_stream:
+                    tok = _strip_dash(tok)
+                    acc.append(tok)
+                    yield sse({"token": tok})
+            text = "".join(acc).strip()
+            if text:
+                try:
+                    with _db_lock, _sq.connect(LOG_DB) as cx:
+                        _ip.init_table(cx)
+                        _ip.upsert_section(cx, slug, section, text,
+                                           model="claude-haiku-4-5-20251001")
+                except Exception as e:
+                    print(f"[ingredient-gen] cache write failed: {e}", flush=True)
+            yield sse({"done": True})
+        except Exception as e:
+            print(f"[ingredient-gen] {e}", flush=True)
+            yield sse({"error": True})
+
+    resp = Response(stream_with_context(generate()), content_type="text/event-stream")
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["X-Accel-Buffering"] = "no"
+    return resp
 
 
 @app.route("/begin/product-image/<slug>/<filename>")
