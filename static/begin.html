@@ -590,6 +590,25 @@
     .hero-grid { grid-template-columns: 1fr; }
     .hero-head h1 { font-size: 24px; }
   }
+  /* Begin #2 journey strip */
+  #journey-strip { max-width: 1080px; margin: 18px auto 0; padding: 0 20px; display: none; }
+  #journey-strip.unfolded { display: block; }
+  .journey-caption { text-align: center; font-size: 13px; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 12px; }
+  #journey-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .journey-card { display: block; padding: 16px 14px; border: 1px solid rgba(212,168,67,0.22);
+    border-radius: var(--radius); text-decoration: none; color: inherit;
+    opacity: 0; transform: translateX(-12px); transition: opacity .45s ease, transform .45s ease; }
+  .journey-card.in { opacity: 1; transform: translateX(0); }
+  .journey-card .jc-label { font-size: 16px; font-weight: 600; }
+  .journey-card .jc-paren { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; }
+  .journey-card .jc-tag { display: block; margin-top: 8px; font-size: 11px; letter-spacing: 0.04em; }
+  .journey-card.status-done { border-color: rgba(255,255,255,0.12); }
+  .journey-card.status-done .jc-label { color: var(--muted); }
+  .journey-card.status-next { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+  .journey-card.status-next .jc-tag { color: var(--gold); }
+  .jc-check { color: var(--gold); }
+  @media (max-width: 760px) { #journey-cards { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 420px) { #journey-cards { grid-template-columns: 1fr; } }
 </style>
   <script src="/static/theme-toggle.js"></script>
 </head>
@@ -639,6 +658,14 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- BEGIN #2: 4-card journey map. Hidden until unfold (Task 4). Renders from
+       STATE.journey_map; colors by progress. Distinct from the layer-5 surfaced
+       cards and /begin/explore. -->
+  <section id="journey-strip" aria-label="Your healing journey">
+    <p class="journey-caption">Your healing journey</p>
+    <div id="journey-cards"></div>
   </section>
 
   <!-- LAYER 1: Hero video — locked until engine reveals -->
@@ -826,6 +853,7 @@
       .then(function(st){ STATE = st; applyReveal(st.reveal); personalize(st.first_name);
         renderCards(st.surfaced_cards);
         if (typeof applyExploreGate === 'function') applyExploreGate();
+        if (typeof refreshJourney === 'function') refreshJourney();
         return st; });
   }
 
@@ -935,6 +963,66 @@
     });
   })();
 
+  // ---- Begin #2: journey strip ----
+  var JOURNEY_FALLBACK = [
+    { key:'scan', label:'Scan', paren:'Your Biofield',     href:'/begin/voice',  status:'available' },
+    { key:'find', label:'Find', paren:'Your Remedy Match', href:'/begin/match',  status:'available' },
+    { key:'heal', label:'Heal', paren:'the root causes',   href:'/begin/ascend', status:'available' },
+    { key:'earn', label:'Earn', paren:'Ambassador',        href:'/begin/path',   status:'available' }
+  ];
+  var JOURNEY_TRIGGER = { scan:'scan', find:'question', heal:'paid_fork', earn:'share_video' };
+  var journeyUnfolded = false;
+
+  function paintJourneyIn(staggered){
+    var strip = document.getElementById('journey-strip');
+    if (!strip) return;
+    var cards = strip.querySelectorAll('.journey-card');
+    Array.prototype.forEach.call(cards, function(c, i){
+      c.style.transitionDelay = staggered ? (i * 120) + 'ms' : '0ms';
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){ c.classList.add('in'); }); });
+    });
+  }
+
+  function renderJourney(){
+    var wrap = document.getElementById('journey-cards');
+    if (!wrap) return;
+    var steps = (STATE && STATE.journey_map) || JOURNEY_FALLBACK;
+    wrap.innerHTML = '';
+    steps.forEach(function(s){
+      var a = document.createElement('a');
+      a.className = 'journey-card status-' + (s.status || 'available');
+      a.href = s.href || '#';
+      var lab = document.createElement('span');
+      lab.className = 'jc-label';
+      lab.textContent = s.label;                       // static server label - textContent (XSS-safe)
+      if (s.status === 'done') {
+        var ck = document.createElement('span');
+        ck.className = 'jc-check'; ck.setAttribute('aria-hidden', 'true');
+        ck.textContent = ' [v]';
+        lab.appendChild(ck);
+      }
+      var par = document.createElement('span');
+      par.className = 'jc-paren'; par.textContent = s.paren;
+      a.appendChild(lab); a.appendChild(par);
+      if (s.status === 'next') {
+        var tg = document.createElement('span');
+        tg.className = 'jc-tag'; tg.textContent = 'your next step';
+        a.appendChild(tg);
+      }
+      a.addEventListener('click', function(){
+        var t = JOURNEY_TRIGGER[s.key];
+        if (t && typeof unlock === 'function') { try { unlock(t); } catch(_){} }
+        // navigation proceeds regardless (fire-and-forget gate advance)
+      });
+      wrap.appendChild(a);
+    });
+  }
+
+  function refreshJourney(){
+    renderJourney();
+    if (journeyUnfolded) paintJourneyIn(false);   // re-render while open: show immediately
+  }
+
   // ---- Begin #1: membership gate for the bottom Explore entry ----
   function applyExploreGate(){
     var link = document.getElementById('explore-link');
@@ -995,6 +1083,7 @@
           slot.innerHTML = '<p style="padding:12px 14px;font-size:14px;color:var(--gold);margin:0;">'
             + 'You are in. Your free membership is active.</p>';
           applyExploreGate();
+          if (typeof refreshJourney === 'function') refreshJourney();
         }).catch(function(){
           activating = false; btn.disabled = false;
           err.textContent = 'Could not activate just now. Please try again.';
@@ -1021,6 +1110,7 @@
       .then(function(st){ STATE=st; applyReveal(st.reveal); personalize(st.first_name);
         renderCards(st.surfaced_cards);
         if (typeof applyExploreGate === 'function') applyExploreGate();
+        if (typeof refreshJourney === 'function') refreshJourney();
         if(st.current_rung==='arrival'){ unlock('video'); } })
       .catch(function(){ applyReveal(['layer0','layer1']); });
   })();
@@ -1043,6 +1133,7 @@
         personalize(st.first_name);
         renderCards(st.surfaced_cards);
         if (typeof applyExploreGate === 'function') applyExploreGate();
+        if (typeof refreshJourney === 'function') refreshJourney();
       })
       .catch(function(){});
   });

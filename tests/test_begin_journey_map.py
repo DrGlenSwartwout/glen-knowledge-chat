@@ -108,3 +108,14 @@ def test_state_payload_includes_journey_map(monkeypatch, tmp_path):
     assert [c["key"] for c in jm] == ["scan", "find", "heal", "earn"]
     assert jm[0]["status"] == "next"            # nothing done yet
     assert all(set(c) >= {"key", "label", "paren", "href", "status"} for c in jm)
+
+
+def test_begin_serves_journey_strip(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    html = app_module.app.test_client().get("/begin").get_data(as_text=True)
+    assert 'id="journey-strip"' in html
+    assert 'id="journey-cards"' in html
+    for label in ("Scan", "Find", "Heal", "Earn"):
+        assert label in html
+    assert "function renderJourney" in html
