@@ -79,3 +79,32 @@ def test_card_href_unchanged_after_refactor():
     h = bf.card_href("quiz", "slug")
     assert h.startswith("https://healing.scoreapp.com?utm_source=slug")
     assert "utm_campaign=begin-card-quiz" in h
+
+
+import sqlite3
+
+
+def _load_app():
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    try:
+        return importlib.import_module("app")
+    except Exception as e:
+        pytest.skip(f"app not importable: {e}")
+
+
+def test_state_payload_includes_journey_map(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "j1")
+    body = client.get("/begin/state").get_json()
+    jm = body["journey_map"]
+    assert [c["key"] for c in jm] == ["scan", "find", "heal", "earn"]
+    assert jm[0]["status"] == "next"            # nothing done yet
+    assert all(set(c) >= {"key", "label", "paren", "href", "status"} for c in jm)
