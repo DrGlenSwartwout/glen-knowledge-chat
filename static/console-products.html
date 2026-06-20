@@ -67,9 +67,9 @@
   <div class="sub">Work the stale GrooveKart sales pages and browse the enriched catalog (ingredients and descriptions).</div>
 
   <div class="tabs">
-    <button id="tab-stale" class="active" onclick="showTab('stale')">Stale pages</button>
-    <button id="tab-catalog" onclick="showTab('catalog')">Catalog</button>
-    <button id="tab-backorders" onclick="showTab('backorders')">Backorders</button>
+    <button id="tab-stale" class="active" data-goto="stale" onclick="showTab('stale')">Stale pages</button>
+    <button id="tab-catalog" data-goto="catalog" onclick="showTab('catalog')">Catalog</button>
+    <button id="tab-backorders" data-goto="backorders" onclick="showTab('backorders')">Backorders</button>
   </div>
 
   <div id="pane-backorders" class="panel" style="display:none">
@@ -98,7 +98,19 @@
   function key(){ return localStorage.getItem('console_key') || ''; }
   // Auto-unlock: if arriving with ?key= (from the ops nav), seed the console key once.
   (function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
-  function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; loadAll(); }
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; loadAll(); _applyProductsDeepLink(); }
+  // Header-search deep link (Records mode): /console/products?q=<name|ingredient>
+  // → open the Catalog tab with the search box pre-filled.
+  function _applyProductsDeepLink(){
+    try {
+      var q = (new URLSearchParams(location.search).get('q') || '').trim();
+      if (!q) return;
+      var inp = document.getElementById('search');
+      if (inp) inp.value = q;
+      showTab('catalog');
+      if (typeof renderCatalog === 'function' && typeof CATALOG !== 'undefined' && CATALOG.length) renderCatalog();
+    } catch (e) {}
+  }
   function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 
@@ -208,7 +220,7 @@
 
   function toggle(slug){ OPEN[slug] = !OPEN[slug]; renderCatalog(); }
 
-  if (key()) { document.getElementById('gate').style.display='none'; loadAll(); }
+  if (key()) { document.getElementById('gate').style.display='none'; loadAll(); _applyProductsDeepLink(); }
 </script>
 </body>
 </html>

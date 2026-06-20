@@ -667,11 +667,11 @@
     <button class="tab glen active" data-owner="glen" onclick="switchOwner('glen', this)">Glen</button>
     <button class="tab rae" data-owner="rae" onclick="switchOwner('rae', this)">Rae</button>
     <button class="tab shaira" data-owner="shaira" onclick="switchOwner('shaira', this)">Shaira</button>
-    <button class="tab referrals" id="tab-referrals" onclick="switchToReferrals(this)">Referrals</button>
+    <button class="tab referrals" id="tab-referrals" data-goto="referrals" onclick="switchToReferrals(this)">Referrals</button>
   </div>
   <div class="section-tabs">
-    <button class="section-tab active" id="stab-inbox" onclick="switchSection('inbox', this)">Tasks</button>
-    <button class="section-tab" id="stab-people" onclick="switchSection('people', this)">People</button>
+    <button class="section-tab active" id="stab-inbox" data-goto="tasks" onclick="switchSection('inbox', this)">Tasks</button>
+    <button class="section-tab" id="stab-people" data-goto="people" onclick="switchSection('people', this)">People</button>
   </div>
   <div class="header-right">
     <label class="show-done-toggle">
@@ -691,7 +691,7 @@
   <div id="loading">Loading...</div>
   <div id="main-content" style="display:none">
     <!-- Mission Control (Business OS signals — where the business needs you) -->
-    <div id="mc-section">
+    <div id="mc-section" data-goto="signals">
       <div class="cal-header">
         <span class="cal-title">Mission Control</span>
         <button class="btn-cal-toggle" id="mc-toggle-btn" onclick="toggleMissionControl()">Hide</button>
@@ -705,7 +705,7 @@
       </div>
     </div>
     <!-- Codebase (lines of code built — total, per-repo segments, logic estimate) -->
-    <div id="codebase-section" style="margin-bottom:24px">
+    <div id="codebase-section" data-goto="codebase" style="margin-bottom:24px">
       <div class="cal-header">
         <span class="cal-title">Codebase</span>
         <span id="cb-asof" style="font-size:11px;color:var(--muted)"></span>
@@ -852,6 +852,19 @@ function saveKey() {
   localStorage.setItem('console_key', val);
   document.getElementById('key-overlay').classList.add('hidden');
   refresh();
+  _applyConsoleDeepLink();
+}
+
+// Deep link from the header search (Records mode → a specific person): land on the
+// People section with the search box pre-filled. URL: /console?pq=<name-or-email>.
+function _applyConsoleDeepLink() {
+  try {
+    const pq = new URLSearchParams(location.search).get('pq');
+    if (!pq) return;
+    const inp = document.getElementById('people-q');
+    if (inp) inp.value = pq;
+    switchSection('people', document.getElementById('stab-people'));
+  } catch (e) {}
 }
 
 // ── Calendar Alerts ───────────────────────────────────────────────────────────
@@ -972,6 +985,7 @@ function initKey() {
     consoleKey = stored;
     document.getElementById('key-overlay').classList.add('hidden');
     refresh();
+    _applyConsoleDeepLink();
   }
   document.getElementById('key-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') saveKey();
