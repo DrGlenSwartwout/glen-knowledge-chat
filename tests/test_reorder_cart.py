@@ -11,6 +11,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+import begin_funnel
 
 
 def _app():
@@ -42,7 +43,7 @@ def app_db(monkeypatch, tmp_path):
                    "expires_at TEXT, consumed_at TEXT, extra TEXT)")
         app._bos_orders.init_orders_table(cx)
         cx.commit()
-    # stub network: QBO + Stripe + tax
+    # stub network: QBO + Stripe + tax + shipping
     from dashboard import qbo_billing as qb, stripe_pay, tax as taxmod
     monkeypatch.setattr(qb, "find_or_create_customer", lambda email, name="": {"Id": "C1"})
     def _create_invoice(cust, lines, **k):
@@ -53,6 +54,7 @@ def app_db(monkeypatch, tmp_path):
     monkeypatch.setattr(taxmod, "compute_get_cents", lambda *a, **k: 0)
     monkeypatch.setattr(stripe_pay, "create_checkout_session",
                         lambda *a, **k: {"id": "cs_1", "url": "https://stripe.test/pay"})
+    monkeypatch.setattr(app, "_shipping_for_cart", lambda *a, **k: 0)
     return app, db, _create_invoice
 
 
@@ -71,6 +73,9 @@ def _authed_client(app, db, email):
     tok = "tok-" + email.replace("@", "-")
     now = app._now_utc()
     with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+        begin_funnel.record_unlock(cx, session_id="sess-reorder-test", trigger="tos",
+                                   email=email, tos=True)
         cx.execute("INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
                    "VALUES (?,?,?,?,?)",
                    (app._hash_token(tok), email, "reorder", now.isoformat(),

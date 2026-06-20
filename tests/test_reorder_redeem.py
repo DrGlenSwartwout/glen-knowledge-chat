@@ -1,11 +1,15 @@
 import sqlite3
 import app as appmod
+import begin_funnel
 from dashboard import points
 
 
 def _setup(monkeypatch, tmp_path):
     db = str(tmp_path / "t.db"); monkeypatch.setattr(appmod, "LOG_DB", db)
     cx = sqlite3.connect(db); points.init_points_table(cx)
+    begin_funnel.init_journey_tables(cx)
+    begin_funnel.record_unlock(cx, session_id="sess-redeem-test", trigger="tos",
+                               email="a@x.com", tos=True)
     points.earn(cx, "a@x.com", full_price_cents=40000, earn_pct=0.05, order_ref="s"); cx.commit()  # 2000
     monkeypatch.setattr(appmod, "_reorder_email_from_cookie", lambda: "a@x.com")
     monkeypatch.setattr(appmod, "_get_product",

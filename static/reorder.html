@@ -183,6 +183,11 @@ function toggleAll(v){ Object.values(rows).forEach(r=>{ if(r.available && r.revi
 async function loadAll(){
   $('#seeAllBtn').disabled = true;
   const d = await (await fetch('/api/reorder/items?scope=all',{credentials:'same-origin'})).json();
+  if (d && d.need_optin && window.OptinGate) {
+    OptinGate.show({ base: '', onAgree: function () { loadAll(); } });
+    $('#seeAllBtn').disabled = false;
+    return;
+  }
   d.items.forEach(addRow);
   allData = d.items;
   $('#allCard').classList.remove('hide');
@@ -245,6 +250,11 @@ async function checkout(){
   }
   const d = await (await fetch('/reorder/checkout', {method:'POST', credentials:'same-origin',
             headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})).json();
+  if (d && d.need_optin && window.OptinGate) {
+    OptinGate.show({ base: '', onAgree: function () { checkout(); } });
+    $('#checkoutBtn').disabled=false; $('#checkoutBtn').textContent='Reorder selected';
+    return;
+  }
   if (d.ok && d.stripe_url){ window.location = d.stripe_url; return; }
   alert(d.payment_error || d.error || 'Could not start checkout. Please try again.');
   $('#checkoutBtn').disabled=false; $('#checkoutBtn').textContent='Reorder selected';
@@ -278,6 +288,10 @@ async function init(){
   catch(e){ return showSignin(); }
   if (r.status === 401) return showSignin();
   const d = await r.json();
+  if (d && d.need_optin && window.OptinGate) {
+    OptinGate.show({ base: '', onAgree: function () { init(); } });
+    return;
+  }
   if (!d.items || !d.items.length){ $(‘#sub’).textContent=’’; $(‘#empty’).classList.remove(‘hide’); return; }
   $(‘#sub’).textContent = ‘Pick what you’d like to reorder, set the quantity, and check out in one step.’;
   $(‘#cart’).classList.remove(‘hide’);
@@ -293,7 +307,13 @@ async function loadReferral(){
     if (!ed || !ed.enabled) return;                 // flag off -> stay hidden
     const re = document.getElementById('refEntry'); if (re) re.classList.remove('hide');
     const r = await fetch('/api/referral/my-code', {credentials:'same-origin'});
-    if (!r.ok) return;                              // not signed in / no email
+    if (!r.ok) {
+      const d403 = await r.json().catch(() => ({}));
+      if (d403 && d403.need_optin && window.OptinGate) {
+        OptinGate.show({ base: '', onAgree: function () { loadReferral(); } });
+      }
+      return;
+    }
     const d = await r.json();
     if (d && d.code){
       const el = document.getElementById('myRef');
@@ -305,5 +325,6 @@ async function loadReferral(){
 
 init();
 </script>
+<script src="/static/optin-gate.js"></script>
 </body>
 </html>

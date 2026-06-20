@@ -79,6 +79,11 @@ def test_resolve_flag_off(monkeypatch, tmp_path):
 
 def test_my_code_endpoint(monkeypatch, tmp_path):
     appmod = _reload_ref_app(monkeypatch, tmp_path)
+    import begin_funnel
+    with sqlite3.connect(appmod.LOG_DB) as _cx:
+        begin_funnel.init_journey_tables(_cx)
+        begin_funnel.record_unlock(_cx, session_id="sess-mycode-001", trigger="tos",
+                                   email="owner@x.com", tos=True)
     c = appmod.app.test_client()
     c.set_cookie("rm_reorder_email", "owner@x.com")     # _reorder_email_from_cookie source
     r1 = c.get("/api/referral/my-code").get_json()

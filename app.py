@@ -4374,6 +4374,7 @@ def begin_concierge_chat():
     bought = _get_product(bought_slug) if bought_slug else None
     session_id = (request.cookies.get("amg_session")
                   or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
+    email = (data.get("email") or "").strip().lower()
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
@@ -4389,6 +4390,9 @@ def begin_concierge_chat():
         print(f"[concierge] retrieval: {e}", flush=True)
 
     def generate():
+        if not is_member(session_id, email):
+            yield sse({"gate": True})
+            return
         messages = []
         for turn in history[-8:]:
             if turn.get("role") in ("user", "assistant") and turn.get("content"):
@@ -4440,6 +4444,11 @@ def begin_concierge_add():
     data = request.get_json(silent=True) or {}
     slug = (data.get("slug") or "").strip()
     invoice_id = (data.get("invoice_id") or "").strip()
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to continue."}), 403
     p = _get_product(slug)
     if not p or p.get("info_only"):
         return jsonify({"ok": False, "error": "not an addable catalog product"}), 400
@@ -6333,6 +6342,20 @@ def affiliate_apply_form():
     _first = _name_parts[0] if _name_parts else ""
     _last  = _name_parts[1] if len(_name_parts) > 1 else ""
 
+    _tos = (request.form.get("tos") or "").strip().lower() in ("1", "true", "on", "yes")
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email) and not _tos:
+        return _redirect("/affiliate?error=" + _urlparse.quote(
+            "Please agree to our Terms to become an Ambassador."))
+    if _tos and not is_member(_sid, email):
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                begin_funnel.record_unlock(
+                    _cx, session_id=(_sid or uuid.uuid4().hex), trigger="tos",
+                    email=email, first_name=_first, tos=True)
+        except Exception as e:
+            print(f"[affiliate-tos] {e!r}", flush=True)
+
     # Session and recruiter for journey wiring
     _session_id = (request.cookies.get("amg_session") or "").strip()
     _minted_session = not _session_id
@@ -6409,6 +6432,21 @@ def affiliate_apply():
     if not name or not email:
         return jsonify({"error": "Name and email are required"}), 400
 
+    _tos = bool(data.get("tos"))
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email) and not _tos:
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to become an Ambassador."}), 403
+    if _tos and not is_member(_sid, email):
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                begin_funnel.record_unlock(
+                    _cx, session_id=(_sid or uuid.uuid4().hex), trigger="tos",
+                    email=email, first_name=(name.split(None, 1)[0] if name else ""),
+                    tos=True)
+        except Exception as e:
+            print(f"[affiliate-tos] {e!r}", flush=True)
+
     # Split name into first/last (same logic as /begin/unlock)
     _name_parts = name.split(None, 1)
     _first = _name_parts[0] if _name_parts else ""
@@ -6467,7 +6505,7 @@ def affiliate_apply():
         "tracking_url": tracking_url,
         "slug": slug,
     })
-    resp.status_code = 201
+    resp.status_code = 200
     _stamp_affiliate_journey(_session_id, email, _first, _last, _recruiter_slug)
     if _minted_session:
         resp.set_cookie("amg_session", _session_id, max_age=60 * 60 * 24 * 365,
@@ -8093,6 +8131,10 @@ def api_referral_my_code():
     email = (au.get("email") or _reorder_email_from_cookie() or "").strip().lower()
     if not email:
         return jsonify({"ok": False, "error": "no email"}), 400
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to get your referral code."}), 403
     from dashboard import referrals as _rf
     with sqlite3.connect(LOG_DB) as cx:
         code = _rf.get_or_create_code(cx, email)
@@ -9927,6 +9969,10 @@ def api_reorder_items():
     email = _reorder_email_from_cookie()
     if not email:
         return jsonify({"error": "not signed in"}), 401
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to continue your order."}), 403
     scope = (request.args.get("scope") or "last").strip().lower()
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
@@ -9982,6 +10028,10 @@ def reorder_checkout():
     email = _reorder_email_from_cookie()
     if not email:
         return jsonify({"ok": False, "error": "not signed in"}), 401
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to continue your order."}), 403
     body = request.get_json(silent=True) or []
     # body may be a list (legacy) or a dict {items, address}
     if isinstance(body, dict):
@@ -10107,6 +10157,10 @@ def reorder_subscribe():
     email = _reorder_email_from_cookie()
     if not email:
         return jsonify({"ok": False, "error": "not signed in"}), 401
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to continue your order."}), 403
     if not _subscriptions_enabled():
         return jsonify({"error": "subscriptions not enabled"}), 400
     if not _STRIPE_ACTIVE:

@@ -76,6 +76,7 @@ def test_apply_form_creates_journey_row_choose_path(monkeypatch, tmp_path):
         "name": "Ada Lovelace",
         "email": "ada.form.unique@test.com",
         "organization": "TestOrg",
+        "tos": "true",
     })
 
     assert r.status_code == 302
@@ -110,6 +111,7 @@ def test_apply_form_mints_session_when_no_cookie(monkeypatch, tmp_path):
         "name": "Bob Builder",
         "email": "bob.builder.unique@test.com",
         "organization": "",
+        "tos": "true",
     })
 
     assert r.status_code == 302
@@ -154,6 +156,7 @@ def test_apply_form_idempotent_no_double_stamp(monkeypatch, tmp_path):
         "name": "Carol Idempotent",
         "email": "carol.idem.unique@test.com",
         "organization": "",
+        "tos": "true",
     })
     assert r1.status_code == 302
 
@@ -162,6 +165,7 @@ def test_apply_form_idempotent_no_double_stamp(monkeypatch, tmp_path):
         "name": "Carol Idempotent",
         "email": "carol.idem.unique@test.com",
         "organization": "",
+        "tos": "true",
     })
     assert r2.status_code == 302
 
@@ -198,6 +202,7 @@ def test_apply_form_survives_journey_failure(monkeypatch, tmp_path):
         "name": "Dave Survivor",
         "email": "dave.survivor.unique@test.com",
         "organization": "",
+        "tos": "true",
     })
 
     # Signup must still succeed — the 302 redirect to portal must be returned
@@ -229,9 +234,10 @@ def test_apply_json_creates_journey_row_choose_path(monkeypatch, tmp_path):
         "name": "Eve JSON",
         "email": "eve.json.unique@test.com",
         "organization": "JSONCorp",
+        "tos": True,
     })
 
-    assert r.status_code == 201
+    assert r.status_code == 200
     body = r.get_json()
     assert body.get("ok") is True
     assert "/affiliate/portal?token=" in body.get("portal_url", "")
