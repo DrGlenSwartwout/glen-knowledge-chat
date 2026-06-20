@@ -7460,7 +7460,7 @@ def api_console_reviews_list():
 
 @app.route("/api/console/biofield-reveals", methods=["GET"])
 def api_console_biofield_reveals():
-    """List ai_draft biofield reveal rows for console review."""
+    """List pending biofield reveals (first_approved=0) for console review."""
     if CONSOLE_SECRET:
         _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
         if _key != CONSOLE_SECRET:
