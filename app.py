@@ -19294,6 +19294,12 @@ _spa.register()
 _spa.configure(client=_cl, get_product=_get_product,
                product_card=_product_card, strip_dash=_strip_dash, base_url=PUBLIC_BASE_URL)
 
+# ── Begin #4a: Biofield reveal console actions (edit / approve + magic link) ──
+from dashboard import biofield_reveal_actions as _bra
+_bra.configure(base_url=PUBLIC_BASE_URL, send=_send_inquiry_email,
+               hash_token=_hash_token, mint_token=lambda: secrets.token_urlsafe(32))
+_bra.register()
+
 # ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────
 from dashboard import reviews_actions as _ra
 _ra.register()

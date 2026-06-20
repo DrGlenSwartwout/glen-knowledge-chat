@@ -1,7 +1,16 @@
 """Begin #4a store: per-scan funnel Biofield reveal drafts. ai_draft -> confirmed.
 Distinct from portal_biofield_reports (the $300-service portal report)."""
 import json
+import sqlite3
 from datetime import datetime, timezone
+
+
+def _rows_cursor(cx):
+    """A cursor with its own Row factory, so callers' connection state is never
+    mutated (a leaked row_factory would silently turn later bare queries into Rows)."""
+    cur = cx.cursor()
+    cur.row_factory = sqlite3.Row
+    return cur
 
 
 def _now():
@@ -60,20 +69,18 @@ def upsert_draft(cx, email, scan_date, top, blurred, source):
 
 
 def list_drafts(cx):
-    cx.row_factory = __import__("sqlite3").Row
-    rows = cx.execute(
+    rows = _rows_cursor(cx).execute(
         "SELECT * FROM biofield_reveals WHERE status='ai_draft' ORDER BY id DESC").fetchall()
     return [_row(r) for r in rows]
 
 
 def get(cx, rid):
-    cx.row_factory = __import__("sqlite3").Row
-    return _row(cx.execute("SELECT * FROM biofield_reveals WHERE id=?", (rid,)).fetchone())
+    return _row(_rows_cursor(cx).execute(
+        "SELECT * FROM biofield_reveals WHERE id=?", (rid,)).fetchone())
 
 
 def get_by_token_hash(cx, th):
-    cx.row_factory = __import__("sqlite3").Row
-    return _row(cx.execute(
+    return _row(_rows_cursor(cx).execute(
         "SELECT * FROM biofield_reveals WHERE token_hash=? AND status='confirmed'", (th,)).fetchone())
 
 
