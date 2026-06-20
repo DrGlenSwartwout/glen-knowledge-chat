@@ -66,7 +66,7 @@
 
   <div class="summary-strip" id="summary"></div>
 
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:20px">
+  <div data-goto="refund" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:20px">
     <div style="font-family:'Raleway',sans-serif;font-size:14px;font-weight:600;margin-bottom:10px">Issue a refund</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
       <input id="r-invoice" placeholder="QBO invoice id" style="flex:1;min-width:140px;padding:7px 10px;background:var(--bg);color:var(--cream);border:1px solid var(--border);border-radius:6px;font-size:13px" />
@@ -78,7 +78,7 @@
     <div id="r-result" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
   </div>
 
-  <div class="ar-list" id="board"></div>
+  <div class="ar-list" id="board" data-goto="invoices"></div>
   <div id="err"></div>
   <div id="empty">No open invoices.</div>
 
