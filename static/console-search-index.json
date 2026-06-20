@@ -5,8 +5,12 @@
   { "title": "Referrals", "page": "Console", "url": "/console", "goto": "referrals", "keywords": ["referral", "affiliate", "rewards"] },
   { "title": "Mission Control signals", "page": "Console", "url": "/console", "goto": "signals", "keywords": ["signals", "alerts", "money signal", "status"] },
   { "title": "Codebase stats", "page": "Console", "url": "/console", "goto": "codebase", "keywords": ["lines of code", "loc", "codebase"] },
+  { "title": "Calendar", "page": "Console", "url": "/console", "goto": "calendar", "keywords": ["calendar", "events", "schedule", "upcoming"] },
 
   { "title": "Inbox", "page": "Inbox", "url": "/console/inbox", "keywords": ["email", "threads", "messages", "drafts", "reply"] },
+  { "title": "Updates", "page": "Inbox", "url": "/console/inbox", "goto": "updates", "keywords": ["updates", "notifications email"] },
+  { "title": "Social", "page": "Inbox", "url": "/console/inbox", "goto": "social", "keywords": ["social", "social email"] },
+  { "title": "Promotions", "page": "Inbox", "url": "/console/inbox", "goto": "promotions", "keywords": ["promotions", "promo email", "marketing email"] },
 
   { "title": "Projects", "page": "Projects", "url": "/console/projects", "keywords": ["kanban", "board", "project"] },
 
@@ -14,6 +18,8 @@
   { "title": "New order", "page": "Orders", "url": "/orders/new", "keywords": ["create order", "order entry", "in-house order"] },
 
   { "title": "Finance", "page": "Finance", "url": "/console/finance", "keywords": ["money", "revenue", "payments", "stripe", "tax", "get", "general excise", "g-45", "remittance"] },
+  { "title": "Open invoices (AR)", "page": "Finance", "url": "/console/finance", "goto": "invoices", "keywords": ["invoices", "accounts receivable", "ar", "unpaid", "outstanding"] },
+  { "title": "Issue a refund", "page": "Finance", "url": "/console/finance", "goto": "refund", "keywords": ["refund", "chargeback", "return money", "credit"] },
 
   { "title": "CRM tools", "page": "CRM", "url": "/console/crm", "keywords": ["tags", "household", "merge", "crm actions"] },
 
