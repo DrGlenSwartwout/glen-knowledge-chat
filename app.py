@@ -7304,6 +7304,33 @@ def api_console_reviews_list():
     return jsonify({"ok": True, "pending": pending, "recent": []})
 
 
+@app.route("/api/console/biofield-reveals", methods=["GET"])
+def api_console_biofield_reveals():
+    """List ai_draft biofield reveal rows for console review."""
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+    from dashboard import biofield_reveals as _br
+    with sqlite3.connect(LOG_DB) as cx:
+        _br.init_table(cx)
+        drafts = _br.list_drafts(cx)
+    return jsonify({"drafts": drafts})
+
+
+@app.route("/console/biofield-reveals", methods=["GET"])
+def console_biofield_reveals_page():
+    """Serve the biofield reveals review console page."""
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+    resp = send_from_directory(STATIC, "console-biofield-reveals.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/console/search", methods=["GET"])
 def api_console_search():
     """Site-wide Records search for the header search box (Records mode): look up a

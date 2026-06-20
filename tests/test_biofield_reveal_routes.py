@@ -60,3 +60,25 @@ def test_ingest_missing_email_400(monkeypatch, tmp_path):
     r = client.post("/api/e4l/reveal-draft", json={"scan_date": "d", "top_match": {"name": "X"}},
                     headers={"X-Cron-Secret": "k"})
     assert r.status_code == 400
+
+
+def test_console_list_drafts(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "CONSOLE_SECRET", "ck", raising=False)
+    from dashboard import biofield_reveals
+    with sqlite3.connect(db) as cx:
+        biofield_reveals.upsert_draft(cx, "a@x.com", "2026-06-19", {"name": "Cistus"}, [], "s")
+    client = app_module.app.test_client()
+    r = client.get("/api/console/biofield-reveals?key=ck")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["drafts"][0]["top"]["name"] == "Cistus"
+
+
+def test_console_page_served(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "CONSOLE_SECRET", "ck", raising=False)
+    client = app_module.app.test_client()
+    r = client.get("/console/biofield-reveals?key=ck")
+    assert r.status_code == 200
+    assert b"biofield" in r.data.lower()

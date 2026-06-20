@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Biofield Reveals &middot; Console</title>
+<style>
+  :root{ --bg:#0f1115; --card:#171a21; --line:#262b36; --fg:#e8ebf0; --muted:#9aa3b2;
+         --accent:#5b8cff; --ok:#3fb968; --err:#e0556a; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--fg);
+        font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap{ max-width:860px; margin:0 auto; padding:18px; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:10px;
+         padding:16px; margin-bottom:16px; }
+  h1{ font-size:20px; margin:0 0 4px; }
+  h2{ font-size:14px; margin:0 0 10px; color:var(--muted); font-weight:500; }
+  .meta{ font-size:12px; color:var(--muted); margin-bottom:10px; }
+  label{ display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  input[type=text], textarea{
+    width:100%; background:#0c0e12; color:var(--fg);
+    border:1px solid var(--line); border-radius:8px; padding:8px; font:inherit;
+  }
+  textarea{ min-height:70px; resize:vertical; }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px; }
+  .btn{ background:var(--accent); color:#fff; border:0; border-radius:8px;
+        padding:8px 14px; font:inherit; cursor:pointer; }
+  .btn.ok{ background:var(--ok); }
+  .btn.ghost{ background:transparent; color:var(--fg); border:1px solid var(--line); }
+  .blur-count{ font-size:13px; color:var(--muted); }
+  .status{ min-height:18px; color:var(--muted); font-size:13px; margin-top:8px; }
+  #gate{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+         background:var(--bg); z-index:50; }
+  #gate .card{ min-width:300px; }
+  #app{ display:none; }
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="bos" data-sub="biofield-reveals"></script>
+
+<div id="gate" style="display:none">
+  <div class="card">
+    <h2>Console key</h2>
+    <input id="key-input" type="password" placeholder="CONSOLE_SECRET" style="width:100%;padding:8px">
+    <p style="margin-top:10px"><button class="btn" onclick="unlock()">Unlock</button></p>
+  </div>
+</div>
+
+<div id="app" class="wrap">
+  <h1>Biofield Reveals</h1>
+  <p style="color:var(--muted);margin:0 0 16px">Review AI-drafted top matches, edit name and meaning, then approve and send.</p>
+  <div id="list"></div>
+</div>
+
+<script>
+function key(){ return localStorage.getItem('console_key') || ''; }
+(function(){
+  var u = new URLSearchParams(location.search).get('key');
+  if(u) localStorage.setItem('console_key', u);
+})();
+
+function unlock(){
+  localStorage.setItem('console_key', document.getElementById('key-input').value);
+  document.getElementById('gate').style.display = 'none';
+  boot();
+}
+
+async function api(method, path, body){
+  var opt = { method: method, headers: { 'X-Console-Key': key() } };
+  if(body){ opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  var r = await fetch(path, opt);
+  return { ok: r.ok, status: r.status, json: await r.json().catch(function(){ return {}; }) };
+}
+
+function boot(){
+  if(!key()){ document.getElementById('gate').style.display = 'flex'; return; }
+  document.getElementById('app').style.display = 'block';
+  loadList();
+}
+
+async function loadList(){
+  var r = await api('GET', '/api/console/biofield-reveals');
+  var el = document.getElementById('list');
+  if(!r.ok){
+    el.textContent = 'Could not load (check console key).';
+    return;
+  }
+  var drafts = r.json.drafts || [];
+  if(!drafts.length){
+    el.textContent = 'No pending drafts.';
+    return;
+  }
+  el.innerHTML = '';
+  drafts.forEach(function(d){ el.appendChild(buildCard(d)); });
+}
+
+function buildCard(d){
+  var wrap = document.createElement('div');
+  wrap.className = 'card';
+  wrap.dataset.id = String(d.id);
+
+  var meta = document.createElement('div');
+  meta.className = 'meta';
+  var emailSpan = document.createElement('span');
+  emailSpan.textContent = d.email || '';
+  var dateSpan = document.createElement('span');
+  dateSpan.textContent = ' - ' + (d.scan_date || '');
+  meta.appendChild(emailSpan);
+  meta.appendChild(dateSpan);
+  wrap.appendChild(meta);
+
+  var nameLabel = document.createElement('label');
+  nameLabel.textContent = 'Top match name';
+  wrap.appendChild(nameLabel);
+
+  var nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'name-field';
+  nameInput.value = (d.top && d.top.name) ? d.top.name : '';
+  wrap.appendChild(nameInput);
+
+  var meaningLabel = document.createElement('label');
+  meaningLabel.textContent = 'Meaning / tagline';
+  wrap.appendChild(meaningLabel);
+
+  var meaningArea = document.createElement('textarea');
+  meaningArea.className = 'meaning-field';
+  meaningArea.value = (d.top && d.top.meaning) ? d.top.meaning : '';
+  wrap.appendChild(meaningArea);
+
+  var blurEl = document.createElement('p');
+  blurEl.className = 'blur-count';
+  var count = Array.isArray(d.blurred) ? d.blurred.length : 0;
+  blurEl.textContent = count + ' blurred match' + (count === 1 ? '' : 'es') + ' in full analysis';
+  wrap.appendChild(blurEl);
+
+  var row = document.createElement('div');
+  row.className = 'row';
+
+  var saveBtn = document.createElement('button');
+  saveBtn.className = 'btn ghost';
+  saveBtn.textContent = 'Save edit';
+  saveBtn.onclick = function(){ saveEdit(wrap, d.id); };
+  row.appendChild(saveBtn);
+
+  var approveBtn = document.createElement('button');
+  approveBtn.className = 'btn ok';
+  approveBtn.textContent = 'Approve and send';
+  approveBtn.onclick = function(){ doApprove(wrap, d.id, approveBtn); };
+  row.appendChild(approveBtn);
+
+  wrap.appendChild(row);
+
+  var statusEl = document.createElement('div');
+  statusEl.className = 'status';
+  wrap.appendChild(statusEl);
+
+  return wrap;
+}
+
+async function saveEdit(card, id){
+  var name = card.querySelector('.name-field').value;
+  var meaning = card.querySelector('.meaning-field').value;
+  var statusEl = card.querySelector('.status');
+  statusEl.textContent = 'Saving...';
+  var r = await api('POST', '/api/action/biofield_reveal.edit', { id: id, name: name, meaning: meaning });
+  if(r.ok && r.json.status === 'done'){
+    statusEl.textContent = 'Saved (still draft).';
+  } else {
+    statusEl.textContent = 'Save failed.';
+  }
+}
+
+async function doApprove(card, id, btn){
+  var statusEl = card.querySelector('.status');
+  statusEl.textContent = 'Approving...';
+  btn.disabled = true;
+  var r = await api('POST', '/api/action/biofield_reveal.approve', { id: id });
+  if(r.ok && r.json.status === 'done'){
+    statusEl.textContent = 'Approved and email sent.';
+    card.style.opacity = '0.5';
+  } else {
+    btn.disabled = false;
+    statusEl.textContent = 'Approve failed.';
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
