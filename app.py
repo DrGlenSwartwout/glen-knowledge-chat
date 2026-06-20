@@ -2549,6 +2549,7 @@ _REVIEWS_VIDEO = os.environ.get("REVIEWS_VIDEO", "").strip().lower() in ("1", "t
 _REVIEWS_VIDEO_TRIM = os.environ.get("REVIEWS_VIDEO_TRIM", "").strip().lower() in ("1", "true", "yes")
 _REVIEWS_GIFTS = os.environ.get("REVIEWS_GIFTS", "").strip().lower() in ("1", "true", "yes")
 _REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "yes")
+INGREDIENT_PAGES_PAID_ONLY = os.environ.get("INGREDIENT_PAGES_PAID_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _referral_pct():
@@ -3372,6 +3373,70 @@ def begin_product_page_gen(slug, section):
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
     return resp
+
+
+# ---------------------------------------------------------------------------
+# Ingredient page: paid gate + routes
+# ---------------------------------------------------------------------------
+
+def _ingredient_viewer_email():
+    au = get_authenticated_user(request) or {}
+    return (au.get("email") or request.cookies.get("rm_reorder_email", "") or "").strip().lower()
+
+
+def _ingredient_paid_ok(email):
+    if not INGREDIENT_PAGES_PAID_ONLY:
+        return True
+    try:
+        return bool(_active_membership_for_email(email))
+    except Exception:
+        return False
+
+
+def _ingredient_kickoff_build(slug, name):
+    """Best-effort, non-blocking AI draft build (Task 5 fills this in)."""
+    return None
+
+
+@app.route("/begin/ingredient/<slug>")
+def begin_ingredient_page(slug):
+    return send_from_directory(STATIC, "begin-ingredient.html")
+
+
+@app.route("/begin/ingredient-page-data/<slug>")
+def begin_ingredient_page_data(slug):
+    from dashboard import ingredients as _ing, ingredient_pages as _ip
+    info = _ing.resolve(slug)
+    if not info:
+        return jsonify({"state": "unknown"}), 404
+    name = info["name"]
+    email = _ingredient_viewer_email()
+    if not _ingredient_paid_ok(email):
+        return jsonify({"slug": slug, "name": name, "state": "locked"})
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _ip.init_table(cx)
+        page = _ip.get_page(cx, slug)
+        if page and page.get("state") == "approved":
+            sections = [{"id": s, "text": (page.get("content") or {}).get(s, "")}
+                        for s in ("what_it_is", "research")]
+            return jsonify({
+                "slug": slug, "name": name, "state": "approved",
+                "sections": sections,
+                "research_score": page.get("research_score"),
+                "traditional_score": page.get("traditional_score"),
+                "traditional_use": page.get("traditional_use") or [],
+                "related_forms": page.get("related_forms") or [],
+                "research_studies": _ing.research_studies(name),
+                "fmp": info.get("fmp") or {},
+                "formulations": _ing.formulations_with(name),
+            })
+        # paid, not approved -> record request + kick off build, show preparing
+        if email:
+            _ip.record_request(cx, slug, email)
+            _ip.set_name(cx, slug, name)
+    if email:
+        _ingredient_kickoff_build(slug, name)
+    return jsonify({"slug": slug, "name": name, "state": "preparing"})
 
 
 @app.route("/begin/product-image/<slug>/<filename>")
