@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ingredient Deep-Dive · Dr. Glen Swartwout</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+      --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+      --maxw:760px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1);
+      --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{ background:var(--bg); color:var(--cream); font-family:var(--font);
+      font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased;
+      background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%);
+      background-attachment:fixed; }
+    h1,h2,h3{ font-family:var(--heading); font-weight:600; line-height:1.25; letter-spacing:-0.01em; }
+    a{ color:inherit; text-decoration:none; }
+    .shell{ max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+    .brandbar{ max-width:var(--maxw); margin:0 auto; padding:30px 24px 8px; display:flex; align-items:center; justify-content:center; gap:14px; }
+    .brand-mark{ width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 4px rgba(212,168,67,0.12); }
+    .brand-name{ font-family:var(--heading); font-weight:600; font-size:13px; letter-spacing:0.32em; color:var(--muted); }
+    .eyebrow{ font-family:var(--heading); font-weight:600; font-size:12px; letter-spacing:0.34em; color:var(--green); margin-bottom:14px; }
+
+    .page-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+      padding:28px 28px 26px; margin-top:34px; }
+    .ing-name{ font-family:var(--heading); font-weight:700; font-size:clamp(22px,4.6vw,29px); color:var(--cream); line-height:1.25; }
+
+    /* ── Gauges ── */
+    .gauges{ display:flex; gap:20px; margin:22px 0 8px; flex-wrap:wrap; }
+    .gauge-wrap{ flex:1; min-width:140px; }
+    .gauge-label{ font-family:var(--heading); font-weight:600; font-size:11px; letter-spacing:0.08em;
+      color:var(--muted); text-transform:uppercase; margin-bottom:8px; }
+    .gauge-bar{ height:8px; border-radius:999px; background:var(--border); overflow:hidden; }
+    .gauge-fill{ height:100%; border-radius:999px;
+      background:linear-gradient(90deg, var(--green) 0%, var(--gold) 100%);
+      transition:width .6s var(--ease); }
+    .gauge-val{ font-family:var(--heading); font-weight:700; font-size:13px; color:var(--gold); margin-top:5px; }
+
+    /* ── Accordions ── */
+    .sections{ margin-top:24px; }
+    .acc{ border:1px solid var(--border); border-radius:11px; margin-bottom:10px; overflow:hidden; background:var(--surface-2); }
+    .acc-head{ width:100%; display:flex; flex-direction:column; gap:3px; background:transparent; border:none; cursor:pointer;
+      padding:13px 16px; text-align:left; font-family:var(--heading); color:var(--cream); }
+    .acc-toprow{ display:flex; align-items:center; gap:10px; width:100%; }
+    .acc-title{ font-weight:700; font-size:14.5px; }
+    .acc-caret{ margin-left:auto; color:var(--gold); transition:transform .2s var(--ease); font-size:11px; }
+    .acc.open .acc-caret{ transform:rotate(180deg); }
+    .acc-body{ display:none; padding:4px 16px 16px; }
+    .acc.open .acc-body{ display:block; }
+
+    /* ── Body styles ── */
+    .sp-text{ font-size:14.5px; color:var(--cream); opacity:0.93; line-height:1.68; }
+    .sp-list{ list-style:none; margin:0; padding:0; }
+    .sp-list li{ font-size:14px; color:var(--cream); opacity:0.9; padding:8px 0;
+      border-bottom:1px solid rgba(33,71,45,0.4); line-height:1.55; }
+    .sp-list li:last-child{ border-bottom:none; }
+    .sp-list-label{ font-family:var(--heading); font-weight:600; font-size:12px;
+      letter-spacing:0.06em; color:var(--muted); text-transform:uppercase;
+      display:block; margin-bottom:2px; }
+    .study-link{ color:var(--gold); text-decoration:underline; text-underline-offset:3px; font-size:14px; }
+    .study-link:hover{ opacity:0.8; }
+    .study-meta{ font-size:12.5px; color:var(--muted); margin-top:2px; }
+    .fmp-row{ font-size:14px; color:var(--cream); opacity:0.9; padding:7px 0;
+      border-bottom:1px solid rgba(33,71,45,0.4); }
+    .fmp-row:last-child{ border-bottom:none; }
+    .fmp-key{ font-family:var(--heading); font-weight:600; font-size:12px;
+      letter-spacing:0.04em; color:var(--muted); text-transform:uppercase;
+      display:block; margin-bottom:1px; }
+    .form-link{ color:var(--gold); text-decoration:underline; text-underline-offset:3px; }
+    .form-link:hover{ opacity:0.8; }
+
+    /* ── State panels ── */
+    .locked-panel{ text-align:center; padding:52px 24px; }
+    .locked-panel h2{ font-family:var(--heading); font-size:20px; color:var(--cream); margin-bottom:12px; }
+    .locked-panel p{ font-size:14.5px; color:var(--muted); max-width:420px; margin:0 auto 22px; line-height:1.65; }
+    .upgrade-btn{ display:inline-block; background:var(--gold); color:#0a150d; font-family:var(--heading);
+      font-weight:700; font-size:14.5px; letter-spacing:0.03em; padding:13px 30px; border-radius:999px;
+      transition:opacity .25s var(--ease), transform .25s var(--ease); }
+    .upgrade-btn:hover{ opacity:0.9; transform:translateY(-1px); }
+    .preparing-panel{ text-align:center; padding:52px 24px; }
+    .preparing-panel h2{ font-family:var(--heading); font-size:20px; color:var(--cream); margin-bottom:12px; }
+    .preparing-panel p{ font-size:14.5px; color:var(--muted); max-width:440px; margin:0 auto; line-height:1.65; }
+
+    /* ── Utility ── */
+    .loading{ text-align:center; color:var(--muted); padding:48px 18px; font-size:15px; }
+    .notfound{ text-align:center; padding:54px 18px; }
+    .notfound p{ color:var(--muted); font-size:15px; max-width:420px; margin:12px auto 0; line-height:1.65; }
+    .back{ display:inline-block; margin-top:18px; color:var(--muted); font-size:13px; }
+    .back:hover{ color:var(--gold); }
+    .hidden{ display:none !important; }
+    footer{ margin-top:48px; padding:28px 24px 44px; text-align:center; border-top:1px solid rgba(33,71,45,0.5); }
+    .foot-note{ font-size:12.5px; color:var(--muted); opacity:0.7; max-width:540px; margin:0 auto; line-height:1.7; }
+    @media(max-width:560px){
+      body{ font-size:16px; }
+      .shell{ padding:0 18px; }
+      .page-card{ padding:22px 18px 20px; }
+      .gauges{ flex-direction:column; gap:16px; }
+    }
+  </style>
+  <script src="/static/theme-toggle.js"></script>
+</head>
+<body>
+  <div class="brandbar">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;&middot;&nbsp; Healing&nbsp;Oasis</span>
+  </div>
+
+  <section class="shell">
+    <div id="ip-loading" class="loading">Loading&hellip;</div>
+
+    <div id="ip-notfound" class="notfound hidden">
+      <p>We could not find that ingredient. The link may have changed.</p>
+      <div><a class="back" href="/begin">&larr; Back to the beginning</a></div>
+    </div>
+
+    <div id="ip-locked" class="hidden">
+      <div class="page-card">
+        <div class="locked-panel">
+          <h2 id="ip-locked-name"></h2>
+          <p>This ingredient deep-dive is available to members. Upgrade to unlock the full research summary, traditional use history, related forms, and formulation connections.</p>
+          <a class="upgrade-btn" href="/begin/ascend">View membership options</a>
+        </div>
+      </div>
+    </div>
+
+    <div id="ip-preparing" class="hidden">
+      <div class="page-card">
+        <div class="preparing-panel">
+          <h2>Preparing your deep-dive on <span id="ip-preparing-name"></span></h2>
+          <p>Our team is reviewing the research and will email you when this page is ready. Check back soon.</p>
+        </div>
+      </div>
+      <div style="text-align:center;"><a class="back" href="/begin">&larr; Back to the beginning</a></div>
+    </div>
+
+    <div id="ip-page" class="hidden">
+      <div class="page-card">
+        <p class="eyebrow">Ingredient deep-dive</p>
+        <h1 class="ing-name" id="ip-name"></h1>
+
+        <div class="gauges" id="ip-gauges"></div>
+        <div id="ip-sections" class="sections"></div>
+      </div>
+      <div style="text-align:center; margin-top:18px;">
+        <a class="back" href="/begin">&larr; Back to the beginning</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p class="foot-note">Shared in the spirit of education and self-understanding. This space offers wellness and educational guidance. It is not a substitute for diagnosis or medical care from your own provider. Individual results will vary.</p>
+  </footer>
+
+  <script src="/ref-capture.js"></script>
+  <script>
+    var BASE = window.location.origin;
+    var slug = location.pathname.split('/').filter(Boolean).pop() || '';
+
+    function show(id){ var e = document.getElementById(id); if (e) e.classList.remove('hidden'); }
+    function hide(id){ var e = document.getElementById(id); if (e) e.classList.add('hidden'); }
+
+    function makeAcc(title, renderFn, data){
+      var acc = document.createElement('div');
+      acc.className = 'acc';
+      var head = document.createElement('button');
+      head.className = 'acc-head';
+      head.setAttribute('type', 'button');
+      var toprow = document.createElement('div');
+      toprow.className = 'acc-toprow';
+      var ttl = document.createElement('span');
+      ttl.className = 'acc-title';
+      ttl.textContent = title;
+      var caret = document.createElement('span');
+      caret.className = 'acc-caret';
+      caret.setAttribute('aria-hidden', 'true');
+      caret.textContent = '▾';
+      toprow.appendChild(ttl);
+      toprow.appendChild(caret);
+      head.appendChild(toprow);
+      var body = document.createElement('div');
+      body.className = 'acc-body';
+      body.appendChild(renderFn(data));
+      head.addEventListener('click', function(){
+        acc.classList.toggle('open');
+      });
+      acc.appendChild(head);
+      acc.appendChild(body);
+      return acc;
+    }
+
+    function renderText(text){
+      var p = document.createElement('p');
+      p.className = 'sp-text';
+      p.textContent = text || '';
+      return p;
+    }
+
+    function renderFmpDetails(fmp){
+      var wrap = document.createElement('div');
+      if (!fmp || typeof fmp !== 'object' || !Object.keys(fmp).length){
+        var p = document.createElement('p');
+        p.className = 'sp-text';
+        p.textContent = 'No additional details on file.';
+        wrap.appendChild(p);
+        return wrap;
+      }
+      var skip = { name: 1 };
+      Object.keys(fmp).forEach(function(k){
+        if (skip[k]) return;
+        var v = fmp[k];
+        if (!v && v !== 0) return;
+        var row = document.createElement('div');
+        row.className = 'fmp-row';
+        var lbl = document.createElement('span');
+        lbl.className = 'fmp-key';
+        lbl.textContent = k.replace(/_/g, ' ');
+        row.appendChild(lbl);
+        var val = document.createElement('span');
+        val.textContent = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        row.appendChild(val);
+        wrap.appendChild(row);
+      });
+      if (!wrap.childNodes.length){
+        var p2 = document.createElement('p');
+        p2.className = 'sp-text';
+        p2.textContent = 'No additional details on file.';
+        wrap.appendChild(p2);
+      }
+      return wrap;
+    }
+
+    function renderResearch(data){
+      var wrap = document.createElement('div');
+      var sectionText = (data && data.text) ? data.text : '';
+      if (sectionText){
+        var p = document.createElement('p');
+        p.className = 'sp-text';
+        p.style.marginBottom = '16px';
+        p.textContent = sectionText;
+        wrap.appendChild(p);
+      }
+      var studies = (data && Array.isArray(data.studies)) ? data.studies : [];
+      if (!studies.length){
+        if (!sectionText){
+          var empty = document.createElement('p');
+          empty.className = 'sp-text';
+          empty.textContent = 'No research studies on file yet.';
+          wrap.appendChild(empty);
+        }
+        return wrap;
+      }
+      var ul = document.createElement('ul');
+      ul.className = 'sp-list';
+      studies.forEach(function(s){
+        var li = document.createElement('li');
+        if (s.url && /^https?:/i.test(s.url)){
+          var a = document.createElement('a');
+          a.className = 'study-link';
+          a.setAttribute('target', '_blank');
+          a.setAttribute('rel', 'noopener');
+          a.href = s.url;
+          a.textContent = s.study_title || s.title || s.url;
+          li.appendChild(a);
+        } else {
+          var span = document.createElement('span');
+          span.className = 'study-link';
+          span.textContent = s.study_title || s.title || '';
+          li.appendChild(span);
+        }
+        var meta = [];
+        if (s.publication) meta.push(s.publication);
+        if (s.year) meta.push(String(s.year));
+        if (meta.length){
+          var m = document.createElement('div');
+          m.className = 'study-meta';
+          m.textContent = meta.join(' · ');
+          li.appendChild(m);
+        }
+        ul.appendChild(li);
+      });
+      wrap.appendChild(ul);
+      return wrap;
+    }
+
+    function renderTraditionalUse(entries){
+      var wrap = document.createElement('div');
+      if (!entries || !entries.length){
+        var p = document.createElement('p');
+        p.className = 'sp-text';
+        p.textContent = 'No traditional use data on file.';
+        wrap.appendChild(p);
+        return wrap;
+      }
+      var ul = document.createElement('ul');
+      ul.className = 'sp-list';
+      entries.forEach(function(e){
+        var li = document.createElement('li');
+        if (e.system){
+          var lbl = document.createElement('span');
+          lbl.className = 'sp-list-label';
+          lbl.textContent = e.system;
+          li.appendChild(lbl);
+        }
+        var details = [];
+        if (e.formula) details.push(e.formula);
+        if (e.uses) details.push(e.uses);
+        if (e.forms) details.push(e.forms);
+        var txt = document.createElement('span');
+        txt.textContent = details.join(' · ');
+        li.appendChild(txt);
+        ul.appendChild(li);
+      });
+      wrap.appendChild(ul);
+      return wrap;
+    }
+
+    function renderRelatedForms(forms){
+      var wrap = document.createElement('div');
+      if (!forms || !forms.length){
+        var p = document.createElement('p');
+        p.className = 'sp-text';
+        p.textContent = 'No related forms on file.';
+        wrap.appendChild(p);
+        return wrap;
+      }
+      var ul = document.createElement('ul');
+      ul.className = 'sp-list';
+      forms.forEach(function(f){
+        var li = document.createElement('li');
+        if (f.slug){
+          var a = document.createElement('a');
+          a.className = 'form-link';
+          a.setAttribute('target', '_blank');
+          a.setAttribute('rel', 'noopener');
+          a.href = '/begin/ingredient/' + encodeURIComponent(f.slug);
+          a.textContent = f.name || f.slug;
+          li.appendChild(a);
+        } else {
+          var span = document.createElement('span');
+          span.textContent = f.name || '';
+          li.appendChild(span);
+        }
+        if (f.verdict){
+          var v = document.createElement('span');
+          v.style.fontSize = '12.5px';
+          v.style.color = 'var(--muted)';
+          v.style.marginLeft = '8px';
+          v.textContent = f.verdict;
+          li.appendChild(v);
+        }
+        if (f.note){
+          var n = document.createElement('div');
+          n.style.fontSize = '12.5px';
+          n.style.color = 'var(--muted)';
+          n.style.marginTop = '2px';
+          n.textContent = f.note;
+          li.appendChild(n);
+        }
+        ul.appendChild(li);
+      });
+      wrap.appendChild(ul);
+      return wrap;
+    }
+
+    function renderFormulations(formulations){
+      var wrap = document.createElement('div');
+      if (!formulations || !formulations.length){
+        var p = document.createElement('p');
+        p.className = 'sp-text';
+        p.textContent = 'This ingredient has not been linked to a formulation yet.';
+        wrap.appendChild(p);
+        return wrap;
+      }
+      var ul = document.createElement('ul');
+      ul.className = 'sp-list';
+      formulations.forEach(function(f){
+        var li = document.createElement('li');
+        var a = document.createElement('a');
+        a.className = 'form-link';
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener');
+        a.href = '/begin/product/' + encodeURIComponent(f.slug);
+        a.textContent = f.name || f.slug;
+        li.appendChild(a);
+        ul.appendChild(li);
+      });
+      wrap.appendChild(ul);
+      return wrap;
+    }
+
+    function renderGauges(researchScore, traditionalScore){
+      var container = document.getElementById('ip-gauges');
+      if (!container) return;
+      container.innerHTML = '';
+      function makeGauge(label, score){
+        if (score == null) return null;
+        var wrap = document.createElement('div');
+        wrap.className = 'gauge-wrap';
+        var lbl = document.createElement('div');
+        lbl.className = 'gauge-label';
+        lbl.textContent = label;
+        wrap.appendChild(lbl);
+        var bar = document.createElement('div');
+        bar.className = 'gauge-bar';
+        var fill = document.createElement('div');
+        fill.className = 'gauge-fill';
+        fill.style.width = (Math.max(0, Math.min(10, score)) * 10) + '%';
+        bar.appendChild(fill);
+        wrap.appendChild(bar);
+        var val = document.createElement('div');
+        val.className = 'gauge-val';
+        val.textContent = score + ' / 10';
+        wrap.appendChild(val);
+        return wrap;
+      }
+      var g1 = makeGauge('Research evidence', researchScore);
+      if (g1) container.appendChild(g1);
+      var g2 = makeGauge('Traditional use', traditionalScore);
+      if (g2) container.appendChild(g2);
+    }
+
+    function renderApproved(data){
+      document.getElementById('ip-name').textContent = data.name || '';
+      renderGauges(data.research_score, data.traditional_score);
+
+      var container = document.getElementById('ip-sections');
+      container.innerHTML = '';
+
+      // What it is
+      var whatItIsText = '';
+      var researchText = '';
+      (data.sections || []).forEach(function(s){
+        if (s.id === 'what_it_is') whatItIsText = s.text || '';
+        if (s.id === 'research') researchText = s.text || '';
+      });
+      container.appendChild(makeAcc('What it is', renderText, whatItIsText));
+
+      // Details (FMP fields)
+      container.appendChild(makeAcc('Details', renderFmpDetails, data.fmp || {}));
+
+      // The research
+      container.appendChild(makeAcc('The research', renderResearch, {
+        text: researchText,
+        studies: data.research_studies || []
+      }));
+
+      // Traditional use
+      container.appendChild(makeAcc('Traditional use', renderTraditionalUse, data.traditional_use || []));
+
+      // Related forms
+      container.appendChild(makeAcc('Related forms', renderRelatedForms, data.related_forms || []));
+
+      // In these formulations
+      container.appendChild(makeAcc('In these formulations', renderFormulations, data.formulations || []));
+
+      hide('ip-loading');
+      show('ip-page');
+    }
+
+    function init(){
+      fetch(BASE + '/begin/ingredient-page-data/' + encodeURIComponent(slug), { credentials: 'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          hide('ip-loading');
+          var state = data.state || 'unknown';
+          if (state === 'locked'){
+            document.getElementById('ip-locked-name').textContent = data.name || slug;
+            show('ip-locked');
+          } else if (state === 'preparing'){
+            document.getElementById('ip-preparing-name').textContent = data.name || slug;
+            show('ip-preparing');
+          } else if (state === 'approved'){
+            renderApproved(data);
+          } else {
+            show('ip-notfound');
+          }
+        })
+        .catch(function(){
+          hide('ip-loading');
+          show('ip-notfound');
+        });
+    }
+
+    init();
+  </script>
+</body>
+</html>
