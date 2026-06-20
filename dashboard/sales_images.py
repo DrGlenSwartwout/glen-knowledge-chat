@@ -83,3 +83,31 @@ def tagged_count(cx, slug):
 
 def needs_topup(cx, slug, target=8):
     return tagged_count(cx, slug) < target
+
+def build_generation_jobs(cx, slug):
+    """Missing (kind, slot) generation jobs for `slug`, up to 4/kind. Each job is tagged
+    with its prompt variation and an assigned model. All 4 variations are covered per kind;
+    models rotate by a per-product offset for balanced marginal coverage across products."""
+    import zlib
+    from dashboard import sales_prompt_variations as _pv
+    from dashboard import sales_image_models as _mods
+    from dashboard import sales_image_prompts as _sip
+    init_tables(cx)
+    present = {(im["kind"], im["variant"]) for im in get_images(cx, slug)}
+    models = _mods.active_models(cx)
+    if not models:
+        return []
+    offset = zlib.crc32(slug.encode("utf-8")) % len(models)
+    jobs = []
+    for kind in _sip.IMAGE_KINDS:
+        variations = _pv.active_variations(cx, kind)[:4]
+        for i, var in enumerate(variations):
+            slot = i + 1
+            if (kind, slot) in present:
+                continue
+            model = models[(i + offset) % len(models)]
+            prompt_text = f"{var['prompt_template']} {_sip.NO_TEXT}"
+            jobs.append({"kind": kind, "variant": slot,
+                         "prompt_variant_id": var["id"], "model_id": model["id"],
+                         "prompt_text": prompt_text})
+    return jobs

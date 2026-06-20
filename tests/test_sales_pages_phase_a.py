@@ -87,3 +87,30 @@ def test_record_image_persists_tags_and_counts():
 
 def test_no_text_constant_exposed():
     assert "No text" in sip.NO_TEXT
+
+def test_build_jobs_full_set_covers_all_variations_and_8_slots():
+    cx = _cx()
+    pv.seed(cx); mods.seed(cx); si.init_tables(cx)
+    jobs = si.build_generation_jobs(cx, "alpha")
+    assert len(jobs) == 8
+    for kind in ("botanical", "mechanism"):
+        kjobs = [j for j in jobs if j["kind"] == kind]
+        assert sorted(j["variant"] for j in kjobs) == [1, 2, 3, 4]
+        assert len({j["prompt_variant_id"] for j in kjobs}) == 4     # all 4 variations
+        assert all("No text" in j["prompt_text"] for j in kjobs)     # NO_TEXT appended
+        assert all(j["model_id"] in ("flux-1.1-pro", "imagen-4", "recraft-v3") for j in kjobs)
+
+def test_build_jobs_skips_present_slots():
+    cx = _cx()
+    pv.seed(cx); mods.seed(cx); si.init_tables(cx)
+    si.record_image(cx, "beta", "botanical", 1, "botanical-1.png", prompt_variant_id=1, model_id="flux-1.1-pro")
+    jobs = si.build_generation_jobs(cx, "beta")
+    assert ("botanical", 1) not in {(j["kind"], j["variant"]) for j in jobs}
+    assert len(jobs) == 7
+
+def test_build_jobs_deterministic_and_model_offset_varies_by_slug():
+    cx = _cx()
+    pv.seed(cx); mods.seed(cx); si.init_tables(cx)
+    j1 = si.build_generation_jobs(cx, "slug-one")
+    j1b = si.build_generation_jobs(cx, "slug-one")
+    assert [j["model_id"] for j in j1] == [j["model_id"] for j in j1b]   # deterministic
