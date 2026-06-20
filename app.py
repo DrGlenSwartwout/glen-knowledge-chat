@@ -1475,7 +1475,11 @@ def begin_biofield_reveal(token):
         "buy_url": buy_url,
         "blurred_count": blurred_n,
     }
-    injection = f"<script>window.__REVEAL__ = {json.dumps(payload)};</script>"
+    # Escape <, >, & so an approved top-match name containing "</script>" cannot
+    # break out of the injection script (script-context-safe JSON).
+    _safe = (json.dumps(payload).replace("<", "\\u003c")
+             .replace(">", "\\u003e").replace("&", "\\u0026"))
+    injection = f"<script>window.__REVEAL__ = {_safe};</script>"
     html = html.replace("</head>", injection + "\n</head>")
     resp = Response(html, mimetype="text/html", status=200)
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
