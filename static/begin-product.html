@@ -351,10 +351,18 @@
       ings.forEach(function(ing){
         var li = document.createElement('li');
         if (ing && typeof ing === 'object'){
+          var ingName = ing.name || '';
+          var ingSlug = ing.slug || ingName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+          var a = document.createElement('a');
+          a.setAttribute('href', '/begin/ingredient/' + ingSlug);
+          a.setAttribute('target', '_blank');
+          a.setAttribute('rel', 'noopener');
+          a.className = 'sp-ing-link';
           var nm = document.createElement('span');
           nm.className = 'sp-ing-name';
-          nm.textContent = ing.name || '';
-          li.appendChild(nm);
+          nm.textContent = ingName;
+          a.appendChild(nm);
+          li.appendChild(a);
           if (ing.dose){
             var ds = document.createElement('span');
             ds.className = 'sp-ing-dose';

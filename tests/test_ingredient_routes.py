@@ -74,3 +74,10 @@ def test_unknown_slug_pagedata(monkeypatch, tmp_path):
     monkeypatch.setattr(app_module, "get_authenticated_user", lambda req: {"email": "paid@x.com"})
     r = app_module.app.test_client().get("/begin/ingredient-page-data/bogus-xyz")
     assert r.status_code == 404 or r.get_json().get("state") == "unknown"
+
+
+def test_product_page_links_ingredients():
+    html_path = Path(__file__).resolve().parent.parent / "static" / "begin-product.html"
+    content = html_path.read_text(encoding="utf-8")
+    assert "/begin/ingredient/" in content
+    assert "_blank" in content

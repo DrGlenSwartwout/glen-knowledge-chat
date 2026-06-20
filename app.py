@@ -3169,7 +3169,16 @@ def begin_product_page_data(slug):
         return jsonify({"error": "not found"}), 404
     card = _product_card(p) if not p.get("info_only") else {}
     how = "" if p.get("info_only") else _product_how(p)
-    ingredients = p.get("ingredients") or card.get("ingredients", [])
+    from dashboard.ingredients import slugify as _slugify
+    _raw_ingredients = p.get("ingredients") or card.get("ingredients", [])
+    ingredients = []
+    for _ing in _raw_ingredients:
+        if isinstance(_ing, dict):
+            _ing = dict(_ing)
+            _ing["slug"] = _slugify(_ing.get("name") or "")
+            ingredients.append(_ing)
+        else:
+            ingredients.append({"name": str(_ing), "dose": "", "slug": _slugify(str(_ing))})
     intro = p.get("intro") or (card.get("description", "") or "").split(". ")[0]
     _vids = list(p.get("videos", []))
     _mv = _MIRON_ASSETS.get("video")
