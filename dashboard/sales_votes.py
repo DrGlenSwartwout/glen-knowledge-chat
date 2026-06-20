@@ -8,16 +8,23 @@ def init_table(cx):
                "chosen_variant INTEGER, session_id TEXT, email TEXT DEFAULT '', "
                "created_at TEXT DEFAULT '', updated_at TEXT DEFAULT '', "
                "UNIQUE(session_id, product_slug, kind))")
+    for _col, _decl in (("prompt_variant_id", "INTEGER"), ("model_id", "TEXT")):
+        try:
+            cx.execute(f"ALTER TABLE sales_page_votes ADD COLUMN {_col} {_decl}")
+        except Exception:
+            pass
     cx.commit()
 
-def record_pick(cx, slug, kind, variant, session_id, email=""):
+def record_pick(cx, slug, kind, variant, session_id, email="", prompt_variant_id=None, model_id=None):
     init_table(cx); now = _now(); email = (email or "").strip().lower()
-    cx.execute("INSERT INTO sales_page_votes (product_slug, kind, chosen_variant, session_id, email, created_at, updated_at) "
-               "VALUES (?,?,?,?,?,?,?) ON CONFLICT(session_id, product_slug, kind) DO UPDATE SET "
+    cx.execute("INSERT INTO sales_page_votes (product_slug, kind, chosen_variant, session_id, email, "
+               "created_at, updated_at, prompt_variant_id, model_id) "
+               "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id, product_slug, kind) DO UPDATE SET "
                "chosen_variant=excluded.chosen_variant, "
                "email=CASE WHEN excluded.email!='' THEN excluded.email ELSE sales_page_votes.email END, "
-               "updated_at=excluded.updated_at",
-               (slug, kind, int(variant), session_id, email, now, now))
+               "updated_at=excluded.updated_at, "
+               "prompt_variant_id=excluded.prompt_variant_id, model_id=excluded.model_id",
+               (slug, kind, int(variant), session_id, email, now, now, prompt_variant_id, model_id))
     if email and session_id:
         cx.execute("UPDATE sales_page_votes SET email=? WHERE session_id=? AND email=''", (email, session_id))
     cx.commit()
