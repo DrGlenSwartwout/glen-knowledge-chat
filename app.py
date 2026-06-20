@@ -3268,6 +3268,12 @@ def begin_product_page_data(slug):
                         _grouped = _si2.display_images_grouped(_cx2, slug)
                         _state = _si2.images_grouped_state(_cx2, slug)
                         _img_sec["body"] = {"grouped": _grouped, "state": _state, "target": 8}
+                        if _SALES_IMAGE_VOTE_ENABLED:
+                            from dashboard import sales_votes as _sv2
+                            _vsess = request.cookies.get("amg_session", "")
+                            _vau = get_authenticated_user(request)
+                            _vem = ((_vau or {}).get("email") or "").strip().lower() if _vau else ""
+                            _img_sec["body"]["picks"] = _sv2.get_picks(_cx2, slug, session_id=_vsess, email=_vem)
                     else:
                         _disp = _si2.display_images(_cx2, slug)
                         _qstate = _si2.queue_state(_cx2, slug)
