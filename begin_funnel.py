@@ -415,19 +415,64 @@ CARD_CATALOG = {
 }
 
 
+def _thread_href(base_url, ref, campaign):
+    """Internal (/...) base returned as-is; external base threaded with the
+    ref-based utm. Shared by card_href and journey_map so threading stays in sync."""
+    if base_url.startswith("/"):
+        return base_url
+    slug = (ref or "remedy-match").strip() or "remedy-match"
+    sep = "&" if "?" in base_url else "?"
+    return (f"{base_url}{sep}utm_source={urllib.parse.quote(slug)}"
+            f"&utm_medium=affiliate&utm_campaign={campaign}")
+
+
 def card_href(key, ref=""):
     c = CARD_CATALOG[key]
-    if c["internal"]:
-        return c["base_url"]
-    slug = (ref or "remedy-match").strip() or "remedy-match"
-    sep = "&" if "?" in c["base_url"] else "?"
-    return (f"{c['base_url']}{sep}utm_source={urllib.parse.quote(slug)}"
-            f"&utm_medium=affiliate&utm_campaign=begin-card-{key}")
+    return _thread_href(c["base_url"], ref, f"begin-card-{key}")
 
 
 def _card(key, ref=""):
     c = CARD_CATALOG[key]
     return {"key": key, "title": c["title"], "sub": c["sub"], "href": card_href(key, ref)}
+
+
+# ---------------------------------------------------------------------------
+# Begin #2 - fixed 4-step journey map (distinct from surface()/CARD_CATALOG).
+# All copy provisional (BNSN site pass later). done_gate/click_trigger are all
+# existing VALID_TRIGGERS - no new gates.
+# ---------------------------------------------------------------------------
+JOURNEY_STEPS = [
+    {"key": "scan", "label": "Scan", "paren": "Your Biofield",
+     "base_url": "/begin/voice",  "done_gate": "scan",        "click_trigger": "scan"},
+    {"key": "find", "label": "Find", "paren": "Your Remedy Match",
+     "base_url": "/begin/match",  "done_gate": "question",     "click_trigger": "question"},
+    {"key": "heal", "label": "Heal", "paren": "the root causes",
+     "base_url": "/begin/ascend", "done_gate": "paid_fork",    "click_trigger": "paid_fork"},
+    {"key": "earn", "label": "Earn", "paren": "Ambassador",
+     "base_url": "/begin/path",   "done_gate": "share_video",  "click_trigger": "share_video"},
+]
+
+
+def journey_map(state, ref=""):
+    """Ordered 4 cards with progress status. done = its done_gate is set;
+    next = the first not-done step; rest = available. Pure; never mutates."""
+    gates = set((state or {}).get("unlocked_gates") or ())
+    out = []
+    next_assigned = False
+    for step in JOURNEY_STEPS:
+        if step["done_gate"] in gates:
+            status = "done"
+        elif not next_assigned:
+            status = "next"
+            next_assigned = True
+        else:
+            status = "available"
+        out.append({
+            "key": step["key"], "label": step["label"], "paren": step["paren"],
+            "href": _thread_href(step["base_url"], ref, f"begin-journey-{step['key']}"),
+            "status": status,
+        })
+    return out
 
 
 # ---------------------------------------------------------------------------
