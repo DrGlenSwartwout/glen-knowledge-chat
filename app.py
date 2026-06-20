@@ -4615,8 +4615,15 @@ def begin_checkout_return():
                             bt_email = (md.get("email") or "").strip().lower()
                             with _db_lock, sqlite3.connect(LOG_DB) as _bc:
                                 _bc.execute("CREATE TABLE IF NOT EXISTS biofield_trial_grants (session_id TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
-                                already = _bc.execute("SELECT 1 FROM biofield_trial_grants WHERE session_id=?", (sid,)).fetchone()
-                                if not already and bt_email:
+                                # Claim-then-create: write the idempotency marker FIRST and commit it,
+                                # so a crash or replayed return can never double-create the subscription
+                                # (live money). A crash after the claim self-heals to no-charge, not a
+                                # duplicate $99/mo sub.
+                                claimed = bool(bt_email) and _bc.execute(
+                                    "INSERT OR IGNORE INTO biofield_trial_grants (session_id, email, granted_at) VALUES (?,?,?)",
+                                    (sid, bt_email, datetime.utcnow().isoformat() + "Z")).rowcount == 1
+                                _bc.commit()
+                                if claimed:
                                     _bt_subs.init_subscriptions_table(_bc)
                                     _bt_subs.migrate_add_membership_columns(_bc)
                                     init_membership_tables(_bc)
@@ -4626,8 +4633,6 @@ def begin_checkout_return():
                                         amount_cents=_bt_gb.MEMBERSHIP_AMOUNT_CENTS,
                                         next_charge_date=_bt_subs.add_months(_bt_dt.date.today().isoformat(), 1))
                                     _grant_membership(_bc, bt_email, 31, "biofield_trial")
-                                    _bc.execute("INSERT INTO biofield_trial_grants (session_id, email, granted_at) VALUES (?,?,?)",
-                                                (sid, bt_email, datetime.utcnow().isoformat() + "Z"))
                                     # Mint a one-click cancel token (60-day TTL)
                                     cancel_tok = secrets.token_urlsafe(32)
                                     _bc.execute(
