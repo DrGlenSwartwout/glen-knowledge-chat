@@ -34,7 +34,9 @@ The **server side**: a draft-ingest endpoint that stores the draft and sends the
 - **One email, on draft arrival:** the moment the matcher pushes the draft, the server emails the magic link ("Your Biofield Analysis is ready"). No second email on approval (the top remedy just un-blurs on the visitor's next view).
 - **Engine = E4L, not FMP**; the **local matcher pushes the finished draft** (least PHI on the server).
 - **Free top reveal = the surface / #1-priority remedy.**
-- **ToS required** + **verified ownership via magic link** before the reveal renders (the link in the "ready" email is the verification).
+- **ToS gate at the reveal page:** the magic link proves ownership; a verified visitor who is NOT yet a member (no `tos_agreed_at`) must agree to ToS before ANY interpretation/remedies render (the interpretation is withheld server-side until member). Agreeing fires `unlock('tos', {email, tos:true})` for their email.
+- **The free top-remedy unblur is a one-time offer per member, on request (a button).** After Glen approves the top (`first_approved`), the reveal shows a "Reveal my top match (free)" button ONLY if the member has not already used their one free unblock. Clicking it (the request) un-blurs the top AND records a per-member ledger row (consumes the one-time). Any later reveal for that member shows the top blurred; the only unblur path is then the $1 trial (4b).
+- **Server-withholding (anti-bypass):** the reveal page never receives blurred remedy details. The top remedy details are sent only after the free unblock is granted (or, in 4b, after the $1). The deeper remedies' details are withheld entirely until 4b. The page only ever knows a blurred COUNT.
 - **Live page, no feature flag** for the reveal route; the console is staff-gated. No emoji, no em dashes.
 
 ---
@@ -74,11 +76,27 @@ A new `dashboard/biofield_reveal_actions.py` with `configure(**kw)` and idempote
 ### 4. The "ready" email + magic link (at ingest)
 Sent from the ingest endpoint on first insert: mint `token = secrets.token_urlsafe(32)`, store `_hash_token(token)` on the row, INSERT an `auth_tokens` row `(token_hash, email, purpose="biofield_reveal", created_at, expires_at=+30d)`. Email via `_send_inquiry_email`: "Your Biofield Analysis is ready" + `{PUBLIC_BASE_URL}/begin/biofield/<token>`. (Copy provisional; Glen voice; no emoji/em dash.)
 
-### 5. Reveal page — `GET /begin/biofield/<token>`
-Verifies the token against `auth_tokens` (purpose `biofield_reveal`, not expired; **not consumed** - reopenable, 30-day TTL) AND resolves the `biofield_reveals` row via `get_by_token_hash`. The row is shown **regardless of `first_approved`** (the interpretation always shows). Serves `static/begin-biofield.html` (no-store) rendering:
-- the **interpretation** (greeting + body) - always shown;
-- the **ranked remedies**: if `first_approved`, the **top remedy (remedies[0]) is un-blurred free** (name + meaning + a buy link `/begin/buy/<slug>` when the slug is a catalog product, else `/begin/match`); **all other remedies blurred** with "+N more in your full analysis" and an **"Unlock your full Biofield Analysis"** CTA (stub in 4a; 4b wires the $1). If NOT `first_approved`, **all remedies blurred** with a calm "Your top match is being finalized" note.
-On view, fire `_record_entry_unlock("biofield", row["email"])` -> **Find step 2 fills**. An invalid/expired/missing token -> a friendly "this link is no longer valid" page with NO personal data (no interpretation, no remedy names). Payload injected as JSON-escaped `window.__REVEAL__` (escape `<`, `>`, `&` so an approved name cannot break the script context); `null` on the invalid path.
+### 5. One-time free-unblock ledger (`dashboard/biofield_reveals.py`)
+A second tiny table enforces "one free top-remedy unblock per member, ever":
+```
+biofield_free_unlocks ( email TEXT PRIMARY KEY, reveal_id INTEGER, granted_at TEXT )
+```
+Functions: `init_free_unlocks(cx)`; `free_unlock_reveal_id(cx, email) -> int|None` (the reveal this member's free unblock was granted on, or None); `record_free_unlock(cx, email, reveal_id) -> bool` (INSERT OR IGNORE; True only on the first grant for that email).
+
+### 6. Reveal page — `GET /begin/biofield/<token>`
+Verifies the token against `auth_tokens` (purpose `biofield_reveal`, not expired; **not consumed** - reopenable, 30-day TTL) AND resolves the `biofield_reveals` row via `get_by_token_hash`. Then computes membership + unlock state for the row's email:
+- `member = is_member(email=row.email)`.
+- `top_unlocked = first_approved and free_unlock_reveal_id(email) == row.id` (this member already spent their free unblock on THIS reveal).
+- `free_available = first_approved and free_unlock_reveal_id(email) is None` (free unblock still available -> show the button).
+
+Serves `static/begin-biofield.html` (no-store) with a JSON-escaped `window.__REVEAL__` payload (escape `<`,`>`,`&`; `null` on invalid token):
+- **Not a member:** payload `{ needs_tos:true, email }` ONLY - no interpretation, no remedies. The page shows the **ToS gate**; agreeing posts `/begin/unlock(tos, email)` and reloads. The `biofield` gate is NOT set yet.
+- **Member:** payload `{ interpretation, top, blurred_count, first_approved, free_available, top_unlocked }`. `interpretation` always shown. `top` = the top remedy `{name, meaning, buy_url}` ONLY when `top_unlocked` (else null). `blurred_count` = remedies still hidden. The page: interpretation; then if `top_unlocked` show the top free; elif `free_available` show the **"Reveal my top match (free)" button**; elif `first_approved` (free already used) show the **$1 unlock** stub; else a calm "Your top match is being finalized" note. The deeper remedies always show as a blurred count with the **"Unlock your full Biofield Analysis"** CTA (stub; 4b). On a member view, fire `_record_entry_unlock("biofield", row.email)` -> **Find step 2 fills**.
+
+An invalid/expired/missing token -> the friendly "this link is no longer valid" page, `window.__REVEAL__ = null`, NO personal data, gate not set.
+
+### 7. Free-unblock request — `POST /begin/biofield/<token>/reveal-top`
+The button target. Verifies the token + resolves the row; requires `member` (else `{ok:false, reason:"tos"}`); requires `first_approved` (else `reason:"pending"`); if `free_unlock_reveal_id(email)` is already set (used) -> `{ok:false, reason:"used"}`; else `record_free_unlock(email, row.id)` and return `{ok:true, top:{name, meaning, buy_url}}`. The top remedy details leave the server ONLY through this granted response (anti-bypass). Idempotent: a second call by the same member returns `reason:"used"` (their one grant already recorded).
 
 ### Reuse / untouched
 - `auth_tokens` + `_hash_token`; `_send_inquiry_email`; the console dispatch spine + `/api/action/<key>`; `_record_entry_unlock` (#3), `is_member`/ToS, `journey_state`.
