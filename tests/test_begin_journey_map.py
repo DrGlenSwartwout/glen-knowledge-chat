@@ -117,9 +117,19 @@ def test_begin_serves_journey_strip(monkeypatch, tmp_path):
     html = app_module.app.test_client().get("/begin").get_data(as_text=True)
     assert 'id="journey-strip"' in html
     assert 'id="journey-cards"' in html
-    for label in ("Scan", "Find", "Heal", "Earn"):
+    for label in ("Scan", "Find", "Heal", "Give"):
         assert label in html
     assert "function renderJourney" in html
+
+
+def test_begin_serves_give_and_fill(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    html = app_module.app.test_client().get("/begin").get_data(as_text=True)
+    assert "Give" in html
+    assert "jc-fill" in html
+    assert "jc-count" in html
+    assert "JOURNEY_TRIGGER" not in html
 
 
 def test_begin_serves_unfold_and_framing(monkeypatch, tmp_path):

@@ -602,11 +602,15 @@
   .journey-card .jc-label { font-size: 16px; font-weight: 600; }
   .journey-card .jc-paren { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; }
   .journey-card .jc-tag { display: block; margin-top: 8px; font-size: 11px; letter-spacing: 0.04em; }
-  .journey-card.status-done { border-color: rgba(255,255,255,0.12); }
   .journey-card.status-done .jc-label { color: var(--muted); }
   .journey-card.status-next { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
   .journey-card.status-next .jc-tag { color: var(--gold); }
   .jc-check { color: var(--gold); }
+  .journey-card .jc-fill { position: relative; margin-top: 10px; height: 6px; border-radius: 3px; overflow: hidden;
+    background: linear-gradient(90deg, var(--green), var(--gold)); }
+  .journey-card .jc-fill > .jc-unfilled { position: absolute; top: 0; bottom: 0; right: 0; background: rgba(255,255,255,0.10); transition: left .5s ease; }
+  .journey-card .jc-count { display: block; margin-top: 6px; font-size: 11px; letter-spacing: 0.03em; color: var(--muted); }
+  .journey-card.status-done { border-color: var(--gold); }
   @media (max-width: 760px) { #journey-cards { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 420px) { #journey-cards { grid-template-columns: 1fr; } }
 </style>
@@ -867,6 +871,7 @@
     window.heroHistory = [];
     window.heroExchanges = 0;
     var nameCaptured = false;
+    var firstQuestionFired = false;
     var loading = false;
 
     window.heroAppend = function(role, text){
@@ -938,6 +943,7 @@
       heroAppend('user', q);
       heroHistory.push({ role: 'user', content: q });
       heroExchanges += 1;
+      if (!firstQuestionFired) { firstQuestionFired = true; unlock('question'); }
       loading = true; sendEl.disabled = true;
 
       var done = Promise.resolve();
@@ -966,12 +972,11 @@
 
   // ---- Begin #2: journey strip ----
   var JOURNEY_FALLBACK = [
-    { key:'scan', label:'Scan', paren:'Your Biofield',     href:'/begin/voice',  status:'available' },
-    { key:'find', label:'Find', paren:'Your Remedy Match', href:'/begin/match',  status:'available' },
-    { key:'heal', label:'Heal', paren:'the root causes',   href:'/begin/ascend', status:'available' },
-    { key:'earn', label:'Earn', paren:'Ambassador',        href:'/begin/path',   status:'available' }
+    { key:'scan', label:'Scan', paren:'Your Biofield',     href:'https://truly.vip/E4L',   status:'available', fill:0, steps:[] },
+    { key:'find', label:'Find', paren:'Your Remedy Match', href:'/begin/match',             status:'available', fill:0, steps:[] },
+    { key:'heal', label:'Heal', paren:'the root causes',   href:'https://truly.vip/Join',  status:'available', fill:0, steps:[] },
+    { key:'give', label:'Give', paren:'lift others',       href:'/affiliate/apply',         status:'available', fill:0, steps:[] }
   ];
-  var JOURNEY_TRIGGER = { scan:'scan', find:'question', heal:'paid_fork', earn:'share_video' };
   var journeyUnfolded = false;
 
   function paintJourneyIn(staggered){
@@ -1005,16 +1010,26 @@
       var par = document.createElement('span');
       par.className = 'jc-paren'; par.textContent = s.paren;
       a.appendChild(lab); a.appendChild(par);
+      var fillWrap = document.createElement('span');
+      fillWrap.className = 'jc-fill';
+      var unfilled = document.createElement('span');
+      unfilled.className = 'jc-unfilled';
+      unfilled.style.left = Math.round((s.fill || 0) * 100) + '%';   // covers the unfilled remainder
+      fillWrap.appendChild(unfilled);
+      a.appendChild(fillWrap);
+      var stepsArr = s.steps || [];
+      if (stepsArr.length) {
+        var doneN = stepsArr.filter(function(st){ return st.done; }).length;
+        var cnt = document.createElement('span');
+        cnt.className = 'jc-count';
+        cnt.textContent = doneN + ' of ' + stepsArr.length;
+        a.appendChild(cnt);
+      }
       if (s.status === 'next') {
         var tg = document.createElement('span');
         tg.className = 'jc-tag'; tg.textContent = 'your next step';
         a.appendChild(tg);
       }
-      a.addEventListener('click', function(){
-        var t = JOURNEY_TRIGGER[s.key];
-        if (t && typeof unlock === 'function') { try { unlock(t); } catch(_){} }
-        // navigation proceeds regardless (fire-and-forget gate advance)
-      });
       wrap.appendChild(a);
     });
   }
