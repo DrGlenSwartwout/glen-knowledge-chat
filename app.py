@@ -9366,9 +9366,9 @@ def api_e4l_scan_freshness():
 
 @app.route("/api/e4l/reveal-draft", methods=["POST"])
 def api_e4l_reveal_draft():
-    """Ingest a locally-produced Biofield reveal draft (top match + blurred list)
-    for console review. Auth: X-Cron-Secret (== CRON_SECRET, falls back to
-    CONSOLE_SECRET)."""
+    """Ingest a Biofield reveal draft (interpretation + ranked remedies). On the
+    first insert, mint the magic link, store the auth_tokens row, and email the
+    owner. Auth: X-Cron-Secret (== CRON_SECRET, falls back to CONSOLE_SECRET)."""
     key = (request.headers.get("X-Cron-Secret", "")
            or request.headers.get("X-Console-Key", "")
            or request.args.get("key", ""))
@@ -9378,15 +9378,32 @@ def api_e4l_reveal_draft():
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     scan_date = (data.get("scan_date") or "").strip()
-    top = data.get("top_match") or {}
-    if not email or not scan_date or not (top.get("name") or "").strip():
-        return jsonify({"error": "email, scan_date, top_match.name required"}), 400
+    interp = data.get("interpretation") or {}
+    remedies = data.get("remedies") or []
+    if not email or not scan_date or not (interp or remedies):
+        return jsonify({"error": "email, scan_date, and interpretation or remedies required"}), 400
     from dashboard import biofield_reveals as _br
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             _br.init_table(cx)
-            rid = _br.upsert_draft(cx, email, scan_date, top,
-                                   data.get("blurred") or [], (data.get("source") or "").strip())
+            rid, is_new = _br.upsert(cx, email, scan_date, interp, remedies, (data.get("source") or "").strip())
+            if is_new:
+                token = secrets.token_urlsafe(32)
+                _br.set_token(cx, rid, _hash_token(token))
+                now = datetime.now(timezone.utc)
+                cx.execute(
+                    "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) VALUES (?,?,?,?,?)",
+                    (_hash_token(token), email, "biofield_reveal", now.isoformat(),
+                     (now + timedelta(days=30)).isoformat()))
+                cx.commit()
+        if is_new:
+            try:
+                url = f"{PUBLIC_BASE_URL}/begin/biofield/{token}"
+                body = ("Aloha,\n\nYour Biofield Analysis is ready. View your reading here:\n"
+                        f"{url}\n\nIn wellness,\nDr. Glen and Rae\n")
+                _send_inquiry_email(email, "Your Biofield Analysis is ready", body)
+            except Exception as e:
+                print(f"[reveal-draft] notify failed: {e!r}", flush=True)
         return jsonify({"ok": True, "id": rid})
     except Exception as e:
         print(f"[reveal-draft] {e!r}", flush=True)

@@ -1,6 +1,5 @@
-"""Begin #4a - biofield_reveals store: ai_draft -> confirmed, idempotent draft."""
-import sqlite3
-import sys
+"""Begin #4a rev - biofield_reveals store: interpretation + remedies + first_approved."""
+import sqlite3, sys
 from pathlib import Path
 import pytest
 
@@ -22,55 +21,58 @@ def _cx(tmp_path):
     return cx
 
 
-def test_upsert_creates_draft(tmp_path):
+def _interp():
+    return {"greeting": "Aloha", "body": "Your terrain reading."}
+
+
+def _remedies():
+    return [{"name": "Cistus Shield", "slug": "cistus-shield", "meaning": "Calm the terrain."},
+            {"name": "Binder", "slug": "binder", "meaning": "Bind and clear."}]
+
+
+def test_upsert_new_then_update(tmp_path):
     m = _mod(); cx = _cx(tmp_path)
-    rid = m.upsert_draft(cx, "a@x.com", "2026-06-19",
-                         {"name": "Cistus Shield", "slug": "cistus-shield", "meaning": "Calm the terrain."},
-                         [{"kind": "binder"}, {"kind": "mineral"}], "e4l-matcher")
+    rid, is_new = m.upsert(cx, "a@x.com", "2026-06-19", _interp(), _remedies(), "s")
+    assert is_new is True
     row = m.get(cx, rid)
-    assert row["status"] == "ai_draft"
-    assert row["top"]["name"] == "Cistus Shield"
-    assert len(row["blurred"]) == 2
+    assert row["interpretation"]["greeting"] == "Aloha"
+    assert len(row["remedies"]) == 2 and row["first_approved"] is False
+    rid2, is_new2 = m.upsert(cx, "a@x.com", "2026-06-19", {"greeting": "Hi", "body": "v2"}, _remedies(), "s")
+    assert rid2 == rid and is_new2 is False
+    assert m.get(cx, rid)["interpretation"]["greeting"] == "Hi"
 
 
-def test_upsert_updates_while_draft(tmp_path):
+def test_no_overwrite_after_approval(tmp_path):
     m = _mod(); cx = _cx(tmp_path)
-    rid = m.upsert_draft(cx, "a@x.com", "2026-06-19", {"name": "One"}, [], "s")
-    rid2 = m.upsert_draft(cx, "a@x.com", "2026-06-19", {"name": "Two"}, [], "s")
-    assert rid == rid2
-    assert m.get(cx, rid)["top"]["name"] == "Two"
-
-
-def test_confirmed_not_overwritten(tmp_path):
-    m = _mod(); cx = _cx(tmp_path)
-    rid = m.upsert_draft(cx, "a@x.com", "2026-06-19", {"name": "One"}, [], "s")
-    m.approve(cx, rid, "glen", "hash123")
-    m.upsert_draft(cx, "a@x.com", "2026-06-19", {"name": "Two"}, [], "s")
+    rid, _ = m.upsert(cx, "a@x.com", "2026-06-19", _interp(), _remedies(), "s")
+    m.approve_first(cx, rid, "glen")
+    m.upsert(cx, "a@x.com", "2026-06-19", {"greeting": "X", "body": "X"}, [], "s")
     row = m.get(cx, rid)
-    assert row["status"] == "confirmed"
-    assert row["top"]["name"] == "One"
+    assert row["first_approved"] is True
+    assert row["interpretation"]["greeting"] == "Aloha"  # unchanged after approval
 
 
-def test_set_top_stays_draft(tmp_path):
+def test_approve_first_and_list_pending(tmp_path):
     m = _mod(); cx = _cx(tmp_path)
-    rid = m.upsert_draft(cx, "a@x.com", "2026-06-19", {"name": "One"}, [], "s")
-    m.set_top(cx, rid, {"name": "Edited", "meaning": "new"})
+    r1, _ = m.upsert(cx, "a@x.com", "2026-06-19", _interp(), _remedies(), "s")
+    r2, _ = m.upsert(cx, "b@x.com", "2026-06-19", _interp(), _remedies(), "s")
+    assert m.approve_first(cx, r1, "glen") is True
+    pending = m.list_pending(cx)
+    assert [p["id"] for p in pending] == [r2]
+    assert m.get(cx, r1)["approved_by"] == "glen"
+
+
+def test_token_lookup(tmp_path):
+    m = _mod(); cx = _cx(tmp_path)
+    rid, _ = m.upsert(cx, "a@x.com", "2026-06-19", _interp(), _remedies(), "s")
+    m.set_token(cx, rid, "H:tok")
+    assert m.get_by_token_hash(cx, "H:tok")["id"] == rid
+
+
+def test_edit_interpretation_and_remedies(tmp_path):
+    m = _mod(); cx = _cx(tmp_path)
+    rid, _ = m.upsert(cx, "a@x.com", "2026-06-19", _interp(), _remedies(), "s")
+    m.set_interpretation(cx, rid, {"greeting": "Edited", "body": "new"})
+    m.set_remedies(cx, rid, [{"name": "Only", "slug": "only", "meaning": "m"}])
     row = m.get(cx, rid)
-    assert row["status"] == "ai_draft" and row["top"]["name"] == "Edited"
-
-
-def test_approve_and_token_lookup(tmp_path):
-    m = _mod(); cx = _cx(tmp_path)
-    rid = m.upsert_draft(cx, "a@x.com", "2026-06-19", {"name": "One"}, [], "s")
-    assert m.approve(cx, rid, "glen", "hashABC") is True
-    row = m.get_by_token_hash(cx, "hashABC")
-    assert row["id"] == rid and row["status"] == "confirmed" and row["approved_by"] == "glen"
-
-
-def test_list_drafts_only_drafts(tmp_path):
-    m = _mod(); cx = _cx(tmp_path)
-    r1 = m.upsert_draft(cx, "a@x.com", "2026-06-19", {"name": "A"}, [], "s")
-    r2 = m.upsert_draft(cx, "b@x.com", "2026-06-19", {"name": "B"}, [], "s")
-    m.approve(cx, r1, "glen", "h1")
-    drafts = m.list_drafts(cx)
-    assert [d["id"] for d in drafts] == [r2]
+    assert row["interpretation"]["greeting"] == "Edited" and len(row["remedies"]) == 1
