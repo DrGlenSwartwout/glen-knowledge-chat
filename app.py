@@ -4302,6 +4302,7 @@ def begin_checkout_return():
     slug = ""
     paid = "0"
     _kind = ""
+    _bt_token = ""
     if sid:
         try:
             from dashboard import stripe_pay as _sp
@@ -4309,6 +4310,7 @@ def begin_checkout_return():
             md = sess.get("metadata") or {}
             slug = md.get("slug", "")
             _kind = md.get("kind", "")
+            _bt_token = md.get("token", "")
             if sess.get("payment_status") == "paid":
                 paid = "1"
                 pi_id = sess.get("payment_intent")
@@ -4538,11 +4540,42 @@ def begin_checkout_return():
                     except Exception as _be:
                         print(f"[biofield] return seed failed: {_be!r}", flush=True)
 
+            # ── Biofield trial: create subscription + access grant (idempotent) ──
+            if _kind == "biofield_trial":
+                try:
+                    from dashboard import subscriptions as _bt_subs, group_bundle as _bt_gb
+                    import datetime as _bt_dt
+                    _bt_pi_id = sess.get("payment_intent")
+                    if _bt_pi_id:
+                        pi = _sp.get_payment_intent(_bt_pi_id)
+                        if (pi.get("status") == "succeeded") and pi.get("customer") and pi.get("payment_method"):
+                            bt_email = (md.get("email") or "").strip().lower()
+                            with _db_lock, sqlite3.connect(LOG_DB) as _bc:
+                                _bc.execute("CREATE TABLE IF NOT EXISTS biofield_trial_grants (session_id TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
+                                already = _bc.execute("SELECT 1 FROM biofield_trial_grants WHERE session_id=?", (sid,)).fetchone()
+                                if not already and bt_email:
+                                    _bt_subs.init_subscriptions_table(_bc)
+                                    _bt_subs.migrate_add_membership_columns(_bc)
+                                    init_membership_tables(_bc)
+                                    _bt_subs.create_membership(
+                                        _bc, email=bt_email, stripe_customer_id=pi["customer"],
+                                        stripe_payment_method_id=pi["payment_method"],
+                                        amount_cents=_bt_gb.MEMBERSHIP_AMOUNT_CENTS,
+                                        next_charge_date=_bt_subs.add_months(_bt_dt.date.today().isoformat(), 1))
+                                    _grant_membership(_bc, bt_email, 31, "biofield_trial")
+                                    _bc.execute("INSERT INTO biofield_trial_grants (session_id, email, granted_at) VALUES (?,?,?)",
+                                                (sid, bt_email, datetime.utcnow().isoformat() + "Z"))
+                                    _bc.commit()
+                except Exception as e:
+                    print(f"[biofield-trial] grant failed: {e!r}", flush=True)
+
         except Exception as e:
             print(f"[begin-return] {e!r}", flush=True)
     # Biofield checkouts land on the readiness gate; everything else returns to the funnel.
     if _kind == "biofield":
         return _redir(f"/biofield/ready?paid={paid}")
+    if _kind == "biofield_trial":
+        return _redir(f"/begin/biofield/{_bt_token}")
     dest = (f"/begin/buy/{slug}?paid={paid}" if slug else f"/begin?paid={paid}")
     return _redir(dest)
 
@@ -5928,6 +5961,19 @@ def _validate_membership_magic_link(token):
     except Exception:
         return None
     return email
+
+
+def _grant_membership(cx, email, days, source):
+    """Insert a memberships access grant row and return its id."""
+    import uuid as _uuid
+    mid = str(_uuid.uuid4())
+    now = datetime.utcnow()
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (mid, email, now.isoformat() + "Z", (now + timedelta(days=days)).isoformat() + "Z",
+         source, source, "", ""))
+    return mid
 
 
 def _active_membership_for_email(email):
