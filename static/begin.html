@@ -828,6 +828,112 @@
         return st; });
   }
 
+  // ---- Begin #1 hero chat: scripted name-ask, then stream /begin/match/chat ----
+  (function heroChat(){
+    var msgsEl = document.getElementById('hero-messages');
+    var inputEl = document.getElementById('hero-input');
+    var sendEl = document.getElementById('hero-send');
+    if (!msgsEl || !inputEl || !sendEl) return;
+
+    window.heroHistory = [];
+    window.heroExchanges = 0;
+    var nameCaptured = false;
+    var loading = false;
+
+    window.heroAppend = function(role, text){
+      var d = document.createElement('div');
+      d.className = 'hero-msg ' + (role === 'user' ? 'user' : 'assistant');
+      d.textContent = text;
+      msgsEl.appendChild(d);
+      msgsEl.scrollTop = msgsEl.scrollHeight;
+      return d;
+    };
+
+    // Scripted first assistant message asks the name (instant, no model call).
+    var GREETING = "Aloha. I am here to help with your health goals. So I can "
+      + "tailor this and remember you - what should I call you?";
+    heroAppend('assistant', GREETING);
+    heroHistory.push({ role: 'assistant', content: GREETING });
+
+    // Clean a free-text reply into a first name: drop a leading "I'm/my name
+    // is/it's/this is/call me", strip punctuation, take the first 1-2 tokens.
+    function cleanName(raw){
+      var s = (raw || '').trim()
+        .replace(/^(i\s*am|i'm|my name is|it'?s|this is|call me)\s+/i, '')
+        .replace(/[^A-Za-z' -]/g, ' ')
+        .trim();
+      if (!s) return '';
+      var parts = s.split(/\s+/).slice(0, 2);
+      return parts.join(' ').slice(0, 40);
+    }
+
+    function streamMatch(query){
+      var box = heroAppend('assistant', '');
+      var acc = '';
+      return fetch('/begin/match/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          query: query, history: heroHistory.slice(),
+          for_whom: 'self', session_id: '', name: '', email: ''
+        })
+      }).then(function(r){
+        if (!r.ok || !r.body) { box.textContent = 'Something went sideways. Please try again.'; return; }
+        var reader = r.body.getReader();
+        var decoder = new TextDecoder();
+        var buf = '';
+        function pump(){
+          return reader.read().then(function(chunk){
+            if (chunk.done) { heroHistory.push({ role: 'assistant', content: acc }); return; }
+            buf += decoder.decode(chunk.value, { stream: true });
+            var lines = buf.split('\n'); buf = lines.pop();
+            lines.forEach(function(line){
+              if (line.indexOf('data: ') !== 0) return;
+              var raw = line.slice(6).trim(); if (!raw) return;
+              var evt; try { evt = JSON.parse(raw); } catch (_) { return; }
+              if (evt.token) { acc += evt.token; box.textContent = acc; msgsEl.scrollTop = msgsEl.scrollHeight; }
+            });
+            return pump();
+          });
+        }
+        return pump();
+      }).catch(function(){ box.textContent = 'Something went sideways. Please try again.'; });
+    }
+
+    function send(){
+      if (loading) return;
+      var q = (inputEl.value || '').trim();
+      if (!q) return;
+      inputEl.value = ''; inputEl.style.height = 'auto';
+      heroAppend('user', q);
+      heroHistory.push({ role: 'user', content: q });
+      heroExchanges += 1;
+      loading = true; sendEl.disabled = true;
+
+      var done = Promise.resolve();
+      // First reply after the scripted name-ask = the name. Capture it (best
+      // effort) to the one record, then continue the conversation.
+      if (!nameCaptured) {
+        nameCaptured = true;
+        var nm = cleanName(q);
+        if (nm) {
+          done = unlock('name', { name: nm, first_name: nm }).then(function(){
+            personalize(nm);
+          }).catch(function(){});
+        }
+      }
+      done.then(function(){ return streamMatch(q); })
+        .then(function(){ loading = false; sendEl.disabled = false;
+          if (typeof window.heroMaybeActivate === 'function') window.heroMaybeActivate(); });
+    }
+
+    sendEl.addEventListener('click', send);
+    inputEl.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+  })();
+
   // ---- arrival: deep-link (?want=) takes priority, else normal state load ----
   (function arrival(){
     var want = '';

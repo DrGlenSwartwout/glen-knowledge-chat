@@ -97,3 +97,17 @@ def test_begin_serves_hero(monkeypatch, tmp_path):
     assert "health goals" in html
     # The hero video is present (relocated, single instance kept in the hero).
     assert 'class="video"' in html
+
+
+def test_hero_chat_scripted_greeting_and_no_feedback_controls(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    html = app_module.app.test_client().get("/begin").get_data(as_text=True)
+    assert "what should I call you" in html
+    assert "id=\"hero-send\"" in html
+    # Hero chat surface must not render Rate / feedback controls.
+    hero_start = html.index('id="hero-chat"')
+    hero_end = html.index('</section>', hero_start)
+    hero_block = html[hero_start:hero_end]
+    assert "Rate" not in hero_block
+    assert "feedback" not in hero_block.lower()
