@@ -50,6 +50,7 @@
 <body>
 <div class="wrap">
   <h1>Reorder</h1>
+  <div class="my-ref hide" id="myRef" style="margin:.5rem 0;font-size:14px"></div>
   <p class="sub" id="sub">One moment…</p>
 
   <!-- Sign-in state -->
@@ -89,6 +90,11 @@
       <div class="bar" style="margin-bottom:.6rem">
         <span class="muted" id="count">0 items selected</span>
         <span class="total" id="total">$0.00</span>
+      </div>
+      <div class="ref-entry hide" id="refEntry" style="margin-bottom:.6rem">
+        <label for="refCode" class="muted">Referral code (optional)</label>
+        <input type="text" id="refCode" placeholder="A friend's code = 10% off" autocomplete="off"
+               style="width:100%;padding:.5rem;margin-top:.25rem">
       </div>
       <button class="primary" id="checkoutBtn" disabled onclick="checkout()">Reorder selected</button>
       <p class="muted" style="text-align:center;margin:.5rem 0 0">Prices shown are current. You'll pay securely on the next screen.</p>
@@ -228,9 +234,15 @@ async function checkout(){
   if (!items.length) return;
   $('#checkoutBtn').disabled = true; $('#checkoutBtn').textContent='Starting checkout…';
   const redeemCents = getPtsRedeemCents();
-  const body = redeemCents > 0 ? {items, points_to_redeem_cents: redeemCents} : {items};
-  // Flatten: server historically expected array at top level; keep backward-compat shape when no points
-  const payload = redeemCents > 0 ? body : items;
+  const refCode = (document.getElementById('refCode') ? document.getElementById('refCode').value : '').trim();
+  let payload;
+  if (redeemCents > 0 || refCode) {
+    payload = { items };
+    if (redeemCents > 0) payload.points_to_redeem_cents = redeemCents;
+    if (refCode) payload.referral_code = refCode;
+  } else {
+    payload = items;
+  }
   const d = await (await fetch('/reorder/checkout', {method:'POST', credentials:'same-origin',
             headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})).json();
   if (d.ok && d.stripe_url){ window.location = d.stripe_url; return; }
@@ -271,7 +283,26 @@ async function init(){
   $(‘#cart’).classList.remove(‘hide’);
   lastData = d.items; d.items.forEach(addRow); renderAll(); recompute();
   loadPointsBalance();  // fetch & display loyalty balance (silently degrades on error/401)
+  loadReferral();
 }
+
+async function loadReferral(){
+  try {
+    const er = await fetch('/api/referral/enabled', {credentials:'same-origin'});
+    const ed = await er.json();
+    if (!ed || !ed.enabled) return;                 // flag off -> stay hidden
+    const re = document.getElementById('refEntry'); if (re) re.classList.remove('hide');
+    const r = await fetch('/api/referral/my-code', {credentials:'same-origin'});
+    if (!r.ok) return;                              // not signed in / no email
+    const d = await r.json();
+    if (d && d.code){
+      const el = document.getElementById('myRef');
+      el.textContent = 'Your referral code: ' + d.code + ' (share it, a friend gets 10% off)';
+      el.classList.remove('hide');
+    }
+  } catch(e){}
+}
+
 init();
 </script>
 </body>

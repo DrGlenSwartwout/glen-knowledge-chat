@@ -111,3 +111,12 @@ def test_record_referral_flag_off(monkeypatch, tmp_path):
     appmod = _reload_ref_app(monkeypatch, tmp_path, referrals="false")
     ctx = {"code": "X", "owner_email": "owner@x.com"}
     assert appmod._record_referral_if_any(ctx, "friend@x.com", "INV-1") is False
+
+
+def test_referral_enabled_endpoint(monkeypatch, tmp_path):
+    import importlib
+    monkeypatch.setenv("DATA_DIR", str(tmp_path)); monkeypatch.setenv("REFERRALS", "true")
+    import app as appmod; importlib.reload(appmod)
+    assert appmod.app.test_client().get("/api/referral/enabled").get_json() == {"enabled": True}
+    monkeypatch.setenv("REFERRALS", "false"); importlib.reload(appmod)
+    assert appmod.app.test_client().get("/api/referral/enabled").get_json() == {"enabled": False}
