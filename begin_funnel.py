@@ -82,6 +82,7 @@ VALID_TRIGGERS = {
     "load", "video", "scroll", "question", "name", "email", "tos",
     "voice", "scan", "quiz", "paid_fork", "purchase", "share_video",
     "deep_link",
+    "course_ww", "intake", "masterclass", "biofield",
 }
 
 # Gate keys stored in unlocked_gates (email/tos drive their own columns, but
@@ -442,36 +443,69 @@ def _card(key, ref=""):
 # existing VALID_TRIGGERS - no new gates.
 # ---------------------------------------------------------------------------
 JOURNEY_STEPS = [
-    {"key": "scan", "label": "Scan", "paren": "Your Biofield",
-     "base_url": "/begin/voice",  "done_gate": "scan",        "click_trigger": "scan"},
-    {"key": "find", "label": "Find", "paren": "Your Remedy Match",
-     "base_url": "/begin/match",  "done_gate": "question",     "click_trigger": "question"},
-    {"key": "heal", "label": "Heal", "paren": "the root causes",
-     "base_url": "/begin/ascend", "done_gate": "paid_fork",    "click_trigger": "paid_fork"},
-    {"key": "earn", "label": "Earn", "paren": "Ambassador",
-     "base_url": "/begin/path",   "done_gate": "share_video",  "click_trigger": "share_video"},
+    {"key": "scan", "label": "Scan", "paren": "Your Biofield", "steps": [
+        {"key": "voice_scan", "label": "Voice scan",          "src": ("gate", "scan"),       "href": None},
+        {"key": "ww_course",  "label": "Wellness Whispering", "src": ("gate", "course_ww"),  "href": "https://truly.vip/GetWell"}]},
+    {"key": "find", "label": "Find", "paren": "Your Remedy Match", "steps": [
+        {"key": "match_chat", "label": "Match via chat",      "src": ("gate", "question"),   "href": "/begin/match"},
+        {"key": "biofield",   "label": "Biofield interpretation", "src": ("gate", "biofield"), "href": "/begin/match"}]},
+    {"key": "heal", "label": "Heal", "paren": "the root causes", "steps": [
+        {"key": "intake",      "label": "Intake form",        "src": ("gate", "intake"),      "href": "https://truly.vip/Join"},
+        {"key": "masterclass", "label": "ASH MasterClass",    "src": ("gate", "masterclass"), "href": "https://truly.vip/Intro"}]},
+    {"key": "give", "label": "Give", "paren": "lift others", "steps": [
+        {"key": "ambassador",   "label": "Be an Ambassador",  "src": ("predicate", "ambassador"),     "href": "/affiliate/apply"},
+        {"key": "bring_friend", "label": "Bring a friend",    "src": ("predicate", "referred_friend"), "href": "/begin/path"}]},
 ]
 
 
-def journey_map(state, ref=""):
-    """Ordered 4 cards with progress status. done = its done_gate is set;
-    next = the first not-done step; rest = available. Pure; never mutates."""
+def _step_done(step, gates, signals):
+    kind, name = step["src"]
+    if kind == "gate":
+        return name in gates
+    return bool((signals or {}).get(name))
+
+
+def _scan_first_href(signals, ref):
+    base = "https://portal.e4l.com" if (signals or {}).get("has_e4l") else "https://truly.vip/E4L"
+    return _thread_href(base, ref, "begin-journey-scan")
+
+
+def journey_map(state, ref="", signals=None):
+    """Per-card fractional progress. Each card has an ordered sub-step list;
+    fill = done/total; status = done(>=1.0) / next(first<1.0) / available.
+    href = the first undone step's destination (smart for Scan). Pure."""
     gates = set((state or {}).get("unlocked_gates") or ())
     out = []
     next_assigned = False
-    for step in JOURNEY_STEPS:
-        if step["done_gate"] in gates:
+    for card in JOURNEY_STEPS:
+        steps_out = []
+        done_count = 0
+        first_undone_href = None
+        for step in card["steps"]:
+            done = _step_done(step, gates, signals)
+            if done:
+                done_count += 1
+            elif first_undone_href is None:
+                if card["key"] == "scan" and step["key"] == "voice_scan":
+                    first_undone_href = _scan_first_href(signals, ref)
+                else:
+                    first_undone_href = _thread_href(step["href"], ref, f"begin-journey-{card['key']}")
+            steps_out.append({"key": step["key"], "label": step["label"], "done": done})
+        total = len(card["steps"])
+        fill = round(done_count / total, 3) if total else 0.0
+        if fill >= 1.0:
             status = "done"
         elif not next_assigned:
-            status = "next"
-            next_assigned = True
+            status = "next"; next_assigned = True
         else:
             status = "available"
-        out.append({
-            "key": step["key"], "label": step["label"], "paren": step["paren"],
-            "href": _thread_href(step["base_url"], ref, f"begin-journey-{step['key']}"),
-            "status": status,
-        })
+        if first_undone_href is None:  # all steps done -> link to the card's entry dest
+            if card["key"] == "scan":
+                first_undone_href = _scan_first_href(signals, ref)
+            else:
+                first_undone_href = _thread_href(card["steps"][0]["href"], ref, f"begin-journey-{card['key']}")
+        out.append({"key": card["key"], "label": card["label"], "paren": card["paren"],
+                    "href": first_undone_href, "status": status, "fill": fill, "steps": steps_out})
     return out
 
 
