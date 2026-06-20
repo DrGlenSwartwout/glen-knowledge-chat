@@ -362,3 +362,23 @@ def test_cancel_double_cancel_idempotent(monkeypatch, tmp_path):
             "SELECT status FROM subscriptions WHERE email='t@x.com' AND kind='membership'"
         ).fetchone()
     assert status is not None and status[0] == "cancelled"
+
+
+# ---------------------------------------------------------------------------
+# Task 5: Reveal page scaffold assertions (CTA wiring + paid render)
+# ---------------------------------------------------------------------------
+
+
+def test_reveal_page_scaffold_unlock_checkout(monkeypatch, tmp_path):
+    """The served begin-biofield.html must contain 'unlock-checkout', 'paid', and
+    'trial_enabled' -- confirming the JS CTA wiring and paid-branch are present."""
+    app_module = _load_app()
+    _fresh(app_module, monkeypatch, tmp_path)
+    client = app_module.app.test_client()
+    # Any GET serves the same static HTML (invalid token -> null reveal is fine)
+    r = client.get("/begin/biofield/any-token")
+    assert r.status_code == 200
+    html = r.data.decode()
+    assert "unlock-checkout" in html, "'unlock-checkout' not found in begin-biofield.html"
+    assert "paid" in html, "'paid' not found in begin-biofield.html"
+    assert "trial_enabled" in html, "'trial_enabled' not found in begin-biofield.html"
