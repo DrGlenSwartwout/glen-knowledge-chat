@@ -119,3 +119,13 @@ def test_begin_serves_journey_strip(monkeypatch, tmp_path):
     for label in ("Scan", "Find", "Heal", "Earn"):
         assert label in html
     assert "function renderJourney" in html
+
+
+def test_begin_serves_unfold_and_framing(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    html = app_module.app.test_client().get("/begin").get_data(as_text=True)
+    assert "function unfoldJourney" in html
+    assert "the path we'll walk together" in html
+    assert "unfoldJourney('chat')" in html
+    assert "unfoldJourney('video')" in html

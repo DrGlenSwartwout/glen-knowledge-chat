@@ -954,6 +954,7 @@
       }
       done.then(function(){ return streamMatch(q); })
         .then(function(){ loading = false; sendEl.disabled = false;
+          if (typeof unfoldJourney === 'function') unfoldJourney('chat');
           if (typeof window.heroMaybeActivate === 'function') window.heroMaybeActivate(); });
     }
 
@@ -1021,6 +1022,23 @@
   function refreshJourney(){
     renderJourney();
     if (journeyUnfolded) paintJourneyIn(false);   // re-render while open: show immediately
+  }
+
+  var JOURNEY_FRAMING = "Here's the path we'll walk together - so I can get to "
+    + "know you and help you find the best solutions for your unique needs. "
+    + "Start anywhere.";
+
+  function unfoldJourney(source){
+    if (journeyUnfolded) return;
+    journeyUnfolded = true;
+    var strip = document.getElementById('journey-strip');
+    if (!strip) return;
+    if (source === 'chat' && typeof window.heroAppend === 'function') {
+      window.heroAppend('assistant', JOURNEY_FRAMING);   // weave meaning into the chat
+    }
+    strip.classList.add('unfolded');
+    renderJourney();
+    paintJourneyIn(source !== 'reload');   // animate fresh triggers; immediate on reload
   }
 
   // ---- Begin #1: membership gate for the bottom Explore entry ----
@@ -1111,13 +1129,18 @@
         renderCards(st.surfaced_cards);
         if (typeof applyExploreGate === 'function') applyExploreGate();
         if (typeof refreshJourney === 'function') refreshJourney();
+        var anyDone = ((st.journey_map) || []).some(function(s){ return s.status === 'done'; });
+        if (anyDone && typeof unfoldJourney === 'function') unfoldJourney('reload');
         if(st.current_rung==='arrival'){ unlock('video'); } })
       .catch(function(){ applyReveal(['layer0','layer1']); });
   })();
 
   // ---- video play unlocks listening ----
   var vid = document.querySelector('.video');
-  if(vid){ vid.addEventListener('click', function(){ unlock('video'); }); }
+  if(vid){ vid.addEventListener('click', function(){
+    unlock('video');
+    if (typeof unfoldJourney === 'function') unfoldJourney('video');
+  }); }
 
   // ---- funnel-mode iframe: postMessage re-reveal (piece 3) ----
   // The embed?mode=funnel iframe fires {type:'begin-unlock', rung:'...'} after
