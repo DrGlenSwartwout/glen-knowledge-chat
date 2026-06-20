@@ -131,3 +131,69 @@ def test_return_unpaid_creates_nothing(monkeypatch, tmp_path):
     app_module.app.test_client().get("/begin/checkout-return?kind=biofield_trial&session_id=cs_1")
     with sqlite3.connect(db) as cx:
         assert cx.execute("SELECT COUNT(*) FROM subscriptions WHERE email='t@x.com'").fetchone()[0] == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 3: paid member gets full remedies; non-paid gets blurred + no deep content
+# ---------------------------------------------------------------------------
+
+import json as _json
+
+
+def _extract_reveal(html_bytes):
+    """Parse window.__REVEAL__ from the served HTML bytes."""
+    import re
+    m = re.search(rb"window\.__REVEAL__\s*=\s*(\{.*?\});", html_bytes, re.DOTALL)
+    assert m, "No __REVEAL__ found in HTML"
+    raw = m.group(1).decode("utf-8")
+    # Unescape the JSON-safe escapes applied by the route
+    raw = raw.replace("\\u003c", "<").replace("\\u003e", ">").replace("\\u0026", "&")
+    return _json.loads(raw)
+
+
+def test_paid_member_gets_full_remedies(monkeypatch, tmp_path):
+    """A paid member's reveal page must include Deep1 and Deep2 names, blurred_count=0, paid=True."""
+    app_module = _load_app()
+    db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "BIOFIELD_TRIAL_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "is_member", lambda **kw: True)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: {"status": "active"})
+    token = _approved_reveal(app_module, db)
+    r = app_module.app.test_client().get(f"/begin/biofield/{token}")
+    assert r.status_code == 200
+    html = r.data
+    # Deep remedy names must appear in the rendered HTML
+    assert b"Deep1" in html, "Deep1 missing from paid-member HTML"
+    assert b"Deep2" in html, "Deep2 missing from paid-member HTML"
+    reveal = _extract_reveal(html)
+    assert reveal.get("blurred_count") == 0, f"Expected blurred_count=0, got {reveal.get('blurred_count')}"
+    assert reveal.get("paid") is True, f"Expected paid=True, got {reveal.get('paid')}"
+    assert reveal.get("trial_enabled") is True, f"Expected trial_enabled=True"
+    # remedies list must contain all 3 entries (Top + Deep1 + Deep2)
+    remedies = reveal.get("remedies") or []
+    names = [r_["name"] for r_ in remedies]
+    assert "Deep1" in names and "Deep2" in names and "Top" in names, f"Unexpected remedies: {names}"
+
+
+def test_nonpaid_member_no_deep_content(monkeypatch, tmp_path):
+    """A non-paid member must NOT get Deep1/Deep2 in the HTML; blurred_count > 0; paid=False."""
+    app_module = _load_app()
+    db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "BIOFIELD_TRIAL_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "is_member", lambda **kw: True)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: None)
+    token = _approved_reveal(app_module, db)
+    r = app_module.app.test_client().get(f"/begin/biofield/{token}")
+    assert r.status_code == 200
+    html = r.data
+    # Deep remedy names must NOT appear (anti-bypass)
+    assert b"Deep1" not in html, "Deep1 leaked in non-paid HTML"
+    assert b"Deep2" not in html, "Deep2 leaked in non-paid HTML"
+    reveal = _extract_reveal(html)
+    assert reveal.get("blurred_count", 0) > 0, f"Expected blurred_count>0, got {reveal.get('blurred_count')}"
+    assert reveal.get("paid") is False, f"Expected paid=False, got {reveal.get('paid')}"
+    assert reveal.get("trial_enabled") is True, f"Expected trial_enabled=True"
+    # No 'remedies' key with deep content
+    remedies = reveal.get("remedies") or []
+    rem_names = [r_["name"] for r_ in remedies]
+    assert "Deep1" not in rem_names and "Deep2" not in rem_names, f"Deep remedies leaked: {rem_names}"

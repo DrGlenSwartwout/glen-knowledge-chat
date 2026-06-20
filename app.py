@@ -1422,17 +1422,24 @@ def begin_path():
     return resp
 
 
+def _biofield_remedy_payload(r):
+    """Return {name, meaning, buy_url, page_url} for any remedy dict. Never raises."""
+    try:
+        slug = (r.get("slug") or "").strip()
+        buy_url = f"/begin/buy/{slug}" if slug else "/begin/match"
+        page_url = f"/begin/product/{slug}" if slug else "/begin/match"
+        return {"name": r.get("name", ""), "meaning": r.get("meaning", ""), "buy_url": buy_url, "page_url": page_url}
+    except Exception:
+        return None
+
+
 def _biofield_top_payload(row):
     """Return {name, meaning, buy_url, page_url} from remedies[0]. Never raises."""
     try:
         remedies = row.get("remedies") or []
         if not remedies:
             return None
-        top = remedies[0]
-        slug = (top.get("slug") or "").strip()
-        buy_url = f"/begin/buy/{slug}" if slug else "/begin/match"
-        page_url = f"/begin/product/{slug}" if slug else "/begin/match"
-        return {"name": top.get("name", ""), "meaning": top.get("meaning", ""), "buy_url": buy_url, "page_url": page_url}
+        return _biofield_remedy_payload(remedies[0])
     except Exception:
         return None
 
@@ -1518,14 +1525,35 @@ def begin_biofield_reveal(token):
     top_unlocked = first_approved and fu_rid == row["id"]
     free_available = first_approved and fu_rid is None
 
-    payload = {
-        "interpretation": row.get("interpretation") or {},
-        "blurred_count": len(row.get("remedies") or []) - (1 if top_unlocked else 0),
-        "first_approved": first_approved,
-        "free_available": free_available,
-        "top_unlocked": top_unlocked,
-        "top": _biofield_top_payload(row) if top_unlocked else None,
-    }
+    try:
+        paid = bool(_active_membership_for_email(email))
+    except Exception as _me:
+        print(f"[biofield-reveal] membership check failed: {_me!r}", flush=True)
+        paid = False
+
+    if paid:
+        all_remedies = row.get("remedies") or []
+        payload = {
+            "interpretation": row.get("interpretation") or {},
+            "blurred_count": 0,
+            "first_approved": first_approved,
+            "free_available": False,
+            "top_unlocked": True,
+            "paid": True,
+            "trial_enabled": BIOFIELD_TRIAL_ENABLED,
+            "remedies": [_biofield_remedy_payload(r) for r in all_remedies],
+        }
+    else:
+        payload = {
+            "interpretation": row.get("interpretation") or {},
+            "blurred_count": len(row.get("remedies") or []) - (1 if top_unlocked else 0),
+            "first_approved": first_approved,
+            "free_available": free_available,
+            "top_unlocked": top_unlocked,
+            "top": _biofield_top_payload(row) if top_unlocked else None,
+            "paid": False,
+            "trial_enabled": BIOFIELD_TRIAL_ENABLED,
+        }
 
     # Set the biofield gate (idempotent, wrapped) -> Find step 2 fills.
     _record_entry_unlock("biofield", email)
