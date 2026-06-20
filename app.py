@@ -3260,22 +3260,27 @@ def begin_product_page_data(slug):
         import sqlite3 as _sq2
         from dashboard import sales_images as _si2
         try:
-            with _sq2.connect(LOG_DB) as _cx2:
-                _disp = _si2.display_images(_cx2, slug)
-                _qstate = _si2.queue_state(_cx2, slug)
-            _imgs = [{"kind": k, "url": f"/begin/product-image/{slug}/{fn}"}
-                     for k, fn in _disp.items() if fn]
             _img_sec = next((s for s in sections if s["id"] == "images"), None)
             if _img_sec is not None:
-                if _imgs:
-                    _img_sec["body"] = {"images": _imgs, "state": "ready"}
-                elif _qstate == "pending":
-                    _img_sec["body"] = {"images": [], "state": "generating"}
-                else:
-                    _img_sec["body"] = {"images": [], "state": "none"}
+                with _sq2.connect(LOG_DB) as _cx2:
+                    if _SALES_IMAGE_VARIATIONS_ENABLED:
+                        _grouped = _si2.display_images_grouped(_cx2, slug)
+                        _state = _si2.images_grouped_state(_cx2, slug)
+                        _img_sec["body"] = {"grouped": _grouped, "state": _state, "target": 8}
+                    else:
+                        _disp = _si2.display_images(_cx2, slug)
+                        _qstate = _si2.queue_state(_cx2, slug)
+                        _imgs = [{"kind": k, "url": f"/begin/product-image/{slug}/{fn}"}
+                                 for k, fn in _disp.items() if fn]
+                        if _imgs:
+                            _img_sec["body"] = {"images": _imgs, "state": "ready"}
+                        elif _qstate == "pending":
+                            _img_sec["body"] = {"images": [], "state": "generating"}
+                        else:
+                            _img_sec["body"] = {"images": [], "state": "none"}
         except Exception as _e:
             print(f"[sales-img] page-data marker skipped: {_e}", flush=True)
-    if _SALES_IMAGE_PICK_ENABLED:
+    if _SALES_IMAGE_PICK_ENABLED and not _SALES_IMAGE_VARIATIONS_ENABLED:
         import sqlite3 as _sq3
         from dashboard import sales_images as _si3, sales_votes as _sv3, sales_image_prompts as _sip3
         try:
