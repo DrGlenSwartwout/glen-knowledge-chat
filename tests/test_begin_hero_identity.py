@@ -1,0 +1,87 @@
+# tests/test_begin_hero_identity.py
+"""Begin #1 hero -- locks the identity/membership contract the hero front end
+relies on: name capture by session, email+tos activation -> Tier-1 member,
+session+email union to ONE record. All writes go through /begin/unlock."""
+
+import importlib
+import sqlite3
+import sys
+from pathlib import Path
+
+import pytest
+
+
+def _load_app():
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    try:
+        return importlib.import_module("app")
+    except Exception as e:
+        pytest.skip(f"app module not importable in this env: {e}")
+
+
+def _fresh_db(app_module, monkeypatch, tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    # Free-tier transition onboards to GHL + concierge referral; neutralize both.
+    monkeypatch.setattr(app_module, "ghl_onboard_contact",
+                        lambda *a, **k: {"contact_id": "x"})
+    monkeypatch.setattr(app_module, "_capture_concierge_referral",
+                        lambda *a, **k: None)
+    return db
+
+
+def test_activation_makes_member_by_session_and_email(monkeypatch, tmp_path):
+    app_module = _load_app()
+    _fresh_db(app_module, monkeypatch, tmp_path)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "hero1")
+
+    # Name captured conversationally (trigger="name").
+    client.post("/begin/unlock", json={"trigger": "name", "name": "Ada"})
+    assert app_module.is_member(session_id="hero1") is False
+
+    # Activation: email + ToS via the existing "tos" trigger.
+    r = client.post("/begin/unlock", json={
+        "trigger": "tos", "email": "ada@example.com", "tos": True})
+    assert r.status_code == 200
+    assert r.get_json()["current_rung"] == "free_tier"
+
+    # Member now true by BOTH session and email.
+    assert app_module.is_member(session_id="hero1") is True
+    assert app_module.is_member(email="ada@example.com") is True
+
+    # /begin/state reports the ToS stamp and the captured first name.
+    st = client.get("/begin/state").get_json()
+    assert st["tos_agreed_at"]
+    assert st["first_name"] == "Ada"
+    assert st["email"] == "ada@example.com"
+
+
+def test_name_then_email_resolve_to_one_record(monkeypatch, tmp_path):
+    app_module = _load_app()
+    db = _fresh_db(app_module, monkeypatch, tmp_path)
+    client = app_module.app.test_client()
+    client.set_cookie("amg_session", "hero2")
+    client.post("/begin/unlock", json={"trigger": "name", "name": "Lee"})
+    client.post("/begin/unlock", json={
+        "trigger": "tos", "email": "lee@example.com", "tos": True})
+
+    # Exactly one journey_state row carries this session; the union exposes
+    # name + email + tos together.
+    with sqlite3.connect(db) as cx:
+        n = cx.execute(
+            "SELECT COUNT(*) FROM journey_state WHERE session_id=?",
+            ("hero2",)).fetchone()[0]
+    assert n == 1
+    import begin_funnel
+    with sqlite3.connect(db) as cx:
+        state = begin_funnel.get_state(cx, session_id="hero2",
+                                       email="lee@example.com")
+    assert state["first_name"] == "Lee"
+    assert state["email"] == "lee@example.com"
+    assert state["tos_agreed_at"]
