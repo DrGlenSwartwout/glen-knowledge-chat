@@ -1576,6 +1576,33 @@ def begin_biofield_reveal_top(token):
         return jsonify({"ok": False, "reason": "error"})
 
 
+@app.route("/begin/biofield/<token>/unlock-checkout", methods=["POST"])
+def begin_biofield_unlock_checkout(token):
+    if not (BIOFIELD_TRIAL_ENABLED and _STRIPE_ACTIVE):
+        return jsonify({"ok": False, "error": "unavailable"}), 200
+    from dashboard import biofield_reveals as _br, stripe_pay as _sp
+    th = _hash_token((token or "").strip())
+    valid, row = _biofield_verify_token(th)
+    if not valid or row is None:
+        return jsonify({"ok": False, "error": "invalid"}), 200
+    email = (row.get("email") or "").strip().lower()
+    if _active_membership_for_email(email):
+        return jsonify({"ok": True, "already": True})
+    base = PUBLIC_BASE_URL.rstrip("/")
+    try:
+        sess = _sp.create_checkout_session(
+            100, customer_email=email,
+            description="Biofield Analysis - full unlock",
+            metadata={"email": email, "kind": "biofield_trial", "token": token},
+            success_url=f"{base}/begin/checkout-return?kind=biofield_trial&session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{base}/begin/biofield/{token}",
+            save_card=True)
+        return jsonify({"ok": True, "url": sess.get("url")})
+    except Exception as e:
+        print(f"[biofield-trial] checkout failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "checkout_failed"}), 200
+
+
 @app.route("/begin/state", methods=["GET"])
 def begin_state():
     session_id = (request.cookies.get("amg_session") or "").strip()
@@ -2550,6 +2577,7 @@ _REVIEWS_VIDEO_TRIM = os.environ.get("REVIEWS_VIDEO_TRIM", "").strip().lower() i
 _REVIEWS_GIFTS = os.environ.get("REVIEWS_GIFTS", "").strip().lower() in ("1", "true", "yes")
 _REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "yes")
 INGREDIENT_PAGES_PAID_ONLY = os.environ.get("INGREDIENT_PAGES_PAID_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
+BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _referral_pct():
