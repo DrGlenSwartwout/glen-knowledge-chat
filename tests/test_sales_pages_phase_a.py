@@ -143,3 +143,23 @@ def test_grouped_state_ready_at_8():
             n += 1
             si.record_image(cx, "full", kind, v, f"{kind}-{v}.png", prompt_variant_id=n, model_id="flux-1.1-pro")
     assert si.images_grouped_state(cx, "full") == "ready"
+
+def test_generate_missing_writes_files_and_tags(tmp_path):
+    cx = _cx()
+    pv.seed(cx); mods.seed(cx); si.init_tables(cx)
+    def fake_gen(model_id, prompt):
+        return (b"PNG", model_id)
+    n = si.generate_missing(cx, "p", tmp_path, generate_fn=fake_gen)
+    assert n == 8
+    assert (tmp_path / "botanical-1.png").read_bytes() == b"PNG"
+    assert si.tagged_count(cx, "p") == 8
+    rows = {(r["kind"], r["variant"]): r for r in si.get_images(cx, "p")}
+    assert rows[("botanical", 1)]["model_id"] is not None
+
+def test_generate_missing_records_used_model_on_fallback(tmp_path):
+    cx = _cx()
+    pv.seed(cx); mods.seed(cx); si.init_tables(cx)
+    def fallback_gen(model_id, prompt):
+        return (b"PNG", "flux-1.1-pro")   # dispatcher fell back
+    si.generate_missing(cx, "q", tmp_path, generate_fn=fallback_gen)
+    assert all(r["model_id"] == "flux-1.1-pro" for r in si.get_images(cx, "q"))

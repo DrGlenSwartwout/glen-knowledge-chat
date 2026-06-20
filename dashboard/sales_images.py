@@ -138,3 +138,19 @@ def display_images_grouped(cx, slug, per_kind=4):
 
 def images_grouped_state(cx, slug, target=8):
     return "ready" if tagged_count(cx, slug) >= target else "generating"
+
+def generate_missing(cx, slug, dest_dir, *, generate_fn):
+    """Generate only the missing slots for `slug`. `generate_fn(model_id, prompt)` returns
+    (image_bytes, used_model_id). Writes files into dest_dir and records each tagged image."""
+    from pathlib import Path
+    dest = Path(dest_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    ok = 0
+    for job in build_generation_jobs(cx, slug):
+        data, used_model = generate_fn(job["model_id"], job["prompt_text"])
+        fname = f"{job['kind']}-{job['variant']}.png"
+        (dest / fname).write_bytes(data)
+        record_image(cx, slug, job["kind"], job["variant"], fname,
+                     prompt_variant_id=job["prompt_variant_id"], model_id=used_model)
+        ok += 1
+    return ok
