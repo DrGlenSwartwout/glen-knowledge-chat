@@ -359,3 +359,70 @@ def test_get_invalid_token(monkeypatch, tmp_path):
     with sqlite3.connect(db) as cx:
         st = begin_funnel.get_state(cx, email="any@x.com")
     assert "biofield" not in (st.get("unlocked_gates") or [])
+
+
+# ---------------------------------------------------------------------------
+# Task 4a: Scaffold string assertions + page_url in top payload
+# ---------------------------------------------------------------------------
+
+def test_page_scaffold_contains_key_strings(monkeypatch, tmp_path):
+    """The served HTML must contain the key UI strings used by the JS scaffold."""
+    app_module = _load_app()
+    db = _fresh(app_module, monkeypatch, tmp_path)
+    # Any valid GET serves the static HTML (token invalid -> null reveal is fine)
+    client = app_module.app.test_client()
+    r = client.get("/begin/biofield/any-token")
+    assert r.status_code == 200
+    html = r.data.decode()
+    # Key scaffold strings must be present in the JS
+    assert "Unlock your full Biofield Analysis" in html
+    assert "Reveal my top match" in html
+    assert "Agree and view" in html
+
+
+def test_page_scaffold_name_link_uses_blank_and_page_url(monkeypatch, tmp_path):
+    """When top is unlocked, the served page JS must reference _blank and page_url."""
+    app_module = _load_app()
+    db = _fresh(app_module, monkeypatch, tmp_path)
+    token = _approve_a_reveal(app_module, db)
+    client = app_module.app.test_client()
+    r = client.get(f"/begin/biofield/{token}")
+    assert r.status_code == 200
+    html = r.data.decode()
+    # The static JS scaffold that builds the name link must reference _blank and page_url
+    assert '_blank' in html
+    assert 'page_url' in html
+
+
+def test_top_payload_includes_page_url(monkeypatch, tmp_path):
+    """POST /reveal-top response must include page_url in the top object."""
+    app_module = _load_app()
+    db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "_send_inquiry_email", lambda *a, **k: True)
+    email = "pgurl@x.com"
+    token = _make_reveal(app_module, db, email, approve=True)
+    _make_member(db, email)
+    client = app_module.app.test_client()
+    r = client.post(f"/begin/biofield/{token}/reveal-top")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert "page_url" in body["top"]
+    assert body["top"]["page_url"] == "/begin/product/cistus-shield"
+
+
+def test_get_top_unlocked_payload_includes_page_url(monkeypatch, tmp_path):
+    """GET /begin/biofield/<token> when top_unlocked must include page_url in top."""
+    app_module = _load_app()
+    db = _fresh(app_module, monkeypatch, tmp_path)
+    token = _approve_a_reveal(app_module, db)
+    client = app_module.app.test_client()
+    r = client.get(f"/begin/biofield/{token}")
+    assert r.status_code == 200
+    data_str = r.data.decode()
+    start = data_str.find("window.__REVEAL__ = ") + len("window.__REVEAL__ = ")
+    end = data_str.find(";</script>", start)
+    payload = _json.loads(data_str[start:end])
+    assert payload["top_unlocked"] is True
+    assert "page_url" in payload["top"]
+    assert payload["top"]["page_url"] == "/begin/product/cistus-shield"

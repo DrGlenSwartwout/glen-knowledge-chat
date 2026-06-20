@@ -4,7 +4,7 @@
   <link rel="icon" type="image/png" href="/static/favicon.png">
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Your Biofield Analysis · Dr. Glen Swartwout</title>
+  <title>Your Biofield Analysis - Dr. Glen Swartwout</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
@@ -75,7 +75,83 @@
       margin-bottom: 20px;
     }
 
-    .top-match-label {
+    /* --- Interpretation --- */
+    .interp-greeting {
+      font-size: 24px;
+      color: var(--cream);
+      margin-bottom: 18px;
+    }
+    .interp-body p {
+      color: var(--cream);
+      margin-bottom: 14px;
+    }
+    .interp-body p:last-child { margin-bottom: 0; }
+
+    /* --- ToS gate --- */
+    .tos-gate {
+      max-width: 480px;
+      margin: 60px auto 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 36px 32px;
+      text-align: center;
+    }
+    .tos-gate h2 {
+      font-size: 20px;
+      color: var(--cream);
+      margin-bottom: 14px;
+    }
+    .tos-gate p {
+      color: var(--muted);
+      font-size: 15px;
+      margin-bottom: 22px;
+    }
+    .tos-check-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      text-align: left;
+      margin-bottom: 22px;
+      justify-content: center;
+    }
+    .tos-check-row input[type="checkbox"] {
+      margin-top: 3px;
+      accent-color: var(--gold);
+      width: 16px; height: 16px;
+      flex: none;
+    }
+    .tos-check-row label {
+      font-size: 14px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .tos-agree-btn {
+      display: inline-block;
+      background: var(--gold);
+      color: #0a150d;
+      font-family: "Raleway", system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      padding: 13px 28px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+    }
+    .tos-agree-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .tos-msg {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 12px;
+    }
+
+    /* --- Remedy card --- */
+    .remedy-section { margin-top: 28px; }
+    .remedy-section-label {
       font-size: 12px;
       letter-spacing: 0.12em;
       text-transform: uppercase;
@@ -83,15 +159,21 @@
       font-weight: 600;
       margin-bottom: 10px;
     }
-    .top-match-name {
-      font-size: 28px;
+    .remedy-name-link {
+      font-size: 26px;
       color: var(--cream);
-      margin-bottom: 12px;
+      margin-bottom: 10px;
+      display: block;
+      text-decoration: underline;
+      text-decoration-color: rgba(212, 168, 67, 0.4);
     }
-    .top-match-meaning {
+    .remedy-name-link:hover {
+      text-decoration-color: var(--gold);
+    }
+    .remedy-meaning {
       color: var(--muted);
       font-size: 16px;
-      margin-bottom: 24px;
+      margin-bottom: 22px;
     }
     .buy-btn {
       display: inline-block;
@@ -108,6 +190,31 @@
       cursor: pointer;
     }
 
+    /* --- Free reveal button --- */
+    .free-reveal-btn {
+      display: inline-block;
+      background: var(--gold);
+      color: #0a150d;
+      font-family: "Raleway", system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      padding: 13px 28px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+    }
+    .free-reveal-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .free-reveal-msg {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 12px;
+    }
+
+    /* --- Blurred section --- */
     .blurred-section { margin-top: 32px; }
     .blurred-section-label {
       font-size: 13px;
@@ -150,6 +257,7 @@
       text-align: center;
     }
 
+    /* --- CTA stub --- */
     .cta-section { margin-top: 28px; text-align: center; }
     .cta-btn-disabled {
       display: inline-block;
@@ -171,6 +279,7 @@
       margin-top: 10px;
     }
 
+    /* --- Invalid token --- */
     .invalid-card {
       max-width: 480px;
       margin: 80px auto 0;
@@ -203,7 +312,14 @@
       var reveal = window.__REVEAL__;
       var root = document.getElementById("app-root");
 
-      if (!reveal) {
+      // Extract token from URL path: last non-empty segment
+      var _pathParts = location.pathname.replace(/\/+$/, "").split("/");
+      var _token = _pathParts[_pathParts.length - 1] || "";
+
+      // ---------------------------------------------------------------
+      // State 1: Invalid token
+      // ---------------------------------------------------------------
+      if (reveal === null) {
         var card = document.createElement("div");
         card.className = "invalid-card";
         var h = document.createElement("h2");
@@ -216,37 +332,229 @@
         return;
       }
 
-      // Top match card
-      var topCard = document.createElement("div");
-      topCard.className = "card";
-      topCard.style.marginTop = "32px";
+      // ---------------------------------------------------------------
+      // State 2: ToS gate (not a member yet)
+      // ---------------------------------------------------------------
+      if (reveal.needs_tos) {
+        var tosCard = document.createElement("div");
+        tosCard.className = "tos-gate";
 
-      var label = document.createElement("div");
-      label.className = "top-match-label";
-      label.textContent = "Your Top Remedy Match";
-      topCard.appendChild(label);
+        var tosH = document.createElement("h2");
+        tosH.textContent = "Your Biofield Analysis is ready.";
+        tosCard.appendChild(tosH);
 
-      var nameEl = document.createElement("h1");
-      nameEl.className = "top-match-name";
-      nameEl.textContent = reveal.name || "";
-      topCard.appendChild(nameEl);
+        var tosP = document.createElement("p");
+        tosP.textContent = "To view your personal Biofield Analysis, please agree to our terms.";
+        tosCard.appendChild(tosP);
 
-      if (reveal.meaning) {
-        var meaningEl = document.createElement("p");
-        meaningEl.className = "top-match-meaning";
-        meaningEl.textContent = reveal.meaning;
-        topCard.appendChild(meaningEl);
+        var checkRow = document.createElement("div");
+        checkRow.className = "tos-check-row";
+
+        var chk = document.createElement("input");
+        chk.type = "checkbox";
+        chk.id = "tos-chk";
+        checkRow.appendChild(chk);
+
+        var lbl = document.createElement("label");
+        lbl.setAttribute("for", "tos-chk");
+        lbl.textContent = "I agree to the terms of service and consent to receive personalized health information.";
+        checkRow.appendChild(lbl);
+        tosCard.appendChild(checkRow);
+
+        var agreeBtn = document.createElement("button");
+        agreeBtn.className = "tos-agree-btn";
+        agreeBtn.textContent = "Agree and view";
+        agreeBtn.disabled = true;
+        tosCard.appendChild(agreeBtn);
+
+        var tosMsg = document.createElement("p");
+        tosMsg.className = "tos-msg";
+        tosCard.appendChild(tosMsg);
+
+        chk.addEventListener("change", function () {
+          agreeBtn.disabled = !chk.checked;
+        });
+
+        agreeBtn.addEventListener("click", function () {
+          if (!chk.checked) return;
+          agreeBtn.disabled = true;
+          tosMsg.textContent = "Saving...";
+          fetch("/begin/unlock", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({trigger: "tos", email: reveal.email, tos: true})
+          }).then(function (res) { return res.json(); }).then(function () {
+            location.reload();
+          }).catch(function () {
+            tosMsg.textContent = "Something went wrong. Please try again.";
+            agreeBtn.disabled = false;
+          });
+        });
+
+        root.appendChild(tosCard);
+        return;
       }
 
-      var buyBtn = document.createElement("a");
-      buyBtn.className = "buy-btn";
-      buyBtn.href = reveal.buy_url || "/begin/match";
-      buyBtn.textContent = "Get " + (reveal.name || "your match");
-      topCard.appendChild(buyBtn);
-      root.appendChild(topCard);
+      // ---------------------------------------------------------------
+      // State 3: Member -- render interpretation + remedies area
+      // ---------------------------------------------------------------
+      var data = reveal;
 
-      // Blurred deeper matches
-      var blurredCount = reveal.blurred_count || 0;
+      // -- Interpretation card --
+      var interp = data.interpretation || {};
+      if (interp.greeting || interp.body) {
+        var interpCard = document.createElement("div");
+        interpCard.className = "card";
+        interpCard.style.marginTop = "32px";
+
+        if (interp.greeting) {
+          var greetEl = document.createElement("h2");
+          greetEl.className = "interp-greeting";
+          greetEl.textContent = interp.greeting;
+          interpCard.appendChild(greetEl);
+        }
+
+        if (interp.body) {
+          var bodyDiv = document.createElement("div");
+          bodyDiv.className = "interp-body";
+          var lines = interp.body.split("\n");
+          var buf = [];
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            if (line.trim() === "") {
+              if (buf.length) {
+                var pEl = document.createElement("p");
+                pEl.textContent = buf.join(" ");
+                bodyDiv.appendChild(pEl);
+                buf = [];
+              }
+            } else {
+              buf.push(line);
+            }
+          }
+          if (buf.length) {
+            var pEl2 = document.createElement("p");
+            pEl2.textContent = buf.join(" ");
+            bodyDiv.appendChild(pEl2);
+          }
+          interpCard.appendChild(bodyDiv);
+        }
+        root.appendChild(interpCard);
+      }
+
+      // -- Remedies area --
+      var remedyCard = document.createElement("div");
+      remedyCard.className = "card";
+
+      var remedyLabel = document.createElement("div");
+      remedyLabel.className = "remedy-section-label";
+      remedyLabel.textContent = "Your Top Remedy Match";
+      remedyCard.appendChild(remedyLabel);
+
+      // Helper: render a revealed top remedy (name link + meaning + Order btn)
+      function renderTopRemedyInto(container, top) {
+        var nameLink = document.createElement("a");
+        nameLink.className = "remedy-name-link";
+        nameLink.href = top.page_url || "/begin/match";
+        nameLink.target = "_blank";
+        nameLink.rel = "noopener";
+        nameLink.textContent = top.name || "";
+        container.appendChild(nameLink);
+
+        if (top.meaning) {
+          var meaningEl = document.createElement("p");
+          meaningEl.className = "remedy-meaning";
+          meaningEl.textContent = top.meaning;
+          container.appendChild(meaningEl);
+        }
+
+        var orderBtn = document.createElement("a");
+        orderBtn.className = "buy-btn";
+        orderBtn.href = top.buy_url || "/begin/match";
+        orderBtn.textContent = "Order";
+        container.appendChild(orderBtn);
+      }
+
+      if (data.top_unlocked && data.top) {
+        // Already revealed -- show immediately
+        renderTopRemedyInto(remedyCard, data.top);
+
+      } else if (data.free_available) {
+        // Show the free-reveal button
+        var freeBtn = document.createElement("button");
+        freeBtn.className = "free-reveal-btn";
+        freeBtn.textContent = "Reveal my top match (free)";
+        remedyCard.appendChild(freeBtn);
+
+        var freeMsg = document.createElement("p");
+        freeMsg.className = "free-reveal-msg";
+        remedyCard.appendChild(freeMsg);
+
+        freeBtn.addEventListener("click", function () {
+          freeBtn.disabled = true;
+          freeMsg.textContent = "Loading...";
+          fetch("/begin/biofield/" + _token + "/reveal-top", {
+            method: "POST",
+            credentials: "same-origin"
+          }).then(function (res) { return res.json(); }).then(function (body) {
+            if (body.ok && body.top) {
+              // Remove the button + msg and render the revealed remedy
+              freeBtn.remove();
+              freeMsg.remove();
+              renderTopRemedyInto(remedyCard, body.top);
+            } else {
+              var reason = body.reason || "";
+              if (reason === "used") {
+                freeMsg.textContent = "You have already used your free reveal - unlock your full analysis below.";
+              } else if (reason === "pending") {
+                freeMsg.textContent = "Your top match is being finalized.";
+              } else if (reason === "tos") {
+                location.reload();
+              } else {
+                freeMsg.textContent = "Something went wrong. Please try again.";
+                freeBtn.disabled = false;
+              }
+            }
+          }).catch(function () {
+            freeMsg.textContent = "Something went wrong. Please try again.";
+            freeBtn.disabled = false;
+          });
+        });
+
+      } else if (data.first_approved) {
+        // Free already used -- $1 stub
+        var usedMsg = document.createElement("p");
+        usedMsg.style.color = "var(--muted)";
+        usedMsg.style.fontSize = "15px";
+        usedMsg.style.marginBottom = "20px";
+        usedMsg.textContent = "Your top match is ready. Unlock your full analysis to view it.";
+        remedyCard.appendChild(usedMsg);
+
+        var stubBtn = document.createElement("button");
+        stubBtn.className = "cta-btn-disabled";
+        stubBtn.disabled = true;
+        stubBtn.textContent = "Unlock your full Biofield Analysis";
+        remedyCard.appendChild(stubBtn);
+
+        var stubNote = document.createElement("p");
+        stubNote.className = "cta-note";
+        stubNote.textContent = "(unlocking soon)";
+        remedyCard.appendChild(stubNote);
+
+      } else {
+        // Not yet approved
+        var pendingMsg = document.createElement("p");
+        pendingMsg.style.color = "var(--muted)";
+        pendingMsg.style.fontSize = "15px";
+        pendingMsg.textContent = "Your top match is being finalized.";
+        remedyCard.appendChild(pendingMsg);
+      }
+
+      root.appendChild(remedyCard);
+
+      // -- Blurred depth block (always for members) --
+      var blurredCount = data.blurred_count || 0;
       if (blurredCount > 0) {
         var blurSection = document.createElement("div");
         blurSection.className = "blurred-section";
@@ -259,7 +567,7 @@
         var stack = document.createElement("div");
         stack.className = "blurred-stack";
 
-        for (var i = 0; i < Math.min(blurredCount, 3); i++) {
+        for (var j = 0; j < Math.min(blurredCount, 3); j++) {
           var bc = document.createElement("div");
           bc.className = "blurred-card";
           var bi = document.createElement("div");
@@ -279,7 +587,7 @@
         root.appendChild(blurSection);
       }
 
-      // Disabled CTA
+      // -- Full-analysis CTA stub (always for members) --
       var ctaSection = document.createElement("div");
       ctaSection.className = "cta-section";
 
@@ -291,9 +599,10 @@
 
       var ctaNote = document.createElement("p");
       ctaNote.className = "cta-note";
-      ctaNote.textContent = "Unlocking soon";
+      ctaNote.textContent = "(unlocking soon)";
       ctaSection.appendChild(ctaNote);
       root.appendChild(ctaSection);
+
     })();
   </script>
 </body>

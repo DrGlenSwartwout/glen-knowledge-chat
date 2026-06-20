@@ -1423,7 +1423,7 @@ def begin_path():
 
 
 def _biofield_top_payload(row):
-    """Return {name, meaning, buy_url} from remedies[0]. Never raises."""
+    """Return {name, meaning, buy_url, page_url} from remedies[0]. Never raises."""
     try:
         remedies = row.get("remedies") or []
         if not remedies:
@@ -1431,7 +1431,8 @@ def _biofield_top_payload(row):
         top = remedies[0]
         slug = (top.get("slug") or "").strip()
         buy_url = f"/begin/buy/{slug}" if slug else "/begin/match"
-        return {"name": top.get("name", ""), "meaning": top.get("meaning", ""), "buy_url": buy_url}
+        page_url = f"/begin/product/{slug}" if slug else "/begin/match"
+        return {"name": top.get("name", ""), "meaning": top.get("meaning", ""), "buy_url": buy_url, "page_url": page_url}
     except Exception:
         return None
 
