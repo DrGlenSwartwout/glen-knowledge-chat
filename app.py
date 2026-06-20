@@ -16470,11 +16470,25 @@ def _drain_sales_image_queue():
             with sqlite3.connect(LOG_DB) as cx: _si.mark_failed(cx, slug)
             continue
         prod = dict(p)
+        dest = _SALES_IMG_DIR / slug
+        dest.mkdir(parents=True, exist_ok=True)
+        if _SALES_IMAGE_VARIATIONS_ENABLED:
+            from dashboard import sales_image_models as _mods
+            try:
+                with sqlite3.connect(LOG_DB) as cx:
+                    n = _si.generate_missing(
+                        cx, slug, dest,
+                        generate_fn=lambda mid, prompt: _mods.generate(cx, mid, prompt))
+                with sqlite3.connect(LOG_DB) as cx:
+                    _si.mark_done(cx, slug)
+            except Exception as e:
+                print(f"[sales-img] {slug} variation gen failed: {e}", flush=True)
+                with sqlite3.connect(LOG_DB) as cx:
+                    _si.mark_failed(cx, slug)
+            continue
         if not prod.get("ingredients"):
             prod["ingredients"] = (_product_card(p) or {}).get("ingredients", [])
         prompts = _sip.build_image_prompts(prod)
-        dest = _SALES_IMG_DIR / slug
-        dest.mkdir(parents=True, exist_ok=True)
         ok = 0
         for kind in _sip.IMAGE_KINDS:
             for variant, prompt in enumerate(prompts[kind], start=1):
