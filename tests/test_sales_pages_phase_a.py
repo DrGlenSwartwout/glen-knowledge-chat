@@ -163,3 +163,9 @@ def test_generate_missing_records_used_model_on_fallback(tmp_path):
         return (b"PNG", "flux-1.1-pro")   # dispatcher fell back
     si.generate_missing(cx, "q", tmp_path, generate_fn=fallback_gen)
     assert all(r["model_id"] == "flux-1.1-pro" for r in si.get_images(cx, "q"))
+
+def test_backfill_slugs_single_and_all():
+    cx = _cx()
+    assert si.backfill_slugs(cx, "abc", ["x", "y"]) == ["abc"]
+    assert si.backfill_slugs(cx, "all", ["x", "y"]) == ["x", "y"]
+    assert si.backfill_slugs(cx, "", ["x"]) == []

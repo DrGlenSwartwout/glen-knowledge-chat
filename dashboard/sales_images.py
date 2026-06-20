@@ -154,3 +154,12 @@ def generate_missing(cx, slug, dest_dir, *, generate_fn):
                      prompt_variant_id=job["prompt_variant_id"], model_id=used_model)
         ok += 1
     return ok
+
+def backfill_slugs(cx, arg, all_slugs):
+    """Resolve the admin pre-warm target: a single slug, or every product slug for 'all'."""
+    arg = (arg or "").strip()
+    if not arg:
+        return []
+    if arg == "all":
+        return list(all_slugs)
+    return [arg]
