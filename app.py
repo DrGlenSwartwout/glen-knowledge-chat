@@ -6333,6 +6333,20 @@ def affiliate_apply_form():
     _first = _name_parts[0] if _name_parts else ""
     _last  = _name_parts[1] if len(_name_parts) > 1 else ""
 
+    _tos = (request.form.get("tos") or "").strip().lower() in ("1", "true", "on", "yes")
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email) and not _tos:
+        return _redirect("/affiliate?error=" + _urlparse.quote(
+            "Please agree to our Terms to become an Ambassador."))
+    if _tos and not is_member(_sid, email):
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                begin_funnel.record_unlock(
+                    _cx, session_id=(_sid or uuid.uuid4().hex), trigger="tos",
+                    email=email, first_name=_first, tos=True)
+        except Exception as e:
+            print(f"[affiliate-tos] {e!r}", flush=True)
+
     # Session and recruiter for journey wiring
     _session_id = (request.cookies.get("amg_session") or "").strip()
     _minted_session = not _session_id
@@ -6409,6 +6423,21 @@ def affiliate_apply():
     if not name or not email:
         return jsonify({"error": "Name and email are required"}), 400
 
+    _tos = bool(data.get("tos"))
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email) and not _tos:
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to become an Ambassador."}), 403
+    if _tos and not is_member(_sid, email):
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                begin_funnel.record_unlock(
+                    _cx, session_id=(_sid or uuid.uuid4().hex), trigger="tos",
+                    email=email, first_name=(name.split(None, 1)[0] if name else ""),
+                    tos=True)
+        except Exception as e:
+            print(f"[affiliate-tos] {e!r}", flush=True)
+
     # Split name into first/last (same logic as /begin/unlock)
     _name_parts = name.split(None, 1)
     _first = _name_parts[0] if _name_parts else ""
@@ -6467,7 +6496,7 @@ def affiliate_apply():
         "tracking_url": tracking_url,
         "slug": slug,
     })
-    resp.status_code = 201
+    resp.status_code = 200
     _stamp_affiliate_journey(_session_id, email, _first, _last, _recruiter_slug)
     if _minted_session:
         resp.set_cookie("amg_session", _session_id, max_age=60 * 60 * 24 * 365,

@@ -1,0 +1,70 @@
+"""Funnel ToS consistency - gate affiliate/reorder/referral/concierge."""
+import importlib, sqlite3, sys
+from pathlib import Path
+import pytest
+
+
+def _load_app():
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    try:
+        return importlib.import_module("app")
+    except Exception as e:
+        pytest.skip(f"app not importable: {e}")
+
+
+def _fresh(app_module, monkeypatch, tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    import begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    app_module._init_referral_tables()
+    monkeypatch.setattr(app_module, "ghl_onboard_contact", lambda *a, **k: {"contact_id": "x"})
+    monkeypatch.setattr(app_module, "_capture_concierge_referral", lambda *a, **k: None)
+    return db
+
+
+def _make_member(app_module, db, email, session="m1"):
+    import begin_funnel
+    with sqlite3.connect(db) as cx:
+        begin_funnel.record_unlock(cx, session_id=session, trigger="tos", email=email, tos=True)
+
+
+def test_affiliate_apply_blocked_for_non_member(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    client = app_module.app.test_client()
+    r = client.post("/affiliate/apply", json={"name": "Ann B", "email": "ann@x.com"})
+    assert r.status_code == 403 and r.get_json().get("need_optin") is True
+    # not created
+    with sqlite3.connect(db) as cx:
+        n = cx.execute("SELECT COUNT(*) FROM affiliate_signups WHERE LOWER(email)='ann@x.com'").fetchone()[0]
+    assert n == 0
+
+
+def test_affiliate_apply_with_tos_creates_and_sets_membership(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    client = app_module.app.test_client()
+    r = client.post("/affiliate/apply", json={"name": "Ann B", "email": "ann@x.com", "tos": True})
+    assert r.status_code == 200
+    assert app_module.is_member(email="ann@x.com") is True
+    with sqlite3.connect(db) as cx:
+        n = cx.execute("SELECT COUNT(*) FROM affiliate_signups WHERE LOWER(email)='ann@x.com'").fetchone()[0]
+    assert n == 1
+
+
+def test_affiliate_apply_member_passes_through(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    _make_member(app_module, db, "lee@x.com")
+    client = app_module.app.test_client()
+    r = client.post("/affiliate/apply", json={"name": "Lee X", "email": "lee@x.com"})
+    assert r.status_code == 200
+
+
+def test_affiliate_form_without_tos_redirects_to_error(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    client = app_module.app.test_client()
+    r = client.post("/affiliate/apply-form", data={"name": "Ann B", "email": "ann@x.com"})
+    assert r.status_code in (302, 303)
+    assert "error=" in r.headers.get("Location", "")
