@@ -9272,6 +9272,35 @@ def api_e4l_scan_freshness():
     return jsonify({"ok": True, "upserted": len(rows)})
 
 
+@app.route("/api/e4l/reveal-draft", methods=["POST"])
+def api_e4l_reveal_draft():
+    """Ingest a locally-produced Biofield reveal draft (top match + blurred list)
+    for console review. Auth: X-Cron-Secret (== CRON_SECRET, falls back to
+    CONSOLE_SECRET)."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    scan_date = (data.get("scan_date") or "").strip()
+    top = data.get("top_match") or {}
+    if not email or not scan_date or not (top.get("name") or "").strip():
+        return jsonify({"error": "email, scan_date, top_match.name required"}), 400
+    from dashboard import biofield_reveals as _br
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _br.init_table(cx)
+            rid = _br.upsert_draft(cx, email, scan_date, top,
+                                   data.get("blurred") or [], (data.get("source") or "").strip())
+        return jsonify({"ok": True, "id": rid})
+    except Exception as e:
+        print(f"[reveal-draft] {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "store failed"}), 500
+
+
 @app.route("/biofield/ready")
 def biofield_ready_page():
     """Serve the readiness-gate page (no-store; PHI-adjacent)."""
