@@ -85,3 +85,15 @@ def test_name_then_email_resolve_to_one_record(monkeypatch, tmp_path):
     assert state["first_name"] == "Lee"
     assert state["email"] == "lee@example.com"
     assert state["tos_agreed_at"]
+
+
+def test_begin_serves_hero(monkeypatch, tmp_path):
+    app_module = _load_app()
+    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
+    html = app_module.app.test_client().get("/begin").get_data(as_text=True)
+    assert 'class="hero"' in html
+    assert 'id="hero-chat"' in html
+    assert 'id="hero-messages"' in html
+    assert "health goals" in html
+    # The hero video is present (relocated, single instance kept in the hero).
+    assert 'class="video"' in html
