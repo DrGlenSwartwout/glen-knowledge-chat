@@ -358,6 +358,33 @@ def is_member(session_id="", email=""):
         return False
 
 
+def _entry_session_id(email):
+    import hashlib
+    return "entry:" + hashlib.sha1((email or "").strip().lower().encode()).hexdigest()[:16]
+
+
+def _record_entry_unlock(trigger, email, first_name="", last_name="", ref_slug=""):
+    """Write an entry-point completion to the one record by email. Idempotent
+    (skips an already-present gate); never raises into the caller."""
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    try:
+        sid = _entry_session_id(email)
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            begin_funnel.init_journey_tables(cx)
+            row = cx.execute(
+                "SELECT unlocked_gates FROM journey_state WHERE session_id=?",
+                (sid,)).fetchone()
+            if row and trigger in set(json.loads(row[0] or "[]")):
+                return  # already recorded - no duplicate event
+            begin_funnel.record_unlock(
+                cx, session_id=sid, trigger=trigger, email=email,
+                first_name=first_name, last_name=last_name, ref_slug=ref_slug)
+    except Exception as e:
+        print(f"[entry-unlock] {trigger} {e!r}", flush=True)
+
+
 # The line is education vs. recommendation. Education is open to everyone;
 # anything that individualizes (advice about the user's own body/situation) or
 # recommends a specific product/remedy for a health condition is GATED behind
@@ -9189,6 +9216,9 @@ def api_e4l_scan_freshness():
     with sqlite3.connect(LOG_DB) as cx:
         _sf.init_table(cx)
         _sf.upsert(cx, rows)
+    for _r in rows:
+        if (_r.get("last_scan_date") or _r.get("scan_date") or "").strip():
+            _record_entry_unlock("scan", (_r.get("email") or ""))
     return jsonify({"ok": True, "upserted": len(rows)})
 
 
@@ -11366,6 +11396,8 @@ def scoreapp_webhook():
             )
     except Exception as e:
         print(f"[scoreapp] share-offer send failed: {e!r}", flush=True)
+
+    _record_entry_unlock("quiz", email, first, last, utm_source)
 
     return jsonify({"ok": True, "tags": answer_tags, "ghl": ghl_result,
                     "utm_source": utm_source or None}), 200
