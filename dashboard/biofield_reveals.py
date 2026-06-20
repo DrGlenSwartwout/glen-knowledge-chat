@@ -109,3 +109,27 @@ def get(cx, rid):
 def get_by_token_hash(cx, th):
     return _row(_rows_cursor(cx).execute(
         "SELECT * FROM biofield_reveals WHERE token_hash=?", (th,)).fetchone())
+
+
+# ---------------------------------------------------------------------------
+# One-time free top-remedy unblock ledger
+# ---------------------------------------------------------------------------
+
+def init_free_unlocks(cx):
+    cx.execute("CREATE TABLE IF NOT EXISTS biofield_free_unlocks (email TEXT PRIMARY KEY, reveal_id INTEGER, granted_at TEXT)")
+    cx.commit()
+
+
+def free_unlock_reveal_id(cx, email):
+    r = cx.execute("SELECT reveal_id FROM biofield_free_unlocks WHERE email=?",
+                   ((email or "").strip().lower(),)).fetchone()
+    return r[0] if r else None
+
+
+def record_free_unlock(cx, email, reveal_id):
+    """One-time free top-remedy unblock. True only on the first grant for this email."""
+    cur = cx.execute(
+        "INSERT OR IGNORE INTO biofield_free_unlocks (email, reveal_id, granted_at) VALUES (?,?,?)",
+        ((email or "").strip().lower(), reveal_id, _now()))
+    cx.commit()
+    return cur.rowcount == 1

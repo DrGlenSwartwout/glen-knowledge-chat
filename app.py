@@ -1422,13 +1422,25 @@ def begin_path():
     return resp
 
 
-@app.route("/begin/biofield/<token>", methods=["GET"])
-def begin_biofield_reveal(token):
-    """Token-verified Biofield reveal: top match free + blurred depth. Sets the
-    biofield gate. The token is NOT consumed (reopenable, 30-day TTL)."""
+def _biofield_top_payload(row):
+    """Return {name, meaning, buy_url} from remedies[0]. Never raises."""
+    try:
+        remedies = row.get("remedies") or []
+        if not remedies:
+            return None
+        top = remedies[0]
+        slug = (top.get("slug") or "").strip()
+        buy_url = f"/begin/buy/{slug}" if slug else "/begin/match"
+        return {"name": top.get("name", ""), "meaning": top.get("meaning", ""), "buy_url": buy_url}
+    except Exception:
+        return None
+
+
+def _biofield_verify_token(th):
+    """Verify a biofield_reveal token hash against auth_tokens.
+    Returns (valid: bool, row: dict|None) where row is the biofield_reveals row.
+    Never raises; on any error returns (False, None)."""
     from dashboard import biofield_reveals as _br
-    th = _hash_token((token or "").strip())
-    row = None
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
@@ -1445,46 +1457,122 @@ def begin_biofield_reveal(token):
                     valid = exp_dt >= datetime.now(timezone.utc)
                 except Exception:
                     valid = False
-            if valid:
-                _br.init_table(cx)
-                row = _br.get_by_token_hash(cx, th)
+            if not valid:
+                return False, None
+            _br.init_table(cx)
+            _br.init_free_unlocks(cx)
+            row = _br.get_by_token_hash(cx, th)
+            return True, row
     except Exception as e:
-        print(f"[biofield-reveal] {e!r}", flush=True)
-        row = None
+        print(f"[biofield-reveal] token verify failed: {e!r}", flush=True)
+        return False, None
+
+
+@app.route("/begin/biofield/<token>", methods=["GET"])
+def begin_biofield_reveal(token):
+    """Token-verified Biofield reveal: interpretation always shown + remedies blurred.
+    Top remedy un-blurred free after Glen approves and member requests it (one-time).
+    Sets the biofield gate on member view. Token is NOT consumed (reopenable, 30-day TTL)."""
+    from dashboard import biofield_reveals as _br
+    th = _hash_token((token or "").strip())
+    valid, row = _biofield_verify_token(th)
 
     html = (STATIC / "begin-biofield.html").read_text()
 
-    if row is None:
+    _no_store_headers = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
+
+    if not valid or row is None:
         injection = "<script>window.__REVEAL__ = null;</script>"
         html = html.replace("</head>", injection + "\n</head>")
         resp = Response(html, mimetype="text/html", status=200)
-        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        resp.headers["Pragma"] = "no-cache"
+        for k, v in _no_store_headers.items():
+            resp.headers[k] = v
         return resp
 
-    # Set the biofield gate (idempotent, wrapped) -> Find step 2 fills.
-    _record_entry_unlock("biofield", row["email"])
+    email = (row.get("email") or "").strip().lower()
+    member = is_member(email=email)
 
-    top = row["top"] or {}
-    blurred_n = len(row["blurred"] or [])
-    slug = (top.get("slug") or "").strip()
-    buy_url = f"/begin/buy/{slug}" if slug else "/begin/match"
+    if not member:
+        # ToS gate: do NOT reveal interpretation or remedies; do NOT set gate
+        payload = {"needs_tos": True, "email": email}
+        _safe = (json.dumps(payload).replace("<", "\\u003c")
+                 .replace(">", "\\u003e").replace("&", "\\u0026"))
+        injection = f"<script>window.__REVEAL__ = {_safe};</script>"
+        html = html.replace("</head>", injection + "\n</head>")
+        resp = Response(html, mimetype="text/html", status=200)
+        for k, v in _no_store_headers.items():
+            resp.headers[k] = v
+        return resp
+
+    # Member path: compute unlock state
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _br.init_free_unlocks(cx)
+            fu_rid = _br.free_unlock_reveal_id(cx, email)
+    except Exception as e:
+        print(f"[biofield-reveal] free-unlock lookup failed: {e!r}", flush=True)
+        fu_rid = None
+
+    first_approved = bool(row.get("first_approved"))
+    top_unlocked = first_approved and fu_rid == row["id"]
+    free_available = first_approved and fu_rid is None
+
     payload = {
-        "name": top.get("name", ""),
-        "meaning": top.get("meaning", ""),
-        "buy_url": buy_url,
-        "blurred_count": blurred_n,
+        "interpretation": row.get("interpretation") or {},
+        "blurred_count": len(row.get("remedies") or []) - (1 if top_unlocked else 0),
+        "first_approved": first_approved,
+        "free_available": free_available,
+        "top_unlocked": top_unlocked,
+        "top": _biofield_top_payload(row) if top_unlocked else None,
     }
-    # Escape <, >, & so an approved top-match name containing "</script>" cannot
-    # break out of the injection script (script-context-safe JSON).
+
+    # Set the biofield gate (idempotent, wrapped) -> Find step 2 fills.
+    _record_entry_unlock("biofield", email)
+
+    # Escape <, >, & so a remedy name containing "</script>" cannot break out
     _safe = (json.dumps(payload).replace("<", "\\u003c")
              .replace(">", "\\u003e").replace("&", "\\u0026"))
     injection = f"<script>window.__REVEAL__ = {_safe};</script>"
     html = html.replace("</head>", injection + "\n</head>")
     resp = Response(html, mimetype="text/html", status=200)
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    resp.headers["Pragma"] = "no-cache"
+    for k, v in _no_store_headers.items():
+        resp.headers[k] = v
     return resp
+
+
+@app.route("/begin/biofield/<token>/reveal-top", methods=["POST"])
+def begin_biofield_reveal_top(token):
+    """One-time free top-remedy unblock. Requires member + first_approved + unused free slot."""
+    from dashboard import biofield_reveals as _br
+    try:
+        th = _hash_token((token or "").strip())
+        valid, row = _biofield_verify_token(th)
+        if not valid or row is None:
+            return jsonify({"ok": False, "reason": "invalid"})
+
+        email = (row.get("email") or "").strip().lower()
+
+        if not is_member(email=email):
+            return jsonify({"ok": False, "reason": "tos"})
+
+        if not bool(row.get("first_approved")):
+            return jsonify({"ok": False, "reason": "pending"})
+
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _br.init_free_unlocks(cx)
+            if _br.free_unlock_reveal_id(cx, email) is not None:
+                return jsonify({"ok": False, "reason": "used"})
+            granted = _br.record_free_unlock(cx, email, row["id"])
+
+        if not granted:
+            # Race: another request granted it between our check and insert
+            return jsonify({"ok": False, "reason": "used"})
+
+        top = _biofield_top_payload(row)
+        return jsonify({"ok": True, "top": top})
+    except Exception as e:
+        print(f"[biofield-reveal-top] {e!r}", flush=True)
+        return jsonify({"ok": False, "reason": "error"})
 
 
 @app.route("/begin/state", methods=["GET"])
