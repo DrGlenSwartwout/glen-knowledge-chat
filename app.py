@@ -8122,6 +8122,10 @@ def api_referral_my_code():
     email = (au.get("email") or _reorder_email_from_cookie() or "").strip().lower()
     if not email:
         return jsonify({"ok": False, "error": "no email"}), 400
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to get your referral code."}), 403
     from dashboard import referrals as _rf
     with sqlite3.connect(LOG_DB) as cx:
         code = _rf.get_or_create_code(cx, email)

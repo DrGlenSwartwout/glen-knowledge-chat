@@ -107,3 +107,26 @@ def test_reorder_items_member_not_gated(monkeypatch, tmp_path):
     c = _reorder_client(app_module, "lee@x.com")
     r = c.get("/api/reorder/items")
     assert r.status_code != 403  # passes the gate (200 or its normal non-gate response)
+
+
+# ---------------------------------------------------------------------------
+# Task 3: Referral my-code gate
+# ---------------------------------------------------------------------------
+
+def test_referral_mycode_blocked_for_non_member(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "_REFERRALS", True)
+    c = app_module.app.test_client()
+    c.set_cookie("rm_reorder_email", "ann@x.com")
+    r = c.get("/api/referral/my-code")
+    assert r.status_code == 403 and r.get_json().get("need_optin") is True
+
+
+def test_referral_mycode_member_not_gated(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "_REFERRALS", True)
+    _make_member(app_module, db, "lee@x.com")
+    c = app_module.app.test_client()
+    c.set_cookie("rm_reorder_email", "lee@x.com")
+    r = c.get("/api/referral/my-code")
+    assert r.status_code != 403

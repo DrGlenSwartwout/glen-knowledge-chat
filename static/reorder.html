@@ -307,7 +307,13 @@ async function loadReferral(){
     if (!ed || !ed.enabled) return;                 // flag off -> stay hidden
     const re = document.getElementById('refEntry'); if (re) re.classList.remove('hide');
     const r = await fetch('/api/referral/my-code', {credentials:'same-origin'});
-    if (!r.ok) return;                              // not signed in / no email
+    if (!r.ok) {
+      const d403 = await r.json().catch(() => ({}));
+      if (d403 && d403.need_optin && window.OptinGate) {
+        OptinGate.show({ base: '', onAgree: function () { loadReferral(); } });
+      }
+      return;
+    }
     const d = await r.json();
     if (d && d.code){
       const el = document.getElementById('myRef');
