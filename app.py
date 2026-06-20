@@ -7683,6 +7683,67 @@ def api_console_sales_page_load(slug):
                     "sections": sections, "live_url": f"/begin/product/{slug}"})
 
 
+@app.route("/console/ingredient-pages")
+def console_ingredient_pages_page():
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    resp = send_from_directory(STATIC, "console-ingredient-pages.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/api/console/ingredient-pages", methods=["GET"])
+def api_console_ingredient_pages_list():
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    import json as _json
+    from dashboard import ingredient_pages as _ipages
+    with sqlite3.connect(LOG_DB) as cx:
+        _ipages.init_table(cx)
+        rows = cx.execute(
+            "SELECT ingredient_slug, name, state, content_json "
+            "FROM ingredient_pages ORDER BY updated_at DESC"
+        ).fetchall()
+    pages = []
+    for slug, name, state, cj in rows:
+        content = _json.loads(cj or "{}")
+        if not content:
+            continue
+        pages.append({
+            "slug": slug, "name": name or slug,
+            "state": state or "draft", "sections": sorted(content.keys()),
+        })
+    return jsonify({"ok": True, "pages": pages})
+
+
+@app.route("/api/console/ingredient-page/<slug>", methods=["GET"])
+def api_console_ingredient_page_load(slug):
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    from dashboard import ingredient_pages as _ipages
+    from dashboard import ingredient_copy as _ic
+    with sqlite3.connect(LOG_DB) as cx:
+        _ipages.init_table(cx)
+        page = _ipages.get_page(cx, slug)
+    content = (page or {}).get("content") or {}
+    sections = [{"id": s, "text": content.get(s, "")} for s in _ic.NARRATIVE_SECTIONS]
+    return jsonify({
+        "ok": True, "slug": slug,
+        "name": (page or {}).get("name", slug),
+        "state": (page or {}).get("state", "none"),
+        "sections": sections,
+        "research_score": (page or {}).get("research_score"),
+        "traditional_score": (page or {}).get("traditional_score"),
+        "traditional_use": (page or {}).get("traditional_use") or [],
+        "related_forms": (page or {}).get("related_forms") or [],
+        "live_url": f"/begin/ingredient/{slug}",
+    })
+
+
 @app.route("/console/reviews")
 def console_reviews_page():
     resp = send_from_directory(STATIC, "console-reviews.html")
@@ -19762,6 +19823,11 @@ from dashboard import sales_pages_actions as _spa
 _spa.register()
 _spa.configure(client=_cl, get_product=_get_product,
                product_card=_product_card, strip_dash=_strip_dash, base_url=PUBLIC_BASE_URL)
+
+# ── Ingredient-page console actions (edit / approve + email-when-ready / regenerate) ──
+from dashboard import ingredient_page_actions as _ipa
+_ipa.register()
+_ipa.configure(client=_cl, send=_inbox.send_email, strip=_strip_dash, base_url=PUBLIC_BASE_URL)
 
 # ── Begin #4a: Biofield reveal console actions (edit / approve + magic link) ──
 from dashboard import biofield_reveal_actions as _bra
