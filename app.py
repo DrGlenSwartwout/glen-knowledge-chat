@@ -1423,12 +1423,13 @@ def begin_path():
 
 
 def _biofield_remedy_payload(r):
-    """Return {name, meaning, buy_url, page_url} for any remedy dict. Never raises."""
+    """Return {name, meaning, slug, buy_url, page_url} for any remedy dict. Never raises."""
     try:
         slug = (r.get("slug") or "").strip()
         buy_url = f"/begin/buy/{slug}" if slug else "/begin/match"
         page_url = f"/begin/product/{slug}" if slug else "/begin/match"
-        return {"name": r.get("name", ""), "meaning": r.get("meaning", ""), "buy_url": buy_url, "page_url": page_url}
+        return {"name": r.get("name", ""), "meaning": r.get("meaning", ""),
+                "slug": slug, "buy_url": buy_url, "page_url": page_url}
     except Exception:
         return None
 
@@ -1476,6 +1477,47 @@ def _biofield_verify_token(th):
         return False, None
 
 
+def _biofield_unlock_flags(row, email):
+    """Compute (paid, first_approved, top_unlocked, free_available) for a reveal row + member.
+    Single source of truth for reveal visibility. Never raises."""
+    from dashboard import biofield_reveals as _br
+    email = (email or "").strip().lower()
+    first_approved = bool(row.get("first_approved"))
+    try:
+        paid = bool(_active_membership_for_email(email))
+    except Exception:
+        paid = False
+    fu_rid = None
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _br.init_free_unlocks(cx)
+            fu_rid = _br.free_unlock_reveal_id(cx, email)
+    except Exception:
+        fu_rid = None
+    top_unlocked = bool(first_approved and fu_rid == row.get("id"))
+    free_available = bool(first_approved and fu_rid is None)
+    return {"paid": paid, "first_approved": first_approved,
+            "top_unlocked": top_unlocked, "free_available": free_available}
+
+
+def _biofield_visible_slugs(row, email):
+    """Slugs this member may order from the reveal: paid -> all matched remedies;
+    else the top remedy if unlocked; else []. Never raises."""
+    try:
+        remedies = row.get("remedies") or []
+        if not remedies:
+            return []
+        flags = _biofield_unlock_flags(row, email)
+        if flags["paid"]:
+            return [(r.get("slug") or "").strip() for r in remedies if (r.get("slug") or "").strip()]
+        if flags["top_unlocked"]:
+            s = (remedies[0].get("slug") or "").strip()
+            return [s] if s else []
+        return []
+    except Exception:
+        return []
+
+
 @app.route("/begin/biofield/<token>", methods=["GET"])
 def begin_biofield_reveal(token):
     """Token-verified Biofield reveal: interpretation always shown + remedies blurred.
@@ -1512,24 +1554,12 @@ def begin_biofield_reveal(token):
             resp.headers[k] = v
         return resp
 
-    # Member path: compute unlock state
-    try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
-            _br.init_free_unlocks(cx)
-            fu_rid = _br.free_unlock_reveal_id(cx, email)
-    except Exception as e:
-        print(f"[biofield-reveal] free-unlock lookup failed: {e!r}", flush=True)
-        fu_rid = None
-
-    first_approved = bool(row.get("first_approved"))
-    top_unlocked = first_approved and fu_rid == row["id"]
-    free_available = first_approved and fu_rid is None
-
-    try:
-        paid = bool(_active_membership_for_email(email))
-    except Exception as _me:
-        print(f"[biofield-reveal] membership check failed: {_me!r}", flush=True)
-        paid = False
+    # Member path: compute unlock state (single source of truth)
+    flags = _biofield_unlock_flags(row, email)
+    first_approved = flags["first_approved"]
+    top_unlocked = flags["top_unlocked"]
+    free_available = flags["free_available"]
+    paid = flags["paid"]
 
     if paid:
         all_remedies = row.get("remedies") or []
@@ -1541,6 +1571,7 @@ def begin_biofield_reveal(token):
             "top_unlocked": True,
             "paid": True,
             "trial_enabled": BIOFIELD_TRIAL_ENABLED,
+            "cart_enabled": BIOFIELD_CART_ENABLED,
             "remedies": [_biofield_remedy_payload(r) for r in all_remedies],
         }
     else:
@@ -1553,6 +1584,7 @@ def begin_biofield_reveal(token):
             "top": _biofield_top_payload(row) if top_unlocked else None,
             "paid": False,
             "trial_enabled": BIOFIELD_TRIAL_ENABLED,
+            "cart_enabled": BIOFIELD_CART_ENABLED,
         }
 
     # Set the biofield gate (idempotent, wrapped) -> Find step 2 fills.
@@ -2641,6 +2673,7 @@ _REVIEWS_GIFTS = os.environ.get("REVIEWS_GIFTS", "").strip().lower() in ("1", "t
 _REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "yes")
 INGREDIENT_PAGES_PAID_ONLY = os.environ.get("INGREDIENT_PAGES_PAID_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+BIOFIELD_CART_ENABLED = os.environ.get("BIOFIELD_CART_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _referral_pct():
