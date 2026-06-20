@@ -182,6 +182,7 @@
           </div>
         </div>
       </div>
+      <div id="chat-attach"></div>
       <div id="input-bar">
         <textarea id="query-input" data-mic
           placeholder="Share what&rsquo;s present for you&hellip;"
@@ -335,6 +336,7 @@
       isLoading = true;
       document.getElementById('send-btn').disabled = true;
 
+      const _att = (window.__chatAttach && window.__chatAttach.getPayload()) || {};
       try {
         const r = await fetch(BASE + '/begin/match/chat', {
           method: 'POST',
@@ -346,9 +348,13 @@
             for_whom: forWhom,
             session_id: sessionId,
             name: '',
-            email: ''
+            email: '',
+            images: _att.images || [],
+            documents: _att.documents || [],
+            images_consented: !!_att.consented
           })
         });
+        if (window.__chatAttach) window.__chatAttach.clear();
 
         if (!r.ok || !r.body) {
           const data = await r.json().catch(function(){ return { error: 'HTTP ' + r.status }; });
@@ -522,5 +528,9 @@
     }
   </script>
 <script src="/static/optin-gate.js"></script>
+<script src="/static/chat-attachments.js"></script>
+<script>
+  window.__chatAttach = ChatAttach.mount({ host: '#chat-attach', dropZone: '#input-bar' });
+</script>
 </body>
 </html>
