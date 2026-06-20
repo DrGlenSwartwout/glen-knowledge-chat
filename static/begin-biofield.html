@@ -443,165 +443,220 @@
         root.appendChild(interpCard);
       }
 
-      // -- Remedies area --
-      var remedyCard = document.createElement("div");
-      remedyCard.className = "card";
-
-      var remedyLabel = document.createElement("div");
-      remedyLabel.className = "remedy-section-label";
-      remedyLabel.textContent = "Your Top Remedy Match";
-      remedyCard.appendChild(remedyLabel);
-
-      // Helper: render a revealed top remedy (name link + meaning + Order btn)
-      function renderTopRemedyInto(container, top) {
+      // -- Helper: render a single remedy (name link + meaning + Order btn) --
+      function renderRemedyInto(container, rem) {
         var nameLink = document.createElement("a");
         nameLink.className = "remedy-name-link";
-        nameLink.href = top.page_url || "/begin/match";
-        nameLink.target = "_blank";
-        nameLink.rel = "noopener";
-        nameLink.textContent = top.name || "";
+        nameLink.setAttribute("href", rem.page_url || "/begin/match");
+        nameLink.setAttribute("target", "_blank");
+        nameLink.setAttribute("rel", "noopener");
+        nameLink.textContent = rem.name || "";
         container.appendChild(nameLink);
 
-        if (top.meaning) {
+        if (rem.meaning) {
           var meaningEl = document.createElement("p");
           meaningEl.className = "remedy-meaning";
-          meaningEl.textContent = top.meaning;
+          meaningEl.textContent = rem.meaning;
           container.appendChild(meaningEl);
         }
 
         var orderBtn = document.createElement("a");
         orderBtn.className = "buy-btn";
-        orderBtn.href = top.buy_url || "/begin/match";
+        orderBtn.setAttribute("href", rem.buy_url || "/begin/match");
         orderBtn.textContent = "Order";
         container.appendChild(orderBtn);
       }
 
-      if (data.top_unlocked && data.top) {
-        // Already revealed -- show immediately
-        renderTopRemedyInto(remedyCard, data.top);
+      // -- PAID: render all remedies (top + deep), no blurred section, no CTA --
+      if (data.paid) {
+        var remedies = data.remedies || [];
+        var allRemedyCard = document.createElement("div");
+        allRemedyCard.className = "card";
 
-      } else if (data.free_available) {
-        // Show the free-reveal button
-        var freeBtn = document.createElement("button");
-        freeBtn.className = "free-reveal-btn";
-        freeBtn.textContent = "Reveal my top match (free)";
-        remedyCard.appendChild(freeBtn);
+        var allRemedyLabel = document.createElement("div");
+        allRemedyLabel.className = "remedy-section-label";
+        allRemedyLabel.textContent = "Your Remedy Matches";
+        allRemedyCard.appendChild(allRemedyLabel);
 
-        var freeMsg = document.createElement("p");
-        freeMsg.className = "free-reveal-msg";
-        remedyCard.appendChild(freeMsg);
-
-        freeBtn.addEventListener("click", function () {
-          freeBtn.disabled = true;
-          freeMsg.textContent = "Loading...";
-          fetch("/begin/biofield/" + _token + "/reveal-top", {
-            method: "POST",
-            credentials: "same-origin"
-          }).then(function (res) { return res.json(); }).then(function (body) {
-            if (body.ok && body.top) {
-              // Remove the button + msg and render the revealed remedy
-              freeBtn.remove();
-              freeMsg.remove();
-              renderTopRemedyInto(remedyCard, body.top);
-            } else {
-              var reason = body.reason || "";
-              if (reason === "used") {
-                freeMsg.textContent = "You have already used your free reveal - unlock your full analysis below.";
-              } else if (reason === "pending") {
-                freeMsg.textContent = "Your top match is being finalized.";
-              } else if (reason === "tos") {
-                location.reload();
-              } else {
-                freeMsg.textContent = "Something went wrong. Please try again.";
-                freeBtn.disabled = false;
-              }
-            }
-          }).catch(function () {
-            freeMsg.textContent = "Something went wrong. Please try again.";
-            freeBtn.disabled = false;
-          });
-        });
-
-      } else if (data.first_approved) {
-        // Free already used -- $1 stub
-        var usedMsg = document.createElement("p");
-        usedMsg.style.color = "var(--muted)";
-        usedMsg.style.fontSize = "15px";
-        usedMsg.style.marginBottom = "20px";
-        usedMsg.textContent = "Your top match is ready. Unlock your full analysis to view it.";
-        remedyCard.appendChild(usedMsg);
-
-        var stubBtn = document.createElement("button");
-        stubBtn.className = "cta-btn-disabled";
-        stubBtn.disabled = true;
-        stubBtn.textContent = "Unlock your full Biofield Analysis";
-        remedyCard.appendChild(stubBtn);
-
-        var stubNote = document.createElement("p");
-        stubNote.className = "cta-note";
-        stubNote.textContent = "(unlocking soon)";
-        remedyCard.appendChild(stubNote);
-
-      } else {
-        // Not yet approved
-        var pendingMsg = document.createElement("p");
-        pendingMsg.style.color = "var(--muted)";
-        pendingMsg.style.fontSize = "15px";
-        pendingMsg.textContent = "Your top match is being finalized.";
-        remedyCard.appendChild(pendingMsg);
-      }
-
-      root.appendChild(remedyCard);
-
-      // -- Blurred depth block (always for members) --
-      var blurredCount = data.blurred_count || 0;
-      if (blurredCount > 0) {
-        var blurSection = document.createElement("div");
-        blurSection.className = "blurred-section";
-
-        var blurLabel = document.createElement("div");
-        blurLabel.className = "blurred-section-label";
-        blurLabel.textContent = "Deeper in your analysis";
-        blurSection.appendChild(blurLabel);
-
-        var stack = document.createElement("div");
-        stack.className = "blurred-stack";
-
-        for (var j = 0; j < Math.min(blurredCount, 3); j++) {
-          var bc = document.createElement("div");
-          bc.className = "blurred-card";
-          var bi = document.createElement("div");
-          bi.className = "blurred-card-inner";
-          bc.appendChild(bi);
-          stack.appendChild(bc);
+        for (var ri = 0; ri < remedies.length; ri++) {
+          if (ri > 0) {
+            var divider = document.createElement("div");
+            divider.style.cssText = "border-top:1px solid var(--border);margin:24px 0;";
+            allRemedyCard.appendChild(divider);
+          }
+          renderRemedyInto(allRemedyCard, remedies[ri]);
         }
 
-        var overlay = document.createElement("div");
-        overlay.className = "blurred-overlay";
-        var teaser = document.createElement("span");
-        teaser.className = "blurred-teaser";
-        teaser.textContent = "and " + blurredCount + " more in your full analysis";
-        overlay.appendChild(teaser);
-        stack.appendChild(overlay);
-        blurSection.appendChild(stack);
-        root.appendChild(blurSection);
+        root.appendChild(allRemedyCard);
+
+      } else {
+        // -- NOT PAID: top remedy area + blurred section + CTA --
+        var remedyCard = document.createElement("div");
+        remedyCard.className = "card";
+
+        var remedyLabel = document.createElement("div");
+        remedyLabel.className = "remedy-section-label";
+        remedyLabel.textContent = "Your Top Remedy Match";
+        remedyCard.appendChild(remedyLabel);
+
+        if (data.top_unlocked && data.top) {
+          // Already revealed -- show immediately
+          renderRemedyInto(remedyCard, data.top);
+
+        } else if (data.free_available) {
+          // Show the free-reveal button
+          var freeBtn = document.createElement("button");
+          freeBtn.className = "free-reveal-btn";
+          freeBtn.textContent = "Reveal my top match (free)";
+          remedyCard.appendChild(freeBtn);
+
+          var freeMsg = document.createElement("p");
+          freeMsg.className = "free-reveal-msg";
+          remedyCard.appendChild(freeMsg);
+
+          freeBtn.addEventListener("click", function () {
+            freeBtn.disabled = true;
+            freeMsg.textContent = "Loading...";
+            fetch("/begin/biofield/" + _token + "/reveal-top", {
+              method: "POST",
+              credentials: "same-origin"
+            }).then(function (res) { return res.json(); }).then(function (body) {
+              if (body.ok && body.top) {
+                // Remove the button + msg and render the revealed remedy
+                freeBtn.remove();
+                freeMsg.remove();
+                renderRemedyInto(remedyCard, body.top);
+              } else {
+                var reason = body.reason || "";
+                if (reason === "used") {
+                  freeMsg.textContent = "You have already used your free reveal - unlock your full analysis below.";
+                } else if (reason === "pending") {
+                  freeMsg.textContent = "Your top match is being finalized.";
+                } else if (reason === "tos") {
+                  location.reload();
+                } else {
+                  freeMsg.textContent = "Something went wrong. Please try again.";
+                  freeBtn.disabled = false;
+                }
+              }
+            }).catch(function () {
+              freeMsg.textContent = "Something went wrong. Please try again.";
+              freeBtn.disabled = false;
+            });
+          });
+
+        } else if (data.first_approved) {
+          // Free already used -- show unlock CTA (active or stub depending on trial_enabled)
+          var usedMsg = document.createElement("p");
+          usedMsg.style.color = "var(--muted)";
+          usedMsg.style.fontSize = "15px";
+          usedMsg.style.marginBottom = "20px";
+          usedMsg.textContent = "Your top match is ready. Unlock your full analysis to view it.";
+          remedyCard.appendChild(usedMsg);
+
+        } else {
+          // Not yet approved
+          var pendingMsg = document.createElement("p");
+          pendingMsg.style.color = "var(--muted)";
+          pendingMsg.style.fontSize = "15px";
+          pendingMsg.textContent = "Your top match is being finalized.";
+          remedyCard.appendChild(pendingMsg);
+        }
+
+        root.appendChild(remedyCard);
+
+        // -- Blurred depth block (non-paid members) --
+        var blurredCount = data.blurred_count || 0;
+        if (blurredCount > 0) {
+          var blurSection = document.createElement("div");
+          blurSection.className = "blurred-section";
+
+          var blurLabel = document.createElement("div");
+          blurLabel.className = "blurred-section-label";
+          blurLabel.textContent = "Deeper in your analysis";
+          blurSection.appendChild(blurLabel);
+
+          var stack = document.createElement("div");
+          stack.className = "blurred-stack";
+
+          for (var j = 0; j < Math.min(blurredCount, 3); j++) {
+            var bc = document.createElement("div");
+            bc.className = "blurred-card";
+            var bi = document.createElement("div");
+            bi.className = "blurred-card-inner";
+            bc.appendChild(bi);
+            stack.appendChild(bc);
+          }
+
+          var overlay = document.createElement("div");
+          overlay.className = "blurred-overlay";
+          var teaser = document.createElement("span");
+          teaser.className = "blurred-teaser";
+          teaser.textContent = "and " + blurredCount + " more in your full analysis";
+          overlay.appendChild(teaser);
+          stack.appendChild(overlay);
+          blurSection.appendChild(stack);
+          root.appendChild(blurSection);
+        }
+
+        // -- Full-analysis CTA (active $1 or disabled stub) --
+        var ctaSection = document.createElement("div");
+        ctaSection.className = "cta-section";
+
+        if (data.trial_enabled) {
+          // Active $1 unlock button
+          var unlockBtn = document.createElement("button");
+          unlockBtn.className = "buy-btn";
+          unlockBtn.textContent = "Unlock your full analysis ($1)";
+          ctaSection.appendChild(unlockBtn);
+
+          var unlockNote = document.createElement("p");
+          unlockNote.className = "cta-note";
+          unlockNote.textContent = "Then $99/month - cancel anytime.";
+          ctaSection.appendChild(unlockNote);
+
+          var unlockMsg = document.createElement("p");
+          unlockMsg.className = "cta-note";
+          unlockMsg.style.marginTop = "8px";
+          ctaSection.appendChild(unlockMsg);
+
+          unlockBtn.addEventListener("click", function () {
+            unlockBtn.disabled = true;
+            unlockMsg.textContent = "Loading...";
+            fetch("/begin/biofield/" + _token + "/unlock-checkout", {
+              method: "POST",
+              credentials: "same-origin"
+            }).then(function (res) { return res.json(); }).then(function (body) {
+              if (body.ok && body.url) {
+                location.href = body.url;
+              } else if (body.ok && body.already) {
+                location.reload();
+              } else {
+                unlockMsg.textContent = "Something went wrong. Please try again.";
+                unlockBtn.disabled = false;
+              }
+            }).catch(function () {
+              unlockMsg.textContent = "Something went wrong. Please try again.";
+              unlockBtn.disabled = false;
+            });
+          });
+
+        } else {
+          // Disabled stub (unlocking soon)
+          var ctaBtn = document.createElement("button");
+          ctaBtn.className = "cta-btn-disabled";
+          ctaBtn.disabled = true;
+          ctaBtn.textContent = "Unlock your full Biofield Analysis";
+          ctaSection.appendChild(ctaBtn);
+
+          var ctaNote = document.createElement("p");
+          ctaNote.className = "cta-note";
+          ctaNote.textContent = "(unlocking soon)";
+          ctaSection.appendChild(ctaNote);
+        }
+
+        root.appendChild(ctaSection);
       }
-
-      // -- Full-analysis CTA stub (always for members) --
-      var ctaSection = document.createElement("div");
-      ctaSection.className = "cta-section";
-
-      var ctaBtn = document.createElement("button");
-      ctaBtn.className = "cta-btn-disabled";
-      ctaBtn.disabled = true;
-      ctaBtn.textContent = "Unlock your full Biofield Analysis";
-      ctaSection.appendChild(ctaBtn);
-
-      var ctaNote = document.createElement("p");
-      ctaNote.className = "cta-note";
-      ctaNote.textContent = "(unlocking soon)";
-      ctaSection.appendChild(ctaNote);
-      root.appendChild(ctaSection);
 
     })();
   </script>

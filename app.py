@@ -1422,17 +1422,24 @@ def begin_path():
     return resp
 
 
+def _biofield_remedy_payload(r):
+    """Return {name, meaning, buy_url, page_url} for any remedy dict. Never raises."""
+    try:
+        slug = (r.get("slug") or "").strip()
+        buy_url = f"/begin/buy/{slug}" if slug else "/begin/match"
+        page_url = f"/begin/product/{slug}" if slug else "/begin/match"
+        return {"name": r.get("name", ""), "meaning": r.get("meaning", ""), "buy_url": buy_url, "page_url": page_url}
+    except Exception:
+        return None
+
+
 def _biofield_top_payload(row):
     """Return {name, meaning, buy_url, page_url} from remedies[0]. Never raises."""
     try:
         remedies = row.get("remedies") or []
         if not remedies:
             return None
-        top = remedies[0]
-        slug = (top.get("slug") or "").strip()
-        buy_url = f"/begin/buy/{slug}" if slug else "/begin/match"
-        page_url = f"/begin/product/{slug}" if slug else "/begin/match"
-        return {"name": top.get("name", ""), "meaning": top.get("meaning", ""), "buy_url": buy_url, "page_url": page_url}
+        return _biofield_remedy_payload(remedies[0])
     except Exception:
         return None
 
@@ -1518,14 +1525,35 @@ def begin_biofield_reveal(token):
     top_unlocked = first_approved and fu_rid == row["id"]
     free_available = first_approved and fu_rid is None
 
-    payload = {
-        "interpretation": row.get("interpretation") or {},
-        "blurred_count": len(row.get("remedies") or []) - (1 if top_unlocked else 0),
-        "first_approved": first_approved,
-        "free_available": free_available,
-        "top_unlocked": top_unlocked,
-        "top": _biofield_top_payload(row) if top_unlocked else None,
-    }
+    try:
+        paid = bool(_active_membership_for_email(email))
+    except Exception as _me:
+        print(f"[biofield-reveal] membership check failed: {_me!r}", flush=True)
+        paid = False
+
+    if paid:
+        all_remedies = row.get("remedies") or []
+        payload = {
+            "interpretation": row.get("interpretation") or {},
+            "blurred_count": 0,
+            "first_approved": first_approved,
+            "free_available": False,
+            "top_unlocked": True,
+            "paid": True,
+            "trial_enabled": BIOFIELD_TRIAL_ENABLED,
+            "remedies": [_biofield_remedy_payload(r) for r in all_remedies],
+        }
+    else:
+        payload = {
+            "interpretation": row.get("interpretation") or {},
+            "blurred_count": len(row.get("remedies") or []) - (1 if top_unlocked else 0),
+            "first_approved": first_approved,
+            "free_available": free_available,
+            "top_unlocked": top_unlocked,
+            "top": _biofield_top_payload(row) if top_unlocked else None,
+            "paid": False,
+            "trial_enabled": BIOFIELD_TRIAL_ENABLED,
+        }
 
     # Set the biofield gate (idempotent, wrapped) -> Find step 2 fills.
     _record_entry_unlock("biofield", email)
@@ -1574,6 +1602,68 @@ def begin_biofield_reveal_top(token):
     except Exception as e:
         print(f"[biofield-reveal-top] {e!r}", flush=True)
         return jsonify({"ok": False, "reason": "error"})
+
+
+@app.route("/begin/biofield/<token>/unlock-checkout", methods=["POST"])
+def begin_biofield_unlock_checkout(token):
+    if not (BIOFIELD_TRIAL_ENABLED and _STRIPE_ACTIVE):
+        return jsonify({"ok": False, "error": "unavailable"}), 200
+    from dashboard import biofield_reveals as _br, stripe_pay as _sp
+    th = _hash_token((token or "").strip())
+    valid, row = _biofield_verify_token(th)
+    if not valid or row is None:
+        return jsonify({"ok": False, "error": "invalid"}), 200
+    email = (row.get("email") or "").strip().lower()
+    if _active_membership_for_email(email):
+        return jsonify({"ok": True, "already": True})
+    base = PUBLIC_BASE_URL.rstrip("/")
+    try:
+        sess = _sp.create_checkout_session(
+            100, customer_email=email,
+            description="Biofield Analysis - full unlock",
+            metadata={"email": email, "kind": "biofield_trial", "token": token},
+            success_url=f"{base}/begin/checkout-return?kind=biofield_trial&session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{base}/begin/biofield/{token}",
+            save_card=True)
+        return jsonify({"ok": True, "url": sess.get("url")})
+    except Exception as e:
+        print(f"[biofield-trial] checkout failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "checkout_failed"}), 200
+
+
+@app.route("/membership/cancel/<token>", methods=["GET"])
+def membership_cancel(token):
+    """One-click cancel via a tokened link minted at biofield-trial grant time."""
+    from dashboard import subscriptions as _subs
+    th = _hash_token((token or "").strip())
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email, expires_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='membership_cancel'",
+            (th,)
+        ).fetchone()
+        email = None
+        if row:
+            try:
+                exp = datetime.fromisoformat((row[1] or "").replace("Z", "+00:00"))
+                if exp >= datetime.now(timezone.utc):
+                    email = row[0]
+            except Exception:
+                pass
+        if email:
+            _subs.init_subscriptions_table(cx)
+            _subs.migrate_add_membership_columns(cx)
+            sub = cx.execute(
+                "SELECT id FROM subscriptions "
+                "WHERE email=? AND kind='membership' AND status='active' "
+                "ORDER BY id DESC LIMIT 1",
+                (email,)
+            ).fetchone()
+            if sub:
+                _subs.set_status(cx, sub[0], "cancelled")
+    resp = send_from_directory(STATIC, "membership-cancel.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
 
 @app.route("/begin/state", methods=["GET"])
@@ -2550,6 +2640,7 @@ _REVIEWS_VIDEO_TRIM = os.environ.get("REVIEWS_VIDEO_TRIM", "").strip().lower() i
 _REVIEWS_GIFTS = os.environ.get("REVIEWS_GIFTS", "").strip().lower() in ("1", "true", "yes")
 _REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "yes")
 INGREDIENT_PAGES_PAID_ONLY = os.environ.get("INGREDIENT_PAGES_PAID_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
+BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _referral_pct():
@@ -4274,6 +4365,7 @@ def begin_checkout_return():
     slug = ""
     paid = "0"
     _kind = ""
+    _bt_token = ""
     if sid:
         try:
             from dashboard import stripe_pay as _sp
@@ -4281,6 +4373,7 @@ def begin_checkout_return():
             md = sess.get("metadata") or {}
             slug = md.get("slug", "")
             _kind = md.get("kind", "")
+            _bt_token = md.get("token", "")
             if sess.get("payment_status") == "paid":
                 paid = "1"
                 pi_id = sess.get("payment_intent")
@@ -4510,11 +4603,55 @@ def begin_checkout_return():
                     except Exception as _be:
                         print(f"[biofield] return seed failed: {_be!r}", flush=True)
 
+            # ── Biofield trial: create subscription + access grant (idempotent) ──
+            if _kind == "biofield_trial":
+                try:
+                    from dashboard import subscriptions as _bt_subs, group_bundle as _bt_gb
+                    import datetime as _bt_dt
+                    _bt_pi_id = sess.get("payment_intent")
+                    if _bt_pi_id:
+                        pi = _sp.get_payment_intent(_bt_pi_id)
+                        if (pi.get("status") == "succeeded") and pi.get("customer") and pi.get("payment_method"):
+                            bt_email = (md.get("email") or "").strip().lower()
+                            with _db_lock, sqlite3.connect(LOG_DB) as _bc:
+                                _bc.execute("CREATE TABLE IF NOT EXISTS biofield_trial_grants (session_id TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
+                                # Claim-then-create: write the idempotency marker FIRST and commit it,
+                                # so a crash or replayed return can never double-create the subscription
+                                # (live money). A crash after the claim self-heals to no-charge, not a
+                                # duplicate $99/mo sub.
+                                claimed = bool(bt_email) and _bc.execute(
+                                    "INSERT OR IGNORE INTO biofield_trial_grants (session_id, email, granted_at) VALUES (?,?,?)",
+                                    (sid, bt_email, datetime.utcnow().isoformat() + "Z")).rowcount == 1
+                                _bc.commit()
+                                if claimed:
+                                    _bt_subs.init_subscriptions_table(_bc)
+                                    _bt_subs.migrate_add_membership_columns(_bc)
+                                    init_membership_tables(_bc)
+                                    _bt_subs.create_membership(
+                                        _bc, email=bt_email, stripe_customer_id=pi["customer"],
+                                        stripe_payment_method_id=pi["payment_method"],
+                                        amount_cents=_bt_gb.MEMBERSHIP_AMOUNT_CENTS,
+                                        next_charge_date=_bt_subs.add_months(_bt_dt.date.today().isoformat(), 1))
+                                    _grant_membership(_bc, bt_email, 31, "biofield_trial")
+                                    # Mint a one-click cancel token (60-day TTL)
+                                    cancel_tok = secrets.token_urlsafe(32)
+                                    _bc.execute(
+                                        "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                                        "VALUES (?,?,?,?,?)",
+                                        (_hash_token(cancel_tok), bt_email, "membership_cancel",
+                                         datetime.now(timezone.utc).isoformat(),
+                                         (datetime.now(timezone.utc) + timedelta(days=60)).isoformat()))
+                                    _bc.commit()
+                except Exception as e:
+                    print(f"[biofield-trial] grant failed: {e!r}", flush=True)
+
         except Exception as e:
             print(f"[begin-return] {e!r}", flush=True)
     # Biofield checkouts land on the readiness gate; everything else returns to the funnel.
     if _kind == "biofield":
         return _redir(f"/biofield/ready?paid={paid}")
+    if _kind == "biofield_trial":
+        return _redir(f"/begin/biofield/{_bt_token}")
     dest = (f"/begin/buy/{slug}?paid={paid}" if slug else f"/begin?paid={paid}")
     return _redir(dest)
 
@@ -5900,6 +6037,19 @@ def _validate_membership_magic_link(token):
     except Exception:
         return None
     return email
+
+
+def _grant_membership(cx, email, days, source):
+    """Insert a memberships access grant row and return its id."""
+    import uuid as _uuid
+    mid = str(_uuid.uuid4())
+    now = datetime.utcnow()
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (mid, email, now.isoformat() + "Z", (now + timedelta(days=days)).isoformat() + "Z",
+         source, source, "", ""))
+    return mid
 
 
 def _active_membership_for_email(email):
