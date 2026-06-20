@@ -297,6 +297,10 @@
           <div class="field" style="flex:1;"><input type="text" id="ship-state" placeholder="State" maxlength="2" autocomplete="shipping address-level1" style="text-transform:uppercase" /></div>
           <div class="field" style="flex:1;"><input type="text" id="ship-zip" placeholder="ZIP" autocomplete="shipping postal-code" inputmode="numeric" /></div>
         </div>
+        <div class="field hidden" id="referral-field">
+          <label for="referral-code">Referral code <span class="hint">(optional, a friend's code = 10% off)</span></label>
+          <input type="text" id="referral-code" placeholder="Enter a referral code" autocomplete="off" />
+        </div>
 
         <div class="field">
           <label>How would you like to pay?</label>
@@ -625,6 +629,10 @@
 
       buyBtn.addEventListener('click', placeOrder);
       refreshBuyState();
+      fetch(BASE + '/api/referral/enabled', { credentials:'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if (d && d.enabled){ var f=document.getElementById('referral-field'); if(f) f.classList.remove('hidden'); } })
+        .catch(function(){});
     }
 
     function emailValid(){
@@ -683,6 +691,8 @@
       };
       var _gb = document.getElementById('group-bundle-check');
       if (_gb && _gb.checked) { payload.group_bundle = true; }
+      var _rc = document.getElementById('referral-code');
+      if (_rc && _rc.value.trim()) { payload.referral_code = _rc.value.trim(); }
 
       fetch(BASE + '/begin/checkout/' + encodeURIComponent(slug), {
         method: 'POST',

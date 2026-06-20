@@ -7763,6 +7763,11 @@ def api_referral_my_code():
                     "share_text": f"Use my code {code} for {_referral_pct()}% off at illtowell.com"})
 
 
+@app.route("/api/referral/enabled", methods=["GET"])
+def api_referral_enabled():
+    return jsonify({"enabled": bool(_REFERRALS)})
+
+
 def _stripe_checkout_url_for_reorder(out, email):
     """Stripe Checkout for a reorder cart; mirrors _stripe_checkout_url_for_retail
     but the cancel returns to /reorder. Records via /begin/checkout-return (invoice-based)."""
