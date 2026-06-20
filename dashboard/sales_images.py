@@ -111,3 +111,30 @@ def build_generation_jobs(cx, slug):
                          "prompt_variant_id": var["id"], "model_id": model["id"],
                          "prompt_text": prompt_text})
     return jobs
+
+def display_images_grouped(cx, slug, per_kind=4):
+    from dashboard import sales_image_models as _mods
+    from dashboard import sales_image_prompts as _sip
+    init_tables(cx)
+    labels = {m["id"]: m["label"] for m in _mods.active_models(cx)}
+    out = {k: [] for k in _sip.IMAGE_KINDS}
+    legacy = {k: [] for k in _sip.IMAGE_KINDS}
+    for im in get_images(cx, slug):   # ordered by kind, variant
+        k = im["kind"]
+        if k not in out:
+            continue
+        entry = {"url": f"/begin/product-image/{slug}/{im['filename']}", "variant": im["variant"],
+                 "prompt_variant_id": im["prompt_variant_id"], "model_id": im["model_id"],
+                 "model_label": labels.get(im["model_id"])}
+        if im["prompt_variant_id"] is not None:
+            if len(out[k]) < per_kind:
+                out[k].append(entry)
+        else:
+            legacy[k].append(entry)
+    for k in _sip.IMAGE_KINDS:
+        if not out[k] and legacy[k]:
+            out[k] = [dict(e, model_label=None) for e in legacy[k][:per_kind]]
+    return out
+
+def images_grouped_state(cx, slug, target=8):
+    return "ready" if tagged_count(cx, slug) >= target else "generating"

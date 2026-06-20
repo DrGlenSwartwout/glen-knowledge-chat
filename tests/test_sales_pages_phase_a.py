@@ -114,3 +114,32 @@ def test_build_jobs_deterministic_and_model_offset_varies_by_slug():
     j1 = si.build_generation_jobs(cx, "slug-one")
     j1b = si.build_generation_jobs(cx, "slug-one")
     assert [j["model_id"] for j in j1] == [j["model_id"] for j in j1b]   # deterministic
+
+def test_grouped_returns_tagged_with_labels_and_state():
+    cx = _cx()
+    mods.seed(cx)
+    for v in (1, 2, 3, 4):
+        si.record_image(cx, "p", "botanical", v, f"botanical-{v}.png", prompt_variant_id=v, model_id="imagen-4")
+    g = si.display_images_grouped(cx, "p")
+    assert [e["variant"] for e in g["botanical"]] == [1, 2, 3, 4]
+    assert g["botanical"][0]["model_label"] == "Imagen 4"
+    assert g["botanical"][0]["url"] == "/begin/product-image/p/botanical-1.png"
+    assert g["mechanism"] == []
+    assert si.images_grouped_state(cx, "p") == "generating"   # only 4 tagged of 8
+
+def test_grouped_legacy_fallback_no_label():
+    cx = _cx()
+    si.init_tables(cx)
+    si.record_image(cx, "leg", "botanical", 1, "botanical-1.png")   # untagged legacy
+    g = si.display_images_grouped(cx, "leg")
+    assert len(g["botanical"]) == 1 and g["botanical"][0]["model_label"] is None
+
+def test_grouped_state_ready_at_8():
+    cx = _cx()
+    mods.seed(cx)
+    n = 0
+    for kind in ("botanical", "mechanism"):
+        for v in (1, 2, 3, 4):
+            n += 1
+            si.record_image(cx, "full", kind, v, f"{kind}-{v}.png", prompt_variant_id=n, model_id="flux-1.1-pro")
+    assert si.images_grouped_state(cx, "full") == "ready"
