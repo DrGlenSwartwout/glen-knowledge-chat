@@ -82,3 +82,49 @@ def test_console_page_served(monkeypatch, tmp_path):
     r = client.get("/console/biofield-reveals?key=ck")
     assert r.status_code == 200
     assert b"biofield" in r.data.lower()
+
+
+def _approve_a_reveal(app_module, db, email="a@x.com"):
+    """Create+approve a reveal directly, returning the plaintext token."""
+    import secrets as _s
+    from dashboard import biofield_reveals
+    token = "tkn_" + _s.token_urlsafe(8)
+    th = app_module._hash_token(token)
+    with sqlite3.connect(db) as cx:
+        cx.execute("CREATE TABLE IF NOT EXISTS auth_tokens (token_hash TEXT, email TEXT, purpose TEXT, created_at TEXT, expires_at TEXT, consumed_at TEXT)")
+        rid = biofield_reveals.upsert_draft(cx, email, "2026-06-19",
+              {"name": "Cistus Shield", "slug": "cistus-shield", "meaning": "Calm the terrain."},
+              [{"kind": "binder"}, {"kind": "mineral"}], "s")
+        biofield_reveals.approve(cx, rid, "glen", th)
+        from datetime import datetime, timezone, timedelta
+        cx.execute("INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) VALUES (?,?,?,?,?)",
+                   (th, email, "biofield_reveal", datetime.now(timezone.utc).isoformat(),
+                    (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()))
+        cx.commit()
+    return token
+
+
+def test_reveal_valid_token_renders_and_sets_gate(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    token = _approve_a_reveal(app_module, db)
+    client = app_module.app.test_client()
+    r = client.get(f"/begin/biofield/{token}")
+    assert r.status_code == 200
+    assert b"Cistus Shield" in r.data
+    assert "no-store" in r.headers.get("Cache-Control", "")
+    import begin_funnel
+    with sqlite3.connect(db) as cx:
+        st = begin_funnel.get_state(cx, email="a@x.com")
+    assert "biofield" in st["unlocked_gates"]
+
+
+def test_reveal_invalid_token_friendly_no_gate(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    client = app_module.app.test_client()
+    r = client.get("/begin/biofield/bogus")
+    assert r.status_code == 200  # friendly page, not a 500
+    assert b"Cistus" not in r.data
+    import begin_funnel
+    with sqlite3.connect(db) as cx:
+        st = begin_funnel.get_state(cx, email="a@x.com")
+    assert "biofield" not in (st["unlocked_gates"] or [])

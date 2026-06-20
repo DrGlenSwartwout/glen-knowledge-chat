@@ -1422,6 +1422,67 @@ def begin_path():
     return resp
 
 
+@app.route("/begin/biofield/<token>", methods=["GET"])
+def begin_biofield_reveal(token):
+    """Token-verified Biofield reveal: top match free + blurred depth. Sets the
+    biofield gate. The token is NOT consumed (reopenable, 30-day TTL)."""
+    from dashboard import biofield_reveals as _br
+    th = _hash_token((token or "").strip())
+    row = None
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            at = cx.execute(
+                "SELECT email, expires_at FROM auth_tokens WHERE token_hash=? AND purpose='biofield_reveal'",
+                (th,)).fetchone()
+            valid = False
+            if at is not None:
+                try:
+                    exp_str = at["expires_at"]
+                    exp_dt = datetime.fromisoformat(exp_str)
+                    if exp_dt.tzinfo is None:
+                        exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                    valid = exp_dt >= datetime.now(timezone.utc)
+                except Exception:
+                    valid = False
+            if valid:
+                _br.init_table(cx)
+                row = _br.get_by_token_hash(cx, th)
+    except Exception as e:
+        print(f"[biofield-reveal] {e!r}", flush=True)
+        row = None
+
+    html = (STATIC / "begin-biofield.html").read_text()
+
+    if row is None:
+        injection = "<script>window.__REVEAL__ = null;</script>"
+        html = html.replace("</head>", injection + "\n</head>")
+        resp = Response(html, mimetype="text/html", status=200)
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
+
+    # Set the biofield gate (idempotent, wrapped) -> Find step 2 fills.
+    _record_entry_unlock("biofield", row["email"])
+
+    top = row["top"] or {}
+    blurred_n = len(row["blurred"] or [])
+    slug = (top.get("slug") or "").strip()
+    buy_url = f"/begin/buy/{slug}" if slug else "/begin/match"
+    payload = {
+        "name": top.get("name", ""),
+        "meaning": top.get("meaning", ""),
+        "buy_url": buy_url,
+        "blurred_count": blurred_n,
+    }
+    injection = f"<script>window.__REVEAL__ = {json.dumps(payload)};</script>"
+    html = html.replace("</head>", injection + "\n</head>")
+    resp = Response(html, mimetype="text/html", status=200)
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/begin/state", methods=["GET"])
 def begin_state():
     session_id = (request.cookies.get("amg_session") or "").strip()

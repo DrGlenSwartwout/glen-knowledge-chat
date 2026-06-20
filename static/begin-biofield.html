@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your Biofield Analysis · Dr. Glen Swartwout</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a150d;
+      --surface: #111f16;
+      --surface-2: #162318;
+      --border: #21472d;
+      --cream: #fdf4d8;
+      --muted: #a89870;
+      --gold: #d4a843;
+      --green: #3d8a52;
+      --maxw: 760px;
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--cream);
+      font-family: "Open Sans", system-ui, sans-serif;
+      font-weight: 400;
+      line-height: 1.7;
+      font-size: 17px;
+      letter-spacing: 0.01em;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      background-image:
+        radial-gradient(120% 80% at 50% -10%, rgba(212, 168, 67, 0.07), transparent 60%),
+        radial-gradient(100% 60% at 50% 110%, rgba(61, 138, 82, 0.05), transparent 60%);
+      background-attachment: fixed;
+      padding-bottom: 80px;
+    }
+    ::selection { background: rgba(212, 168, 67, 0.25); color: var(--cream); }
+    h1, h2, h3 {
+      font-family: "Raleway", system-ui, sans-serif;
+      font-weight: 600;
+      line-height: 1.22;
+      letter-spacing: -0.01em;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .shell { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+    .brandbar {
+      max-width: var(--maxw);
+      margin: 0 auto;
+      padding: 30px 24px 8px;
+      display: flex; align-items: center; justify-content: center; gap: 14px;
+    }
+    .brand-name {
+      font-family: "Raleway", system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--gold);
+      opacity: 0.85;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      margin-bottom: 20px;
+    }
+
+    .top-match-label {
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold);
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .top-match-name {
+      font-size: 28px;
+      color: var(--cream);
+      margin-bottom: 12px;
+    }
+    .top-match-meaning {
+      color: var(--muted);
+      font-size: 16px;
+      margin-bottom: 24px;
+    }
+    .buy-btn {
+      display: inline-block;
+      background: var(--gold);
+      color: #0a150d;
+      font-family: "Raleway", system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      padding: 13px 28px;
+      border-radius: 8px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+    }
+
+    .blurred-section { margin-top: 32px; }
+    .blurred-section-label {
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 14px;
+    }
+    .blurred-stack { position: relative; }
+    .blurred-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 24px;
+      margin-bottom: 10px;
+      filter: blur(6px);
+      user-select: none;
+      pointer-events: none;
+    }
+    .blurred-card-inner {
+      height: 18px;
+      background: rgba(253, 244, 216, 0.12);
+      border-radius: 4px;
+      width: 60%;
+    }
+    .blurred-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, transparent 0%, rgba(10, 21, 13, 0.72) 100%);
+      border-radius: 10px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 18px;
+    }
+    .blurred-teaser {
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .cta-section { margin-top: 28px; text-align: center; }
+    .cta-btn-disabled {
+      display: inline-block;
+      background: var(--surface-2);
+      color: var(--muted);
+      font-family: "Raleway", system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      padding: 13px 28px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+    .cta-note {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 10px;
+    }
+
+    .invalid-card {
+      max-width: 480px;
+      margin: 80px auto 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 36px 32px;
+      text-align: center;
+    }
+    .invalid-card h2 {
+      font-size: 20px;
+      color: var(--cream);
+      margin-bottom: 14px;
+    }
+    .invalid-card p {
+      color: var(--muted);
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="brandbar">
+    <span class="brand-name">Dr. Glen Swartwout</span>
+  </div>
+
+  <div id="app-root" class="shell"></div>
+
+  <script>
+    (function () {
+      var reveal = window.__REVEAL__;
+      var root = document.getElementById("app-root");
+
+      if (!reveal) {
+        var card = document.createElement("div");
+        card.className = "invalid-card";
+        var h = document.createElement("h2");
+        h.textContent = "This link is no longer valid.";
+        var p = document.createElement("p");
+        p.textContent = "Please request a fresh one.";
+        card.appendChild(h);
+        card.appendChild(p);
+        root.appendChild(card);
+        return;
+      }
+
+      // Top match card
+      var topCard = document.createElement("div");
+      topCard.className = "card";
+      topCard.style.marginTop = "32px";
+
+      var label = document.createElement("div");
+      label.className = "top-match-label";
+      label.textContent = "Your Top Remedy Match";
+      topCard.appendChild(label);
+
+      var nameEl = document.createElement("h1");
+      nameEl.className = "top-match-name";
+      nameEl.textContent = reveal.name || "";
+      topCard.appendChild(nameEl);
+
+      if (reveal.meaning) {
+        var meaningEl = document.createElement("p");
+        meaningEl.className = "top-match-meaning";
+        meaningEl.textContent = reveal.meaning;
+        topCard.appendChild(meaningEl);
+      }
+
+      var buyBtn = document.createElement("a");
+      buyBtn.className = "buy-btn";
+      buyBtn.href = reveal.buy_url || "/begin/match";
+      buyBtn.textContent = "Get " + (reveal.name || "your match");
+      topCard.appendChild(buyBtn);
+      root.appendChild(topCard);
+
+      // Blurred deeper matches
+      var blurredCount = reveal.blurred_count || 0;
+      if (blurredCount > 0) {
+        var blurSection = document.createElement("div");
+        blurSection.className = "blurred-section";
+
+        var blurLabel = document.createElement("div");
+        blurLabel.className = "blurred-section-label";
+        blurLabel.textContent = "Deeper in your analysis";
+        blurSection.appendChild(blurLabel);
+
+        var stack = document.createElement("div");
+        stack.className = "blurred-stack";
+
+        for (var i = 0; i < Math.min(blurredCount, 3); i++) {
+          var bc = document.createElement("div");
+          bc.className = "blurred-card";
+          var bi = document.createElement("div");
+          bi.className = "blurred-card-inner";
+          bc.appendChild(bi);
+          stack.appendChild(bc);
+        }
+
+        var overlay = document.createElement("div");
+        overlay.className = "blurred-overlay";
+        var teaser = document.createElement("span");
+        teaser.className = "blurred-teaser";
+        teaser.textContent = "and " + blurredCount + " more in your full analysis";
+        overlay.appendChild(teaser);
+        stack.appendChild(overlay);
+        blurSection.appendChild(stack);
+        root.appendChild(blurSection);
+      }
+
+      // Disabled CTA
+      var ctaSection = document.createElement("div");
+      ctaSection.className = "cta-section";
+
+      var ctaBtn = document.createElement("button");
+      ctaBtn.className = "cta-btn-disabled";
+      ctaBtn.disabled = true;
+      ctaBtn.textContent = "Unlock your full Biofield Analysis";
+      ctaSection.appendChild(ctaBtn);
+
+      var ctaNote = document.createElement("p");
+      ctaNote.className = "cta-note";
+      ctaNote.textContent = "Unlocking soon";
+      ctaSection.appendChild(ctaNote);
+      root.appendChild(ctaSection);
+    })();
+  </script>
+</body>
+</html>
