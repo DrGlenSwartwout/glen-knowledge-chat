@@ -1030,9 +1030,9 @@
 
   function unfoldJourney(source){
     if (journeyUnfolded) return;
-    journeyUnfolded = true;
     var strip = document.getElementById('journey-strip');
     if (!strip) return;
+    journeyUnfolded = true;
     if (source === 'chat' && typeof window.heroAppend === 'function') {
       window.heroAppend('assistant', JOURNEY_FRAMING);   // weave meaning into the chat
     }
