@@ -49,6 +49,16 @@ def _exec_approve(params, ctx):
     if not slug:
         raise ValueError("slug required")
     _sp.set_state(ctx["cx"], slug, "approved", by=_actor_name(ctx.get("actor")))
+    try:
+        from dashboard import sales_page_viewers as _spv
+        from dashboard import inbox as _inbox
+        get_product = _DEPS.get("get_product")
+        strip = _DEPS.get("strip_dash") or (lambda s: s)
+        pname = ((get_product(slug) or {}).get("name", slug) if get_product else slug)
+        base = _DEPS.get("base_url", "")
+        _spv.notify_on_approve(ctx["cx"], slug, pname, base, send=_inbox.send_email, strip=strip)
+    except Exception as e:  # noqa: BLE001 - notifying viewers must never fail the approve
+        print(f"[sales-pages] viewer notify skipped: {e}", flush=True)
     return {"slug": slug, "state": "approved"}
 
 

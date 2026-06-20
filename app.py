@@ -3002,6 +3002,15 @@ def begin_product_page_data(slug):
                         _s["ai"] = "pending"
                 _pg = _sp.get_page(_cx, slug)
                 _ai_state = _pg["state"] if _pg else "none"
+                if _ai_state != "approved":
+                    try:
+                        from dashboard import sales_page_viewers as _spv
+                        _vau = get_authenticated_user(request) or {}
+                        _vemail = (_vau.get("email") or "").strip().lower()
+                        if _vemail:
+                            _spv.record_viewer(_cx, slug, _vemail, _vau.get("name", ""))
+                    except Exception as _ve:
+                        print(f"[sales-viewers] capture skipped: {_ve}", flush=True)
         except Exception as _e:
             print(f"[sales-ai] page-data marker skipped: {_e}", flush=True)
     if _SALES_AI_IMAGES_ENABLED:
@@ -19073,7 +19082,7 @@ def bos_action(key):
 from dashboard import sales_pages_actions as _spa
 _spa.register()
 _spa.configure(client=_cl, get_product=_get_product,
-               product_card=_product_card, strip_dash=_strip_dash)
+               product_card=_product_card, strip_dash=_strip_dash, base_url=PUBLIC_BASE_URL)
 
 # ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────
 from dashboard import reviews_actions as _ra
