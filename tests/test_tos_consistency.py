@@ -68,3 +68,42 @@ def test_affiliate_form_without_tos_redirects_to_error(monkeypatch, tmp_path):
     r = client.post("/affiliate/apply-form", data={"name": "Ann B", "email": "ann@x.com"})
     assert r.status_code in (302, 303)
     assert "error=" in r.headers.get("Location", "")
+
+
+# ---------------------------------------------------------------------------
+# Task 2: Reorder gate
+# ---------------------------------------------------------------------------
+
+def _reorder_client(app_module, email):
+    c = app_module.app.test_client()
+    c.set_cookie("rm_reorder_email", email)
+    return c
+
+
+def test_reorder_checkout_blocked_for_non_member(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    c = _reorder_client(app_module, "ann@x.com")
+    r = c.post("/reorder/checkout", json={"items": []})
+    assert r.status_code == 403 and r.get_json().get("need_optin") is True
+
+
+def test_reorder_items_blocked_for_non_member(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    c = _reorder_client(app_module, "ann@x.com")
+    r = c.get("/api/reorder/items")
+    assert r.status_code == 403 and r.get_json().get("need_optin") is True
+
+
+def test_reorder_subscribe_blocked_for_non_member(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    c = _reorder_client(app_module, "ann@x.com")
+    r = c.post("/reorder/subscribe", json={"items": []})
+    assert r.status_code == 403 and r.get_json().get("need_optin") is True
+
+
+def test_reorder_items_member_not_gated(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    _make_member(app_module, db, "lee@x.com")
+    c = _reorder_client(app_module, "lee@x.com")
+    r = c.get("/api/reorder/items")
+    assert r.status_code != 403  # passes the gate (200 or its normal non-gate response)

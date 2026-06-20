@@ -9956,6 +9956,10 @@ def api_reorder_items():
     email = _reorder_email_from_cookie()
     if not email:
         return jsonify({"error": "not signed in"}), 401
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to continue your order."}), 403
     scope = (request.args.get("scope") or "last").strip().lower()
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
@@ -10011,6 +10015,10 @@ def reorder_checkout():
     email = _reorder_email_from_cookie()
     if not email:
         return jsonify({"ok": False, "error": "not signed in"}), 401
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to continue your order."}), 403
     body = request.get_json(silent=True) or []
     # body may be a list (legacy) or a dict {items, address}
     if isinstance(body, dict):
@@ -10136,6 +10144,10 @@ def reorder_subscribe():
     email = _reorder_email_from_cookie()
     if not email:
         return jsonify({"ok": False, "error": "not signed in"}), 401
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to continue your order."}), 403
     if not _subscriptions_enabled():
         return jsonify({"error": "subscriptions not enabled"}), 400
     if not _STRIPE_ACTIVE:
