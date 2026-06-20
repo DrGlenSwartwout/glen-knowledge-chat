@@ -1,8 +1,14 @@
 # tests/test_reorder_checkout_engine.py
+import sqlite3
 import app as appmod
+import begin_funnel
 
 def _setup(monkeypatch):
     monkeypatch.setattr(appmod, "_reorder_email_from_cookie", lambda: "a@x.com")
+    with sqlite3.connect(appmod.LOG_DB) as _cx:
+        begin_funnel.init_journey_tables(_cx)
+        begin_funnel.record_unlock(_cx, session_id="sess-reorder-engine-test", trigger="tos",
+                                   email="a@x.com", tos=True)
     monkeypatch.setattr(appmod, "_get_product",
         lambda s: {"slug":s,"name":"Brain Boost","price_cents":7000,"qty_pricing":True,"qbo_item_id":"27"} if s=="brain-boost" else None)
     monkeypatch.setattr(appmod._shipping, "quote", lambda b: {"shipping_cents": 2295})

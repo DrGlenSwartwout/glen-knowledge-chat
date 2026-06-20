@@ -1,4 +1,5 @@
 import sqlite3
+import begin_funnel
 from dashboard import product_reviews as pr
 
 
@@ -125,6 +126,14 @@ def _seed_paid_order(appmod, email, product_name):
                        items=[{"name": product_name, "qty": 1}], total_cents=7000, status="paid")
 
 
+def _seed_membership(appmod, email, session_id="sess-reviews-test"):
+    """Seed ToS membership for an email so is_member(email=...) returns True."""
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        begin_funnel.init_journey_tables(cx)
+        begin_funnel.record_unlock(cx, session_id=session_id, trigger="tos",
+                                   email=email, tos=True)
+
+
 def test_submit_requires_verified_buyer(monkeypatch, tmp_path):
     appmod = _reload_reviews_app(monkeypatch, tmp_path)
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
@@ -190,6 +199,7 @@ def test_reorder_items_reviewed_annotation_false_when_no_review(monkeypatch, tmp
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     name = appmod._get_product(slug)["name"]
     _seed_paid_order(appmod, "buyer@x.com", name)
+    _seed_membership(appmod, "buyer@x.com")
     c = appmod.app.test_client()
     c.set_cookie("rm_reorder_email", "buyer@x.com")
     d = c.get("/api/reorder/items").get_json()
@@ -205,6 +215,7 @@ def test_reorder_items_reviewed_annotation_true_after_review(monkeypatch, tmp_pa
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     name = appmod._get_product(slug)["name"]
     _seed_paid_order(appmod, "buyer@x.com", name)
+    _seed_membership(appmod, "buyer@x.com")
     import sqlite3
     from dashboard import product_reviews as _pr
     with sqlite3.connect(appmod.LOG_DB) as cx:
@@ -223,6 +234,7 @@ def test_reorder_items_reviewed_true_when_flag_off(monkeypatch, tmp_path):
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     name = appmod._get_product(slug)["name"]
     _seed_paid_order(appmod, "buyer@x.com", name)
+    _seed_membership(appmod, "buyer@x.com")
     c = appmod.app.test_client()
     c.set_cookie("rm_reorder_email", "buyer@x.com")
     d = c.get("/api/reorder/items").get_json()
