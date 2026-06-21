@@ -2853,6 +2853,9 @@ _SALES_AI_IMAGES_ENABLED = os.environ.get("SALES_PAGES_AI_IMAGES", "").strip().l
 _SALES_IMAGE_PICK_ENABLED = os.environ.get("SALES_PAGES_IMAGE_PICK", "").strip().lower() in ("1", "true", "yes")
 _IMAGE_PICK_REWARD_CENTS = int(os.environ.get("IMAGE_PICK_REWARD_CENTS", "100"))
 _SALES_IMAGE_TOURNAMENT_ENABLED = os.environ.get("SALES_PAGES_IMAGE_TOURNAMENT", "").strip().lower() in ("1", "true", "yes")
+_SALES_IMAGE_VARIATIONS_ENABLED = os.environ.get("SALES_PAGES_IMAGE_VARIATIONS", "").strip().lower() in ("1", "true", "yes")
+_SALES_IMAGE_VOTE_ENABLED = os.environ.get("SALES_PAGES_IMAGE_VOTE", "").strip().lower() in ("1", "true", "yes")
+_SALES_IMAGE_EVOLUTION_ENABLED = os.environ.get("SALES_PAGES_IMAGE_EVOLUTION", "").strip().lower() in ("1", "true", "yes")
 _TOURNEY_MIN_VOTES = int(os.environ.get("IMAGE_TOURNAMENT_MIN_VOTES", "10"))
 _TOURNEY_MARGIN = float(os.environ.get("IMAGE_TOURNAMENT_MARGIN", "0.65"))
 _TOURNEY_K = int(os.environ.get("IMAGE_TOURNAMENT_CONVERGE_K", "3"))
@@ -3596,22 +3599,36 @@ def begin_product_page_data(slug):
         import sqlite3 as _sq2
         from dashboard import sales_images as _si2
         try:
-            with _sq2.connect(LOG_DB) as _cx2:
-                _disp = _si2.display_images(_cx2, slug)
-                _qstate = _si2.queue_state(_cx2, slug)
-            _imgs = [{"kind": k, "url": f"/begin/product-image/{slug}/{fn}"}
-                     for k, fn in _disp.items() if fn]
             _img_sec = next((s for s in sections if s["id"] == "images"), None)
             if _img_sec is not None:
-                if _imgs:
-                    _img_sec["body"] = {"images": _imgs, "state": "ready"}
-                elif _qstate == "pending":
-                    _img_sec["body"] = {"images": [], "state": "generating"}
-                else:
-                    _img_sec["body"] = {"images": [], "state": "none"}
+                with _sq2.connect(LOG_DB) as _cx2:
+                    if _SALES_IMAGE_VARIATIONS_ENABLED:
+                        _grouped = _si2.display_images_grouped(_cx2, slug)
+                        _state = _si2.images_grouped_state(_cx2, slug)
+                        _img_sec["body"] = {"grouped": _grouped, "state": _state, "target": 8}
+                        if _SALES_IMAGE_VOTE_ENABLED:
+                            from dashboard import sales_votes as _sv2
+                            _vsess = request.cookies.get("amg_session", "")
+                            _vau = get_authenticated_user(request)
+                            _vem = ((_vau or {}).get("email") or "").strip().lower() if _vau else ""
+                            _img_sec["body"]["picks"] = _sv2.get_picks(_cx2, slug, session_id=_vsess, email=_vem)
+                            if any(_grouped.values()):
+                                from dashboard import sales_image_exposures as _ex2
+                                _ex2.record(_cx2, slug, _vsess)
+                    else:
+                        _disp = _si2.display_images(_cx2, slug)
+                        _qstate = _si2.queue_state(_cx2, slug)
+                        _imgs = [{"kind": k, "url": f"/begin/product-image/{slug}/{fn}"}
+                                 for k, fn in _disp.items() if fn]
+                        if _imgs:
+                            _img_sec["body"] = {"images": _imgs, "state": "ready"}
+                        elif _qstate == "pending":
+                            _img_sec["body"] = {"images": [], "state": "generating"}
+                        else:
+                            _img_sec["body"] = {"images": [], "state": "none"}
         except Exception as _e:
             print(f"[sales-img] page-data marker skipped: {_e}", flush=True)
-    if _SALES_IMAGE_PICK_ENABLED:
+    if _SALES_IMAGE_PICK_ENABLED and not _SALES_IMAGE_VARIATIONS_ENABLED:
         import sqlite3 as _sq3
         from dashboard import sales_images as _si3, sales_votes as _sv3, sales_image_prompts as _sip3
         try:
@@ -4130,8 +4147,13 @@ def begin_product_image_gen(slug):
         return ("", 404)
     from dashboard import sales_images as _si
     with sqlite3.connect(LOG_DB) as cx:
+        if _SALES_IMAGE_VARIATIONS_ENABLED:
+            if not _si.needs_topup(cx, slug):
+                return jsonify({"ok": True, "state": "done"})
+            _si.enqueue(cx, slug)
+            return jsonify({"ok": True, "state": "generating"})
         disp = _si.display_images(cx, slug)
-        if any(disp.values()):                     # already generated → no re-gen
+        if any(disp.values()):
             return jsonify({"ok": True, "state": "done"})
         _si.enqueue(cx, slug)
         state = _si.queue_state(cx, slug)
@@ -4166,6 +4188,32 @@ def begin_product_image_pick(slug):
         picks = _sv.get_picks(cx, slug, session_id=session_id, email=email)
         both = _sv.picked_both(cx, slug, session_id=session_id, email=email)
     return jsonify({"ok": True, "picks": picks, "both_picked": both})
+
+
+@app.route("/begin/product-image-vote/<slug>", methods=["POST"])
+def begin_product_image_vote(slug):
+    from dashboard import sales_image_prompts as _sip
+    if not _SALES_IMAGE_VOTE_ENABLED or not _get_product(slug):
+        return ("", 404)
+    data = request.get_json(silent=True) or {}
+    kind = (data.get("kind") or "").strip()
+    if kind not in _sip.IMAGE_KINDS:
+        return jsonify({"ok": False}), 400
+    try:
+        variant = int(data.get("variant"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False}), 400
+    if variant < 1:
+        return jsonify({"ok": False}), 400
+    session_id = request.cookies.get("amg_session", "")
+    au = get_authenticated_user(request)
+    email = ((au or {}).get("email") or "").strip().lower() if au else ""
+    from dashboard import sales_images as _si, sales_votes as _sv
+    with sqlite3.connect(LOG_DB) as cx:
+        pv, mid = _si.tags_for(cx, slug, kind, variant)
+        _sv.record_pick(cx, slug, kind, variant, session_id, email, prompt_variant_id=pv, model_id=mid)
+        picks = _sv.get_picks(cx, slug, session_id=session_id, email=email)
+    return jsonify({"ok": True, "picks": picks})
 
 
 @app.route("/begin/learn/<slug>")
@@ -6298,6 +6346,47 @@ def _grant_membership(cx, email, days, source):
     return mid
 
 
+def _studio_credit_grant_and_notify(cx, email, days):
+    """Grant a studio-credit comp membership, log the journey event, and email the
+    magic link. Returns {membership_id, magic_link_url}. Shared by the console
+    approve action."""
+    import json as _json
+    email = (email or "").strip().lower()
+    mid = _grant_membership(cx, email, days, "studio_credit")
+    plain = _mint_membership_magic_link(email)
+    try:
+        base = request.host_url.rstrip("/")
+    except Exception:
+        base = (PUBLIC_BASE_URL or "").rstrip("/")
+    magic_link_url = f"{base}/coaching/auth/{plain}"
+    subject = "Your free month of Remedy Match coaching is open"
+    body = (
+        f"Hi,\n\n"
+        f"Thanks for getting the studio coaching app. As a thank-you, your Remedy Match "
+        f"coaching membership is open free for the next {days} days.\n\n"
+        f"Click here to sign in:\n{magic_link_url}\n\n"
+        f"You'll land in your member dashboard with the AI agent loaded for your context.\n\n"
+        f"---\n"
+        f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+    )
+    try:
+        _send_inquiry_email(to_email=email, subject=subject, body=body,
+                            reply_to=RM_COACHING_REPLY_EMAIL)
+    except Exception as e:
+        print(f"[studio-credit] email send failed: {e!r}", flush=True)
+    try:
+        cx.execute(
+            "INSERT INTO journey_events "
+            "(ts, session_id, email, trigger, detail, rung_before, rung_after) "
+            "VALUES (?, ?, ?, 'membership_granted', ?, '', '')",
+            (datetime.utcnow().isoformat() + "Z", "", email,
+             _json.dumps({"source": "studio_credit", "days": days, "membership_id": mid})))
+        cx.commit()
+    except Exception as e:
+        print(f"[studio-credit] journey_events insert failed: {e!r}", flush=True)
+    return {"membership_id": mid, "magic_link_url": magic_link_url}
+
+
 def _active_membership_for_email(email):
     """Return the active membership row as a dict (with derived days_remaining), or None."""
     if not email:
@@ -6523,7 +6612,13 @@ def get_referrals():
 
 
 QUIZ_URL            = "https://healing.scoreapp.com"
-RM_INBOUND_INQUIRY_EMAIL = "this.elf+rm-inquiry@gmail.com"
+# Internal system-notification sink (FYI mail the app sends itself, e.g. a new
+# studio-credit intent). Gmail-filtered to a "RM / System" label that skips Primary.
+RM_INBOUND_INQUIRY_EMAIL = "drglenswartwout+rm-inquiry@gmail.com"
+# Customer/client-facing Reply-To for coaching mail (on-brand, matches the From
+# drglenswartwout@gmail.com). Distinct from the internal +rm-inquiry system sink so
+# the two streams can be filtered separately in Gmail.
+RM_COACHING_REPLY_EMAIL = "drglenswartwout+coaching@gmail.com"
 REBRANDLY_API_KEY   = os.environ.get("REBRANDLY_API_KEY", "")
 REBRANDLY_VIP       = "truly.vip"   # affiliate / referral tracking links
 REBRANDLY_SO        = "truly.so"    # general short links
@@ -6722,7 +6817,7 @@ def _register_finance_email_actions():
                 f"{('with a balance' + amt) if amt else ''} is still open. "
                 f"You can reply here with any questions.\n\nIn wellness,\nDr. Glen")
         ok = _send_inquiry_email(to_email=email, subject=subject, body=body,
-                                 reply_to=RM_INBOUND_INQUIRY_EMAIL)
+                                 reply_to=RM_COACHING_REPLY_EMAIL)
         return {"email": email, "doc": doc, "sent": bool(ok),
                 "message": f"Payment reminder {'sent to' if ok else 'failed for'} {email}."}
 
@@ -6773,7 +6868,7 @@ def _send_client_receipt(client_email, client_name, sent_records, base_url):
         to_email=client_email,
         subject=subject,
         body="\n".join(lines),
-        reply_to=RM_INBOUND_INQUIRY_EMAIL,
+        reply_to=RM_COACHING_REPLY_EMAIL,
     )
 
 
@@ -8236,6 +8331,34 @@ def console_remedy_meanings_page():
     return resp
 
 
+@app.route("/api/console/studio-credits", methods=["GET"])
+def api_console_studio_credits():
+    """List studio-credit claims for console review (default: pending first)."""
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+    from dashboard import studio_credit as _sc
+    status = request.args.get("status") or None
+    with sqlite3.connect(LOG_DB) as cx:
+        _sc.migrate(cx)
+        claims = _sc.list_claims(cx, status=status)
+    return jsonify({"claims": claims})
+
+
+@app.route("/console/studio-credits", methods=["GET"])
+def console_studio_credits_page():
+    """Serve the studio-credit review console page."""
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+    resp = send_from_directory(STATIC, "console-studio-credits.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/console/search", methods=["GET"])
 def api_console_search():
     """Site-wide Records search for the header search box (Records mode): look up a
@@ -8323,6 +8446,103 @@ def api_console_gift_catalog():
         return jsonify({"ok": True, "catalog": []})
     from dashboard import review_gifts as _rg
     return jsonify({"ok": True, "catalog": _rg.load_catalog()})
+
+
+@app.route("/console/image-leaderboard")
+def console_image_leaderboard():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    from dashboard import sales_image_leaderboard as _lb
+    with sqlite3.connect(LOG_DB) as cx:
+        data = _lb.leaderboard(cx)
+        _evo_html = ""
+        _pg_html = ""
+        if _SALES_IMAGE_EVOLUTION_ENABLED:
+            from dashboard import sales_image_evolution as _ev
+            from dashboard import sales_image_prompt_gen as _pg
+            _evo_html = _ev.console_section_html(cx)
+            _pg_html = _pg.review_console_html(cx)
+    if request.args.get("format") == "json":
+        return jsonify(data)
+    return Response(_lb.render_html(data) + _evo_html + _pg_html, mimetype="text/html")
+
+
+@app.route("/console/image-evolution/decide", methods=["POST"])
+def console_image_evolution_decide():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return jsonify({"ok": False, "error": "evolution disabled"}), 400
+    d = request.get_json(silent=True) or {}
+    from dashboard import sales_image_evolution as _ev
+    with sqlite3.connect(LOG_DB) as cx:
+        res = _ev.decide(cx, d.get("proposal_id"), (d.get("decision") or "").strip(), actor="console")
+    return jsonify(res)
+
+
+@app.route("/console/image-evolution/trial", methods=["POST"])
+def console_image_evolution_trial():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return jsonify({"ok": False, "error": "evolution disabled"}), 400
+    d = request.get_json(silent=True) or {}
+    from dashboard import sales_image_evolution as _ev
+    with sqlite3.connect(LOG_DB) as cx:
+        res = _ev.trial(cx, (d.get("axis") or "").strip(), (d.get("kind") or "").strip(),
+                        (d.get("candidate_key") or "").strip(), actor="console")
+    return jsonify(res)
+
+
+@app.route("/console/image-evolution/undo", methods=["POST"])
+def console_image_evolution_undo():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return jsonify({"ok": False, "error": "evolution disabled"}), 400
+    d = request.get_json(silent=True) or {}
+    from dashboard import sales_image_evolution as _ev
+    with sqlite3.connect(LOG_DB) as cx:
+        res = _ev.undo(cx, d.get("log_id"), actor="console")
+    return jsonify(res)
+
+
+@app.route("/console/image-prompts/generate", methods=["POST"])
+def console_image_prompts_generate():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return jsonify({"ok": False, "error": "evolution disabled"}), 400
+    d = request.get_json(silent=True) or {}
+    kind = (d.get("kind") or "").strip()
+    try:
+        n = int(d.get("n") or 2)
+    except (TypeError, ValueError):
+        n = 2
+    from dashboard import sales_image_prompt_gen as _pg
+    with sqlite3.connect(LOG_DB) as cx:
+        out = _pg.generate_candidates(cx, kind, n)
+    return jsonify({"ok": True, "count": len(out)})
+
+
+@app.route("/console/image-prompts/review", methods=["POST"])
+def console_image_prompts_review():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return jsonify({"ok": False, "error": "evolution disabled"}), 400
+    d = request.get_json(silent=True) or {}
+    from dashboard import sales_image_prompt_gen as _pg
+    with sqlite3.connect(LOG_DB) as cx:
+        res = _pg.review_action(cx, d.get("id"), (d.get("decision") or "").strip(),
+                                prompt_template=d.get("prompt_template"))
+    return jsonify(res)
 
 
 @app.route("/console/pricing-settings")
@@ -12490,7 +12710,7 @@ def scoreapp_webhook():
                 to_email=email,
                 subject="Share your assessment with the practitioners you contacted?",
                 body=offer_body,
-                reply_to=RM_INBOUND_INQUIRY_EMAIL,
+                reply_to=RM_COACHING_REPLY_EMAIL,
             )
     except Exception as e:
         print(f"[scoreapp] share-offer send failed: {e!r}", flush=True)
@@ -16943,11 +17163,25 @@ def _drain_sales_image_queue():
             with sqlite3.connect(LOG_DB) as cx: _si.mark_failed(cx, slug)
             continue
         prod = dict(p)
+        dest = _SALES_IMG_DIR / slug
+        dest.mkdir(parents=True, exist_ok=True)
+        if _SALES_IMAGE_VARIATIONS_ENABLED:
+            from dashboard import sales_image_models as _mods
+            try:
+                with sqlite3.connect(LOG_DB) as cx:
+                    n = _si.generate_missing(
+                        cx, slug, dest,
+                        generate_fn=lambda mid, prompt: _mods.generate(cx, mid, prompt))
+                with sqlite3.connect(LOG_DB) as cx:
+                    _si.mark_done(cx, slug)
+            except Exception as e:
+                print(f"[sales-img] {slug} variation gen failed: {e}", flush=True)
+                with sqlite3.connect(LOG_DB) as cx:
+                    _si.mark_failed(cx, slug)
+            continue
         if not prod.get("ingredients"):
             prod["ingredients"] = (_product_card(p) or {}).get("ingredients", [])
         prompts = _sip.build_image_prompts(prod)
-        dest = _SALES_IMG_DIR / slug
-        dest.mkdir(parents=True, exist_ok=True)
         ok = 0
         for kind in _sip.IMAGE_KINDS:
             for variant, prompt in enumerate(prompts[kind], start=1):
@@ -17150,6 +17384,28 @@ def _run_image_tournament():
                 print(f"[tournament] {slug} {kind} failed: {e}", flush=True)
 
 
+def _run_image_evolution():
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return
+    from dashboard import sales_image_evolution as _ev
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            _ev.propose(cx)
+    except Exception as e:
+        print(f"[sales-img] evolution propose failed: {e}", flush=True)
+
+
+def _run_prompt_topup():
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return
+    from dashboard import sales_image_prompt_gen as _pg
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            _pg.topup(cx)
+    except Exception as e:
+        print(f"[sales-img] prompt topup failed: {e}", flush=True)
+
+
 def _run_cron():
     """Run the console push logic in-process on Render (no Mac needed)."""
     import importlib.util, sys as _sys, tempfile, base64 as _b64
@@ -17218,6 +17474,8 @@ def _start_scheduler():
         scheduler.add_job(_drain_sales_image_queue, "interval", minutes=1, id="sales_image_gen")
         scheduler.add_job(_drain_review_videos, "interval", minutes=1, id="review_videos")
         scheduler.add_job(_run_image_tournament, "interval", hours=24, id="sales_image_tournament")
+        scheduler.add_job(_run_image_evolution, "interval", hours=24, id="sales_image_evolution")
+        scheduler.add_job(_run_prompt_topup, "interval", hours=24, id="sales_image_prompt_topup")
         scheduler.start()
         print("[CRON] Scheduler started — hourly push + daily biofield-bonuses active")
     except Exception as e:
@@ -19443,7 +19701,7 @@ def admin_membership_grant():
             to_email=email,
             subject=subject,
             body=body,
-            reply_to=RM_INBOUND_INQUIRY_EMAIL,
+            reply_to=RM_COACHING_REPLY_EMAIL,
         )
     except Exception as e:
         print(f"[membership-grant] email send failed: {e!r}", flush=True)
@@ -19580,7 +19838,7 @@ def admin_escalation_reply(eid):
     try:
         _send_inquiry_email(
             to_email=email, subject=subject, body=body,
-            reply_to=RM_INBOUND_INQUIRY_EMAIL,
+            reply_to=RM_COACHING_REPLY_EMAIL,
         )
     except Exception as e:
         print(f"[escalation-reply] email send failed: {e!r}", flush=True)
@@ -19639,36 +19897,32 @@ def coaching_studio_credit_get():
 
 @app.route("/coaching/studio-credit", methods=["POST"])
 def coaching_studio_credit_post():
-    import uuid
+    from dashboard import studio_credit as _sc
     data = request.get_json(silent=True) or request.form or {}
     email = (data.get("email") or "").strip().lower()
-    studio_ref = (data.get("studio_ref") or "").strip() or None
+    studio_ref = (data.get("studio_ref") or "").strip()
     if email and "@" in email:
-        sid = str(uuid.uuid4())
-        now_iso = datetime.utcnow().isoformat() + "Z"
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
-            cx.execute(
-                "INSERT INTO studio_credit_intents (id, created_at, email, studio_ref) "
-                "VALUES (?,?,?,?)",
-                (sid, now_iso, email, studio_ref)
+            _sc.migrate(cx)
+            claim, is_new = _sc.upsert_self_serve_claim(
+                cx, email=email, invoice_ref=studio_ref)
+        if is_new:
+            subject = "New self-serve studio-credit claim"
+            body = (
+                f"A visitor reported a studio.com purchase and asked for the free month.\n\n"
+                f"Email: {email}\n"
+                f"studio_ref: {studio_ref or '(not provided)'}\n"
+                f"Submitted: {datetime.utcnow().isoformat() + 'Z'}\n\n"
+                f"Review and approve at /console/studio-credits.\n"
             )
-        subject = "studio.com credit intent submitted"
-        body = (
-            f"A visitor reported a studio.com purchase and asked for the 30-day credit.\n\n"
-            f"Email: {email}\n"
-            f"studio_ref: {studio_ref or '(not provided)'}\n"
-            f"Submitted: {now_iso}\n\n"
-            f"To verify and grant 30 days, POST /admin/membership/grant with "
-            f"source=studio_credit, email={email}, notes=studio_ref.\n"
-        )
-        try:
-            _send_inquiry_email(
-                to_email=RM_INBOUND_INQUIRY_EMAIL,
-                subject=subject, body=body,
-                reply_to=None,
-            )
-        except Exception as e:
-            print(f"[studio-credit] glen notification failed: {e!r}", flush=True)
+            try:
+                _send_inquiry_email(
+                    to_email=RM_INBOUND_INQUIRY_EMAIL,
+                    subject=subject, body=body,
+                    reply_to=None,
+                )
+            except Exception as e:
+                print(f"[studio-credit] glen notification failed: {e!r}", flush=True)
     html = _render_static_template("coaching.html", status="studio_credit_submitted")
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
@@ -19716,7 +19970,7 @@ def cron_membership_renewals():
         try:
             ok_sent = _send_inquiry_email(
                 to_email=r["email"], subject=subject, body=body,
-                reply_to=RM_INBOUND_INQUIRY_EMAIL,
+                reply_to=RM_COACHING_REPLY_EMAIL,
             )
         except Exception as e:
             print(f"[renewal-cron] send failed for {r['email']}: {e!r}", flush=True)
@@ -19766,7 +20020,7 @@ def coaching_login_request():
     try:
         _send_inquiry_email(
             to_email=email, subject=subject, body=body,
-            reply_to=RM_INBOUND_INQUIRY_EMAIL,
+            reply_to=RM_COACHING_REPLY_EMAIL,
         )
     except Exception as e:
         print(f"[coaching-login] email send failed: {e!r}", flush=True)
@@ -20316,6 +20570,14 @@ _ra.register()
 from dashboard import remedy_meaning_actions as _rma
 _rma.configure(client=_cl, products=(_PRODUCTS.get("products") or {}))
 _rma.register()
+
+# ── Studio-credit free month: console actions (log claim / approve+grant / reject) ──
+from dashboard import studio_credit as _scstore
+from dashboard import studio_credit_actions as _sca
+with sqlite3.connect(LOG_DB) as _sc_cx:
+    _scstore.migrate(_sc_cx)
+_sca.configure(grant_fn=_studio_credit_grant_and_notify)
+_sca.register()
 
 
 # ── In-house order entry (Phase 1: proposed invoice) — OWNER only ───────────────
@@ -21052,6 +21314,24 @@ def api_console_pricing_settings():
     _PRICING_SETTINGS_CACHE["mtime"] = None      # force re-read on next access
     raw = _pricing_settings()
     return jsonify({"saved": raw, "effective": _ps.effective(raw)})
+
+
+@app.route("/admin/sales-images/backfill", methods=["POST"])
+def admin_sales_images_backfill():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _SALES_IMAGE_VARIATIONS_ENABLED:
+        return jsonify({"ok": False, "error": "variations disabled"}), 400
+    arg = (request.values.get("slug") or "").strip()
+    from dashboard import sales_images as _si
+    with sqlite3.connect(LOG_DB) as cx:
+        targets = _si.backfill_slugs(cx, arg, _si.list_image_slugs(cx) if arg == "all"
+                                     else [arg] if arg else [])
+        enq = []
+        for s in targets:
+            if _si.needs_topup(cx, s):
+                _si.enqueue(cx, s); enq.append(s)
+    return jsonify({"ok": True, "enqueued": enq, "count": len(enq)})
 
 
 if __name__ == "__main__":

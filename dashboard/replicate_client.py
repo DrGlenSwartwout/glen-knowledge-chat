@@ -1,14 +1,17 @@
 import os, time, requests
 
-_MODEL_URL = "https://api.replicate.com/v1/models/black-forest-labs/flux-1.1-pro/predictions"
+_DEFAULT_REF = "black-forest-labs/flux-1.1-pro"
 
-def generate_image(prompt, *, token=None, aspect_ratio="1:1", timeout=120):
+def _model_url(model_ref):
+    return f"https://api.replicate.com/v1/models/{model_ref}/predictions"
+
+def generate_image(prompt, *, token=None, aspect_ratio="1:1", timeout=120, model_ref=_DEFAULT_REF):
     token = token or os.environ.get("REPLICATE_API_TOKEN", "")
     if not token:
         raise RuntimeError("REPLICATE_API_TOKEN not set")
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Prefer": "wait"}
     body = {"input": {"prompt": prompt, "aspect_ratio": aspect_ratio, "output_format": "png"}}
-    r = requests.post(_MODEL_URL, headers=headers, json=body, timeout=90)
+    r = requests.post(_model_url(model_ref), headers=headers, json=body, timeout=90)
     r.raise_for_status()
     pred = r.json()
     get_url = (pred.get("urls") or {}).get("get")
