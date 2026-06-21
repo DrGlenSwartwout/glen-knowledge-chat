@@ -233,6 +233,13 @@ def test_edit_action_layers_branch(monkeypatch, tmp_path):
     assert titles == ["Alpha", "Beta"]
 
 
+def test_console_page_ships_layer_editor(monkeypatch, tmp_path):
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "CONSOLE_SECRET", "sek", raising=False)
+    html = app_module.app.test_client().get("/console/biofield-reveals?key=sek").get_data(as_text=True)
+    assert "layer-title-field" in html and "Approved" in html and "collectLayers" in html
+
+
 def test_console_endpoint_returns_approved(monkeypatch, tmp_path):
     """GET /api/console/biofield-reveals must return both drafts and approved keys."""
     app_module, db = _app_db(monkeypatch, tmp_path)
