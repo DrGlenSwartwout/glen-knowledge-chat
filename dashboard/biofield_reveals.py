@@ -31,6 +31,11 @@ def init_table(cx):
             UNIQUE(email, scan_date)
         )
     """)
+    # Additive column for the ingest guardrail (idempotent).
+    try:
+        cx.execute("ALTER TABLE biofield_reveals ADD COLUMN dropped TEXT NOT NULL DEFAULT '[]'")
+    except Exception:
+        pass
     cx.commit()
 
 
@@ -40,6 +45,7 @@ def _row(r):
     d = dict(r)
     d["interpretation"] = json.loads(d.pop("interpretation_json") or "{}")
     d["remedies"] = json.loads(d.pop("remedies_json") or "[]")
+    d["dropped"] = json.loads(d.pop("dropped", "[]") or "[]")
     d["first_approved"] = bool(d.get("first_approved"))
     return d
 
@@ -84,6 +90,12 @@ def set_interpretation(cx, rid, interpretation):
 def set_remedies(cx, rid, remedies):
     cx.execute("UPDATE biofield_reveals SET remedies_json=?, updated_at=? WHERE id=? AND first_approved=0",
                (json.dumps(remedies or []), _now(), rid))
+    cx.commit()
+
+
+def set_dropped(cx, rid, names):
+    cx.execute("UPDATE biofield_reveals SET dropped=?, updated_at=? WHERE id=?",
+               (json.dumps(names or []), _now(), rid))
     cx.commit()
 
 

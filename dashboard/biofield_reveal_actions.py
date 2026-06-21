@@ -30,7 +30,24 @@ def _exec_edit(params, ctx):
         interp["body"] = (params.get("body") or "").strip()
     _br.set_interpretation(ctx["cx"], rid, interp)
     if isinstance(params.get("remedies"), list):
-        _br.set_remedies(ctx["cx"], rid, params["remedies"])
+        from dashboard import biofield_meanings as _bm
+        _bm.init_table(ctx["cx"])
+        stored = []
+        for rem in params["remedies"]:
+            if not isinstance(rem, dict):
+                stored.append(rem)
+                continue
+            remember = rem.get("remember", True)  # default ON
+            clean = {k: v for k, v in rem.items() if k != "remember"}
+            stored.append(clean)
+            slug = (clean.get("slug") or "").strip()
+            meaning = (clean.get("meaning") or "").strip()
+            if remember and slug and meaning:
+                try:
+                    _bm.upsert(ctx["cx"], slug, meaning, _actor_name(ctx.get("actor")), "glen")
+                except Exception as e:
+                    print(f"[remedy-meaning] promote {e!r}", flush=True)
+        _br.set_remedies(ctx["cx"], rid, stored)
     return {"ok": True}
 
 

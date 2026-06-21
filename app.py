@@ -2995,6 +2995,27 @@ def _get_product(slug):
     return out
 
 
+def _resolve_remedy_slug(r):
+    """Resolve a pushed remedy to a catalog slug: its slug if valid, else its name
+    via _TITLE_TO_SLUG (exact then case-insensitive), else None. Never raises."""
+    try:
+        s = (r.get("slug") or "").strip()
+        if s and _get_product(s):
+            return s
+        name = (r.get("name") or "").strip()
+        if not name:
+            return None
+        if name in _TITLE_TO_SLUG:
+            return _TITLE_TO_SLUG[name]
+        low = name.lower()
+        for title, slug in _TITLE_TO_SLUG.items():
+            if (title or "").strip().lower() == low:
+                return slug
+        return None
+    except Exception:
+        return None
+
+
 def _is_pure_powder(p):
     return "pure powder" in (p.get("name") or "").lower() or "pure-powder" in (p.get("slug") or "")
 
@@ -8271,6 +8292,45 @@ def console_biofield_reveals_page():
     return resp
 
 
+@app.route("/api/console/remedy-meanings", methods=["GET"])
+def api_console_remedy_meanings():
+    """Return one row per catalog product joined with stored canonical meanings."""
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+    from dashboard import biofield_meanings as _bm
+    with sqlite3.connect(LOG_DB) as cx:
+        _bm.init_table(cx)
+        stored = {r["slug"]: r for r in _bm.get_all(cx)}
+    products = _PRODUCTS.get("products") or {}
+    rows = []
+    for slug, p in products.items():
+        s = stored.get(slug) or {}
+        rows.append({
+            "slug": slug,
+            "name": p.get("name", slug),
+            "meaning": s.get("meaning", ""),
+            "source": s.get("source", ""),
+            "updated_at": s.get("updated_at", ""),
+        })
+    rows.sort(key=lambda r: r["name"].lower())
+    return jsonify({"ok": True, "rows": rows})
+
+
+@app.route("/console/remedy-meanings", methods=["GET"])
+def console_remedy_meanings_page():
+    """Serve the canonical remedy meanings curation console page."""
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+    resp = send_from_directory(STATIC, "console-remedy-meanings.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/console/studio-credits", methods=["GET"])
 def api_console_studio_credits():
     """List studio-credit claims for console review (default: pending first)."""
@@ -10386,11 +10446,34 @@ def api_e4l_reveal_draft():
     remedies = data.get("remedies") or []
     if not email or not scan_date or not (interp or remedies):
         return jsonify({"error": "email, scan_date, and interpretation or remedies required"}), 400
-    from dashboard import biofield_reveals as _br
+    from dashboard import biofield_reveals as _br, biofield_meanings as _bm
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             _br.init_table(cx)
-            rid, is_new = _br.upsert(cx, email, scan_date, interp, remedies, (data.get("source") or "").strip())
+            _bm.init_table(cx)
+            # Guardrail + canonical override.
+            try:
+                canon = _bm.get_map(cx)
+            except Exception:
+                canon = {}
+            cleaned, dropped = [], []
+            for r in (remedies or []):
+                slug = _resolve_remedy_slug(r) if isinstance(r, dict) else None
+                if not slug:
+                    nm = (r.get("name") if isinstance(r, dict) else "") or "(unnamed)"
+                    dropped.append(nm.strip() or "(unnamed)")
+                    continue
+                rr = dict(r)
+                rr["slug"] = slug
+                cm = canon.get(slug)
+                if cm:
+                    rr["meaning"] = cm
+                cleaned.append(rr)
+            rid, is_new = _br.upsert(cx, email, scan_date, interp, cleaned, (data.get("source") or "").strip())
+            try:
+                _br.set_dropped(cx, rid, dropped)
+            except Exception:
+                pass
             if is_new:
                 token = secrets.token_urlsafe(32)
                 _br.set_token(cx, rid, _hash_token(token))
@@ -20482,6 +20565,11 @@ _bra.register()
 # ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────
 from dashboard import reviews_actions as _ra
 _ra.register()
+
+# ── Canonical remedy meanings console actions ────────────────────────────────
+from dashboard import remedy_meaning_actions as _rma
+_rma.configure(client=_cl, products=(_PRODUCTS.get("products") or {}))
+_rma.register()
 
 # ── Studio-credit free month: console actions (log claim / approve+grant / reject) ──
 from dashboard import studio_credit as _scstore

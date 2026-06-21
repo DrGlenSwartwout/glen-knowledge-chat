@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remedy Meanings &middot; Console</title>
+<style>
+  :root{ --bg:#0f1115; --card:#171a21; --line:#262b36; --fg:#e8ebf0; --muted:#9aa3b2;
+         --accent:#5b8cff; --ok:#3fb968; --err:#e0556a; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--fg);
+        font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap{ max-width:860px; margin:0 auto; padding:18px; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:10px;
+         padding:16px; margin-bottom:16px; }
+  h1{ font-size:20px; margin:0 0 4px; }
+  .sub{ color:var(--muted); margin:0 0 16px; font-size:14px; }
+  label{ display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  textarea{ width:100%; background:#0c0e12; color:var(--fg);
+    border:1px solid var(--line); border-radius:8px; padding:8px; font:inherit;
+    min-height:70px; resize:vertical; }
+  .product-name{ font-weight:600; font-size:15px; margin-bottom:4px; }
+  .slug-badge{ font-size:11px; color:var(--muted); font-family:monospace; }
+  .source-badge{ display:inline-block; font-size:11px; padding:1px 7px;
+    border-radius:10px; background:#262b36; color:var(--muted); margin-left:6px; }
+  .source-badge.glen{ color:var(--ok); }
+  .source-badge.ai{ color:var(--accent); }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px; }
+  .btn{ background:var(--accent); color:#fff; border:0; border-radius:8px;
+        padding:8px 14px; font:inherit; cursor:pointer; }
+  .btn.ok{ background:var(--ok); }
+  .btn.ghost{ background:transparent; color:var(--fg); border:1px solid var(--line); }
+  .btn.danger{ background:transparent; color:var(--err); border:1px solid var(--err); }
+  .status{ min-height:18px; color:var(--muted); font-size:13px; margin-top:8px; }
+  .toolbar{ display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
+  #gate{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+         background:var(--bg); z-index:50; }
+  #gate .card{ min-width:300px; }
+  #app{ display:none; }
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="bos" data-sub="remedy-meanings"></script>
+
+<div id="gate" style="display:none">
+  <div class="card">
+    <p style="margin:0 0 8px;font-size:13px;color:var(--muted)">Console key</p>
+    <input id="key-input" type="password" placeholder="CONSOLE_SECRET"
+           style="width:100%;padding:8px;background:#0c0e12;color:var(--fg);
+                  border:1px solid var(--line);border-radius:8px;font:inherit">
+    <p style="margin-top:10px"><button class="btn" onclick="unlock()">Unlock</button></p>
+  </div>
+</div>
+
+<div id="app" class="wrap">
+  <h1>Remedy Meanings</h1>
+  <p class="sub">Curate the canonical 1-2 sentence meaning shown in Biofield reveals for each product.</p>
+  <div class="toolbar">
+    <button class="btn ghost" onclick="proposeAll()">Propose all missing</button>
+    <span id="toolbar-status" class="status"></span>
+  </div>
+  <div id="list"></div>
+</div>
+
+<script>
+function key(){ return localStorage.getItem('console_key') || ''; }
+(function(){
+  var u = new URLSearchParams(location.search).get('key');
+  if(u) localStorage.setItem('console_key', u);
+})();
+
+function unlock(){
+  localStorage.setItem('console_key', document.getElementById('key-input').value);
+  document.getElementById('gate').style.display = 'none';
+  boot();
+}
+
+async function api(method, path, body){
+  var opt = { method: method, headers: { 'X-Console-Key': key() } };
+  if(body){ opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  var r = await fetch(path, opt);
+  return { ok: r.ok, status: r.status, json: await r.json().catch(function(){ return {}; }) };
+}
+
+function boot(){
+  if(!key()){ document.getElementById('gate').style.display = 'flex'; return; }
+  document.getElementById('app').style.display = 'block';
+  loadList();
+}
+
+async function loadList(){
+  var r = await api('GET', '/api/console/remedy-meanings?key=' + encodeURIComponent(key()));
+  var el = document.getElementById('list');
+  if(!r.ok){
+    el.textContent = 'Could not load (check console key).';
+    return;
+  }
+  var rows = r.json.rows || [];
+  if(!rows.length){
+    el.textContent = 'No catalog products found.';
+    return;
+  }
+  el.innerHTML = '';
+  rows.forEach(function(row){ el.appendChild(buildCard(row)); });
+}
+
+function buildCard(row){
+  var wrap = document.createElement('div');
+  wrap.className = 'card';
+  wrap.dataset.slug = row.slug;
+
+  var nameEl = document.createElement('div');
+  nameEl.className = 'product-name';
+  nameEl.textContent = row.name || row.slug;
+  wrap.appendChild(nameEl);
+
+  var slugEl = document.createElement('div');
+  slugEl.className = 'slug-badge';
+  slugEl.textContent = row.slug;
+  wrap.appendChild(slugEl);
+
+  var sourceEl = document.createElement('span');
+  sourceEl.className = 'source-badge ' + (row.source || '');
+  sourceEl.textContent = row.source ? row.source : 'none';
+  wrap.appendChild(sourceEl);
+
+  var meaningLabel = document.createElement('label');
+  meaningLabel.textContent = 'Meaning';
+  wrap.appendChild(meaningLabel);
+
+  var meaningArea = document.createElement('textarea');
+  meaningArea.className = 'meaning-field';
+  meaningArea.value = row.meaning || '';
+  wrap.appendChild(meaningArea);
+
+  var rowEl = document.createElement('div');
+  rowEl.className = 'row';
+
+  var saveBtn = document.createElement('button');
+  saveBtn.className = 'btn ghost';
+  saveBtn.textContent = 'Save';
+  saveBtn.onclick = function(){ doSave(wrap, row.slug, sourceEl, saveBtn); };
+  rowEl.appendChild(saveBtn);
+
+  var proposeBtn = document.createElement('button');
+  proposeBtn.className = 'btn';
+  proposeBtn.textContent = 'Propose with AI';
+  proposeBtn.onclick = function(){ doPropose(wrap, row.slug, sourceEl, meaningArea, proposeBtn); };
+  rowEl.appendChild(proposeBtn);
+
+  var delBtn = document.createElement('button');
+  delBtn.className = 'btn danger';
+  delBtn.textContent = 'Delete';
+  delBtn.onclick = function(){ doDelete(wrap, row.slug, sourceEl, meaningArea, delBtn); };
+  rowEl.appendChild(delBtn);
+
+  wrap.appendChild(rowEl);
+
+  var statusEl = document.createElement('div');
+  statusEl.className = 'status';
+  wrap.appendChild(statusEl);
+
+  return wrap;
+}
+
+async function doSave(card, slug, sourceEl, btn){
+  var meaning = card.querySelector('.meaning-field').value;
+  var statusEl = card.querySelector('.status');
+  statusEl.textContent = 'Saving...';
+  btn.disabled = true;
+  var r = await api('POST', '/api/action/remedy_meaning.save', { slug: slug, meaning: meaning });
+  btn.disabled = false;
+  if(r.ok && r.json.status === 'done'){
+    statusEl.textContent = 'Saved.';
+    sourceEl.className = 'source-badge glen';
+    sourceEl.textContent = 'glen';
+  } else {
+    statusEl.textContent = 'Save failed.';
+  }
+}
+
+async function doPropose(card, slug, sourceEl, meaningArea, btn){
+  var statusEl = card.querySelector('.status');
+  statusEl.textContent = 'Proposing...';
+  btn.disabled = true;
+  var r = await api('POST', '/api/action/remedy_meaning.propose', { slug: slug });
+  btn.disabled = false;
+  if(r.ok && r.json.status === 'done'){
+    statusEl.textContent = 'AI meaning saved.';
+    var res = (r.json.result) || {};
+    if(res.meaning){ meaningArea.value = res.meaning; }
+    sourceEl.className = 'source-badge ai';
+    sourceEl.textContent = 'ai';
+  } else {
+    statusEl.textContent = 'Propose failed.';
+  }
+}
+
+async function doDelete(card, slug, sourceEl, meaningArea, btn){
+  var statusEl = card.querySelector('.status');
+  statusEl.textContent = 'Deleting...';
+  btn.disabled = true;
+  var r = await api('POST', '/api/action/remedy_meaning.delete', { slug: slug });
+  btn.disabled = false;
+  if(r.ok && r.json.status === 'done'){
+    statusEl.textContent = 'Deleted.';
+    meaningArea.value = '';
+    sourceEl.className = 'source-badge';
+    sourceEl.textContent = 'none';
+  } else {
+    statusEl.textContent = 'Delete failed.';
+  }
+}
+
+async function proposeAll(){
+  var statusEl = document.getElementById('toolbar-status');
+  statusEl.textContent = 'Proposing all missing...';
+  var r = await api('POST', '/api/action/remedy_meaning.propose_all', {});
+  if(r.ok && r.json.status === 'done'){
+    var n = ((r.json.result) || {}).proposed || 0;
+    statusEl.textContent = 'Proposed ' + n + ' missing. Reloading...';
+    setTimeout(loadList, 800);
+  } else {
+    statusEl.textContent = 'Propose all failed.';
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
