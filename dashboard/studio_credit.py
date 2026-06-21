@@ -66,3 +66,59 @@ def list_claims(cx, status=None):
         rows = cur.execute(
             "SELECT * FROM studio_credit_claims ORDER BY created_at DESC").fetchall()
     return [dict(r) for r in rows]
+
+
+def studio_credit_granted_within_year(cx, email):
+    """Most-recent studio_credit membership for email granted in the last 365 days,
+    or None. Reads the existing memberships table (same DB)."""
+    email = (email or "").strip().lower()
+    cutoff = (datetime.utcnow() - timedelta(days=365)).isoformat() + "Z"
+    try:
+        row = cx.execute(
+            "SELECT granted_at, expires_at FROM memberships "
+            "WHERE email=? AND source='studio_credit' AND granted_at > ? "
+            "ORDER BY granted_at DESC LIMIT 1",
+            (email, cutoff)).fetchone()
+    except sqlite3.OperationalError:
+        return None   # memberships table absent (shouldn't happen in prod)
+    if not row:
+        return None
+    return {"granted_at": row[0], "until": row[1]}
+
+
+def approve_claim(cx, claim_id, *, decided_by, grant_fn, force=False):
+    claim = get(cx, claim_id)
+    if claim is None:
+        raise ValueError("claim not found")
+    if claim["status"] == "approved":
+        return {"ok": True, "already": True, "membership_id": claim["membership_id"]}
+    if claim["status"] == "rejected":
+        raise ValueError("claim already rejected")
+    email = claim["email"]
+    if not force:
+        prior = studio_credit_granted_within_year(cx, email)
+        if prior is not None:
+            return {"ok": False, "warning": "granted_within_year",
+                    "granted_at": prior["granted_at"], "until": prior["until"]}
+    granted = grant_fn(cx, email, 30)
+    cx.execute(
+        "UPDATE studio_credit_claims SET status='approved', decided_at=?, decided_by=?, "
+        "membership_id=? WHERE id=?",
+        (_now(), decided_by or "", granted["membership_id"], claim_id))
+    cx.commit()
+    return {"ok": True, "membership_id": granted["membership_id"],
+            "magic_link_url": granted.get("magic_link_url", "")}
+
+
+def reject_claim(cx, claim_id, *, decided_by, reason=""):
+    claim = get(cx, claim_id)
+    if claim is None:
+        raise ValueError("claim not found")
+    if claim["status"] == "approved":
+        raise ValueError("cannot reject an approved claim")
+    cx.execute(
+        "UPDATE studio_credit_claims SET status='rejected', decided_at=?, decided_by=?, "
+        "decision_note=? WHERE id=?",
+        (_now(), decided_by or "", reason or "", claim_id))
+    cx.commit()
+    return {"ok": True}
