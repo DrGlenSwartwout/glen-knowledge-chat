@@ -47,3 +47,27 @@ def generate(cx, model_id, prompt, *, aspect="1:1"):
             raise
         data = _rc.generate_image(prompt, aspect_ratio=aspect, model_ref=_BASELINE_REF)
         return data, "flux-1.1-pro"
+
+_CANDIDATES = [
+    ("ideogram-v3",  "Ideogram V3",          "ideogram-ai/ideogram-v3-quality"),
+    ("flux-ultra",   "Flux 1.1 Pro Ultra",   "black-forest-labs/flux-1.1-pro-ultra"),
+    ("sd-3.5-large", "Stable Diffusion 3.5 L","stability-ai/stable-diffusion-3.5-large"),
+]
+
+def seed_candidates(cx):
+    init_table(cx); now = _now()
+    for mid, label, ref in _CANDIDATES:
+        cx.execute("INSERT OR IGNORE INTO sales_image_models (id, label, engine, engine_ref, state, created_at) "
+                   "VALUES (?,?, 'replicate', ?, 'candidate', ?)", (mid, label, ref, now))
+    cx.commit()
+
+def candidate_models(cx):
+    init_table(cx)
+    rows = cx.execute("SELECT id, label, engine, engine_ref FROM sales_image_models "
+                      "WHERE state='candidate' ORDER BY rowid").fetchall()
+    return [{"id": r[0], "label": r[1], "engine": r[2], "engine_ref": r[3]} for r in rows]
+
+def set_state(cx, id, state):
+    init_table(cx)
+    cx.execute("UPDATE sales_image_models SET state=? WHERE id=?", (state, id))
+    cx.commit()

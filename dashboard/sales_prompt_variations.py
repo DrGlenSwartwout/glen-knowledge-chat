@@ -52,3 +52,14 @@ def active_variations(cx, kind):
     rows = cx.execute("SELECT id, kind, label, prompt_template FROM sales_prompt_variations "
                       "WHERE kind=? AND state='active' ORDER BY id", (kind,)).fetchall()
     return [{"id": r[0], "kind": r[1], "label": r[2], "prompt_template": r[3]} for r in rows]
+
+def set_state(cx, id, state):
+    init_table(cx)
+    cx.execute("UPDATE sales_prompt_variations SET state=? WHERE id=?", (state, int(id)))
+    cx.commit()
+
+def candidate_variations(cx, kind):
+    init_table(cx)
+    rows = cx.execute("SELECT id, kind, label, prompt_template FROM sales_prompt_variations "
+                      "WHERE kind=? AND state='candidate' ORDER BY id", (kind,)).fetchall()
+    return [{"id": r[0], "kind": r[1], "label": r[2], "prompt_template": r[3]} for r in rows]
