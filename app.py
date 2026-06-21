@@ -3365,6 +3365,9 @@ def begin_product_page_data(slug):
                             _vau = get_authenticated_user(request)
                             _vem = ((_vau or {}).get("email") or "").strip().lower() if _vau else ""
                             _img_sec["body"]["picks"] = _sv2.get_picks(_cx2, slug, session_id=_vsess, email=_vem)
+                            if any(_grouped.values()):
+                                from dashboard import sales_image_exposures as _ex2
+                                _ex2.record(_cx2, slug, _vsess)
                     else:
                         _disp = _si2.display_images(_cx2, slug)
                         _qstate = _si2.queue_state(_cx2, slug)
@@ -8082,6 +8085,19 @@ def api_console_gift_catalog():
         return jsonify({"ok": True, "catalog": []})
     from dashboard import review_gifts as _rg
     return jsonify({"ok": True, "catalog": _rg.load_catalog()})
+
+
+@app.route("/console/image-leaderboard")
+def console_image_leaderboard():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    from dashboard import sales_image_leaderboard as _lb
+    with sqlite3.connect(LOG_DB) as cx:
+        data = _lb.leaderboard(cx)
+    if request.args.get("format") == "json":
+        return jsonify(data)
+    return Response(_lb.render_html(data), mimetype="text/html")
 
 
 @app.route("/console/pricing-settings")
