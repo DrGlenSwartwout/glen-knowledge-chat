@@ -376,3 +376,25 @@ def test_member_payload_never_leaks_patterns(monkeypatch, tmp_path):
     reveal = _extract_reveal(html)
     for L in (reveal.get("layers") or []):
         assert "patterns" not in L and "pattern_labels" not in L
+
+
+def test_console_list_enriches_name_and_tags(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "CONSOLE_SECRET", "sek", raising=False)
+    from dashboard import biofield_reveals as br
+    with sqlite3.connect(db) as cx:
+        cx.execute("CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY, email TEXT, name TEXT, tags TEXT)")
+        cx.execute("INSERT INTO people (email, name, tags) VALUES (?,?,?)",
+                   ("c@x.com", "Jane Client", '["e4l account", "type:client"]'))
+        br.upsert(cx, "c@x.com", "2026-06-01", {"greeting": "hi"},
+                  [{"name": "Top", "slug": "top", "meaning": "m"}], "s")
+        br.upsert(cx, "nobody@x.com", "2026-06-02", {"greeting": "hi"}, [], "s")
+        cx.commit()
+    c = app_module.app.test_client()
+    body = c.get("/api/console/biofield-reveals", headers={"X-Console-Key": "sek"}).get_json()
+    by_email = {d["email"]: d for d in body["drafts"]}
+    assert by_email["c@x.com"]["client_name"] == "Jane Client"
+    assert by_email["c@x.com"]["tags"] == ["e4l account", "type:client"]
+    # no people row -> empty, still listed, no error
+    assert by_email["nobody@x.com"]["client_name"] == ""
+    assert by_email["nobody@x.com"]["tags"] == []

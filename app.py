@@ -8514,6 +8514,24 @@ def api_console_reviews_list():
     return jsonify({"ok": True, "pending": pending, "recent": []})
 
 
+def _people_brief(cx, email):
+    """Best-effort name + tags for a reveal's owner email. Empty on miss/error."""
+    out = {"client_name": "", "tags": []}
+    try:
+        row = cx.execute("SELECT name, tags FROM people WHERE lower(email)=lower(?)",
+                         ((email or "").strip(),)).fetchone()
+        if row:
+            out["client_name"] = (row[0] or "").strip()
+            try:
+                t = json.loads(row[1] or "[]")
+                out["tags"] = [str(x) for x in t] if isinstance(t, list) else []
+            except Exception:
+                out["tags"] = []
+    except Exception:
+        pass
+    return out
+
+
 @app.route("/api/console/biofield-reveals", methods=["GET"])
 def api_console_biofield_reveals():
     """List pending biofield reveals (first_approved=0) for console review."""
@@ -8526,6 +8544,8 @@ def api_console_biofield_reveals():
         _br.init_table(cx)
         drafts = _br.list_pending(cx)
         approved = _br.list_approved(cx)
+        for d in drafts + approved:
+            d.update(_people_brief(cx, d.get("email")))
     return jsonify({"drafts": drafts, "approved": approved})
 
 
