@@ -107,3 +107,22 @@ def test_console_section_html_lists_proposals_and_candidates():
     assert "Approve" in html and "Reject" in html
     assert "ideogram-v3" in html             # a benched candidate
     assert "Trial" in html
+
+def test_decide_stale_proposal_does_not_corrupt():
+    cx = _cx()
+    mods.seed(cx); mods.seed_candidates(cx)
+    _seed_model_field(cx, loser_votes=0, winner_votes=55, impressions_each=60)
+    ev.propose(cx, min_impressions=20)
+    pid = next(p["id"] for p in ev.pending_proposals(cx) if p["axis"] == "model")
+    ev.trial(cx, "model", "", "flux-ultra", actor="t")        # retires the weakest active (recraft)
+    before = len(mods.active_models(cx))
+    res = ev.decide(cx, pid, "approve", actor="t")            # proposal named retire=recraft (now retired) -> stale
+    assert res["ok"] is False                                  # no 500
+    assert len(mods.active_models(cx)) == before               # set size intact, not corrupted
+
+def test_console_section_html_has_undo_after_swap():
+    cx = _cx()
+    mods.seed(cx); mods.seed_candidates(cx)
+    _seed_model_field(cx, loser_votes=0, winner_votes=55, impressions_each=60)
+    ev.trial(cx, "model", "", "ideogram-v3", actor="t")
+    assert "Undo" in ev.console_section_html(cx)
