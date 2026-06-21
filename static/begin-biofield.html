@@ -299,6 +299,12 @@
       font-size: 15px;
     }
 
+    /* --- Titled stress-pattern layers --- */
+    .bf-layer{ margin-top:22px; padding-top:16px; border-top:1px solid var(--border,#ddd); }
+    .bf-layer .layer-title{ font-weight:700; font-size:1.05em; }
+    .bf-layer .layer-summary{ color:var(--muted,#666); margin:6px 0 10px; white-space:pre-wrap; }
+    .bf-layer .layer-blurred{ filter:blur(5px); user-select:none; pointer-events:none; }
+
     /* --- Cart affordances + sticky bar --- */
     .bf-cart-row{ display:flex; align-items:center; gap:10px; margin-top:10px; }
     .bf-cart-row input[type=number]{ width:64px; padding:6px; }
@@ -502,8 +508,39 @@
         }
       }
 
+      // -- Titled stress-pattern layers (new reveals carry data.layers) --
+      function renderLayers(root, data) {
+        var layers = data.layers || [];
+        for (var i = 0; i < layers.length; i++) {
+          var L = layers[i];
+          var sec = document.createElement("div");
+          sec.className = "bf-layer";
+          var t = document.createElement("div"); t.className = "layer-title"; t.textContent = L.title || ("Layer " + (L.n || (i + 1)));
+          sec.appendChild(t);
+          if (L.summary) { var s = document.createElement("p"); s.className = "layer-summary"; s.textContent = L.summary; sec.appendChild(s); }
+          if (L.remedy && L.remedy.slug) {
+            renderRemedyInto(sec, L.remedy);              // existing helper: name link + meaning + Order btn (+ #4c cart row)
+          } else if (L.remedy_blurred) {
+            var b = document.createElement("p"); b.className = "layer-blurred"; b.textContent = "Your matched remedy for this layer";
+            sec.appendChild(b);
+          }
+          root.appendChild(sec);
+        }
+      }
+
+      // -- Layered reveal: when data.layers present, render titled layers and skip flat remedy blocks --
+      if (data.layers && data.layers.length) {
+        var layersCard = document.createElement("div");
+        layersCard.className = "card";
+        var layersLabel = document.createElement("div");
+        layersLabel.className = "remedy-section-label";
+        layersLabel.textContent = "Your Biofield Stress Pattern Layers";
+        layersCard.appendChild(layersLabel);
+        renderLayers(layersCard, data);
+        root.appendChild(layersCard);
+
       // -- PAID: render all remedies (top + deep), no blurred section, no CTA --
-      if (data.paid) {
+      } else if (data.paid) {
         var remedies = data.remedies || [];
         var allRemedyCard = document.createElement("div");
         allRemedyCard.className = "card";

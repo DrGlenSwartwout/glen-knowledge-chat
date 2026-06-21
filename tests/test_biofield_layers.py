@@ -180,3 +180,12 @@ def test_payload_paid_shows_all_layer_remedies(monkeypatch, tmp_path):
     assert [L["title"] for L in d["layers"]] == ["Surface", "Root"]
     assert d["layers"][0]["remedy"]["slug"] == "rx-aaa" and d["layers"][1]["remedy"]["slug"] == "rx-bbb"
     assert all(not L["remedy_blurred"] for L in d["layers"])
+
+
+def test_member_page_ships_layer_render(monkeypatch, tmp_path):
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: {"ok": True})
+    token = _seed_approved_layers(app_module, db)
+    html = app_module.app.test_client().get(f"/begin/biofield/{token}").get_data(as_text=True)
+    assert "renderLayers" in html and "layer-title" in html
