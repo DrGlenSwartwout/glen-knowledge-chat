@@ -170,6 +170,7 @@ import hashlib, hmac, secrets
 
 AUTH_TOKEN_TTL_MIN  = 1440         # magic-link token validity window (24 hours, so a delayed email check still works)
 AUTH_TOKEN_TTL_LABEL = "24 hours"  # human-readable form of AUTH_TOKEN_TTL_MIN for email/UI copy
+MEMBERSHIP_CANCEL_TTL_DAYS = 1095  # ~3 years: the emailed one-click cancel link must outlive the recurring membership
 SESSION_TTL_DAYS    = 30           # session cookie validity
 PUBLIC_BASE_URL     = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
 GHL_MAGIC_WORKFLOW  = os.environ.get("GHL_MAGIC_LINK_WORKFLOW_ID", "")
@@ -4714,20 +4715,43 @@ def _fulfill_biofield_trial(session_id):
             _bt_subs.init_subscriptions_table(_bc)
             _bt_subs.migrate_add_membership_columns(_bc)
             init_membership_tables(_bc)
+            next_charge = _bt_subs.add_months(_bt_dt.date.today().isoformat(), 1)
             _bt_subs.create_membership(
                 _bc, email=bt_email, stripe_customer_id=pi["customer"],
                 stripe_payment_method_id=pi["payment_method"],
                 amount_cents=_bt_gb.MEMBERSHIP_AMOUNT_CENTS,
-                next_charge_date=_bt_subs.add_months(_bt_dt.date.today().isoformat(), 1))
+                next_charge_date=next_charge)
             _grant_membership(_bc, bt_email, 31, "biofield_trial")
             cancel_tok = secrets.token_urlsafe(32)
             _bc.execute(
                 "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) VALUES (?,?,?,?,?)",
                 (_hash_token(cancel_tok), bt_email, "membership_cancel",
                  datetime.now(timezone.utc).isoformat(),
-                 (datetime.now(timezone.utc) + timedelta(days=60)).isoformat()))
+                 (datetime.now(timezone.utc) + timedelta(days=MEMBERSHIP_CANCEL_TTL_DAYS)).isoformat()))
             _bc.commit()
-            return {"ok": True, "created": True, "email": bt_email}
+        # Lock released. Send the welcome / one-click-cancel email best-effort: it must
+        # never undo the committed membership. Inside the won-claim path, so exactly once.
+        try:
+            if bt_email and PUBLIC_BASE_URL:
+                cancel_url = f"{PUBLIC_BASE_URL}/membership/cancel/{cancel_tok}"
+                subject = "You're in - your membership is active"
+                body = (
+                    "Aloha,\n\n"
+                    "Your $1 unlocked your full Biofield Analysis and started your membership. "
+                    f"Your first monthly payment of $99 will run on {next_charge}. Everything "
+                    "stays unlocked in the meantime, and you can order your matched remedies anytime.\n\n"
+                    "No pressure, ever. If you want to cancel before your first payment, it is one "
+                    "click, no charge, no reply needed:\n\n"
+                    f"{cancel_url}\n\n"
+                    "In wellness,\n"
+                    "Dr. Glen and Rae\n"
+                )
+                _send_inquiry_email(bt_email, subject, body)
+            else:
+                print("[biofield-trial] welcome-email skipped (missing email or base url)", flush=True)
+        except Exception as _e:
+            print(f"[biofield-trial] welcome-email failed: {_e!r}", flush=True)
+        return {"ok": True, "created": True, "email": bt_email}
     except Exception as e:
         print(f"[biofield-trial] fulfill failed: {e!r}", flush=True)
         return {"ok": False, "reason": "error"}
