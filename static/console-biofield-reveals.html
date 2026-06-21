@@ -31,6 +31,7 @@
   .btn.ok{ background:var(--ok); }
   .btn.ghost{ background:transparent; color:var(--fg); border:1px solid var(--line); }
   .status{ min-height:18px; color:var(--muted); font-size:13px; margin-top:8px; }
+  .dropped-note{ color:var(--muted); font-size:13px; margin-top:8px; }
   #gate{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
          background:var(--bg); z-index:50; }
   #gate .card{ min-width:300px; }
@@ -287,7 +288,7 @@ function buildCard(d){
   var dropped = d.dropped || '';
   if(dropped){
     var droppedNote = document.createElement('div');
-    droppedNote.className = 'status';
+    droppedNote.className = 'dropped-note';
     var droppedPrefix = document.createTextNode('Dropped (not in catalog): ');
     droppedNote.appendChild(droppedPrefix);
     var droppedSpan = document.createElement('span');
