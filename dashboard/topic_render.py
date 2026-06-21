@@ -44,13 +44,13 @@ def render_page_html(page, *, base_url=""):
     content = page.get("content") or {}
 
     body_sections = []
-    article_text = []
+    article_text_raw = []
     for sec in _SECTION_ORDER:
         text = content.get(sec)
         if not text:
             continue
         escaped_text = _esc(text)
-        article_text.append(escaped_text)
+        article_text_raw.append(str(text))
         body_sections.append(
             f"<section><h2>{_esc(_SECTION_TITLES.get(sec, sec))}</h2>"
             f"<p>{escaped_text}</p></section>"
@@ -61,10 +61,11 @@ def render_page_html(page, *, base_url=""):
         "@type": "Article",
         "headline": title,
         "description": meta,
-        "articleBody": " ".join(article_text),
+        "articleBody": " ".join(article_text_raw),
     }
+    jsonld_str = json.dumps(jsonld, ensure_ascii=False).replace("</", "<\\/")
     jsonld_tag = ('<script type="application/ld+json">'
-                  + json.dumps(jsonld, ensure_ascii=False) + "</script>")
+                  + jsonld_str + "</script>")
 
     cta = ('<section class="cta"><p>Want guidance matched to you? '
            '<a href="/begin">Start your free assessment</a>.</p></section>')

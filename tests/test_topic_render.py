@@ -63,3 +63,16 @@ def test_render_escapes_section_text():
     html = tr.render_page_html(page, base_url="https://x.test")
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;" in html
+
+
+def test_jsonld_neutralizes_script_breakout():
+    tr = _mod()
+    page = _approved_page()
+    page["content"]["overview"] = "danger </script><script>alert(1)</script> end"
+    html = tr.render_page_html(page, base_url="https://x.test")
+    # the JSON-LD block must not contain a raw closing </script> from the payload
+    jsonld_start = html.index("application/ld+json")
+    jsonld_end = html.index("</script>", jsonld_start)  # this is the REAL closing tag
+    jsonld_block = html[jsonld_start:jsonld_end]
+    assert "</script>" not in jsonld_block       # payload's </script> was neutralized
+    assert "<\\/script>" in jsonld_block          # hardened form present
