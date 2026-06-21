@@ -241,16 +241,23 @@ def test_console_page_ships_layer_editor(monkeypatch, tmp_path):
 
 
 def test_nonpaid_layered_page_has_free_reveal_and_trial_cta(monkeypatch, tmp_path):
-    """Regression for Critical finding: layered non-paid render must include the
-    free-reveal trigger and the $1 trial CTA so the live-money path is reachable."""
+    """Regression for Critical finding: layered non-paid render must surface the
+    CTA-driving payload data for free-reveal and $1 trial so the live-money path
+    is reachable. Asserts on window.__REVEAL__ (runtime payload) not static HTML
+    markers, which appear in every response regardless of state."""
     app_module, db = _app_db(monkeypatch, tmp_path)
     monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
     monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: None)  # not paid
     monkeypatch.setattr(app_module, "BIOFIELD_TRIAL_ENABLED", True, raising=False)
     token = _seed_approved_layers(app_module, db)
-    html = app_module.app.test_client().get(f"/begin/biofield/{token}").get_data(as_text=True)
-    assert "reveal-top" in html, "free-reveal endpoint must appear in non-paid layered page"
-    assert "unlock-checkout" in html, "$1 trial CTA must appear in non-paid layered page"
+    d = _reveal_payload(app_module, token)
+    assert d is not None, "window.__REVEAL__ payload must be present in the page"
+    assert d["paid"] is False, "non-paid user must have paid=False"
+    assert d["free_available"] is True, "free_available must be True (drives free-reveal CTA button)"
+    assert d["trial_enabled"] is True, "trial_enabled must be True (drives $1 unlock CTA)"
+    assert d["layers"] and len(d["layers"]) >= 1, "layered reveal must have at least one layer"
+    assert all(L["remedy"] is None and L["remedy_blurred"] for L in d["layers"]), \
+        "non-paid not-yet-unlocked reveal must gate all layer remedies"
 
 
 def test_console_endpoint_returns_approved(monkeypatch, tmp_path):
