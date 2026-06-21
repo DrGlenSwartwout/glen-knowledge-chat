@@ -19814,36 +19814,32 @@ def coaching_studio_credit_get():
 
 @app.route("/coaching/studio-credit", methods=["POST"])
 def coaching_studio_credit_post():
-    import uuid
+    from dashboard import studio_credit as _sc
     data = request.get_json(silent=True) or request.form or {}
     email = (data.get("email") or "").strip().lower()
-    studio_ref = (data.get("studio_ref") or "").strip() or None
+    studio_ref = (data.get("studio_ref") or "").strip()
     if email and "@" in email:
-        sid = str(uuid.uuid4())
-        now_iso = datetime.utcnow().isoformat() + "Z"
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
-            cx.execute(
-                "INSERT INTO studio_credit_intents (id, created_at, email, studio_ref) "
-                "VALUES (?,?,?,?)",
-                (sid, now_iso, email, studio_ref)
+            _sc.migrate(cx)
+            claim, is_new = _sc.upsert_self_serve_claim(
+                cx, email=email, invoice_ref=studio_ref)
+        if is_new:
+            subject = "New self-serve studio-credit claim"
+            body = (
+                f"A visitor reported a studio.com purchase and asked for the free month.\n\n"
+                f"Email: {email}\n"
+                f"studio_ref: {studio_ref or '(not provided)'}\n"
+                f"Submitted: {datetime.utcnow().isoformat() + 'Z'}\n\n"
+                f"Review and approve at /console/studio-credits.\n"
             )
-        subject = "studio.com credit intent submitted"
-        body = (
-            f"A visitor reported a studio.com purchase and asked for the 30-day credit.\n\n"
-            f"Email: {email}\n"
-            f"studio_ref: {studio_ref or '(not provided)'}\n"
-            f"Submitted: {now_iso}\n\n"
-            f"To verify and grant 30 days, POST /admin/membership/grant with "
-            f"source=studio_credit, email={email}, notes=studio_ref.\n"
-        )
-        try:
-            _send_inquiry_email(
-                to_email=RM_INBOUND_INQUIRY_EMAIL,
-                subject=subject, body=body,
-                reply_to=None,
-            )
-        except Exception as e:
-            print(f"[studio-credit] glen notification failed: {e!r}", flush=True)
+            try:
+                _send_inquiry_email(
+                    to_email=RM_INBOUND_INQUIRY_EMAIL,
+                    subject=subject, body=body,
+                    reply_to=None,
+                )
+            except Exception as e:
+                print(f"[studio-credit] glen notification failed: {e!r}", flush=True)
     html = _render_static_template("coaching.html", status="studio_credit_submitted")
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
