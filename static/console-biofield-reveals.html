@@ -31,6 +31,7 @@
   .btn.ok{ background:var(--ok); }
   .btn.ghost{ background:transparent; color:var(--fg); border:1px solid var(--line); }
   .status{ min-height:18px; color:var(--muted); font-size:13px; margin-top:8px; }
+  .dropped-note{ color:var(--muted); font-size:13px; margin-top:8px; }
   #gate{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
          background:var(--bg); z-index:50; }
   #gate .card{ min-width:300px; }
@@ -87,13 +88,27 @@ async function loadList(){
     el.textContent = 'Could not load (check console key).';
     return;
   }
-  var rows = r.json.drafts || [];
-  if(!rows.length){
-    el.textContent = 'No pending reveals.';
+  el.innerHTML = '';
+  var drafts = r.json.drafts || [];
+  var approved = r.json.approved || [];
+  if(!drafts.length && !approved.length){
+    el.textContent = 'No reveals yet.';
     return;
   }
-  el.innerHTML = '';
-  rows.forEach(function(d){ el.appendChild(buildCard(d)); });
+  if(drafts.length){
+    var pendHead = document.createElement('div');
+    pendHead.className = 'section-head';
+    pendHead.textContent = 'Pending';
+    el.appendChild(pendHead);
+    drafts.forEach(function(d){ el.appendChild(buildCard(d)); });
+  }
+  if(approved.length){
+    var apprHead = document.createElement('div');
+    apprHead.className = 'section-head';
+    apprHead.textContent = 'Approved';
+    el.appendChild(apprHead);
+    approved.forEach(function(d){ el.appendChild(buildCard(d)); });
+  }
 }
 
 function buildCard(d){
@@ -136,60 +151,151 @@ function buildCard(d){
   bodyArea.value = (d.interpretation && d.interpretation.body) ? d.interpretation.body : '';
   wrap.appendChild(bodyArea);
 
-  // Remedies section
-  var remediesHead = document.createElement('div');
-  remediesHead.className = 'section-head';
-  remediesHead.textContent = 'Ranked remedies (all blurred until approved)';
-  wrap.appendChild(remediesHead);
+  // Layers section (preferred) or flat remedies fallback
+  var layersHead = document.createElement('div');
+  layersHead.className = 'section-head';
+  layersHead.textContent = 'Stress-pattern layers (title and summary always shown; remedy blurred until approved)';
+  wrap.appendChild(layersHead);
 
-  var remedies = Array.isArray(d.remedies) ? d.remedies : [];
+  var layers = Array.isArray(d.layers) ? d.layers : [];
   var remediesContainer = document.createElement('div');
   remediesContainer.className = 'remedies-container';
 
-  remedies.forEach(function(rem, idx){
-    var row = document.createElement('div');
-    row.className = 'remedy-row';
+  if(layers.length){
+    layers.forEach(function(L, idx){
+      var row = document.createElement('div');
+      row.className = 'remedy-row';
 
-    if(idx === 0){
-      var tag = document.createElement('div');
-      tag.className = 'tag';
-      tag.textContent = 'Top remedy - un-blurs when approved';
-      row.appendChild(tag);
-    }
+      if(idx === 0){
+        var tag = document.createElement('div');
+        tag.className = 'tag';
+        tag.textContent = 'Layer 1 - top remedy un-blurs when approved';
+        row.appendChild(tag);
+      }
 
-    var nameLabel = document.createElement('label');
-    nameLabel.textContent = 'Name';
-    row.appendChild(nameLabel);
+      var titleLabel = document.createElement('label');
+      titleLabel.textContent = 'Layer title';
+      row.appendChild(titleLabel);
 
-    var nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.className = 'remedy-name';
-    nameInput.value = rem.name || '';
-    row.appendChild(nameInput);
+      var titleInput = document.createElement('input');
+      titleInput.type = 'text';
+      titleInput.className = 'layer-title-field';
+      titleInput.value = L.title || '';
+      row.appendChild(titleInput);
 
-    var slugLabel = document.createElement('label');
-    slugLabel.textContent = 'Slug';
-    row.appendChild(slugLabel);
+      var summaryLabel = document.createElement('label');
+      summaryLabel.textContent = 'Summary';
+      row.appendChild(summaryLabel);
 
-    var slugInput = document.createElement('input');
-    slugInput.type = 'text';
-    slugInput.className = 'remedy-slug';
-    slugInput.value = rem.slug || '';
-    row.appendChild(slugInput);
+      var summaryArea = document.createElement('textarea');
+      summaryArea.className = 'layer-summary-field';
+      summaryArea.value = L.summary || '';
+      row.appendChild(summaryArea);
 
-    var meaningLabel = document.createElement('label');
-    meaningLabel.textContent = 'Meaning';
-    row.appendChild(meaningLabel);
+      var rem = L.remedy || {};
 
-    var meaningArea = document.createElement('textarea');
-    meaningArea.className = 'remedy-meaning';
-    meaningArea.value = rem.meaning || '';
-    row.appendChild(meaningArea);
+      var nameLabel = document.createElement('label');
+      nameLabel.textContent = 'Remedy name';
+      row.appendChild(nameLabel);
 
-    remediesContainer.appendChild(row);
-  });
+      var nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'remedy-name';
+      nameInput.value = rem.name || '';
+      row.appendChild(nameInput);
+
+      var slugLabel = document.createElement('label');
+      slugLabel.textContent = 'Remedy slug';
+      row.appendChild(slugLabel);
+
+      var slugInput = document.createElement('input');
+      slugInput.type = 'text';
+      slugInput.className = 'remedy-slug';
+      slugInput.value = rem.slug || '';
+      row.appendChild(slugInput);
+
+      var meaningLabel = document.createElement('label');
+      meaningLabel.textContent = 'Remedy meaning';
+      row.appendChild(meaningLabel);
+
+      var meaningArea = document.createElement('textarea');
+      meaningArea.className = 'remedy-meaning';
+      meaningArea.value = rem.meaning || '';
+      row.appendChild(meaningArea);
+
+      var rememberLabel = document.createElement('label');
+      var rememberCheck = document.createElement('input');
+      rememberCheck.type = 'checkbox';
+      rememberCheck.className = 'remedy-remember';
+      rememberCheck.checked = false;
+      rememberLabel.appendChild(rememberCheck);
+      var rememberText = document.createTextNode(' Remember this meaning');
+      rememberLabel.appendChild(rememberText);
+      row.appendChild(rememberLabel);
+
+      remediesContainer.appendChild(row);
+    });
+  } else {
+    // fallback: flat remedies (legacy push without layers)
+    var remedies = Array.isArray(d.remedies) ? d.remedies : [];
+    remedies.forEach(function(rem, idx){
+      var row = document.createElement('div');
+      row.className = 'remedy-row';
+
+      if(idx === 0){
+        var tag = document.createElement('div');
+        tag.className = 'tag';
+        tag.textContent = 'Top remedy - un-blurs when approved';
+        row.appendChild(tag);
+      }
+
+      var nameLabel = document.createElement('label');
+      nameLabel.textContent = 'Remedy name';
+      row.appendChild(nameLabel);
+
+      var nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'remedy-name';
+      nameInput.value = rem.name || '';
+      row.appendChild(nameInput);
+
+      var slugLabel = document.createElement('label');
+      slugLabel.textContent = 'Remedy slug';
+      row.appendChild(slugLabel);
+
+      var slugInput = document.createElement('input');
+      slugInput.type = 'text';
+      slugInput.className = 'remedy-slug';
+      slugInput.value = rem.slug || '';
+      row.appendChild(slugInput);
+
+      var meaningLabel = document.createElement('label');
+      meaningLabel.textContent = 'Remedy meaning';
+      row.appendChild(meaningLabel);
+
+      var meaningArea = document.createElement('textarea');
+      meaningArea.className = 'remedy-meaning';
+      meaningArea.value = rem.meaning || '';
+      row.appendChild(meaningArea);
+
+      remediesContainer.appendChild(row);
+    });
+  }
 
   wrap.appendChild(remediesContainer);
+
+  // Dropped notice (d.dropped is a JSON list, not a string)
+  var dropped = Array.isArray(d.dropped) ? d.dropped : [];
+  if(dropped.length){
+    var droppedNote = document.createElement('div');
+    droppedNote.className = 'dropped-note';
+    var droppedPrefix = document.createTextNode('Dropped (not in catalog): ');
+    droppedNote.appendChild(droppedPrefix);
+    var droppedSpan = document.createElement('span');
+    droppedSpan.textContent = dropped.join(', ');
+    droppedNote.appendChild(droppedSpan);
+    wrap.appendChild(droppedNote);
+  }
 
   var row = document.createElement('div');
   row.className = 'row';
@@ -220,9 +326,34 @@ function collectRemedies(card){
   var out = [];
   remedyRows.forEach(function(row){
     out.push({
-      name: row.querySelector('.remedy-name').value,
-      slug: row.querySelector('.remedy-slug').value,
-      meaning: row.querySelector('.remedy-meaning').value
+      name: row.querySelector('.remedy-name') ? row.querySelector('.remedy-name').value : '',
+      slug: row.querySelector('.remedy-slug') ? row.querySelector('.remedy-slug').value : '',
+      meaning: row.querySelector('.remedy-meaning') ? row.querySelector('.remedy-meaning').value : ''
+    });
+  });
+  return out;
+}
+
+function collectLayers(card){
+  var remedyRows = card.querySelectorAll('.remedy-row');
+  var out = [];
+  remedyRows.forEach(function(row, idx){
+    var titleEl = row.querySelector('.layer-title-field');
+    var summaryEl = row.querySelector('.layer-summary-field');
+    var nameEl = row.querySelector('.remedy-name');
+    var slugEl = row.querySelector('.remedy-slug');
+    var meaningEl = row.querySelector('.remedy-meaning');
+    var rememberEl = row.querySelector('.remedy-remember');
+    out.push({
+      n: idx + 1,
+      title: titleEl ? titleEl.value : '',
+      summary: summaryEl ? summaryEl.value : '',
+      remedy: {
+        name: nameEl ? nameEl.value : '',
+        slug: slugEl ? slugEl.value : '',
+        meaning: meaningEl ? meaningEl.value : '',
+        remember: rememberEl ? rememberEl.checked : false
+      }
     });
   });
   return out;
@@ -231,12 +362,12 @@ function collectRemedies(card){
 async function saveEdit(card, id){
   var greeting = card.querySelector('.greeting-field').value;
   var body = card.querySelector('.body-field').value;
-  var remedies = collectRemedies(card);
+  var layers = collectLayers(card);
   var statusEl = card.querySelector('.status');
   statusEl.textContent = 'Saving...';
-  var r = await api('POST', '/api/action/biofield_reveal.edit', { id: id, greeting: greeting, body: body, remedies: remedies });
+  var r = await api('POST', '/api/action/biofield_reveal.edit', { id: id, greeting: greeting, body: body, layers: layers });
   if(r.ok && r.json.status === 'done'){
-    statusEl.textContent = 'Saved (still pending).';
+    statusEl.textContent = 'Saved.';
   } else {
     statusEl.textContent = 'Save failed.';
   }

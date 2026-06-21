@@ -29,7 +29,37 @@ def _exec_edit(params, ctx):
     if "body" in params:
         interp["body"] = (params.get("body") or "").strip()
     _br.set_interpretation(ctx["cx"], rid, interp)
-    if isinstance(params.get("remedies"), list):
+    if isinstance(params.get("layers"), list):
+        from dashboard import biofield_meanings as _bm
+        _bm.init_table(ctx["cx"])
+        stored_layers = []
+        derived = []
+        for layer in params["layers"]:
+            if not isinstance(layer, dict):
+                stored_layers.append(layer)
+                continue
+            rem = layer.get("remedy")
+            clean_rem = None
+            if isinstance(rem, dict):
+                remember = rem.get("remember", True)
+                clean_rem = {k: v for k, v in rem.items() if k != "remember"}
+                slug = (clean_rem.get("slug") or "").strip()
+                meaning = (clean_rem.get("meaning") or "").strip()
+                if remember and slug and meaning:
+                    try:
+                        _bm.upsert(ctx["cx"], slug, meaning, _actor_name(ctx.get("actor")), "glen")
+                    except Exception as e:
+                        print(f"[remedy-meaning] promote {e!r}", flush=True)
+                if not slug:
+                    clean_rem = None
+                if slug:
+                    derived.append(clean_rem)
+            stored_layer = {k: v for k, v in layer.items() if k != "remedy"}
+            stored_layer["remedy"] = clean_rem
+            stored_layers.append(stored_layer)
+        _br.set_layers(ctx["cx"], rid, stored_layers)
+        _br.set_remedies(ctx["cx"], rid, derived)
+    elif isinstance(params.get("remedies"), list):
         from dashboard import biofield_meanings as _bm
         _bm.init_table(ctx["cx"])
         stored = []

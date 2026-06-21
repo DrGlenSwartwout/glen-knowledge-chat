@@ -1559,6 +1559,25 @@ def _biofield_top_payload(row):
         return None
 
 
+def _biofield_layer_payload(layer, include_remedy):
+    """Layer payload: title + summary ALWAYS; the remedy only when include_remedy and present.
+    A withheld remedy is emitted as remedy=None, remedy_blurred=True (its details never leave)."""
+    try:
+        rem = layer.get("remedy") if isinstance(layer, dict) else None
+        has_rem = isinstance(rem, dict) and ((rem.get("slug") or "").strip() or (rem.get("name") or "").strip())
+        out = {"n": layer.get("n"), "title": (layer.get("title") or ""),
+               "summary": (layer.get("summary") or "")}
+        if include_remedy and has_rem:
+            out["remedy"] = _biofield_remedy_payload(rem)
+            out["remedy_blurred"] = False
+        else:
+            out["remedy"] = None
+            out["remedy_blurred"] = bool(has_rem)
+        return out
+    except Exception:
+        return {"n": None, "title": "", "summary": "", "remedy": None, "remedy_blurred": False}
+
+
 def _biofield_verify_token(th):
     """Verify a biofield_reveal token hash against auth_tokens.
     Returns (valid: bool, row: dict|None) where row is the biofield_reveals row.
@@ -1675,6 +1694,16 @@ def begin_biofield_reveal(token):
     free_available = flags["free_available"]
     paid = flags["paid"]
 
+    _layers_raw = row.get("layers") or []
+    if paid:
+        _layers_payload = [_biofield_layer_payload(L, include_remedy=True) for L in _layers_raw]
+    else:
+        _layers_payload = [_biofield_layer_payload(L, include_remedy=(top_unlocked and i == 0))
+                           for i, L in enumerate(_layers_raw)]
+    _blurred_layers = (sum(1 for lp in _layers_payload if lp["remedy_blurred"])
+                       if _layers_raw
+                       else len(row.get("remedies") or []) - (1 if top_unlocked else 0))
+
     if paid:
         all_remedies = row.get("remedies") or []
         payload = {
@@ -1687,11 +1716,12 @@ def begin_biofield_reveal(token):
             "trial_enabled": BIOFIELD_TRIAL_ENABLED,
             "cart_enabled": BIOFIELD_CART_ENABLED,
             "remedies": [_biofield_remedy_payload(r) for r in all_remedies],
+            "layers": _layers_payload,
         }
     else:
         payload = {
             "interpretation": row.get("interpretation") or {},
-            "blurred_count": len(row.get("remedies") or []) - (1 if top_unlocked else 0),
+            "blurred_count": _blurred_layers,
             "first_approved": first_approved,
             "free_available": free_available,
             "top_unlocked": top_unlocked,
@@ -1699,6 +1729,7 @@ def begin_biofield_reveal(token):
             "paid": False,
             "trial_enabled": BIOFIELD_TRIAL_ENABLED,
             "cart_enabled": BIOFIELD_CART_ENABLED,
+            "layers": _layers_payload,
         }
 
     # Set the biofield gate (idempotent, wrapped) -> Find step 2 fills.
@@ -8291,7 +8322,8 @@ def api_console_biofield_reveals():
     with sqlite3.connect(LOG_DB) as cx:
         _br.init_table(cx)
         drafts = _br.list_pending(cx)
-    return jsonify({"drafts": drafts})
+        approved = _br.list_approved(cx)
+    return jsonify({"drafts": drafts, "approved": approved})
 
 
 @app.route("/console/biofield-reveals", methods=["GET"])
@@ -10471,20 +10503,35 @@ def api_e4l_reveal_draft():
                 canon = _bm.get_map(cx)
             except Exception:
                 canon = {}
-            cleaned, dropped = [], []
-            for r in (remedies or []):
-                slug = _resolve_remedy_slug(r) if isinstance(r, dict) else None
-                if not slug:
-                    nm = (r.get("name") if isinstance(r, dict) else "") or "(unnamed)"
-                    dropped.append(nm.strip() or "(unnamed)")
+            # Build layers: prefer the pushed `layers`; else wrap each pushed remedy
+            # into a titleless single-remedy layer (back-compat with the old matcher).
+            raw_layers = data.get("layers")
+            if not isinstance(raw_layers, list) or not raw_layers:
+                raw_layers = [{"n": i + 1, "title": "", "summary": "", "patterns": [],
+                               "remedy": rr} for i, rr in enumerate(remedies or []) if isinstance(rr, dict)]
+            cleaned_layers, dropped = [], []
+            for i, L in enumerate(raw_layers):
+                if not isinstance(L, dict):
                     continue
-                rr = dict(r)
-                rr["slug"] = slug
-                cm = canon.get(slug)
-                if cm:
-                    rr["meaning"] = cm
-                cleaned.append(rr)
-            rid, is_new = _br.upsert(cx, email, scan_date, interp, cleaned, (data.get("source") or "").strip())
+                rem = L.get("remedy") if isinstance(L.get("remedy"), dict) else None
+                out_rem = None
+                if rem is not None:
+                    slug = _resolve_remedy_slug(rem)
+                    if not slug:
+                        dropped.append((rem.get("name") or "").strip() or "(unnamed)")
+                    else:
+                        out_rem = dict(rem); out_rem["slug"] = slug
+                        cm = canon.get(slug)
+                        if cm:
+                            out_rem["meaning"] = cm
+                cleaned_layers.append({
+                    "n": L.get("n", i + 1), "title": (L.get("title") or "").strip(),
+                    "summary": (L.get("summary") or "").strip(),
+                    "patterns": L.get("patterns") or [], "remedy": out_rem})
+            # Derived flat remedies = the surviving layer remedies, in order (for #4b/#4c).
+            derived = [L["remedy"] for L in cleaned_layers if L.get("remedy")]
+            rid, is_new = _br.upsert(cx, email, scan_date, interp, derived,
+                                     (data.get("source") or "").strip(), layers=cleaned_layers)
             try:
                 _br.set_dropped(cx, rid, dropped)
             except Exception:
