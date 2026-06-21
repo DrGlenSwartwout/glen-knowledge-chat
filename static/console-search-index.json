@@ -48,5 +48,7 @@
 
   { "title": "Studio credits", "page": "Studio", "url": "/console/studio-credits", "keywords": ["studio", "credit", "credits", "free month", "claim", "approve", "thisstudio"] },
 
-  { "title": "Certification", "page": "Cert", "url": "/console/cert", "keywords": ["cert", "certification", "ash", "training", "students"] }
+  { "title": "Certification", "page": "Cert", "url": "/console/cert", "keywords": ["cert", "certification", "ash", "training", "students"] },
+
+  { "title": "Topic Pages", "page": "Products", "url": "/console/topic-pages", "keywords": ["topic", "topics", "symptom", "condition", "function", "learn", "page", "pages", "approve", "compliance", "generate"] }
 ]
