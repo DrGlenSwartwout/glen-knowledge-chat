@@ -50,3 +50,6 @@ def test_leaderboard_model_impressions_use_containing_products():
     # variations present too
     keys = {r["key"] for r in data["variations"]}
     assert 1 in keys and 5 in keys
+
+def test_leaderboard_empty_db_no_crash():
+    assert lb.leaderboard(_cx()) == {"variations": [], "models": []}

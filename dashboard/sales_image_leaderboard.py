@@ -39,6 +39,9 @@ def _agg(cx, tag_col, label_map, min_volume):
     return rows
 
 def leaderboard(cx, min_volume=30):
+    from dashboard import sales_votes as _sv, sales_images as _si
+    _sv.init_table(cx)
+    _si.init_tables(cx)
     # tag_col values are fixed literals (not user input) -> safe to interpolate
     var_labels = _labels(cx, "sales_prompt_variations")
     model_labels = _labels(cx, "sales_image_models")
