@@ -4650,6 +4650,57 @@ def begin_checkout(slug):
             return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _fulfill_biofield_trial(session_id):
+    """Create the $1-trial membership (subscription + access grant + cancel token) from a
+    paid biofield_trial Stripe session, idempotently. Callable from the redirect return AND
+    the webhook. Re-fetches the session + PaymentIntent from Stripe (the security guarantee);
+    only proceeds on a succeeded payment with a vaulted card. Never raises."""
+    try:
+        from dashboard import stripe_pay as _sp, subscriptions as _bt_subs, group_bundle as _bt_gb
+        import datetime as _bt_dt
+        sess = _sp.get_session(session_id)
+        md = sess.get("metadata") or {}
+        if md.get("kind") != "biofield_trial":
+            return {"ok": False, "reason": "not_trial"}
+        bt_email = (md.get("email") or "").strip().lower()
+        pi_id = sess.get("payment_intent")
+        if not pi_id:
+            return {"ok": False, "reason": "unpaid"}
+        pi = _sp.get_payment_intent(pi_id)
+        if not (pi.get("status") == "succeeded" and pi.get("customer") and pi.get("payment_method")):
+            return {"ok": False, "reason": "unpaid"}
+        with _db_lock, sqlite3.connect(LOG_DB) as _bc:
+            _bc.execute("CREATE TABLE IF NOT EXISTS biofield_trial_grants (session_id TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
+            # Claim-then-create: write the idempotency marker FIRST and commit, so the redirect
+            # and the webhook (in any order, even simultaneously) create exactly one membership.
+            claimed = bool(bt_email) and _bc.execute(
+                "INSERT OR IGNORE INTO biofield_trial_grants (session_id, email, granted_at) VALUES (?,?,?)",
+                (session_id, bt_email, datetime.utcnow().isoformat() + "Z")).rowcount == 1
+            _bc.commit()
+            if not claimed:
+                return {"ok": True, "already": True, "email": bt_email}
+            _bt_subs.init_subscriptions_table(_bc)
+            _bt_subs.migrate_add_membership_columns(_bc)
+            init_membership_tables(_bc)
+            _bt_subs.create_membership(
+                _bc, email=bt_email, stripe_customer_id=pi["customer"],
+                stripe_payment_method_id=pi["payment_method"],
+                amount_cents=_bt_gb.MEMBERSHIP_AMOUNT_CENTS,
+                next_charge_date=_bt_subs.add_months(_bt_dt.date.today().isoformat(), 1))
+            _grant_membership(_bc, bt_email, 31, "biofield_trial")
+            cancel_tok = secrets.token_urlsafe(32)
+            _bc.execute(
+                "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) VALUES (?,?,?,?,?)",
+                (_hash_token(cancel_tok), bt_email, "membership_cancel",
+                 datetime.now(timezone.utc).isoformat(),
+                 (datetime.now(timezone.utc) + timedelta(days=60)).isoformat()))
+            _bc.commit()
+            return {"ok": True, "created": True, "email": bt_email}
+    except Exception as e:
+        print(f"[biofield-trial] fulfill failed: {e!r}", flush=True)
+        return {"ok": False, "reason": "error"}
+
+
 @app.route("/begin/checkout-return")
 def begin_checkout_return():
     """Stripe retail return: verify the session, record the QBO payment, capture
@@ -4897,47 +4948,10 @@ def begin_checkout_return():
                     except Exception as _be:
                         print(f"[biofield] return seed failed: {_be!r}", flush=True)
 
-            # ── Biofield trial: create subscription + access grant (idempotent) ──
+            # Biofield trial: membership creation is shared with the Stripe webhook so a
+            # closed tab still gets fulfilled. Idempotent via biofield_trial_grants.
             if _kind == "biofield_trial":
-                try:
-                    from dashboard import subscriptions as _bt_subs, group_bundle as _bt_gb
-                    import datetime as _bt_dt
-                    _bt_pi_id = sess.get("payment_intent")
-                    if _bt_pi_id:
-                        pi = _sp.get_payment_intent(_bt_pi_id)
-                        if (pi.get("status") == "succeeded") and pi.get("customer") and pi.get("payment_method"):
-                            bt_email = (md.get("email") or "").strip().lower()
-                            with _db_lock, sqlite3.connect(LOG_DB) as _bc:
-                                _bc.execute("CREATE TABLE IF NOT EXISTS biofield_trial_grants (session_id TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
-                                # Claim-then-create: write the idempotency marker FIRST and commit it,
-                                # so a crash or replayed return can never double-create the subscription
-                                # (live money). A crash after the claim self-heals to no-charge, not a
-                                # duplicate $99/mo sub.
-                                claimed = bool(bt_email) and _bc.execute(
-                                    "INSERT OR IGNORE INTO biofield_trial_grants (session_id, email, granted_at) VALUES (?,?,?)",
-                                    (sid, bt_email, datetime.utcnow().isoformat() + "Z")).rowcount == 1
-                                _bc.commit()
-                                if claimed:
-                                    _bt_subs.init_subscriptions_table(_bc)
-                                    _bt_subs.migrate_add_membership_columns(_bc)
-                                    init_membership_tables(_bc)
-                                    _bt_subs.create_membership(
-                                        _bc, email=bt_email, stripe_customer_id=pi["customer"],
-                                        stripe_payment_method_id=pi["payment_method"],
-                                        amount_cents=_bt_gb.MEMBERSHIP_AMOUNT_CENTS,
-                                        next_charge_date=_bt_subs.add_months(_bt_dt.date.today().isoformat(), 1))
-                                    _grant_membership(_bc, bt_email, 31, "biofield_trial")
-                                    # Mint a one-click cancel token (60-day TTL)
-                                    cancel_tok = secrets.token_urlsafe(32)
-                                    _bc.execute(
-                                        "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
-                                        "VALUES (?,?,?,?,?)",
-                                        (_hash_token(cancel_tok), bt_email, "membership_cancel",
-                                         datetime.now(timezone.utc).isoformat(),
-                                         (datetime.now(timezone.utc) + timedelta(days=60)).isoformat()))
-                                    _bc.commit()
-                except Exception as e:
-                    print(f"[biofield-trial] grant failed: {e!r}", flush=True)
+                _fulfill_biofield_trial(sid)
 
         except Exception as e:
             print(f"[begin-return] {e!r}", flush=True)
