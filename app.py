@@ -6591,7 +6591,9 @@ def get_referrals():
 
 
 QUIZ_URL            = "https://healing.scoreapp.com"
-RM_INBOUND_INQUIRY_EMAIL = "this.elf+rm-inquiry@gmail.com"
+# Internal system-notification sink (FYI mail the app sends itself, e.g. a new
+# studio-credit intent). Gmail-filtered to a "RM / System" label that skips Primary.
+RM_INBOUND_INQUIRY_EMAIL = "drglenswartwout+rm-inquiry@gmail.com"
 # Customer/client-facing Reply-To for coaching mail (on-brand, matches the From
 # drglenswartwout@gmail.com). Distinct from the internal +rm-inquiry system sink so
 # the two streams can be filtered separately in Gmail.
@@ -6794,7 +6796,7 @@ def _register_finance_email_actions():
                 f"{('with a balance' + amt) if amt else ''} is still open. "
                 f"You can reply here with any questions.\n\nIn wellness,\nDr. Glen")
         ok = _send_inquiry_email(to_email=email, subject=subject, body=body,
-                                 reply_to=RM_INBOUND_INQUIRY_EMAIL)
+                                 reply_to=RM_COACHING_REPLY_EMAIL)
         return {"email": email, "doc": doc, "sent": bool(ok),
                 "message": f"Payment reminder {'sent to' if ok else 'failed for'} {email}."}
 
@@ -6845,7 +6847,7 @@ def _send_client_receipt(client_email, client_name, sent_records, base_url):
         to_email=client_email,
         subject=subject,
         body="\n".join(lines),
-        reply_to=RM_INBOUND_INQUIRY_EMAIL,
+        reply_to=RM_COACHING_REPLY_EMAIL,
     )
 
 
@@ -12625,7 +12627,7 @@ def scoreapp_webhook():
                 to_email=email,
                 subject="Share your assessment with the practitioners you contacted?",
                 body=offer_body,
-                reply_to=RM_INBOUND_INQUIRY_EMAIL,
+                reply_to=RM_COACHING_REPLY_EMAIL,
             )
     except Exception as e:
         print(f"[scoreapp] share-offer send failed: {e!r}", flush=True)
@@ -19616,7 +19618,7 @@ def admin_membership_grant():
             to_email=email,
             subject=subject,
             body=body,
-            reply_to=RM_INBOUND_INQUIRY_EMAIL,
+            reply_to=RM_COACHING_REPLY_EMAIL,
         )
     except Exception as e:
         print(f"[membership-grant] email send failed: {e!r}", flush=True)
@@ -19753,7 +19755,7 @@ def admin_escalation_reply(eid):
     try:
         _send_inquiry_email(
             to_email=email, subject=subject, body=body,
-            reply_to=RM_INBOUND_INQUIRY_EMAIL,
+            reply_to=RM_COACHING_REPLY_EMAIL,
         )
     except Exception as e:
         print(f"[escalation-reply] email send failed: {e!r}", flush=True)
@@ -19889,7 +19891,7 @@ def cron_membership_renewals():
         try:
             ok_sent = _send_inquiry_email(
                 to_email=r["email"], subject=subject, body=body,
-                reply_to=RM_INBOUND_INQUIRY_EMAIL,
+                reply_to=RM_COACHING_REPLY_EMAIL,
             )
         except Exception as e:
             print(f"[renewal-cron] send failed for {r['email']}: {e!r}", flush=True)
@@ -19939,7 +19941,7 @@ def coaching_login_request():
     try:
         _send_inquiry_email(
             to_email=email, subject=subject, body=body,
-            reply_to=RM_INBOUND_INQUIRY_EMAIL,
+            reply_to=RM_COACHING_REPLY_EMAIL,
         )
     except Exception as e:
         print(f"[coaching-login] email send failed: {e!r}", flush=True)
