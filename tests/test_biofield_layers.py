@@ -398,3 +398,14 @@ def test_console_list_enriches_name_and_tags(monkeypatch, tmp_path):
     # no people row -> empty, still listed, no error
     assert by_email["nobody@x.com"]["client_name"] == ""
     assert by_email["nobody@x.com"]["tags"] == []
+
+
+def test_console_page_has_enrichment_markers(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "CONSOLE_SECRET", "sek", raising=False)
+    html = app_module.app.test_client().get(
+        "/console/biofield-reveals", headers={"X-Console-Key": "sek"}).data.decode()
+    assert "client_name" in html
+    assert "pattern_labels" in html
+    assert "stress-factors" in html
+    assert "biofield_reveal.delete" in html
