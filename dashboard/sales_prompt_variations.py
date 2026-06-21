@@ -63,3 +63,16 @@ def candidate_variations(cx, kind):
     rows = cx.execute("SELECT id, kind, label, prompt_template FROM sales_prompt_variations "
                       "WHERE kind=? AND state='candidate' ORDER BY id", (kind,)).fetchall()
     return [{"id": r[0], "kind": r[1], "label": r[2], "prompt_template": r[3]} for r in rows]
+
+def review_variations(cx, kind):
+    init_table(cx)
+    rows = cx.execute("SELECT id, kind, label, prompt_template FROM sales_prompt_variations "
+                      "WHERE kind=? AND state='review' ORDER BY id", (kind,)).fetchall()
+    return [{"id": r[0], "kind": r[1], "label": r[2], "prompt_template": r[3]} for r in rows]
+
+def insert_variation(cx, kind, label, prompt_template, state="review"):
+    init_table(cx)
+    cur = cx.execute("INSERT INTO sales_prompt_variations (kind, label, prompt_template, state, created_at) "
+                     "VALUES (?,?,?,?,?)", (kind, label, prompt_template, state, _now()))
+    cx.commit()
+    return cur.lastrowid
