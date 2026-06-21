@@ -147,3 +147,25 @@ def refund(payment_intent, amount_cents=None):
         data["amount"] = int(amount_cents)
     j = _post("/refunds", data)
     return {"id": j.get("id"), "status": j.get("status"), "amount": j.get("amount")}
+
+
+def verify_webhook(payload, sig_header, secret, tolerance=300):
+    """Verify a Stripe webhook signature. payload = the raw request body (bytes or str).
+    Returns the parsed event dict on success, None on any failure (bad/missing/stale
+    signature, wrong secret, unparseable body). Pure; no network."""
+    import hmac, hashlib, json, time
+    try:
+        payload_b = payload.encode("utf-8") if isinstance(payload, str) else payload
+        items = dict(p.split("=", 1) for p in (sig_header or "").split(",") if "=" in p)
+        ts, v1 = items.get("t"), items.get("v1")
+        if not ts or not v1:
+            return None
+        expected = hmac.new(secret.encode("utf-8"), f"{ts}.".encode("utf-8") + payload_b,
+                            hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, v1):
+            return None
+        if tolerance and abs(time.time() - int(ts)) > tolerance:
+            return None
+        return json.loads(payload_b.decode("utf-8"))
+    except Exception:
+        return None
