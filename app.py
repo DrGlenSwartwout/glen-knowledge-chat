@@ -6236,7 +6236,7 @@ def _studio_credit_grant_and_notify(cx, email, days):
     )
     try:
         _send_inquiry_email(to_email=email, subject=subject, body=body,
-                            reply_to=RM_INBOUND_INQUIRY_EMAIL)
+                            reply_to=RM_COACHING_REPLY_EMAIL)
     except Exception as e:
         print(f"[studio-credit] email send failed: {e!r}", flush=True)
     try:
@@ -6478,6 +6478,10 @@ def get_referrals():
 
 QUIZ_URL            = "https://healing.scoreapp.com"
 RM_INBOUND_INQUIRY_EMAIL = "this.elf+rm-inquiry@gmail.com"
+# Customer/client-facing Reply-To for coaching mail (on-brand, matches the From
+# drglenswartwout@gmail.com). Distinct from the internal +rm-inquiry system sink so
+# the two streams can be filtered separately in Gmail.
+RM_COACHING_REPLY_EMAIL = "drglenswartwout+coaching@gmail.com"
 REBRANDLY_API_KEY   = os.environ.get("REBRANDLY_API_KEY", "")
 REBRANDLY_VIP       = "truly.vip"   # affiliate / referral tracking links
 REBRANDLY_SO        = "truly.so"    # general short links
