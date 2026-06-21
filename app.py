@@ -3988,10 +3988,12 @@ def learn_index():
     from dashboard import topic_pages as _tp
     if not TOPIC_PAGES_ENABLED:
         return ("Not found", 404)
+    import html as _html
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         rows = [r for r in _tp.list_pages(cx) if r["state"] == "approved"]
     items = "".join(
-        f'<li><a href="/learn/{r["slug"]}">{r["name"]}</a></li>' for r in rows
+        f'<li><a href="/learn/{_html.escape(r["slug"], quote=True)}">'
+        f'{_html.escape(r["name"])}</a></li>' for r in rows
     )
     html_doc = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
                 "<title>Learn</title></head><body><main><h1>Wellness Topics</h1>"
@@ -4004,9 +4006,13 @@ def learn_sitemap():
     from dashboard import topic_pages as _tp
     if not TOPIC_PAGES_ENABLED:
         return ("Not found", 404)
+    import html as _html
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         rows = [r for r in _tp.list_pages(cx) if r["state"] == "approved"]
-    urls = "".join(f"<url><loc>{PUBLIC_BASE_URL}/learn/{r['slug']}</loc></url>" for r in rows)
+    urls = "".join(
+        f"<url><loc>{_html.escape(PUBLIC_BASE_URL + '/learn/' + r['slug'], quote=True)}</loc></url>"
+        for r in rows
+    )
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + "</urlset>")
     return Response(xml, mimetype="application/xml")
