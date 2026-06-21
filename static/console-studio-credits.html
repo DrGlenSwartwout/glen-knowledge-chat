@@ -83,7 +83,8 @@ async function approve(id, force){
   load();
 }
 async function reject(id){
-  const reason = prompt("Reason for rejecting?") || "";
+  const reason = prompt("Reason for rejecting?");
+  if(reason === null) return;   // operator cancelled — do not reject
   await act("studio_credit.reject", {id, reason});
   load();
 }
