@@ -61,3 +61,38 @@ def test_propose_no_fire_when_intervals_overlap():
     _seed_model_field(cx, loser_votes=28, winner_votes=32, impressions_each=60)  # 28/60 vs 32/60 -> overlap
     props = [p for p in ev.propose(cx, min_impressions=20) if p["axis"] == "model"]
     assert props == []
+
+def test_decide_approve_swaps_and_keeps_count():
+    cx = _cx()
+    mods.seed(cx); mods.seed_candidates(cx)
+    _seed_model_field(cx, loser_votes=0, winner_votes=55, impressions_each=60)
+    ev.propose(cx, min_impressions=20)
+    pid = next(p["id"] for p in ev.pending_proposals(cx) if p["axis"] == "model")
+    before = len(mods.active_models(cx))
+    res = ev.decide(cx, pid, "approve", actor="t")
+    assert res["ok"] and res["applied"]
+    active = {m["id"] for m in mods.active_models(cx)}
+    assert "recraft-v3" not in active                  # retired
+    assert len(active) == before                       # set-size preserved
+    assert not ev.pending_proposals(cx)                # proposal consumed
+
+def test_decide_reject_no_state_change():
+    cx = _cx()
+    mods.seed(cx); mods.seed_candidates(cx)
+    _seed_model_field(cx, loser_votes=0, winner_votes=55, impressions_each=60)
+    ev.propose(cx, min_impressions=20)
+    pid = next(p["id"] for p in ev.pending_proposals(cx) if p["axis"] == "model")
+    ev.decide(cx, pid, "reject", actor="t")
+    assert "recraft-v3" in {m["id"] for m in mods.active_models(cx)}
+    assert not ev.pending_proposals(cx)
+
+def test_trial_and_undo():
+    cx = _cx()
+    mods.seed(cx); mods.seed_candidates(cx)
+    _seed_model_field(cx, loser_votes=0, winner_votes=55, impressions_each=60)
+    res = ev.trial(cx, "model", "", "ideogram-v3", actor="t")
+    assert res["ok"]
+    assert "ideogram-v3" in {m["id"] for m in mods.active_models(cx)}
+    log_id = res["log_id"]
+    ev.undo(cx, log_id, actor="t")
+    assert "ideogram-v3" not in {m["id"] for m in mods.active_models(cx)}   # back to candidate

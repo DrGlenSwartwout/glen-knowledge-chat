@@ -107,3 +107,82 @@ def pending_proposals(cx):
         out.append({"id": r[0], "axis": r[1], "kind": r[2], "retire_key": r[3],
                     "promote_key": r[4], "stats": stats})
     return out
+
+def _registry(axis):
+    from dashboard import sales_image_models as _mods, sales_prompt_variations as _pv
+    return _mods if axis == "model" else _pv
+
+def _active_count(cx, axis, kind):
+    from dashboard import sales_image_models as _mods, sales_prompt_variations as _pv
+    return len(_mods.active_models(cx)) if axis == "model" else len(_pv.active_variations(cx, kind))
+
+def _key(axis, key):
+    return key if axis == "model" else int(key)   # variation ids are ints
+
+def _apply_swap(cx, axis, kind, retire_key, promote_key, actor):
+    reg = _registry(axis)
+    before = _active_count(cx, axis, kind)
+    reg.set_state(cx, _key(axis, retire_key), "retired")
+    reg.set_state(cx, _key(axis, promote_key), "active")
+    after = _active_count(cx, axis, kind)
+    if after != before:
+        raise ValueError(f"swap changed active count {before}->{after}")
+    cur = cx.execute("INSERT INTO sales_image_evolution_log "
+                     "(axis, kind, retired_key, promoted_key, actor, created_at) VALUES (?,?,?,?,?,?)",
+                     (axis, kind, str(retire_key), str(promote_key), actor, _now()))
+    cx.commit()
+    return cur.lastrowid
+
+def decide(cx, proposal_id, decision, actor="console"):
+    init_tables(cx)
+    r = cx.execute("SELECT axis, kind, retire_key, promote_key, state FROM "
+                   "sales_image_evolution_proposals WHERE id=?", (proposal_id,)).fetchone()
+    if not r or r[4] != "pending":
+        return {"ok": False, "error": "not pending"}
+    axis, kind, retire_key, promote_key, _ = r
+    applied = False; log_id = None
+    if decision == "approve":
+        log_id = _apply_swap(cx, axis, kind, retire_key, promote_key, actor); applied = True
+        new_state = "approved"
+    elif decision == "reject":
+        new_state = "rejected"
+    else:
+        return {"ok": False, "error": "bad decision"}
+    cx.execute("UPDATE sales_image_evolution_proposals SET state=?, decided_at=? WHERE id=?",
+               (new_state, _now(), proposal_id))
+    cx.commit()
+    return {"ok": True, "applied": applied, "log_id": log_id}
+
+def _weakest_active_key(cx, axis, kind):
+    from dashboard import sales_image_leaderboard as _lb, sales_image_models as _mods, sales_prompt_variations as _pv
+    lb = _lb.leaderboard(cx, min_volume=0)
+    rows = _active_rows(cx, axis, kind, (lb["models"] if axis == "model" else lb["variations"]), 0)
+    if rows:
+        return str(min(rows, key=lambda r: r["wilson"])["key"])
+    # no data yet -> fall back to the first active item
+    actives = _mods.active_models(cx) if axis == "model" else _pv.active_variations(cx, kind)
+    return str(actives[0]["id"]) if actives else None
+
+def trial(cx, axis, kind, candidate_key, actor="console"):
+    init_tables(cx)
+    if str(candidate_key) not in set(_candidate_keys(cx, axis, kind)):
+        return {"ok": False, "error": "not a candidate"}
+    retire_key = _weakest_active_key(cx, axis, kind)
+    if not retire_key:
+        return {"ok": False, "error": "no active item"}
+    log_id = _apply_swap(cx, axis, kind, retire_key, candidate_key, actor)
+    return {"ok": True, "log_id": log_id, "retired": retire_key, "promoted": str(candidate_key)}
+
+def undo(cx, log_id, actor="console"):
+    init_tables(cx)
+    r = cx.execute("SELECT axis, kind, retired_key, promoted_key, undone_at FROM "
+                   "sales_image_evolution_log WHERE id=?", (log_id,)).fetchone()
+    if not r or r[4]:
+        return {"ok": False, "error": "not undoable"}
+    axis, kind, retired_key, promoted_key, _ = r
+    reg = _registry(axis)
+    reg.set_state(cx, _key(axis, promoted_key), "candidate")
+    reg.set_state(cx, _key(axis, retired_key), "active")
+    cx.execute("UPDATE sales_image_evolution_log SET undone_at=? WHERE id=?", (_now(), log_id))
+    cx.commit()
+    return {"ok": True}
