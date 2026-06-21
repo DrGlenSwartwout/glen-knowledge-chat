@@ -2542,6 +2542,7 @@ _IMAGE_PICK_REWARD_CENTS = int(os.environ.get("IMAGE_PICK_REWARD_CENTS", "100"))
 _SALES_IMAGE_TOURNAMENT_ENABLED = os.environ.get("SALES_PAGES_IMAGE_TOURNAMENT", "").strip().lower() in ("1", "true", "yes")
 _SALES_IMAGE_VARIATIONS_ENABLED = os.environ.get("SALES_PAGES_IMAGE_VARIATIONS", "").strip().lower() in ("1", "true", "yes")
 _SALES_IMAGE_VOTE_ENABLED = os.environ.get("SALES_PAGES_IMAGE_VOTE", "").strip().lower() in ("1", "true", "yes")
+_SALES_IMAGE_EVOLUTION_ENABLED = os.environ.get("SALES_PAGES_IMAGE_EVOLUTION", "").strip().lower() in ("1", "true", "yes")
 _TOURNEY_MIN_VOTES = int(os.environ.get("IMAGE_TOURNAMENT_MIN_VOTES", "10"))
 _TOURNEY_MARGIN = float(os.environ.get("IMAGE_TOURNAMENT_MARGIN", "0.65"))
 _TOURNEY_K = int(os.environ.get("IMAGE_TOURNAMENT_CONVERGE_K", "3"))
@@ -7948,6 +7949,49 @@ def console_image_leaderboard():
     if request.args.get("format") == "json":
         return jsonify(data)
     return Response(_lb.render_html(data), mimetype="text/html")
+
+
+@app.route("/console/image-evolution/decide", methods=["POST"])
+def console_image_evolution_decide():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return jsonify({"ok": False, "error": "evolution disabled"}), 400
+    d = request.get_json(silent=True) or {}
+    from dashboard import sales_image_evolution as _ev
+    with sqlite3.connect(LOG_DB) as cx:
+        res = _ev.decide(cx, d.get("proposal_id"), (d.get("decision") or "").strip(), actor="console")
+    return jsonify(res)
+
+
+@app.route("/console/image-evolution/trial", methods=["POST"])
+def console_image_evolution_trial():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return jsonify({"ok": False, "error": "evolution disabled"}), 400
+    d = request.get_json(silent=True) or {}
+    from dashboard import sales_image_evolution as _ev
+    with sqlite3.connect(LOG_DB) as cx:
+        res = _ev.trial(cx, (d.get("axis") or "").strip(), (d.get("kind") or "").strip(),
+                        (d.get("candidate_key") or "").strip(), actor="console")
+    return jsonify(res)
+
+
+@app.route("/console/image-evolution/undo", methods=["POST"])
+def console_image_evolution_undo():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return jsonify({"ok": False, "error": "evolution disabled"}), 400
+    d = request.get_json(silent=True) or {}
+    from dashboard import sales_image_evolution as _ev
+    with sqlite3.connect(LOG_DB) as cx:
+        res = _ev.undo(cx, d.get("log_id"), actor="console")
+    return jsonify(res)
 
 
 @app.route("/console/pricing-settings")
@@ -16750,6 +16794,17 @@ def _run_image_tournament():
                 print(f"[tournament] {slug} {kind} failed: {e}", flush=True)
 
 
+def _run_image_evolution():
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return
+    from dashboard import sales_image_evolution as _ev
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            _ev.propose(cx)
+    except Exception as e:
+        print(f"[sales-img] evolution propose failed: {e}", flush=True)
+
+
 def _run_cron():
     """Run the console push logic in-process on Render (no Mac needed)."""
     import importlib.util, sys as _sys, tempfile, base64 as _b64
@@ -16818,6 +16873,7 @@ def _start_scheduler():
         scheduler.add_job(_drain_sales_image_queue, "interval", minutes=1, id="sales_image_gen")
         scheduler.add_job(_drain_review_videos, "interval", minutes=1, id="review_videos")
         scheduler.add_job(_run_image_tournament, "interval", hours=24, id="sales_image_tournament")
+        scheduler.add_job(_run_image_evolution, "interval", hours=24, id="sales_image_evolution")
         scheduler.start()
         print("[CRON] Scheduler started — hourly push + daily biofield-bonuses active")
     except Exception as e:
