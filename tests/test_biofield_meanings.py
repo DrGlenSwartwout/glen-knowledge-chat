@@ -228,3 +228,49 @@ def test_action_propose_all_fills_missing(tmp_path):
         out = rma._exec_propose_all({}, {"cx": cx, "actor": None})
         mp = bm.get_map(cx)
     assert out["proposed"] == 1 and mp["missing"] == "AI." and mp["has"] == "already"
+
+
+def test_console_remedy_meanings_api(monkeypatch, tmp_path):
+    """GET /api/console/remedy-meanings returns rows joining catalog with stored meanings."""
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    key = app_module.CONSOLE_SECRET or ""
+    if not key:
+        pytest.skip("no CONSOLE_SECRET in env")
+    products = app_module._PRODUCTS.get("products") or {}
+    if not products:
+        pytest.skip("no catalog products")
+    slug = next(iter(products))
+    from dashboard import biofield_meanings as bm
+    with sqlite3.connect(db) as cx:
+        bm.upsert(cx, slug, "Test meaning.", "glen", "glen")
+    r = app_module.app.test_client().get(
+        "/api/console/remedy-meanings",
+        headers={"X-Console-Key": key})
+    data = r.get_json()
+    assert r.status_code == 200
+    assert "rows" in data
+    rows_by_slug = {row["slug"]: row for row in data["rows"]}
+    assert slug in rows_by_slug
+    row = rows_by_slug[slug]
+    assert "name" in row and "meaning" in row and "source" in row and "updated_at" in row
+    assert row["meaning"] == "Test meaning."
+    assert row["source"] == "glen"
+    # Products without a stored meaning appear with empty meaning
+    other = next((s for s in products if s != slug), None)
+    if other:
+        assert other in rows_by_slug
+        assert rows_by_slug[other]["meaning"] == ""
+
+
+def test_console_remedy_meanings_page(monkeypatch, tmp_path):
+    """GET /console/remedy-meanings serves the HTML curation page."""
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    key = app_module.CONSOLE_SECRET or ""
+    if not key:
+        pytest.skip("no CONSOLE_SECRET in env")
+    r = app_module.app.test_client().get(
+        f"/console/remedy-meanings?key={key}")
+    assert r.status_code == 200
+    body = r.data.decode()
+    assert "remedy-meanings" in body
+    assert "/api/action/remedy_meaning." in body

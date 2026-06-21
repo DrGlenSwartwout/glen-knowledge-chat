@@ -8197,6 +8197,43 @@ def console_biofield_reveals_page():
     return resp
 
 
+@app.route("/api/console/remedy-meanings", methods=["GET"])
+def api_console_remedy_meanings():
+    """Return one row per catalog product joined with stored canonical meanings."""
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    from dashboard import biofield_meanings as _bm
+    with sqlite3.connect(LOG_DB) as cx:
+        _bm.init_table(cx)
+        stored = {r["slug"]: r for r in _bm.get_all(cx)}
+    products = _PRODUCTS.get("products") or {}
+    rows = []
+    for slug, p in products.items():
+        s = stored.get(slug) or {}
+        rows.append({
+            "slug": slug,
+            "name": p.get("name", slug),
+            "meaning": s.get("meaning", ""),
+            "source": s.get("source", ""),
+            "updated_at": s.get("updated_at", ""),
+        })
+    rows.sort(key=lambda r: r["name"].lower())
+    return jsonify({"ok": True, "rows": rows})
+
+
+@app.route("/console/remedy-meanings", methods=["GET"])
+def console_remedy_meanings_page():
+    """Serve the canonical remedy meanings curation console page."""
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    resp = send_from_directory(STATIC, "console-remedy-meanings.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/console/search", methods=["GET"])
 def api_console_search():
     """Site-wide Records search for the header search box (Records mode): look up a
