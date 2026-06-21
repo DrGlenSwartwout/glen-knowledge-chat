@@ -2,8 +2,20 @@ import sqlite3
 from dashboard import sales_image_models as mods
 from dashboard import sales_prompt_variations as pv
 from dashboard import sales_image_leaderboard as lb
+from dashboard import sales_image_evolution as ev
+from dashboard import sales_images as si
+from dashboard import sales_votes as sv
+from dashboard import sales_image_exposures as ex
 
 def _cx(): return sqlite3.connect(":memory:")
+
+def _seed_model_field(cx, *, loser_votes, winner_votes, impressions_each):
+    # two products so flux & recraft each appear; give exposures + lopsided votes
+    si.record_image(cx, "p1", "botanical", 1, "p1b.png", prompt_variant_id=1, model_id="flux-1.1-pro")
+    si.record_image(cx, "p1", "mechanism", 1, "p1m.png", prompt_variant_id=5, model_id="recraft-v3")
+    for i in range(impressions_each): ex.record(cx, "p1", f"s{i}")
+    for i in range(winner_votes): sv.record_pick(cx, "p1", "botanical", 1, f"w{i}", model_id="flux-1.1-pro", prompt_variant_id=1)
+    for i in range(loser_votes):  sv.record_pick(cx, "p1", "mechanism", 1, f"l{i}", model_id="recraft-v3", prompt_variant_id=5)
 
 def test_model_candidates_seed_and_setstate():
     cx = _cx(); mods.seed(cx)                 # 3 active
@@ -28,3 +40,24 @@ def test_wilson_upper_brackets_rate():
     lo, hi = lb.wilson_lower(5, 10), lb.wilson_upper(5, 10)
     assert lo < 0.5 < hi                       # interval brackets the 0.5 rate
     assert lb.wilson_upper(5, 10) > lb.wilson_upper(50, 100)   # less data -> wider/higher upper
+
+def test_propose_fires_on_confident_loser_with_candidate():
+    cx = _cx()
+    mods.seed(cx); mods.seed_candidates(cx)
+    # recraft is the confident loser (0/60), flux the winner (55/60); imagen has no data
+    _seed_model_field(cx, loser_votes=0, winner_votes=55, impressions_each=60)
+    props = ev.propose(cx, min_impressions=20)
+    model_props = [p for p in props if p["axis"] == "model"]
+    assert any(p["retire_key"] == "recraft-v3" for p in model_props)
+    p = next(p for p in model_props if p["retire_key"] == "recraft-v3")
+    assert p["promote_key"] in {"ideogram-v3", "flux-ultra", "sd-3.5-large"}
+    # persisted as pending, and idempotent (no duplicate pending)
+    n1 = len(ev.pending_proposals(cx)); ev.propose(cx, min_impressions=20)
+    assert len(ev.pending_proposals(cx)) == n1
+
+def test_propose_no_fire_when_intervals_overlap():
+    cx = _cx()
+    mods.seed(cx); mods.seed_candidates(cx)
+    _seed_model_field(cx, loser_votes=28, winner_votes=32, impressions_each=60)  # 28/60 vs 32/60 -> overlap
+    props = [p for p in ev.propose(cx, min_impressions=20) if p["axis"] == "model"]
+    assert props == []
