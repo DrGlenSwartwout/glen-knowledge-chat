@@ -2992,6 +2992,27 @@ def _get_product(slug):
     return out
 
 
+def _resolve_remedy_slug(r):
+    """Resolve a pushed remedy to a catalog slug: its slug if valid, else its name
+    via _TITLE_TO_SLUG (exact then case-insensitive), else None. Never raises."""
+    try:
+        s = (r.get("slug") or "").strip()
+        if s and _get_product(s):
+            return s
+        name = (r.get("name") or "").strip()
+        if not name:
+            return None
+        if name in _TITLE_TO_SLUG:
+            return _TITLE_TO_SLUG[name]
+        low = name.lower()
+        for title, slug in _TITLE_TO_SLUG.items():
+            if (title or "").strip().lower() == low:
+                return slug
+        return None
+    except Exception:
+        return None
+
+
 def _is_pure_powder(p):
     return "pure powder" in (p.get("name") or "").lower() or "pure-powder" in (p.get("slug") or "")
 
@@ -10166,11 +10187,34 @@ def api_e4l_reveal_draft():
     remedies = data.get("remedies") or []
     if not email or not scan_date or not (interp or remedies):
         return jsonify({"error": "email, scan_date, and interpretation or remedies required"}), 400
-    from dashboard import biofield_reveals as _br
+    from dashboard import biofield_reveals as _br, biofield_meanings as _bm
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             _br.init_table(cx)
-            rid, is_new = _br.upsert(cx, email, scan_date, interp, remedies, (data.get("source") or "").strip())
+            _bm.init_table(cx)
+            # Guardrail + canonical override.
+            try:
+                canon = _bm.get_map(cx)
+            except Exception:
+                canon = {}
+            cleaned, dropped = [], []
+            for r in (remedies or []):
+                slug = _resolve_remedy_slug(r) if isinstance(r, dict) else None
+                if not slug:
+                    nm = (r.get("name") if isinstance(r, dict) else "") or "(unnamed)"
+                    dropped.append(nm.strip() or "(unnamed)")
+                    continue
+                rr = dict(r)
+                rr["slug"] = slug
+                cm = canon.get(slug)
+                if cm:
+                    rr["meaning"] = cm
+                cleaned.append(rr)
+            rid, is_new = _br.upsert(cx, email, scan_date, interp, cleaned, (data.get("source") or "").strip())
+            try:
+                _br.set_dropped(cx, rid, dropped)
+            except Exception:
+                pass
             if is_new:
                 token = secrets.token_urlsafe(32)
                 _br.set_token(cx, rid, _hash_token(token))

@@ -94,3 +94,63 @@ def test_reveal_dropped_column(tmp_path):
         br.set_dropped(cx, rid, ["Mineral Binder", "Made Up"])
         row = br.get(cx, rid)
     assert row["dropped"] == ["Mineral Binder", "Made Up"]
+
+
+def _app_db(monkeypatch, tmp_path):
+    app_module = _load("app")
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    from dashboard import biofield_reveals as br, biofield_meanings as bm
+    with sqlite3.connect(db) as cx:
+        br.init_table(cx)
+        bm.init_table(cx)
+        cx.execute("CREATE TABLE IF NOT EXISTS auth_tokens (token_hash TEXT, email TEXT, purpose TEXT, created_at TEXT, expires_at TEXT, consumed_at TEXT)")
+        cx.commit()
+    return app_module, db
+
+
+def _push(app_module, remedies, key):
+    return app_module.app.test_client().post(
+        "/api/e4l/reveal-draft",
+        headers={"X-Console-Key": key},
+        json={"email": "a@b.com", "scan_date": "2026-06-20",
+              "interpretation": {"body": "x"}, "remedies": remedies})
+
+
+def test_ingest_drops_non_catalog_and_records(monkeypatch, tmp_path):
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    key = app_module.os.environ.get("CRON_SECRET") or app_module.CONSOLE_SECRET or ""
+    if not key:
+        pytest.skip("no CRON_SECRET/CONSOLE_SECRET in env")
+    # 'top' is a placeholder slug that won't resolve; force a known real slug via monkeypatch.
+    real = next(iter((app_module._PRODUCTS.get("products") or {}).keys()), None)
+    if not real:
+        pytest.skip("no catalog products")
+    r = _push(app_module, [{"name": app_module._PRODUCTS["products"][real]["name"], "slug": real, "meaning": "pushed"},
+                           {"name": "Totally Made Up", "slug": "nope-xyz", "meaning": "ghost"}], key)
+    assert r.get_json().get("ok") is True
+    from dashboard import biofield_reveals as br
+    with sqlite3.connect(db) as cx:
+        rows = br.list_pending(cx)
+    row = rows[0]
+    slugs = [x.get("slug") for x in row["remedies"]]
+    assert real in slugs and "nope-xyz" not in slugs
+    assert "Totally Made Up" in row["dropped"]
+
+
+def test_ingest_applies_canonical_override(monkeypatch, tmp_path):
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    key = app_module.os.environ.get("CRON_SECRET") or app_module.CONSOLE_SECRET or ""
+    if not key:
+        pytest.skip("no CRON_SECRET/CONSOLE_SECRET in env")
+    real = next(iter((app_module._PRODUCTS.get("products") or {}).keys()), None)
+    if not real:
+        pytest.skip("no catalog products")
+    from dashboard import biofield_meanings as bm
+    with sqlite3.connect(db) as cx:
+        bm.upsert(cx, real, "CANONICAL MEANING", "glen", "glen")
+    _push(app_module, [{"name": app_module._PRODUCTS["products"][real]["name"], "slug": real, "meaning": "pushed text"}], key)
+    from dashboard import biofield_reveals as br
+    with sqlite3.connect(db) as cx:
+        row = br.list_pending(cx)[0]
+    assert row["remedies"][0]["meaning"] == "CANONICAL MEANING"
