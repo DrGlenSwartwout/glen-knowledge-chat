@@ -6211,6 +6211,47 @@ def _grant_membership(cx, email, days, source):
     return mid
 
 
+def _studio_credit_grant_and_notify(cx, email, days):
+    """Grant a studio-credit comp membership, log the journey event, and email the
+    magic link. Returns {membership_id, magic_link_url}. Shared by the console
+    approve action."""
+    import json as _json
+    email = (email or "").strip().lower()
+    mid = _grant_membership(cx, email, days, "studio_credit")
+    plain = _mint_membership_magic_link(email)
+    try:
+        base = request.host_url.rstrip("/")
+    except Exception:
+        base = (PUBLIC_BASE_URL or "").rstrip("/")
+    magic_link_url = f"{base}/coaching/auth/{plain}"
+    subject = "Your free month of Remedy Match coaching is open"
+    body = (
+        f"Hi,\n\n"
+        f"Thanks for getting the studio coaching app. As a thank-you, your Remedy Match "
+        f"coaching membership is open free for the next {days} days.\n\n"
+        f"Click here to sign in:\n{magic_link_url}\n\n"
+        f"You'll land in your member dashboard with the AI agent loaded for your context.\n\n"
+        f"---\n"
+        f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+    )
+    try:
+        _send_inquiry_email(to_email=email, subject=subject, body=body,
+                            reply_to=RM_INBOUND_INQUIRY_EMAIL)
+    except Exception as e:
+        print(f"[studio-credit] email send failed: {e!r}", flush=True)
+    try:
+        cx.execute(
+            "INSERT INTO journey_events "
+            "(ts, session_id, email, trigger, detail, rung_before, rung_after) "
+            "VALUES (?, ?, ?, 'membership_granted', ?, '', '')",
+            (datetime.utcnow().isoformat() + "Z", "", email,
+             _json.dumps({"source": "studio_credit", "days": days, "membership_id": mid})))
+        cx.commit()
+    except Exception as e:
+        print(f"[studio-credit] journey_events insert failed: {e!r}", flush=True)
+    return {"membership_id": mid, "magic_link_url": magic_link_url}
+
+
 def _active_membership_for_email(email):
     """Return the active membership row as a dict (with derived days_remaining), or None."""
     if not email:
@@ -8105,6 +8146,34 @@ def console_biofield_reveals_page():
         if _key != CONSOLE_SECRET:
             return jsonify({"error": "unauthorized"}), 401
     resp = send_from_directory(STATIC, "console-biofield-reveals.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/api/console/studio-credits", methods=["GET"])
+def api_console_studio_credits():
+    """List studio-credit claims for console review (default: pending first)."""
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+    from dashboard import studio_credit as _sc
+    status = request.args.get("status") or None
+    with sqlite3.connect(LOG_DB) as cx:
+        _sc.migrate(cx)
+        claims = _sc.list_claims(cx, status=status)
+    return jsonify({"claims": claims})
+
+
+@app.route("/console/studio-credits", methods=["GET"])
+def console_studio_credits_page():
+    """Serve the studio-credit review console page."""
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+    resp = send_from_directory(STATIC, "console-studio-credits.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
     return resp
@@ -20297,6 +20366,14 @@ _bra.register()
 # ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────
 from dashboard import reviews_actions as _ra
 _ra.register()
+
+# ── Studio-credit free month: console actions (log claim / approve+grant / reject) ──
+from dashboard import studio_credit as _scstore
+from dashboard import studio_credit_actions as _sca
+with sqlite3.connect(LOG_DB) as _sc_cx:
+    _scstore.migrate(_sc_cx)
+_sca.configure(grant_fn=_studio_credit_grant_and_notify)
+_sca.register()
 
 
 # ── In-house order entry (Phase 1: proposed invoice) — OWNER only ───────────────
