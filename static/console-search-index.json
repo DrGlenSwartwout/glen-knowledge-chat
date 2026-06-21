@@ -38,5 +38,15 @@
 
   { "title": "Settings", "page": "Settings", "url": "/console/settings", "keywords": ["config", "preferences", "options"] },
 
-  { "title": "Shared Resources", "page": "Resources", "url": "https://drive.google.com/drive/folders/1_ocXPhFB97d2tMdi7HxMWEUsZD7IW_f0", "external": true, "keywords": ["google drive", "shaira", "docs", "files", "sops", "shared resources"] }
+  { "title": "Shared Resources", "page": "Resources", "url": "https://drive.google.com/drive/folders/1_ocXPhFB97d2tMdi7HxMWEUsZD7IW_f0", "external": true, "keywords": ["google drive", "shaira", "docs", "files", "sops", "shared resources"] },
+
+  { "title": "Biofield reveals", "page": "Biofield", "url": "/console/biofield-reveals", "keywords": ["biofield", "reveal", "reveals", "remedy", "remedies", "approve", "edit", "drafts", "top match", "interpretation", "pending"] },
+
+  { "title": "Remedy meanings", "page": "Biofield", "url": "/console/remedy-meanings", "keywords": ["remedy", "remedies", "meaning", "meanings", "canonical", "biofield", "curate", "propose", "functions"] },
+
+  { "title": "Ingredient pages", "page": "Products", "url": "/console/ingredient-pages", "keywords": ["ingredient", "ingredients", "page", "pages", "approve", "generate", "gauge"] },
+
+  { "title": "Studio credits", "page": "Studio", "url": "/console/studio-credits", "keywords": ["studio", "credit", "credits", "free month", "claim", "approve", "thisstudio"] },
+
+  { "title": "Certification", "page": "Cert", "url": "/console/cert", "keywords": ["cert", "certification", "ash", "training", "students"] }
 ]
