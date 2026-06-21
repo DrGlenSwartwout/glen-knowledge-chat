@@ -96,3 +96,14 @@ def test_trial_and_undo():
     log_id = res["log_id"]
     ev.undo(cx, log_id, actor="t")
     assert "ideogram-v3" not in {m["id"] for m in mods.active_models(cx)}   # back to candidate
+
+def test_console_section_html_lists_proposals_and_candidates():
+    cx = _cx()
+    mods.seed(cx); mods.seed_candidates(cx)
+    _seed_model_field(cx, loser_votes=0, winner_votes=55, impressions_each=60)
+    ev.propose(cx, min_impressions=20)
+    html = ev.console_section_html(cx)
+    assert "recraft-v3" in html              # the proposed retire
+    assert "Approve" in html and "Reject" in html
+    assert "ideogram-v3" in html             # a benched candidate
+    assert "Trial" in html

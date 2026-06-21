@@ -186,3 +186,39 @@ def undo(cx, log_id, actor="console"):
     cx.execute("UPDATE sales_image_evolution_log SET undone_at=? WHERE id=?", (_now(), log_id))
     cx.commit()
     return {"ok": True}
+
+def _esc(s):
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+def console_section_html(cx):
+    from dashboard import sales_image_models as _mods, sales_prompt_variations as _pv
+    from dashboard import sales_image_prompts as _sip
+    props = pending_proposals(cx)
+    parts = ["<h2>Evolution — pending proposals</h2>"]
+    if not props:
+        parts.append("<p>No pending proposals.</p>")
+    for p in props:
+        s = p["stats"]
+        scope = "model" if p["axis"] == "model" else f"variation/{p['kind']}"
+        parts.append(
+            f"<div class='evo-prop'>[{_esc(scope)}] retire <b>{_esc(s.get('retire_label', p['retire_key']))}</b> "
+            f"({_esc(p['retire_key'])}) "
+            f"(wilson {s.get('retire_wilson', 0):.3f}, {s.get('retire_votes',0)}/{s.get('retire_impressions',0)}) "
+            f"→ promote <b>{_esc(p['promote_key'])}</b> "
+            f"<button onclick=\"evo('decide',{{proposal_id:{p['id']},decision:'approve'}})\">Approve</button> "
+            f"<button onclick=\"evo('decide',{{proposal_id:{p['id']},decision:'reject'}})\">Reject</button></div>")
+    parts.append("<h2>Benched candidates</h2>")
+    rows = [("model", "")] + [("variation", k) for k in _sip.IMAGE_KINDS]
+    for axis, kind in rows:
+        cands = _mods.candidate_models(cx) if axis == "model" else _pv.candidate_variations(cx, kind)
+        scope = "model" if axis == "model" else f"variation/{kind}"
+        for c in cands:
+            ck = c["id"]
+            parts.append(
+                f"<div class='evo-cand'>[{_esc(scope)}] {_esc(c['label'])} "
+                f"<button onclick=\"evo('trial',{{axis:'{axis}',kind:'{_esc(kind)}',candidate_key:'{_esc(ck)}'}})\">Trial</button></div>")
+    parts.append(
+        "<script>function evo(op,body){fetch('/console/image-'+(op==='decide'?'evolution/decide':"
+        "'evolution/'+op),{method:'POST',headers:{'Content-Type':'application/json'},"
+        "body:JSON.stringify(body)}).then(function(){location.reload();});}</script>")
+    return "".join(parts)
