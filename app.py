@@ -2867,6 +2867,7 @@ _REVIEWS_VIDEO_TRIM = os.environ.get("REVIEWS_VIDEO_TRIM", "").strip().lower() i
 _REVIEWS_GIFTS = os.environ.get("REVIEWS_GIFTS", "").strip().lower() in ("1", "true", "yes")
 _REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "yes")
 INGREDIENT_PAGES_PAID_ONLY = os.environ.get("INGREDIENT_PAGES_PAID_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
+TOPIC_PAGES_ENABLED = os.environ.get("TOPIC_PAGES_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_CART_ENABLED = os.environ.get("BIOFIELD_CART_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 ASCEND_PERSONALIZED_ENABLED = os.environ.get("ASCEND_PERSONALIZED_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
@@ -3874,6 +3875,141 @@ def begin_ingredient_page_data(slug):
     if email:
         _ingredient_kickoff_build(slug, name)
     return jsonify({"slug": slug, "name": name, "state": "preparing"})
+
+
+def _topic_catalog_slugs():
+    """Return ({ingredient_slug: name}, {product_slug: name}, {topic_slug: name}) for link validation."""
+    import json as _json
+    from dashboard import ingredients as _ing
+    ing = dict(_ing._name_index())  # {slug: name}
+    prods = {}
+    try:
+        raw = _json.loads(_ing._PRODUCTS.read_text()).get("products", {})
+        prods = {slug: (p.get("name") or slug) for slug, p in raw.items()}
+    except Exception:
+        prods = {}
+    topics = {}
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            from dashboard import topic_pages as _tp
+            for row in _tp.list_pages(cx):
+                if row["state"] == "approved":
+                    topics[row["slug"]] = row["name"]
+    except Exception:
+        topics = {}
+    return ing, prods, topics
+
+
+def _topic_kickoff_build(slug, kind, name):
+    """Best-effort, non-blocking AI draft + link + compliance build for a topic. Never raises."""
+    import threading as _threading
+    from dashboard import topic_copy as _tc
+    from dashboard import topic_pages as _tp
+
+    def _build():
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _tp.init_table(cx)
+                page = _tp.get_page(cx, slug)
+                if page:
+                    c = page.get("content") or {}
+                    if all(c.get(s) for s in _tc.NARRATIVE_SECTIONS):
+                        return  # already built
+            topic = {"name": name, "kind": kind}
+            content = {}
+            for section in _tc.NARRATIVE_SECTIONS:
+                try:
+                    system, user = _tc.build_section_prompt(section, topic)
+                    msg = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=600,
+                                              system=system, messages=[{"role": "user", "content": user}])
+                    text = "".join(getattr(b, "text", "") for b in msg.content
+                                   if getattr(b, "type", "") == "text").strip()
+                    content[section] = _strip_dash(text)
+                except Exception as _se:
+                    print(f"[topic-build] section {section} failed: {_se}", flush=True)
+            curation = _tc.propose_curation(topic, _cl)
+            ing, prods, topics = _topic_catalog_slugs()
+            links = _tc.validate_links(curation.get("links") or {},
+                                       ingredient_slugs=ing, product_slugs=prods, topic_slugs=topics)
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _tp.init_table(cx)
+                for section, text in content.items():
+                    if text:
+                        _tp.upsert_section(cx, slug, section, text, model="claude-haiku-4-5-20251001")
+                _tp.set_name(cx, slug, name)
+                _tp.set_kind(cx, slug, kind)
+                _tp.set_links(cx, slug, links)
+                _tp.set_seo(cx, slug, {"title": curation.get("title") or name,
+                                       "meta_description": curation.get("meta_description") or ""})
+                full = _tp.get_page(cx, slug) or {}
+                result = _tc.compliance_scan(full.get("content") or {}, _cl)
+                _tp.set_compliance(cx, slug, result)
+                _tp.set_state(cx, slug, "draft" if result.get("passed") else "gated")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[topic-build] {slug}: {exc}", flush=True)
+
+    _threading.Thread(target=_build, daemon=True).start()
+
+
+@app.route("/learn/<slug>")
+def learn_topic_page(slug):
+    from dashboard import topic_pages as _tp, topic_render as _tr
+    if not TOPIC_PAGES_ENABLED:
+        return ("Not found", 404)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        page = _tp.get_page(cx, slug)
+    if _tr.is_public(page):
+        return Response(_tr.render_page_html(page, base_url=PUBLIC_BASE_URL), mimetype="text/html")
+    name = (page or {}).get("name") or slug.replace("-", " ").title()
+    return Response(_tr.render_pending_html(slug, name), mimetype="text/html", status=200)
+
+
+@app.route("/learn/<slug>/request", methods=["POST"])
+def learn_topic_request(slug):
+    from dashboard import topic_pages as _tp
+    if not TOPIC_PAGES_ENABLED:
+        return ("Not found", 404)
+    email = (request.form.get("email") or request.values.get("email") or "").strip()
+    kind = (request.values.get("kind") or "symptom").strip()
+    name = slug.replace("-", " ").title()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _tp.init_table(cx)
+        if email:
+            _tp.record_request(cx, slug, email)
+        _tp.set_name(cx, slug, name)
+        if not (_tp.get_page(cx, slug) or {}).get("kind"):
+            _tp.set_kind(cx, slug, kind)
+    _topic_kickoff_build(slug, kind, name)
+    return jsonify({"ok": True, "state": "preparing"})
+
+
+@app.route("/learn")
+def learn_index():
+    from dashboard import topic_pages as _tp
+    if not TOPIC_PAGES_ENABLED:
+        return ("Not found", 404)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        rows = [r for r in _tp.list_pages(cx) if r["state"] == "approved"]
+    items = "".join(
+        f'<li><a href="/learn/{r["slug"]}">{r["name"]}</a></li>' for r in rows
+    )
+    html_doc = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+                "<title>Learn</title></head><body><main><h1>Wellness Topics</h1>"
+                f"<ul>{items}</ul></main></body></html>")
+    return Response(html_doc, mimetype="text/html")
+
+
+@app.route("/learn/sitemap.xml")
+def learn_sitemap():
+    from dashboard import topic_pages as _tp
+    if not TOPIC_PAGES_ENABLED:
+        return ("Not found", 404)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        rows = [r for r in _tp.list_pages(cx) if r["state"] == "approved"]
+    urls = "".join(f"<url><loc>{PUBLIC_BASE_URL}/learn/{r['slug']}</loc></url>" for r in rows)
+    xml = ('<?xml version="1.0" encoding="UTF-8"?>'
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + "</urlset>")
+    return Response(xml, mimetype="application/xml")
 
 
 @app.route("/begin/ingredient-page-gen/<slug>/<section>")
@@ -8247,6 +8383,51 @@ def api_console_ingredient_page_load(slug):
         "traditional_use": (page or {}).get("traditional_use") or [],
         "related_forms": (page or {}).get("related_forms") or [],
         "live_url": f"/begin/ingredient/{slug}",
+    })
+
+
+@app.route("/console/topic-pages")
+def console_topic_pages_page():
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    resp = send_from_directory(STATIC, "console-topic-pages.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/api/console/topic-pages", methods=["GET"])
+def api_console_topic_pages_list():
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    from dashboard import topic_pages as _tp
+    with sqlite3.connect(LOG_DB) as cx:
+        pages = _tp.list_pages(cx)
+    return jsonify({"ok": True, "pages": pages})
+
+
+@app.route("/api/console/topic-page/<slug>", methods=["GET"])
+def api_console_topic_page_load(slug):
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    from dashboard import topic_pages as _tp, topic_copy as _tc
+    with sqlite3.connect(LOG_DB) as cx:
+        page = _tp.get_page(cx, slug)
+    content = (page or {}).get("content") or {}
+    sections = [{"id": s, "text": content.get(s, "")} for s in _tc.NARRATIVE_SECTIONS]
+    return jsonify({
+        "ok": True, "slug": slug,
+        "name": (page or {}).get("name", slug),
+        "kind": (page or {}).get("kind", ""),
+        "state": (page or {}).get("state", "none"),
+        "sections": sections,
+        "links": (page or {}).get("links") or {},
+        "compliance": (page or {}).get("compliance") or {},
+        "seo": (page or {}).get("seo") or {},
+        "live_url": f"/learn/{slug}",
     })
 
 
@@ -20600,6 +20781,15 @@ _spa.configure(client=_cl, get_product=_get_product,
 from dashboard import ingredient_page_actions as _ipa
 _ipa.register()
 _ipa.configure(client=_cl, send=_inbox.send_email, strip=_strip_dash, base_url=PUBLIC_BASE_URL)
+
+from dashboard import topic_page_actions as _tpa
+_tpa.register()
+_tpa.configure(client=_cl, send=_inbox.send_email, strip=_strip_dash, base_url=PUBLIC_BASE_URL)
+try:
+    _tpa_ing, _tpa_prods, _tpa_topics = _topic_catalog_slugs()
+    _tpa.configure(ingredient_slugs=_tpa_ing, product_slugs=_tpa_prods, topic_slugs=_tpa_topics)
+except Exception as _tpa_e:  # noqa: BLE001
+    print(f"[topic-pages] catalog inject skipped: {_tpa_e}", flush=True)
 
 # ── Begin #4a: Biofield reveal console actions (edit / approve + magic link) ──
 from dashboard import biofield_reveal_actions as _bra
