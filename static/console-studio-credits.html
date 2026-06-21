@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio Credits — Console</title>
+<style>
+  body{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#f6f7f9;color:#1c2430}
+  header{background:#0f5132;color:#fff;padding:14px 20px;font-weight:600}
+  main{max-width:860px;margin:0 auto;padding:20px}
+  .card{background:#fff;border:1px solid #e2e6eb;border-radius:10px;padding:16px;margin-bottom:14px}
+  label{display:block;font-size:13px;color:#52606d;margin:8px 0 3px}
+  input{width:100%;padding:8px;border:1px solid #cbd2d9;border-radius:6px;box-sizing:border-box}
+  button{cursor:pointer;border:0;border-radius:6px;padding:8px 14px;font-weight:600}
+  .primary{background:#0f5132;color:#fff}.ok{background:#198754;color:#fff}.no{background:#b42318;color:#fff}
+  .muted{color:#697586;font-size:13px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .pill{font-size:12px;padding:2px 8px;border-radius:999px;background:#eef2f6}
+  .warn{background:#fff4e5;border:1px solid #f0c987;padding:8px;border-radius:6px;margin-top:8px;font-size:13px}
+</style>
+</head>
+<body>
+<header>Studio Credits — free month of membership</header>
+<main>
+  <div class="card">
+    <strong>Log a claim</strong>
+    <div class="muted">A studio-app purchaser emailed their invoice. Record it here, then approve below.</div>
+    <label>Email</label><input id="email" type="email" placeholder="buyer@example.com">
+    <label>Invoice ref</label><input id="invoice" placeholder="invoice # / Studio.com order id">
+    <label>Proof note</label><input id="proof" placeholder="e.g. emailed invoice 6/20">
+    <div style="margin-top:12px"><button class="primary" onclick="addClaim()">Add claim</button></div>
+    <div id="addmsg" class="muted"></div>
+  </div>
+  <div id="list"></div>
+</main>
+<script>
+const KEY = new URLSearchParams(location.search).get("key") || "";
+const H = {"Content-Type":"application/json","X-Console-Key":KEY};
+function esc(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+
+async function load(){
+  const r = await fetch("/api/console/studio-credits?key="+encodeURIComponent(KEY), {headers:H});
+  const d = await r.json();
+  const el = document.getElementById("list");
+  if(!d.claims || !d.claims.length){ el.innerHTML='<div class="card muted">No claims yet.</div>'; return; }
+  el.innerHTML = d.claims.map(c=>`
+    <div class="card">
+      <div class="row">
+        <strong>${esc(c.email)}</strong>
+        <span class="pill">${esc(c.status)}</span>
+        ${c.invoice_ref?`<span class="muted">inv: ${esc(c.invoice_ref)}</span>`:""}
+      </div>
+      ${c.proof_note?`<div class="muted">${esc(c.proof_note)}</div>`:""}
+      ${c.status==="pending"?`<div class="row" style="margin-top:10px">
+        <button class="ok" onclick="approve('${c.id}',false)">Approve (30-day comp)</button>
+        <button class="no" onclick="reject('${c.id}')">Reject</button>
+      </div><div id="w-${c.id}"></div>`:
+        c.membership_id?`<div class="muted">membership: ${esc(c.membership_id)}</div>`:""}
+    </div>`).join("");
+}
+
+async function act(key, params){
+  const r = await fetch("/api/action/"+key, {method:"POST", headers:H, body:JSON.stringify(params)});
+  return r.json();
+}
+async function addClaim(){
+  const email=document.getElementById("email").value.trim();
+  if(!email){document.getElementById("addmsg").textContent="Email required.";return;}
+  const res = await act("studio_credit.add", {email,
+    invoice_ref:document.getElementById("invoice").value.trim(),
+    proof_note:document.getElementById("proof").value.trim()});
+  document.getElementById("addmsg").textContent = res.status==="done" ? "Claim logged." : ("Error: "+JSON.stringify(res));
+  document.getElementById("email").value=document.getElementById("invoice").value=document.getElementById("proof").value="";
+  load();
+}
+async function approve(id, force){
+  const res = await act("studio_credit.approve", {id, force});
+  const r = res.result || res;
+  if(r && r.ok===false && r.warning==="granted_within_year"){
+    document.getElementById("w-"+id).innerHTML =
+      `<div class="warn">Already received a studio credit on ${esc((r.granted_at||"").slice(0,10))} (active until ${esc((r.until||"").slice(0,10))}). Override and grant anyway?
+       <button class="ok" onclick="approve('${id}',true)">Override &amp; grant</button></div>`;
+    return;
+  }
+  load();
+}
+async function reject(id){
+  const reason = prompt("Reason for rejecting?") || "";
+  await act("studio_credit.reject", {id, reason});
+  load();
+}
+load();
+</script>
+</body>
+</html>
