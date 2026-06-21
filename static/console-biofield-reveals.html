@@ -250,9 +250,12 @@ async function doApprove(card, id, btn){
   if(r.ok && r.json.status === 'done'){
     statusEl.textContent = 'Top remedy approved. Visitor can now see it.';
     card.style.opacity = '0.5';
+    // Reload so the approved (now non-pending) reveal clears from the list - otherwise
+    // the card just dims in place and the approve reads as having no effect.
+    setTimeout(loadList, 900);
   } else {
     btn.disabled = false;
-    statusEl.textContent = 'Approve failed.';
+    statusEl.textContent = 'Approve failed (HTTP ' + r.status + '). Try re-opening the page with your console key.';
   }
 }
 
