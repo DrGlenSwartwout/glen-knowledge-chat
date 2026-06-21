@@ -36,6 +36,10 @@ def init_table(cx):
         cx.execute("ALTER TABLE biofield_reveals ADD COLUMN dropped TEXT NOT NULL DEFAULT '[]'")
     except Exception:
         pass
+    try:
+        cx.execute("ALTER TABLE biofield_reveals ADD COLUMN layers_json TEXT NOT NULL DEFAULT '[]'")
+    except Exception:
+        pass
     cx.commit()
 
 
@@ -46,16 +50,17 @@ def _row(r):
     d["interpretation"] = json.loads(d.pop("interpretation_json") or "{}")
     d["remedies"] = json.loads(d.pop("remedies_json") or "[]")
     d["dropped"] = json.loads(d.pop("dropped", "[]") or "[]")
+    d["layers"] = json.loads(d.pop("layers_json", "[]") or "[]")
     d["first_approved"] = bool(d.get("first_approved"))
     return d
 
 
-def upsert(cx, email, scan_date, interpretation, remedies, source):
-    """Insert or update a reveal. Content updates only while not yet approved.
-    Returns (id, is_new) - is_new True only on first insert (caller mints token +
-    emails exactly once)."""
+def upsert(cx, email, scan_date, interpretation, remedies, source, layers=None):
+    """Insert or update a reveal. Content updates only while not yet approved (matcher
+    re-push). Returns (id, is_new). layers defaults to [] when not provided."""
     email = (email or "").strip().lower()
     now = _now()
+    lj = json.dumps(layers or [])
     existing = cx.execute(
         "SELECT id, first_approved FROM biofield_reveals WHERE email=? AND scan_date=?",
         (email, scan_date)).fetchone()
@@ -63,14 +68,14 @@ def upsert(cx, email, scan_date, interpretation, remedies, source):
         rid, approved = existing[0], existing[1]
         if not approved:
             cx.execute(
-                "UPDATE biofield_reveals SET interpretation_json=?, remedies_json=?, updated_at=? WHERE id=?",
-                (json.dumps(interpretation or {}), json.dumps(remedies or []), now, rid))
+                "UPDATE biofield_reveals SET interpretation_json=?, remedies_json=?, layers_json=?, updated_at=? WHERE id=?",
+                (json.dumps(interpretation or {}), json.dumps(remedies or []), lj, now, rid))
             cx.commit()
         return rid, False
     cur = cx.execute(
-        "INSERT INTO biofield_reveals (email, scan_date, interpretation_json, remedies_json, created_at, updated_at) "
-        "VALUES (?,?,?,?,?,?)",
-        (email, scan_date, json.dumps(interpretation or {}), json.dumps(remedies or []), now, now))
+        "INSERT INTO biofield_reveals (email, scan_date, interpretation_json, remedies_json, layers_json, created_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (email, scan_date, json.dumps(interpretation or {}), json.dumps(remedies or []), lj, now, now))
     cx.commit()
     return cur.lastrowid, True
 
@@ -82,14 +87,20 @@ def set_token(cx, rid, token_hash):
 
 
 def set_interpretation(cx, rid, interpretation):
-    cx.execute("UPDATE biofield_reveals SET interpretation_json=?, updated_at=? WHERE id=? AND first_approved=0",
+    cx.execute("UPDATE biofield_reveals SET interpretation_json=?, updated_at=? WHERE id=?",
                (json.dumps(interpretation or {}), _now(), rid))
     cx.commit()
 
 
 def set_remedies(cx, rid, remedies):
-    cx.execute("UPDATE biofield_reveals SET remedies_json=?, updated_at=? WHERE id=? AND first_approved=0",
+    cx.execute("UPDATE biofield_reveals SET remedies_json=?, updated_at=? WHERE id=?",
                (json.dumps(remedies or []), _now(), rid))
+    cx.commit()
+
+
+def set_layers(cx, rid, layers):
+    cx.execute("UPDATE biofield_reveals SET layers_json=?, updated_at=? WHERE id=?",
+               (json.dumps(layers or []), _now(), rid))
     cx.commit()
 
 
@@ -111,6 +122,12 @@ def approve_first(cx, rid, by):
 def list_pending(cx):
     rows = _rows_cursor(cx).execute(
         "SELECT * FROM biofield_reveals WHERE first_approved=0 ORDER BY id DESC").fetchall()
+    return [_row(r) for r in rows]
+
+
+def list_approved(cx, limit=50):
+    rows = _rows_cursor(cx).execute(
+        "SELECT * FROM biofield_reveals WHERE first_approved=1 ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     return [_row(r) for r in rows]
 
 
