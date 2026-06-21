@@ -10484,6 +10484,58 @@ def api_points_balance():
     return jsonify({"balance_cents": bal, "balance_dollars": f"{bal/100:.2f}"})
 
 
+def _resolve_ship_address(email, body_address):
+    """Ship-to: the request address if given, else the member's last order address, else {}."""
+    ship = body_address or {}
+    if not ship:
+        try:
+            with sqlite3.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
+            if prior:
+                ship = prior[0].get("address") or {}
+        except Exception:
+            ship = {}
+    return ship or {}
+
+
+def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code=None):
+    """Price a cart through the engine, create the QBO invoice, ingest the order, and mint the
+    Stripe URL (metadata kind=reorder -> recorded by /begin/checkout-return). Returns
+    {out, stripe_url}. Raises CheckoutError for a pricing problem or an empty priced cart."""
+    requested_redeem = int(points_to_redeem_cents or 0)
+    if requested_redeem > 0:
+        from dashboard import points as _pts_co
+        with sqlite3.connect(LOG_DB) as _cx_pts:
+            _pts_co.init_points_table(_cx_pts)
+            _bal = _pts_co.balance(_cx_pts, email)
+        requested_redeem = min(requested_redeem, _bal)
+    _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(referral_code, email)
+    pc = _price_cart(cart, ship=ship, coupon_pct=_ref_pct, points_to_redeem_cents=requested_redeem)
+    if not pc["qbo_lines"]:
+        raise CheckoutError("Your cart is empty or those items are no longer available.")
+    cust = qb.find_or_create_customer(email, ship.get("name", ""))
+    inv = qb.create_invoice(
+        cust,
+        pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+        allow_online_pay=True,
+        email_to=email,
+        discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+    _ingest_order(source="reorder", external_ref=inv.get("Id"), email=email,
+                  name=ship.get("name", ""), items=pc["items_rec"],
+                  total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                  address=ship, channel="retail",
+                  get_cents=pc["priced"].get("get_cents", 0),
+                  discount_cents=pc["discount_cents"],
+                  points_redeemed_cents=pc["points_redeemed_cents"],
+                  shipping_cents=pc["shipping_cents"])
+    _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
+    out = {"invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
+           "customer_id": cust.get("Id"), "total": inv.get("TotalAmt")}
+    stripe_url = _stripe_checkout_url_for_reorder(out, email) if _STRIPE_ACTIVE else ""
+    return {"out": out, "stripe_url": stripe_url}
+
+
 @app.route("/reorder/checkout", methods=["POST"])
 def reorder_checkout():
     email = _reorder_email_from_cookie()
@@ -10505,52 +10557,16 @@ def reorder_checkout():
     # ── Pricing-engine path (feature flag) ────────────────────────────────────
     if os.environ.get("PRICING_ENGINE_CHECKOUT", "").strip().lower() in ("1", "true", "yes", "on"):
         try:
-            # Prefer address from request body; fall back to last order on file
-            ship = body_address or {}
-            if not ship:
-                with sqlite3.connect(LOG_DB) as cx:
-                    cx.row_factory = sqlite3.Row
-                    prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
-                if prior:
-                    ship = prior[0].get("address") or {}
-            # Cap requested redemption to the caller's current balance
-            requested_redeem = int((body.get("points_to_redeem_cents") if isinstance(body, dict) else 0) or 0)
-            if requested_redeem > 0:
-                from dashboard import points as _pts_co
-                with sqlite3.connect(LOG_DB) as _cx_pts:
-                    _pts_co.init_points_table(_cx_pts)
-                    _bal = _pts_co.balance(_cx_pts, email)
-                requested_redeem = min(requested_redeem, _bal)
-            _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(
-                body.get("referral_code") if isinstance(body, dict) else None, email)
+            ship = _resolve_ship_address(email, body_address or {})
+            requested_redeem = (body.get("points_to_redeem_cents") if isinstance(body, dict) else 0) or 0
+            referral_code = body.get("referral_code") if isinstance(body, dict) else None
             try:
-                pc = _price_cart(cart, ship=ship, coupon_pct=_ref_pct,
-                                 points_to_redeem_cents=requested_redeem)
+                res = _checkout_cart(email, cart, ship=ship,
+                                     points_to_redeem_cents=requested_redeem,
+                                     referral_code=referral_code)
             except CheckoutError as e:
                 return jsonify({"ok": False, "error": str(e)}), 400
-            if not pc["qbo_lines"]:
-                return jsonify({"ok": False,
-                                "error": "Your cart is empty or those items are no longer available."}), 400
-            cust = qb.find_or_create_customer(email, ship.get("name", ""))
-            inv = qb.create_invoice(
-                cust,
-                pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-                allow_online_pay=True,
-                email_to=email,
-                discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
-            _ingest_order(source="reorder", external_ref=inv.get("Id"), email=email,
-                          name=ship.get("name", ""), items=pc["items_rec"],
-                          total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
-                          address=ship, channel="retail",
-                          get_cents=pc["priced"].get("get_cents", 0),
-                          discount_cents=pc["discount_cents"],
-                          points_redeemed_cents=pc["points_redeemed_cents"],
-                          shipping_cents=pc["shipping_cents"])
-            _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
-            out = {"invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
-                   "customer_id": cust.get("Id"),   # needed by /begin/checkout-return to record the QBO payment
-                   "total": inv.get("TotalAmt")}
-            stripe_url = _stripe_checkout_url_for_reorder(out, email) if _STRIPE_ACTIVE else ""
+            out, stripe_url = res["out"], res["stripe_url"]
             _pe = {"payment_error": _CARD_UNAVAILABLE} if (_STRIPE_ACTIVE and not stripe_url) else {}
             return jsonify({"ok": True, "stripe_url": stripe_url, **out, **_pe})
         except Exception as e:

@@ -97,3 +97,40 @@ def test_reveal_payload_cart_enabled(monkeypatch, tmp_path):
     html = app_module.app.test_client().get(f"/begin/biofield/{token}").get_data(as_text=True)
     assert '"cart_enabled": true' in html
     assert '"slug": "top"' in html  # remedy payload now carries slug
+
+
+def test_checkout_cart_builds_invoice_and_stripe(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "_STRIPE_ACTIVE", True, raising=False)
+    # Fake the pricing + QBO + stripe layers so the helper is exercised in isolation.
+    monkeypatch.setattr(app_module, "_price_cart", lambda cart, **kw: {
+        "priced": {"lines": [], "subtotal_cents": 5000, "discount_cents": 0,
+                   "points_redeemed_cents": 0, "get_cents": 0, "total_cents": 5000},
+        "qbo_lines": [{"name": "Top", "amount": 50.0, "qty": 1}],
+        "items_rec": [{"name": "Top", "qty": 1, "desc": "Top"}],
+        "subtotal_list_cents": 5000, "discount_cents": 0,
+        "points_redeemed_cents": 0, "shipping_cents": 1300})
+    monkeypatch.setattr(app_module, "_resolve_checkout_coupon_pct", lambda code, email: (None, None))
+    monkeypatch.setattr(app_module.qb, "find_or_create_customer", lambda email, name: {"Id": "C1"})
+    monkeypatch.setattr(app_module.qb, "create_invoice",
+        lambda cust, lines, **kw: {"Id": "INV1", "DocNumber": "1001", "TotalAmt": 63.0})
+    monkeypatch.setattr(app_module, "_ingest_order", lambda **kw: None)
+    monkeypatch.setattr(app_module, "_record_referral_if_any", lambda *a, **k: None)
+    monkeypatch.setattr(app_module, "_stripe_checkout_url_for_reorder",
+        lambda out, email: "https://stripe.test/sess")
+    res = app_module._checkout_cart("t@x.com", [{"slug": "top", "qty": 1}], ship={"name": "T", "country": "US"})
+    assert res["stripe_url"] == "https://stripe.test/sess"
+    assert res["out"] == {"invoice_id": "INV1", "doc_number": "1001",
+                          "customer_id": "C1", "total": 63.0}
+
+
+def test_checkout_cart_empty_raises(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "_price_cart", lambda cart, **kw: {
+        "priced": {"lines": [], "subtotal_cents": 0, "discount_cents": 0,
+                   "points_redeemed_cents": 0, "get_cents": 0, "total_cents": 0},
+        "qbo_lines": [], "items_rec": [], "subtotal_list_cents": 0,
+        "discount_cents": 0, "points_redeemed_cents": 0, "shipping_cents": 0})
+    monkeypatch.setattr(app_module, "_resolve_checkout_coupon_pct", lambda code, email: (None, None))
+    with pytest.raises(app_module.CheckoutError):
+        app_module._checkout_cart("t@x.com", [], ship={"country": "US"})
