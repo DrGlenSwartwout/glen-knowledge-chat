@@ -7,6 +7,15 @@ def wilson_lower(pos, n, z=1.96):
     margin = z * ((phat * (1 - phat) + z * z / (4 * n)) / n) ** 0.5
     return (centre - margin) / denom
 
+def wilson_upper(pos, n, z=1.96):
+    if n <= 0:
+        return 0.0
+    phat = pos / n
+    denom = 1 + z * z / n
+    centre = phat + z * z / (2 * n)
+    margin = z * ((phat * (1 - phat) + z * z / (4 * n)) / n) ** 0.5
+    return (centre + margin) / denom
+
 def _labels(cx, table):
     try:
         return {r[0]: r[1] for r in cx.execute(f"SELECT id, label FROM {table}").fetchall()}

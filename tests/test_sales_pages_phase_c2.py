@@ -1,6 +1,7 @@
 import sqlite3
 from dashboard import sales_image_models as mods
 from dashboard import sales_prompt_variations as pv
+from dashboard import sales_image_leaderboard as lb
 
 def _cx(): return sqlite3.connect(":memory:")
 
@@ -21,3 +22,9 @@ def test_variation_setstate_and_candidates():
     pv.set_state(cx, first, "candidate")
     assert first in {v["id"] for v in pv.candidate_variations(cx, "botanical")}
     assert first not in {v["id"] for v in pv.active_variations(cx, "botanical")}
+
+def test_wilson_upper_brackets_rate():
+    assert lb.wilson_upper(0, 0) == 0.0
+    lo, hi = lb.wilson_lower(5, 10), lb.wilson_upper(5, 10)
+    assert lo < 0.5 < hi                       # interval brackets the 0.5 rate
+    assert lb.wilson_upper(5, 10) > lb.wilson_upper(50, 100)   # less data -> wider/higher upper
