@@ -12783,6 +12783,35 @@ def groovekart_webhook():
     return jsonify({"ok": True, "ghl": ghl_result, "affiliate_credited": credited}), 200
 
 
+@app.route("/webhook/stripe", methods=["POST"])
+def webhook_stripe():
+    """Stripe webhook: create the $1-trial membership on checkout.session.completed,
+    independent of the success-redirect (a closed tab still gets fulfilled). Idempotent
+    via _fulfill_biofield_trial. Signature-verified when STRIPE_WEBHOOK_SECRET is set;
+    otherwise the body is parsed directly (the re-fetch in fulfillment is the guarantee)."""
+    from dashboard import stripe_pay as _sp
+    raw = request.get_data()
+    secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+    if secret:
+        event = _sp.verify_webhook(raw, request.headers.get("Stripe-Signature", ""), secret)
+        if event is None:
+            return ("", 400)
+    else:
+        try:
+            event = json.loads(raw.decode("utf-8"))
+        except Exception:
+            return ("", 400)
+    try:
+        if (event or {}).get("type") == "checkout.session.completed":
+            session_id = (((event.get("data") or {}).get("object") or {}).get("id") or "").strip()
+            if session_id:
+                _fulfill_biofield_trial(session_id)
+        return ("", 200)
+    except Exception as e:
+        print(f"[webhook-stripe] {e!r}", flush=True)
+        return ("", 500)
+
+
 @app.route("/inbound-leads", methods=["GET"])
 def get_inbound_leads():
     """Review recent inbound leads and their GHL sync status."""

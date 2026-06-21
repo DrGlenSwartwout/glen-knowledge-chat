@@ -124,3 +124,47 @@ def test_fulfill_non_trial_noop(monkeypatch, tmp_path):
     monkeypatch.setattr(stripe_pay, "get_session", lambda s: {"metadata": {"kind": "reorder"}})
     res = app_module._fulfill_biofield_trial("cs_x")
     assert res["ok"] is False and res.get("reason") == "not_trial"
+
+
+def _event(session_id="cs_evt", etype="checkout.session.completed"):
+    return json.dumps({"type": etype, "data": {"object": {"id": session_id}}}).encode()
+
+
+def test_webhook_completed_calls_fulfill(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.delenv("STRIPE_WEBHOOK_SECRET", raising=False)
+    seen = {}
+    monkeypatch.setattr(app_module, "_fulfill_biofield_trial", lambda sid: seen.setdefault("sid", sid) or {"ok": True})
+    r = app_module.app.test_client().post("/webhook/stripe", data=_event("cs_42"), content_type="application/json")
+    assert r.status_code == 200 and seen.get("sid") == "cs_42"
+
+
+def test_webhook_other_event_noop(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.delenv("STRIPE_WEBHOOK_SECRET", raising=False)
+    called = {"n": 0}
+    monkeypatch.setattr(app_module, "_fulfill_biofield_trial", lambda sid: called.__setitem__("n", called["n"] + 1))
+    r = app_module.app.test_client().post("/webhook/stripe", data=_event(etype="payment_intent.created"), content_type="application/json")
+    assert r.status_code == 200 and called["n"] == 0
+
+
+def test_webhook_bad_signature_400(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
+    called = {"n": 0}
+    monkeypatch.setattr(app_module, "_fulfill_biofield_trial", lambda sid: called.__setitem__("n", called["n"] + 1))
+    r = app_module.app.test_client().post("/webhook/stripe", data=_event("cs_42"),
+                                          headers={"Stripe-Signature": "t=1,v1=bad"}, content_type="application/json")
+    assert r.status_code == 400 and called["n"] == 0
+
+
+def test_webhook_valid_signature_200(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
+    monkeypatch.setattr(app_module, "_fulfill_biofield_trial", lambda sid: {"ok": True})
+    body = _event("cs_42")
+    ts = int(time.time())
+    sig = _sign(body, "whsec_test", ts)
+    r = app_module.app.test_client().post("/webhook/stripe", data=body,
+                                          headers={"Stripe-Signature": sig}, content_type="application/json")
+    assert r.status_code == 200
