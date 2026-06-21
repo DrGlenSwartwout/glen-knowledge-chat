@@ -168,7 +168,8 @@ _init_shortlink_cache()
 # ── Phase 4 — login (magic-link) infrastructure ─────────────────────────────
 import hashlib, hmac, secrets
 
-AUTH_TOKEN_TTL_MIN  = 15           # magic-link token validity window
+AUTH_TOKEN_TTL_MIN  = 1440         # magic-link token validity window (24 hours, so a delayed email check still works)
+AUTH_TOKEN_TTL_LABEL = "24 hours"  # human-readable form of AUTH_TOKEN_TTL_MIN for email/UI copy
 SESSION_TTL_DAYS    = 30           # session cookie validity
 PUBLIC_BASE_URL     = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
 GHL_MAGIC_WORKFLOW  = os.environ.get("GHL_MAGIC_LINK_WORKFLOW_ID", "")
@@ -246,7 +247,7 @@ def send_magic_link_email(to_email: str, name: str, magic_url: str) -> tuple:
     body = (
         f"Hi {name or 'there'},\n\n"
         f"Click the link below to sign in to Ask Dr. Glen. The link expires in "
-        f"{AUTH_TOKEN_TTL_MIN} minutes.\n\n"
+        f"{AUTH_TOKEN_TTL_LABEL}.\n\n"
         f"{magic_url}\n\n"
         f"If you didn't request this, you can ignore this email.\n\n"
         f"— Dr. Glen Swartwout\n"
@@ -254,7 +255,7 @@ def send_magic_link_email(to_email: str, name: str, magic_url: str) -> tuple:
     html_body = (
         f"<p>Hi {name or 'there'},</p>"
         f"<p>Click the link below to sign in to Ask Dr. Glen. The link expires in "
-        f"{AUTH_TOKEN_TTL_MIN} minutes.</p>"
+        f"{AUTH_TOKEN_TTL_LABEL}.</p>"
         f"<p><a href=\"{magic_url}\">Sign in to Ask Dr. Glen</a></p>"
         f"<p style=\"color:#666;font-size:12px;\">Or paste this URL into your browser: {magic_url}</p>"
         f"<p>If you didn't request this, you can ignore this email.</p>"
@@ -6723,7 +6724,7 @@ def _send_affiliate_magic_link(to_email: str, name: str, magic_url: str) -> tupl
     body = (
         f"Hi {name or 'there'},\n\n"
         f"Click the link below to access your affiliate portal. The link is "
-        f"single-use and expires in {AUTH_TOKEN_TTL_MIN} minutes.\n\n"
+        f"single-use and expires in {AUTH_TOKEN_TTL_LABEL}.\n\n"
         f"{magic_url}\n\n"
         f"If you didn't request this, you can ignore this email.\n\n"
         f"— Remedy Match Affiliate Team\n"
@@ -6731,7 +6732,7 @@ def _send_affiliate_magic_link(to_email: str, name: str, magic_url: str) -> tupl
     html_body = (
         f"<p>Hi {name or 'there'},</p>"
         f"<p>Click the link below to access your affiliate portal. The link is "
-        f"single-use and expires in {AUTH_TOKEN_TTL_MIN} minutes.</p>"
+        f"single-use and expires in {AUTH_TOKEN_TTL_LABEL}.</p>"
         f"<p><a href=\"{magic_url}\">Open my affiliate portal</a></p>"
         f"<p style=\"color:#666;font-size:12px;\">Or paste this URL into your browser: {magic_url}</p>"
         f"<p>If you didn't request this, you can ignore this email.</p>"
@@ -6987,7 +6988,7 @@ def affiliate_login_request():
 
     return _redir("/affiliate?info=" + _up.quote(
         f"If that email matches an approved affiliate, we just sent a sign-in link. "
-        f"Check your inbox — the link expires in {AUTH_TOKEN_TTL_MIN} minutes."
+        f"Check your inbox — the link expires in {AUTH_TOKEN_TTL_LABEL}."
     ))
 
 
