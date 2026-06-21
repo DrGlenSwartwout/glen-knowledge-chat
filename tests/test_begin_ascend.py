@@ -112,3 +112,76 @@ def test_recommend_endpoint_member_reaches_biofield(monkeypatch, tmp_path):
     # the only heal rung is reached, so the recommendation is the track top (still biofield-analysis).
     r = app_module.app.test_client().get("/begin/ascend/recommend?goal=heal")
     assert r.get_json()["recommended"]["slug"] == "biofield-analysis"
+
+
+def _seed_member(app_module, monkeypatch):
+    # ToS member (ordering gate) for the inquire path.
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
+    monkeypatch.setattr(app_module, "get_authenticated_user", lambda req: {"email": "t@x.com"})
+
+
+def test_inquire_flag_off(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "ASCEND_PERSONALIZED_ENABLED", False, raising=False)
+    r = app_module.app.test_client().post("/begin/ascend/inquire", json={"slug": "biofield-analysis", "goal": "heal"})
+    assert r.get_json().get("ok") is False
+
+
+def test_inquire_non_member_403(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "ASCEND_PERSONALIZED_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "get_authenticated_user", lambda req: {"email": "t@x.com"})
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": False)
+    r = app_module.app.test_client().post("/begin/ascend/inquire", json={"slug": "biofield-analysis", "goal": "heal"})
+    assert r.status_code == 403 and r.get_json().get("need_optin") is True
+
+
+def test_inquire_unknown_slug_400(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "ASCEND_PERSONALIZED_ENABLED", True, raising=False)
+    _seed_member(app_module, monkeypatch)
+    r = app_module.app.test_client().post("/begin/ascend/inquire", json={"slug": "not-a-tier", "goal": "heal"})
+    assert r.status_code == 400 and r.get_json().get("ok") is False
+
+
+def test_inquire_member_records_and_notifies(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "ASCEND_PERSONALIZED_ENABLED", True, raising=False)
+    _seed_member(app_module, monkeypatch)
+    calls = {"ghl": 0, "email": 0}
+    monkeypatch.setattr(app_module, "ghl_onboard_contact", lambda *a, **k: calls.__setitem__("ghl", calls["ghl"] + 1))
+    monkeypatch.setattr(app_module, "_send_inquiry_email", lambda *a, **k: calls.__setitem__("email", calls["email"] + 1) or True)
+    r = app_module.app.test_client().post("/begin/ascend/inquire", json={"slug": "certification", "goal": "learn", "note": "ready"})
+    assert r.get_json() == {"ok": True}
+    with sqlite3.connect(db) as cx:
+        rows = cx.execute("SELECT email, slug, goal, note FROM ascend_inquiries").fetchall()
+    assert rows == [("t@x.com", "certification", "learn", "ready")]
+    assert calls["ghl"] == 1 and calls["email"] == 1
+
+
+def test_inquire_best_effort_email_failure_still_ok(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "ASCEND_PERSONALIZED_ENABLED", True, raising=False)
+    _seed_member(app_module, monkeypatch)
+    def _boom(*a, **k):
+        raise RuntimeError("smtp down")
+    monkeypatch.setattr(app_module, "ghl_onboard_contact", _boom)
+    monkeypatch.setattr(app_module, "_send_inquiry_email", _boom)
+    r = app_module.app.test_client().post("/begin/ascend/inquire", json={"slug": "biofield-analysis", "goal": "heal"})
+    assert r.get_json() == {"ok": True}  # row written despite GHL/email failure
+    with sqlite3.connect(db) as cx:
+        assert cx.execute("SELECT COUNT(*) FROM ascend_inquiries").fetchone()[0] == 1
+
+
+def test_inquire_idempotent_per_email_slug(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "ASCEND_PERSONALIZED_ENABLED", True, raising=False)
+    _seed_member(app_module, monkeypatch)
+    monkeypatch.setattr(app_module, "ghl_onboard_contact", lambda *a, **k: None)
+    monkeypatch.setattr(app_module, "_send_inquiry_email", lambda *a, **k: True)
+    c = app_module.app.test_client()
+    c.post("/begin/ascend/inquire", json={"slug": "certification", "goal": "learn", "note": "first"})
+    c.post("/begin/ascend/inquire", json={"slug": "certification", "goal": "build", "note": "second"})
+    with sqlite3.connect(db) as cx:
+        rows = cx.execute("SELECT goal, note FROM ascend_inquiries WHERE email='t@x.com' AND slug='certification'").fetchall()
+    assert rows == [("build", "second")]  # single row, updated

@@ -1456,6 +1456,69 @@ def begin_ascend_recommend():
                         "is_member": False})
 
 
+def _init_ascend_inquiries(cx):
+    cx.execute(
+        "CREATE TABLE IF NOT EXISTS ascend_inquiries "
+        "(email TEXT, slug TEXT, goal TEXT, note TEXT, created_at TEXT, "
+        "PRIMARY KEY(email, slug))")
+
+
+@app.route("/begin/ascend/inquire", methods=["POST"])
+def begin_ascend_inquire():
+    """Record a consultation inquiry for a high-ticket rung (capture-and-notify).
+    Member-gated; not a charge. Best-effort GHL tag + Glen email; never 500s."""
+    if not ASCEND_PERSONALIZED_ENABLED:
+        return jsonify({"ok": False}), 200
+    try:
+        body = request.get_json(silent=True) or {}
+        slug = (body.get("slug") or "").strip()
+        if slug not in begin_funnel.TIER_CATALOG:
+            return jsonify({"ok": False, "error": "unknown tier"}), 400
+        goal = (body.get("goal") or "").strip().lower()
+        note = (body.get("note") or "").strip()[:2000]
+        session_id = (request.cookies.get("amg_session") or "").strip()
+        auth_user = get_authenticated_user(request)
+        auth_email = ((auth_user["email"] if auth_user else "") or "").strip().lower()
+        # Resolve the email from the one record: prefer the authenticated email,
+        # else the journey state (a session-only ToS member still has an email).
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            state = begin_funnel.get_state(cx, session_id=session_id, email=auth_email)
+        email = (auth_email or (state.get("email") or "")).strip().lower()
+        if not is_member(session_id, email):
+            return jsonify({"ok": False, "need_optin": True,
+                            "error": "Please agree to our Terms to request a consultation."}), 403
+        # Record the inquiry (one record per email+rung).
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _init_ascend_inquiries(cx)
+            cx.execute(
+                "INSERT INTO ascend_inquiries (email, slug, goal, note, created_at) VALUES (?,?,?,?,?) "
+                "ON CONFLICT(email, slug) DO UPDATE SET goal=excluded.goal, note=excluded.note, created_at=excluded.created_at",
+                (email, slug, goal, note, datetime.utcnow().isoformat() + "Z"))
+            cx.commit()
+        tier = begin_funnel.TIER_CATALOG.get(slug) or {}
+        # Best-effort GHL tag.
+        try:
+            ghl_onboard_contact(email, source_tag="ascend", extra_tags=[f"ascend:inquiry:{slug}"])
+        except Exception as _ge:
+            print(f"[ascend-inquire] ghl {_ge!r}", flush=True)
+        # Best-effort Glen notification.
+        try:
+            to = os.environ.get("ASCEND_NOTIFY_EMAIL", "drglenswartwout@gmail.com")
+            subject = f"Ascend inquiry: {tier.get('title', slug)} ({email})"
+            note_line = f"\nNote: {note}" if note else ""
+            _send_inquiry_email(to, subject,
+                f"{email} requested a consultation.\nRung: {tier.get('title', slug)} ({tier.get('price', '')})\nGoal: {goal or '-'}{note_line}",
+                reply_to=email)
+        except Exception as _ee:
+            print(f"[ascend-inquire] email {_ee!r}", flush=True)
+        # One-record gate (idempotent, wrapped inside the helper).
+        _record_entry_unlock("ascend", email)
+        return jsonify({"ok": True})
+    except Exception as e:
+        app.logger.exception("ascend inquire failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
 @app.route("/begin/path")
 def begin_path():
     resp = send_from_directory(STATIC, "begin-path.html")
