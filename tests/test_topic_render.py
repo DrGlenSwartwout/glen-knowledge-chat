@@ -65,6 +65,42 @@ def test_render_escapes_section_text():
     assert "&lt;script&gt;" in html
 
 
+def test_approved_render_has_site_chrome():
+    """Styled to match the site: brandbar, house fonts, gold CTA button, footer disclaimer."""
+    tr = _mod()
+    html = tr.render_page_html(_approved_page(), base_url="https://x.test")
+    assert "brand-name" in html          # brandbar present
+    assert "Open+Sans" in html           # house font link
+    assert "cta-btn" in html             # styled gold CTA
+    assert "not a substitute for diagnosis" in html  # footer disclaimer
+
+
+def test_pending_render_has_site_chrome_and_noindex():
+    tr = _mod()
+    html = tr.render_pending_html("low-energy", "Low Energy")
+    assert "brand-name" in html
+    assert 'name="robots" content="noindex"' in html
+    assert "not a substitute for diagnosis" in html
+
+
+def test_index_render_styles_and_links_topics():
+    tr = _mod()
+    html = tr.render_index_html([{"slug": "low-energy", "name": "Low Energy"},
+                                 {"slug": "detox", "name": "Detox"}])
+    assert "brand-name" in html              # styled chrome
+    assert "Open+Sans" in html
+    assert '/learn/low-energy' in html
+    assert "Low Energy" in html
+    assert "Detox" in html
+
+
+def test_index_render_escapes_topic_name():
+    tr = _mod()
+    html = tr.render_index_html([{"slug": "x", "name": "<script>alert(1)</script>"}])
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
 def test_jsonld_neutralizes_script_breakout():
     tr = _mod()
     page = _approved_page()

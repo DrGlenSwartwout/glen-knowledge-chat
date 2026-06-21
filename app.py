@@ -4017,20 +4017,12 @@ def learn_topic_request(slug):
 
 @app.route("/learn")
 def learn_index():
-    from dashboard import topic_pages as _tp
+    from dashboard import topic_pages as _tp, topic_render as _tr
     if not TOPIC_PAGES_ENABLED:
         return ("Not found", 404)
-    import html as _html
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         rows = [r for r in _tp.list_pages(cx) if r["state"] == "approved"]
-    items = "".join(
-        f'<li><a href="/learn/{_html.escape(r["slug"], quote=True)}">'
-        f'{_html.escape(r["name"])}</a></li>' for r in rows
-    )
-    html_doc = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
-                "<title>Learn</title></head><body><main><h1>Wellness Topics</h1>"
-                f"<ul>{items}</ul></main></body></html>")
-    return Response(html_doc, mimetype="text/html")
+    return Response(_tr.render_index_html(rows), mimetype="text/html")
 
 
 @app.route("/learn/sitemap.xml")
