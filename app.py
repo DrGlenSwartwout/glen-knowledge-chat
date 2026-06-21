@@ -8031,10 +8031,12 @@ def console_biofield_portal_page():
 
 def _sales_console_ok():
     """Phase-5 console gate. Returns None if authorized, else a 401 (response, status).
-    Gates on the module-level CONSOLE_SECRET so monkeypatching it in tests works correctly."""
-    if CONSOLE_SECRET:
+    Gates on dashboard.CONSOLE_SECRET -- the SAME secret the /api/action write path uses
+    (via _bos_actor), so the read endpoints and write actions share one secret source."""
+    import dashboard as _dashboard
+    if _dashboard.CONSOLE_SECRET:
         _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if _key != CONSOLE_SECRET:
+        if _key != _dashboard.CONSOLE_SECRET:
             return jsonify({"error": "Unauthorized"}), 401
     return None
 
@@ -8198,9 +8200,10 @@ def console_biofield_reveals_page():
 @app.route("/api/console/remedy-meanings", methods=["GET"])
 def api_console_remedy_meanings():
     """Return one row per catalog product joined with stored canonical meanings."""
-    bad = _sales_console_ok()
-    if bad:
-        return bad
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
     from dashboard import biofield_meanings as _bm
     with sqlite3.connect(LOG_DB) as cx:
         _bm.init_table(cx)
@@ -8223,9 +8226,10 @@ def api_console_remedy_meanings():
 @app.route("/console/remedy-meanings", methods=["GET"])
 def console_remedy_meanings_page():
     """Serve the canonical remedy meanings curation console page."""
-    bad = _sales_console_ok()
-    if bad:
-        return bad
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
     resp = send_from_directory(STATIC, "console-remedy-meanings.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
