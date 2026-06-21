@@ -154,3 +154,45 @@ def test_ingest_applies_canonical_override(monkeypatch, tmp_path):
     with sqlite3.connect(db) as cx:
         row = br.list_pending(cx)[0]
     assert row["remedies"][0]["meaning"] == "CANONICAL MEANING"
+
+
+def _seed_reveal(br, db):
+    with sqlite3.connect(db) as cx:
+        rid, _ = br.upsert(cx, "a@b.com", "2026-06-20", {"body": "x"},
+                           [{"name": "Top", "slug": "top", "meaning": "old"}], "s")
+    return rid
+
+
+def test_edit_remember_default_promotes(tmp_path):
+    bra = _load("dashboard.biofield_reveal_actions")
+    br = _load("dashboard.biofield_reveals")
+    bm = _load("dashboard.biofield_meanings")
+    db = str(tmp_path / "r.db")
+    with sqlite3.connect(db) as cx:
+        br.init_table(cx); bm.init_table(cx)
+    rid = _seed_reveal(br, db)
+    with sqlite3.connect(db) as cx:
+        bra._exec_edit({"id": rid, "remedies": [{"name": "Top", "slug": "top", "meaning": "NEW MEANING"}]},
+                       {"cx": cx, "actor": None})
+        canon = bm.get_map(cx)
+        row = br.get(cx, rid)
+    assert canon.get("top") == "NEW MEANING"           # promoted (remember defaults on)
+    assert row["remedies"][0]["meaning"] == "NEW MEANING"  # reveal row updated
+    assert "remember" not in row["remedies"][0]         # remember stripped from stored remedy
+
+
+def test_edit_remember_false_skips_canonical(tmp_path):
+    bra = _load("dashboard.biofield_reveal_actions")
+    br = _load("dashboard.biofield_reveals")
+    bm = _load("dashboard.biofield_meanings")
+    db = str(tmp_path / "r.db")
+    with sqlite3.connect(db) as cx:
+        br.init_table(cx); bm.init_table(cx)
+    rid = _seed_reveal(br, db)
+    with sqlite3.connect(db) as cx:
+        bra._exec_edit({"id": rid, "remedies": [{"name": "Top", "slug": "top", "meaning": "ONE TIME", "remember": False}]},
+                       {"cx": cx, "actor": None})
+        canon = bm.get_map(cx)
+        row = br.get(cx, rid)
+    assert "top" not in canon                            # NOT promoted
+    assert row["remedies"][0]["meaning"] == "ONE TIME"   # reveal row still updated
