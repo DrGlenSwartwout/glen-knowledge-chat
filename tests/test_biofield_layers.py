@@ -109,6 +109,23 @@ def test_ingest_stores_layers_and_derives_remedies(monkeypatch, tmp_path):
     assert [rr["slug"] for rr in row["remedies"]] == [real]      # derived flat remedies = surviving layer remedies
 
 
+def test_ingest_preserves_pattern_labels(monkeypatch, tmp_path):
+    """The ingest must carry pattern_labels through (console stress-factor display)."""
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    key = _key(app_module)
+    if not key: pytest.skip("no secret")
+    layers = [{"n": 1, "title": "L1", "summary": "s", "patterns": ["ER26", "MB1"],
+               "pattern_labels": ["Adrenal Rejuvenator", "Brain Stem"], "remedy": None}]
+    r = _push(app_module, {"email": "lab@b.com", "scan_date": "2026-06-22",
+                           "interpretation": {"body": "x"}, "layers": layers}, key)
+    assert r.get_json().get("ok") is True
+    from dashboard import biofield_reveals as br
+    with sqlite3.connect(db) as cx:
+        row = br.list_pending(cx)[0]
+    assert row["layers"][0]["pattern_labels"] == ["Adrenal Rejuvenator", "Brain Stem"]
+    assert row["layers"][0]["patterns"] == ["ER26", "MB1"]
+
+
 def test_ingest_remedies_only_wraps_into_layers(monkeypatch, tmp_path):
     app_module, db = _app_db(monkeypatch, tmp_path)
     key = _key(app_module)
