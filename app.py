@@ -1676,6 +1676,44 @@ def begin_biofield_order_preview(token):
         return jsonify({"ok": False}), 200
 
 
+@app.route("/begin/biofield/<token>/order-checkout", methods=["POST"])
+def begin_biofield_order_checkout(token):
+    """Check out the member's matched-set cart in one Stripe session (kind=reorder)."""
+    if not BIOFIELD_CART_ENABLED:
+        return jsonify({"ok": False}), 200
+    try:
+        th = _hash_token((token or "").strip())
+        valid, row = _biofield_verify_token(th)
+        if not valid or row is None:
+            return jsonify({"ok": False, "error": "invalid"}), 404
+        email = (row.get("email") or "").strip().lower()
+        _sid = (request.cookies.get("amg_session") or "").strip()
+        if not is_member(_sid, email):
+            return jsonify({"ok": False, "need_optin": True,
+                            "error": "Please agree to our Terms to continue your order."}), 403
+        body = request.get_json(silent=True) or {}
+        visible = set(_biofield_visible_slugs(row, email))
+        items = []
+        for it in (body.get("items") or []):
+            s = (it.get("slug") or "").strip()
+            if s and s in visible:
+                items.append({"slug": s, "qty": max(1, min(int(it.get("qty") or 1), 99))})
+        if not items:
+            return jsonify({"ok": False,
+                            "error": "Your cart is empty or those items are no longer available."}), 400
+        ship = _resolve_ship_address(email, body.get("address") or {})
+        try:
+            res = _checkout_cart(email, items, ship=ship)
+        except CheckoutError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        out, stripe_url = res["out"], res["stripe_url"]
+        _pe = {"payment_error": _CARD_UNAVAILABLE} if (_STRIPE_ACTIVE and not stripe_url) else {}
+        return jsonify({"ok": True, "stripe_url": stripe_url, **out, **_pe})
+    except Exception as e:
+        app.logger.exception("biofield order checkout failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
 @app.route("/begin/biofield/<token>/unlock-checkout", methods=["POST"])
 def begin_biofield_unlock_checkout(token):
     if not (BIOFIELD_TRIAL_ENABLED and _STRIPE_ACTIVE):

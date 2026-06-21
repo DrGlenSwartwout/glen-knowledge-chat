@@ -192,3 +192,54 @@ def test_preview_bad_token_404(monkeypatch, tmp_path):
     monkeypatch.setattr(app_module, "BIOFIELD_CART_ENABLED", True, raising=False)
     r = app_module.app.test_client().post("/begin/biofield/nope/order-preview", json={"items": []})
     assert r.status_code == 404 and r.get_json().get("ok") is False
+
+
+def test_checkout_flag_off(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "BIOFIELD_CART_ENABLED", False, raising=False)
+    token = _approved_reveal(app_module, db)
+    r = app_module.app.test_client().post(f"/begin/biofield/{token}/order-checkout", json={"items": [{"slug": "top", "qty": 1}]})
+    assert r.get_json().get("ok") is False
+
+
+def test_checkout_non_member_403(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "BIOFIELD_CART_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: {"ok": True})
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": False)
+    token = _approved_reveal(app_module, db)
+    r = app_module.app.test_client().post(f"/begin/biofield/{token}/order-checkout", json={"items": [{"slug": "top", "qty": 1}]})
+    assert r.status_code == 403 and r.get_json().get("need_optin") is True
+
+
+def test_checkout_empty_cart_400(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "BIOFIELD_CART_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: None)  # free -> nothing visible
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
+    token = _approved_reveal(app_module, db)
+    # 'deep1' is not visible to a free member -> filtered out -> empty -> 400
+    r = app_module.app.test_client().post(f"/begin/biofield/{token}/order-checkout", json={"items": [{"slug": "deep1", "qty": 1}]})
+    assert r.status_code == 400 and r.get_json().get("ok") is False
+
+
+def test_checkout_member_returns_stripe_url(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "BIOFIELD_CART_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "_STRIPE_ACTIVE", True, raising=False)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: {"ok": True})  # paid -> all visible
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
+    passed = {}
+    def _fake_checkout(email, cart, *, ship, **kw):
+        passed["cart"] = cart
+        return {"out": {"invoice_id": "INV9", "doc_number": "9", "customer_id": "C9", "total": 120.0},
+                "stripe_url": "https://stripe.test/checkout"}
+    monkeypatch.setattr(app_module, "_checkout_cart", _fake_checkout)
+    token = _approved_reveal(app_module, db)
+    r = app_module.app.test_client().post(f"/begin/biofield/{token}/order-checkout",
+        json={"items": [{"slug": "top", "qty": 2}, {"slug": "deep1", "qty": 1}, {"slug": "evil", "qty": 9}]})
+    body = r.get_json()
+    assert body["ok"] is True and body["stripe_url"] == "https://stripe.test/checkout"
+    assert body["invoice_id"] == "INV9"
+    # 'evil' is not in the matched set -> dropped; visible slugs only.
+    assert {c["slug"] for c in passed["cart"]} == {"top", "deep1"}
