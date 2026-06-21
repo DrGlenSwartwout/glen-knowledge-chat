@@ -240,6 +240,19 @@ def test_console_page_ships_layer_editor(monkeypatch, tmp_path):
     assert "layer-title-field" in html and "Approved" in html and "collectLayers" in html
 
 
+def test_nonpaid_layered_page_has_free_reveal_and_trial_cta(monkeypatch, tmp_path):
+    """Regression for Critical finding: layered non-paid render must include the
+    free-reveal trigger and the $1 trial CTA so the live-money path is reachable."""
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: None)  # not paid
+    monkeypatch.setattr(app_module, "BIOFIELD_TRIAL_ENABLED", True, raising=False)
+    token = _seed_approved_layers(app_module, db)
+    html = app_module.app.test_client().get(f"/begin/biofield/{token}").get_data(as_text=True)
+    assert "reveal-top" in html, "free-reveal endpoint must appear in non-paid layered page"
+    assert "unlock-checkout" in html, "$1 trial CTA must appear in non-paid layered page"
+
+
 def test_console_endpoint_returns_approved(monkeypatch, tmp_path):
     """GET /api/console/biofield-reveals must return both drafts and approved keys."""
     app_module, db = _app_db(monkeypatch, tmp_path)

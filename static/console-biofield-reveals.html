@@ -284,15 +284,15 @@ function buildCard(d){
 
   wrap.appendChild(remediesContainer);
 
-  // Dropped notice
-  var dropped = d.dropped || '';
-  if(dropped){
+  // Dropped notice (d.dropped is a JSON list, not a string)
+  var dropped = Array.isArray(d.dropped) ? d.dropped : [];
+  if(dropped.length){
     var droppedNote = document.createElement('div');
     droppedNote.className = 'dropped-note';
     var droppedPrefix = document.createTextNode('Dropped (not in catalog): ');
     droppedNote.appendChild(droppedPrefix);
     var droppedSpan = document.createElement('span');
-    droppedSpan.textContent = dropped;
+    droppedSpan.textContent = dropped.join(', ');
     droppedNote.appendChild(droppedSpan);
     wrap.appendChild(droppedNote);
   }

@@ -528,8 +528,16 @@
         }
       }
 
-      // -- Layered reveal: when data.layers present, render titled layers and skip flat remedy blocks --
+      // -- Decide how to render the remedy area:
+      //    (a) layered: titled stress-pattern layers
+      //    (b) paid flat: all remedies visible
+      //    (c) non-paid flat: top-remedy card + blurred section
+      //    The non-paid monetisation UI (free-reveal btn, $1 CTA) runs for BOTH
+      //    the layered and non-paid-flat paths, guarded by !data.paid.
+      // --
+
       if (data.layers && data.layers.length) {
+        // -- (a) Layered reveal: titled layers, remedy visible only when unlocked --
         var layersCard = document.createElement("div");
         layersCard.className = "card";
         var layersLabel = document.createElement("div");
@@ -539,8 +547,8 @@
         renderLayers(layersCard, data);
         root.appendChild(layersCard);
 
-      // -- PAID: render all remedies (top + deep), no blurred section, no CTA --
       } else if (data.paid) {
+        // -- (b) PAID flat: render all remedies, no blurred section, no CTA --
         var remedies = data.remedies || [];
         var allRemedyCard = document.createElement("div");
         allRemedyCard.className = "card";
@@ -562,7 +570,7 @@
         root.appendChild(allRemedyCard);
 
       } else {
-        // -- NOT PAID: top remedy area + blurred section + CTA --
+        // -- (c) NOT PAID flat: top remedy card + blurred depth block --
         var remedyCard = document.createElement("div");
         remedyCard.className = "card";
 
@@ -576,49 +584,10 @@
           renderRemedyInto(remedyCard, data.top);
 
         } else if (data.free_available) {
-          // Show the free-reveal button
-          var freeBtn = document.createElement("button");
-          freeBtn.className = "free-reveal-btn";
-          freeBtn.textContent = "Reveal my top match (free)";
-          remedyCard.appendChild(freeBtn);
-
-          var freeMsg = document.createElement("p");
-          freeMsg.className = "free-reveal-msg";
-          remedyCard.appendChild(freeMsg);
-
-          freeBtn.addEventListener("click", function () {
-            freeBtn.disabled = true;
-            freeMsg.textContent = "Loading...";
-            fetch("/begin/biofield/" + _token + "/reveal-top", {
-              method: "POST",
-              credentials: "same-origin"
-            }).then(function (res) { return res.json(); }).then(function (body) {
-              if (body.ok && body.top) {
-                // Remove the button + msg and render the revealed remedy
-                freeBtn.remove();
-                freeMsg.remove();
-                renderRemedyInto(remedyCard, body.top);
-              } else {
-                var reason = body.reason || "";
-                if (reason === "used") {
-                  freeMsg.textContent = "You have already used your free reveal - unlock your full analysis below.";
-                } else if (reason === "pending") {
-                  freeMsg.textContent = "Your top match is being finalized.";
-                } else if (reason === "tos") {
-                  location.reload();
-                } else {
-                  freeMsg.textContent = "Something went wrong. Please try again.";
-                  freeBtn.disabled = false;
-                }
-              }
-            }).catch(function () {
-              freeMsg.textContent = "Something went wrong. Please try again.";
-              freeBtn.disabled = false;
-            });
-          });
+          // Free-reveal button rendered below (shared with layered path)
 
         } else if (data.first_approved) {
-          // Free already used -- show unlock CTA (active or stub depending on trial_enabled)
+          // Free already used -- prompt to unlock
           var usedMsg = document.createElement("p");
           usedMsg.style.color = "var(--muted)";
           usedMsg.style.fontSize = "15px";
@@ -637,7 +606,7 @@
 
         root.appendChild(remedyCard);
 
-        // -- Blurred depth block (non-paid members) --
+        // -- Blurred depth block (non-paid flat only) --
         var blurredCount = data.blurred_count || 0;
         if (blurredCount > 0) {
           var blurSection = document.createElement("div");
@@ -670,6 +639,65 @@
           blurSection.appendChild(stack);
           root.appendChild(blurSection);
         }
+      }
+
+      // -- Non-paid affordances: free-reveal button + $1 trial CTA.
+      //    Runs for BOTH layered (!data.paid) and non-paid-flat paths.
+      //    Skipped entirely when data.paid (paid flat path handles its own display above). --
+      if (!data.paid) {
+        // Free-reveal button (layered: reloads page so layer 0 remedy then shows;
+        //                     flat: removes btn and renders remedy inline)
+        if (data.free_available) {
+          var freeCard = document.createElement("div");
+          freeCard.className = "card";
+
+          var freeBtn = document.createElement("button");
+          freeBtn.className = "free-reveal-btn";
+          freeBtn.textContent = "Reveal my top match (free)";
+          freeCard.appendChild(freeBtn);
+
+          var freeMsg = document.createElement("p");
+          freeMsg.className = "free-reveal-msg";
+          freeCard.appendChild(freeMsg);
+
+          root.appendChild(freeCard);
+
+          freeBtn.addEventListener("click", function () {
+            freeBtn.disabled = true;
+            freeMsg.textContent = "Loading...";
+            fetch("/begin/biofield/" + _token + "/reveal-top", {
+              method: "POST",
+              credentials: "same-origin"
+            }).then(function (res) { return res.json(); }).then(function (body) {
+              if (body.ok && body.top) {
+                // For layered reveals, reload so layer 0 remedy un-blurs server-side.
+                // For flat reveals (legacy), render inline as before.
+                if (data.layers && data.layers.length) {
+                  location.reload();
+                } else {
+                  freeBtn.remove();
+                  freeMsg.remove();
+                  renderRemedyInto(freeCard, body.top);
+                }
+              } else {
+                var reason = body.reason || "";
+                if (reason === "used") {
+                  freeMsg.textContent = "You have already used your free reveal - unlock your full analysis below.";
+                } else if (reason === "pending") {
+                  freeMsg.textContent = "Your top match is being finalized.";
+                } else if (reason === "tos") {
+                  location.reload();
+                } else {
+                  freeMsg.textContent = "Something went wrong. Please try again.";
+                  freeBtn.disabled = false;
+                }
+              }
+            }).catch(function () {
+              freeMsg.textContent = "Something went wrong. Please try again.";
+              freeBtn.disabled = false;
+            });
+          });
+        }
 
         // -- Full-analysis CTA (active $1 or disabled stub) --
         var ctaSection = document.createElement("div");
@@ -679,6 +707,7 @@
           // Active $1 unlock button
           var unlockBtn = document.createElement("button");
           unlockBtn.className = "buy-btn";
+          unlockBtn.id = "unlock-checkout";
           unlockBtn.textContent = "Unlock your full analysis ($1)";
           ctaSection.appendChild(unlockBtn);
 
