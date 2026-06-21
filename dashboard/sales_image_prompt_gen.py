@@ -98,3 +98,27 @@ def topup(cx, *, threshold=2, generate=None):
             generate(cx, kind, threshold - bench)
             done[kind] = True
     return done
+
+def _esc(s):
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;"))
+
+def review_console_html(cx):
+    from dashboard import sales_prompt_variations as _pv, sales_image_prompts as _sip
+    parts = ["<h2>Prompt candidates (review)</h2>"]
+    for kind in _sip.IMAGE_KINDS:
+        parts.append(f"<h3>{_esc(kind)} "
+                     f"<button onclick=\"pg('generate',{{kind:'{_esc(kind)}',n:2}})\">Generate 2</button></h3>")
+        revs = _pv.review_variations(cx, kind)
+        if not revs:
+            parts.append("<p>(none in review)</p>")
+        for v in revs:
+            tid = f"pg{v['id']}"
+            parts.append(
+                f"<div class='pg-rev'><textarea id='{tid}' rows='2' cols='80'>{_esc(v['prompt_template'])}</textarea><br>"
+                f"<button onclick=\"pg('review',{{id:{v['id']},decision:'approve',prompt_template:document.getElementById('{tid}').value}})\">Approve</button> "
+                f"<button onclick=\"pg('review',{{id:{v['id']},decision:'edit',prompt_template:document.getElementById('{tid}').value}})\">Save edit</button> "
+                f"<button onclick=\"pg('review',{{id:{v['id']},decision:'reject'}})\">Reject</button></div>")
+    parts.append("<script>function pg(op,body){fetch('/console/image-prompts/'+op,{method:'POST',"
+                 "headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})"
+                 ".then(function(){location.reload();});}</script>")
+    return "".join(parts)

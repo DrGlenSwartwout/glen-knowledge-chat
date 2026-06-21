@@ -63,3 +63,10 @@ def test_topup_only_when_bench_low():
     calls.clear()
     gen.topup(cx, threshold=2, generate=fakegen)
     assert "botanical" not in {k for k, _ in calls}
+
+def test_review_console_html_lists_and_has_buttons():
+    cx = _cx()
+    pv.insert_variation(cx, "botanical", "x", "a reviewable herb scene")
+    html = gen.review_console_html(cx)
+    assert "a reviewable herb scene" in html
+    assert "Generate" in html and "Approve" in html and "Reject" in html
