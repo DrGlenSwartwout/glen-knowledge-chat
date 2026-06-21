@@ -1,6 +1,8 @@
 """Studio-credit free month: claim store + approve/reject with a one-per-year
-guard. Phase 1 = console side only (no public claim form). The grant+notify side
-effect is injected at approve time so this module stays Flask-free and unit-testable."""
+guard. Claims arrive from the console (manual entry) or the public self-serve form
+(upsert_self_serve_claim, source='self_serve'); both flow to the same console
+approval queue. The grant+notify side effect is injected at approve time so this
+module stays Flask-free and unit-testable."""
 import sqlite3
 import uuid
 from datetime import datetime, timedelta
