@@ -1,0 +1,12 @@
+{
+  "can't focus": "brain-fog",
+  "cant focus": "brain-fog",
+  "foggy": "brain-fog",
+  "trouble sleeping": "poor-sleep",
+  "can't sleep": "poor-sleep",
+  "exhausted": "low-energy",
+  "tired all the time": "low-energy",
+  "stressed out": "everyday-stress",
+  "bloated": "digestive-discomfort",
+  "achy joints": "joint-discomfort"
+}
