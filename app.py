@@ -8097,12 +8097,15 @@ def console_image_leaderboard():
     with sqlite3.connect(LOG_DB) as cx:
         data = _lb.leaderboard(cx)
         _evo_html = ""
+        _pg_html = ""
         if _SALES_IMAGE_EVOLUTION_ENABLED:
             from dashboard import sales_image_evolution as _ev
+            from dashboard import sales_image_prompt_gen as _pg
             _evo_html = _ev.console_section_html(cx)
+            _pg_html = _pg.review_console_html(cx)
     if request.args.get("format") == "json":
         return jsonify(data)
-    return Response(_lb.render_html(data) + _evo_html, mimetype="text/html")
+    return Response(_lb.render_html(data) + _evo_html + _pg_html, mimetype="text/html")
 
 
 @app.route("/console/image-evolution/decide", methods=["POST"])
@@ -8145,6 +8148,40 @@ def console_image_evolution_undo():
     from dashboard import sales_image_evolution as _ev
     with sqlite3.connect(LOG_DB) as cx:
         res = _ev.undo(cx, d.get("log_id"), actor="console")
+    return jsonify(res)
+
+
+@app.route("/console/image-prompts/generate", methods=["POST"])
+def console_image_prompts_generate():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return jsonify({"ok": False, "error": "evolution disabled"}), 400
+    d = request.get_json(silent=True) or {}
+    kind = (d.get("kind") or "").strip()
+    try:
+        n = int(d.get("n") or 2)
+    except (TypeError, ValueError):
+        n = 2
+    from dashboard import sales_image_prompt_gen as _pg
+    with sqlite3.connect(LOG_DB) as cx:
+        out = _pg.generate_candidates(cx, kind, n)
+    return jsonify({"ok": True, "count": len(out)})
+
+
+@app.route("/console/image-prompts/review", methods=["POST"])
+def console_image_prompts_review():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return jsonify({"ok": False, "error": "evolution disabled"}), 400
+    d = request.get_json(silent=True) or {}
+    from dashboard import sales_image_prompt_gen as _pg
+    with sqlite3.connect(LOG_DB) as cx:
+        res = _pg.review_action(cx, d.get("id"), (d.get("decision") or "").strip(),
+                                prompt_template=d.get("prompt_template"))
     return jsonify(res)
 
 
@@ -16959,6 +16996,17 @@ def _run_image_evolution():
         print(f"[sales-img] evolution propose failed: {e}", flush=True)
 
 
+def _run_prompt_topup():
+    if not _SALES_IMAGE_EVOLUTION_ENABLED:
+        return
+    from dashboard import sales_image_prompt_gen as _pg
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            _pg.topup(cx)
+    except Exception as e:
+        print(f"[sales-img] prompt topup failed: {e}", flush=True)
+
+
 def _run_cron():
     """Run the console push logic in-process on Render (no Mac needed)."""
     import importlib.util, sys as _sys, tempfile, base64 as _b64
@@ -17028,6 +17076,7 @@ def _start_scheduler():
         scheduler.add_job(_drain_review_videos, "interval", minutes=1, id="review_videos")
         scheduler.add_job(_run_image_tournament, "interval", hours=24, id="sales_image_tournament")
         scheduler.add_job(_run_image_evolution, "interval", hours=24, id="sales_image_evolution")
+        scheduler.add_job(_run_prompt_topup, "interval", hours=24, id="sales_image_prompt_topup")
         scheduler.start()
         print("[CRON] Scheduler started — hourly push + daily biofield-bonuses active")
     except Exception as e:
