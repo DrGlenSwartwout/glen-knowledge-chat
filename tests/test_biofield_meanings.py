@@ -80,3 +80,17 @@ def test_propose_meaning_never_raises():
     bm = _load("dashboard.biofield_meanings")
     assert bm.propose_meaning({"name": "X"}, _FakeClient(raises=True)) == ""
     assert bm.propose_meaning({"name": "X"}, None) == ""
+
+
+def test_reveal_dropped_column(tmp_path):
+    br = _load("dashboard.biofield_reveals")
+    db = str(tmp_path / "r.db")
+    with sqlite3.connect(db) as cx:
+        br.init_table(cx)
+        br.init_table(cx)  # idempotent (no error on the ALTER second time)
+        rid, is_new = br.upsert(cx, "a@b.com", "2026-06-20", {"body": "x"},
+                                [{"name": "Top", "slug": "top"}], "s")
+        assert is_new
+        br.set_dropped(cx, rid, ["Mineral Binder", "Made Up"])
+        row = br.get(cx, rid)
+    assert row["dropped"] == ["Mineral Binder", "Made Up"]
