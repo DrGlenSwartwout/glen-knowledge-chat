@@ -7946,9 +7946,13 @@ def console_image_leaderboard():
     from dashboard import sales_image_leaderboard as _lb
     with sqlite3.connect(LOG_DB) as cx:
         data = _lb.leaderboard(cx)
+        _evo_html = ""
+        if _SALES_IMAGE_EVOLUTION_ENABLED:
+            from dashboard import sales_image_evolution as _ev
+            _evo_html = _ev.console_section_html(cx)
     if request.args.get("format") == "json":
         return jsonify(data)
-    return Response(_lb.render_html(data), mimetype="text/html")
+    return Response(_lb.render_html(data) + _evo_html, mimetype="text/html")
 
 
 @app.route("/console/image-evolution/decide", methods=["POST"])
