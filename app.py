@@ -20273,6 +20273,11 @@ _bra.register()
 from dashboard import reviews_actions as _ra
 _ra.register()
 
+# ── Canonical remedy meanings console actions ────────────────────────────────
+from dashboard import remedy_meaning_actions as _rma
+_rma.configure(client=_cl, products=(_PRODUCTS.get("products") or {}))
+_rma.register()
+
 
 # ── In-house order entry (Phase 1: proposed invoice) — OWNER only ───────────────
 @app.route("/api/customers/search", methods=["GET"])

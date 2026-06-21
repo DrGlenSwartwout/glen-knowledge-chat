@@ -196,3 +196,35 @@ def test_edit_remember_false_skips_canonical(tmp_path):
         row = br.get(cx, rid)
     assert "top" not in canon                            # NOT promoted
     assert row["remedies"][0]["meaning"] == "ONE TIME"   # reveal row still updated
+
+
+def test_actions_save_delete_propose(tmp_path):
+    rma = _load("dashboard.remedy_meaning_actions")
+    bm = _load("dashboard.biofield_meanings")
+    db = str(tmp_path / "a.db")
+    with sqlite3.connect(db) as cx:
+        bm.init_table(cx)
+    rma.configure(client=_FakeClient("AI MEANING."),
+                  products={"nous-energy": {"name": "Nous Energy", "benefits": ["energy"]}})
+    with sqlite3.connect(db) as cx:
+        rma._exec_save({"slug": "nous-energy", "meaning": "Glen text."}, {"cx": cx, "actor": None})
+        assert bm.get_map(cx)["nous-energy"] == "Glen text."
+        rma._exec_propose({"slug": "nous-energy"}, {"cx": cx, "actor": None})
+        assert bm.get_map(cx)["nous-energy"] == "AI MEANING."  # propose overwrites with ai text
+        rma._exec_delete({"slug": "nous-energy"}, {"cx": cx, "actor": None})
+        assert bm.get_map(cx) == {}
+
+
+def test_action_propose_all_fills_missing(tmp_path):
+    rma = _load("dashboard.remedy_meaning_actions")
+    bm = _load("dashboard.biofield_meanings")
+    db = str(tmp_path / "a.db")
+    with sqlite3.connect(db) as cx:
+        bm.init_table(cx)
+        bm.upsert(cx, "has", "already", "glen", "glen")
+    rma.configure(client=_FakeClient("AI."),
+                  products={"has": {"name": "Has"}, "missing": {"name": "Missing"}})
+    with sqlite3.connect(db) as cx:
+        out = rma._exec_propose_all({}, {"cx": cx, "actor": None})
+        mp = bm.get_map(cx)
+    assert out["proposed"] == 1 and mp["missing"] == "AI." and mp["has"] == "already"
