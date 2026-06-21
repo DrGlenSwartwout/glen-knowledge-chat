@@ -10809,7 +10809,9 @@ def api_e4l_reveal_draft():
                 cleaned_layers.append({
                     "n": L.get("n", i + 1), "title": (L.get("title") or "").strip(),
                     "summary": (L.get("summary") or "").strip(),
-                    "patterns": L.get("patterns") or [], "remedy": out_rem})
+                    "patterns": L.get("patterns") or [],
+                    "pattern_labels": L.get("pattern_labels") or [],
+                    "remedy": out_rem})
             # Derived flat remedies = the surviving layer remedies, in order (for #4b/#4c).
             derived = [L["remedy"] for L in cleaned_layers if L.get("remedy")]
             rid, is_new = _br.upsert(cx, email, scan_date, interp, derived,
