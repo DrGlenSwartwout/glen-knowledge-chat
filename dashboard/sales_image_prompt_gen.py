@@ -68,3 +68,33 @@ def generate_candidates(cx, kind, n=2, *, llm=None):
         seen.add(tmpl)
         inserted.append({"id": vid, "kind": kind, "label": label, "prompt_template": tmpl})
     return inserted
+
+def review_action(cx, variation_id, decision, prompt_template=None):
+    from dashboard import sales_prompt_variations as _pv
+    row = cx.execute("SELECT id FROM sales_prompt_variations WHERE id=?", (variation_id,)).fetchone()
+    if not row:
+        return {"ok": False, "error": "not found"}
+    if prompt_template is not None and decision in ("approve", "edit"):
+        cx.execute("UPDATE sales_prompt_variations SET prompt_template=? WHERE id=?",
+                   (prompt_template, variation_id))
+        cx.commit()
+    if decision == "approve":
+        _pv.set_state(cx, variation_id, "candidate")
+    elif decision == "reject":
+        _pv.set_state(cx, variation_id, "retired")
+    elif decision == "edit":
+        pass
+    else:
+        return {"ok": False, "error": "bad decision"}
+    return {"ok": True}
+
+def topup(cx, *, threshold=2, generate=None):
+    from dashboard import sales_prompt_variations as _pv, sales_image_prompts as _sip
+    generate = generate or generate_candidates
+    done = {}
+    for kind in _sip.IMAGE_KINDS:
+        bench = len(_pv.candidate_variations(cx, kind)) + len(_pv.review_variations(cx, kind))
+        if bench < threshold:
+            generate(cx, kind, threshold - bench)
+            done[kind] = True
+    return done

@@ -37,3 +37,29 @@ def test_parse_json_array_slices_and_tolerates():
     assert gen._parse_json_array('prefix [ {"a":1} ] suffix') == [{"a": 1}]
     assert gen._parse_json_array("garbage") == []
     assert gen._parse_json_array("") == []
+
+def test_review_action_approve_reject_edit():
+    cx = _cx()
+    vid = pv.insert_variation(cx, "botanical", "x", "scene one")
+    assert gen.review_action(cx, vid, "edit", prompt_template="scene one edited")["ok"]
+    assert pv.review_variations(cx, "botanical")[0]["prompt_template"] == "scene one edited"
+    assert gen.review_action(cx, vid, "approve")["ok"]
+    assert vid in {v["id"] for v in pv.candidate_variations(cx, "botanical")}
+    v2 = pv.insert_variation(cx, "mechanism", "y", "cell scene")
+    gen.review_action(cx, v2, "reject")
+    assert pv.review_variations(cx, "mechanism") == []           # moved to retired
+    assert gen.review_action(cx, 99999, "approve")["ok"] is False
+
+def test_topup_only_when_bench_low():
+    cx = _cx()
+    calls = []
+    fakegen = lambda c, kind, k: calls.append((kind, k))
+    # empty bench -> generates for both kinds
+    gen.topup(cx, threshold=2, generate=fakegen)
+    assert {k for k, _ in calls} == {"botanical", "mechanism"}
+    # fill botanical bench to 2 candidates -> botanical skipped next time
+    pv.insert_variation(cx, "botanical", "a", "t1", "candidate")
+    pv.insert_variation(cx, "botanical", "b", "t2", "candidate")
+    calls.clear()
+    gen.topup(cx, threshold=2, generate=fakegen)
+    assert "botanical" not in {k for k, _ in calls}
