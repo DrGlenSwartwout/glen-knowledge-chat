@@ -187,7 +187,8 @@ async function doPropose(card, slug, sourceEl, meaningArea, btn){
   btn.disabled = false;
   if(r.ok && r.json.status === 'done'){
     statusEl.textContent = 'AI meaning saved.';
-    if(r.json.meaning){ meaningArea.value = r.json.meaning; }
+    var res = (r.json.result) || {};
+    if(res.meaning){ meaningArea.value = res.meaning; }
     sourceEl.className = 'source-badge ai';
     sourceEl.textContent = 'ai';
   } else {

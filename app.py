@@ -8031,12 +8031,10 @@ def console_biofield_portal_page():
 
 def _sales_console_ok():
     """Phase-5 console gate. Returns None if authorized, else a 401 (response, status).
-    Gates on dashboard.CONSOLE_SECRET -- the SAME secret the /api/action write path uses
-    (via _bos_actor), so the read endpoints and write actions share one secret source."""
-    import dashboard as _dashboard
-    if _dashboard.CONSOLE_SECRET:
+    Gates on the module-level CONSOLE_SECRET so monkeypatching it in tests works correctly."""
+    if CONSOLE_SECRET:
         _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if _key != _dashboard.CONSOLE_SECRET:
+        if _key != CONSOLE_SECRET:
             return jsonify({"error": "Unauthorized"}), 401
     return None
 
