@@ -110,6 +110,11 @@ def set_dropped(cx, rid, names):
     cx.commit()
 
 
+def delete(cx, rid):
+    cx.execute("DELETE FROM biofield_reveals WHERE id=?", (int(rid),))
+    cx.commit()
+
+
 def approve_first(cx, rid, by):
     now = _now()
     cur = cx.execute(

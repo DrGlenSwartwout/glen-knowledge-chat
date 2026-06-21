@@ -118,13 +118,25 @@ function buildCard(d){
 
   var meta = document.createElement('div');
   meta.className = 'meta';
+  var idSpan = document.createElement('span');
+  idSpan.textContent = '#' + (d.id != null ? d.id : '?') + '  ';
   var emailSpan = document.createElement('span');
-  emailSpan.textContent = d.email || '';
-  var dateSpan = document.createElement('span');
-  dateSpan.textContent = ' - ' + (d.scan_date || '');
+  emailSpan.textContent = (d.email || '') + ' - ' + (d.scan_date || '');
+  meta.appendChild(idSpan);
   meta.appendChild(emailSpan);
-  meta.appendChild(dateSpan);
+  if (d.client_name) {
+    var nameSpan = document.createElement('span');
+    nameSpan.textContent = '  -  ' + d.client_name;
+    meta.appendChild(nameSpan);
+  }
   wrap.appendChild(meta);
+  var tags = Array.isArray(d.tags) ? d.tags : [];
+  if (tags.length) {
+    var tagRow = document.createElement('div');
+    tagRow.className = 'client-tags';
+    tagRow.textContent = 'Tags: ' + tags.join(', ');
+    wrap.appendChild(tagRow);
+  }
 
   // Interpretation section
   var interpHead = document.createElement('div');
@@ -191,6 +203,20 @@ function buildCard(d){
       summaryArea.className = 'layer-summary-field';
       summaryArea.value = L.summary || '';
       row.appendChild(summaryArea);
+
+      // Read-only stress factors (console only; never shown to the member).
+      var factors = Array.isArray(L.pattern_labels) && L.pattern_labels.length
+        ? L.pattern_labels
+        : (Array.isArray(L.patterns) ? L.patterns : []);
+      if (factors.length) {
+        var sf = document.createElement('div');
+        sf.className = 'stress-factors';
+        sf.textContent = 'Stress factors: ' + factors.join(', ');
+        row.appendChild(sf);
+      }
+      // Stash the originals so Save (collectLayers) preserves them.
+      row.dataset.patterns = JSON.stringify(L.patterns || []);
+      row.dataset.patternLabels = JSON.stringify(L.pattern_labels || []);
 
       var rem = L.remedy || {};
 
@@ -312,6 +338,12 @@ function buildCard(d){
   approveBtn.onclick = function(){ doApprove(wrap, d.id, approveBtn); };
   row.appendChild(approveBtn);
 
+  var deleteBtn = document.createElement('button');
+  deleteBtn.className = 'btn ghost';
+  deleteBtn.textContent = 'Delete';
+  deleteBtn.onclick = function(){ doDelete(wrap, d.id, deleteBtn); };
+  row.appendChild(deleteBtn);
+
   wrap.appendChild(row);
 
   var statusEl = document.createElement('div');
@@ -344,10 +376,16 @@ function collectLayers(card){
     var slugEl = row.querySelector('.remedy-slug');
     var meaningEl = row.querySelector('.remedy-meaning');
     var rememberEl = row.querySelector('.remedy-remember');
+    var patterns = [];
+    var patternLabels = [];
+    try { patterns = JSON.parse(row.dataset.patterns || '[]'); } catch (e) {}
+    try { patternLabels = JSON.parse(row.dataset.patternLabels || '[]'); } catch (e) {}
     out.push({
       n: idx + 1,
       title: titleEl ? titleEl.value : '',
       summary: summaryEl ? summaryEl.value : '',
+      patterns: patterns,
+      pattern_labels: patternLabels,
       remedy: {
         name: nameEl ? nameEl.value : '',
         slug: slugEl ? slugEl.value : '',
@@ -370,6 +408,21 @@ async function saveEdit(card, id){
     statusEl.textContent = 'Saved.';
   } else {
     statusEl.textContent = 'Save failed.';
+  }
+}
+
+async function doDelete(card, id, btn){
+  if(!window.confirm('Delete reveal #' + id + '? This cannot be undone.')) return;
+  var statusEl = card.querySelector('.status');
+  statusEl.textContent = 'Deleting...';
+  btn.disabled = true;
+  var r = await api('POST', '/api/action/biofield_reveal.delete', { id: id });
+  if(r.ok && r.json.status === 'done'){
+    statusEl.textContent = 'Deleted.';
+    setTimeout(loadList, 600);
+  } else {
+    btn.disabled = false;
+    statusEl.textContent = 'Delete failed (HTTP ' + r.status + ').';
   }
 }
 

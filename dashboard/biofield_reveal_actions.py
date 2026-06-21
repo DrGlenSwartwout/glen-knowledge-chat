@@ -89,6 +89,14 @@ def _exec_approve(params, ctx):
     return {"ok": bool(ok)}
 
 
+def _exec_delete(params, ctx):
+    rid = int(params.get("id") or 0)
+    if not rid:
+        raise ValueError("id required")
+    _br.delete(ctx["cx"], rid)
+    return {"deleted": rid}
+
+
 def register():
     if get_action("biofield_reveal.approve"):
         return
@@ -100,3 +108,7 @@ def register():
         key="biofield_reveal.approve", module="biofield_reveal", title="Approve top remedy",
         description="Un-blur the top remedy for the visitor (the rest unlock via the $1 trial).",
         risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_approve))
+    register_action(Action(
+        key="biofield_reveal.delete", module="biofield_reveal", title="Delete Biofield reveal",
+        description="Delete a reveal draft (removes it from the queue).",
+        risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_delete))

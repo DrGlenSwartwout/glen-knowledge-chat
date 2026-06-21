@@ -279,3 +279,133 @@ def test_console_endpoint_returns_approved(monkeypatch, tmp_path):
     appr_ids = [r["id"] for r in data["approved"]]
     assert r1 in draft_ids and r2 not in draft_ids
     assert r2 in appr_ids and r1 not in appr_ids
+
+
+# ---------------------------------------------------------------------------
+# Helpers shared by Task 2 tests (mirrors test_biofield_trial.py equivalents)
+# ---------------------------------------------------------------------------
+
+import json as _json
+
+
+def _load_app():
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    try:
+        return importlib.import_module("app")
+    except Exception as e:
+        pytest.skip(f"app not importable: {e}")
+
+
+def _fresh(app_module, monkeypatch, tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    # Patch the dashboard module's CONSOLE_SECRET so _bos_actor() can authorize
+    # test requests that send X-Console-Key: sek.
+    monkeypatch.setattr(app_module.dashboard, "CONSOLE_SECRET", "sek")
+    from dashboard import biofield_reveals, subscriptions, events as _ev
+    with sqlite3.connect(db) as cx:
+        biofield_reveals.init_table(cx)
+        subscriptions.init_subscriptions_table(cx)
+        subscriptions.migrate_add_membership_columns(cx)
+        _ev.init_event_tables(cx)
+        cx.execute(
+            "CREATE TABLE IF NOT EXISTS auth_tokens "
+            "(token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, purpose TEXT NOT NULL, "
+            "extra TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, consumed_at TEXT)"
+        )
+        cx.commit()
+    return db
+
+
+def _extract_reveal(html_bytes):
+    """Parse window.__REVEAL__ from the served HTML bytes."""
+    import re
+    m = re.search(rb"window\.__REVEAL__\s*=\s*(\{.*?\});", html_bytes, re.DOTALL)
+    assert m, "No __REVEAL__ found in HTML"
+    raw = m.group(1).decode("utf-8")
+    raw = raw.replace("\\u003c", "<").replace("\\u003e", ">").replace("\\u0026", "&")
+    return _json.loads(raw)
+
+
+def test_delete_action_removes_draft(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "CONSOLE_SECRET", "sek", raising=False)
+    from dashboard import biofield_reveals as br
+    with sqlite3.connect(db) as cx:
+        rid, _ = br.upsert(cx, "d@x.com", "2026-06-01", {"greeting": "hi"},
+                           [{"name": "Top", "slug": "top", "meaning": "m"}], "s")
+    c = app_module.app.test_client()
+    r = c.post("/api/action/biofield_reveal.delete",
+               json={"id": rid}, headers={"X-Console-Key": "sek"})
+    assert r.status_code == 200 and r.get_json().get("status") == "done"
+    with sqlite3.connect(db) as cx:
+        assert cx.execute("SELECT COUNT(*) FROM biofield_reveals WHERE id=?", (rid,)).fetchone()[0] == 0
+    # idempotent: deleting again still succeeds
+    r2 = c.post("/api/action/biofield_reveal.delete",
+                json={"id": rid}, headers={"X-Console-Key": "sek"})
+    assert r2.status_code == 200
+
+
+def test_member_payload_never_leaks_patterns(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "BIOFIELD_TRIAL_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "is_member", lambda **kw: True)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: None)
+    import secrets as _s
+    from datetime import datetime, timezone, timedelta
+    from dashboard import biofield_reveals as br
+    token = "tk_" + _s.token_urlsafe(8)
+    th = app_module._hash_token(token)
+    with sqlite3.connect(db) as cx:
+        rid, _ = br.upsert(cx, "p@x.com", "2026-06-01", {"greeting": "Hi"},
+                           [{"name": "Top", "slug": "top", "meaning": "m"}], "s",
+                           layers=[{"n": 1, "title": "Layer", "summary": "S",
+                                    "patterns": ["ER26"], "pattern_labels": ["Adrenal Rejuvenator"],
+                                    "remedy": {"name": "Top", "slug": "top", "meaning": "m"}}])
+        br.set_token(cx, rid, th)
+        br.approve_first(cx, rid, "glen")
+        cx.execute("INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) VALUES (?,?,?,?,?)",
+                   (th, "p@x.com", "biofield_reveal", datetime.now(timezone.utc).isoformat(),
+                    (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()))
+        cx.commit()
+    html = app_module.app.test_client().get(f"/begin/biofield/{token}").data
+    assert b"ER26" not in html, "raw pattern code leaked to member"
+    assert b"Adrenal Rejuvenator" not in html, "pattern label leaked to member"
+    reveal = _extract_reveal(html)
+    for L in (reveal.get("layers") or []):
+        assert "patterns" not in L and "pattern_labels" not in L
+
+
+def test_console_list_enriches_name_and_tags(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "CONSOLE_SECRET", "sek", raising=False)
+    from dashboard import biofield_reveals as br
+    with sqlite3.connect(db) as cx:
+        cx.execute("CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY, email TEXT, name TEXT, tags TEXT)")
+        cx.execute("INSERT INTO people (email, name, tags) VALUES (?,?,?)",
+                   ("c@x.com", "Jane Client", '["e4l account", "type:client"]'))
+        br.upsert(cx, "c@x.com", "2026-06-01", {"greeting": "hi"},
+                  [{"name": "Top", "slug": "top", "meaning": "m"}], "s")
+        br.upsert(cx, "nobody@x.com", "2026-06-02", {"greeting": "hi"}, [], "s")
+        cx.commit()
+    c = app_module.app.test_client()
+    body = c.get("/api/console/biofield-reveals", headers={"X-Console-Key": "sek"}).get_json()
+    by_email = {d["email"]: d for d in body["drafts"]}
+    assert by_email["c@x.com"]["client_name"] == "Jane Client"
+    assert by_email["c@x.com"]["tags"] == ["e4l account", "type:client"]
+    # no people row -> empty, still listed, no error
+    assert by_email["nobody@x.com"]["client_name"] == ""
+    assert by_email["nobody@x.com"]["tags"] == []
+
+
+def test_console_page_has_enrichment_markers(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "CONSOLE_SECRET", "sek", raising=False)
+    html = app_module.app.test_client().get(
+        "/console/biofield-reveals", headers={"X-Console-Key": "sek"}).data.decode()
+    assert "client_name" in html
+    assert "pattern_labels" in html
+    assert "stress-factors" in html
+    assert "biofield_reveal.delete" in html
