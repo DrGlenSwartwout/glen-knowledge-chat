@@ -1559,6 +1559,25 @@ def _biofield_top_payload(row):
         return None
 
 
+def _biofield_layer_payload(layer, include_remedy):
+    """Layer payload: title + summary ALWAYS; the remedy only when include_remedy and present.
+    A withheld remedy is emitted as remedy=None, remedy_blurred=True (its details never leave)."""
+    try:
+        rem = layer.get("remedy") if isinstance(layer, dict) else None
+        has_rem = isinstance(rem, dict) and ((rem.get("slug") or "").strip() or (rem.get("name") or "").strip())
+        out = {"n": layer.get("n"), "title": (layer.get("title") or ""),
+               "summary": (layer.get("summary") or "")}
+        if include_remedy and has_rem:
+            out["remedy"] = _biofield_remedy_payload(rem)
+            out["remedy_blurred"] = False
+        else:
+            out["remedy"] = None
+            out["remedy_blurred"] = bool(has_rem)
+        return out
+    except Exception:
+        return {"n": None, "title": "", "summary": "", "remedy": None, "remedy_blurred": False}
+
+
 def _biofield_verify_token(th):
     """Verify a biofield_reveal token hash against auth_tokens.
     Returns (valid: bool, row: dict|None) where row is the biofield_reveals row.
@@ -1675,6 +1694,16 @@ def begin_biofield_reveal(token):
     free_available = flags["free_available"]
     paid = flags["paid"]
 
+    _layers_raw = row.get("layers") or []
+    if paid:
+        _layers_payload = [_biofield_layer_payload(L, include_remedy=True) for L in _layers_raw]
+    else:
+        _layers_payload = [_biofield_layer_payload(L, include_remedy=(top_unlocked and i == 0))
+                           for i, L in enumerate(_layers_raw)]
+    _blurred_layers = (sum(1 for lp in _layers_payload if lp["remedy_blurred"])
+                       if _layers_raw
+                       else len(row.get("remedies") or []) - (1 if top_unlocked else 0))
+
     if paid:
         all_remedies = row.get("remedies") or []
         payload = {
@@ -1687,11 +1716,12 @@ def begin_biofield_reveal(token):
             "trial_enabled": BIOFIELD_TRIAL_ENABLED,
             "cart_enabled": BIOFIELD_CART_ENABLED,
             "remedies": [_biofield_remedy_payload(r) for r in all_remedies],
+            "layers": _layers_payload,
         }
     else:
         payload = {
             "interpretation": row.get("interpretation") or {},
-            "blurred_count": len(row.get("remedies") or []) - (1 if top_unlocked else 0),
+            "blurred_count": _blurred_layers,
             "first_approved": first_approved,
             "free_available": free_available,
             "top_unlocked": top_unlocked,
@@ -1699,6 +1729,7 @@ def begin_biofield_reveal(token):
             "paid": False,
             "trial_enabled": BIOFIELD_TRIAL_ENABLED,
             "cart_enabled": BIOFIELD_CART_ENABLED,
+            "layers": _layers_payload,
         }
 
     # Set the biofield gate (idempotent, wrapped) -> Find step 2 fills.

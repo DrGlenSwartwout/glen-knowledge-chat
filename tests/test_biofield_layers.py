@@ -124,3 +124,59 @@ def test_ingest_remedies_only_wraps_into_layers(monkeypatch, tmp_path):
     assert len(row["layers"]) == 1 and row["layers"][0]["title"] == ""   # titleless wrap
     assert row["layers"][0]["remedy"]["slug"] == real
     assert [rr["slug"] for rr in row["remedies"]] == [real]
+
+
+def _seed_approved_layers(app_module, db, email="t@x.com"):
+    import secrets as _s
+    from datetime import datetime, timezone, timedelta
+    from dashboard import biofield_reveals as br
+    token = "tk_" + _s.token_urlsafe(8)
+    th = app_module._hash_token(token)
+    with sqlite3.connect(db) as cx:
+        rid, _ = br.upsert(cx, email, "2026-06-20", {"greeting": "Hi", "body": "b"},
+                           [{"name": "Top", "slug": "rx-aaa", "meaning": "m"},
+                            {"name": "Deep", "slug": "rx-bbb", "meaning": "m2"}], "s",
+                           layers=[{"n": 1, "title": "Surface", "summary": "s1", "patterns": [],
+                                    "remedy": {"name": "Top", "slug": "rx-aaa", "meaning": "m"}},
+                                   {"n": 2, "title": "Root", "summary": "s2", "patterns": [],
+                                    "remedy": {"name": "Deep", "slug": "rx-bbb", "meaning": "m2"}}])
+        br.set_token(cx, rid, th); br.approve_first(cx, rid, "glen")
+        cx.execute("INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) VALUES (?,?,?,?,?)",
+                   (th, email, "biofield_reveal", datetime.now(timezone.utc).isoformat(),
+                    (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()))
+        cx.commit()
+    return token
+
+
+def _reveal_payload(app_module, token):
+    import re, json as _j
+    html = app_module.app.test_client().get(f"/begin/biofield/{token}").get_data(as_text=True)
+    m = re.search(r"window.__REVEAL__ = (\{.*?\});", html)
+    return _j.loads(m.group(1).replace("\\u003c", "<").replace("\\u003e", ">").replace("\\u0026", "&")) if m else None
+
+
+def test_payload_titles_always_remedy_gated_nonpaid(monkeypatch, tmp_path):
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: None)  # not paid
+    token = _seed_approved_layers(app_module, db)  # approved but member has NOT claimed free unlock
+    d = _reveal_payload(app_module, token)
+    assert d["paid"] is False
+    titles = [L["title"] for L in d["layers"]]
+    assert titles == ["Surface", "Root"]                 # titles always shown
+    assert all(L["summary"] for L in d["layers"])        # summaries always shown
+    assert all(L["remedy"] is None and L["remedy_blurred"] for L in d["layers"])  # no remedy visible yet
+    blob = __import__("json").dumps(d)
+    assert "rx-aaa" not in blob and "rx-bbb" not in blob   # anti-bypass: withheld remedy slugs never emitted
+
+
+def test_payload_paid_shows_all_layer_remedies(monkeypatch, tmp_path):
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: {"ok": True})  # paid
+    token = _seed_approved_layers(app_module, db)
+    d = _reveal_payload(app_module, token)
+    assert d["paid"] is True
+    assert [L["title"] for L in d["layers"]] == ["Surface", "Root"]
+    assert d["layers"][0]["remedy"]["slug"] == "rx-aaa" and d["layers"][1]["remedy"]["slug"] == "rx-bbb"
+    assert all(not L["remedy_blurred"] for L in d["layers"])
