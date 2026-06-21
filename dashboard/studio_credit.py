@@ -1,6 +1,8 @@
 """Studio-credit free month: claim store + approve/reject with a one-per-year
-guard. Phase 1 = console side only (no public claim form). The grant+notify side
-effect is injected at approve time so this module stays Flask-free and unit-testable."""
+guard. Claims arrive from the console (manual entry) or the public self-serve form
+(upsert_self_serve_claim, source='self_serve'); both flow to the same console
+approval queue. The grant+notify side effect is injected at approve time so this
+module stays Flask-free and unit-testable."""
 import sqlite3
 import uuid
 from datetime import datetime, timedelta
@@ -122,3 +124,30 @@ def reject_claim(cx, claim_id, *, decided_by, reason=""):
         (_now(), decided_by or "", reason or "", claim_id))
     cx.commit()
     return {"ok": True}
+
+
+def upsert_self_serve_claim(cx, *, email, invoice_ref="", proof_note=""):
+    """Public self-serve submission. Dedupe: if a pending self_serve claim already
+    exists for this email, update it in place (refresh invoice_ref/proof_note and
+    bump created_at); otherwise create one. Returns (claim, is_new). Pending-only:
+    an approved/rejected email gets a fresh pending claim."""
+    email = (email or "").strip().lower()
+    if not email or "@" not in email:
+        raise ValueError("valid email required")
+    cur = cx.cursor()
+    cur.row_factory = sqlite3.Row
+    existing = cur.execute(
+        "SELECT id FROM studio_credit_claims "
+        "WHERE email=? AND status='pending' AND source='self_serve' "
+        "ORDER BY created_at DESC LIMIT 1",
+        (email,)).fetchone()
+    if existing is not None:
+        cx.execute(
+            "UPDATE studio_credit_claims SET invoice_ref=?, proof_note=?, created_at=? "
+            "WHERE id=?",
+            (invoice_ref or "", proof_note or "", _now(), existing["id"]))
+        cx.commit()
+        return get(cx, existing["id"]), False
+    claim = add_claim(cx, email=email, invoice_ref=invoice_ref, proof_note=proof_note,
+                      source="self_serve", created_by="self_serve")
+    return claim, True

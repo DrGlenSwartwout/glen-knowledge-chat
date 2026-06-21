@@ -46,6 +46,7 @@ async function load(){
       <div class="row">
         <strong>${esc(c.email)}</strong>
         <span class="pill">${esc(c.status)}</span>
+        ${c.source==="self_serve"?`<span class="pill" style="background:#e7f0ff">self-serve</span>`:""}
         ${c.invoice_ref?`<span class="muted">inv: ${esc(c.invoice_ref)}</span>`:""}
       </div>
       ${c.proof_note?`<div class="muted">${esc(c.proof_note)}</div>`:""}

@@ -42,6 +42,35 @@ def test_list_claims_filters_by_status(tmp_path):
     assert m.list_claims(cx, status="approved") == []
 
 
+def test_upsert_self_serve_creates_pending(tmp_path):
+    m = _mod(); cx = _cx(tmp_path)
+    claim, is_new = m.upsert_self_serve_claim(cx, email="Buyer@X.com", invoice_ref="order 9")
+    assert is_new is True
+    assert claim["status"] == "pending" and claim["source"] == "self_serve"
+    assert claim["email"] == "buyer@x.com" and claim["invoice_ref"] == "order 9"
+    assert len(m.list_claims(cx, status="pending")) == 1
+
+
+def test_upsert_self_serve_dedupes_pending(tmp_path):
+    m = _mod(); cx = _cx(tmp_path)
+    c1, n1 = m.upsert_self_serve_claim(cx, email="a@x.com", invoice_ref="first")
+    c2, n2 = m.upsert_self_serve_claim(cx, email="a@x.com", invoice_ref="second")
+    assert n1 is True and n2 is False
+    assert c2["id"] == c1["id"]                     # same row updated
+    assert c2["invoice_ref"] == "second"           # invoice_ref refreshed
+    assert len(m.list_claims(cx, status="pending")) == 1   # no duplicate
+
+
+def test_upsert_self_serve_after_reject_is_new(tmp_path):
+    m = _mod(); cx = _cx(tmp_path)
+    c1, _ = m.upsert_self_serve_claim(cx, email="a@x.com", invoice_ref="first")
+    m.reject_claim(cx, c1["id"], decided_by="glen", reason="no proof")
+    c2, n2 = m.upsert_self_serve_claim(cx, email="a@x.com", invoice_ref="retry")
+    assert n2 is True and c2["id"] != c1["id"]     # fresh pending claim
+    assert m.get(cx, c1["id"])["status"] == "rejected"
+    assert len(m.list_claims(cx, status="pending")) == 1
+
+
 def _seed_memberships_table(cx):
     cx.execute(
         "CREATE TABLE IF NOT EXISTS memberships "
