@@ -109,3 +109,54 @@ def test_load_aliases_reads_seed_file():
 def test_no_match_returns_empty():
     pl = _mod()
     assert pl.match_page_links("the weather is nice today", _idx()) == []
+
+
+# --- merge_cards: proof-card protection ---
+
+def _links2():
+    return [{"key": "topic:low-energy", "title": "Low Energy", "sub": "Read the guide", "href": "/learn/low-energy"},
+            {"key": "topic:brain-fog", "title": "Brain Fog", "sub": "Read the guide", "href": "/learn/brain-fog"}]
+
+
+def _journey():
+    return {"key": "quiz", "title": "Take the quiz", "sub": "x", "href": "/begin/quiz"}
+
+
+def _clip():
+    return {"key": "clip:abc", "kind": "clip", "title": "Watch", "sub": "why", "clip_url": "/clip/abc"}
+
+
+def _case():
+    return {"key": "case:fatigue", "kind": "case-study", "title": "A story", "sub": "x", "href": "/case/fatigue"}
+
+
+def test_merge_no_proof_keeps_two_links():
+    pl = _mod()
+    out = pl.merge_cards(_links2(), [_journey()])
+    assert [c["key"] for c in out] == ["topic:low-energy", "topic:brain-fog", "quiz"]
+
+
+def test_merge_with_clip_proof_drops_to_one_link_and_protects_clip():
+    pl = _mod()
+    out = pl.merge_cards(_links2(), [_journey(), _clip()])
+    keys = [c["key"] for c in out]
+    assert keys.count("clip:abc") == 1            # clip survived
+    assert sum(1 for k in keys if k.startswith("topic:")) == 1  # only one link card
+    assert len(out) <= 3
+
+
+def test_merge_with_case_study_proof_protected_over_journey():
+    pl = _mod()
+    out = pl.merge_cards(_links2(), [_journey(), _case()])
+    keys = [c["key"] for c in out]
+    assert "case:fatigue" in keys                 # proof survived the cap
+    assert sum(1 for k in keys if k.startswith("topic:")) == 1
+
+
+def test_merge_dedupes_by_href_and_caps_at_three():
+    pl = _mod()
+    dup = {"key": "topic:low-energy", "title": "Low Energy", "sub": "x", "href": "/learn/low-energy"}
+    out = pl.merge_cards(_links2(), [dup, _journey()])
+    hrefs = [c.get("href") for c in out if c.get("href")]
+    assert len(hrefs) == len(set(hrefs))          # no duplicate hrefs
+    assert len(out) <= 3

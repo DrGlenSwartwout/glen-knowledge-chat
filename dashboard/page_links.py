@@ -13,6 +13,36 @@ _SUB_BY_KIND = {
     "product": "View product",
 }
 
+# Cards from the case-studies / clips namespaces are high-value social proof and
+# only appear on a strong (>=0.80) similarity match, so they are protected from
+# being crowded out by link cards (see merge_cards).
+PROOF_KINDS = ("case-study", "clip")
+
+
+def merge_cards(link_cards, existing_cards, *, cap=3, proof_kinds=PROOF_KINDS):
+    """Merge matched link cards into the existing surfaced cards, protecting proof cards.
+
+    - When a proof card (kind in proof_kinds) is present, at most ONE link card is kept,
+      and proof cards are ordered ahead of journey/quiz cards so they survive the cap.
+    - When no proof card is present, up to two link cards are kept.
+    - Deduped by href (proof clip cards carry no href, so they are never deduped away).
+    - Result capped at `cap`. Pure; never raises on normal input.
+    """
+    existing = existing_cards or []
+    proof = [c for c in existing if (c or {}).get("kind") in proof_kinds]
+    rest = [c for c in existing if (c or {}).get("kind") not in proof_kinds]
+    max_links = 1 if proof else 2
+    ordered = list(link_cards or [])[:max_links] + proof + rest
+    out, seen = [], set()
+    for c in ordered:
+        h = (c or {}).get("href")
+        if h and h in seen:
+            continue
+        if h:
+            seen.add(h)
+        out.append(c)
+    return out[:cap]
+
 
 def load_aliases(path):
     """Read a {phrase: slug} JSON map. Missing/unreadable/invalid -> {}."""

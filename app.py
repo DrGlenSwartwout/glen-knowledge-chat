@@ -2449,15 +2449,9 @@ def chat():
                 _links = _pl.match_page_links(f"{query or ''} {answer or ''}",
                                               _chat_page_link_index(), limit=2)
                 if _links:
-                    merged, seen = [], set()
-                    for c in _links + (surfaced_cards or []):
-                        h = c.get("href")
-                        if h and h in seen:
-                            continue
-                        if h:
-                            seen.add(h)
-                        merged.append(c)
-                    surfaced_cards = merged[:3]
+                    # link cards first, but proof cards (case-study/clip) are
+                    # protected: link cards drop to 1 when a proof card is present.
+                    surfaced_cards = _pl.merge_cards(_links, surfaced_cards or [])
             except Exception as _ple:  # noqa: BLE001 - never break chat
                 print(f"[chat-page-links] {_ple!r}", flush=True)
 
