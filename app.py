@@ -2118,6 +2118,52 @@ def static_files(filename):
     return send_from_directory(STATIC, filename)
 
 
+_CHAT_PAGE_LINK_CACHE = {"at": 0.0, "index": {}}
+
+
+def _chat_page_link_index():
+    """Approved-page phrase index for chat link surfacing. 60s TTL; failure -> empty."""
+    import time as _time
+    now = _time.time()
+    if _CHAT_PAGE_LINK_CACHE["index"] and (now - _CHAT_PAGE_LINK_CACHE["at"]) < 60:
+        return _CHAT_PAGE_LINK_CACHE["index"]
+    pages = []
+    try:
+        from dashboard import topic_pages as _tp, ingredient_pages as _ip
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _tp.init_table(cx)
+            for r in _tp.list_pages(cx):
+                if r.get("state") == "approved":
+                    pages.append({"slug": r["slug"], "name": r["name"], "kind": "topic",
+                                  "href": f"/learn/{r['slug']}", "gated": False})
+            _ip.init_table(cx)
+            for slug, name in cx.execute(
+                    "SELECT ingredient_slug, name FROM ingredient_pages WHERE state='approved'").fetchall():
+                pages.append({"slug": slug, "name": name or slug, "kind": "ingredient",
+                              "href": f"/begin/ingredient/{slug}", "gated": True})
+            try:
+                cx.execute("CREATE TABLE IF NOT EXISTS sales_pages (product_slug TEXT PRIMARY KEY, state TEXT)")
+                approved_products = [row[0] for row in cx.execute(
+                    "SELECT product_slug FROM sales_pages WHERE state='approved'").fetchall()]
+            except Exception:
+                approved_products = []
+        # reuse the already-loaded products catalog global for names
+        _prod_names = {k: (v.get("name") or k)
+                       for k, v in (_PRODUCTS.get("products", {}) or {}).items()}
+        for slug in approved_products:
+            pages.append({"slug": slug, "name": _prod_names.get(slug, slug), "kind": "product",
+                          "href": f"/begin/product/{slug}", "gated": False})
+        from dashboard import page_links as _pl
+        aliases = _pl.load_aliases(str(DATA_DIR / "page-aliases.json"))
+        index = _pl.build_index(pages, alias_map=aliases)
+    except Exception as _e:  # noqa: BLE001 - never break chat
+        print(f"[chat-page-links] index build failed: {_e}", flush=True)
+        index = {}
+    _CHAT_PAGE_LINK_CACHE["at"] = now
+    _CHAT_PAGE_LINK_CACHE["index"] = index
+    return index
+
+
 @app.route("/chat", methods=["POST", "OPTIONS"])
 def chat():
     if request.method == "OPTIONS":
@@ -2396,6 +2442,24 @@ def chat():
             surfaced_cards = (surfaced_cards or []) + surface_approved_clips(q_vec)
         except Exception as _cle:
             print(f"[clip-surface] {_cle!r}", flush=True)
+
+        if CHAT_PAGE_LINKS_ENABLED:
+            try:
+                from dashboard import page_links as _pl
+                _links = _pl.match_page_links(f"{query or ''} {answer or ''}",
+                                              _chat_page_link_index(), limit=2)
+                if _links:
+                    merged, seen = [], set()
+                    for c in _links + (surfaced_cards or []):
+                        h = c.get("href")
+                        if h and h in seen:
+                            continue
+                        if h:
+                            seen.add(h)
+                        merged.append(c)
+                    surfaced_cards = merged[:3]
+            except Exception as _ple:  # noqa: BLE001 - never break chat
+                print(f"[chat-page-links] {_ple!r}", flush=True)
 
         _done_payload = {
             "done": True, "log_id": log_id,
@@ -2900,6 +2964,7 @@ _REVIEWS_GIFTS = os.environ.get("REVIEWS_GIFTS", "").strip().lower() in ("1", "t
 _REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "yes")
 INGREDIENT_PAGES_PAID_ONLY = os.environ.get("INGREDIENT_PAGES_PAID_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
 TOPIC_PAGES_ENABLED = os.environ.get("TOPIC_PAGES_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+CHAT_PAGE_LINKS_ENABLED = os.environ.get("CHAT_PAGE_LINKS_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_CART_ENABLED = os.environ.get("BIOFIELD_CART_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 ASCEND_PERSONALIZED_ENABLED = os.environ.get("ASCEND_PERSONALIZED_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
