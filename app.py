@@ -8322,7 +8322,8 @@ def api_console_biofield_reveals():
     with sqlite3.connect(LOG_DB) as cx:
         _br.init_table(cx)
         drafts = _br.list_pending(cx)
-    return jsonify({"drafts": drafts})
+        approved = _br.list_approved(cx)
+    return jsonify({"drafts": drafts, "approved": approved})
 
 
 @app.route("/console/biofield-reveals", methods=["GET"])

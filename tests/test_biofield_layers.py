@@ -189,3 +189,66 @@ def test_member_page_ships_layer_render(monkeypatch, tmp_path):
     token = _seed_approved_layers(app_module, db)
     html = app_module.app.test_client().get(f"/begin/biofield/{token}").get_data(as_text=True)
     assert "renderLayers" in html and "layer-title" in html
+
+
+def test_edit_action_layers_branch(monkeypatch, tmp_path):
+    """_exec_edit with layers= strips remember, promotes meanings, re-derives flat remedies.
+    Must also work on already-approved reveals (guards dropped in Task 1)."""
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    from dashboard import biofield_reveals as br, biofield_meanings as bm, biofield_reveal_actions as bra
+    promoted = {}
+
+    def fake_upsert(cx, slug, meaning, by, source):
+        promoted[slug] = meaning
+
+    monkeypatch.setattr(bm, "upsert", fake_upsert)
+
+    with sqlite3.connect(db) as cx:
+        br.init_table(cx); bm.init_table(cx)
+        rid, _ = br.upsert(cx, "edit@x.com", "2026-06-20", {"body": "orig"}, [], "s")
+        br.approve_first(cx, rid, "glen")  # approved - edit must still work
+
+        layers_in = [
+            {"n": 1, "title": "Alpha", "summary": "s1", "patterns": [],
+             "remedy": {"name": "Prod A", "slug": "prod-a", "meaning": "helps a", "remember": True}},
+            {"n": 2, "title": "Beta", "summary": "s2", "patterns": [],
+             "remedy": {"name": "Ghost", "slug": "", "meaning": "no slug", "remember": True}},
+        ]
+        ctx = {"cx": cx, "actor": None}
+        result = bra._exec_edit({"id": rid, "layers": layers_in}, ctx)
+        row = br.get(cx, rid)
+
+    assert result == {"ok": True}
+    # remember flag stripped from stored layers
+    for layer in row["layers"]:
+        rem = layer.get("remedy") or {}
+        assert "remember" not in rem
+    # meaning promoted for slugged remedy
+    assert promoted.get("prod-a") == "helps a"
+    # slug-less remedy yielded no layer remedy (None or no slug in derived)
+    derived_slugs = [r["slug"] for r in row["remedies"] if r.get("slug")]
+    assert derived_slugs == ["prod-a"]
+    # both layers stored (title preserved)
+    titles = [L["title"] for L in row["layers"]]
+    assert titles == ["Alpha", "Beta"]
+
+
+def test_console_endpoint_returns_approved(monkeypatch, tmp_path):
+    """GET /api/console/biofield-reveals must return both drafts and approved keys."""
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    key = app_module.CONSOLE_SECRET or ""
+    from dashboard import biofield_reveals as br
+    with sqlite3.connect(db) as cx:
+        br.init_table(cx)
+        r1, _ = br.upsert(cx, "d@x.com", "2026-06-20", {}, [], "s")  # pending
+        r2, _ = br.upsert(cx, "a@x.com", "2026-06-20", {}, [], "s")
+        br.approve_first(cx, r2, "glen")                               # approved
+
+    client = app_module.app.test_client()
+    resp = client.get("/api/console/biofield-reveals", headers={"X-Console-Key": key})
+    data = resp.get_json()
+    assert "drafts" in data and "approved" in data
+    draft_ids = [r["id"] for r in data["drafts"]]
+    appr_ids = [r["id"] for r in data["approved"]]
+    assert r1 in draft_ids and r2 not in draft_ids
+    assert r2 in appr_ids and r1 not in appr_ids
