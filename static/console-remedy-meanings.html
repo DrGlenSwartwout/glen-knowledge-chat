@@ -217,7 +217,7 @@ async function proposeAll(){
   statusEl.textContent = 'Proposing all missing...';
   var r = await api('POST', '/api/action/remedy_meaning.propose_all', {});
   if(r.ok && r.json.status === 'done'){
-    var n = r.json.proposed || 0;
+    var n = ((r.json.result) || {}).proposed || 0;
     statusEl.textContent = 'Proposed ' + n + ' missing. Reloading...';
     setTimeout(loadList, 800);
   } else {
