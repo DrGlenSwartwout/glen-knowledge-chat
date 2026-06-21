@@ -187,6 +187,23 @@ def test_inquire_idempotent_per_email_slug(monkeypatch, tmp_path):
     assert rows == [("build", "second")]  # single row, updated
 
 
+def test_inquire_empty_email_member_blocked(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "ASCEND_PERSONALIZED_ENABLED", True, raising=False)
+    # No authenticated user and no journey email -> email resolves to "" even though is_member is True.
+    monkeypatch.setattr(app_module, "get_authenticated_user", lambda req: None)
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
+    r = app_module.app.test_client().post("/begin/ascend/inquire", json={"slug": "biofield-analysis", "goal": "heal"})
+    assert r.status_code == 403 and r.get_json().get("need_optin") is True
+    with sqlite3.connect(db) as cx:
+        # table may not exist if we returned before creating it; treat missing as zero rows
+        try:
+            n = cx.execute("SELECT COUNT(*) FROM ascend_inquiries").fetchone()[0]
+        except Exception:
+            n = 0
+    assert n == 0
+
+
 def test_ascend_page_ships_personalized_wiring(monkeypatch, tmp_path):
     app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
     # The page is static HTML; the personalization is client-side JS that calls the

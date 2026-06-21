@@ -1408,7 +1408,7 @@ def begin_ascend_tier_data():
     return jsonify(tier)
 
 
-def _ascend_reached(cx, email, state):
+def _ascend_reached(email, state):
     """Rungs this member has already reached (v1). A paid member or a
     biofield/paid_fork/purchase gate marks the $300 Biofield rung reached.
     Never raises. (Practitioner-track signals are a future extension.)"""
@@ -1440,8 +1440,7 @@ def begin_ascend_recommend():
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             state = begin_funnel.get_state(cx, session_id=session_id, email=email)
         resolved_email = (state.get("email") or email or "").strip().lower()
-        with sqlite3.connect(LOG_DB) as cx:
-            reached = _ascend_reached(cx, resolved_email, state)
+        reached = _ascend_reached(resolved_email, state)
         slug = begin_funnel.recommend_ascend(goal, reached)
         ladder = sorted(begin_funnel.TIER_CATALOG.values(), key=lambda t: t.get("n", 0))
         is_member_now = bool(is_member(session_id, resolved_email))
@@ -1484,6 +1483,9 @@ def begin_ascend_inquire():
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             state = begin_funnel.get_state(cx, session_id=session_id, email=auth_email)
         email = (auth_email or (state.get("email") or "")).strip().lower()
+        if not email:
+            return jsonify({"ok": False, "need_optin": True,
+                            "error": "Please complete your details to request a consultation."}), 403
         if not is_member(session_id, email):
             return jsonify({"ok": False, "need_optin": True,
                             "error": "Please agree to our Terms to request a consultation."}), 403

@@ -178,7 +178,6 @@
 <script>
 (function () {
   var GOAL_KEY = "ascend_goal";
-  function token() { return ""; }
   function getGoal() { try { return localStorage.getItem(GOAL_KEY) || "heal"; } catch (e) { return "heal"; } }
   function setGoal(g) { try { localStorage.setItem(GOAL_KEY, g); } catch (e) {} }
 
