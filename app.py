@@ -7937,6 +7937,19 @@ def api_console_gift_catalog():
     return jsonify({"ok": True, "catalog": _rg.load_catalog()})
 
 
+@app.route("/console/image-leaderboard")
+def console_image_leaderboard():
+    _gate = _sales_console_ok()
+    if _gate is not None:
+        return _gate
+    from dashboard import sales_image_leaderboard as _lb
+    with sqlite3.connect(LOG_DB) as cx:
+        data = _lb.leaderboard(cx)
+    if request.args.get("format") == "json":
+        return jsonify(data)
+    return Response(_lb.render_html(data), mimetype="text/html")
+
+
 @app.route("/console/pricing-settings")
 def console_pricing_settings_page():
     resp = send_from_directory(STATIC, "console-pricing-settings.html")
