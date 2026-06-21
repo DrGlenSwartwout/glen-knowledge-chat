@@ -185,3 +185,12 @@ def test_inquire_idempotent_per_email_slug(monkeypatch, tmp_path):
     with sqlite3.connect(db) as cx:
         rows = cx.execute("SELECT goal, note FROM ascend_inquiries WHERE email='t@x.com' AND slug='certification'").fetchall()
     assert rows == [("build", "second")]  # single row, updated
+
+
+def test_ascend_page_ships_personalized_wiring(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    # The page is static HTML; the personalization is client-side JS that calls the
+    # endpoints. Assert the page ships the goal chooser markers + endpoint paths.
+    html = app_module.app.test_client().get("/begin/ascend").get_data(as_text=True)
+    assert "ascend/recommend" in html and "ascend/inquire" in html
+    assert "data-goal" in html  # the goal chooser buttons

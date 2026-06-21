@@ -78,6 +78,13 @@
   </section>
 
   <section class="shell">
+    <div id="ascend-goal" class="goal-chooser" hidden>
+      <button type="button" data-goal="heal">Heal myself deeper</button>
+      <button type="button" data-goal="learn">Learn the method</button>
+      <button type="button" data-goal="build">Build my own practice</button>
+    </div>
+    <div id="ascend-hero" hidden></div>
+    <div id="ascend-confirm" hidden>Dr. Glen and Rae will reach out to book your consultation.</div>
     <div class="cards">
       <a class="card reveal" data-tier="1" data-ext="https://truly.vip/GetWell">
         <span class="card-num">01</span><span class="card-body">
@@ -168,5 +175,60 @@
       items.forEach(function(el){io.observe(el);}); })();
   </script>
 <script src="/widget.js" data-position="bottom-right" data-color="#d4a843" data-label="Ask Dr. Glen" data-title="Accelerated Self-Healing"></script>
+<script>
+(function () {
+  var GOAL_KEY = "ascend_goal";
+  function token() { return ""; }
+  function getGoal() { try { return localStorage.getItem(GOAL_KEY) || "heal"; } catch (e) { return "heal"; } }
+  function setGoal(g) { try { localStorage.setItem(GOAL_KEY, g); } catch (e) {} }
+
+  function renderHero(rec, goal) {
+    var hero = document.getElementById("ascend-hero");
+    hero.textContent = "";
+    if (!rec) { hero.hidden = true; return; }
+    var title = document.createElement("div"); title.className = "hero-title"; title.textContent = rec.title || "";
+    var price = document.createElement("div"); price.className = "hero-price"; price.textContent = (rec.price || "") + (rec.value ? " - " + rec.value : "");
+    var incl = document.createElement("p"); incl.className = "hero-incl"; incl.textContent = rec.included || "";
+    var btn = document.createElement("button"); btn.type = "button"; btn.textContent = rec.cta_label || "Book your consultation";
+    btn.addEventListener("click", function () { inquire(rec.slug, goal, btn); });
+    hero.appendChild(title); hero.appendChild(price); hero.appendChild(incl); hero.appendChild(btn);
+    hero.hidden = false;
+  }
+
+  function load(goal) {
+    fetch("/begin/ascend/recommend?goal=" + encodeURIComponent(goal))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.enabled) { return; }  // flag off -> leave the static ladder as-is
+        document.getElementById("ascend-goal").hidden = false;
+        renderHero(d.recommended, d.goal);
+      }).catch(function () {});
+  }
+
+  function inquire(slug, goal, btn) {
+    if (btn) { btn.disabled = true; }
+    fetch("/begin/ascend/inquire", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: slug, goal: goal })
+    }).then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+      .then(function (res) {
+        if (res.body && res.body.ok) {
+          document.getElementById("ascend-confirm").hidden = false;
+          if (btn) { btn.textContent = "Requested"; }
+        } else if (res.status === 403 && res.body && res.body.need_optin) {
+          window.location.href = "/begin";  // send them to agree to Terms first
+        } else if (btn) { btn.disabled = false; alert((res.body && res.body.error) || "Could not send your request."); }
+      }).catch(function () { if (btn) { btn.disabled = false; } });
+  }
+
+  var chooser = document.getElementById("ascend-goal");
+  chooser.addEventListener("click", function (e) {
+    var g = e.target && e.target.getAttribute("data-goal");
+    if (!g) { return; }
+    setGoal(g); load(g);
+  });
+  load(getGoal());
+})();
+</script>
 </body>
 </html>
