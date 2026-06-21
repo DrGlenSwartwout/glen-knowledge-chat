@@ -243,3 +243,15 @@ def test_checkout_member_returns_stripe_url(monkeypatch, tmp_path):
     assert body["invoice_id"] == "INV9"
     # 'evil' is not in the matched set -> dropped; visible slugs only.
     assert {c["slug"] for c in passed["cart"]} == {"top", "deep1"}
+
+
+def test_reveal_html_has_cart_wiring(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "BIOFIELD_CART_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: {"ok": True})
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
+    token = _approved_reveal(app_module, db)
+    html = app_module.app.test_client().get(f"/begin/biofield/{token}").get_data(as_text=True)
+    # The page ships the cart JS (endpoint paths) and the sticky bar element id.
+    assert "order-preview" in html and "order-checkout" in html
+    assert "bf-cart-bar" in html
