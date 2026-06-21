@@ -10471,20 +10471,35 @@ def api_e4l_reveal_draft():
                 canon = _bm.get_map(cx)
             except Exception:
                 canon = {}
-            cleaned, dropped = [], []
-            for r in (remedies or []):
-                slug = _resolve_remedy_slug(r) if isinstance(r, dict) else None
-                if not slug:
-                    nm = (r.get("name") if isinstance(r, dict) else "") or "(unnamed)"
-                    dropped.append(nm.strip() or "(unnamed)")
+            # Build layers: prefer the pushed `layers`; else wrap each pushed remedy
+            # into a titleless single-remedy layer (back-compat with the old matcher).
+            raw_layers = data.get("layers")
+            if not isinstance(raw_layers, list) or not raw_layers:
+                raw_layers = [{"n": i + 1, "title": "", "summary": "", "patterns": [],
+                               "remedy": rr} for i, rr in enumerate(remedies or []) if isinstance(rr, dict)]
+            cleaned_layers, dropped = [], []
+            for i, L in enumerate(raw_layers):
+                if not isinstance(L, dict):
                     continue
-                rr = dict(r)
-                rr["slug"] = slug
-                cm = canon.get(slug)
-                if cm:
-                    rr["meaning"] = cm
-                cleaned.append(rr)
-            rid, is_new = _br.upsert(cx, email, scan_date, interp, cleaned, (data.get("source") or "").strip())
+                rem = L.get("remedy") if isinstance(L.get("remedy"), dict) else None
+                out_rem = None
+                if rem is not None:
+                    slug = _resolve_remedy_slug(rem)
+                    if not slug:
+                        dropped.append((rem.get("name") or "").strip() or "(unnamed)")
+                    else:
+                        out_rem = dict(rem); out_rem["slug"] = slug
+                        cm = canon.get(slug)
+                        if cm:
+                            out_rem["meaning"] = cm
+                cleaned_layers.append({
+                    "n": L.get("n", i + 1), "title": (L.get("title") or "").strip(),
+                    "summary": (L.get("summary") or "").strip(),
+                    "patterns": L.get("patterns") or [], "remedy": out_rem})
+            # Derived flat remedies = the surviving layer remedies, in order (for #4b/#4c).
+            derived = [L["remedy"] for L in cleaned_layers if L.get("remedy")]
+            rid, is_new = _br.upsert(cx, email, scan_date, interp, derived,
+                                     (data.get("source") or "").strip(), layers=cleaned_layers)
             try:
                 _br.set_dropped(cx, rid, dropped)
             except Exception:

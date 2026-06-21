@@ -60,3 +60,67 @@ def test_list_approved(tmp_path):
         pend = [r["id"] for r in br.list_pending(cx)]
         appr = [r["id"] for r in br.list_approved(cx)]
     assert r1 in pend and r2 not in pend and r2 in appr and r1 not in appr
+
+
+def _app_db(monkeypatch, tmp_path):
+    app_module = _load("app")
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    from dashboard import biofield_reveals as br, biofield_meanings as bm
+    with sqlite3.connect(db) as cx:
+        br.init_table(cx); bm.init_table(cx)
+        cx.execute("CREATE TABLE IF NOT EXISTS auth_tokens (token_hash TEXT, email TEXT, purpose TEXT, created_at TEXT, expires_at TEXT, consumed_at TEXT)")
+        cx.commit()
+    return app_module, db
+
+
+def _push(app_module, body, key):
+    return app_module.app.test_client().post("/api/e4l/reveal-draft", headers={"X-Console-Key": key}, json=body)
+
+
+def _key(app_module):
+    import os
+    return os.environ.get("CRON_SECRET") or app_module.CONSOLE_SECRET or ""
+
+
+def test_ingest_stores_layers_and_derives_remedies(monkeypatch, tmp_path):
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    key = _key(app_module)
+    if not key: pytest.skip("no secret")
+    prods = app_module._PRODUCTS.get("products") or {}
+    real = next(iter(prods), None)
+    if not real: pytest.skip("no catalog")
+    rname = prods[real]["name"]
+    layers = [{"n": 1, "title": "Layer One", "summary": "s1", "patterns": ["A"],
+               "remedy": {"name": rname, "slug": real, "meaning": "pushed"}},
+              {"n": 2, "title": "Layer Two", "summary": "s2", "patterns": ["B"],
+               "remedy": {"name": "Totally Made Up", "slug": "nope-xyz", "meaning": "ghost"}}]
+    r = _push(app_module, {"email": "a@b.com", "scan_date": "2026-06-20",
+                           "interpretation": {"body": "x"}, "layers": layers}, key)
+    assert r.get_json().get("ok") is True
+    from dashboard import biofield_reveals as br
+    with sqlite3.connect(db) as cx:
+        row = br.list_pending(cx)[0]
+    titles = [L["title"] for L in row["layers"]]
+    assert titles == ["Layer One", "Layer Two"]                 # both layers kept (titles always)
+    assert row["layers"][0]["remedy"]["slug"] == real           # catalog remedy survives
+    assert row["layers"][1]["remedy"] is None                   # non-catalog remedy dropped from its layer
+    assert "Totally Made Up" in row["dropped"]
+    assert [rr["slug"] for rr in row["remedies"]] == [real]      # derived flat remedies = surviving layer remedies
+
+
+def test_ingest_remedies_only_wraps_into_layers(monkeypatch, tmp_path):
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    key = _key(app_module)
+    if not key: pytest.skip("no secret")
+    prods = app_module._PRODUCTS.get("products") or {}
+    real = next(iter(prods), None)
+    if not real: pytest.skip("no catalog")
+    _push(app_module, {"email": "c@b.com", "scan_date": "2026-06-20", "interpretation": {"body": "x"},
+                       "remedies": [{"name": prods[real]["name"], "slug": real, "meaning": "m"}]}, key)
+    from dashboard import biofield_reveals as br
+    with sqlite3.connect(db) as cx:
+        row = br.list_pending(cx)[0]
+    assert len(row["layers"]) == 1 and row["layers"][0]["title"] == ""   # titleless wrap
+    assert row["layers"][0]["remedy"]["slug"] == real
+    assert [rr["slug"] for rr in row["remedies"]] == [real]
