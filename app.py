@@ -1636,6 +1636,46 @@ def begin_biofield_reveal_top(token):
         return jsonify({"ok": False, "reason": "error"})
 
 
+@app.route("/begin/biofield/<token>/order-preview", methods=["POST"])
+def begin_biofield_order_preview(token):
+    """Live volume-priced preview of the member's matched-set cart. Never raises."""
+    if not BIOFIELD_CART_ENABLED:
+        return jsonify({"ok": False}), 200
+    try:
+        th = _hash_token((token or "").strip())
+        valid, row = _biofield_verify_token(th)
+        if not valid or row is None:
+            return jsonify({"ok": False, "error": "invalid"}), 404
+        email = (row.get("email") or "").strip().lower()
+        body = request.get_json(silent=True) or {}
+        visible = set(_biofield_visible_slugs(row, email))
+        items = []
+        for it in (body.get("items") or []):
+            s = (it.get("slug") or "").strip()
+            if s and s in visible:
+                items.append({"slug": s, "qty": max(1, min(int(it.get("qty") or 1), 99))})
+        if not items:
+            return jsonify({"ok": True, "lines": [], "subtotal_cents": 0,
+                            "shipping_cents": 0, "savings_cents": 0, "total_cents": 0})
+        ship = _resolve_ship_address(email, {})
+        pc = _price_cart(items, ship=ship)
+        priced = pc["priced"]
+        lines = [{"slug": ln.get("slug"), "name": ln.get("name"), "qty": ln.get("qty"),
+                  "list_cents": int(ln.get("list_cents") or 0),
+                  "line_total_cents": int(ln.get("line_total_cents") or 0),
+                  "savings_cents": int(ln.get("list_cents") or 0) - int(ln.get("line_total_cents") or 0)}
+                 for ln in priced.get("lines", [])]
+        subtotal = int(priced.get("subtotal_cents") or 0)
+        shipping = int(pc.get("shipping_cents") or 0)
+        return jsonify({"ok": True, "lines": lines, "subtotal_cents": subtotal,
+                        "shipping_cents": shipping,
+                        "savings_cents": int(priced.get("discount_cents") or 0),
+                        "total_cents": subtotal + shipping})
+    except Exception as e:
+        print(f"[biofield-cart] preview failed: {e!r}", flush=True)
+        return jsonify({"ok": False}), 200
+
+
 @app.route("/begin/biofield/<token>/unlock-checkout", methods=["POST"])
 def begin_biofield_unlock_checkout(token):
     if not (BIOFIELD_TRIAL_ENABLED and _STRIPE_ACTIVE):

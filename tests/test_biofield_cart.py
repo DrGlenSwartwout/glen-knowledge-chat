@@ -134,3 +134,61 @@ def test_checkout_cart_empty_raises(monkeypatch, tmp_path):
     monkeypatch.setattr(app_module, "_resolve_checkout_coupon_pct", lambda code, email: (None, None))
     with pytest.raises(app_module.CheckoutError):
         app_module._checkout_cart("t@x.com", [], ship={"country": "US"})
+
+
+def test_preview_flag_off(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "BIOFIELD_CART_ENABLED", False, raising=False)
+    token = _approved_reveal(app_module, db)
+    r = app_module.app.test_client().post(f"/begin/biofield/{token}/order-preview", json={"items": [{"slug": "top", "qty": 1}]})
+    assert r.get_json().get("ok") is False
+
+
+def test_preview_prices_visible_set(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "BIOFIELD_CART_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: {"ok": True})  # paid -> all visible
+    seen = {}
+    def _fake_price(cart, **kw):
+        seen["cart"] = cart
+        return {"priced": {"lines": [{"slug": "top", "name": "Top", "qty": 1,
+                                      "list_cents": 6997, "line_total_cents": 5997}],
+                           "subtotal_cents": 5997, "discount_cents": 1000,
+                           "points_redeemed_cents": 0, "get_cents": 0, "total_cents": 5997},
+                "shipping_cents": 1300}
+    monkeypatch.setattr(app_module, "_price_cart", _fake_price)
+    token = _approved_reveal(app_module, db)
+    r = app_module.app.test_client().post(f"/begin/biofield/{token}/order-preview",
+                                          json={"items": [{"slug": "top", "qty": 1}]})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["subtotal_cents"] == 5997 and body["shipping_cents"] == 1300
+    assert body["total_cents"] == 5997 + 1300 and body["savings_cents"] == 1000
+    assert body["lines"][0] == {"slug": "top", "name": "Top", "qty": 1,
+                                "list_cents": 6997, "line_total_cents": 5997, "savings_cents": 1000}
+
+
+def test_preview_rejects_invisible_slug(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "BIOFIELD_CART_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: None)  # free -> nothing visible
+    captured = {}
+    monkeypatch.setattr(app_module, "_price_cart",
+        lambda cart, **kw: captured.setdefault("cart", cart) or {
+            "priced": {"lines": [], "subtotal_cents": 0, "discount_cents": 0,
+                       "points_redeemed_cents": 0, "get_cents": 0, "total_cents": 0},
+            "shipping_cents": 0})
+    token = _approved_reveal(app_module, db)
+    r = app_module.app.test_client().post(f"/begin/biofield/{token}/order-preview",
+                                          json={"items": [{"slug": "deep1", "qty": 1}]})
+    body = r.get_json()
+    # No visible slugs -> empty cart, _price_cart not called, zeroed totals.
+    assert body["ok"] is True and body["lines"] == [] and body["total_cents"] == 0
+    assert "cart" not in captured
+
+
+def test_preview_bad_token_404(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "BIOFIELD_CART_ENABLED", True, raising=False)
+    r = app_module.app.test_client().post("/begin/biofield/nope/order-preview", json={"items": []})
+    assert r.status_code == 404 and r.get_json().get("ok") is False
