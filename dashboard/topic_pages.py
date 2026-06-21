@@ -167,3 +167,61 @@ def list_pages(cx):
             "compliance_passed": comp.get("passed"),
         })
     return out
+
+
+# ---------------------------------------------------------------------------
+# Request / notify (mirrors ingredient_pages)
+# ---------------------------------------------------------------------------
+
+def record_request(cx, slug, email):
+    init_table(cx)
+    e = _norm(email)
+    if not e:
+        return
+    cx.execute(
+        "INSERT OR IGNORE INTO topic_page_requests (slug, email, requested_at, emailed_at) "
+        "VALUES (?, ?, ?, '')",
+        (slug, e, _now()),
+    )
+    cx.commit()
+
+
+def requesters_to_email(cx, slug):
+    init_table(cx)
+    cur = cx.cursor()
+    cur.row_factory = sqlite3.Row
+    rows = cur.execute(
+        "SELECT email, requested_at FROM topic_page_requests "
+        "WHERE slug=? AND COALESCE(emailed_at,'')='' ORDER BY requested_at",
+        (slug,),
+    ).fetchall()
+    return [{"email": r["email"], "requested_at": r["requested_at"]} for r in rows]
+
+
+def mark_emailed(cx, slug, email):
+    init_table(cx)
+    cx.execute(
+        "UPDATE topic_page_requests SET emailed_at=? WHERE slug=? AND email=?",
+        (_now(), slug, _norm(email)),
+    )
+    cx.commit()
+
+
+def notify_on_approve(cx, slug, name, base_url, *, send, strip=None):
+    """Email each un-emailed requester once; mark each after send; never raises."""
+    if strip is None:
+        strip = lambda s: s  # noqa: E731
+    requesters = requesters_to_email(cx, slug)
+    link = f"{base_url}/learn/{slug}"
+    subject = f"Your {name} guide is ready"
+    for r in requesters:
+        email = r["email"]
+        body = strip(
+            f"Aloha,\n\nThe guide you asked about, {name}, is ready:\n\n{link}\n\n"
+            f"In wellness,\nDr. Glen & Rae"
+        )
+        try:
+            send(email, subject, body)
+            mark_emailed(cx, slug, email)
+        except Exception as exc:  # noqa: BLE001 - one bad send must not stop the rest
+            print(f"[topic-pages] send failed for {email}: {exc}", flush=True)
