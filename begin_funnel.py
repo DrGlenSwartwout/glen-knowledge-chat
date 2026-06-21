@@ -82,7 +82,7 @@ VALID_TRIGGERS = {
     "load", "video", "scroll", "question", "name", "email", "tos",
     "voice", "scan", "quiz", "paid_fork", "purchase", "share_video",
     "deep_link",
-    "course_ww", "intake", "masterclass", "biofield",
+    "course_ww", "intake", "masterclass", "biofield", "ascend",
 }
 
 # Gate keys stored in unlocked_gates (email/tos drive their own columns, but
@@ -767,3 +767,25 @@ TIER_CATALOG = {
 
 def tier_for(slug):
     return TIER_CATALOG.get(slug)
+
+
+# Goal -> ordered high-ticket track (slugs into TIER_CATALOG). The recommended
+# rung is the lowest one the member has not reached; default to the entry rung.
+ASCEND_TRACKS = {
+    "heal":  ["biofield-analysis"],
+    "learn": ["certification", "one-to-one"],
+    "build": ["one-to-one", "healing-oasis-tools", "hawaii-immersion", "consultant-package"],
+}
+
+
+def recommend_ascend(goal, reached=()):
+    """Recommended TIER_CATALOG slug for a goal + the set of rungs already reached.
+    Pure and total: the first rung in the goal's track not in `reached`; if all are
+    reached, the track's top rung; an unknown/missing goal falls back to the heal
+    track (entry rung biofield-analysis)."""
+    track = ASCEND_TRACKS.get((goal or "").strip().lower()) or ASCEND_TRACKS["heal"]
+    reached = set(reached or ())
+    for slug in track:
+        if slug not in reached:
+            return slug
+    return track[-1]
