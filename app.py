@@ -1408,6 +1408,54 @@ def begin_ascend_tier_data():
     return jsonify(tier)
 
 
+def _ascend_reached(cx, email, state):
+    """Rungs this member has already reached (v1). A paid member or a
+    biofield/paid_fork/purchase gate marks the $300 Biofield rung reached.
+    Never raises. (Practitioner-track signals are a future extension.)"""
+    reached = set()
+    try:
+        if email and _active_membership_for_email(email):
+            reached.add("biofield-analysis")
+    except Exception:
+        pass
+    try:
+        gates = set((state or {}).get("unlocked_gates") or ())
+        if gates & {"biofield", "paid_fork", "purchase"}:
+            reached.add("biofield-analysis")
+    except Exception:
+        pass
+    return reached
+
+
+@app.route("/begin/ascend/recommend")
+def begin_ascend_recommend():
+    """Personalized rung recommendation + the full ladder. Never raises."""
+    if not ASCEND_PERSONALIZED_ENABLED:
+        return jsonify({"ok": True, "enabled": False})
+    try:
+        goal = (request.args.get("goal") or "heal").strip().lower()
+        session_id = (request.cookies.get("amg_session") or "").strip()
+        auth_user = get_authenticated_user(request)
+        email = (auth_user["email"] if auth_user else "") or ""
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            state = begin_funnel.get_state(cx, session_id=session_id, email=email)
+        resolved_email = (state.get("email") or email or "").strip().lower()
+        with sqlite3.connect(LOG_DB) as cx:
+            reached = _ascend_reached(cx, resolved_email, state)
+        slug = begin_funnel.recommend_ascend(goal, reached)
+        ladder = sorted(begin_funnel.TIER_CATALOG.values(), key=lambda t: t.get("n", 0))
+        is_member_now = bool(is_member(session_id, resolved_email))
+        return jsonify({"ok": True, "enabled": True, "goal": goal,
+                        "recommended": begin_funnel.TIER_CATALOG.get(slug),
+                        "ladder": ladder, "is_member": is_member_now})
+    except Exception as e:
+        print(f"[ascend-recommend] {e!r}", flush=True)
+        return jsonify({"ok": True, "enabled": True, "goal": "heal",
+                        "recommended": begin_funnel.TIER_CATALOG.get("biofield-analysis"),
+                        "ladder": sorted(begin_funnel.TIER_CATALOG.values(), key=lambda t: t.get("n", 0)),
+                        "is_member": False})
+
+
 @app.route("/begin/path")
 def begin_path():
     resp = send_from_directory(STATIC, "begin-path.html")
@@ -2752,6 +2800,7 @@ _REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "y
 INGREDIENT_PAGES_PAID_ONLY = os.environ.get("INGREDIENT_PAGES_PAID_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_CART_ENABLED = os.environ.get("BIOFIELD_CART_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+ASCEND_PERSONALIZED_ENABLED = os.environ.get("ASCEND_PERSONALIZED_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _referral_pct():
