@@ -401,9 +401,9 @@ CARD_CATALOG = {
     "product":            {"title": "Formulations Matched to You",
                            "sub": "Explore remedies suited to what your body needs",
                            "base_url": "https://remedymatch.com", "internal": False},
-    "ash_course":         {"title": "Learn to Heal Yourself",
-                           "sub": "The Accelerated Self-Healing approach, step by step",
-                           "base_url": "https://truly.vip/GetWell", "internal": False},
+    "ash_course":         {"title": "Wellness Whispering MasterClass & Community",
+                           "sub": "The Accelerated Self Healing™ approach, step by step",
+                           "base_url": "https://truly.vip/WellnessWhispering", "internal": False},
     "ash_masterclass":    {"title": "The Path Deeper: Choose Your Depth",
                            "sub": "From a free orientation to full immersion. See the whole spectrum of how you can go further.",
                            "base_url": "/begin/ascend", "internal": True},
@@ -445,13 +445,13 @@ def _card(key, ref=""):
 JOURNEY_STEPS = [
     {"key": "scan", "label": "Scan", "paren": "Your Biofield", "steps": [
         {"key": "voice_scan", "label": "Voice scan",          "src": ("gate", "scan"),       "href": None},
-        {"key": "ww_course",  "label": "Wellness Whispering", "src": ("gate", "course_ww"),  "href": "https://truly.vip/GetWell"}]},
+        {"key": "ww_course",  "label": "Wellness Whispering MasterClass & Community", "src": ("gate", "course_ww"),  "href": "https://truly.vip/WellnessWhispering"}]},
     {"key": "find", "label": "Find", "paren": "Your Remedy Match", "steps": [
         {"key": "match_chat", "label": "Match via chat",      "src": ("gate", "question"),   "href": "/begin/match"},
         {"key": "biofield",   "label": "Biofield interpretation", "src": ("gate", "biofield"), "href": "/begin/match"}]},
     {"key": "heal", "label": "Heal", "paren": "the root causes", "steps": [
         {"key": "intake",      "label": "Intake form",        "src": ("gate", "intake"),      "href": "https://truly.vip/Join"},
-        {"key": "masterclass", "label": "ASH MasterClass",    "src": ("gate", "masterclass"), "href": "https://truly.vip/Intro"}]},
+        {"key": "masterclass", "label": "Accelerated Self Healing™ MasterClass & Community",    "src": ("gate", "masterclass"), "href": "https://truly.vip/Intro"}]},
     {"key": "give", "label": "Give", "paren": "lift others", "steps": [
         {"key": "ambassador",   "label": "Be an Ambassador",  "src": ("predicate", "ambassador"),     "href": "/affiliate/apply"},
         {"key": "bring_friend", "label": "Bring a friend",    "src": ("predicate", "referred_friend"), "href": "/begin/path"}]},
@@ -540,7 +540,7 @@ _EXPLORE_LAYOUT = [
      "blurb": "Find what fits, then explore the formulations.",
      "items": ["remedy_match", "product"]},
     {"title": "Learn to Heal",
-     "blurb": "The Accelerated Self-Healing approach, step by step.",
+     "blurb": "The Accelerated Self Healing™ approach, step by step.",
      "items": ["ash_course"]},
     {"title": "Go Deeper",
      "blurb": "Choose how far you want to take this.",
@@ -743,7 +743,7 @@ TIER_CATALOG = {
         "cta_label": "Book your consultation"},
     "certification": {"slug": "certification", "n": 4,
         "title": "ASH Certification Training", "price": "~$3,600", "value": "",
-        "included": "Train in the Accelerated Self-Healing™ method.",
+        "included": "Train in the Accelerated Self Healing™™ method.",
         "cta_label": "Book your consultation"},
     "one-to-one": {"slug": "one-to-one", "n": 5,
         "title": "ASH 1:1 Live Support + Certification", "price": "~$8,500", "value": "6 months",
@@ -760,7 +760,7 @@ TIER_CATALOG = {
         "cta_label": "Book your consultation"},
     "consultant-package": {"slug": "consultant-package", "n": 8,
         "title": "Complete Consultant Package", "price": "~$50,000", "value": "",
-        "included": "Everything, including the software, to run your own Accelerated Self-Healing practice.",
+        "included": "Everything, including the software, to run your own Accelerated Self Healing™ practice.",
         "cta_label": "Book your consultation"},
 }
 
