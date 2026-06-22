@@ -4,6 +4,108 @@
   "default_bottle_type": "default",
   "_wholesale_schema": "Phase 1 wholesale pricing engine (dashboard/wholesale_pricing.py): a product MAY add optional fields — bottle_type (string; matches dashboard.shipping bottle_types.name, used to source the box-fit large-box capacity B), cogs_cents (int; landed product cost), fulfillment_cents (int; per-bottle pick/pack/ship). Retail = price_cents. cogs+fulfillment gate the wholesale margin floor; when unset the margin is left unverified (loud warning). Populate per product before wholesale go-live (data task, see spec 2026-06-01 section 5).",
   "products": {
+    "ei8-microbes-liver-integrator": {
+      "name": "EI8 Microbes-Liver Integrator",
+      "price_cents": 3997,
+      "pinecone_title": "EI8 Microbes-Liver Integrator",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mb1-brain-stem-hologram": {
+      "name": "MB1 Brain Stem Hologram",
+      "price_cents": 3997,
+      "pinecone_title": "MB1 Brain Stem Hologram",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mb2-cerebral-medulla-hologram": {
+      "name": "MB2 Cerebral Medulla Hologram",
+      "price_cents": 3997,
+      "pinecone_title": "MB2 Cerebral Medulla Hologram",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mb3-cerebellum-hologram": {
+      "name": "MB3 Cerebellum Hologram",
+      "price_cents": 3997,
+      "pinecone_title": "MB3 Cerebellum Hologram",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mb4-cerebral-cortex-hologram": {
+      "name": "MB4 Cerebral Cortex Hologram",
+      "price_cents": 3997,
+      "pinecone_title": "MB4 Cerebral Cortex Hologram",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mb5-emotional-stress-release-hologram": {
+      "name": "MB5 Emotional Stress Release Hologram",
+      "price_cents": 3997,
+      "pinecone_title": "MB5 Emotional Stress Release Hologram",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mb8-love-hologram": {
+      "name": "MB8 Love Hologram",
+      "price_cents": 3997,
+      "pinecone_title": "MB8 Love Hologram",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mr1-super-cell-driver": {
+      "name": "MR1 Super Cell Driver",
+      "price_cents": 3997,
+      "pinecone_title": "MR1 Super Cell Driver",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mr2-calm-mind": {
+      "name": "MR2 Calm Mind",
+      "price_cents": 3997,
+      "pinecone_title": "MR2 Calm Mind",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mr3-restore-matrix": {
+      "name": "MR3 Restore Matrix",
+      "price_cents": 3997,
+      "pinecone_title": "MR3 Restore Matrix",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mr4-microtubule-function": {
+      "name": "MR4 Microtubule Function",
+      "price_cents": 3997,
+      "pinecone_title": "MR4 Microtubule Function",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mr5-harmonize-emotions": {
+      "name": "MR5 Harmonize Emotions",
+      "price_cents": 3997,
+      "pinecone_title": "MR5 Harmonize Emotions",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mr6-reconnection": {
+      "name": "MR6 Reconnection",
+      "price_cents": 3997,
+      "pinecone_title": "MR6 Reconnection",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mr7-calcium-and-terrains": {
+      "name": "MR7 Calcium and Terrains",
+      "price_cents": 3997,
+      "pinecone_title": "MR7 Calcium and Terrains",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mr8-growth-cone-regeneration": {
+      "name": "MR8 Growth Cone Regeneration",
+      "price_cents": 3997,
+      "pinecone_title": "MR8 Growth Cone Regeneration",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mr9-freedom": {
+      "name": "MR9 Freedom",
+      "price_cents": 3997,
+      "pinecone_title": "MR9 Freedom",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
+    "mr10-cns-heart-matrix": {
+      "name": "MR10 CNS-Heart-Matrix",
+      "price_cents": 3997,
+      "pinecone_title": "MR10 CNS-Heart-Matrix",
+      "source": "infoceutical-catalog-2026-06-22"
+    },
     "aces-eyedrops": {
       "name": "ACES Eyedrops",
       "qbo_item_id": "21",
