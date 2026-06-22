@@ -355,8 +355,29 @@ def _resend_biofield_reveal(email, extra):
     _send_inquiry_email(email, "Your Biofield Analysis is ready", body)
 
 
-def _resend_inquiry_reply(a, b):
-    return
+def _resend_inquiry_reply(inquiry_id, practitioner_id):
+    """Mint a fresh inquiry reply token for (inquiry_id, practitioner_id) and email the
+    practitioner the secure reply link. No-op if the practitioner is unknown."""
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        prow = cx.execute(
+            "SELECT practitioner_email FROM inquiry_practitioners "
+            "WHERE inquiry_id=? AND practitioner_id=? AND practitioner_email IS NOT NULL "
+            "AND practitioner_email <> '' ORDER BY email_sent_at DESC LIMIT 1",
+            (inquiry_id, practitioner_id)).fetchone()
+        if not prow:
+            return
+        pmail = prow[0]
+        tok = secrets.token_urlsafe(32)
+        now = datetime.utcnow()
+        cx.execute("INSERT OR REPLACE INTO inquiry_reply_tokens "
+                   "(token_hash, inquiry_id, practitioner_id, created_at, expires_at) VALUES (?,?,?,?,?)",
+                   (_hash_token(tok), inquiry_id, practitioner_id,
+                    now.isoformat() + "Z", (now + timedelta(days=30)).isoformat() + "Z"))
+        cx.commit()
+    url = f"{PUBLIC_BASE_URL}/inquiries/{inquiry_id}/{practitioner_id}/reply?token={tok}"
+    body = ("Aloha,\n\nHere is your fresh secure reply link for this inquiry:\n"
+            f"{url}\n\nIn wellness,\nDr. Glen\n")
+    _send_inquiry_email(pmail, "Your fresh reply link", body)
 
 
 _AUTH_TTL = timedelta(minutes=AUTH_TOKEN_TTL_MIN)

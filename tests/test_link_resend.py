@@ -103,3 +103,43 @@ def test_resend_reveal_missing_ok_no_send(monkeypatch, tmp_path):
     r = app_module.app.test_client().post("/link/resend", json={"token": tok})
     assert r.status_code == 200 and r.get_json().get("ok") is True
     assert sent == []
+
+
+def test_resend_inquiry_reply_mints_and_emails_practitioner(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    with sqlite3.connect(db) as cx:
+        cx.execute("CREATE TABLE IF NOT EXISTS inquiry_reply_tokens "
+                   "(token_hash TEXT PRIMARY KEY, inquiry_id TEXT, practitioner_id TEXT, "
+                   "created_at TEXT, expires_at TEXT, UNIQUE(inquiry_id, practitioner_id))")
+        cx.execute("CREATE TABLE IF NOT EXISTS inquiry_practitioners "
+                   "(id TEXT, inquiry_id TEXT, practitioner_id TEXT, practitioner_email TEXT, status TEXT, email_sent_at TEXT)")
+        cx.execute("INSERT INTO inquiry_practitioners (id, inquiry_id, practitioner_id, practitioner_email, status) "
+                   "VALUES ('1','INQ','P9','doc@x.com','sent')")
+        cx.commit()
+    sent = []
+    monkeypatch.setattr(app_module, "_send_inquiry_email",
+                        lambda to, subj, body, **k: sent.append((to, body)) or True)
+    r = app_module.app.test_client().post("/link/resend",
+                                          json={"inquiry_id": "INQ", "practitioner_id": "P9"})
+    assert r.status_code == 200 and r.get_json().get("ok") is True
+    assert len(sent) == 1 and sent[0][0] == "doc@x.com"
+    assert "/inquiries/INQ/P9/reply?token=" in sent[0][1]
+    with sqlite3.connect(db) as cx:
+        n = cx.execute("SELECT COUNT(*) FROM inquiry_reply_tokens WHERE inquiry_id='INQ' AND practitioner_id='P9'").fetchone()[0]
+    assert n == 1
+
+
+def test_resend_inquiry_reply_unknown_practitioner_no_send(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    with sqlite3.connect(db) as cx:
+        cx.execute("CREATE TABLE IF NOT EXISTS inquiry_reply_tokens "
+                   "(token_hash TEXT PRIMARY KEY, inquiry_id TEXT, practitioner_id TEXT, created_at TEXT, expires_at TEXT, UNIQUE(inquiry_id, practitioner_id))")
+        cx.execute("CREATE TABLE IF NOT EXISTS inquiry_practitioners "
+                   "(id TEXT, inquiry_id TEXT, practitioner_id TEXT, practitioner_email TEXT, status TEXT, email_sent_at TEXT)")
+        cx.commit()
+    sent = []
+    monkeypatch.setattr(app_module, "_send_inquiry_email", lambda *a, **k: sent.append(1) or True)
+    r = app_module.app.test_client().post("/link/resend",
+                                          json={"inquiry_id": "NOPE", "practitioner_id": "P0"})
+    assert r.status_code == 200 and r.get_json().get("ok") is True
+    assert sent == []
