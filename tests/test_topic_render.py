@@ -135,3 +135,19 @@ def test_suggest_escapes_name():
     html = tr.render_suggest_html("x", "<script>alert(1)</script>")
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;" in html
+
+
+def test_render_sitemap_xml_includes_loc_and_lastmod():
+    tr = _mod()
+    rows = [
+        {"slug": "low-energy", "updated_at": "2026-06-22T01:02:03+00:00", "approved_at": ""},
+        {"slug": "detox", "updated_at": "", "approved_at": "2026-06-20T09:00:00+00:00"},
+        {"slug": "no-dates"},
+    ]
+    xml = tr.render_sitemap_xml(rows, "https://illtowell.com")
+    assert xml.startswith('<?xml')
+    assert "<loc>https://illtowell.com/learn/low-energy</loc>" in xml
+    assert "<lastmod>2026-06-22</lastmod>" in xml          # from updated_at
+    assert "<lastmod>2026-06-20</lastmod>" in xml          # falls back to approved_at
+    # a row with no timestamps still emits a <url> but no <lastmod>
+    assert "<loc>https://illtowell.com/learn/no-dates</loc></url>" in xml

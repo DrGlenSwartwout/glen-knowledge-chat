@@ -129,3 +129,54 @@ def test_dismiss_sets_state_dismissed_and_drops_from_suggestions():
     assert res["state"] == "dismissed"
     assert tp.get_page(cx, "junk-topic")["state"] == "dismissed"
     assert not any(r["slug"] == "junk-topic" for r in tp.list_suggestions(cx))
+
+
+def test_approve_pings_indexnow_when_configured():
+    tp, tpa = _tp(), _tpa()
+    tpa.register()
+    cx = _cx()
+    tp.upsert_section(cx, "low-energy", "overview", "Supports healthy energy.")
+    tp.set_compliance(cx, "low-energy", {"passed": True, "flags": []})
+
+    class _FakeHTTP:
+        def __init__(self):
+            self.calls = []
+
+        def post(self, url, **kw):
+            self.calls.append((url, kw))
+
+    http = _FakeHTTP()
+    tpa.configure(base_url="https://illtowell.com", indexnow_http=http)
+    import os
+    os.environ["INDEXNOW_KEY"] = "TESTKEY"
+    try:
+        res = _get_action("topic_page.approve").executor({"slug": "low-energy"}, {"cx": cx, "actor": _actor()})
+    finally:
+        os.environ.pop("INDEXNOW_KEY", None)
+    assert res["ok"] is True
+    assert len(http.calls) == 1
+    body = http.calls[0][1].get("json") or {}
+    assert body.get("urlList") == ["https://illtowell.com/learn/low-energy"]
+
+
+def test_approve_skips_indexnow_when_unconfigured():
+    tp, tpa = _tp(), _tpa()
+    tpa.register()
+    cx = _cx()
+    tp.upsert_section(cx, "detox", "overview", "Supports healthy detox pathways.")
+    tp.set_compliance(cx, "detox", {"passed": True, "flags": []})
+
+    class _FakeHTTP:
+        def __init__(self):
+            self.calls = []
+
+        def post(self, url, **kw):
+            self.calls.append((url, kw))
+
+    http = _FakeHTTP()
+    tpa.configure(base_url="https://illtowell.com", indexnow_http=http)
+    import os
+    os.environ.pop("INDEXNOW_KEY", None)
+    res = _get_action("topic_page.approve").executor({"slug": "detox"}, {"cx": cx, "actor": _actor()})
+    assert res["ok"] is True
+    assert http.calls == []

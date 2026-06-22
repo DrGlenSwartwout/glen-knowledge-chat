@@ -154,7 +154,8 @@ def list_pages(cx):
     cur = cx.cursor()
     cur.row_factory = sqlite3.Row
     rows = cur.execute(
-        "SELECT slug, kind, name, state, content_json, compliance_json "
+        "SELECT slug, kind, name, state, content_json, compliance_json, "
+        "approved_at, updated_at "
         "FROM topic_pages ORDER BY updated_at DESC"
     ).fetchall()
     out = []
@@ -165,6 +166,7 @@ def list_pages(cx):
             "slug": r["slug"], "kind": r["kind"] or "", "name": r["name"] or r["slug"],
             "state": r["state"] or "draft", "sections": sorted(content.keys()),
             "compliance_passed": comp.get("passed"),
+            "approved_at": r["approved_at"] or "", "updated_at": r["updated_at"] or "",
         })
     return out
 

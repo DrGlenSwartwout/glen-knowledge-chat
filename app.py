@@ -4234,19 +4234,24 @@ def learn_index():
 
 @app.route("/learn/sitemap.xml")
 def learn_sitemap():
-    from dashboard import topic_pages as _tp
+    from dashboard import topic_pages as _tp, topic_render as _tr
     if not TOPIC_PAGES_ENABLED:
         return ("Not found", 404)
-    import html as _html
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         rows = [r for r in _tp.list_pages(cx) if r["state"] == "approved"]
-    urls = "".join(
-        f"<url><loc>{_html.escape(PUBLIC_BASE_URL + '/learn/' + r['slug'], quote=True)}</loc></url>"
-        for r in rows
-    )
-    xml = ('<?xml version="1.0" encoding="UTF-8"?>'
-           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + "</urlset>")
+    xml = _tr.render_sitemap_xml(rows, PUBLIC_BASE_URL)
     return Response(xml, mimetype="application/xml")
+
+
+@app.route("/<key>.txt")
+def indexnow_key_file(key):
+    """Serve the IndexNow key-ownership file at /<key>.txt when it matches the
+    configured INDEXNOW_KEY, so Bing/Yandex can verify we own this host."""
+    from dashboard import indexnow as _in
+    k = _in.key()
+    if k and key == k:
+        return Response(k, mimetype="text/plain")
+    return ("Not found", 404)
 
 
 @app.route("/begin/ingredient-page-gen/<slug>/<section>")
