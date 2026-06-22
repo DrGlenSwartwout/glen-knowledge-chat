@@ -147,6 +147,24 @@
   .cal-delegate-wrap { position: relative; display: inline-block; }
   .cal-deleg-done { font-size: 11px; color: var(--shaira); }
   #cal-empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+  /* Calendar controls: range switch + events/accomplishments toggle */
+  .cal-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-left: auto; }
+  .cal-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .cal-seg button { background: transparent; border: none; color: var(--muted); padding: 3px 9px; font-size: 11px; cursor: pointer; }
+  .cal-seg button.active { background: var(--border); color: var(--text); }
+  /* Owner lanes */
+  .cal-days.laned { flex-direction: column; overflow-x: visible; }
+  .cal-lane { margin-bottom: 14px; }
+  .cal-lane-head { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+  .cal-owner-chip { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; color: #0a0c12; }
+  .cal-owner-chip.glen   { background: var(--glen); }
+  .cal-owner-chip.rae    { background: var(--rae); }
+  .cal-owner-chip.shaira { background: var(--shaira); }
+  .cal-event.lane-glen   { border-left: 3px solid var(--glen); }
+  .cal-event.lane-rae    { border-left: 3px solid var(--rae); }
+  .cal-event.lane-shaira { border-left: 3px solid var(--shaira); }
+  .cal-acc { background: var(--cal-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; font-size: 12px; }
+  .cal-acc .cal-event-title::before { content: "✓ "; color: var(--shaira); }
 
   /* Todo section */
   .category-group { margin-bottom: 24px; }
@@ -715,8 +733,21 @@
     <!-- Calendar -->
     <div id="cal-section" data-goto="calendar">
       <div class="cal-header">
-        <span class="cal-title">Calendar — Next 14 Days</span>
-        <button class="btn-cal-toggle" id="cal-toggle-btn" onclick="toggleCalendar()">Hide</button>
+        <span class="cal-title" id="cal-title">Calendar — Today</span>
+        <div class="cal-controls">
+          <span class="cal-seg" id="cal-range-seg">
+            <button data-range="today">Today</button>
+            <button data-range="2day">+Tomorrow</button>
+            <button data-range="week">Week</button>
+            <button data-range="month">Month</button>
+          </span>
+          <span class="cal-seg" id="cal-kind-seg">
+            <button data-kind="events">Events</button>
+            <button data-kind="accomplishments">Done</button>
+          </span>
+          <button class="btn-cal-toggle" id="cal-log-btn" onclick="logAccomplishment()" title="Log an accomplishment for the selected person">+ Done</button>
+          <button class="btn-cal-toggle" id="cal-toggle-btn" onclick="toggleCalendar()">Hide</button>
+        </div>
       </div>
       <div id="cal-body">
         <div id="cal-empty" style="display:none">No upcoming events.</div>
@@ -842,6 +873,9 @@ let countdownTimer;
 let WS_META = {};   // todo_id → {phase, time_total_seconds, pending_asks} for owners with a Workspace
 let openMenuId = null;
 let calVisible = true;
+let calRange = localStorage.getItem('cal_range') || 'today';
+let calKind  = localStorage.getItem('cal_kind')  || 'events';
+const CAL_RANGE_LABEL = { today: 'Today', '2day': 'Today + Tomorrow', week: 'This Week', month: 'This Month' };
 let mcVisible = true;
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -1123,9 +1157,54 @@ async function fetchTodos(owner, status) {
   return r.ok ? (await r.json()).todos || [] : [];
 }
 
-async function fetchCalendar(owner) {
-  const r = await apiFetch(`/api/calendar?owner=${owner}`);
+async function fetchCalendar() {
+  // Admin sees all owners; the server scopes the result by the console key.
+  const r = await apiFetch(`/api/calendar?range=${calRange}&kind=${calKind}`);
   return r.ok ? (await r.json()).events || [] : [];
+}
+
+// Segmented range/kind controls. Re-fetch only the calendar on change.
+function _initCalControls() {
+  const rangeSeg = document.getElementById('cal-range-seg');
+  const kindSeg  = document.getElementById('cal-kind-seg');
+  if (!rangeSeg || !kindSeg) return;
+  const paint = () => {
+    rangeSeg.querySelectorAll('button').forEach(b =>
+      b.classList.toggle('active', b.dataset.range === calRange));
+    kindSeg.querySelectorAll('button').forEach(b =>
+      b.classList.toggle('active', b.dataset.kind === calKind));
+    const t = document.getElementById('cal-title');
+    if (t) t.textContent = `Calendar — ${CAL_RANGE_LABEL[calRange] || 'Today'}` +
+      (calKind === 'accomplishments' ? ' · Accomplishments' : '');
+  };
+  rangeSeg.querySelectorAll('button').forEach(b => b.onclick = async () => {
+    calRange = b.dataset.range; localStorage.setItem('cal_range', calRange); paint(); await reloadCalendar();
+  });
+  kindSeg.querySelectorAll('button').forEach(b => b.onclick = async () => {
+    calKind = b.dataset.kind; localStorage.setItem('cal_kind', calKind); paint(); await reloadCalendar();
+  });
+  paint();
+}
+
+async function reloadCalendar() {
+  const events = await fetchCalendar();
+  renderCalendar(events);
+  if (calKind === 'events') restoreCalAlerts(events);
+}
+
+async function logAccomplishment() {
+  const who = currentOwner;  // logs for the person selected in the owner switcher
+  const title = (prompt(`Log an accomplishment for ${CAL_OWNER_LABEL[who] || who}:`) || '').trim();
+  if (!title) return;
+  const r = await apiFetch('/api/calendar/accomplishment', {
+    method: 'POST',
+    body: JSON.stringify({ owner: who, title, at: new Date().toISOString() }),
+  });
+  if (!r.ok) { alert('Could not log that.'); return; }
+  if (calKind !== 'accomplishments') {
+    calKind = 'accomplishments'; localStorage.setItem('cal_kind', calKind); _initCalControls();
+  }
+  await reloadCalendar();
 }
 
 // Pull the Workspace state for an owner and flatten into a {todo_id → meta} map.
@@ -1195,54 +1274,88 @@ function formatCalDate(iso) {
   } catch { return { label: iso.substring(0,10), isToday: false }; }
 }
 
-function renderCalendar(events) {
+const CAL_OWNER_ORDER = ['glen', 'rae', 'shaira'];
+const CAL_OWNER_LABEL = { glen: 'Glen', rae: 'Rae', shaira: 'Shaira' };
+
+function _calEventCard(ev) {
+  const time = formatCalTime(ev.start);
+  const loc  = ev.location ? `<div class="cal-event-loc">📍 ${escHtml(ev.location.substring(0,50))}</div>` : '';
+  const isAlerted = ev.cal_alert || calAlerts[ev.id];
+  const lane = CAL_OWNER_ORDER.includes(ev.owner) ? ev.owner : 'glen';
+  return `<div class="cal-event lane-${lane}${isAlerted ? ' alerted' : ''}" id="cal-ev-${ev.id}" data-start="${escHtml(ev.start||'')}">
+    <div class="cal-event-time">${escHtml(time)}</div>
+    <div class="cal-event-title">${escHtml(ev.summary)}</div>
+    <div class="cal-event-cal">${escHtml(ev.calendar_name)}</div>
+    ${loc}
+    <div class="cal-event-actions">
+      <button class="btn-cal btn-cal-alert${isAlerted ? ' active' : ''}" id="alert-btn-${ev.id}" onclick="toggleCalAlert(${ev.id}, '${escHtml(ev.start||'')}', '${escHtml(ev.summary||'').replace(/'/g,"\\'")}')">🔔 Alert</button>
+      <button class="btn-cal btn-cal-hide" onclick="doCalHide(${ev.id})">Skip</button>
+      <span class="delegate-wrap cal-delegate-wrap">
+        <button class="btn-cal btn-cal-delegate" onclick="toggleMenu('cal${ev.id}', event)">Delegate ▾</button>
+        <div class="delegate-menu hidden" id="menu-cal${ev.id}">${calDelegateOptions(ev.id)}</div>
+      </span>
+      <button class="btn-cal btn-cal-suppress" onclick="doCalSuppress(${ev.id})">Always ignore</button>
+      <button class="btn-cal btn-cal-delete" onclick="doCalDelete(${ev.id})">Delete from Google</button>
+    </div>
+  </div>`;
+}
+
+function _calAccCard(it) {
+  const time = formatCalTime(it.at);
+  const notes = it.notes ? `<div class="cal-event-loc">${escHtml(it.notes.substring(0,80))}</div>` : '';
+  return `<div class="cal-acc">
+    <div class="cal-event-time">${escHtml(time)}</div>
+    <div class="cal-event-title">${escHtml(it.title)}</div>
+    ${notes}
+  </div>`;
+}
+
+// One owner's lane: the existing day-columns, grouped by date, for that owner's items.
+function _calDayColumns(items, dateField, cardFn) {
+  const groups = {}, order = [];
+  items.forEach(it => {
+    const k = (it[dateField] || '').substring(0, 10);
+    if (!groups[k]) { groups[k] = []; order.push(k); }
+    groups[k].push(it);
+  });
+  return order.map(k => {
+    const { label, isToday } = formatCalDate(k);
+    return `<div class="cal-day">
+      <div class="cal-day-header${isToday ? ' today' : ''}">${escHtml(label)}</div>
+      ${groups[k].map(cardFn).join('')}
+    </div>`;
+  }).join('');
+}
+
+function renderCalendar(items) {
   const daysEl  = document.getElementById('cal-days');
   const emptyEl = document.getElementById('cal-empty');
   daysEl.innerHTML = '';
 
-  if (!events.length) {
-    emptyEl.style.display = '';
-    return;
-  }
+  if (!items.length) { emptyEl.style.display = ''; return; }
   emptyEl.style.display = 'none';
 
-  // Group by date string (YYYY-MM-DD)
-  const groups = {};
-  const order  = [];
-  events.forEach(ev => {
-    const dateKey = (ev.start || '').substring(0, 10);
-    if (!groups[dateKey]) { groups[dateKey] = []; order.push(dateKey); }
-    groups[dateKey].push(ev);
-  });
+  const isAcc = calKind === 'accomplishments';
+  const dateField = isAcc ? 'at' : 'start';
+  const cardFn = isAcc ? _calAccCard : _calEventCard;
 
-  daysEl.innerHTML = order.map(dateKey => {
-    const { label, isToday } = formatCalDate(dateKey);
-    const cards = groups[dateKey].map(ev => {
-      const time = formatCalTime(ev.start);
-      const loc  = ev.location ? `<div class="cal-event-loc">📍 ${escHtml(ev.location.substring(0,50))}</div>` : '';
-      const isAlerted = ev.cal_alert || calAlerts[ev.id];
-      return `<div class="cal-event${isAlerted ? ' alerted' : ''}" id="cal-ev-${ev.id}" data-start="${escHtml(ev.start||'')}">
-        <div class="cal-event-time">${escHtml(time)}</div>
-        <div class="cal-event-title">${escHtml(ev.summary)}</div>
-        <div class="cal-event-cal">${escHtml(ev.calendar_name)}</div>
-        ${loc}
-        <div class="cal-event-actions">
-          <button class="btn-cal btn-cal-alert${isAlerted ? ' active' : ''}" id="alert-btn-${ev.id}" onclick="toggleCalAlert(${ev.id}, '${escHtml(ev.start||'')}', '${escHtml(ev.summary||'').replace(/'/g,"\\'")}')">🔔 Alert</button>
-          <button class="btn-cal btn-cal-hide" onclick="doCalHide(${ev.id})">Skip</button>
-          <span class="delegate-wrap cal-delegate-wrap">
-            <button class="btn-cal btn-cal-delegate" onclick="toggleMenu('cal${ev.id}', event)">Delegate ▾</button>
-            <div class="delegate-menu hidden" id="menu-cal${ev.id}">${calDelegateOptions(ev.id)}</div>
-          </span>
-          <button class="btn-cal btn-cal-suppress" onclick="doCalSuppress(${ev.id})">Always ignore</button>
-          <button class="btn-cal btn-cal-delete" onclick="doCalDelete(${ev.id})">Delete from Google</button>
-        </div>
-      </div>`;
-    }).join('');
-    return `<div class="cal-day">
-      <div class="cal-day-header${isToday ? ' today' : ''}">${escHtml(label)}</div>
-      ${cards}
-    </div>`;
-  }).join('');
+  // Group into owner lanes (Glen / Rae / Shaira). A scoped viewer only ever gets her own.
+  const byOwner = {};
+  items.forEach(it => { (byOwner[it.owner || 'glen'] = byOwner[it.owner || 'glen'] || []).push(it); });
+  const owners = CAL_OWNER_ORDER.filter(o => byOwner[o]);
+
+  // Single-owner view (e.g. Shaira's scoped result): skip the lane chrome.
+  if (owners.length <= 1) {
+    daysEl.classList.remove('laned');
+    daysEl.innerHTML = _calDayColumns(items, dateField, cardFn);
+    return;
+  }
+  daysEl.classList.add('laned');
+  daysEl.innerHTML = owners.map(o => `
+    <div class="cal-lane">
+      <div class="cal-lane-head"><span class="cal-owner-chip ${o}">${escHtml(CAL_OWNER_LABEL[o])}</span></div>
+      <div class="cal-days">${_calDayColumns(byOwner[o], dateField, cardFn)}</div>
+    </div>`).join('');
 }
 
 async function doCalHide(id) {
@@ -2660,11 +2773,12 @@ async function refresh(restoreScrollY) {
   document.getElementById('main-content').style.display = 'none';
 
   const showDone = document.getElementById('show-done').checked;
-  const calOwner = currentOwner === 'shaira' ? null : currentOwner;
   const wsOwner  = currentOwner === 'shaira' ? currentOwner : null;
+  // The calendar shows all owners the viewer is allowed to see (server-scoped),
+  // independent of the todo owner-switcher.
   const [todos, calEvents, wsMeta] = await Promise.all([
     fetchTodos(currentOwner, showDone ? 'done' : 'open'),
-    calOwner ? fetchCalendar(calOwner) : Promise.resolve([]),
+    fetchCalendar(),
     wsOwner ? fetchWorkspaceMeta(wsOwner) : Promise.resolve({}),
   ]);
   WS_META = wsMeta;
@@ -2685,7 +2799,7 @@ async function refresh(restoreScrollY) {
     loadCodebaseStats();    // fire-and-forget; renders the Codebase stat card
   }
   renderCalendar(calEvents);
-  restoreCalAlerts(calEvents);
+  if (calKind === 'events') restoreCalAlerts(calEvents);
   renderTodos(todos);
 
   if (restoreScrollY != null) window.scrollTo({ top: restoreScrollY, behavior: 'instant' });
@@ -2924,6 +3038,7 @@ function closeWsThread() {
   refresh(window.scrollY);   // clears the 🔔 once a reply lands
 }
 
+_initCalControls();
 initKey();
 </script>
 

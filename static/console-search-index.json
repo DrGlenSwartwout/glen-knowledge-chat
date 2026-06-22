@@ -5,7 +5,7 @@
   { "title": "Referrals", "page": "Console", "url": "/console", "goto": "referrals", "keywords": ["referral", "affiliate", "rewards"] },
   { "title": "Mission Control signals", "page": "Console", "url": "/console", "goto": "signals", "keywords": ["signals", "alerts", "money signal", "status"] },
   { "title": "Codebase stats", "page": "Console", "url": "/console", "goto": "codebase", "keywords": ["lines of code", "loc", "codebase"] },
-  { "title": "Calendar", "page": "Console", "url": "/console", "goto": "calendar", "keywords": ["calendar", "events", "schedule", "upcoming"] },
+  { "title": "Calendar", "page": "Console", "url": "/console", "goto": "calendar", "keywords": ["calendar", "events", "schedule", "upcoming", "today", "week", "month", "accomplishments", "glen", "rae", "shaira", "alarm"] },
 
   { "title": "Inbox", "page": "Inbox", "url": "/console/inbox", "keywords": ["email", "threads", "messages", "drafts", "reply"] },
   { "title": "Updates", "page": "Inbox", "url": "/console/inbox", "goto": "updates", "keywords": ["updates", "notifications email"] },
