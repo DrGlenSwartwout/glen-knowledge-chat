@@ -112,3 +112,26 @@ def test_jsonld_neutralizes_script_breakout():
     jsonld_block = html[jsonld_start:jsonld_end]
     assert "</script>" not in jsonld_block       # payload's </script> was neutralized
     assert "<\\/script>" in jsonld_block          # hardened form present
+
+
+def test_suggest_form_posts_and_is_noindex():
+    tr = _mod()
+    html = tr.render_suggest_html("magnesium-deficiency", "Magnesium Deficiency")
+    assert 'action="/learn/suggest/magnesium-deficiency"' in html
+    assert 'name="robots" content="noindex"' in html
+    assert "Magnesium Deficiency" in html
+    assert "brand-name" in html  # site chrome
+
+
+def test_suggest_submitted_shows_confirmation_no_form():
+    tr = _mod()
+    html = tr.render_suggest_html("dry-skin", "Dry Skin", submitted=True)
+    assert "<form" not in html
+    assert "email you" in html.lower()
+
+
+def test_suggest_escapes_name():
+    tr = _mod()
+    html = tr.render_suggest_html("x", "<script>alert(1)</script>")
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html
