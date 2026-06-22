@@ -143,3 +143,10 @@ def test_resend_inquiry_reply_unknown_practitioner_no_send(monkeypatch, tmp_path
                                           json={"inquiry_id": "NOPE", "practitioner_id": "P0"})
     assert r.status_code == 200 and r.get_json().get("ok") is True
     assert sent == []
+
+
+def test_reveal_page_ships_resend_button(monkeypatch, tmp_path):
+    app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
+    html = app_module.app.test_client().get("/begin/biofield/any-token").data.decode()
+    assert "/link/resend" in html
+    assert "Request a fresh link" in html

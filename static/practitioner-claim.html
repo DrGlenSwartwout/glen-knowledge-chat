@@ -67,6 +67,23 @@
   <section class="shell error-page">
     <h2>This link is no longer valid.</h2>
     <p>It may have already been used or it may have expired. If you received this link in an email from Remedy Match, please contact us for a fresh one.</p>
+    <button id="resend-link-btn">Request a fresh link</button>
+    <script>
+  (function(){
+    var b = document.getElementById("resend-link-btn");
+    if(!b) return;
+    var parts = location.pathname.replace(/\/+$/,"").split("/");
+    var qp = new URLSearchParams(location.search);
+    var token = qp.get("token") || parts[parts.length-1] || "";
+    b.onclick = function(){
+      b.disabled = true;
+      fetch("/link/resend", {method:"POST", headers:{"Content-Type":"application/json"},
+                             body: JSON.stringify({token: token})})
+        .then(function(){ b.textContent = "Check your email for a fresh link."; })
+        .catch(function(){ b.disabled = false; });
+    };
+  })();
+</script>
   </section>
   {% else %}
   <section class="shell intro">

@@ -9664,7 +9664,20 @@ def reorder_auth(token):
             cx.commit()
     if not email:
         return ("<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
-                "This reorder link is invalid or has expired. Please request a new one.</p>"), 400
+                "This reorder link is invalid or has expired. Please request a new one.</p>"
+                "<button id='resend-link-btn' style='font-family:sans-serif;margin-top:12px;'>Request a fresh link</button>"
+                "<script>(function(){"
+                "var b=document.getElementById('resend-link-btn');if(!b)return;"
+                "var parts=location.pathname.replace(/\\/+$/,'').split('/');"
+                "var qp=new URLSearchParams(location.search);"
+                "var token=qp.get('token')||parts[parts.length-1]||'';"
+                "b.onclick=function(){"
+                "b.disabled=true;"
+                "fetch('/link/resend',{method:'POST',headers:{'Content-Type':'application/json'},"
+                "body:JSON.stringify({token:token})})"
+                ".then(function(){b.textContent='Check your email for a fresh link.';})"
+                ".catch(function(){b.disabled=false;});};"
+                "})();</script>"), 400
     resp = _redirect("/reorder", code=302)
     resp.set_cookie("rm_reorder_email", email, max_age=60 * 60 * 24 * 30,
                     httponly=True, samesite="Lax", secure=request.is_secure)
@@ -11078,7 +11091,20 @@ def biofield_auth(token):
             cx.commit()
     if not email:
         return ("<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
-                "This sign-in link is invalid or has expired. Please request a new one.</p>"), 400
+                "This sign-in link is invalid or has expired. Please request a new one.</p>"
+                "<button id='resend-link-btn' style='font-family:sans-serif;margin-top:12px;'>Request a fresh link</button>"
+                "<script>(function(){"
+                "var b=document.getElementById('resend-link-btn');if(!b)return;"
+                "var parts=location.pathname.replace(/\\/+$/,'').split('/');"
+                "var qp=new URLSearchParams(location.search);"
+                "var token=qp.get('token')||parts[parts.length-1]||'';"
+                "b.onclick=function(){"
+                "b.disabled=true;"
+                "fetch('/link/resend',{method:'POST',headers:{'Content-Type':'application/json'},"
+                "body:JSON.stringify({token:token})})"
+                ".then(function(){b.textContent='Check your email for a fresh link.';})"
+                ".catch(function(){b.disabled=false;});};"
+                "})();</script>"), 400
     resp = _redirect("/biofield/ready", code=302)
     resp.set_cookie("rm_biofield_email", email, max_age=60 * 60 * 24 * 30,
                     httponly=True, samesite="Lax", secure=request.is_secure)
