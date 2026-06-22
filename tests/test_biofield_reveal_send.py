@@ -122,6 +122,15 @@ def test_send_action_approved_only(monkeypatch, tmp_path):
         assert br.get(cx, rid)["notified_at"]
 
 
+def test_console_page_ships_send_controls(monkeypatch, tmp_path):
+    app_module, _ = _spine_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "CONSOLE_SECRET", "sek", raising=False)
+    html = app_module.app.test_client().get(
+        "/console/biofield-reveals", headers={"X-Console-Key": "sek"}).data.decode()
+    assert "biofield_reveal.send_all" in html
+    assert "Send reveal link" in html
+
+
 def test_send_all_batches_approved_unnotified(monkeypatch, tmp_path):
     app_module, db = _spine_db(monkeypatch, tmp_path)
     from dashboard import biofield_reveals as br
