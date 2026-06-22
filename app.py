@@ -10773,6 +10773,7 @@ def api_e4l_reveal_draft():
     scan_date = (data.get("scan_date") or "").strip()
     interp = data.get("interpretation") or {}
     remedies = data.get("remedies") or []
+    notify = bool(data.get("notify", True))
     if not email or not scan_date or not (interp or remedies):
         return jsonify({"error": "email, scan_date, and interpretation or remedies required"}), 400
     from dashboard import biofield_reveals as _br, biofield_meanings as _bm
@@ -10829,7 +10830,7 @@ def api_e4l_reveal_draft():
                     (_hash_token(token), email, "biofield_reveal", now.isoformat(),
                      (now + timedelta(days=30)).isoformat()))
                 cx.commit()
-        if is_new:
+        if is_new and notify:
             try:
                 url = f"{PUBLIC_BASE_URL}/begin/biofield/{token}"
                 body = ("Aloha,\n\nYour Biofield Analysis is ready. View your reading here:\n"
