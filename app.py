@@ -11008,6 +11008,12 @@ def api_e4l_reveal_draft():
         return jsonify({"error": "unauthorized"}), 401
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
+    # Diagnostic: identify the caller (real IP via X-Forwarded-For; the gunicorn
+    # access log only shows Render's LB). Tracing repeated reveal POSTs to test
+    # addresses (a@b.com/t@x.com). Safe to remove once the source is identified.
+    print(f"[reveal-draft] caller xff={request.headers.get('X-Forwarded-For','-')} "
+          f"ua={request.headers.get('User-Agent','-')} email={email} "
+          f"scan_date={(data.get('scan_date') or '')!r}", flush=True)
     scan_date = (data.get("scan_date") or "").strip()
     interp = data.get("interpretation") or {}
     remedies = data.get("remedies") or []
