@@ -35,13 +35,24 @@ SECTION_BRIEFS = {
     ),
 }
 
-# Hard denylist: any of these in draft copy fails the gate locally, no model needed.
+# Disease/condition anchor: category words plus common named conditions. A claim verb only
+# trips the local gate when one of these sits just after it (verb-then-disease structure).
+_DISEASE = (
+    r"(?:disease|illness|condition|disorder|syndrome|infection|ailment|"
+    r"cancer|tumou?r|diabetes|arthritis|asthma|eczema|psoriasis|hypertension|"
+    r"depression|anxiety|alzheimer'?s?|dementia|parkinson'?s?|autism|adhd|"
+    r"ibs|crohn'?s?|colitis|lupus|fibromyalgia|migraine|insomnia|allerg(?:y|ies)|"
+    r"influenza|covid|copd|osteoporosis|neuropathy|gout)"
+)
+
+# Claim verbs (verb forms only -- NOT the bare noun "treatment", which over-blocked
+# "water treatment"). These flag only when a disease/condition word follows within ~30 chars.
+_CLAIM_VERBS = r"(?:cure[sd]?|treat(?:s|ed|ing)?|reverse[sd]?|prevent(?:s|ed|ing)?|heal(?:s|ed|ing)?)"
+
+# Hard denylist: any match in draft copy fails the gate locally, no model needed.
 _BANNED = [
-    (r"\bcure[sd]?\b", "claims to cure"),
-    (r"\btreat(s|ed|ing|ment)?\b", "claims to treat"),
-    (r"\breverse[sd]?\b", "claims to reverse"),
-    (r"\bheal[s]?\s+(your\s+)?(disease|cancer|diabetes)", "claims to heal a disease"),
-    (r"\bprevent[s]?\b", "claims to prevent disease"),
+    (rf"\b{_CLAIM_VERBS}\b[\w\s,'-]{{0,30}}\b{_DISEASE}\b",
+     "claims to treat/cure/reverse/prevent a disease"),
     (r"\bdiagnos(e|es|is|ing)\b", "claims to diagnose"),
     (r"\bguarantee[sd]?\b", "outcome guarantee"),
 ]
