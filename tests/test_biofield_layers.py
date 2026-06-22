@@ -126,6 +126,33 @@ def test_ingest_preserves_pattern_labels(monkeypatch, tmp_path):
     assert row["layers"][0]["patterns"] == ["ER26", "MB1"]
 
 
+def test_ingest_notify_false_skips_email(monkeypatch, tmp_path):
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    key = _key(app_module)
+    if not key: pytest.skip("no secret")
+    sent = []
+    monkeypatch.setattr(app_module, "_send_inquiry_email",
+                        lambda *a, **k: sent.append(a) or True)
+    # notify=false -> draft stored, no email
+    r = _push(app_module, {"email": "silent@x.com", "scan_date": "2026-06-20",
+                           "interpretation": {"body": "x"},
+                           "layers": [{"n": 1, "title": "L", "summary": "s",
+                                       "patterns": [], "remedy": None}],
+                           "notify": False}, key)
+    assert r.get_json().get("ok") is True
+    assert sent == []
+    from dashboard import biofield_reveals as br
+    with sqlite3.connect(db) as cx:
+        assert any(d["email"] == "silent@x.com" for d in br.list_pending(cx))
+    # notify omitted -> email sent (existing behavior), different email so is_new
+    r2 = _push(app_module, {"email": "loud@x.com", "scan_date": "2026-06-20",
+                            "interpretation": {"body": "x"},
+                            "layers": [{"n": 1, "title": "L", "summary": "s",
+                                        "patterns": [], "remedy": None}]}, key)
+    assert r2.get_json().get("ok") is True
+    assert len(sent) == 1
+
+
 def test_ingest_remedies_only_wraps_into_layers(monkeypatch, tmp_path):
     app_module, db = _app_db(monkeypatch, tmp_path)
     key = _key(app_module)
