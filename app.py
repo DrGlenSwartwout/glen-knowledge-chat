@@ -344,6 +344,14 @@ def _send_reveal_link(rid):
         if not row or not row[0]:
             return False
         email = row[0]
+        # Suppression guard: reveal-ready emails go via _send_inquiry_email (which is
+        # exempt as a low-level sender), so guard the client-facing reveal path here —
+        # never email / mint a token for a suppressed (hard-bounced) address.
+        from dashboard import email_suppression as _es
+        _es.init_table(cx)
+        if _es.is_suppressed(cx, email):
+            print(f"[suppressed] skip reveal link to {email}", flush=True)
+            return False
         tok = secrets.token_urlsafe(32)
         _br.set_token(cx, rid, _hash_token(tok))
         now = datetime.now(timezone.utc)
@@ -11062,12 +11070,21 @@ def api_e4l_reveal_draft():
                 cx.commit()
         if is_new and notify:
             try:
-                url = f"{PUBLIC_BASE_URL}/begin/biofield/{token}"
-                body = ("Aloha,\n\nYour Biofield Analysis is ready. View your reading here:\n"
-                        f"{url}\n\nIn wellness,\nDr. Glen and Rae\n")
-                if _send_inquiry_email(email, "Your Biofield Analysis is ready", body):
-                    with _db_lock, sqlite3.connect(LOG_DB) as cx:
-                        _br.set_notified(cx, rid)
+                # Suppression guard: don't email the reveal-ready link to a suppressed
+                # (hard-bounced/test) address — the draft row stays, just no email.
+                from dashboard import email_suppression as _es
+                with sqlite3.connect(LOG_DB) as _scx:
+                    _es.init_table(_scx)
+                    _suppressed = _es.is_suppressed(_scx, email)
+                if _suppressed:
+                    print(f"[suppressed] skip reveal-ready email to {email}", flush=True)
+                else:
+                    url = f"{PUBLIC_BASE_URL}/begin/biofield/{token}"
+                    body = ("Aloha,\n\nYour Biofield Analysis is ready. View your reading here:\n"
+                            f"{url}\n\nIn wellness,\nDr. Glen and Rae\n")
+                    if _send_inquiry_email(email, "Your Biofield Analysis is ready", body):
+                        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                            _br.set_notified(cx, rid)
             except Exception as e:
                 print(f"[reveal-draft] notify failed: {e!r}", flush=True)
         return jsonify({"ok": True, "id": rid})
