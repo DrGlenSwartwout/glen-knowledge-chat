@@ -237,6 +237,8 @@ def _now_utc():
 
 
 def send_magic_link_email(to_email: str, name: str, magic_url: str) -> tuple:
+    # NOTE: auth magic-link (user-requested sign-in) — EXEMPT from email suppression
+    # (never lock someone out of account access from a stale/mistaken suppression).
     """Send a magic-link email. Tries (in order):
       1. GHL workflow trigger (if GHL_MAGIC_LINK_WORKFLOW_ID env var is set)
       2. SMTP (if SMTP_HOST/USER/PASS env vars are set)
@@ -5675,6 +5677,18 @@ def _send_full_report_email(to_email: str, name: str,
     Gmail API path is preferred because it reuses the same OAuth token as
     the inbox feature (no extra SMTP_USER/PASS to manage).
     """
+    # Suppression guard: this is a proactive client report — skip suppressed
+    # (hard-bounced) addresses on BOTH the Gmail and SMTP-fallback paths. Fail-open.
+    from dashboard import email_suppression as _es
+    try:
+        with sqlite3.connect(str(LOG_DB)) as _cx:
+            _es.init_table(_cx)
+            if _es.is_suppressed(_cx, to_email):
+                print(f"[suppressed] skip full-report to {to_email}", flush=True)
+                return ("suppressed", None)
+    except Exception as _e:  # noqa: BLE001 — never block a send on a check failure
+        print(f"[suppress-check] full-report skipped: {_e!r}", flush=True)
+
     # Path 1: Gmail API (preferred — reuses inbox auth)
     try:
         from dashboard.inbox import send_email as _gmail_send
@@ -7156,6 +7170,7 @@ def affiliate_portal_page():
 
 
 def _send_affiliate_magic_link(to_email: str, name: str, magic_url: str) -> tuple:
+    # NOTE: auth magic-link (affiliate sign-in) — EXEMPT from email suppression.
     """Send the affiliate-portal magic-link email. SMTP first, console-log fallback.
     Returns (sent_via, error_or_none). Mirrors send_magic_link_email but with
     affiliate-specific copy and without the chat-auth GHL workflow path.
@@ -7208,6 +7223,8 @@ def _send_affiliate_magic_link(to_email: str, name: str, magic_url: str) -> tupl
 
 
 def _send_inquiry_email(to_email, subject, body, reply_to=None):
+    # NOTE: transactional inquiry/reply (low-volume, often staff-facing) — EXEMPT
+    # from email suppression; not a proactive bulk send.
     """Per-recipient SMTP send for the inquiry fan-out. Returns True on success,
     False on SMTP failure (never raises). Falls back to print() when SMTP env
     is unset (dev)."""
@@ -21174,6 +21191,10 @@ except Exception as _tpa_e:  # noqa: BLE001
 from dashboard import biofield_reveal_actions as _bra
 _bra.configure(send_reveal_link=_send_reveal_link)
 _bra.register()
+
+# ── Email suppression console actions (fed by the local bounce scanner) ───────
+from dashboard import email_suppression_actions as _esa
+_esa.register()
 
 # ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────
 from dashboard import reviews_actions as _ra
