@@ -207,3 +207,22 @@ def render_suggest_html(slug, name, *, submitted=False):
             "</main>"
         )
     return _document(name, None, "", body_inner, noindex=True)
+
+
+def render_sitemap_xml(rows, base_url):
+    """Build the /learn sitemap from approved-page rows.
+
+    Each row contributes a <loc> and, when a timestamp is present, a <lastmod>
+    (W3C date, derived from updated_at, falling back to approved_at). lastmod is
+    what tells Google which pages changed so it re-crawls them efficiently.
+    """
+    base = (base_url or "").rstrip("/")
+    parts = []
+    for r in rows:
+        loc = html.escape(base + "/learn/" + r["slug"], quote=True)
+        stamp = (r.get("updated_at") or r.get("approved_at") or "")[:10]
+        lastmod = f"<lastmod>{html.escape(stamp)}</lastmod>" if stamp else ""
+        parts.append(f"<url><loc>{loc}</loc>{lastmod}</url>")
+    return ('<?xml version="1.0" encoding="UTF-8"?>'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            + "".join(parts) + "</urlset>")

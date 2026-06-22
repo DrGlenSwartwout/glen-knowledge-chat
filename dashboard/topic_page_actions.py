@@ -58,6 +58,15 @@ def _exec_approve(params, ctx):
             _tp.notify_on_approve(cx, slug, name, base, send=send, strip=strip)
     except Exception as exc:  # noqa: BLE001 - notify must never fail the approve
         print(f"[topic-pages] notify skipped: {exc}", flush=True)
+    # Instant-notify IndexNow (Bing/Yandex/...) that this page is live. Key-gated
+    # via env (no-op when INDEXNOW_KEY unset) and best-effort — never fails approve.
+    try:
+        from dashboard import indexnow as _in
+        base = _DEPS.get("base_url", "")
+        page_url = base.rstrip("/") + "/learn/" + slug if base else ""
+        _in.submit(page_url, base_url=base, http=_DEPS.get("indexnow_http"))
+    except Exception as exc:  # noqa: BLE001 - notify must never fail the approve
+        print(f"[topic-pages] indexnow skipped: {exc}", flush=True)
     return {"slug": slug, "ok": True, "state": "approved"}
 
 
