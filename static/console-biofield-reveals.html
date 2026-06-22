@@ -103,6 +103,11 @@ async function loadList(){
     drafts.forEach(function(d){ el.appendChild(buildCard(d)); });
   }
   if(approved.length){
+    var sendAllBtn = document.createElement('button');
+    sendAllBtn.className = 'btn';
+    sendAllBtn.textContent = 'Send all approved un-notified';
+    sendAllBtn.onclick = doSendAll;
+    el.appendChild(sendAllBtn);
     var apprHead = document.createElement('div');
     apprHead.className = 'section-head';
     apprHead.textContent = 'Approved';
@@ -344,6 +349,14 @@ function buildCard(d){
   deleteBtn.onclick = function(){ doDelete(wrap, d.id, deleteBtn); };
   row.appendChild(deleteBtn);
 
+  if(d.first_approved){
+    var sendBtn = document.createElement('button');
+    sendBtn.className = 'btn';
+    sendBtn.textContent = d.notified_at ? ('Sent ' + d.notified_at.slice(0,10) + ' (re-send)') : 'Send reveal link';
+    sendBtn.onclick = function(){ doSend(wrap, d.id, sendBtn); };
+    row.appendChild(sendBtn);
+  }
+
   wrap.appendChild(row);
 
   var statusEl = document.createElement('div');
@@ -440,6 +453,31 @@ async function doApprove(card, id, btn){
   } else {
     btn.disabled = false;
     statusEl.textContent = 'Approve failed (HTTP ' + r.status + '). Try re-opening the page with your console key.';
+  }
+}
+
+async function doSend(card, id, btn){
+  var statusEl = card.querySelector('.status');
+  statusEl.textContent = 'Sending...';
+  btn.disabled = true;
+  var r = await api('POST', '/api/action/biofield_reveal.send', { id: id });
+  if(r.ok && r.json.status === 'done' && r.json.result && r.json.result.sent){
+    statusEl.textContent = 'Reveal link sent.';
+    setTimeout(loadList, 700);
+  } else {
+    btn.disabled = false;
+    statusEl.textContent = 'Not sent' + (r.json && r.json.result && r.json.result.reason ? ' (' + r.json.result.reason + ')' : '') + '.';
+  }
+}
+
+async function doSendAll(){
+  if(!window.confirm('Email every approved, not-yet-notified client their reveal link?')) return;
+  var r = await api('POST', '/api/action/biofield_reveal.send_all', {});
+  if(r.ok && r.json.status === 'done'){
+    alert('Sent ' + r.json.result.sent + ' of ' + r.json.result.of + '.');
+    loadList();
+  } else {
+    alert('Send-all failed (HTTP ' + r.status + ').');
   }
 }
 

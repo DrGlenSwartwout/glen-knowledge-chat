@@ -40,6 +40,10 @@ def init_table(cx):
         cx.execute("ALTER TABLE biofield_reveals ADD COLUMN layers_json TEXT NOT NULL DEFAULT '[]'")
     except Exception:
         pass
+    try:
+        cx.execute("ALTER TABLE biofield_reveals ADD COLUMN notified_at TEXT")
+    except Exception:
+        pass
     cx.commit()
 
 
@@ -134,6 +138,18 @@ def list_approved(cx, limit=50):
     rows = _rows_cursor(cx).execute(
         "SELECT * FROM biofield_reveals WHERE first_approved=1 ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     return [_row(r) for r in rows]
+
+
+def set_notified(cx, rid):
+    cx.execute("UPDATE biofield_reveals SET notified_at=?, updated_at=? WHERE id=?",
+               (_now(), _now(), rid))
+    cx.commit()
+
+
+def list_approved_unnotified(cx, limit=200):
+    return [_row(r) for r in _rows_cursor(cx).execute(
+        "SELECT * FROM biofield_reveals WHERE first_approved=1 AND (notified_at IS NULL OR notified_at='') "
+        "ORDER BY id DESC LIMIT ?", (limit,)).fetchall()]
 
 
 def get(cx, rid):
