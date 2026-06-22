@@ -21192,6 +21192,10 @@ from dashboard import biofield_reveal_actions as _bra
 _bra.configure(send_reveal_link=_send_reveal_link)
 _bra.register()
 
+# ── Email suppression console actions (fed by the local bounce scanner) ───────
+from dashboard import email_suppression_actions as _esa
+_esa.register()
+
 # ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────
 from dashboard import reviews_actions as _ra
 _ra.register()

@@ -72,3 +72,18 @@ def test_send_email_sends_to_normal_address(tmp_path, monkeypatch):
     r = inbox.send_email("real@gmail.com", "subj", "body")
     assert r.get("id") == "123"              # reached the send path
     assert "skipped" not in r
+
+
+# ── console actions ───────────────────────────────────────────────────────────
+
+def test_action_add_then_list_and_suppress():
+    from dashboard import email_suppression_actions as esa
+    cx = _cx()
+    res = esa._exec_add({"entries": [
+        {"email": "a@b.com", "bounce_type": "hard", "reason": "NXDOMAIN"},
+        {"email": "", "bounce_type": "hard", "reason": "skip-blank"},
+    ], "source": "bounce-scan"}, {"cx": cx})
+    assert res == {"added": 1}
+    assert es.is_suppressed(cx, "a@b.com") is True
+    rows = esa._exec_list({}, {"cx": cx})["rows"]
+    assert any(r["email"] == "a@b.com" and r["source"] == "bounce-scan" for r in rows)
