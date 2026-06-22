@@ -161,3 +161,51 @@ def test_existing_clean_copy_still_clean():
     flags = tc.local_claim_flags(
         {"overview": "People exploring low energy often look into sleep and minerals."})
     assert flags == []
+
+
+# --- extract_topic_candidate (chat creates-a-page offer) ---
+
+class _FakeJSONClient:
+    def __init__(self, text):
+        self._text = text
+        self.messages = self
+    def create(self, **kw):
+        class _C:  # minimal content block
+            def __init__(s, t): s.text = t; s.type = "text"
+        class _M:
+            def __init__(s, t): s.content = [_C(t)]
+        return _M(self._text)
+
+
+def test_extract_returns_normalized_candidate():
+    tc = _mod()
+    client = _FakeJSONClient('{"name": "Magnesium Deficiency", "kind": "condition"}')
+    out = tc.extract_topic_candidate("I think I'm low on magnesium", "You may be deficient.", client)
+    assert out == {"name": "Magnesium Deficiency", "kind": "condition", "slug": "magnesium-deficiency"}
+
+
+def test_extract_none_when_no_topic():
+    tc = _mod()
+    client = _FakeJSONClient("{}")
+    assert tc.extract_topic_candidate("hello", "hi there", client) is None
+
+
+def test_extract_none_on_bad_kind():
+    tc = _mod()
+    client = _FakeJSONClient('{"name": "Stuff", "kind": "banana"}')
+    assert tc.extract_topic_candidate("q", "a", client) is None
+
+
+def test_extract_none_on_bad_json():
+    tc = _mod()
+    client = _FakeJSONClient("not json at all")
+    assert tc.extract_topic_candidate("q", "a", client) is None
+
+
+def test_extract_none_on_client_error():
+    tc = _mod()
+    class _Boom:
+        messages = None
+        def create(self, **kw): raise RuntimeError("api down")
+    boom = _Boom(); boom.messages = boom
+    assert tc.extract_topic_candidate("q", "a", boom) is None

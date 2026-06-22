@@ -185,3 +185,25 @@ def render_pending_html(slug, name):
         "</main>"
     )
     return _document(name, None, "", body_inner, noindex=True)
+
+
+def render_suggest_html(slug, name, *, submitted=False):
+    """Styled, noindex page: offer-to-build form, or a post-submit confirmation."""
+    if submitted:
+        body_inner = (
+            f"<main><h1>{_esc(name)}</h1>"
+            "<p>Thank you. We will create this guide and email you when it is ready.</p>"
+            '<p><a class="cta-btn" href="/begin">Continue exploring</a></p>'
+            "</main>"
+        )
+    else:
+        body_inner = (
+            f"<main><h1>{_esc(name)}</h1>"
+            f"<p>We do not have a guide on {_esc(name)} yet. Leave your email and we will create "
+            "one and send it to you.</p>"
+            f'<form method="post" action="/learn/suggest/{_esc(slug)}">'
+            '<input type="email" name="email" required placeholder="you@example.com">'
+            '<button class="cta-btn" type="submit">Yes, create this guide</button></form>'
+            "</main>"
+        )
+    return _document(name, None, "", body_inner, noindex=True)

@@ -2455,6 +2455,31 @@ def chat():
             except Exception as _ple:  # noqa: BLE001 - never break chat
                 print(f"[chat-page-links] {_ple!r}", flush=True)
 
+        if CHAT_TOPIC_OFFER_ENABLED:
+            try:
+                # only offer when no existing-page link card already fired this turn
+                _has_link = any(str(c.get("key", "")).split(":")[0] in ("topic", "ingredient", "product")
+                                for c in (surfaced_cards or []))
+                if not _has_link:
+                    from dashboard import topic_copy as _tc2, topic_pages as _tp2, page_links as _pl2
+                    import urllib.parse as _up
+                    _cand = _tc2.extract_topic_candidate(query or "", answer or "", _cl)
+                    if _cand:
+                        _cslug = _cand["slug"]
+                        with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                            _crow = _tp2.get_page(_cx, _cslug)
+                        if not (_crow and _crow.get("state") in ("approved", "draft", "gated")):
+                            _offer = {
+                                "key": f"suggest:{_cslug}",
+                                "title": f"Want a guide on {_cand['name']}?",
+                                "sub": "We'll create it and email you",
+                                "href": f"/learn/suggest/{_cslug}?kind={_cand['kind']}"
+                                        f"&name={_up.quote(_cand['name'])}",
+                            }
+                            surfaced_cards = _pl2.merge_cards([_offer], surfaced_cards or [])
+            except Exception as _toe:  # noqa: BLE001 - never break chat
+                print(f"[chat-topic-offer] {_toe!r}", flush=True)
+
         _done_payload = {
             "done": True, "log_id": log_id,
             "sources": sources_list, "chunks_retrieved": len(all_matches),
@@ -2959,6 +2984,7 @@ _REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "y
 INGREDIENT_PAGES_PAID_ONLY = os.environ.get("INGREDIENT_PAGES_PAID_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
 TOPIC_PAGES_ENABLED = os.environ.get("TOPIC_PAGES_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 CHAT_PAGE_LINKS_ENABLED = os.environ.get("CHAT_PAGE_LINKS_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+CHAT_TOPIC_OFFER_ENABLED = os.environ.get("CHAT_TOPIC_OFFER_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_CART_ENABLED = os.environ.get("BIOFIELD_CART_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 ASCEND_PERSONALIZED_ENABLED = os.environ.get("ASCEND_PERSONALIZED_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
@@ -4072,6 +4098,31 @@ def learn_topic_request(slug):
             _tp.set_kind(cx, slug, kind)
     _topic_kickoff_build(slug, kind, name)
     return jsonify({"ok": True, "state": "preparing"})
+
+
+@app.route("/learn/suggest/<slug>", methods=["GET"])
+def learn_suggest_form(slug):
+    from dashboard import topic_render as _tr
+    if not CHAT_TOPIC_OFFER_ENABLED:
+        return ("Not found", 404)
+    name = (request.values.get("name") or slug.replace("-", " ").title()).strip()
+    return Response(_tr.render_suggest_html(slug, name), mimetype="text/html")
+
+
+@app.route("/learn/suggest/<slug>", methods=["POST"])
+def learn_suggest_submit(slug):
+    from dashboard import topic_pages as _tp, topic_render as _tr
+    if not CHAT_TOPIC_OFFER_ENABLED:
+        return ("Not found", 404)
+    email = (request.form.get("email") or request.values.get("email") or "").strip()
+    name = (request.values.get("name") or slug.replace("-", " ").title()).strip()
+    kind = (request.values.get("kind") or "symptom").strip()
+    if not email:
+        # re-render the form (browser 'required' normally prevents this)
+        return Response(_tr.render_suggest_html(slug, name), mimetype="text/html")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _tp.record_suggestion(cx, slug, name, kind, email)
+    return Response(_tr.render_suggest_html(slug, name, submitted=True), mimetype="text/html")
 
 
 @app.route("/learn")
@@ -8541,6 +8592,28 @@ def api_console_topic_page_load(slug):
         "seo": (page or {}).get("seo") or {},
         "live_url": f"/learn/{slug}",
     })
+
+
+@app.route("/console/topic-suggestions")
+def console_topic_suggestions_page():
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    resp = send_from_directory(STATIC, "console-topic-suggestions.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/api/console/topic-suggestions", methods=["GET"])
+def api_console_topic_suggestions_list():
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    from dashboard import topic_pages as _tp
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = _tp.list_suggestions(cx)
+    return jsonify({"ok": True, "suggestions": rows})
 
 
 @app.route("/console/reviews")
