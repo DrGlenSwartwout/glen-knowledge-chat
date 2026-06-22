@@ -109,6 +109,14 @@ def _exec_regenerate(params, ctx):
             "compliance": result}
 
 
+def _exec_dismiss(params, ctx):
+    slug = (params.get("slug") or "").strip()
+    if not slug:
+        raise ValueError("slug required")
+    _tp.set_state(ctx["cx"], slug, "dismissed", by=_actor_name(ctx.get("actor")))
+    return {"slug": slug, "ok": True, "state": "dismissed"}
+
+
 def register():
     if get_action("topic_page.approve"):
         return
@@ -124,3 +132,7 @@ def register():
         key="topic_page.regenerate", module="topic_pages", title="Regenerate topic page",
         description="Re-draft sections, re-validate links, and re-run the compliance scan.",
         risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_regenerate))
+    register_action(Action(
+        key="topic_page.dismiss", module="topic_pages", title="Dismiss topic suggestion",
+        description="Drop a create-a-page suggestion (sets it dismissed; never public).",
+        risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_dismiss))

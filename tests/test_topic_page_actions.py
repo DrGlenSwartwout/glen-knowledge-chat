@@ -117,3 +117,15 @@ def test_actions_registered_owner_ops():
         act = _get_action(key)
         assert act is not None
         assert act.permission == (OWNER, OPS)
+
+
+def test_dismiss_sets_state_dismissed_and_drops_from_suggestions():
+    tp, tpa = _tp(), _tpa()
+    tpa.register()
+    cx = _cx()
+    tp.record_suggestion(cx, "junk-topic", "Junk Topic", "symptom", "a@x.com")
+    assert any(r["slug"] == "junk-topic" for r in tp.list_suggestions(cx))
+    res = _get_action("topic_page.dismiss").executor({"slug": "junk-topic"}, {"cx": cx, "actor": _actor()})
+    assert res["state"] == "dismissed"
+    assert tp.get_page(cx, "junk-topic")["state"] == "dismissed"
+    assert not any(r["slug"] == "junk-topic" for r in tp.list_suggestions(cx))
