@@ -346,6 +346,17 @@
         p.textContent = "Please request a fresh one.";
         card.appendChild(h);
         card.appendChild(p);
+        var btn = document.createElement("button");
+        btn.textContent = "Request a fresh link";
+        btn.className = "resend-btn";
+        btn.onclick = function(){
+          btn.disabled = true;
+          fetch("/link/resend", {method:"POST", headers:{"Content-Type":"application/json"},
+                                 body: JSON.stringify({token: _token})})
+            .then(function(){ p.textContent = "Check your email for a fresh link."; })
+            .catch(function(){ btn.disabled = false; });
+        };
+        card.appendChild(btn);
         root.appendChild(card);
         return;
       }
