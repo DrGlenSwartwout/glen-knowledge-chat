@@ -571,7 +571,21 @@ def send_email(to_email: str, subject: str, body: str, from_name: Optional[str] 
     Sends as plain text from drglenswartwout@gmail.com (the authorized account).
     When `html` is given, sends multipart/alternative (plain `body` + HTML);
     callers that omit `html` are unchanged.
+
+    Suppression guard: skip addresses on the email_suppression list (hard bounces
+    fed by the local bounce scanner) so we stop emailing dead addresses. Fail-open
+    — a check error never blocks a send. Auth magic-links use a separate path and
+    are intentionally NOT guarded here.
     """
+    from dashboard import email_suppression as _es
+    try:
+        with _sqlite3.connect(_db_path()) as _cx:
+            _es.init_table(_cx)
+            if _es.is_suppressed(_cx, to_email):
+                print(f"[suppressed] skip send to {to_email}", flush=True)
+                return {"skipped": "suppressed"}
+    except Exception as _e:  # noqa: BLE001 — never block a send on a check failure
+        print(f"[suppress-check] skipped: {_e!r}", flush=True)
     svc = _get_gmail_service()
     if html:
         from email.mime.multipart import MIMEMultipart
