@@ -21167,7 +21167,7 @@ except Exception as _tpa_e:  # noqa: BLE001
 
 # ── Begin #4a: Biofield reveal console actions (edit / approve + magic link) ──
 from dashboard import biofield_reveal_actions as _bra
-_bra.configure()
+_bra.configure(send_reveal_link=_send_reveal_link)
 _bra.register()
 
 # ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────

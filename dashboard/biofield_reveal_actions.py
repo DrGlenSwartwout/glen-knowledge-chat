@@ -97,6 +97,30 @@ def _exec_delete(params, ctx):
     return {"deleted": rid}
 
 
+def _exec_send(params, ctx):
+    rid = int(params.get("id") or 0)
+    if not rid:
+        raise ValueError("id required")
+    rev = _br.get(ctx["cx"], rid)
+    if not rev or not rev.get("first_approved"):
+        return {"sent": False, "reason": "not_approved"}
+    send = _DEPS.get("send_reveal_link")
+    return {"sent": bool(send and send(rid))}
+
+
+def _exec_send_all(params, ctx):
+    rows = _br.list_approved_unnotified(ctx["cx"], limit=50)
+    send = _DEPS.get("send_reveal_link")
+    n = 0
+    for r in rows:
+        try:
+            if send and send(r["id"]):
+                n += 1
+        except Exception as e:
+            print(f"[reveal-send-all] {r.get('id')}: {e!r}", flush=True)
+    return {"sent": n, "of": len(rows)}
+
+
 def register():
     if get_action("biofield_reveal.approve"):
         return
@@ -112,3 +136,11 @@ def register():
         key="biofield_reveal.delete", module="biofield_reveal", title="Delete Biofield reveal",
         description="Delete a reveal draft (removes it from the queue).",
         risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_delete))
+    register_action(Action(
+        key="biofield_reveal.send", module="biofield_reveal", title="Send reveal link",
+        description="Email an approved reveal's client their magic link.",
+        risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_send))
+    register_action(Action(
+        key="biofield_reveal.send_all", module="biofield_reveal", title="Send all approved un-notified",
+        description="Email every approved, not-yet-notified client their reveal link.",
+        risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_send_all))

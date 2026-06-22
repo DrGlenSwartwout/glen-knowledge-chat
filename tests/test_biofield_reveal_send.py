@@ -92,3 +92,48 @@ def test_set_notified_and_list_approved_unnotified(tmp_path):
     with sqlite3.connect(db) as cx:
         row = br.get(cx, r2)
     assert row["notified_at"]
+
+
+def _spine_db(monkeypatch, tmp_path):
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    import dashboard
+    monkeypatch.setattr(dashboard, "CONSOLE_SECRET", "sek", raising=False)
+    from dashboard import events as _ev
+    with sqlite3.connect(db) as cx:
+        _ev.init_event_tables(cx)
+        cx.commit()
+    return app_module, db
+
+
+def test_send_action_approved_only(monkeypatch, tmp_path):
+    app_module, db = _spine_db(monkeypatch, tmp_path)
+    from dashboard import biofield_reveals as br
+    with sqlite3.connect(db) as cx:
+        rid, _ = br.upsert(cx, "a@x.com", "2026-06-20", {"body": "x"}, [], "s")  # not approved
+    monkeypatch.setattr(app_module, "_send_inquiry_email", lambda *a, **k: True)
+    c = app_module.app.test_client()
+    r = c.post("/api/action/biofield_reveal.send", json={"id": rid}, headers={"X-Console-Key": "sek"})
+    assert r.get_json()["result"]["sent"] is False           # unapproved -> not sent
+    with sqlite3.connect(db) as cx:
+        br.approve_first(cx, rid, "glen")
+    r2 = c.post("/api/action/biofield_reveal.send", json={"id": rid}, headers={"X-Console-Key": "sek"})
+    assert r2.get_json()["result"]["sent"] is True
+    with sqlite3.connect(db) as cx:
+        assert br.get(cx, rid)["notified_at"]
+
+
+def test_send_all_batches_approved_unnotified(monkeypatch, tmp_path):
+    app_module, db = _spine_db(monkeypatch, tmp_path)
+    from dashboard import biofield_reveals as br
+    with sqlite3.connect(db) as cx:
+        a, _ = br.upsert(cx, "a@x.com", "2026-06-20", {"body": "x"}, [], "s")
+        b, _ = br.upsert(cx, "b@x.com", "2026-06-20", {"body": "x"}, [], "s")
+        c_, _ = br.upsert(cx, "c@x.com", "2026-06-20", {"body": "x"}, [], "s")  # stays unapproved
+        br.approve_first(cx, a, "glen"); br.approve_first(cx, b, "glen")
+    sent = []
+    monkeypatch.setattr(app_module, "_send_inquiry_email", lambda to, *a, **k: sent.append(to) or True)
+    r = app_module.app.test_client().post("/api/action/biofield_reveal.send_all",
+                                          json={}, headers={"X-Console-Key": "sek"})
+    res = r.get_json()["result"]
+    assert res["sent"] == 2 and res["of"] == 2
+    assert set(sent) == {"a@x.com", "b@x.com"}
