@@ -331,18 +331,19 @@ def _link_resend_generic(purpose, url_template, ttl):
     return handler
 
 
-def _resend_biofield_reveal(email, extra):
-    """Re-mint the reveal token (both biofield_reveals.token_hash + auth_tokens) and
-    send the reveal email - only if a reveal still exists for the email."""
+def _send_reveal_link(rid):
+    """Mint a fresh reveal token (biofield_reveals.token_hash + auth_tokens), email the
+    'ready' link, and mark notified only on a successful send. Returns True if sent.
+    SMTP runs outside the db lock. No approval gate (callers decide)."""
     from dashboard import biofield_reveals as _br
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _br.init_table(cx)
-        row = cx.execute("SELECT id FROM biofield_reveals WHERE email=? ORDER BY id DESC LIMIT 1",
-                         (email,)).fetchone()
-        if not row:
-            return
+        row = cx.execute("SELECT email FROM biofield_reveals WHERE id=?", (rid,)).fetchone()
+        if not row or not row[0]:
+            return False
+        email = row[0]
         tok = secrets.token_urlsafe(32)
-        _br.set_token(cx, row[0], _hash_token(tok))
+        _br.set_token(cx, rid, _hash_token(tok))
         now = datetime.now(timezone.utc)
         cx.execute("INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
                    "VALUES (?,?,?,?,?)",
@@ -352,7 +353,23 @@ def _resend_biofield_reveal(email, extra):
     url = f"{PUBLIC_BASE_URL}/begin/biofield/{tok}"
     body = ("Aloha,\n\nYour Biofield Analysis is ready. View your reading here:\n"
             f"{url}\n\nIn wellness,\nDr. Glen and Rae\n")
-    _send_inquiry_email(email, "Your Biofield Analysis is ready", body)
+    sent = _send_inquiry_email(email, "Your Biofield Analysis is ready", body)
+    if sent:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _br.set_notified(cx, rid)
+    return bool(sent)
+
+
+def _resend_biofield_reveal(email, extra):
+    """Resend path (not approval-gated): find the latest reveal for the email and send it."""
+    from dashboard import biofield_reveals as _br
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _br.init_table(cx)
+        row = cx.execute("SELECT id FROM biofield_reveals WHERE email=? ORDER BY id DESC LIMIT 1",
+                         (email,)).fetchone()
+    if not row:
+        return
+    _send_reveal_link(row[0])
 
 
 def _resend_inquiry_reply(inquiry_id, practitioner_id):
@@ -11026,7 +11043,9 @@ def api_e4l_reveal_draft():
                 url = f"{PUBLIC_BASE_URL}/begin/biofield/{token}"
                 body = ("Aloha,\n\nYour Biofield Analysis is ready. View your reading here:\n"
                         f"{url}\n\nIn wellness,\nDr. Glen and Rae\n")
-                _send_inquiry_email(email, "Your Biofield Analysis is ready", body)
+                if _send_inquiry_email(email, "Your Biofield Analysis is ready", body):
+                    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                        _br.set_notified(cx, rid)
             except Exception as e:
                 print(f"[reveal-draft] notify failed: {e!r}", flush=True)
         return jsonify({"ok": True, "id": rid})
