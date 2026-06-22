@@ -225,3 +225,33 @@ def notify_on_approve(cx, slug, name, base_url, *, send, strip=None):
             mark_emailed(cx, slug, email)
         except Exception as exc:  # noqa: BLE001 - one bad send must not stop the rest
             print(f"[topic-pages] send failed for {email}: {exc}", flush=True)
+
+
+def record_suggestion(cx, slug, name, kind, email):
+    """Record a create-a-page suggestion. Never downgrades a row already in the build pipeline."""
+    init_table(cx)
+    page = get_page(cx, slug)
+    state = (page or {}).get("state")
+    if state in ("approved", "draft", "gated"):
+        record_request(cx, slug, email)
+        return state
+    set_name(cx, slug, name)
+    set_kind(cx, slug, kind)
+    set_state(cx, slug, "suggested")
+    record_request(cx, slug, email)
+    return "suggested"
+
+
+def list_suggestions(cx):
+    """Suggested rows with demand counts, highest demand first."""
+    init_table(cx)
+    cur = cx.cursor()
+    cur.row_factory = sqlite3.Row
+    rows = cur.execute(
+        "SELECT p.slug, p.name, p.kind, "
+        "  (SELECT COUNT(*) FROM topic_page_requests r WHERE r.slug=p.slug) AS demand "
+        "FROM topic_pages p WHERE p.state='suggested' "
+        "ORDER BY demand DESC, p.updated_at DESC"
+    ).fetchall()
+    return [{"slug": r["slug"], "name": r["name"] or r["slug"],
+             "kind": r["kind"] or "", "demand": r["demand"]} for r in rows]
