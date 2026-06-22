@@ -13661,9 +13661,92 @@ def _init_calendar_table():
                 cx.execute(f"ALTER TABLE calendar_suppressed ADD COLUMN {col}")
             except Exception:
                 pass
+        # Per-calendar -> owner map (so Rae's & Shaira's shared Google calendars land
+        # in their own lane; unknown calendars default to glen). Seeded from the
+        # CALENDAR_OWNER_MAP env JSON on init: {"<google_cal_id>": "rae", ...}.
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_owner_map (
+                google_cal_id TEXT PRIMARY KEY,
+                owner         TEXT NOT NULL,
+                calendar_name TEXT DEFAULT ''
+            )
+        """)
+        # Accomplishments: manually-logged "what got done" entries, separate from the
+        # Google-events mirror (calendar_events). Shown in the calendar's
+        # Accomplishments mode.
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_accomplishments (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner      TEXT NOT NULL,
+                title      TEXT NOT NULL,
+                at         TEXT NOT NULL,
+                notes      TEXT DEFAULT '',
+                created_by TEXT DEFAULT '',
+                created_at TEXT NOT NULL
+            )
+        """)
+        try:
+            _raw_map = os.environ.get("CALENDAR_OWNER_MAP", "")
+            if _raw_map:
+                for _cal_id, _ow in (json.loads(_raw_map) or {}).items():
+                    cx.execute(
+                        "INSERT OR IGNORE INTO calendar_owner_map (google_cal_id, owner) "
+                        "VALUES (?,?)", (_cal_id, str(_ow).lower()))
+        except Exception:
+            pass
         cx.commit()
 
 _init_calendar_table()
+
+
+def _calendar_range_window(range_name, anchor=None):
+    """Inclusive ('YYYY-MM-DD' start, end) for a calendar view range.
+
+    Anchor defaults to today in HST (UTC-10, no DST). Ranges:
+      today | 2day (today+tomorrow) | week (Mon-Sun containing anchor) | month.
+    """
+    from datetime import date as _date
+    import calendar as _calmod
+    if anchor:
+        d = _date.fromisoformat(anchor)
+    else:
+        d = (datetime.now(timezone.utc) - timedelta(hours=10)).date()
+    rn = (range_name or "today").lower()
+    if rn == "2day":
+        return d.isoformat(), (d + timedelta(days=1)).isoformat()
+    if rn == "week":
+        mon = d - timedelta(days=d.weekday())
+        return mon.isoformat(), (mon + timedelta(days=6)).isoformat()
+    if rn == "month":
+        first = d.replace(day=1)
+        last = first.replace(day=_calmod.monthrange(d.year, d.month)[1])
+        return first.isoformat(), last.isoformat()
+    return d.isoformat(), d.isoformat()  # today / unknown
+
+
+def _calendar_owner_for(google_cal_id, calendar_name, mapping):
+    """Resolve a calendar's owner from the map (by google_cal_id, then name).
+    Unknown -> 'glen' (preserves the historical default)."""
+    if mapping:
+        if google_cal_id and google_cal_id in mapping:
+            return mapping[google_cal_id]
+        if calendar_name and calendar_name in mapping:
+            return mapping[calendar_name]
+    return "glen"
+
+
+def _load_calendar_owner_map(cx):
+    mp = {}
+    try:
+        for cal_id, ow, name in cx.execute(
+                "SELECT google_cal_id, owner, calendar_name FROM calendar_owner_map"):
+            if cal_id:
+                mp[cal_id] = ow
+            if name:
+                mp[name] = ow
+    except Exception:
+        pass
+    return mp
 
 
 def _normalize_cal_title(title: str) -> str:
@@ -13690,22 +13773,67 @@ def _parse_event_start(start_iso: str):
 
 
 
+_CAL_ALL_OWNERS = ("glen", "rae", "shaira")
+
+
 @app.route("/api/calendar", methods=["GET"])
 def get_calendar():
-    owner  = request.args.get("owner", "glen").lower()
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error": "Unauthorized" if code == 401 else "Forbidden"}), code
+
     status = request.args.get("status", "visible")
+    kind = (request.args.get("kind", "events") or "events").lower()
+    range_name = request.args.get("range")
+    anchor = request.args.get("date")
+
+    # Owners by scope: admin (Glen/Rae) sees all three (or an `owners=` subset);
+    # a scoped user (e.g. workspace:shaira) is forced to her own lane.
+    if ctx.get("scope") == "admin":
+        req = request.args.get("owners") or request.args.get("owner")
+        if req:
+            owners = [o.strip().lower() for o in req.split(",")
+                      if o.strip().lower() in _CAL_ALL_OWNERS]
+        else:
+            owners = list(_CAL_ALL_OWNERS)
+    else:
+        own = _owner_from_scope(ctx.get("scope", ""))
+        owners = [own] if own else []
+    if not owners:
+        return jsonify({"events": []})
+
+    # Date window: explicit range -> inclusive [start,end]; legacy (no range) -> today onward.
+    if range_name:
+        wstart, wend = _calendar_range_window(range_name, anchor)
+        date_clause, date_params = "AND substr({col},1,10) BETWEEN ? AND ?", [wstart, wend]
+    else:
+        date_clause, date_params = "AND substr({col},1,10) >= date('now')", []
+    placeholders = ",".join("?" for _ in owners)
+
     with sqlite3.connect(LOG_DB) as cx:
-        rows = cx.execute("""
+        if kind == "accomplishments":
+            rows = cx.execute(f"""
+                SELECT id, owner, title, at, notes, created_by, created_at
+                FROM calendar_accomplishments
+                WHERE owner IN ({placeholders})
+                  {date_clause.format(col='at')}
+                ORDER BY at ASC
+            """, (*owners, *date_params)).fetchall()
+            cols = ["id", "owner", "title", "at", "notes", "created_by", "created_at"]
+            items = [dict(zip(cols, r), kind="accomplishment") for r in rows]
+            return jsonify({"events": items})
+
+        rows = cx.execute(f"""
             SELECT id, google_cal_id, google_event_id, calendar_name,
                    summary, start, end, location, owner, status, cal_alert
             FROM calendar_events
-            WHERE owner=? AND status=?
-              AND substr(start, 1, 10) >= date('now')
+            WHERE owner IN ({placeholders}) AND status=?
+              {date_clause.format(col='start')}
             ORDER BY start ASC
-        """, (owner, status)).fetchall()
+        """, (*owners, status, *date_params)).fetchall()
     cols = ["id","google_cal_id","google_event_id","calendar_name",
             "summary","start","end","location","owner","status","cal_alert"]
-    return jsonify({"events": [dict(zip(cols, r)) for r in rows]})
+    return jsonify({"events": [dict(zip(cols, r), kind="event") for r in rows]})
 
 
 @app.route("/api/calendar", methods=["POST"])
@@ -13730,8 +13858,13 @@ def post_calendar():
         for row_owner, pattern, dow, hr in sup_rows:
             suppressed.setdefault(row_owner, []).append((pattern, dow, hr))
 
+        owner_map = _load_calendar_owner_map(cx)
         for ev in items:
-            owner   = ev.get("owner", "glen")
+            # Precedence: an explicit calendar->owner mapping (Rae's/Shaira's shared
+            # calendars) wins over the cron's heuristic `owner`, which wins over glen.
+            mapped = (owner_map.get(ev.get("google_cal_id", ""))
+                      or owner_map.get(ev.get("calendar_name", "")))
+            owner   = mapped or ev.get("owner") or "glen"
             summary = ev.get("summary", "(no title)")
             start   = ev.get("start", "")
             norm    = _normalize_cal_title(summary)
@@ -13775,6 +13908,33 @@ def post_calendar():
                 pass
         cx.commit()
     return jsonify({"ok": True, "upserted": upserted, "skipped": skipped}), 201
+
+
+@app.route("/api/calendar/accomplishment", methods=["POST"])
+def post_calendar_accomplishment():
+    """Log an accomplishment for an owner's lane. Admin may log for any owner;
+    a scoped user may only log for her own owner."""
+    ok, ctx, code = _auth()
+    if not ok:
+        return jsonify({"error": "Unauthorized" if code == 401 else "Forbidden"}), code
+    body = request.get_json(silent=True) or {}
+    owner = (body.get("owner") or "glen").lower()
+    if not _can_access_owner(ctx, owner):
+        return jsonify({"error": "Forbidden"}), 403
+    title = (body.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "title required"}), 400
+    at = body.get("at") or datetime.now(timezone.utc).isoformat()
+    notes = body.get("notes", "") or ""
+    created_by = ctx.get("user_name") or "admin"
+    now = datetime.now(timezone.utc).isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO calendar_accomplishments "
+            "(owner, title, at, notes, created_by, created_at) VALUES (?,?,?,?,?,?)",
+            (owner, title, at, notes, created_by, now))
+        cx.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/calendar/<int:event_id>", methods=["PATCH"])

@@ -80,6 +80,23 @@
   .section-action { margin-left: auto; font-size: 12px; color: var(--muted); background: none; border: none; cursor: pointer; }
   .section-action:hover { color: var(--text); }
 
+  /* Calendar */
+  .cal-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .cal-seg button { background: transparent; border: none; color: var(--muted); padding: 4px 11px; font-size: 12px; cursor: pointer; }
+  .cal-seg button.active { background: var(--shaira-dim); color: var(--shaira); }
+  .cal-days { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
+  .cal-day { flex-shrink: 0; min-width: 200px; max-width: 260px; }
+  .cal-day-header { font-size: 12px; font-weight: 700; color: var(--muted); padding: 4px 0 6px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+  .cal-day-header.today { color: var(--shaira); }
+  .cal-event, .cal-acc { background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid var(--shaira); border-radius: 8px; padding: 9px 11px; margin-bottom: 7px; font-size: 13px; }
+  .cal-event.alerted { border-color: #ff6b6b; }
+  .cal-event-time { color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+  .cal-event-title { font-weight: 600; line-height: 1.3; word-break: break-word; }
+  .cal-event-cal, .cal-event-loc { color: var(--muted); font-size: 11px; margin-top: 3px; }
+  .cal-acc .cal-event-title::before { content: "✓ "; color: var(--shaira); }
+  .btn-cal-alert { margin-top: 7px; border: 1px solid var(--border); background: transparent; border-radius: 6px; color: var(--muted); cursor: pointer; padding: 3px 9px; font-size: 11px; }
+  .btn-cal-alert.active { border-color: #ff6b6b; color: #ff6b6b; }
+
   /* Soft banner */
   .soft-banner { background: linear-gradient(90deg, #4a3a1a 0%, #2a2a1a 100%); border: 1px solid var(--glen); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; color: var(--glen); font-size: 14px; display: flex; align-items: center; gap: 10px; }
   .soft-banner.hidden { display: none; }
@@ -249,6 +266,26 @@
     ⚠️ <span id="soft-banner-text">You have 2 projects in process — want to focus on one before starting another?</span>
   </div>
 
+  <!-- CALENDAR -->
+  <section id="calendar-section">
+    <div class="section-header">
+      <span class="section-title">Calendar</span>
+      <span class="cal-seg" id="cal-range-seg">
+        <button data-range="today">Today</button>
+        <button data-range="2day">+Tomorrow</button>
+        <button data-range="week">Week</button>
+        <button data-range="month">Month</button>
+      </span>
+      <span class="cal-seg" id="cal-kind-seg">
+        <button data-kind="events">Schedule</button>
+        <button data-kind="accomplishments">Accomplishments</button>
+      </span>
+      <button class="section-action" id="cal-log-btn" onclick="logAccomplishment()">+ log accomplishment</button>
+    </div>
+    <div id="cal-empty" class="loading" style="display:none">Nothing scheduled.</div>
+    <div class="cal-days" id="cal-days"></div>
+  </section>
+
   <!-- FOCUSED -->
   <section id="focused-section">
     <div class="section-header">
@@ -361,6 +398,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="/static/cal-alarm.js"></script>
 <script>
 // ── Config / state ────────────────────────────────────────────────────────────
 const OWNER = 'shaira';
@@ -1158,8 +1196,121 @@ async function hhCancelMerge(mergeId) {
   } catch (e) { hhFlash('Cancel failed: ' + e.message, true); }
 }
 
+// ── Calendar ──────────────────────────────────────────────────────────────────
+let calRange = localStorage.getItem('cal_range') || 'today';
+let calKind  = localStorage.getItem('cal_kind')  || 'events';
+const calAlerts = {};  // evId -> isoStart (local-only alarms for this tab)
+
+function _calFmtTime(iso) {
+  if (!iso) return '';
+  if (!iso.includes('T')) return 'All day';
+  try { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+  catch { return ''; }
+}
+function _calFmtDate(iso) {
+  try {
+    const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+    const t = new Date(); t.setHours(0,0,0,0);
+    const ed = new Date(d); ed.setHours(0,0,0,0);
+    const diff = Math.round((ed - t) / 86400000);
+    const dp = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    if (diff === 0) return { label: `Today — ${dp}`, isToday: true };
+    if (diff === 1) return { label: `Tomorrow — ${dp}`, isToday: false };
+    return { label: `${d.toLocaleDateString([], { weekday: 'short' })} ${dp}`, isToday: false };
+  } catch { return { label: (iso || '').substring(0,10), isToday: false }; }
+}
+
+function toggleShairaAlert(evId, isoStart, title) {
+  const btn = document.getElementById(`alert-btn-${evId}`);
+  if (calAlerts[evId]) {
+    delete calAlerts[evId]; window.CalAlarm.cancelAlert(evId);
+    if (btn) btn.classList.remove('active');
+  } else {
+    calAlerts[evId] = isoStart; window.CalAlarm.scheduleAlert(evId, isoStart, title, 3);
+    if (btn) btn.classList.add('active');
+    if (window.Notification && Notification.permission === 'default') Notification.requestPermission();
+  }
+}
+
+function renderShairaCalendar(items) {
+  const daysEl = document.getElementById('cal-days');
+  const emptyEl = document.getElementById('cal-empty');
+  daysEl.innerHTML = '';
+  if (!items.length) { emptyEl.style.display = ''; return; }
+  emptyEl.style.display = 'none';
+
+  const isAcc = calKind === 'accomplishments';
+  const dateField = isAcc ? 'at' : 'start';
+  const groups = {}, order = [];
+  items.forEach(it => {
+    const k = (it[dateField] || '').substring(0, 10);
+    if (!groups[k]) { groups[k] = []; order.push(k); }
+    groups[k].push(it);
+  });
+  daysEl.innerHTML = order.map(k => {
+    const { label, isToday } = _calFmtDate(k);
+    const cards = groups[k].map(it => {
+      if (isAcc) {
+        const notes = it.notes ? `<div class="cal-event-loc">${escapeHtml(it.notes.substring(0,80))}</div>` : '';
+        return `<div class="cal-acc"><div class="cal-event-time">${escapeHtml(_calFmtTime(it.at))}</div>
+          <div class="cal-event-title">${escapeHtml(it.title)}</div>${notes}</div>`;
+      }
+      const alerted = calAlerts[it.id];
+      const title = (it.summary || '').replace(/'/g, "\\'");
+      return `<div class="cal-event${alerted ? ' alerted' : ''}" id="cal-ev-${it.id}">
+        <div class="cal-event-time">${escapeHtml(_calFmtTime(it.start))}</div>
+        <div class="cal-event-title">${escapeHtml(it.summary || '')}</div>
+        ${it.location ? `<div class="cal-event-loc">📍 ${escapeHtml(it.location.substring(0,50))}</div>` : ''}
+        <button class="btn-cal-alert${alerted ? ' active' : ''}" id="alert-btn-${it.id}"
+          onclick="toggleShairaAlert(${it.id}, '${escapeHtml(it.start || '')}', '${escapeHtml(title)}')">🔔 Alert</button>
+      </div>`;
+    }).join('');
+    return `<div class="cal-day"><div class="cal-day-header${isToday ? ' today' : ''}">${escapeHtml(label)}</div>${cards}</div>`;
+  }).join('');
+}
+
+async function loadCalendar() {
+  const r = await apiJson(`/api/calendar?range=${calRange}&kind=${calKind}`);
+  const items = (r && r.events) || [];
+  renderShairaCalendar(items);
+  if (calKind === 'events') items.forEach(it => {
+    if (calAlerts[it.id] && it.start) window.CalAlarm.scheduleAlert(it.id, it.start, it.summary || '', 3);
+  });
+}
+
+function _initCalControls() {
+  const rangeSeg = document.getElementById('cal-range-seg');
+  const kindSeg = document.getElementById('cal-kind-seg');
+  if (!rangeSeg || !kindSeg) return;
+  const paint = () => {
+    rangeSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.range === calRange));
+    kindSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.kind === calKind));
+  };
+  rangeSeg.querySelectorAll('button').forEach(b => b.onclick = async () => {
+    calRange = b.dataset.range; localStorage.setItem('cal_range', calRange); paint(); await loadCalendar();
+  });
+  kindSeg.querySelectorAll('button').forEach(b => b.onclick = async () => {
+    calKind = b.dataset.kind; localStorage.setItem('cal_kind', calKind); paint(); await loadCalendar();
+  });
+  paint();
+}
+
+async function logAccomplishment() {
+  const title = (prompt('Log an accomplishment:') || '').trim();
+  if (!title) return;
+  const r = await api('/api/calendar/accomplishment', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ owner: OWNER, title, at: new Date().toISOString() }),
+  });
+  if (!r || !r.ok) { toast('Could not log that.', true); return; }
+  if (calKind !== 'accomplishments') { calKind = 'accomplishments'; localStorage.setItem('cal_kind', calKind); _initCalControls(); }
+  await loadCalendar();
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 initKey();
+_initCalControls();
+loadCalendar();
 loadState();
 
 // Refresh every 5 minutes (catches new tasks pushed by console-push.py hourly)
