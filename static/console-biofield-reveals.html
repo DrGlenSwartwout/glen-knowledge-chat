@@ -81,6 +81,28 @@ function boot(){
   loadList();
 }
 
+var CANON = {};   // slug -> canonical meaning, used to pre-check "Remember this meaning"
+
+// Pre-check the box when the shown meaning already matches the saved canonical one
+// (so reviewed/approved meanings read as reviewed), and persist immediately on check
+// so the meaning sticks even if a later re-ingest runs (fixes the silent revert).
+function wireRemember(cb, rem){
+  var cm = (rem.slug && CANON[rem.slug] != null) ? CANON[rem.slug] : null;
+  cb.checked = (cm != null && cm === (rem.meaning || ''));
+  cb.addEventListener('change', async function(){
+    if(!cb.checked) return;   // unchecking leaves the saved canonical meaning in place
+    var row = cb.closest('.remedy-row');
+    var slugEl = row.querySelector('.remedy-slug');
+    var meaningEl = row.querySelector('.remedy-meaning');
+    var slug = slugEl ? slugEl.value.trim() : '';
+    var meaning = meaningEl ? meaningEl.value : '';
+    if(!slug){ cb.checked = false; alert('Add a remedy slug before remembering its meaning.'); return; }
+    var r = await api('POST', '/api/action/remedy_meaning.save', { slug: slug, meaning: meaning });
+    if(r.ok && r.json.status === 'done'){ CANON[slug] = meaning; }
+    else { cb.checked = false; alert('Could not save the meaning. Try again.'); }
+  });
+}
+
 async function loadList(){
   var r = await api('GET', '/api/console/biofield-reveals');
   var el = document.getElementById('list');
@@ -88,6 +110,13 @@ async function loadList(){
     el.textContent = 'Could not load (check console key).';
     return;
   }
+  try {
+    var rm = await api('GET', '/api/console/remedy-meanings');
+    if(rm.ok && rm.json && rm.json.rows){
+      CANON = {};
+      rm.json.rows.forEach(function(x){ if(x.slug) CANON[x.slug] = x.meaning || ''; });
+    }
+  } catch(e) {}
   el.innerHTML = '';
   var drafts = r.json.drafts || [];
   var approved = r.json.approved || [];
@@ -258,7 +287,7 @@ function buildCard(d){
       var rememberCheck = document.createElement('input');
       rememberCheck.type = 'checkbox';
       rememberCheck.className = 'remedy-remember';
-      rememberCheck.checked = false;
+      wireRemember(rememberCheck, rem);
       rememberLabel.appendChild(rememberCheck);
       var rememberText = document.createTextNode(' Remember this meaning');
       rememberLabel.appendChild(rememberText);
