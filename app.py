@@ -3237,6 +3237,14 @@ def _resolve_remedy_slug(r):
         for title, slug in _TITLE_TO_SLUG.items():
             if (title or "").strip().lower() == low:
                 return slug
+        # Infoceutical code fallback: the matcher pushes the bare code ("EI8") while
+        # the catalog name is "EI8 Microbes-Liver Integrator". Match by code prefix so
+        # infoceuticals resolve (and so are recommended, not dropped).
+        if re.match(r"^(ei|es|ed|et|mb|mr|sk|bfa)\d+$", low):
+            for title, slug in _TITLE_TO_SLUG.items():
+                t = (title or "").strip().lower()
+                if t == low or t.split(" ")[0] == low:
+                    return slug
         return None
     except Exception:
         return None
