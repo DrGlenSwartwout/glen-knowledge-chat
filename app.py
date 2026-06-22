@@ -314,6 +314,86 @@ def send_magic_link_email(to_email: str, name: str, magic_url: str) -> tuple:
     return "console-log", "no email send mechanism configured"
 
 
+def _link_resend_generic(purpose, url_template, ttl):
+    """Factory: mint a fresh `purpose` token (preserving extra) and email its URL."""
+    def handler(email, extra):
+        tok = secrets.token_urlsafe(32)
+        now = datetime.now(timezone.utc)
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute("CREATE TABLE IF NOT EXISTS auth_tokens "
+                       "(token_hash TEXT, email TEXT, purpose TEXT, extra TEXT, "
+                       "created_at TEXT, expires_at TEXT, consumed_at TEXT)")
+            cx.execute("INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
+                       "VALUES (?,?,?,?,?,?)",
+                       (_hash_token(tok), email, purpose, extra, now.isoformat(), (now + ttl).isoformat()))
+            cx.commit()
+        send_magic_link_email(email, "", f"{PUBLIC_BASE_URL}" + url_template.format(token=tok))
+    return handler
+
+
+def _resend_biofield_reveal(email, extra):
+    """Re-mint the reveal token (both biofield_reveals.token_hash + auth_tokens) and
+    send the reveal email - only if a reveal still exists for the email."""
+    from dashboard import biofield_reveals as _br
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _br.init_table(cx)
+        row = cx.execute("SELECT id FROM biofield_reveals WHERE email=? ORDER BY id DESC LIMIT 1",
+                         (email,)).fetchone()
+        if not row:
+            return
+        tok = secrets.token_urlsafe(32)
+        _br.set_token(cx, row[0], _hash_token(tok))
+        now = datetime.now(timezone.utc)
+        cx.execute("INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                   "VALUES (?,?,?,?,?)",
+                   (_hash_token(tok), email, "biofield_reveal", now.isoformat(),
+                    (now + timedelta(days=30)).isoformat()))
+        cx.commit()
+    url = f"{PUBLIC_BASE_URL}/begin/biofield/{tok}"
+    body = ("Aloha,\n\nYour Biofield Analysis is ready. View your reading here:\n"
+            f"{url}\n\nIn wellness,\nDr. Glen and Rae\n")
+    _send_inquiry_email(email, "Your Biofield Analysis is ready", body)
+
+
+def _resend_inquiry_reply(inquiry_id, practitioner_id):
+    """Mint a fresh inquiry reply token for (inquiry_id, practitioner_id) and email the
+    practitioner the secure reply link. No-op if the practitioner is unknown."""
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        prow = cx.execute(
+            "SELECT practitioner_email FROM inquiry_practitioners "
+            "WHERE inquiry_id=? AND practitioner_id=? AND practitioner_email IS NOT NULL "
+            "AND practitioner_email <> '' ORDER BY email_sent_at DESC LIMIT 1",
+            (inquiry_id, practitioner_id)).fetchone()
+        if not prow:
+            return
+        pmail = prow[0]
+        tok = secrets.token_urlsafe(32)
+        now = datetime.utcnow()
+        cx.execute("INSERT OR REPLACE INTO inquiry_reply_tokens "
+                   "(token_hash, inquiry_id, practitioner_id, created_at, expires_at) VALUES (?,?,?,?,?)",
+                   (_hash_token(tok), inquiry_id, practitioner_id,
+                    now.isoformat() + "Z", (now + timedelta(days=30)).isoformat() + "Z"))
+        cx.commit()
+    url = f"{PUBLIC_BASE_URL}/inquiries/{inquiry_id}/{practitioner_id}/reply?token={tok}"
+    body = ("Aloha,\n\nHere is your fresh secure reply link for this inquiry:\n"
+            f"{url}\n\nIn wellness,\nDr. Glen\n")
+    _send_inquiry_email(pmail, "Your fresh reply link", body)
+
+
+_AUTH_TTL = timedelta(minutes=AUTH_TOKEN_TTL_MIN)
+RESEND_HANDLERS = {
+    "biofield_reveal": _resend_biofield_reveal,
+    "reorder": _link_resend_generic("reorder", "/reorder/auth/{token}", _AUTH_TTL),
+    "magic_link": _link_resend_generic("magic_link", "/auth/magic-link/verify?token={token}", _AUTH_TTL),
+    "affiliate_magic_link": _link_resend_generic("affiliate_magic_link", "/affiliate/login-verify?token={token}", _AUTH_TTL),
+    "practitioner_claim": _link_resend_generic("practitioner_claim", "/practitioner-claim/{token}", timedelta(days=7)),
+    "practitioner_optout": _link_resend_generic("practitioner_optout", "/practitioner-optout/{token}", timedelta(days=365)),
+    "practitioner_share": _link_resend_generic("practitioner_share", "/share-with-practitioner/{token}", timedelta(days=30)),
+}
+
+_RESEND_OK = {"ok": True, "message": "If that link was valid, a fresh one is on its way. Check your email."}
+
+
 def get_authenticated_user(request_obj):
     """Resolve the auth_token cookie to a user record. Returns user dict or None."""
     tok = request_obj.cookies.get("amg_auth", "").strip()
@@ -5865,6 +5945,31 @@ def auth_logout():
     resp.set_cookie("amg_auth", "", max_age=0, httponly=True, samesite="Lax",
                     secure=request.is_secure)
     return resp
+
+
+@app.route("/link/resend", methods=["POST"])
+def link_resend():
+    """Re-mint + re-send a magic link from its expired token (or inquiry ids). Always
+    returns a generic ok (no enumeration)."""
+    data = request.get_json(silent=True) or {}
+    inquiry_id = (data.get("inquiry_id") or "").strip()
+    practitioner_id = (data.get("practitioner_id") or "").strip()
+    token = (data.get("token") or "").strip()
+    try:
+        if inquiry_id and practitioner_id:
+            _resend_inquiry_reply(inquiry_id, practitioner_id)  # Task 2
+        elif token:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                row = cx.execute("SELECT email, purpose, extra FROM auth_tokens WHERE token_hash=?",
+                                 (_hash_token(token),)).fetchone()
+            if row:
+                email, purpose, extra = row[0], row[1], row[2]
+                handler = RESEND_HANDLERS.get(purpose)
+                if handler and email:
+                    handler(email, extra)
+    except Exception as e:
+        print(f"[link-resend] {e!r}", flush=True)
+    return jsonify(_RESEND_OK)
 
 
 @app.route("/history", methods=["GET"])
