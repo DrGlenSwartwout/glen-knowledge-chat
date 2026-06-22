@@ -179,3 +179,34 @@ def compliance_scan(content, client):
         print(f"[topic-copy] compliance_scan failed: {exc}", flush=True)
         return {"passed": False, "flags": [{"phrase": "", "reason": "scan error (fail-closed)"}],
                 "scanned_at": now, "model": "error"}
+
+
+def extract_topic_candidate(query, answer, client):
+    """Name the single health topic a conversation is about, for the create-a-page offer.
+
+    Returns {"name","kind","slug"} or None. One haiku call; never raises.
+    """
+    try:
+        from dashboard import ingredients as _ingredients
+        system = (
+            "You decide whether a chat is centrally about ONE health topic a person would search "
+            "for (a symptom, a named condition, or a physiological function). Return ONLY JSON. "
+            "If yes: {\"name\": \"Title Case Topic\", \"kind\": \"symptom|condition|function\"}. "
+            "If it is small talk, multiple unrelated topics, or not health, return {}. "
+            "No commentary, no markdown."
+        )
+        user = f"User: {query}\n\nAssistant answer: {answer[:600]}\n\nReturn the JSON now."
+        msg = client.messages.create(model=_MODEL, max_tokens=120, system=system,
+                                     messages=[{"role": "user", "content": user}])
+        raw = _text_of(msg)
+        if raw.startswith("```"):
+            raw = "\n".join(l for l in raw.splitlines() if not l.strip().startswith("```")).strip()
+        data = json.loads(raw)
+        name = (data.get("name") or "").strip()
+        kind = (data.get("kind") or "").strip().lower()
+        if not name or kind not in ("symptom", "condition", "function"):
+            return None
+        return {"name": name, "kind": kind, "slug": _ingredients.slugify(name)}
+    except Exception as exc:  # noqa: BLE001 - never raises
+        print(f"[topic-copy] extract_topic_candidate failed: {exc}", flush=True)
+        return None
