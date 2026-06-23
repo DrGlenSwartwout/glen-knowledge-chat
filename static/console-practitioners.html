@@ -57,7 +57,7 @@
     <div><label>Cert level (0–12)</label><input type="number" id="f-level" value="0" min="0" max="12"></div>
     <div><label>City</label><input type="text" id="f-city" placeholder="Austin"></div>
     <div><label>State / province</label><input type="text" id="f-state" placeholder="TX"></div>
-    <div><label>Country (ISO-2)</label><input type="text" id="f-country" placeholder="US" value="US" maxlength="2"></div>
+    <div><label>Country</label><input type="text" id="f-country" list="country-list" placeholder="Type a country…" autocomplete="off"></div>
     <div class="chk"><input type="checkbox" id="f-wholesale"><label style="margin:0;color:var(--ink)">Wholesale access</label></div>
     <div class="chk"><input type="checkbox" id="f-finder"><label style="margin:0;color:var(--ink)">List in finder</label></div>
     <div class="chk"><input type="checkbox" id="f-invite" checked><label style="margin:0;color:var(--ink)">Email portal invite</label></div>
@@ -74,8 +74,27 @@
   <div id="roster"></div>
 </div>
 
+<script src="/static/iso-countries.js"></script>
 <script>
 const KEY = new URLSearchParams(location.search).get('key') || '';
+const _dn = (window.Intl && Intl.DisplayNames) ? new Intl.DisplayNames(['en'],{type:'region'}) : null;
+function countryName(cc){ try { return (_dn && _dn.of(cc)) || cc; } catch(e){ return cc; } }
+const COUNTRIES = (window.ISO_COUNTRY_CODES||['US']).map(cc=>[countryName(cc), cc])
+                  .sort((a,b)=>a[0].localeCompare(b[0]));
+function countryDatalistHtml(){
+  return '<datalist id="country-list">'+
+    COUNTRIES.map(([n,c])=>`<option value="${esc(n)} (${c})"></option>`).join('')+'</datalist>';
+}
+function displayForCode(cc){ cc=(cc||'US').toUpperCase(); return `${countryName(cc)} (${cc})`; }
+function codeForInput(s){
+  s=(s||'').trim(); if(!s) return 'US';
+  const m=s.match(/\(([A-Za-z]{2})\)\s*$/); if(m) return m[1].toUpperCase();   // "Mexico (MX)"
+  if(/^[A-Za-z]{2}$/.test(s)) return s.toUpperCase();                          // raw "MX"
+  const lc=s.toLowerCase();
+  const hit=COUNTRIES.find(([n])=>n.toLowerCase()===lc)
+          || COUNTRIES.find(([n])=>n.toLowerCase().startsWith(lc));
+  return hit ? hit[1] : s.toUpperCase();
+}
 const CREDS = ['Health Coach','Wellness Coach','OD','ND','MD','DO','DC','LAc','NP','PA','RN','DDS','DMD','PharmD','RD'];
 function credOptionsHtml(cur){
   cur=(cur||'').trim();
@@ -102,7 +121,7 @@ async function addPractitioner(){
     name:val('f-name'), email:val('f-email'), role:val('f-role'),
     credentials:val('f-cred'), level:parseInt(val('f-level')||'0',10),
     wholesale_access:chk('f-wholesale'), list_in_finder:chk('f-finder'),
-    city:val('f-city'), state:val('f-state'), country:val('f-country'), send_invite:chk('f-invite')};
+    city:val('f-city'), state:val('f-state'), country:codeForInput(val('f-country')), send_invite:chk('f-invite')};
   const j=await api('/api/console/practitioners',
     {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(j.error){flash(j.error,false);return;}
@@ -157,7 +176,7 @@ function rowHtml(r){
         <div><label>Classification</label><select id="cred-${r.id}">${credOptionsHtml(r.credentials)}</select></div>
         <div><label>City</label><input type="text" id="city-${r.id}" value="${esc(r.city||'')}"></div>
         <div><label>State / province</label><input type="text" id="st-${r.id}" value="${esc(r.state||'')}"></div>
-        <div><label>Country (ISO-2)</label><input type="text" id="cty-${r.id}" value="${esc(r.country||'US')}" maxlength="2"></div>
+        <div><label>Country</label><input type="text" id="cty-${r.id}" list="country-list" value="${esc(displayForCode(r.country))}" autocomplete="off"></div>
       </div>
       <div style="margin-top:10px">
         <button class="sm" onclick="saveLevelAccess('${r.id}')">Save level & access</button>
@@ -181,7 +200,7 @@ async function saveLocation(id){
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({action:'location',city:document.getElementById('city-'+id).value.trim(),
       state:document.getElementById('st-'+id).value.trim(),
-      country:document.getElementById('cty-'+id).value.trim()})});
+      country:codeForInput(document.getElementById('cty-'+id).value)})});
   if(j.error){flash(j.error,false);return;} flash('Location saved & geocoded.',true); load();
 }
 async function saveCredentials(id){
@@ -203,6 +222,8 @@ async function resend(id,email,name){
 }
 
 document.getElementById('f-cred').innerHTML=credOptionsHtml('');
+document.body.insertAdjacentHTML('beforeend', countryDatalistHtml());
+document.getElementById('f-country').value=displayForCode('US');
 load();
 </script>
 </body>
