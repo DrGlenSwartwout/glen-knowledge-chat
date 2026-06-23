@@ -44,7 +44,32 @@ def _exec_edit(params, ctx):
                 remember = rem.get("remember", True)
                 clean_rem = {k: v for k, v in rem.items() if k != "remember"}
                 slug = (clean_rem.get("slug") or "").strip()
+                # Glen may type only the remedy NAME on a layer that had none —
+                # resolve its catalog slug the same way ingest does.
+                if not slug:
+                    resolver = _DEPS.get("resolve_slug")
+                    if resolver:
+                        try:
+                            slug = (resolver(clean_rem) or "").strip()
+                        except Exception:
+                            slug = ""
+                    if slug:
+                        clean_rem["slug"] = slug
                 meaning = (clean_rem.get("meaning") or "").strip()
+                # Fill the meaning when a slug resolved but no meaning was typed:
+                # canonical store first, else AI-propose (and remember it).
+                if slug and not meaning:
+                    try:
+                        meaning = (_bm.get_map(ctx["cx"]).get(slug) or "").strip()
+                        if not meaning:
+                            prod = (_DEPS.get("products") or {}).get(slug)
+                            if prod is not None:
+                                meaning = (_bm.propose_meaning(
+                                    dict(prod, slug=slug), _DEPS.get("client")) or "").strip()
+                        if meaning:
+                            clean_rem["meaning"] = meaning
+                    except Exception as e:
+                        print(f"[reveal-edit] meaning fill {e!r}", flush=True)
                 if remember and slug and meaning:
                     try:
                         _bm.upsert(ctx["cx"], slug, meaning, _actor_name(ctx.get("actor")), "glen")

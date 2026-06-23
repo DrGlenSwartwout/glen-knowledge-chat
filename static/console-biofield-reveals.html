@@ -447,7 +447,10 @@ async function saveEdit(card, id){
   statusEl.textContent = 'Saving...';
   var r = await api('POST', '/api/action/biofield_reveal.edit', { id: id, greeting: greeting, body: body, layers: layers });
   if(r.ok && r.json.status === 'done'){
+    // Reload so any server-resolved slug + filled-in meaning (from a typed-only
+    // remedy name) show up in the editor.
     statusEl.textContent = 'Saved.';
+    setTimeout(loadList, 600);
   } else {
     statusEl.textContent = 'Save failed.';
   }
