@@ -11129,6 +11129,107 @@ def api_e4l_scan_analysis():
     return jsonify({"ok": True, "email": email})
 
 
+def _scan_analysis_free_enabled() -> bool:
+    """SCAN_ANALYSIS_FREE — when on, the full longitudinal analysis is public to
+    any ToS member. Default OFF: gate to paid members while the system is trained."""
+    return os.environ.get("SCAN_ANALYSIS_FREE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+@app.route("/member/scan-analysis", methods=["GET"])
+def member_scan_analysis_page():
+    """Member-facing longitudinal scan-analysis page (SP2). Tier-gated server-side:
+    paid/active members see the full over-time analysis now; free (ToS) members see
+    a teaser + upsell until SCAN_ANALYSIS_FREE is flipped on; everyone else a locked
+    upsell. Viewer email comes from the rm_member_email cookie (coaching magic-link).
+    Withheld sections are emptied server-side (never serialized) — no client bypass."""
+    from dashboard import scan_analysis as _sa, scan_analysis_view as _sav
+    email = (request.cookies.get("rm_member_email", "") or "").strip().lower()
+    is_paid = bool(_active_membership_for_email(email)) if email else False
+    has_tos = is_member(email=email) if email else False
+    tier = _sav.resolve_tier(is_paid=is_paid, has_tos=has_tos)
+
+    analysis = None
+    if email:
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _sa.init_table(cx)
+                got = _sa.get(cx, email)
+            analysis = got.get("analysis") if got else None
+        except Exception as e:
+            print(f"[scan-analysis] read failed for {email}: {e!r}", flush=True)
+
+    payload = _sav.gated_payload(analysis, tier=tier,
+                                 free_enabled=_scan_analysis_free_enabled())
+    payload["signed_in"] = bool(email)
+
+    html = (STATIC / "member-scan-analysis.html").read_text()
+    safe = (json.dumps(payload).replace("<", "\\u003c")
+            .replace(">", "\\u003e").replace("&", "\\u0026"))
+    html = html.replace("</head>", f"<script>window.__SCAN__ = {safe};</script>\n</head>")
+    resp = Response(html, mimetype="text/html", status=200)
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+_SCAN_CHAT_SYSTEM = (
+    "You are Dr. Glen Swartwout's Biofield assistant, helping a member understand "
+    "their own voice-scan patterns OVER TIME. Warm, validation-led, plain language, "
+    "no em dashes. Use ONLY the member's supplied analysis facts plus general "
+    "education. Invent no numbers, scans, codes, or claims that are not in the facts. "
+    "Do not diagnose, prescribe, or promise outcomes. Keep answers under ~180 words. "
+    "Always end with: 'This is education, not a promise to diagnose, treat, cure, or "
+    "prevent any disease.'")
+
+
+@app.route("/member/scan-analysis/chat", methods=["POST"])
+def member_scan_analysis_chat():
+    """Tiered chat for the longitudinal analysis page (SP2 slice 2). full-access
+    members get answers grounded in their own analysis facts; teaser/locked
+    visitors get general education only (educate-only gate) plus an upsell."""
+    from dashboard import scan_analysis as _sa, scan_analysis_view as _sav
+    q = ((request.get_json(silent=True) or {}).get("query") or "").strip()
+    if not q:
+        return jsonify({"error": "query required"}), 400
+
+    email = (request.cookies.get("rm_member_email", "") or "").strip().lower()
+    is_paid = bool(_active_membership_for_email(email)) if email else False
+    has_tos = is_member(email=email) if email else False
+    tier = _sav.resolve_tier(is_paid=is_paid, has_tos=has_tos)
+
+    analysis = None
+    if email:
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _sa.init_table(cx)
+                got = _sa.get(cx, email)
+            analysis = got.get("analysis") if got else None
+        except Exception as e:
+            print(f"[scan-chat] read failed for {email}: {e!r}", flush=True)
+
+    access = _sav.gated_payload(analysis, tier=tier,
+                                free_enabled=_scan_analysis_free_enabled())["access"]
+    ctx = _sav.chat_context(analysis, access=access)
+
+    system = _SCAN_CHAT_SYSTEM
+    if ctx["grounded"] and ctx["facts"]:
+        system = system + "\n\nTHE MEMBER'S ANALYSIS FACTS:\n" + ctx["facts"]
+    else:
+        system = system + _EDUCATE_ONLY_POLICY
+
+    try:
+        msg = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=500,
+                                  system=system, messages=[{"role": "user", "content": q[:1500]}])
+        answer = (msg.content[0].text or "").strip()
+    except Exception as e:
+        print(f"[scan-chat] llm failed: {e!r}", flush=True)
+        return jsonify({"error": "unavailable"}), 503
+
+    resp = jsonify({"answer": answer, "access": access, "upsell": ctx["upsell"]})
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/biofield/ready")
 def biofield_ready_page():
     """Serve the readiness-gate page (no-store; PHI-adjacent)."""
@@ -18622,6 +18723,23 @@ def api_regenerate_briefings():
 
 # ── Subscription email helper ─────────────────────────────────────────────────
 
+def _mint_membership_cancel_url(cx, email: str) -> str:
+    """Mint a fresh one-click membership-cancel token (FTC/ROSCA easy-cancel) and
+    return its URL. Returns '' when email or PUBLIC_BASE_URL is missing (the link
+    would be unusable). Mirrors the cancel token minted at biofield-trial grant."""
+    if not (email and PUBLIC_BASE_URL):
+        return ""
+    tok = secrets.token_urlsafe(32)
+    cx.execute(
+        "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at)"
+        " VALUES (?,?,?,?,?)",
+        (_hash_token(tok), email, "membership_cancel",
+         datetime.now(timezone.utc).isoformat(),
+         (datetime.now(timezone.utc) + timedelta(days=MEMBERSHIP_CANCEL_TTL_DAYS)).isoformat()))
+    cx.commit()
+    return f"{PUBLIC_BASE_URL}/membership/cancel/{tok}"
+
+
 def _send_subscription_email(to_email: str, kind: str, data: dict):
     """Send a subscription lifecycle email. Best-effort — NEVER raises.
 
@@ -18640,15 +18758,18 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
 
         if kind == "heads_up":
             if is_membership:
-                subject = "Your live group coaching renews in 3 days"
+                cancel_url = data.get("cancel_url")
+                subject = f"Reminder: your membership renews on {charge_date}"
                 body = (
-                    f"Hi,\n\n"
-                    f"Just a quick heads-up about your live group coaching. On {charge_date} "
-                    + (f"your card will be charged {amount_str} for the coming month of coaching"
-                       if amount_str else "your card will be charged for the coming month of coaching")
-                    + f".\n\n"
-                    f"If you need to make a change, visit your member portal before that date.\n\n"
-                    f"In wellness,\nDr. Glen"
+                    f"Aloha,\n\n"
+                    f"Just a quick heads-up about your membership. On {charge_date} "
+                    + (f"your card will be charged {amount_str} for the coming month"
+                       if amount_str else "your card will be charged for the coming month")
+                    + ". Everything stays unlocked in the meantime.\n\n"
+                    + (("No pressure, ever. If you want to cancel before then, it is one click, "
+                        f"no charge, no reply needed:\n\n{cancel_url}\n\n") if cancel_url
+                       else "If you need to make a change, visit your member portal before that date.\n\n")
+                    + "In wellness,\nDr. Glen"
                 )
             else:
                 subject = f"Reminder: your Remedy Match subscription charges on {charge_date}"
@@ -18766,11 +18887,14 @@ def cron_charge_subscriptions():
         for sub in upcoming:
             try:
                 if not dry_run:
-                    _send_subscription_email(
-                        sub["email"], "heads_up",
-                        {"next_charge_date": sub["next_charge_date"],
-                         "kind": sub.get("kind", "product"),
-                         "total_cents": sub.get("amount_cents")})
+                    _hu_data = {"next_charge_date": sub["next_charge_date"],
+                                "kind": sub.get("kind", "product"),
+                                "total_cents": sub.get("amount_cents")}
+                    # Membership reminders carry a one-click cancel link (FTC/ROSCA
+                    # easy-cancel) minted fresh per send.
+                    if sub.get("kind") == "membership":
+                        _hu_data["cancel_url"] = _mint_membership_cancel_url(cx, sub["email"])
+                    _send_subscription_email(sub["email"], "heads_up", _hu_data)
                     _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
                 notified += 1
                 print(f"[sub-cron] heads-up {'(dry)' if dry_run else ''}"

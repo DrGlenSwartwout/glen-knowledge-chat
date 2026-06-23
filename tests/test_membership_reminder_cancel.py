@@ -123,3 +123,58 @@ def test_membership_heads_up_uses_membership_copy(monkeypatch):
 
     cx.execute("DELETE FROM subscriptions WHERE email=?", (TEST_EMAIL,)); cx.commit()
     cx.close()
+
+
+def test_membership_heads_up_includes_one_click_cancel(monkeypatch):
+    """The pre-charge reminder for a membership must carry a one-click cancel
+    link (FTC/ROSCA easy-cancel) and mint a real membership_cancel token."""
+    _enable(monkeypatch)
+    monkeypatch.setattr(appmod, "PUBLIC_BASE_URL", "https://test.example")
+
+    charged_ids = []
+    _stub_externals(monkeypatch, charged_ids)
+    sent = []
+    monkeypatch.setattr(appmod, "_send_subscription_email",
+                        lambda email, kind, data: sent.append((email, kind, data)) or ("smtp", None))
+
+    two_days = (date.today() + timedelta(days=2)).isoformat()
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+    cx.execute("DELETE FROM auth_tokens WHERE email=?", (TEST_EMAIL,)); cx.commit()
+    _seed_membership(cx, next_charge_date=two_days)
+
+    c = appmod.app.test_client()
+    r = c.post("/api/cron/charge-subscriptions", headers=_headers())
+    assert r.status_code == 200, r.data
+
+    ours = [s for s in sent if s[0] == TEST_EMAIL and s[1] == "heads_up"]
+    assert len(ours) == 1, f"expected one heads_up for {TEST_EMAIL}, got {sent}"
+    data = ours[0][2]
+    # the reminder carries a working one-click cancel URL...
+    assert "/membership/cancel/" in (data.get("cancel_url") or ""), data
+    assert data["cancel_url"].startswith("https://test.example/membership/cancel/")
+    # ...backed by a real, unexpired membership_cancel token in auth_tokens
+    n = cx.execute("SELECT COUNT(*) FROM auth_tokens WHERE email=? AND purpose='membership_cancel'",
+                   (TEST_EMAIL,)).fetchone()[0]
+    assert n == 1, "expected exactly one membership_cancel token minted by the reminder"
+
+    cx.execute("DELETE FROM subscriptions WHERE email=?", (TEST_EMAIL,))
+    cx.execute("DELETE FROM auth_tokens WHERE email=?", (TEST_EMAIL,)); cx.commit()
+    cx.close()
+
+
+def test_membership_heads_up_email_body_has_cancel_amount_date(monkeypatch):
+    """_send_subscription_email builds a membership pre-charge reminder whose body
+    contains the one-click cancel link, the dollar amount, and the charge date."""
+    captured = {}
+    monkeypatch.setattr(appmod, "_send_full_report_email",
+                        lambda to, _x, subject, body: captured.update(
+                            to=to, subject=subject, body=body) or ("smtp", None))
+    appmod._send_subscription_email(
+        "x@y.com", "heads_up",
+        {"kind": "membership", "total_cents": 9900, "next_charge_date": "2026-07-01",
+         "cancel_url": "https://test.example/membership/cancel/TOK123"})
+    body = captured.get("body", "")
+    assert "https://test.example/membership/cancel/TOK123" in body
+    assert "$99.00" in body
+    assert "2026-07-01" in body
