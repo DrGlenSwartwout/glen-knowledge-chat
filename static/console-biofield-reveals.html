@@ -81,14 +81,15 @@ function boot(){
   loadList();
 }
 
-var CANON = {};   // slug -> canonical meaning, used to pre-check "Remember this meaning"
+var CANON = {};   // slug -> {meaning, source}; used to pre-check "Remember this meaning"
 
-// Pre-check the box when the shown meaning already matches the saved canonical one
-// (so reviewed/approved meanings read as reviewed), and persist immediately on check
-// so the meaning sticks even if a later re-ingest runs (fixes the silent revert).
+// "Remember this meaning" = Glen has REVIEWED this meaning. Pre-check ONLY when a
+// Glen-reviewed canonical meaning (source 'glen') exists and matches what's shown.
+// AI-proposed meanings (source 'ai') stay UNCHECKED until Glen reviews and checks
+// the box himself — which saves it as source 'glen' so it reads checked next time.
 function wireRemember(cb, rem){
-  var cm = (rem.slug && CANON[rem.slug] != null) ? CANON[rem.slug] : null;
-  cb.checked = (cm != null && cm === (rem.meaning || ''));
+  var c = (rem.slug && CANON[rem.slug]) ? CANON[rem.slug] : null;
+  cb.checked = !!(c && c.source === 'glen' && c.meaning === (rem.meaning || ''));
   cb.addEventListener('change', async function(){
     if(!cb.checked) return;   // unchecking leaves the saved canonical meaning in place
     var row = cb.closest('.remedy-row');
@@ -98,7 +99,7 @@ function wireRemember(cb, rem){
     var meaning = meaningEl ? meaningEl.value : '';
     if(!slug){ cb.checked = false; alert('Add a remedy slug before remembering its meaning.'); return; }
     var r = await api('POST', '/api/action/remedy_meaning.save', { slug: slug, meaning: meaning });
-    if(r.ok && r.json.status === 'done'){ CANON[slug] = meaning; }
+    if(r.ok && r.json.status === 'done'){ CANON[slug] = { meaning: meaning, source: 'glen' }; }
     else { cb.checked = false; alert('Could not save the meaning. Try again.'); }
   });
 }
@@ -447,7 +448,10 @@ async function saveEdit(card, id){
   statusEl.textContent = 'Saving...';
   var r = await api('POST', '/api/action/biofield_reveal.edit', { id: id, greeting: greeting, body: body, layers: layers });
   if(r.ok && r.json.status === 'done'){
+    // Reload so any server-resolved slug + filled-in meaning (from a typed-only
+    // remedy name) show up in the editor.
     statusEl.textContent = 'Saved.';
+    setTimeout(loadList, 600);
   } else {
     statusEl.textContent = 'Save failed.';
   }

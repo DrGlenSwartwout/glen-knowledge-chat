@@ -3222,8 +3222,10 @@ def _get_product(slug):
 
 
 def _resolve_remedy_slug(r):
-    """Resolve a pushed remedy to a catalog slug: its slug if valid, else its name
-    via _TITLE_TO_SLUG (exact then case-insensitive), else None. Never raises."""
+    """Resolve a pushed/typed remedy to a catalog slug: its slug if valid, else its
+    name via _TITLE_TO_SLUG (exact then case-insensitive), else the name/title index
+    (matches by catalog `name` too, HTML-unescaped), else the code fallback. None if
+    genuinely not in the catalog. Never raises."""
     try:
         s = (r.get("slug") or "").strip()
         if s and _get_product(s):
@@ -3237,6 +3239,12 @@ def _resolve_remedy_slug(r):
         for title, slug in _TITLE_TO_SLUG.items():
             if (title or "").strip().lower() == low:
                 return slug
+        # In-catalog rescue: match by catalog `name` OR pinecone_title, HTML-unescaped.
+        # Fixes drops where name != pinecone_title (e.g. 'Brain Boost' vs title
+        # 'Brain Boost Nootropic') or the title carried entities ('Free &amp; Easy').
+        hit = _RESOLVE_NAME_INDEX.get(_ihtml.unescape(name).strip().lower())
+        if hit:
+            return hit
         # Infoceutical code fallback: the matcher pushes the bare code ("EI8") while
         # the catalog name is "EI8 Microbes-Liver Integrator". Match by code prefix so
         # infoceuticals resolve (and so are recommended, not dropped).
@@ -5391,6 +5399,20 @@ _PAIRINGS = _load_json(DATA_DIR / "upsell-pairings.json", default={"pairings": {
 _TITLE_TO_SLUG = {(p.get("pinecone_title") or p.get("name")): s
                   for s, p in (_PRODUCTS.get("products") or {}).items()}
 _COMPLEMENT_CACHE = {}
+
+# Resolve a remedy by EITHER its catalog name or pinecone_title, HTML-unescaped and
+# lowercased — so in-catalog products aren't dropped when name != pinecone_title or
+# the title carries entities. pinecone_titles indexed first so they win a collision
+# with a different product's name; setdefault = first-wins (don't clobber).
+import html as _ihtml  # noqa: E402
+_RESOLVE_NAME_INDEX = {}
+for _ckey in ("pinecone_title", "name"):
+    for _s, _p in (_PRODUCTS.get("products") or {}).items():
+        if _p.get("inactive"):
+            continue
+        _v = _p.get(_ckey)
+        if _v:
+            _RESOLVE_NAME_INDEX.setdefault(_ihtml.unescape(_v).strip().lower(), _s)
 
 
 def _resolve_complement(name):
@@ -21653,7 +21675,8 @@ except Exception as _tpa_e:  # noqa: BLE001
 
 # ── Begin #4a: Biofield reveal console actions (edit / approve + magic link) ──
 from dashboard import biofield_reveal_actions as _bra
-_bra.configure(send_reveal_link=_send_reveal_link)
+_bra.configure(send_reveal_link=_send_reveal_link, resolve_slug=_resolve_remedy_slug,
+               products=(_PRODUCTS.get("products") or {}), client=_cl)
 _bra.register()
 
 # ── Email suppression console actions (fed by the local bounce scanner) ───────

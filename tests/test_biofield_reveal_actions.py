@@ -44,3 +44,72 @@ def test_edit_updates_interpretation_and_remedies(tmp_path):
     row = br.get(cx, rid)
     assert row["interpretation"]["greeting"] == "New" and row["remedies"][0]["name"] == "B"
     assert row["first_approved"] is False
+
+
+def test_edit_layer_resolves_slug_and_meaning_from_typed_name(tmp_path):
+    """Glen types only the remedy NAME on a layer that had no remedy; the edit
+    resolves the catalog slug and fills the meaning from the canonical store."""
+    br, acts = _mods(); cx = _cx(tmp_path)
+    from dashboard import biofield_meanings as bm
+    bm.init_table(cx)
+    bm.upsert(cx, "nous-energy", "Supports steady cellular energy.", "glen", "glen")
+    rid, _ = br.upsert(cx, "a@x.com", "2026-06-19", {"greeting": "Hi"}, [], "s",
+                       layers=[{"n": 1, "title": "Energy", "summary": "s",
+                                "patterns": ["ED1"], "remedy": None}])
+    acts.configure(
+        resolve_slug=lambda r: "nous-energy" if r.get("name") == "Nous Energy" else (r.get("slug") or None),
+        products={"nous-energy": {"name": "Nous Energy"}}, client=None)
+    acts._exec_edit({"id": rid, "layers": [
+        {"n": 1, "title": "Energy", "summary": "s", "patterns": ["ED1"],
+         "remedy": {"name": "Nous Energy"}}]},          # only a NAME, no slug/meaning
+        {"cx": cx, "actor": _Actor()})
+    lyr = br.get(cx, rid)["layers"][0]
+    assert lyr["remedy"] is not None, "remedy must NOT be dropped when only a name is typed"
+    assert lyr["remedy"]["slug"] == "nous-energy"            # slug resolved from name
+    assert "steady cellular energy" in lyr["remedy"]["meaning"]  # meaning filled from canonical
+
+
+def test_edit_layer_remember_unchecked_is_one_time_not_canonical(tmp_path):
+    """Unchecked 'remember' = a one-time meaning for THIS reveal; it is stored on
+    the layer but NOT promoted to the canonical store."""
+    br, acts = _mods(); cx = _cx(tmp_path)
+    from dashboard import biofield_meanings as bm
+    bm.init_table(cx)
+    rid, _ = br.upsert(cx, "a@x.com", "2026-06-19", {"greeting": "Hi"}, [], "s",
+                       layers=[{"n": 1, "title": "T", "summary": "s", "patterns": ["ED1"], "remedy": None}])
+    acts.configure(resolve_slug=lambda r: r.get("slug") or None, products={}, client=None)
+    acts._exec_edit({"id": rid, "layers": [
+        {"n": 1, "title": "T", "summary": "s", "patterns": ["ED1"],
+         "remedy": {"name": "X", "slug": "x", "meaning": "one-time meaning", "remember": False}}]},
+        {"cx": cx, "actor": _Actor()})
+    assert br.get(cx, rid)["layers"][0]["remedy"]["meaning"] == "one-time meaning"
+    assert bm.get_map(cx).get("x") is None   # NOT remembered canonically
+
+
+def test_edit_layer_remember_checked_promotes_to_canonical(tmp_path):
+    """Checked 'remember' = persist this reviewed meaning to the canonical store."""
+    br, acts = _mods(); cx = _cx(tmp_path)
+    from dashboard import biofield_meanings as bm
+    bm.init_table(cx)
+    rid, _ = br.upsert(cx, "a@x.com", "2026-06-19", {"greeting": "Hi"}, [], "s",
+                       layers=[{"n": 1, "title": "T", "summary": "s", "patterns": ["ED1"], "remedy": None}])
+    acts.configure(resolve_slug=lambda r: r.get("slug") or None, products={}, client=None)
+    acts._exec_edit({"id": rid, "layers": [
+        {"n": 1, "title": "T", "summary": "s", "patterns": ["ED1"],
+         "remedy": {"name": "X", "slug": "x", "meaning": "reviewed meaning", "remember": True}}]},
+        {"cx": cx, "actor": _Actor()})
+    assert bm.get_map(cx).get("x") == "reviewed meaning"   # remembered (source glen)
+
+
+def test_edit_layer_unresolvable_name_is_dropped(tmp_path):
+    """A typed name that matches no catalog product still drops (anti-bypass)."""
+    br, acts = _mods(); cx = _cx(tmp_path)
+    rid, _ = br.upsert(cx, "a@x.com", "2026-06-19", {"greeting": "Hi"}, [], "s",
+                       layers=[{"n": 1, "title": "X", "summary": "s",
+                                "patterns": ["ED1"], "remedy": None}])
+    acts.configure(resolve_slug=lambda r: None, products={}, client=None)
+    acts._exec_edit({"id": rid, "layers": [
+        {"n": 1, "title": "X", "summary": "s", "patterns": ["ED1"],
+         "remedy": {"name": "Not A Real Product"}}]},
+        {"cx": cx, "actor": _Actor()})
+    assert br.get(cx, rid)["layers"][0]["remedy"] is None
