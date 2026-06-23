@@ -18622,6 +18622,23 @@ def api_regenerate_briefings():
 
 # ── Subscription email helper ─────────────────────────────────────────────────
 
+def _mint_membership_cancel_url(cx, email: str) -> str:
+    """Mint a fresh one-click membership-cancel token (FTC/ROSCA easy-cancel) and
+    return its URL. Returns '' when email or PUBLIC_BASE_URL is missing (the link
+    would be unusable). Mirrors the cancel token minted at biofield-trial grant."""
+    if not (email and PUBLIC_BASE_URL):
+        return ""
+    tok = secrets.token_urlsafe(32)
+    cx.execute(
+        "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at)"
+        " VALUES (?,?,?,?,?)",
+        (_hash_token(tok), email, "membership_cancel",
+         datetime.now(timezone.utc).isoformat(),
+         (datetime.now(timezone.utc) + timedelta(days=MEMBERSHIP_CANCEL_TTL_DAYS)).isoformat()))
+    cx.commit()
+    return f"{PUBLIC_BASE_URL}/membership/cancel/{tok}"
+
+
 def _send_subscription_email(to_email: str, kind: str, data: dict):
     """Send a subscription lifecycle email. Best-effort — NEVER raises.
 
@@ -18640,15 +18657,18 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
 
         if kind == "heads_up":
             if is_membership:
-                subject = "Your live group coaching renews in 3 days"
+                cancel_url = data.get("cancel_url")
+                subject = f"Reminder: your membership renews on {charge_date}"
                 body = (
-                    f"Hi,\n\n"
-                    f"Just a quick heads-up about your live group coaching. On {charge_date} "
-                    + (f"your card will be charged {amount_str} for the coming month of coaching"
-                       if amount_str else "your card will be charged for the coming month of coaching")
-                    + f".\n\n"
-                    f"If you need to make a change, visit your member portal before that date.\n\n"
-                    f"In wellness,\nDr. Glen"
+                    f"Aloha,\n\n"
+                    f"Just a quick heads-up about your membership. On {charge_date} "
+                    + (f"your card will be charged {amount_str} for the coming month"
+                       if amount_str else "your card will be charged for the coming month")
+                    + ". Everything stays unlocked in the meantime.\n\n"
+                    + (("No pressure, ever. If you want to cancel before then, it is one click, "
+                        f"no charge, no reply needed:\n\n{cancel_url}\n\n") if cancel_url
+                       else "If you need to make a change, visit your member portal before that date.\n\n")
+                    + "In wellness,\nDr. Glen"
                 )
             else:
                 subject = f"Reminder: your Remedy Match subscription charges on {charge_date}"
@@ -18766,11 +18786,14 @@ def cron_charge_subscriptions():
         for sub in upcoming:
             try:
                 if not dry_run:
-                    _send_subscription_email(
-                        sub["email"], "heads_up",
-                        {"next_charge_date": sub["next_charge_date"],
-                         "kind": sub.get("kind", "product"),
-                         "total_cents": sub.get("amount_cents")})
+                    _hu_data = {"next_charge_date": sub["next_charge_date"],
+                                "kind": sub.get("kind", "product"),
+                                "total_cents": sub.get("amount_cents")}
+                    # Membership reminders carry a one-click cancel link (FTC/ROSCA
+                    # easy-cancel) minted fresh per send.
+                    if sub.get("kind") == "membership":
+                        _hu_data["cancel_url"] = _mint_membership_cancel_url(cx, sub["email"])
+                    _send_subscription_email(sub["email"], "heads_up", _hu_data)
                     _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
                 notified += 1
                 print(f"[sub-cron] heads-up {'(dry)' if dry_run else ''}"
