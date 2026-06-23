@@ -229,3 +229,105 @@ def test_failed_charge_bumps_failed_count_and_does_not_advance(monkeypatch):
     assert s.get("failed_count", 0) >= 1, "failed_count was not bumped"
 
     cx.close()
+
+
+def test_product_order_discount_requires_active_membership(monkeypatch):
+    """Member loyalty discount (tier_pct) applies only when the subscriber has
+    an active membership grant.  With no grant tier==0; with a grant tier==tier_for(order_count)."""
+    monkeypatch.setenv("SUBSCRIPTIONS_ENABLED", "true")
+    if not (os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET")):
+        monkeypatch.setenv("CONSOLE_SECRET", _cron_secret())
+
+    _FAKE_PRICED = {
+        "priced": {"subtotal_cents": 5000, "total_cents": 5000, "get_cents": 0},
+        "qbo_lines": [{"name": "X", "amount": 50.0, "qty": 1}],
+        "items_rec": [{"name": "X", "qty": 1, "desc": "X"}],
+        "discount_cents": 0,
+        "points_redeemed_cents": 0,
+        "shipping_cents": 0,
+    }
+
+    # ── Part A: no active membership → tier must be 0 ──────────────────────────
+    seen_no_member = {}
+    monkeypatch.setattr(
+        appmod, "_price_cart",
+        lambda items, **kw: seen_no_member.update(tier=kw.get("subscriber_tier_pct")) or _FAKE_PRICED,
+    )
+    monkeypatch.setattr(
+        appmod.stripe_pay, "charge_off_session",
+        lambda *a, **k: {"id": "pi_ok", "status": "succeeded"},
+    )
+    _mock_qb(monkeypatch)
+    _mock_ingest(monkeypatch)
+    _mock_email(monkeypatch)
+
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+
+    # Ensure membership table exists and no active grant for this email
+    appmod._init_membership_tables()
+    cx.execute(
+        "DELETE FROM memberships WHERE email='sub-test@example.com'"
+    )
+    cx.commit()
+
+    # Seed subscription with order_count=2 so tier_for(2)=7 if membership were active
+    subs.init_subscriptions_table(cx)
+    subs.migrate_add_failed_count(cx)
+    cx.execute("DELETE FROM subscriptions WHERE email='sub-test@example.com'")
+    cx.commit()
+    sid = subs.create(
+        cx,
+        email="sub-test@example.com",
+        stripe_customer_id="cus_test",
+        stripe_payment_method_id="pm_test",
+        items=[{"slug": "x", "qty": 1}],
+        cadence_months=1,
+        ship_address={"state": "CA"},
+        next_charge_date="2000-01-01",
+    )
+    # Manually set order_count to 2
+    cx.execute("UPDATE subscriptions SET order_count=2 WHERE id=?", (sid,))
+    cx.commit()
+
+    c = appmod.app.test_client()
+    r = c.post("/api/cron/charge-subscriptions", headers=_headers())
+    assert r.status_code == 200, r.data
+
+    assert seen_no_member.get("tier") == 0, (
+        f"Expected tier_pct=0 without membership, got {seen_no_member.get('tier')}"
+    )
+
+    # ── Part B: active membership → tier must be tier_for(order_count) ─────────
+    seen_with_member = {}
+    monkeypatch.setattr(
+        appmod, "_price_cart",
+        lambda items, **kw: seen_with_member.update(tier=kw.get("subscriber_tier_pct")) or _FAKE_PRICED,
+    )
+
+    # Insert an active membership grant for this email (expires far in the future)
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source) "
+        "VALUES (?,?,?,?,?,?)",
+        ("test-mbr-1", "sub-test@example.com", "2026-01-01T00:00:00Z",
+         "2099-12-31T23:59:59Z", "test", "test"),
+    )
+    cx.commit()
+
+    # Reset next_charge_date so cron picks it up again
+    cx.execute("UPDATE subscriptions SET next_charge_date='2000-01-01', order_count=2 WHERE id=?", (sid,))
+    cx.commit()
+
+    r = c.post("/api/cron/charge-subscriptions", headers=_headers())
+    assert r.status_code == 200, r.data
+
+    expected_tier = subs.tier_for(2)  # = 7
+    assert seen_with_member.get("tier") == expected_tier, (
+        f"Expected tier_pct={expected_tier} with active membership, got {seen_with_member.get('tier')}"
+    )
+
+    # Cleanup
+    cx.execute("DELETE FROM subscriptions WHERE email='sub-test@example.com'")
+    cx.execute("DELETE FROM memberships WHERE email='sub-test@example.com'")
+    cx.commit()
+    cx.close()

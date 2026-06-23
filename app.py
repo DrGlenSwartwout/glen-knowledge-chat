@@ -19099,7 +19099,9 @@ def cron_charge_subscriptions():
                 items = sub.get("items") or []
                 ship = sub.get("ship_address") or {}
                 order_count = sub.get("order_count", 0)
-                tier_pct = _subs.tier_for(order_count)
+                # Member loyalty discount applies only while paid-through; the
+                # tier VALUE is the earned tier_for(order_count) (held, not reset).
+                tier_pct = _subs.tier_for(order_count) if _active_membership_for_email(sub["email"]) else 0
 
                 # Price the order
                 try:
