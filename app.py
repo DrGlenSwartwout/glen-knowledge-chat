@@ -11129,6 +11129,49 @@ def api_e4l_scan_analysis():
     return jsonify({"ok": True, "email": email})
 
 
+def _scan_analysis_free_enabled() -> bool:
+    """SCAN_ANALYSIS_FREE — when on, the full longitudinal analysis is public to
+    any ToS member. Default OFF: gate to paid members while the system is trained."""
+    return os.environ.get("SCAN_ANALYSIS_FREE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+@app.route("/member/scan-analysis", methods=["GET"])
+def member_scan_analysis_page():
+    """Member-facing longitudinal scan-analysis page (SP2). Tier-gated server-side:
+    paid/active members see the full over-time analysis now; free (ToS) members see
+    a teaser + upsell until SCAN_ANALYSIS_FREE is flipped on; everyone else a locked
+    upsell. Viewer email comes from the rm_member_email cookie (coaching magic-link).
+    Withheld sections are emptied server-side (never serialized) — no client bypass."""
+    from dashboard import scan_analysis as _sa, scan_analysis_view as _sav
+    email = (request.cookies.get("rm_member_email", "") or "").strip().lower()
+    is_paid = bool(_active_membership_for_email(email)) if email else False
+    has_tos = is_member(email=email) if email else False
+    tier = _sav.resolve_tier(is_paid=is_paid, has_tos=has_tos)
+
+    analysis = None
+    if email:
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _sa.init_table(cx)
+                got = _sa.get(cx, email)
+            analysis = got.get("analysis") if got else None
+        except Exception as e:
+            print(f"[scan-analysis] read failed for {email}: {e!r}", flush=True)
+
+    payload = _sav.gated_payload(analysis, tier=tier,
+                                 free_enabled=_scan_analysis_free_enabled())
+    payload["signed_in"] = bool(email)
+
+    html = (STATIC / "member-scan-analysis.html").read_text()
+    safe = (json.dumps(payload).replace("<", "\\u003c")
+            .replace(">", "\\u003e").replace("&", "\\u0026"))
+    html = html.replace("</head>", f"<script>window.__SCAN__ = {safe};</script>\n</head>")
+    resp = Response(html, mimetype="text/html", status=200)
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/biofield/ready")
 def biofield_ready_page():
     """Serve the readiness-gate page (no-store; PHI-adjacent)."""

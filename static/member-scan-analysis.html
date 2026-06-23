@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Your Biofield Patterns Over Time</title>
+<style>
+  :root{
+    --bg:#0f1a14; --panel:#13241b; --ink:#eaf3ec; --muted:#9fb8a8;
+    --gold:#d8b25a; --line:#22382b;
+    --purple:#8b6fc7; --orange:#d98a3d; --yellow:#d8c24a; --green:#5aa86b; --none:#3c5446;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:28px 20px 80px}
+  h1{font-size:24px;margin:0 0 4px;font-weight:600}
+  h2{font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:var(--gold);
+    margin:30px 0 10px;font-weight:600}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 8px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;margin:10px 0}
+  .narr{white-space:pre-wrap}
+  .row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:none}
+  .dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;background:var(--none)}
+  .dot.purple{background:var(--purple)} .dot.orange{background:var(--orange)}
+  .dot.yellow{background:var(--yellow)} .dot.green{background:var(--green)}
+  .code{font-weight:600;min-width:58px}
+  .name{color:var(--muted);flex:1}
+  .pct{color:var(--gold);font-variant-numeric:tabular-nums}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .chip{font-size:12px;background:#0d1a13;border:1px solid var(--line);border-radius:20px;
+    padding:2px 9px;color:var(--muted)}
+  .cl-head{display:flex;align-items:center;gap:9px;font-weight:600}
+  .cl-w{margin-left:auto;color:var(--muted);font-size:13px}
+  .upsell{background:linear-gradient(180deg,#16291d,#11201a);border:1px solid var(--gold);
+    border-radius:12px;padding:20px;margin:22px 0;text-align:center}
+  .btn{display:inline-block;background:var(--gold);color:#1a1208;font-weight:700;
+    text-decoration:none;padding:11px 22px;border-radius:9px;margin-top:10px}
+  .muted{color:var(--muted)} .small{font-size:13px}
+  .lock{font-size:40px;text-align:center;margin:10px 0 0;opacity:.7}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+(function(){
+  var d = window.__SCAN__ || {};
+  var app = document.getElementById('app');
+  function el(tag, cls, html){var e=document.createElement(tag); if(cls)e.className=cls;
+    if(html!=null)e.innerHTML=html; return e;}
+  function esc(s){return String(s==null?'':s).replace(/[&<>]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+
+  app.appendChild(el('h1', null, 'Your Biofield Patterns Over Time'));
+  var range = (d.date_range||[]);
+  var sub = d.scan_count
+    ? esc(d.scan_count)+' scans'+(range[0]?(' &middot; '+esc(range[0])+' to '+esc(range[1])):'')
+    : 'No analyzed scans yet';
+  app.appendChild(el('p','sub', sub));
+
+  // Locked / teaser upsell
+  function upsell(title, msg){
+    var u = el('div','upsell');
+    u.appendChild(el('div','lock','&#128274;'));
+    u.appendChild(el('h2',null,esc(title)));
+    u.appendChild(el('p','muted small',esc(msg)));
+    var a = el('a','btn',d.access==='locked'?'Unlock for $1':'See your full analysis');
+    a.href = '/begin'; u.appendChild(a);
+    return u;
+  }
+
+  if(d.access==='locked'){
+    app.appendChild(upsell('Unlock your Biofield analysis',
+      'Start your membership to see how your patterns move over time, the clinical clusters they form, and what they point to.'));
+    return;
+  }
+
+  // Narrative (full only)
+  if(d.narrative){
+    var n=el('div','panel'); n.appendChild(el('div','narr',esc(d.narrative)));
+    app.appendChild(el('h2',null,'What we see')); app.appendChild(n);
+  }
+
+  // Top recurring patterns
+  if((d.top_patterns||[]).length){
+    app.appendChild(el('h2',null,'Most consistent patterns'));
+    var tp=el('div','panel');
+    d.top_patterns.forEach(function(p){
+      var r=el('div','row');
+      r.appendChild(el('span','dot '+(p.color||''),''));
+      r.appendChild(el('span','code',esc(p.code||'')));
+      r.appendChild(el('span','name',esc(p.name||'')));
+      if(p.pct!=null) r.appendChild(el('span','pct',Math.round(p.pct*100)+'%'));
+      tp.appendChild(r);
+    });
+    app.appendChild(tp);
+  }
+
+  // Clusters (full only)
+  if((d.clusters||[]).length){
+    app.appendChild(el('h2',null,'Clinical clusters'));
+    d.clusters.forEach(function(c){
+      var p=el('div','panel');
+      var h=el('div','cl-head');
+      h.appendChild(el('span','dot '+(c.color||''),''));
+      h.appendChild(el('span',null,esc(c.structure||'')));
+      h.appendChild(el('span','cl-w',(c.code_count||(c.codes||[]).length)+' patterns'));
+      p.appendChild(h);
+      var chips=el('div','chips');
+      (c.codes||[]).forEach(function(code){chips.appendChild(el('span','chip',esc(code)));});
+      p.appendChild(chips);
+      app.appendChild(p);
+    });
+  }
+
+  // Functional view (full only)
+  var fr=(d.functional_relation||[]).filter(function(g){return g.is_functional;});
+  if(fr.length){
+    app.appendChild(el('h2',null,'Functional stress patterns'));
+    var f=el('div','panel');
+    fr.slice(0,10).forEach(function(g){
+      var r=el('div','row');
+      r.appendChild(el('span','dot '+(g.color||''),''));
+      r.appendChild(el('span','name',esc(g.structure||'')));
+      if(g.pct!=null) r.appendChild(el('span','pct',Math.round(g.pct*100)+'%'));
+      f.appendChild(r);
+    });
+    app.appendChild(f);
+  }
+
+  // Teaser upsell at the bottom
+  if(d.access==='teaser'){
+    app.appendChild(upsell('See your full picture',
+      'Members see every recurring pattern, the clinical clusters they form, your functional stress map, and a personalized read of how it all connects over time.'));
+  }
+})();
+</script>
+</body>
+</html>
