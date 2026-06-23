@@ -2057,8 +2057,16 @@ def membership_pause(token):
             _subs.init_subscriptions_table(cx)
             _subs.migrate_add_membership_columns(cx)
             if request.method == "POST":
-                res = _subs.pause_membership_by_email(cx, email)
-                payload = {"valid": True, "confirmed": True, "ok": bool(res), **(res or {})}
+                mode = (request.form.get("mode") or "once").strip()
+                if mode == "cadence":
+                    months = 2 if (request.form.get("months") or "").strip() == "2" else 3
+                    res = _subs.set_membership_cadence_by_email(cx, email, months)
+                    payload = {"valid": True, "confirmed": True, "mode": "cadence",
+                               "ok": bool(res), **(res or {})}
+                else:
+                    res = _subs.pause_membership_by_email(cx, email)
+                    payload = {"valid": True, "confirmed": True, "mode": "once",
+                               "ok": bool(res), **(res or {})}
             else:
                 rows = _subs.active_memberships_by_email(cx, email)
                 if rows:

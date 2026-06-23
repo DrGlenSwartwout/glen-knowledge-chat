@@ -41,13 +41,21 @@
   }
   if(d.confirmed){
     if(d.ok){
-      h('<h1>Your next month is paused ✓</h1>'
-        + '<div class="panel"><p class="ink">Your next payment is skipped. Nothing else changes — your membership '
-        + 'resumes automatically on <span class="date">'+ (d.resume_date||'next cycle') +'</span>, with no action needed from you.</p>'
-        + '<p>We’ll stay in touch in the meantime. If a paused month becomes a few, just pause again each time.</p></div>'
-        + '<p class="muted">Changed your mind? You can reactivate anytime — it happens on its own next cycle.</p>');
+      if(d.mode === ‘cadence’){
+        h(‘<h1>Rhythm updated ✓</h1>’
+          + ‘<div class="panel"><p class="ink">You\’re now billed every <strong>’ + (d.cadence_months||3) + ‘ months</strong>’
+          + ‘ — your membership continues on that rhythm.</p>’
+          + ‘<p>Your standing, savings, and access all carry forward as usual.</p></div>’
+          + ‘<p class="muted">Changed your mind? Contact us anytime to adjust.</p>’);
+      } else {
+        h(‘<h1>Your next month is paused ✓</h1>’
+          + ‘<div class="panel"><p class="ink">Your next payment is skipped. Nothing else changes — your membership ‘
+          + ‘resumes automatically on <span class="date">’+ (d.resume_date||’next cycle’) +’</span>, with no action needed from you.</p>’
+          + ‘<p>We\’ll stay in touch in the meantime. If a paused month becomes a few, just pause again each time.</p></div>’
+          + ‘<p class="muted">Changed your mind? You can reactivate anytime — it happens on its own next cycle.</p>’);
+      }
     } else {
-      h('<h1>We couldn’t pause that</h1><p>There was no active membership to pause, or it was already paused. Please try again or contact us.</p>');
+      h(‘<h1>We couldn\’t apply that change</h1><p>There was no active membership found. Please try again or contact us.</p>’);
     }
     return;
   }
@@ -66,11 +74,15 @@
     + '<li>deep AI guidance</li></ul>'
     + '<p style="margin:12px 0 0" class="keep">Nothing is permanently lost.</p>'
     + '<p style="margin:2px 0 0">Your membership, your standing, and your savings all return automatically next month.</p></div>';
-  var actions = '<form method="post" action="" class="row">'
-    + '<button class="btn" type="submit">'+(paused?'Keep it paused':'Confirm pause')+'</button>'
-    + (d.cancel_url ? '<a class="btn ghost" href="'+d.cancel_url+'">Cancel instead</a>' : '')
-    + '</form>'
-    + '<p class="muted" style="margin-top:16px">Prefer to keep going? Just close this page — nothing changes.</p>';
+  var actions = '<div class="row">'
+    + '<form method="post" action=""><input type="hidden" name="mode" value="once">'
+    +   '<button class="btn" type="submit">'+(paused?'Keep next month paused':'Pause next month')+'</button></form>'
+    + '<form method="post" action=""><input type="hidden" name="mode" value="cadence"><input type="hidden" name="months" value="2">'
+    +   '<button class="btn ghost" type="submit">Switch to every 2 months</button></form>'
+    + '<form method="post" action=""><input type="hidden" name="mode" value="cadence"><input type="hidden" name="months" value="3">'
+    +   '<button class="btn ghost" type="submit">Switch to quarterly</button></form>'
+    + '</div>'
+    + '<p class="muted" style="margin-top:16px">Prefer to keep going monthly? Just close this page — nothing changes.</p>';
   h(head + dates + lose + actions);
 })();
 </script>

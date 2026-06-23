@@ -71,6 +71,19 @@ def test_post_confirms_and_sets_skip():
         _cleanup()
 
 
+def test_post_cadence_sets_months():
+    sid, tok = _seed_membership_and_token()
+    try:
+        r = appmod.app.test_client().post(f"/membership/pause/{tok}",
+                                          data={"mode": "cadence", "months": "3"})
+        assert r.status_code == 200
+        cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+        assert subs.get(cx, sid)["cadence_months"] == 3
+        cx.close()
+    finally:
+        _cleanup()
+
+
 def test_invalid_token_is_not_valid():
     r = appmod.app.test_client().get("/membership/pause/garbage-token")
     assert r.status_code == 200
