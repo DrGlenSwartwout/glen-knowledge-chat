@@ -11696,6 +11696,9 @@ def api_console_practitioners_edit(pid):
             return jsonify({"error": "level must be a number"}), 400
         _pa.set_level_and_access(pid, level, bool(body.get("wholesale_access")))
         return jsonify({"ok": True})
+    if action == "credentials":
+        _pa.set_credentials(pid, body.get("credentials"))
+        return jsonify({"ok": True})
     if action == "finder":
         _pa.set_finder_visibility(pid, bool(body.get("show")))
         return jsonify({"ok": True})

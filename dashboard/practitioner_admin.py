@@ -164,6 +164,15 @@ def set_level_and_access(pid: str, level: int, wholesale_access: bool, *, now=No
             (lvl, bool(wholesale_access), ts, str(pid)))
 
 
+def set_credentials(pid: str, credentials) -> None:
+    """Set a practitioner's classification/credentials (blank clears it)."""
+    from db_supabase import supabase_cursor
+    cred = (credentials or "").strip() or None
+    with supabase_cursor() as cur:
+        cur.execute("UPDATE practitioners SET credentials=%s, updated_at=now() WHERE id=%s",
+                    (cred, str(pid)))
+
+
 def set_finder_visibility(pid: str, show: bool) -> None:
     from db_supabase import supabase_cursor
     with supabase_cursor() as cur:

@@ -152,6 +152,18 @@ def test_edit_resend_invite_dispatch(client, monkeypatch):
     assert sent.get("called") is True
 
 
+def test_edit_credentials_dispatch(client, monkeypatch):
+    c, appmod = client
+    from dashboard import practitioner_admin as pa
+    calls = {}
+    monkeypatch.setattr(pa, "set_credentials",
+                        lambda pid, credentials: calls.update({"pid": pid, "cred": credentials}))
+    r = c.post("/api/console/practitioners/p9/edit?key=" + _key(appmod),
+               json={"action": "credentials", "credentials": "ND"})
+    assert r.status_code == 200
+    assert calls == {"pid": "p9", "cred": "ND"}
+
+
 def test_edit_unknown_action_400(client, monkeypatch):
     c, appmod = client
     r = c.post("/api/console/practitioners/p9/edit?key=" + _key(appmod),

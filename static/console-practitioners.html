@@ -53,7 +53,7 @@
     <div><label>Email</label><input type="email" id="f-email" placeholder="name@example.com"></div>
     <div><label>Role</label>
       <select id="f-role"><option value="coach">Coach</option><option value="licensed">Licensed practitioner</option></select></div>
-    <div><label>Classification / credentials</label><input type="text" id="f-cred" placeholder="Health Coach, OD, MD, ND…"></div>
+    <div><label>Classification / credentials</label><select id="f-cred"></select></div>
     <div><label>Cert level (0–12)</label><input type="number" id="f-level" value="0" min="0" max="12"></div>
     <div><label>City</label><input type="text" id="f-city" placeholder="Austin"></div>
     <div><label>State</label><input type="text" id="f-state" placeholder="TX"></div>
@@ -75,6 +75,14 @@
 
 <script>
 const KEY = new URLSearchParams(location.search).get('key') || '';
+const CREDS = ['Health Coach','Wellness Coach','OD','ND','MD','DO','DC','L.Ac.','NP','PA','RN','DDS','DMD','PharmD','RD'];
+function credOptionsHtml(cur){
+  cur=(cur||'').trim();
+  const list=CREDS.slice();
+  if(cur && !list.includes(cur)) list.unshift(cur);   // preserve a pre-existing custom value
+  return ['<option value="">— none —</option>']
+    .concat(list.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`)).join('');
+}
 function q(p){return p+(p.includes('?')?'&':'?')+'key='+encodeURIComponent(KEY);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function money(c){return '$'+((c||0)/100).toFixed(2);}
@@ -145,11 +153,13 @@ function rowHtml(r){
       <div class="grid">
         <div><label>Cert level (0–12)</label><input type="number" id="lv-${r.id}" value="${r.level}" min="0" max="12"></div>
         <div class="chk"><input type="checkbox" id="ws-${r.id}" ${r.wholesale_access?'checked':''}><label style="margin:0;color:var(--ink)">Wholesale access</label></div>
+        <div><label>Classification</label><select id="cred-${r.id}">${credOptionsHtml(r.credentials)}</select></div>
         <div><label>City</label><input type="text" id="city-${r.id}" value="${esc(r.city||'')}"></div>
         <div><label>State</label><input type="text" id="st-${r.id}" value="${esc(r.state||'')}"></div>
       </div>
       <div style="margin-top:10px">
         <button class="sm" onclick="saveLevelAccess('${r.id}')">Save level & access</button>
+        <button class="alt sm" onclick="saveCredentials('${r.id}')">Save classification</button>
         <button class="alt sm" onclick="saveLocation('${r.id}')">Save location</button>
       </div>
     </td></tr>`;
@@ -171,6 +181,12 @@ async function saveLocation(id){
       state:document.getElementById('st-'+id).value.trim()})});
   if(j.error){flash(j.error,false);return;} flash('Location saved & geocoded.',true); load();
 }
+async function saveCredentials(id){
+  const j=await api('/api/console/practitioners/'+id+'/edit',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'credentials',credentials:document.getElementById('cred-'+id).value})});
+  if(j.error){flash(j.error,false);return;} flash('Classification saved.',true); load();
+}
 async function toggleFinder(id,show){
   const j=await api('/api/console/practitioners/'+id+'/edit',{method:'POST',
     headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'finder',show})});
@@ -183,6 +199,7 @@ async function resend(id,email,name){
   if(j.error){flash(j.error,false);return;} flash('Invite re-sent to '+email+'.',true);
 }
 
+document.getElementById('f-cred').innerHTML=credOptionsHtml('');
 load();
 </script>
 </body>
