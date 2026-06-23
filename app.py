@@ -2029,6 +2029,58 @@ def membership_cancel(token):
     return resp
 
 
+@app.route("/membership/pause/<token>", methods=["GET", "POST"])
+def membership_pause(token):
+    """Soft, month-by-month pause as a gentler alternative to cancel. Two steps:
+    GET previews what a paused month means (no state change); POST confirms and
+    sets skip_next so the NEXT charge is skipped, then the cycle auto-resumes one
+    month later (no action needed). Loyalty/standing preserved -- nothing is
+    permanently lost. Tokened via the same membership_cancel token (member id)."""
+    from dashboard import subscriptions as _subs
+    th = _hash_token((token or "").strip())
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row   # subscriptions helpers need Row for _row_to_dict
+        row = cx.execute(
+            "SELECT email, expires_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='membership_cancel'", (th,)).fetchone()
+        email = None
+        if row:
+            try:
+                exp = datetime.fromisoformat((row["expires_at"] or "").replace("Z", "+00:00"))
+                if exp >= datetime.now(timezone.utc):
+                    email = row["email"]
+            except Exception:
+                pass
+        if not email:
+            payload = {"valid": False}
+        else:
+            _subs.init_subscriptions_table(cx)
+            _subs.migrate_add_membership_columns(cx)
+            if request.method == "POST":
+                res = _subs.pause_membership_by_email(cx, email)
+                payload = {"valid": True, "confirmed": True, "ok": bool(res), **(res or {})}
+            else:
+                rows = _subs.active_memberships_by_email(cx, email)
+                if rows:
+                    sub = rows[0]
+                    payload = {"valid": True, "confirmed": False,
+                               "paused_charge_date": sub["next_charge_date"],
+                               "resume_date": _subs.add_months(
+                                   sub["next_charge_date"], int(sub.get("cadence_months") or 1)),
+                               "already_paused": bool(sub.get("skip_next")),
+                               "cancel_url": f"{PUBLIC_BASE_URL}/membership/cancel/{token}"}
+                else:
+                    payload = {"valid": True, "confirmed": False, "no_membership": True}
+    html = (STATIC / "membership-pause.html").read_text()
+    safe = (json.dumps(payload).replace("<", "\\u003c")
+            .replace(">", "\\u003e").replace("&", "\\u0026"))
+    html = html.replace("</head>", f"<script>window.__PAUSE__ = {safe};</script>\n</head>")
+    resp = Response(html, mimetype="text/html", status=200)
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/begin/state", methods=["GET"])
 def begin_state():
     session_id = (request.cookies.get("amg_session") or "").strip()
@@ -18781,6 +18833,8 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
         if kind == "heads_up":
             if is_membership:
                 cancel_url = data.get("cancel_url")
+                pause_url = (cancel_url.replace("/membership/cancel/", "/membership/pause/")
+                             if cancel_url else "")
                 subject = f"Reminder: your membership renews on {charge_date}"
                 body = (
                     f"Aloha,\n\n"
@@ -18788,8 +18842,11 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
                     + (f"your card will be charged {amount_str} for the coming month"
                        if amount_str else "your card will be charged for the coming month")
                     + ". Everything stays unlocked in the meantime.\n\n"
-                    + (("No pressure, ever. If you want to cancel before then, it is one click, "
-                        f"no charge, no reply needed:\n\n{cancel_url}\n\n") if cancel_url
+                    + (("Need a breather? You can pause just next month's payment in two clicks "
+                        "(it resumes on its own the month after, and you lose nothing):\n\n"
+                        f"{pause_url}\n\n") if pause_url else "")
+                    + (("Or, if you'd rather cancel, that's one click too, no charge, no reply "
+                        f"needed:\n\n{cancel_url}\n\n") if cancel_url
                        else "If you need to make a change, visit your member portal before that date.\n\n")
                     + "In wellness,\nDr. Glen"
                 )

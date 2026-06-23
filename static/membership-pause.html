@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Pause your membership</title>
+<style>
+  :root{ --bg:#0f1a14; --panel:#13241b; --ink:#eaf3ec; --muted:#9fb8a8; --gold:#d8b25a; --line:#22382b; --green:#5aa86b; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:560px;margin:0 auto;padding:48px 22px}
+  h1{font-size:23px;margin:0 0 6px;font-weight:600}
+  p{color:var(--muted)} .ink{color:var(--ink)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:18px 0}
+  ul{margin:8px 0 0;padding-left:20px;color:var(--muted)} li{margin:4px 0}
+  .keep{color:var(--green);font-weight:600}
+  .btn{display:inline-block;background:var(--gold);color:#1a1208;font-weight:700;border:none;
+    border-radius:9px;padding:13px 26px;font-size:16px;cursor:pointer;text-decoration:none;margin-top:6px}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);font-weight:600}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:14px}
+  .date{color:var(--gold);font-weight:600}
+  a{color:var(--gold)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+(function(){
+  var d = window.__PAUSE__ || {};
+  var app = document.getElementById('app');
+  function h(html){ app.innerHTML = html; }
+
+  if(!d.valid){
+    h('<h1>This link is no longer valid</h1><p>Request a fresh link, or visit your member portal to manage your membership.</p>');
+    return;
+  }
+  if(d.no_membership){
+    h('<h1>No active membership to pause</h1><p>You don’t have an active membership right now, so there’s nothing to pause.</p>');
+    return;
+  }
+  if(d.confirmed){
+    if(d.ok){
+      h('<h1>Your next month is paused ✓</h1>'
+        + '<div class="panel"><p class="ink">Your next payment is skipped. Nothing else changes — your membership '
+        + 'resumes automatically on <span class="date">'+ (d.resume_date||'next cycle') +'</span>, with no action needed from you.</p>'
+        + '<p>We’ll stay in touch in the meantime. If a paused month becomes a few, just pause again each time.</p></div>'
+        + '<p class="muted">Changed your mind? You can reactivate anytime — it happens on its own next cycle.</p>');
+    } else {
+      h('<h1>We couldn’t pause that</h1><p>There was no active membership to pause, or it was already paused. Please try again or contact us.</p>');
+    }
+    return;
+  }
+
+  // Step 1 — preview + confirm
+  var paused = d.already_paused;
+  var head = paused
+    ? '<h1>This month is already paused</h1>'
+    : '<h1>Pause next month’s payment?</h1>';
+  var dates = '<div class="panel"><p class="ink">We’ll skip your next payment'
+    + (d.paused_charge_date ? ' (due <span class="date">'+d.paused_charge_date+'</span>)' : '')
+    + ', and your membership resumes automatically on <span class="date">'+ (d.resume_date||'the following cycle') +'</span> — no action needed.</p></div>';
+  var lose = '<div class="panel"><p class="ink" style="margin:0 0 4px">For the paused month you set aside:</p>'
+    + '<ul><li>your full Biofield Analysis and over-time pattern view</li>'
+    + '<li>your deeper remedy matches and member pricing</li>'
+    + '<li>deep AI guidance</li></ul>'
+    + '<p style="margin:12px 0 0" class="keep">Nothing is permanently lost.</p>'
+    + '<p style="margin:2px 0 0">Your membership, your standing, and your savings all return automatically next month.</p></div>';
+  var actions = '<form method="post" action="" class="row">'
+    + '<button class="btn" type="submit">'+(paused?'Keep it paused':'Confirm pause')+'</button>'
+    + (d.cancel_url ? '<a class="btn ghost" href="'+d.cancel_url+'">Cancel instead</a>' : '')
+    + '</form>'
+    + '<p class="muted" style="margin-top:16px">Prefer to keep going? Just close this page — nothing changes.</p>';
+  h(head + dates + lose + actions);
+})();
+</script>
+</body>
+</html>

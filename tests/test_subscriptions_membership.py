@@ -47,3 +47,21 @@ def test_active_membership_for_email():
                            next_charge_date="2026-09-15")
     ms = subs.active_memberships_by_email(cx, "p@x.com")
     assert len(ms) == 1 and ms[0]["kind"] == "membership"
+
+
+def test_pause_membership_sets_skip_and_returns_dates():
+    cx = _cx()
+    sid = subs.create_membership(cx, email="m@x.com", stripe_customer_id="c",
+                                 stripe_payment_method_id="p", amount_cents=9900,
+                                 next_charge_date="2026-07-15", cadence_months=1)
+    r = subs.pause_membership_by_email(cx, "m@x.com")
+    assert r["sub_id"] == sid
+    assert r["paused_charge_date"] == "2026-07-15"
+    assert r["resume_date"] == "2026-08-15"           # auto-resumes one cycle later
+    assert subs.get(cx, sid)["skip_next"] == 1
+    # loyalty/order_count untouched by a pause (unlike cancel which resets it)
+    assert subs.get(cx, sid)["order_count"] == 0
+    # idempotent
+    assert subs.pause_membership_by_email(cx, "m@x.com")["sub_id"] == sid
+    # no active membership -> None
+    assert subs.pause_membership_by_email(cx, "nobody@x.com") is None

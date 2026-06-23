@@ -346,6 +346,22 @@ def list_skip_due(cx, *, as_of: str) -> list[dict]:
     return [_row_to_dict(r) for r in rows]
 
 
+def pause_membership_by_email(cx, email: str) -> dict | None:
+    """Soft-pause the member's active membership: set skip_next so the NEXT charge
+    is skipped (one cycle), then auto-resumes the cycle after. Preserves order_count
+    (loyalty tier) -- a pause loses nothing, unlike cancel. Idempotent. Returns
+    {sub_id, paused_charge_date, resume_date} or None when no active membership."""
+    rows = active_memberships_by_email(cx, email)
+    if not rows:
+        return None
+    sub = rows[0]
+    if not sub.get("skip_next"):
+        set_skip_next(cx, sub["id"], True)
+    nc = sub["next_charge_date"]
+    return {"sub_id": sub["id"], "paused_charge_date": nc,
+            "resume_date": add_months(nc, int(sub.get("cadence_months") or 1))}
+
+
 def list_heads_up_due(cx, *, as_of: str, lead_days: int = 3) -> list[dict]:
     """Return active subscriptions whose next_charge_date is within lead_days days
     and whose last_notified_date differs from next_charge_date (i.e. haven't been
