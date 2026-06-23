@@ -59,6 +59,62 @@ def test_paid_member_sees_full_analysis(monkeypatch):
         _cleanup()
 
 
+class _FakeMsg:
+    def __init__(self, text):
+        self.content = [type("B", (), {"text": text})()]
+
+
+def _capture_cl(monkeypatch):
+    """Stub _cl.messages.create; capture the system prompt it was called with."""
+    seen = {}
+
+    def fake_create(*a, **k):
+        seen["system"] = k.get("system", "")
+        return _FakeMsg("Here is what we see. This is education, not a promise.")
+
+    monkeypatch.setattr(appmod._cl, "messages",
+                        type("M", (), {"create": staticmethod(fake_create)})())
+    return seen
+
+
+def test_chat_grounded_for_paid_member(monkeypatch):
+    monkeypatch.delenv("SCAN_ANALYSIS_FREE", raising=False)
+    seen = _capture_cl(monkeypatch)
+    _seed(paid=True)
+    try:
+        c = appmod.app.test_client()
+        c.set_cookie("rm_member_email", EMAIL)
+        r = c.post("/member/scan-analysis/chat", json={"query": "What stands out over time?"})
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["access"] == "full" and body["upsell"] is False
+        assert "education" in body["answer"]
+        # the member's own facts were injected into the system prompt
+        assert "THE MEMBER'S ANALYSIS FACTS" in seen["system"]
+        assert "Nervous System" in seen["system"]
+    finally:
+        _cleanup()
+
+
+def test_chat_is_educate_only_and_upsell_for_anonymous(monkeypatch):
+    seen = _capture_cl(monkeypatch)
+    c = appmod.app.test_client()
+    r = c.post("/member/scan-analysis/chat", json={"query": "What should I take?"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["access"] == "locked" and body["upsell"] is True
+    # no personal facts; the educate-only consent gate is applied instead
+    assert "THE MEMBER'S ANALYSIS FACTS" not in seen["system"]
+    assert "CONSENT GATE" in seen["system"]
+
+
+def test_chat_requires_query(monkeypatch):
+    _capture_cl(monkeypatch)
+    c = appmod.app.test_client()
+    r = c.post("/member/scan-analysis/chat", json={})
+    assert r.status_code == 400
+
+
 def test_anonymous_visitor_is_locked():
     c = appmod.app.test_client()
     r = c.get("/member/scan-analysis")

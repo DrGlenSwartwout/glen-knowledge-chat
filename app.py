@@ -11172,6 +11172,64 @@ def member_scan_analysis_page():
     return resp
 
 
+_SCAN_CHAT_SYSTEM = (
+    "You are Dr. Glen Swartwout's Biofield assistant, helping a member understand "
+    "their own voice-scan patterns OVER TIME. Warm, validation-led, plain language, "
+    "no em dashes. Use ONLY the member's supplied analysis facts plus general "
+    "education. Invent no numbers, scans, codes, or claims that are not in the facts. "
+    "Do not diagnose, prescribe, or promise outcomes. Keep answers under ~180 words. "
+    "Always end with: 'This is education, not a promise to diagnose, treat, cure, or "
+    "prevent any disease.'")
+
+
+@app.route("/member/scan-analysis/chat", methods=["POST"])
+def member_scan_analysis_chat():
+    """Tiered chat for the longitudinal analysis page (SP2 slice 2). full-access
+    members get answers grounded in their own analysis facts; teaser/locked
+    visitors get general education only (educate-only gate) plus an upsell."""
+    from dashboard import scan_analysis as _sa, scan_analysis_view as _sav
+    q = ((request.get_json(silent=True) or {}).get("query") or "").strip()
+    if not q:
+        return jsonify({"error": "query required"}), 400
+
+    email = (request.cookies.get("rm_member_email", "") or "").strip().lower()
+    is_paid = bool(_active_membership_for_email(email)) if email else False
+    has_tos = is_member(email=email) if email else False
+    tier = _sav.resolve_tier(is_paid=is_paid, has_tos=has_tos)
+
+    analysis = None
+    if email:
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _sa.init_table(cx)
+                got = _sa.get(cx, email)
+            analysis = got.get("analysis") if got else None
+        except Exception as e:
+            print(f"[scan-chat] read failed for {email}: {e!r}", flush=True)
+
+    access = _sav.gated_payload(analysis, tier=tier,
+                                free_enabled=_scan_analysis_free_enabled())["access"]
+    ctx = _sav.chat_context(analysis, access=access)
+
+    system = _SCAN_CHAT_SYSTEM
+    if ctx["grounded"] and ctx["facts"]:
+        system = system + "\n\nTHE MEMBER'S ANALYSIS FACTS:\n" + ctx["facts"]
+    else:
+        system = system + _EDUCATE_ONLY_POLICY
+
+    try:
+        msg = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=500,
+                                  system=system, messages=[{"role": "user", "content": q[:1500]}])
+        answer = (msg.content[0].text or "").strip()
+    except Exception as e:
+        print(f"[scan-chat] llm failed: {e!r}", flush=True)
+        return jsonify({"error": "unavailable"}), 503
+
+    resp = jsonify({"answer": answer, "access": access, "upsell": ctx["upsell"]})
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/biofield/ready")
 def biofield_ready_page():
     """Serve the readiness-gate page (no-store; PHI-adjacent)."""

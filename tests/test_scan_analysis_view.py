@@ -5,7 +5,7 @@ ART = {
     "generated_at": "2026-06-22T00:00:00Z", "narrative": "Over time you...",
     "top_patterns": [{"code": "MR2"}, {"code": "ED11"}, {"code": "EI1"}, {"code": "ES3"}],
     "clusters": [{"structure": "Nervous System", "codes": ["MR2", "ED4"]}],
-    "functional_relation": [{"structure": "Detoxification", "weight": 9}],
+    "functional_relation": [{"structure": "Detoxification", "weight": 9, "is_functional": True}],
 }
 
 
@@ -49,3 +49,25 @@ def test_resolve_tier():
     assert v.resolve_tier(is_paid=True, has_tos=True) == v.PAID
     assert v.resolve_tier(is_paid=False, has_tos=True) == v.FREE
     assert v.resolve_tier(is_paid=False, has_tos=False) == v.NONE
+
+
+def test_format_facts_includes_patterns_clusters_functional():
+    f = v.format_facts(ART)
+    assert "MR2" in f and "Calm Mind" not in f  # ART top_patterns have no name; code present
+    assert "Nervous System" in f                 # cluster structure + codes
+    assert "ED4" in f
+    assert "Detoxification" in f                  # functional pattern
+    assert "Over time you..." in f               # narrative folded in
+
+
+def test_chat_context_full_is_grounded():
+    c = v.chat_context(ART, access="full")
+    assert c["grounded"] is True and c["upsell"] is False
+    assert "Nervous System" in c["facts"]
+
+
+def test_chat_context_teaser_and_locked_are_not_grounded():
+    for acc in ("teaser", "locked"):
+        c = v.chat_context(ART, access=acc)
+        assert c["grounded"] is False and c["upsell"] is True
+        assert c["facts"] == ""
