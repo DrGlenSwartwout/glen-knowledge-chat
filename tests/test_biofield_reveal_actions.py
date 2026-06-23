@@ -69,6 +69,38 @@ def test_edit_layer_resolves_slug_and_meaning_from_typed_name(tmp_path):
     assert "steady cellular energy" in lyr["remedy"]["meaning"]  # meaning filled from canonical
 
 
+def test_edit_layer_remember_unchecked_is_one_time_not_canonical(tmp_path):
+    """Unchecked 'remember' = a one-time meaning for THIS reveal; it is stored on
+    the layer but NOT promoted to the canonical store."""
+    br, acts = _mods(); cx = _cx(tmp_path)
+    from dashboard import biofield_meanings as bm
+    bm.init_table(cx)
+    rid, _ = br.upsert(cx, "a@x.com", "2026-06-19", {"greeting": "Hi"}, [], "s",
+                       layers=[{"n": 1, "title": "T", "summary": "s", "patterns": ["ED1"], "remedy": None}])
+    acts.configure(resolve_slug=lambda r: r.get("slug") or None, products={}, client=None)
+    acts._exec_edit({"id": rid, "layers": [
+        {"n": 1, "title": "T", "summary": "s", "patterns": ["ED1"],
+         "remedy": {"name": "X", "slug": "x", "meaning": "one-time meaning", "remember": False}}]},
+        {"cx": cx, "actor": _Actor()})
+    assert br.get(cx, rid)["layers"][0]["remedy"]["meaning"] == "one-time meaning"
+    assert bm.get_map(cx).get("x") is None   # NOT remembered canonically
+
+
+def test_edit_layer_remember_checked_promotes_to_canonical(tmp_path):
+    """Checked 'remember' = persist this reviewed meaning to the canonical store."""
+    br, acts = _mods(); cx = _cx(tmp_path)
+    from dashboard import biofield_meanings as bm
+    bm.init_table(cx)
+    rid, _ = br.upsert(cx, "a@x.com", "2026-06-19", {"greeting": "Hi"}, [], "s",
+                       layers=[{"n": 1, "title": "T", "summary": "s", "patterns": ["ED1"], "remedy": None}])
+    acts.configure(resolve_slug=lambda r: r.get("slug") or None, products={}, client=None)
+    acts._exec_edit({"id": rid, "layers": [
+        {"n": 1, "title": "T", "summary": "s", "patterns": ["ED1"],
+         "remedy": {"name": "X", "slug": "x", "meaning": "reviewed meaning", "remember": True}}]},
+        {"cx": cx, "actor": _Actor()})
+    assert bm.get_map(cx).get("x") == "reviewed meaning"   # remembered (source glen)
+
+
 def test_edit_layer_unresolvable_name_is_dropped(tmp_path):
     """A typed name that matches no catalog product still drops (anti-bypass)."""
     br, acts = _mods(); cx = _cx(tmp_path)
