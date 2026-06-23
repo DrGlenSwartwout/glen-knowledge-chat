@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Practitioners — Console</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<style>
+  :root{--bg:#0a150d;--panel:#111f16;--line:#21472d;--gold:#d4a843;--ink:#fdf4d8;--mut:#8fae97}
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font-family:system-ui,sans-serif;margin:0;padding:24px;max-width:78rem;margin:0 auto}
+  h1{color:var(--gold);font-size:1.4rem;margin:0 0 .2rem}
+  h2{color:var(--gold);font-size:1.05rem;margin:0;cursor:pointer;user-select:none}
+  .hint{color:var(--mut);font-size:.85rem}
+  .panel{border:1px solid var(--line);border-radius:10px;padding:16px;margin:14px 0;background:var(--panel)}
+  label{display:block;font-size:.8rem;color:var(--mut);margin:.5rem 0 .15rem}
+  input[type=text],input[type=email],input[type=number],select{
+    width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;
+    background:#0c1b11;color:var(--ink);font:inherit}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+  .chk{display:flex;align-items:center;gap:8px;margin-top:18px;color:var(--ink);font-size:.9rem}
+  .chk input{width:auto}
+  button{cursor:pointer;border:0;border-radius:6px;padding:7px 14px;font:inherit;background:var(--gold);color:#15240f;font-weight:600}
+  button.alt{background:#1b3322;color:var(--ink);border:1px solid var(--line);font-weight:400}
+  button.sm{padding:4px 9px;font-size:.8rem}
+  table{width:100%;border-collapse:collapse;font-size:.84rem}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #18301f;vertical-align:top}
+  th{color:var(--mut);font-weight:600;font-size:.76rem;text-transform:uppercase;letter-spacing:.03em}
+  .pill{display:inline-block;padding:.08rem .5rem;border-radius:1rem;font-size:.72rem;border:1px solid var(--line)}
+  .on{background:#16361f;color:#9fe3ad;border-color:#2c6b3e}
+  .off{background:#2c1616;color:#e39f9f;border-color:#6b2c2c}
+  .name{font-weight:600;color:var(--ink)}
+  .sub{color:var(--mut);font-size:.78rem}
+  .actions{white-space:nowrap}
+  .msg{padding:8px 12px;border-radius:6px;margin:8px 0;display:none}
+  .msg.ok{background:#16361f;color:#9fe3ad;display:block}
+  .msg.err{background:#2c1616;color:#e39f9f;display:block}
+  .editrow td{background:#0c1b11}
+  details>summary{list-style:none} details>summary::-webkit-details-marker{display:none}
+  .count{color:var(--mut);font-size:.82rem;font-weight:400}
+</style>
+</head>
+<body>
+<h1>◼ Practitioners</h1>
+<p class="hint">Add a coach or licensed practitioner, send their portal login, and manage the roster. Cert level and wholesale access are independent.</p>
+<div id="msg" class="msg"></div>
+
+<!-- Add -->
+<div class="panel">
+  <h2 style="cursor:default">Add a practitioner</h2>
+  <div class="grid">
+    <div><label>Name</label><input type="text" id="f-name" placeholder="Ashley King"></div>
+    <div><label>Email</label><input type="email" id="f-email" placeholder="name@example.com"></div>
+    <div><label>Role</label>
+      <select id="f-role"><option value="coach">Coach</option><option value="licensed">Licensed practitioner</option></select></div>
+    <div><label>Classification / credentials</label><input type="text" id="f-cred" placeholder="Health Coach, OD, MD, ND…"></div>
+    <div><label>Cert level (0–12)</label><input type="number" id="f-level" value="0" min="0" max="12"></div>
+    <div><label>City</label><input type="text" id="f-city" placeholder="Austin"></div>
+    <div><label>State</label><input type="text" id="f-state" placeholder="TX"></div>
+    <div class="chk"><input type="checkbox" id="f-wholesale"><label style="margin:0;color:var(--ink)">Wholesale access</label></div>
+    <div class="chk"><input type="checkbox" id="f-finder"><label style="margin:0;color:var(--ink)">List in finder</label></div>
+    <div class="chk"><input type="checkbox" id="f-invite" checked><label style="margin:0;color:var(--ink)">Email portal invite</label></div>
+  </div>
+  <div style="margin-top:14px"><button onclick="addPractitioner()">Add practitioner</button></div>
+</div>
+
+<!-- Roster -->
+<div class="panel">
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px">
+    <input type="text" id="search" placeholder="Search name, email, credentials, city…" onkeydown="if(event.key==='Enter')load()" style="flex:1">
+    <button class="alt" onclick="load()">Search</button>
+  </div>
+  <div id="roster"></div>
+</div>
+
+<script>
+const KEY = new URLSearchParams(location.search).get('key') || '';
+function q(p){return p+(p.includes('?')?'&':'?')+'key='+encodeURIComponent(KEY);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function money(c){return '$'+((c||0)/100).toFixed(2);}
+function ymd(s){return s?String(s).slice(0,10):'—';}
+function flash(t,ok){const m=document.getElementById('msg');m.textContent=t;m.className='msg '+(ok?'ok':'err');setTimeout(()=>{m.className='msg';},4000);}
+const yn = v => v?'<span class="pill on">yes</span>':'<span class="pill off">no</span>';
+
+async function api(path, opts){
+  const r = await fetch(q(path), opts);
+  if(r.status===401){flash('Add ?key=CONSOLE_SECRET to the URL.',false);throw new Error('401');}
+  return r.json();
+}
+
+async function addPractitioner(){
+  const body={
+    name:val('f-name'), email:val('f-email'), role:val('f-role'),
+    credentials:val('f-cred'), level:parseInt(val('f-level')||'0',10),
+    wholesale_access:chk('f-wholesale'), list_in_finder:chk('f-finder'),
+    city:val('f-city'), state:val('f-state'), send_invite:chk('f-invite')};
+  const j=await api('/api/console/practitioners',
+    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(j.error){flash(j.error,false);return;}
+  flash('Added '+body.name+(j.invite_sent?' — invite emailed.':'.'),true);
+  ['f-name','f-email','f-cred','f-city','f-state'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('f-level').value='0';
+  load();
+}
+const val=id=>document.getElementById(id).value.trim();
+const chk=id=>document.getElementById(id).checked;
+
+async function load(){
+  const term=document.getElementById('search').value.trim();
+  const j=await api('/api/console/practitioners'+(term?('?q='+encodeURIComponent(term)):''));
+  const rows=j.rows||[];
+  const coaches=rows.filter(r=>r.section==='coach');
+  const pracs=rows.filter(r=>r.section!=='coach');
+  document.getElementById('roster').innerHTML=
+    section('Coaches',coaches)+section('Practitioners',pracs);
+}
+
+function section(title,rows){
+  return `<details open><summary><h2>▸ ${title} <span class="count">(${rows.length})</span></h2></summary>`+
+    (rows.length?`<table><thead><tr>
+      <th>Name / class</th><th>Level</th><th>Wholesale</th><th>Finder</th>
+      <th>Orders</th><th>Drop-ship</th><th>Wallet</th><th>Location</th><th></th>
+    </tr></thead><tbody>${rows.map(rowHtml).join('')}</tbody></table>`
+    :`<p class="hint">None.</p>`)+`</details>`;
+}
+
+function rowHtml(r){
+  const loc=[r.city,r.state].filter(Boolean).join(', ')||'—';
+  return `<tr>
+    <td><div class="name">${esc(r.name)}</div>
+        <div class="sub">${esc(r.credentials||'—')} · ${esc(r.email)}</div></td>
+    <td>${r.level}</td>
+    <td>${yn(r.wholesale_access)}</td>
+    <td>${yn(r.finder_listed)}</td>
+    <td>${r.orders} · ${money(r.spent_cents)}<div class="sub">last ${ymd(r.last_order)}</div></td>
+    <td>${r.disp_count} · ${money(r.disp_credit_cents)}<div class="sub">${r.disp_bottles} btl</div></td>
+    <td>${money(r.wallet_balance_cents)}</td>
+    <td>${esc(loc)}</td>
+    <td class="actions">
+      <button class="alt sm" onclick="toggleEdit('${r.id}')">Edit</button>
+      <button class="alt sm" onclick="toggleFinder('${r.id}',${!r.finder_listed})">${r.finder_listed?'Unlist':'List'}</button>
+      <button class="alt sm" onclick="resend('${r.id}','${esc(r.email)}','${esc(r.name)}')">Resend invite</button>
+    </td></tr>
+    <tr class="editrow" id="edit-${r.id}" style="display:none"><td colspan="9">
+      <div class="grid">
+        <div><label>Cert level (0–12)</label><input type="number" id="lv-${r.id}" value="${r.level}" min="0" max="12"></div>
+        <div class="chk"><input type="checkbox" id="ws-${r.id}" ${r.wholesale_access?'checked':''}><label style="margin:0;color:var(--ink)">Wholesale access</label></div>
+        <div><label>City</label><input type="text" id="city-${r.id}" value="${esc(r.city||'')}"></div>
+        <div><label>State</label><input type="text" id="st-${r.id}" value="${esc(r.state||'')}"></div>
+      </div>
+      <div style="margin-top:10px">
+        <button class="sm" onclick="saveLevelAccess('${r.id}')">Save level & access</button>
+        <button class="alt sm" onclick="saveLocation('${r.id}')">Save location</button>
+      </div>
+    </td></tr>`;
+}
+
+function toggleEdit(id){const e=document.getElementById('edit-'+id);e.style.display=e.style.display==='none'?'':'none';}
+
+async function saveLevelAccess(id){
+  const j=await api('/api/console/practitioners/'+id+'/edit',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'level_access',level:parseInt(document.getElementById('lv-'+id).value||'0',10),
+      wholesale_access:document.getElementById('ws-'+id).checked})});
+  if(j.error){flash(j.error,false);return;} flash('Level & access saved.',true); load();
+}
+async function saveLocation(id){
+  const j=await api('/api/console/practitioners/'+id+'/edit',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'location',city:document.getElementById('city-'+id).value.trim(),
+      state:document.getElementById('st-'+id).value.trim()})});
+  if(j.error){flash(j.error,false);return;} flash('Location saved & geocoded.',true); load();
+}
+async function toggleFinder(id,show){
+  const j=await api('/api/console/practitioners/'+id+'/edit',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'finder',show})});
+  if(j.error){flash(j.error,false);return;} flash(show?'Listed in finder.':'Unlisted from finder.',true); load();
+}
+async function resend(id,email,name){
+  const j=await api('/api/console/practitioners/'+id+'/edit',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'resend_invite',email,name})});
+  if(j.error){flash(j.error,false);return;} flash('Invite re-sent to '+email+'.',true);
+}
+
+load();
+</script>
+</body>
+</html>
