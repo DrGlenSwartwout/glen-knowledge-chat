@@ -16801,6 +16801,131 @@ def _execute_console_tool(name: str, inp: dict) -> str:
     return _execute_todo_tool(name, inp)
 
 
+# ── Justus knowledge-base + web-fetch tools ───────────────────────────────────
+# Lets the workspace Justus (Shaira's scoped agent) ground content in Glen's
+# Pinecone knowledge base and read a pasted URL. Both are READ-only.
+# SECURITY: a scoped VA caller is restricted to content/marketing namespaces —
+# client-record namespaces (consultations, e4l-protocols, case-studies, and the
+# default "") carry PHI and are NEVER exposed to a VA. See _kb_namespaces_for.
+import dashboard.rbac as _kb_rbac
+
+# Namespaces a scoped VA may search — marketing/clinical reference only, no PHI.
+_KB_VA_NAMESPACES = [
+    "clinical-qa", "training", "glen-authored-works",
+    "business", "specific-formulations", "ingredients", "mentors",
+]
+# Owner/Ops may search everything the RAG bot uses.
+_KB_FULL_NAMESPACES = list(dict.fromkeys(NAMESPACES + ["specific-formulations"]))
+_KB_TOOL_NAMES = {"search_knowledge_base", "fetch_url"}
+
+KB_TOOLS = [
+    {
+        "name": "search_knowledge_base",
+        "description": (
+            "Search Dr. Glen's knowledge base (clinical Q&A, his authored works, "
+            "training, formulations, ingredients) for facts, framing, and source "
+            "material to ground content you write. Use this BEFORE writing blog or "
+            "marketing content so it reflects Glen's actual material rather than "
+            "generic information. Returns the most relevant excerpts with their source."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string",
+                          "description": "What to look up, e.g. 'methylene blue for mitochondrial energy'."},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "fetch_url",
+        "description": (
+            "Fetch the readable text of a public web page (e.g. a blog post URL) so "
+            "you can work with its content directly instead of having it pasted in. "
+            "Only public http/https pages; returns plain text, truncated."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "The full http(s) URL to fetch."},
+            },
+            "required": ["url"],
+        },
+    },
+]
+
+
+def _kb_namespaces_for(actor):
+    """Namespace whitelist for a KB search, scoped by caller role. A scoped VA
+    gets content/marketing namespaces only — never PHI-bearing client records.
+    Owner/Ops get the full set."""
+    if getattr(actor, "role", None) == _kb_rbac.VA:
+        return list(_KB_VA_NAMESPACES)
+    return list(_KB_FULL_NAMESPACES)
+
+
+def _kb_search(query, actor, top_k=3, max_results=6):
+    vec = embed(query)
+    matches = []
+    for ns in _kb_namespaces_for(actor):
+        matches.extend(query_ns(vec, ns, top_k))
+    matches.sort(key=lambda m: (m.score or 0), reverse=True)
+    out = []
+    for m in matches[:max_results]:
+        md = m.metadata or {}
+        text = (md.get("text") or "").strip()
+        if not text:
+            continue
+        title = md.get("title") or md.get("source") or "(untitled)"
+        out.append(f"## {title}\n{text[:900]}")
+    return out
+
+
+def _fetch_url_text(url, max_chars=6000):
+    import re as _re, urllib.parse as _up, ipaddress as _ip, socket as _sock
+    import requests as _rq
+    u = (url or "").strip()
+    parsed = _up.urlparse(u)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return "Only public http(s) URLs are supported."
+    # SSRF guard: refuse private / loopback / link-local / reserved hosts.
+    try:
+        for _fam, _t, _p, _c, sa in _sock.getaddrinfo(parsed.hostname, None):
+            ip = _ip.ip_address(sa[0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return "That URL resolves to a non-public address and was blocked."
+    except Exception:
+        return "Could not resolve that URL's host."
+    try:
+        r = _rq.get(u, timeout=12, headers={"User-Agent": "Mozilla/5.0 (JustusBot)"})
+        r.raise_for_status()
+    except Exception as e:
+        return f"Could not fetch that URL ({type(e).__name__})."
+    html = r.text or ""
+    html = _re.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", html)
+    text = _re.sub(r"(?s)<[^>]+>", " ", html)
+    text = _re.sub(r"\s+", " ", text).strip()
+    return text[:max_chars] if text else "No readable text found at that URL."
+
+
+def _execute_kb_tool(name, inp, actor):
+    inp = inp or {}
+    try:
+        if name == "search_knowledge_base":
+            q = (inp.get("query") or "").strip()
+            if not q:
+                return "No query provided."
+            chunks = _kb_search(q, actor)
+            if not chunks:
+                return f"No knowledge-base matches for: {q!r}."
+            return "Knowledge base results:\n\n" + "\n\n".join(chunks)
+        if name == "fetch_url":
+            return _fetch_url_text(inp.get("url") or "")
+        return f"Unknown KB tool: {name}."
+    except Exception as e:
+        return f"KB tool error ({type(e).__name__}: {e})."
+
+
 import dashboard.justus_adapter as _ja
 
 
@@ -16831,6 +16956,8 @@ def _justus_tool_dispatch(actor):
     READ tools run direct; WRITE tools go through dispatch_action (audit + policy)."""
     def dispatch(name, inp):
         inp = inp or {}
+        if name in _KB_TOOL_NAMES:
+            return _execute_kb_tool(name, inp, actor)
         if _ja.is_read(name):
             return _execute_console_tool(name, inp)
         key = _ja.action_key_for(name)
@@ -16953,7 +17080,7 @@ def console_ask():
     system = _justus_system_prompt(owner, (context + page_ctx).strip(), TRACKER_DIRECTIVES)
     _actor = _bos_rbac.actor_for_scope((ctx or {}).get("scope", "admin"), owner)
     gen = _ask_justus_stream_tools(query, system, history,
-                                    PROJECT_TOOLS + TODO_TOOLS + HOUSEHOLD_TOOLS,
+                                    PROJECT_TOOLS + TODO_TOOLS + HOUSEHOLD_TOOLS + KB_TOOLS,
                                     _justus_tool_dispatch(_actor), history_n=6)
     return Response(stream_with_context(gen),
                     mimetype="text/event-stream",
