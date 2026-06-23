@@ -50,6 +50,8 @@
 
   { "title": "Certification", "page": "Cert", "url": "/console/cert", "keywords": ["cert", "certification", "ash", "training", "students"] },
 
+  { "title": "Practitioners", "page": "Practitioners", "url": "/console/practitioners", "keywords": ["practitioner", "practitioners", "coach", "coaches", "wholesale", "portal", "add", "invite", "finder", "level", "roster", "dispensary"] },
+
   { "title": "Topic Pages", "page": "Products", "url": "/console/topic-pages", "keywords": ["topic", "topics", "symptom", "condition", "function", "learn", "page", "pages", "approve", "compliance", "generate"] },
 
   { "title": "Topic Suggestions", "page": "Products", "url": "/console/topic-suggestions", "keywords": ["topic", "suggestions", "suggest", "demand", "build", "dismiss", "chat", "offer", "create-a-page"] }

@@ -11597,6 +11597,102 @@ def api_cert_portal_invite():
     return jsonify({"ok": True, "sent": True, "email": email})
 
 
+# ── Console practitioner admin (add + roster + edit) ───────────────────────────
+
+def _console_key_ok():
+    """True if the request carries the console key (or no key is configured)."""
+    if not CONSOLE_SECRET:
+        return True
+    key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+    return key == CONSOLE_SECRET
+
+
+def _send_practitioner_invite(email, name, pid):
+    """Mint a 7-day practitioner magic link and email it. Returns True on send."""
+    magic = _pp.create_magic_link_token(pid, email, ttl_min=7 * 24 * 60)
+    _send_practitioner_magic_link(
+        email, name or "", f"{PUBLIC_BASE_URL}/practitioner/login-verify?token={magic}")
+    return True
+
+
+@app.route("/console/practitioners")
+def console_practitioners_page():
+    resp = send_from_directory(STATIC, "console-practitioners.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/console/practitioners", methods=["GET"])
+def api_console_practitioners_list():
+    """Console-gated roster: every portal practitioner + per-row activity stats."""
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import practitioner_admin as _pa
+    q = (request.args.get("q") or "").strip() or None
+    practitioners = _pa.list_practitioners(q=q)
+    rows = _pa.build_rows(practitioners, _pa.aggregate_activity(LOG_DB))
+    return jsonify({"ok": True, "rows": rows})
+
+
+@app.route("/api/console/practitioners", methods=["POST"])
+def api_console_practitioners_create():
+    """Console-gated: add (or link by email) a practitioner — role, classification,
+    cert level + wholesale access (independent), finder listing, and optional invite."""
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import practitioner_admin as _pa
+    clean, err = _pa.validate_new_practitioner(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"error": err}), 400
+    pid = _pa.create_or_update_practitioner(clean)
+    if clean["city"] or clean["state"]:
+        try:
+            _pa.geocode_and_set_location(pid, clean["city"], clean["state"])
+        except Exception as e:
+            print(f"[console-practitioners] geocode failed for {pid}: {e!r}", flush=True)
+    sent = False
+    if clean["send_invite"]:
+        try:
+            sent = _send_practitioner_invite(clean["email"], clean["name"], pid)
+        except Exception as e:
+            print(f"[console-practitioners] invite failed for {clean['email']}: {e!r}", flush=True)
+    return jsonify({"ok": True, "practitioner_id": pid, "invite_sent": sent})
+
+
+@app.route("/api/console/practitioners/<pid>/edit", methods=["POST"])
+def api_console_practitioners_edit(pid):
+    """Console-gated row actions: level_access | finder | location | resend_invite."""
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import practitioner_admin as _pa
+    body = request.get_json(silent=True) or {}
+    action = (body.get("action") or "").strip()
+    if action == "level_access":
+        try:
+            level = int(body.get("level", 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "level must be a number"}), 400
+        _pa.set_level_and_access(pid, level, bool(body.get("wholesale_access")))
+        return jsonify({"ok": True})
+    if action == "finder":
+        _pa.set_finder_visibility(pid, bool(body.get("show")))
+        return jsonify({"ok": True})
+    if action == "location":
+        _pa.geocode_and_set_location(pid, body.get("city"), body.get("state"))
+        return jsonify({"ok": True})
+    if action == "resend_invite":
+        email = (body.get("email") or "").strip()
+        if not email:
+            return jsonify({"error": "email required"}), 400
+        try:
+            _send_practitioner_invite(email, (body.get("name") or "").strip(), pid)
+        except Exception as e:
+            print(f"[console-practitioners] resend failed for {email}: {e!r}", flush=True)
+            return jsonify({"ok": False, "error": "send failed"}), 500
+        return jsonify({"ok": True, "sent": True})
+    return jsonify({"error": "unknown action"}), 400
+
+
 def _run_biofield_bonuses(dry_run=False):
     """Sweep active certification commitments and grant due bonus Biofields concierge-style
     (one todos task + idempotent ledger row per grant). Flag-gated (CERT_BONUS_ENABLED) — a
