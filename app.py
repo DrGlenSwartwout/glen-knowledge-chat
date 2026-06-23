@@ -6899,6 +6899,26 @@ def _grant_membership(cx, email, days, source):
     return mid
 
 
+MEMBERSHIP_GRANT_GRACE_DAYS = 3
+
+
+def _extend_membership_grant(cx, email, until_iso, source="membership_renewal"):
+    """Ensure the member's access grant reaches at least `until_iso`. The access
+    gate reads MAX(expires_at), so we insert a row only when no existing grant
+    already reaches that far (monotonic / idempotent — never shortens access)."""
+    if not (email and until_iso):
+        return
+    row = cx.execute("SELECT MAX(expires_at) FROM memberships WHERE email=?", (email,)).fetchone()
+    have = row[0] if row else None
+    if have and have >= until_iso:
+        return
+    import uuid as _uuid
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (str(_uuid.uuid4()), email, datetime.utcnow().isoformat() + "Z", until_iso, source, source, "", ""))
+
+
 def _studio_credit_grant_and_notify(cx, email, days):
     """Grant a studio-credit comp membership, log the journey event, and email the
     magic link. Returns {membership_id, magic_link_url}. Shared by the console
@@ -19051,6 +19071,13 @@ def cron_charge_subscriptions():
                         _subs.advance_after_charge(cx, sid)
                         _subs.reset_failed_count(cx, sid)
                         updated = _subs.get(cx, sid)
+                        try:
+                            if updated and updated.get("next_charge_date"):
+                                _until = (datetime.fromisoformat(updated["next_charge_date"])
+                                          + timedelta(days=MEMBERSHIP_GRANT_GRACE_DAYS)).isoformat() + "Z"
+                                _extend_membership_grant(cx, sub["email"], _until, "membership_renewal")
+                        except Exception as _ge:
+                            print(f"[sub-cron] grant-extend sub={sid}: {_ge!r}", flush=True)
                         try:
                             _send_subscription_email(sub["email"], "receipt", {
                                 "total_cents": amount_cents, "invoice_id": inv_id,

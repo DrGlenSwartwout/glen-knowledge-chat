@@ -12,6 +12,8 @@ import sqlite3
 import app as appmod
 from dashboard import subscriptions as subs
 
+TEST_EMAIL = "mbr-test@example.com"
+
 
 def _cron_secret():
     return os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "test-secret")
@@ -26,11 +28,11 @@ def _seed_membership(cx, *, amount_cents=9900, next_charge_date="2000-01-01"):
     subs.init_subscriptions_table(cx)
     subs.migrate_add_failed_count(cx)
     subs.migrate_add_membership_columns(cx)
-    cx.execute("DELETE FROM subscriptions WHERE email='mbr-test@example.com'")
+    cx.execute("DELETE FROM subscriptions WHERE email=?", (TEST_EMAIL,))
     cx.commit()
     sid = subs.create_membership(
         cx,
-        email="mbr-test@example.com",
+        email=TEST_EMAIL,
         stripe_customer_id="cus_mbr",
         stripe_payment_method_id="pm_mbr",
         amount_cents=amount_cents,
@@ -39,6 +41,19 @@ def _seed_membership(cx, *, amount_cents=9900, next_charge_date="2000-01-01"):
     )
     cx.commit()
     return sid
+
+
+def _stub_externals(monkeypatch, charged_ids):
+    monkeypatch.setattr(
+        appmod.stripe_pay, "charge_off_session",
+        lambda *a, **k: charged_ids.append((k.get("metadata") or {}).get("sub"))
+        or {"status": "succeeded", "id": "pi_x"},
+    )
+    monkeypatch.setattr(appmod.qb, "find_or_create_customer",
+                        lambda *a, **k: {"Id": "C1", "DisplayName": "x"})
+    monkeypatch.setattr(appmod.qb, "create_invoice",
+                        lambda *a, **k: {"Id": "INV1"})
+    monkeypatch.setattr(appmod, "_ingest_order", lambda **kw: None)
 
 
 def _enable(monkeypatch):
@@ -88,7 +103,7 @@ def test_membership_charge_flat_amount_and_advances(monkeypatch):
     s = subs.get(cx, sid)
     assert s["next_charge_date"] == subs.add_months("2000-01-01", 1)
 
-    cx.execute("DELETE FROM subscriptions WHERE email='mbr-test@example.com'"); cx.commit()
+    cx.execute("DELETE FROM subscriptions WHERE email=?", (TEST_EMAIL,)); cx.commit()
     cx.close()
 
 
@@ -128,5 +143,27 @@ def test_membership_dry_run_charges_nothing(monkeypatch):
     s = subs.get(cx, sid)
     assert s["next_charge_date"] == "2000-01-01"
 
-    cx.execute("DELETE FROM subscriptions WHERE email='mbr-test@example.com'"); cx.commit()
+    cx.execute("DELETE FROM subscriptions WHERE email=?", (TEST_EMAIL,)); cx.commit()
     cx.close()
+
+
+def test_successful_membership_charge_extends_access_grant(monkeypatch):
+    _enable(monkeypatch)
+    _stub_externals(monkeypatch, [])
+    monkeypatch.setattr(appmod, "_send_subscription_email", lambda *a, **k: ("smtp", None))
+    cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    # membership due today; a stale 1-day grant
+    from datetime import date, timedelta
+    sid = _seed_membership(cx, next_charge_date=date.today().isoformat())
+    appmod._init_membership_tables()
+    cx.execute("DELETE FROM memberships WHERE email=?", (TEST_EMAIL,))
+    cx.execute("INSERT INTO memberships (id,email,granted_at,expires_at,granted_by,source,truly_vip_ref,notes)"
+               " VALUES ('g0',?,?,?, 'seed','seed','','')",
+               (TEST_EMAIL, "2000-01-01T00:00:00Z", (date.today()+timedelta(days=1)).isoformat()+"T00:00:00Z"))
+    cx.commit()
+    appmod.app.test_client().post("/api/cron/charge-subscriptions", headers=_headers())
+    # grant now reaches ~ next_charge_date(+1 month) + 3 days grace
+    m = appmod._active_membership_for_email(TEST_EMAIL)
+    assert m is not None and m["days_remaining"] >= 30
+    cx.execute("DELETE FROM subscriptions WHERE email=?", (TEST_EMAIL,))
+    cx.execute("DELETE FROM memberships WHERE email=?", (TEST_EMAIL,)); cx.commit(); cx.close()
