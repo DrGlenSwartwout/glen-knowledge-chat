@@ -12,12 +12,15 @@ from datetime import datetime, timezone
 # Tier math
 # ---------------------------------------------------------------------------
 
-SUBSCRIBE_TIERS = [5, 10, 15]   # percent discount at order_count 0, 1, 2+
+# Loyalty discount % keyed on active months (order_count): a +2%/month climb from
+# 3% (first active month) to 25% (month 12+), clamped at the top. Paused months
+# don't advance order_count (climb holds); only cancel resets it to 0.
+SUBSCRIBE_TIERS = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25]
 
 
 def tier_for(n: int) -> int:
-    """Return the subscriber discount % for a subscriber with *n* completed
-    orders (order_count).  Capped at the highest tier."""
+    """Subscriber discount % for a member with *n* completed active months
+    (order_count). Clamped at the top step (25%)."""
     idx = min(int(n), len(SUBSCRIBE_TIERS) - 1)
     return SUBSCRIBE_TIERS[idx]
 
