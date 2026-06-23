@@ -6910,8 +6910,13 @@ def _extend_membership_grant(cx, email, until_iso, source="membership_renewal"):
         return
     row = cx.execute("SELECT MAX(expires_at) FROM memberships WHERE email=?", (email,)).fetchone()
     have = row[0] if row else None
-    if have and have >= until_iso:
-        return
+    if have:
+        try:
+            if datetime.fromisoformat(have.rstrip("Z")) >= datetime.fromisoformat(until_iso.rstrip("Z")):
+                return
+        except Exception:
+            if have >= until_iso:   # fall back to string compare on unparseable timestamps
+                return
     import uuid as _uuid
     cx.execute(
         "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
