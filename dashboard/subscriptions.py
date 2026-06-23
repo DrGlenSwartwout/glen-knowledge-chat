@@ -12,12 +12,15 @@ from datetime import datetime, timezone
 # Tier math
 # ---------------------------------------------------------------------------
 
-SUBSCRIBE_TIERS = [5, 10, 15]   # percent discount at order_count 0, 1, 2+
+# Loyalty discount % keyed on active months (order_count): a +2%/month climb from
+# 3% (first active month) to 25% (month 12+), clamped at the top. Paused months
+# don't advance order_count (climb holds); only cancel resets it to 0.
+SUBSCRIBE_TIERS = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25]
 
 
 def tier_for(n: int) -> int:
-    """Return the subscriber discount % for a subscriber with *n* completed
-    orders (order_count).  Capped at the highest tier."""
+    """Subscriber discount % for a member with *n* completed active months
+    (order_count). Clamped at the top step (25%)."""
     idx = min(int(n), len(SUBSCRIBE_TIERS) - 1)
     return SUBSCRIBE_TIERS[idx]
 
@@ -114,9 +117,9 @@ def create(cx, *, email: str, stripe_customer_id: str,
     """Insert a new active subscription and return its id.
 
     order_count is the number of orders ALREADY placed on this subscription. At
-    sign-up the setup checkout charges the 1st order (at tier_for(0)=5%), so the
+    sign-up the setup checkout charges the 1st order (at tier_for(0)=3%), so the
     subscription is created with order_count=1 — that way the first SCHEDULED charge
-    reads tier_for(1)=10% (the 2nd order), giving the intended 5%/10%/15% curve.
+    reads tier_for(1)=5% (the 2nd active month), climbing the 3→25% loyalty curve.
     """
     now = _now_iso()
     cur = cx.execute(
@@ -344,6 +347,36 @@ def list_skip_due(cx, *, as_of: str) -> list[dict]:
         (as_of,),
     ).fetchall()
     return [_row_to_dict(r) for r in rows]
+
+
+def pause_membership_by_email(cx, email: str) -> dict | None:
+    """Soft-pause the member's active membership: set skip_next so the NEXT charge
+    is skipped (one cycle), then auto-resumes the cycle after. Preserves order_count
+    (loyalty tier) -- a pause loses nothing, unlike cancel. Idempotent. Returns
+    {sub_id, paused_charge_date, resume_date} or None when no active membership."""
+    rows = active_memberships_by_email(cx, email)
+    if not rows:
+        return None
+    sub = rows[0]
+    if not sub.get("skip_next"):
+        set_skip_next(cx, sub["id"], True)
+    nc = sub["next_charge_date"]
+    return {"sub_id": sub["id"], "paused_charge_date": nc,
+            "resume_date": add_months(nc, int(sub.get("cadence_months") or 1))}
+
+
+def set_membership_cadence_by_email(cx, email: str, months: int) -> dict | None:
+    """Settle the member's active membership into a slower recurring rhythm
+    (e.g. every 2 or 3 months). Clears any one-time skip_next (cadence supersedes
+    a single skip). Idempotent. Returns {sub_id, cadence_months} or None."""
+    rows = active_memberships_by_email(cx, email)
+    if not rows:
+        return None
+    sub = rows[0]
+    set_cadence(cx, sub["id"], int(months))
+    if sub.get("skip_next"):
+        set_skip_next(cx, sub["id"], False)
+    return {"sub_id": sub["id"], "cadence_months": int(months)}
 
 
 def list_heads_up_due(cx, *, as_of: str, lead_days: int = 3) -> list[dict]:

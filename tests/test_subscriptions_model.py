@@ -9,15 +9,15 @@ def _cx():
 
 
 def test_create_with_order_count_sets_escalation_correctly():
-    # The setup checkout placed order #1 (5%), so the sub is created with order_count=1,
-    # making the FIRST scheduled charge tier_for(1)=10% (order #2) — the intended curve.
+    # The setup checkout placed order #1 (3%), so the sub is created with order_count=1,
+    # making the FIRST scheduled charge tier_for(1)=5% (order #2) — the intended curve.
     cx = _cx()
     sid = subs.create(cx, email="a@x.com", stripe_customer_id="c", stripe_payment_method_id="p",
                       items=[], cadence_months=1, ship_address={}, next_charge_date="2026-07-01",
                       order_count=1)
     s = subs.get(cx, sid)
     assert s["order_count"] == 1
-    assert subs.tier_for(s["order_count"]) == 10     # first scheduled charge = 10%, not 5% again
+    assert subs.tier_for(s["order_count"]) == 5     # first scheduled charge = 5%, not 3% again
 
 
 def test_add_months_edge_cases():
@@ -39,10 +39,10 @@ def test_set_cadence_and_next_charge_date():
 
 
 def test_tier_for_escalates_and_caps():
-    assert subs.tier_for(0) == 5
-    assert subs.tier_for(1) == 10
-    assert subs.tier_for(2) == 15
-    assert subs.tier_for(9) == 15
+    assert subs.tier_for(0) == 3
+    assert subs.tier_for(1) == 5
+    assert subs.tier_for(2) == 7
+    assert subs.tier_for(11) == 25
 
 
 def test_create_and_get():
@@ -97,3 +97,13 @@ def test_cancel_resets_tier():
     subs.set_status(cx, sid, "cancelled")
     s = subs.get(cx, sid)
     assert s["status"] == "cancelled" and s["order_count"] == 0   # reset on cancel
+
+
+def test_loyalty_curve_12_steps_3_to_25():
+    from dashboard import subscriptions as subs
+    expected = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25]
+    assert [subs.tier_for(n) for n in range(12)] == expected
+    assert subs.tier_for(11) == 25          # 12th step (active month 12)
+    assert subs.tier_for(12) == 25          # clamps beyond the top
+    assert subs.tier_for(99) == 25
+    assert subs.tier_for(0) == 3            # first active month
