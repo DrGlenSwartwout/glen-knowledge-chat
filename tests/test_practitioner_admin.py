@@ -42,6 +42,16 @@ def test_validate_clamps_level_to_0_12():
     assert clean2["level"] == 0
 
 
+def test_validate_country_defaults_us_and_uppercases():
+    clean, err = pa.validate_new_practitioner(
+        {"email": "a@b.com", "name": "A", "role": "coach"})
+    assert err is None
+    assert clean["country"] == "US"
+    clean2, _ = pa.validate_new_practitioner(
+        {"email": "a@b.com", "name": "A", "role": "coach", "country": " mx "})
+    assert clean2["country"] == "MX"
+
+
 def test_validate_rejects_non_numeric_level():
     clean, err = pa.validate_new_practitioner(
         {"email": "a@b.com", "name": "A", "role": "coach", "level": "lots"})
@@ -123,7 +133,7 @@ def test_build_rows_merges_activity_and_defaults_zeros():
         {"id": "p1", "name": "Ashley King", "email": "a@b.com", "portal_role": "coach",
          "credentials": "Health Coach", "modules_completed": 0, "wallet_balance_cents": 0,
          "wholesale_unlocked_at": "2026-06-23T00:00:00", "application_status": None,
-         "show_contact": True, "city": "Austin", "state": "TX"},
+         "show_contact": True, "city": "Mexico City", "state": None, "country": "MX"},
         {"id": "p2", "name": "Dr Who", "email": "w@b.com", "portal_role": "licensed",
          "credentials": "OD", "modules_completed": 5, "wallet_balance_cents": 1500,
          "wholesale_unlocked_at": None, "application_status": "pending",
@@ -137,6 +147,8 @@ def test_build_rows_merges_activity_and_defaults_zeros():
     assert by_id["p1"]["wholesale_access"] is True
     assert by_id["p1"]["finder_listed"] is True
     assert by_id["p1"]["section"] == "coach"
+    assert by_id["p1"]["country"] == "MX"
+    assert by_id["p2"]["country"] == "US"   # missing country defaults to US
     assert by_id["p1"]["orders"] == 2
     assert by_id["p1"]["spent_cents"] == 10500
     # p2 has no activity → zeros, locked, hidden, practitioner section

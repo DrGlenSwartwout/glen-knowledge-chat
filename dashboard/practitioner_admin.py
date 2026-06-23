@@ -51,6 +51,7 @@ def validate_new_practitioner(payload: dict) -> Tuple[Optional[dict], Optional[s
         "list_in_finder": bool(payload.get("list_in_finder")),
         "city": (payload.get("city") or "").strip() or None,
         "state": (payload.get("state") or "").strip().upper() or None,
+        "country": (payload.get("country") or "").strip().upper() or "US",
         "send_invite": bool(payload.get("send_invite")),
     }, None
 
@@ -91,7 +92,7 @@ _ACTIVITY_DEFAULTS = {
 _LIST_COLS = (
     "id, name, email, portal_role, credentials, modules_completed, "
     "wallet_balance_cents, wholesale_unlocked_at, application_status, "
-    "show_contact, city, state"
+    "show_contact, city, state, country"
 )
 _TIER_FOR_ROLE = {"coach": "panel_in_cert", "licensed": "org_member"}
 
@@ -180,29 +181,34 @@ def set_finder_visibility(pid: str, show: bool) -> None:
                     (bool(show), str(pid)))
 
 
-def geocode_and_set_location(pid: str, city: Optional[str], state: Optional[str]) -> None:
-    """Set city/state and (best-effort) city-level lat/lng via Mapbox so the
-    practitioner places in the finder. lat/lng/quality only set if geocoding hits."""
+def geocode_and_set_location(pid: str, city: Optional[str], state: Optional[str],
+                             country: Optional[str] = None) -> None:
+    """Set city/state/country and (best-effort) city-level lat/lng via Mapbox so the
+    practitioner places in the finder. country is an ISO-2 code (defaults US); it
+    biases the geocoder and is stored. lat/lng/quality only set if geocoding hits."""
     from db_supabase import supabase_cursor
     from scrapers.practitioner_finder.geocode import geocode_place
     city = (city or "").strip() or None
     state = (state or "").strip().upper() or None
+    cc = (country or "").strip().upper() or "US"
     lat = lng = None
     if city or state:
-        place = ", ".join([p for p in (city, state, "USA") if p])
+        place = ", ".join([p for p in (city, state, cc) if p])
         try:
-            lat, lng = geocode_place(place, "US")
+            lat, lng = geocode_place(place, cc)
         except Exception:
             lat = lng = None
     with supabase_cursor() as cur:
         if lat is not None and lng is not None:
             cur.execute(
-                "UPDATE practitioners SET city=%s, state=%s, country='US', lat=%s, lng=%s, "
+                "UPDATE practitioners SET city=%s, state=%s, country=%s, lat=%s, lng=%s, "
                 "geocode_quality='city', updated_at=now() WHERE id=%s",
-                (city, state, lat, lng, str(pid)))
+                (city, state, cc, lat, lng, str(pid)))
         else:
-            cur.execute("UPDATE practitioners SET city=%s, state=%s, updated_at=now() WHERE id=%s",
-                        (city, state, str(pid)))
+            cur.execute(
+                "UPDATE practitioners SET city=%s, state=%s, country=%s, updated_at=now() "
+                "WHERE id=%s",
+                (city, state, cc, str(pid)))
 
 
 def build_rows(practitioners: List[dict], activity: dict) -> List[dict]:
@@ -226,6 +232,7 @@ def build_rows(practitioners: List[dict], activity: dict) -> List[dict]:
             "finder_listed": bool(p.get("show_contact")),
             "city": p.get("city"),
             "state": p.get("state"),
+            "country": p.get("country") or "US",
             "section": "coach" if role == "coach" else "practitioner",
             **act,
         })
