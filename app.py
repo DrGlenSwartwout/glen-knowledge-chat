@@ -11107,6 +11107,28 @@ def api_e4l_reveal_draft():
         return jsonify({"ok": False, "error": "store failed"}), 500
 
 
+@app.route("/api/e4l/scan-analysis", methods=["POST"])
+def api_e4l_scan_analysis():
+    """Ingest a per-member longitudinal scan analysis artifact pushed by the local
+    engine. Secret-gated (X-Cron-Secret == CRON_SECRET, fallback CONSOLE_SECRET).
+    Silent store -- no email/notify. Sub-project 2 reads it for the analysis page."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    art = request.get_json(silent=True) or {}
+    email = (art.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    from dashboard import scan_analysis as _sa
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _sa.init_table(cx)
+        _sa.upsert(cx, email, art)
+    return jsonify({"ok": True, "email": email})
+
+
 @app.route("/biofield/ready")
 def biofield_ready_page():
     """Serve the readiness-gate page (no-store; PHI-adjacent)."""
