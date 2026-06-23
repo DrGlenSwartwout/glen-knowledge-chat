@@ -56,7 +56,8 @@
     <div><label>Classification / credentials</label><select id="f-cred"></select></div>
     <div><label>Cert level (0–12)</label><input type="number" id="f-level" value="0" min="0" max="12"></div>
     <div><label>City</label><input type="text" id="f-city" placeholder="Austin"></div>
-    <div><label>State</label><input type="text" id="f-state" placeholder="TX"></div>
+    <div><label>State / province</label><input type="text" id="f-state" placeholder="TX"></div>
+    <div><label>Country (ISO-2)</label><input type="text" id="f-country" placeholder="US" value="US" maxlength="2"></div>
     <div class="chk"><input type="checkbox" id="f-wholesale"><label style="margin:0;color:var(--ink)">Wholesale access</label></div>
     <div class="chk"><input type="checkbox" id="f-finder"><label style="margin:0;color:var(--ink)">List in finder</label></div>
     <div class="chk"><input type="checkbox" id="f-invite" checked><label style="margin:0;color:var(--ink)">Email portal invite</label></div>
@@ -101,7 +102,7 @@ async function addPractitioner(){
     name:val('f-name'), email:val('f-email'), role:val('f-role'),
     credentials:val('f-cred'), level:parseInt(val('f-level')||'0',10),
     wholesale_access:chk('f-wholesale'), list_in_finder:chk('f-finder'),
-    city:val('f-city'), state:val('f-state'), send_invite:chk('f-invite')};
+    city:val('f-city'), state:val('f-state'), country:val('f-country'), send_invite:chk('f-invite')};
   const j=await api('/api/console/practitioners',
     {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(j.error){flash(j.error,false);return;}
@@ -133,7 +134,7 @@ function section(title,rows){
 }
 
 function rowHtml(r){
-  const loc=[r.city,r.state].filter(Boolean).join(', ')||'—';
+  const loc=[r.city,r.state,(r.country&&r.country!=='US')?r.country:null].filter(Boolean).join(', ')||'—';
   return `<tr>
     <td><div class="name">${esc(r.name)}</div>
         <div class="sub">${esc(r.credentials||'—')} · ${esc(r.email)}</div></td>
@@ -155,7 +156,8 @@ function rowHtml(r){
         <div class="chk"><input type="checkbox" id="ws-${r.id}" ${r.wholesale_access?'checked':''}><label style="margin:0;color:var(--ink)">Wholesale access</label></div>
         <div><label>Classification</label><select id="cred-${r.id}">${credOptionsHtml(r.credentials)}</select></div>
         <div><label>City</label><input type="text" id="city-${r.id}" value="${esc(r.city||'')}"></div>
-        <div><label>State</label><input type="text" id="st-${r.id}" value="${esc(r.state||'')}"></div>
+        <div><label>State / province</label><input type="text" id="st-${r.id}" value="${esc(r.state||'')}"></div>
+        <div><label>Country (ISO-2)</label><input type="text" id="cty-${r.id}" value="${esc(r.country||'US')}" maxlength="2"></div>
       </div>
       <div style="margin-top:10px">
         <button class="sm" onclick="saveLevelAccess('${r.id}')">Save level & access</button>
@@ -178,7 +180,8 @@ async function saveLocation(id){
   const j=await api('/api/console/practitioners/'+id+'/edit',{method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({action:'location',city:document.getElementById('city-'+id).value.trim(),
-      state:document.getElementById('st-'+id).value.trim()})});
+      state:document.getElementById('st-'+id).value.trim(),
+      country:document.getElementById('cty-'+id).value.trim()})});
   if(j.error){flash(j.error,false);return;} flash('Location saved & geocoded.',true); load();
 }
 async function saveCredentials(id){

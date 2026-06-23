@@ -70,7 +70,8 @@ def test_create_calls_create_and_invite(client, monkeypatch):
                         lambda clean, **kw: captured.update({"clean": clean}) or "pid-1")
     geo = {}
     monkeypatch.setattr(pa, "geocode_and_set_location",
-                        lambda pid, city, state: geo.update({"pid": pid, "city": city}))
+                        lambda pid, city, state, country=None: geo.update(
+                            {"pid": pid, "city": city, "country": country}))
     sent = {}
     monkeypatch.setattr(appmod, "_send_practitioner_magic_link",
                         lambda *a, **k: sent.update({"called": True, "args": a}))
@@ -85,6 +86,7 @@ def test_create_calls_create_and_invite(client, monkeypatch):
     assert captured["clean"]["wholesale_access"] is True
     assert captured["clean"]["level"] == 0
     assert geo["city"] == "Austin"
+    assert geo["country"] == "US"
     assert sent.get("called") is True
 
 
@@ -132,12 +134,12 @@ def test_edit_location_dispatch(client, monkeypatch):
     from dashboard import practitioner_admin as pa
     calls = {}
     monkeypatch.setattr(pa, "geocode_and_set_location",
-                        lambda pid, city, state: calls.update(
-                            {"pid": pid, "city": city, "state": state}))
+                        lambda pid, city, state, country=None: calls.update(
+                            {"pid": pid, "city": city, "state": state, "country": country}))
     r = c.post("/api/console/practitioners/p9/edit?key=" + _key(appmod),
-               json={"action": "location", "city": "Denver", "state": "CO"})
+               json={"action": "location", "city": "Mexico City", "state": "", "country": "MX"})
     assert r.status_code == 200
-    assert calls == {"pid": "p9", "city": "Denver", "state": "CO"}
+    assert calls == {"pid": "p9", "city": "Mexico City", "state": "", "country": "MX"}
 
 
 def test_edit_resend_invite_dispatch(client, monkeypatch):

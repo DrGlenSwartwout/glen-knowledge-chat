@@ -11669,7 +11669,7 @@ def api_console_practitioners_create():
     pid = _pa.create_or_update_practitioner(clean)
     if clean["city"] or clean["state"]:
         try:
-            _pa.geocode_and_set_location(pid, clean["city"], clean["state"])
+            _pa.geocode_and_set_location(pid, clean["city"], clean["state"], clean["country"])
         except Exception as e:
             print(f"[console-practitioners] geocode failed for {pid}: {e!r}", flush=True)
     sent = False
@@ -11703,7 +11703,8 @@ def api_console_practitioners_edit(pid):
         _pa.set_finder_visibility(pid, bool(body.get("show")))
         return jsonify({"ok": True})
     if action == "location":
-        _pa.geocode_and_set_location(pid, body.get("city"), body.get("state"))
+        _pa.geocode_and_set_location(pid, body.get("city"), body.get("state"),
+                                     body.get("country"))
         return jsonify({"ok": True})
     if action == "resend_invite":
         email = (body.get("email") or "").strip()
