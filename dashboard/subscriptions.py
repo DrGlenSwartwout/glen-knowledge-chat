@@ -117,9 +117,9 @@ def create(cx, *, email: str, stripe_customer_id: str,
     """Insert a new active subscription and return its id.
 
     order_count is the number of orders ALREADY placed on this subscription. At
-    sign-up the setup checkout charges the 1st order (at tier_for(0)=5%), so the
+    sign-up the setup checkout charges the 1st order (at tier_for(0)=3%), so the
     subscription is created with order_count=1 — that way the first SCHEDULED charge
-    reads tier_for(1)=10% (the 2nd order), giving the intended 5%/10%/15% curve.
+    reads tier_for(1)=5% (the 2nd active month), climbing the 3→25% loyalty curve.
     """
     now = _now_iso()
     cur = cx.execute(
