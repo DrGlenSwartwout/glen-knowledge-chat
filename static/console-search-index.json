@@ -41,6 +41,7 @@
   { "title": "Shared Resources", "page": "Resources", "url": "https://drive.google.com/drive/folders/1_ocXPhFB97d2tMdi7HxMWEUsZD7IW_f0", "external": true, "keywords": ["google drive", "shaira", "docs", "files", "sops", "shared resources"] },
 
   { "title": "Biofield reveals", "page": "Biofield", "url": "/console/biofield-reveals", "keywords": ["biofield", "reveal", "reveals", "remedy", "remedies", "approve", "edit", "drafts", "top match", "interpretation", "pending"] },
+  { "title": "Biofield Intake (local portal)", "page": "Biofield", "url": "/console/biofield-intake", "keywords": ["biofield", "intake", "testing", "voice", "narrate", "causal chain", "authoring", "local", "portal", "deepgram", "vegatest", "muscle test"] },
 
   { "title": "Remedy meanings", "page": "Biofield", "url": "/console/remedy-meanings", "keywords": ["remedy", "remedies", "meaning", "meanings", "canonical", "biofield", "curate", "propose", "functions"] },
 

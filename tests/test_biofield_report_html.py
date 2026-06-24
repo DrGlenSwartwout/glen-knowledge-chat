@@ -69,6 +69,13 @@ def test_report_html_has_video_section():
     assert "/test/10/audio" in html               # make-audio endpoint
 
 
+def test_pages_have_console_style_header():
+    html = render_list_html([])
+    assert "opbar" in html and "GLEN" in html        # console-style top bar
+    assert "Biofield Intake" in html
+    assert "/console" in html                          # back-to-console link
+
+
 def test_list_html_links_each_test():
     html = render_list_html([
         {"test_id": "10", "name": "Lewis Zardo", "email": "lz@x.com",

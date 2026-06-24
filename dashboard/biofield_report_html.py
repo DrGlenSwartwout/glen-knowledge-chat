@@ -4,13 +4,28 @@ Pure string builders so they're unit-testable without Flask. ALL dynamic values
 (remedy names, timing, client names) come from FileMaker free-text fields and are
 HTML-escaped.
 """
+import os
 from html import escape as _e
+
+# Where the deployed console lives (for the "Back to Console" link in the header bar).
+CONSOLE_BASE = os.environ.get("CONSOLE_BASE_URL", "https://illtowell.com").rstrip("/")
 
 _STYLE = """
 <style>
- :root{--bg:#0f1115;--card:#171a21;--line:#2a2f3a;--fg:#e8ebf0;--muted:#9aa3b2;--accent:#c9a23a;--ok:#3fb968}
+ :root{--bg:#0f1115;--card:#171a21;--line:#2a2f3a;--fg:#e8ebf0;--muted:#9aa3b2;--accent:#d4a843;--ok:#3fb968}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);
    font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif}
+ .opbar{position:sticky;top:0;z-index:9999;display:flex;align-items:center;background:#0a0a0f;
+   border-bottom:1px solid #2a2a35;padding:0 14px;height:40px;font:13px -apple-system,Segoe UI,sans-serif;
+   box-shadow:0 1px 0 rgba(0,0,0,.4),0 4px 12px rgba(0,0,0,.25)}
+ .opbrand{color:#9a9384;letter-spacing:.18em;text-transform:uppercase;font-size:10px;font-weight:600;
+   margin-right:14px;font-family:ui-monospace,Menlo,Consolas,monospace}
+ .opbrand b{color:#e6b800;font-weight:700}
+ .opsub{color:#d4a843;letter-spacing:.14em;text-transform:uppercase;font-size:10px;font-weight:700}
+ .opspacer{flex:1}
+ .opbar a.optab{display:inline-flex;align-items:center;height:100%;padding:0 13px;color:#9aa0b4;
+   text-decoration:none;border-bottom:2px solid transparent}
+ .opbar a.optab:hover{color:#e6edf3;background:rgba(255,255,255,.03)}
  .wrap{max-width:1040px;margin:0 auto;padding:22px}
  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
  h1{font-size:21px;margin:0 0 2px} h2{font-size:15px;color:var(--muted);margin:22px 0 8px;
@@ -74,11 +89,18 @@ async function vaudio(){stat('Rendering audio in your voice\\u2026 (~10-30s)');a
 </script>"""
 
 
+def _bar():
+    return ("<nav class=opbar><span class=opbrand>GLEN <b>&middot;</b> OPS</span>"
+            "<span class=opsub>Biofield Intake</span><span class=opspacer></span>"
+            "<a class=optab href='/'>All tests</a>"
+            f"<a class=optab href='{CONSOLE_BASE}/console'>&larr; Console</a></nav>")
+
+
 def _page(title, body):
     return (f"<!doctype html><html lang=en><head><meta charset=utf-8>"
             f"<meta name=viewport content='width=device-width,initial-scale=1'>"
             f"<title>{_e(title)}</title>{_STYLE}</head>"
-            f"<body><div class=wrap>{body}</div></body></html>")
+            f"<body>{_bar()}<div class=wrap>{body}</div></body></html>")
 
 
 def render_report_html(report, notes="", narrative="", video_script=""):

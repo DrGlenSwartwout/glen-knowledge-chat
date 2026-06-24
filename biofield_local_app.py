@@ -128,6 +128,28 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     with sqlite3.connect(db_path) as _cx:
         seed_dimensions(_cx)
 
+    # Same console key as the rest of Glen's console (when CONSOLE_SECRET is set, e.g.
+    # under `doppler run`). The launcher passes ?key=; we cookie it so same-origin
+    # fetches stay authed. No CONSOLE_SECRET -> open (e.g. bare local dev / tests).
+    _secret = os.environ.get("CONSOLE_SECRET", "")
+
+    @app.before_request
+    def _console_gate():
+        if not _secret:
+            return None
+        key = (request.args.get("key", "") or request.cookies.get("rm_biofield_key", "")
+               or request.headers.get("X-Console-Key", ""))
+        if key != _secret:
+            return Response("Unauthorized — open this from the console 'Biofield Intake' link.",
+                            status=401, mimetype="text/plain")
+        return None
+
+    @app.after_request
+    def _console_cookie(resp):
+        if _secret and request.args.get("key", "") == _secret:
+            resp.set_cookie("rm_biofield_key", _secret, httponly=True, samesite="Lax")
+        return resp
+
     @app.route("/")
     def index():
         q = request.args.get("q", "")
