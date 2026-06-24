@@ -6899,6 +6899,31 @@ def _grant_membership(cx, email, days, source):
     return mid
 
 
+MEMBERSHIP_GRANT_GRACE_DAYS = 3
+
+
+def _extend_membership_grant(cx, email, until_iso, source="membership_renewal"):
+    """Ensure the member's access grant reaches at least `until_iso`. The access
+    gate reads MAX(expires_at), so we insert a row only when no existing grant
+    already reaches that far (monotonic / idempotent — never shortens access)."""
+    if not (email and until_iso):
+        return
+    row = cx.execute("SELECT MAX(expires_at) FROM memberships WHERE email=?", (email,)).fetchone()
+    have = row[0] if row else None
+    if have:
+        try:
+            if datetime.fromisoformat(have.rstrip("Z")) >= datetime.fromisoformat(until_iso.rstrip("Z")):
+                return
+        except Exception:
+            if have >= until_iso:   # fall back to string compare on unparseable timestamps
+                return
+    import uuid as _uuid
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (str(_uuid.uuid4()), email, datetime.utcnow().isoformat() + "Z", until_iso, source, source, "", ""))
+
+
 def _studio_credit_grant_and_notify(cx, email, days):
     """Grant a studio-credit comp membership, log the journey event, and email the
     magic link. Returns {membership_id, magic_link_url}. Shared by the console
@@ -19279,6 +19304,13 @@ def cron_charge_subscriptions():
                         _subs.reset_failed_count(cx, sid)
                         updated = _subs.get(cx, sid)
                         try:
+                            if updated and updated.get("next_charge_date"):
+                                _until = (datetime.fromisoformat(updated["next_charge_date"])
+                                          + timedelta(days=MEMBERSHIP_GRANT_GRACE_DAYS)).isoformat() + "Z"
+                                _extend_membership_grant(cx, sub["email"], _until, "membership_renewal")
+                        except Exception as _ge:
+                            print(f"[sub-cron] grant-extend sub={sid}: {_ge!r}", flush=True)
+                        try:
                             _send_subscription_email(sub["email"], "receipt", {
                                 "total_cents": amount_cents, "invoice_id": inv_id,
                                 "kind": "membership",
@@ -19294,7 +19326,9 @@ def cron_charge_subscriptions():
                 items = sub.get("items") or []
                 ship = sub.get("ship_address") or {}
                 order_count = sub.get("order_count", 0)
-                tier_pct = _subs.tier_for(order_count)
+                # Member loyalty discount applies only while paid-through; the
+                # tier VALUE is the earned tier_for(order_count) (held, not reset).
+                tier_pct = _subs.tier_for(order_count) if _active_membership_for_email(sub["email"]) else 0
 
                 # Price the order
                 try:
@@ -19407,6 +19441,31 @@ def cron_charge_subscriptions():
         "notified": notified,
         "dry_run": dry_run,
     })
+
+
+@app.route("/api/cron/backfill-membership-grants", methods=["POST"])
+def cron_backfill_membership_grants():
+    key = request.headers.get("X-Cron-Secret", "")
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    dry = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+    from dashboard import subscriptions as _subs
+    fixed = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _subs.init_subscriptions_table(cx); _subs.migrate_add_membership_columns(cx)
+        rows = cx.execute("SELECT DISTINCT email, next_charge_date FROM subscriptions "
+                          "WHERE kind='membership' AND status='active'").fetchall()
+        for r in rows:
+            until = (datetime.fromisoformat(r["next_charge_date"]) + timedelta(days=MEMBERSHIP_GRANT_GRACE_DAYS)).isoformat() + "Z"
+            cur = cx.execute("SELECT MAX(expires_at) FROM memberships WHERE email=?", (r["email"],)).fetchone()
+            have = cur[0] if cur else None
+            if not (have and have >= until):
+                fixed += 1
+                if not dry:
+                    _extend_membership_grant(cx, r["email"], until, "backfill_2026_06")
+    return jsonify({"ok": True, "fixed": fixed, "dry_run": dry})
 
 
 # ── One-time Gmail token upload (helper for first-time setup on Render) ───────
