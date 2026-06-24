@@ -109,6 +109,24 @@ def test_resolve_remedy_name_is_case_insensitive(tmp_path):
     assert resolve_remedy_name(cx, "sobopla") == "Sobopla"                   # casing corrected to canonical
 
 
+def test_resolve_remedy_name_matches_distinctive_token_in_longer_name(tmp_path):
+    # 'Sobopla' is a distinctive token inside a long catalog name; whole-string
+    # fuzzy can't catch it, but a unique token match should.
+    cx = _cx(tmp_path)
+    cx.execute("CREATE TABLE fmp_snap_products(id_pk TEXT,product_name TEXT,dosage TEXT,dosage_freq TEXT,dosage_timing TEXT)")
+    cx.executemany("INSERT INTO fmp_snap_products VALUES(?,?,?,?,?)", [
+        ("1", "Perelandra Nature Program Essence Sobopla in Terrain Restore", "", "", ""),
+        ("2", "Perelandra Rose Essence in Terrain Restore", "", "", ""),
+        ("3", "Microbiome", "", "", "")])
+    cx.commit()
+    full = "Perelandra Nature Program Essence Sobopla in Terrain Restore"
+    assert resolve_remedy_name(cx, "sobopla") == full
+    # spoken with the Terrain Restore suffix must not double the suffix
+    assert resolve_remedy_name(cx, "Sobopla in Terrain Restore") == full
+    # a common token shared by several products is ambiguous -> no token match
+    assert resolve_remedy_name(cx, "essence") == "Essence"
+
+
 def test_resolve_remedy_name_title_cases_when_unmatched(tmp_path):
     # No catalog / no close match -> at least clean up the casing.
     cx = _cx(tmp_path)  # no fmp_snap_products table at all

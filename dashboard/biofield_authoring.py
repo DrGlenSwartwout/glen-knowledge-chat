@@ -136,6 +136,24 @@ def _best_match(spoken, names, cutoff):
     return by_low[hit[0]] if hit else None
 
 
+def _token_match(spoken, names, cutoff):
+    """Match a distinctive spoken token (e.g. 'Sobopla') to the catalog product whose
+    name CONTAINS it as a word — for cases where the clinician says only the unique
+    part of a long product name. Returns the canonical name only when exactly ONE
+    product qualifies, so a common shared word ('Essence') stays ambiguous and is
+    left to the Title-Case fallback. Single distinctive token only."""
+    sp = (spoken or "").strip().lower()
+    if len(sp) < 5 or " " in sp:               # too short / multi-word -> not a distinctive token
+        return None
+    hits = set()
+    for n in names:
+        for t in re.findall(r"[A-Za-z0-9]+", n.lower()):
+            if t == sp or (len(t) >= 5 and difflib.SequenceMatcher(None, sp, t).ratio() >= cutoff):
+                hits.add(n)
+                break
+    return next(iter(hits)) if len(hits) == 1 else None
+
+
 def resolve_remedy_name(cx, spoken, cutoff=0.82):
     """Best-effort auto-correct a (possibly ASR-mangled) remedy name to the closest
     catalog product (case-insensitive). Preserves an ' in Terrain Restore' suffix.
@@ -153,8 +171,12 @@ def resolve_remedy_name(cx, spoken, cutoff=0.82):
         names = [r[0] for r in cx.execute(
             "SELECT DISTINCT product_name FROM fmp_snap_products "
             "WHERE TRIM(COALESCE(product_name,''))<>''").fetchall()]
-        match = _best_match(core, names, cutoff)
+        # whole-string fuzzy first, then a distinctive-token match for long names.
+        match = _best_match(core, names, cutoff) or _token_match(core, names, cutoff)
         if match:
+            # Don't double the suffix when the matched name already carries it.
+            if suffix and match.lower().endswith("in terrain restore"):
+                return match
             return match + suffix
     return _title_case_name(core) + suffix
 
