@@ -28,8 +28,29 @@ _STYLE = """
    border-radius:8px;padding:8px 10px;width:280px;font:inherit}
  .pill{display:inline-block;background:#0c0e12;border:1px solid var(--line);border-radius:999px;
    padding:1px 8px;font-size:12px;color:var(--muted)}
+ textarea{width:100%;background:#0c0e12;color:var(--fg);border:1px solid var(--line);
+   border-radius:8px;padding:9px;font:inherit;margin:4px 0 6px}
+ label{display:block;margin-top:8px;color:var(--muted);font-size:13px}
+ .btn{background:var(--accent);color:#0c0e12;border:0;border-radius:8px;padding:7px 13px;
+   font:inherit;font-weight:600;cursor:pointer}
+ .btnrow{margin:6px 0 14px;display:flex;gap:8px;align-items:center}
 </style>
 """
+
+_NARR_JS = """
+<script>
+function stat(t){document.getElementById('stat').textContent=t}
+async function post(p,b){const r=await fetch(p,{method:'POST',
+ headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return r.json()}
+async function saveNotes(){await post('/test/__TID__/notes',
+ {notes:document.getElementById('notes').value});stat('Notes saved.')}
+async function generate(){stat('Generating\\u2026');
+ const r=await post('/test/__TID__/generate',{notes:document.getElementById('notes').value});
+ document.getElementById('narr').value=r.narrative||('['+(r.error||'error')+']');
+ stat(r.error?('Error: '+r.error):'Generated \\u2014 review, edit, then Save.')}
+async function saveNarr(){await post('/test/__TID__/narrative',
+ {narrative:document.getElementById('narr').value});stat('Narrative saved.')}
+</script>"""
 
 
 def _page(title, body):
@@ -39,7 +60,7 @@ def _page(title, body):
             f"<body><div class=wrap>{body}</div></body></html>")
 
 
-def render_report_html(report):
+def render_report_html(report, notes="", narrative=""):
     c = report.get("client") or {}
     name = _e(c.get("name") or "(unknown)")
     email = _e(c.get("email") or "")
@@ -91,7 +112,24 @@ def render_report_html(report):
     schedule = ("<h2>Remedy Schedule</h2>"
                 "<table><tr><th>When</th><th>Take</th></tr>" + srows + "</table>")
 
-    return _page(f"{name} — Biofield Analysis", head + chain + schedule)
+    # Narrative + verbal notes (Increment 2)
+    tid = _e(report.get("test_id") or "")
+    narr = (
+        "<h2>Narrative</h2>"
+        "<p class=sub>Add your verbal notes, then generate the warm narrative "
+        "(a draft for your review).</p>"
+        "<label for=notes>Verbal notes</label>"
+        f"<textarea id=notes rows=4>{_e(notes)}</textarea>"
+        "<div class=btnrow>"
+        "<button class=btn onclick=saveNotes()>Save notes</button>"
+        "<button class=btn onclick=generate()>Generate narrative</button>"
+        "<span id=stat class=food></span></div>"
+        "<label for=narr>Narrative (editable draft)</label>"
+        f"<textarea id=narr rows=16>{_e(narrative)}</textarea>"
+        "<div class=btnrow><button class=btn onclick=saveNarr()>Save narrative</button></div>"
+        + _NARR_JS.replace("__TID__", tid))
+
+    return _page(f"{name} — Biofield Analysis", head + chain + schedule + narr)
 
 
 def render_list_html(tests, q=""):

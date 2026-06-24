@@ -24,13 +24,27 @@ from flask import Flask, Response, request
 
 from dashboard.biofield_report import causal_chain_report, list_tests
 from dashboard.biofield_report_html import render_list_html, render_report_html
+from dashboard.biofield_narrative import (
+    generate_narrative, get_narrative, get_notes, save_narrative, save_notes)
+
+
+def openai_complete(system, user):
+    """Default narrative LLM. Needs OPENAI_API_KEY in env (run via `doppler run`)."""
+    import openai
+    model = os.environ.get("BIOFIELD_NARRATIVE_MODEL", "gpt-4o")
+    resp = openai.OpenAI().chat.completions.create(
+        model=model,
+        messages=[{"role": "system", "content": system},
+                  {"role": "user", "content": user}])
+    return resp.choices[0].message.content
 
 DEFAULT_DB = os.environ.get(
     "BIOFIELD_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_log.db"))
 
 
-def create_app(db_path=DEFAULT_DB):
+def create_app(db_path=DEFAULT_DB, complete=None):
     app = Flask(__name__)
+    complete = complete or openai_complete
 
     @app.route("/")
     def index():
@@ -41,8 +55,34 @@ def create_app(db_path=DEFAULT_DB):
     @app.route("/test/<test_id>")
     def report(test_id):
         with sqlite3.connect(db_path) as cx:
-            return Response(render_report_html(causal_chain_report(cx, test_id)),
-                            mimetype="text/html")
+            rep = causal_chain_report(cx, test_id)
+            notes, narrative = get_notes(cx, test_id), get_narrative(cx, test_id)
+        return Response(render_report_html(rep, notes, narrative), mimetype="text/html")
+
+    @app.route("/test/<test_id>/notes", methods=["POST"])
+    def notes_save(test_id):
+        with sqlite3.connect(db_path) as cx:
+            save_notes(cx, test_id, (request.get_json(silent=True) or {}).get("notes", ""))
+        return {"ok": True}
+
+    @app.route("/test/<test_id>/narrative", methods=["POST"])
+    def narrative_save(test_id):
+        with sqlite3.connect(db_path) as cx:
+            save_narrative(cx, test_id, (request.get_json(silent=True) or {}).get("narrative", ""))
+        return {"ok": True}
+
+    @app.route("/test/<test_id>/generate", methods=["POST"])
+    def narrative_generate(test_id):
+        notes = (request.get_json(silent=True) or {}).get("notes", "")
+        with sqlite3.connect(db_path) as cx:
+            save_notes(cx, test_id, notes)
+            rep = causal_chain_report(cx, test_id)
+            try:
+                text = generate_narrative(rep, notes, complete)
+            except Exception as e:  # no API key / network / model error
+                return {"error": str(e)[:200]}
+            save_narrative(cx, test_id, text)
+        return {"narrative": text}
 
     return app
 

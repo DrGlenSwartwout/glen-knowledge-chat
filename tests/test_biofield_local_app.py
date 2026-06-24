@@ -38,3 +38,21 @@ def test_report_page_renders(tmp_path):
     r = client.get("/test/10")
     assert r.status_code == 200
     assert b"Sterol Max" in r.data and b"Causal Chain Report" in r.data
+
+
+def test_notes_save_generate_and_show(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    _seed(db)
+    seen = {}
+
+    def fake(system, user):
+        seen["user"] = user
+        return "Aloha Lewis,\n\nYour body identified the right starting points."
+
+    client = create_app(db, complete=fake).test_client()
+    assert client.post("/test/10/notes", json={"notes": "mercury hx"}).status_code == 200
+    assert b"mercury hx" in client.get("/test/10").data            # notes prefilled
+    g = client.post("/test/10/generate", json={"notes": "mercury hx"}).get_json()
+    assert g["narrative"].startswith("Aloha Lewis")
+    assert "mercury hx" in seen["user"]                            # notes reached the model
+    assert b"Aloha Lewis" in client.get("/test/10").data           # saved + shown
