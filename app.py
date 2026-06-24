@@ -12382,6 +12382,25 @@ def begin_founding_reserve():
     return jsonify({"ok": True, "stripe_url": sess.get("url") or ""})
 
 
+@app.route("/begin/founding/status/<slug>")
+def begin_founding_status(slug):
+    """Live counter for a founding launch: remaining spots, open state, cap, batch_label.
+    The product page polls this to refresh the counter and flip to a close-out state."""
+    from dashboard import founding as _founding
+    launch = _founding.get_launch(slug)
+    if not launch:
+        return jsonify({"error": "no_founding_launch"}), 404
+    today = _now_utc().strftime("%Y-%m-%d")
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        return jsonify({
+            "open": _founding.is_open(cx, slug, now_iso=today),
+            "cap": int(launch.get("cap", 0)),
+            "remaining": _founding.remaining(cx, slug),
+            "batch_label": launch.get("batch_label", ""),
+        })
+
+
 # ── Founding charge-on-ship ───────────────────────────────────────────────────
 
 def _ship_founding_reservation(cx, sub):
