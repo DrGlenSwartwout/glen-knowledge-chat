@@ -1,0 +1,287 @@
+"""HTML rendering for the local Biofield Analysis viewer (Glen's Mac only).
+
+Pure string builders so they're unit-testable without Flask. ALL dynamic values
+(remedy names, timing, client names) come from FileMaker free-text fields and are
+HTML-escaped.
+"""
+from html import escape as _e
+
+_STYLE = """
+<style>
+ :root{--bg:#0f1115;--card:#171a21;--line:#2a2f3a;--fg:#e8ebf0;--muted:#9aa3b2;--accent:#c9a23a;--ok:#3fb968}
+ *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);
+   font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif}
+ .wrap{max-width:1040px;margin:0 auto;padding:22px}
+ a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+ h1{font-size:21px;margin:0 0 2px} h2{font-size:15px;color:var(--muted);margin:22px 0 8px;
+   text-transform:uppercase;letter-spacing:.04em}
+ .sub{color:var(--muted);margin:0 0 16px}
+ table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
+   border-radius:10px;overflow:hidden}
+ th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:14px}
+ th{color:var(--muted);font-weight:600;background:#13161c}
+ tr:last-child td{border-bottom:0}
+ .lyr{color:var(--accent);font-weight:700;white-space:nowrap}
+ .slot{font-weight:600;color:var(--accent);white-space:nowrap;width:130px}
+ .food{color:var(--muted);font-size:12px}
+ input[type=search]{background:#0c0e12;color:var(--fg);border:1px solid var(--line);
+   border-radius:8px;padding:8px 10px;width:280px;font:inherit}
+ .pill{display:inline-block;background:#0c0e12;border:1px solid var(--line);border-radius:999px;
+   padding:1px 8px;font-size:12px;color:var(--muted)}
+ textarea{width:100%;background:#0c0e12;color:var(--fg);border:1px solid var(--line);
+   border-radius:8px;padding:9px;font:inherit;margin:4px 0 6px}
+ label{display:block;margin-top:8px;color:var(--muted);font-size:13px}
+ .btn{background:var(--accent);color:#0c0e12;border:0;border-radius:8px;padding:7px 13px;
+   font:inherit;font-weight:600;cursor:pointer}
+ .btnrow{margin:6px 0 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+ .chip{background:#0c0e12;border:1px solid var(--line);color:var(--accent);border-radius:999px;
+   padding:2px 9px;font:inherit;font-size:12px;cursor:pointer}
+ .ghost{background:#13161c;color:var(--fg);border:1px solid var(--line)}
+ td input{width:100%;background:#0c0e12;color:var(--fg);border:1px solid var(--line);
+   border-radius:6px;padding:5px;font:inherit;font-size:13px}
+ td input.lyr{width:46px;text-align:center}
+ td{white-space:nowrap}
+</style>
+"""
+
+_NARR_JS = """
+<script>
+function stat(t){document.getElementById('stat').textContent=t}
+async function post(p,b){const r=await fetch(p,{method:'POST',
+ headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return r.json()}
+async function saveNotes(){await post('/test/__TID__/notes',
+ {notes:document.getElementById('notes').value});stat('Notes saved.')}
+async function generate(){stat('Generating\\u2026');
+ const r=await post('/test/__TID__/generate',{notes:document.getElementById('notes').value});
+ document.getElementById('narr').value=r.narrative||('['+(r.error||'error')+']');
+ stat(r.error?('Error: '+r.error):'Generated \\u2014 review, edit, then Save.')}
+async function saveNarr(){await post('/test/__TID__/narrative',
+ {narrative:document.getElementById('narr').value});stat('Narrative saved.')}
+async function vgen(){stat('Generating script\\u2026');
+ const r=await post('/test/__TID__/video-generate',{notes:document.getElementById('notes').value});
+ document.getElementById('vscript').value=r.script||('['+(r.error||'error')+']');
+ stat(r.error?('Error: '+r.error):'Script generated \\u2014 edit, then Save or Make audio.')}
+async function vsave(){await post('/test/__TID__/video-script',
+ {script:document.getElementById('vscript').value});stat('Script saved.')}
+async function vaudio(){stat('Rendering audio in your voice\\u2026 (~10-30s)');await vsave();
+ const r=await post('/test/__TID__/audio',{});
+ if(r.error){stat('Error: '+r.error);return}
+ document.getElementById('audiobox').innerHTML=
+  '<audio controls src=\\''+r.url+'\\'></audio> &nbsp; <a href=\\''+r.url+'\\' download>Download mp3</a>';
+ stat('Audio ready.')}
+</script>"""
+
+
+def _page(title, body):
+    return (f"<!doctype html><html lang=en><head><meta charset=utf-8>"
+            f"<meta name=viewport content='width=device-width,initial-scale=1'>"
+            f"<title>{_e(title)}</title>{_STYLE}</head>"
+            f"<body><div class=wrap>{body}</div></body></html>")
+
+
+def render_report_html(report, notes="", narrative="", video_script=""):
+    c = report.get("client") or {}
+    name = _e(c.get("name") or "(unknown)")
+    email = _e(c.get("email") or "")
+    date = _e(report.get("date") or "")
+    head = (f"<p><a href='/'>&larr; All tests</a></p>"
+            f"<h1>{name}</h1>"
+            f"<p class=sub>{email} &nbsp;&middot;&nbsp; {date} "
+            f"&nbsp;&middot;&nbsp; test {_e(report.get('test_id') or '')}</p>")
+
+    # Causal chain table
+    rows = ""
+    for l in report.get("layers") or []:
+        ln = l.get("layer")
+        rows += (
+            "<tr>"
+            f"<td class=lyr>{_e(str(ln)) if ln is not None else '&middot;'}</td>"
+            f"<td>{_e(l.get('head') or '')}</td>"
+            f"<td>{_e(l.get('most_affected') or '')}</td>"
+            f"<td>{_e(l.get('remedy') or '')}</td>"
+            f"<td>{_e(l.get('dosage') or '')}</td>"
+            f"<td>{_e(l.get('frequency') or '')}</td>"
+            f"<td>{_e(l.get('timing') or '')}</td>"
+            "</tr>")
+    chain = ("<h2>Causal Chain Report</h2>"
+             "<table><tr><th>Layer</th><th>Head of Chain</th><th>Most Affected</th>"
+             "<th>Remedy</th><th>Dosage</th><th>Frequency</th><th>Timing</th></tr>"
+             f"{rows}</table>")
+
+    # Schedule grid
+    sched = report.get("schedule") or {}
+    entries = sched.get("entries") or []
+    placed = [e for e in entries if not e.get("as_directed")]
+    srows = ""
+    for slot in sched.get("slots") or []:
+        here = [e for e in placed if slot in (e.get("slots") or [])]
+        if not here:
+            continue
+        cells = "; ".join(
+            f"{_e(e.get('name') or '')} <span class=food>({_e(e.get('dosage') or '')}"
+            + (f", {_e(e.get('food'))}" if e.get('food') else "") + ")</span>"
+            for e in here)
+        srows += f"<tr><td class=slot>{_e(slot)}</td><td>{cells}</td></tr>"
+    asdir = [e for e in entries if e.get("as_directed")]
+    if asdir:
+        cells = "; ".join(
+            f"{_e(e.get('name') or '')} <span class=food>({_e(e.get('timing') or 'as directed')})</span>"
+            for e in asdir)
+        srows += f"<tr><td class=slot>As directed</td><td>{cells}</td></tr>"
+    schedule = ("<h2>Remedy Schedule</h2>"
+                "<table><tr><th>When</th><th>Take</th></tr>" + srows + "</table>")
+
+    # Narrative + verbal notes (Increment 2)
+    tid = _e(report.get("test_id") or "")
+    narr = (
+        "<h2>Narrative</h2>"
+        "<p class=sub>Add your verbal notes, then generate the warm narrative "
+        "(a draft for your review).</p>"
+        "<label for=notes>Verbal notes</label>"
+        f"<textarea id=notes rows=4>{_e(notes)}</textarea>"
+        "<div class=btnrow>"
+        "<button class=btn onclick=saveNotes()>Save notes</button>"
+        "<button class=btn onclick=generate()>Generate narrative</button>"
+        "<span id=stat class=food></span></div>"
+        "<label for=narr>Narrative (editable draft)</label>"
+        f"<textarea id=narr rows=16>{_e(narrative)}</textarea>"
+        "<div class=btnrow><button class=btn onclick=saveNarr()>Save narrative</button></div>"
+        + _NARR_JS.replace("__TID__", tid))
+
+    # Walkthrough video — short spoken script + ElevenLabs audio (Increment 3)
+    vid = (
+        "<h2>Walkthrough video (your voice)</h2>"
+        "<p class=sub>Generate a short spoken script, then render it as audio in your "
+        "ElevenLabs voice.</p>"
+        "<div class=btnrow>"
+        "<button class=btn onclick=vgen()>Generate script</button>"
+        "<button class=btn onclick=vsave()>Save script</button>"
+        "<button class=btn onclick=vaudio()>Make audio</button></div>"
+        f"<textarea id=vscript rows=6>{_e(video_script)}</textarea>"
+        "<div id=audiobox class=btnrow></div>")
+
+    return _page(f"{name} — Biofield Analysis", head + chain + schedule + narr + vid)
+
+
+_AUTHOR_JS = """
+<script>
+function val(id){var e=document.getElementById(id);return e?e.value:''}
+function set(id,v){var e=document.getElementById(id);if(e)e.value=v}
+function astat(t){document.getElementById('astat').textContent=t}
+function opt(v){return '<option value="'+String(v).replace(/"/g,'&quot;')+'">'}
+async function post(p,b){const r=await fetch(p,{method:'POST',
+ headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return r.json()}
+function rowVals(p){return {layer:val(p+'_layer'),head:val(p+'_head'),most_affected:val(p+'_most'),
+ remedy:val(p+'_remedy'),dosage:val(p+'_dosage'),frequency:val(p+'_frequency'),timing:val(p+'_timing')}}
+async function saveHeader(){await post('/author/__TID__/header',
+ {name:val('h_name'),email:val('h_email'),date:val('h_date')});astat('Header saved.')}
+async function addRow(){var b=rowVals('new');if(!b.head&&!b.remedy){astat('Enter a stress and a remedy.');return}
+ await post('/author/__TID__/row',b);location.reload()}
+async function saveRow(rid){await post('/author/__TID__/row/'+rid,rowVals('r'+rid));astat('Row saved.')}
+async function delRow(rid){if(!confirm('Delete this row?'))return;
+ await post('/author/__TID__/row/'+rid+'/delete',{});location.reload()}
+async function fillDose(p){var n=val(p+'_remedy');if(!n)return;
+ const r=await (await fetch('/api/dosing?name='+encodeURIComponent(n))).json();
+ if(r.dosage)set(p+'_dosage',r.dosage);if(r.frequency)set(p+'_frequency',r.frequency);
+ if(r.timing)set(p+'_timing',r.timing);astat('Dosing filled from catalog.')}
+async function suggest(p){var s=val(p+'_head');var box=document.getElementById(p+'_sug');box.textContent='';
+ if(!s){astat('Enter a stress first.');return}
+ const r=await (await fetch('/api/suggest?stress='+encodeURIComponent(s))).json();var arr=r.suggestions||[];
+ if(!arr.length){box.textContent='no history for that stress';return}
+ box.appendChild(document.createTextNode('Used before: '));
+ arr.forEach(function(x){var b=document.createElement('button');b.type='button';b.className='chip';
+  b.textContent=x.remedy+' ('+x.count+')';b.onclick=function(){set(p+'_remedy',x.remedy);fillDose(p)};
+  box.appendChild(b);box.appendChild(document.createTextNode(' '))})}
+async function loadLists(){
+ try{const v=await (await fetch('/api/vocab?limit=500')).json();
+  document.getElementById('vocab').innerHTML=(v.vocab||[]).map(opt).join('')}catch(e){}
+ try{const c=await (await fetch('/api/catalog?limit=800')).json();
+  document.getElementById('catalog').innerHTML=(c.catalog||[]).map(function(x){return opt(x.name||'')}).join('')}catch(e){}
+}
+loadLists();
+</script>"""
+
+
+def _row_inputs(p, l):
+    layer = "" if l.get("layer") is None else _e(str(l.get("layer")))
+    g = lambda k: _e(l.get(k) or "")
+    return (
+        f'<td><input id="{p}_layer" class="lyr" value="{layer}"></td>'
+        f'<td><input id="{p}_head" list="vocab" value="{g("head")}"></td>'
+        f'<td><input id="{p}_most" value="{g("most_affected")}"></td>'
+        f'<td><input id="{p}_remedy" list="catalog" value="{g("remedy")}"></td>'
+        f'<td><input id="{p}_dosage" value="{g("dosage")}"></td>'
+        f'<td><input id="{p}_frequency" value="{g("frequency")}"></td>'
+        f'<td><input id="{p}_timing" value="{g("timing")}"></td>')
+
+
+def render_author_html(report):
+    tid = _e(report.get("test_id") or "")
+    c = report.get("client") or {}
+    head = (f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
+            f"<a href='/test/{tid}'>View report &rarr;</a></p><h1>Edit Biofield Test</h1>")
+    hdr = (
+        "<div class=card>"
+        f"<label>Client name</label><input id=h_name value=\"{_e(c.get('name') or '')}\" style='width:280px'>"
+        f"<label>Email</label><input id=h_email value=\"{_e(c.get('email') or '')}\" style='width:280px'>"
+        f"<label>Date</label><input id=h_date value=\"{_e(report.get('date') or '')}\" style='width:160px'>"
+        "<div class=btnrow><button class=btn onclick=saveHeader()>Save header</button>"
+        "<span id=astat class=food></span></div></div>")
+    rows = ""
+    for l in report.get("layers") or []:
+        rid = _e(str(l.get("rid") or ""))
+        p = "r" + rid
+        rows += ("<tr>" + _row_inputs(p, l) +
+                 f"<td><button class=chip onclick=\"fillDose('{p}')\">dose</button> "
+                 f"<button class=chip onclick=\"suggest('{p}')\">uses</button></td>"
+                 f"<td><button class=btn onclick=\"saveRow('{rid}')\">Save</button> "
+                 f"<button class='btn ghost' onclick=\"delRow('{rid}')\">Del</button></td></tr>"
+                 f"<tr><td colspan=9><span id={p}_sug class=food></span></td></tr>")
+    addr = ("<tr>" + _row_inputs("new", {}) +
+            "<td><button class=chip onclick=\"fillDose('new')\">dose</button> "
+            "<button class=chip onclick=\"suggest('new')\">uses</button></td>"
+            "<td><button class=btn onclick=addRow()>Add row</button></td></tr>"
+            "<tr><td colspan=9><span id=new_sug class=food></span></td></tr>")
+    table = ("<h2>Causal chain</h2>"
+             "<p class=sub>Enter rows directly. Layer 1 = most recent/surface, higher = deeper root. "
+             "'dose' auto-fills from the catalog; 'uses' shows what you've used for that stress before.</p>"
+             "<table><tr><th>Layer</th><th>Head / Stress</th><th>Most Affected</th>"
+             "<th>Remedy</th><th>Dosage</th><th>Frequency</th><th>Timing</th><th></th><th></th></tr>"
+             + rows + addr + "</table>"
+             "<datalist id=vocab></datalist><datalist id=catalog></datalist>")
+    return _page("Edit Biofield Test", head + hdr + table + _AUTHOR_JS.replace("__TID__", tid))
+
+
+def render_list_html(tests, q="", authored=None):
+    authored = authored or []
+    arows = ""
+    for t in authored:
+        atid = _e(str(t.get("test_id") or ""))
+        arows += (f"<tr><td><a href='/author/{atid}'>{_e(t.get('name') or '(unnamed)')}</a> "
+                  f"<a class=food href='/test/{atid}'>(report)</a></td>"
+                  f"<td>{_e(t.get('email') or '')}</td><td>{_e(t.get('date') or '')}</td>"
+                  f"<td><span class=pill>{_e(str(t.get('layer_count') or 0))}</span></td></tr>")
+    asection = ("<h2>Your authored tests</h2>"
+                "<table><tr><th>Client</th><th>Email</th><th>Date</th><th>Remedies</th></tr>"
+                + (arows or "<tr><td colspan=4 class=food>None yet — click New test.</td></tr>")
+                + "</table>")
+    rows = ""
+    for t in tests or []:
+        rows += (
+            "<tr>"
+            f"<td><a href='/test/{_e(str(t.get('test_id') or ''))}'>{_e(t.get('name') or '(unknown)')}</a></td>"
+            f"<td>{_e(t.get('email') or '')}</td>"
+            f"<td>{_e(t.get('date') or '')}</td>"
+            f"<td><span class=pill>{_e(str(t.get('layer_count') or 0))}</span></td>"
+            "</tr>")
+    body = (
+        "<h1>Biofield Analysis</h1>"
+        "<p class=sub>Causal Chain Reports — local, from your FileMaker data and your own authored tests.</p>"
+        "<form method=post action='/author/new'><button class=btn type=submit>+ New test</button></form>"
+        + asection +
+        "<form method=get><input type=search name=q placeholder='Search FileMaker tests' "
+        f"value='{_e(q or '')}'></form>"
+        "<h2>FileMaker tests</h2>"
+        "<table><tr><th>Client</th><th>Email</th><th>Date</th><th>Remedies</th></tr>"
+        f"{rows}</table>")
+    return _page("Biofield Analysis", body)
