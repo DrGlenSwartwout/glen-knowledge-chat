@@ -20,3 +20,8 @@ def test_low_confidence_defaults_and_flags_for_review():
 def test_existing_bottle_type_is_preserved():
     m = build_mapping({"y": {"name": "Foo 15 ml Dropper", "bottle_type": "5ml"}})
     assert "y" not in m["assignments"]  # already set -> not reassigned
+
+def test_ambiguous_wide_mouth_goes_to_review():
+    m = build_mapping({"z": {"name": "Wide Mouth 100 ml", "description": ""}})
+    assert m["assignments"]["z"] == "default"
+    assert any(r["slug"] == "z" for r in m["review"])

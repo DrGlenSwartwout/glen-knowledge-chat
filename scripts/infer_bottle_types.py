@@ -19,7 +19,6 @@ def _text(p):
 def infer_bottle_type(product: dict):
     t = _text(product)
     has = lambda *ws: any(w in t for w in ws)
-    form = None
     if has("roll-on", "rollon", "roll on"):
         return ("30roll", 0.9 if has("30 ml", "30ml") else 0.7)
     if has("powder", "cosmetic", "30 g", "30g"):
@@ -38,7 +37,7 @@ def infer_bottle_type(product: dict):
     if has("capsule", "caps", "vcaps", "60 ct", "60ct", "30 capsules"):
         return ("30cap", 0.9 if has("100 ml", "100ml") else 0.7)
     if has("250 ml", "250ml", "wide-mouth", "wide mouth"):
-        return ("120cap", 0.9 if has("250 ml", "250ml") else 0.7)
+        return ("120cap", 0.9 if has("250 ml", "250ml") else 0.5)
     return ("default", 0.3)
 
 
@@ -72,7 +71,8 @@ def main(argv=None):
                     help="patch products.json (set bottle_type only where unset)")
     args = ap.parse_args(argv)
     path = _products_json_path()
-    doc = json.load(open(path))
+    with open(path) as f:
+        doc = json.load(f)
     products = doc.get("products", {})
     m = build_mapping(products)
     print(f"{len(m['assignments'])} products to assign; "
@@ -83,7 +83,8 @@ def main(argv=None):
     if args.write:
         for slug, t in m["assignments"].items():
             products[slug]["bottle_type"] = t
-        json.dump(doc, open(path, "w"), indent=2, ensure_ascii=False)
+        with open(path, "w") as f:
+            json.dump(doc, f, indent=2, ensure_ascii=False)
         print(f"Wrote {len(m['assignments'])} assignments to {path}")
     else:
         print("(dry run — pass --write to patch products.json)")
