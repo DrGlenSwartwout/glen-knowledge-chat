@@ -48,6 +48,20 @@ def test_update_and_delete_row(tmp_path):
     assert authored_report(cx, tid)["layers"] == []
 
 
+def test_authored_report_depth_match(tmp_path):
+    cx = _cx(tmp_path)
+    from dashboard.biofield_dimensions import seed_dimensions, tag, DEPTH_KEY
+    seed_dimensions(cx)
+    tid = create_test(cx, "J", "j@x.com", "2026-06-23")
+    rid = add_chain_row(cx, tid, 1, "Mercury", "Brain", "Binder", "1 cap", "daily", "with food")
+    tag(cx, "auth_stress", rid, DEPTH_KEY, 5)   # stress acts at the nucleus
+    tag(cx, "auth_remedy", rid, DEPTH_KEY, 1)   # remedy only reaches the gut
+    layer = authored_report(cx, tid)["layers"][0]
+    assert layer["stress_depth"] == 5 and layer["remedy_depth"] == 1
+    assert layer["depth_status"] == "shallow"
+    assert layer["depth_need"].lower().startswith("nucle")
+
+
 def test_update_header(tmp_path):
     cx = _cx(tmp_path)
     tid = create_test(cx, "J", "j@x.com", "2026-06-23")

@@ -101,3 +101,19 @@ def test_authoring_flow(tmp_path):
     assert client.post(f"/author/{tid}/row/{rid}/delete", json={}).status_code == 200
     cat = client.get("/api/catalog?q=x")
     assert cat.status_code == 200 and "catalog" in cat.get_json()
+
+
+def test_depth_match_flagged_in_report(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    _seed(db)
+    client = create_app(db).test_client()
+    tid = client.post("/author/new").headers["Location"].rstrip("/").rsplit("/", 1)[-1]
+    rid = client.post(f"/author/{tid}/row",
+                      json={"layer": "1", "head": "Mercury", "most_affected": "Brain",
+                            "remedy": "Gut Binder", "dosage": "1", "frequency": "daily",
+                            "timing": "with food"}).get_json()["rid"]
+    client.post(f"/author/{tid}/depth", json={"rid": rid, "side": "stress", "rank": 5})
+    client.post(f"/author/{tid}/depth", json={"rid": rid, "side": "remedy", "rank": 1})
+    assert b"may not reach" in client.get("/test/" + tid).data
+    ed = client.get("/author/" + tid)
+    assert b"Depth of penetration" in ed.data and b"Nucleoplasm" in ed.data

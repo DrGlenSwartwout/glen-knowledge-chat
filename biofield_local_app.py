@@ -32,6 +32,8 @@ from dashboard.biofield_authoring import (
     add_chain_row, authored_report, create_test, delete_chain_row, list_authored,
     remedy_catalog, remedy_dosing, stress_suggestions, stress_vocab,
     update_chain_row, update_header)
+from dashboard.biofield_dimensions import (
+    DEPTH_KEY, dimension_values, seed_dimensions, tag as dim_tag)
 
 AUDIO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "biofield-audio")
 
@@ -84,6 +86,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None):
     app = Flask(__name__)
     complete = complete or openai_complete
     tts = tts or elevenlabs_tts
+    with sqlite3.connect(db_path) as _cx:
+        seed_dimensions(_cx)
 
     @app.route("/")
     def index():
@@ -113,7 +117,18 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None):
     def author_edit(test_id):
         with sqlite3.connect(db_path) as cx:
             rep = authored_report(cx, test_id)
-        return Response(render_author_html(rep), mimetype="text/html")
+            dv = dimension_values(cx, DEPTH_KEY)
+        return Response(render_author_html(rep, dv), mimetype="text/html")
+
+    @app.route("/author/<test_id>/depth", methods=["POST"])
+    def author_depth(test_id):
+        d = request.get_json(silent=True) or {}
+        side = d.get("side")
+        if side not in ("stress", "remedy") or not d.get("rid"):
+            return {"error": "bad params"}
+        with sqlite3.connect(db_path) as cx:
+            dim_tag(cx, "auth_" + side, d.get("rid"), DEPTH_KEY, d.get("rank"))
+        return {"ok": True}
 
     @app.route("/author/<test_id>/header", methods=["POST"])
     def author_header(test_id):
