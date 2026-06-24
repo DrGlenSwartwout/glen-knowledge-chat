@@ -12367,6 +12367,72 @@ def begin_founding_reserve():
     return jsonify({"ok": True, "stripe_url": sess.get("url") or ""})
 
 
+# ── Founding charge-on-ship ───────────────────────────────────────────────────
+
+def _ship_founding_reservation(cx, sub):
+    """Charge the vaulted card for the founding bottle (charge-on-ship), ingest a
+    qualifying product order, and activate the autoship. Returns a result dict."""
+    from dashboard import subscriptions as _subs
+    items = sub.get("items") or []
+    ship = sub.get("ship_address") or {}
+    pc = _price_cart(items, ship, subscriber_tier_pct=None)
+    cust = qb.find_or_create_customer(sub["email"], ship.get("name", ""))
+    inv = qb.create_invoice(
+        cust,
+        pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+        allow_online_pay=False,
+        email_to=sub["email"],
+        discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"],
+    )
+    total_cents = int(round(float(inv.get("TotalAmt") or 0) * 100))
+    res = stripe_pay.charge_off_session(
+        sub["stripe_customer_id"], sub["stripe_payment_method_id"], total_cents,
+        description="Remedy Match founding bottle",
+        metadata={"sub": str(sub["id"]), "kind": "founding_ship"},
+    )
+    if res.get("status") != "succeeded":
+        _subs.bump_failed_count(cx, sub["id"])
+        return {"charged": False, "sub_id": sub["id"], "amount_cents": total_cents}
+    _ingest_order(
+        source="reorder",  # "reorder" is in coaching.QUALIFYING_SOURCES → delivery opens coaching window
+        external_ref=res.get("id") or inv.get("Id") or "",
+        email=sub["email"],
+        items=items,
+        total_cents=total_cents,
+        address=ship,
+        channel="retail",
+    )
+    today = _now_utc().strftime("%Y-%m-%d")
+    _subs.mark_founding_active(cx, sub["id"], next_charge_date=_subs.add_months(today, 1))
+    return {"charged": True, "sub_id": sub["id"], "amount_cents": total_cents}
+
+
+@app.route("/api/founding/ship", methods=["POST"])
+def api_founding_ship():
+    """Console-gated (X-Console-Key / CONSOLE_SECRET): charge-on-ship the pending
+    founding reservations for a slug. Iterates list_founding_pending, charges each
+    vaulted card off-session, ingests a qualifying reorder, and activates the
+    autoship. Already-active reservations are naturally excluded (list_founding_pending
+    only returns founding_state='pending' rows) — so re-running is safe."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "forbidden"}), 403
+    slug = (request.get_json(silent=True) or {}).get("slug", "")
+    from dashboard import subscriptions as _subs
+    out = []
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _subs.init_subscriptions_table(cx)
+        _subs.migrate_add_founding_columns(cx)
+        for sub in _subs.list_founding_pending(cx, slug):
+            try:
+                out.append(_ship_founding_reservation(cx, sub))
+            except Exception as e:
+                out.append({"charged": False, "sub_id": sub["id"], "error": repr(e)})
+    return jsonify({"ok": True, "results": out})
+
+
 # ── Subscription setup flow ────────────────────────────────────────────────────
 
 def _subscriptions_enabled() -> bool:
