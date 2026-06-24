@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coaching cohort</title>
+<style>
+  body{font:15px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#0f1a14;color:#eaf3ec}
+  .wrap{max-width:920px;margin:0 auto;padding:28px 20px}
+  h1{font-size:21px} table{width:100%;border-collapse:collapse;margin-top:14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #22382b;font-size:14px}
+  th{color:#9fb8a8;font-weight:600} .gold{color:#d8b25a}
+  input,button{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid #22382b;background:#13241b;color:#eaf3ec}
+  button{background:#d8b25a;color:#1a1208;font-weight:700;border:none;cursor:pointer}
+  .row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+  #msg{color:#9fb8a8;margin-left:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Coaching cohort</h1>
+  <div class="row">
+    <label><input type="checkbox" id="activeOnly" checked> Active only</label>
+    <span style="flex:1"></span>
+    <input id="grantEmail" placeholder="member email" size="26">
+    <button id="grantBtn">Grant coaching month</button>
+    <span id="msg"></span>
+  </div>
+  <table><thead><tr><th>Member</th><th>Started</th><th>Ends</th><th>Days left</th><th>Source</th><th>Order</th></tr></thead>
+  <tbody id="rows"></tbody></table>
+</div>
+<script>
+(function(){
+  function key(){ var m = location.search.match(/[?&]key=([^&]+)/); return m ? decodeURIComponent(m[1]) : ''; }
+  var K = key();
+  function load(){
+    var active = document.getElementById('activeOnly').checked ? '1' : '0';
+    fetch('/api/coaching-cohort?active=' + active + '&key=' + encodeURIComponent(K))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var tb = document.getElementById('rows'); tb.innerHTML = '';
+        (d.data || []).forEach(function(w){
+          var tr = document.createElement('tr');
+          // Build cells with textContent (never innerHTML) so a member-controlled
+          // email can't inject markup into this owner-privileged console page.
+          function cell(text, cls){
+            var td = document.createElement('td');
+            if(cls){ td.className = cls; }
+            td.textContent = text;
+            tr.appendChild(td);
+          }
+          cell(w.email || '');
+          cell((w.started_at||'').slice(0,10));
+          cell((w.ends_at||'').slice(0,10), 'gold');
+          cell(String(w.days_remaining||0));
+          cell(w.source||'');
+          cell(w.order_id==null ? '—' : String(w.order_id));
+          tb.appendChild(tr);
+        });
+      });
+  }
+  document.getElementById('activeOnly').addEventListener('change', load);
+  document.getElementById('grantBtn').addEventListener('click', function(){
+    var email = document.getElementById('grantEmail').value.trim();
+    if(!email){ return; }
+    fetch('/api/action/coaching.grant', {method:'POST',
+        headers:{'Content-Type':'application/json','X-Console-Key':K},
+        body: JSON.stringify({email: email, confirmed: true})})
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        var r = res.result || {};
+        document.getElementById('msg').textContent = r.message || res.status || 'done';
+        document.getElementById('grantEmail').value = '';
+        load();
+      });
+  });
+  load();
+})();
+</script>
+</body>
+</html>

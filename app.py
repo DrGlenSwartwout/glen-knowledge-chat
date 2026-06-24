@@ -173,6 +173,7 @@ AUTH_TOKEN_TTL_LABEL = "24 hours"  # human-readable form of AUTH_TOKEN_TTL_MIN f
 MEMBERSHIP_CANCEL_TTL_DAYS = 1095  # ~3 years: the emailed one-click cancel link must outlive the recurring membership
 SESSION_TTL_DAYS    = 30           # session cookie validity
 PUBLIC_BASE_URL     = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
+MEMBERSHIP_JOIN_URL = os.environ.get("MEMBERSHIP_JOIN_URL", f"{PUBLIC_BASE_URL}/begin")
 GHL_MAGIC_WORKFLOW  = os.environ.get("GHL_MAGIC_LINK_WORKFLOW_ID", "")
 
 
@@ -6836,9 +6837,12 @@ def init_membership_tables(cx):
     """)
 
 
+from dashboard import coaching as _coaching  # noqa: E402 (Phase 2B coaching windows)
+
 def _init_membership_tables():
     with sqlite3.connect(LOG_DB) as cx:
         init_membership_tables(cx)
+        _coaching.init_coaching_table(cx)
 
 _init_membership_tables()
 
@@ -6857,6 +6861,22 @@ def _mint_membership_magic_link(email, ttl_min=15):
             "VALUES (?,?,?,?,?,?)",
             (th, email, "membership_magic_link", json.dumps({}), now_iso, exp_iso)
         )
+    return plain
+
+
+def _mint_coaching_activate_link(email, order_id, ttl_min=60 * 24 * 30):
+    """Single-use token (purpose coaching_activate, 30-day TTL) carrying the order id.
+    Returns plaintext token; caller emails it (e.g. on the tracking email)."""
+    import secrets, json
+    plain = secrets.token_urlsafe(32)
+    th = _hash_token(plain)
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    exp_iso = (datetime.utcnow() + timedelta(minutes=int(ttl_min))).isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (th, email, "coaching_activate", json.dumps({"order_id": order_id}), now_iso, exp_iso))
     return plain
 
 
@@ -6985,6 +7005,71 @@ def _active_membership_for_email(email):
     except Exception:
         d["days_remaining"] = 0
     return d
+
+
+def _membership_active_at(cx, email, when_iso):
+    """True iff a memberships row's paid span [granted_at, expires_at] covers `when_iso`.
+    expires_at is a monotonic paid-through high-water mark (Phase 2A), so this
+    reconstructs 'was paid-through on date D'. NULL expires_at = open-ended grant."""
+    if not (email and when_iso):
+        return False
+    try:
+        when = datetime.fromisoformat(when_iso.rstrip("Z"))
+    except Exception:
+        return False
+    for granted_at, expires_at in cx.execute(
+            "SELECT granted_at, expires_at FROM memberships WHERE email=?", (email,)).fetchall():
+        try:
+            g = datetime.fromisoformat((granted_at or "").rstrip("Z"))
+        except Exception:
+            continue
+        if g > when:
+            continue
+        if not expires_at:
+            return True
+        try:
+            if datetime.fromisoformat(expires_at.rstrip("Z")) >= when:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _find_qualifying_order_for_coaching(cx, email):
+    """Most-recent remedy-program order for `email` that is eligible (member active
+    at its date) and has not already opened a coaching window. Returns order id or None."""
+    if not email:
+        return None
+    placeholders = ",".join("?" * len(_coaching.QUALIFYING_SOURCES))
+    rows = cx.execute(
+        f"SELECT id, created_at FROM orders WHERE email=? AND status!='cancelled' "
+        f"AND source IN ({placeholders}) ORDER BY datetime(created_at) DESC",
+        (email, *sorted(_coaching.QUALIFYING_SOURCES))).fetchall()
+    for r in rows:
+        oid = r[0] if not isinstance(r, sqlite3.Row) else r["id"]
+        created = r[1] if not isinstance(r, sqlite3.Row) else r["created_at"]
+        if _coaching.window_for_order(cx, oid):
+            continue
+        if _membership_active_at(cx, email, created):
+            return oid
+    return None
+
+
+def _open_coaching_for_order(cx, email, order_id, source):
+    """Validate + open a coaching window for one remedy-program order.
+    Returns {ok, ...}: success -> created+ends_at; failure -> reason (+offer_99 if ineligible)."""
+    if (source or "") not in _coaching.QUALIFYING_SOURCES:
+        return {"ok": False, "reason": "not_qualifying"}
+    row = cx.execute("SELECT created_at FROM orders WHERE id=? AND email=?",
+                     (order_id, email)).fetchone()
+    if not row:
+        return {"ok": False, "reason": "not_found"}
+    created_at = row[0] if not isinstance(row, sqlite3.Row) else row["created_at"]
+    if not _membership_active_at(cx, email, created_at):
+        return {"ok": False, "reason": "ineligible", "offer_99": True}
+    res = _coaching.open_window(cx, email=email, order_id=order_id,
+                                days=_coaching.WINDOW_DAYS, source="self_serve")
+    return {"ok": True, "created": res["created"], "ends_at": res["window"]["ends_at"]}
 
 
 def _member_context_for_email(email, *, query_log_n=5):
@@ -21218,6 +21303,54 @@ def coaching_auth_token(token):
     return resp
 
 
+@app.route("/coaching/activate/<token>", methods=["GET", "POST"])
+def coaching_activate(token):
+    """GET previews; POST opens the coaching window for the order the token names."""
+    th = _hash_token((token or "").strip())
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT email, extra, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='coaching_activate'", (th,)).fetchone()
+        email = None
+        order_id = None
+        if row and not row["consumed_at"]:
+            try:
+                exp = datetime.fromisoformat((row["expires_at"] or "").replace("Z", "+00:00"))
+                if exp >= datetime.now(timezone.utc):
+                    email = row["email"]
+                    order_id = (json.loads(row["extra"] or "{}")).get("order_id")
+            except Exception:
+                pass
+        if not email:
+            payload = {"valid": False}
+        else:
+            order = cx.execute("SELECT id, source, created_at FROM orders WHERE id=?",
+                               (order_id,)).fetchone() if order_id is not None else None
+            if request.method == "POST":
+                if order is None:
+                    payload = {"valid": True, "confirmed": True, "ok": False, "reason": "not_found"}
+                else:
+                    res = _open_coaching_for_order(cx, email, int(order["id"]), order["source"])
+                    if res.get("ok"):
+                        cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL",
+                                   (datetime.utcnow().isoformat() + "Z", th))
+                        cx.commit()
+                    payload = {"valid": True, "confirmed": True, **res}
+            else:
+                payload = {"valid": True, "confirmed": False,
+                           "order_date": (order["created_at"][:10] if order else None),
+                           "window_days": _coaching.WINDOW_DAYS}
+    html = (STATIC / "coaching-activate.html").read_text()
+    safe = (json.dumps(payload).replace("<", "\\u003c")
+            .replace(">", "\\u003e").replace("&", "\\u0026"))
+    html = html.replace("</head>", f"<script>window.__COACHING__ = {safe};</script>\n</head>")
+    resp = Response(html, mimetype="text/html", status=200)
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 # ── Slice 6: studio.com credit intent + daily renewal-reminder cron ──────────
 
 @app.route("/coaching/studio-credit", methods=["GET"])
@@ -21358,6 +21491,26 @@ def coaching_login_request():
     return jsonify({"message": "If an active membership exists for that email, a sign-in link is on its way."}), 200
 
 
+@app.route("/coaching/start", methods=["POST"])
+def coaching_start():
+    """Self-serve 'Start my coaching month' from the portal. Requires an active
+    member; opens a window for their most-recent qualifying, unactivated order."""
+    email = (request.cookies.get("rm_member_email", "") or "").strip().lower()
+    if not email or not _active_membership_for_email(email):
+        return jsonify({"ok": False, "reason": "not_member", "offer_99": True}), 200
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        aw = _coaching.active_window(cx, email)
+        if aw:
+            return jsonify({"ok": True, "created": False, "ends_at": aw["ends_at"]}), 200
+        oid = _find_qualifying_order_for_coaching(cx, email)
+        if oid is None:
+            return jsonify({"ok": False, "reason": "no_order", "offer_99": True}), 200
+        order = cx.execute("SELECT id, source FROM orders WHERE id=?", (oid,)).fetchone()
+        res = _open_coaching_for_order(cx, email, int(order["id"]), order["source"])
+    return jsonify(res), 200
+
+
 @app.route("/coaching", methods=["GET"])
 def coaching_dashboard():
     email = request.cookies.get("rm_member_email", "").strip().lower()
@@ -21393,12 +21546,35 @@ def coaching_dashboard():
                 glen_replies.append(dict(r))
     except Exception:
         pass
+    # --- Phase 2B: coaching-window state for this member ---
+    coaching_active = False
+    coaching_ends = None
+    can_activate = False
+    offer_99 = False
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            cw = _coaching.active_window(cx, email)
+            if cw:
+                coaching_active = True
+                coaching_ends = (cw["ends_at"] or "")[:10]
+            else:
+                qoid = _find_qualifying_order_for_coaching(cx, email)
+                can_activate = qoid is not None
+                offer_99 = qoid is None
+    except Exception:
+        pass
     html = _render_static_template(
         "coaching.html",
         status="active",
         client_first=client_first,
         days_remaining=membership.get("days_remaining", 0),
         glen_replies=glen_replies,
+        coaching_active=coaching_active,
+        coaching_ends=coaching_ends,
+        can_activate=can_activate,
+        offer_99=offer_99,
+        membership_join_url=MEMBERSHIP_JOIN_URL,
     )
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
@@ -21756,6 +21932,7 @@ import dashboard.actions_tasks  # noqa: F401  (registers tasks.* actions)
 import dashboard.actions_rewards  # noqa: F401  (registers rewards.process_payout MONEY_SEND action)
 import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals)
 import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
+import dashboard.coaching as _coaching_actions  # noqa: F401 (registers coaching.grant action)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
 import dashboard.crm as _bos_crm  # noqa: F401 (registers the CRM home signal)
 import dashboard.module_signals as _bos_module_signals  # noqa: F401 (registers 5 cell signals)
@@ -22453,6 +22630,29 @@ def bos_home_page():
     # links/bookmarks, preserving the ?key= so the console stays unlocked.
     qs = request.query_string.decode()
     return redirect("/console" + ("?" + qs if qs else ""), code=302)
+
+
+@app.route("/console/coaching-cohort")
+def coaching_cohort_page():
+    resp = send_from_directory(STATIC, "console-coaching-cohort.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/coaching-cohort", methods=["GET"])
+def coaching_cohort_api():
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    active_only = request.args.get("active") == "1"
+    cx = sqlite3.connect(LOG_DB)
+    cx.row_factory = sqlite3.Row
+    try:
+        rows = _coaching.list_windows(cx, active_only=active_only,
+                                      limit=min(int(request.args.get("limit", 500) or 500), 1000))
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "data": rows})
 
 
 @app.route("/console/orders")
