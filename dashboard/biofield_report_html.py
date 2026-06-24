@@ -202,22 +202,33 @@ async function saveDepth(el){await post('/author/__TID__/depth',
 function rstat(t){document.getElementById('rstat').textContent=t}
 var _mr,_dg,_sess='';
 async function recStart(){
- var t=await (await fetch('/api/deepgram-token')).json();
+ rstat('Getting token...');
+ var t;try{t=await (await fetch('/api/deepgram-token')).json()}catch(e){rstat('Token fetch failed: '+e);return}
  if(!t.key){rstat('No Deepgram key: '+(t.error||''));return}
  var stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}
- catch(e){rstat('Mic blocked: '+e);return}
- _dg=new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2-medical&smart_format=true'+
-  '&punctuate=true&interim_results=true',['token',t.key]);
- _dg.onopen=function(){_mr=new MediaRecorder(stream,{mimeType:'audio/webm'});
+ catch(e){rstat('Microphone blocked/denied: '+e.name);return}
+ var mime='';['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'].forEach(
+  function(m){if(!mime&&window.MediaRecorder&&MediaRecorder.isTypeSupported(m))mime=m});
+ if(!mime){rstat('No supported audio recording format in this browser. Use Chrome.');return}
+ rstat('Mic OK ('+mime+'). Connecting to Deepgram...');
+ try{_dg=new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true'+
+  '&punctuate=true&interim_results=true',['token',t.key])}
+ catch(e){rstat('WebSocket create failed: '+e);return}
+ _dg.onopen=function(){
+  try{_mr=new MediaRecorder(stream,{mimeType:mime})}catch(e){rstat('Recorder error: '+e);return}
   _mr.ondataavailable=function(e){if(e.data.size>0&&_dg.readyState===1)_dg.send(e.data)};
-  _mr.start(250);rstat('Recording \\u2014 speak naturally.')};
- _dg.onmessage=function(m){var d=JSON.parse(m.data);
+  _mr.start(250);rstat('Recording \\u2014 speak naturally. (codes: wear a lav/AirPods)');console.log('rec open, mime',mime)};
+ _dg.onmessage=function(m){var d;try{d=JSON.parse(m.data)}catch(e){return}
+  console.log('dg msg',d.type,d);
+  if(d.type&&d.type!=='Results')return;
   var a=d.channel&&d.channel.alternatives&&d.channel.alternatives[0];if(!a)return;
   if(d.is_final&&a.transcript){_sess+=(_sess?' ':'')+a.transcript;
    document.getElementById('sessText').value=_sess;document.getElementById('interim').textContent=''}
   else if(a.transcript){document.getElementById('interim').textContent=a.transcript}};
- _dg.onerror=function(){rstat('Connection error.')};
- _dg.onclose=function(){if(_mr&&_mr.state!=='inactive')_mr.stop()};
+ _dg.onerror=function(e){rstat('WebSocket error (see console).');console.log('dg error',e)};
+ _dg.onclose=function(e){console.log('dg close',e.code,e.reason);
+  if(_mr&&_mr.state!=='inactive')_mr.stop();
+  if((_sess||'').length===0)rstat('Connection closed (code '+e.code+') '+(e.reason||'')+' \\u2014 nothing transcribed.')};
 }
 async function recStop(){
  if(_mr&&_mr.state!=='inactive')_mr.stop();
@@ -243,7 +254,8 @@ def _row_inputs(p, l):
         f'<td><input id="{p}_layer" class="lyr" value="{layer}"></td>'
         f'<td><input id="{p}_head" list="vocab" value="{g("head")}"></td>'
         f'<td><input id="{p}_most" value="{g("most_affected")}"></td>'
-        f'<td><input id="{p}_remedy" list="catalog" value="{g("remedy")}"></td>'
+        f"<td><input id=\"{p}_remedy\" list=\"catalog\" value=\"{g('remedy')}\""
+        f" onchange=\"fillDose('{p}')\"></td>"
         f'<td><input id="{p}_dosage" value="{g("dosage")}"></td>'
         f'<td><input id="{p}_frequency" value="{g("frequency")}"></td>'
         f'<td><input id="{p}_timing" value="{g("timing")}"></td>')
@@ -293,7 +305,8 @@ def render_author_html(report, depth_values=None):
             "<tr><td colspan=10><span id=new_sug class=food></span></td></tr>")
     table = ("<h2>Causal chain</h2>"
              "<p class=sub>Enter rows directly. Layer 1 = most recent/surface, higher = deeper root. "
-             "'dose' auto-fills from the catalog; 'uses' shows what you've used for that stress before. "
+             "Dosage / frequency / timing auto-fill from the catalog (minimum dose) the moment you pick a "
+             "remedy, and stay editable; 'uses' shows what you've used for that stress before. "
              "Set depth-of-penetration on the stress and the remedy &mdash; a remedy shallower than its "
              "stress is flagged on the report.</p>"
              "<table><tr><th>Layer</th><th>Head / Stress</th><th>Most Affected</th>"

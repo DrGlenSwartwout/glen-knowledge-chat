@@ -22,6 +22,7 @@ def test_author_page_has_header_rows_and_endpoints():
     assert "/author/a1/row" in html                          # add/save rows
     assert "Add row" in html
     assert "/test/a1" in html                                # link to the read-only report
+    assert "fillDose" in html                                # remedy auto-fills dosing on change
 
 
 def test_author_page_escapes_free_text():
