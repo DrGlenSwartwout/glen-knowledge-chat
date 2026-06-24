@@ -2,9 +2,12 @@
 JSON config at import and counting rows via a caller-supplied sqlite connection."""
 
 import json
+import logging
 import os
 
 from dashboard import subscriptions as _subs
+
+logger = logging.getLogger(__name__)
 
 _CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                             "data", "founding_launches.json")
@@ -14,7 +17,8 @@ def _load():
     try:
         with open(_CONFIG_PATH) as f:
             return json.load(f)
-    except Exception:
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning("founding: could not load %s: %s", _CONFIG_PATH, e)
         return {}
 
 

@@ -41,3 +41,18 @@ def test_is_open_false_after_closes_at(monkeypatch):
     cx = _cx()
     assert founding.is_open(cx, "neuro-magnesium", now_iso="2027-01-01") is False   # window closed
     assert founding.is_open(cx, "missing", now_iso="2026-07-01") is False
+
+
+def test_malformed_config_graceful_degradation(monkeypatch, tmp_path):
+    """Malformed JSON config returns {} from _load(), graceful degradation."""
+    bad_json = tmp_path / "bad.json"
+    bad_json.write_text("{invalid json")
+    monkeypatch.setattr(founding, "_CONFIG_PATH", str(bad_json))
+
+    # Direct call to _load() with bad config
+    reloaded = founding._load()
+    assert reloaded == {}
+
+    # Patch _CONFIG to empty to simulate failed load
+    monkeypatch.setattr(founding, "_CONFIG", {})
+    assert founding.get_launch("neuro-magnesium") is None
