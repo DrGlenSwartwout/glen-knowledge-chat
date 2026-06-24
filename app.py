@@ -21705,6 +21705,7 @@ import dashboard.actions_tasks  # noqa: F401  (registers tasks.* actions)
 import dashboard.actions_rewards  # noqa: F401  (registers rewards.process_payout MONEY_SEND action)
 import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals)
 import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
+import dashboard.coaching as _coaching_actions  # noqa: F401 (registers coaching.grant action)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
 import dashboard.crm as _bos_crm  # noqa: F401 (registers the CRM home signal)
 import dashboard.module_signals as _bos_module_signals  # noqa: F401 (registers 5 cell signals)
@@ -22402,6 +22403,29 @@ def bos_home_page():
     # links/bookmarks, preserving the ?key= so the console stays unlocked.
     qs = request.query_string.decode()
     return redirect("/console" + ("?" + qs if qs else ""), code=302)
+
+
+@app.route("/console/coaching-cohort")
+def coaching_cohort_page():
+    resp = send_from_directory(STATIC, "console-coaching-cohort.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/coaching-cohort", methods=["GET"])
+def coaching_cohort_api():
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    active_only = request.args.get("active") == "1"
+    cx = sqlite3.connect(LOG_DB)
+    cx.row_factory = sqlite3.Row
+    try:
+        rows = _coaching.list_windows(cx, active_only=active_only,
+                                      limit=min(int(request.args.get("limit", 500) or 500), 1000))
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "data": rows})
 
 
 @app.route("/console/orders")

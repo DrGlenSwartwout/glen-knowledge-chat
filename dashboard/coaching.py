@@ -104,3 +104,28 @@ def list_windows(cx, *, active_only=False, limit=500):
             "SELECT * FROM coaching_windows ORDER BY started_at DESC LIMIT ?",
             (int(limit),)).fetchall()
     return [_with_days_remaining(dict(r)) for r in rows]
+
+
+# --- Admin action (register on import) ---
+from dashboard.actions import action, LOW_WRITE
+from dashboard.rbac import OWNER
+
+
+def _grant_exec(params, ctx):
+    cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+    if cx is None:
+        raise ValueError("no db connection")
+    email = ((params or {}).get("email") or "").strip().lower()
+    if not email:
+        raise ValueError("email required")
+    res = open_window(cx, email=email, order_id=None, days=WINDOW_DAYS, source="admin")
+    w = res["window"]
+    verb = "started" if res["created"] else "already active"
+    return {"email": email, "created": res["created"], "ends_at": w["ends_at"],
+            "message": f"Coaching for {email} {verb} (through {w['ends_at'][:10]})."}
+
+
+action(key="coaching.grant", module="coaching", title="Grant coaching month",
+       description="Manually start a 1-month coaching window for a member (bypasses "
+                   "order-month eligibility; respects no-stacking).",
+       risk_tier=LOW_WRITE, permission=(OWNER,))(_grant_exec)
