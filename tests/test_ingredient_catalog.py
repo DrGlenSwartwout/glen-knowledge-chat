@@ -27,3 +27,23 @@ def test_search_and_get(db):
     assert get_ingredient(iid, db_path=db)["fmp_id"] == "i1"
     srcs = list_sources_for_ingredient(iid, db_path=db)
     assert srcs[0]["price_per_unit"] == 12.5 and srcs[0]["company"] == "Acme"
+
+def test_curated_updates_and_preferred(db):
+    from dashboard.ingredient_catalog import (update_ingredient_curated, update_source_curated,
+        set_preferred_source, get_ingredient, list_sources_for_ingredient)
+    import sqlite3
+    with sqlite3.connect(db) as cx:
+        cx.execute("INSERT INTO ingredients (fmp_id, name) VALUES ('i1','X')")
+        iid = cx.execute("SELECT id FROM ingredients").fetchone()[0]
+        cx.execute("INSERT INTO ingredient_sources (fmp_id, ingredient_id) VALUES ('a',?)", (iid,))
+        cx.execute("INSERT INTO ingredient_sources (fmp_id, ingredient_id) VALUES ('b',?)", (iid,))
+        ids = [r[0] for r in cx.execute("SELECT id FROM ingredient_sources ORDER BY id")]
+        cx.commit()
+    update_ingredient_curated(iid, {"inci_name": "Foo", "name": "HACK"}, db_path=db)  # name ignored
+    g = get_ingredient(iid, db_path=db)
+    assert g["inci_name"] == "Foo" and g["name"] == "X"
+    update_source_curated(ids[0], {"lead_time_days": 14, "minimum_order": 100}, db_path=db)
+    set_preferred_source(ids[1], db_path=db)
+    srcs = {s["id"]: s for s in list_sources_for_ingredient(iid, db_path=db)}
+    assert srcs[ids[1]]["preferred"] == 1 and srcs[ids[0]]["preferred"] == 0
+    assert srcs[ids[0]]["lead_time_days"] == 14

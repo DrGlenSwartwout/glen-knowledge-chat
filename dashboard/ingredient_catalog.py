@@ -99,3 +99,40 @@ def get_supplier(supplier_id, db_path=None):
     with _connect(db_path) as cx:
         r = cx.execute("SELECT * FROM suppliers WHERE id=?", (supplier_id,)).fetchone()
     return dict(r) if r else None
+
+
+_ING_CURATED = {"inci_name","cas_number","hygroscopic_rating","solubility","stability_notes","spec_notes","notes"}
+_SRC_CURATED = {"lead_time_days","minimum_order","minimum_order_unit","notes"}
+_SUP_CURATED = {"notes"}
+
+
+def _update_allowed(table, row_id, fields, allowed, db_path):
+    cols = {k: v for k, v in (fields or {}).items() if k in allowed}
+    if not cols:
+        return
+    sets = ", ".join(f"{k}=?" for k in cols) + ", updated_at=datetime('now')"
+    with _connect(db_path) as cx:
+        cx.execute(f"UPDATE {table} SET {sets} WHERE id=?", (*cols.values(), row_id))
+        cx.commit()
+
+
+def update_ingredient_curated(ingredient_id, fields, db_path=None):
+    _update_allowed("ingredients", ingredient_id, fields, _ING_CURATED, db_path)
+
+
+def update_source_curated(source_id, fields, db_path=None):
+    _update_allowed("ingredient_sources", source_id, fields, _SRC_CURATED, db_path)
+
+
+def update_supplier(supplier_id, fields, db_path=None):
+    _update_allowed("suppliers", supplier_id, fields, _SUP_CURATED, db_path)
+
+
+def set_preferred_source(source_id, db_path=None):
+    with _connect(db_path) as cx:
+        row = cx.execute("SELECT ingredient_id FROM ingredient_sources WHERE id=?", (source_id,)).fetchone()
+        if not row:
+            return
+        cx.execute("UPDATE ingredient_sources SET preferred=0, updated_at=datetime('now') WHERE ingredient_id=?", (row["ingredient_id"],))
+        cx.execute("UPDATE ingredient_sources SET preferred=1, updated_at=datetime('now') WHERE id=?", (source_id,))
+        cx.commit()
