@@ -1262,9 +1262,20 @@
         if (soldOut){ soldOut.style.display = 'none'; }
         if (ctaBlock){ ctaBlock.style.display = ''; }
       } else {
-        // close-out: hide counter + CTA, show sold-out block
+        // close-out: hide counter + CTA, show sold-out block; stop polling
+        clearInterval(_foundingPollTimer); _foundingPollTimer = null;
         if (fc){ fc.style.display = 'none'; }
-        if (soldOut){ soldOut.style.display = 'block'; }
+        if (soldOut){
+          soldOut.style.display = 'block';
+          // Wire batch_label dynamically if provided
+          if (status.batch_label) {
+            var batchLabel = status.batch_label;
+            var sold = soldOut.querySelector('p:first-child');
+            if (sold){ sold.textContent = batchLabel + ' is sold out.'; }
+            var next = soldOut.querySelector('p:nth-child(2)');
+            if (next){ next.textContent = 'Join the waitlist and be first to know when the next batch opens.'; }
+          }
+        }
         if (ctaBlock){ ctaBlock.style.display = 'none'; }
       }
     }

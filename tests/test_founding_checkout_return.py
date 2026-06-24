@@ -14,12 +14,14 @@ def test_founding_return_creates_reservation_and_comp_membership(monkeypatch, tm
                " expires_at TEXT, granted_by TEXT, source TEXT, truly_vip_ref TEXT, notes TEXT)")
     cx.commit(); cx.close()
 
-    from dashboard import stripe_pay as sp
+    from dashboard import stripe_pay as sp, founding as founding_mod
     monkeypatch.setattr(sp, "get_session", lambda s: {
-        "payment_status": "paid", "setup_intent": "seti_1",
+        "payment_status": "no_payment_required", "setup_intent": "seti_1",
+        "customer": "cus_1",
         "metadata": {"kind": "founding_reserve", "slug": "neuro-magnesium", "email": "f@x.com",
                      "items": '[{"slug":"neuro-magnesium","qty":1}]', "ship": '{"state":"HI"}'}})
     monkeypatch.setattr(sp, "get_setup_intent", lambda i: {"customer": "cus_1", "payment_method": "pm_1"})
+    monkeypatch.setattr(founding_mod, "is_open", lambda cx, slug, **kw: True)
     monkeypatch.setattr(appmod, "_ingest_order", lambda **kw: None)
 
     c = appmod.app.test_client()

@@ -37,7 +37,7 @@ def test_ship_charges_and_activates(monkeypatch):
     )
     sub = subs.get(cx, sid)
 
-    monkeypatch.setattr(appmod, "_price_cart", lambda items, ship, subscriber_tier_pct=None: {
+    monkeypatch.setattr(appmod, "_price_cart", lambda items, *, ship, subscriber_tier_pct=None, **k: {
         "qbo_lines": [{"name": "Neuro Magnesium", "amount": 80.0, "qty": 1}],
         "shipping_cents": 600, "discount_cents": 0, "points_redeemed_cents": 0,
     })

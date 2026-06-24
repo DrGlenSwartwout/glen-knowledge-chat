@@ -5388,45 +5388,9 @@ def begin_checkout_return():
                     except Exception as _ge:
                         app.logger.exception("group bundle grant failed: %s", _ge)
 
-                # ── Founding reserve: vault card, create pending reservation, comp membership ──
-                if md.get("kind") == "founding_reserve":
-                    try:
-                        from dashboard import subscriptions as _subs_f
-                        seti = sess.get("setup_intent")
-                        si = _sp.get_setup_intent(seti) if seti else {}
-                        stripe_cus = si.get("customer") or ""
-                        stripe_pm = si.get("payment_method") or ""
-                        f_email = md.get("email") or ""
-                        f_slug = md.get("slug") or ""
-                        stash_key = md.get("stash_key")
-                        if stash_key:
-                            with sqlite3.connect(LOG_DB) as _scx:
-                                _scx.row_factory = sqlite3.Row
-                                _sr = _scx.execute(
-                                    "SELECT items_json, ship_json FROM "
-                                    "pending_subscriptions WHERE key=?",
-                                    (stash_key,)).fetchone()
-                            items_list = json.loads(_sr["items_json"]) if _sr else []
-                            ship_dict = json.loads(_sr["ship_json"]) if _sr else {}
-                        else:
-                            items_list = json.loads(md.get("items") or "[]")
-                            ship_dict = json.loads(md.get("ship") or "{}")
-                        with sqlite3.connect(LOG_DB) as _fcx:
-                            _fcx.row_factory = sqlite3.Row
-                            _subs_f.init_subscriptions_table(_fcx)
-                            _subs_f.migrate_add_founding_columns(_fcx)
-                            _subs_f.create_founding_reservation(
-                                _fcx, email=f_email, stripe_customer_id=stripe_cus,
-                                stripe_payment_method_id=stripe_pm, items=items_list,
-                                ship_address=ship_dict, founding_slug=f_slug)
-                            _grant_membership(_fcx, f_email, 30, "founding")
-                            _fcx.commit()
-                        _ingest_order(source="founding", external_ref=seti or "",
-                                      email=f_email, items=items_list, total_cents=0,
-                                      address=ship_dict, channel="retail")
-                        print(f"[founding-return] reservation created for {f_email}", flush=True)
-                    except Exception as _fe:
-                        print(f"[founding-return] reservation failed: {_fe!r}", flush=True)
+                # NOTE: founding_reserve uses a setup-mode ($0) Stripe session and is
+                # handled BELOW, outside this "paid" block, so it is reachable for
+                # payment_status == "no_payment_required" setup sessions.
 
                 # ── Client kind: credit practitioner margin to wallet ──
                 try:
@@ -5507,6 +5471,60 @@ def begin_checkout_return():
             # closed tab still gets fulfilled. Idempotent via biofield_trial_grants.
             if _kind == "biofield_trial":
                 _fulfill_biofield_trial(sid)
+
+            # ── Founding reserve: vault card, create pending reservation, comp membership ──
+            # Setup-mode ($0) session: payment_status == "no_payment_required" (NOT "paid"),
+            # so this block lives OUTSIDE the payment_status == "paid" gate.
+            if md.get("kind") == "founding_reserve" and sess.get("setup_intent") and \
+                    sess.get("payment_status") in ("paid", "no_payment_required"):
+                try:
+                    from dashboard import subscriptions as _subs_f, founding as _founding_ret
+                    seti = sess.get("setup_intent")
+                    si = _sp.get_setup_intent(seti) if seti else {}
+                    stripe_cus = si.get("customer") or ""
+                    stripe_pm = si.get("payment_method") or ""
+                    f_email = md.get("email") or ""
+                    f_slug = md.get("slug") or ""
+                    stash_key = md.get("stash_key")
+                    if stash_key:
+                        with sqlite3.connect(LOG_DB) as _scx:
+                            _scx.row_factory = sqlite3.Row
+                            _sr = _scx.execute(
+                                "SELECT items_json, ship_json FROM "
+                                "pending_subscriptions WHERE key=?",
+                                (stash_key,)).fetchone()
+                        items_list = json.loads(_sr["items_json"]) if _sr else []
+                        ship_dict = json.loads(_sr["ship_json"]) if _sr else {}
+                    else:
+                        items_list = json.loads(md.get("items") or "[]")
+                        ship_dict = json.loads(md.get("ship") or "{}")
+                    # Cap re-check: abort gracefully if founding is no longer open.
+                    with sqlite3.connect(LOG_DB) as _cap_cx:
+                        _cap_cx.row_factory = sqlite3.Row
+                        _subs_f.init_subscriptions_table(_cap_cx)
+                        _subs_f.migrate_add_founding_columns(_cap_cx)
+                        today_iso = _now_utc().strftime("%Y-%m-%d")
+                        _cap_still_open = _founding_ret.is_open(_cap_cx, f_slug, now_iso=today_iso)
+                    if not _cap_still_open:
+                        print(f"[founding-return] cap hit after payment — skipping reservation for {f_email}",
+                              flush=True)
+                    else:
+                        with sqlite3.connect(LOG_DB) as _fcx:
+                            _fcx.row_factory = sqlite3.Row
+                            _subs_f.init_subscriptions_table(_fcx)
+                            _subs_f.migrate_add_founding_columns(_fcx)
+                            _subs_f.create_founding_reservation(
+                                _fcx, email=f_email, stripe_customer_id=stripe_cus,
+                                stripe_payment_method_id=stripe_pm, items=items_list,
+                                ship_address=ship_dict, founding_slug=f_slug)
+                            _grant_membership(_fcx, f_email, 30, "founding")
+                            _fcx.commit()
+                        _ingest_order(source="founding", external_ref=seti or "",
+                                      email=f_email, items=items_list, total_cents=0,
+                                      address=ship_dict, channel="retail")
+                        print(f"[founding-return] reservation created for {f_email}", flush=True)
+                except Exception as _fe:
+                    print(f"[founding-return] reservation failed: {_fe!r}", flush=True)
 
         except Exception as e:
             print(f"[begin-return] {e!r}", flush=True)
@@ -12409,7 +12427,7 @@ def _ship_founding_reservation(cx, sub):
     from dashboard import subscriptions as _subs
     items = sub.get("items") or []
     ship = sub.get("ship_address") or {}
-    pc = _price_cart(items, ship, subscriber_tier_pct=None)
+    pc = _price_cart(items, ship=ship, subscriber_tier_pct=None)
     cust = qb.find_or_create_customer(sub["email"], ship.get("name", ""))
     inv = qb.create_invoice(
         cust,
