@@ -143,6 +143,25 @@ def test_interpret_fills_chain_rows_from_transcript(tmp_path):
     assert b"Large Intestine Meridian" in report
 
 
+def test_delete_confirm_and_unconfirmed_from_interpret(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    _seed(db)
+
+    def fake(system, user):
+        return json.dumps({"layers": [
+            {"layer": 1, "head": "Acid", "most_affected": "Liver", "remedy": "Sterol Max"}]})
+
+    client = create_app(db, interpret_complete=fake).test_client()
+    tid = client.post("/author/new").headers["Location"].rstrip("/").rsplit("/", 1)[-1]
+    client.post(f"/author/{tid}/session", json={"transcript": "acid balanced by sterol max"})
+    client.post(f"/author/{tid}/interpret", json={})
+    assert b"class=unconf" in client.get("/author/" + tid).data        # voice rows highlighted
+    assert client.post(f"/author/{tid}/confirm-all", json={}).status_code == 200
+    assert b"class=unconf" not in client.get("/author/" + tid).data    # confirmed -> no highlight
+    assert client.post(f"/author/{tid}/delete", json={}).status_code == 200
+    assert ("/author/" + tid).encode() not in client.get("/").data     # gone from the list
+
+
 def test_depth_match_flagged_in_report(tmp_path):
     db = str(tmp_path / "chat_log.db")
     _seed(db)

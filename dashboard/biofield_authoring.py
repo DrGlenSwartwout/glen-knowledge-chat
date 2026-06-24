@@ -9,6 +9,7 @@ Authored test ids are prefixed "a" (e.g. "a7") so the viewer can tell them apart
 from the numeric FMP-snapshot ids. Local + writable; PHI stays on the Mac.
 """
 import datetime
+import difflib
 import sqlite3
 
 from dashboard.biofield_schedule import build_schedule
@@ -30,7 +31,11 @@ def init_auth_tables(cx):
     cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_chain(
         id INTEGER PRIMARY KEY AUTOINCREMENT, test_id INTEGER, layer INTEGER,
         head TEXT, most_affected TEXT, remedy TEXT, dosage TEXT, frequency TEXT,
-        timing TEXT, sort_seq INTEGER, created_at TEXT)""")
+        timing TEXT, sort_seq INTEGER, created_at TEXT, confirmed INTEGER DEFAULT 1)""")
+    try:
+        cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN confirmed INTEGER DEFAULT 1")
+    except Exception:
+        pass
     cx.commit()
 
 
@@ -63,15 +68,58 @@ def update_header(cx, tid, name=None, email=None, date=None):
 
 
 def add_chain_row(cx, tid, layer, head, most_affected, remedy,
-                  dosage="", frequency="", timing=""):
+                  dosage="", frequency="", timing="", confirmed=1):
     init_auth_tables(cx)
     cur = cx.execute(
         "INSERT INTO biofield_auth_chain(test_id,layer,head,most_affected,remedy,"
-        "dosage,frequency,timing,sort_seq,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "dosage,frequency,timing,sort_seq,created_at,confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         (_num(tid), layer, (head or "").strip(), (most_affected or "").strip(),
-         (remedy or "").strip(), dosage or "", frequency or "", timing or "", 0, _now()))
+         (remedy or "").strip(), dosage or "", frequency or "", timing or "", 0, _now(),
+         1 if confirmed else 0))
     cx.commit()
     return cur.lastrowid
+
+
+def confirm_row(cx, rid):
+    cx.execute("UPDATE biofield_auth_chain SET confirmed=1 WHERE id=?", (rid,))
+    cx.commit()
+
+
+def confirm_all(cx, tid):
+    cx.execute("UPDATE biofield_auth_chain SET confirmed=1 WHERE test_id=?", (_num(tid),))
+    cx.commit()
+
+
+def delete_test(cx, tid):
+    init_auth_tables(cx)
+    cx.execute("DELETE FROM biofield_auth_chain WHERE test_id=?", (_num(tid),))
+    cx.execute("DELETE FROM biofield_auth_tests WHERE id=?", (_num(tid),))
+    for t in ("biofield_notes", "biofield_narratives", "biofield_video_scripts"):
+        try:
+            cx.execute(f"DELETE FROM {t} WHERE test_id=?", (str(tid),))
+        except Exception:
+            pass
+    cx.commit()
+
+
+def resolve_remedy_name(cx, spoken, cutoff=0.82):
+    """Best-effort auto-correct a (possibly ASR-mangled) remedy name to the closest
+    catalog product. Preserves an ' in Terrain Restore' suffix. Returns the original
+    when no close match exists."""
+    spoken = (spoken or "").strip()
+    if not spoken or not _has(cx, "fmp_snap_products"):
+        return spoken
+    suffix = ""
+    core = spoken
+    low = spoken.lower()
+    if low.endswith("in terrain restore"):
+        core = spoken[: low.rfind("in terrain restore")].strip()
+        suffix = " in Terrain Restore"
+    names = [r[0] for r in cx.execute(
+        "SELECT DISTINCT product_name FROM fmp_snap_products "
+        "WHERE TRIM(COALESCE(product_name,''))<>''").fetchall()]
+    match = difflib.get_close_matches(core, names, n=1, cutoff=cutoff)
+    return (match[0] + suffix) if match else spoken
 
 
 def update_chain_row(cx, rid, **fields):
@@ -174,14 +222,15 @@ def authored_report(cx, tid):
     cx.row_factory = sqlite3.Row
     t = cx.execute("SELECT * FROM biofield_auth_tests WHERE id=?", (_num(tid),)).fetchone()
     rows = cx.execute("""
-        SELECT id, layer, head, most_affected, remedy, dosage, frequency, timing
+        SELECT id, layer, head, most_affected, remedy, dosage, frequency, timing, confirmed
         FROM biofield_auth_chain
         WHERE test_id=? AND TRIM(COALESCE(remedy,''))<>''
         ORDER BY (layer IS NULL), layer, id""", (_num(tid),)).fetchall()
     layers = [{"layer": r["layer"], "head": r["head"] or "",
                "most_affected": r["most_affected"] or "", "remedy": r["remedy"] or "",
                "dosage": r["dosage"] or "", "frequency": r["frequency"] or "",
-               "timing": r["timing"] or "", "rid": r["id"]} for r in rows]
+               "timing": r["timing"] or "", "rid": r["id"],
+               "confirmed": 0 if r["confirmed"] == 0 else 1} for r in rows]
     # Depth-of-penetration tags + reach match-check per layer (Increment 4b)
     for l in layers:
         sd = get_tag(cx, "auth_stress", l["rid"], DEPTH_KEY)

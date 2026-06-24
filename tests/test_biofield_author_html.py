@@ -41,6 +41,15 @@ def test_author_page_has_session_recording_ui():
     assert "sessText" in html                  # live transcript box
 
 
+def test_author_page_delete_confirm_and_unconfirmed_highlight():
+    rep = _report()
+    rep["layers"][0]["confirmed"] = 0          # a voice-added row
+    html = render_author_html(rep)
+    assert "delTest()" in html and "confirmAll()" in html
+    assert "class=unconf" in html              # highlighted for Rae
+    assert "confirmRow('5')" in html           # per-row confirm (rid 5)
+
+
 def test_author_page_prefills_saved_transcript():
     html = render_author_html(_report(), transcript="BSI 21 phase 2 toxicity head and tail")
     assert "BSI 21 phase 2 toxicity head and tail" in html   # persists across refresh
