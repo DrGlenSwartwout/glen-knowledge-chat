@@ -31,6 +31,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from dashboard import packing
+
 
 BOX_SIZES = ("S", "M", "L")
 PENDING = "pending"
@@ -193,42 +195,149 @@ def _capacity_lookup(cx: sqlite3.Connection) -> Dict[str, Dict[str, int]]:
     return out
 
 
-def pick_box(
-    bottles_by_type: Dict[str, int],
-    db_path: Optional[str] = None,
-) -> Optional[str]:
-    """Return the smallest S/M/L box that fits this order, or None.
+def _expand_items(bottles_by_type, dims):
+    """Flatten {type: qty} into a list of (d_mm, h_mm) plus a parallel list of
+    type names (same order) so caps can be checked per box."""
+    items, names = [], []
+    for name, qty in bottles_by_type.items():
+        d = dims[name]
+        for _ in range(int(qty)):
+            items.append(d)
+            names.append(name)
+    return items, names
 
-    Algorithm — fractional-fill:
-        For each candidate box size, compute total fill =
-            sum(qty_in_order / capacity_in_that_box) over each bottle type.
-        If total fill ≤ 1.0, the order fits in that box.
-        Pick the smallest fitting box.
 
-    Raises UnknownBottleType if a bottle is not in the catalog.
-    Returns None if the order is empty or exceeds the Large box.
+def _caps_ok(box_size, names, placed_idx, caps):
+    """True if the placed subset honours every (type, box) override cap."""
+    from collections import Counter
+    counts = Counter(names[i] for i in placed_idx)
+    for tname, n in counts.items():
+        cap = caps.get(tname, {}).get(box_size)
+        if cap is not None and n > cap:
+            return False
+    return True
+
+
+def pick_boxes(bottles_by_type, db_path: Optional[str] = None):
+    """Geometric box selection. Returns a list of box sizes, or None.
+
+    - If every requested type has dimensions -> geometric split (multi-box),
+      honouring any (type, box) override caps from box_capacity.
+    - Otherwise -> fall back to the legacy fractional pick_box (single box),
+      returned as a one-element list, or None.
+    Raises UnknownBottleType if a type is in neither the dims set nor the
+    capacity matrix.
     """
     if not bottles_by_type:
         return None
-
+    dims = get_bottle_dims(db_path=db_path)
     with _connect(db_path) as cx:
-        capacities = _capacity_lookup(cx)
+        caps = _capacity_lookup(cx)
 
-    for bottle_name in bottles_by_type:
-        if bottle_name not in capacities:
-            raise UnknownBottleType(bottle_name)
+    for name in bottles_by_type:
+        if name not in dims and name not in caps:
+            raise UnknownBottleType(name)
 
+    if all(name in dims for name in bottles_by_type):
+        settings = get_packing_settings(db_path=db_path)
+        wrap, margin = settings["wrap_mm"], settings["box_margin_mm"]
+        items, names = _expand_items(bottles_by_type, dims)
+        # Geometric split; then verify each chosen box honours override caps.
+        boxes = packing.split_into_boxes(items, wrap_mm=wrap, box_margin_mm=margin)
+        if boxes is None:
+            return None
+        if not _caps_violated(items, names, caps, wrap, margin):
+            return boxes
+        return _split_with_caps(items, names, caps, wrap, margin)
+
+    # Legacy fractional fallback (dimensionless types present)
+    legacy = _pick_box_fractional(bottles_by_type, caps)
+    return [legacy] if legacy else None
+
+
+def _split_with_caps(items, names, caps, wrap, margin):
+    """Greedy split that also respects override caps per box. Fills boxes one at
+    a time, choosing the largest placement that satisfies caps; sizes the final
+    box down. Returns list of box sizes or None."""
+    remaining = list(range(len(items)))
+    out = []
+    while remaining:
+        sub_items = [items[i] for i in remaining]
+        sub_names = [names[i] for i in remaining]
+        # smallest single box that fits all AND honours caps
+        chosen = None
+        for s in packing.BOX_ORDER:
+            placed = packing.fit_subset(sub_items, packing.BOXES_MM[s],
+                                        wrap_mm=wrap, box_margin_mm=margin)
+            if len(placed) == len(sub_items) and _caps_ok(s, sub_names, placed, caps):
+                chosen = s
+                break
+        if chosen:
+            out.append(chosen)
+            break
+        # else pack into an L, dropping any bottle that would break a cap
+        placed = packing.fit_subset(sub_items, packing.BOXES_MM["L"],
+                                    wrap_mm=wrap, box_margin_mm=margin)
+        placed = _trim_to_caps("L", sub_names, placed, caps)
+        if not placed:
+            return None
+        out.append("L")
+        placed_global = {remaining[k] for k in placed}
+        remaining = [i for i in remaining if i not in placed_global]
+    return out
+
+
+def _trim_to_caps(box_size, names, placed_idx, caps):
+    """Drop indices from a placed set until every cap is honoured."""
+    from collections import Counter
+    placed = set(placed_idx)
+    counts = Counter(names[i] for i in placed)
+    for tname, n in list(counts.items()):
+        cap = caps.get(tname, {}).get(box_size)
+        if cap is not None and n > cap:
+            drop = [i for i in placed if names[i] == tname][cap:]
+            placed.difference_update(drop)
+    return placed
+
+
+def _caps_violated(items, names, caps, wrap, margin):
+    """Quick check: would the cap-free split place more of any type in a single
+    box than its cap allows? Conservative — if any single box could exceed a
+    cap, return True to route through _split_with_caps."""
+    if not caps:
+        return False
+    # If no cap applies to any present type, nothing to enforce.
+    present = set(names)
+    return any(present & set(caps) for _ in (0,)) and any(
+        any(s in caps.get(t, {}) for s in packing.BOX_ORDER) for t in present
+    )
+
+
+def _pick_box_fractional(bottles_by_type, caps):
+    """Legacy fractional-fill: smallest box where sum(qty/capacity) <= 1.0."""
+    for name in bottles_by_type:
+        if name not in caps:
+            raise UnknownBottleType(name)
     for size in BOX_SIZES:
         total_fill = 0.0
-        size_works = True
-        for bottle_name, qty in bottles_by_type.items():
-            cap = capacities[bottle_name].get(size)
+        ok = True
+        for name, qty in bottles_by_type.items():
+            cap = caps[name].get(size)
             if cap is None or cap <= 0:
-                size_works = False
+                ok = False
                 break
             total_fill += qty / cap
-        if size_works and total_fill <= 1.0:
+        if ok and total_fill <= 1.0:
             return size
+    return None
+
+
+def pick_box(bottles_by_type, db_path: Optional[str] = None):
+    """Smallest single box that fits, or None (multi-box -> None). Geometric
+    when all types have dims; legacy fractional otherwise."""
+    boxes = pick_boxes(bottles_by_type, db_path=db_path)
+    if boxes and len(boxes) == 1:
+        return boxes[0]
     return None
 
 
@@ -257,33 +366,41 @@ def get_current_rates(db_path: Optional[str] = None) -> Dict[str, dict]:
 
 # ── Quote (used by the order-entry page) ──────────────────────────────────────
 
-def quote(
-    bottles_by_type: Dict[str, int],
-    db_path: Optional[str] = None,
-) -> dict:
-    """Combine pick_box + current rate into a single payload for the UI."""
-    box = pick_box(bottles_by_type, db_path=db_path)
-    if box is None:
+def quote(bottles_by_type, db_path: Optional[str] = None) -> dict:
+    """pick_boxes + current rates -> a single UI/checkout payload.
+
+    Single box: {box_size, box_sizes:[size], shipping_cents, box_breakdown}.
+    Multi box:  box_sizes has >1 entry; shipping_cents is the summed charged
+                rate; box_breakdown lists each box + its charged_cents.
+    """
+    try:
+        boxes = pick_boxes(bottles_by_type, db_path=db_path)
+    except UnknownBottleType as e:
+        return {"box_size": None, "box_sizes": [], "shipping_cents": None,
+                "error": f"Unknown bottle type: {e}"}
+    if not boxes:
         return {
-            "box_size": None,
-            "shipping_cents": None,
-            "error": (
-                "Order is empty"
-                if not bottles_by_type
-                else "Order exceeds the Large flat-rate box — split shipment or use custom shipping."
-            ),
+            "box_size": None, "box_sizes": [], "shipping_cents": None,
+            "error": ("Order is empty" if not bottles_by_type
+                      else "Order exceeds available flat-rate boxes — "
+                           "split shipment or use custom shipping."),
         }
     rates = get_current_rates(db_path=db_path)
-    if box not in rates:
-        return {
-            "box_size": box,
-            "shipping_cents": None,
-            "error": f"No confirmed USPS rate for {box} — check /admin/shipping.",
-        }
+    breakdown = []
+    total = 0
+    for size in boxes:
+        if size not in rates:
+            return {"box_size": size, "box_sizes": boxes, "shipping_cents": None,
+                    "error": f"No confirmed USPS rate for {size} — check /admin/shipping."}
+        cents = rates[size]["charged_cents"]
+        breakdown.append({"box_size": size, "charged_cents": cents})
+        total += cents
     return {
-        "box_size": box,
-        "shipping_cents": rates[box]["charged_cents"],
-        "rate_effective_date": rates[box]["effective_date"],
+        "box_size": boxes[0],               # back-compat single-box field
+        "box_sizes": boxes,
+        "shipping_cents": total,
+        "box_breakdown": breakdown,
+        "rate_effective_date": rates[boxes[0]]["effective_date"],
     }
 
 

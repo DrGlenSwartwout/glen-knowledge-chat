@@ -373,3 +373,43 @@ def test_set_packing_setting_updates_value(tmp_path):
         init_shipping_schema(cx)
     set_packing_setting("wrap_mm", 9, db_path=db)
     assert get_packing_settings(db_path=db)["wrap_mm"] == 9
+
+
+# ── geometric path ────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def geo_db(tmp_path):
+    """Schema with the 8 seeded standard bottle types (dims) + rates."""
+    import sqlite3
+    from dashboard.shipping import init_shipping_schema
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+    return db
+
+def test_quote_geometric_single_box(geo_db):
+    from dashboard.shipping import quote
+    q = quote({"15ml": 5}, db_path=geo_db)
+    assert q["box_sizes"] == ["S"]
+    assert q["shipping_cents"] == 1300  # S charged rate
+
+def test_quote_geometric_multibox_sums_rates(geo_db):
+    from dashboard.shipping import quote
+    q = quote({"15ml": 57}, db_path=geo_db)  # needs 2 boxes (57 > 56 that fit in L)
+    assert len(q["box_sizes"]) == 2
+    assert q["box_sizes"][0] == "L"
+    assert q["shipping_cents"] == sum(b["charged_cents"] for b in q["box_breakdown"])
+
+def test_pick_box_geometric_with_padding(geo_db):
+    from dashboard.shipping import pick_box
+    # 5ml in S with default padding still fits at least 1 -> S
+    assert pick_box({"5ml": 4}, db_path=geo_db) == "S"
+
+def test_override_cap_forces_larger_box(geo_db):
+    import sqlite3
+    from dashboard.shipping import pick_box, set_box_capacity
+    with sqlite3.connect(geo_db) as cx:
+        bid = cx.execute("SELECT id FROM bottle_types WHERE name='15ml'").fetchone()[0]
+    set_box_capacity(bid, "S", 2, db_path=geo_db)  # cap S at 2 of 15ml
+    # 4 of 15ml geometrically fit S, but cap=2 forces escalation to M
+    assert pick_box({"15ml": 4}, db_path=geo_db) == "M"
