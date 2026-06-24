@@ -117,7 +117,10 @@
         quiz_id: quiz.id, name: el('name').value.trim(),
         email: el('email').value.trim(), tos: el('tos').checked
       })
-    }).then(function (r) { return r.json(); }).then(function () {
+    }).then(function (r) { return r.json(); }).then(function (resp) {
+      if (resp && resp.guide_token) {
+        window.sessionStorage.setItem('lm_guide_token', resp.guide_token);
+      }
       window.location.href = '/begin/quiz/result';
     }).catch(function () { el('reveal').disabled = false; });
   };

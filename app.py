@@ -1577,6 +1577,63 @@ def begin_quiz_optin():
     return resp
 
 
+# personalized founding one-liner per result band (structure-function only)
+_QUIZ_FOUNDING_LINES = {
+    "barrier": "You're a strong fit for the founding batch: a magnesium formulated to reach where ordinary magnesium can't.",
+    "calm": "You're a strong fit for the founding batch: calm, steady support without the fog.",
+    "clarity": "You're a strong fit for the founding batch: foundational support for a clear, steady mind.",
+    "hardworking": "You're a strong fit for the founding batch: foundational support for eyes that work hard.",
+    "foundational": "You're a strong fit for the founding batch: foundational eye-and-brain support.",
+}
+
+
+@app.route("/begin/quiz/result")
+def begin_quiz_result():
+    resp = send_from_directory(STATIC, "begin-quiz-result.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/begin/quiz/result-data")
+def begin_quiz_result_data():
+    quiz_id = (request.args.get("quiz_id") or "eye-brain").strip()
+    quiz = quiz_engine.get_quiz(quiz_id)
+    if not quiz:
+        return jsonify({"error": "unknown_quiz"}), 404
+    session_id = (request.cookies.get("amg_session") or "").strip()
+    resp_row = None
+    if session_id:
+        with sqlite3.connect(LOG_DB) as cx:
+            resp_row = quiz_engine.get_response(cx, session_id=session_id, quiz_id=quiz_id)
+    if not resp_row:
+        return jsonify({"taken": False, "disclaimer": quiz.get("disclaimer", "")})
+    profile = quiz_engine.result_for(quiz, resp_row["answers"])
+    slug = quiz["product_slug"]
+    founding = None
+    try:
+        from dashboard import founding as _founding
+        launch = _founding.get_launch(slug)
+        if launch:
+            today = _now_utc().strftime("%Y-%m-%d")
+            with sqlite3.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                if _founding.is_open(cx, slug, now_iso=today):
+                    founding = {
+                        "batch_label": launch.get("batch_label", ""),
+                        "cap": int(launch.get("cap", 0)),
+                        "remaining": _founding.remaining(cx, slug),
+                        "personal_line": _QUIZ_FOUNDING_LINES.get(
+                            profile["band"], _QUIZ_FOUNDING_LINES["foundational"]),
+                    }
+    except Exception as e:
+        print(f"[quiz-result] founding enrich failed: {e!r}", flush=True)
+    return jsonify({
+        "taken": True, "profile": profile, "disclaimer": quiz.get("disclaimer", ""),
+        "founding": founding, "product_url": f"/begin/product/{slug}",
+    })
+
+
 @app.route("/begin/voice")
 def begin_voice():
     resp = send_from_directory(STATIC, "begin-voice.html")
