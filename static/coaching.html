@@ -138,6 +138,46 @@
   }
   </script>
 
+  {% if coaching_active %}
+  <div class="shell">
+  <div class="card coaching-window">
+    <h2>Your coaching month is active</h2>
+    <p>You're in live group coaching through <strong>{{ coaching_ends }}</strong>.</p>
+  </div>
+  </div>
+  {% elif can_activate %}
+  <div class="shell">
+  <div class="card coaching-window">
+    <h2>Did your remedies arrive?</h2>
+    <p>Start your 1-month live group coaching to walk through your program together.</p>
+    <button id="startCoaching" class="btn">My remedies arrived — start my coaching month</button>
+    <p id="startCoachingMsg" class="muted" style="margin-top:10px"></p>
+  </div>
+  </div>
+  <script>
+  (function(){
+    var b = document.getElementById('startCoaching');
+    var m = document.getElementById('startCoachingMsg');
+    if(!b) return;
+    b.addEventListener('click', function(){
+      b.disabled = true; m.textContent = 'Starting...';
+      fetch('/coaching/start', {method:'POST'}).then(function(r){return r.json();}).then(function(d){
+        if(d.ok){ m.textContent = 'Your coaching month is active through ' + (d.ends_at ? d.ends_at.slice(0,10) : 'the next 30 days') + '.'; }
+        else if(d.offer_99){ m.innerHTML = 'Coaching runs with an active membership month. <a href="{{ membership_join_url }}">Start one for $99 →</a>'; }
+        else { m.textContent = 'We couldn\'t start coaching just now. Please try again shortly.'; b.disabled = false; }
+      }).catch(function(){ m.textContent = 'Something went wrong. Please try again.'; b.disabled = false; });
+    });
+  })();
+  </script>
+  {% elif offer_99 %}
+  <div class="shell">
+  <div class="card coaching-window">
+    <h2>Start a coaching month</h2>
+    <p>Live group coaching runs with an active membership month — <a href="{{ membership_join_url }}">start one for $99 &rarr;</a></p>
+  </div>
+  </div>
+  {% endif %}
+
   {% if glen_replies %}
   <section class="shell replies-section">
     <h3>Past replies from Glen</h3>
