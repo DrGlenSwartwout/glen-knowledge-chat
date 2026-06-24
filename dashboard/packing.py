@@ -92,3 +92,31 @@ def fits_all(items, box_mm, *, wrap_mm=0, box_margin_mm=0) -> bool:
 def pack_count(items, box_mm, *, wrap_mm=0, box_margin_mm=0) -> int:
     return len(fit_subset(items, box_mm, wrap_mm=wrap_mm,
                           box_margin_mm=box_margin_mm))
+
+
+def split_into_boxes(items, *, wrap_mm=0, box_margin_mm=0):
+    """Box size(s) that hold the whole load. Single smallest box if it fits;
+    else greedily fill L boxes and size-down the final partial box. None if a
+    single bottle cannot fit even an L box."""
+    if not items:
+        return []
+    remaining = list(range(len(items)))
+    out = []
+    while remaining:
+        sub = [items[i] for i in remaining]
+        single = next(
+            (s for s in BOX_ORDER
+             if fits_all(sub, BOXES_MM[s], wrap_mm=wrap_mm, box_margin_mm=box_margin_mm)),
+            None,
+        )
+        if single:
+            out.append(single)
+            break
+        placed_local = fit_subset(sub, BOXES_MM["L"], wrap_mm=wrap_mm,
+                                  box_margin_mm=box_margin_mm)
+        if not placed_local:
+            return None  # a single bottle doesn't fit even L
+        out.append("L")
+        placed_global = {remaining[k] for k in placed_local}
+        remaining = [i for i in remaining if i not in placed_global]
+    return out

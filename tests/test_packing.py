@@ -1,5 +1,5 @@
 import pytest
-from dashboard.packing import BOXES_MM, fit_subset, fits_all, pack_count
+from dashboard.packing import BOXES_MM, fit_subset, fits_all, pack_count, split_into_boxes
 
 # Ø×H in mm (cm×10)
 BOTTLES_MM = {
@@ -38,3 +38,25 @@ def test_padding_lowers_capacity():
 def test_too_wide_bottle_never_fits_small():
     # 120cap Ø80mm exceeds S's two usable cross dims at any orientation
     assert pack_count([BOTTLES_MM["120cap"]], BOXES_MM["S"]) == 0
+
+
+def test_split_single_box_when_fits():
+    assert split_into_boxes([BOTTLES_MM["15ml"]] * 5) == ["S"]
+
+
+def test_split_picks_smallest_single_box():
+    # 20 x 15ml fits L (108 cap) -> but also M (72). Smallest single box = M.
+    assert split_into_boxes([BOTTLES_MM["15ml"]] * 20) == ["M"]
+
+
+def test_split_into_multiple_boxes_when_oversized():
+    # 200 x 15ml: L holds 108, so needs 2 boxes; last sizes down.
+    boxes = split_into_boxes([BOTTLES_MM["15ml"]] * 200)
+    assert boxes is not None
+    assert len(boxes) == 2
+    assert boxes[0] == "L"
+
+
+def test_split_returns_none_when_bottle_too_big():
+    # A bottle wider than every box cross-section.
+    assert split_into_boxes([(200, 200)]) is None
