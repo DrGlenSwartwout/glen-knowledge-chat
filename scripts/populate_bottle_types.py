@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse, csv, difflib, json, os, re, sys
 
 FMP_EXPORT = os.environ.get("FMP_PRODUCTS_CSV", "/tmp/fmp-export/newapp/products.csv")
-_INFO_RE = re.compile(r'^(ei|ed|es|et|mb|mr)\s*\d', re.I)
+_INFO_RE = re.compile(r'^(ei|ed|es|et|mb)\s*\d', re.I)  # MR not sold as infoceuticals
 # Trailing packaging words to strip from FMP keys (and storefront names) for the suffix-strip step.
 # "oil", "spray", "lotion", "drops" are intentionally excluded (part of product identity).
 _SUFFIX_WORDS = re.compile(r'\s+(powder|powders|tablets|capsules)$')
