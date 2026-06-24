@@ -5193,7 +5193,8 @@ def _fulfill_biofield_trial(session_id):
         # the Payments ledger (digital unlock -> status 'done', not a fulfillment task).
         # Best-effort + idempotent on (source, external_ref); never undoes the membership.
         try:
-            _trial_cents = int(sess.get("amount_total") or pi.get("amount_received") or 0)
+            _trial_cents = (int(sess.get("amount_total") or pi.get("amount_received") or 0)
+                            or _bos_payments.TRIAL_AMOUNT_CENTS)
             _ingest_order(source="biofield_trial", external_ref=pi_id, email=bt_email,
                           total_cents=_trial_cents, channel="retail", status="done")
         except Exception as _oe:

@@ -125,6 +125,26 @@ def test_fulfill_records_one_dollar_trial_order(monkeypatch, tmp_path):
     assert trial["amount_cents"] == 100 and trial["pay_status"] == "paid"
 
 
+def test_fulfill_trial_order_amount_falls_back_to_one_dollar(monkeypatch, tmp_path):
+    # When Stripe omits the amount on both the session and the PI, the trial
+    # order should still record $1, not $0.
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    from dashboard import orders as O, payments as P, stripe_pay
+    with sqlite3.connect(db) as cx:
+        O.init_orders_table(cx)
+    monkeypatch.setattr(stripe_pay, "get_session",
+        lambda s: {"metadata": {"kind": "biofield_trial", "email": "t@x.com"},
+                   "payment_intent": "pi_1"})  # no amount_total
+    monkeypatch.setattr(stripe_pay, "get_payment_intent",
+        lambda pi: {"customer": "cus_1", "payment_method": "pm_1",
+                    "status": "succeeded"})  # no amount_received
+    app_module._fulfill_biofield_trial("cs_x")
+    with sqlite3.connect(db) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute("SELECT total_cents FROM orders WHERE source='biofield_trial'").fetchone()
+    assert row["total_cents"] == P.TRIAL_AMOUNT_CENTS == 100
+
+
 def test_fulfill_idempotent(monkeypatch, tmp_path):
     app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
     _mock_paid_trial(app_module, monkeypatch)

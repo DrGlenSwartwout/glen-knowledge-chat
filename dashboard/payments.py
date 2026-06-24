@@ -21,6 +21,10 @@ NOT a captured charge and is excluded. Caller sets cx.row_factory = sqlite3.Row.
 # Sources whose orders are, by construction, succeeded recurring card charges.
 _RECURRING_SOURCES = ("subscription", "membership")
 
+# The $1 biofield-trial charge (app.py creates the checkout session at 100 cents).
+# Used as the amount fallback when a Stripe session/PI omits the amount.
+TRIAL_AMOUNT_CENTS = 100
+
 # An order counts as a captured Stripe payment when this predicate holds.
 _CAPTURED = ("((stripe_payment_intent IS NOT NULL AND stripe_payment_intent != '') "
              "OR external_ref LIKE 'pi\\_%' ESCAPE '\\' "
@@ -85,6 +89,52 @@ def payments_summary(cx):
         f"COALESCE(SUM(CASE WHEN paid_cents > 0 THEN paid_cents ELSE total_cents END), 0) AS cents "
         f"FROM orders WHERE {_CAPTURED}").fetchone()
     return {"count": int(row["n"] or 0), "total_cents": int(row["cents"] or 0)}
+
+
+def backfill_trial_orders(cx, fetch_session, *, now=None):
+    """One-time backfill: ensure every historical $1 biofield trial has a
+    captured-charge order so it shows in the ledger (going-forward trials get one
+    at fulfillment, but trials completed before that shipped have none).
+
+    Reads `biofield_trial_grants` (the per-trial idempotency markers), and for
+    each re-fetches the Stripe checkout session via `fetch_session(session_id)`
+    (shape: stripe_pay.get_session — payment_intent, amount_total). Idempotent on
+    (source='biofield_trial', external_ref=PaymentIntent). Never raises; a per-row
+    fetch error is counted, not fatal. Returns {created, skipped, unpaid, failed}.
+    """
+    from dashboard import orders as O
+    O.init_orders_table(cx)
+    try:
+        grants = cx.execute(
+            "SELECT session_id, email FROM biofield_trial_grants").fetchall()
+    except Exception:
+        return {"created": 0, "skipped": 0, "unpaid": 0, "failed": 0}
+    out = {"created": 0, "skipped": 0, "unpaid": 0, "failed": 0}
+    for g in grants:
+        sid = g["session_id"] if hasattr(g, "keys") else g[0]
+        email = g["email"] if hasattr(g, "keys") else g[1]
+        try:
+            sess = fetch_session(sid) or {}
+            pi_id = (sess.get("payment_intent") or "").strip()
+            if not pi_id:
+                out["unpaid"] += 1
+                continue
+            exists = cx.execute(
+                "SELECT 1 FROM orders WHERE source='biofield_trial' AND external_ref=?",
+                (pi_id,)).fetchone()
+            if exists:
+                out["skipped"] += 1
+                continue
+            amount = int(sess.get("amount_total") or 0) or TRIAL_AMOUNT_CENTS
+            O.upsert_order(cx, source="biofield_trial", external_ref=pi_id,
+                           email=email or "", items=[], total_cents=amount,
+                           address={}, channel="retail", status="done")
+            out["created"] += 1
+        except Exception as e:
+            print(f"[trial-backfill] {sid}: {e!r}", flush=True)
+            out["failed"] += 1
+    cx.commit()
+    return out
 
 
 def recent_failures(cx, *, limit=20):

@@ -140,3 +140,61 @@ def test_recent_failures_newest_first_with_fields():
 def test_recent_failures_empty_when_no_table_rows():
     cx = _cx()
     assert P.recent_failures(cx) == []
+
+
+# --- $1 trial backfill -------------------------------------------------------
+
+def _grant(cx, session_id, email):
+    cx.execute("CREATE TABLE IF NOT EXISTS biofield_trial_grants "
+               "(session_id TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
+    cx.execute("INSERT OR IGNORE INTO biofield_trial_grants (session_id, email, granted_at) "
+               "VALUES (?,?,?)", (session_id, email, "2026-06-01T00:00:00Z"))
+    cx.commit()
+
+
+def test_backfill_creates_orders_for_paid_trials():
+    cx = _cx()
+    _grant(cx, "cs_a", "a@x.com")
+    _grant(cx, "cs_b", "b@x.com")
+    sessions = {"cs_a": {"payment_intent": "pi_a", "amount_total": 100},
+                "cs_b": {"payment_intent": "pi_b", "amount_total": 100}}
+    res = P.backfill_trial_orders(cx, lambda sid: sessions[sid])
+    assert res["created"] == 2
+    pays = P.list_payments(cx)
+    assert {p["external_ref"] for p in pays} == {"pi_a", "pi_b"}
+    assert all(p["source"] == "biofield_trial" and p["amount_cents"] == 100
+               and p["pay_status"] == "paid" for p in pays)
+
+
+def test_backfill_idempotent_skips_existing():
+    cx = _cx()
+    _grant(cx, "cs_a", "a@x.com")
+    s = {"cs_a": {"payment_intent": "pi_a", "amount_total": 100}}
+    P.backfill_trial_orders(cx, lambda sid: s[sid])
+    res = P.backfill_trial_orders(cx, lambda sid: s[sid])
+    assert res["created"] == 0 and res["skipped"] == 1
+    assert len(P.list_payments(cx)) == 1
+
+
+def test_backfill_skips_unpaid_and_survives_fetch_errors():
+    cx = _cx()
+    _grant(cx, "cs_unpaid", "u@x.com")
+    _grant(cx, "cs_err", "e@x.com")
+    _grant(cx, "cs_ok", "o@x.com")
+    def fetch(sid):
+        if sid == "cs_err":
+            raise RuntimeError("stripe down")
+        if sid == "cs_unpaid":
+            return {"payment_intent": None}
+        return {"payment_intent": "pi_ok", "amount_total": 100}
+    res = P.backfill_trial_orders(cx, fetch)
+    assert res["created"] == 1 and res["failed"] == 1 and res["unpaid"] == 1
+    assert {p["external_ref"] for p in P.list_payments(cx)} == {"pi_ok"}
+
+
+def test_backfill_falls_back_to_trial_amount_when_missing():
+    cx = _cx()
+    _grant(cx, "cs_a", "a@x.com")
+    P.backfill_trial_orders(cx, lambda sid: {"payment_intent": "pi_a"})  # no amount
+    [p] = P.list_payments(cx)
+    assert p["amount_cents"] == P.TRIAL_AMOUNT_CENTS == 100
