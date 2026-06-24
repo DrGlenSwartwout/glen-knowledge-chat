@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ingredient Catalog — Console</title>
+  <style>
+    :root {
+      --bg: #0a150d;
+      --surface: #111f16;
+      --border: #21472d;
+      --text: #fdf4d8;
+      --muted: #a89870;
+      --accent: #d4a843;
+      --accent-light: #e8c876;
+      --green: #3d8a52;
+      --amber: #d4a843;
+      --red: #cc4b2c;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+    #wrap { max-width: 1100px; margin: 0 auto; padding: 32px 16px; }
+
+    header { margin-bottom: 28px; }
+    h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+    header p { color: var(--muted); font-size: 13px; }
+    header a { color: var(--accent-light); text-decoration: none; }
+
+    .section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+    .section h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
+    .section .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+
+    /* Tabs */
+    .tab-bar { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+    .tab-btn { background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 18px; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 0; margin-bottom: -1px; }
+    .tab-btn:hover { color: var(--text); background: transparent; }
+    .tab-btn.active { color: var(--accent-light); border-bottom-color: var(--accent); background: transparent; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Search */
+    .search-row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+    .search-row input { flex: 1; background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 14px; }
+    .search-row input:focus { outline: none; border-color: var(--accent); }
+    #search-results { list-style: none; }
+    #search-results li { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; border-radius: 6px; }
+    #search-results li:hover { background: rgba(212,168,67,0.08); color: var(--accent-light); }
+    #search-results li .ing-name { font-weight: 600; }
+    #search-results li .ing-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    #search-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+
+    /* Detail panel */
+    #detail-panel { display: none; }
+    #detail-panel.active { display: block; }
+
+    .detail-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .detail-header h3 { font-size: 18px; font-weight: 800; }
+    .detail-back { background: transparent; color: var(--muted); border: 1px solid var(--border); font-size: 12px; padding: 4px 10px; cursor: pointer; border-radius: 6px; }
+    .detail-back:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .field-block label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 5px; }
+    .field-block .ro-val { background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 13px; color: var(--muted); min-height: 34px; word-break: break-word; }
+    .field-block input[type="text"],
+    .field-block textarea,
+    .field-block select {
+      width: 100%; background: #0d1117; color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+      font-size: 13px; font-family: inherit; resize: vertical;
+    }
+    .field-block input[type="text"]:focus,
+    .field-block textarea:focus { outline: none; border-color: var(--accent); }
+    .field-block textarea { min-height: 60px; }
+    .field-full { grid-column: 1 / -1; }
+
+    .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 10px; }
+
+    /* Sources table */
+    table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 13px; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+    td input[type="text"],
+    td input[type="number"],
+    td textarea { background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px 7px; font-size: 12px; width: 100%; font-family: inherit; }
+    td input[type="number"] { width: 80px; }
+    td.cell-pref { text-align: center; width: 70px; }
+
+    /* Preferred radio */
+    .pref-radio { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+
+    /* Buttons */
+    button { background: var(--accent); color: #000; border: none; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    button:hover { background: var(--accent-light); }
+    button.secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    button.secondary:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+    button.save-btn { padding: 6px 12px; font-size: 12px; }
+    button.confirm { background: var(--green); color: #fff; }
+    button.confirm:hover { background: #4dc862; }
+
+    .save-row { display: flex; justify-content: flex-end; margin-top: 14px; gap: 8px; }
+
+    /* Supplier list */
+    #supplier-results { list-style: none; }
+    #supplier-results li { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    #supplier-results li .sup-name { font-weight: 600; }
+    #supplier-results li .sup-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .sup-notes-row { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; }
+    .sup-notes-row textarea { flex: 1; background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 6px 8px; font-size: 12px; font-family: inherit; resize: vertical; min-height: 48px; }
+    .sup-notes-row textarea:focus { outline: none; border-color: var(--accent); }
+    #supplier-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+
+    /* Badge */
+    .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: .04em; margin-left: 6px; }
+    .badge-pref { background: rgba(61,138,82,0.2); color: var(--green); border: 1px solid var(--green); }
+    .badge-status { background: rgba(212,168,67,0.12); color: var(--amber); border: 1px solid var(--border); }
+
+    /* Toast */
+    #toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+    #toast.show { opacity: 1; }
+    #toast.error { border-color: var(--red); color: var(--red); }
+    #toast.ok { border-color: var(--green); color: var(--green); }
+
+    .auth-warn { background: rgba(248, 81, 73, 0.08); border: 1px solid var(--red); border-radius: 8px; padding: 14px; color: var(--red); margin-bottom: 20px; display: none; }
+
+    .loading { color: var(--muted); font-size: 13px; padding: 16px 0; }
+    .extras-block { background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 12px; color: var(--muted); font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 140px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="bos" data-sub="ingredients"></script>
+<div id="wrap">
+  <header>
+    <h1>Ingredient Catalog</h1>
+    <p>Raw-material master imported from FileMaker Pro. FMP fields are read-only; curated fields are editable.</p>
+  </header>
+
+  <div id="auth-warn" class="auth-warn">
+    Missing or invalid console key. Append <code>?key=YOUR_CONSOLE_SECRET</code> to the URL.
+  </div>
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="showTab('ingredients')">Ingredients</button>
+    <button class="tab-btn" onclick="showTab('suppliers')">Suppliers</button>
+  </div>
+
+  <!-- ── Ingredients tab ─────────────────────────────────────────────────── -->
+  <div id="tab-ingredients" class="tab-panel active">
+
+    <!-- Search -->
+    <div class="section" id="search-section">
+      <h2>Search Ingredients</h2>
+      <div class="search-row">
+        <input type="text" id="ing-search" placeholder="Type to search by name…" autocomplete="off">
+      </div>
+      <div id="search-empty">No results.</div>
+      <ul id="search-results"></ul>
+      <div class="hint">2,363 ingredients imported from FMP. Search is server-side — type at least 1 character.</div>
+    </div>
+
+    <!-- Detail panel (hidden until ingredient clicked) -->
+    <div id="detail-panel">
+
+      <!-- FMP read-only fields -->
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closeDetail()">&#8592; Back to search</button>
+          <h3 id="detail-name"></h3>
+          <span id="detail-status-badge"></span>
+        </div>
+
+        <div class="section-label">FMP Fields (read-only)</div>
+        <div class="field-grid">
+          <div class="field-block">
+            <label>Form</label>
+            <div class="ro-val" id="fmp-form">—</div>
+          </div>
+          <div class="field-block">
+            <label>Status</label>
+            <div class="ro-val" id="fmp-status">—</div>
+          </div>
+          <div class="field-block field-full">
+            <label>Common Names</label>
+            <div class="ro-val" id="fmp-common-names">—</div>
+          </div>
+          <div class="field-block field-full">
+            <label>Extras (raw JSON)</label>
+            <div class="extras-block" id="fmp-extras">—</div>
+          </div>
+        </div>
+
+        <!-- Curated editable fields -->
+        <div class="section-label" style="margin-top:20px">Curated Fields (editable)</div>
+        <div class="field-grid" id="curated-fields">
+          <div class="field-block">
+            <label for="ing-inci-name">INCI Name</label>
+            <input type="text" id="ing-inci-name" placeholder="e.g. Thioctic Acid">
+          </div>
+          <div class="field-block">
+            <label for="ing-cas-number">CAS Number</label>
+            <input type="text" id="ing-cas-number" placeholder="e.g. 1200-22-2">
+          </div>
+          <div class="field-block">
+            <label for="ing-hygroscopic">Hygroscopic Rating</label>
+            <input type="text" id="ing-hygroscopic" placeholder="e.g. low / medium / high">
+          </div>
+          <div class="field-block">
+            <label for="ing-solubility">Solubility</label>
+            <input type="text" id="ing-solubility" placeholder="e.g. water-soluble">
+          </div>
+          <div class="field-block field-full">
+            <label for="ing-stability-notes">Stability Notes</label>
+            <textarea id="ing-stability-notes" placeholder="Storage, light sensitivity, etc."></textarea>
+          </div>
+          <div class="field-block field-full">
+            <label for="ing-spec-notes">Spec Notes</label>
+            <textarea id="ing-spec-notes" placeholder="Purity, assay, certifications, etc."></textarea>
+          </div>
+          <div class="field-block field-full">
+            <label for="ing-notes">Notes</label>
+            <textarea id="ing-notes" placeholder="General notes…"></textarea>
+          </div>
+        </div>
+        <div class="save-row">
+          <button class="save-btn" onclick="saveIngredient()">Save curated fields</button>
+        </div>
+      </div>
+
+      <!-- Sources table -->
+      <div class="section">
+        <h2>Sources</h2>
+        <div id="sources-loading" class="loading" style="display:none">Loading sources…</div>
+        <table id="sources-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Supplier</th>
+              <th>SKU</th>
+              <th>Price/unit</th>
+              <th>Size</th>
+              <th>Ship quote</th>
+              <th>Lead (days)</th>
+              <th>Min order</th>
+              <th>Min unit</th>
+              <th>Notes</th>
+              <th class="cell-pref">Preferred</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="sources-tbody"></tbody>
+        </table>
+        <div id="sources-empty" class="hint" style="display:none">No sources linked to this ingredient.</div>
+      </div>
+
+    </div><!-- /#detail-panel -->
+  </div><!-- /#tab-ingredients -->
+
+  <!-- ── Suppliers tab ───────────────────────────────────────────────────── -->
+  <div id="tab-suppliers" class="tab-panel">
+    <div class="section">
+      <h2>Suppliers</h2>
+      <div class="search-row">
+        <input type="text" id="sup-search" placeholder="Type to filter suppliers…" autocomplete="off">
+      </div>
+      <div id="supplier-empty">No suppliers found.</div>
+      <ul id="supplier-results"></ul>
+    </div>
+  </div>
+
+</div><!-- /#wrap -->
+
+<div id="toast"></div>
+
+<script>
+// ── Auth ─────────────────────────────────────────────────────────────────────
+const _urlKey = new URLSearchParams(location.search).get("key");
+if (_urlKey) localStorage.setItem("console_key", _urlKey);
+const KEY = _urlKey || localStorage.getItem("console_key") || "";
+const HEADERS = { "Content-Type": "application/json", "X-Console-Key": KEY };
+
+function toast(msg, kind="ok") {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "show " + kind;
+  setTimeout(() => t.className = kind, 2500);
+}
+
+async function api(path, opts={}) {
+  const r = await fetch(path, { headers: HEADERS, ...opts });
+  if (r.status === 401) {
+    document.getElementById("auth-warn").style.display = "block";
+    throw new Error("unauthorized");
+  }
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "request failed");
+  return j.data;
+}
+
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("tab-" + name).classList.add("active");
+  const btns = document.querySelectorAll(".tab-btn");
+  const labels = ["ingredients", "suppliers"];
+  btns[labels.indexOf(name)].classList.add("active");
+  if (name === "suppliers") loadSuppliers();
+}
+
+// ── Search (ingredients) ─────────────────────────────────────────────────────
+let _searchTimer = null;
+let _currentIngId = null;
+
+document.getElementById("ing-search").addEventListener("input", function() {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => doSearch(this.value.trim()), 280);
+});
+
+async function doSearch(q) {
+  const list = document.getElementById("search-results");
+  const empty = document.getElementById("search-empty");
+  list.innerHTML = "";
+  empty.style.display = "none";
+  if (!q) return;
+  try {
+    const results = await api("/api/ingredients/search?q=" + encodeURIComponent(q) + "&limit=50");
+    if (!results.length) { empty.style.display = "block"; return; }
+    for (const ing of results) {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <div class="ing-name">${escapeHtml(ing.name)}</div>
+        <div class="ing-meta">${escapeHtml(ing.form || "")}${ing.status ? " · " + escapeHtml(ing.status) : ""}</div>`;
+      li.addEventListener("click", () => openIngredient(ing.id));
+      list.appendChild(li);
+    }
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+// ── Ingredient detail ─────────────────────────────────────────────────────────
+async function openIngredient(id) {
+  _currentIngId = id;
+  document.getElementById("search-section").style.display = "none";
+  document.getElementById("detail-panel").style.display = "block";
+  document.getElementById("detail-panel").classList.add("active");
+  document.getElementById("sources-table").style.display = "none";
+  document.getElementById("sources-empty").style.display = "none";
+  document.getElementById("sources-loading").style.display = "block";
+
+  try {
+    const { ingredient: ing, sources } = await api("/api/ingredients/" + id);
+
+    // FMP read-only
+    document.getElementById("detail-name").textContent = ing.name || "";
+    document.getElementById("fmp-form").textContent = ing.form || "—";
+    document.getElementById("fmp-status").textContent = ing.status || "—";
+    document.getElementById("fmp-common-names").textContent = ing.common_names || "—";
+
+    // extras JSON pretty-print
+    let extrasDisplay = "—";
+    if (ing.extras) {
+      try { extrasDisplay = JSON.stringify(JSON.parse(ing.extras), null, 2); }
+      catch (_) { extrasDisplay = ing.extras; }
+    }
+    document.getElementById("fmp-extras").textContent = extrasDisplay;
+
+    // Status badge
+    const badge = document.getElementById("detail-status-badge");
+    badge.innerHTML = ing.status ? `<span class="badge badge-status">${escapeHtml(ing.status)}</span>` : "";
+
+    // Curated fields
+    document.getElementById("ing-inci-name").value = ing.inci_name || "";
+    document.getElementById("ing-cas-number").value = ing.cas_number || "";
+    document.getElementById("ing-hygroscopic").value = ing.hygroscopic_rating || "";
+    document.getElementById("ing-solubility").value = ing.solubility || "";
+    document.getElementById("ing-stability-notes").value = ing.stability_notes || "";
+    document.getElementById("ing-spec-notes").value = ing.spec_notes || "";
+    document.getElementById("ing-notes").value = ing.notes || "";
+
+    // Sources
+    renderSources(sources, id);
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function closeDetail() {
+  _currentIngId = null;
+  document.getElementById("detail-panel").style.display = "none";
+  document.getElementById("detail-panel").classList.remove("active");
+  document.getElementById("search-section").style.display = "block";
+}
+
+async function saveIngredient() {
+  if (!_currentIngId) return;
+  const body = {
+    inci_name:        document.getElementById("ing-inci-name").value.trim(),
+    cas_number:       document.getElementById("ing-cas-number").value.trim(),
+    hygroscopic_rating: document.getElementById("ing-hygroscopic").value.trim(),
+    solubility:       document.getElementById("ing-solubility").value.trim(),
+    stability_notes:  document.getElementById("ing-stability-notes").value.trim(),
+    spec_notes:       document.getElementById("ing-spec-notes").value.trim(),
+    notes:            document.getElementById("ing-notes").value.trim(),
+  };
+  try {
+    await api("/api/ingredients/" + _currentIngId, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    toast("Ingredient saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Sources ────────────────────────────────────────────────────────────────
+function renderSources(sources, ingredientId) {
+  document.getElementById("sources-loading").style.display = "none";
+  const tbody = document.getElementById("sources-tbody");
+  tbody.innerHTML = "";
+
+  if (!sources || !sources.length) {
+    document.getElementById("sources-empty").style.display = "block";
+    return;
+  }
+
+  document.getElementById("sources-table").style.display = "table";
+
+  for (const s of sources) {
+    const tr = document.createElement("tr");
+    tr.id = "src-row-" + s.id;
+    const unitDisplay = [s.unit_size, s.unit_type].filter(Boolean).join(" ") || "—";
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(s.company || s.supplier_name || "—")}</strong></td>
+      <td style="color:var(--muted)">${escapeHtml(s.sku || "—")}</td>
+      <td>${s.price_per_unit != null ? "$" + Number(s.price_per_unit).toFixed(2) : "—"}</td>
+      <td>${escapeHtml(unitDisplay)}</td>
+      <td>${s.shipping_quote != null ? "$" + Number(s.shipping_quote).toFixed(2) : "—"}</td>
+      <td><input type="number" class="src-field" data-src="${s.id}" data-field="lead_time_days" value="${s.lead_time_days ?? ""}" placeholder="days" min="0" style="width:60px"></td>
+      <td><input type="number" class="src-field" data-src="${s.id}" data-field="minimum_order" value="${s.minimum_order ?? ""}" placeholder="qty" min="0" style="width:70px"></td>
+      <td><input type="text" class="src-field" data-src="${s.id}" data-field="minimum_order_unit" value="${escapeHtml(s.minimum_order_unit || "")}" placeholder="kg / unit" style="width:70px"></td>
+      <td><input type="text" class="src-field" data-src="${s.id}" data-field="notes" value="${escapeHtml(s.notes || "")}" placeholder="notes" style="width:120px"></td>
+      <td class="cell-pref">
+        <input type="radio" class="pref-radio" name="pref-source-${ingredientId}" data-src="${s.id}" ${s.preferred ? "checked" : ""} title="Set as preferred">
+      </td>
+      <td>
+        <button class="save-btn" onclick="saveSource(${s.id})">Save</button>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+
+  // Wire preferred radio
+  document.querySelectorAll(`input[name="pref-source-${ingredientId}"]`).forEach(radio => {
+    radio.addEventListener("change", function() {
+      if (this.checked) setPreferred(parseInt(this.dataset.src, 10));
+    });
+  });
+}
+
+async function saveSource(srcId) {
+  const row = document.getElementById("src-row-" + srcId);
+  if (!row) return;
+  const fields = row.querySelectorAll(".src-field[data-src='" + srcId + "']");
+  const body = {};
+  fields.forEach(inp => {
+    const f = inp.dataset.field;
+    const v = inp.value.trim();
+    if (f === "lead_time_days" || f === "minimum_order") {
+      body[f] = v === "" ? null : Number(v);
+    } else {
+      body[f] = v;
+    }
+  });
+  try {
+    await api("/api/ingredients/sources/" + srcId, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    toast("Source saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function setPreferred(srcId) {
+  try {
+    await api("/api/ingredients/sources/" + srcId + "/preferred", { method: "POST" });
+    toast("Preferred source updated");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Suppliers tab ────────────────────────────────────────────────────────────
+let _supTimer = null;
+
+document.getElementById("sup-search").addEventListener("input", function() {
+  clearTimeout(_supTimer);
+  _supTimer = setTimeout(() => loadSuppliers(this.value.trim()), 280);
+});
+
+async function loadSuppliers(q="") {
+  const list = document.getElementById("supplier-results");
+  const empty = document.getElementById("supplier-empty");
+  list.innerHTML = "";
+  empty.style.display = "none";
+  try {
+    const suppliers = await api("/api/ingredients/suppliers?q=" + encodeURIComponent(q) + "&limit=100");
+    if (!suppliers.length) { empty.style.display = "block"; return; }
+    for (const sup of suppliers) {
+      const li = document.createElement("li");
+      li.id = "sup-item-" + sup.id;
+      const meta = [sup.address_city, sup.address_province].filter(Boolean).join(", ");
+      li.innerHTML = `
+        <div class="sup-name">${escapeHtml(sup.company)}</div>
+        ${meta ? `<div class="sup-meta">${escapeHtml(meta)}</div>` : ""}
+        ${sup.url ? `<div class="sup-meta"><a href="${escapeHtml(sup.url)}" target="_blank" style="color:var(--accent-light)">${escapeHtml(sup.url)}</a></div>` : ""}
+        <div class="sup-notes-row">
+          <textarea id="sup-notes-${sup.id}" placeholder="Notes about this supplier…" rows="2">${escapeHtml(sup.notes || "")}</textarea>
+          <button class="save-btn" onclick="saveSupplier(${sup.id})">Save</button>
+        </div>`;
+      list.appendChild(li);
+    }
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+async function saveSupplier(supId) {
+  const ta = document.getElementById("sup-notes-" + supId);
+  if (!ta) return;
+  try {
+    await api("/api/ingredients/suppliers/" + supId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: ta.value.trim() }),
+    });
+    toast("Supplier notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+function init() {
+  if (!KEY) {
+    document.getElementById("auth-warn").style.display = "block";
+  }
+}
+init();
+</script>
+<script src="/static/justus-widget.js" defer></script>
+</body>
+</html>

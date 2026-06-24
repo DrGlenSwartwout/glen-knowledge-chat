@@ -928,6 +928,15 @@ def _init_shipping_tables():
 _init_shipping_tables()
 
 
+def _init_ingredients_tables():
+    """Ingredients + sources catalog (FMP-migrated raw-material master)."""
+    from dashboard.ingredient_catalog import init_ingredients_schema
+    with sqlite3.connect(LOG_DB) as cx:
+        init_ingredients_schema(cx)
+
+_init_ingredients_tables()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
@@ -20406,6 +20415,81 @@ def api_shipping_product_bottles_clear(slug):
     try:
         _shipping.clear_product_bottle_override(slug)
         return ok({"cleared": slug})
+    except Exception as e: return fail(e)
+
+
+# ── Ingredient Catalog ────────────────────────────────────────────────────────
+# /admin/ingredients  — Glen curates the ingredient + supplier catalog
+# /api/ingredients/*  — JSON API behind require_console_key
+from dashboard import ingredient_catalog as _ingredients
+
+
+@app.route("/admin/ingredients")
+def admin_ingredients_page():
+    resp = send_from_directory(STATIC, "admin-ingredients.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/ingredients/search", methods=["GET"])
+@require_console_key
+def api_ingredients_search():
+    try:
+        q = request.args.get("q", ""); limit = int(request.args.get("limit", 50)); offset = int(request.args.get("offset", 0))
+        return ok(_ingredients.search_ingredients(q, limit, offset))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/suppliers", methods=["GET"])
+@require_console_key
+def api_ingredients_suppliers():
+    try: return ok(_ingredients.list_suppliers(request.args.get("q", ""), int(request.args.get("limit", 50))))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/suppliers/<int:sid>", methods=["PATCH"])
+@require_console_key
+def api_ingredients_supplier_patch(sid):
+    try:
+        _ingredients.update_supplier(sid, request.get_json(silent=True) or {})
+        return ok(_ingredients.get_supplier(sid))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/<int:iid>", methods=["GET"])
+@require_console_key
+def api_ingredients_get(iid):
+    try:
+        ing = _ingredients.get_ingredient(iid)
+        if not ing: return fail("not found", status=404)
+        return ok({"ingredient": ing, "sources": _ingredients.list_sources_for_ingredient(iid)})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/<int:iid>", methods=["PATCH"])
+@require_console_key
+def api_ingredients_patch(iid):
+    try:
+        _ingredients.update_ingredient_curated(iid, request.get_json(silent=True) or {})
+        return ok(_ingredients.get_ingredient(iid))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/sources/<int:src_id>", methods=["PATCH"])
+@require_console_key
+def api_ingredients_source_patch(src_id):
+    try:
+        _ingredients.update_source_curated(src_id, request.get_json(silent=True) or {})
+        return ok({"id": src_id})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/sources/<int:src_id>/preferred", methods=["POST"])
+@require_console_key
+def api_ingredients_source_preferred(src_id):
+    try:
+        _ingredients.set_preferred_source(src_id)
+        return ok({"id": src_id})
     except Exception as e: return fail(e)
 
 
