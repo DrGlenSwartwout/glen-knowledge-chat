@@ -2426,7 +2426,18 @@ def begin_unlock():
 
     redirect = begin_funnel.resolve_want(want, ref_slug) if want else None
     payload = dict(state)
-    payload["surfaced_cards"] = begin_funnel.surface(state, query_texts, ref_slug)
+    _founding_open = False
+    try:
+        from dashboard import founding as _founding
+        if _founding.get_launch("neuro-magnesium"):
+            with sqlite3.connect(LOG_DB) as _fcx:
+                _fcx.row_factory = sqlite3.Row
+                _founding_open = _founding.is_open(
+                    _fcx, "neuro-magnesium", now_iso=_now_utc().strftime("%Y-%m-%d"))
+    except Exception:
+        _founding_open = False
+    payload["surfaced_cards"] = begin_funnel.surface_with_founding(
+        state, query_texts, ref_slug, founding_open=_founding_open)
     if redirect:
         payload["redirect"] = redirect
     resp = jsonify(payload)
