@@ -67,6 +67,20 @@ _DEFAULT_RATES_2026_04_26 = [
     ("L", 3150, "https://www.usps.com/business/prices.htm", "2026-04-26"),
 ]
 
+# Standard bottle types with measured dims (Ø_mm, H_mm) = cm x 10.
+_STANDARD_BOTTLES = [
+    ("120cap", "250 ml wide-mouth (120 caps)", 80, 100),
+    ("100ml", "100 ml dropper", 50, 160),
+    ("30roll", "30 ml roll-on", 40, 100),
+    ("50ml", "50 ml dropper", 40, 140),
+    ("15ml", "15 ml dropper", 30, 100),
+    ("5ml", "5 ml dropper", 30, 80),
+    ("100cos", "100 ml cosmetic (30 g powder)", 70, 70),
+    ("30cap", "100 ml wide-mouth (30 caps)", 50, 90),
+]
+_PACKING_DEFAULTS = {"wrap_mm": 6, "box_margin_mm": 10}
+_PACKING_KEYS = ("wrap_mm", "box_margin_mm")
+
 
 def init_shipping_schema(cx: sqlite3.Connection) -> None:
     """Create the three shipping tables. Idempotent.
@@ -109,6 +123,35 @@ def init_shipping_schema(cx: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_usps_rates_size_date "
         "ON usps_rates(box_size, effective_date)"
     )
+
+    # Add dimension columns to bottle_types if missing (idempotent migration)
+    cols = {r[1] for r in cx.execute("PRAGMA table_info(bottle_types)")}
+    if "diameter_mm" not in cols:
+        cx.execute("ALTER TABLE bottle_types ADD COLUMN diameter_mm INTEGER")
+    if "height_mm" not in cols:
+        cx.execute("ALTER TABLE bottle_types ADD COLUMN height_mm INTEGER")
+
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS packing_settings (
+            key   TEXT PRIMARY KEY,
+            value INTEGER NOT NULL
+        )
+    """)
+    for k, v in _PACKING_DEFAULTS.items():
+        cx.execute(
+            "INSERT OR IGNORE INTO packing_settings (key, value) VALUES (?, ?)",
+            (k, v),
+        )
+
+    # Seed the standard bottle types with dims only on a fresh catalog
+    has_bottles = cx.execute("SELECT 1 FROM bottle_types LIMIT 1").fetchone()
+    if not has_bottles:
+        for name, notes, d_mm, h_mm in _STANDARD_BOTTLES:
+            cx.execute(
+                "INSERT INTO bottle_types (name, notes, diameter_mm, height_mm) "
+                "VALUES (?, ?, ?, ?)",
+                (name, notes, d_mm, h_mm),
+            )
 
     # First-run seed: only if the table is empty
     has_any = cx.execute("SELECT 1 FROM usps_rates LIMIT 1").fetchone()
@@ -329,6 +372,38 @@ def get_capacity_matrix(db_path: Optional[str] = None) -> List[dict]:
         {"id": b["id"], "name": b["name"], "notes": b["notes"], **by_id[b["id"]]}
         for b in bottles
     ]
+
+
+def get_bottle_dims(db_path: Optional[str] = None) -> Dict[str, tuple]:
+    """{name: (diameter_mm, height_mm)} for types that have both dims set."""
+    with _connect(db_path) as cx:
+        rows = cx.execute(
+            "SELECT name, diameter_mm, height_mm FROM bottle_types "
+            "WHERE diameter_mm IS NOT NULL AND height_mm IS NOT NULL"
+        ).fetchall()
+    return {r["name"]: (r["diameter_mm"], r["height_mm"]) for r in rows}
+
+
+def get_packing_settings(db_path: Optional[str] = None) -> Dict[str, int]:
+    with _connect(db_path) as cx:
+        rows = cx.execute("SELECT key, value FROM packing_settings").fetchall()
+    out = dict(_PACKING_DEFAULTS)
+    out.update({r["key"]: r["value"] for r in rows})
+    return {k: int(out[k]) for k in _PACKING_KEYS}
+
+
+def set_packing_setting(key: str, value: int, db_path: Optional[str] = None) -> None:
+    if key not in _PACKING_KEYS:
+        raise ValueError(f"key must be one of {_PACKING_KEYS}, got {key!r}")
+    if int(value) < 0:
+        raise ValueError("padding value must be >= 0")
+    with _connect(db_path) as cx:
+        cx.execute(
+            "INSERT INTO packing_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            (key, int(value)),
+        )
+        cx.commit()
 
 
 # ── Rate update flow (manual approval) ────────────────────────────────────────

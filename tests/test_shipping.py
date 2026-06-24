@@ -346,3 +346,30 @@ def test_check_usps_rates_handles_fetch_failure(seeded_db, monkeypatch):
     assert summary["scraped"] is None
     assert summary["proposed"] == []
     assert any("fetch failed" in e for e in summary["errors"])
+
+
+# ── Schema extensions: dimensions + packing settings ──────────────────────────
+
+def test_schema_adds_dims_and_seeds_standard_bottles(tmp_path):
+    import sqlite3
+    from dashboard.shipping import init_shipping_schema, get_bottle_dims, get_packing_settings
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+        init_shipping_schema(cx)  # idempotent
+        cols = {r[1] for r in cx.execute("PRAGMA table_info(bottle_types)")}
+    assert {"diameter_mm", "height_mm"} <= cols
+    dims = get_bottle_dims(db_path=db)
+    assert dims["15ml"] == (30, 100)
+    assert dims["120cap"] == (80, 100)
+    assert len(dims) == 8
+    assert get_packing_settings(db_path=db) == {"wrap_mm": 6, "box_margin_mm": 10}
+
+def test_set_packing_setting_updates_value(tmp_path):
+    import sqlite3
+    from dashboard.shipping import init_shipping_schema, set_packing_setting, get_packing_settings
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+    set_packing_setting("wrap_mm", 9, db_path=db)
+    assert get_packing_settings(db_path=db)["wrap_mm"] == 9
