@@ -23287,6 +23287,26 @@ def bos_orders_create():
                     o["backorder_units"] = back
             except Exception as _e:
                 print(f"[orders] backorder annotate skipped: {_e!r}", flush=True)
+            # Display-name fallback: many orders carry only a shipping name, which is
+            # blank for portal/reorder flows that don't re-collect it. Backfill the
+            # display name from the people table by email (one grouped query).
+            try:
+                need = sorted({(o.get("email") or "").strip().lower()
+                               for o in rows if not (o.get("name") or "").strip()
+                               and (o.get("email") or "").strip()})
+                if need:
+                    ph = ",".join("?" * len(need))
+                    by_email = {}
+                    for em, nm in cx.execute(
+                            f"SELECT lower(email), name FROM people WHERE lower(email) IN ({ph})",
+                            need).fetchall():
+                        if (nm or "").strip() and em not in by_email:
+                            by_email[em] = nm.strip()
+                    for o in rows:
+                        if not (o.get("name") or "").strip():
+                            o["name"] = by_email.get((o.get("email") or "").strip().lower(), o.get("name") or "")
+            except Exception as _e:
+                print(f"[orders] name backfill skipped: {_e!r}", flush=True)
         finally:
             cx.close()
         return jsonify({"ok": True, "data": rows})
