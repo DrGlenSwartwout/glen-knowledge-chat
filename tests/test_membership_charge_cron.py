@@ -107,6 +107,91 @@ def test_membership_charge_flat_amount_and_advances(monkeypatch):
     cx.close()
 
 
+TEST_EMAIL_B = "mbr-backfill-covered@example.com"
+TEST_EMAIL_C = "mbr-backfill-lapsed@example.com"
+
+
+def _seed_membership_for(cx, email, *, amount_cents=9900, next_charge_date="2026-07-01"):
+    """Seed an active membership subscription for a specific email."""
+    subs.init_subscriptions_table(cx)
+    subs.migrate_add_failed_count(cx)
+    subs.migrate_add_membership_columns(cx)
+    cx.execute("DELETE FROM subscriptions WHERE email=?", (email,))
+    cx.commit()
+    sid = subs.create_membership(
+        cx,
+        email=email,
+        stripe_customer_id=f"cus_bf_{email[:6]}",
+        stripe_payment_method_id=f"pm_bf_{email[:6]}",
+        amount_cents=amount_cents,
+        next_charge_date=next_charge_date,
+        cadence_months=1,
+    )
+    cx.commit()
+    return sid
+
+
+def test_backfill_extends_lapsed_leaves_covered_monotonic(monkeypatch):
+    """Backfill cron: lapsed grant is extended; already-covered grant is NOT touched."""
+    monkeypatch.setenv("SUBSCRIPTIONS_ENABLED", "true")
+    if not (os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET")):
+        monkeypatch.setenv("CONSOLE_SECRET", _cron_secret())
+
+    appmod._init_membership_tables()
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+
+    next_date = "2026-07-01"
+    from datetime import datetime as _dt, timedelta as _td
+
+    # Email B: grant already covers next_charge_date + grace (well into the future)
+    _seed_membership_for(cx, TEST_EMAIL_B, next_charge_date=next_date)
+    cx.execute("DELETE FROM memberships WHERE email=?", (TEST_EMAIL_B,))
+    far_future = (_dt.fromisoformat(next_date) + _td(days=10)).isoformat() + "Z"
+    cx.execute(
+        "INSERT INTO memberships (id,email,granted_at,expires_at,granted_by,source,truly_vip_ref,notes)"
+        " VALUES ('gbf1',?,?,?,'seed','seed','','')",
+        (TEST_EMAIL_B, "2026-01-01T00:00:00Z", far_future),
+    )
+    cx.commit()
+    covered_max_before = cx.execute(
+        "SELECT MAX(expires_at) FROM memberships WHERE email=?", (TEST_EMAIL_B,)
+    ).fetchone()[0]
+
+    # Email C: grant is absent (lapsed)
+    _seed_membership_for(cx, TEST_EMAIL_C, next_charge_date=next_date)
+    cx.execute("DELETE FROM memberships WHERE email=?", (TEST_EMAIL_C,))
+    cx.commit()
+
+    c = appmod.app.test_client()
+    r = c.post("/api/cron/backfill-membership-grants", headers=_headers())
+    assert r.status_code == 200, r.data
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["dry_run"] is False
+    # At least the lapsed member was fixed
+    assert body["fixed"] >= 1
+
+    # Lapsed member (C) now has an active grant reaching next_charge_date + grace
+    m = appmod._active_membership_for_email(TEST_EMAIL_C)
+    assert m is not None, "lapsed member should now have an active membership grant"
+
+    # Covered member (B) was NOT given an additional grant row (monotonic)
+    covered_max_after = cx.execute(
+        "SELECT MAX(expires_at) FROM memberships WHERE email=?", (TEST_EMAIL_B,)
+    ).fetchone()[0]
+    assert covered_max_after == covered_max_before, (
+        "already-covered member should not have received a redundant grant"
+    )
+
+    # Cleanup
+    for email in (TEST_EMAIL_B, TEST_EMAIL_C):
+        cx.execute("DELETE FROM subscriptions WHERE email=?", (email,))
+        cx.execute("DELETE FROM memberships WHERE email=?", (email,))
+    cx.commit()
+    cx.close()
+
+
 def test_membership_dry_run_charges_nothing(monkeypatch):
     _enable(monkeypatch)
 

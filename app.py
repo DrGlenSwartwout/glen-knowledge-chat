@@ -19216,6 +19216,31 @@ def cron_charge_subscriptions():
     })
 
 
+@app.route("/api/cron/backfill-membership-grants", methods=["POST"])
+def cron_backfill_membership_grants():
+    key = request.headers.get("X-Cron-Secret", "")
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    dry = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+    from dashboard import subscriptions as _subs
+    fixed = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _subs.init_subscriptions_table(cx); _subs.migrate_add_membership_columns(cx)
+        rows = cx.execute("SELECT DISTINCT email, next_charge_date FROM subscriptions "
+                          "WHERE kind='membership' AND status='active'").fetchall()
+        for r in rows:
+            until = (datetime.fromisoformat(r["next_charge_date"]) + timedelta(days=MEMBERSHIP_GRANT_GRACE_DAYS)).isoformat() + "Z"
+            cur = cx.execute("SELECT MAX(expires_at) FROM memberships WHERE email=?", (r["email"],)).fetchone()
+            have = cur[0] if cur else None
+            if not (have and have >= until):
+                fixed += 1
+                if not dry:
+                    _extend_membership_grant(cx, r["email"], until, "backfill_2026_06")
+    return jsonify({"ok": True, "fixed": fixed, "dry_run": dry})
+
+
 # ── One-time Gmail token upload (helper for first-time setup on Render) ───────
 # Local token at ~/.config/google/token.json gets POSTed here once and
 # persisted to /data/google-token.json on the web service's disk.
