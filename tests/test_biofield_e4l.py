@@ -138,18 +138,51 @@ def test_identity_merge_reads_split_history(tmp_path):
     assert ctx["scan_id"] == 950 and ctx["days_ago"] == 1
 
 
-def test_mr_category_findings_excluded(tmp_path):
-    """MR-category patterns (MR1..MR10) are NOT listed for the manual Biofield Test."""
-    db = tmp_path / "e4l.db"
+def _grouped_seed(db):
+    """A scan mixing infoceutical categories (ED/EI/ET/ES/MB) with the info-only
+    stress categories (ER/MR)."""
     cx = _seed(db)
-    cx.execute("INSERT INTO e4l_items(code,name,full_name,category) VALUES('MR2','Calm Mind','Calm Mind','MR')")
+    cx.executemany("INSERT INTO e4l_items(code,name,full_name,category) VALUES(?,?,?,?)", [
+        ("ED11", "Liver Driver", "Liver Driver", "ED"),
+        ("MB2", "Heart Field", "Heart Field", "MB"),
+        ("ER4", "Skin Rejuvenator", "Skin Rejuvenator", "ER"),
+        ("MR2", "Calm Mind", "Calm Mind", "MR")])
     cx.execute("INSERT INTO e4l_scans VALUES(900,100,'2026-06-22')")
-    cx.execute("INSERT INTO e4l_scan_results(scan_id,item_code,priority_rank) VALUES(900,'LV3',1)")
-    cx.execute("INSERT INTO e4l_scan_results(scan_id,item_code,priority_rank) VALUES(900,'MR2',2)")
-    cx.execute("INSERT INTO e4l_scan_results(scan_id,item_code,priority_rank) VALUES(900,'KI1',3)")
+    cx.executemany("INSERT INTO e4l_scan_results(scan_id,item_code,priority_rank) VALUES(900,?,?)",
+                   [("ED11", 1), ("ER4", 2), ("MB2", 3), ("MR2", 4)])
     cx.commit(); cx.close()
-    codes = [f["code"] for f in scan_context("jane@x.com", "2026-06-24", db_path=str(db))["findings"]]
-    assert codes == ["LV3", "KI1"]   # MR2 dropped
+
+
+def test_findings_grouped_infoceutical_vs_stress(tmp_path):
+    """ER + MR are 'stresses' (info only, no balancing vial); the rest are infoceuticals."""
+    db = tmp_path / "e4l.db"; _grouped_seed(db)
+    ctx = scan_context("jane@x.com", "2026-06-24", db_path=str(db))
+    assert [f["code"] for f in ctx["infoceuticals"]] == ["ED11", "MB2"]
+    assert [f["code"] for f in ctx["stresses"]] == ["ER4", "MR2"]
+    # each finding carries its category + group
+    g = {f["code"]: f["group"] for f in ctx["findings"]}
+    assert g == {"ED11": "infoceutical", "MB2": "infoceutical",
+                 "ER4": "stress", "MR2": "stress"}
+
+
+def test_mr_no_longer_dropped(tmp_path):
+    db = tmp_path / "e4l.db"; _grouped_seed(db)
+    codes = {f["code"] for f in scan_context("jane@x.com", "2026-06-24", db_path=str(db))["findings"]}
+    assert "MR2" in codes and "ER4" in codes   # included now, just grouped as stresses
+
+
+def test_limit_caps_each_group(tmp_path):
+    db = tmp_path / "e4l.db"; cx = _seed(db)
+    cx.execute("INSERT INTO e4l_scans VALUES(900,100,'2026-06-22')")
+    rank = 1
+    for i in range(8):
+        cx.execute("INSERT INTO e4l_items(code,name,category) VALUES(?,?,?)", (f"ED{i}", f"d{i}", "ED"))
+        cx.execute("INSERT INTO e4l_items(code,name,category) VALUES(?,?,?)", (f"ER{i}", f"r{i}", "ER"))
+        cx.execute("INSERT INTO e4l_scan_results(scan_id,item_code,priority_rank) VALUES(900,?,?)", (f"ED{i}", rank)); rank += 1
+        cx.execute("INSERT INTO e4l_scan_results(scan_id,item_code,priority_rank) VALUES(900,?,?)", (f"ER{i}", rank)); rank += 1
+    cx.commit(); cx.close()
+    ctx = scan_context("jane@x.com", "2026-06-24", db_path=str(db), limit=3)
+    assert len(ctx["infoceuticals"]) == 3 and len(ctx["stresses"]) == 3   # per-group cap
 
 
 def test_limit_caps_findings(tmp_path):

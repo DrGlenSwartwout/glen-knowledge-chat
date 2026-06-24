@@ -97,16 +97,29 @@ _SCAN_GUIDANCE = (
     "stale as current.")
 
 
+def _narrative_findings(scan):
+    """The scan findings fed to the patient narrative = INFOCEUTICALS only. ER/MR
+    'stresses' are information Glen doesn't balance, so they stay off the patient
+    message. Falls back to splitting `findings` by group for un-split callers."""
+    if not (scan and scan.get("found")):
+        return []
+    fs = scan.get("infoceuticals")
+    if fs is None:
+        fs = [f for f in (scan.get("findings") or []) if f.get("group") != "stress"]
+    return fs or []
+
+
 def _scan_block(scan):
     """Optional context block from the client's most recent E4L voice scan. Empty
-    string unless a scan was actually found, so callers stay back-compatible."""
-    if not (scan and scan.get("found") and scan.get("findings")):
+    string unless the scan has infoceutical findings (back-compatible)."""
+    findings = _narrative_findings(scan)
+    if not findings:
         return ""
     days = scan.get("days_ago")
     age = f"{days} day{'s' if days != 1 else ''} ago" if days is not None else "date unknown"
     fresh = "fresh" if scan.get("fresh") else "STALE — older than the 2-week window"
     lines = [f"RECENT E4L VOICE SCAN ({age}, {fresh}; scan {scan.get('scan_date') or ''}):"]
-    for f in scan.get("findings") or []:
+    for f in findings:
         rank = f.get("rank")
         desc = (f.get("description") or "").strip()
         lines.append(f"- {('#' + str(rank) + ' ') if rank is not None else ''}"
@@ -136,9 +149,9 @@ def _user_block(report, notes, scan=None):
 
 
 def _system_with_scan(base, scan):
-    """Append scan guidance only when a scan was actually found, so the no-scan prompt
-    stays byte-identical to before (back-compat)."""
-    return base + (_SCAN_GUIDANCE if (scan and scan.get("found") and scan.get("findings")) else "")
+    """Append scan guidance only when the narrative actually carries scan findings, so
+    the no-scan prompt stays byte-identical to before (back-compat)."""
+    return base + (_SCAN_GUIDANCE if _narrative_findings(scan) else "")
 
 
 def build_narrative_prompt(report, notes, scan=None):
