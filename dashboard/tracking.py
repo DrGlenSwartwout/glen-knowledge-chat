@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from datetime import datetime
 from html import escape, unescape
 from typing import Dict, List, Optional
 
@@ -280,3 +281,44 @@ def record_shipment(cx: sqlite3.Connection, **fields) -> Optional[int]:
     )
     cx.commit()
     return int(cur.lastrowid)
+
+
+def _iso_now() -> str:
+    return datetime.utcnow().isoformat() + "Z"
+
+
+def migrate_add_delivery_columns(cx) -> None:
+    """Add delivery-tracking columns to shipments if missing. Safe on every startup."""
+    for ddl in (
+        "ALTER TABLE shipments ADD COLUMN delivered_at TEXT",
+        "ALTER TABLE shipments ADD COLUMN coaching_opened INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE shipments ADD COLUMN easypost_tracker_id TEXT",
+    ):
+        try:
+            cx.execute(ddl)
+            cx.commit()
+        except Exception:
+            pass
+
+
+def shipment_by_tracking(cx, tracking_number):
+    if not tracking_number:
+        return None
+    return cx.execute("SELECT * FROM shipments WHERE tracking_number=?",
+                      (tracking_number,)).fetchone()
+
+
+def mark_shipment_delivered(cx, shipment_id, delivered_at) -> bool:
+    """Set delivered_at only if currently NULL. Returns True iff it set it now."""
+    cur = cx.execute(
+        "UPDATE shipments SET delivered_at=?, updated_at=? WHERE id=? AND delivered_at IS NULL",
+        (delivered_at, delivered_at, shipment_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def set_shipment_tracker(cx, shipment_id, tracker_id) -> bool:
+    cur = cx.execute("UPDATE shipments SET easypost_tracker_id=?, updated_at=? WHERE id=?",
+                     (tracker_id, _iso_now(), shipment_id))
+    cx.commit()
+    return cur.rowcount > 0

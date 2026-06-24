@@ -21713,6 +21713,7 @@ import dashboard.products as _bos_products  # noqa: F401 (registers products sig
 import dashboard.easypost as _bos_easypost  # noqa: F401
 import dashboard.ghl_queue as _bos_ghl_queue  # noqa: F401 (registers crm enqueue actions)
 from dashboard import stripe_alerts as _stripe_alerts  # noqa: F401 (Stripe-failure alerting)
+from dashboard import tracking as _tracking  # noqa: F401 (delivery tracking helpers)
 
 
 def _alert_stripe(context, err):
@@ -21756,6 +21757,8 @@ def _init_bos_orders():
         _bos_orders.init_orders_table(cx)
         _bos_orders.init_fulfillments_table(cx)
         _stripe_alerts.init_stripe_alerts_table(cx)
+        _tracking.init_tracking_schema(cx)
+        _tracking.migrate_add_delivery_columns(cx)
     finally:
         cx.close()
 
