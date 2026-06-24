@@ -34,6 +34,7 @@ def openai_complete(system, user):
     model = os.environ.get("BIOFIELD_NARRATIVE_MODEL", "gpt-4o")
     resp = openai.OpenAI().chat.completions.create(
         model=model,
+        temperature=0.4,  # grounded, less flowery
         messages=[{"role": "system", "content": system},
                   {"role": "user", "content": user}])
     return resp.choices[0].message.content

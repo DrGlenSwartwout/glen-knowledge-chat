@@ -48,6 +48,8 @@ def test_prompt_carries_voice_rules_layers_and_notes():
     assert "Aloha" in sys
     assert "Dr. Glen & Rae" in sys
     assert "observation" in sys.lower()
+    # voice: plain and grounded, no literary flourish
+    assert "metaphor" in sys.lower()
     # the chain, top-down, with remedies
     assert usr.index("Night") < usr.index("Acid")
     assert "TMG Powder" in usr and "Sterol Max" in usr
