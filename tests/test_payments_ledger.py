@@ -198,3 +198,14 @@ def test_backfill_falls_back_to_trial_amount_when_missing():
     P.backfill_trial_orders(cx, lambda sid: {"payment_intent": "pi_a"})  # no amount
     [p] = P.list_payments(cx)
     assert p["amount_cents"] == P.TRIAL_AMOUNT_CENTS == 100
+
+
+def test_backfill_dry_run_reports_counts_without_writing():
+    cx = _cx()
+    _grant(cx, "cs_a", "a@x.com")
+    _grant(cx, "cs_unpaid", "u@x.com")
+    sessions = {"cs_a": {"payment_intent": "pi_a", "amount_total": 100},
+                "cs_unpaid": {"payment_intent": None}}
+    res = P.backfill_trial_orders(cx, lambda sid: sessions[sid], dry_run=True)
+    assert res == {"created": 1, "skipped": 0, "unpaid": 1, "failed": 0}
+    assert P.list_payments(cx) == []  # nothing written
