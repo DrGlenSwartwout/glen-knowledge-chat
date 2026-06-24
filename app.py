@@ -4421,7 +4421,7 @@ def begin_product_image(slug, filename):
     return send_from_directory(str(d), filename, mimetype="image/png")
 
 
-_REVIEW_PAID_STATUSES = ("paid", "new", "packed", "shipped", "done")
+_REVIEW_PAID_STATUSES = ("paid", "new", "packed", "shipped", "done", "delivered")
 
 
 def _review_verified_buyer(cx, email, slug):
