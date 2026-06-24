@@ -1587,10 +1587,16 @@ _BANNED_DISEASE = ["macular", "amd", "glaucoma", "cataract", "alzheimer", "demen
 _EMDASH = "—"
 
 
-def _all_quiz_text():
+def _all_quiz_text(include_disclaimer=False):
+    # The DSHEA disclaimer is REQUIRED legal text and legitimately contains
+    # "prevent ... disease"; it is excluded from the disease-CLAIM scan and
+    # validated separately by test_disclaimer_is_dshea. The em-dash scan still
+    # covers it (the disclaimer must contain no em-dash).
     cfg = quiz_engine.load_config()
     q = quiz_engine.get_quiz("eye-brain", cfg)
-    parts = [q["title"], q["hook"], q["disclaimer"]]
+    parts = [q["title"], q["hook"]]
+    if include_disclaimer:
+        parts.append(q["disclaimer"])
     for qq in q["questions"]:
         parts.append(qq["prompt"])
         parts += [o["label"] for o in qq["options"]]
@@ -1600,14 +1606,14 @@ def _all_quiz_text():
 
 
 def test_no_disease_claims_in_quiz_copy():
-    for s in _all_quiz_text():
+    for s in _all_quiz_text(include_disclaimer=False):
         low = s.lower()
         for b in _BANNED_DISEASE:
             assert b not in low, f"banned term {b!r} in: {s!r}"
 
 
 def test_no_emdash_in_quiz_copy():
-    for s in _all_quiz_text():
+    for s in _all_quiz_text(include_disclaimer=True):
         assert _EMDASH not in s, f"em-dash in: {s!r}"
 
 
