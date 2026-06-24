@@ -44,6 +44,14 @@ def test_report_html_escapes_free_text():
     assert "<b>x</b>" not in html
 
 
+def test_report_html_depth_warning_badge():
+    rep = _report()
+    rep["layers"][0]["depth_status"] = "shallow"
+    rep["layers"][0]["depth_need"] = "Nucleoplasm / epigenetic"
+    html = render_report_html(rep)
+    assert "may not reach" in html and "Nucleoplasm" in html
+
+
 def test_report_html_has_notes_and_narrative_section():
     html = render_report_html(_report(), notes="kidney weak", narrative="Aloha Lewis,")
     assert "kidney weak" in html          # saved notes pre-filled

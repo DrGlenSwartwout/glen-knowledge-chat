@@ -12,6 +12,7 @@ import datetime
 import sqlite3
 
 from dashboard.biofield_schedule import build_schedule
+from dashboard.biofield_dimensions import DEPTH_KEY, depth_label, depth_match, get_tag
 
 
 def _now():
@@ -181,6 +182,14 @@ def authored_report(cx, tid):
                "most_affected": r["most_affected"] or "", "remedy": r["remedy"] or "",
                "dosage": r["dosage"] or "", "frequency": r["frequency"] or "",
                "timing": r["timing"] or "", "rid": r["id"]} for r in rows]
+    # Depth-of-penetration tags + reach match-check per layer (Increment 4b)
+    for l in layers:
+        sd = get_tag(cx, "auth_stress", l["rid"], DEPTH_KEY)
+        rd = get_tag(cx, "auth_remedy", l["rid"], DEPTH_KEY)
+        l["stress_depth"] = sd
+        l["remedy_depth"] = rd
+        l["depth_status"] = depth_match(sd, rd)
+        l["depth_need"] = depth_label(cx, sd)
     schedule = build_schedule([
         {"name": l["remedy"], "dosage": l["dosage"],
          "frequency": l["frequency"], "timing": l["timing"]} for l in layers])

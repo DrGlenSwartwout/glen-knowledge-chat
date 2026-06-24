@@ -24,6 +24,7 @@ _STYLE = """
  .lyr{color:var(--accent);font-weight:700;white-space:nowrap}
  .slot{font-weight:600;color:var(--accent);white-space:nowrap;width:130px}
  .food{color:var(--muted);font-size:12px}
+ .warn{color:#e0823a;font-size:12px}
  input[type=search]{background:#0c0e12;color:var(--fg);border:1px solid var(--line);
    border-radius:8px;padding:8px 10px;width:280px;font:inherit}
  .pill{display:inline-block;background:#0c0e12;border:1px solid var(--line);border-radius:999px;
@@ -93,12 +94,16 @@ def render_report_html(report, notes="", narrative="", video_script=""):
     rows = ""
     for l in report.get("layers") or []:
         ln = l.get("layer")
+        badge = ""
+        if l.get("depth_status") == "shallow":
+            badge = (f"<br><span class=warn>&#9888; may not reach "
+                     f"{_e(l.get('depth_need') or 'this depth')}</span>")
         rows += (
             "<tr>"
             f"<td class=lyr>{_e(str(ln)) if ln is not None else '&middot;'}</td>"
             f"<td>{_e(l.get('head') or '')}</td>"
             f"<td>{_e(l.get('most_affected') or '')}</td>"
-            f"<td>{_e(l.get('remedy') or '')}</td>"
+            f"<td>{_e(l.get('remedy') or '')}{badge}</td>"
             f"<td>{_e(l.get('dosage') or '')}</td>"
             f"<td>{_e(l.get('frequency') or '')}</td>"
             f"<td>{_e(l.get('timing') or '')}</td>"
@@ -192,6 +197,8 @@ async function suggest(p){var s=val(p+'_head');var box=document.getElementById(p
  arr.forEach(function(x){var b=document.createElement('button');b.type='button';b.className='chip';
   b.textContent=x.remedy+' ('+x.count+')';b.onclick=function(){set(p+'_remedy',x.remedy);fillDose(p)};
   box.appendChild(b);box.appendChild(document.createTextNode(' '))})}
+async function saveDepth(el){await post('/author/__TID__/depth',
+ {rid:el.dataset.rid,side:el.dataset.side,rank:el.value});astat('Depth saved.')}
 async function loadLists(){
  try{const v=await (await fetch('/api/vocab?limit=500')).json();
   document.getElementById('vocab').innerHTML=(v.vocab||[]).map(opt).join('')}catch(e){}
@@ -215,7 +222,16 @@ def _row_inputs(p, l):
         f'<td><input id="{p}_timing" value="{g("timing")}"></td>')
 
 
-def render_author_html(report):
+def _depth_select(rid, side, current, depth_values):
+    opts = "<option value=''>&mdash;</option>"
+    for v in depth_values or []:
+        sel = " selected" if (current is not None and int(current) == v["rank"]) else ""
+        opts += f"<option value='{v['rank']}'{sel}>{_e(v['value'])}</option>"
+    return (f"<select data-rid=\"{_e(str(rid))}\" data-side=\"{side}\" onchange=\"saveDepth(this)\" "
+            f"style='font-size:12px;max-width:170px'>{opts}</select>")
+
+
+def render_author_html(report, depth_values=None):
     tid = _e(report.get("test_id") or "")
     c = report.get("client") or {}
     head = (f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
@@ -229,24 +245,33 @@ def render_author_html(report):
         "<span id=astat class=food></span></div></div>")
     rows = ""
     for l in report.get("layers") or []:
-        rid = _e(str(l.get("rid") or ""))
+        rid_raw = l.get("rid")
+        rid = _e(str(rid_raw or ""))
         p = "r" + rid
-        rows += ("<tr>" + _row_inputs(p, l) +
+        depth_cell = ("<td><span class=food>stress</span> "
+                      + _depth_select(rid_raw, "stress", l.get("stress_depth"), depth_values)
+                      + "<br><span class=food>remedy</span> "
+                      + _depth_select(rid_raw, "remedy", l.get("remedy_depth"), depth_values) + "</td>")
+        rows += ("<tr>" + _row_inputs(p, l) + depth_cell +
                  f"<td><button class=chip onclick=\"fillDose('{p}')\">dose</button> "
                  f"<button class=chip onclick=\"suggest('{p}')\">uses</button></td>"
                  f"<td><button class=btn onclick=\"saveRow('{rid}')\">Save</button> "
                  f"<button class='btn ghost' onclick=\"delRow('{rid}')\">Del</button></td></tr>"
-                 f"<tr><td colspan=9><span id={p}_sug class=food></span></td></tr>")
+                 f"<tr><td colspan=10><span id={p}_sug class=food></span></td></tr>")
     addr = ("<tr>" + _row_inputs("new", {}) +
+            "<td class=food>save row first</td>"
             "<td><button class=chip onclick=\"fillDose('new')\">dose</button> "
             "<button class=chip onclick=\"suggest('new')\">uses</button></td>"
             "<td><button class=btn onclick=addRow()>Add row</button></td></tr>"
-            "<tr><td colspan=9><span id=new_sug class=food></span></td></tr>")
+            "<tr><td colspan=10><span id=new_sug class=food></span></td></tr>")
     table = ("<h2>Causal chain</h2>"
              "<p class=sub>Enter rows directly. Layer 1 = most recent/surface, higher = deeper root. "
-             "'dose' auto-fills from the catalog; 'uses' shows what you've used for that stress before.</p>"
+             "'dose' auto-fills from the catalog; 'uses' shows what you've used for that stress before. "
+             "Set depth-of-penetration on the stress and the remedy &mdash; a remedy shallower than its "
+             "stress is flagged on the report.</p>"
              "<table><tr><th>Layer</th><th>Head / Stress</th><th>Most Affected</th>"
-             "<th>Remedy</th><th>Dosage</th><th>Frequency</th><th>Timing</th><th></th><th></th></tr>"
+             "<th>Remedy</th><th>Dosage</th><th>Frequency</th><th>Timing</th>"
+             "<th>Depth of penetration</th><th></th><th></th></tr>"
              + rows + addr + "</table>"
              "<datalist id=vocab></datalist><datalist id=catalog></datalist>")
     return _page("Edit Biofield Test", head + hdr + table + _AUTHOR_JS.replace("__TID__", tid))
