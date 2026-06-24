@@ -362,10 +362,14 @@
         },
         {
           "name": "Honokiol",
-          "dose": "40 mg"
+          "dose": "20 mg"
         },
         {
           "name": "Xanthohumol",
+          "dose": "100 mg"
+        },
+        {
+          "name": "Bacosides",
           "dose": "100 mg"
         },
         {
@@ -375,9 +379,17 @@
         {
           "name": "Glucomannan",
           "dose": "12.5 mg"
+        },
+        {
+          "name": "Xanthohumol",
+          "dose": ""
+        },
+        {
+          "name": "Bacosides",
+          "dose": ""
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Brain Cleanse . Brain Cleanse Brain Cleanse One cap at bedtime cleans your brain while you sleep... Brain Cleanse supports detoxification of the central nervous system via the glymph system while you sleep. Take Brain Cleanse before you go to bed. Relax. Rest your mind. Sleep better... And have sweet dreams while your brain gets clean So you can wake to a fresh start the next day. Get this: Clarity. Focus. Energy. And health. Relaxation and restful sleep is supported by the same high-quality ingredients as in our Sleep Synergy formula, though in lower dosages to make room for 20 mg of...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Xanthohumol, Xanthan Gum, Glucomannan",
@@ -421,14 +433,18 @@
         },
         {
           "name": "R-Lipoic Acid",
-          "dose": "50 mg"
+          "dose": "10 mg"
+        },
+        {
+          "name": "Carnosic Acid",
+          "dose": ""
         },
         {
           "name": "Curcumin",
           "dose": "100 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Crystalline Clarity . Crystalline Clarity Crystalline Clarity Our Crystalline Clarity formula is supplied in organic Pullulan vegitarian capsules. We use no unwanted excipients in order to achieve optimum bioavailability and health effects. Crystalline Clarity . Crystalline Clarity supplies a broad range of nutrients and botanical extracts to support and activate pathways related to crystalline lens health and clarity: Mineral Factors: GTF Chromium (as Chromium Polynicotinate) 50 mcg 42% Copper (as Copper Glycinate) 300 mcg 15% Selenium (as Methylselenocysteine) 100 mcg 143% Zinc (as Zinc...",
       "bottle_type": "30cap"
     },
@@ -1143,20 +1159,20 @@
           "dose": "7 mg"
         },
         {
-          "name": "Methylselenocysteine (MSC)",
-          "dose": "0.05 mg"
+          "name": "Selenium\nMethylselenocysteine",
+          "dose": ".05 mg"
         },
         {
-          "name": "Ginsenosides",
+          "name": "Gensenosides",
           "dose": "35 mg"
         },
         {
-          "name": "Green Tea Extract EGCG 98% (Epigallocatechin Gallate) (Camellia sinensis)",
+          "name": "Polyphenols\nEGCG",
           "dose": "130 mg"
         },
         {
           "name": "Fucoxanthin 85%",
-          "dose": "0.8 mg"
+          "dose": ".8 mg"
         },
         {
           "name": "Tocotrienols",
@@ -1171,15 +1187,15 @@
           "dose": "35 mg"
         },
         {
-          "name": "PQQ (Pyrroloquinoline Quinone)",
+          "name": "PQQ",
           "dose": "3 mg"
         },
         {
-          "name": "Dihydroberberine (GlucoVantage®)",
+          "name": "NNB Nutrition: GlucoVantage® Dihydroberberine",
           "dose": "35 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Lipid Cleanse . Lipid Cleanse Lipid Cleanse Lipid Cleanse supports the restoration of healthy tissue structure and function including the retina. Soft drusen in the retina produce visual distortion on the Amsler Grid test for monitoring Macular Degeneration. Drusen are accumulations of waste products of retinal metabolism. Dissolving and reversal of drusen formation has been reported with long-term use of supplements high in certain nutrients and botanical extracts. Magnesium L-Threonate crosses the blood-brain and the blood-eye barriers, including the barrier between the blood and the...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Dihydroberberine (GlucoVantage)",
@@ -1205,11 +1221,11 @@
           "dose": "150 mg"
         },
         {
-          "name": "Forskolin",
+          "name": "Forskolin (a labdane diterpene)",
           "dose": "65 mg"
         },
         {
-          "name": "Ginkgo Biloba Extract (24% Flavone, 6% Lactone, Ginkgolic Acid <1ppm)",
+          "name": "Ginkgo Biloba Extract 24% Flavone 6% Lactone Ginkgolic Acid ＜1ppm",
           "dose": "80 mg"
         },
         {
@@ -1217,7 +1233,7 @@
           "dose": "80 mg"
         },
         {
-          "name": "OPC (Oligomeric Proanthocyanidins)",
+          "name": "OPC",
           "dose": "20 mg"
         },
         {
@@ -1225,7 +1241,7 @@
           "dose": "5 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "IOP Syntropy . IOP Syntropy IOP Syntropy IOP Syntropy is formulated to deliver optimal levels of key phytonutrients documented to support regulating and normalizing eye pressure. The suggested dosage range is divided from one to three capsules taken with food throughout the day. IOP is the scientific acronym for intraocular pressure. It is traditionally measured in millimeters of mercury, abbreviated mmHg. The standard pressure range is 10 to 20 or 21 mmHg, with 15 being the norm. Pressures consistently above 21 mmHg may be termed “ocular hypertension” and warrant closer monitoring by an eye...",
       "bottle_type": "30cap"
     },
@@ -1985,7 +2001,7 @@
           "dose": "37.5 mg"
         },
         {
-          "name": "Methylselenocysteine (Selenium)",
+          "name": "Selenium\nMethylselenocysteine",
           "dose": "170 mcg"
         },
         {
@@ -2005,11 +2021,11 @@
           "dose": "20 mg"
         },
         {
-          "name": "MSM (Methylsulfonylmethane)",
+          "name": "MSM",
           "dose": "100 mg"
         },
         {
-          "name": "N-Acetyl Cysteine (NAC)",
+          "name": "N-Acetyl Cysteine \nNAC",
           "dose": "75 mg"
         },
         {
@@ -2025,7 +2041,7 @@
           "dose": "10 mg"
         },
         {
-          "name": "Diindolylmethane (DIM)",
+          "name": "3,4 Diindolylmethane",
           "dose": "50 mg"
         },
         {
@@ -2033,7 +2049,7 @@
           "dose": "30 mg"
         },
         {
-          "name": "Glucoraphanin",
+          "name": "Glucoraphanin (precursor to Sulforaphane)",
           "dose": "10 mg"
         },
         {
@@ -2041,11 +2057,11 @@
           "dose": "50 mg"
         },
         {
-          "name": "Adenosylcobalamin (90%) & Methylcobalamin (10%)",
+          "name": "Adenosyl 90% & Methyl 10% Cobalamin",
           "dose": "6 mcg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Sulfur Synergy . Price: $69.97.",
       "bottle_type": "30cap"
     },
@@ -2179,7 +2195,7 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "N-Acetyl Cysteine (NAC)",
+          "name": "N-Acetyl Cysteine \nNAC",
           "dose": "100 mg"
         },
         {
@@ -2191,7 +2207,7 @@
           "dose": "100 mg"
         },
         {
-          "name": "Cyanidin-3-Glucosides",
+          "name": "Cyanidin-3-glucosides",
           "dose": "50 mg"
         },
         {
@@ -2215,11 +2231,15 @@
           "dose": "1 mg"
         },
         {
+          "name": "Salvianolic Acid B",
+          "dose": ""
+        },
+        {
           "name": "Pterostilbene",
           "dose": "50 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Macular Wellness Lutein . Macular Wellness Lutein Macular Wellness Lutein Lutein is the main carotenoid stored in the macula, the central area of the retina, as well as in the brain and lens of the eye. Without the macula, vision is worse than 20/200 which we define as legal blindness. This impairs crucial functions like reading, driving and seeing faces. Macular Wellness formulas allow you to take a different carotenoid at each meal to ensure absorption. The carotenoids compete for absorption, so avoid supplementing Beta Carotene at the same meal. Also, avoid supplements with stearates or...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Tetrahydrocurcumin, Pterostilbene",
@@ -2233,47 +2253,31 @@
       "url": "https://remedymatch.com/remedies/syntropy/135-msm-syntropy",
       "ingredients": [
         {
-          "name": "DHA",
-          "dose": "1500+ mg"
+          "name": "Biotin",
+          "dose": ".1 mg"
         },
         {
-          "name": "Curcumin",
-          "dose": "1200+ mg"
+          "name": "L-Ascorbic Acid",
+          "dose": "133.3 mg"
         },
         {
-          "name": "Catechins",
-          "dose": "300-400 mg"
-        },
-        {
-          "name": "Pycnogenol",
-          "dose": "100-200 mg"
-        },
-        {
-          "name": "Boswellia (95% Boswellic Acids)",
-          "dose": "200+ mg"
-        },
-        {
-          "name": "Resveratrol",
-          "dose": "50-500 mg"
-        },
-        {
-          "name": "Piperine",
-          "dose": "20 mg"
-        },
-        {
-          "name": "Trans-Pterostilbene",
-          "dose": "250-500 mg"
+          "name": "Silica",
+          "dose": ""
         },
         {
           "name": "MSM",
-          "dose": "1500+ mg"
+          "dose": "333.3 mg"
         },
         {
-          "name": "Quercetin Dihydrate",
-          "dose": "500-8000 mg"
+          "name": "Tetrahydrocurcumin",
+          "dose": "33.3 mg"
+        },
+        {
+          "name": "Boswellic Acid",
+          "dose": ""
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "MSM Synergy . Price: $69.97. MSM Synergy . MSM Synergy MSM Powder MSM is wonderful support for many functions including comfort, scar reduction and cleansing... MSM (Methylsulfonylmethane) is organic sulfur. It is also a methyl donor. It dissolves easily in water, with a slightly bitter and cooling taste. And it works fast, enhancing comfort in a few minutes. You can also brush your gums with it to support gum tissue regeneration... Reclaim Flexibility, Radiance, and Resilience With Pure MSM – The Beauty Mineral That Works from the Inside Out Imagine waking up without the stiffness… moving...",
       "bottle_type": "30g"
     },
@@ -2560,15 +2564,19 @@
           "dose": "400 mg"
         },
         {
+          "name": "Piperine",
+          "dose": "5 mg"
+        },
+        {
           "name": "Pterostilbene",
           "dose": "75 mg"
         },
         {
-          "name": "Piperine",
-          "dose": "5 mg"
+          "name": "Rosmarinic acid",
+          "dose": ""
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Clarity . Clarity Clarity This formulation is inspired by a study in which Rosmarinic Acid was remarkably powerful at clearing cloudy crystalline lens tissue in vitro. One to three capsules daily supplies a therapeutic dose of Rosmarinic acid concentrated as a standardized extract from Rosemary. Premium Organic Pullulan Vegicap Experience the power of nature with our pullulan vegicaps, formulated with high-quality botanicals, bioavailability boosters, and delivery drivers for optimal absorption and delivery to the crystalline lens of the eye. The eye's lens is avascular and has the densest...",
       "bottle_type": "30cap"
     },
@@ -2580,16 +2588,16 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "Pyridoxal-5-Phosphate (P5P)",
+          "name": "P5P",
           "dose": "3 mg"
         },
         {
-          "name": "Selenium (as Methylselenocysteine)",
-          "dose": "0.044 mg"
+          "name": "Selenium\nMethylselenocysteine",
+          "dose": ".044 mg"
         },
         {
           "name": "R-Lipoic Acid",
-          "dose": "33 mg"
+          "dose": "10 mg"
         },
         {
           "name": "Silymarin",
@@ -2597,26 +2605,30 @@
         },
         {
           "name": "Tetrahydrocurcumin",
-          "dose": "33 mg"
+          "dose": ""
         },
         {
           "name": "S-Acetyl Glutathione",
           "dose": "66 mg"
         },
         {
-          "name": "N-Acetyl Cysteine (NAC)",
+          "name": "N-Acetyl Cysteine \nNAC",
           "dose": "200 mg"
         },
         {
-          "name": "L-Ascorbic Acid (Vitamin C)",
+          "name": "L-Ascorbic Acid",
           "dose": "50 mg"
         },
         {
-          "name": "Zinc",
+          "name": "Zinc \nVitamin C",
+          "dose": "33 mg"
+        },
+        {
+          "name": "Curcumin",
           "dose": "33 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Glutathione Synergy . Glutathione Synergy Glutathione Syntropy Acetyl GSH + NAC delivers acetylated glutathione to the intracellular compartment, undigested in the gut and blood stream. Once inside your cells, intracellular enzymes cleave off the acetyl group, delivering preformed GSH within the cells where you need it! The addition of N-Acetyl Cysteine support cellular generation of even more GSH, as well as liquefaction of the lymph to aid tissue drainage and detoxification. This is our popular formula for mercury detoxification, support of cataract prevention and many other key uses. Don't...",
       "bottle_type": "30cap"
     },
@@ -2643,15 +2655,11 @@
           "dose": "100 mg"
         },
         {
-          "name": "Zinc",
+          "name": "Zinc \nVitamin C",
           "dose": "100 mg"
         },
         {
-          "name": "Vitamin C",
-          "dose": ""
-        },
-        {
-          "name": "OPC (Oligomeric Proanthocyanidins)",
+          "name": "OPC",
           "dose": "80 mg"
         },
         {
@@ -2667,7 +2675,7 @@
           "dose": "5 mg"
         },
         {
-          "name": "Cycloastragenol",
+          "name": "Cycloastragenol CAS 78574-94-4",
           "dose": ""
         },
         {
@@ -2675,7 +2683,7 @@
           "dose": "50 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Scar Solve . Price: $69.97.",
       "bottle_type": "30cap"
     },
@@ -3197,7 +3205,7 @@
           "dose": "80 mg"
         },
         {
-          "name": "Lion's Mane Extract (Polysaccharides, Hericenones, Erinacines)",
+          "name": "Polysaccharides, Hericenones, Erinacines",
           "dose": "100 mg"
         },
         {
@@ -3233,7 +3241,7 @@
           "dose": "70 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Neuroprotect . Neuroprotect Neuroprotect Comprehensive support for healing the underlying causes of Glaucoma and other neurodegenerative issues. Neuroprotect . Each excipient-free vegicap supplies: Citicoline (CDP Choline) 100 mg Baicalein ( Scutellaria baicalensis ) 15 mg DHA (from Algae) 30 mg Forskolin ( Coleus forskohlii ) 10 mg Berberine ( Berberis chinensis ) 40 mg Huperzine A ( Huperzia serrata ) 1 mg NAC (N-Acetyl Cysteine) 50 mg R-Lipoic Acid 50 mg CoQ10 (Ultra Absorption) 10 mg Magnesium (as Threonate and Taurate) 4 mg 1% Magnesium Threonate 28.5 mg Magnesium Taurate 25 mg Chromium...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Tetrahydrocurcumin, Lion's Mane Extract, Apigenin, Sulforaphane, Safranal, Astaxanthin, Polysaccharide",
@@ -4107,42 +4115,42 @@
       "ingredients": [
         {
           "name": "Boswellic Acid",
-          "dose": "30mg"
+          "dose": "30 mg"
         },
         {
           "name": "Tetrahydrocurcumin",
-          "dose": "100mg"
+          "dose": "100 mg"
         },
         {
           "name": "Baicalein",
-          "dose": "50mg"
+          "dose": "50 mg"
         },
         {
           "name": "Enzymatically Modified Isoquercetrin",
-          "dose": "50mg"
+          "dose": "50 mg"
         },
         {
           "name": "Andrographolide",
-          "dose": "20mg"
+          "dose": "20 mg"
         },
         {
           "name": "Thymoquinone",
-          "dose": "25mg"
+          "dose": "25 mg"
         },
         {
           "name": "Pterostilbene",
-          "dose": "50mg"
+          "dose": "50 mg"
         },
         {
-          "name": "Phenylethylamine HCl",
-          "dose": "75mg"
+          "name": "Phenylethylamine HCl - prefer micronized/ultramicronized",
+          "dose": "75 mg"
         },
         {
           "name": "Trans-Resveratrol",
-          "dose": "100mg"
+          "dose": "100 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Immune Modulation . Immune Modulation Immune Modulation Immune Modulation increases the strength of the immune system against infection and toxins. At the same time, it reduces the tendency to produce excess, damaging, and symptomatic inflammation, such as in allergies, autoimmune issues, and other chronic diseases. There are over 400,000 research articles that show that chronic diseases are the result of chronic transitory inflammation. Relevant Quotes: “...inflammation causes heart attacks, strokes, and even cancer.” - Dr. Oz “Inflammation is the underlying cause of all disease.” - Dr....",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Tetrahydrocurcumin, Baicalein, Enzymatically Modified Isoquercetrin, Andrographolide, Thymoquinone, Pterostilbene, Phenylethylamine HCl, Trans-Resveratrol",
@@ -4246,46 +4254,46 @@
       "ingredients": [
         {
           "name": "5-MTHF",
-          "dose": "0.200 mg"
+          "dose": "400 mcg"
         },
         {
-          "name": "Adenosyl & Methyl Cobalamin (90% Adenosyl / 10% Methyl)",
+          "name": "Adenosyl 90% & Methyl 10% Cobalamin",
           "dose": "1 mg"
         },
         {
           "name": "Coenzyme Q10",
-          "dose": "50 mg"
-        },
-        {
-          "name": "N-Acetyl Cysteine (NAC)",
           "dose": "100 mg"
         },
         {
+          "name": "N-Acetyl Cysteine \nNAC",
+          "dose": "100 mg"
+        },
+        {
+          "name": "Safranal",
+          "dose": "20 mg"
+        },
+        {
           "name": "Tetrahydrocurcumin",
-          "dose": ""
+          "dose": "100 mg"
         },
         {
           "name": "Cyanidin-3-glucosides",
-          "dose": "25 mg"
+          "dose": "50 mg"
         },
         {
           "name": "Trans-Resveratrol",
           "dose": "50 mg"
         },
         {
-          "name": "Astaxanthin",
-          "dose": "60 mg"
-        },
-        {
-          "name": "Salvianolic Acid B",
+          "name": "Pterostilbene",
           "dose": "50 mg"
         },
         {
-          "name": "Curcumin",
-          "dose": "100 mg"
+          "name": "Salvianolic Acid B",
+          "dose": ""
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Macular Wellness Safranal . Macular Wellness Safranal Macular Wellness Safranal Safranal is the most powerful carotenoid. Though it is not stored up in the macula, it circulates in the blood like lycopene, providing a protective filter in the pre-retinal circulation. Safranal excels at preventing and even reversing inflammation and damage from high energy photons, namely blue and UV light. Macular Wellness formulas allow you to take a different carotenoid at each meal to ensure absorption. The carotenoids compete for absorption, so avoid supplementing Beta Carotene at the same...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Tetrahydrocurcumin, Astaxanthin",
@@ -4300,24 +4308,20 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "5-MTHF",
-          "dose": "0.200 mg"
+          "name": "Salvianolic Acid B",
+          "dose": ""
         },
         {
-          "name": "Adenosyl/Methyl Cobalamin (B12)",
-          "dose": "1 mg"
-        },
-        {
-          "name": "Coenzyme Q10",
-          "dose": "50 mg"
-        },
-        {
-          "name": "N-Acetyl Cysteine (NAC)",
+          "name": "N-Acetyl Cysteine \nNAC",
           "dose": "100 mg"
         },
         {
+          "name": "Meso-zeaxanthin",
+          "dose": "16.7 mg"
+        },
+        {
           "name": "Tetrahydrocurcumin",
-          "dose": "000 mg"
+          "dose": "50 mg"
         },
         {
           "name": "Cyanidin-3-glucosides",
@@ -4328,19 +4332,31 @@
           "dose": "50 mg"
         },
         {
-          "name": "Astaxanthin",
-          "dose": "60 mg"
+          "name": "Pterostilbene",
+          "dose": "50 mg"
         },
         {
-          "name": "Curcumin",
+          "name": "Coenzyme Q10",
+          "dose": "50 mg"
+        },
+        {
+          "name": "5-MTHF",
+          "dose": ".2 mg"
+        },
+        {
+          "name": "Adenosyl 90% & Methyl 10% Cobalamin",
+          "dose": "1 mg"
+        },
+        {
+          "name": "Salvianolic Acid B 20%",
           "dose": "100 mg"
         },
         {
-          "name": "Salvianolic Acid B",
-          "dose": "50 mg"
+          "name": "Curcumin",
+          "dose": ""
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Macular Wellness Meso-Zeaxanthin . Macular Wellness Meso-Zeaxanthin Macular Wellness Meso-Zeaxanthin Meso-Zeaxanthin is the most powerful carotenoid. Though it is not stored up in the macula, it circulates in the blood like lycopene, providing a protective filter in the pre-retinal circulation. Meso-Zeaxanthin excels at preventing and even reversing inflammation and damage from high energy photons, namely blue and UV light. Macular Wellness formulas allow you to take a different carotenoid at each meal to ensure absorption. The carotenoids compete for absorption, so avoid supplementing Beta Carotene at the same...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Astaxanthin, Tetrahydrocurcumin",
@@ -4695,7 +4711,7 @@
           "dose": "25 mg"
         },
         {
-          "name": "Modified Citrus Pectin (MCP)",
+          "name": "MCP",
           "dose": "180 mg"
         },
         {
@@ -4711,7 +4727,7 @@
           "dose": "5 mg"
         },
         {
-          "name": "Forskolin (labdane diterpene)",
+          "name": "Forskolin (a labdane diterpene)",
           "dose": "25 mg"
         },
         {
@@ -4719,7 +4735,7 @@
           "dose": "50 mg"
         },
         {
-          "name": "Ginkgo Biloba Extract 24% Flavone 6% Lactone Ginkgolic Acid <1ppm",
+          "name": "Ginkgo Biloba Extract 24% Flavone 6% Lactone Ginkgolic Acid ＜1ppm",
           "dose": "30 mg"
         },
         {
@@ -4735,11 +4751,11 @@
           "dose": "70 mg"
         },
         {
-          "name": "Procyanidolic Oligomers",
+          "name": "Procyanidolic oligomers",
           "dose": ""
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "OcuFlow Bedtime . OcuFlow Bedtime OcuFlow Bedtime OcuFlow Bedtime supports healthy Intraocular Pressure (IOP) regulation, and one capsule is taken within 30 minutes of going to bed. The production of aqueous humor by the ciliary body in the eye provides nourishment to the front of the eye, also known as the anterior chamber. The balance of inflow and outflow of this nourishing and cleansing fluid is what determines the eye pressure (IOP). OcuFlow formulations are also designed to be neuroprotective, and to support maintenance of healthy retinal and optic nerve function as well as sustained...",
       "bottle_type": "30cap"
     },
@@ -4977,7 +4993,7 @@
           "dose": "10 mg"
         },
         {
-          "name": "Forskolin",
+          "name": "Forskolin (a labdane diterpene)",
           "dose": "25 mg"
         },
         {
@@ -4985,7 +5001,7 @@
           "dose": "75 mg"
         },
         {
-          "name": "OPC (Oligomeric Proanthocyanidins)",
+          "name": "OPC",
           "dose": "8 mg"
         },
         {
@@ -5005,11 +5021,11 @@
           "dose": "30 mg"
         },
         {
-          "name": "Salvianolic Acid B",
+          "name": "Salvianolic Acid B 20%",
           "dose": "12 mg"
         },
         {
-          "name": "Ginkgo Biloba Extract (24% Flavone, 6% Lactone, Ginkgolic Acid <1ppm)",
+          "name": "Ginkgo Biloba Extract 24% Flavone 6% Lactone Ginkgolic Acid ＜1ppm",
           "dose": "30 mg"
         },
         {
@@ -5025,7 +5041,7 @@
           "dose": "100 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "OcuFlow Daytime . OcuFlow Daytime OcuFlow Daytime OcuFlow Daytime supports healthy Intraocular Pressure (IOP) regulation, and can be taken multiple times during the daylight hours. The production of aqueous humor by the ciliary body in the eye provides nourishment to the front of the eye, also known as the anterior chamber. The balance of inflow and outflow of this nourishing and cleansing fluid is what determines the eye pressure (IOP). OcuFlow formulations are also designed to be neuroprotective, and to support maintenance of healthy retinal and optic nerve function as well as sustained...",
       "bottle_type": "30cap"
     },
@@ -5554,19 +5570,11 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "Benfotiamine",
+          "name": "R-Lipoic Acid",
           "dose": "100 mg"
         },
         {
-          "name": "Pyridoxal-5-Phosphate (P5P)",
-          "dose": "10 mg"
-        },
-        {
-          "name": "R-Lipoic Acid",
-          "dose": "10 mg"
-        },
-        {
-          "name": "Baicalein",
+          "name": "Benfotiamine",
           "dose": "100 mg"
         },
         {
@@ -5578,27 +5586,27 @@
           "dose": "1 mg"
         },
         {
-          "name": "Riboflavin-5-Phosphate (Coenzyme B2)",
-          "dose": "5 mg"
+          "name": "Vitamin D3: Cholecalciferol",
+          "dose": "1.3 mg"
         },
         {
-          "name": "5-MTHF (Methylfolate)",
-          "dose": "0.4 mg"
+          "name": "Huperzine A",
+          "dose": ".7 mg"
         },
         {
-          "name": "Mixed Tocopherols",
-          "dose": "50 mg"
+          "name": "Allicin",
+          "dose": "16 mg"
         },
         {
-          "name": "Tocotrienols",
+          "name": "Hypericin",
           "dose": "100 mg"
         },
         {
-          "name": "Copper Glycinate",
-          "dose": "8 mg"
+          "name": "Pterostilbene",
+          "dose": "50 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Nerve Pulse . Price: $69.97. Nerve Pulse . Nerve Pulse Nerve Pulse One organic Pullulan capsule of Nerve Pulse supplies: ALCAR (Acetyl L-Carnitine) 160 mg Na RALA (Stabilized Bioenhanced Na R-Alpha Lipoate) 60 mg Lion's Mane Polysaccharides 30% ( Hericium erinaceus ) 160 mg Vitamin B1: Benfotiamine 60 mg Vitamin B6: P5P (Pyridoxal 5-Phosphate) 10 mg Vitamin B12: Methylcobalamin 500 mcg Bioavailability Proprietary Blend 34.5 mg Vitamin B13: Phosphatides 50% ( Helianthus annua ) EGb 761 ( Ginkgo biloba ) (24% Flavone Glycosides, 6% Lactones, <0.0005% Ginkgolic Acid) Vitamin B3 (as Niacin)...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Pyridoxal-5-Phosphate (P5P), Baicalein, Riboflavin-5-Phosphate (Coenzyme B2), 5-MTHF (Methylfolate), Mixed Tocopherols, Tocotrienols, Copper Glycinate",
@@ -6831,19 +6839,19 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "Potassium Bicarbonate",
+          "name": "Potassium",
           "dose": "280 mg"
         },
         {
-          "name": "Magnesium Bicarbonate",
+          "name": "Magnesium\nMagnesium Bicarbonate",
           "dose": "140 mg"
         },
         {
-          "name": "Sodium Bicarbonate",
+          "name": "Sodium\nSodium Bicarbonate",
           "dose": "80 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Alkalize Bicarbonate Blend . Price: $69.97.",
       "bottle_type": "30cap"
     },
@@ -6949,8 +6957,8 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "5-MTHF (Methylfolate)",
-          "dose": "0.200 mg"
+          "name": "5-MTHF",
+          "dose": ".2 mg"
         },
         {
           "name": "Adenosyl 90% & Methyl 10% Cobalamin",
@@ -6961,7 +6969,7 @@
           "dose": "50 mg"
         },
         {
-          "name": "N-Acetyl Cysteine (NAC)",
+          "name": "N-Acetyl Cysteine \nNAC",
           "dose": "100 mg"
         },
         {
@@ -6977,8 +6985,16 @@
           "dose": "50 mg"
         },
         {
+          "name": "Lycopene, Cas 502-65-8",
+          "dose": ""
+        },
+        {
           "name": "Lycopene",
           "dose": "50 mg"
+        },
+        {
+          "name": "Salvianolic Acid B",
+          "dose": ""
         },
         {
           "name": "Pterostilbene",
@@ -6993,7 +7009,7 @@
           "dose": "50 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Macular Wellness Lycopene . Macular Wellness Lycopene Macular Wellness Lycopene Lycopene is the one carotenoid found deficient on blood tests of people who are developing AMD... The whole carotenoid family of 600 phytonutrients all competes for intestinal absorption by a single pathway. Twenty of those carotenoids are found in significant quantities in human blood. Many of those are known to have substantial health benefits, including participation in the prevention of blindness by Macular Degeneration (AMD), considered the leading cause of 'irreversible' blindness in modern culture, even...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Tetrahydrocurcumin, Pterostilbene",
@@ -7101,15 +7117,15 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "Methylselenocysteine (MSC)",
-          "dose": "0.244 mg"
+          "name": "Selenium\nMethylselenocysteine",
+          "dose": ".244 mg"
         },
         {
-          "name": "Withanolides (Ashwagandha extract)",
+          "name": "Withanolides",
           "dose": "50 mg"
         },
         {
-          "name": "Vitamin D3 (Cholecalciferol)",
+          "name": "Vitamin D3: Cholecalciferol",
           "dose": "1.92 mg"
         },
         {
@@ -7122,18 +7138,18 @@
         },
         {
           "name": "Potassium Iodide",
-          "dose": "0.194 mg"
+          "dose": ".194 mg"
         },
         {
           "name": "Thymoquinone",
           "dose": "25 mg"
         },
         {
-          "name": "Ginger Extract (standardized gingerols)",
+          "name": "Gingerol; Sabinsa GingerMax® or BioPerine Ginger 20-25% gingerols; Indena GingerSelect® 20% gingerols",
           "dose": "100 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Thyroid Support . Price: $69.97.",
       "bottle_type": "30cap"
     },
@@ -7238,7 +7254,7 @@
       "ingredients": [
         {
           "name": "5-MTHF",
-          "dose": ".200mg"
+          "dose": ".4 mg"
         },
         {
           "name": "Adenosyl 90% & Methyl 10% Cobalamin",
@@ -7246,38 +7262,38 @@
         },
         {
           "name": "Coenzyme Q10",
-          "dose": "50 mg"
-        },
-        {
-          "name": "N-Acetyl Cysteine (NAC)",
           "dose": "100 mg"
         },
         {
-          "name": "Tetrahydrocurcumin",
-          "dose": "000mg"
+          "name": "Crocin",
+          "dose": "22.2 mg"
         },
         {
-          "name": "Cyanidin-3-Glucosides",
-          "dose": "25 mg"
+          "name": "Tetrahydrocurcumin",
+          "dose": "100 mg"
+        },
+        {
+          "name": "Cyanidin-3-glucosides",
+          "dose": "50 mg"
         },
         {
           "name": "Trans-Resveratrol",
           "dose": "50 mg"
         },
         {
-          "name": "Astaxanthin",
-          "dose": "60 mg"
+          "name": "N-Acetyl Cysteine \nNAC",
+          "dose": "100 mg"
         },
         {
           "name": "Salvianolic Acid B",
-          "dose": "50 mg"
+          "dose": ""
         },
         {
-          "name": "Curcumin",
-          "dose": "100 mg"
+          "name": "Pterostilbene",
+          "dose": "50 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Macular Wellness Crocin . Macular Wellness Crocin Macular Wellness Crocin Crocin is the most powerful carotenoid. Though it is not stored up in the macula, it circulates in the blood like lycopene, providing a protective filter in the pre-retinal circulation. Crocin excels at preventing and even reversing inflammation and damage from high energy photons, namely blue and UV light. Macular Wellness formulas allow you to take a different carotenoid at each meal to ensure absorption. The carotenoids compete for absorption, so avoid supplementing Beta Carotene at the same...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Astaxanthin, Tetrahydrocurcumin",
@@ -8566,47 +8582,51 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "5-MTHF (5-Methyltetrahydrofolate)",
-          "dose": "0.200 mg"
+          "name": "5-MTHF",
+          "dose": "400 mcg"
         },
         {
-          "name": "Adenosyl (90%) & Methyl (10%) Cobalamin",
+          "name": "Adenosyl 90% & Methyl 10% Cobalamin",
           "dose": "1 mg"
         },
         {
           "name": "Coenzyme Q10",
-          "dose": "50 mg"
-        },
-        {
-          "name": "N-Acetyl Cysteine (NAC)",
           "dose": "100 mg"
         },
         {
+          "name": "N-Acetyl Cysteine \nNAC",
+          "dose": "100 mg"
+        },
+        {
+          "name": "Zeaxanthin",
+          "dose": "3.3 mg"
+        },
+        {
           "name": "Tetrahydrocurcumin",
-          "dose": ""
+          "dose": "100 mg"
         },
         {
           "name": "Cyanidin-3-glucosides",
-          "dose": "25 mg"
+          "dose": "50 mg"
         },
         {
           "name": "Trans-Resveratrol",
           "dose": "50 mg"
         },
         {
-          "name": "Astaxanthin",
-          "dose": "60 mg"
+          "name": "Salvianolic Acid B 20%",
+          "dose": ""
         },
         {
-          "name": "Curcumin",
-          "dose": "100 mg"
+          "name": "Salvianolic Acid B",
+          "dose": ""
         },
         {
-          "name": "Salvianolic Acid B (20%)",
+          "name": "Pterostilbene",
           "dose": "50 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "Macular Wellness Zeaxanthin . Macular Wellness Zeaxanthin Macular Wellness Zeaxanthin Zeaxanthin is the most powerful carotenoid. Though it is not stored up in the macula, it circulates in the blood like lycopene, providing a protective filter in the pre-retinal circulation. Zeaxanthin excels at preventing and even reversing inflammation and damage from high energy photons, namely blue and UV light. Macular Wellness formulas allow you to take a different carotenoid at each meal to ensure absorption. The carotenoids compete for absorption, so avoid supplementing Beta Carotene at the same...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Astaxanthin, Tetrahydrocurcumin",
@@ -10968,7 +10988,7 @@
           "dose": "250 mg"
         },
         {
-          "name": "HCA (Hydroxycitric Acid)",
+          "name": "HCA",
           "dose": "100 mg"
         },
         {
@@ -10976,7 +10996,7 @@
           "dose": "100 mg"
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "fmp-products-items-2026-06-23",
       "description": "D-Mannose Syntropy . D-Mannose Syntropy D-Mannose Syntropy D-Mannose: D-Mannose is often used to support urinary tract health. It may help prevent and alleviate urinary tract infections (UTIs) by preventing bacteria from adhering to the urinary tract lining. Here are some of the many benefits of this healing sugar: UTI Prevention: D-Mannose may help prevent UTIs by interfering with the adhesion of harmful bacteria to the urinary tract lining, making it easier for the body to flush out these bacteria. UTI Treatment: It is also used as a natural remedy to treat UTIs by helping to eliminate...",
       "bottle_type": "30cap"
     },
