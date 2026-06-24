@@ -420,13 +420,16 @@ def quote(bottles_by_type, db_path: Optional[str] = None) -> dict:
 
 def add_bottle_type(
     name: str,
+    diameter_mm: Optional[int] = None,
+    height_mm: Optional[int] = None,
     notes: Optional[str] = None,
     db_path: Optional[str] = None,
 ) -> int:
     with _connect(db_path) as cx:
         cur = cx.execute(
-            "INSERT INTO bottle_types (name, notes) VALUES (?, ?)",
-            (name, notes),
+            "INSERT INTO bottle_types (name, notes, diameter_mm, height_mm) "
+            "VALUES (?, ?, ?, ?)",
+            (name, notes, diameter_mm, height_mm),
         )
         cx.commit()
         return int(cur.lastrowid)
@@ -449,13 +452,16 @@ def delete_bottle_type(bottle_type_id: int, db_path: Optional[str] = None) -> No
 def update_bottle_type(
     bottle_type_id: int,
     name: str,
+    diameter_mm: Optional[int] = None,
+    height_mm: Optional[int] = None,
     notes: Optional[str] = None,
     db_path: Optional[str] = None,
 ) -> None:
     with _connect(db_path) as cx:
         cx.execute(
-            "UPDATE bottle_types SET name = ?, notes = ? WHERE id = ?",
-            (name, notes, bottle_type_id),
+            "UPDATE bottle_types SET name=?, notes=?, diameter_mm=?, height_mm=? "
+            "WHERE id=?",
+            (name, notes, diameter_mm, height_mm, bottle_type_id),
         )
         cx.commit()
 

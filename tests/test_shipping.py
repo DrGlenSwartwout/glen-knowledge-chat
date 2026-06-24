@@ -448,3 +448,18 @@ def test_fresh_seed_has_30g_and_30ml_not_100cos(tmp_path):
     assert dims["30ml"] == (40, 110)
     assert "100cos" not in dims
     assert len(dims) == 9
+
+
+# ── Dimension-aware bottle CRUD ───────────────────────────────────────────────
+
+def test_add_and_update_bottle_with_dims(tmp_path):
+    import sqlite3
+    from dashboard.shipping import (init_shipping_schema, add_bottle_type,
+                                    update_bottle_type, get_bottle_dims)
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+    bid = add_bottle_type("250ml-spray", diameter_mm=55, height_mm=180, db_path=db)
+    assert get_bottle_dims(db_path=db)["250ml-spray"] == (55, 180)
+    update_bottle_type(bid, "250ml-spray", diameter_mm=60, height_mm=185, db_path=db)
+    assert get_bottle_dims(db_path=db)["250ml-spray"] == (60, 185)
