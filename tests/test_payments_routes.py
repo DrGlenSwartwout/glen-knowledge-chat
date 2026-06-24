@@ -78,3 +78,53 @@ def test_api_source_filter(client):
     r = c.get("/api/payments?source=subscription&key=" + _key(appmod))
     body = r.get_json()
     assert [x["external_ref"] for x in body["data"]] == ["pi_sub"]
+
+
+# --- backfill trigger endpoint ----------------------------------------------
+
+def _seed_grants(appmod, sessions, monkeypatch):
+    """Create biofield_trial_grants + orders table, and mock Stripe get_session."""
+    from dashboard import orders as O, stripe_pay
+    cx = sqlite3.connect(appmod.LOG_DB)
+    O.init_orders_table(cx)
+    cx.execute("CREATE TABLE IF NOT EXISTS biofield_trial_grants "
+               "(session_id TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
+    for sid in sessions:
+        cx.execute("INSERT OR IGNORE INTO biofield_trial_grants VALUES (?,?,?)",
+                   (sid, sid + "@x.com", "2026-06-01T00:00:00Z"))
+    cx.commit(); cx.close()
+    monkeypatch.setattr(stripe_pay, "get_session", lambda s: sessions[s])
+
+
+def test_backfill_endpoint_gated(client):
+    c, appmod = client
+    r = c.post("/api/console/backfill-trial-orders")
+    if appmod.CONSOLE_SECRET:
+        assert r.status_code == 401
+
+
+def test_backfill_endpoint_dry_run_writes_nothing(client, monkeypatch):
+    c, appmod = client
+    _seed_grants(appmod, {"cs_a": {"payment_intent": "pi_a", "amount_total": 100}}, monkeypatch)
+    r = c.post("/api/console/backfill-trial-orders?dry_run=1&key=" + _key(appmod))
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True and body["dry_run"] is True
+    assert body["result"]["created"] == 1
+    cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    from dashboard import payments as P
+    assert P.list_payments(cx) == []  # dry run wrote nothing
+    cx.close()
+
+
+def test_backfill_endpoint_apply_creates_orders(client, monkeypatch):
+    c, appmod = client
+    _seed_grants(appmod, {"cs_a": {"payment_intent": "pi_a", "amount_total": 100}}, monkeypatch)
+    r = c.post("/api/console/backfill-trial-orders?key=" + _key(appmod))
+    body = r.get_json()
+    assert body["ok"] is True and body["dry_run"] is False
+    assert body["result"]["created"] == 1
+    cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    from dashboard import payments as P
+    assert {p["external_ref"] for p in P.list_payments(cx)} == {"pi_a"}
+    cx.close()

@@ -31,29 +31,9 @@ def main():
     cx = sqlite3.connect(str(log_db))
     cx.row_factory = sqlite3.Row
     try:
-        if dry:
-            # Count what WOULD be created without writing, by re-fetching sessions
-            # and checking for an existing order — no upserts.
-            grants = cx.execute("SELECT session_id, email FROM biofield_trial_grants").fetchall()
-            would = {"created": 0, "skipped": 0, "unpaid": 0, "failed": 0}
-            for g in grants:
-                try:
-                    sess = SP.get_session(g["session_id"]) or {}
-                    pi = (sess.get("payment_intent") or "").strip()
-                    if not pi:
-                        would["unpaid"] += 1; continue
-                    exists = cx.execute(
-                        "SELECT 1 FROM orders WHERE source='biofield_trial' AND external_ref=?",
-                        (pi,)).fetchone()
-                    would["skipped" if exists else "created"] += 1
-                except Exception as e:
-                    print(f"[trial-backfill] {g['session_id']}: {e!r}", flush=True)
-                    would["failed"] += 1
-            print(f"[DRY RUN] {len(grants)} grants -> {would} (no writes)")
-            return
-
-        res = P.backfill_trial_orders(cx, SP.get_session)
-        print(f"Backfill complete: {res}")
+        res = P.backfill_trial_orders(cx, SP.get_session, dry_run=dry)
+        label = "[DRY RUN] would apply" if dry else "Backfill complete"
+        print(f"{label}: {res}")
     finally:
         cx.close()
 

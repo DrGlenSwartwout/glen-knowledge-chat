@@ -91,7 +91,7 @@ def payments_summary(cx):
     return {"count": int(row["n"] or 0), "total_cents": int(row["cents"] or 0)}
 
 
-def backfill_trial_orders(cx, fetch_session, *, now=None):
+def backfill_trial_orders(cx, fetch_session, *, dry_run=False, now=None):
     """One-time backfill: ensure every historical $1 biofield trial has a
     captured-charge order so it shows in the ledger (going-forward trials get one
     at fulfillment, but trials completed before that shipped have none).
@@ -101,9 +101,12 @@ def backfill_trial_orders(cx, fetch_session, *, now=None):
     (shape: stripe_pay.get_session — payment_intent, amount_total). Idempotent on
     (source='biofield_trial', external_ref=PaymentIntent). Never raises; a per-row
     fetch error is counted, not fatal. Returns {created, skipped, unpaid, failed}.
-    """
+
+    dry_run=True does every read + Stripe fetch but writes nothing; 'created' then
+    counts what WOULD be created."""
     from dashboard import orders as O
-    O.init_orders_table(cx)
+    if not dry_run:
+        O.init_orders_table(cx)
     try:
         grants = cx.execute(
             "SELECT session_id, email FROM biofield_trial_grants").fetchall()
@@ -126,14 +129,16 @@ def backfill_trial_orders(cx, fetch_session, *, now=None):
                 out["skipped"] += 1
                 continue
             amount = int(sess.get("amount_total") or 0) or TRIAL_AMOUNT_CENTS
-            O.upsert_order(cx, source="biofield_trial", external_ref=pi_id,
-                           email=email or "", items=[], total_cents=amount,
-                           address={}, channel="retail", status="done")
+            if not dry_run:
+                O.upsert_order(cx, source="biofield_trial", external_ref=pi_id,
+                               email=email or "", items=[], total_cents=amount,
+                               address={}, channel="retail", status="done")
             out["created"] += 1
         except Exception as e:
             print(f"[trial-backfill] {sid}: {e!r}", flush=True)
             out["failed"] += 1
-    cx.commit()
+    if not dry_run:
+        cx.commit()
     return out
 
 

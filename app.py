@@ -23207,6 +23207,25 @@ def bos_payments_list():
     return jsonify({"ok": True, "data": rows, "summary": summary, "failures": failures})
 
 
+@app.route("/api/console/backfill-trial-orders", methods=["POST"])
+def bos_backfill_trial_orders():
+    """One-time backfill: give every historical $1 biofield trial a captured-charge
+    order so it shows in /console/payments. Runs INSIDE the web container, where the
+    persistent disk (/data/chat_log.db) is mounted — the only place the trial grants
+    live. ?dry_run=1 reports counts without writing. Idempotent; safe to re-run."""
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    dry = (request.args.get("dry_run") or "").strip().lower() in ("1", "true", "yes")
+    from dashboard import stripe_pay as _sp
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        res = _bos_payments.backfill_trial_orders(cx, _sp.get_session, dry_run=dry)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "dry_run": dry, "result": res})
+
+
 @app.route("/api/products")
 def bos_products_list():
     if _bos_actor() is None:
