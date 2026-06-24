@@ -7128,6 +7128,36 @@ def _activate_coaching_by_order(cx, order_id):
     return _open_coaching_for_order(cx, email, order["id"], order["source"], window_source="delivery")
 
 
+def _register_mark_delivered_action():
+    from dashboard.actions import action as _act, get_action as _get, LOW_WRITE
+    from dashboard import rbac as _r
+    if _get("orders.mark_delivered"):
+        return
+
+    def _mark_delivered_exec(params, ctx):
+        cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+        if cx is None:
+            raise ValueError("no db connection")
+        oid = int(params["order_id"])
+        if not _bos_orders.set_order_status(cx, oid, "delivered"):
+            raise ValueError(f"order #{oid} not found")
+        res = _activate_coaching_by_order(cx, oid)
+        if res.get("ok"):
+            msg = f"Order #{oid} delivered — coaching month started (through {res.get('ends_at', '')[:10]})."
+        elif res.get("reason") == "ineligible":
+            msg = f"Order #{oid} delivered. Coaching not opened — member wasn't active in the order's month."
+        else:
+            msg = f"Order #{oid} delivered. Coaching not opened ({res.get('reason', 'n/a')})."
+        return {"order_id": oid, "status": "delivered", "coaching": res, "message": msg}
+
+    _act(key="orders.mark_delivered", module="orders", title="Mark delivered",
+         description="Mark an order delivered and start the member's coaching month.",
+         risk_tier=LOW_WRITE, permission=(_r.OWNER, _r.OPS, _r.VA))(_mark_delivered_exec)
+
+
+_register_mark_delivered_action()
+
+
 def _activate_coaching_by_tracking(tracking_number):
     """Webhook path: open its own connection, resolve shipment by tracking number, activate."""
     now_iso = datetime.utcnow().isoformat() + "Z"

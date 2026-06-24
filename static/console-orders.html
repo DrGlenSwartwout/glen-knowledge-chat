@@ -64,7 +64,7 @@
 
 <script>
   var LANES = [["proposed","Proposed"],["confirmed","Confirmed"],
-               ["new","New"],["packed","Packed"],["shipped","Shipped"],["done","Done"]];
+               ["new","New"],["packed","Packed"],["shipped","Shipped"],["delivered","Delivered"],["done","Done"]];
   function key(){ return localStorage.getItem('console_key') || ''; }
   // Auto-unlock: if arriving with ?key= (from the ops nav), seed the console key once.
   (function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
@@ -88,8 +88,8 @@
     else if (o.status==='confirmed') acts = btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id);
     else if (o.status==='new')     acts = btn(o.id,'orders.mark_packed','Pack');
     else if (o.status==='packed') acts = btn(o.id,'orders.create_label','Create label') + ' ' + shipBtn(o.id);
-    else if (o.status==='shipped') acts = btn(o.id,'orders.send_tracking','Send tracking') + ' ' + btn(o.id,'orders.mark_done','Delivered');
-    if (o.status!=='done' && o.status!=='cancelled') acts += ' <button class="cancel" onclick="act('+Number(o.id)+',\'orders.cancel\',{})">Cancel</button>';
+    else if (o.status==='shipped') acts = btn(o.id,'orders.send_tracking','Send tracking') + ' ' + btn(o.id,'orders.mark_delivered','Mark delivered') + ' ' + btn(o.id,'orders.mark_done','Mark done');
+    if (o.status!=='done' && o.status!=='delivered' && o.status!=='cancelled') acts += ' <button class="cancel" onclick="act('+Number(o.id)+',\'orders.cancel\',{})">Cancel</button>';
     var bo = Number(o.backorder_units||0);
     // Backorder only applies once an order is paid + in fulfillment (new/packed/
     // shipped) — never on an unpaid proposed/confirmed invoice (all-unfulfilled).
