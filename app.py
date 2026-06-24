@@ -1634,6 +1634,46 @@ def begin_quiz_result_data():
     })
 
 
+_GUIDE_PENDING_HTML = (
+    "<!doctype html><meta charset=utf-8><title>Your guide</title>"
+    "<div style='font-family:Georgia,serif;max-width:560px;margin:60px auto;padding:0 20px;color:#1f2a37'>"
+    "<h1>Your free guide is on its way</h1>"
+    "<p>Thank you. Your guide is being finalized and is coming shortly. "
+    "We'll email it to you as soon as it's ready.</p>"
+    "<p><a href='/begin/quiz/result' style='color:#4b6b57'>Back to your result</a></p></div>")
+
+_GUIDE_EXPIRED_HTML = (
+    "<!doctype html><meta charset=utf-8><title>Link expired</title>"
+    "<div style='font-family:Georgia,serif;max-width:560px;margin:60px auto;padding:0 20px;color:#1f2a37'>"
+    "<h1>That link has expired</h1>"
+    "<p>For your security, guide links expire. "
+    "<a href='/begin/quiz' style='color:#4b6b57'>Take the assessment again</a> to get a fresh link.</p></div>")
+
+
+@app.route("/begin/quiz/guide")
+def begin_quiz_guide():
+    token = (request.args.get("token") or "").strip()
+    email = _validate_lead_magnet_guide_link(token)
+    if not email:
+        return Response(_GUIDE_EXPIRED_HTML, mimetype="text/html")
+    key = (os.environ.get("LEAD_MAGNET_PDF_KEY") or "").strip()
+    if not key:
+        return Response(_GUIDE_PENDING_HTML, mimetype="text/html")
+    try:
+        obj = _r2().get_object(Bucket=os.environ.get("R2_BUCKET", "rm-clips"), Key=key)
+    except Exception as e:
+        print(f"[quiz-guide] r2 fetch failed key={key}: {e!r}", flush=True)
+        return Response(_GUIDE_PENDING_HTML, mimetype="text/html")
+    headers = {
+        "Content-Type": obj.get("ContentType", "application/pdf"),
+        "Content-Disposition": 'inline; filename="foundational-eye-and-brain-guide.pdf"',
+        "Cache-Control": "private, max-age=0, no-store",
+    }
+    if obj.get("ContentLength") is not None:
+        headers["Content-Length"] = str(obj["ContentLength"])
+    return Response(obj["Body"].iter_chunks(chunk_size=65536), status=200, headers=headers)
+
+
 @app.route("/begin/voice")
 def begin_voice():
     resp = send_from_directory(STATIC, "begin-voice.html")
