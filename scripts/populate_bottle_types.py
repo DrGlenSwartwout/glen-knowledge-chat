@@ -1,15 +1,30 @@
 """Populate each storefront product's bottle_type from the FileMaker packaging
 export + family rules. Re-runnable; never overwrites an existing assignment.
-Dry-run by default; --write patches data/products.json (committed baseline)."""
+Dry-run by default; --write patches data/products.json (committed baseline).
+
+Recovery steps (in priority order after exact FMP join):
+  1. Roll-on family rule (name/description contains roll-on/rollon/roll on → 30roll)
+  2. Synergy↔Syntropy alias (both normalise to 'synergy')
+  3. Suffix-stripped FMP index keys (powder, powders, tablets, capsules)
+  4. Conservative difflib fuzzy fallback (cutoff ≥ 0.92, single match only)
+"""
 from __future__ import annotations
-import argparse, csv, json, os, re, sys
+import argparse, csv, difflib, json, os, re, sys
 
 FMP_EXPORT = os.environ.get("FMP_PRODUCTS_CSV", "/tmp/fmp-export/newapp/products.csv")
 _INFO_RE = re.compile(r'^(ei|ed|es|et|mb|mr)\s*\d', re.I)
+# Trailing packaging words to strip from FMP keys (and storefront names) for the suffix-strip step.
+# "oil", "spray", "lotion", "drops" are intentionally excluded (part of product identity).
+_SUFFIX_WORDS = re.compile(r'\s+(powder|powders|tablets|capsules)$')
 
 
 def _norm(s):
-    return re.sub(r'[^a-z0-9]+', ' ', (s or '').lower()).strip()
+    """Normalise to lowercase alphanumeric + spaces, with synergy/syntropy alias."""
+    t = re.sub(r'[^a-z0-9]+', ' ', (s or '').lower()).strip()
+    # Alias: treat 'syntropy' and 'synergy' as the same token so both naming
+    # systems resolve to the same FMP index key.
+    t = t.replace('syntropy', 'synergy')
+    return t
 
 
 def family_rule(slug, product):
@@ -20,6 +35,9 @@ def family_rule(slug, product):
     text = f"{name} {product.get('description','')}".lower()
     if "eye drop" in text or "eyedrop" in text:
         return "5ml"
+    # Roll-on family rule: any of the common spelling variants → 30roll
+    if "roll-on" in text or "rollon" in text or "roll on" in text:
+        return "30roll"
     return None
 
 
@@ -47,30 +65,62 @@ def classify_from_fmp(row):
     return None
 
 
+def _build_fmp_index(rows):
+    """Build the fmp_by_name dict from an iterable of FMP row dicts.
+
+    Each row is stored under:
+      • its full normalised name  (e.g. 'msm synergy powder')
+      • its suffix-stripped name  (e.g. 'msm synergy')
+
+    The full name wins on collision (setdefault keeps first).  The stripped
+    key is only added when it differs from the full key.
+    """
+    by_name: dict[str, dict] = {}
+    for r in rows:
+        full_key = _norm(r.get("product_name"))
+        by_name.setdefault(full_key, r)
+        stripped_key = _SUFFIX_WORDS.sub('', full_key)
+        if stripped_key != full_key:
+            by_name.setdefault(stripped_key, r)
+    return by_name
+
+
 def build_assignments(products, fmp_by_name):
     assignments, review = {}, []
+    # Pre-compute fuzzy key list once (all keys in the FMP index).
+    fmp_keys = list(fmp_by_name.keys())
+
     for slug, p in products.items():
         if p.get("bottle_type"):
             continue
         key = family_rule(slug, p)
         if not key:
-            row = fmp_by_name.get(_norm(p.get("name")))
+            norm_name = _norm(p.get("name"))
+            row = fmp_by_name.get(norm_name)
+            if row is None:
+                # Suffix-strip the storefront name and retry
+                stripped = _SUFFIX_WORDS.sub('', norm_name)
+                if stripped != norm_name:
+                    row = fmp_by_name.get(stripped)
+            if row is None:
+                # Conservative fuzzy fallback (difflib, cutoff ≥ 0.92)
+                matches = difflib.get_close_matches(norm_name, fmp_keys, n=1, cutoff=0.92)
+                if matches:
+                    row = fmp_by_name[matches[0]]
             key = classify_from_fmp(row) if row else None
         if key:
             assignments[slug] = key
         else:
+            assignments_reason = "no family rule + no FMP packaging match"
             review.append({"slug": slug, "name": p.get("name", ""),
-                           "reason": "no family rule + no FMP packaging match"})
+                           "reason": assignments_reason})
     return {"assignments": assignments, "review": review}
 
 
 def _load_fmp(path):
-    by_name = {}
     if not os.path.exists(path):
-        return by_name
-    for r in csv.DictReader(open(path)):
-        by_name.setdefault(_norm(r.get("product_name")), r)
-    return by_name
+        return {}
+    return _build_fmp_index(csv.DictReader(open(path)))
 
 
 def _products_path():
