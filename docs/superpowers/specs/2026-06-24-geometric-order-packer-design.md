@@ -49,14 +49,14 @@ portal).
 
 | Key (proposed) | Type                          | Ø  | H  |
 |----------------|-------------------------------|----|----|
-| `250wm`        | 250 ml wide-mouth             | 8  | 10 |
+| `120cap`       | 250 ml wide-mouth (120 caps)  | 8  | 10 |
 | `100ml`        | 100 ml dropper                | 5  | 16 |
 | `30roll`       | 30 ml roll-on                 | 4  | 10 |
 | `50ml`         | 50 ml dropper                 | 4  | 14 |
 | `15ml`         | 15 ml dropper                 | 3  | 10 |
 | `5ml`          | 5 ml dropper                  | 3  | 8  |
 | `100cos`       | 100 ml cosmetic (30 g powder) | 7  | 7  |
-| `100wm`        | 100 ml wide-mouth (30 caps)   | 5  | 9  |
+| `30cap`        | 100 ml wide-mouth (30 caps)   | 5  | 9  |
 
 These names should reconcile with the human-readable names already used in the
 `bottle_types` table during implementation (the existing rows, if any, win on
@@ -79,14 +79,14 @@ Geometric packer. No DB, no I/O. Fully unit-testable.
 
   | Type    | S  | M  | L   |
   |---------|----|----|-----|
-  | 250wm   | 0  | 6  | 9   |
+  | 120cap  | 0  | 6  | 9   |
   | 100ml   | 3  | 10 | 12  |
   | 30roll  | 6  | 36 | 63  |
   | 50ml    | 5  | 18 | 49  |
   | 15ml    | 10 | 72 | 108 |
   | 5ml     | 10 | 84 | 120 |
   | 100cos  | 0  | 9  | 32  |
-  | 100wm   | 6  | 24 | 36  |
+  | 30cap   | 6  | 24 | 36  |
 
   (These are bare-geometry; padding will lower them — see Component 3.)
 
