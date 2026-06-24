@@ -7010,6 +7010,21 @@ def _extend_membership_grant(cx, email, until_iso, source="membership_renewal"):
         (str(_uuid.uuid4()), email, datetime.utcnow().isoformat() + "Z", until_iso, source, source, "", ""))
 
 
+def _maybe_extend_founding_membership(cx, sub, updated):
+    """A founding product autoship keeps its comp membership alive: on each
+    successful charge, extend the grant to next_charge_date + grace. No-op for
+    non-founding subs."""
+    if not sub.get("founding"):
+        return
+    try:
+        if updated and updated.get("next_charge_date"):
+            until = (datetime.fromisoformat(updated["next_charge_date"])
+                     + timedelta(days=MEMBERSHIP_GRANT_GRACE_DAYS)).isoformat() + "Z"
+            _extend_membership_grant(cx, sub["email"], until, "founding")
+    except Exception as _ge:
+        print(f"[sub-cron] founding grant-extend sub={sub.get('id')}: {_ge!r}", flush=True)
+
+
 def _studio_credit_grant_and_notify(cx, email, days):
     """Grant a studio-credit comp membership, log the journey event, and email the
     magic link. Returns {membership_id, magic_link_url}. Shared by the console
@@ -19792,6 +19807,7 @@ def cron_charge_subscriptions():
 
                     # Advance to get next_charge_date for receipt email
                     updated = _subs.get(cx, sid)
+                    _maybe_extend_founding_membership(cx, sub, updated)
                     _send_subscription_email(sub["email"], "receipt", {
                         "total_cents": total_cents,
                         "invoice_id": inv_id,
