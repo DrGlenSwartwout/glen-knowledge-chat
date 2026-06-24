@@ -1,101 +1,92 @@
-"""Ingredients + sources catalog — FMP-migrated raw-material master in chat_log.db.
-Mirrors dashboard/shipping.py conventions (idempotent schema, _connect, db_path kwarg)."""
-from __future__ import annotations
-import os, sqlite3
+"""Ingredient resolver for the ingredient page. Maps a URL slug to an ingredient
+name + its FMP record, the formulations that use it, and its research studies."""
+import json
+import re
+from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+
+_ROOT = Path(__file__).resolve().parent.parent
+_FMP = _ROOT / "data" / "fmp-ingredient-content.json"
+_PRODUCTS = _ROOT / "data" / "products.json"
 
 
-def _default_db_path() -> str:
-    base = os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent))
-    return str(Path(base) / "chat_log.db")
+def slugify(name):
+    s = (name or "").lower().strip()
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    s = re.sub(r"-{2,}", "-", s)
+    return s.strip("-")[:40]
 
 
-def _connect(db_path: Optional[str] = None) -> sqlite3.Connection:
-    cx = sqlite3.connect(db_path or _default_db_path())
-    cx.row_factory = sqlite3.Row
-    cx.execute("PRAGMA foreign_keys = ON")
-    return cx
+@lru_cache(maxsize=1)
+def _fmp_records():
+    """Return the ingredients sub-dict from fmp-ingredient-content.json.
+    The file has top-level keys _source and ingredients; we want the latter."""
+    try:
+        raw = json.loads(_FMP.read_text())
+        if isinstance(raw, dict):
+            return raw.get("ingredients", {}) or {}
+        return {}
+    except Exception:
+        return {}
 
 
-def init_ingredients_schema(cx: sqlite3.Connection) -> None:
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS suppliers (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT, company TEXT NOT NULL,
-          address_street TEXT, address_city TEXT, address_province TEXT, address_postal_code TEXT,
-          email TEXT, phone_business TEXT, phone_cell TEXT, phone_fax TEXT, url TEXT,
-          qb_id TEXT, active INTEGER,
-          notes TEXT, extras TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
-    cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_suppliers_fmp ON suppliers(fmp_id) WHERE fmp_id IS NOT NULL")
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS ingredients (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT, name TEXT NOT NULL, form TEXT, status TEXT,
-          common_names TEXT, canonical_id INTEGER REFERENCES ingredients(id),
-          extras TEXT,
-          inci_name TEXT, cas_number TEXT, hygroscopic_rating TEXT, solubility TEXT,
-          stability_notes TEXT, spec_notes TEXT, notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
-    cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ingredients_fmp ON ingredients(fmp_id) WHERE fmp_id IS NOT NULL")
-    cx.execute("CREATE INDEX IF NOT EXISTS idx_ingredients_canon ON ingredients(canonical_id)")
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS ingredient_sources (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT,
-          ingredient_id INTEGER REFERENCES ingredients(id),
-          supplier_id INTEGER REFERENCES suppliers(id),
-          supplier_name TEXT, sku TEXT,
-          price_per_unit REAL, unit_size REAL, unit_type TEXT, shipping_quote REAL,
-          extras TEXT,
-          preferred INTEGER DEFAULT 0, lead_time_days INTEGER,
-          minimum_order REAL, minimum_order_unit TEXT, notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
-    cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ingsrc_fmp ON ingredient_sources(fmp_id) WHERE fmp_id IS NOT NULL")
-    cx.execute("CREATE INDEX IF NOT EXISTS idx_ingsrc_ing ON ingredient_sources(ingredient_id)")
-    cx.commit()
+@lru_cache(maxsize=1)
+def _name_index():
+    """{slug: canonical_name} over all known ingredient names (FMP + products)."""
+    idx = {}
+    for rec in _fmp_records().values():
+        if not isinstance(rec, dict):
+            continue
+        nm = (rec.get("name") or "").strip().replace("\n", " ")
+        if nm:
+            idx.setdefault(slugify(nm), nm)
+    try:
+        prods = json.loads(_PRODUCTS.read_text()).get("products", {})
+    except Exception:
+        prods = {}
+    for p in prods.values():
+        for ing in (p.get("ingredients") or []):
+            nm = (ing.get("name") if isinstance(ing, dict) else ing) or ""
+            nm = nm.strip()
+            if nm:
+                idx.setdefault(slugify(nm), nm)
+    return idx
 
 
-def search_ingredients(q="", limit=50, offset=0, db_path=None):
-    with _connect(db_path) as cx:
-        rows = cx.execute(
-            "SELECT * FROM ingredients WHERE name LIKE ? ORDER BY name LIMIT ? OFFSET ?",
-            (f"%{q}%", int(limit), int(offset)),
-        ).fetchall()
-    return [dict(r) for r in rows]
+def _fmp_for(name):
+    try:
+        from dashboard import ingredient_content
+        return ingredient_content.get(name) or {}
+    except Exception:
+        return {}
 
 
-def get_ingredient(ingredient_id, db_path=None):
-    with _connect(db_path) as cx:
-        r = cx.execute("SELECT * FROM ingredients WHERE id=?", (ingredient_id,)).fetchone()
-    return dict(r) if r else None
+def resolve(slug):
+    name = _name_index().get(slug)
+    if not name:
+        return None
+    return {"slug": slug, "name": name, "fmp": _fmp_for(name)}
 
 
-def list_sources_for_ingredient(ingredient_id, db_path=None):
-    with _connect(db_path) as cx:
-        rows = cx.execute("""
-            SELECT s.*, sup.company AS company
-            FROM ingredient_sources s LEFT JOIN suppliers sup ON sup.id = s.supplier_id
-            WHERE s.ingredient_id = ?
-            ORDER BY s.preferred DESC, s.price_per_unit
-        """, (ingredient_id,)).fetchall()
-    return [dict(r) for r in rows]
+def formulations_with(name):
+    target = slugify(name)
+    out = []
+    try:
+        prods = json.loads(_PRODUCTS.read_text()).get("products", {})
+    except Exception:
+        return out
+    for pslug, p in prods.items():
+        for ing in (p.get("ingredients") or []):
+            nm = (ing.get("name") if isinstance(ing, dict) else ing) or ""
+            if slugify(nm) == target:
+                out.append({"slug": pslug, "name": p.get("name", pslug)})
+                break
+    return out
 
 
-def list_suppliers(q="", limit=50, offset=0, db_path=None):
-    with _connect(db_path) as cx:
-        rows = cx.execute(
-            "SELECT * FROM suppliers WHERE company LIKE ? ORDER BY company LIMIT ? OFFSET ?",
-            (f"%{q}%", int(limit), int(offset)),
-        ).fetchall()
-    return [dict(r) for r in rows]
-
-
-def get_supplier(supplier_id, db_path=None):
-    with _connect(db_path) as cx:
-        r = cx.execute("SELECT * FROM suppliers WHERE id=?", (supplier_id,)).fetchone()
-    return dict(r) if r else None
+def research_studies(name, k=12):
+    try:
+        from dashboard import product_content
+        return product_content._research_sources(name, k=k) or []
+    except Exception:
+        return []

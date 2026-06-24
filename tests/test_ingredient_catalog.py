@@ -2,7 +2,7 @@ import sqlite3, pytest
 
 @pytest.fixture
 def db(tmp_path):
-    from dashboard.ingredients import init_ingredients_schema
+    from dashboard.ingredient_catalog import init_ingredients_schema
     p = str(tmp_path / "chat_log.db")
     with sqlite3.connect(p) as cx:
         init_ingredients_schema(cx)
@@ -15,7 +15,7 @@ def test_schema_creates_tables(db):
     assert {"suppliers", "ingredients", "ingredient_sources"} <= tables
 
 def test_search_and_get(db):
-    from dashboard.ingredients import search_ingredients, get_ingredient, list_sources_for_ingredient
+    from dashboard.ingredient_catalog import search_ingredients, get_ingredient, list_sources_for_ingredient
     with sqlite3.connect(db) as cx:
         cx.execute("INSERT INTO suppliers (fmp_id, company) VALUES ('s1','Acme')")
         sid = cx.execute("SELECT id FROM suppliers").fetchone()[0]

@@ -1,0 +1,101 @@
+"""Ingredients + sources catalog — FMP-migrated raw-material master in chat_log.db.
+Mirrors dashboard/shipping.py conventions (idempotent schema, _connect, db_path kwarg)."""
+from __future__ import annotations
+import os, sqlite3
+from pathlib import Path
+from typing import Optional
+
+
+def _default_db_path() -> str:
+    base = os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent))
+    return str(Path(base) / "chat_log.db")
+
+
+def _connect(db_path: Optional[str] = None) -> sqlite3.Connection:
+    cx = sqlite3.connect(db_path or _default_db_path())
+    cx.row_factory = sqlite3.Row
+    cx.execute("PRAGMA foreign_keys = ON")
+    return cx
+
+
+def init_ingredients_schema(cx: sqlite3.Connection) -> None:
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS suppliers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fmp_id TEXT, company TEXT NOT NULL,
+          address_street TEXT, address_city TEXT, address_province TEXT, address_postal_code TEXT,
+          email TEXT, phone_business TEXT, phone_cell TEXT, phone_fax TEXT, url TEXT,
+          qb_id TEXT, active INTEGER,
+          notes TEXT, extras TEXT,
+          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+        )""")
+    cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_suppliers_fmp ON suppliers(fmp_id) WHERE fmp_id IS NOT NULL")
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS ingredients (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fmp_id TEXT, name TEXT NOT NULL, form TEXT, status TEXT,
+          common_names TEXT, canonical_id INTEGER REFERENCES ingredients(id),
+          extras TEXT,
+          inci_name TEXT, cas_number TEXT, hygroscopic_rating TEXT, solubility TEXT,
+          stability_notes TEXT, spec_notes TEXT, notes TEXT,
+          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+        )""")
+    cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ingredients_fmp ON ingredients(fmp_id) WHERE fmp_id IS NOT NULL")
+    cx.execute("CREATE INDEX IF NOT EXISTS idx_ingredients_canon ON ingredients(canonical_id)")
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS ingredient_sources (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fmp_id TEXT,
+          ingredient_id INTEGER REFERENCES ingredients(id),
+          supplier_id INTEGER REFERENCES suppliers(id),
+          supplier_name TEXT, sku TEXT,
+          price_per_unit REAL, unit_size REAL, unit_type TEXT, shipping_quote REAL,
+          extras TEXT,
+          preferred INTEGER DEFAULT 0, lead_time_days INTEGER,
+          minimum_order REAL, minimum_order_unit TEXT, notes TEXT,
+          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+        )""")
+    cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ingsrc_fmp ON ingredient_sources(fmp_id) WHERE fmp_id IS NOT NULL")
+    cx.execute("CREATE INDEX IF NOT EXISTS idx_ingsrc_ing ON ingredient_sources(ingredient_id)")
+    cx.commit()
+
+
+def search_ingredients(q="", limit=50, offset=0, db_path=None):
+    with _connect(db_path) as cx:
+        rows = cx.execute(
+            "SELECT * FROM ingredients WHERE name LIKE ? ORDER BY name LIMIT ? OFFSET ?",
+            (f"%{q}%", int(limit), int(offset)),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_ingredient(ingredient_id, db_path=None):
+    with _connect(db_path) as cx:
+        r = cx.execute("SELECT * FROM ingredients WHERE id=?", (ingredient_id,)).fetchone()
+    return dict(r) if r else None
+
+
+def list_sources_for_ingredient(ingredient_id, db_path=None):
+    with _connect(db_path) as cx:
+        rows = cx.execute("""
+            SELECT s.*, sup.company AS company
+            FROM ingredient_sources s LEFT JOIN suppliers sup ON sup.id = s.supplier_id
+            WHERE s.ingredient_id = ?
+            ORDER BY s.preferred DESC, s.price_per_unit
+        """, (ingredient_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def list_suppliers(q="", limit=50, offset=0, db_path=None):
+    with _connect(db_path) as cx:
+        rows = cx.execute(
+            "SELECT * FROM suppliers WHERE company LIKE ? ORDER BY company LIMIT ? OFFSET ?",
+            (f"%{q}%", int(limit), int(offset)),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_supplier(supplier_id, db_path=None):
+    with _connect(db_path) as cx:
+        r = cx.execute("SELECT * FROM suppliers WHERE id=?", (supplier_id,)).fetchone()
+    return dict(r) if r else None

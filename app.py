@@ -930,7 +930,7 @@ _init_shipping_tables()
 
 def _init_ingredients_tables():
     """Ingredients + sources catalog (FMP-migrated raw-material master)."""
-    from dashboard.ingredients import init_ingredients_schema
+    from dashboard.ingredient_catalog import init_ingredients_schema
     with sqlite3.connect(LOG_DB) as cx:
         init_ingredients_schema(cx)
 
