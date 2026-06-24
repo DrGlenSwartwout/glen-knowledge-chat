@@ -225,6 +225,11 @@
       <h1 class="p-name" id="sp-name"></h1>
       <span class="p-price" id="sp-price"></span>
 
+      <div id="founding-video" style="display:none;margin:1rem 0;">
+        <video controls playsinline style="width:100%;border-radius:24px;"></video>
+      </div>
+      <div id="founding-counter" style="display:none;font-weight:600;"></div>
+
       <div id="sp-sections" class="sections"></div>
     </div>
 
@@ -1231,6 +1236,21 @@
       return wrap;
     }
 
+    // ── Founding launch: promo video + counter ────────────────────────────────
+    // populated from /begin/product-page-data/<slug>: data.founding_video_url, data.founding
+    function renderFounding(data){
+      if (data.founding_video_url){
+        var fv = document.getElementById('founding-video');
+        fv.querySelector('video').src = data.founding_video_url;
+        fv.style.display = 'block';
+      }
+      if (data.founding){
+        var fc = document.getElementById('founding-counter');
+        fc.textContent = data.founding.remaining + ' of ' + data.founding.cap + ' founding bottles remaining';
+        fc.style.display = 'block';
+      }
+    }
+
     // ── Render product ────────────────────────────────────────────────────────
     function renderProduct(data){
       document.getElementById('sp-name').textContent = data.name || 'Your remedy';
@@ -1264,6 +1284,7 @@
         }
       });
 
+      renderFounding(data);
       show('sp-product');
       show('sp-back');
     }

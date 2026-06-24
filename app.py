@@ -3787,7 +3787,7 @@ def begin_product_data(slug):
                       "save": ((6997 - u) // 100) if u < 6997 else 0}
                      for m, u in [(1, 6997), (3, 5997), (6, 4997), (12, 3997)]]
         formats = _FORMATS
-    return jsonify({
+    data = {
         "slug": slug, "name": p["name"],
         "price_cents": p["price_cents"], "price": f"${p['price_cents']/100:.2f}",
         "description": p.get("description") or card.get("description", ""),
@@ -3802,7 +3802,20 @@ def begin_product_data(slug):
         "open_sections": _read_open_sections(
             request.cookies.get("amg_session", ""),
             (get_authenticated_user(request) or {}).get("email", "")),
-    })
+    }
+    try:
+        from dashboard import founding as _founding
+        _launch = _founding.get_launch(slug)
+        if _launch:
+            with sqlite3.connect(LOG_DB) as _fcx:
+                _fcx.row_factory = sqlite3.Row
+                _rem = _founding.remaining(_fcx, slug)
+            data["founding"] = {"batch_label": _launch.get("batch_label", ""),
+                                "cap": int(_launch.get("cap", 0)), "remaining": _rem}
+            data["founding_video_url"] = _launch.get("video_url", "")
+    except Exception as _fe:
+        print(f"[founding] product-data enrich failed: {_fe!r}", flush=True)
+    return jsonify(data)
 
 
 @app.route("/begin/product-page-data/<slug>")
@@ -3973,7 +3986,7 @@ def begin_product_page_data(slug):
                     _img_sec3["body"]["pick"] = _pick
         except Exception as _e:
             print(f"[img-pick] page-data skipped: {_e}", flush=True)
-    return jsonify({
+    _page_data = {
         "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
         "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
         "ai_state": _ai_state,
@@ -3981,7 +3994,20 @@ def begin_product_page_data(slug):
         "miron_story": _MIRON_ASSETS.get("story", []),
         "open_sections": _read_open_sections(request.cookies.get("amg_session", ""),
                                              (get_authenticated_user(request) or {}).get("email", "")),
-    })
+    }
+    try:
+        from dashboard import founding as _founding2
+        _launch2 = _founding2.get_launch(slug)
+        if _launch2:
+            with sqlite3.connect(LOG_DB) as _fcx2:
+                _fcx2.row_factory = sqlite3.Row
+                _rem2 = _founding2.remaining(_fcx2, slug)
+            _page_data["founding"] = {"batch_label": _launch2.get("batch_label", ""),
+                                      "cap": int(_launch2.get("cap", 0)), "remaining": _rem2}
+            _page_data["founding_video_url"] = _launch2.get("video_url", "")
+    except Exception as _fe2:
+        print(f"[founding] product-page-data enrich failed: {_fe2!r}", flush=True)
+    return jsonify(_page_data)
 
 
 @app.route("/begin/product-page-gen/<slug>/<section>")

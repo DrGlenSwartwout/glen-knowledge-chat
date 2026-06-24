@@ -11215,6 +11215,15 @@
       "price_cents": 3997,
       "pinecone_title": "C15: Pentadecanoic Acid",
       "url": "https://remedymatch.com/remedies/534-c15-pentadecanoic-acid"
+    },
+    "neuro-magnesium": {
+      "name": "Neuro Magnesium",
+      "price_cents": 8000,
+      "pinecone_title": "Neuro Magnesium",
+      "source": "founding-launch-2026",
+      "description": "A foundational magnesium drink mix designed to reach where ordinary magnesium falls short. Built on Magnesium N-Acetyl-Taurate (ATA Mg), designed to cross the blood-brain and blood-eye barrier, carrying magnesium and taurine into the tissue where focus and vision live. Supports calm, a clear steady mind, and the body's own foundational eye and brain support. No fillers, no preservatives, sealed in Miron violet glass.",
+      "months_per_unit": 1,
+      "volume_eligible": true
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
