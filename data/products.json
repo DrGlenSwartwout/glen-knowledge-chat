@@ -9023,7 +9023,8 @@
         }
       ],
       "ingredients_source": "fmp_new",
-      "description": "Neuro Magnesium . Neuro Magnesium Neuro-Magnesium Magnesium is the fourth most abundant mineral in the body, with 60% stored in bones and the rest in soft tissues and fluids, including blood ( Health Benefits of Magnesium ). Intracellular magnesium is crucial for enzymatic reactions, energy production, and maintaining cellular homeostasis. Low intracellular magnesium levels are linked with many conditions including hypertension, diabetes, and cardiovascular disease. One 500 mg scoop of Neuro-Magnesium supplies: Mineral Synergists: Magnesium (Magnesium L-Threonate & Acetyl Taurate) 23 mg 5.5%..."
+      "description": "Neuro Magnesium . Neuro Magnesium Neuro-Magnesium Magnesium is the fourth most abundant mineral in the body, with 60% stored in bones and the rest in soft tissues and fluids, including blood ( Health Benefits of Magnesium ). Intracellular magnesium is crucial for enzymatic reactions, energy production, and maintaining cellular homeostasis. Low intracellular magnesium levels are linked with many conditions including hypertension, diabetes, and cardiovascular disease. One 500 mg scoop of Neuro-Magnesium supplies: Mineral Synergists: Magnesium (Magnesium L-Threonate & Acetyl Taurate) 23 mg 5.5%...",
+      "bottle_type": "30g"
     },
     "cds-water-purifier--activator": {
       "name": "CDS Water Purifier & Activator",
@@ -11426,7 +11427,8 @@
       "source": "founding-launch-2026",
       "description": "A foundational magnesium drink mix designed to reach where ordinary magnesium falls short. Built on Magnesium N-Acetyl-Taurate (ATA Mg), designed to cross the blood-brain and blood-eye barrier, carrying magnesium and taurine into the tissue where focus and vision live. Supports calm, a clear steady mind, and the body's own foundational eye and brain support. No fillers, no preservatives, sealed in Miron violet glass.",
       "months_per_unit": 1,
-      "volume_eligible": true
+      "volume_eligible": true,
+      "bottle_type": "30g"
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
