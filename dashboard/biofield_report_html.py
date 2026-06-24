@@ -358,14 +358,32 @@ def render_e4l_panel(ctx):
     date = _e(ctx.get("scan_date") or "")
     sub = (f"<div class=food style='margin-top:2px'>scan {date}</div>"
            if ctx.get("found") and date else "")
-    items = ""
-    for f in ctx.get("findings") or []:
-        rank = _e(str(f.get("rank"))) if f.get("rank") is not None else ""
-        desc = _e(f.get("description") or "")
-        items += (f"<li><b>{_e(f.get('code') or '')}</b> {_e(f.get('name') or '')}"
-                  + (f" &mdash; <span class=food>{desc}</span>" if desc else "")
-                  + (f" <span class=pill>#{rank}</span>" if rank else "") + "</li>")
-    body = f"<ol style='margin:8px 0 0;padding-left:20px'>{items}</ol>" if items else ""
+    def _list(findings):
+        items = ""
+        for f in findings or []:
+            rank = _e(str(f.get("rank"))) if f.get("rank") is not None else ""
+            desc = _e(f.get("description") or "")
+            items += (f"<li><b>{_e(f.get('code') or '')}</b> {_e(f.get('name') or '')}"
+                      + (f" &mdash; <span class=food>{desc}</span>" if desc else "")
+                      + (f" <span class=pill>#{rank}</span>" if rank else "") + "</li>")
+        return f"<ol style='margin:4px 0 0;padding-left:20px'>{items}</ol>" if items else ""
+
+    def _section(label, sub, findings):
+        if not findings:
+            return ""
+        return (f"<div style='margin-top:8px'><div class=food style='font-weight:600'>"
+                f"{label}{(' &mdash; ' + sub) if sub else ''}</div>{_list(findings)}</div>")
+
+    # Two lists: infoceuticals Glen balances vs. ER/MR "stresses" (info only). Fall
+    # back to splitting `findings` by group for any caller that didn't pre-split.
+    info = ctx.get("infoceuticals")
+    stress = ctx.get("stresses")
+    if info is None and stress is None:
+        allf = ctx.get("findings") or []
+        info = [f for f in allf if f.get("group") != "stress"]
+        stress = [f for f in allf if f.get("group") == "stress"]
+    body = (_section("Infoceuticals", "", info)
+            + _section("Stresses", "information only, no balancing vial", stress))
     note = ("<div class=food style='margin-top:6px'>Reference only &mdash; your spoken "
             "testing fills the chain.</div>") if ctx.get("found") else ""
     check = ("<div class=btnrow style='margin-top:8px'>"

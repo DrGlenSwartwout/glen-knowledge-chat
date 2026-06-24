@@ -69,15 +69,21 @@ def _latest_scan(cx, email):
     return dict(r) if r else None
 
 
-# Item categories NOT listed for the manual Biofield Test (Glen, 2026-06-24): MR
-# (MR1..MR10 — Super Cell Driver, Calm Mind, …). Items with no/other category are kept.
-_EXCLUDE_CATEGORIES = ("MR",)
+# Info-only "stress" categories (Glen, 2026-06-24): ER (Energetic Rejuvenators) and
+# MR (MR1..MR10 — Super Cell Driver, Calm Mind, …). Good information, but Glen has no
+# test vials to balance them, so they're listed separately from the infoceuticals he
+# DOES balance (ED/EI/ET/ES/MB/BFA). In real scans, recommendation findings only ever
+# carry these categories, so the split is clean.
+_STRESS_CATEGORIES = ("ER", "MR")
 
 
-def _findings(cx, scan_id, limit, exclude_categories=_EXCLUDE_CATEGORIES):
-    """Ranked findings for a scan: {rank, code, name, description}, by priority.
-    Findings whose e4l_items.category is in `exclude_categories` are dropped."""
-    excl = {str(c).strip().upper() for c in (exclude_categories or ())}
+def _group_for(category):
+    return "stress" if (category or "").strip().upper() in _STRESS_CATEGORIES else "infoceutical"
+
+
+def _findings(cx, scan_id):
+    """All ranked findings for a scan: {rank, code, name, description, category, group}
+    by priority. `group` = 'stress' (ER/MR, info only) or 'infoceutical' (balanceable)."""
     rows = cx.execute(
         """SELECT r.item_code, r.priority_rank, i.name, i.full_name, i.e4l_description, i.category
            FROM e4l_scan_results r LEFT JOIN e4l_items i ON i.code = r.item_code
@@ -88,12 +94,12 @@ def _findings(cx, scan_id, limit, exclude_categories=_EXCLUDE_CATEGORIES):
         code = (r["item_code"] or "").strip()
         if not code:
             continue
-        if (r["category"] or "").strip().upper() in excl:
-            continue
+        cat = (r["category"] or "").strip()
         out.append({"rank": r["priority_rank"], "code": code,
                     "name": (r["full_name"] or r["name"] or code).strip(),
-                    "description": (r["e4l_description"] or "").strip()})
-    return out[:limit] if limit else out
+                    "description": (r["e4l_description"] or "").strip(),
+                    "category": cat, "group": _group_for(cat)})
+    return out
 
 
 def _days_ago(scan_date, today):
@@ -110,7 +116,8 @@ def _days_ago(scan_date, today):
 def _none(window_days):
     return {"status": "none", "found": False, "scan_id": None, "scan_date": None,
             "days_ago": None, "fresh": False, "window_days": window_days,
-            "findings": [], "message": "No E4L scan on file"}
+            "findings": [], "infoceuticals": [], "stresses": [],
+            "message": "No E4L scan on file"}
 
 
 def scan_context(email, today, *, db_path=None, window_days=14, limit=12):
@@ -129,11 +136,18 @@ def scan_context(email, today, *, db_path=None, window_days=14, limit=12):
         if not scan:
             return none
         days = _days_ago(scan["scan_date"], today)
-        findings = _findings(cx, scan["scan_id"], limit)
+        all_findings = _findings(cx, scan["scan_id"])
     except sqlite3.Error:
         return none
     finally:
         cx.close()
+    # Two lists, each capped at `limit`: infoceuticals Glen can balance vs. ER/MR
+    # "stresses" (info only). Rank order preserved within each.
+    infoceuticals = [f for f in all_findings if f["group"] == "infoceutical"]
+    stresses = [f for f in all_findings if f["group"] == "stress"]
+    if limit:
+        infoceuticals, stresses = infoceuticals[:limit], stresses[:limit]
+    findings = infoceuticals + stresses
     fresh = days is not None and days <= window_days
     status = "fresh" if fresh else "stale"
     if fresh:
@@ -145,7 +159,8 @@ def scan_context(email, today, *, db_path=None, window_days=14, limit=12):
                    f"{'s' if days != 1 else ''} ago (stale)")
     return {"status": status, "found": True, "scan_id": scan["scan_id"],
             "scan_date": scan["scan_date"], "days_ago": days, "fresh": fresh,
-            "window_days": window_days, "findings": findings, "message": message}
+            "window_days": window_days, "findings": findings,
+            "infoceuticals": infoceuticals, "stresses": stresses, "message": message}
 
 
 # --- Client name picker -----------------------------------------------------

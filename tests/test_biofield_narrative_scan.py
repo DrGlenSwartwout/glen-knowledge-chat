@@ -43,6 +43,19 @@ def test_none_scan_keeps_system_prompt_clean():
     assert "E4L" not in build_narrative_prompt(_report(), "notes", scan=scan)["system"]
 
 
+def test_narrative_includes_infoceuticals_not_stresses():
+    """ER/MR 'stresses' (no balancing vial) are NOT fed to the patient narrative."""
+    scan = {"status": "fresh", "found": True, "days_ago": 2, "fresh": True,
+            "scan_date": "2026-06-22",
+            "findings": [
+                {"rank": 1, "code": "ED11", "name": "Liver Driver", "description": "",
+                 "group": "infoceutical"},
+                {"rank": 2, "code": "ER4", "name": "Skin Rejuvenator", "description": "",
+                 "group": "stress"}]}
+    usr = build_narrative_prompt(_report(), "notes", scan=scan)["user"]
+    assert "ED11" in usr and "ER4" not in usr
+
+
 def test_stale_scan_labeled_stale_in_prompt():
     scan = _scan(); scan.update(status="stale", fresh=False, days_ago=40)
     usr = build_narrative_prompt(_report(), "notes", scan=scan)["user"]
