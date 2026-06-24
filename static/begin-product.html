@@ -225,6 +225,16 @@
       <h1 class="p-name" id="sp-name"></h1>
       <span class="p-price" id="sp-price"></span>
 
+      <div id="founding-video" style="display:none;margin:1rem 0;">
+        <video controls playsinline style="width:100%;border-radius:24px;"></video>
+      </div>
+      <div id="founding-counter" style="display:none;font-weight:600;"></div>
+      <div id="founding-soldout" style="display:none;padding:1rem;background:var(--surface,#f5f5f5);border-radius:12px;text-align:center;">
+        <p style="font-weight:700;margin:0 0 0.5rem;">Batch No. 1 is sold out.</p>
+        <p style="margin:0 0 1rem;color:var(--muted,#666);">Join the waitlist and be first to know when Batch No. 2 opens.</p>
+        <a id="founding-waitlist-link" href="/begin" class="cta-btn" style="display:inline-block;">Join the Waitlist</a>
+      </div>
+
       <div id="sp-sections" class="sections"></div>
     </div>
 
@@ -1231,6 +1241,71 @@
       return wrap;
     }
 
+    // ── Founding launch: promo video + counter ────────────────────────────────
+    // populated from /begin/product-page-data/<slug>: data.founding_video_url, data.founding
+    // Live counter polls /begin/founding/status/<slug> every 60s; flips to sold-out
+    // close-out state when open===false.
+
+    var _foundingSlug = null;
+    var _foundingPollTimer = null;
+
+    function _applyFoundingStatus(status){
+      var fc = document.getElementById('founding-counter');
+      var soldOut = document.getElementById('founding-soldout');
+      var ctaBlock = document.getElementById('sp-cta-block');
+      if (status.open){
+        // show live counter
+        if (fc){
+          fc.textContent = (status.remaining ?? 0) + ' of ' + (status.cap ?? 0) + ' founding bottles remaining';
+          fc.style.display = 'block';
+        }
+        if (soldOut){ soldOut.style.display = 'none'; }
+        if (ctaBlock){ ctaBlock.style.display = ''; }
+      } else {
+        // close-out: hide counter + CTA, show sold-out block; stop polling
+        clearInterval(_foundingPollTimer); _foundingPollTimer = null;
+        if (fc){ fc.style.display = 'none'; }
+        if (soldOut){
+          soldOut.style.display = 'block';
+          // Wire batch_label dynamically if provided
+          if (status.batch_label) {
+            var batchLabel = status.batch_label;
+            var sold = soldOut.querySelector('p:first-child');
+            if (sold){ sold.textContent = batchLabel + ' is sold out.'; }
+            var next = soldOut.querySelector('p:nth-child(2)');
+            if (next){ next.textContent = 'Join the waitlist and be first to know when the next batch opens.'; }
+          }
+        }
+        if (ctaBlock){ ctaBlock.style.display = 'none'; }
+      }
+    }
+
+    function _pollFoundingStatus(){
+      if (!_foundingSlug) return;
+      fetch(BASE + '/begin/founding/status/' + encodeURIComponent(_foundingSlug))
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(status){ if (status) _applyFoundingStatus(status); })
+        .catch(function(){});
+    }
+
+    function renderFounding(data){
+      if (data.founding_video_url){
+        var fv = document.getElementById('founding-video');
+        fv.querySelector('video').src = data.founding_video_url;
+        fv.style.display = 'block';
+      }
+      if (data.founding){
+        _foundingSlug = slug;
+        // Apply initial state from page-data (static snapshot)
+        _applyFoundingStatus(data.founding);
+        // Start live polling every 60s for real-time counter + close-out
+        if (_foundingPollTimer){ clearInterval(_foundingPollTimer); }
+        _foundingPollTimer = setInterval(_pollFoundingStatus, 60000);
+        // Immediately fetch live status to override the static snapshot
+        _pollFoundingStatus();
+      }
+    }
+
     // ── Render product ────────────────────────────────────────────────────────
     function renderProduct(data){
       document.getElementById('sp-name').textContent = data.name || 'Your remedy';
@@ -1264,6 +1339,7 @@
         }
       });
 
+      renderFounding(data);
       show('sp-product');
       show('sp-back');
     }

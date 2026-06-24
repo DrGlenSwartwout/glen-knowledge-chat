@@ -3787,7 +3787,7 @@ def begin_product_data(slug):
                       "save": ((6997 - u) // 100) if u < 6997 else 0}
                      for m, u in [(1, 6997), (3, 5997), (6, 4997), (12, 3997)]]
         formats = _FORMATS
-    return jsonify({
+    data = {
         "slug": slug, "name": p["name"],
         "price_cents": p["price_cents"], "price": f"${p['price_cents']/100:.2f}",
         "description": p.get("description") or card.get("description", ""),
@@ -3802,7 +3802,20 @@ def begin_product_data(slug):
         "open_sections": _read_open_sections(
             request.cookies.get("amg_session", ""),
             (get_authenticated_user(request) or {}).get("email", "")),
-    })
+    }
+    try:
+        from dashboard import founding as _founding
+        _launch = _founding.get_launch(slug)
+        if _launch:
+            with sqlite3.connect(LOG_DB) as _fcx:
+                _fcx.row_factory = sqlite3.Row
+                _rem = _founding.remaining(_fcx, slug)
+            data["founding"] = {"batch_label": _launch.get("batch_label", ""),
+                                "cap": int(_launch.get("cap", 0)), "remaining": _rem}
+            data["founding_video_url"] = _launch.get("video_url", "")
+    except Exception as _fe:
+        print(f"[founding] product-data enrich failed: {_fe!r}", flush=True)
+    return jsonify(data)
 
 
 @app.route("/begin/product-page-data/<slug>")
@@ -3973,7 +3986,7 @@ def begin_product_page_data(slug):
                     _img_sec3["body"]["pick"] = _pick
         except Exception as _e:
             print(f"[img-pick] page-data skipped: {_e}", flush=True)
-    return jsonify({
+    _page_data = {
         "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
         "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
         "ai_state": _ai_state,
@@ -3981,7 +3994,20 @@ def begin_product_page_data(slug):
         "miron_story": _MIRON_ASSETS.get("story", []),
         "open_sections": _read_open_sections(request.cookies.get("amg_session", ""),
                                              (get_authenticated_user(request) or {}).get("email", "")),
-    })
+    }
+    try:
+        from dashboard import founding as _founding2
+        _launch2 = _founding2.get_launch(slug)
+        if _launch2:
+            with sqlite3.connect(LOG_DB) as _fcx2:
+                _fcx2.row_factory = sqlite3.Row
+                _rem2 = _founding2.remaining(_fcx2, slug)
+            _page_data["founding"] = {"batch_label": _launch2.get("batch_label", ""),
+                                      "cap": int(_launch2.get("cap", 0)), "remaining": _rem2}
+            _page_data["founding_video_url"] = _launch2.get("video_url", "")
+    except Exception as _fe2:
+        print(f"[founding] product-page-data enrich failed: {_fe2!r}", flush=True)
+    return jsonify(_page_data)
 
 
 @app.route("/begin/product-page-gen/<slug>/<section>")
@@ -5362,6 +5388,10 @@ def begin_checkout_return():
                     except Exception as _ge:
                         app.logger.exception("group bundle grant failed: %s", _ge)
 
+                # NOTE: founding_reserve uses a setup-mode ($0) Stripe session and is
+                # handled BELOW, outside this "paid" block, so it is reachable for
+                # payment_status == "no_payment_required" setup sessions.
+
                 # ── Client kind: credit practitioner margin to wallet ──
                 try:
                     if md.get("kind") == "client":
@@ -5441,6 +5471,60 @@ def begin_checkout_return():
             # closed tab still gets fulfilled. Idempotent via biofield_trial_grants.
             if _kind == "biofield_trial":
                 _fulfill_biofield_trial(sid)
+
+            # ── Founding reserve: vault card, create pending reservation, comp membership ──
+            # Setup-mode ($0) session: payment_status == "no_payment_required" (NOT "paid"),
+            # so this block lives OUTSIDE the payment_status == "paid" gate.
+            if md.get("kind") == "founding_reserve" and sess.get("setup_intent") and \
+                    sess.get("payment_status") in ("paid", "no_payment_required"):
+                try:
+                    from dashboard import subscriptions as _subs_f, founding as _founding_ret
+                    seti = sess.get("setup_intent")
+                    si = _sp.get_setup_intent(seti) if seti else {}
+                    stripe_cus = si.get("customer") or ""
+                    stripe_pm = si.get("payment_method") or ""
+                    f_email = md.get("email") or ""
+                    f_slug = md.get("slug") or ""
+                    stash_key = md.get("stash_key")
+                    if stash_key:
+                        with sqlite3.connect(LOG_DB) as _scx:
+                            _scx.row_factory = sqlite3.Row
+                            _sr = _scx.execute(
+                                "SELECT items_json, ship_json FROM "
+                                "pending_subscriptions WHERE key=?",
+                                (stash_key,)).fetchone()
+                        items_list = json.loads(_sr["items_json"]) if _sr else []
+                        ship_dict = json.loads(_sr["ship_json"]) if _sr else {}
+                    else:
+                        items_list = json.loads(md.get("items") or "[]")
+                        ship_dict = json.loads(md.get("ship") or "{}")
+                    # Cap re-check: abort gracefully if founding is no longer open.
+                    with sqlite3.connect(LOG_DB) as _cap_cx:
+                        _cap_cx.row_factory = sqlite3.Row
+                        _subs_f.init_subscriptions_table(_cap_cx)
+                        _subs_f.migrate_add_founding_columns(_cap_cx)
+                        today_iso = _now_utc().strftime("%Y-%m-%d")
+                        _cap_still_open = _founding_ret.is_open(_cap_cx, f_slug, now_iso=today_iso)
+                    if not _cap_still_open:
+                        print(f"[founding-return] cap hit after payment — skipping reservation for {f_email}",
+                              flush=True)
+                    else:
+                        with sqlite3.connect(LOG_DB) as _fcx:
+                            _fcx.row_factory = sqlite3.Row
+                            _subs_f.init_subscriptions_table(_fcx)
+                            _subs_f.migrate_add_founding_columns(_fcx)
+                            _subs_f.create_founding_reservation(
+                                _fcx, email=f_email, stripe_customer_id=stripe_cus,
+                                stripe_payment_method_id=stripe_pm, items=items_list,
+                                ship_address=ship_dict, founding_slug=f_slug)
+                            _grant_membership(_fcx, f_email, 30, "founding")
+                            _fcx.commit()
+                        _ingest_order(source="founding", external_ref=seti or "",
+                                      email=f_email, items=items_list, total_cents=0,
+                                      address=ship_dict, channel="retail")
+                        print(f"[founding-return] reservation created for {f_email}", flush=True)
+                except Exception as _fe:
+                    print(f"[founding-return] reservation failed: {_fe!r}", flush=True)
 
         except Exception as e:
             print(f"[begin-return] {e!r}", flush=True)
@@ -6942,6 +7026,21 @@ def _extend_membership_grant(cx, email, until_iso, source="membership_renewal"):
         "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
         "VALUES (?,?,?,?,?,?,?,?)",
         (str(_uuid.uuid4()), email, datetime.utcnow().isoformat() + "Z", until_iso, source, source, "", ""))
+
+
+def _maybe_extend_founding_membership(cx, sub, updated):
+    """A founding product autoship keeps its comp membership alive: on each
+    successful charge, extend the grant to next_charge_date + grace. No-op for
+    non-founding subs."""
+    if not sub.get("founding"):
+        return
+    try:
+        if updated and updated.get("next_charge_date"):
+            until = (datetime.fromisoformat(updated["next_charge_date"])
+                     + timedelta(days=MEMBERSHIP_GRANT_GRACE_DAYS)).isoformat() + "Z"
+            _extend_membership_grant(cx, sub["email"], until, "founding")
+    except Exception as _ge:
+        print(f"[sub-cron] founding grant-extend sub={sub.get('id')}: {_ge!r}", flush=True)
 
 
 def _studio_credit_grant_and_notify(cx, email, days):
@@ -12262,6 +12361,146 @@ def reorder_checkout():
     except Exception as e:
         app.logger.exception("reorder checkout failed")
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
+# ── Founding reserve route ────────────────────────────────────────────────────
+
+def _founding_enabled():
+    return os.environ.get("FOUNDING_LAUNCH_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+@app.route("/begin/founding/reserve", methods=["POST"])
+def begin_founding_reserve():
+    """Founding pre-order: vault the card ($0 today), no QBO invoice. The bottle is
+    charged on-ship (orders.ship_founding_batch). ROSCA: caller UI must show terms +
+    explicit consent before this POST."""
+    if not _founding_enabled():
+        return jsonify({"error": "founding not enabled"}), 400
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to continue."}), 403
+    if not _STRIPE_ACTIVE:
+        return jsonify({"error": "card payment not active"}), 400
+    body = request.get_json(silent=True) or {}
+    slug = (body.get("slug") or "").strip()
+    from dashboard import founding as _founding
+    with sqlite3.connect(LOG_DB) as _ocx:
+        _ocx.row_factory = sqlite3.Row
+        if not _founding.is_open(_ocx, slug, now_iso=_now_utc().strftime("%Y-%m-%d")):
+            return jsonify({"error": "founding_closed"}), 409
+    items = body.get("items") or []
+    ship = body.get("address") or {}
+    metadata = {"kind": "founding_reserve", "slug": slug, "email": email}
+    items_json, ship_json = json.dumps(items), json.dumps(ship)
+    if len(items_json) + len(ship_json) <= 450:
+        metadata["items"] = items_json
+        metadata["ship"] = ship_json
+    else:
+        stash_key = uuid.uuid4().hex
+        with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+            _cx.execute("CREATE TABLE IF NOT EXISTS pending_subscriptions "
+                        "(key TEXT PRIMARY KEY, items_json TEXT, ship_json TEXT, created_at TEXT)")
+            _cx.execute("INSERT INTO pending_subscriptions (key, items_json, ship_json, created_at) "
+                        "VALUES (?,?,?,?)", (stash_key, items_json, ship_json, _now_utc().isoformat()))
+            _cx.commit()
+        metadata["stash_key"] = stash_key
+    success = f"{PUBLIC_BASE_URL}/begin/checkout-return?session_id={{CHECKOUT_SESSION_ID}}"
+    sess = stripe_pay.create_setup_session(
+        customer_email=email, metadata=metadata, success_url=success,
+        cancel_url=f"{PUBLIC_BASE_URL}/begin/product/{slug}")
+    return jsonify({"ok": True, "stripe_url": sess.get("url") or ""})
+
+
+@app.route("/begin/founding/status/<slug>")
+def begin_founding_status(slug):
+    """Live counter for a founding launch: remaining spots, open state, cap, batch_label.
+    The product page polls this to refresh the counter and flip to a close-out state."""
+    from dashboard import founding as _founding
+    launch = _founding.get_launch(slug)
+    if not launch:
+        return jsonify({"error": "no_founding_launch"}), 404
+    today = _now_utc().strftime("%Y-%m-%d")
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        return jsonify({
+            "open": _founding.is_open(cx, slug, now_iso=today),
+            "cap": int(launch.get("cap", 0)),
+            "remaining": _founding.remaining(cx, slug),
+            "batch_label": launch.get("batch_label", ""),
+        })
+
+
+# ── Founding charge-on-ship ───────────────────────────────────────────────────
+
+def _ship_founding_reservation(cx, sub):
+    """Charge the vaulted card for the founding bottle (charge-on-ship), ingest a
+    qualifying product order, and activate the autoship. Returns a result dict."""
+    from dashboard import subscriptions as _subs
+    items = sub.get("items") or []
+    ship = sub.get("ship_address") or {}
+    pc = _price_cart(items, ship=ship, subscriber_tier_pct=None)
+    cust = qb.find_or_create_customer(sub["email"], ship.get("name", ""))
+    inv = qb.create_invoice(
+        cust,
+        pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+        allow_online_pay=False,
+        email_to=sub["email"],
+        discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"],
+    )
+    total_cents = int(round(float(inv.get("TotalAmt") or 0) * 100))
+    res = stripe_pay.charge_off_session(
+        sub["stripe_customer_id"], sub["stripe_payment_method_id"], total_cents,
+        description="Remedy Match founding bottle",
+        metadata={"sub": str(sub["id"]), "kind": "founding_ship"},
+    )
+    if res.get("status") != "succeeded":
+        _subs.bump_failed_count(cx, sub["id"])
+        return {"charged": False, "sub_id": sub["id"], "amount_cents": total_cents}
+    today = _now_utc().strftime("%Y-%m-%d")
+    _subs.mark_founding_active(cx, sub["id"], next_charge_date=_subs.add_months(today, 1))
+    try:
+        _ingest_order(
+            source="reorder",  # "reorder" is in coaching.QUALIFYING_SOURCES → delivery opens coaching window
+            external_ref=res.get("id") or inv.get("Id") or "",
+            email=sub["email"],
+            items=items,
+            total_cents=total_cents,
+            address=ship,
+            channel="retail",
+        )
+    except Exception as e:
+        print(f"[founding-ship] ingest failed sub={sub['id']}: {e!r}")
+    return {"charged": True, "sub_id": sub["id"], "amount_cents": total_cents}
+
+
+@app.route("/api/founding/ship", methods=["POST"])
+def api_founding_ship():
+    """Console-gated (X-Console-Key / CONSOLE_SECRET): charge-on-ship the pending
+    founding reservations for a slug. Iterates list_founding_pending, charges each
+    vaulted card off-session, ingests a qualifying reorder, and activates the
+    autoship. Already-active reservations are naturally excluded (list_founding_pending
+    only returns founding_state='pending' rows) — so re-running is safe."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "forbidden"}), 403
+    slug = (request.get_json(silent=True) or {}).get("slug", "")
+    from dashboard import subscriptions as _subs
+    out = []
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _subs.init_subscriptions_table(cx)
+        _subs.migrate_add_founding_columns(cx)
+        for sub in _subs.list_founding_pending(cx, slug):
+            try:
+                out.append(_ship_founding_reservation(cx, sub))
+            except Exception as e:
+                out.append({"charged": False, "sub_id": sub["id"], "error": repr(e)})
+    return jsonify({"ok": True, "results": out})
 
 
 # ── Subscription setup flow ────────────────────────────────────────────────────
@@ -19620,6 +19859,7 @@ def cron_charge_subscriptions():
 
                     # Advance to get next_charge_date for receipt email
                     updated = _subs.get(cx, sid)
+                    _maybe_extend_founding_membership(cx, sub, updated)
                     _send_subscription_email(sub["email"], "receipt", {
                         "total_cents": total_cents,
                         "invoice_id": inv_id,
