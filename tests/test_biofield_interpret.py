@@ -59,3 +59,55 @@ def test_interpret_splits_spoken_dose_from_remedy():
 def test_interpret_empty_transcript_returns_empty():
     out = interpret_transcript("   ", lambda s, u: '{"layers":[]}')
     assert out["layers"] == []
+
+
+def test_prompt_tells_model_a_layer_can_have_multiple_remedies():
+    sys = build_interpret_prompt(TRANSCRIPT)["system"].lower()
+    # The grammar must instruct that one causal layer can need more than one remedy.
+    assert "remedies" in sys
+    assert "more than one" in sys or "multiple" in sys
+
+
+def test_interpret_keeps_repeated_layer_objects_for_multi_remedy_layer():
+    # Model emits one object per remedy, both tagged layer 1 (Kauilani: layer 1 had two).
+    def fake(system, user):
+        return json.dumps({"layers": [
+            {"layer": 1, "head": "Large Intestine Meridian",
+             "most_affected": "Large Intestine Meridian", "remedy": "Microbiome"},
+            {"layer": 1, "head": "Large Intestine Meridian",
+             "most_affected": "Large Intestine Meridian", "remedy": "Cistus Synergy"},
+            {"layer": 2, "head": "Toxicity", "most_affected": "Toxicity",
+             "remedy": "Neuro-Magnesium"}]})
+    out = interpret_transcript(TRANSCRIPT, fake)
+    assert [(l["layer"], l["remedy"]) for l in out["layers"]] == [
+        (1, "Microbiome"), (1, "Cistus Synergy"), (2, "Neuro-Magnesium")]
+
+
+def test_interpret_expands_remedies_array_into_one_entry_per_remedy():
+    # Model puts multiple remedies for a layer in a `remedies` array, each its own dose.
+    def fake(system, user):
+        return json.dumps({"layers": [
+            {"layer": 1, "head": "Large Intestine Meridian",
+             "most_affected": "Large Intestine Meridian",
+             "remedies": [
+                 {"remedy": "Microbiome", "dosage": "1 cap", "frequency": "twice a day", "timing": ""},
+                 {"remedy": "Cistus Synergy", "dosage": "10 drops", "frequency": "3x a day",
+                  "timing": "before food"}]},
+            {"layer": 2, "head": "Toxicity", "most_affected": "Toxicity", "remedy": "Neuro-Magnesium"}]})
+    out = interpret_transcript(TRANSCRIPT, fake)
+    assert [(l["layer"], l["remedy"]) for l in out["layers"]] == [
+        (1, "Microbiome"), (1, "Cistus Synergy"), (2, "Neuro-Magnesium")]
+    # Per-remedy dose is preserved through the expansion.
+    assert out["layers"][1]["dosage"] == "10 drops"
+    assert out["layers"][1]["timing"] == "before food"
+    # head/most_affected are carried onto each expanded remedy.
+    assert out["layers"][0]["head"] == "Large Intestine Meridian"
+
+
+def test_interpret_expands_remedies_array_of_plain_strings():
+    def fake(system, user):
+        return json.dumps({"layers": [
+            {"layer": 1, "head": "Acid", "most_affected": "Liver",
+             "remedies": ["Sterol Max", "Bile Flow"]}]})
+    out = interpret_transcript("acid balanced by sterol max and bile flow", fake)
+    assert [(l["layer"], l["remedy"]) for l in out["layers"]] == [(1, "Sterol Max"), (1, "Bile Flow")]
