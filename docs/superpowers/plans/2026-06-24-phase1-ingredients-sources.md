@@ -4,11 +4,12 @@
 
 **Goal:** Migrate the FileMaker raw-material master (suppliers, ingredients, ingredient_sources) into new SQLite tables in `chat_log.db` as the authoritative source, with canonical variant clustering, an idempotent FMP importer that preserves console edits, and an `/admin/ingredients` console.
 
-**Architecture:** A new `dashboard/ingredients.py` module mirrors `dashboard/shipping.py` exactly (idempotent `init_ingredients_schema`, `_connect`, CRUD with optional `db_path`). A standalone `scripts/import_ingredients_from_fmp.py` loads three FMP CSV exports + the canonical-clusters CSV. Console = a static `/admin/ingredients` page + `/api/ingredients/*` JSON endpoints. Schema-init wired at app.py module load.
+**Architecture:** A new `dashboard/ingredient_catalog.py` module mirrors `dashboard/shipping.py` exactly (idempotent `init_ingredients_schema`, `_connect`, CRUD with optional `db_path`). A standalone `scripts/import_ingredients_from_fmp.py` loads three FMP CSV exports + the canonical-clusters CSV. Console = a static `/admin/ingredients` page + `/api/ingredients/*` JSON endpoints. Schema-init wired at app.py module load.
 
 **Tech Stack:** Python 3, Flask, sqlite3 (`chat_log.db`), pytest, vanilla-JS static HTML. Stdlib only.
 
 ## Global Constraints
+- **Module name is `dashboard/ingredient_catalog.py`** (NOT `ingredients.py` — that name is the existing ingredient-PAGES resolver: slugify/resolve/formulations_with, used across app.py + topic_copy/ingredient_copy. Do not touch it). New test file: `tests/test_ingredient_catalog.py`.
 - No new dependencies. The app DB (`chat_log.db`) is the authoritative source; FMP CSVs are import-only.
 - **Curated-vs-FMP column split (the key invariant):** the importer writes ONLY FMP-sourced columns; on re-import it `ON CONFLICT(fmp_id) DO UPDATE` refreshing only those columns and NEVER touches console-edited curated columns. Curated cols: suppliers(`notes`); ingredients(`inci_name,cas_number,hygroscopic_rating,solubility,stability_notes,spec_notes,notes`); ingredient_sources(`preferred,lead_time_days,minimum_order,minimum_order_unit,notes`). `canonical_id` is set only by the canonical pass.
 - `fmp_id` (= FMP `id_pk`) is the idempotent re-import key; partial unique index `WHERE fmp_id IS NOT NULL`.
@@ -19,12 +20,12 @@
 
 ---
 
-### Task 1: `dashboard/ingredients.py` — schema + read functions + app wiring
+### Task 1: `dashboard/ingredient_catalog.py` — schema + read functions + app wiring
 
 **Files:**
-- Create: `dashboard/ingredients.py`
+- Create: `dashboard/ingredient_catalog.py`
 - Modify: `app.py` (add `_init_ingredients_tables()` at module load, next to `_init_shipping_tables` ~line 922-928)
-- Test: `tests/test_ingredients.py`
+- Test: `tests/test_ingredient_catalog.py`
 
 **Interfaces — Produces:**
 - `init_ingredients_schema(cx)` — idempotent CREATE of `suppliers`, `ingredients`, `ingredient_sources` + indexes.
@@ -36,12 +37,12 @@
 - [ ] **Step 1: Write the failing test**
 
 ```python
-# tests/test_ingredients.py
+# tests/test_ingredient_catalog.py
 import sqlite3, pytest
 
 @pytest.fixture
 def db(tmp_path):
-    from dashboard.ingredients import init_ingredients_schema
+    from dashboard.ingredient_catalog import init_ingredients_schema
     p = str(tmp_path / "chat_log.db")
     with sqlite3.connect(p) as cx:
         init_ingredients_schema(cx)
@@ -54,7 +55,7 @@ def test_schema_creates_tables(db):
     assert {"suppliers", "ingredients", "ingredient_sources"} <= tables
 
 def test_search_and_get(db):
-    from dashboard.ingredients import search_ingredients, get_ingredient, list_sources_for_ingredient
+    from dashboard.ingredient_catalog import search_ingredients, get_ingredient, list_sources_for_ingredient
     with sqlite3.connect(db) as cx:
         cx.execute("INSERT INTO suppliers (fmp_id, company) VALUES ('s1','Acme')")
         sid = cx.execute("SELECT id FROM suppliers").fetchone()[0]
@@ -70,10 +71,10 @@ def test_search_and_get(db):
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd /tmp/wt-deploy-chat-59a2725d && python3 -m pytest tests/test_ingredients.py -q`
-Expected: FAIL — `ModuleNotFoundError: No module named 'dashboard.ingredients'`
+Run: `cd /tmp/wt-deploy-chat-59a2725d && python3 -m pytest tests/test_ingredient_catalog.py -q`
+Expected: FAIL — `ModuleNotFoundError: No module named 'dashboard.ingredient_catalog'`
 
-- [ ] **Step 3: Implement `dashboard/ingredients.py`**
+- [ ] **Step 3: Implement `dashboard/ingredient_catalog.py`**
 
 ```python
 """Ingredients + sources catalog — FMP-migrated raw-material master in chat_log.db.
@@ -184,7 +185,7 @@ def get_supplier(supplier_id, db_path=None):
 ```python
 def _init_ingredients_tables():
     """Ingredients + sources catalog (FMP-migrated raw-material master)."""
-    from dashboard.ingredients import init_ingredients_schema
+    from dashboard.ingredient_catalog import init_ingredients_schema
     with sqlite3.connect(LOG_DB) as cx:
         init_ingredients_schema(cx)
 
@@ -193,9 +194,9 @@ _init_ingredients_tables()
 
 - [ ] **Step 5: Run tests + commit**
 
-Run: `python3 -m pytest tests/test_ingredients.py -q` → PASS
+Run: `python3 -m pytest tests/test_ingredient_catalog.py -q` → PASS
 ```bash
-git add dashboard/ingredients.py app.py tests/test_ingredients.py
+git add dashboard/ingredient_catalog.py app.py tests/test_ingredient_catalog.py
 git commit -m "feat(ingredients): schema + read functions + app wiring"
 ```
 
@@ -204,8 +205,8 @@ git commit -m "feat(ingredients): schema + read functions + app wiring"
 ### Task 2: Curated write functions
 
 **Files:**
-- Modify: `dashboard/ingredients.py`
-- Test: `tests/test_ingredients.py`
+- Modify: `dashboard/ingredient_catalog.py`
+- Test: `tests/test_ingredient_catalog.py`
 
 **Interfaces — Produces:**
 - `update_ingredient_curated(ingredient_id, fields: dict, db_path=None)` — only keys in `{inci_name,cas_number,hygroscopic_rating,solubility,stability_notes,spec_notes,notes}` applied.
@@ -217,7 +218,7 @@ git commit -m "feat(ingredients): schema + read functions + app wiring"
 
 ```python
 def test_curated_updates_and_preferred(db):
-    from dashboard.ingredients import (update_ingredient_curated, update_source_curated,
+    from dashboard.ingredient_catalog import (update_ingredient_curated, update_source_curated,
         set_preferred_source, get_ingredient, list_sources_for_ingredient)
     import sqlite3
     with sqlite3.connect(db) as cx:
@@ -239,10 +240,10 @@ def test_curated_updates_and_preferred(db):
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `python3 -m pytest tests/test_ingredients.py -k curated -q`
+Run: `python3 -m pytest tests/test_ingredient_catalog.py -k curated -q`
 Expected: FAIL — ImportError.
 
-- [ ] **Step 3: Implement** (append to `dashboard/ingredients.py`)
+- [ ] **Step 3: Implement** (append to `dashboard/ingredient_catalog.py`)
 
 ```python
 _ING_CURATED = {"inci_name","cas_number","hygroscopic_rating","solubility","stability_notes","spec_notes","notes"}
@@ -284,9 +285,9 @@ def set_preferred_source(source_id, db_path=None):
 
 - [ ] **Step 4: Run tests + commit**
 
-Run: `python3 -m pytest tests/test_ingredients.py -q` → PASS
+Run: `python3 -m pytest tests/test_ingredient_catalog.py -q` → PASS
 ```bash
-git add dashboard/ingredients.py tests/test_ingredients.py
+git add dashboard/ingredient_catalog.py tests/test_ingredient_catalog.py
 git commit -m "feat(ingredients): curated write functions + preferred-source toggle"
 ```
 
@@ -314,7 +315,7 @@ git commit -m "feat(ingredients): curated write functions + preferred-source tog
 ```python
 # tests/test_import_ingredients.py
 import sqlite3
-from dashboard.ingredients import init_ingredients_schema
+from dashboard.ingredient_catalog import init_ingredients_schema
 from scripts.import_ingredients_from_fmp import (
     _active, _num, _clean, import_suppliers, import_ingredients, import_sources, apply_canonical)
 
@@ -355,7 +356,7 @@ def test_import_and_join_and_canonical(tmp_path):
 
 def test_reimport_preserves_curated(tmp_path):
     p = _db(tmp_path)
-    from dashboard.ingredients import update_ingredient_curated, update_source_curated
+    from dashboard.ingredient_catalog import update_ingredient_curated, update_source_curated
     with sqlite3.connect(p) as cx:
         import_suppliers(cx, [{"id_pk":"s1","company":"Acme"}])
         import_ingredients(cx, [{"id_pk":"i1","name_common":"R-Lipoic Acid","type":"old"}])
@@ -537,7 +538,7 @@ def main(argv=None):
     if not args.write:
         print("(dry run — pass --write to import)")
         return 0
-    from dashboard.ingredients import _default_db_path, init_ingredients_schema
+    from dashboard.ingredient_catalog import _default_db_path, init_ingredients_schema
     cx = sqlite3.connect(args.db or _default_db_path())
     cx.row_factory = sqlite3.Row
     init_ingredients_schema(cx)
@@ -589,7 +590,7 @@ import pytest
 def _client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     db = str(tmp_path / "chat_log.db")
-    from dashboard.ingredients import init_ingredients_schema
+    from dashboard.ingredient_catalog import init_ingredients_schema
     with sqlite3.connect(db) as cx:
         init_ingredients_schema(cx)
         cx.execute("INSERT INTO ingredients (fmp_id,name) VALUES ('i1','R-Lipoic Acid')")
@@ -623,7 +624,7 @@ Expected: FAIL (404 / endpoints missing) — or SKIP if app import needs Pinecon
 - [ ] **Step 3: Implement endpoints** (in `app.py`, beside the shipping API block)
 
 ```python
-from dashboard import ingredients as _ingredients
+from dashboard import ingredient_catalog as _ingredients
 
 @app.route("/admin/ingredients")
 def admin_ingredients_page():
