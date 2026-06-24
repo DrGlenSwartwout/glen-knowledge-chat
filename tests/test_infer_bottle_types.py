@@ -10,7 +10,7 @@ def test_rollon():
 
 def test_powder_cosmetic():
     t, _ = infer_bottle_type({"name": "Baz Powder 30 g", "description": ""})
-    assert t == "100cos"
+    assert t == "30g"
 
 def test_low_confidence_defaults_and_flags_for_review():
     m = build_mapping({"x": {"name": "Mystery Tonic", "description": ""}})

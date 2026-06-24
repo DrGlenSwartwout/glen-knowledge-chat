@@ -4,14 +4,14 @@ from dashboard.packing import BOXES_MM, fit_subset, fits_all, pack_count, split_
 # Ø×H in mm (cm×10)
 BOTTLES_MM = {
     "120cap": (80, 100), "100ml": (50, 160), "30roll": (40, 100),
-    "50ml": (40, 140), "15ml": (30, 100), "5ml": (30, 80),
-    "100cos": (70, 70), "30cap": (50, 90),
+    "50ml": (40, 140), "30ml": (40, 110), "15ml": (30, 100), "5ml": (30, 80),
+    "30g": (70, 70), "30cap": (50, 90),
 }
 # Verified bare-geometry counts: (S, M, L)
 EXPECTED = {
     "120cap": (0, 6, 9), "100ml": (3, 10, 12), "30roll": (6, 36, 63),
-    "50ml": (5, 18, 49), "15ml": (10, 72, 108), "5ml": (10, 84, 120),
-    "100cos": (0, 9, 32), "30cap": (6, 24, 36),
+    "50ml": (5, 18, 49), "30ml": (6, 36, 49), "15ml": (10, 72, 108), "5ml": (10, 84, 120),
+    "30g": (0, 9, 32), "30cap": (6, 24, 36),
 }
 
 @pytest.mark.parametrize("key", list(EXPECTED))

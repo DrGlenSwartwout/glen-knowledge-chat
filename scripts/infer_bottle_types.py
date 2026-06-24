@@ -8,7 +8,7 @@ import json
 import os
 import sys
 
-TYPES = ("120cap", "100ml", "30roll", "50ml", "15ml", "5ml", "100cos", "30cap")
+TYPES = ("120cap", "100ml", "30roll", "50ml", "15ml", "5ml", "30g", "30cap")
 _REVIEW_THRESHOLD = 0.6
 
 
@@ -22,7 +22,7 @@ def infer_bottle_type(product: dict):
     if has("roll-on", "rollon", "roll on"):
         return ("30roll", 0.9 if has("30 ml", "30ml") else 0.7)
     if has("powder", "cosmetic", "30 g", "30g"):
-        return ("100cos", 0.9 if has("powder", "cosmetic") else 0.7)
+        return ("30g", 0.9 if has("powder", "cosmetic") else 0.7)
     if has("dropper"):
         form = True
         if has("100 ml", "100ml"):

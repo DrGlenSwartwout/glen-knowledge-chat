@@ -71,13 +71,14 @@ _DEFAULT_RATES_2026_04_26 = [
 
 # Standard bottle types with measured dims (Ø_mm, H_mm) = cm x 10.
 _STANDARD_BOTTLES = [
-    ("120cap", "250 ml wide-mouth (120 caps)", 80, 100),
+    ("120cap", "250 ml wide-mouth (120 caps / pure powder)", 80, 100),
     ("100ml", "100 ml dropper", 50, 160),
     ("30roll", "30 ml roll-on", 40, 100),
     ("50ml", "50 ml dropper", 40, 140),
+    ("30ml", "30 ml dropper (infoceutical)", 40, 110),
     ("15ml", "15 ml dropper", 30, 100),
-    ("5ml", "5 ml dropper", 30, 80),
-    ("100cos", "100 ml cosmetic (30 g powder)", 70, 70),
+    ("5ml", "5 ml dropper (eye drops)", 30, 80),
+    ("30g", "100 ml cosmetic jar (30 g powder)", 70, 70),
     ("30cap", "100 ml wide-mouth (30 caps)", 50, 90),
 ]
 _PACKING_DEFAULTS = {"wrap_mm": 6, "box_margin_mm": 10}
@@ -132,6 +133,17 @@ def init_shipping_schema(cx: sqlite3.Connection) -> None:
         cx.execute("ALTER TABLE bottle_types ADD COLUMN diameter_mm INTEGER")
     if "height_mm" not in cols:
         cx.execute("ALTER TABLE bottle_types ADD COLUMN height_mm INTEGER")
+
+    # Rename legacy 100cos -> 30g if present and 30g not already there
+    have = {r[0] for r in cx.execute("SELECT name FROM bottle_types")}
+    if "100cos" in have and "30g" not in have:
+        cx.execute("UPDATE bottle_types SET name='30g' WHERE name='100cos'")
+        have.discard("100cos"); have.add("30g")
+    # Ensure 30ml exists with dims (insert if missing) — only on existing (non-empty) catalogs;
+    # fresh DBs get it via the seed block below.
+    if have and "30ml" not in have:
+        cx.execute("INSERT INTO bottle_types (name, notes, diameter_mm, height_mm) "
+                   "VALUES ('30ml', '30 ml dropper (infoceutical)', 40, 110)")
 
     cx.execute("""
         CREATE TABLE IF NOT EXISTS packing_settings (

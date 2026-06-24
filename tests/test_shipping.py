@@ -362,7 +362,7 @@ def test_schema_adds_dims_and_seeds_standard_bottles(tmp_path):
     dims = get_bottle_dims(db_path=db)
     assert dims["15ml"] == (30, 100)
     assert dims["120cap"] == (80, 100)
-    assert len(dims) == 8
+    assert len(dims) == 9
     assert get_packing_settings(db_path=db) == {"wrap_mm": 6, "box_margin_mm": 10}
 
 def test_set_packing_setting_updates_value(tmp_path):
@@ -413,3 +413,38 @@ def test_override_cap_forces_larger_box(geo_db):
     set_box_capacity(bid, "S", 2, db_path=geo_db)  # cap S at 2 of 15ml
     # 4 of 15ml geometrically fit S, but cap=2 forces escalation to M
     assert pick_box({"15ml": 4}, db_path=geo_db) == "M"
+
+
+# ── Rename/add migration tests ────────────────────────────────────────────────
+
+def test_migration_renames_100cos_and_adds_30ml(tmp_path):
+    import sqlite3
+    from dashboard.shipping import init_shipping_schema, get_bottle_dims
+    db = str(tmp_path / "chat_log.db")
+    # Simulate an already-seeded older DB: insert a 100cos row, no 30ml
+    with sqlite3.connect(db) as cx:
+        cx.execute("CREATE TABLE bottle_types (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                   "name TEXT NOT NULL UNIQUE, notes TEXT, created_at TEXT NOT NULL "
+                   "DEFAULT (datetime('now')))")
+        cx.execute("ALTER TABLE bottle_types ADD COLUMN diameter_mm INTEGER")
+        cx.execute("ALTER TABLE bottle_types ADD COLUMN height_mm INTEGER")
+        cx.execute("INSERT INTO bottle_types (name, diameter_mm, height_mm) "
+                   "VALUES ('100cos', 70, 70)")
+        cx.commit()
+        init_shipping_schema(cx)
+    dims = get_bottle_dims(db_path=db)
+    assert "100cos" not in dims
+    assert dims["30g"] == (70, 70)
+    assert dims["30ml"] == (40, 110)
+
+def test_fresh_seed_has_30g_and_30ml_not_100cos(tmp_path):
+    import sqlite3
+    from dashboard.shipping import init_shipping_schema, get_bottle_dims
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+    dims = get_bottle_dims(db_path=db)
+    assert dims["30g"] == (70, 70)
+    assert dims["30ml"] == (40, 110)
+    assert "100cos" not in dims
+    assert len(dims) == 9
