@@ -41,9 +41,20 @@
         var tb = document.getElementById('rows'); tb.innerHTML = '';
         (d.data || []).forEach(function(w){
           var tr = document.createElement('tr');
-          tr.innerHTML = '<td>' + w.email + '</td><td>' + (w.started_at||'').slice(0,10) +
-            '</td><td class="gold">' + (w.ends_at||'').slice(0,10) + '</td><td>' + (w.days_remaining||0) +
-            '</td><td>' + (w.source||'') + '</td><td>' + (w.order_id==null?'&mdash;':w.order_id) + '</td>';
+          // Build cells with textContent (never innerHTML) so a member-controlled
+          // email can't inject markup into this owner-privileged console page.
+          function cell(text, cls){
+            var td = document.createElement('td');
+            if(cls){ td.className = cls; }
+            td.textContent = text;
+            tr.appendChild(td);
+          }
+          cell(w.email || '');
+          cell((w.started_at||'').slice(0,10));
+          cell((w.ends_at||'').slice(0,10), 'gold');
+          cell(String(w.days_remaining||0));
+          cell(w.source||'');
+          cell(w.order_id==null ? '—' : String(w.order_id));
           tb.appendChild(tr);
         });
       });
