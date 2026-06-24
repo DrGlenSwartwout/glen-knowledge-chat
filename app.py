@@ -12275,6 +12275,58 @@ def reorder_checkout():
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
 
 
+# ── Founding reserve route ────────────────────────────────────────────────────
+
+def _founding_enabled():
+    return os.environ.get("FOUNDING_LAUNCH_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+@app.route("/begin/founding/reserve", methods=["POST"])
+def begin_founding_reserve():
+    """Founding pre-order: vault the card ($0 today), no QBO invoice. The bottle is
+    charged on-ship (orders.ship_founding_batch). ROSCA: caller UI must show terms +
+    explicit consent before this POST."""
+    if not _founding_enabled():
+        return jsonify({"error": "founding not enabled"}), 400
+    email = _reorder_email_from_cookie()
+    if not email:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please agree to our Terms to continue."}), 403
+    if not _STRIPE_ACTIVE:
+        return jsonify({"error": "card payment not active"}), 400
+    body = request.get_json(silent=True) or {}
+    slug = (body.get("slug") or "").strip()
+    from dashboard import founding as _founding
+    with sqlite3.connect(LOG_DB) as _ocx:
+        _ocx.row_factory = sqlite3.Row
+        if not _founding.is_open(_ocx, slug, now_iso=_now_utc().strftime("%Y-%m-%d")):
+            return jsonify({"error": "founding_closed"}), 409
+    items = body.get("items") or []
+    ship = body.get("address") or {}
+    metadata = {"kind": "founding_reserve", "slug": slug, "email": email}
+    items_json, ship_json = json.dumps(items), json.dumps(ship)
+    if len(items_json) + len(ship_json) <= 450:
+        metadata["items"] = items_json
+        metadata["ship"] = ship_json
+    else:
+        stash_key = uuid.uuid4().hex
+        with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+            _cx.execute("CREATE TABLE IF NOT EXISTS pending_subscriptions "
+                        "(key TEXT PRIMARY KEY, items_json TEXT, ship_json TEXT, created_at TEXT)")
+            _cx.execute("INSERT INTO pending_subscriptions (key, items_json, ship_json, created_at) "
+                        "VALUES (?,?,?,?)", (stash_key, items_json, ship_json, _now_utc().isoformat()))
+            _cx.commit()
+        metadata["stash_key"] = stash_key
+    success = f"{PUBLIC_BASE_URL}/begin/checkout-return?session_id={{CHECKOUT_SESSION_ID}}"
+    sess = stripe_pay.create_setup_session(
+        customer_email=email, metadata=metadata, success_url=success,
+        cancel_url=f"{PUBLIC_BASE_URL}/begin/product/{slug}")
+    return jsonify({"ok": True, "stripe_url": sess.get("url") or ""})
+
+
 # ── Subscription setup flow ────────────────────────────────────────────────────
 
 def _subscriptions_enabled() -> bool:
