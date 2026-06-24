@@ -42,6 +42,7 @@ _STYLE = """
    border-radius:6px;padding:5px;font:inherit;font-size:13px}
  td input.lyr{width:46px;text-align:center}
  td{white-space:nowrap}
+ tr.unconf td{box-shadow:inset 4px 0 0 var(--accent);background:#1a160d}
 </style>
 """
 
@@ -241,8 +242,12 @@ async function recStop(){
 async function interpret(){rstat('Interpreting transcript into chain rows\\u2026');
  var r=await post('/author/__TID__/interpret',{});
  if(r.error){rstat('Interpret: '+r.error);return}
- rstat('Filled '+r.added+' row(s) from the transcript \\u2014 reloading for review\\u2026');
+ rstat('Filled '+r.added+' row(s) \\u2014 highlighted for review; reloading\\u2026');
  setTimeout(function(){location.reload()},800)}
+async function delTest(){if(!confirm('Delete this entire test? This cannot be undone.'))return;
+ await post('/author/__TID__/delete',{});location.href='/'}
+async function confirmAll(){await post('/author/__TID__/confirm-all',{});location.reload()}
+async function confirmRow(rid){await post('/author/__TID__/row/'+rid+'/confirm',{});location.reload()}
 async function loadLists(){
  try{const v=await (await fetch('/api/vocab?limit=500')).json();
   document.getElementById('vocab').innerHTML=(v.vocab||[]).map(opt).join('')}catch(e){}
@@ -280,7 +285,9 @@ def render_author_html(report, depth_values=None, transcript=""):
     tid = _e(report.get("test_id") or "")
     c = report.get("client") or {}
     head = (f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
-            f"<a href='/test/{tid}'>View report &rarr;</a></p><h1>Edit Biofield Test</h1>")
+            f"<a href='/test/{tid}'>View report &rarr;</a></p><h1>Edit Biofield Test</h1>"
+            "<div class=btnrow><button class=btn onclick=confirmAll()>&#10003; Confirm all rows</button>"
+            "<button class='btn ghost' onclick=delTest()>Delete test</button></div>")
     hdr = (
         "<div class=card>"
         f"<label>Client name</label><input id=h_name value=\"{_e(c.get('name') or '')}\" style='width:280px'>"
@@ -297,10 +304,13 @@ def render_author_html(report, depth_values=None, transcript=""):
                       + _depth_select(rid_raw, "stress", l.get("stress_depth"), depth_values)
                       + "<br><span class=food>remedy</span> "
                       + _depth_select(rid_raw, "remedy", l.get("remedy_depth"), depth_values) + "</td>")
-        rows += ("<tr>" + _row_inputs(p, l) + depth_cell +
+        cls = " class=unconf" if l.get("confirmed") == 0 else ""
+        confirm_btn = (f"<button class=chip onclick=\"confirmRow('{rid}')\">&#10003; confirm</button> "
+                       if l.get("confirmed") == 0 else "")
+        rows += (f"<tr{cls}>" + _row_inputs(p, l) + depth_cell +
                  f"<td><button class=chip onclick=\"fillDose('{p}')\">dose</button> "
                  f"<button class=chip onclick=\"suggest('{p}')\">uses</button></td>"
-                 f"<td><button class=btn onclick=\"saveRow('{rid}')\">Save</button> "
+                 f"<td>{confirm_btn}<button class=btn onclick=\"saveRow('{rid}')\">Save</button> "
                  f"<button class='btn ghost' onclick=\"delRow('{rid}')\">Del</button></td></tr>"
                  f"<tr><td colspan=10><span id={p}_sug class=food></span></td></tr>")
     addr = ("<tr>" + _row_inputs("new", {}) +

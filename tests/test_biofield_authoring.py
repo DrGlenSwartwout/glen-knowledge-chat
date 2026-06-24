@@ -3,7 +3,8 @@ report shape as the FMP snapshot, so schedule/narrative/audio reuse unchanged.""
 import sqlite3
 from dashboard.biofield_authoring import (
     init_auth_tables, create_test, add_chain_row, update_chain_row,
-    delete_chain_row, update_header, list_authored, authored_report)
+    delete_chain_row, update_header, list_authored, authored_report,
+    delete_test, confirm_row, resolve_remedy_name)
 
 
 def _cx(tmp_path):
@@ -60,6 +61,39 @@ def test_authored_report_depth_match(tmp_path):
     assert layer["stress_depth"] == 5 and layer["remedy_depth"] == 1
     assert layer["depth_status"] == "shallow"
     assert layer["depth_need"].lower().startswith("nucle")
+
+
+def test_delete_test_removes_it(tmp_path):
+    cx = _cx(tmp_path)
+    tid = create_test(cx, "J", "j@x.com", "2026-06-23")
+    add_chain_row(cx, tid, 1, "Acid", "Liver", "Sterol Max")
+    delete_test(cx, tid)
+    assert list_authored(cx) == []
+    assert authored_report(cx, tid)["layers"] == []
+
+
+def test_confirmed_flag_default_and_voice_and_confirm(tmp_path):
+    cx = _cx(tmp_path)
+    tid = create_test(cx, "J", "j@x.com", "2026-06-23")
+    add_chain_row(cx, tid, 1, "Acid", "Liver", "Sterol Max")              # manual -> confirmed
+    rid = add_chain_row(cx, tid, 2, "Tox", "Tox", "TMG", confirmed=0)     # voice -> unconfirmed
+    byname = {l["remedy"]: l["confirmed"] for l in authored_report(cx, tid)["layers"]}
+    assert byname["Sterol Max"] == 1 and byname["TMG"] == 0
+    confirm_row(cx, rid)
+    assert {l["remedy"]: l["confirmed"] for l in authored_report(cx, tid)["layers"]}["TMG"] == 1
+
+
+def test_resolve_remedy_name_autocorrects(tmp_path):
+    cx = _cx(tmp_path)
+    cx.execute("CREATE TABLE fmp_snap_products(id_pk TEXT,product_name TEXT,dosage TEXT,dosage_freq TEXT,dosage_timing TEXT)")
+    cx.executemany("INSERT INTO fmp_snap_products VALUES(?,?,?,?,?)",
+                   [("1", "Perelandra Rose Essence", "", "", ""), ("2", "Microbiome", "", "", "")])
+    cx.commit()
+    assert resolve_remedy_name(cx, "Perlandra Rose Essence") == "Perelandra Rose Essence"
+    assert resolve_remedy_name(cx, "Microbiome") == "Microbiome"
+    assert resolve_remedy_name(cx, "Zzzqxw Nonsense") == "Zzzqxw Nonsense"   # no close match
+    assert resolve_remedy_name(cx, "Perlandra Rose Essence in Terrain Restore") == \
+        "Perelandra Rose Essence in Terrain Restore"                         # suffix preserved
 
 
 def test_update_header(tmp_path):
