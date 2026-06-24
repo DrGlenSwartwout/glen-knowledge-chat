@@ -1493,6 +1493,28 @@ def begin_quiz_data():
     return jsonify(public)
 
 
+@app.route("/begin/quiz/answer", methods=["POST", "OPTIONS"])
+def begin_quiz_answer():
+    if request.method == "OPTIONS":
+        return "", 200
+    data = request.get_json() or {}
+    quiz_id = (data.get("quiz_id") or "").strip()
+    answers = data.get("answers") or {}
+    if not quiz_engine.get_quiz(quiz_id):
+        return jsonify({"error": "unknown_quiz"}), 404
+    session_id = (request.cookies.get("amg_session")
+                  or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
+    if not isinstance(answers, dict):
+        return jsonify({"error": "bad_answers"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        quiz_engine.store_response(cx, session_id=session_id, quiz_id=quiz_id, answers=answers)
+    resp = jsonify({"ok": True, "segment": quiz_engine.segment_of(answers)})
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", session_id, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 @app.route("/begin/voice")
 def begin_voice():
     resp = send_from_directory(STATIC, "begin-voice.html")
