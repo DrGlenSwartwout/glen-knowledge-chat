@@ -18,6 +18,8 @@ def init_notes_tables(cx):
                "(test_id TEXT PRIMARY KEY, notes TEXT, updated_at TEXT)")
     cx.execute("CREATE TABLE IF NOT EXISTS biofield_narratives "
                "(test_id TEXT PRIMARY KEY, narrative TEXT, updated_at TEXT)")
+    cx.execute("CREATE TABLE IF NOT EXISTS biofield_video_scripts "
+               "(test_id TEXT PRIMARY KEY, script TEXT, updated_at TEXT)")
     cx.commit()
 
 
@@ -52,6 +54,14 @@ def save_narrative(cx, test_id, narrative):
     _save(cx, "biofield_narratives", "narrative", test_id, narrative)
 
 
+def get_video_script(cx, test_id):
+    return _get(cx, "biofield_video_scripts", "script", test_id)
+
+
+def save_video_script(cx, test_id, script):
+    _save(cx, "biofield_video_scripts", "script", test_id, script)
+
+
 _SYSTEM = (
     "You write in Dr. Glen Swartwout's warm, calm clinical voice, as a letter to a "
     "patient about their Biofield Analysis (a Causal Chain Report). RULES:\n"
@@ -80,7 +90,7 @@ _SYSTEM = (
 )
 
 
-def build_narrative_prompt(report, notes):
+def _user_block(report, notes):
     c = report.get("client") or {}
     lines = [f"PATIENT: {c.get('name') or ''}",
              f"DATE: {report.get('date') or ''}",
@@ -93,12 +103,44 @@ def build_narrative_prompt(report, notes):
             f" (most affected: {l.get('most_affected') or ''})"
             f" -> remedy: {l.get('remedy') or ''}; dose: {l.get('dosage') or ''}"
             f" {l.get('frequency') or ''} {l.get('timing') or ''}".rstrip())
-    lines += ["", "CLINICIAN VERBAL NOTES (weave in naturally):",
-              (notes or "(none)")]
-    return {"system": _SYSTEM, "user": "\n".join(lines)}
+    lines += ["", "CLINICIAN VERBAL NOTES (weave in naturally):", (notes or "(none)")]
+    return "\n".join(lines)
+
+
+def build_narrative_prompt(report, notes):
+    return {"system": _SYSTEM, "user": _user_block(report, notes)}
 
 
 def generate_narrative(report, notes, complete):
     """complete(system, user) -> narrative text."""
     p = build_narrative_prompt(report, notes)
+    return complete(p["system"], p["user"])
+
+
+_VIDEO_SYSTEM = (
+    "You are Dr. Glen Swartwout speaking ALOUD to a patient -- recording a short voice "
+    "walkthrough of their Biofield Analysis. Output ONLY the words to be spoken: no stage "
+    "directions, no headings, no markdown, no remedy bullet list. RULES:\n"
+    "- SHORT: about 150 words, roughly 60-90 seconds spoken. Give an overview plus the 2-3 most "
+    "important layers and their key remedy -- NOT every layer or every dose.\n"
+    "- Open 'Aloha <first name>,' and speak warmly in the first person ('I', 'we'), "
+    "conversational and plain, the way you'd talk to them across the table.\n"
+    "- Frame the causal chain simply: the most recent layer sits on top, deeper roots beneath, "
+    "and supporting them in order lets the body unwind and self-correct.\n"
+    "- OBSERVATION LANGUAGE: the body 'identified' / 'showed' / 'pointed to'. NEVER 'probably', "
+    "'should', 'most likely'.\n"
+    "- Fold in the clinician's verbal notes naturally if they fit.\n"
+    "- GROUNDED VOICE: plain, warm, direct. No literary or poetic metaphors, no AI filler.\n"
+    "- Name where to begin and reassure them: start gently, watch, adjust, and you'll guide them. "
+    "Close warmly. This is a DRAFT for Dr. Glen's review."
+)
+
+
+def build_video_script_prompt(report, notes):
+    return {"system": _VIDEO_SYSTEM, "user": _user_block(report, notes)}
+
+
+def generate_video_script(report, notes, complete):
+    """complete(system, user) -> short spoken walkthrough script."""
+    p = build_video_script_prompt(report, notes)
     return complete(p["system"], p["user"])

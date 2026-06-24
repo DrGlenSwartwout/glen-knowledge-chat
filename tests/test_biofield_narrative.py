@@ -4,6 +4,7 @@ import sqlite3
 from dashboard.biofield_narrative import (
     init_notes_tables, get_notes, save_notes, get_narrative, save_narrative,
     build_narrative_prompt, generate_narrative,
+    get_video_script, save_video_script, build_video_script_prompt, generate_video_script,
 )
 
 
@@ -56,6 +57,35 @@ def test_prompt_carries_voice_rules_layers_and_notes():
     # the verbal notes are handed to the model
     assert "kidney felt weak; mercury history" in usr
     assert "Lewis Zardo" in usr
+
+
+def test_video_script_roundtrip(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    init_notes_tables(cx)
+    assert get_video_script(cx, "10") == ""
+    save_video_script(cx, "10", "Aloha Lewis, let me walk you through this.")
+    assert get_video_script(cx, "10") == "Aloha Lewis, let me walk you through this."
+
+
+def test_video_script_prompt_is_short_spoken_and_carries_chain():
+    p = build_video_script_prompt(_report(), "mercury history")
+    sys, usr = p["system"], p["user"]
+    assert "Aloha" in sys
+    assert "spoken" in sys.lower() or "out loud" in sys.lower() or "say" in sys.lower()
+    assert "short" in sys.lower() or "brief" in sys.lower() or "60" in sys or "90" in sys
+    assert "TMG Powder" in usr or "Night" in usr
+    assert "mercury history" in usr
+
+
+def test_generate_video_script_uses_injected_llm():
+    seen = {}
+    def fake(system, user):
+        seen["user"] = user
+        return "Aloha Lewis, here's the short version."
+    out = generate_video_script(_report(), "mercury history", fake)
+    assert out.startswith("Aloha Lewis")
+    assert "mercury history" in seen["user"]
 
 
 def test_generate_uses_injected_llm_and_returns_text():

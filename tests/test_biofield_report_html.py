@@ -53,6 +53,14 @@ def test_report_html_has_notes_and_narrative_section():
     assert "/test/10/generate" in html    # generate endpoint
 
 
+def test_report_html_has_video_section():
+    html = render_report_html(_report(), video_script="Aloha Lewis, short version")
+    assert "Aloha Lewis, short version" in html   # saved script pre-filled
+    assert "Make audio" in html                   # ElevenLabs render button
+    assert "/test/10/video-generate" in html      # generate-script endpoint
+    assert "/test/10/audio" in html               # make-audio endpoint
+
+
 def test_list_html_links_each_test():
     html = render_list_html([
         {"test_id": "10", "name": "Lewis Zardo", "email": "lz@x.com",

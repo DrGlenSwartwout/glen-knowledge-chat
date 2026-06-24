@@ -50,6 +50,18 @@ async function generate(){stat('Generating\\u2026');
  stat(r.error?('Error: '+r.error):'Generated \\u2014 review, edit, then Save.')}
 async function saveNarr(){await post('/test/__TID__/narrative',
  {narrative:document.getElementById('narr').value});stat('Narrative saved.')}
+async function vgen(){stat('Generating script\\u2026');
+ const r=await post('/test/__TID__/video-generate',{notes:document.getElementById('notes').value});
+ document.getElementById('vscript').value=r.script||('['+(r.error||'error')+']');
+ stat(r.error?('Error: '+r.error):'Script generated \\u2014 edit, then Save or Make audio.')}
+async function vsave(){await post('/test/__TID__/video-script',
+ {script:document.getElementById('vscript').value});stat('Script saved.')}
+async function vaudio(){stat('Rendering audio in your voice\\u2026 (~10-30s)');await vsave();
+ const r=await post('/test/__TID__/audio',{});
+ if(r.error){stat('Error: '+r.error);return}
+ document.getElementById('audiobox').innerHTML=
+  '<audio controls src=\\''+r.url+'\\'></audio> &nbsp; <a href=\\''+r.url+'\\' download>Download mp3</a>';
+ stat('Audio ready.')}
 </script>"""
 
 
@@ -60,7 +72,7 @@ def _page(title, body):
             f"<body><div class=wrap>{body}</div></body></html>")
 
 
-def render_report_html(report, notes="", narrative=""):
+def render_report_html(report, notes="", narrative="", video_script=""):
     c = report.get("client") or {}
     name = _e(c.get("name") or "(unknown)")
     email = _e(c.get("email") or "")
@@ -129,7 +141,19 @@ def render_report_html(report, notes="", narrative=""):
         "<div class=btnrow><button class=btn onclick=saveNarr()>Save narrative</button></div>"
         + _NARR_JS.replace("__TID__", tid))
 
-    return _page(f"{name} — Biofield Analysis", head + chain + schedule + narr)
+    # Walkthrough video — short spoken script + ElevenLabs audio (Increment 3)
+    vid = (
+        "<h2>Walkthrough video (your voice)</h2>"
+        "<p class=sub>Generate a short spoken script, then render it as audio in your "
+        "ElevenLabs voice.</p>"
+        "<div class=btnrow>"
+        "<button class=btn onclick=vgen()>Generate script</button>"
+        "<button class=btn onclick=vsave()>Save script</button>"
+        "<button class=btn onclick=vaudio()>Make audio</button></div>"
+        f"<textarea id=vscript rows=6>{_e(video_script)}</textarea>"
+        "<div id=audiobox class=btnrow></div>")
+
+    return _page(f"{name} — Biofield Analysis", head + chain + schedule + narr + vid)
 
 
 def render_list_html(tests, q=""):

@@ -20,12 +20,15 @@ import argparse
 import os
 import sqlite3
 
-from flask import Flask, Response, request
+from flask import Flask, Response, request, send_from_directory
 
 from dashboard.biofield_report import causal_chain_report, list_tests
 from dashboard.biofield_report_html import render_list_html, render_report_html
 from dashboard.biofield_narrative import (
-    generate_narrative, get_narrative, get_notes, save_narrative, save_notes)
+    generate_narrative, generate_video_script, get_narrative, get_notes,
+    get_video_script, save_narrative, save_notes, save_video_script)
+
+AUDIO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "biofield-audio")
 
 
 def openai_complete(system, user):
@@ -39,13 +42,29 @@ def openai_complete(system, user):
                   {"role": "user", "content": user}])
     return resp.choices[0].message.content
 
+
+def elevenlabs_tts(text):
+    """Render text to mp3 bytes in Glen's cloned voice. Needs ELEVENLABS_API_KEY."""
+    import requests
+    voice = os.environ.get("ELEVENLABS_VOICE_ID", "jFxSqMckq2I4mET3C5QC")
+    r = requests.post(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice}",
+        headers={"xi-api-key": os.environ["ELEVENLABS_API_KEY"],
+                 "Content-Type": "application/json", "Accept": "audio/mpeg"},
+        json={"text": text, "model_id": "eleven_multilingual_v2",
+              "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}},
+        timeout=180)
+    r.raise_for_status()
+    return r.content
+
 DEFAULT_DB = os.environ.get(
     "BIOFIELD_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_log.db"))
 
 
-def create_app(db_path=DEFAULT_DB, complete=None):
+def create_app(db_path=DEFAULT_DB, complete=None, tts=None):
     app = Flask(__name__)
     complete = complete or openai_complete
+    tts = tts or elevenlabs_tts
 
     @app.route("/")
     def index():
@@ -58,7 +77,9 @@ def create_app(db_path=DEFAULT_DB, complete=None):
         with sqlite3.connect(db_path) as cx:
             rep = causal_chain_report(cx, test_id)
             notes, narrative = get_notes(cx, test_id), get_narrative(cx, test_id)
-        return Response(render_report_html(rep, notes, narrative), mimetype="text/html")
+            vscript = get_video_script(cx, test_id)
+        return Response(render_report_html(rep, notes, narrative, vscript),
+                        mimetype="text/html")
 
     @app.route("/test/<test_id>/notes", methods=["POST"])
     def notes_save(test_id):
@@ -84,6 +105,44 @@ def create_app(db_path=DEFAULT_DB, complete=None):
                 return {"error": str(e)[:200]}
             save_narrative(cx, test_id, text)
         return {"narrative": text}
+
+    @app.route("/test/<test_id>/video-generate", methods=["POST"])
+    def video_generate(test_id):
+        notes = (request.get_json(silent=True) or {}).get("notes", "")
+        with sqlite3.connect(db_path) as cx:
+            rep = causal_chain_report(cx, test_id)
+            try:
+                script = generate_video_script(rep, notes, complete)
+            except Exception as e:
+                return {"error": str(e)[:200]}
+            save_video_script(cx, test_id, script)
+        return {"script": script}
+
+    @app.route("/test/<test_id>/video-script", methods=["POST"])
+    def video_script_save(test_id):
+        with sqlite3.connect(db_path) as cx:
+            save_video_script(cx, test_id, (request.get_json(silent=True) or {}).get("script", ""))
+        return {"ok": True}
+
+    @app.route("/test/<test_id>/audio", methods=["POST"])
+    def make_audio(test_id):
+        with sqlite3.connect(db_path) as cx:
+            script = get_video_script(cx, test_id)
+        if not (script or "").strip():
+            return {"error": "no script yet -- generate or write one first"}
+        try:
+            audio = tts(script)
+        except Exception as e:
+            return {"error": str(e)[:200]}
+        os.makedirs(AUDIO_DIR, exist_ok=True)
+        fname = f"test_{test_id}.mp3"
+        with open(os.path.join(AUDIO_DIR, fname), "wb") as f:
+            f.write(audio)
+        return {"url": f"/audio/{fname}", "bytes": len(audio)}
+
+    @app.route("/audio/<path:fname>")
+    def serve_audio(fname):
+        return send_from_directory(AUDIO_DIR, fname, mimetype="audio/mpeg")
 
     return app
 

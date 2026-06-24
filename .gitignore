@@ -19,3 +19,6 @@ data/cleanup-input/
 data/cleanup-output/
 data/redif-input/
 data/redif-output/
+
+# Biofield local tool (PHI / patient audio) — never commit
+biofield-audio/

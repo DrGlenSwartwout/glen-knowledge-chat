@@ -56,3 +56,23 @@ def test_notes_save_generate_and_show(tmp_path):
     assert g["narrative"].startswith("Aloha Lewis")
     assert "mercury hx" in seen["user"]                            # notes reached the model
     assert b"Aloha Lewis" in client.get("/test/10").data           # saved + shown
+
+
+def test_video_script_generate_and_audio(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    _seed(db)
+
+    def fake_llm(system, user):
+        return "Aloha Lewis, here is the short walkthrough."
+
+    def fake_tts(text):
+        return b"ID3" + text.encode("utf-8")[:8]   # pretend mp3 bytes
+
+    client = create_app(db, complete=fake_llm, tts=fake_tts).test_client()
+    g = client.post("/test/10/video-generate", json={"notes": ""}).get_json()
+    assert g["script"].startswith("Aloha Lewis")
+    assert b"short walkthrough" in client.get("/test/10").data       # saved + shown
+    a = client.post("/test/10/audio", json={}).get_json()
+    assert a["url"] == "/audio/test_10.mp3" and a["bytes"] > 0
+    served = client.get("/audio/test_10.mp3")
+    assert served.status_code == 200 and served.data.startswith(b"ID3")
