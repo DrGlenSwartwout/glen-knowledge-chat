@@ -34,6 +34,7 @@ from dashboard.biofield_authoring import (
     update_chain_row, update_header)
 from dashboard.biofield_dimensions import (
     DEPTH_KEY, dimension_values, seed_dimensions, tag as dim_tag)
+from dashboard.biofield_interpret import interpret_transcript
 
 AUDIO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "biofield-audio")
 
@@ -227,6 +228,24 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None)
             existing = get_notes(cx, test_id)
             save_notes(cx, test_id, (existing + "\n\n" + txt).strip() if existing else txt)
         return {"ok": True}
+
+    @app.route("/author/<test_id>/interpret", methods=["POST"])
+    def author_interpret(test_id):
+        with sqlite3.connect(db_path) as cx:
+            transcript = get_notes(cx, test_id)
+            if not transcript.strip():
+                return {"added": 0, "error": "no transcript yet -- record a session first"}
+            try:
+                result = interpret_transcript(transcript, complete)
+            except Exception as e:
+                return {"error": str(e)[:200]}
+            added = 0
+            for l in result.get("layers", []):
+                d = remedy_dosing(cx, l["remedy"])  # best-effort exact-name dosing
+                add_chain_row(cx, test_id, l.get("layer"), l["head"], l["most_affected"],
+                              l["remedy"], d["dosage"], d["frequency"], d["timing"])
+                added += 1
+        return {"added": added, "header": result.get("header", "")}
 
     @app.route("/test/<test_id>/notes", methods=["POST"])
     def notes_save(test_id):

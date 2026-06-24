@@ -237,6 +237,11 @@ async function recStop(){
  rstat('Saving\\u2026');
  await post('/author/__TID__/session',{transcript:document.getElementById('sessText').value});
  rstat('Saved to notes; it feeds the narrative.')}
+async function interpret(){rstat('Interpreting transcript into chain rows\\u2026');
+ var r=await post('/author/__TID__/interpret',{});
+ if(r.error){rstat('Interpret: '+r.error);return}
+ rstat('Filled '+r.added+' row(s) from the transcript \\u2014 reloading for review\\u2026');
+ setTimeout(function(){location.reload()},800)}
 async function loadLists(){
  try{const v=await (await fetch('/api/vocab?limit=500')).json();
   document.getElementById('vocab').innerHTML=(v.vocab||[]).map(opt).join('')}catch(e){}
@@ -322,6 +327,7 @@ def render_author_html(report, depth_values=None):
         "<div class=btnrow>"
         "<button class=btn onclick=recStart()>&#9679; Record</button>"
         "<button class='btn ghost' onclick=recStop()>&#9632; Stop &amp; save</button>"
+        "<button class=btn onclick=interpret()>Interpret &rarr; fill fields</button>"
         "<span id=rstat class=food></span></div>"
         "<div class=food><em id=interim></em></div>"
         "<textarea id=sessText rows=6 placeholder='Live transcript appears here as you speak...'></textarea>")
