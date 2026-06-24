@@ -76,3 +76,28 @@ def test_video_script_generate_and_audio(tmp_path):
     assert a["url"] == "/audio/test_10.mp3" and a["bytes"] > 0
     served = client.get("/audio/test_10.mp3")
     assert served.status_code == 200 and served.data.startswith(b"ID3")
+
+
+def test_authoring_flow(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    _seed(db)
+    client = create_app(db).test_client()
+    r = client.post("/author/new")
+    assert r.status_code in (302, 308)
+    tid = r.headers["Location"].rstrip("/").rsplit("/", 1)[-1]
+    assert tid.startswith("a")
+    assert client.get("/author/" + tid).status_code == 200
+    assert client.post("/author/" + tid + "/header",
+                       json={"name": "Jane Doe", "email": "j@x.com", "date": "2026-06-23"}
+                       ).status_code == 200
+    rid = client.post("/author/" + tid + "/row",
+                      json={"layer": "1", "head": "Acid", "most_affected": "Liver",
+                            "remedy": "Sterol Max", "dosage": "3 caps",
+                            "frequency": "daily", "timing": "with food"}).get_json()["rid"]
+    rep = client.get("/test/" + tid)
+    assert rep.status_code == 200 and b"Sterol Max" in rep.data and b"Jane Doe" in rep.data
+    assert client.post(f"/author/{tid}/row/{rid}", json={"remedy": "Sterol Max XR"}).status_code == 200
+    assert b"Sterol Max XR" in client.get("/test/" + tid).data
+    assert client.post(f"/author/{tid}/row/{rid}/delete", json={}).status_code == 200
+    cat = client.get("/api/catalog?q=x")
+    assert cat.status_code == 200 and "catalog" in cat.get_json()

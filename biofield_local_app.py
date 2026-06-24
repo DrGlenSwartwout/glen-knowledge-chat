@@ -20,15 +20,34 @@ import argparse
 import os
 import sqlite3
 
-from flask import Flask, Response, request, send_from_directory
+from flask import Flask, Response, redirect, request, send_from_directory
 
 from dashboard.biofield_report import causal_chain_report, list_tests
-from dashboard.biofield_report_html import render_list_html, render_report_html
+from dashboard.biofield_report_html import (
+    render_author_html, render_list_html, render_report_html)
 from dashboard.biofield_narrative import (
     generate_narrative, generate_video_script, get_narrative, get_notes,
     get_video_script, save_narrative, save_notes, save_video_script)
+from dashboard.biofield_authoring import (
+    add_chain_row, authored_report, create_test, delete_chain_row, list_authored,
+    remedy_catalog, remedy_dosing, stress_suggestions, stress_vocab,
+    update_chain_row, update_header)
 
 AUDIO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "biofield-audio")
+
+
+def _layer_int(v):
+    try:
+        return int(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(v, default):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
 
 
 def openai_complete(system, user):
@@ -70,16 +89,87 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None):
     def index():
         q = request.args.get("q", "")
         with sqlite3.connect(db_path) as cx:
-            return Response(render_list_html(list_tests(cx, q), q), mimetype="text/html")
+            return Response(render_list_html(list_tests(cx, q), q, list_authored(cx)),
+                            mimetype="text/html")
 
     @app.route("/test/<test_id>")
     def report(test_id):
         with sqlite3.connect(db_path) as cx:
-            rep = causal_chain_report(cx, test_id)
+            rep = (authored_report(cx, test_id) if str(test_id).startswith("a")
+                   else causal_chain_report(cx, test_id))
             notes, narrative = get_notes(cx, test_id), get_narrative(cx, test_id)
             vscript = get_video_script(cx, test_id)
         return Response(render_report_html(rep, notes, narrative, vscript),
                         mimetype="text/html")
+
+    # --- Authoring (Increment 4a) ---
+    @app.route("/author/new", methods=["POST"])
+    def author_new():
+        with sqlite3.connect(db_path) as cx:
+            tid = create_test(cx, "", "", "")
+        return redirect(f"/author/{tid}")
+
+    @app.route("/author/<test_id>")
+    def author_edit(test_id):
+        with sqlite3.connect(db_path) as cx:
+            rep = authored_report(cx, test_id)
+        return Response(render_author_html(rep), mimetype="text/html")
+
+    @app.route("/author/<test_id>/header", methods=["POST"])
+    def author_header(test_id):
+        d = request.get_json(silent=True) or {}
+        with sqlite3.connect(db_path) as cx:
+            update_header(cx, test_id, name=d.get("name"), email=d.get("email"),
+                          date=d.get("date"))
+        return {"ok": True}
+
+    @app.route("/author/<test_id>/row", methods=["POST"])
+    def author_row_add(test_id):
+        d = request.get_json(silent=True) or {}
+        with sqlite3.connect(db_path) as cx:
+            rid = add_chain_row(cx, test_id, _layer_int(d.get("layer")), d.get("head", ""),
+                                d.get("most_affected", ""), d.get("remedy", ""),
+                                d.get("dosage", ""), d.get("frequency", ""), d.get("timing", ""))
+        return {"ok": True, "rid": rid}
+
+    @app.route("/author/<test_id>/row/<int:rid>", methods=["POST"])
+    def author_row_save(test_id, rid):
+        d = request.get_json(silent=True) or {}
+        fields = {}
+        for k in ("layer", "head", "most_affected", "remedy", "dosage", "frequency", "timing"):
+            if k in d:
+                fields[k] = _layer_int(d[k]) if k == "layer" else d[k]
+        with sqlite3.connect(db_path) as cx:
+            update_chain_row(cx, rid, **fields)
+        return {"ok": True}
+
+    @app.route("/author/<test_id>/row/<int:rid>/delete", methods=["POST"])
+    def author_row_delete(test_id, rid):
+        with sqlite3.connect(db_path) as cx:
+            delete_chain_row(cx, rid)
+        return {"ok": True}
+
+    @app.route("/api/catalog")
+    def api_catalog():
+        with sqlite3.connect(db_path) as cx:
+            return {"catalog": remedy_catalog(cx, request.args.get("q", ""),
+                                              _safe_int(request.args.get("limit"), 20))}
+
+    @app.route("/api/dosing")
+    def api_dosing():
+        with sqlite3.connect(db_path) as cx:
+            return remedy_dosing(cx, request.args.get("name", ""))
+
+    @app.route("/api/vocab")
+    def api_vocab():
+        with sqlite3.connect(db_path) as cx:
+            return {"vocab": stress_vocab(cx, request.args.get("q", ""),
+                                          _safe_int(request.args.get("limit"), 20))}
+
+    @app.route("/api/suggest")
+    def api_suggest():
+        with sqlite3.connect(db_path) as cx:
+            return {"suggestions": stress_suggestions(cx, request.args.get("stress", ""))}
 
     @app.route("/test/<test_id>/notes", methods=["POST"])
     def notes_save(test_id):
