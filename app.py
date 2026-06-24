@@ -3409,7 +3409,8 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                           "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
         items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"]})
         # shipping.pick_box keys by BOTTLE TYPE (not product name); default-typed if unset.
-        bt = p.get("bottle_type") or "default"
+        slug = (c.get("slug") or "").strip()
+        bt = _shipping.resolve_bottle_type(slug, p)
         box_counts[bt] = box_counts.get(bt, 0) + qty
         total_bottles += qty
     priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
