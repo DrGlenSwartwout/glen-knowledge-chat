@@ -4421,7 +4421,7 @@ def begin_product_image(slug, filename):
     return send_from_directory(str(d), filename, mimetype="image/png")
 
 
-_REVIEW_PAID_STATUSES = ("paid", "new", "packed", "shipped", "done")
+_REVIEW_PAID_STATUSES = ("paid", "new", "packed", "shipped", "done", "delivered")
 
 
 def _review_verified_buyer(cx, email, slug):
@@ -7055,8 +7055,9 @@ def _find_qualifying_order_for_coaching(cx, email):
     return None
 
 
-def _open_coaching_for_order(cx, email, order_id, source):
+def _open_coaching_for_order(cx, email, order_id, source, window_source="self_serve"):
     """Validate + open a coaching window for one remedy-program order.
+    window_source labels HOW it was activated (self_serve / delivery / admin).
     Returns {ok, ...}: success -> created+ends_at; failure -> reason (+offer_99 if ineligible)."""
     if (source or "") not in _coaching.QUALIFYING_SOURCES:
         return {"ok": False, "reason": "not_qualifying"}
@@ -7068,8 +7069,104 @@ def _open_coaching_for_order(cx, email, order_id, source):
     if not _membership_active_at(cx, email, created_at):
         return {"ok": False, "reason": "ineligible", "offer_99": True}
     res = _coaching.open_window(cx, email=email, order_id=order_id,
-                                days=_coaching.WINDOW_DAYS, source="self_serve")
+                                days=_coaching.WINDOW_DAYS, source=window_source)
     return {"ok": True, "created": res["created"], "ends_at": res["window"]["ends_at"]}
+
+
+def _resolve_shipment_member(cx, shipment):
+    """(email, order_id, order_source) for a shipment, or (None, None, None).
+    Prefer the explicit orders.shipment_id link, then order_uuid==external_ref."""
+    if shipment is None:
+        return (None, None, None)
+    sid = shipment["id"] if isinstance(shipment, sqlite3.Row) else shipment.get("id")
+    uuid = shipment["order_uuid"] if isinstance(shipment, sqlite3.Row) else shipment.get("order_uuid")
+    order = cx.execute("SELECT id, email, source FROM orders WHERE shipment_id=? ORDER BY id DESC LIMIT 1",
+                       (sid,)).fetchone()
+    if not order and uuid:
+        order = cx.execute("SELECT id, email, source FROM orders WHERE external_ref=? ORDER BY id DESC LIMIT 1",
+                           (uuid,)).fetchone()
+    if not order:
+        return (None, None, None)
+    email = order["email"]
+    if not email:
+        email = shipment["resolved_email"] if isinstance(shipment, sqlite3.Row) else shipment.get("resolved_email")
+    return ((email or "").strip().lower() or None, order["id"], order["source"])
+
+
+def _activate_coaching_for_shipment(cx, shipment, *, delivered_at):
+    """Idempotent: on first delivery signal for a shipment, mark delivered_at and
+    (if a qualifying+eligible order resolves) open a coaching window source='delivery'."""
+    already = shipment["delivered_at"] if isinstance(shipment, sqlite3.Row) else shipment.get("delivered_at")
+    if already:
+        return {"skipped": "already_processed"}
+    sid = shipment["id"] if isinstance(shipment, sqlite3.Row) else shipment.get("id")
+    _tracking.mark_shipment_delivered(cx, sid, delivered_at)
+    email, oid, src = _resolve_shipment_member(cx, shipment)
+    if not (email and oid):
+        return {"ok": False, "reason": "unresolved"}
+    res = _open_coaching_for_order(cx, email, oid, src, window_source="delivery")
+    if res.get("ok"):
+        cx.execute("UPDATE shipments SET coaching_opened=1 WHERE id=?", (sid,))
+        cx.commit()
+    return res
+
+
+def _activate_coaching_by_order(cx, order_id):
+    """Manual path: activate coaching for an order (resolve its shipment if any)."""
+    order = cx.execute("SELECT id, email, source, shipment_id FROM orders WHERE id=?",
+                       (order_id,)).fetchone()
+    if not order:
+        return {"ok": False, "reason": "not_found"}
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    if order["shipment_id"]:
+        sh = cx.execute("SELECT * FROM shipments WHERE id=?", (order["shipment_id"],)).fetchone()
+        if sh:
+            return _activate_coaching_for_shipment(cx, sh, delivered_at=now_iso)
+    email = (order["email"] or "").strip().lower()
+    if not email:
+        return {"ok": False, "reason": "unresolved"}
+    return _open_coaching_for_order(cx, email, order["id"], order["source"], window_source="delivery")
+
+
+def _register_mark_delivered_action():
+    from dashboard.actions import action as _act, get_action as _get, LOW_WRITE
+    from dashboard import rbac as _r
+    if _get("orders.mark_delivered"):
+        return
+
+    def _mark_delivered_exec(params, ctx):
+        cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+        if cx is None:
+            raise ValueError("no db connection")
+        oid = int(params["order_id"])
+        if not _bos_orders.set_order_status(cx, oid, "delivered"):
+            raise ValueError(f"order #{oid} not found")
+        res = _activate_coaching_by_order(cx, oid)
+        if res.get("ok"):
+            msg = f"Order #{oid} delivered — coaching month started (through {res.get('ends_at', '')[:10]})."
+        elif res.get("reason") == "ineligible":
+            msg = f"Order #{oid} delivered. Coaching not opened — member wasn't active in the order's month."
+        else:
+            msg = f"Order #{oid} delivered. Coaching not opened ({res.get('reason', 'n/a')})."
+        return {"order_id": oid, "status": "delivered", "coaching": res, "message": msg}
+
+    _act(key="orders.mark_delivered", module="orders", title="Mark delivered",
+         description="Mark an order delivered and start the member's coaching month.",
+         risk_tier=LOW_WRITE, permission=(_r.OWNER, _r.OPS, _r.VA))(_mark_delivered_exec)
+
+
+_register_mark_delivered_action()
+
+
+def _activate_coaching_by_tracking(tracking_number):
+    """Webhook path: open its own connection, resolve shipment by tracking number, activate."""
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        sh = _tracking.shipment_by_tracking(cx, tracking_number)
+        if not sh:
+            return {"ok": False, "reason": "unknown_tracking"}
+        return _activate_coaching_for_shipment(cx, sh, delivered_at=now_iso)
 
 
 def _member_context_for_email(email, *, query_log_n=5):
@@ -13836,6 +13933,32 @@ def webhook_stripe():
         return ("", 500)
 
 
+@app.route("/webhook/easypost", methods=["POST"])
+def webhook_easypost():
+    """EasyPost tracker webhook: on a 'delivered' tracker.updated, open the member's
+    coaching window. HMAC-verified when EASYPOST_WEBHOOK_SECRET is set; inert (200 no-op)
+    when unset (feature dark). The activation core independently re-resolves order +
+    eligibility, so a forged event cannot fabricate a window for an ineligible order."""
+    from dashboard import easypost as _ep
+    raw = request.get_data()
+    secret = os.environ.get("EASYPOST_WEBHOOK_SECRET", "")
+    if not secret:
+        return ("", 200)
+    event = _ep.verify_webhook(raw, request.headers.get("X-Hmac-Signature", ""), secret)
+    if event is None:
+        return ("", 400)
+    try:
+        result = (event or {}).get("result") or {}
+        if (result.get("status") or "").lower() == "delivered":
+            tc = (result.get("tracking_code") or "").strip()
+            if tc:
+                _activate_coaching_by_tracking(tc)
+        return ("", 200)
+    except Exception as e:
+        print(f"[webhook-easypost] {e!r}", flush=True)
+        return ("", 500)
+
+
 @app.route("/inbound-leads", methods=["GET"])
 def get_inbound_leads():
     """Review recent inbound leads and their GHL sync status."""
@@ -19553,6 +19676,52 @@ def cron_backfill_membership_grants():
     return jsonify({"ok": True, "fixed": fixed, "dry_run": dry})
 
 
+@app.route("/api/cron/easypost-sync", methods=["POST"])
+def cron_easypost_sync():
+    """Register EasyPost trackers for shipments we have tracking numbers for, and
+    backstop-poll registered-but-undelivered trackers. Opens coaching windows on
+    delivered. No-op when EasyPost is unconfigured (safe to schedule pre-go-live)."""
+    key = request.headers.get("X-Cron-Secret", "")
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import easypost as _ep
+    if not _ep.is_configured():
+        return jsonify({"ok": True, "registered": 0, "activated": 0, "skipped": "easypost_unconfigured"})
+    registered = 0
+    activated = 0
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _tracking.init_tracking_schema(cx); _tracking.migrate_add_delivery_columns(cx)
+        # 1) register trackers for shipments with a tracking number but no tracker yet
+        for r in cx.execute(
+                "SELECT id, tracking_number FROM shipments WHERE tracking_number IS NOT NULL "
+                "AND easypost_tracker_id IS NULL AND delivered_at IS NULL LIMIT 100").fetchall():
+            try:
+                t = _ep.create_tracker(r["tracking_number"])
+                _tracking.set_shipment_tracker(cx, r["id"], t.get("tracker_id", ""))
+                registered += 1
+                if (t.get("status") or "").lower() == "delivered":
+                    sh = cx.execute("SELECT * FROM shipments WHERE id=?", (r["id"],)).fetchone()
+                    if _activate_coaching_for_shipment(cx, sh, delivered_at=now_iso).get("ok"):
+                        activated += 1
+            except Exception as e:
+                print(f"[easypost-sync register] {r['tracking_number']}: {e!r}", flush=True)
+        # 2) backstop poll: registered, not yet delivered
+        for r in cx.execute(
+                "SELECT * FROM shipments WHERE easypost_tracker_id IS NOT NULL "
+                "AND delivered_at IS NULL LIMIT 100").fetchall():
+            try:
+                st = _ep.get_tracker(r["easypost_tracker_id"])
+                if (st.get("status") or "").lower() == "delivered":
+                    if _activate_coaching_for_shipment(cx, r, delivered_at=now_iso).get("ok"):
+                        activated += 1
+            except Exception as e:
+                print(f"[easypost-sync poll] {r['easypost_tracker_id']}: {e!r}", flush=True)
+    return jsonify({"ok": True, "registered": registered, "activated": activated})
+
+
 # ── One-time Gmail token upload (helper for first-time setup on Render) ───────
 # Local token at ~/.config/google/token.json gets POSTed here once and
 # persisted to /data/google-token.json on the web service's disk.
@@ -21940,6 +22109,7 @@ import dashboard.products as _bos_products  # noqa: F401 (registers products sig
 import dashboard.easypost as _bos_easypost  # noqa: F401
 import dashboard.ghl_queue as _bos_ghl_queue  # noqa: F401 (registers crm enqueue actions)
 from dashboard import stripe_alerts as _stripe_alerts  # noqa: F401 (Stripe-failure alerting)
+from dashboard import tracking as _tracking  # noqa: F401 (delivery tracking helpers)
 
 
 def _alert_stripe(context, err):
@@ -21983,6 +22153,8 @@ def _init_bos_orders():
         _bos_orders.init_orders_table(cx)
         _bos_orders.init_fulfillments_table(cx)
         _stripe_alerts.init_stripe_alerts_table(cx)
+        _tracking.init_tracking_schema(cx)
+        _tracking.migrate_add_delivery_columns(cx)
     finally:
         cx.close()
 

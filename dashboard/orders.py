@@ -8,7 +8,7 @@ import os
 from datetime import datetime, timezone, timedelta
 
 ORDER_STATUSES = ("proposed", "confirmed", "paid",
-                  "new", "packed", "shipped", "done", "cancelled")
+                  "new", "packed", "shipped", "done", "cancelled", "delivered")
 _OPEN = ("new", "packed")  # unfulfilled
 # Pre-fulfillment lead-in for in-house proposed invoices (before the kanban).
 _PRE_FULFILL = ("proposed", "confirmed")
