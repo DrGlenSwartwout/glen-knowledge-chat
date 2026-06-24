@@ -18,7 +18,8 @@
     max-width:1280px; margin-left:auto; margin-right:auto; }
   h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
   .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
-  .cols { display:grid; grid-template-columns:repeat(6,1fr); gap:14px; align-items:start; }
+  .cols { display:grid; grid-template-columns:repeat(8,1fr); gap:14px; align-items:start; }
+  @media (max-width:1500px){ .cols { grid-template-columns:repeat(4,1fr); } }
   @media (max-width:1100px){ .cols { grid-template-columns:repeat(3,1fr); } }
   .col { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px; }
   .col h2 { font-family:"Raleway",sans-serif; font-size:13px; letter-spacing:.08em;
@@ -68,8 +69,15 @@
   <div class="cols" id="board"></div>
 
 <script>
+  // A "new" (in-fulfillment) order is paid-ready only once its payment is paid or
+  // claimed; otherwise it's an unpaid cart awaiting payment. Portal/reorder flows
+  // land directly in 'new' as unpaid, so we split the old "New" lane in two.
+  function isPaidReady(o){ var ps=(o.pay_status||'unpaid'); return ps==='paid' || ps==='claimed'; }
+  // Lane: [statusKey, label, optionalPredicate]. Predicate overrides status match.
   var LANES = [["proposed","Proposed"],["confirmed","Confirmed"],
-               ["new","New"],["packed","Packed"],["shipped","Shipped"],["delivered","Delivered"],["done","Done"]];
+               ["cart","Cart", function(o){ return o.status==='new' && !isPaidReady(o); }],
+               ["paid","Paid", function(o){ return o.status==='new' && isPaidReady(o); }],
+               ["packed","Packed"],["shipped","Shipped"],["delivered","Delivered"],["done","Done"]];
   function key(){ return localStorage.getItem('console_key') || ''; }
   // Auto-unlock: if arriving with ?key= (from the ops nav), seed the console key once.
   (function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
@@ -93,6 +101,7 @@
     var acts = '';
     if (o.status==='proposed') acts = btn(o.id,'orders.confirm','Confirm') + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id);
     else if (o.status==='confirmed') acts = btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id);
+    else if (o.status==='new' && !isPaidReady(o)) acts = btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id);
     else if (o.status==='new')     acts = btn(o.id,'orders.mark_packed','Pack');
     else if (o.status==='packed') acts = btn(o.id,'orders.create_label','Create label') + ' ' + shipBtn(o.id);
     else if (o.status==='shipped') acts = btn(o.id,'orders.send_tracking','Send tracking') + ' ' + btn(o.id,'orders.mark_delivered','Mark delivered') + ' ' + btn(o.id,'orders.mark_done','Mark done');
@@ -173,7 +182,8 @@
       board.appendChild(note);
     }
     LANES.forEach(function(l){
-      var inLane = orders.filter(function(o){ return o.status===l[0]; });
+      var pred = l[2] || function(o){ return o.status===l[0]; };
+      var inLane = orders.filter(pred);
       var col = document.createElement('div'); col.className='col';
       col.innerHTML = '<h2>'+l[1]+' <span class="n">'+inLane.length+'</span></h2>'
         + inLane.map(cardHtml).join('');
