@@ -15,7 +15,7 @@ The geometric packer (PR #253) is built but dormant: no product has a `bottle_ty
 |---|---|---|---|
 | `5ml` | dropper — eye drops | 3×8 | 30×80 |
 | `15ml` | dropper | 3×10 | 30×100 |
-| `30ml` | dropper — infoceuticals **(new; est., Glen to verify)** | 3.5×11 | 35×110 |
+| `30ml` | dropper — infoceuticals **(new)** | 4×11 | 40×110 |
 | `50ml` | dropper | 4×14 | 40×140 |
 | `100ml` | dropper | 5×16 | 50×160 |
 | `30roll` | roll-on (rare) | 4×10 | 40×100 |
@@ -56,7 +56,7 @@ CREATE TABLE product_bottle_types (
 
 ## Schema / CRUD changes (`dashboard/shipping.py`)
 
-- `_STANDARD_BOTTLES`: rename `100cos`→`30g`, add `30ml` (35×110). Idempotent migration for already-seeded DBs: rename row `100cos`→`30g` if present; insert `30ml` if absent.
+- `_STANDARD_BOTTLES`: rename `100cos`→`30g`, add `30ml` (40×110). Idempotent migration for already-seeded DBs: rename row `100cos`→`30g` if present; insert `30ml` if absent.
 - `add_bottle_type(name, diameter_mm=None, height_mm=None, notes=None)` and `update_bottle_type(id, name, diameter_mm, height_mm, notes)` — carry dimensions.
 - Reuse `get_packing_settings`/`set_packing_setting` (already built) for the padding knobs.
 - New: `list_product_bottle_overrides()`, `set_product_bottle_override(slug, bottle_type)`, `clear_product_bottle_override(slug)`, and `resolve_bottle_type(slug, products_dict)`.
@@ -85,5 +85,4 @@ Endpoints follow the existing JSON-action pattern at `/admin/shipping` (e.g. `bo
 
 ## Open items
 
-- `30ml` dropper real dimensions (seeded at 35×110 estimate; Glen verifies via the console).
 - Essences: classified by FMP packaging where they name-match, else review — no dedicated family rule unless Glen specifies one.
