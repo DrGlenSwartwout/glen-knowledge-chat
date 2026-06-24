@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Foundational Eye-and-Brain Self-Assessment</title>
+<style>
+  :root { --ink:#1f2a37; --bg:#faf7f2; --accent:#4b6b57; --muted:#6b7280; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Georgia,'Times New Roman',serif; color:var(--ink);
+         background:var(--bg); line-height:1.5; }
+  .wrap { max-width:640px; margin:0 auto; padding:32px 20px 64px; }
+  .bar { height:6px; background:#e7e1d6; border-radius:6px; overflow:hidden; margin:18px 0 28px; }
+  .bar > i { display:block; height:100%; width:0; background:var(--accent); transition:width .3s; }
+  h1 { font-size:1.5rem; line-height:1.3; }
+  .hook { color:var(--muted); font-size:1.02rem; }
+  .q { font-size:1.2rem; margin:8px 0 18px; }
+  button.opt { display:block; width:100%; text-align:left; background:#fff; border:1px solid #ddd;
+    border-radius:10px; padding:14px 16px; margin:8px 0; font:inherit; cursor:pointer; }
+  button.opt:hover { border-color:var(--accent); }
+  .gate label { display:block; margin:12px 0 6px; }
+  .gate input[type=text], .gate input[type=email] { width:100%; padding:12px; font:inherit;
+    border:1px solid #ccc; border-radius:8px; }
+  .gate .tos { font-size:.9rem; color:var(--muted); margin:14px 0; }
+  .cta { background:var(--accent); color:#fff; border:none; border-radius:10px; padding:14px 20px;
+    font:inherit; cursor:pointer; width:100%; }
+  .cta[disabled] { opacity:.5; cursor:not-allowed; }
+  .disc { font-size:.78rem; color:var(--muted); margin-top:28px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="intro">
+    <h1 id="title"></h1>
+    <p class="hook" id="hook"></p>
+    <button class="cta" id="start">Start the 60-second assessment</button>
+  </div>
+
+  <div id="quiz" class="hidden">
+    <div class="bar"><i id="fill"></i></div>
+    <div class="q" id="prompt"></div>
+    <div id="options"></div>
+  </div>
+
+  <div id="gate" class="hidden gate">
+    <h1>See your result</h1>
+    <p class="hook">Enter your details to see your personalized result and unlock your free guide.</p>
+    <label for="name">First name</label>
+    <input type="text" id="name" autocomplete="given-name">
+    <label for="email">Email</label>
+    <input type="email" id="email" autocomplete="email">
+    <div class="tos"><label><input type="checkbox" id="tos">
+      I agree to the Terms of Service and to receive related emails.</label></div>
+    <button class="cta" id="reveal" disabled>Reveal my result</button>
+  </div>
+
+  <p class="disc" id="disclaimer"></p>
+</div>
+<script>
+(function () {
+  var quiz = null, idx = 0, answers = {};
+  var el = function (id) { return document.getElementById(id); };
+
+  fetch('/begin/quiz-data').then(function (r) { return r.json(); }).then(function (q) {
+    quiz = q;
+    el('title').textContent = q.title;
+    el('hook').textContent = q.hook;
+    el('disclaimer').textContent = q.disclaimer;
+  });
+
+  el('start').onclick = function () {
+    el('intro').classList.add('hidden');
+    el('quiz').classList.remove('hidden');
+    renderQuestion();
+  };
+
+  function renderQuestion() {
+    var qn = quiz.questions[idx];
+    el('fill').style.width = Math.round((idx / quiz.questions.length) * 100) + '%';
+    el('prompt').textContent = qn.prompt;
+    var box = el('options'); box.innerHTML = '';
+    qn.options.forEach(function (opt) {
+      var b = document.createElement('button');
+      b.className = 'opt'; b.textContent = opt.label;
+      b.onclick = function () { answers[qn.id] = opt.value; next(); };
+      box.appendChild(b);
+    });
+  }
+
+  function next() {
+    idx += 1;
+    if (idx < quiz.questions.length) { renderQuestion(); return; }
+    // persist answers, then show the email gate
+    fetch('/begin/quiz/answer', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quiz_id: quiz.id, answers: answers })
+    }).finally(function () {
+      el('quiz').classList.add('hidden');
+      el('gate').classList.remove('hidden');
+    });
+  }
+
+  function gateValid() {
+    return el('name').value.trim() && /\S+@\S+\.\S+/.test(el('email').value) && el('tos').checked;
+  }
+  ['name', 'email', 'tos'].forEach(function (id) {
+    el(id).addEventListener('input', function () { el('reveal').disabled = !gateValid(); });
+    el(id).addEventListener('change', function () { el('reveal').disabled = !gateValid(); });
+  });
+
+  el('reveal').onclick = function () {
+    el('reveal').disabled = true;
+    fetch('/begin/quiz/opt-in', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quiz_id: quiz.id, name: el('name').value.trim(),
+        email: el('email').value.trim(), tos: el('tos').checked
+      })
+    }).then(function (r) { return r.json(); }).then(function () {
+      window.location.href = '/begin/quiz/result';
+    }).catch(function () { el('reveal').disabled = false; });
+  };
+})();
+</script>
+</body>
+</html>

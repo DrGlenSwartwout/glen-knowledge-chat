@@ -1470,6 +1470,29 @@ def begin_tools():
     return resp
 
 
+_ACTIVE_QUIZ_ID = "eye-brain"
+
+
+@app.route("/begin/quiz")
+def begin_quiz():
+    resp = send_from_directory(STATIC, "begin-quiz.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/quiz-data")
+def begin_quiz_data():
+    q = quiz_engine.get_quiz(_ACTIVE_QUIZ_ID)
+    if not q:
+        return jsonify({"error": "no_quiz"}), 404
+    public = {k: v for k, v in q.items() if k != "bands"}
+    return jsonify(public)
+
+
 @app.route("/begin/voice")
 def begin_voice():
     resp = send_from_directory(STATIC, "begin-voice.html")
