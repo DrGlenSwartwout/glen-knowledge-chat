@@ -402,3 +402,75 @@ def set_last_notified_date(cx, sub_id: int, date: str) -> None:
         (date, _now_iso(), sub_id),
     )
     cx.commit()
+
+
+# ---------------------------------------------------------------------------
+# founding columns (Task 1 — idempotent migration)
+# ---------------------------------------------------------------------------
+
+def migrate_add_founding_columns(cx) -> None:
+    """Add founding launch columns if missing. Safe on every startup."""
+    for ddl in (
+        "ALTER TABLE subscriptions ADD COLUMN founding INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE subscriptions ADD COLUMN founding_state TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE subscriptions ADD COLUMN founding_slug TEXT NOT NULL DEFAULT ''",
+    ):
+        try:
+            cx.execute(ddl)
+            cx.commit()
+        except Exception:
+            pass
+
+
+# Far-future sentinel: a pending reservation must never be picked up by list_due
+# until mark_founding_active sets a real next_charge_date (the charge-on-ship event).
+_FOUNDING_PENDING_DATE = "2999-01-01"
+
+
+def create_founding_reservation(cx, *, email, stripe_customer_id,
+                                stripe_payment_method_id, items, ship_address,
+                                founding_slug) -> int:
+    """Insert a pending founding product subscription (card vaulted, $0 today).
+    order_count=0 and a far-future next_charge_date keep it out of list_due until
+    the founding batch ships (mark_founding_active)."""
+    now = _now_iso()
+    cur = cx.execute(
+        """INSERT INTO subscriptions
+               (email, stripe_customer_id, stripe_payment_method_id, items_json,
+                cadence_months, status, order_count, next_charge_date, ship_address_json,
+                skip_next, created_at, updated_at, founding, founding_state, founding_slug)
+           VALUES (?,?,?,?,1,'active',0,?,?,0,?,?,1,'pending',?)""",
+        (email, stripe_customer_id, stripe_payment_method_id, json.dumps(items or []),
+         _FOUNDING_PENDING_DATE, json.dumps(ship_address or {}), now, now, founding_slug),
+    )
+    cx.commit()
+    return cur.lastrowid
+
+
+def mark_founding_active(cx, sub_id: int, *, next_charge_date: str) -> None:
+    """Flip a pending founding reservation to active after its first (on-ship) charge:
+    record the first order and schedule the next autoship charge."""
+    cx.execute(
+        "UPDATE subscriptions SET founding_state='active', order_count=1,"
+        " next_charge_date=?, updated_at=? WHERE id=?",
+        (next_charge_date, _now_iso(), sub_id),
+    )
+    cx.commit()
+
+
+def list_founding_pending(cx, founding_slug: str) -> list[dict]:
+    """Reserved-but-not-yet-shipped founding subscriptions for a launch slug."""
+    rows = cx.execute(
+        "SELECT * FROM subscriptions WHERE founding=1 AND founding_state='pending'"
+        " AND founding_slug=? AND status!='cancelled' ORDER BY id", (founding_slug,)
+    ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def count_founding(cx, founding_slug: str) -> int:
+    """Count of founding slots consumed for a launch (pending + active, not cancelled)."""
+    row = cx.execute(
+        "SELECT COUNT(*) FROM subscriptions WHERE founding=1 AND founding_slug=?"
+        " AND status!='cancelled'", (founding_slug,)
+    ).fetchone()
+    return int(row[0]) if row else 0
