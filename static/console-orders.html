@@ -38,6 +38,11 @@
   .acts button.cancel:hover { border-color:var(--red); color:var(--red); }
   .bo-badge { display:inline-block; font-size:10px; font-weight:600; color:var(--red);
               border:1px solid var(--red); border-radius:5px; padding:1px 5px; margin-left:6px; }
+  .pay-badge { display:inline-block; font-size:10px; font-weight:600; border-radius:5px;
+               padding:1px 5px; margin-left:6px; border:1px solid currentColor; }
+  .pay-badge.paid { color:#2f8a4f; }
+  .pay-badge.unpaid { color:#b04a2f; }
+  .pay-badge.claimed { color:#8a6d2f; }
   details.fulfill { margin-top:8px; font-size:12px; border-top:1px solid var(--border); padding-top:7px; }
   details.fulfill summary { cursor:pointer; color:var(--muted); font-size:11px; }
   .ffline { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 0; color:var(--cream); }
@@ -97,7 +102,11 @@
     // shipped) — never on an unpaid proposed/confirmed invoice (all-unfulfilled).
     var ful = (o.status==='new' || o.status==='packed' || o.status==='shipped');
     var badge = (ful && bo>0) ? ' <span class="bo-badge">&#9650; '+bo+' backordered</span>' : '';
-    if (o.pay_status==='claimed') badge += ' <span class="bo-badge" style="background:#f0d9a0;color:#8a6d2f">payment claimed — confirm</span>';
+    // Payment status badge (paid shows method; claimed prompts a confirm; unpaid flags it).
+    var ps = (o.pay_status||'unpaid');
+    if (ps==='paid') badge += ' <span class="pay-badge paid">Paid'+(o.pay_method?' &middot; '+esc(o.pay_method):'')+'</span>';
+    else if (ps==='claimed') badge += ' <span class="pay-badge claimed">payment claimed — confirm'+(o.pay_method?' ('+esc(o.pay_method)+')':'')+'</span>';
+    else badge += ' <span class="pay-badge unpaid">Unpaid</span>';
     return '<div class="card"><div class="who">'+esc(o.name||o.email||'Order #'+o.id)+badge+'</div>'
       + '<div class="meta">'+(items?items+'<br>':'')
       + (total?total+' &middot; ':'')+'<span class="src">'+esc(srcLabel(o.source))+'</span> &middot; <span class="age'+(isOld(o.created_at)?' old':'')+'">'+age+'</span>'
