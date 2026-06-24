@@ -1515,6 +1515,68 @@ def begin_quiz_answer():
     return resp
 
 
+@app.route("/begin/quiz/opt-in", methods=["POST", "OPTIONS"])
+def begin_quiz_optin():
+    if request.method == "OPTIONS":
+        return "", 200
+    data = request.get_json() or {}
+    quiz_id = (data.get("quiz_id") or "").strip()
+    if not quiz_engine.get_quiz(quiz_id):
+        return jsonify({"error": "unknown_quiz"}), 404
+    name = (data.get("name") or "").strip()
+    first_name = name.split(None, 1)[0] if name else ""
+    email = (data.get("email") or "").strip().lower()
+    tos = bool(data.get("tos"))
+    if not email or "@" not in email:
+        return jsonify({"error": "valid email required"}), 400
+    if not tos:
+        return jsonify({"error": "tos required"}), 400
+    session_id = (request.cookies.get("amg_session")
+                  or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
+    ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
+
+    # capture email + ToS (free_tier) and mark the assessment gate
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.record_unlock(
+            cx, session_id=session_id, trigger="tos", email=email,
+            first_name=first_name, tos=True, ref_slug=ref_slug,
+            tos_version=BEGIN_TOS_VERSION)
+        begin_funnel.record_unlock(
+            cx, session_id=session_id, trigger="quiz", email=email,
+            detail=f"quiz:{quiz_id}", ref_slug=ref_slug)
+        seg = ""
+        existing = quiz_engine.get_response(cx, session_id=session_id, quiz_id=quiz_id)
+        if existing:
+            seg = existing["segment"]
+            quiz_engine.store_response(cx, session_id=session_id, quiz_id=quiz_id,
+                                       answers=existing["answers"], email=email)
+
+    # GHL onboarding + lead-magnet/segment tags, non-blocking (same pattern as /begin/unlock)
+    import threading as _threading
+
+    def _onboard():
+        try:
+            tags = ["begin", "lead-magnet", "quiz-completed"]
+            if seg:
+                tags.append(f"awareness:{seg}")
+            if ref_slug:
+                tags.append(f"ref:{ref_slug}")
+                _capture_concierge_referral(email, first_name, "", ref_slug)
+            ghl_onboard_contact(email, first_name, "", source_tag="lead-magnet", extra_tags=tags)
+        except Exception as e:
+            print(f"[quiz-optin] {e!r}", flush=True)
+
+    _threading.Thread(target=_onboard, daemon=True).start()
+
+    guide_token = _mint_lead_magnet_guide_link(email)
+    resp = jsonify({"ok": True, "current_rung": state["current_rung"],
+                    "guide_token": guide_token, "redirect": "/begin/quiz/result"})
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", session_id, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 @app.route("/begin/voice")
 def begin_voice():
     resp = send_from_directory(STATIC, "begin-voice.html")
@@ -7031,6 +7093,45 @@ def _validate_membership_magic_link(token):
     try:
         exp_dt = datetime.fromisoformat(expires_at.rstrip("Z"))
         if exp_dt < datetime.utcnow():
+            return None
+    except Exception:
+        return None
+    return email
+
+
+def _mint_lead_magnet_guide_link(email, ttl_min=60 * 24 * 30):
+    """Single-use token (purpose lead_magnet_guide, 30-day TTL) for the free-guide
+    download. Returns plaintext token; caller emails/returns it."""
+    import secrets, json as _json
+    plain = secrets.token_urlsafe(32)
+    th = _hash_token(plain)
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    exp_iso = (datetime.utcnow() + timedelta(minutes=int(ttl_min))).isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (th, email, "lead_magnet_guide", _json.dumps({}), now_iso, exp_iso))
+    return plain
+
+
+def _validate_lead_magnet_guide_link(token):
+    """Return the email for a valid (not consumed, not expired) lead_magnet_guide
+    token, else None. Does not mark consumed (the guide is re-downloadable)."""
+    if not token:
+        return None
+    th = _hash_token(token)
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='lead_magnet_guide'", (th,)).fetchone()
+    if not row:
+        return None
+    email, expires_at, consumed_at = row
+    if consumed_at:
+        return None
+    try:
+        if datetime.fromisoformat(expires_at.rstrip("Z")) < datetime.utcnow():
             return None
     except Exception:
         return None
