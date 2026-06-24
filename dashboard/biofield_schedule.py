@@ -6,6 +6,7 @@ is meant to be tuned against the real timing/frequency vocabulary in the FMP dat
 Unknown combinations are never dropped; they fall back to an "as directed" row so
 nothing silently disappears from a patient's schedule.
 """
+import re
 
 SLOTS = ["On waking", "Breakfast", "Mid-morning", "Lunch",
          "Mid-afternoon", "Dinner", "Bedtime"]
@@ -70,14 +71,36 @@ def _placement(freq, timing):
     return list(table.get(c) or table[max(table)]), food
 
 
+def _is_terrain_restore(name):
+    return "in terrain restore" in (name or "").lower()
+
+
+def _strip_terrain_restore(name):
+    return re.sub(r"\s*in terrain restore\s*$", "", (name or "").strip(), flags=re.I).strip()
+
+
 def build_schedule(remedies):
     """remedies: [{name, dosage, frequency, timing}] -> a schedule view.
 
-    Returns {"slots": SLOTS, "entries": [{name, dosage, frequency, timing,
-    slots:[...], food:str, as_directed:bool}]}.
+    Liquid remedies named "[name] in Terrain Restore" (essences, homeopathics, tinctures,
+    gemmotherapies, peptides, ORMUS) are individualized into ONE combined Terrain Restore
+    bottle and shown as a single entry (`contains` lists what's in it), taken together.
+
+    Returns {"slots": SLOTS, "entries": [{name, dosage, frequency, timing, slots, food,
+    as_directed, contains:[...]}]}.
     """
+    remedies = list(remedies or [])
+    liquids = [r for r in remedies if _is_terrain_restore(r.get("name"))]
+    work = [r for r in remedies if not _is_terrain_restore(r.get("name"))]
+    if liquids:
+        contains = [_strip_terrain_restore(r.get("name")) for r in liquids]
+        freq = next((r.get("frequency") for r in liquids if (r.get("frequency") or "").strip()), "")
+        timing = next((r.get("timing") for r in liquids if (r.get("timing") or "").strip()), "")
+        work.append({"name": "Terrain Restore", "dosage": "contains: " + ", ".join(contains),
+                     "frequency": freq, "timing": timing, "contains": contains})
+
     entries = []
-    for r in remedies or []:
+    for r in work:
         slots, food = _placement(r.get("frequency"), r.get("timing"))
         entries.append({
             "name": (r.get("name") or "").strip(),
@@ -87,5 +110,6 @@ def build_schedule(remedies):
             "slots": slots,
             "food": food,
             "as_directed": not slots,
+            "contains": r.get("contains") or [],
         })
     return {"slots": SLOTS, "entries": entries}

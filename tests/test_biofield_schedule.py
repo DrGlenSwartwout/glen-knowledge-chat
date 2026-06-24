@@ -77,6 +77,29 @@ def test_early_in_the_day_is_on_waking():
     assert sched["entries"][0]["slots"] == ["On waking"]
 
 
+def test_terrain_restore_liquids_combine_into_one_bottle():
+    sched = build_schedule([
+        {"name": "Microbiome", "dosage": "1 capsule", "frequency": "daily", "timing": "with food"},
+        {"name": "Perelandra essence in Terrain Restore", "dosage": "in Terrain Restore",
+         "frequency": "3 times a day", "timing": "between meals"},
+        {"name": "Kidney Homeopathic in Terrain Restore", "dosage": "in Terrain Restore",
+         "frequency": "3 times a day", "timing": "between meals"},
+    ])
+    names = [e["name"] for e in sched["entries"]]
+    assert names.count("Terrain Restore") == 1          # the liquids merged into ONE bottle
+    assert "Microbiome" in names                        # capsules untouched
+    bottle = next(e for e in sched["entries"] if e["name"] == "Terrain Restore")
+    assert "Perelandra essence" in bottle["contains"]
+    assert "Kidney Homeopathic" in bottle["contains"]
+    assert set(bottle["slots"]) == {"Mid-morning", "Mid-afternoon", "Bedtime"}  # 3x/day between meals
+
+
+def test_no_terrain_restore_means_no_bottle():
+    sched = build_schedule([{"name": "Microbiome", "dosage": "1 capsule",
+                             "frequency": "daily", "timing": "with food"}])
+    assert all(e["name"] != "Terrain Restore" for e in sched["entries"])
+
+
 def test_unknown_combo_falls_back_to_as_directed_not_dropped():
     sched = build_schedule([
         {"name": "Mystery", "dosage": "1", "frequency": "every third tuesday",

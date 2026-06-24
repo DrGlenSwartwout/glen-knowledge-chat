@@ -18,6 +18,7 @@ def test_prompt_encodes_grammar_and_carries_transcript():
     assert "head and tail" in sys.lower()
     assert "balanced by" in sys.lower() or "balances with" in sys.lower()
     assert "json" in sys.lower()
+    assert "terrain restore" in sys.lower()   # liquid-class remedies formatting rule
     assert "large intestine meridian" in usr.lower()
 
 
