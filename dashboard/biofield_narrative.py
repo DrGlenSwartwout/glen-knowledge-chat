@@ -90,7 +90,32 @@ _SYSTEM = (
 )
 
 
-def _user_block(report, notes):
+_SCAN_GUIDANCE = (
+    "\n- If a RECENT E4L VOICE SCAN block is present, you may reference what the scan "
+    "showed as corroborating context for the causal chain. Use observation language; "
+    "do not invent scan findings beyond those listed, and do not treat a scan marked "
+    "stale as current.")
+
+
+def _scan_block(scan):
+    """Optional context block from the client's most recent E4L voice scan. Empty
+    string unless a scan was actually found, so callers stay back-compatible."""
+    if not (scan and scan.get("found") and scan.get("findings")):
+        return ""
+    days = scan.get("days_ago")
+    age = f"{days} day{'s' if days != 1 else ''} ago" if days is not None else "date unknown"
+    fresh = "fresh" if scan.get("fresh") else "STALE — older than the 2-week window"
+    lines = [f"RECENT E4L VOICE SCAN ({age}, {fresh}; scan {scan.get('scan_date') or ''}):"]
+    for f in scan.get("findings") or []:
+        rank = f.get("rank")
+        desc = (f.get("description") or "").strip()
+        lines.append(f"- {('#' + str(rank) + ' ') if rank is not None else ''}"
+                     f"{f.get('code') or ''} {f.get('name') or ''}"
+                     f"{(' — ' + desc) if desc else ''}".rstrip())
+    return "\n".join(lines)
+
+
+def _user_block(report, notes, scan=None):
     c = report.get("client") or {}
     lines = [f"PATIENT: {c.get('name') or ''}",
              f"DATE: {report.get('date') or ''}",
@@ -103,17 +128,27 @@ def _user_block(report, notes):
             f" (most affected: {l.get('most_affected') or ''})"
             f" -> remedy: {l.get('remedy') or ''}; dose: {l.get('dosage') or ''}"
             f" {l.get('frequency') or ''} {l.get('timing') or ''}".rstrip())
+    sb = _scan_block(scan)
+    if sb:
+        lines += ["", sb]
     lines += ["", "CLINICIAN VERBAL NOTES (weave in naturally):", (notes or "(none)")]
     return "\n".join(lines)
 
 
-def build_narrative_prompt(report, notes):
-    return {"system": _SYSTEM, "user": _user_block(report, notes)}
+def _system_with_scan(base, scan):
+    """Append scan guidance only when a scan was actually found, so the no-scan prompt
+    stays byte-identical to before (back-compat)."""
+    return base + (_SCAN_GUIDANCE if (scan and scan.get("found") and scan.get("findings")) else "")
 
 
-def generate_narrative(report, notes, complete):
-    """complete(system, user) -> narrative text."""
-    p = build_narrative_prompt(report, notes)
+def build_narrative_prompt(report, notes, scan=None):
+    return {"system": _system_with_scan(_SYSTEM, scan),
+            "user": _user_block(report, notes, scan)}
+
+
+def generate_narrative(report, notes, complete, scan=None):
+    """complete(system, user) -> narrative text. `scan` = optional E4L scan context."""
+    p = build_narrative_prompt(report, notes, scan)
     return complete(p["system"], p["user"])
 
 
@@ -136,11 +171,12 @@ _VIDEO_SYSTEM = (
 )
 
 
-def build_video_script_prompt(report, notes):
-    return {"system": _VIDEO_SYSTEM, "user": _user_block(report, notes)}
+def build_video_script_prompt(report, notes, scan=None):
+    return {"system": _system_with_scan(_VIDEO_SYSTEM, scan),
+            "user": _user_block(report, notes, scan)}
 
 
-def generate_video_script(report, notes, complete):
-    """complete(system, user) -> short spoken walkthrough script."""
-    p = build_video_script_prompt(report, notes)
+def generate_video_script(report, notes, complete, scan=None):
+    """complete(system, user) -> short spoken walkthrough script. `scan` optional."""
+    p = build_video_script_prompt(report, notes, scan)
     return complete(p["system"], p["user"])

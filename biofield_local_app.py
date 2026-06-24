@@ -17,6 +17,7 @@ client_nosode,client_remedy,client_foods,products,products_phases,products_syste
 Then open http://127.0.0.1:8011
 """
 import argparse
+import datetime
 import os
 import sqlite3
 
@@ -24,7 +25,10 @@ from flask import Flask, Response, redirect, request, send_from_directory
 
 from dashboard.biofield_report import causal_chain_report, list_tests
 from dashboard.biofield_report_html import (
-    render_author_html, render_list_html, render_report_html)
+    render_author_html, render_e4l_panel, render_list_html, render_report_html)
+from dashboard.biofield_e4l import (
+    fetch_live as _fetch_live, scan_context as _scan_context,
+    search_clients as _search_clients)
 from dashboard.biofield_narrative import (
     generate_narrative, generate_video_script, get_narrative, get_notes,
     get_video_script, save_narrative, save_notes, save_video_script)
@@ -119,12 +123,32 @@ DEFAULT_DB = os.environ.get(
 
 
 def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
-               interpret_complete=None):
+               interpret_complete=None, scan_lookup=None, client_search=None,
+               fetch_runner=None):
     app = Flask(__name__)
     complete = complete or openai_complete
     tts = tts or elevenlabs_tts
     deepgram_token = deepgram_token or deepgram_browser_token
     interpret_complete = interpret_complete or openai_json
+    # E4L scan pull: as soon as the client (email) is known, surface their most recent
+    # voice scan. Default reads ~/AI-Training/e4l.db read-only as of today's date;
+    # injectable for tests. Never raises -> intake is never blocked.
+    scan_lookup = scan_lookup or (
+        lambda email: _scan_context(email, datetime.date.today().isoformat()))
+    # Name picker + on-demand live fetch (the local mirror lags, so selecting a client
+    # can pull their newest scan straight from the live E4L portal). Both injectable.
+    client_search = client_search or (lambda q: _search_clients(q))
+    fetch_runner = fetch_runner  # None -> fetch_live uses the real scraper+parser
+
+    def _report_for(cx, test_id):
+        return (authored_report(cx, test_id) if str(test_id).startswith("a")
+                else causal_chain_report(cx, test_id))
+
+    def _e4l(cx, test_id):
+        """Scan context + rendered panel for a test's stored client email."""
+        rep = _report_for(cx, test_id)
+        ctx = scan_lookup((rep.get("client") or {}).get("email") or "")
+        return ctx, rep
     with sqlite3.connect(db_path) as _cx:
         seed_dimensions(_cx)
 
@@ -198,7 +222,42 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         with sqlite3.connect(db_path) as cx:
             update_header(cx, test_id, name=d.get("name"), email=d.get("email"),
                           date=d.get("date"))
-        return {"ok": True}
+            ctx, _ = _e4l(cx, test_id)  # client now known -> pull recent E4L scan
+        return {"ok": True, "e4l": ctx, "html": render_e4l_panel(ctx)}
+
+    @app.route("/author/<test_id>/e4l")
+    def author_e4l(test_id):
+        with sqlite3.connect(db_path) as cx:
+            ctx, _ = _e4l(cx, test_id)
+        return {"e4l": ctx, "html": render_e4l_panel(ctx)}
+
+    @app.route("/api/e4l/clients")
+    def api_e4l_clients():
+        return {"clients": client_search(request.args.get("q", ""))}
+
+    @app.route("/author/<test_id>/e4l/refresh", methods=["POST"])
+    def author_e4l_refresh(test_id):
+        """Pull this client's newest scan from the LIVE E4L portal, then re-read the
+        panel. Synchronous (localhost + threaded server -> no gateway timeout); the
+        browser shows a spinner while it runs (~15-20s for the Playwright login)."""
+        body = request.get_json(silent=True) or {}
+        client_id = body.get("client_id")
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+        client = rep.get("client") or {}
+        email = client.get("email") or ""
+        if client_id is None and not email:
+            return {"ok": False, "error": "no client selected yet",
+                    "newer": False, "e4l": scan_lookup(""),
+                    "html": render_e4l_panel(scan_lookup(""))}
+        before = scan_lookup(email)
+        res = _fetch_live(client_id=client_id, name=client.get("name"), runner=fetch_runner)
+        after = scan_lookup(email)
+        newer = bool(after.get("found") and (
+            not before.get("found")
+            or (after.get("scan_date") or "") > (before.get("scan_date") or "")))
+        return {"ok": bool(res.get("ok")), "error": res.get("error"),
+                "newer": newer, "e4l": after, "html": render_e4l_panel(after)}
 
     @app.route("/author/<test_id>/row", methods=["POST"])
     def author_row_add(test_id):
@@ -321,9 +380,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         notes = (request.get_json(silent=True) or {}).get("notes", "")
         with sqlite3.connect(db_path) as cx:
             save_notes(cx, test_id, notes)
-            rep = causal_chain_report(cx, test_id)
+            ctx, rep = _e4l(cx, test_id)  # authored or FMP report + recent E4L scan
             try:
-                text = generate_narrative(rep, notes, complete)
+                text = generate_narrative(rep, notes, complete, scan=ctx)
             except Exception as e:  # no API key / network / model error
                 return {"error": str(e)[:200]}
             save_narrative(cx, test_id, text)
@@ -333,9 +392,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     def video_generate(test_id):
         notes = (request.get_json(silent=True) or {}).get("notes", "")
         with sqlite3.connect(db_path) as cx:
-            rep = causal_chain_report(cx, test_id)
+            ctx, rep = _e4l(cx, test_id)
             try:
-                script = generate_video_script(rep, notes, complete)
+                script = generate_video_script(rep, notes, complete, scan=ctx)
             except Exception as e:
                 return {"error": str(e)[:200]}
             save_video_script(cx, test_id, script)
