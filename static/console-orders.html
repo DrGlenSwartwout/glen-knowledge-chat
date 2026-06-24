@@ -71,6 +71,8 @@
   function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; load(); }
   function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  // Display-only relabel of order source (DB values unchanged).
+  function srcLabel(s){ var m={'reorder':'Order','portal-reorder':'Portal-Order'}; return m[s]||s; }
 
   function ageStr(iso){
     try { var h = (Date.now() - new Date(iso).getTime())/3600000;
@@ -98,7 +100,7 @@
     if (o.pay_status==='claimed') badge += ' <span class="bo-badge" style="background:#f0d9a0;color:#8a6d2f">payment claimed — confirm</span>';
     return '<div class="card"><div class="who">'+esc(o.name||o.email||'Order #'+o.id)+badge+'</div>'
       + '<div class="meta">'+(items?items+'<br>':'')
-      + (total?total+' &middot; ':'')+'<span class="src">'+esc(o.source)+'</span> &middot; <span class="age'+(isOld(o.created_at)?' old':'')+'">'+age+'</span>'
+      + (total?total+' &middot; ':'')+'<span class="src">'+esc(srcLabel(o.source))+'</span> &middot; <span class="age'+(isOld(o.created_at)?' old':'')+'">'+age+'</span>'
       + (o.tracking_number?'<br>tracking '+esc(o.tracking_number):'')+'</div>'
       + fulfillHtml(o)
       + '<div class="acts">'+acts+'</div></div>';
