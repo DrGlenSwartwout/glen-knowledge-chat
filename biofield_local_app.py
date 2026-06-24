@@ -35,7 +35,8 @@ from dashboard.biofield_narrative import (
 from dashboard.biofield_authoring import (
     add_chain_row, authored_report, confirm_all, confirm_row, create_test,
     delete_chain_row, delete_test, list_authored, remedy_catalog, remedy_dosing,
-    resolve_remedy_name, stress_suggestions, stress_vocab, update_chain_row, update_header)
+    resolve_remedy_name, resolve_stress_name, stress_suggestions, stress_vocab,
+    update_chain_row, update_header)
 from dashboard.biofield_dimensions import (
     DEPTH_KEY, dimension_values, seed_dimensions, tag as dim_tag)
 from dashboard.biofield_interpret import interpret_transcript
@@ -335,12 +336,14 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 return {"error": str(e)[:200]}
             added = 0
             for l in result.get("layers", []):
-                remedy = resolve_remedy_name(cx, l["remedy"])  # auto-correct ASR mangles
+                remedy = resolve_remedy_name(cx, l["remedy"])  # auto-correct + title-case ASR mangles
+                head = resolve_stress_name(cx, l["head"])      # capitalize/match stress names too
+                most_affected = resolve_stress_name(cx, l["most_affected"])
                 dosage, frequency, timing = l.get("dosage", ""), l.get("frequency", ""), l.get("timing", "")
                 if not (dosage or frequency or timing):  # no spoken dose -> catalog minimum
                     d = remedy_dosing(cx, remedy)
                     dosage, frequency, timing = d["dosage"], d["frequency"], d["timing"]
-                add_chain_row(cx, test_id, l.get("layer"), l["head"], l["most_affected"],
+                add_chain_row(cx, test_id, l.get("layer"), head, most_affected,
                               remedy, dosage, frequency, timing, confirmed=0)  # voice -> unconfirmed
                 added += 1
         return {"added": added, "header": result.get("header", "")}

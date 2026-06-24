@@ -10,6 +10,7 @@ from the numeric FMP-snapshot ids. Local + writable; PHI stays on the Mac.
 """
 import datetime
 import difflib
+import re
 import sqlite3
 
 from dashboard.biofield_schedule import build_schedule
@@ -102,12 +103,45 @@ def delete_test(cx, tid):
     cx.commit()
 
 
+_SMALL_WORDS = {"in", "of", "the", "a", "an", "and", "or", "with", "for", "to", "by", "on"}
+
+
+def _title_case_name(s):
+    """Title-case a free-text name without mangling product codes or small words.
+    'reverse age' -> 'Reverse Age', 'head and tail' -> 'Head and Tail', and a token
+    carrying a digit or an internal capital (e.g. 'MB5', 'B12', 'pH') is left as-is."""
+    s = (s or "").strip()
+    if not s:
+        return s
+    words = s.split()
+    out = []
+    for i, w in enumerate(words):
+        if any(c.isdigit() for c in w) or any(c.isupper() for c in w[1:]):
+            out.append(w)                      # preserve codes / intentional casing
+        elif i > 0 and w.lower() in _SMALL_WORDS:
+            out.append(w.lower())              # keep small connector words lowercase
+        else:                                  # capitalize each hyphen/slash chunk
+            out.append(re.sub(r"[A-Za-z]+",
+                              lambda m: m.group(0)[0].upper() + m.group(0)[1:].lower(), w))
+    return " ".join(out)
+
+
+def _best_match(spoken, names, cutoff):
+    """Case-insensitive closest match: ASR lowercases, so we compare on lowercase and
+    map back to the canonical-cased name. Returns None when nothing is close enough."""
+    by_low = {}
+    for n in names:
+        by_low.setdefault(n.lower(), n)        # first canonical spelling wins
+    hit = difflib.get_close_matches((spoken or "").lower(), list(by_low), n=1, cutoff=cutoff)
+    return by_low[hit[0]] if hit else None
+
+
 def resolve_remedy_name(cx, spoken, cutoff=0.82):
     """Best-effort auto-correct a (possibly ASR-mangled) remedy name to the closest
-    catalog product. Preserves an ' in Terrain Restore' suffix. Returns the original
-    when no close match exists."""
+    catalog product (case-insensitive). Preserves an ' in Terrain Restore' suffix.
+    Falls back to Title Case of the spoken name when there's no close catalog match."""
     spoken = (spoken or "").strip()
-    if not spoken or not _has(cx, "fmp_snap_products"):
+    if not spoken:
         return spoken
     suffix = ""
     core = spoken
@@ -115,11 +149,31 @@ def resolve_remedy_name(cx, spoken, cutoff=0.82):
     if low.endswith("in terrain restore"):
         core = spoken[: low.rfind("in terrain restore")].strip()
         suffix = " in Terrain Restore"
-    names = [r[0] for r in cx.execute(
-        "SELECT DISTINCT product_name FROM fmp_snap_products "
-        "WHERE TRIM(COALESCE(product_name,''))<>''").fetchall()]
-    match = difflib.get_close_matches(core, names, n=1, cutoff=cutoff)
-    return (match[0] + suffix) if match else spoken
+    if _has(cx, "fmp_snap_products"):
+        names = [r[0] for r in cx.execute(
+            "SELECT DISTINCT product_name FROM fmp_snap_products "
+            "WHERE TRIM(COALESCE(product_name,''))<>''").fetchall()]
+        match = _best_match(core, names, cutoff)
+        if match:
+            return match + suffix
+    return _title_case_name(core) + suffix
+
+
+def resolve_stress_name(cx, spoken, cutoff=0.82):
+    """Auto-correct a spoken stress / head-of-chain name to the closest stress term
+    Glen has used before (case-insensitive), else Title Case the spoken name so stress
+    names are always capitalized."""
+    spoken = (spoken or "").strip()
+    if not spoken:
+        return spoken
+    if _has_col(cx, "fmp_snap_client_active_main_stress", "main_stress"):
+        names = [r[0] for r in cx.execute(
+            "SELECT DISTINCT main_stress FROM fmp_snap_client_active_main_stress "
+            "WHERE TRIM(COALESCE(main_stress,''))<>''").fetchall()]
+        match = _best_match(spoken, names, cutoff)
+        if match:
+            return match
+    return _title_case_name(spoken)
 
 
 def update_chain_row(cx, rid, **fields):
@@ -156,6 +210,13 @@ def list_authored(cx):
 def _has(cx, table):
     return cx.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
                       (table,)).fetchone() is not None
+
+
+def _has_col(cx, table, col):
+    """True only when `table` exists AND has column `col` (snapshot schemas vary)."""
+    if not _has(cx, table):
+        return False
+    return any(r[1] == col for r in cx.execute(f"PRAGMA table_info({table})").fetchall())
 
 
 def remedy_catalog(cx, q="", limit=20):
