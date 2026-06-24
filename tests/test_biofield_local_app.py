@@ -1,4 +1,5 @@
 """Smoke tests for the local Biofield Analysis viewer (standalone Flask app)."""
+import json
 import sqlite3
 from biofield_local_app import create_app
 
@@ -101,6 +102,45 @@ def test_authoring_flow(tmp_path):
     assert client.post(f"/author/{tid}/row/{rid}/delete", json={}).status_code == 200
     cat = client.get("/api/catalog?q=x")
     assert cat.status_code == 200 and "catalog" in cat.get_json()
+
+
+def test_deepgram_token_endpoint(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    _seed(db)
+    client = create_app(db, deepgram_token=lambda: "tok-123").test_client()
+    r = client.get("/api/deepgram-token")
+    assert r.status_code == 200 and r.get_json()["key"] == "tok-123"
+
+
+def test_session_transcript_saves_to_notes(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    _seed(db)
+    client = create_app(db).test_client()
+    tid = client.post("/author/new").headers["Location"].rstrip("/").rsplit("/", 1)[-1]
+    r = client.post(f"/author/{tid}/session", json={"transcript": "BSI 21 phase 2 toxicity"})
+    assert r.status_code == 200 and r.get_json()["ok"]
+    assert b"BSI 21 phase 2 toxicity" in client.get("/test/" + tid).data  # -> notes -> narrative
+
+
+def test_interpret_fills_chain_rows_from_transcript(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    _seed(db)
+
+    def fake(system, user):
+        return json.dumps({"header": "BSI 21x1/1x1; phase 2 toxicity", "layers": [
+            {"layer": 1, "head": "Large Intestine Meridian",
+             "most_affected": "Large Intestine Meridian", "remedy": "Microbiome"},
+            {"layer": 2, "head": "Toxicity", "most_affected": "Toxicity",
+             "remedy": "Neuro-Magnesium"}]})
+
+    client = create_app(db, interpret_complete=fake).test_client()
+    tid = client.post("/author/new").headers["Location"].rstrip("/").rsplit("/", 1)[-1]
+    client.post(f"/author/{tid}/session", json={"transcript": "large intestine meridian head and tail balanced by microbiome"})
+    r = client.post(f"/author/{tid}/interpret", json={}).get_json()
+    assert r["added"] == 2
+    report = client.get("/test/" + tid).data
+    assert b"Microbiome" in report and b"Neuro-Magnesium" in report
+    assert b"Large Intestine Meridian" in report
 
 
 def test_depth_match_flagged_in_report(tmp_path):

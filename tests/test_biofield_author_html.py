@@ -22,6 +22,7 @@ def test_author_page_has_header_rows_and_endpoints():
     assert "/author/a1/row" in html                          # add/save rows
     assert "Add row" in html
     assert "/test/a1" in html                                # link to the read-only report
+    assert "fillDose" in html                                # remedy auto-fills dosing on change
 
 
 def test_author_page_escapes_free_text():
@@ -30,6 +31,19 @@ def test_author_page_escapes_free_text():
     html = render_author_html(rep)
     assert "<script>x</script>" not in html
     assert "&lt;script&gt;" in html
+
+
+def test_author_page_has_session_recording_ui():
+    html = render_author_html(_report())
+    assert "Record" in html
+    assert "/api/deepgram-token" in html      # browser fetches a short-lived token
+    assert "/author/a1/session" in html        # transcript save endpoint
+    assert "sessText" in html                  # live transcript box
+
+
+def test_author_page_prefills_saved_transcript():
+    html = render_author_html(_report(), transcript="BSI 21 phase 2 toxicity head and tail")
+    assert "BSI 21 phase 2 toxicity head and tail" in html   # persists across refresh
 
 
 def test_list_html_shows_authored_and_new_button():

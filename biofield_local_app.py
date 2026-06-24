@@ -34,6 +34,7 @@ from dashboard.biofield_authoring import (
     update_chain_row, update_header)
 from dashboard.biofield_dimensions import (
     DEPTH_KEY, dimension_values, seed_dimensions, tag as dim_tag)
+from dashboard.biofield_interpret import interpret_transcript
 
 AUDIO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "biofield-audio")
 
@@ -64,6 +65,17 @@ def openai_complete(system, user):
     return resp.choices[0].message.content
 
 
+def openai_json(system, user):
+    """Deterministic JSON completion for the transcript interpreter (temp 0, JSON mode)."""
+    import openai
+    model = os.environ.get("BIOFIELD_NARRATIVE_MODEL", "gpt-4o")
+    resp = openai.OpenAI().chat.completions.create(
+        model=model, temperature=0, response_format={"type": "json_object"},
+        messages=[{"role": "system", "content": system},
+                  {"role": "user", "content": user}])
+    return resp.choices[0].message.content
+
+
 def elevenlabs_tts(text):
     """Render text to mp3 bytes in Glen's cloned voice. Needs ELEVENLABS_API_KEY."""
     import requests
@@ -78,14 +90,41 @@ def elevenlabs_tts(text):
     r.raise_for_status()
     return r.content
 
+
+def deepgram_temp_key():
+    """Mint a short-lived (1h) Deepgram key so the long-lived key never reaches the
+    browser. Needs DEEPGRAM_API_KEY in env (run via `doppler run`)."""
+    import requests
+    h = {"Authorization": "Token " + os.environ["DEEPGRAM_API_KEY"]}
+    pid = requests.get("https://api.deepgram.com/v1/projects", headers=h,
+                       timeout=20).json()["projects"][0]["project_id"]
+    r = requests.post(f"https://api.deepgram.com/v1/projects/{pid}/keys", headers=h, timeout=20,
+                      json={"comment": "biofield-live-session", "scopes": ["usage:write"],
+                            "time_to_live_in_seconds": 3600})
+    r.raise_for_status()
+    return r.json()["key"]
+
+
+def deepgram_browser_token():
+    """Token for the browser's Deepgram socket. Prefer a short-lived key; fall back to
+    the env key if this key lacks key-management scope (fine: localhost-only tool, the
+    token only ever reaches Glen's own browser)."""
+    try:
+        return deepgram_temp_key()
+    except Exception:
+        return os.environ["DEEPGRAM_API_KEY"]
+
 DEFAULT_DB = os.environ.get(
     "BIOFIELD_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_log.db"))
 
 
-def create_app(db_path=DEFAULT_DB, complete=None, tts=None):
+def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
+               interpret_complete=None):
     app = Flask(__name__)
     complete = complete or openai_complete
     tts = tts or elevenlabs_tts
+    deepgram_token = deepgram_token or deepgram_browser_token
+    interpret_complete = interpret_complete or openai_json
     with sqlite3.connect(db_path) as _cx:
         seed_dimensions(_cx)
 
@@ -118,7 +157,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None):
         with sqlite3.connect(db_path) as cx:
             rep = authored_report(cx, test_id)
             dv = dimension_values(cx, DEPTH_KEY)
-        return Response(render_author_html(rep, dv), mimetype="text/html")
+            transcript = get_notes(cx, test_id)
+        return Response(render_author_html(rep, dv, transcript), mimetype="text/html")
 
     @app.route("/author/<test_id>/depth", methods=["POST"])
     def author_depth(test_id):
@@ -185,6 +225,43 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None):
     def api_suggest():
         with sqlite3.connect(db_path) as cx:
             return {"suggestions": stress_suggestions(cx, request.args.get("stress", ""))}
+
+    @app.route("/api/deepgram-token")
+    def api_deepgram_token():
+        try:
+            return {"key": deepgram_token()}
+        except Exception as e:  # no key / network / Deepgram error
+            return {"error": str(e)[:200]}
+
+    @app.route("/author/<test_id>/session", methods=["POST"])
+    def author_session(test_id):
+        txt = ((request.get_json(silent=True) or {}).get("transcript") or "").strip()
+        if not txt:
+            return {"ok": True, "skipped": "empty"}
+        with sqlite3.connect(db_path) as cx:
+            save_notes(cx, test_id, txt)  # box holds the full transcript -> replace
+        return {"ok": True}
+
+    @app.route("/author/<test_id>/interpret", methods=["POST"])
+    def author_interpret(test_id):
+        with sqlite3.connect(db_path) as cx:
+            transcript = get_notes(cx, test_id)
+            if not transcript.strip():
+                return {"added": 0, "error": "no transcript yet -- record a session first"}
+            try:
+                result = interpret_transcript(transcript, interpret_complete)
+            except Exception as e:
+                return {"error": str(e)[:200]}
+            added = 0
+            for l in result.get("layers", []):
+                dosage, frequency, timing = l.get("dosage", ""), l.get("frequency", ""), l.get("timing", "")
+                if not (dosage or frequency or timing):  # no spoken dose -> catalog minimum
+                    d = remedy_dosing(cx, l["remedy"])
+                    dosage, frequency, timing = d["dosage"], d["frequency"], d["timing"]
+                add_chain_row(cx, test_id, l.get("layer"), l["head"], l["most_affected"],
+                              l["remedy"], dosage, frequency, timing)
+                added += 1
+        return {"added": added, "header": result.get("header", "")}
 
     @app.route("/test/<test_id>/notes", methods=["POST"])
     def notes_save(test_id):
