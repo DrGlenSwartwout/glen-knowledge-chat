@@ -21,6 +21,45 @@ FMP_ITEMS_CSV = os.environ.get(
 
 _PACKAGING_WORDS = ("plantcaps", "capsule", "pullulan", "vegicap", "gelcap", "bottle")
 
+# Packaging units whose blank-name lines are NOT incomplete-recipe signals.
+_PACKAGING_UNITS = {"ea.", "ea"}
+
+
+def _is_incomplete_signal(row: dict) -> bool:
+    """Return True if this products_items row is an incomplete-recipe signal.
+
+    A signal means: the ingredient name (text after the first " - " in
+    zc_raw_display) is EMPTY **and** the line carries a real dose, i.e.
+    EITHER zc_mg parses to > 0, OR unit_measurement is present and is NOT
+    a packaging unit ("ea." / "ea").
+
+    The "1ea. - " packaging/capsule lines — name empty, unit "ea.", mg 0 —
+    are NOT signals; they are normal and already ignored by _parse_ingredient_line.
+    """
+    raw = row.get("zc_raw_display", "")
+    if " - " not in raw:
+        return False
+    name = raw.split(" - ", 1)[1].strip()
+    if name:
+        # Named line — not a signal regardless of dose.
+        return False
+
+    # Name is blank — check whether it carries a real dose.
+    zc_mg = row.get("zc_mg", "").strip()
+    try:
+        mg_val = float(zc_mg)
+    except (ValueError, TypeError):
+        mg_val = 0.0
+
+    if mg_val > 0:
+        return True
+
+    unit = (row.get("unit_measurement") or "").strip()
+    if unit and unit not in _PACKAGING_UNITS:
+        return True
+
+    return False
+
 
 def _parse_ingredient_line(row: dict) -> dict | None:
     """Return {"name", "dose"} from a products_items row, or None to skip."""
@@ -122,6 +161,20 @@ def _resolve_updates(
 
         fmp_pk = str(row.get("id_pk", "")).strip()
         item_rows = fmp_items.get(fmp_pk, [])
+
+        # --- Recipe-completeness guard ---
+        # If ANY item row is an incomplete-recipe signal (dosed line with
+        # blank ingredient name, not a packaging "ea." line), route to review
+        # and leave existing ingredients untouched.
+        if any(_is_incomplete_signal(r) for r in item_rows):
+            review.append({
+                "slug": slug,
+                "name": p.get("name", ""),
+                "reason": "FMP recipe incomplete (dosed line with no ingredient name)",
+                "match_method": match_method,
+            })
+            continue
+
         ingredients = [ing for r in item_rows if (ing := _parse_ingredient_line(r)) is not None]
 
         if not ingredients:
