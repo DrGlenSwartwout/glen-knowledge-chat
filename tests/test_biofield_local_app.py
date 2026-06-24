@@ -1,7 +1,15 @@
 """Smoke tests for the local Biofield Analysis viewer (standalone Flask app)."""
 import json
 import sqlite3
+
+import pytest
 from biofield_local_app import create_app
+
+
+@pytest.fixture(autouse=True)
+def _no_console_gate(monkeypatch):
+    # Functional tests run without the console key (the gate is tested separately).
+    monkeypatch.delenv("CONSOLE_SECRET", raising=False)
 
 
 def _seed(db):
@@ -21,6 +29,22 @@ def _seed(db):
     cx.execute("INSERT INTO fmp_snap_client_causal_chain VALUES ('200','10','100','Acid','Liver')")
     cx.execute("INSERT INTO fmp_snap_client_remedy VALUES ('200','Sterol Max','3 caps','daily','with food')")
     cx.commit()
+
+
+def test_console_key_gate(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONSOLE_SECRET", "k")
+    db = str(tmp_path / "chat_log.db")
+    _seed(db)
+    client = create_app(db).test_client()
+    assert client.get("/").status_code == 401            # blocked without the key
+    assert client.get("/?key=k").status_code == 200      # the launcher's ?key= unlocks
+
+
+def test_index_works_without_snapshot(tmp_path):
+    # fresh machine: no fmp_snap_* tables -> home page still renders (no 500)
+    db = str(tmp_path / "chat_log.db")
+    r = create_app(db).test_client().get("/")
+    assert r.status_code == 200
 
 
 def test_index_lists_tests(tmp_path):

@@ -18,9 +18,16 @@ def _i(v):
         return None
 
 
+def _has(cx, table):
+    return cx.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                      (table,)).fetchone() is not None
+
+
 def list_tests(cx, q=""):
     """Console list: one row per biofield test with client + remedy count."""
     cx.row_factory = sqlite3.Row
+    if not _has(cx, "fmp_snap_client_biofield_test"):
+        return []  # snapshot not loaded yet -> no FileMaker tests
     rows = [dict(r) for r in cx.execute("""
       SELECT b.id_pk AS test_id, b.date_test AS date,
              TRIM(COALESCE(cl.name_first,'')||' '||COALESCE(cl.name_last,'')) AS name,
@@ -42,6 +49,9 @@ def list_tests(cx, q=""):
 def causal_chain_report(cx, test_id):
     """Full report for one test: client header, layer-ordered remedies, schedule."""
     cx.row_factory = sqlite3.Row
+    if not _has(cx, "fmp_snap_client_biofield_test"):
+        return {"test_id": str(test_id), "client": {"name": "", "email": ""},
+                "date": "", "layers": [], "schedule": build_schedule([])}
     head = cx.execute("""
       SELECT b.date_test AS date,
              TRIM(COALESCE(cl.name_first,'')||' '||COALESCE(cl.name_last,'')) AS name,
