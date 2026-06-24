@@ -55,3 +55,18 @@ def test_author_page_embeds_e4l_panel_placeholder_and_loader():
     html = render_author_html(rep)
     assert "e4lpanel" in html              # placeholder div the JS fills
     assert "/author/a1/e4l" in html        # the loader endpoint
+
+
+def test_author_page_wires_name_picker_and_live_check():
+    rep = {"test_id": "a1", "client": {"name": "", "email": ""},
+           "date": "", "layers": [], "schedule": {"slots": [], "entries": []}}
+    html = render_author_html(rep)
+    assert "nameSearch" in html and "/api/e4l/clients" in html   # name autocomplete
+    assert "h_dd" in html and "showEmailPicker" in html          # dup-email dropdown
+    assert "checkE4L" in html and "/author/a1/e4l/refresh" in html  # live fresh-check
+    assert "h_client_id" in html                                 # selected client id
+
+
+def test_panel_has_check_e4l_button():
+    html = render_e4l_panel(_ctx())
+    assert "checkE4L" in html and "Check E4L now" in html

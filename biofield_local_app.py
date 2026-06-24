@@ -26,7 +26,9 @@ from flask import Flask, Response, redirect, request, send_from_directory
 from dashboard.biofield_report import causal_chain_report, list_tests
 from dashboard.biofield_report_html import (
     render_author_html, render_e4l_panel, render_list_html, render_report_html)
-from dashboard.biofield_e4l import scan_context as _scan_context
+from dashboard.biofield_e4l import (
+    fetch_live as _fetch_live, scan_context as _scan_context,
+    search_clients as _search_clients)
 from dashboard.biofield_narrative import (
     generate_narrative, generate_video_script, get_narrative, get_notes,
     get_video_script, save_narrative, save_notes, save_video_script)
@@ -121,7 +123,8 @@ DEFAULT_DB = os.environ.get(
 
 
 def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
-               interpret_complete=None, scan_lookup=None):
+               interpret_complete=None, scan_lookup=None, client_search=None,
+               fetch_runner=None):
     app = Flask(__name__)
     complete = complete or openai_complete
     tts = tts or elevenlabs_tts
@@ -132,6 +135,10 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     # injectable for tests. Never raises -> intake is never blocked.
     scan_lookup = scan_lookup or (
         lambda email: _scan_context(email, datetime.date.today().isoformat()))
+    # Name picker + on-demand live fetch (the local mirror lags, so selecting a client
+    # can pull their newest scan straight from the live E4L portal). Both injectable.
+    client_search = client_search or (lambda q: _search_clients(q))
+    fetch_runner = fetch_runner  # None -> fetch_live uses the real scraper+parser
 
     def _report_for(cx, test_id):
         return (authored_report(cx, test_id) if str(test_id).startswith("a")
@@ -223,6 +230,34 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         with sqlite3.connect(db_path) as cx:
             ctx, _ = _e4l(cx, test_id)
         return {"e4l": ctx, "html": render_e4l_panel(ctx)}
+
+    @app.route("/api/e4l/clients")
+    def api_e4l_clients():
+        return {"clients": client_search(request.args.get("q", ""))}
+
+    @app.route("/author/<test_id>/e4l/refresh", methods=["POST"])
+    def author_e4l_refresh(test_id):
+        """Pull this client's newest scan from the LIVE E4L portal, then re-read the
+        panel. Synchronous (localhost + threaded server -> no gateway timeout); the
+        browser shows a spinner while it runs (~15-20s for the Playwright login)."""
+        body = request.get_json(silent=True) or {}
+        client_id = body.get("client_id")
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+        client = rep.get("client") or {}
+        email = client.get("email") or ""
+        if client_id is None and not email:
+            return {"ok": False, "error": "no client selected yet",
+                    "newer": False, "e4l": scan_lookup(""),
+                    "html": render_e4l_panel(scan_lookup(""))}
+        before = scan_lookup(email)
+        res = _fetch_live(client_id=client_id, name=client.get("name"), runner=fetch_runner)
+        after = scan_lookup(email)
+        newer = bool(after.get("found") and (
+            not before.get("found")
+            or (after.get("scan_date") or "") > (before.get("scan_date") or "")))
+        return {"ok": bool(res.get("ok")), "error": res.get("error"),
+                "newer": newer, "e4l": after, "html": render_e4l_panel(after)}
 
     @app.route("/author/<test_id>/row", methods=["POST"])
     def author_row_add(test_id):

@@ -205,6 +205,54 @@ function setE4L(j){if(j&&j.html!==undefined)document.getElementById('e4lpanel').
 async function loadE4L(){try{setE4L(await (await fetch('/author/__TID__/e4l')).json())}catch(e){}}
 async function saveHeader(){const j=await post('/author/__TID__/header',
  {name:val('h_name'),email:val('h_email'),date:val('h_date')});astat('Header saved.');setE4L(j)}
+// --- E4L client picker: name autocomplete -> email (dropdown if duplicates) -> date
+var E4L_CLIENT_ID=null;
+function _esc(s){var e=document.createElement('div');e.textContent=(s==null?'':s);return e.innerHTML}
+function _today(){return new Date().toISOString().slice(0,10)}
+function hideDD(){var d=document.getElementById('h_dd');if(d){d.style.display='none';d.innerHTML='';d._clients=null;d._emails=null}}
+async function nameSearch(){
+ var q=val('h_name'),d=document.getElementById('h_dd');
+ if(!q||q.length<2){hideDD();return}
+ try{var cs=((await (await fetch('/api/e4l/clients?q='+encodeURIComponent(q))).json()).clients)||[];
+  if(!cs.length){hideDD();return}
+  d.innerHTML=cs.map(function(c,i){
+   var n=c.emails?c.emails.length:0;
+   var sub=n>1?(' <span class=food>('+n+' emails)</span>'):(n==1?(' <span class=food>'+_esc(c.emails[0].email)+'</span>'):'');
+   return '<div class=ddi data-i="'+i+'">'+_esc(c.name)+sub+'</div>'}).join('');
+  d._clients=cs;d.style.display='block'}catch(e){hideDD()}
+}
+function showEmailPicker(emails){
+ var d=document.getElementById('h_dd');
+ d.innerHTML='<div class=food style="padding:5px 10px">Two clients share this name &mdash; pick the email:</div>'+
+  emails.map(function(e,i){return '<div class=ddi data-ei="'+i+'">'+_esc(e.email)+
+   (e.last_scan_date?(' <span class=food>(last scan '+_esc(e.last_scan_date)+')</span>'):'')+'</div>'}).join('');
+ d._emails=emails;d.style.display='block';
+}
+function pickName(c){
+ set('h_name',c.name);
+ if(!val('h_date'))set('h_date',_today());
+ if(!c.emails||c.emails.length<=1){var em=(c.emails&&c.emails[0])||{};set('h_email',em.email||'');
+  E4L_CLIENT_ID=em.client_id!=null?em.client_id:null;hideDD();afterClientSelected()}
+ else{showEmailPicker(c.emails)}
+}
+function pickEmail(e){set('h_email',e.email);E4L_CLIENT_ID=e.client_id!=null?e.client_id:null;hideDD();afterClientSelected()}
+async function afterClientSelected(){set('h_client_id',E4L_CLIENT_ID==null?'':E4L_CLIENT_ID);await saveHeader();checkE4L()}
+document.addEventListener('click',function(ev){
+ var d=document.getElementById('h_dd');if(!d)return;
+ var it=ev.target.closest?ev.target.closest('.ddi'):null;
+ if(it&&d.contains(it)){
+  if(it.dataset.ei!==undefined&&d._emails){pickEmail(d._emails[+it.dataset.ei])}
+  else if(it.dataset.i!==undefined&&d._clients){pickName(d._clients[+it.dataset.i])}
+ }else if(!(ev.target.id==='h_name')){hideDD()}
+});
+async function checkE4L(){
+ var s=document.getElementById('e4lchk');if(s)s.textContent='Checking E4L for a newer scan\\u2026';
+ try{var cid=val('h_client_id');
+  var j=await post('/author/__TID__/e4l/refresh',{client_id:cid?Number(cid):(E4L_CLIENT_ID!=null?E4L_CLIENT_ID:null)});
+  setE4L(j);var s2=document.getElementById('e4lchk');
+  if(s2)s2.textContent=j.ok?(j.newer?'\\u2191 Newer scan pulled.':'\\u2713 Up to date.'):('E4L check failed: '+((j.error||'error')+'').slice(0,120));
+ }catch(e){var s3=document.getElementById('e4lchk');if(s3)s3.textContent='E4L check failed.'}
+}
 async function addRow(){var b=rowVals('new');if(!b.head&&!b.remedy){astat('Enter a stress and a remedy.');return}
  await post('/author/__TID__/row',b);location.reload()}
 async function saveRow(rid){await post('/author/__TID__/row/'+rid,rowVals('r'+rid));astat('Row saved.')}
@@ -320,9 +368,12 @@ def render_e4l_panel(ctx):
     body = f"<ol style='margin:8px 0 0;padding-left:20px'>{items}</ol>" if items else ""
     note = ("<div class=food style='margin-top:6px'>Reference only &mdash; your spoken "
             "testing fills the chain.</div>") if ctx.get("found") else ""
+    check = ("<div class=btnrow style='margin-top:8px'>"
+             "<button class='btn ghost' onclick=checkE4L()>Check E4L now</button>"
+             "<span id=e4lchk class=food></span></div>")
     return (f"<div class=card style='border-left:3px solid {color}'>"
             "<div class=food style='text-transform:uppercase;font-size:11px;letter-spacing:.08em'>"
-            f"Recent E4L voice scan</div>{head}{sub}{body}{note}</div>")
+            f"Recent E4L voice scan</div>{head}{sub}{body}{note}{check}</div>")
 
 
 def _depth_select(rid, side, current, depth_values):
@@ -342,8 +393,17 @@ def render_author_html(report, depth_values=None, transcript=""):
             "<div class=btnrow><button class=btn onclick=confirmAll()>&#10003; Confirm all rows</button>"
             "<button class='btn ghost' onclick=delTest()>Delete test</button></div>")
     hdr = (
+        "<style>.dd{position:absolute;top:100%;left:0;display:none;background:var(--card);"
+        "border:1px solid var(--line);border-radius:6px;margin-top:2px;min-width:320px;"
+        "max-width:520px;max-height:280px;overflow:auto;z-index:50}"
+        ".ddi{padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--line)}"
+        ".ddi:hover{background:rgba(255,255,255,.06)}</style>"
         "<div class=card>"
-        f"<label>Client name</label><input id=h_name value=\"{_e(c.get('name') or '')}\" style='width:280px'>"
+        "<input type=hidden id=h_client_id value=''>"
+        "<label>Client name</label>"
+        "<span style='position:relative;display:inline-block'>"
+        f"<input id=h_name autocomplete=off oninput=nameSearch() value=\"{_e(c.get('name') or '')}\" style='width:280px'>"
+        "<div id=h_dd class=dd></div></span>"
         f"<label>Email</label><input id=h_email value=\"{_e(c.get('email') or '')}\" style='width:280px'>"
         f"<label>Date</label><input id=h_date value=\"{_e(report.get('date') or '')}\" style='width:160px'>"
         "<div class=btnrow><button class=btn onclick=saveHeader()>Save header</button>"

@@ -12,6 +12,7 @@ the vault tool `02 Skills/e4l_synthesis.py`, which is not importable by this app
 """
 import datetime
 import os
+import subprocess
 import sqlite3
 
 
@@ -136,3 +137,85 @@ def scan_context(email, today, *, db_path=None, window_days=14, limit=12):
     return {"status": status, "found": True, "scan_id": scan["scan_id"],
             "scan_date": scan["scan_date"], "days_ago": days, "fresh": fresh,
             "window_days": window_days, "findings": findings, "message": message}
+
+
+# --- Client name picker -----------------------------------------------------
+
+def search_clients(q, *, db_path=None, limit=20):
+    """Match e4l_clients by name (or email substring) for the intake autocomplete.
+    Groups each NAME's distinct emails so a same-name/different-email client is
+    pickable. Returns [] for a blank query or missing DB (never raises):
+      [{"name": str, "emails": [{"email", "client_id", "last_scan_date"}, ...]}]
+    Name-groups are capped at `limit` (ordered by name)."""
+    q = (q or "").strip()
+    if not q:
+        return []
+    cx = _connect_ro(_db_path(db_path))
+    if cx is None:
+        return []
+    like = f"%{q}%"
+    try:
+        rows = cx.execute(
+            """SELECT c.client_id, c.name, c.email,
+                      (SELECT MAX(s.scan_date) FROM e4l_scans s
+                         WHERE s.client_id = c.client_id) AS last_scan_date
+               FROM e4l_clients c
+               WHERE c.name LIKE ? COLLATE NOCASE OR c.email LIKE ? COLLATE NOCASE
+               ORDER BY c.name""", (like, like)).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        cx.close()
+    groups, order = {}, []
+    for r in rows:
+        name = (r["name"] or "").strip() or "(unnamed)"
+        email = (r["email"] or "").strip()
+        if name not in groups:
+            if len(order) >= limit:
+                continue
+            groups[name] = []
+            order.append(name)
+        if email and not any(e["email"] == email for e in groups[name]):
+            groups[name].append({"email": email, "client_id": r["client_id"],
+                                 "last_scan_date": r["last_scan_date"]})
+    return [{"name": n, "emails": groups[n]} for n in order]
+
+
+# --- On-demand live E4L fetch ----------------------------------------------
+
+def _vault_dir():
+    return os.path.expanduser(os.environ.get("E4L_VAULT", "~/AI-Training"))
+
+
+def _default_fetch_runner(client_id=None, name=None):
+    """Pull this one client's NEW scans from the LIVE E4L portal, then parse them
+    into e4l.db — the same two vault steps the daily cron runs, minus the Pinecone
+    vectorize (not needed for the biofield panel). Inherits the process env, so
+    E4L_USERNAME/E4L_PASSWORD must already be present (the app runs under `doppler
+    run`). Raises on a non-zero exit (fetch_live converts that to {"ok": False})."""
+    vault = _vault_dir()
+    scraper = os.path.join(vault, "02 Skills", "scrape-e4l-http.py")
+    parser = os.path.join(vault, "02 Skills", "parse-e4l-scans.py")
+    sel = (["--client", str(client_id)] if client_id is not None
+           else ["--client-name", str(name)])
+    subprocess.run(["python3", scraper, *sel], check=True, capture_output=True,
+                   text=True, timeout=180)
+    subprocess.run(["python3", parser], check=True, capture_output=True,
+                   text=True, timeout=120)
+    return {"ok": True}
+
+
+def fetch_live(client_id=None, name=None, *, runner=None):
+    """Trigger an on-demand live fetch+parse for one client. `runner` is injectable
+    so tests never hit the portal. Never raises — a scraper/login failure comes back
+    as {"ok": False, "error": ...}."""
+    if client_id is None and not (name or "").strip():
+        return {"ok": False, "error": "no client identifier (client_id or name)"}
+    runner = runner or _default_fetch_runner
+    try:
+        out = runner(client_id=client_id, name=name) or {}
+        return {"ok": bool(out.get("ok", True)), **{k: v for k, v in out.items() if k != "ok"}}
+    except subprocess.CalledProcessError as e:
+        return {"ok": False, "error": (e.stderr or str(e))[:300]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
