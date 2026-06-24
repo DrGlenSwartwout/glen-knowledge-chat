@@ -41,6 +41,11 @@ def test_author_page_has_session_recording_ui():
     assert "sessText" in html                  # live transcript box
 
 
+def test_author_page_prefills_saved_transcript():
+    html = render_author_html(_report(), transcript="BSI 21 phase 2 toxicity head and tail")
+    assert "BSI 21 phase 2 toxicity head and tail" in html   # persists across refresh
+
+
 def test_list_html_shows_authored_and_new_button():
     html = render_list_html(
         tests=[{"test_id": "10", "name": "Lewis", "email": "l@x.com",

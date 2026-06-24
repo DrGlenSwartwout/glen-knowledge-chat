@@ -157,7 +157,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         with sqlite3.connect(db_path) as cx:
             rep = authored_report(cx, test_id)
             dv = dimension_values(cx, DEPTH_KEY)
-        return Response(render_author_html(rep, dv), mimetype="text/html")
+            transcript = get_notes(cx, test_id)
+        return Response(render_author_html(rep, dv, transcript), mimetype="text/html")
 
     @app.route("/author/<test_id>/depth", methods=["POST"])
     def author_depth(test_id):
@@ -238,8 +239,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         if not txt:
             return {"ok": True, "skipped": "empty"}
         with sqlite3.connect(db_path) as cx:
-            existing = get_notes(cx, test_id)
-            save_notes(cx, test_id, (existing + "\n\n" + txt).strip() if existing else txt)
+            save_notes(cx, test_id, txt)  # box holds the full transcript -> replace
         return {"ok": True}
 
     @app.route("/author/<test_id>/interpret", methods=["POST"])

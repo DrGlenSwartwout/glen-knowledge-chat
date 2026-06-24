@@ -203,6 +203,7 @@ function rstat(t){document.getElementById('rstat').textContent=t}
 var _mr,_dg,_sess='';
 async function recStart(){
  rstat('Getting token...');
+ _sess=(document.getElementById('sessText').value||'');
  var t;try{t=await (await fetch('/api/deepgram-token')).json()}catch(e){rstat('Token fetch failed: '+e);return}
  if(!t.key){rstat('No Deepgram key: '+(t.error||''));return}
  var stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}
@@ -275,7 +276,7 @@ def _depth_select(rid, side, current, depth_values):
             f"style='font-size:12px;max-width:170px'>{opts}</select>")
 
 
-def render_author_html(report, depth_values=None):
+def render_author_html(report, depth_values=None, transcript=""):
     tid = _e(report.get("test_id") or "")
     c = report.get("client") or {}
     head = (f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
@@ -330,7 +331,8 @@ def render_author_html(report, depth_values=None):
         "<button class=btn onclick=interpret()>Interpret &rarr; fill fields</button>"
         "<span id=rstat class=food></span></div>"
         "<div class=food><em id=interim></em></div>"
-        "<textarea id=sessText rows=6 placeholder='Live transcript appears here as you speak...'></textarea>")
+        f"<textarea id=sessText rows=6 placeholder='Live transcript appears here as you speak..."
+        f"'>{_e(transcript)}</textarea>")
     return _page("Edit Biofield Test",
                  head + hdr + table + session + _AUTHOR_JS.replace("__TID__", tid))
 
