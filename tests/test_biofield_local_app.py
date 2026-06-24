@@ -103,6 +103,24 @@ def test_authoring_flow(tmp_path):
     assert cat.status_code == 200 and "catalog" in cat.get_json()
 
 
+def test_deepgram_token_endpoint(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    _seed(db)
+    client = create_app(db, deepgram_token=lambda: "tok-123").test_client()
+    r = client.get("/api/deepgram-token")
+    assert r.status_code == 200 and r.get_json()["key"] == "tok-123"
+
+
+def test_session_transcript_saves_to_notes(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    _seed(db)
+    client = create_app(db).test_client()
+    tid = client.post("/author/new").headers["Location"].rstrip("/").rsplit("/", 1)[-1]
+    r = client.post(f"/author/{tid}/session", json={"transcript": "BSI 21 phase 2 toxicity"})
+    assert r.status_code == 200 and r.get_json()["ok"]
+    assert b"BSI 21 phase 2 toxicity" in client.get("/test/" + tid).data  # -> notes -> narrative
+
+
 def test_depth_match_flagged_in_report(tmp_path):
     db = str(tmp_path / "chat_log.db")
     _seed(db)

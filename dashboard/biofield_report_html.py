@@ -199,6 +199,33 @@ async function suggest(p){var s=val(p+'_head');var box=document.getElementById(p
   box.appendChild(b);box.appendChild(document.createTextNode(' '))})}
 async function saveDepth(el){await post('/author/__TID__/depth',
  {rid:el.dataset.rid,side:el.dataset.side,rank:el.value});astat('Depth saved.')}
+function rstat(t){document.getElementById('rstat').textContent=t}
+var _mr,_dg,_sess='';
+async function recStart(){
+ var t=await (await fetch('/api/deepgram-token')).json();
+ if(!t.key){rstat('No Deepgram key: '+(t.error||''));return}
+ var stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}
+ catch(e){rstat('Mic blocked: '+e);return}
+ _dg=new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2-medical&smart_format=true'+
+  '&punctuate=true&interim_results=true',['token',t.key]);
+ _dg.onopen=function(){_mr=new MediaRecorder(stream,{mimeType:'audio/webm'});
+  _mr.ondataavailable=function(e){if(e.data.size>0&&_dg.readyState===1)_dg.send(e.data)};
+  _mr.start(250);rstat('Recording \\u2014 speak naturally.')};
+ _dg.onmessage=function(m){var d=JSON.parse(m.data);
+  var a=d.channel&&d.channel.alternatives&&d.channel.alternatives[0];if(!a)return;
+  if(d.is_final&&a.transcript){_sess+=(_sess?' ':'')+a.transcript;
+   document.getElementById('sessText').value=_sess;document.getElementById('interim').textContent=''}
+  else if(a.transcript){document.getElementById('interim').textContent=a.transcript}};
+ _dg.onerror=function(){rstat('Connection error.')};
+ _dg.onclose=function(){if(_mr&&_mr.state!=='inactive')_mr.stop()};
+}
+async function recStop(){
+ if(_mr&&_mr.state!=='inactive')_mr.stop();
+ if(_mr&&_mr.stream)_mr.stream.getTracks().forEach(function(t){t.stop()});
+ if(_dg&&_dg.readyState===1){_dg.send(JSON.stringify({type:'CloseStream'}));_dg.close()}
+ rstat('Saving\\u2026');
+ await post('/author/__TID__/session',{transcript:document.getElementById('sessText').value});
+ rstat('Saved to notes; it feeds the narrative.')}
 async function loadLists(){
  try{const v=await (await fetch('/api/vocab?limit=500')).json();
   document.getElementById('vocab').innerHTML=(v.vocab||[]).map(opt).join('')}catch(e){}
@@ -274,7 +301,19 @@ def render_author_html(report, depth_values=None):
              "<th>Depth of penetration</th><th></th><th></th></tr>"
              + rows + addr + "</table>"
              "<datalist id=vocab></datalist><datalist id=catalog></datalist>")
-    return _page("Edit Biofield Test", head + hdr + table + _AUTHOR_JS.replace("__TID__", tid))
+    session = (
+        "<h2>Live session (voice)</h2>"
+        "<p class=sub>Record yourself narrating the test in your own voice &mdash; the live "
+        "transcript saves to this test's notes and feeds the narrative. Wear a lav/AirPods for "
+        "the codes.</p>"
+        "<div class=btnrow>"
+        "<button class=btn onclick=recStart()>&#9679; Record</button>"
+        "<button class='btn ghost' onclick=recStop()>&#9632; Stop &amp; save</button>"
+        "<span id=rstat class=food></span></div>"
+        "<div class=food><em id=interim></em></div>"
+        "<textarea id=sessText rows=6 placeholder='Live transcript appears here as you speak...'></textarea>")
+    return _page("Edit Biofield Test",
+                 head + hdr + table + session + _AUTHOR_JS.replace("__TID__", tid))
 
 
 def render_list_html(tests, q="", authored=None):

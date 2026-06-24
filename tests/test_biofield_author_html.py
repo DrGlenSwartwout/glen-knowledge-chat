@@ -32,6 +32,14 @@ def test_author_page_escapes_free_text():
     assert "&lt;script&gt;" in html
 
 
+def test_author_page_has_session_recording_ui():
+    html = render_author_html(_report())
+    assert "Record" in html
+    assert "/api/deepgram-token" in html      # browser fetches a short-lived token
+    assert "/author/a1/session" in html        # transcript save endpoint
+    assert "sessText" in html                  # live transcript box
+
+
 def test_list_html_shows_authored_and_new_button():
     html = render_list_html(
         tests=[{"test_id": "10", "name": "Lewis", "email": "l@x.com",

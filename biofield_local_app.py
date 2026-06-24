@@ -78,14 +78,39 @@ def elevenlabs_tts(text):
     r.raise_for_status()
     return r.content
 
+
+def deepgram_temp_key():
+    """Mint a short-lived (1h) Deepgram key so the long-lived key never reaches the
+    browser. Needs DEEPGRAM_API_KEY in env (run via `doppler run`)."""
+    import requests
+    h = {"Authorization": "Token " + os.environ["DEEPGRAM_API_KEY"]}
+    pid = requests.get("https://api.deepgram.com/v1/projects", headers=h,
+                       timeout=20).json()["projects"][0]["project_id"]
+    r = requests.post(f"https://api.deepgram.com/v1/projects/{pid}/keys", headers=h, timeout=20,
+                      json={"comment": "biofield-live-session", "scopes": ["usage:write"],
+                            "time_to_live_in_seconds": 3600})
+    r.raise_for_status()
+    return r.json()["key"]
+
+
+def deepgram_browser_token():
+    """Token for the browser's Deepgram socket. Prefer a short-lived key; fall back to
+    the env key if this key lacks key-management scope (fine: localhost-only tool, the
+    token only ever reaches Glen's own browser)."""
+    try:
+        return deepgram_temp_key()
+    except Exception:
+        return os.environ["DEEPGRAM_API_KEY"]
+
 DEFAULT_DB = os.environ.get(
     "BIOFIELD_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_log.db"))
 
 
-def create_app(db_path=DEFAULT_DB, complete=None, tts=None):
+def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None):
     app = Flask(__name__)
     complete = complete or openai_complete
     tts = tts or elevenlabs_tts
+    deepgram_token = deepgram_token or deepgram_browser_token
     with sqlite3.connect(db_path) as _cx:
         seed_dimensions(_cx)
 
@@ -185,6 +210,23 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None):
     def api_suggest():
         with sqlite3.connect(db_path) as cx:
             return {"suggestions": stress_suggestions(cx, request.args.get("stress", ""))}
+
+    @app.route("/api/deepgram-token")
+    def api_deepgram_token():
+        try:
+            return {"key": deepgram_token()}
+        except Exception as e:  # no key / network / Deepgram error
+            return {"error": str(e)[:200]}
+
+    @app.route("/author/<test_id>/session", methods=["POST"])
+    def author_session(test_id):
+        txt = ((request.get_json(silent=True) or {}).get("transcript") or "").strip()
+        if not txt:
+            return {"ok": True, "skipped": "empty"}
+        with sqlite3.connect(db_path) as cx:
+            existing = get_notes(cx, test_id)
+            save_notes(cx, test_id, (existing + "\n\n" + txt).strip() if existing else txt)
+        return {"ok": True}
 
     @app.route("/test/<test_id>/notes", methods=["POST"])
     def notes_save(test_id):
