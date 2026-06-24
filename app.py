@@ -6836,9 +6836,12 @@ def init_membership_tables(cx):
     """)
 
 
+from dashboard import coaching as _coaching  # noqa: E402 (Phase 2B coaching windows)
+
 def _init_membership_tables():
     with sqlite3.connect(LOG_DB) as cx:
         init_membership_tables(cx)
+        _coaching.init_coaching_table(cx)
 
 _init_membership_tables()
 
@@ -6985,6 +6988,71 @@ def _active_membership_for_email(email):
     except Exception:
         d["days_remaining"] = 0
     return d
+
+
+def _membership_active_at(cx, email, when_iso):
+    """True iff a memberships row's paid span [granted_at, expires_at] covers `when_iso`.
+    expires_at is a monotonic paid-through high-water mark (Phase 2A), so this
+    reconstructs 'was paid-through on date D'. NULL expires_at = open-ended grant."""
+    if not (email and when_iso):
+        return False
+    try:
+        when = datetime.fromisoformat(when_iso.rstrip("Z"))
+    except Exception:
+        return False
+    for granted_at, expires_at in cx.execute(
+            "SELECT granted_at, expires_at FROM memberships WHERE email=?", (email,)).fetchall():
+        try:
+            g = datetime.fromisoformat((granted_at or "").rstrip("Z"))
+        except Exception:
+            continue
+        if g > when:
+            continue
+        if not expires_at:
+            return True
+        try:
+            if datetime.fromisoformat(expires_at.rstrip("Z")) >= when:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _find_qualifying_order_for_coaching(cx, email):
+    """Most-recent remedy-program order for `email` that is eligible (member active
+    at its date) and has not already opened a coaching window. Returns order id or None."""
+    if not email:
+        return None
+    placeholders = ",".join("?" * len(_coaching.QUALIFYING_SOURCES))
+    rows = cx.execute(
+        f"SELECT id, created_at FROM orders WHERE email=? AND status!='cancelled' "
+        f"AND source IN ({placeholders}) ORDER BY datetime(created_at) DESC",
+        (email, *sorted(_coaching.QUALIFYING_SOURCES))).fetchall()
+    for r in rows:
+        oid = r[0] if not isinstance(r, sqlite3.Row) else r["id"]
+        created = r[1] if not isinstance(r, sqlite3.Row) else r["created_at"]
+        if _coaching.window_for_order(cx, oid):
+            continue
+        if _membership_active_at(cx, email, created):
+            return oid
+    return None
+
+
+def _open_coaching_for_order(cx, email, order_id, source):
+    """Validate + open a coaching window for one remedy-program order.
+    Returns {ok, ...}: success -> created+ends_at; failure -> reason (+offer_99 if ineligible)."""
+    if (source or "") not in _coaching.QUALIFYING_SOURCES:
+        return {"ok": False, "reason": "not_qualifying"}
+    row = cx.execute("SELECT created_at FROM orders WHERE id=? AND email=?",
+                     (order_id, email)).fetchone()
+    if not row:
+        return {"ok": False, "reason": "not_found"}
+    created_at = row[0] if not isinstance(row, sqlite3.Row) else row["created_at"]
+    if not _membership_active_at(cx, email, created_at):
+        return {"ok": False, "reason": "ineligible", "offer_99": True}
+    res = _coaching.open_window(cx, email=email, order_id=order_id,
+                                days=_coaching.WINDOW_DAYS, source="self_serve")
+    return {"ok": True, "created": res["created"], "ends_at": res["window"]["ends_at"]}
 
 
 def _member_context_for_email(email, *, query_log_n=5):
