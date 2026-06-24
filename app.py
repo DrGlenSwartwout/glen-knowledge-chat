@@ -1537,6 +1537,11 @@ def begin_quiz_optin():
 
     # capture email + ToS (free_tier) and mark the assessment gate
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        # `state` is captured from the ToS unlock so the response reports the
+        # free_tier rung the visitor just earned. The quiz gate below advances
+        # the PERSISTED rung to `assess` (monotonic); that elevated rung is
+        # intentionally not reflected in this response (it only redirects to
+        # the result page).
         state = begin_funnel.record_unlock(
             cx, session_id=session_id, trigger="tos", email=email,
             first_name=first_name, tos=True, ref_slug=ref_slug,
