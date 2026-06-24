@@ -98,6 +98,33 @@ def test_fulfill_creates_membership_and_grant(monkeypatch, tmp_path):
     assert app_module._active_membership_for_email("t@x.com") is not None
 
 
+def test_fulfill_records_one_dollar_trial_order(monkeypatch, tmp_path):
+    # The $1 trial should also land a captured-charge order so it shows in the
+    # Payments ledger — digital unlock, status 'done' (no fulfillment task).
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    from dashboard import orders as O, payments as P, stripe_pay
+    with sqlite3.connect(db) as cx:
+        O.init_orders_table(cx)
+    monkeypatch.setattr(stripe_pay, "get_session",
+        lambda s: {"metadata": {"kind": "biofield_trial", "email": "t@x.com"},
+                   "payment_intent": "pi_1", "amount_total": 100})
+    monkeypatch.setattr(stripe_pay, "get_payment_intent",
+        lambda pi: {"customer": "cus_1", "payment_method": "pm_1",
+                    "status": "succeeded", "amount_received": 100})
+    app_module._fulfill_biofield_trial("cs_trial")
+    app_module._fulfill_biofield_trial("cs_trial")  # idempotent — no duplicate order
+    with sqlite3.connect(db) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute("SELECT external_ref, total_cents, status FROM orders "
+                          "WHERE source='biofield_trial'").fetchall()
+        pays = P.list_payments(cx)
+    assert len(rows) == 1
+    assert rows[0]["external_ref"] == "pi_1" and rows[0]["total_cents"] == 100
+    assert rows[0]["status"] == "done"
+    trial = next(p for p in pays if p["external_ref"] == "pi_1")
+    assert trial["amount_cents"] == 100 and trial["pay_status"] == "paid"
+
+
 def test_fulfill_idempotent(monkeypatch, tmp_path):
     app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
     _mock_paid_trial(app_module, monkeypatch)

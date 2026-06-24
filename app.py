@@ -5189,7 +5189,16 @@ def _fulfill_biofield_trial(session_id):
                  datetime.now(timezone.utc).isoformat(),
                  (datetime.now(timezone.utc) + timedelta(days=MEMBERSHIP_CANCEL_TTL_DAYS)).isoformat()))
             _bc.commit()
-        # Lock released. Send the welcome / one-click-cancel email best-effort: it must
+        # Lock released. Record the $1 charge as a captured-charge order so it shows in
+        # the Payments ledger (digital unlock -> status 'done', not a fulfillment task).
+        # Best-effort + idempotent on (source, external_ref); never undoes the membership.
+        try:
+            _trial_cents = int(sess.get("amount_total") or pi.get("amount_received") or 0)
+            _ingest_order(source="biofield_trial", external_ref=pi_id, email=bt_email,
+                          total_cents=_trial_cents, channel="retail", status="done")
+        except Exception as _oe:
+            print(f"[biofield-trial] order-ledger record failed: {_oe!r}", flush=True)
+        # Send the welcome / one-click-cancel email best-effort: it must
         # never undo the committed membership. Inside the won-claim path, so exactly once.
         try:
             if bt_email and PUBLIC_BASE_URL:
@@ -22426,6 +22435,7 @@ import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals
 import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
 import dashboard.coaching as _coaching_actions  # noqa: F401 (registers coaching.grant action)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
+import dashboard.payments as _bos_payments  # noqa: F401 (Stripe payments ledger — read-only)
 import dashboard.crm as _bos_crm  # noqa: F401 (registers the CRM home signal)
 import dashboard.module_signals as _bos_module_signals  # noqa: F401 (registers 5 cell signals)
 import dashboard.products as _bos_products  # noqa: F401 (registers products signal + action; replaces module_signals' products signal)
@@ -22505,9 +22515,12 @@ def _normalize_ship_address(addr, fallback_name=""):
 
 def _ingest_order(*, source, external_ref, email="", name="", phone="",
                   items=None, total_cents=0, address=None, channel="retail",
-                  get_cents=0, discount_cents=0, points_redeemed_cents=0, shipping_cents=0):
+                  get_cents=0, discount_cents=0, points_redeemed_cents=0, shipping_cents=0,
+                  status="new"):
     """Best-effort: record an order into the BOS orders table. Never raises into
-    a checkout path. get_cents = absorbed Hawai'i GET owed (recorded, not charged)."""
+    a checkout path. get_cents = absorbed Hawai'i GET owed (recorded, not charged).
+    status defaults to 'new' (enters fulfillment); pass 'done' for digital charges
+    with nothing to ship (e.g. the $1 biofield trial membership unlock)."""
     try:
         cx = _sqlite3.connect(LOG_DB)
         try:
@@ -22517,7 +22530,7 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                 address=address or {}, channel=channel, get_cents=int(get_cents or 0),
                 discount_cents=int(discount_cents or 0),
                 points_redeemed_cents=int(points_redeemed_cents or 0),
-                shipping_cents=int(shipping_cents or 0))
+                shipping_cents=int(shipping_cents or 0), status=status)
         finally:
             cx.close()
     except Exception as e:
@@ -23162,6 +23175,35 @@ def bos_cert_page():
     resp = send_from_directory(STATIC, "console-cert.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+@app.route("/console/payments")
+def bos_payments_page():
+    resp = send_from_directory(STATIC, "console-payments.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/payments", methods=["GET"])
+def bos_payments_list():
+    """Read-only Stripe payments ledger: captured charges (one-time + subscription)
+    from the orders table, plus recent stripe_failures (declined/failed charges)."""
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        try:
+            limit = min(int(request.args.get("limit", 200) or 200), 1000)
+        except (TypeError, ValueError):
+            limit = 200
+        rows = _bos_payments.list_payments(
+            cx, source=request.args.get("source"), limit=limit)
+        summary = _bos_payments.payments_summary(cx)
+        failures = _bos_payments.recent_failures(cx)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "data": rows, "summary": summary, "failures": failures})
 
 
 @app.route("/api/products")
