@@ -1246,7 +1246,7 @@
       }
       if (data.founding){
         var fc = document.getElementById('founding-counter');
-        fc.textContent = data.founding.remaining + ' of ' + data.founding.cap + ' founding bottles remaining';
+        fc.textContent = (data.founding.remaining ?? 0) + ' of ' + (data.founding.cap ?? 0) + ' founding bottles remaining';
         fc.style.display = 'block';
       }
     }
