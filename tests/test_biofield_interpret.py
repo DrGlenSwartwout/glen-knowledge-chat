@@ -44,6 +44,17 @@ def test_interpret_tolerates_messy_llm_output():
     assert out["layers"][0]["remedy"] == "Sterol Max"
 
 
+def test_interpret_splits_spoken_dose_from_remedy():
+    def fake(system, user):
+        return json.dumps({"layers": [
+            {"layer": 2, "head": "Toxicity", "most_affected": "Toxicity",
+             "remedy": "Neuro-Magnesium", "dosage": "one scoop", "frequency": "twice a day",
+             "timing": ""}]})
+    l = interpret_transcript("toxicity balanced by neuromagnesium one scoop twice a day", fake)["layers"][0]
+    assert l["remedy"] == "Neuro-Magnesium"
+    assert l["dosage"] == "one scoop" and l["frequency"] == "twice a day"
+
+
 def test_interpret_empty_transcript_returns_empty():
     out = interpret_transcript("   ", lambda s, u: '{"layers":[]}')
     assert out["layers"] == []

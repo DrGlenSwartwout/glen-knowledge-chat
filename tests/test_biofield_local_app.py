@@ -133,7 +133,7 @@ def test_interpret_fills_chain_rows_from_transcript(tmp_path):
             {"layer": 2, "head": "Toxicity", "most_affected": "Toxicity",
              "remedy": "Neuro-Magnesium"}]})
 
-    client = create_app(db, complete=fake).test_client()
+    client = create_app(db, interpret_complete=fake).test_client()
     tid = client.post("/author/new").headers["Location"].rstrip("/").rsplit("/", 1)[-1]
     client.post(f"/author/{tid}/session", json={"transcript": "large intestine meridian head and tail balanced by microbiome"})
     r = client.post(f"/author/{tid}/interpret", json={}).get_json()

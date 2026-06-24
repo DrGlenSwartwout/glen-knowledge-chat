@@ -65,6 +65,17 @@ def openai_complete(system, user):
     return resp.choices[0].message.content
 
 
+def openai_json(system, user):
+    """Deterministic JSON completion for the transcript interpreter (temp 0, JSON mode)."""
+    import openai
+    model = os.environ.get("BIOFIELD_NARRATIVE_MODEL", "gpt-4o")
+    resp = openai.OpenAI().chat.completions.create(
+        model=model, temperature=0, response_format={"type": "json_object"},
+        messages=[{"role": "system", "content": system},
+                  {"role": "user", "content": user}])
+    return resp.choices[0].message.content
+
+
 def elevenlabs_tts(text):
     """Render text to mp3 bytes in Glen's cloned voice. Needs ELEVENLABS_API_KEY."""
     import requests
@@ -107,11 +118,13 @@ DEFAULT_DB = os.environ.get(
     "BIOFIELD_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_log.db"))
 
 
-def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None):
+def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
+               interpret_complete=None):
     app = Flask(__name__)
     complete = complete or openai_complete
     tts = tts or elevenlabs_tts
     deepgram_token = deepgram_token or deepgram_browser_token
+    interpret_complete = interpret_complete or openai_json
     with sqlite3.connect(db_path) as _cx:
         seed_dimensions(_cx)
 
@@ -236,14 +249,17 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None)
             if not transcript.strip():
                 return {"added": 0, "error": "no transcript yet -- record a session first"}
             try:
-                result = interpret_transcript(transcript, complete)
+                result = interpret_transcript(transcript, interpret_complete)
             except Exception as e:
                 return {"error": str(e)[:200]}
             added = 0
             for l in result.get("layers", []):
-                d = remedy_dosing(cx, l["remedy"])  # best-effort exact-name dosing
+                dosage, frequency, timing = l.get("dosage", ""), l.get("frequency", ""), l.get("timing", "")
+                if not (dosage or frequency or timing):  # no spoken dose -> catalog minimum
+                    d = remedy_dosing(cx, l["remedy"])
+                    dosage, frequency, timing = d["dosage"], d["frequency"], d["timing"]
                 add_chain_row(cx, test_id, l.get("layer"), l["head"], l["most_affected"],
-                              l["remedy"], d["dosage"], d["frequency"], d["timing"])
+                              l["remedy"], dosage, frequency, timing)
                 added += 1
         return {"added": added, "header": result.get("header", "")}
 
