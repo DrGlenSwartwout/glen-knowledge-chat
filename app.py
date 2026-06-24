@@ -22358,6 +22358,7 @@ import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals
 import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
 import dashboard.coaching as _coaching_actions  # noqa: F401 (registers coaching.grant action)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
+import dashboard.payments as _bos_payments  # noqa: F401 (Stripe payments ledger — read-only)
 import dashboard.crm as _bos_crm  # noqa: F401 (registers the CRM home signal)
 import dashboard.module_signals as _bos_module_signals  # noqa: F401 (registers 5 cell signals)
 import dashboard.products as _bos_products  # noqa: F401 (registers products signal + action; replaces module_signals' products signal)
@@ -23094,6 +23095,35 @@ def bos_cert_page():
     resp = send_from_directory(STATIC, "console-cert.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+@app.route("/console/payments")
+def bos_payments_page():
+    resp = send_from_directory(STATIC, "console-payments.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/payments", methods=["GET"])
+def bos_payments_list():
+    """Read-only Stripe payments ledger: captured charges (one-time + subscription)
+    from the orders table, plus recent stripe_failures (declined/failed charges)."""
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        try:
+            limit = min(int(request.args.get("limit", 200) or 200), 1000)
+        except (TypeError, ValueError):
+            limit = 200
+        rows = _bos_payments.list_payments(
+            cx, source=request.args.get("source"), limit=limit)
+        summary = _bos_payments.payments_summary(cx)
+        failures = _bos_payments.recent_failures(cx)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "data": rows, "summary": summary, "failures": failures})
 
 
 @app.route("/api/products")

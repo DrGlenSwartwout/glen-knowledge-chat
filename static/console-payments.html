@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Payments - Business OS</title>
+<style>
+  :root { --bg:#0a150d; --surface:#111f16; --surface2:#162318; --border:#21472d;
+          --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --red:#c0432b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--cream);
+         font-family:"Open Sans",system-ui,sans-serif; padding:24px; }
+  body > :not(.op-nav-bar):not(.op-nav-sub):not(#gate):not(script):not(style) {
+    max-width:1280px; margin-left:auto; margin-right:auto; }
+  h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+
+  /* Failed-charge alert banner — top of page so declined renewals can't be missed */
+  .fail-banner { background:#2a1110; border:1px solid var(--red); border-radius:10px;
+                 padding:14px 16px; margin-bottom:22px; display:none; }
+  .fail-banner.show { display:block; }
+  .fail-banner .hd { color:var(--red); font-weight:700; font-size:14px;
+                     font-family:"Raleway",sans-serif; margin-bottom:8px;
+                     display:flex; align-items:center; gap:8px; }
+  .fail-row { font-size:12px; color:var(--cream); padding:5px 0;
+              border-top:1px solid rgba(192,67,43,.3); line-height:1.5; }
+  .fail-row:first-of-type { border-top:0; }
+  .fail-row .ctx { color:var(--gold); }
+  .fail-row .when { color:var(--muted); }
+  .fail-row .em { color:var(--muted); font-size:11px; }
+
+  .summary-strip { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:22px; }
+  .summary-tile { background:var(--surface); border:1px solid var(--border);
+                  border-radius:10px; padding:12px 18px; min-width:160px; }
+  .summary-tile .label { font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+                         color:var(--muted); margin-bottom:4px; }
+  .summary-tile .value { font-size:20px; font-weight:700; font-family:"Raleway",sans-serif; }
+
+  .filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .filters button { font-size:12px; border:1px solid var(--border); background:transparent;
+                    color:var(--muted); border-radius:14px; padding:5px 14px; cursor:pointer; }
+  .filters button:hover { border-color:var(--gold); color:var(--gold); }
+  .filters button.active { border-color:var(--gold); color:var(--gold); background:var(--surface2); }
+
+  table { width:100%; border-collapse:collapse; background:var(--surface);
+          border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  thead th { text-align:left; font-size:10px; letter-spacing:.07em; text-transform:uppercase;
+             color:var(--muted); padding:10px 14px; border-bottom:1px solid var(--border);
+             font-weight:600; }
+  tbody td { padding:11px 14px; font-size:13px; border-top:1px solid var(--border); vertical-align:top; }
+  tbody tr:hover { background:var(--surface2); }
+  td.amt { font-weight:700; font-family:"Raleway",sans-serif; white-space:nowrap; }
+  .src { display:inline-block; font-size:10px; letter-spacing:.04em; text-transform:uppercase;
+         border-radius:5px; padding:1px 7px; border:1px solid var(--border); color:var(--muted); }
+  .src.subscription { border-color:var(--gold); color:var(--gold); }
+  .pi { font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:11px; color:var(--muted); }
+  .who .nm { font-weight:600; } .who .em { color:var(--muted); font-size:12px; }
+  .when { color:var(--muted); font-size:12px; white-space:nowrap; }
+
+  #gate { position:fixed; inset:0; background:var(--bg); display:flex;
+          align-items:center; justify-content:center; }
+  #gate input { padding:10px; border-radius:8px; border:1px solid var(--border);
+                background:var(--surface); color:var(--cream); }
+  #err { color:var(--red); margin-top:16px; font-size:13px; display:none; }
+  #empty { color:var(--muted); font-size:13px; margin-top:16px; display:none; }
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="bos" data-sub="payments"></script>
+  <div id="gate"><div style="text-align:center">
+    <p style="margin-bottom:10px;color:var(--muted)">Enter console key</p>
+    <input id="key" type="password" placeholder="console key" />
+    <button onclick="unlock()" style="padding:10px 14px;margin-left:6px;border-radius:8px;border:1px solid var(--border);background:var(--gold);color:#0a150d;cursor:pointer">Unlock</button>
+  </div></div>
+
+  <h1>Payments</h1>
+  <div class="sub">Stripe charges — one-time checkouts and subscription renewals. Read-only.</div>
+
+  <div class="fail-banner" id="failBanner"></div>
+
+  <div class="summary-strip" id="summary"></div>
+
+  <div class="filters" id="filters">
+    <button data-src="" class="active" onclick="setFilter(this)">All</button>
+    <button data-src="subscription" onclick="setFilter(this)">Subscriptions</button>
+    <button data-src="membership" onclick="setFilter(this)">Coaching</button>
+    <button data-src="funnel" onclick="setFilter(this)">Funnel</button>
+  </div>
+
+  <table id="tbl" style="display:none">
+    <thead><tr>
+      <th>When</th><th>Customer</th><th>Source</th><th>Amount</th><th>Status</th><th>PaymentIntent</th>
+    </tr></thead>
+    <tbody id="board"></tbody>
+  </table>
+  <div id="err"></div>
+  <div id="empty">No Stripe payments yet.</div>
+
+<script>
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  (function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; load(); }
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function fmt(cents){ return '$'+((Number(cents)||0)/100).toFixed(2); }
+  function when(s){ if(!s) return ''; var d=new Date(s); return isNaN(d)? esc(s) : d.toLocaleString(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}); }
+
+  var curSrc = '';
+  function setFilter(btn){
+    curSrc = btn.getAttribute('data-src') || '';
+    var bs = document.querySelectorAll('#filters button');
+    for (var i=0;i<bs.length;i++) bs[i].className = (bs[i]===btn) ? 'active' : '';
+    load();
+  }
+
+  function tile(label, value){
+    return '<div class="summary-tile"><div class="label">'+esc(label)+'</div>'
+      + '<div class="value">'+esc(value)+'</div></div>';
+  }
+
+  function rowHtml(r){
+    var nm = r.name ? '<div class="nm">'+esc(r.name)+'</div>' : '';
+    var em = r.email ? '<div class="em">'+esc(r.email)+'</div>' : '';
+    var srcCls = (r.source==='subscription') ? 'src subscription' : 'src';
+    return '<tr>'
+      + '<td class="when">'+when(r.paid_at||r.created_at)+'</td>'
+      + '<td class="who">'+nm+em+'</td>'
+      + '<td><span class="'+srcCls+'">'+esc(r.source||'')+'</span></td>'
+      + '<td class="amt">'+fmt(r.amount_cents)+'</td>'
+      + '<td>'+esc(r.pay_status||'paid')+'</td>'
+      + '<td class="pi">'+esc(r.stripe_payment_intent||'—')+'</td>'
+    + '</tr>';
+  }
+
+  function renderFailures(fails){
+    var b = document.getElementById('failBanner');
+    if (!fails || !fails.length){ b.className='fail-banner'; b.innerHTML=''; return; }
+    var html = '<div class="hd">⚠️ '+fails.length+' recent card-payment failure'+(fails.length>1?'s':'')+'</div>';
+    fails.forEach(function(f){
+      html += '<div class="fail-row"><span class="ctx">'+esc(f.context||'charge')+'</span> — '
+        + esc(f.error||'') + ' <span class="when">'+when(f.created_at)+'</span>'
+        + (f.emailed_at ? ' <span class="em">(owner alerted)</span>' : '') + '</div>';
+    });
+    b.innerHTML = html; b.className = 'fail-banner show';
+  }
+
+  async function load(){
+    var errEl=document.getElementById('err'), emptyEl=document.getElementById('empty'),
+        sumEl=document.getElementById('summary'), board=document.getElementById('board'),
+        tbl=document.getElementById('tbl');
+    errEl.style.display='none'; emptyEl.style.display='none';
+
+    var q = curSrc ? ('?source='+encodeURIComponent(curSrc)) : '';
+    var r = await fetch('/api/payments'+q, {headers:hdr()});
+    if (r.status===401){ document.getElementById('gate').style.display='flex'; return; }
+    var res = await r.json();
+    if (!res.ok){
+      errEl.textContent='Error: '+esc(res.error||'unknown'); errEl.style.display='block';
+      board.innerHTML=''; sumEl.innerHTML=''; tbl.style.display='none'; return;
+    }
+    // The failures banner + summary reflect ALL payments, independent of the row filter.
+    renderFailures(res.failures);
+    var s = res.summary||{};
+    sumEl.innerHTML = tile('Captured charges', esc(s.count||0))
+      + tile('Total collected', fmt(s.total_cents));
+
+    var rows = res.data||[];
+    if (!rows.length){ tbl.style.display='none'; board.innerHTML=''; emptyEl.style.display='block'; return; }
+    board.innerHTML = rows.map(rowHtml).join('');
+    tbl.style.display='table';
+  }
+
+  if (key()){ document.getElementById('gate').style.display='none'; load(); }
+</script>
+</body>
+</html>
