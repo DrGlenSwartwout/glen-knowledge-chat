@@ -77,3 +77,61 @@ def result_for(quiz: dict, answers: dict) -> dict:
         "segment": segment_of(answers),
         "depletion": depletion_score(answers),
     }
+
+
+def init_quiz_tables(cx):
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS quiz_responses (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id  TEXT NOT NULL,
+            email       TEXT DEFAULT '',
+            quiz_id     TEXT NOT NULL,
+            answers_json TEXT NOT NULL DEFAULT '{}',
+            segment     TEXT DEFAULT '',
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )
+    """)
+    cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_quiz_resp_session_quiz "
+               "ON quiz_responses(session_id, quiz_id)")
+    cx.execute("CREATE INDEX IF NOT EXISTS idx_quiz_resp_email ON quiz_responses(email)")
+    cx.commit()
+
+
+def store_response(cx, *, session_id, quiz_id, answers: dict, email="") -> int:
+    cx.row_factory = sqlite3.Row
+    now = _now()
+    answers = answers or {}
+    seg = segment_of(answers)
+    email = (email or "").strip().lower()
+    row = cx.execute(
+        "SELECT id, email FROM quiz_responses WHERE session_id=? AND quiz_id=?",
+        (session_id, quiz_id)).fetchone()
+    if row is None:
+        cur = cx.execute(
+            "INSERT INTO quiz_responses (session_id, email, quiz_id, answers_json, "
+            "segment, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+            (session_id, email, quiz_id, json.dumps(answers), seg, now, now))
+        cx.commit()
+        return cur.lastrowid
+    keep_email = email or (row["email"] or "")
+    cx.execute(
+        "UPDATE quiz_responses SET email=?, answers_json=?, segment=?, updated_at=? WHERE id=?",
+        (keep_email, json.dumps(answers), seg, now, row["id"]))
+    cx.commit()
+    return row["id"]
+
+
+def get_response(cx, *, session_id, quiz_id) -> dict | None:
+    cx.row_factory = sqlite3.Row
+    row = cx.execute(
+        "SELECT * FROM quiz_responses WHERE session_id=? AND quiz_id=?",
+        (session_id, quiz_id)).fetchone()
+    if row is None:
+        return None
+    return {
+        "session_id": row["session_id"], "email": row["email"] or "",
+        "quiz_id": row["quiz_id"], "answers": json.loads(row["answers_json"] or "{}"),
+        "segment": row["segment"] or "", "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }

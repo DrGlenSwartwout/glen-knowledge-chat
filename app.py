@@ -30,6 +30,7 @@ from pinecone import Pinecone
 import anthropic
 import boto3 as _boto3
 import begin_funnel
+import quiz_engine
 
 # ── Slice 4 test seam ─────────────────────────────────────────────────────────
 # Tests verify member-context injection by reading this module-level variable.
@@ -6793,8 +6794,9 @@ _init_referral_tables()
 # ── /begin funnel journey-state engine ───────────────────────────────────────
 
 def _init_journey_tables():
-    with sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
         begin_funnel.init_journey_tables(cx)
+        quiz_engine.init_quiz_tables(cx)
 
 _init_journey_tables()
 
