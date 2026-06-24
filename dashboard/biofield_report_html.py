@@ -201,8 +201,10 @@ async function post(p,b){const r=await fetch(p,{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return r.json()}
 function rowVals(p){return {layer:val(p+'_layer'),head:val(p+'_head'),most_affected:val(p+'_most'),
  remedy:val(p+'_remedy'),dosage:val(p+'_dosage'),frequency:val(p+'_frequency'),timing:val(p+'_timing')}}
-async function saveHeader(){await post('/author/__TID__/header',
- {name:val('h_name'),email:val('h_email'),date:val('h_date')});astat('Header saved.')}
+function setE4L(j){if(j&&j.html!==undefined)document.getElementById('e4lpanel').innerHTML=j.html}
+async function loadE4L(){try{setE4L(await (await fetch('/author/__TID__/e4l')).json())}catch(e){}}
+async function saveHeader(){const j=await post('/author/__TID__/header',
+ {name:val('h_name'),email:val('h_email'),date:val('h_date')});astat('Header saved.');setE4L(j)}
 async function addRow(){var b=rowVals('new');if(!b.head&&!b.remedy){astat('Enter a stress and a remedy.');return}
  await post('/author/__TID__/row',b);location.reload()}
 async function saveRow(rid){await post('/author/__TID__/row/'+rid,rowVals('r'+rid));astat('Row saved.')}
@@ -277,6 +279,7 @@ async function loadLists(){
   document.getElementById('catalog').innerHTML=(c.catalog||[]).map(function(x){return opt(x.name||'')}).join('')}catch(e){}
 }
 loadLists();
+loadE4L();
 </script>"""
 
 
@@ -292,6 +295,34 @@ def _row_inputs(p, l):
         f'<td><input id="{p}_dosage" value="{g("dosage")}"></td>'
         f'<td><input id="{p}_frequency" value="{g("frequency")}"></td>'
         f'<td><input id="{p}_timing" value="{g("timing")}"></td>')
+
+
+def render_e4l_panel(ctx):
+    """Reference panel for the most recent E4L voice scan (fresh / stale / none).
+    Always shows the scan's age + ranked findings when one exists; read-only —
+    Glen's spoken testing still fills the causal chain. All scan free-text escaped."""
+    ctx = ctx or {}
+    status = ctx.get("status") or "none"
+    color = {"fresh": "var(--ok)", "stale": "var(--accent)"}.get(status, "var(--muted)")
+    icon = {"fresh": "&#9679;", "stale": "&#9888;&#65039;"}.get(status, "&#9675;")
+    head = (f"<div style='display:flex;align-items:center;gap:8px;font-weight:600;color:{color}'>"
+            f"<span>{icon}</span><span>{_e(ctx.get('message') or '')}</span></div>")
+    date = _e(ctx.get("scan_date") or "")
+    sub = (f"<div class=food style='margin-top:2px'>scan {date}</div>"
+           if ctx.get("found") and date else "")
+    items = ""
+    for f in ctx.get("findings") or []:
+        rank = _e(str(f.get("rank"))) if f.get("rank") is not None else ""
+        desc = _e(f.get("description") or "")
+        items += (f"<li><b>{_e(f.get('code') or '')}</b> {_e(f.get('name') or '')}"
+                  + (f" &mdash; <span class=food>{desc}</span>" if desc else "")
+                  + (f" <span class=pill>#{rank}</span>" if rank else "") + "</li>")
+    body = f"<ol style='margin:8px 0 0;padding-left:20px'>{items}</ol>" if items else ""
+    note = ("<div class=food style='margin-top:6px'>Reference only &mdash; your spoken "
+            "testing fills the chain.</div>") if ctx.get("found") else ""
+    return (f"<div class=card style='border-left:3px solid {color}'>"
+            "<div class=food style='text-transform:uppercase;font-size:11px;letter-spacing:.08em'>"
+            f"Recent E4L voice scan</div>{head}{sub}{body}{note}</div>")
 
 
 def _depth_select(rid, side, current, depth_values):
@@ -366,7 +397,8 @@ def render_author_html(report, depth_values=None, transcript=""):
         f"<textarea id=sessText rows=6 placeholder='Live transcript appears here as you speak..."
         f"'>{_e(transcript)}</textarea>")
     return _page("Edit Biofield Test",
-                 head + hdr + table + session + _AUTHOR_JS.replace("__TID__", tid))
+                 head + hdr + "<div id=e4lpanel></div>" + table + session
+                 + _AUTHOR_JS.replace("__TID__", tid))
 
 
 def render_list_html(tests, q="", authored=None):
