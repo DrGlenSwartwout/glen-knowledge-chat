@@ -69,10 +69,17 @@ def _latest_scan(cx, email):
     return dict(r) if r else None
 
 
-def _findings(cx, scan_id, limit):
-    """Ranked findings for a scan: {rank, code, name, description}, by priority."""
+# Item categories NOT listed for the manual Biofield Test (Glen, 2026-06-24): MR
+# (MR1..MR10 — Super Cell Driver, Calm Mind, …). Items with no/other category are kept.
+_EXCLUDE_CATEGORIES = ("MR",)
+
+
+def _findings(cx, scan_id, limit, exclude_categories=_EXCLUDE_CATEGORIES):
+    """Ranked findings for a scan: {rank, code, name, description}, by priority.
+    Findings whose e4l_items.category is in `exclude_categories` are dropped."""
+    excl = {str(c).strip().upper() for c in (exclude_categories or ())}
     rows = cx.execute(
-        """SELECT r.item_code, r.priority_rank, i.name, i.full_name, i.e4l_description
+        """SELECT r.item_code, r.priority_rank, i.name, i.full_name, i.e4l_description, i.category
            FROM e4l_scan_results r LEFT JOIN e4l_items i ON i.code = r.item_code
            WHERE r.scan_id=? ORDER BY (r.priority_rank IS NULL), r.priority_rank ASC, r.id ASC""",
         (scan_id,)).fetchall()
@@ -80,6 +87,8 @@ def _findings(cx, scan_id, limit):
     for r in rows:
         code = (r["item_code"] or "").strip()
         if not code:
+            continue
+        if (r["category"] or "").strip().upper() in excl:
             continue
         out.append({"rank": r["priority_rank"], "code": code,
                     "name": (r["full_name"] or r["name"] or code).strip(),
