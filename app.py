@@ -5188,7 +5188,16 @@ def _fulfill_biofield_trial(session_id):
                  datetime.now(timezone.utc).isoformat(),
                  (datetime.now(timezone.utc) + timedelta(days=MEMBERSHIP_CANCEL_TTL_DAYS)).isoformat()))
             _bc.commit()
-        # Lock released. Send the welcome / one-click-cancel email best-effort: it must
+        # Lock released. Record the $1 charge as a captured-charge order so it shows in
+        # the Payments ledger (digital unlock -> status 'done', not a fulfillment task).
+        # Best-effort + idempotent on (source, external_ref); never undoes the membership.
+        try:
+            _trial_cents = int(sess.get("amount_total") or pi.get("amount_received") or 0)
+            _ingest_order(source="biofield_trial", external_ref=pi_id, email=bt_email,
+                          total_cents=_trial_cents, channel="retail", status="done")
+        except Exception as _oe:
+            print(f"[biofield-trial] order-ledger record failed: {_oe!r}", flush=True)
+        # Send the welcome / one-click-cancel email best-effort: it must
         # never undo the committed membership. Inside the won-claim path, so exactly once.
         try:
             if bt_email and PUBLIC_BASE_URL:
@@ -22438,9 +22447,12 @@ def _normalize_ship_address(addr, fallback_name=""):
 
 def _ingest_order(*, source, external_ref, email="", name="", phone="",
                   items=None, total_cents=0, address=None, channel="retail",
-                  get_cents=0, discount_cents=0, points_redeemed_cents=0, shipping_cents=0):
+                  get_cents=0, discount_cents=0, points_redeemed_cents=0, shipping_cents=0,
+                  status="new"):
     """Best-effort: record an order into the BOS orders table. Never raises into
-    a checkout path. get_cents = absorbed Hawai'i GET owed (recorded, not charged)."""
+    a checkout path. get_cents = absorbed Hawai'i GET owed (recorded, not charged).
+    status defaults to 'new' (enters fulfillment); pass 'done' for digital charges
+    with nothing to ship (e.g. the $1 biofield trial membership unlock)."""
     try:
         cx = _sqlite3.connect(LOG_DB)
         try:
@@ -22450,7 +22462,7 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                 address=address or {}, channel=channel, get_cents=int(get_cents or 0),
                 discount_cents=int(discount_cents or 0),
                 points_redeemed_cents=int(points_redeemed_cents or 0),
-                shipping_cents=int(shipping_cents or 0))
+                shipping_cents=int(shipping_cents or 0), status=status)
         finally:
             cx.close()
     except Exception as e:

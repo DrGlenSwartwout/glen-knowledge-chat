@@ -37,6 +37,15 @@ def _pi(row):
     return ref if ref.startswith("pi_") else ""
 
 
+def _status(row):
+    """Display status. Every ledger row is a SUCCEEDED capture (failed charges
+    never create orders, and recurring orders are ingested only on success), so
+    the orders-table default 'unpaid' is meaningless here — report 'paid'. Any
+    other explicit value (e.g. a future 'refunded') is preserved."""
+    s = (row["pay_status"] or "").strip()
+    return s if s and s != "unpaid" else "paid"
+
+
 def _row_to_payment(row):
     paid = int(row["paid_cents"] or 0)
     total = int(row["total_cents"] or 0)
@@ -49,7 +58,7 @@ def _row_to_payment(row):
         "source": row["source"],
         "channel": row["channel"] or "",
         "amount_cents": paid if paid else total,
-        "pay_status": row["pay_status"] or "",
+        "pay_status": _status(row),
         "stripe_payment_intent": _pi(row),
         "external_ref": row["external_ref"] or "",
     }

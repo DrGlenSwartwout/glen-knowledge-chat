@@ -104,6 +104,15 @@ def test_ledger_newest_first():
     assert refs.index("cs_new") < refs.index("cs_old")  # newest (higher id) first
 
 
+def test_ledger_reports_paid_status_for_captured_rows():
+    # Recurring orders keep the orders-table default pay_status='unpaid', yet they
+    # only exist because a charge SUCCEEDED. The ledger must not mislabel them.
+    cx = _cx()
+    _mk_order(cx, source="subscription", external_ref="pi_s", total_cents=9900)
+    [row] = P.list_payments(cx)
+    assert row["pay_status"] == "paid"
+
+
 def test_summary_counts_and_totals_captured_set():
     cx = _cx()
     oid = _mk_order(cx, source="funnel", external_ref="cs_1", total_cents=7000)
