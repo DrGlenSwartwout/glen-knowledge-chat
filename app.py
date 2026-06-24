@@ -13803,6 +13803,32 @@ def webhook_stripe():
         return ("", 500)
 
 
+@app.route("/webhook/easypost", methods=["POST"])
+def webhook_easypost():
+    """EasyPost tracker webhook: on a 'delivered' tracker.updated, open the member's
+    coaching window. HMAC-verified when EASYPOST_WEBHOOK_SECRET is set; inert (200 no-op)
+    when unset (feature dark). The activation core independently re-resolves order +
+    eligibility, so a forged event cannot fabricate a window for an ineligible order."""
+    from dashboard import easypost as _ep
+    raw = request.get_data()
+    secret = os.environ.get("EASYPOST_WEBHOOK_SECRET", "")
+    if not secret:
+        return ("", 200)
+    event = _ep.verify_webhook(raw, request.headers.get("X-Hmac-Signature", ""), secret)
+    if event is None:
+        return ("", 400)
+    try:
+        result = (event or {}).get("result") or {}
+        if (result.get("status") or "").lower() == "delivered":
+            tc = (result.get("tracking_code") or "").strip()
+            if tc:
+                _activate_coaching_by_tracking(tc)
+        return ("", 200)
+    except Exception as e:
+        print(f"[webhook-easypost] {e!r}", flush=True)
+        return ("", 500)
+
+
 @app.route("/inbound-leads", methods=["GET"])
 def get_inbound_leads():
     """Review recent inbound leads and their GHL sync status."""
@@ -19391,6 +19417,52 @@ def cron_backfill_membership_grants():
                 if not dry:
                     _extend_membership_grant(cx, r["email"], until, "backfill_2026_06")
     return jsonify({"ok": True, "fixed": fixed, "dry_run": dry})
+
+
+@app.route("/api/cron/easypost-sync", methods=["POST"])
+def cron_easypost_sync():
+    """Register EasyPost trackers for shipments we have tracking numbers for, and
+    backstop-poll registered-but-undelivered trackers. Opens coaching windows on
+    delivered. No-op when EasyPost is unconfigured (safe to schedule pre-go-live)."""
+    key = request.headers.get("X-Cron-Secret", "")
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import easypost as _ep
+    if not _ep.is_configured():
+        return jsonify({"ok": True, "registered": 0, "activated": 0, "skipped": "easypost_unconfigured"})
+    registered = 0
+    activated = 0
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _tracking.init_tracking_schema(cx); _tracking.migrate_add_delivery_columns(cx)
+        # 1) register trackers for shipments with a tracking number but no tracker yet
+        for r in cx.execute(
+                "SELECT id, tracking_number FROM shipments WHERE tracking_number IS NOT NULL "
+                "AND easypost_tracker_id IS NULL AND delivered_at IS NULL LIMIT 100").fetchall():
+            try:
+                t = _ep.create_tracker(r["tracking_number"])
+                _tracking.set_shipment_tracker(cx, r["id"], t.get("tracker_id", ""))
+                registered += 1
+                if (t.get("status") or "").lower() == "delivered":
+                    sh = cx.execute("SELECT * FROM shipments WHERE id=?", (r["id"],)).fetchone()
+                    if _activate_coaching_for_shipment(cx, sh, delivered_at=now_iso).get("ok"):
+                        activated += 1
+            except Exception as e:
+                print(f"[easypost-sync register] {r['tracking_number']}: {e!r}", flush=True)
+        # 2) backstop poll: registered, not yet delivered
+        for r in cx.execute(
+                "SELECT * FROM shipments WHERE easypost_tracker_id IS NOT NULL "
+                "AND delivered_at IS NULL LIMIT 100").fetchall():
+            try:
+                st = _ep.get_tracker(r["easypost_tracker_id"])
+                if (st.get("status") or "").lower() == "delivered":
+                    if _activate_coaching_for_shipment(cx, r, delivered_at=now_iso).get("ok"):
+                        activated += 1
+            except Exception as e:
+                print(f"[easypost-sync poll] {r['easypost_tracker_id']}: {e!r}", flush=True)
+    return jsonify({"ok": True, "registered": registered, "activated": activated})
 
 
 # ── One-time Gmail token upload (helper for first-time setup on Render) ───────
