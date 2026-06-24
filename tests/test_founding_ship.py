@@ -62,13 +62,21 @@ def test_ship_charges_and_activates(monkeypatch):
 # Test 2: route-level — idempotency (active reservation not re-charged)
 # ---------------------------------------------------------------------------
 
-def test_ship_route_skips_already_active(monkeypatch):
+def test_ship_route_skips_already_active(monkeypatch, tmp_path):
     """An already-active founding reservation must not be re-charged when the
-    ship action is triggered again (list_founding_pending only returns 'pending'
-    rows, so the route naturally skips active ones)."""
-    cx = _build_cx()
+    ship action is triggered again. The route uses list_founding_pending which
+    only returns 'pending' rows, so the route naturally skips active ones.
+    This test genuinely POSTs to the route and asserts charge call counts."""
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(appmod, "LOG_DB", db)
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "test-secret")
 
-    # Create one pending + manually activate it to simulate a prior ship run
+    # Seed the schema and both rows into the real file DB the route will read
+    cx = sqlite3.connect(db)
+    cx.row_factory = sqlite3.Row
+    subs.init_subscriptions_table(cx)
+    subs.migrate_add_founding_columns(cx)
+
     sid_active = subs.create_founding_reservation(
         cx, email="active@x.com", stripe_customer_id="cus_A",
         stripe_payment_method_id="pm_A",
@@ -78,7 +86,6 @@ def test_ship_route_skips_already_active(monkeypatch):
     )
     subs.mark_founding_active(cx, sid_active, next_charge_date="2026-07-24")
 
-    # Create a second, still-pending reservation
     sid_pending = subs.create_founding_reservation(
         cx, email="pending@x.com", stripe_customer_id="cus_B",
         stripe_payment_method_id="pm_B",
@@ -86,35 +93,34 @@ def test_ship_route_skips_already_active(monkeypatch):
         ship_address={"state": "HI"},
         founding_slug="neuro-magnesium",
     )
+    cx.commit()
+    cx.close()
 
-    charge_calls = []
+    # Track which sub IDs were charged
+    charged_ids = []
 
     def _fake_ship(cx2, sub):
-        charge_calls.append(sub["id"])
+        charged_ids.append(sub["id"])
         subs.mark_founding_active(cx2, sub["id"], next_charge_date="2026-07-24")
         return {"charged": True, "sub_id": sub["id"], "amount_cents": 8600}
 
     monkeypatch.setattr(appmod, "_ship_founding_reservation", _fake_ship)
 
-    # Patch the DB connection to return our in-memory cx
-    import unittest.mock as mock
-    import contextlib
+    # POST to the real route — it opens LOG_DB itself via sqlite3.connect(LOG_DB)
+    client = appmod.app.test_client()
+    r = client.post(
+        "/api/founding/ship",
+        headers={"X-Console-Key": "test-secret"},
+        json={"slug": "neuro-magnesium"},
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["ok"] is True
 
-    @contextlib.contextmanager
-    def _fake_connect(path):
-        cx.row_factory = sqlite3.Row
-        yield cx
-
-    monkeypatch.setattr(appmod._sqlite3, "connect", lambda p: cx)
-
-    # Only the pending row should be charged
-    pending = subs.list_founding_pending(cx, "neuro-magnesium")
-    assert len(pending) == 1
-    assert pending[0]["id"] == sid_pending
-
-    # Confirm active row is absent from list_founding_pending
-    active_check = subs.get(cx, sid_active)
-    assert active_check["founding_state"] == "active"
+    # Only the pending sub should have been charged — active was never in the pending list
+    assert charged_ids == [sid_pending], (
+        f"Expected only sid_pending={sid_pending} charged; got {charged_ids}"
+    )
 
 
 # ---------------------------------------------------------------------------

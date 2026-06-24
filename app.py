@@ -12393,17 +12393,20 @@ def _ship_founding_reservation(cx, sub):
     if res.get("status") != "succeeded":
         _subs.bump_failed_count(cx, sub["id"])
         return {"charged": False, "sub_id": sub["id"], "amount_cents": total_cents}
-    _ingest_order(
-        source="reorder",  # "reorder" is in coaching.QUALIFYING_SOURCES → delivery opens coaching window
-        external_ref=res.get("id") or inv.get("Id") or "",
-        email=sub["email"],
-        items=items,
-        total_cents=total_cents,
-        address=ship,
-        channel="retail",
-    )
     today = _now_utc().strftime("%Y-%m-%d")
     _subs.mark_founding_active(cx, sub["id"], next_charge_date=_subs.add_months(today, 1))
+    try:
+        _ingest_order(
+            source="reorder",  # "reorder" is in coaching.QUALIFYING_SOURCES → delivery opens coaching window
+            external_ref=res.get("id") or inv.get("Id") or "",
+            email=sub["email"],
+            items=items,
+            total_cents=total_cents,
+            address=ship,
+            channel="retail",
+        )
+    except Exception as e:
+        print(f"[founding-ship] ingest failed sub={sub['id']}: {e!r}")
     return {"charged": True, "sub_id": sub["id"], "amount_cents": total_cents}
 
 
