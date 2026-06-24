@@ -36,12 +36,28 @@
   th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
   th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
   td input[type="number"] { background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; width: 80px; font-size: 14px; }
+  td input[type="number"].dim-input { width: 64px; }
   td.cell-S, td.cell-M, td.cell-L { text-align: center; }
   th.col-size { text-align: center; width: 110px; }
+  th.col-dim { text-align: center; width: 80px; }
+  td.cell-dim { text-align: center; }
 
-  .row-form { display: flex; gap: 8px; margin-top: 12px; }
+  .row-form { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
   .row-form input[type="text"] { flex: 1; background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 14px; }
+  .row-form input[type="number"] { width: 72px; background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 14px; }
   .row-form input[name="notes"] { flex: 1.5; }
+
+  .padding-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 4px; }
+  .padding-field label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 6px; }
+  .padding-field input { background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 14px; width: 100px; }
+
+  .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: .04em; margin-left: 6px; }
+  .badge-default { background: rgba(212, 168, 67, 0.15); color: var(--amber); border: 1px solid var(--amber); }
+
+  select.bottle-select { background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 13px; }
+  .prod-table td { vertical-align: middle; }
+  .prod-name { font-weight: 600; }
+  .prod-slug { color: var(--muted); font-size: 12px; }
 
   button { background: var(--accent); color: white; border: none; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
   button:hover { background: var(--accent-light); }
@@ -100,15 +116,59 @@
     <h2>Bottle Library</h2>
     <table id="bottle-table">
       <thead>
-        <tr><th>Name</th><th>Notes</th><th></th></tr>
+        <tr>
+          <th>Name</th>
+          <th>Notes</th>
+          <th class="col-dim">Ø mm</th>
+          <th class="col-dim">H mm</th>
+          <th></th>
+        </tr>
       </thead>
       <tbody id="bottle-tbody"></tbody>
     </table>
     <form id="add-bottle-form" class="row-form" onsubmit="addBottle(event)">
       <input type="text" name="name" placeholder="e.g. dropper 1oz" required>
-      <input type="text" name="notes" placeholder="optional notes (height, weight)">
+      <input type="text" name="notes" placeholder="optional notes">
+      <input type="number" name="diameter_mm" placeholder="Ø mm" min="1">
+      <input type="number" name="height_mm" placeholder="H mm" min="1">
       <button type="submit">Add bottle</button>
     </form>
+  </div>
+
+  <!-- Packing padding -->
+  <div class="section">
+    <h2>Packing Padding</h2>
+    <div class="padding-grid">
+      <div class="padding-field">
+        <label for="wrap-mm">Wrap padding (mm)</label>
+        <input type="number" id="wrap-mm" name="wrap_mm" min="0" placeholder="6">
+      </div>
+      <div class="padding-field">
+        <label for="box-margin-mm">Box margin (mm)</label>
+        <input type="number" id="box-margin-mm" name="box_margin_mm" min="0" placeholder="10">
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <button onclick="savePaddingSettings()">Save padding</button>
+    </div>
+    <div class="hint">Added around each bottle (wrap) and between bottles and box walls (margin) during packing calculations.</div>
+  </div>
+
+  <!-- Per-product bottle assignment -->
+  <div class="section">
+    <h2>Product Bottle Assignments</h2>
+    <table id="prod-bottle-table" class="prod-table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Bottle</th>
+          <th>Source</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="prod-bottle-tbody"></tbody>
+    </table>
+    <div class="hint">Override which bottle type is used for shipping calculations per product. Products defaulting to "default" are shown first.</div>
   </div>
 
   <!-- Box capacity matrix -->
@@ -217,8 +277,11 @@ async function confirmRate(id) {
 }
 
 // ── Bottle library ───────────────────────────────────────────────────────
+let _bottleCatalog = [];  // cache for product-bottle selects
+
 async function loadBottles() {
   const bottles = await api("/api/shipping/bottles");
+  _bottleCatalog = bottles;
   const tbody = document.getElementById("bottle-tbody");
   tbody.innerHTML = "";
   for (const b of bottles) {
@@ -226,9 +289,13 @@ async function loadBottles() {
     tr.id = `bottle-row-${b.id}`;
     tr.dataset.name = b.name;
     tr.dataset.notes = b.notes || "";
+    tr.dataset.diameter_mm = b.diameter_mm ?? "";
+    tr.dataset.height_mm = b.height_mm ?? "";
     tr.innerHTML = `
       <td><strong>${escapeHtml(b.name)}</strong></td>
       <td style="color:var(--muted)">${escapeHtml(b.notes || "")}</td>
+      <td class="cell-dim">${b.diameter_mm ?? '<span style="color:var(--muted)">—</span>'}</td>
+      <td class="cell-dim">${b.height_mm ?? '<span style="color:var(--muted)">—</span>'}</td>
       <td style="text-align:right; white-space:nowrap">
         <button onclick="editBottle(${b.id})">Edit</button>
         <button class="danger" onclick="deleteBottle(${b.id}, '${b.name.replace(/'/g, "\\'")}')">Delete</button>
@@ -246,9 +313,13 @@ function editBottle(id) {
   if (!tr) return;
   const name = tr.dataset.name;
   const notes = tr.dataset.notes;
+  const diam = tr.dataset.diameter_mm;
+  const ht = tr.dataset.height_mm;
   tr.innerHTML = `
     <td><input type="text" id="edit-name-${id}" value="${escapeHtml(name)}" required></td>
     <td><input type="text" id="edit-notes-${id}" value="${escapeHtml(notes)}" placeholder="optional notes"></td>
+    <td class="cell-dim"><input type="number" class="dim-input" id="edit-diam-${id}" value="${escapeHtml(diam)}" placeholder="Ø mm" min="1"></td>
+    <td class="cell-dim"><input type="number" class="dim-input" id="edit-ht-${id}" value="${escapeHtml(ht)}" placeholder="H mm" min="1"></td>
     <td style="text-align:right; white-space:nowrap">
       <button onclick="saveBottle(${id})">Save</button>
       <button onclick="loadBottles()">Cancel</button>
@@ -259,11 +330,16 @@ function editBottle(id) {
 async function saveBottle(id) {
   const name = document.getElementById(`edit-name-${id}`).value.trim();
   const notes = document.getElementById(`edit-notes-${id}`).value.trim();
+  const diamRaw = document.getElementById(`edit-diam-${id}`).value.trim();
+  const htRaw = document.getElementById(`edit-ht-${id}`).value.trim();
   if (!name) { toast("Name is required", "error"); return; }
+  const body = { name, notes };
+  if (diamRaw) body.diameter_mm = parseInt(diamRaw, 10);
+  if (htRaw) body.height_mm = parseInt(htRaw, 10);
   try {
     await api(`/api/shipping/bottles/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ name, notes }),
+      body: JSON.stringify(body),
     });
     toast("Bottle updated");
     await loadBottles();
@@ -276,11 +352,16 @@ async function addBottle(ev) {
   const f = ev.target;
   const name = f.name.value.trim();
   const notes = f.notes.value.trim();
+  const diamRaw = f.diameter_mm.value.trim();
+  const htRaw = f.height_mm.value.trim();
   if (!name) return;
+  const body = { name, notes };
+  if (diamRaw) body.diameter_mm = parseInt(diamRaw, 10);
+  if (htRaw) body.height_mm = parseInt(htRaw, 10);
   try {
     await api("/api/shipping/bottles", {
       method: "POST",
-      body: JSON.stringify({ name, notes }),
+      body: JSON.stringify(body),
     });
     f.reset();
     toast("Bottle added");
@@ -340,6 +421,109 @@ async function saveCell(ev) {
   } catch (e) { toast(e.message, "error"); }
 }
 
+// ── Packing padding ──────────────────────────────────────────────────────
+async function loadPaddingSettings() {
+  const data = await api("/api/shipping/packing-settings");
+  document.getElementById("wrap-mm").value = data.wrap_mm ?? 6;
+  document.getElementById("box-margin-mm").value = data.box_margin_mm ?? 10;
+}
+
+async function savePaddingSettings() {
+  const wrap = parseInt(document.getElementById("wrap-mm").value, 10);
+  const margin = parseInt(document.getElementById("box-margin-mm").value, 10);
+  if (!Number.isFinite(wrap) || !Number.isFinite(margin)) {
+    toast("Enter valid numbers for both fields", "error");
+    return;
+  }
+  try {
+    await api("/api/shipping/packing-settings", {
+      method: "POST",
+      body: JSON.stringify({ wrap_mm: wrap, box_margin_mm: margin }),
+    });
+    toast("Padding saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Product bottle assignments ────────────────────────────────────────────
+async function loadProductBottles() {
+  const { items, overrides } = await api("/api/shipping/product-bottles");
+  const tbody = document.getElementById("prod-bottle-tbody");
+  tbody.innerHTML = "";
+  if (!items || !items.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="color:var(--muted); text-align:center; padding:24px">No products found.</td></tr>`;
+    return;
+  }
+  // Sort: unassigned (resolved === "default") first, then alphabetical
+  items.sort((a, b) => {
+    const aDefault = !a.override && !a.baseline;
+    const bDefault = !b.override && !b.baseline;
+    if (aDefault !== bDefault) return aDefault ? -1 : 1;
+    return (a.name || a.slug).localeCompare(b.name || b.slug);
+  });
+
+  const bottleOptions = _bottleCatalog.map(b =>
+    `<option value="${escapeHtml(b.name)}">${escapeHtml(b.name)}</option>`
+  ).join("");
+
+  for (const item of items) {
+    const isDefault = !item.override && !item.baseline;
+    const sourceBadge = item.override
+      ? `<span style="color:var(--accent-light); font-size:12px">override</span>`
+      : item.baseline
+        ? `<span style="color:var(--muted); font-size:12px">product default</span>`
+        : `<span class="badge badge-default">default</span>`;
+
+    const tr = document.createElement("tr");
+    tr.id = `prod-row-${item.slug.replace(/[^a-z0-9]/gi, '-')}`;
+    tr.innerHTML = `
+      <td>
+        <div class="prod-name">${escapeHtml(item.name || item.slug)}</div>
+        <div class="prod-slug">${escapeHtml(item.slug)}</div>
+      </td>
+      <td>
+        <select class="bottle-select" onchange="setProductBottle('${item.slug.replace(/'/g, "\\'")}', this.value)">
+          <option value="default"${item.resolved === "default" ? " selected" : ""}>default</option>
+          ${bottleOptions.replace(
+            `value="${escapeHtml(item.resolved)}"`,
+            `value="${escapeHtml(item.resolved)}" selected`
+          )}
+        </select>
+      </td>
+      <td>${sourceBadge}</td>
+      <td style="text-align:right">
+        ${item.override
+          ? `<button class="danger" onclick="clearProductBottle('${item.slug.replace(/'/g, "\\'")}')">Clear</button>`
+          : ""}
+      </td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function setProductBottle(slug, bottleType) {
+  if (bottleType === "default") {
+    await clearProductBottle(slug);
+    return;
+  }
+  try {
+    await api("/api/shipping/product-bottles", {
+      method: "POST",
+      body: JSON.stringify({ slug, bottle_type: bottleType }),
+    });
+    toast(`${slug} → ${bottleType}`);
+    await loadProductBottles();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function clearProductBottle(slug) {
+  try {
+    await api(`/api/shipping/product-bottles/${encodeURIComponent(slug)}`, {
+      method: "DELETE",
+    });
+    toast(`Override cleared for ${slug}`);
+    await loadProductBottles();
+  } catch (e) { toast(e.message, "error"); }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────
 async function init() {
   if (!KEY) {
@@ -350,6 +534,8 @@ async function init() {
     await loadRates();
     await loadBottles();
     await loadMatrix();
+    await loadPaddingSettings();
+    await loadProductBottles();
   } catch (e) {
     if (e.message !== "unauthorized") toast(e.message, "error");
   }

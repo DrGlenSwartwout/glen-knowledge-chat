@@ -346,3 +346,140 @@ def test_check_usps_rates_handles_fetch_failure(seeded_db, monkeypatch):
     assert summary["scraped"] is None
     assert summary["proposed"] == []
     assert any("fetch failed" in e for e in summary["errors"])
+
+
+# ── Schema extensions: dimensions + packing settings ──────────────────────────
+
+def test_schema_adds_dims_and_seeds_standard_bottles(tmp_path):
+    import sqlite3
+    from dashboard.shipping import init_shipping_schema, get_bottle_dims, get_packing_settings
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+        init_shipping_schema(cx)  # idempotent
+        cols = {r[1] for r in cx.execute("PRAGMA table_info(bottle_types)")}
+    assert {"diameter_mm", "height_mm"} <= cols
+    dims = get_bottle_dims(db_path=db)
+    assert dims["15ml"] == (30, 100)
+    assert dims["120cap"] == (80, 100)
+    assert len(dims) == 9
+    assert get_packing_settings(db_path=db) == {"wrap_mm": 6, "box_margin_mm": 10}
+
+def test_set_packing_setting_updates_value(tmp_path):
+    import sqlite3
+    from dashboard.shipping import init_shipping_schema, set_packing_setting, get_packing_settings
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+    set_packing_setting("wrap_mm", 9, db_path=db)
+    assert get_packing_settings(db_path=db)["wrap_mm"] == 9
+
+
+# ── geometric path ────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def geo_db(tmp_path):
+    """Schema with the 8 seeded standard bottle types (dims) + rates."""
+    import sqlite3
+    from dashboard.shipping import init_shipping_schema
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+    return db
+
+def test_quote_geometric_single_box(geo_db):
+    from dashboard.shipping import quote
+    q = quote({"15ml": 5}, db_path=geo_db)
+    assert q["box_sizes"] == ["S"]
+    assert q["shipping_cents"] == 1300  # S charged rate
+
+def test_quote_geometric_multibox_sums_rates(geo_db):
+    from dashboard.shipping import quote
+    q = quote({"15ml": 57}, db_path=geo_db)  # needs 2 boxes (57 > 56 that fit in L)
+    assert len(q["box_sizes"]) == 2
+    assert q["box_sizes"][0] == "L"
+    assert q["shipping_cents"] == sum(b["charged_cents"] for b in q["box_breakdown"])
+
+def test_pick_box_geometric_with_padding(geo_db):
+    from dashboard.shipping import pick_box
+    # 5ml in S with default padding still fits at least 1 -> S
+    assert pick_box({"5ml": 4}, db_path=geo_db) == "S"
+
+def test_override_cap_forces_larger_box(geo_db):
+    import sqlite3
+    from dashboard.shipping import pick_box, set_box_capacity
+    with sqlite3.connect(geo_db) as cx:
+        bid = cx.execute("SELECT id FROM bottle_types WHERE name='15ml'").fetchone()[0]
+    set_box_capacity(bid, "S", 2, db_path=geo_db)  # cap S at 2 of 15ml
+    # 4 of 15ml geometrically fit S, but cap=2 forces escalation to M
+    assert pick_box({"15ml": 4}, db_path=geo_db) == "M"
+
+
+# ── Rename/add migration tests ────────────────────────────────────────────────
+
+def test_migration_renames_100cos_and_adds_30ml(tmp_path):
+    import sqlite3
+    from dashboard.shipping import init_shipping_schema, get_bottle_dims
+    db = str(tmp_path / "chat_log.db")
+    # Simulate an already-seeded older DB: insert a 100cos row, no 30ml
+    with sqlite3.connect(db) as cx:
+        cx.execute("CREATE TABLE bottle_types (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                   "name TEXT NOT NULL UNIQUE, notes TEXT, created_at TEXT NOT NULL "
+                   "DEFAULT (datetime('now')))")
+        cx.execute("ALTER TABLE bottle_types ADD COLUMN diameter_mm INTEGER")
+        cx.execute("ALTER TABLE bottle_types ADD COLUMN height_mm INTEGER")
+        cx.execute("INSERT INTO bottle_types (name, diameter_mm, height_mm) "
+                   "VALUES ('100cos', 70, 70)")
+        cx.commit()
+        init_shipping_schema(cx)
+    dims = get_bottle_dims(db_path=db)
+    assert "100cos" not in dims
+    assert dims["30g"] == (70, 70)
+    assert dims["30ml"] == (40, 110)
+
+def test_fresh_seed_has_30g_and_30ml_not_100cos(tmp_path):
+    import sqlite3
+    from dashboard.shipping import init_shipping_schema, get_bottle_dims
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+    dims = get_bottle_dims(db_path=db)
+    assert dims["30g"] == (70, 70)
+    assert dims["30ml"] == (40, 110)
+    assert "100cos" not in dims
+    assert len(dims) == 9
+
+
+# ── Dimension-aware bottle CRUD ───────────────────────────────────────────────
+
+def test_add_and_update_bottle_with_dims(tmp_path):
+    import sqlite3
+    from dashboard.shipping import (init_shipping_schema, add_bottle_type,
+                                    update_bottle_type, get_bottle_dims)
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+    bid = add_bottle_type("250ml-spray", diameter_mm=55, height_mm=180, db_path=db)
+    assert get_bottle_dims(db_path=db)["250ml-spray"] == (55, 180)
+    update_bottle_type(bid, "250ml-spray", diameter_mm=60, height_mm=185, db_path=db)
+    assert get_bottle_dims(db_path=db)["250ml-spray"] == (60, 185)
+
+
+# ── Product override resolver ────────────────────────────────────────────────────
+
+def test_product_override_crud_and_resolution(tmp_path):
+    import sqlite3
+    from dashboard.shipping import (init_shipping_schema, set_product_bottle_override,
+        clear_product_bottle_override, list_product_bottle_overrides, resolve_bottle_type)
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+    # resolution with no override falls to products.json value, then default
+    assert resolve_bottle_type("x", {"bottle_type": "15ml"}, db_path=db) == "15ml"
+    assert resolve_bottle_type("y", {}, db_path=db) == "default"
+    # override wins
+    set_product_bottle_override("x", "30ml", db_path=db)
+    assert resolve_bottle_type("x", {"bottle_type": "15ml"}, db_path=db) == "30ml"
+    assert list_product_bottle_overrides(db_path=db)["x"] == "30ml"
+    clear_product_bottle_override("x", db_path=db)
+    assert resolve_bottle_type("x", {"bottle_type": "15ml"}, db_path=db) == "15ml"

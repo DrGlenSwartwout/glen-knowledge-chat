@@ -3409,7 +3409,8 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                           "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
         items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"]})
         # shipping.pick_box keys by BOTTLE TYPE (not product name); default-typed if unset.
-        bt = p.get("bottle_type") or "default"
+        slug = (c.get("slug") or "").strip()
+        bt = _shipping.resolve_bottle_type(slug, p)
         box_counts[bt] = box_counts.get(bt, 0) + qty
         total_bottles += qty
     priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
@@ -20223,7 +20224,10 @@ def api_shipping_add_bottle():
         if not name:
             return fail("name is required", status=400)
         notes = (body.get("notes") or "").strip() or None
-        new_id = _shipping.add_bottle_type(name, notes=notes)
+        diameter_mm = body.get("diameter_mm")
+        height_mm = body.get("height_mm")
+        new_id = _shipping.add_bottle_type(
+            name, diameter_mm=diameter_mm, height_mm=height_mm, notes=notes)
         return ok({"id": new_id})
     except sqlite3.IntegrityError:
         return fail("bottle type already exists", status=409)
@@ -20248,7 +20252,10 @@ def api_shipping_update_bottle(bid):
         if not name:
             return fail("name is required", status=400)
         notes = (body.get("notes") or "").strip() or None
-        _shipping.update_bottle_type(bid, name, notes=notes)
+        diameter_mm = body.get("diameter_mm")
+        height_mm = body.get("height_mm")
+        _shipping.update_bottle_type(
+            bid, name, diameter_mm=diameter_mm, height_mm=height_mm, notes=notes)
         return ok({"id": bid})
     except sqlite3.IntegrityError:
         return fail("bottle name already exists", status=409)
@@ -20328,6 +20335,67 @@ def api_shipping_quote():
     except _shipping.UnknownBottleType as e:
         return fail(f"unknown bottle type: {e}", status=400)
     except (TypeError, ValueError) as e: return fail(e, status=400)
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/packing-settings", methods=["GET"])
+@require_console_key
+def api_shipping_packing_settings_get():
+    try: return ok(_shipping.get_packing_settings())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/packing-settings", methods=["POST"])
+@require_console_key
+def api_shipping_packing_settings_set():
+    try:
+        body = request.get_json(silent=True) or {}
+        for k in ("wrap_mm", "box_margin_mm"):
+            if k in body:
+                _shipping.set_packing_setting(k, int(body[k]))
+        return ok(_shipping.get_packing_settings())
+    except (TypeError, ValueError) as e: return fail(e, status=400)
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/product-bottles", methods=["GET"])
+@require_console_key
+def api_shipping_product_bottles_get():
+    try:
+        from dashboard import products as _products
+        prods = _products.load_products()
+        overrides = _shipping.list_product_bottle_overrides()
+        items = [{
+            "slug": slug,
+            "name": p.get("name"),
+            "resolved": _shipping.resolve_bottle_type(slug, p),
+            "override": overrides.get(slug),
+            "baseline": p.get("bottle_type"),
+        } for slug, p in prods.items()]
+        return ok({"items": items, "overrides": overrides})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/product-bottles", methods=["POST"])
+@require_console_key
+def api_shipping_product_bottles_set():
+    try:
+        body = request.get_json(silent=True) or {}
+        slug = (body.get("slug") or "").strip()
+        bt = (body.get("bottle_type") or "").strip()
+        if not slug or not bt:
+            return fail("slug and bottle_type required", status=400)
+        _shipping.set_product_bottle_override(slug, bt)
+        return ok({"slug": slug, "bottle_type": bt})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/product-bottles/<path:slug>", methods=["DELETE"])
+@require_console_key
+def api_shipping_product_bottles_clear(slug):
+    try:
+        _shipping.clear_product_bottle_override(slug)
+        return ok({"cleared": slug})
     except Exception as e: return fail(e)
 
 
