@@ -445,7 +445,8 @@ def add_bottle_type(
 def list_bottle_types(db_path: Optional[str] = None) -> List[dict]:
     with _connect(db_path) as cx:
         rows = cx.execute(
-            "SELECT id, name, notes, created_at FROM bottle_types ORDER BY name"
+            "SELECT id, name, notes, diameter_mm, height_mm, created_at "
+            "FROM bottle_types ORDER BY name"
         ).fetchall()
         return [dict(r) for r in rows]
 
