@@ -7055,8 +7055,9 @@ def _find_qualifying_order_for_coaching(cx, email):
     return None
 
 
-def _open_coaching_for_order(cx, email, order_id, source):
+def _open_coaching_for_order(cx, email, order_id, source, window_source="self_serve"):
     """Validate + open a coaching window for one remedy-program order.
+    window_source labels HOW it was activated (self_serve / delivery / admin).
     Returns {ok, ...}: success -> created+ends_at; failure -> reason (+offer_99 if ineligible)."""
     if (source or "") not in _coaching.QUALIFYING_SOURCES:
         return {"ok": False, "reason": "not_qualifying"}
@@ -7068,8 +7069,74 @@ def _open_coaching_for_order(cx, email, order_id, source):
     if not _membership_active_at(cx, email, created_at):
         return {"ok": False, "reason": "ineligible", "offer_99": True}
     res = _coaching.open_window(cx, email=email, order_id=order_id,
-                                days=_coaching.WINDOW_DAYS, source="self_serve")
+                                days=_coaching.WINDOW_DAYS, source=window_source)
     return {"ok": True, "created": res["created"], "ends_at": res["window"]["ends_at"]}
+
+
+def _resolve_shipment_member(cx, shipment):
+    """(email, order_id, order_source) for a shipment, or (None, None, None).
+    Prefer the explicit orders.shipment_id link, then order_uuid==external_ref."""
+    if shipment is None:
+        return (None, None, None)
+    sid = shipment["id"] if isinstance(shipment, sqlite3.Row) else shipment.get("id")
+    uuid = shipment["order_uuid"] if isinstance(shipment, sqlite3.Row) else shipment.get("order_uuid")
+    order = cx.execute("SELECT id, email, source FROM orders WHERE shipment_id=? ORDER BY id DESC LIMIT 1",
+                       (sid,)).fetchone()
+    if not order and uuid:
+        order = cx.execute("SELECT id, email, source FROM orders WHERE external_ref=? ORDER BY id DESC LIMIT 1",
+                           (uuid,)).fetchone()
+    if not order:
+        return (None, None, None)
+    email = order["email"]
+    if not email:
+        email = shipment["resolved_email"] if isinstance(shipment, sqlite3.Row) else shipment.get("resolved_email")
+    return ((email or "").strip().lower() or None, order["id"], order["source"])
+
+
+def _activate_coaching_for_shipment(cx, shipment, *, delivered_at):
+    """Idempotent: on first delivery signal for a shipment, mark delivered_at and
+    (if a qualifying+eligible order resolves) open a coaching window source='delivery'."""
+    already = shipment["delivered_at"] if isinstance(shipment, sqlite3.Row) else shipment.get("delivered_at")
+    if already:
+        return {"skipped": "already_processed"}
+    sid = shipment["id"] if isinstance(shipment, sqlite3.Row) else shipment.get("id")
+    _tracking.mark_shipment_delivered(cx, sid, delivered_at)
+    email, oid, src = _resolve_shipment_member(cx, shipment)
+    if not (email and oid):
+        return {"ok": False, "reason": "unresolved"}
+    res = _open_coaching_for_order(cx, email, oid, src, window_source="delivery")
+    if res.get("ok"):
+        cx.execute("UPDATE shipments SET coaching_opened=1 WHERE id=?", (sid,))
+        cx.commit()
+    return res
+
+
+def _activate_coaching_by_order(cx, order_id):
+    """Manual path: activate coaching for an order (resolve its shipment if any)."""
+    order = cx.execute("SELECT id, email, source, shipment_id FROM orders WHERE id=?",
+                       (order_id,)).fetchone()
+    if not order:
+        return {"ok": False, "reason": "not_found"}
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    if order["shipment_id"]:
+        sh = cx.execute("SELECT * FROM shipments WHERE id=?", (order["shipment_id"],)).fetchone()
+        if sh:
+            return _activate_coaching_for_shipment(cx, sh, delivered_at=now_iso)
+    email = (order["email"] or "").strip().lower()
+    if not email:
+        return {"ok": False, "reason": "unresolved"}
+    return _open_coaching_for_order(cx, email, order["id"], order["source"], window_source="delivery")
+
+
+def _activate_coaching_by_tracking(tracking_number):
+    """Webhook path: open its own connection, resolve shipment by tracking number, activate."""
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        sh = _tracking.shipment_by_tracking(cx, tracking_number)
+        if not sh:
+            return {"ok": False, "reason": "unknown_tracking"}
+        return _activate_coaching_for_shipment(cx, sh, delivered_at=now_iso)
 
 
 def _member_context_for_email(email, *, query_log_n=5):
