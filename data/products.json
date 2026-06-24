@@ -5547,9 +5547,9 @@
       "ingredients_source": "store-recovery-2026-06-08"
     },
     "nerve-pulse": {
-      "name": "Nerve Repair",
+      "name": "Nerve Pulse",
       "price_cents": 6997,
-      "pinecone_title": "Nerve Repair",
+      "pinecone_title": "Nerve Pulse",
       "url": "https://remedymatch.com/remedies/syntropy/79-nerve-pulse",
       "qty_pricing": true,
       "ingredients": [
@@ -5599,7 +5599,7 @@
         }
       ],
       "ingredients_source": "fmp_new",
-      "description": "Nerve Repair . Price: $69.97. Nerve Repair . Nerve Repair Nerve Repair One organic Pullulan capsule of Nerve Repair supplies: ALCAR (Acetyl L-Carnitine) 160 mg Na RALA (Stabilized Bioenhanced Na R-Alpha Lipoate) 60 mg Lion's Mane Polysaccharides 30% ( Hericium erinaceus ) 160 mg Vitamin B1: Benfotiamine 60 mg Vitamin B6: P5P (Pyridoxal 5-Phosphate) 10 mg Vitamin B12: Methylcobalamin 500 mcg Bioavailability Proprietary Blend 34.5 mg Vitamin B13: Phosphatides 50% ( Helianthus annua ) EGb 761 ( Ginkgo biloba ) (24% Flavone Glycosides, 6% Lactones, <0.0005% Ginkgolic Acid) Vitamin B3 (as Niacin)...",
+      "description": "Nerve Pulse . Price: $69.97. Nerve Pulse . Nerve Pulse Nerve Pulse One organic Pullulan capsule of Nerve Pulse supplies: ALCAR (Acetyl L-Carnitine) 160 mg Na RALA (Stabilized Bioenhanced Na R-Alpha Lipoate) 60 mg Lion's Mane Polysaccharides 30% ( Hericium erinaceus ) 160 mg Vitamin B1: Benfotiamine 60 mg Vitamin B6: P5P (Pyridoxal 5-Phosphate) 10 mg Vitamin B12: Methylcobalamin 500 mcg Bioavailability Proprietary Blend 34.5 mg Vitamin B13: Phosphatides 50% ( Helianthus annua ) EGb 761 ( Ginkgo biloba ) (24% Flavone Glycosides, 6% Lactones, <0.0005% Ginkgolic Acid) Vitamin B3 (as Niacin)...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Pyridoxal-5-Phosphate (P5P), Baicalein, Riboflavin-5-Phosphate (Coenzyme B2), 5-MTHF (Methylfolate), Mixed Tocopherols, Tocotrienols, Copper Glycinate",
       "gk_extra_accepted": true,
