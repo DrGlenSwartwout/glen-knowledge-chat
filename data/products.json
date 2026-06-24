@@ -3241,9 +3241,9 @@
       "bottle_type": "30cap"
     },
     "lavender-msm-lotion": {
-      "name": "Pure & Natural MSM Lotion",
+      "name": "MSM Lavender Lotion",
       "price_cents": 1997,
-      "pinecone_title": "Pure &amp; Natural MSM Lotion",
+      "pinecone_title": "MSM Lavender Lotion",
       "url": "https://remedymatch.com/remedies/246-lavender-msm-lotion",
       "ingredients": [
         {
@@ -3306,9 +3306,9 @@
       "ingredients_source": "store-recovery-2026-06-08"
     },
     "coconut-rose-msm-lotion": {
-      "name": "Pure & Natural MSM Lotion",
+      "name": "MSM Coconut Rose Lotion",
       "price_cents": 1997,
-      "pinecone_title": "Pure &amp; Natural MSM Lotion",
+      "pinecone_title": "MSM Coconut Rose Lotion",
       "url": "https://remedymatch.com/remedies/247-coconut-rose-msm-lotion",
       "ingredients": [
         {
@@ -8909,53 +8909,6 @@
       "description": "TMG Powder (Trimethylglycine) . TMG Powder (Trimethylglycine) TMG Syntropy Powder (Trimethylglycine) Trimethylglycine is nature's most potent methyl donor... TMG Syntropy includes synergists. Glycine gets its name from its slightly sweet taste. Most people experience TMG as sweet from the glycine amino acid in the core of its structure. Each molecule of TMG has 3 methyl groups it can give... That means one molecule can elevate SAMe levels by recycling SAMe three times from Homocysteine which is associated with atherosclerosis much more strongly than is Cholesterol... SAMe is also strongly...",
       "enrichment_note": "TMG Syntropy Powder includes Vitamin B15 & B16 (Glen 2026-06-05)"
     },
-    "neuromagnesium": {
-      "name": "Neuro Magnesium",
-      "price_cents": 6997,
-      "pinecone_title": "Neuro Magnesium",
-      "url": "https://remedymatch.com/remedies/syntropy/80-neuromagnesium",
-      "ingredients": [
-        {
-          "name": "Magnesium",
-          "dose": "330 mg"
-        },
-        {
-          "name": "Pyridoxal-5-Phosphate (P5P)",
-          "dose": "3.35 mg"
-        },
-        {
-          "name": "Vitamin D3 (Cholecalciferol)",
-          "dose": "0.65 mg"
-        },
-        {
-          "name": "Tetrahydrocurcumin",
-          "dose": "33 mg"
-        },
-        {
-          "name": "Mogroside V",
-          "dose": "17 mg"
-        },
-        {
-          "name": "L-Theanine",
-          "dose": "65 mg"
-        },
-        {
-          "name": "Apigenin",
-          "dose": "17 mg"
-        },
-        {
-          "name": "Zinc Glycinate",
-          "dose": "25 mg"
-        },
-        {
-          "name": "Lithium Orotate",
-          "dose": "9 mg"
-        }
-      ],
-      "ingredients_source": "fmp_new",
-      "description": "Neuro Magnesium . Neuro Magnesium Neuro-Magnesium Magnesium is the fourth most abundant mineral in the body, with 60% stored in bones and the rest in soft tissues and fluids, including blood ( Health Benefits of Magnesium ). Intracellular magnesium is crucial for enzymatic reactions, energy production, and maintaining cellular homeostasis. Low intracellular magnesium levels are linked with many conditions including hypertension, diabetes, and cardiovascular disease. One 500 mg scoop of Neuro-Magnesium supplies: Mineral Synergists: Magnesium (Magnesium L-Threonate & Acetyl Taurate) 23 mg 5.5%...",
-      "bottle_type": "30g"
-    },
     "cds-water-purifier--activator": {
       "name": "CDS Water Purifier & Activator",
       "price_cents": 6997,
@@ -9587,9 +9540,9 @@
       "url": "https://remedymatch.com/remedies/526-baicalein"
     },
     "wholomega": {
-      "name": "NeurOmega",
+      "name": "WholOmega",
       "price_cents": 6997,
-      "pinecone_title": "NeurOmega",
+      "pinecone_title": "WholOmega",
       "url": "https://remedymatch.com/remedies/syntropy/82-wholomega",
       "qty_pricing": true,
       "ingredients": [
@@ -10420,9 +10373,9 @@
       "bottle_type": "30cap"
     },
     "wholomega-120-capsules": {
-      "name": "NeurOmega",
+      "name": "WholOmega 120 Capsules",
       "price_cents": 18997,
-      "pinecone_title": "NeurOmega",
+      "pinecone_title": "WholOmega 120 Capsules",
       "url": "https://remedymatch.com/remedies/syntropy/237-wholomega-120-capsules",
       "ingredients": [
         {
@@ -11352,13 +11305,52 @@
     },
     "neuro-magnesium": {
       "name": "Neuro Magnesium",
-      "price_cents": 8000,
+      "price_cents": 6997,
       "pinecone_title": "Neuro Magnesium",
       "source": "founding-launch-2026",
       "description": "A foundational magnesium drink mix designed to reach where ordinary magnesium falls short. Built on Magnesium N-Acetyl-Taurate (ATA Mg), designed to cross the blood-brain and blood-eye barrier, carrying magnesium and taurine into the tissue where focus and vision live. Supports calm, a clear steady mind, and the body's own foundational eye and brain support. No fillers, no preservatives, sealed in Miron violet glass.",
       "months_per_unit": 1,
       "volume_eligible": true,
-      "bottle_type": "30g"
+      "bottle_type": "30g",
+      "ingredients": [
+        {
+          "name": "Magnesium",
+          "dose": "330 mg"
+        },
+        {
+          "name": "Pyridoxal-5-Phosphate (P5P)",
+          "dose": "3.35 mg"
+        },
+        {
+          "name": "Vitamin D3 (Cholecalciferol)",
+          "dose": "0.65 mg"
+        },
+        {
+          "name": "Tetrahydrocurcumin",
+          "dose": "33 mg"
+        },
+        {
+          "name": "Mogroside V",
+          "dose": "17 mg"
+        },
+        {
+          "name": "L-Theanine",
+          "dose": "65 mg"
+        },
+        {
+          "name": "Apigenin",
+          "dose": "17 mg"
+        },
+        {
+          "name": "Zinc Glycinate",
+          "dose": "25 mg"
+        },
+        {
+          "name": "Lithium Orotate",
+          "dose": "9 mg"
+        }
+      ],
+      "ingredients_source": "fmp_new"
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
