@@ -463,3 +463,23 @@ def test_add_and_update_bottle_with_dims(tmp_path):
     assert get_bottle_dims(db_path=db)["250ml-spray"] == (55, 180)
     update_bottle_type(bid, "250ml-spray", diameter_mm=60, height_mm=185, db_path=db)
     assert get_bottle_dims(db_path=db)["250ml-spray"] == (60, 185)
+
+
+# ── Product override resolver ────────────────────────────────────────────────────
+
+def test_product_override_crud_and_resolution(tmp_path):
+    import sqlite3
+    from dashboard.shipping import (init_shipping_schema, set_product_bottle_override,
+        clear_product_bottle_override, list_product_bottle_overrides, resolve_bottle_type)
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+    # resolution with no override falls to products.json value, then default
+    assert resolve_bottle_type("x", {"bottle_type": "15ml"}, db_path=db) == "15ml"
+    assert resolve_bottle_type("y", {}, db_path=db) == "default"
+    # override wins
+    set_product_bottle_override("x", "30ml", db_path=db)
+    assert resolve_bottle_type("x", {"bottle_type": "15ml"}, db_path=db) == "30ml"
+    assert list_product_bottle_overrides(db_path=db)["x"] == "30ml"
+    clear_product_bottle_override("x", db_path=db)
+    assert resolve_bottle_type("x", {"bottle_type": "15ml"}, db_path=db) == "15ml"

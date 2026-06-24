@@ -146,6 +146,13 @@ def init_shipping_schema(cx: sqlite3.Connection) -> None:
                    "VALUES ('30ml', '30 ml dropper (infoceutical)', 40, 110)")
 
     cx.execute("""
+        CREATE TABLE IF NOT EXISTS product_bottle_types (
+            slug         TEXT PRIMARY KEY,
+            bottle_type  TEXT NOT NULL,
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    cx.execute("""
         CREATE TABLE IF NOT EXISTS packing_settings (
             key   TEXT PRIMARY KEY,
             value INTEGER NOT NULL
@@ -517,6 +524,40 @@ def get_bottle_dims(db_path: Optional[str] = None) -> Dict[str, tuple]:
             "WHERE diameter_mm IS NOT NULL AND height_mm IS NOT NULL"
         ).fetchall()
     return {r["name"]: (r["diameter_mm"], r["height_mm"]) for r in rows}
+
+
+def list_product_bottle_overrides(db_path=None):
+    with _connect(db_path) as cx:
+        rows = cx.execute("SELECT slug, bottle_type FROM product_bottle_types").fetchall()
+    return {r["slug"]: r["bottle_type"] for r in rows}
+
+
+def set_product_bottle_override(slug, bottle_type, db_path=None):
+    with _connect(db_path) as cx:
+        cx.execute(
+            "INSERT INTO product_bottle_types (slug, bottle_type, updated_at) "
+            "VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT (slug) DO UPDATE SET bottle_type=excluded.bottle_type, "
+            "updated_at=datetime('now')",
+            (slug, bottle_type),
+        )
+        cx.commit()
+
+
+def clear_product_bottle_override(slug, db_path=None):
+    with _connect(db_path) as cx:
+        cx.execute("DELETE FROM product_bottle_types WHERE slug=?", (slug,))
+        cx.commit()
+
+
+def resolve_bottle_type(slug, product, db_path=None):
+    with _connect(db_path) as cx:
+        row = cx.execute(
+            "SELECT bottle_type FROM product_bottle_types WHERE slug=?", (slug,)
+        ).fetchone()
+    if row:
+        return row["bottle_type"]
+    return (product or {}).get("bottle_type") or "default"
 
 
 def get_packing_settings(db_path: Optional[str] = None) -> Dict[str, int]:
