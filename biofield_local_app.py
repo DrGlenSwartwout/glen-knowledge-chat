@@ -154,11 +154,14 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         ctx = scan_lookup((rep.get("client") or {}).get("email") or "")
         return ctx, rep
 
-    def _seed_stresses(cx, test_id, *, force=False):
+    def _seed_stresses(cx, test_id, *, force=False, layers=None):
         """Synthesize reveal layers + seed the stress coverage map for this test.
         Skips silently when no email is set, no scan is found, or (unless force)
         the test already has scan stresses. Synthesis errors are swallowed so the
-        intake flow is never blocked by a live-pipeline failure."""
+        intake flow is never blocked by a live-pipeline failure.
+        If *layers* is supplied they are used directly, skipping the synthesis
+        network call — pass them from a route that already ran synthesize_reveal_layers
+        so the pipeline runs only once per import."""
         from dashboard import biofield_reveal_import as _ri
         from dashboard import biofield_stress as _st
         import datetime as _dt
@@ -174,11 +177,14 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         ctx = scan_lookup(email)
         if not ctx.get("found"):
             return
-        try:
-            res = _ri.synthesize_reveal_layers(email, today=_dt.date.today().isoformat())
-        except Exception:
-            return
-        coverage = _ri.build_coverage(res.get("layers") or [])
+        if layers is not None:
+            coverage = _ri.build_coverage(layers)
+        else:
+            try:
+                res = _ri.synthesize_reveal_layers(email, today=_dt.date.today().isoformat())
+            except Exception:
+                return
+            coverage = _ri.build_coverage(res.get("layers") or [])
         _st.seed_from_scan(cx, test_id, ctx.get("findings") or [], coverage)
 
     with sqlite3.connect(db_path) as _cx:
@@ -345,7 +351,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             if existing and not force:
                 return {"ok": False, "needs_confirm": True, "existing": existing}
             imported = _ri.import_layers_to_test(cx, test_id, res.get("layers") or [])
-            _seed_stresses(cx, test_id, force=True)  # re-seed after import (scan ctx may have changed)
+            # Pass already-synthesized layers so the pipeline runs only once per import
+            _seed_stresses(cx, test_id, force=True, layers=res.get("layers") or [])
         return {"ok": True, "imported": imported}
 
     @app.route("/author/<test_id>/stresses")

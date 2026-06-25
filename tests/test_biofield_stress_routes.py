@@ -78,6 +78,30 @@ def test_manual_balance_toggle(tmp_path, monkeypatch):
     assert "MR2" in {s["code"] for s in j["data"]["balanced"]}
 
 
+def test_import_reveal_synthesizes_exactly_once(tmp_path, monkeypatch):
+    """synthesize_reveal_layers must run ONCE per import-reveal call: once inside
+    the route itself, zero times inside the subsequent _seed_stresses call (which
+    now reuses the layers already in hand)."""
+    call_count = {"n": 0}
+
+    def counting_synth(*a, **k):
+        call_count["n"] += 1
+        return _SYNTH
+
+    monkeypatch.setattr(RI, "synthesize_reveal_layers", counting_synth)
+    db = str(tmp_path / "c.db")
+    client = _app(db)
+    # _new triggers header -> _seed_stresses (lazy first seed, one synthesis call)
+    tid = _new(client, "j@x.com")
+    # Reset after setup so the assertion only covers the import path
+    call_count["n"] = 0
+    j = client.post(f"/author/{tid}/e4l/import-reveal", json={}).get_json()
+    assert j["ok"] is True, j
+    assert call_count["n"] == 1, (
+        f"expected exactly 1 synthesize_reveal_layers call during import, got {call_count['n']}"
+    )
+
+
 def test_row_save_layer_change_reorders(tmp_path, monkeypatch):
     monkeypatch.setattr(RI, "synthesize_reveal_layers", lambda *a, **k: _NONE)  # no seed needed
     db = str(tmp_path / "c.db")
