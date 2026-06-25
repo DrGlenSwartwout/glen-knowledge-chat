@@ -964,6 +964,18 @@ def _init_purchase_orders_tables():
 _init_purchase_orders_tables()
 
 
+def _init_inventory_tables():
+    """Inventory management — on-hand tracking, txn history, baselines & receipts."""
+    from dashboard.inventory import init_inventory_schema
+    cx = sqlite3.connect(str(LOG_DB))
+    try:
+        init_inventory_schema(cx)
+    finally:
+        cx.close()
+
+_init_inventory_tables()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
@@ -20974,6 +20986,90 @@ def api_po_item_patch(item_id):
         _po.update_po_item_curated(item_id, request.get_json(silent=True) or {})
         return ok({"id": item_id})
     except Exception as e: return fail(e)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /api/inventory/* — inventory levels, on-hand tracking, txn history
+# ─────────────────────────────────────────────────────────────────────────────
+from dashboard import inventory as _inv
+
+
+@app.route("/api/inventory/levels", methods=["GET"])
+@require_console_key
+def api_inventory_levels():
+    try:
+        return ok(_inv.inventory_levels(request.args.get("q",""),
+                                        int(request.args.get("limit",200)),
+                                        int(request.args.get("offset",0))))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/inventory/<int:ingredient_id>", methods=["GET"])
+@require_console_key
+def api_inventory_get(ingredient_id):
+    try:
+        d = _inv.get_inventory(ingredient_id)
+        if not d:
+            return fail("not found", status=404)
+        return ok(d)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/inventory/<int:ingredient_id>/adjust", methods=["POST"])
+@require_console_key
+def api_inventory_adjust(ingredient_id):
+    try:
+        b = request.get_json(silent=True) or {}
+        _inv.add_adjustment(ingredient_id, b.get("qty"), b.get("unit"),
+                            b.get("txn_date"), b.get("notes"))
+        return ok({"on_hand": _inv.on_hand(ingredient_id)})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/inventory/txns/<int:txn_id>", methods=["PATCH"])
+@require_console_key
+def api_inventory_txn_patch(txn_id):
+    try:
+        _inv.update_txn_curated(txn_id, request.get_json(silent=True) or {})
+        return ok({"id": txn_id})
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/inventory/seed", methods=["POST"])
+@require_console_key
+def api_inventory_seed():
+    try:
+        from dashboard.ingredient_catalog import init_ingredients_schema
+        from dashboard.purchase_orders import init_purchase_orders_schema
+        from dashboard.inventory import init_inventory_schema, seed_baselines, seed_receipts
+    except Exception as e:
+        return fail(f"import error: {e}")
+    try:
+        write = request.form.get("write", "").lower() in ("1","true","yes")
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx)
+            init_purchase_orders_schema(cx)
+            init_inventory_schema(cx)
+            nb = seed_baselines(cx)
+            nr = seed_receipts(cx)
+            if write:
+                cx.commit()
+            else:
+                cx.rollback()
+        finally:
+            cx.close()
+        return ok({"mode": "write" if write else "dry_run", "baselines": nb, "receipts": nr})
+    except Exception as e:
+        app.logger.exception("inventory seed error")
+        return fail(str(e))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

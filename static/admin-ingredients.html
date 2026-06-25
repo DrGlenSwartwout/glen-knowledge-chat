@@ -121,6 +121,17 @@
     #po-detail-panel { display: none; }
     #po-detail-panel.active { display: block; }
 
+    /* Inventory tab */
+    #inv-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+    #inv-detail-panel { display: none; }
+    #inv-detail-panel.active { display: block; }
+    #inv-list { width: 100%; border-collapse: collapse; }
+    #inv-list td { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+    #inv-list tr:hover td { background: rgba(212,168,67,0.08); }
+    #inv-list th { text-align: left; padding: 6px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+    #inv-txns td { padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    #inv-txns th { text-align: left; padding: 6px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+
     /* Supplier list */
     #supplier-results { list-style: none; }
     #supplier-results li { padding: 10px 12px; border-bottom: 1px solid var(--border); }
@@ -168,6 +179,7 @@
     <button class="tab-btn" onclick="showTab('formulations')">Formulations</button>
     <button class="tab-btn" onclick="showTab('materials')">Materials</button>
     <button class="tab-btn" onclick="showTab('po')">Purchase Orders</button>
+    <button class="tab-btn" onclick="showTab('inventory')">Inventory</button>
   </div>
 
   <!-- ── Ingredients tab ─────────────────────────────────────────────────── -->
@@ -642,6 +654,81 @@
     </div><!-- /#po-detail-panel -->
   </div><!-- /#tab-po -->
 
+  <!-- ── Inventory tab ──────────────────────────────────────────────────────── -->
+  <div id="tab-inventory" class="tab-panel">
+
+    <!-- Search / levels list -->
+    <div class="section" id="inv-search-section">
+      <h2>Inventory Levels</h2>
+      <div class="search-row">
+        <input type="text" id="inv-search" placeholder="Type to search ingredients…" autocomplete="off">
+        <button class="save-btn" id="inv-seed-btn" onclick="invSeed()" style="margin-left:12px">Seed from baseline + receipts</button>
+      </div>
+      <div id="inv-empty">No results.</div>
+      <table id="inv-list">
+        <thead>
+          <tr>
+            <th>Ingredient</th>
+            <th>On Hand</th>
+            <th>Par Level</th>
+          </tr>
+        </thead>
+        <tbody id="inv-list-body"></tbody>
+      </table>
+      <div class="hint">Shows all ingredients with inventory records. Click a row to view the ledger and add an adjustment.</div>
+    </div>
+
+    <!-- Detail panel (hidden until row clicked) -->
+    <div id="inv-detail-panel">
+
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closeInvDetail()">&#8592; Back to list</button>
+          <div id="inv-detail-head" style="flex:1;padding-left:12px"></div>
+        </div>
+
+        <!-- Add adjustment / recount form -->
+        <div class="section-label" style="margin-top:20px">Add adjustment / recount</div>
+        <div class="field-grid">
+          <div class="field-block">
+            <label for="inv-adj-qty">Qty <span style="color:var(--muted);font-size:11px">(use − to subtract)</span></label>
+            <input type="number" id="inv-adj-qty" step="any" placeholder="e.g. 5 or -2">
+          </div>
+          <div class="field-block">
+            <label for="inv-adj-unit">Unit <span style="color:var(--muted);font-size:11px">(optional)</span></label>
+            <input type="text" id="inv-adj-unit" placeholder="kg / g / units…">
+          </div>
+          <div class="field-block field-full">
+            <label for="inv-adj-notes">Notes <span style="color:var(--muted);font-size:11px">(optional)</span></label>
+            <textarea id="inv-adj-notes" placeholder="Reason for adjustment, recount source, etc."></textarea>
+          </div>
+        </div>
+        <div class="save-row">
+          <button class="save-btn" onclick="submitInvAdjust()">Save adjustment</button>
+        </div>
+      </div>
+
+      <!-- Ledger table -->
+      <div class="section">
+        <h2>Transaction Ledger</h2>
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr id="inv-txns-head">
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Date</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Type</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Qty</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Unit</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Notes</th>
+            </tr>
+          </thead>
+          <tbody id="inv-txns"></tbody>
+        </table>
+        <div id="inv-txns-empty" class="hint" style="display:none">No transactions yet.</div>
+      </div>
+
+    </div><!-- /#inv-detail-panel -->
+  </div><!-- /#tab-inventory -->
+
 </div><!-- /#wrap -->
 
 <div id="toast"></div>
@@ -682,7 +769,7 @@ function showTab(name) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.getElementById("tab-" + name).classList.add("active");
   const btns = document.querySelectorAll(".tab-btn");
-  const labels = ["ingredients", "suppliers", "import", "formulations", "materials", "po"];
+  const labels = ["ingredients", "suppliers", "import", "formulations", "materials", "po", "inventory"];
   btns[labels.indexOf(name)].classList.add("active");
   if (name === "suppliers") loadSuppliers();
 }
@@ -1615,6 +1702,121 @@ function renderPoReceiving(receiving) {
       <td>${escapeHtml(rec.received_size || "—")}</td>`;
     tbody.appendChild(tr);
   }
+}
+
+// ── Inventory tab ────────────────────────────────────────────────────────────
+let _invSearchTimer = null;
+let invCurrentId = null;
+
+document.getElementById("inv-search").addEventListener("input", function() {
+  clearTimeout(_invSearchTimer);
+  _invSearchTimer = setTimeout(() => doInvSearch(this.value.trim()), 280);
+});
+
+async function doInvSearch(q) {
+  const tbody = document.getElementById("inv-list-body");
+  const empty = document.getElementById("inv-empty");
+  tbody.innerHTML = "";
+  empty.style.display = "none";
+  try {
+    const rows = await api("/api/inventory/levels?q=" + encodeURIComponent(q || ""));
+    if (!rows.length) { empty.style.display = "block"; return; }
+    tbody.innerHTML = rows.map(function(x) {
+      var par = x.par_level != null ? (x.par_level + " " + escapeHtml(x.par_level_unit || "")).trim() : "—";
+      var cls = x.below_par ? ' style="color:#b00;font-weight:600"' : "";
+      return '<tr' + cls + ' onclick="openInv(' + x.id + ')" style="cursor:pointer">' +
+             '<td>' + escapeHtml(x.name || "") + '</td>' +
+             '<td>' + (x.on_hand != null ? x.on_hand : "—") + '</td>' +
+             '<td>' + par + '</td>' +
+             '</tr>';
+    }).join("");
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+async function openInv(id) {
+  invCurrentId = id;
+  try {
+    const d = await api("/api/inventory/" + id);
+    if (!d) return;
+    document.getElementById("inv-search-section").style.display = "none";
+    const panel = document.getElementById("inv-detail-panel");
+    panel.classList.add("active");
+    // Header
+    var par = d.par_level != null ? (d.par_level + " " + escapeHtml(d.par_level_unit || "")).trim() : "—";
+    document.getElementById("inv-detail-head").innerHTML =
+      "<strong>" + escapeHtml((d.ingredient && d.ingredient.name) || "") + "</strong>" +
+      " — on hand: <strong>" + (d.on_hand != null ? d.on_hand : "—") + "</strong>" +
+      " &nbsp;·&nbsp; par: " + par;
+    // Ledger
+    const txns = d.txns || [];
+    const tbody = document.getElementById("inv-txns");
+    const txnsEmpty = document.getElementById("inv-txns-empty");
+    if (!txns.length) {
+      tbody.innerHTML = "";
+      txnsEmpty.style.display = "block";
+    } else {
+      txnsEmpty.style.display = "none";
+      tbody.innerHTML = txns.map(function(t) {
+        return "<tr>" +
+               "<td>" + escapeHtml(t.txn_date || "—") + "</td>" +
+               "<td>" + escapeHtml(t.txn_type || "") + "</td>" +
+               "<td>" + (t.qty != null ? t.qty : "—") + "</td>" +
+               "<td>" + escapeHtml(t.unit || "") + "</td>" +
+               "<td>" + escapeHtml(t.notes || "") + "</td>" +
+               "</tr>";
+      }).join("");
+    }
+    // Clear adjust form
+    document.getElementById("inv-adj-qty").value = "";
+    document.getElementById("inv-adj-unit").value = "";
+    document.getElementById("inv-adj-notes").value = "";
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function closeInvDetail() {
+  invCurrentId = null;
+  document.getElementById("inv-detail-panel").classList.remove("active");
+  document.getElementById("inv-search-section").style.display = "block";
+}
+
+async function submitInvAdjust() {
+  if (!invCurrentId) return;
+  const qtyVal = document.getElementById("inv-adj-qty").value.trim();
+  const qty = parseFloat(qtyVal);
+  if (qtyVal === "" || isNaN(qty)) { toast("Enter a numeric qty (use − to subtract)", "error"); return; }
+  const body = {
+    qty: qty,
+    unit:  document.getElementById("inv-adj-unit").value.trim()  || null,
+    notes: document.getElementById("inv-adj-notes").value.trim() || null,
+  };
+  try {
+    await api("/api/inventory/" + invCurrentId + "/adjust", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    toast("Adjustment saved");
+    openInv(invCurrentId);
+    doInvSearch(document.getElementById("inv-search").value.trim());
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function invSeed() {
+  if (!confirm("Seed baseline + receipt entries from existing data? (safe to re-run)")) return;
+  const fd = new FormData();
+  fd.append("write", "1");
+  try {
+    const res = await fetch("/api/inventory/seed", { method: "POST", headers: { "X-Console-Key": KEY }, body: fd });
+    if (res.status === 401) { document.getElementById("auth-warn").style.display = "block"; return; }
+    const j = await res.json();
+    if (!j.ok) { toast(j.error || "Seed failed", "error"); return; }
+    const d = j.data || {};
+    toast("Seeded: " + (d.baselines != null ? d.baselines : "?") + " baselines, " + (d.receipts != null ? d.receipts : "?") + " receipts");
+    doInvSearch(document.getElementById("inv-search").value.trim());
+  } catch (e) { toast(e.message, "error"); }
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
