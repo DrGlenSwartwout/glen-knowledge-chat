@@ -323,6 +323,15 @@ async function delTest(){if(!confirm('Delete this entire test? This cannot be un
  await post('/author/__TID__/delete',{});location.href='/'}
 async function confirmAll(){await post('/author/__TID__/confirm-all',{});location.reload()}
 async function confirmRow(rid){await post('/author/__TID__/row/'+rid+'/confirm',{});location.reload()}
+async function importReveal(){
+  var j=await post('/author/__TID__/e4l/import-reveal',{});
+  if(j && j.needs_confirm){
+    if(!confirm('This session already has '+j.existing+' rows — add the reveal layers anyway?')) return;
+    j=await post('/author/__TID__/e4l/import-reveal',{force:true});
+  }
+  if(j && j.ok){ location.reload(); }
+  else { astat((j&&j.reason)||'Import failed.'); }
+}
 async function loadLists(){
  try{const v=await (await fetch('/api/vocab?limit=500')).json();
   document.getElementById('vocab').innerHTML=(v.vocab||[]).map(opt).join('')}catch(e){}
@@ -389,8 +398,18 @@ def render_e4l_panel(ctx):
             + _section("Stresses", "information only, no balancing vial", stress))
     note = ("<div class=food style='margin-top:6px'>Reference only &mdash; your spoken "
             "testing fills the chain.</div>") if ctx.get("found") else ""
+    days = ctx.get("days_ago")
+    if ctx.get("found") and days is not None and days < 7:
+        imp = "<button class='btn' onclick=importReveal()>Import Reveal &rarr; Causal Chain</button>"
+    elif ctx.get("found"):
+        imp = (f"<button class='btn' disabled title='Refresh to a scan under 7 days old'>"
+               f"Import Reveal &rarr; Causal Chain</button>"
+               f"<span class=food>scan is {_e(str(days))} days old</span>")
+    else:
+        imp = ""
     check = ("<div class=btnrow style='margin-top:8px'>"
              "<button class='btn ghost' onclick=checkE4L()>Check E4L now</button>"
+             f"{imp}"
              "<span id=e4lchk class=food></span></div>")
     return (f"<div class=card style='border-left:3px solid {color}'>"
             "<div class=food style='text-transform:uppercase;font-size:11px;letter-spacing:.08em'>"
