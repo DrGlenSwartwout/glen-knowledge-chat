@@ -2191,6 +2191,67 @@ def begin_card_click():
     return ("", 204)
 
 
+def _featured_for_land(land):
+    """Return (product_slug, product_name) for a land from shell-map.json, or (None, None)."""
+    try:
+        cfg = json.loads((STATIC / "shell-map.json").read_text())
+        f = ((cfg.get("lands") or {}).get(land) or {}).get("featured") or {}
+        return f.get("product_slug"), f.get("product_name")
+    except Exception:
+        return None, None
+
+
+def _land_is_done(state, land):
+    """True when the land's journey card is fully complete (fill>=1.0)."""
+    for card in begin_funnel.journey_map(state, "", {}):
+        if card["key"] == land:
+            return card["status"] == "done"
+    return False
+
+
+@app.route("/api/journey/claim-coupon", methods=["POST"])
+def journey_claim_coupon():
+    if not REWARDS_1B_ENABLED:
+        return ("", 404)
+    data = request.get_json(silent=True) or {}
+    land = (data.get("land") or "").strip()
+    slug, _name = _featured_for_land(land)
+    if not slug:
+        return jsonify({"ok": False, "error": "no featured product for land"}), 400
+    session_id = (request.cookies.get("amg_session") or "").strip()
+    au = get_authenticated_user(request)
+    email = (au["email"] if au else "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.get_state(cx, session_id=session_id, email=email)
+        email = (state.get("email") or email or "").strip().lower()
+        if not email or not state.get("tos_agreed_at"):
+            return jsonify({"ok": False, "needs": "email_tos"}), 409
+        if not _land_is_done(state, land):
+            return jsonify({"ok": False, "needs": "complete_stage"}), 409
+        from dashboard import coupons as _coupons
+        _coupons.init_coupons_table(cx)
+        coupon = _coupons.mint_self(cx, email=email, product_slug=slug)
+    return jsonify({"ok": True, "coupon": coupon})
+
+
+@app.route("/api/journey/wallet", methods=["GET"])
+def journey_wallet():
+    if not REWARDS_1B_ENABLED:
+        return ("", 404)
+    session_id = (request.cookies.get("amg_session") or "").strip()
+    au = get_authenticated_user(request)
+    email = (au["email"] if au else "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.get_state(cx, session_id=session_id, email=email)
+        email = (state.get("email") or email or "").strip().lower()
+        if not email:
+            return jsonify({"ok": True, "coupons": []})
+        from dashboard import coupons as _coupons
+        _coupons.init_coupons_table(cx)
+        items = _coupons.wallet(cx, email=email)
+    return jsonify({"ok": True, "coupons": items})
+
+
 # ToS version stamp for the /begin free-tier gate. The live T&C page at
 # remedymatch.com/info/terms-and-conditions carries no version string, so we
 # date-stamp agreement here. Bump when the T&C content materially changes.
@@ -3279,6 +3340,7 @@ BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lo
 BIOFIELD_CART_ENABLED = os.environ.get("BIOFIELD_CART_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 ASCEND_PERSONALIZED_ENABLED = os.environ.get("ASCEND_PERSONALIZED_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 JOURNEY_SHELL_ENABLED = os.environ.get("JOURNEY_SHELL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _referral_pct():
@@ -5148,9 +5210,12 @@ def begin_checkout(slug):
                 _points.init_points_table(_bcx)
                 redeem = min(redeem, _points.balance(_bcx, email))
         _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(data.get("referral_code"), email)
+        _coupon_code = (data.get("coupon_code") or "").strip() or _best_active_self_coupon_code(email, slug)
+        _self_pct, _self_coupon = _resolve_self_coupon_pct(_coupon_code, slug)
+        _eff_pct = max(_ref_pct or 0, _self_pct or 0)
         try:
             pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
-                             coupon_pct=_ref_pct,
+                             coupon_pct=_eff_pct,
                              points_to_redeem_cents=redeem)
         except CheckoutError as ce:
             return jsonify({"ok": False, "error": str(ce)}), 400
@@ -5160,6 +5225,13 @@ def begin_checkout(slug):
                                 allow_online_pay=allow_online, email_to=email,
                                 discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
         _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
+        if _self_coupon and _self_pct >= (_ref_pct or 0):
+            try:
+                from dashboard import coupons as _coupons
+                with _db_lock, sqlite3.connect(LOG_DB) as _ccx:
+                    _coupons.mark_redeemed(_ccx, _self_coupon["code"], order_ref=inv.get("Id"))
+            except Exception as e:  # noqa: BLE001
+                print(f"[coupons] redeem-mark failed: {e!r}", flush=True)
         out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
                "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt"),
                "method": method, "customer_id": cust.get("Id"),
@@ -10139,6 +10211,39 @@ def _resolve_checkout_coupon_pct(referral_code, referee_email):
     except Exception as e:  # noqa: BLE001 - referral never blocks checkout
         print(f"[referrals] resolve failed: {e}", flush=True)
         return daily, None
+
+
+def _best_active_self_coupon_code(email, product_slug):
+    """The visitor's active self-coupon code for this product, or '' — so an
+    earned coupon auto-applies at checkout without the client sending one."""
+    if not REWARDS_1B_ENABLED or not email or not product_slug:
+        return ""
+    try:
+        from dashboard import coupons as _coupons
+        with sqlite3.connect(LOG_DB) as cx:
+            _coupons.init_coupons_table(cx)
+            actives = [c for c in _coupons.wallet(cx, email=email)
+                       if c.get("product_slug") == product_slug]
+        return actives[0]["code"] if actives else ""
+    except Exception as e:  # noqa: BLE001 — never block checkout
+        print(f"[coupons] auto-resolve failed: {e!r}", flush=True)
+        return ""
+
+
+def _resolve_self_coupon_pct(code, product_slug):
+    """1b self-coupon → (pct, coupon|None). Product-bound; never raises."""
+    code = (code or "").strip()
+    if not REWARDS_1B_ENABLED or not code or not product_slug:
+        return 0, None
+    try:
+        from dashboard import coupons as _coupons
+        with sqlite3.connect(LOG_DB) as cx:
+            _coupons.init_coupons_table(cx)
+            found = _coupons.validate(cx, code, product_slug=product_slug)
+        return (int(found["pct"]), found) if found else (0, None)
+    except Exception as e:  # noqa: BLE001 — a coupon never blocks checkout
+        print(f"[coupons] resolve failed: {e!r}", flush=True)
+        return 0, None
 
 
 def _record_referral_if_any(referral_ctx, referee_email, order_ref):
@@ -24350,6 +24455,22 @@ def admin_sales_images_backfill():
     return jsonify({"ok": True, "enqueued": enq, "count": len(enq)})
 
 
+@app.route("/api/console/coupons", methods=["GET"])
+def api_console_coupons():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        from dashboard import coupons as _coupons
+        _coupons.init_coupons_table(cx)
+        rows = cx.execute(
+            "SELECT code,product_slug,pct,kind,email,minted_at,expires_at,redeemed_at "
+            "FROM coupons ORDER BY minted_at DESC LIMIT 500").fetchall()
+    keys = ["code", "product_slug", "pct", "kind", "email", "minted_at", "expires_at", "redeemed_at"]
+    return jsonify({"coupons": [dict(zip(keys, r)) for r in rows]})
+
+
 @app.after_request
 def _inject_journey_shell(response):
     if not JOURNEY_SHELL_ENABLED:
@@ -24363,7 +24484,7 @@ def _inject_journey_shell(response):
             return response
         authed = bool(get_authenticated_user(request))
         mode = shell_nav.resolve_mode(request.path, authed)
-        response.set_data(shell_nav.inject_shell_html(html, mode))
+        response.set_data(shell_nav.inject_shell_html(html, mode, REWARDS_1B_ENABLED))
     except Exception as e:  # never let the shell break a page
         print(f"[journey-shell] inject skipped: {e!r}", flush=True)
     return response

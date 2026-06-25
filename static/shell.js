@@ -4,6 +4,7 @@
   window.__jshellBooted = true;
   var MODE = (window.__SHELL__ && window.__SHELL__.mode) || "funnel";
   var TRAIL_KEY = "jshell.trail";
+  var REWARDS = !!(window.__SHELL__ && window.__SHELL__.rewards1b);
 
   function el(tag, cls, html) {
     var e = document.createElement(tag);
@@ -67,6 +68,19 @@
     }
 
     bar.appendChild(mypathBtn);
+
+    if (REWARDS) {
+      var orb = el("span", "js-orb"); orb.setAttribute("data-lit", "0"); orb.title = "Your biofield";
+      bar.appendChild(orb);
+      var walletBtn = el("button", "js-mypath-btn", "Wallet");
+      bar.appendChild(walletBtn);
+      var wp = el("div", "js-mypath"); wp.id = "js-wallet";
+      wp.appendChild(el("h4", null, "Your offers"));
+      var walletBody = el("div"); walletBody.id = "js-wallet-body"; wp.appendChild(walletBody);
+      document.body.appendChild(wp);
+      walletBtn.onclick = function () { wp.classList.toggle("open"); };
+    }
+
     document.body.appendChild(bar);
     document.body.classList.add("js-shell-on");
 
@@ -128,6 +142,16 @@
       var box = el("div", "js-pav-land" + (fog ? " fog" : ""));
       box.appendChild(el("h3", null, icon + " " + (meta.name || card.label)));
       box.appendChild(el("div", "js-intrigue", meta.intrigue || card.paren || ""));
+      if (REWARDS && meta.featured) {
+        var fb = el("div", "js-pav-featured",
+          '<div class="js-fname">' + meta.featured.product_name + '</div>' +
+          '<div class="js-fpower">' + meta.featured.healing_power + '</div>');
+        var claim = el("button", "js-claim", "Claim 15% off");
+        if (card.status !== "done") { claim.disabled = true; claim.textContent = "Complete this step to unlock"; }
+        claim.onclick = function () { claimCoupon(card.key, claim); };
+        fb.appendChild(claim);
+        box.appendChild(fb);
+      }
       (card.steps || []).forEach(function (s) {
         var a = el("a", "js-pav" + (s.done ? " done" : ""), s.label);
         a.href = card.href || "#";
@@ -139,6 +163,40 @@
     ov.onclick = function (e) { if (e.target === ov) ov.classList.remove("open"); };
     document.body.appendChild(ov);
     return ov;
+  }
+
+  function claimCoupon(land, btn) {
+    var orig = btn.textContent;
+    btn.disabled = true; btn.textContent = "Claiming…";
+    fetch("/api/journey/claim-coupon", {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({land: land})
+    }).then(function (r) { return r.json().then(function (j) { return {s: r.status, j: j}; }); })
+      .then(function (res) {
+        if (res.s === 200) { btn.textContent = "✓ In your wallet"; refreshWallet(); }
+        else if (res.j && res.j.needs === "email_tos") { btn.disabled = false; location.href = "/begin/match"; }
+        else { btn.disabled = false; btn.textContent = orig; }
+      }).catch(function () { btn.disabled = false; btn.textContent = "Claim 15% off"; });
+  }
+
+  function refreshWallet() {
+    if (!REWARDS) return;
+    fetch("/api/journey/wallet", {credentials: "same-origin"})
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var coupons = (j && j.coupons) || [];
+        var orb = document.querySelector("#journey-shell .js-orb");
+        if (orb) orb.setAttribute("data-lit", String(Math.min(coupons.length, 3)));
+        var panel = document.getElementById("js-wallet-body");
+        if (panel) {
+          panel.innerHTML = coupons.length ? "" : "<p class='js-fpower'>No offers yet — complete a step to earn one.</p>";
+          coupons.forEach(function (c) {
+            panel.appendChild(el("div", "js-wallet-coupon",
+              "<b>15% off</b> " + c.product_slug +
+              "<div class='js-exp'>expires " + (c.expires_at || "").slice(0, 10) + "</div>"));
+          });
+        }
+      }).catch(function () {});
   }
 
   function boot() {
@@ -153,8 +211,9 @@
       if (journey.length) {
         renderLands(pathEl, journey, res[1]);
         var overlay = buildOverlay(journey, res[1]);
-        pathEl.addEventListener("click", function () { overlay.classList.add("open"); });
-      } else pathEl.appendChild(el("span", "js-land", "illtowell.com"));
+        ui.mapBtn.addEventListener("click", function () { overlay.classList.add("open"); });
+        refreshWallet();
+      } else ui.path.appendChild(el("span", "js-land", "illtowell.com"));
     });
   }
 
