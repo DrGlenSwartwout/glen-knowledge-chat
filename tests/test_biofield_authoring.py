@@ -45,7 +45,11 @@ def test_update_and_delete_row(tmp_path):
     rid = add_chain_row(cx, tid, 1, "Night", "Night", "TMG", "1 scoop", "daily", "at night")
     update_chain_row(cx, rid, layer=3, remedy="TMG Powder")
     rep = authored_report(cx, tid)
-    assert rep["layers"][0]["layer"] == 3 and rep["layers"][0]["remedy"] == "TMG Powder"
+    # display layer is always renumbered 1..k by ordered_chain; verify update took + remedy
+    assert rep["layers"][0]["layer"] == 1 and rep["layers"][0]["remedy"] == "TMG Powder"
+    # confirm stored layer value was actually updated in the DB
+    stored = cx.execute("SELECT layer FROM biofield_auth_chain WHERE id=?", (rid,)).fetchone()[0]
+    assert stored == 3
     delete_chain_row(cx, rid)
     assert authored_report(cx, tid)["layers"] == []
 
