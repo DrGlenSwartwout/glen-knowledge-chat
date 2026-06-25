@@ -23,7 +23,7 @@ def main():
     cx = sqlite3.connect(args.db)
     cx.row_factory = sqlite3.Row
     try:
-        inv.init_inventory_schema(cx)
+        inv.init_inventory_schema(cx)  # commits DDL; seed INSERTs follow but stay in tx until rollback/commit
         nb = inv.seed_baselines(cx)
         nr = inv.seed_receipts(cx)
         if args.write:

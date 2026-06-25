@@ -52,3 +52,27 @@ def test_receipt_date_from_po(tmp_path):
     rec = [t for t in rows if t["txn_type"] == "receipt"][0]
     assert rec["txn_date"] == "2026-01-05"            # posted_date preferred over po_date
     assert rec["source_ref"] == "po_receiving:1000" and rec["unit"] == "kg"
+
+
+def test_receipt_date_falls_back_to_po_date(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        cx.execute("CREATE TABLE ingredients (id INTEGER PRIMARY KEY, fmp_id TEXT, name TEXT, extras TEXT)")
+        cx.execute("CREATE TABLE purchase_orders (id INTEGER PRIMARY KEY, po_date TEXT, posted_date TEXT)")
+        cx.execute("CREATE TABLE po_items (id INTEGER PRIMARY KEY, po_id INTEGER, ingredient_id INTEGER, material_id INTEGER)")
+        cx.execute("CREATE TABLE po_receiving (id INTEGER PRIMARY KEY, po_id INTEGER, po_item_id INTEGER, qty_received REAL, received_size TEXT, created_at TEXT)")
+        inv.init_inventory_schema(cx)
+        cx.execute("INSERT INTO ingredients VALUES (1,'f1','Mag',?)",
+                   (json.dumps({"inventory_starting": "1.0", "par_level_unit": "kg"}),))
+        # PO with posted_date NULL but po_date set
+        cx.execute("INSERT INTO purchase_orders VALUES (20,'2025-12-20',NULL)")
+        cx.execute("INSERT INTO po_items VALUES (200,20,1,NULL)")
+        cx.execute("INSERT INTO po_receiving VALUES (2000,20,200,3.0,'kg','2025-12-21')")
+        cx.commit()
+    with sqlite3.connect(db) as cx:
+        cx.row_factory = sqlite3.Row
+        inv.seed_receipts(cx); cx.commit()
+    rows = inv.list_txns(1, db)
+    rec = [t for t in rows if t["txn_type"] == "receipt"][0]
+    assert rec["txn_date"] == "2025-12-20"            # po_date fallback when posted_date is NULL
+    assert rec["source_ref"] == "po_receiving:2000" and rec["unit"] == "kg"
