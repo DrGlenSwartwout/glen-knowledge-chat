@@ -5210,9 +5210,11 @@ def begin_checkout(slug):
                 _points.init_points_table(_bcx)
                 redeem = min(redeem, _points.balance(_bcx, email))
         _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(data.get("referral_code"), email)
+        _self_pct, _self_coupon = _resolve_self_coupon_pct(data.get("coupon_code"), slug)
+        _eff_pct = max(_ref_pct or 0, _self_pct or 0)
         try:
             pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
-                             coupon_pct=_ref_pct,
+                             coupon_pct=_eff_pct,
                              points_to_redeem_cents=redeem)
         except CheckoutError as ce:
             return jsonify({"ok": False, "error": str(ce)}), 400
@@ -5222,6 +5224,13 @@ def begin_checkout(slug):
                                 allow_online_pay=allow_online, email_to=email,
                                 discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
         _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
+        if _self_coupon and _self_pct >= (_ref_pct or 0):
+            try:
+                from dashboard import coupons as _coupons
+                with _db_lock, sqlite3.connect(LOG_DB) as _ccx:
+                    _coupons.mark_redeemed(_ccx, _self_coupon["code"], order_ref=inv.get("Id"))
+            except Exception as e:  # noqa: BLE001
+                print(f"[coupons] redeem-mark failed: {e!r}", flush=True)
         out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
                "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt"),
                "method": method, "customer_id": cust.get("Id"),
@@ -10201,6 +10210,22 @@ def _resolve_checkout_coupon_pct(referral_code, referee_email):
     except Exception as e:  # noqa: BLE001 - referral never blocks checkout
         print(f"[referrals] resolve failed: {e}", flush=True)
         return daily, None
+
+
+def _resolve_self_coupon_pct(code, product_slug):
+    """1b self-coupon → (pct, coupon|None). Product-bound; never raises."""
+    code = (code or "").strip()
+    if not REWARDS_1B_ENABLED or not code or not product_slug:
+        return 0, None
+    try:
+        from dashboard import coupons as _coupons
+        with sqlite3.connect(LOG_DB) as cx:
+            _coupons.init_coupons_table(cx)
+            found = _coupons.validate(cx, code, product_slug=product_slug)
+        return (int(found["pct"]), found) if found else (0, None)
+    except Exception as e:  # noqa: BLE001 — a coupon never blocks checkout
+        print(f"[coupons] resolve failed: {e!r}", flush=True)
+        return 0, None
 
 
 def _record_referral_if_any(referral_ctx, referee_email, order_ref):
