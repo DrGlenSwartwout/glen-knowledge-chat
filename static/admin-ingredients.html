@@ -1515,7 +1515,7 @@ async function openPo(id) {
     document.getElementById("po-fmp-po-date").textContent      = po.po_date || "—";
     document.getElementById("po-fmp-status").textContent       = po.status || "—";
     document.getElementById("po-fmp-tax").textContent          = po.tax != null ? "$" + Number(po.tax).toFixed(2) : "—";
-    document.getElementById("po-fmp-shipping").textContent     = po.shipping != null ? "$" + Number(po.shipping).toFixed(2) : "—";
+    document.getElementById("po-fmp-shipping").textContent     = po.shipping_amount != null ? "$" + Number(po.shipping_amount).toFixed(2) : "—";
 
     // Status badge
     const badge = document.getElementById("po-detail-status-badge");
