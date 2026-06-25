@@ -937,6 +937,15 @@ def _init_ingredients_tables():
 _init_ingredients_tables()
 
 
+def _init_formulations_tables():
+    """Formulations (recipes) — FMP-migrated, references Phase-1 ingredients."""
+    from dashboard.formulations import init_formulations_schema
+    with sqlite3.connect(LOG_DB) as cx:
+        init_formulations_schema(cx)
+
+_init_formulations_tables()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
