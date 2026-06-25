@@ -20644,6 +20644,68 @@ def api_formulations_item_patch(item_id):
     except Exception as e: return fail(e)
 
 
+@app.route("/api/formulations/import", methods=["POST"])
+@require_console_key
+def formulations_import():
+    """Upload FMP CSVs (products, products_items) to populate the formulations catalog."""
+    import csv as _csv
+    import sys as _sys
+    import io as _io
+    _csv.field_size_limit(_sys.maxsize)
+
+    try:
+        from scripts.import_formulations_from_fmp import (
+            import_formulations, import_formulation_items,
+        )
+        from dashboard.ingredient_catalog import init_ingredients_schema
+        from dashboard.formulations import init_formulations_schema
+    except Exception as e:
+        return fail(f"import error: {e}")
+
+    try:
+        products_file = request.files.get("products")
+        products_items_file = request.files.get("products_items")
+
+        if not all([products_file, products_items_file]):
+            return fail("upload both: products, products_items", status=400)
+
+        products = list(_csv.DictReader(_io.StringIO(products_file.read().decode("utf-8", errors="replace"))))
+        items = list(_csv.DictReader(_io.StringIO(products_items_file.read().decode("utf-8", errors="replace"))))
+
+        ff_ids = {p["id_pk"].strip() for p in products if p.get("type", "").strip() == "Functional Formulation"}
+
+        write = request.form.get("write", "").lower() in ("1", "true", "yes")
+
+        if not write:
+            return ok({
+                "mode": "dry_run",
+                "ff_formulations": len(ff_ids),
+                "products_items": len(items),
+            })
+
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx)
+            init_formulations_schema(cx)
+            nf = import_formulations(cx, products)
+            res = import_formulation_items(cx, items, ff_ids)
+            cx.commit()
+        finally:
+            cx.close()
+
+        return ok({
+            "mode": "write",
+            "formulations": nf,
+            "items": res["items"],
+            "unresolved": res["unresolved"],
+        })
+
+    except Exception as e:
+        app.logger.exception("formulations import error")
+        return fail(str(e))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # /console/settings — collapsible settings panel (Shipping, Active-Mac, etc.)
 # ─────────────────────────────────────────────────────────────────────────────
