@@ -642,6 +642,37 @@ Be precise, not poetic. The dashboard renders these numbers directly.
 """
 
 
+# Forced-tool schema mirroring HAIKU_SYSTEM_PROMPT's output shape. Kept loose
+# (open score maps) so the model fills the named keys per the prompt while the
+# API still guarantees the result is valid, parsed JSON — which is the whole
+# point: free-text fields can't break the structure anymore.
+_NUM_MAP = {"type": "object", "additionalProperties": {"type": "number"}}
+ANALYSIS_TOOL = {
+    "name": "emit_analysis",
+    "description": "Return the structured TCM/emotional analysis for the journal entry.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "emotions": _NUM_MAP,
+            "elements": _NUM_MAP,
+            "treasures": _NUM_MAP,
+            "treasure_confidence": _NUM_MAP,
+            "polyvagal_state": _NUM_MAP,
+            "congruence": {
+                "type": "object",
+                "properties": {
+                    "score": {"type": "number"},
+                    "self_contradictions": {"type": "array", "items": {"type": "string"}},
+                    "notes": {"type": "string"},
+                },
+            },
+            "top_themes": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["emotions", "elements", "treasures"],
+    },
+}
+
+
 def _haiku_analyze(transcript: str, lexical: dict) -> dict:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -662,7 +693,7 @@ def _haiku_analyze(transcript: str, lexical: dict) -> dict:
 
     payload = {
         "model": HAIKU_MODEL,
-        "max_tokens": 2048,
+        "max_tokens": 4096,
         "system": [
             {
                 "type": "text",
@@ -673,6 +704,12 @@ def _haiku_analyze(transcript: str, lexical: dict) -> dict:
         "messages": [
             {"role": "user", "content": user_message}
         ],
+        # Force structured output. Returning the analysis as a tool input makes the
+        # API hand back already-valid structured data, so free-text fields like
+        # `self_contradictions` (which Haiku phrases with literal quotes) can no
+        # longer corrupt the JSON the way model-emitted text JSON did.
+        "tools": [ANALYSIS_TOOL],
+        "tool_choice": {"type": "tool", "name": "emit_analysis"},
     }
 
     resp = requests.post(
@@ -689,9 +726,15 @@ def _haiku_analyze(transcript: str, lexical: dict) -> dict:
         raise RuntimeError(f"Haiku {resp.status_code}: {resp.text[:300]}")
 
     body = resp.json()
+    # Primary path: the forced tool call carries the analysis as a parsed dict.
+    for b in body.get("content", []):
+        if b.get("type") == "tool_use" and b.get("name") == "emit_analysis":
+            inp = b.get("input")
+            if isinstance(inp, dict) and inp:
+                return inp
+    # Defensive fallback: older/text responses → tolerant JSON extraction.
     text_blocks = [b.get("text", "") for b in body.get("content", []) if b.get("type") == "text"]
     raw = "".join(text_blocks).strip()
-
     parsed = _extract_json(raw)
     if parsed is None:
         raise RuntimeError(f"Haiku returned non-JSON: {raw[:300]}")
