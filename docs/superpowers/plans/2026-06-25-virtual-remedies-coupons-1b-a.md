@@ -213,10 +213,10 @@ Edit each 1b-A land to add a `featured` object (give is left without one):
     "scan": {"name": "The Listening Pool", "category": "scan", "intrigue": "Your body is already speaking. Step in and listen.",
              "featured": {"product_slug": "terrain-restore", "product_name": "Terrain Restore", "healing_power": "supports your foundational terrain"}},
     "find": {"name": "The Hall of Mirrors", "category": "find", "intrigue": "See the one remedy your body is asking for.",
-             "featured": {"product_slug": "magnesium-taurate", "product_name": "Magnesium Taurate", "healing_power": "supports calm, clear focus"}},
+             "featured": {"product_slug": "nous-energy", "product_name": "Nous Energy", "healing_power": "supports clear, energized focus"}},
     "heal": {"name": "The Sanctuary", "category": "heal", "intrigue": "Where the root causes finally settle.",
-             "featured": {"product_slug": "endocrine-restore", "product_name": "Endocrine Restore", "healing_power": "supports your body's healing terrain"}},
-    "give": {"name": "The Beacon", "category": "give", "intrigue": "Light the way for someone still in the fog."}
+             "featured": {"product_slug": "microbiome", "product_name": "Microbiome", "healing_power": "supports your gut and inner terrain"}},
+    "give": {"name": "The Beacon", "category": "give", "intrigue": "the gift of healing"}
   },
   "categories": {
     "scan": {"icon": "🌀", "hue": "#4aa3a2"},

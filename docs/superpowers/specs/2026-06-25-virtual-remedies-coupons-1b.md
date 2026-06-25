@@ -86,8 +86,8 @@ covers **scan / find / heal** (3 self-coupons); **give** is the gift land → **
 | Land | Featured remedy (draft — Glen finalizes) | "Healing power" (compliant draft) |
 |---|---|---|
 | scan | Terrain Restore | supports your foundational terrain |
-| find | Magnesium Taurate | supports calm, clear focus |
-| heal | Endocrine Restore *(or Gut Terrain Program)* | supports your body's healing terrain |
+| find | Nous Energy | supports clear, energized focus |
+| heal | Microbiome | supports your gut and inner terrain |
 | give | — (gift coupon → 1b-B) | — |
 
 ### Client (`static/shell.js` / `shell.css`)
