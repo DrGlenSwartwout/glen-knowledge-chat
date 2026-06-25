@@ -73,3 +73,16 @@ def test_import_no_client_email(tmp_path, monkeypatch):
     tid = client.post("/author/new").headers["Location"].rstrip("/").split("/")[-1]
     j = client.post(f"/author/{tid}/e4l/import-reveal", json={}).get_json()
     assert j["ok"] is False and "client" in j["reason"].lower()
+
+
+def test_import_handles_synthesis_failure(tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("pinecone down")
+    monkeypatch.setattr(RI, "synthesize_reveal_layers", boom)
+    db = str(tmp_path / "chat_log.db")
+    client = create_app(db, scan_lookup=lambda e: _NONE).test_client()
+    tid = _new_test_with_email(client, "jane@x.com")
+    r = client.post(f"/author/{tid}/e4l/import-reveal", json={})
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["ok"] is False and "fail" in j["reason"].lower()

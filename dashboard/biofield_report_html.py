@@ -324,6 +324,7 @@ async function delTest(){if(!confirm('Delete this entire test? This cannot be un
 async function confirmAll(){await post('/author/__TID__/confirm-all',{});location.reload()}
 async function confirmRow(rid){await post('/author/__TID__/row/'+rid+'/confirm',{});location.reload()}
 async function importReveal(){
+try{
   var j=await post('/author/__TID__/e4l/import-reveal',{});
   if(j && j.needs_confirm){
     if(!confirm('This session already has '+j.existing+' rows — add the reveal layers anyway?')) return;
@@ -331,6 +332,7 @@ async function importReveal(){
   }
   if(j && j.ok){ location.reload(); }
   else { astat((j&&j.reason)||'Import failed.'); }
+}catch(e){ astat('Import failed.'); }
 }
 async function loadLists(){
  try{const v=await (await fetch('/api/vocab?limit=500')).json();

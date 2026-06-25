@@ -301,7 +301,10 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             email = ((rep.get("client") or {}).get("email") or "").strip()
             if not email:
                 return {"ok": False, "reason": "No client selected yet"}
-            res = _ri.synthesize_reveal_layers(email, today=_dt.date.today().isoformat())
+            try:
+                res = _ri.synthesize_reveal_layers(email, today=_dt.date.today().isoformat())
+            except Exception as e:
+                return {"ok": False, "reason": f"Reveal synthesis failed: {e}"}
             if not res.get("found"):
                 return {"ok": False, "reason": "No E4L scan on file"}
             if not res.get("fresh"):
