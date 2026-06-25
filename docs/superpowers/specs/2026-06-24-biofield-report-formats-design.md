@@ -83,13 +83,11 @@ Talking-head bookends + voice-over B-roll middle (educational, avoids avatar fat
 
 ---
 
-## Branding (one open item — confirm at review)
+## Branding (confirmed)
 
-Default placeholders used in mockups, to confirm:
-- **Wordmark:** "DR. GLEN & RAE"
-- **Tagline:** "accelerated self healing™"
-- **Logo:** text wordmark for now (swap in an image file if provided)
-- **Footer sign-off:** "In wellness, Dr. Glen & Rae" + contact/site line
+- **Masthead wordmark (top of every rendition):** "Accelerated Self Healing™" (styled text, not a graphic logo for now).
+- **Logo:** text wordmark for now (swap in an image file later if provided).
+- **Footer:** sign-off "In wellness, Dr. Glen & Rae" + site **illtowell.com** (the membership site this app runs in; where clients log in / follow up).
 
 ---
 
