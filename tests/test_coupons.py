@@ -50,7 +50,7 @@ def test_mint_self_blocks_remint_after_redeem(cx):
     assert b["code"] == a["code"]  # earn-once: no fresh coupon after redemption
 
 
-def test_mint_self_remints_after_unused_expiry(cx):
+def test_mint_self_one_per_person_even_after_expiry(cx):
     a = coupons.mint_self(cx, email="m@x.com", product_slug="x", days=-1)  # expired, unused
     b = coupons.mint_self(cx, email="m@x.com", product_slug="x")
-    assert b["code"] != a["code"]  # a second chance if the first expired unused
+    assert b["code"] == a["code"]  # earn-once for life: use-it-or-lose-it, no refill

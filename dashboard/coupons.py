@@ -39,10 +39,13 @@ def init_coupons_table(cx):
 
 def mint_self(cx, *, email, product_slug, pct=15, days=10):
     now = _now()
+    # Earn-once: one self-coupon per (email, product_slug) for life. ANY prior
+    # coupon — active, redeemed, OR expired-unused — blocks a re-mint and is
+    # returned as-is. The 10-day window is use-it-or-lose-it, not a refill.
     existing = _row(cx.execute(
         f"SELECT {_SEL} FROM coupons WHERE email=? AND product_slug=? AND kind='self' "
-        "AND (redeemed_at IS NOT NULL OR expires_at > ?) ORDER BY minted_at DESC LIMIT 1",
-        (email, product_slug, now)).fetchone())
+        "ORDER BY minted_at DESC LIMIT 1",
+        (email, product_slug)).fetchone())
     if existing:
         return existing
     code = "SELF-" + uuid.uuid4().hex[:8].upper()
