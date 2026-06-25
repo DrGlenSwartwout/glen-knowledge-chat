@@ -955,6 +955,15 @@ def _init_materials_tables():
 _init_materials_tables()
 
 
+def _init_purchase_orders_tables():
+    """Purchase orders (history) — FMP-migrated. PO header + line items + receiving."""
+    from dashboard.purchase_orders import init_purchase_orders_schema
+    with sqlite3.connect(LOG_DB) as cx:
+        init_purchase_orders_schema(cx)
+
+_init_purchase_orders_tables()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
