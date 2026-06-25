@@ -156,6 +156,7 @@
     <button class="tab-btn" onclick="showTab('suppliers')">Suppliers</button>
     <button class="tab-btn" onclick="showTab('import')">Import from FMP</button>
     <button class="tab-btn" onclick="showTab('formulations')">Formulations</button>
+    <button class="tab-btn" onclick="showTab('materials')">Materials</button>
   </div>
 
   <!-- ── Ingredients tab ─────────────────────────────────────────────────── -->
@@ -400,6 +401,79 @@
     </div><!-- /#formulation-detail-panel -->
   </div><!-- /#tab-formulations -->
 
+  <!-- ── Materials tab ────────────────────────────────────────────────────── -->
+  <div id="tab-materials" class="tab-panel">
+
+    <!-- Search -->
+    <div class="section" id="material-search-section">
+      <h2>Search Materials</h2>
+      <div class="search-row">
+        <input type="text" id="mat-search" placeholder="Type to search by name…" autocomplete="off">
+      </div>
+      <div id="material-empty">No results.</div>
+      <ul id="material-results"></ul>
+      <div class="hint">Materials (packaging + production inputs) imported from FMP. Search is server-side — type at least 1 character.</div>
+    </div>
+
+    <!-- Material detail panel (hidden until material clicked) -->
+    <div id="material-detail-panel">
+
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closeMaterialDetail()">&#8592; Back to search</button>
+          <h3 id="mat-detail-name"></h3>
+          <span id="mat-detail-status-badge"></span>
+        </div>
+
+        <div class="section-label">FMP Fields (read-only)</div>
+        <div class="field-grid">
+          <div class="field-block">
+            <label>Type</label>
+            <div class="ro-val" id="mat-fmp-type">—</div>
+          </div>
+          <div class="field-block">
+            <label>Status</label>
+            <div class="ro-val" id="mat-fmp-status">—</div>
+          </div>
+        </div>
+
+        <div class="section-label" style="margin-top:20px">Curated Fields (editable)</div>
+        <div class="field-grid">
+          <div class="field-block field-full">
+            <label for="mat-notes">Notes</label>
+            <textarea id="mat-notes" placeholder="General notes about this material…"></textarea>
+          </div>
+        </div>
+        <div class="save-row">
+          <button class="save-btn" onclick="saveMaterial()">Save notes</button>
+        </div>
+      </div>
+
+      <!-- Suppliers table -->
+      <div class="section">
+        <h2>Suppliers</h2>
+        <div id="mat-sup-loading" class="loading" style="display:none">Loading suppliers…</div>
+        <table id="mat-sup-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Company</th>
+              <th>SKU</th>
+              <th>Price</th>
+              <th>Purchase Size</th>
+              <th>Mfg</th>
+              <th>Notes</th>
+              <th class="cell-pref">Preferred</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="mat-sup-tbody"></tbody>
+        </table>
+        <div id="mat-sup-empty" class="hint" style="display:none">No suppliers linked to this material.</div>
+      </div>
+
+    </div><!-- /#material-detail-panel -->
+  </div><!-- /#tab-materials -->
+
 </div><!-- /#wrap -->
 
 <div id="toast"></div>
@@ -440,7 +514,7 @@ function showTab(name) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.getElementById("tab-" + name).classList.add("active");
   const btns = document.querySelectorAll(".tab-btn");
-  const labels = ["ingredients", "suppliers", "import", "formulations"];
+  const labels = ["ingredients", "suppliers", "import", "formulations", "materials"];
   btns[labels.indexOf(name)].classList.add("active");
   if (name === "suppliers") loadSuppliers();
 }
@@ -932,6 +1006,149 @@ async function saveFormulationItem(itemId) {
       body: JSON.stringify({ notes: notesEl ? notesEl.value.trim() : "" }),
     });
     toast("Item notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Materials tab ─────────────────────────────────────────────────────────────
+let _matSearchTimer = null;
+let _currentMatId = null;
+
+document.getElementById("mat-search").addEventListener("input", function() {
+  clearTimeout(_matSearchTimer);
+  _matSearchTimer = setTimeout(() => doMaterialSearch(this.value.trim()), 280);
+});
+
+async function doMaterialSearch(q) {
+  const list  = document.getElementById("material-results");
+  const empty = document.getElementById("material-empty");
+  list.innerHTML = "";
+  empty.style.display = "none";
+  if (!q) return;
+  try {
+    const results = await api("/api/materials/search?q=" + encodeURIComponent(q));
+    if (!results.length) { empty.style.display = "block"; return; }
+    for (const mat of results) {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <div class="frm-name">${escapeHtml(mat.name)}</div>
+        <div class="frm-meta">${mat.type ? escapeHtml(mat.type) : ""}${mat.status ? " · " + escapeHtml(mat.status) : ""}</div>`;
+      li.addEventListener("click", () => openMaterial(mat.id));
+      list.appendChild(li);
+    }
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+async function openMaterial(id) {
+  _currentMatId = id;
+  document.getElementById("material-search-section").style.display = "none";
+  document.getElementById("material-detail-panel").style.display = "block";
+  document.getElementById("material-detail-panel").classList.add("active");
+  document.getElementById("mat-sup-table").style.display = "none";
+  document.getElementById("mat-sup-empty").style.display = "none";
+  document.getElementById("mat-sup-loading").style.display = "block";
+
+  try {
+    const { material: mat, suppliers } = await api("/api/materials/" + id);
+
+    // FMP read-only
+    document.getElementById("mat-detail-name").textContent = mat.name || "";
+    document.getElementById("mat-fmp-type").textContent   = mat.type || "—";
+    document.getElementById("mat-fmp-status").textContent = mat.status || "—";
+
+    // Status badge
+    const badge = document.getElementById("mat-detail-status-badge");
+    badge.innerHTML = mat.status
+      ? `<span class="badge badge-status">${escapeHtml(mat.status)}</span>`
+      : "";
+
+    // Curated
+    document.getElementById("mat-notes").value = mat.notes || "";
+
+    // Suppliers
+    renderMaterialSuppliers(suppliers, id);
+  } catch (e) {
+    document.getElementById("mat-sup-loading").style.display = "none";
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function closeMaterialDetail() {
+  _currentMatId = null;
+  document.getElementById("material-detail-panel").style.display = "none";
+  document.getElementById("material-detail-panel").classList.remove("active");
+  document.getElementById("material-search-section").style.display = "block";
+}
+
+async function saveMaterial() {
+  if (!_currentMatId) return;
+  try {
+    await api("/api/materials/" + _currentMatId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: document.getElementById("mat-notes").value.trim() }),
+    });
+    toast("Material notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function renderMaterialSuppliers(suppliers, materialId) {
+  document.getElementById("mat-sup-loading").style.display = "none";
+  const tbody = document.getElementById("mat-sup-tbody");
+  tbody.innerHTML = "";
+
+  if (!suppliers || !suppliers.length) {
+    document.getElementById("mat-sup-empty").style.display = "block";
+    return;
+  }
+
+  document.getElementById("mat-sup-table").style.display = "table";
+
+  for (const s of suppliers) {
+    const tr = document.createElement("tr");
+    tr.id = "mat-sup-row-" + s.id;
+    const sizeDisplay = [s.purchase_size, s.purchase_size_unit].filter(Boolean).join(" ") || "—";
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(s.company || s.supplier_name || "—")}</strong></td>
+      <td style="color:var(--muted)">${escapeHtml(s.sku || "—")}</td>
+      <td>${s.price != null ? "$" + Number(s.price).toFixed(2) : "—"}</td>
+      <td>${escapeHtml(sizeDisplay)}</td>
+      <td>${escapeHtml(s.mfg || "—")}</td>
+      <td><input type="text" class="mat-sup-field" data-sup="${s.id}" data-field="notes" value="${escapeHtml(s.notes || "")}" placeholder="notes" style="width:120px"></td>
+      <td class="cell-pref">
+        <input type="radio" class="pref-radio" name="pref-matsup-${materialId}" data-sup="${s.id}" ${s.preferred ? "checked" : ""} title="Set as preferred">
+      </td>
+      <td>
+        <button class="save-btn" onclick="saveMaterialSupplier(${s.id})">Save</button>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+
+  // Wire preferred radio
+  document.querySelectorAll(`input[name="pref-matsup-${materialId}"]`).forEach(radio => {
+    radio.addEventListener("change", function() {
+      if (this.checked) setMaterialPreferred(parseInt(this.dataset.sup, 10));
+    });
+  });
+}
+
+async function saveMaterialSupplier(msId) {
+  const row = document.getElementById("mat-sup-row-" + msId);
+  if (!row) return;
+  const notesEl = row.querySelector(".mat-sup-field[data-sup='" + msId + "'][data-field='notes']");
+  try {
+    await api("/api/materials/suppliers/" + msId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: notesEl ? notesEl.value.trim() : "" }),
+    });
+    toast("Supplier notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function setMaterialPreferred(msId) {
+  try {
+    await api("/api/materials/suppliers/" + msId + "/preferred", { method: "POST" });
+    toast("Preferred supplier updated");
   } catch (e) { toast(e.message, "error"); }
 }
 

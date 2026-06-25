@@ -20715,6 +20715,55 @@ def formulations_import():
         return fail(str(e))
 
 
+# /api/materials/*  — JSON API behind require_console_key
+from dashboard import materials_catalog as _materials
+
+
+@app.route("/api/materials/search", methods=["GET"])
+@require_console_key
+def api_materials_search():
+    try:
+        return ok(_materials.search_materials(request.args.get("q", ""), int(request.args.get("limit", 50)), int(request.args.get("offset", 0))))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/materials/<int:mid>", methods=["GET"])
+@require_console_key
+def api_materials_get(mid):
+    try:
+        m = _materials.get_material(mid)
+        if not m: return fail("not found", status=404)
+        return ok({"material": m, "suppliers": _materials.list_suppliers_for_material(mid)})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/materials/<int:mid>", methods=["PATCH"])
+@require_console_key
+def api_materials_patch(mid):
+    try:
+        _materials.update_material_curated(mid, request.get_json(silent=True) or {})
+        return ok(_materials.get_material(mid))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/materials/suppliers/<int:ms_id>", methods=["PATCH"])
+@require_console_key
+def api_materials_supplier_patch(ms_id):
+    try:
+        _materials.update_material_supplier_curated(ms_id, request.get_json(silent=True) or {})
+        return ok({"id": ms_id})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/materials/suppliers/<int:ms_id>/preferred", methods=["POST"])
+@require_console_key
+def api_materials_supplier_preferred(ms_id):
+    try:
+        _materials.set_preferred_material_supplier(ms_id)
+        return ok({"id": ms_id})
+    except Exception as e: return fail(e)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # /console/settings — collapsible settings panel (Shipping, Active-Mac, etc.)
 # ─────────────────────────────────────────────────────────────────────────────
