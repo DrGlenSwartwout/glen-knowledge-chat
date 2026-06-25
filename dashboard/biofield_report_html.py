@@ -112,6 +112,9 @@ def render_report_html(report, notes="", narrative="", video_script=""):
             f"<h1>{name}</h1>"
             f"<p class=sub>{email} &nbsp;&middot;&nbsp; {date} "
             f"&nbsp;&middot;&nbsp; test {_e(report.get('test_id') or '')}</p>")
+    tid_link = _e(report.get("test_id") or "")
+    head += (f'<p class=sub><a href="/test/{tid_link}/report" target="_blank">Open clean report</a>'
+             f' &nbsp;·&nbsp; <a href="/test/{tid_link}/report.pdf" target="_blank">Download printable PDF</a></p>')
 
     # Causal chain table
     rows = ""
