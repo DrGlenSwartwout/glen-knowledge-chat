@@ -101,3 +101,30 @@ def set_item_core(row_id, field, value, db_path=None):
 def unlock_item_core(row_id, field, db_path=None):
     """Remove a field from the formulation_items overrides set (value unchanged)."""
     _unlock_core_field(_connect, "formulation_items", _ITEM_CORE, row_id, field, db_path=db_path)
+
+
+def add_formulation_item(formulation_id, ingredient_id, dose, dose_unit, db_path=None) -> int:
+    try:
+        d = None if dose in (None, "") else float(dose)
+    except (TypeError, ValueError):
+        raise ValueError("dose must be numeric")
+    with _connect(db_path) as cx:
+        if not cx.execute("SELECT 1 FROM formulations WHERE id=?", (formulation_id,)).fetchone():
+            raise ValueError(f"no formulation {formulation_id}")
+        if not cx.execute("SELECT 1 FROM ingredients WHERE id=?", (ingredient_id,)).fetchone():
+            raise ValueError(f"no ingredient {ingredient_id}")
+        row = cx.execute("SELECT name FROM ingredients WHERE id=?", (ingredient_id,)).fetchone()
+        cur = cx.execute("""
+            INSERT INTO formulation_items (formulation_id, ingredient_id, ingredient_name, dose, dose_unit)
+            VALUES (?, ?, ?, ?, ?)
+        """, (formulation_id, ingredient_id, row["name"] if row else None, d, dose_unit or None))
+        cx.commit()
+        return int(cur.lastrowid)
+
+
+def remove_formulation_item(item_id, db_path=None) -> None:
+    with _connect(db_path) as cx:
+        if not cx.execute("SELECT 1 FROM formulation_items WHERE id=?", (item_id,)).fetchone():
+            raise ValueError(f"no formulation item {item_id}")
+        cx.execute("DELETE FROM formulation_items WHERE id=?", (item_id,))
+        cx.commit()

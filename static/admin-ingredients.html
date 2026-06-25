@@ -224,6 +224,40 @@
       <div class="hint">2,363 ingredients imported from FMP. Search is server-side — type at least 1 character.</div>
     </div>
 
+    <!-- New ingredient form (collapsed by default) -->
+    <div id="new-ing-form" style="display:none" class="section">
+      <h2>New Ingredient</h2>
+      <div class="field-grid">
+        <div class="field-block field-full">
+          <label for="new-ing-name">Name <span style="color:var(--red)">*</span></label>
+          <input type="text" id="new-ing-name" placeholder="Ingredient name (required)">
+        </div>
+        <div class="field-block">
+          <label for="new-ing-form-field">Form</label>
+          <input type="text" id="new-ing-form-field" placeholder="e.g. powder / liquid">
+        </div>
+        <div class="field-block">
+          <label for="new-ing-common-names">Common Names</label>
+          <input type="text" id="new-ing-common-names" placeholder="Comma-separated alternate names">
+        </div>
+        <div class="field-block">
+          <label for="new-ing-par-level">Par Level</label>
+          <input type="number" id="new-ing-par-level" placeholder="e.g. 500" step="any" min="0" style="width:100%">
+        </div>
+        <div class="field-block">
+          <label for="new-ing-par-unit">Par Unit</label>
+          <input type="text" id="new-ing-par-unit" placeholder="e.g. g / kg / units">
+        </div>
+      </div>
+      <div class="save-row">
+        <button class="secondary save-btn" onclick="toggleNewIngForm()">Cancel</button>
+        <button class="save-btn confirm" onclick="createIngredient()">Create ingredient</button>
+      </div>
+    </div>
+    <div id="new-ing-btn-row" style="margin-bottom:14px">
+      <button class="secondary save-btn" onclick="toggleNewIngForm()">+ New ingredient</button>
+    </div>
+
     <!-- Detail panel (hidden until ingredient clicked) -->
     <div id="detail-panel">
 
@@ -338,6 +372,58 @@
           <tbody id="sources-tbody"></tbody>
         </table>
         <div id="sources-empty" class="hint" style="display:none">No sources linked to this ingredient.</div>
+
+        <!-- Add source form -->
+        <div style="margin-top:16px">
+          <button class="secondary save-btn" onclick="toggleAddSourceForm()" id="add-source-toggle-btn">+ Add source</button>
+        </div>
+        <div id="add-source-form" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+          <div class="section-label">Supplier</div>
+          <!-- Supplier search-to-pick -->
+          <div style="margin-bottom:10px">
+            <input type="text" id="new-src-sup-search" placeholder="Search existing suppliers…" autocomplete="off" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px" oninput="srcSupSearch()">
+            <ul id="new-src-sup-results" style="list-style:none;background:#0d1117;border:1px solid var(--border);border-radius:6px;margin-top:4px;display:none"></ul>
+            <div id="new-src-sup-chosen" style="margin-top:6px;font-size:12px;color:var(--muted)"></div>
+          </div>
+          <div class="section-label" style="margin-top:8px">— or create a new supplier inline —</div>
+          <div class="field-grid" style="margin-bottom:10px">
+            <div class="field-block">
+              <label for="new-src-sup-inline">New supplier company name</label>
+              <input type="text" id="new-src-sup-inline" placeholder="Company name (creates new supplier)">
+            </div>
+          </div>
+          <div class="section-label">Source details</div>
+          <div class="field-grid">
+            <div class="field-block">
+              <label for="new-src-price">Price per unit</label>
+              <input type="number" id="new-src-price" placeholder="0.00" step="0.01" min="0" style="width:100%">
+            </div>
+            <div class="field-block">
+              <label for="new-src-unit-size">Unit size</label>
+              <input type="number" id="new-src-unit-size" placeholder="qty" step="any" min="0" style="width:100%">
+            </div>
+            <div class="field-block">
+              <label for="new-src-unit-type">Unit type</label>
+              <input type="text" id="new-src-unit-type" placeholder="g / kg / unit…">
+            </div>
+            <div class="field-block">
+              <label for="new-src-min-order">Minimum order</label>
+              <input type="number" id="new-src-min-order" placeholder="qty" step="any" min="0" style="width:100%">
+            </div>
+            <div class="field-block">
+              <label for="new-src-lead-time">Lead time (days)</label>
+              <input type="number" id="new-src-lead-time" placeholder="days" min="0" style="width:100%">
+            </div>
+            <div class="field-block" style="display:flex;align-items:center;gap:8px;padding-top:20px">
+              <input type="checkbox" id="new-src-preferred" style="accent-color:var(--accent);width:15px;height:15px">
+              <label for="new-src-preferred" style="font-size:13px;cursor:pointer;text-transform:none;letter-spacing:0">Preferred source</label>
+            </div>
+          </div>
+          <div class="save-row">
+            <button class="secondary save-btn" onclick="toggleAddSourceForm()">Cancel</button>
+            <button class="save-btn confirm" onclick="createSource()">Add source</button>
+          </div>
+        </div>
       </div>
 
     </div><!-- /#detail-panel -->
@@ -345,6 +431,35 @@
 
   <!-- ── Suppliers tab ───────────────────────────────────────────────────── -->
   <div id="tab-suppliers" class="tab-panel">
+    <!-- New supplier form (collapsed by default) -->
+    <div id="new-sup-form" style="display:none" class="section">
+      <h2>New Supplier</h2>
+      <div class="field-grid">
+        <div class="field-block field-full">
+          <label for="new-sup-company">Company <span style="color:var(--red)">*</span></label>
+          <input type="text" id="new-sup-company" placeholder="Company name (required)">
+        </div>
+        <div class="field-block">
+          <label for="new-sup-email">Email</label>
+          <input type="text" id="new-sup-email" placeholder="contact@supplier.com">
+        </div>
+        <div class="field-block">
+          <label for="new-sup-phone">Phone</label>
+          <input type="text" id="new-sup-phone" placeholder="+1 555 000 0000">
+        </div>
+        <div class="field-block field-full">
+          <label for="new-sup-url">Website URL</label>
+          <input type="text" id="new-sup-url" placeholder="https://supplier.com">
+        </div>
+      </div>
+      <div class="save-row">
+        <button class="secondary save-btn" onclick="toggleNewSupForm()">Cancel</button>
+        <button class="save-btn confirm" onclick="createSupplier()">Create supplier</button>
+      </div>
+    </div>
+    <div id="new-sup-btn-row" style="margin-bottom:14px">
+      <button class="secondary save-btn" onclick="toggleNewSupForm()">+ New supplier</button>
+    </div>
     <div class="section">
       <h2>Suppliers</h2>
       <div class="search-row">
@@ -556,12 +671,40 @@
               <th>Preferred Price</th>
               <th>Notes</th>
               <th></th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="frm-items-tbody"></tbody>
         </table>
         <!-- Note: Dose and Unit columns are editable core fields — save per row. -->
         <div id="frm-items-empty" class="hint" style="display:none">No items in this formulation.</div>
+
+        <!-- Add ingredient form -->
+        <div style="margin-top:16px">
+          <button class="secondary save-btn" onclick="toggleAddFrmItemForm()" id="add-frm-item-toggle-btn">+ Add ingredient</button>
+        </div>
+        <div id="add-frm-item-form" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+          <div class="section-label">Ingredient</div>
+          <div style="margin-bottom:10px">
+            <input type="text" id="new-item-ing-search" placeholder="Search ingredients…" autocomplete="off" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px" oninput="frmItemIngSearch()">
+            <ul id="new-item-ing-results" style="list-style:none;background:#0d1117;border:1px solid var(--border);border-radius:6px;margin-top:4px;display:none"></ul>
+            <div id="new-item-ing-chosen" style="margin-top:6px;font-size:12px;color:var(--muted)"></div>
+          </div>
+          <div class="field-grid">
+            <div class="field-block">
+              <label for="new-item-dose">Dose <span style="color:var(--red)">*</span></label>
+              <input type="number" id="new-item-dose" placeholder="dose" step="any" style="width:100%">
+            </div>
+            <div class="field-block">
+              <label for="new-item-dose-unit">Unit <span style="color:var(--red)">*</span></label>
+              <input type="text" id="new-item-dose-unit" placeholder="mg / g / mL…">
+            </div>
+          </div>
+          <div class="save-row">
+            <button class="secondary save-btn" onclick="toggleAddFrmItemForm()">Cancel</button>
+            <button class="save-btn confirm" onclick="createFormulationItem()">Add to recipe</button>
+          </div>
+        </div>
       </div>
 
     </div><!-- /#formulation-detail-panel -->
@@ -1771,7 +1914,8 @@ function renderFormulationItems(items) {
       '</div></td>' +
       '<td>' + priceCell + '</td>' +
       '<td><input type="text" class="frm-item-notes" data-item="' + item.id + '" value="' + escapeHtml(item.notes || "") + '" placeholder="notes" style="width:120px"></td>' +
-      '<td><button class="save-btn" onclick="saveFormulationItem(' + item.id + ')">Save</button></td>';
+      '<td><button class="save-btn" onclick="saveFormulationItem(' + item.id + ')">Save</button></td>' +
+      '<td><button class="secondary save-btn" onclick="removeFormulationItem(' + item.id + ')" title="Remove from recipe" style="color:var(--red);border-color:var(--red)">&#10005;</button></td>';
     tbody.appendChild(tr);
 
     // Wire dose / dose_unit to PATCH /api/formulation-items/<id>/core
@@ -1805,6 +1949,259 @@ async function saveFormulationItem(itemId) {
       body: JSON.stringify({ notes: notesEl ? notesEl.value.trim() : "" }),
     });
     toast("Item notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Create: ingredient ───────────────────────────────────────────────────────
+function toggleNewIngForm() {
+  const form = document.getElementById("new-ing-form");
+  const btnRow = document.getElementById("new-ing-btn-row");
+  const visible = form.style.display !== "none";
+  form.style.display = visible ? "none" : "block";
+  btnRow.style.display = visible ? "block" : "none";
+  if (!visible) {
+    document.getElementById("new-ing-name").value = "";
+    document.getElementById("new-ing-form-field").value = "";
+    document.getElementById("new-ing-common-names").value = "";
+    document.getElementById("new-ing-par-level").value = "";
+    document.getElementById("new-ing-par-unit").value = "";
+    document.getElementById("new-ing-name").focus();
+  }
+}
+
+async function createIngredient() {
+  const name = document.getElementById("new-ing-name").value.trim();
+  if (!name) { toast("Name is required", "error"); return; }
+  const body = { name: name };
+  const form = document.getElementById("new-ing-form-field").value.trim();
+  if (form) body.form = form;
+  const commonNames = document.getElementById("new-ing-common-names").value.trim();
+  if (commonNames) body.common_names = commonNames;
+  const parLevel = document.getElementById("new-ing-par-level").value.trim();
+  if (parLevel !== "") body.par_level = parseFloat(parLevel);
+  const parUnit = document.getElementById("new-ing-par-unit").value.trim();
+  if (parUnit) body.par_level_unit = parUnit;
+  try {
+    const result = await api("/api/ingredients", { method: "POST", body: JSON.stringify(body) });
+    toast("Ingredient created");
+    toggleNewIngForm();
+    // Refresh search and open the new ingredient
+    doSearch(document.getElementById("ing-search").value.trim() || name);
+    openIngredient(result.id);
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Create: supplier ─────────────────────────────────────────────────────────
+function toggleNewSupForm() {
+  const form = document.getElementById("new-sup-form");
+  const btnRow = document.getElementById("new-sup-btn-row");
+  const visible = form.style.display !== "none";
+  form.style.display = visible ? "none" : "block";
+  btnRow.style.display = visible ? "block" : "none";
+  if (!visible) {
+    document.getElementById("new-sup-company").value = "";
+    document.getElementById("new-sup-email").value = "";
+    document.getElementById("new-sup-phone").value = "";
+    document.getElementById("new-sup-url").value = "";
+    document.getElementById("new-sup-company").focus();
+  }
+}
+
+async function createSupplier() {
+  const company = document.getElementById("new-sup-company").value.trim();
+  if (!company) { toast("Company name is required", "error"); return; }
+  const body = { company: company };
+  const email = document.getElementById("new-sup-email").value.trim();
+  if (email) body.email = email;
+  const phone = document.getElementById("new-sup-phone").value.trim();
+  if (phone) body.phone_business = phone;
+  const url = document.getElementById("new-sup-url").value.trim();
+  if (url) body.url = url;
+  try {
+    await api("/api/suppliers", { method: "POST", body: JSON.stringify(body) });
+    toast("Supplier created");
+    toggleNewSupForm();
+    loadSuppliers(document.getElementById("sup-search").value.trim());
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Create: source (add source to ingredient) ────────────────────────────────
+let _srcSupResults = [];
+let _srcSupPickedId = null;
+
+let _srcSupTimer = null;
+function srcSupSearch() {
+  clearTimeout(_srcSupTimer);
+  const q = document.getElementById("new-src-sup-search").value.trim();
+  if (!q) {
+    document.getElementById("new-src-sup-results").style.display = "none";
+    _srcSupPickedId = null;
+    document.getElementById("new-src-sup-chosen").textContent = "";
+    return;
+  }
+  _srcSupTimer = setTimeout(async function() {
+    try {
+      _srcSupResults = (await api("/api/ingredients/suppliers?q=" + encodeURIComponent(q) + "&limit=15")).slice(0, 15);
+      const ul = document.getElementById("new-src-sup-results");
+      if (!_srcSupResults.length) { ul.style.display = "none"; return; }
+      ul.innerHTML = _srcSupResults.map(function(sup, i) {
+        return '<li style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onclick="srcSupPick(' + i + ')">' +
+               escapeHtml(sup.company) + '</li>';
+      }).join("");
+      ul.style.display = "block";
+    } catch (e) {
+      if (e.message !== "unauthorized") toast(e.message, "error");
+    }
+  }, 280);
+}
+
+function srcSupPick(i) {
+  const sup = _srcSupResults[i];
+  if (!sup) return;
+  _srcSupPickedId = sup.id;
+  document.getElementById("new-src-sup-search").value = escapeHtml(sup.company);
+  document.getElementById("new-src-sup-results").style.display = "none";
+  document.getElementById("new-src-sup-chosen").textContent = "Selected: " + escapeHtml(sup.company) + " (id=" + sup.id + ")";
+  document.getElementById("new-src-sup-inline").value = "";
+}
+
+function toggleAddSourceForm() {
+  const form = document.getElementById("add-source-form");
+  const btn = document.getElementById("add-source-toggle-btn");
+  const visible = form.style.display !== "none";
+  form.style.display = visible ? "none" : "block";
+  if (!visible) {
+    _srcSupPickedId = null;
+    document.getElementById("new-src-sup-search").value = "";
+    document.getElementById("new-src-sup-results").style.display = "none";
+    document.getElementById("new-src-sup-chosen").textContent = "";
+    document.getElementById("new-src-sup-inline").value = "";
+    document.getElementById("new-src-price").value = "";
+    document.getElementById("new-src-unit-size").value = "";
+    document.getElementById("new-src-unit-type").value = "";
+    document.getElementById("new-src-min-order").value = "";
+    document.getElementById("new-src-lead-time").value = "";
+    document.getElementById("new-src-preferred").checked = false;
+  }
+}
+
+async function createSource() {
+  if (!_currentIngId) { toast("No ingredient open", "error"); return; }
+
+  // Resolve supplier_id: picked supplier OR inline new supplier
+  let supplierId = _srcSupPickedId;
+  const inlineCompany = document.getElementById("new-src-sup-inline").value.trim();
+  if (!supplierId && inlineCompany) {
+    try {
+      const newSup = await api("/api/suppliers", { method: "POST", body: JSON.stringify({ company: inlineCompany }) });
+      supplierId = newSup.id;
+    } catch (e) { toast("Could not create supplier: " + e.message, "error"); return; }
+  }
+
+  const body = {};
+  if (supplierId) body.supplier_id = supplierId;
+  else if (inlineCompany) body.supplier_name = inlineCompany;
+
+  const price = document.getElementById("new-src-price").value.trim();
+  if (price !== "") body.price_per_unit = parseFloat(price);
+  const unitSize = document.getElementById("new-src-unit-size").value.trim();
+  if (unitSize !== "") body.unit_size = parseFloat(unitSize);
+  const unitType = document.getElementById("new-src-unit-type").value.trim();
+  if (unitType) body.unit_type = unitType;
+  const minOrder = document.getElementById("new-src-min-order").value.trim();
+  if (minOrder !== "") body.minimum_order = parseFloat(minOrder);
+  const leadTime = document.getElementById("new-src-lead-time").value.trim();
+  if (leadTime !== "") body.lead_time_days = parseInt(leadTime, 10);
+  if (document.getElementById("new-src-preferred").checked) body.preferred = true;
+
+  try {
+    await api("/api/ingredients/" + _currentIngId + "/sources", { method: "POST", body: JSON.stringify(body) });
+    toast("Source added");
+    toggleAddSourceForm();
+    openIngredient(_currentIngId);
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Create: formulation item + remove ────────────────────────────────────────
+let _frmItemIngResults = [];
+let _frmItemIngPickedId = null;
+
+let _frmItemIngTimer = null;
+function frmItemIngSearch() {
+  clearTimeout(_frmItemIngTimer);
+  const q = document.getElementById("new-item-ing-search").value.trim();
+  if (!q) {
+    document.getElementById("new-item-ing-results").style.display = "none";
+    _frmItemIngPickedId = null;
+    document.getElementById("new-item-ing-chosen").textContent = "";
+    return;
+  }
+  _frmItemIngTimer = setTimeout(async function() {
+    try {
+      _frmItemIngResults = (await api("/api/ingredients/search?q=" + encodeURIComponent(q) + "&limit=15")).slice(0, 15);
+      const ul = document.getElementById("new-item-ing-results");
+      if (!_frmItemIngResults.length) { ul.style.display = "none"; return; }
+      ul.innerHTML = _frmItemIngResults.map(function(ing, i) {
+        return '<li style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onclick="frmItemIngPick(' + i + ')">' +
+               escapeHtml(ing.name) + (ing.form ? ' <span style="color:var(--muted);font-size:11px">· ' + escapeHtml(ing.form) + '</span>' : '') +
+               '</li>';
+      }).join("");
+      ul.style.display = "block";
+    } catch (e) {
+      if (e.message !== "unauthorized") toast(e.message, "error");
+    }
+  }, 280);
+}
+
+function frmItemIngPick(i) {
+  const ing = _frmItemIngResults[i];
+  if (!ing) return;
+  _frmItemIngPickedId = ing.id;
+  document.getElementById("new-item-ing-search").value = escapeHtml(ing.name);
+  document.getElementById("new-item-ing-results").style.display = "none";
+  document.getElementById("new-item-ing-chosen").textContent = "Selected: " + escapeHtml(ing.name) + " (id=" + ing.id + ")";
+}
+
+function toggleAddFrmItemForm() {
+  const form = document.getElementById("add-frm-item-form");
+  const visible = form.style.display !== "none";
+  form.style.display = visible ? "none" : "block";
+  if (!visible) {
+    _frmItemIngPickedId = null;
+    document.getElementById("new-item-ing-search").value = "";
+    document.getElementById("new-item-ing-results").style.display = "none";
+    document.getElementById("new-item-ing-chosen").textContent = "";
+    document.getElementById("new-item-dose").value = "";
+    document.getElementById("new-item-dose-unit").value = "";
+  }
+}
+
+async function createFormulationItem() {
+  if (!_currentFrmId) { toast("No formulation open", "error"); return; }
+  if (!_frmItemIngPickedId) { toast("Search and pick an ingredient first", "error"); return; }
+  const dose = document.getElementById("new-item-dose").value.trim();
+  if (dose === "") { toast("Dose is required", "error"); return; }
+  const doseUnit = document.getElementById("new-item-dose-unit").value.trim();
+  if (!doseUnit) { toast("Dose unit is required", "error"); return; }
+  const body = {
+    ingredient_id: _frmItemIngPickedId,
+    dose: parseFloat(dose),
+    dose_unit: doseUnit,
+  };
+  try {
+    await api("/api/formulations/" + _currentFrmId + "/items", { method: "POST", body: JSON.stringify(body) });
+    toast("Ingredient added to recipe");
+    toggleAddFrmItemForm();
+    openFormulation(_currentFrmId);
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function removeFormulationItem(itemId) {
+  if (!confirm("Remove this ingredient from the recipe?")) return;
+  try {
+    await api("/api/formulation-items/" + itemId, { method: "DELETE" });
+    toast("Item removed");
+    openFormulation(_currentFrmId);
   } catch (e) { toast(e.message, "error"); }
 }
 
