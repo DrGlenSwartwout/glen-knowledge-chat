@@ -144,6 +144,7 @@
   <div class="tab-bar">
     <button class="tab-btn active" onclick="showTab('ingredients')">Ingredients</button>
     <button class="tab-btn" onclick="showTab('suppliers')">Suppliers</button>
+    <button class="tab-btn" onclick="showTab('import')">Import from FMP</button>
   </div>
 
   <!-- ── Ingredients tab ─────────────────────────────────────────────────── -->
@@ -268,6 +269,36 @@
     </div>
   </div>
 
+  <!-- ── Import from FMP tab ────────────────────────────────────────────────── -->
+  <div id="tab-import" class="tab-panel">
+    <div class="section">
+      <h2>Import from FMP</h2>
+      <p class="hint" style="margin-bottom:16px">Upload the 3 FMP exports (suppliers.csv, ingredients.csv, ingredients_supplier.csv). Dry-run first, then Import. Re-running is safe — it never overwrites your console edits.</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="fmp-file-suppliers">Suppliers CSV</label>
+          <input type="file" id="fmp-file-suppliers" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-ingredients">Ingredients CSV</label>
+          <input type="file" id="fmp-file-ingredients" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-sources">Sources CSV</label>
+          <input type="file" id="fmp-file-sources" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button id="fmp-dry-btn" onclick="fmpImport(false)">Dry Run</button>
+        <button id="fmp-write-btn" class="confirm" onclick="fmpImport(true)">Import (write)</button>
+      </div>
+
+      <div id="fmp-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
+    </div>
+  </div>
+
 </div><!-- /#wrap -->
 
 <div id="toast"></div>
@@ -308,9 +339,82 @@ function showTab(name) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.getElementById("tab-" + name).classList.add("active");
   const btns = document.querySelectorAll(".tab-btn");
-  const labels = ["ingredients", "suppliers"];
+  const labels = ["ingredients", "suppliers", "import"];
   btns[labels.indexOf(name)].classList.add("active");
   if (name === "suppliers") loadSuppliers();
+}
+
+// ── FMP Import ────────────────────────────────────────────────────────────────
+async function fmpImport(write) {
+  const fSuppliers   = document.getElementById("fmp-file-suppliers").files[0];
+  const fIngredients = document.getElementById("fmp-file-ingredients").files[0];
+  const fSources     = document.getElementById("fmp-file-sources").files[0];
+
+  if (!fSuppliers || !fIngredients || !fSources) {
+    toast("Please choose all 3 CSV files before running.", "error");
+    return;
+  }
+
+  const resultEl = document.getElementById("fmp-result");
+  const dryBtn   = document.getElementById("fmp-dry-btn");
+  const writeBtn = document.getElementById("fmp-write-btn");
+  dryBtn.disabled = true;
+  writeBtn.disabled = true;
+  resultEl.style.display = "block";
+  resultEl.innerHTML = '<span style="color:var(--muted)">Uploading…</span>';
+
+  const fd = new FormData();
+  fd.append("suppliers",   fSuppliers);
+  fd.append("ingredients", fIngredients);
+  fd.append("sources",     fSources);
+  if (write) fd.append("write", "1");
+
+  try {
+    const r = await fetch("/api/ingredients/import", {
+      method: "POST",
+      headers: { "X-Console-Key": KEY },
+      body: fd,
+    });
+    const j = await r.json();
+
+    if (r.status === 401) {
+      document.getElementById("auth-warn").style.display = "block";
+      resultEl.innerHTML = '<span style="color:var(--red)">Unauthorized — check your console key.</span>';
+      return;
+    }
+
+    if (!j.ok) {
+      resultEl.innerHTML = '<span style="color:var(--red)">Error: ' + escapeHtml(j.error || "request failed") + '</span>';
+      toast(j.error || "Import failed", "error");
+      return;
+    }
+
+    const d = j.data;
+    if (d.mode === "dry_run") {
+      resultEl.innerHTML = `
+        <strong style="color:var(--accent-light)">Dry Run — no data written</strong><br>
+        Suppliers: <strong>${escapeHtml(String(d.suppliers ?? 0))}</strong> &nbsp;|&nbsp;
+        Ingredients: <strong>${escapeHtml(String(d.ingredients ?? 0))}</strong> &nbsp;|&nbsp;
+        Sources: <strong>${escapeHtml(String(d.sources ?? 0))}</strong> &nbsp;|&nbsp;
+        Clusters: <strong>${escapeHtml(String(d.clusters ?? 0))}</strong>`;
+      toast("Dry run complete");
+    } else {
+      resultEl.innerHTML = `
+        <strong style="color:var(--green)">Import complete</strong><br>
+        Suppliers: <strong>${escapeHtml(String(d.suppliers ?? 0))}</strong> &nbsp;|&nbsp;
+        Ingredients: <strong>${escapeHtml(String(d.ingredients ?? 0))}</strong> &nbsp;|&nbsp;
+        Sources: <strong>${escapeHtml(String(d.sources ?? 0))}</strong><br>
+        Canonical applied: <strong>${escapeHtml(String(d.canonical_applied ?? 0))}</strong> &nbsp;|&nbsp;
+        Canonical skipped: <strong>${escapeHtml(String(d.canonical_skipped ?? 0))}</strong>`;
+      toast("Import written successfully", "ok");
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<span style="color:var(--red)">Network error: ' + escapeHtml(e.message) + '</span>';
+    toast(e.message, "error");
+  } finally {
+    dryBtn.disabled = false;
+    writeBtn.disabled = false;
+  }
 }
 
 // ── Search (ingredients) ─────────────────────────────────────────────────────
