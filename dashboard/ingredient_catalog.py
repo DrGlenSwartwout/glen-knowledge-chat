@@ -171,7 +171,7 @@ def set_ingredient_core(row_id, field, value, db_path=None):
 
 def unlock_ingredient_core(row_id, field, db_path=None):
     """Remove a field from the ingredient overrides set (value unchanged)."""
-    _unlock_core_field(_connect, "ingredients", row_id, field, db_path=db_path)
+    _unlock_core_field(_connect, "ingredients", _ING_CORE, row_id, field, db_path=db_path)
 
 
 def set_source_core(row_id, field, value, db_path=None):
@@ -181,4 +181,4 @@ def set_source_core(row_id, field, value, db_path=None):
 
 def unlock_source_core(row_id, field, db_path=None):
     """Remove a field from the ingredient_sources overrides set (value unchanged)."""
-    _unlock_core_field(_connect, "ingredient_sources", row_id, field, db_path=db_path)
+    _unlock_core_field(_connect, "ingredient_sources", _SRC_CORE, row_id, field, db_path=db_path)

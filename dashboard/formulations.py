@@ -100,4 +100,4 @@ def set_item_core(row_id, field, value, db_path=None):
 
 def unlock_item_core(row_id, field, db_path=None):
     """Remove a field from the formulation_items overrides set (value unchanged)."""
-    _unlock_core_field(_connect, "formulation_items", row_id, field, db_path=db_path)
+    _unlock_core_field(_connect, "formulation_items", _ITEM_CORE, row_id, field, db_path=db_path)

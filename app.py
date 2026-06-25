@@ -20679,6 +20679,61 @@ def ingredients_import():
         return fail(str(e))
 
 
+def _core_patch(setter, row_id):
+    """Shared PATCH helper: reads {field, value} from JSON body, delegates to setter."""
+    b = request.get_json(silent=True) or {}
+    if "field" not in b:
+        return fail("field required", status=400)
+    setter(row_id, b["field"], b.get("value"))
+    return ok({"id": row_id})
+
+
+@app.route("/api/ingredients/<int:rid>/core", methods=["PATCH"])
+@require_console_key
+def api_ingredient_core(rid):
+    try:
+        return _core_patch(_ingredients.set_ingredient_core, rid)
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/ingredients/<int:rid>/unlock", methods=["POST"])
+@require_console_key
+def api_ingredient_unlock(rid):
+    try:
+        _ingredients.unlock_ingredient_core(rid, (request.get_json(silent=True) or {}).get("field"))
+        return ok({"id": rid})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/sources/<int:rid>/core", methods=["PATCH"])
+@require_console_key
+def api_source_core(rid):
+    try:
+        return _core_patch(_ingredients.set_source_core, rid)
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/sources/<int:rid>/unlock", methods=["POST"])
+@require_console_key
+def api_source_unlock(rid):
+    try:
+        _ingredients.unlock_source_core(rid, (request.get_json(silent=True) or {}).get("field"))
+        return ok({"id": rid})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
 # ── Formulation Catalog ───────────────────────────────────────────────────────
 # /api/formulations/*  — JSON API behind require_console_key
 from dashboard import formulations as _formulations
@@ -20719,6 +20774,29 @@ def api_formulations_item_patch(item_id):
         _formulations.update_item_curated(item_id, request.get_json(silent=True) or {})
         return ok({"id": item_id})
     except Exception as e: return fail(e)
+
+
+@app.route("/api/formulation-items/<int:rid>/core", methods=["PATCH"])
+@require_console_key
+def api_formulation_item_core(rid):
+    try:
+        return _core_patch(_formulations.set_item_core, rid)
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/formulation-items/<int:rid>/unlock", methods=["POST"])
+@require_console_key
+def api_formulation_item_unlock(rid):
+    try:
+        _formulations.unlock_item_core(rid, (request.get_json(silent=True) or {}).get("field"))
+        return ok({"id": rid})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
 
 
 @app.route("/api/formulations/import", methods=["POST"])

@@ -53,9 +53,15 @@ def _set_core(connect_fn, table: str, allowed: Set[str], row_id: int,
         cx.commit()
 
 
-def _unlock_core(connect_fn, table: str, row_id: int, field: str,
+def _unlock_core(connect_fn, table: str, allowed: Set[str], row_id: int, field: str,
                  db_path: Optional[str] = None) -> None:
-    """Remove a field from the overrides set (value is left unchanged)."""
+    """Remove a field from the overrides set (value is left unchanged).
+
+    Accepts the same ``allowed`` set as :func:`_set_core` so callers share a
+    single allowlist definition and the HTTP unlock surface gets the same guard.
+    """
+    if field not in allowed:
+        raise ValueError(f"{field!r} is not an editable core field of {table}")
     with connect_fn(db_path) as cx:
         row = cx.execute(f"SELECT overrides FROM {table} WHERE id=?", (row_id,)).fetchone()
         if not row:
