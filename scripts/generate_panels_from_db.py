@@ -3,7 +3,10 @@ recipes (single source of truth). One-way DB -> products.json. Completeness guar
 a recipe with a dosed-but-unnamed line is held for review, never overwrites a panel.
 Dry-run default; --write. Supersedes scripts/refresh_ingredients_from_fmp.py."""
 from __future__ import annotations
-import argparse, json, os, sqlite3, sys
+import argparse, json, os, re, sqlite3, sys
+
+_PACKAGING_WORDS = re.compile(r'(plantcaps|capsule|pullulan|vegicap|gelcap|bottle)', re.I)
+_PACKAGING_UNITS = {"ea.", "ea"}
 
 
 def _dose_str(dose, unit):
@@ -17,12 +20,19 @@ def build_panel(items):
     out = []
     for it in items:
         name = (it.get("ingredient_canonical") or it.get("ingredient_name") or "").strip()
+        unit = (it.get("dose_unit") or "").strip().lower()
         has_dose = it.get("dose") is not None
-        if not name:
-            if has_dose:
-                return None, "incomplete: dosed line with no ingredient name"
-            continue  # nameless, doseless (packaging) — skip
-        out.append({"name": name, "dose": _dose_str(it.get("dose"), it.get("dose_unit"))})
+        if name:
+            if _PACKAGING_WORDS.search(name):
+                continue                      # packaging component, not a customer ingredient
+            out.append({"name": name, "dose": _dose_str(it.get("dose"), it.get("dose_unit"))})
+            continue
+        # blank name:
+        if unit in _PACKAGING_UNITS:
+            continue                          # packaging count (e.g. "1 ea." capsule/bottle) — skip
+        if has_dose:
+            return None, "incomplete: dosed line with no ingredient name"
+        # nameless + doseless -> skip
     if not out:
         return None, "no named ingredients"
     return out, None
