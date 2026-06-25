@@ -2252,6 +2252,50 @@ def journey_wallet():
     return jsonify({"ok": True, "coupons": items})
 
 
+def _gifting_active(cx, email):
+    if not email:
+        return False
+    try:
+        row = cx.execute("SELECT gifting_activated_at FROM affiliate_signups WHERE LOWER(email)=?",
+                         (email.lower(),)).fetchone()
+        return bool(row and row[0])
+    except Exception:
+        return False
+
+
+@app.route("/api/journey/activate-gifting", methods=["POST"])
+def journey_activate_gifting():
+    if not REWARDS_1B_GIFT_ENABLED:
+        return ("", 404)
+    session_id = (request.cookies.get("amg_session") or "").strip()
+    au = get_authenticated_user(request)
+    email = (au["email"] if au else "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.get_state(cx, session_id=session_id, email=email)
+        email = (state.get("email") or email or "").strip().lower()
+        if not email or not state.get("tos_agreed_at"):
+            return jsonify({"ok": False, "needs": "email_tos"}), 409
+        now = begin_funnel._now()
+        row = cx.execute("SELECT id FROM affiliate_signups WHERE LOWER(email)=?", (email,)).fetchone()
+        if row:
+            cx.execute("UPDATE affiliate_signups SET gifting_activated_at=? WHERE id=?", (now, row[0]))
+        else:
+            nm = ((state.get("first_name") or "") + " " + (state.get("last_name") or "")).strip() or email
+            slug = f"gift-{uuid.uuid4().hex[:8]}"
+            token = uuid.uuid4().hex
+            cx.execute(
+                "INSERT INTO affiliate_signups (created_at,name,email,slug,token,status,gifting_activated_at) "
+                "VALUES (?,?,?,?,?,?,?)", (now, nm, email, slug, token, "pending", now))
+        cx.commit()
+        # mint gift twins for every remedy the visitor has already collected (self-coupons)
+        from dashboard import coupons as _coupons
+        _coupons.init_coupons_table(cx)
+        gifts = []
+        for sc in _coupons.wallet(cx, email=email, kind="self"):
+            gifts.append(_coupons.mint_gift(cx, email=email, product_slug=sc["product_slug"]))
+    return jsonify({"ok": True, "gifting": True, "gifts": gifts})
+
+
 # ToS version stamp for the /begin free-tier gate. The live T&C page at
 # remedymatch.com/info/terms-and-conditions carries no version string, so we
 # date-stamp agreement here. Bump when the T&C content materially changes.
@@ -3341,6 +3385,7 @@ BIOFIELD_CART_ENABLED = os.environ.get("BIOFIELD_CART_ENABLED", "").strip().lowe
 ASCEND_PERSONALIZED_ENABLED = os.environ.get("ASCEND_PERSONALIZED_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 JOURNEY_SHELL_ENABLED = os.environ.get("JOURNEY_SHELL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _referral_pct():
@@ -6782,6 +6827,10 @@ def _init_referral_tables():
                 cx.execute(f"ALTER TABLE affiliate_signups ADD COLUMN {col}")
             except Exception:
                 pass
+        try:
+            cx.execute("ALTER TABLE affiliate_signups ADD COLUMN gifting_activated_at TEXT")
+        except Exception:
+            pass  # already present
         cx.execute("""
             CREATE TABLE IF NOT EXISTS referral_sources (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24545,7 +24594,7 @@ def _inject_journey_shell(response):
             return response
         authed = bool(get_authenticated_user(request))
         mode = shell_nav.resolve_mode(request.path, authed)
-        response.set_data(shell_nav.inject_shell_html(html, mode, REWARDS_1B_ENABLED))
+        response.set_data(shell_nav.inject_shell_html(html, mode, REWARDS_1B_ENABLED, REWARDS_1B_GIFT_ENABLED))
     except Exception as e:  # never let the shell break a page
         print(f"[journey-shell] inject skipped: {e!r}", flush=True)
     return response
