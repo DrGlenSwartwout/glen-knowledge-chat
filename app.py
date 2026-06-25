@@ -989,6 +989,18 @@ def _init_production_tables():
 _init_production_tables()
 
 
+def _init_sourcing_tables():
+    """Email-sourcing collector — review queue, staged quotes, matched sources."""
+    from dashboard.sourcing import init_sourcing_schema
+    cx = sqlite3.connect(str(LOG_DB))
+    try:
+        init_sourcing_schema(cx)
+    finally:
+        cx.close()
+
+_init_sourcing_tables()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
@@ -19466,6 +19478,7 @@ from dashboard import scoreapp as _scoreapp
 from dashboard import heygen as _heygen
 from dashboard import facebook as _fb
 from dashboard import health as _health
+from dashboard import sourcing as _sourcing
 
 
 @app.route("/dashboard")
@@ -19588,6 +19601,48 @@ def api_facebook_boulder():
 def api_dashboard_health():
     try: return ok(_health.status_grid())
     except Exception as e: return fail(e)
+
+
+@app.route("/api/sourcing/quotes", methods=["GET"])
+@require_console_key
+def api_sourcing_quotes():
+    try:
+        return ok(_sourcing.list_quotes(request.args.get("status"), int(request.args.get("limit", 200))))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/sourcing/quotes/<int:qid>", methods=["PATCH"])
+@require_console_key
+def api_sourcing_match(qid):
+    try:
+        _sourcing.update_quote_match(qid, request.get_json(silent=True) or {})
+        return ok(_sourcing.get_quote(qid))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/sourcing/quotes/<int:qid>/approve", methods=["POST"])
+@require_console_key
+def api_sourcing_approve(qid):
+    try:
+        return ok({"source_id": _sourcing.approve_quote(qid)})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/sourcing/quotes/<int:qid>/dismiss", methods=["POST"])
+@require_console_key
+def api_sourcing_dismiss(qid):
+    try:
+        _sourcing.dismiss_quote(qid)
+        return ok({"id": qid})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
 
 
 # ── Intelligence briefings ────────────────────────────────────────────────────
