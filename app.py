@@ -24437,6 +24437,22 @@ def admin_sales_images_backfill():
     return jsonify({"ok": True, "enqueued": enq, "count": len(enq)})
 
 
+@app.route("/api/console/coupons", methods=["GET"])
+def api_console_coupons():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        from dashboard import coupons as _coupons
+        _coupons.init_coupons_table(cx)
+        rows = cx.execute(
+            "SELECT code,product_slug,pct,kind,email,minted_at,expires_at,redeemed_at "
+            "FROM coupons ORDER BY minted_at DESC LIMIT 500").fetchall()
+    keys = ["code", "product_slug", "pct", "kind", "email", "minted_at", "expires_at", "redeemed_at"]
+    return jsonify({"coupons": [dict(zip(keys, r)) for r in rows]})
+
+
 @app.after_request
 def _inject_journey_shell(response):
     if not JOURNEY_SHELL_ENABLED:
