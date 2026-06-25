@@ -1,6 +1,29 @@
 import datetime
+import sqlite3
 
+from dashboard.biofield_authoring import authored_report, create_test, init_auth_tables
 from dashboard.biofield_reveal_import import synthesize_reveal_layers
+from dashboard.biofield_reveal_import import import_layers_to_test
+
+_LAYERS = [
+    {"n": 1, "title": "Oxidative load", "most_affected": "Cell membrane, Mitochondria",
+     "remedy_name": "Neuro Magnesium"},
+    {"n": 2, "title": "Terrain", "most_affected": "Lymphatics", "remedy_name": ""},
+]
+
+
+def test_import_creates_unconfirmed_rows(tmp_path):
+    cx = sqlite3.connect(str(tmp_path / "chat_log.db"))
+    init_auth_tables(cx)
+    tid = create_test(cx, "Jane", "jane@x.com", "2026-06-25")
+    n = import_layers_to_test(cx, tid, _LAYERS)
+    assert n == 2                       # both layers written
+    rep = authored_report(cx, tid)
+    rows = {r["layer"]: r for r in rep["layers"]}
+    assert set(rows) == {1}            # only the remedy-bearing layer surfaces
+    assert rows[1]["remedy"] == "Neuro Magnesium" and rows[1]["confirmed"] == 0
+    assert rows[1]["most_affected"] == "Cell membrane, Mitochondria"
+    cx.close()
 
 _RAW = [
     {"n": 1, "title": "Oxidative load", "summary": "free-radical stress",

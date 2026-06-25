@@ -79,3 +79,20 @@ def synthesize_reveal_layers(email, scan_id=None, *, e4l_db=DEFAULT_E4L_DB,
                        "remedy_name": name})
     return {"found": True, "scan_id": scan["scan_id"], "scan_date": scan["scan_date"],
             "days_ago": days, "fresh": days is not None and days < 7, "layers": layers}
+
+
+def import_layers_to_test(cx, tid, layers):
+    """Create one needs-review (confirmed=0) chain row per reveal layer. Dosing is
+    auto-filled from the product catalog when the remedy name resolves. Returns the
+    number of rows created."""
+    from dashboard.biofield_authoring import add_chain_row, remedy_dosing
+    n = 0
+    for L in layers or []:
+        name = (L.get("remedy_name") or "").strip()
+        d = remedy_dosing(cx, name) if name else {"dosage": "", "frequency": "", "timing": ""}
+        add_chain_row(cx, tid, L.get("n"), L.get("title") or "",
+                      L.get("most_affected") or "", name,
+                      dosage=d.get("dosage", ""), frequency=d.get("frequency", ""),
+                      timing=d.get("timing", ""), confirmed=0)
+        n += 1
+    return n
