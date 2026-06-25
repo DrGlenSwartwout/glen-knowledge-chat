@@ -40,6 +40,8 @@ from dashboard.biofield_authoring import (
 from dashboard.biofield_dimensions import (
     DEPTH_KEY, dimension_values, seed_dimensions, tag as dim_tag)
 from dashboard.biofield_interpret import interpret_transcript
+from dashboard.biofield_report_present import render_present
+from dashboard.biofield_report_pdf import report_pdf_bytes, save_report_pdf
 
 AUDIO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "biofield-audio")
 
@@ -191,6 +193,32 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             vscript = get_video_script(cx, test_id)
         return Response(render_report_html(rep, notes, narrative, vscript),
                         mimetype="text/html")
+
+    @app.route("/test/<test_id>/report")
+    def report_present(test_id):
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            narrative = get_narrative(cx, test_id)
+        return Response(render_present(rep, narrative), mimetype="text/html")
+
+    @app.route("/test/<test_id>/report.pdf")
+    def report_present_pdf(test_id):
+        import os
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            narrative = get_narrative(cx, test_id)
+        html = render_present(rep, narrative)
+        reports_dir = os.environ.get("BIOFIELD_REPORTS_DIR",
+                                     os.path.join(os.path.expanduser("~"), "biofield-reports"))
+        date = (rep.get("date") or "").replace("/", "-") or "undated"
+        out = os.path.join(reports_dir, f"report_{test_id}_{date}.pdf")
+        try:
+            save_report_pdf(html, out)          # keep a local copy to print/ship
+            data = open(out, "rb").read()
+        except Exception as e:
+            return Response(f"PDF generation failed: {e}", status=500)
+        return Response(data, mimetype="application/pdf", headers={
+            "Content-Disposition": f'inline; filename="biofield-{test_id}.pdf"'})
 
     # --- Authoring (Increment 4a) ---
     @app.route("/author/new", methods=["POST"])
