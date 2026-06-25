@@ -25,7 +25,8 @@ from flask import Flask, Response, redirect, request, send_from_directory
 
 from dashboard.biofield_report import causal_chain_report, list_tests
 from dashboard.biofield_report_html import (
-    render_author_html, render_e4l_panel, render_list_html, render_report_html)
+    render_author_html, render_e4l_panel, render_list_html, render_report_html,
+    render_stress_panel)
 from dashboard.biofield_e4l import (
     fetch_live as _fetch_live, scan_context as _scan_context,
     search_clients as _search_clients)
@@ -152,6 +153,34 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         rep = _report_for(cx, test_id)
         ctx = scan_lookup((rep.get("client") or {}).get("email") or "")
         return ctx, rep
+
+    def _seed_stresses(cx, test_id, *, force=False):
+        """Synthesize reveal layers + seed the stress coverage map for this test.
+        Skips silently when no email is set, no scan is found, or (unless force)
+        the test already has scan stresses. Synthesis errors are swallowed so the
+        intake flow is never blocked by a live-pipeline failure."""
+        from dashboard import biofield_reveal_import as _ri
+        from dashboard import biofield_stress as _st
+        import datetime as _dt
+        rep = _report_for(cx, test_id)
+        email = ((rep.get("client") or {}).get("email") or "").strip()
+        if not email:
+            return
+        _st.init_stress_tables(cx)
+        if not force and cx.execute(
+                "SELECT 1 FROM biofield_auth_stress WHERE test_id=? AND source='scan' LIMIT 1",
+                (int(str(test_id).lstrip("a") or 0),)).fetchone():
+            return
+        ctx = scan_lookup(email)
+        if not ctx.get("found"):
+            return
+        try:
+            res = _ri.synthesize_reveal_layers(email, today=_dt.date.today().isoformat())
+        except Exception:
+            return
+        coverage = _ri.build_coverage(res.get("layers") or [])
+        _st.seed_from_scan(cx, test_id, ctx.get("findings") or [], coverage)
+
     with sqlite3.connect(db_path) as _cx:
         seed_dimensions(_cx)
 
@@ -252,6 +281,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             update_header(cx, test_id, name=d.get("name"), email=d.get("email"),
                           date=d.get("date"))
             ctx, _ = _e4l(cx, test_id)  # client now known -> pull recent E4L scan
+            _seed_stresses(cx, test_id)  # synthesize + seed stress coverage if scan found
         return {"ok": True, "e4l": ctx, "html": render_e4l_panel(ctx)}
 
     @app.route("/author/<test_id>/e4l")
@@ -315,7 +345,25 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             if existing and not force:
                 return {"ok": False, "needs_confirm": True, "existing": existing}
             imported = _ri.import_layers_to_test(cx, test_id, res.get("layers") or [])
+            _seed_stresses(cx, test_id, force=True)  # re-seed after import (scan ctx may have changed)
         return {"ok": True, "imported": imported}
+
+    @app.route("/author/<test_id>/stresses")
+    def author_stresses(test_id):
+        from dashboard import biofield_stress as _st
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            remedies = [l.get("remedy") for l in (rep.get("layers") or []) if l.get("remedy")]
+            data = _st.list_stresses(cx, test_id, remedies)
+        return {"data": data, "html": render_stress_panel(data)}
+
+    @app.route("/author/<test_id>/stress/<int:sid>/balance", methods=["POST"])
+    def author_stress_balance(test_id, sid):
+        from dashboard import biofield_stress as _st
+        value = bool((request.get_json(silent=True) or {}).get("value"))
+        with sqlite3.connect(db_path) as cx:
+            _st.set_manual_balanced(cx, test_id, sid, value)
+        return {"ok": True}
 
     @app.route("/author/<test_id>/row", methods=["POST"])
     def author_row_add(test_id):
@@ -333,6 +381,14 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         for k in ("layer", "head", "most_affected", "remedy", "dosage", "frequency", "timing"):
             if k in d:
                 fields[k] = _layer_int(d[k]) if k == "layer" else d[k]
+        if "layer" in fields:
+            new_layer = fields.pop("layer")
+            from dashboard.biofield_authoring import reorder_chain
+            with sqlite3.connect(db_path) as cx:
+                if fields:
+                    update_chain_row(cx, rid, **fields)
+                reorder_chain(cx, test_id, rid, new_layer)
+            return {"ok": True}
         with sqlite3.connect(db_path) as cx:
             update_chain_row(cx, rid, **fields)
         return {"ok": True}

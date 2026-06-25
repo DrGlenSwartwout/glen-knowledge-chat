@@ -536,3 +536,10 @@ def render_list_html(tests, q="", authored=None):
         "<table><tr><th>Client</th><th>Email</th><th>Date</th><th>Remedies</th></tr>"
         f"{rows}</table>")
     return _page("Biofield Analysis", body)
+
+
+def render_stress_panel(data):
+    """Placeholder — Task 8 will flesh this out.  Returns empty string so the
+    route is importable and the JSON ``data`` field is testable before the HTML
+    panel is written."""
+    return ""
