@@ -20764,6 +20764,70 @@ def api_materials_supplier_preferred(ms_id):
     except Exception as e: return fail(e)
 
 
+@app.route("/api/materials/import", methods=["POST"])
+@require_console_key
+def materials_import():
+    """Upload FMP CSVs (materials, materials_supplier, products_supplier) to populate the materials catalog."""
+    import csv as _csv
+    import sys as _sys
+    import io as _io
+    _csv.field_size_limit(_sys.maxsize)
+
+    try:
+        from scripts.import_materials_from_fmp import (
+            import_materials, import_material_suppliers, import_product_suppliers,
+        )
+        from dashboard.ingredient_catalog import init_ingredients_schema
+        from dashboard.materials_catalog import init_materials_schema
+    except Exception as e:
+        return fail(f"import error: {e}")
+
+    try:
+        materials_file         = request.files.get("materials")
+        materials_supplier_file = request.files.get("materials_supplier")
+        products_supplier_file  = request.files.get("products_supplier")
+
+        if not all([materials_file, materials_supplier_file, products_supplier_file]):
+            return fail("upload all three: materials, materials_supplier, products_supplier", status=400)
+
+        materials_rows         = list(_csv.DictReader(_io.StringIO(materials_file.read().decode("utf-8", errors="replace"))))
+        materials_supplier_rows = list(_csv.DictReader(_io.StringIO(materials_supplier_file.read().decode("utf-8", errors="replace"))))
+        products_supplier_rows  = list(_csv.DictReader(_io.StringIO(products_supplier_file.read().decode("utf-8", errors="replace"))))
+
+        write = request.form.get("write", "").lower() in ("1", "true", "yes")
+
+        if not write:
+            return ok({
+                "mode": "dry_run",
+                "materials": len(materials_rows),
+                "material_suppliers": len(materials_supplier_rows),
+                "product_suppliers": len(products_supplier_rows),
+            })
+
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx)
+            init_materials_schema(cx)
+            nm  = import_materials(cx, materials_rows)
+            nms = import_material_suppliers(cx, materials_supplier_rows)
+            nps = import_product_suppliers(cx, products_supplier_rows)
+            cx.commit()
+        finally:
+            cx.close()
+
+        return ok({
+            "mode": "write",
+            "materials": nm,
+            "material_suppliers": nms,
+            "product_suppliers": nps,
+        })
+
+    except Exception as e:
+        app.logger.exception("materials import error")
+        return fail(str(e))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # /console/settings — collapsible settings panel (Shipping, Active-Mac, etc.)
 # ─────────────────────────────────────────────────────────────────────────────

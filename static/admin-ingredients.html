@@ -336,6 +336,33 @@
       </div>
 
       <div id="form-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:28px 0">
+
+      <h3 style="margin:0 0 8px;font-size:15px;font-weight:600;color:var(--text)">Materials</h3>
+      <p class="hint" style="margin-bottom:16px">Import Ingredients + Suppliers first, then upload the 3 material CSVs.</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="fmp-file-materials">Materials CSV</label>
+          <input type="file" id="fmp-file-materials" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-materials_supplier">Materials-Supplier CSV</label>
+          <input type="file" id="fmp-file-materials_supplier" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-products_supplier">Products-Supplier CSV</label>
+          <input type="file" id="fmp-file-products_supplier" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button id="mat-dry-btn" onclick="matImport(false)">Dry Run</button>
+        <button id="mat-write-btn" class="confirm" onclick="matImport(true)">Import (write)</button>
+      </div>
+
+      <div id="mat-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
     </div>
   </div>
 
@@ -652,6 +679,75 @@ async function formImport(write) {
         Formulations: <strong>${escapeHtml(String(d.formulations ?? 0))}</strong> &nbsp;|&nbsp;
         Items: <strong>${escapeHtml(String(d.items ?? 0))}</strong> &nbsp;|&nbsp;
         Unresolved: <strong>${escapeHtml(String(d.unresolved ?? 0))}</strong>`;
+      toast("Import written successfully", "ok");
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<span style="color:var(--red)">Network error: ' + escapeHtml(e.message) + '</span>';
+    toast(e.message, "error");
+  } finally {
+    dryBtn.disabled = false;
+    writeBtn.disabled = false;
+  }
+}
+
+async function matImport(write) {
+  const fMaterials         = document.getElementById("fmp-file-materials").files[0];
+  const fMaterialsSupplier = document.getElementById("fmp-file-materials_supplier").files[0];
+  const fProductsSupplier  = document.getElementById("fmp-file-products_supplier").files[0];
+
+  if (!fMaterials || !fMaterialsSupplier || !fProductsSupplier) {
+    toast("Please choose all 3 CSV files before running.", "error");
+    return;
+  }
+
+  const resultEl = document.getElementById("mat-result");
+  const dryBtn   = document.getElementById("mat-dry-btn");
+  const writeBtn = document.getElementById("mat-write-btn");
+  dryBtn.disabled = true;
+  writeBtn.disabled = true;
+  resultEl.style.display = "block";
+  resultEl.innerHTML = '<span style="color:var(--muted)">Uploading…</span>';
+
+  const fd = new FormData();
+  fd.append("materials",          fMaterials);
+  fd.append("materials_supplier", fMaterialsSupplier);
+  fd.append("products_supplier",  fProductsSupplier);
+  if (write) fd.append("write", "1");
+
+  try {
+    const r = await fetch("/api/materials/import", {
+      method: "POST",
+      headers: { "X-Console-Key": KEY },
+      body: fd,
+    });
+    const j = await r.json();
+
+    if (r.status === 401) {
+      document.getElementById("auth-warn").style.display = "block";
+      resultEl.innerHTML = '<span style="color:var(--red)">Unauthorized — check your console key.</span>';
+      return;
+    }
+
+    if (!j.ok) {
+      resultEl.innerHTML = '<span style="color:var(--red)">Error: ' + escapeHtml(j.error || "request failed") + '</span>';
+      toast(j.error || "Import failed", "error");
+      return;
+    }
+
+    const d = j.data;
+    if (d.mode === "dry_run") {
+      resultEl.innerHTML = `
+        <strong style="color:var(--accent-light)">Dry Run — no data written</strong><br>
+        Materials: <strong>${escapeHtml(String(d.materials ?? 0))}</strong> &nbsp;|&nbsp;
+        Material Suppliers: <strong>${escapeHtml(String(d.material_suppliers ?? 0))}</strong> &nbsp;|&nbsp;
+        Product Suppliers: <strong>${escapeHtml(String(d.product_suppliers ?? 0))}</strong>`;
+      toast("Dry run complete");
+    } else {
+      resultEl.innerHTML = `
+        <strong style="color:var(--green)">Import complete</strong><br>
+        Materials: <strong>${escapeHtml(String(d.materials ?? 0))}</strong> &nbsp;|&nbsp;
+        Material Suppliers: <strong>${escapeHtml(String(d.material_suppliers ?? 0))}</strong> &nbsp;|&nbsp;
+        Product Suppliers: <strong>${escapeHtml(String(d.product_suppliers ?? 0))}</strong>`;
       toast("Import written successfully", "ok");
     }
   } catch (e) {
