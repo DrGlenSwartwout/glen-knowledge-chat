@@ -148,9 +148,10 @@ def set_manual_balanced(cx, tid, stress_id, value):
     cx.commit()
 
 
-def add_voice_stress(cx, tid, label):
-    """Add a voice-captured stress (required) unless its normalized label already
-    exists for this test (any source) -> merge. Returns True if inserted."""
+def add_stress(cx, tid, label, *, source="voice", balance="required"):
+    """Add a stress unless its normalized label already exists for this test (any
+    source) -> merge. Stored with code=_norm(label) so UNIQUE(test_id,source,code)
+    never collides. Returns True if inserted."""
     init_stress_tables(cx)
     t = _num(tid)
     n = _norm(label)
@@ -162,7 +163,12 @@ def add_voice_stress(cx, tid, label):
     now = _now()
     cx.execute(
         "INSERT INTO biofield_auth_stress(test_id,code,label,source,balance,"
-        "manual_balanced,created_at,updated_at) VALUES(?,?,?,'voice','required',0,?,?)",
-        (t, n, (label or "").strip(), now, now))
+        "manual_balanced,created_at,updated_at) VALUES(?,?,?,?,?,0,?,?)",
+        (t, n, (label or "").strip(), source, balance, now, now))
     cx.commit()
     return True
+
+
+def add_voice_stress(cx, tid, label):
+    """Voice-captured stress (required). Thin wrapper over add_stress."""
+    return add_stress(cx, tid, label, source="voice", balance="required")
