@@ -1,6 +1,7 @@
 """Per-test master stress list + remedy<->stress coverage map for the local
 Biofield Intake balancing loop (B1). Pure sqlite; the caller passes a connection.
 Balanced state is DERIVED at read time, never stored (see list_stresses)."""
+import re
 import sqlite3
 from datetime import datetime, timezone
 
@@ -112,3 +113,30 @@ def set_manual_balanced(cx, tid, stress_id, value):
                "WHERE id=? AND test_id=?",
                (1 if value else 0, _now(), stress_id, _num(tid)))
     cx.commit()
+
+
+def _norm(s):
+    """Normalize a stress label for dedup/label-match: lowercase, collapse internal
+    whitespace, strip surrounding non-word characters."""
+    s = re.sub(r"\s+", " ", (s or "").strip().lower())
+    return re.sub(r"^[^\w]+|[^\w]+$", "", s)
+
+
+def add_voice_stress(cx, tid, label):
+    """Add a voice-captured stress (required) unless its normalized label already
+    exists for this test (any source) -> merge. Returns True if inserted."""
+    init_stress_tables(cx)
+    t = _num(tid)
+    n = _norm(label)
+    if not n:
+        return False
+    existing = cx.execute("SELECT label FROM biofield_auth_stress WHERE test_id=?", (t,)).fetchall()
+    if any(_norm(r[0]) == n for r in existing):
+        return False
+    now = _now()
+    cx.execute(
+        "INSERT INTO biofield_auth_stress(test_id,code,label,source,balance,"
+        "manual_balanced,created_at,updated_at) VALUES(?,?,?,'voice','required',0,?,?)",
+        (t, n, (label or "").strip(), now, now))
+    cx.commit()
+    return True
