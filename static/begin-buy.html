@@ -693,6 +693,8 @@
       if (_gb && _gb.checked) { payload.group_bundle = true; }
       var _rc = document.getElementById('referral-code');
       if (_rc && _rc.value.trim()) { payload.referral_code = _rc.value.trim(); }
+      var _gift = new URLSearchParams(location.search).get("gift");
+      if (_gift) payload.gift = _gift;
 
       fetch(BASE + '/begin/checkout/' + encodeURIComponent(slug), {
         method: 'POST',
