@@ -1971,6 +1971,7 @@ let _prodSearchTimer = null;
 let prodCurrentId = null;
 let prodLogLines = [];
 let prodLogFormId = null;
+let prodFrmResults = [];
 
 document.getElementById("prod-search").addEventListener("input", function() {
   clearTimeout(_prodSearchTimer);
@@ -2057,8 +2058,9 @@ async function prodFrmSearch(q) {
     const results = await api("/api/formulations/search?q=" + encodeURIComponent(q));
     const ul = document.getElementById("prod-frm-results");
     if (!results.length) { ul.style.display = "none"; return; }
-    ul.innerHTML = results.slice(0, 15).map(function(frm) {
-      return '<li onclick="prodFrmPick(' + frm.id + ', ' + JSON.stringify(escapeHtml(frm.name)) + ')">' +
+    prodFrmResults = results.slice(0, 15);
+    ul.innerHTML = prodFrmResults.map(function(frm, i) {
+      return '<li onclick="prodFrmPick(' + i + ')">' +
              escapeHtml(frm.name) + (frm.status ? ' <span style="color:var(--muted);font-size:11px">· ' + escapeHtml(frm.status) + '</span>' : '') +
              '</li>';
     }).join("");
@@ -2068,11 +2070,12 @@ async function prodFrmSearch(q) {
   }
 }
 
-function prodFrmPick(id, name) {
-  prodLogFormId = id;
-  document.getElementById("prod-log-form-search").value = name;
+function prodFrmPick(i) {
+  const frm = prodFrmResults[i];
+  prodLogFormId = frm.id;
+  document.getElementById("prod-log-form-search").value = escapeHtml(frm.name);
   document.getElementById("prod-frm-results").style.display = "none";
-  document.getElementById("prod-frm-chosen").textContent = "Selected: " + name + " (id=" + id + ")";
+  document.getElementById("prod-frm-chosen").textContent = "Selected: " + escapeHtml(frm.name) + " (id=" + frm.id + ")";
 }
 
 async function prodPullRecipe() {
@@ -2140,8 +2143,8 @@ async function prodImport(write) {
   if (write) fd.append("write", "1");
   try {
     const res = await fetch("/api/production/import", { method: "POST", headers: { "X-Console-Key": KEY }, body: fd });
-    const j = await res.json();
     if (res.status === 401) { document.getElementById("auth-warn").style.display = "block"; resultEl.innerHTML = '<span style="color:var(--red)">Unauthorized — check your console key.</span>'; return; }
+    const j = await res.json();
     if (!j.ok) { resultEl.innerHTML = '<span style="color:var(--red)">Error: ' + escapeHtml(j.error || "Import failed") + '</span>'; toast(j.error || "Import failed", "error"); return; }
     const d = j.data;
     if (d.mode === "dry_run") {
