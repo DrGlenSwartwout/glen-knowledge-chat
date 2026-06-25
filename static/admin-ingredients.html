@@ -125,6 +125,20 @@
     #inv-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
     #inv-detail-panel { display: none; }
     #inv-detail-panel.active { display: block; }
+
+    /* Production tab */
+    #prod-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+    #prod-detail-panel { display: none; }
+    #prod-detail-panel.active { display: block; }
+    #prod-list td { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+    #prod-list tr:hover td { background: rgba(212,168,67,0.08); }
+    #prod-list th { text-align: left; padding: 6px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+    #prod-items td { padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    #prod-items th { text-align: left; padding: 6px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+    #prod-frm-results { list-style: none; background: #0d1117; border: 1px solid var(--border); border-radius: 6px; margin-top: 4px; display: none; }
+    #prod-frm-results li { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 13px; }
+    #prod-frm-results li:last-child { border-bottom: none; }
+    #prod-frm-results li:hover { background: rgba(212,168,67,0.08); color: var(--accent-light); }
     #inv-list { width: 100%; border-collapse: collapse; }
     #inv-list td { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
     #inv-list tr:hover td { background: rgba(212,168,67,0.08); }
@@ -180,6 +194,7 @@
     <button class="tab-btn" onclick="showTab('materials')">Materials</button>
     <button class="tab-btn" onclick="showTab('po')">Purchase Orders</button>
     <button class="tab-btn" onclick="showTab('inventory')">Inventory</button>
+    <button class="tab-btn" onclick="showTab('production')">Production</button>
   </div>
 
   <!-- ── Ingredients tab ─────────────────────────────────────────────────── -->
@@ -408,6 +423,43 @@
       </div>
 
       <div id="po-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:28px 0">
+
+      <h3 style="margin:0 0 8px;font-size:15px;font-weight:600;color:var(--text)">Production</h3>
+      <p class="hint" style="margin-bottom:16px">Import Ingredients + Formulations first, then upload production_runs.csv + production_items.csv. Dry-run first, then Import. Re-running is safe (idempotent by fmp_id).</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="fmp-file-production">Production Runs CSV</label>
+          <input type="file" id="fmp-file-production" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-production-items">Production Items CSV</label>
+          <input type="file" id="fmp-file-production-items" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+      </div>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="prod-consumption-mode">Consumption Mode</label>
+          <select id="prod-consumption-mode" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px">
+            <option value="all">Post all</option>
+            <option value="record_only">Record only</option>
+          </select>
+        </div>
+        <div class="field-block">
+          <label for="prod-consumption-from">Post consumption from (optional)</label>
+          <input type="date" id="prod-consumption-from" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button id="prod-dry-btn" onclick="prodImport(false)">Dry Run</button>
+        <button id="prod-write-btn" class="confirm" onclick="prodImport(true)">Import (write)</button>
+      </div>
+
+      <div id="prod-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
     </div>
   </div>
 
@@ -729,6 +781,100 @@
     </div><!-- /#inv-detail-panel -->
   </div><!-- /#tab-inventory -->
 
+  <!-- ── Production tab ────────────────────────────────────────────────────── -->
+  <div id="tab-production" class="tab-panel">
+
+    <!-- Search / run list -->
+    <div class="section" id="prod-search-section">
+      <h2>Production Runs</h2>
+      <div class="search-row">
+        <input type="text" id="prod-search" placeholder="Type to search by batch number or formulation…" autocomplete="off">
+      </div>
+      <div id="prod-empty">No results.</div>
+      <table id="prod-list" style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th>Batch #</th>
+            <th>Formulation</th>
+            <th>Run Date</th>
+            <th>Qty (units)</th>
+          </tr>
+        </thead>
+        <tbody id="prod-list-body"></tbody>
+      </table>
+      <div class="hint">Production runs logged from FMP import or manual entry. Click a row to view items and consumption status.</div>
+    </div>
+
+    <!-- Production run detail panel -->
+    <div id="prod-detail-panel">
+
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closeProdDetail()">&#8592; Back to list</button>
+          <div id="prod-detail-head" style="flex:1;padding-left:12px"></div>
+        </div>
+
+        <!-- Line items table -->
+        <div class="section-label" style="margin-top:20px">Items Consumed</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr>
+              <th id="prod-items-head-label" style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Ingredient / Material</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Type</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Qty Used</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Consumed</th>
+            </tr>
+          </thead>
+          <tbody id="prod-items"></tbody>
+        </table>
+        <div id="prod-items-empty" class="hint" style="display:none">No items on this run.</div>
+      </div>
+
+    </div><!-- /#prod-detail-panel -->
+
+    <!-- Log a production run form -->
+    <div class="section">
+      <h2>Log a Production Run</h2>
+
+      <!-- Formulation search-to-pick -->
+      <div class="field-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label>Formulation</label>
+          <input type="text" id="prod-log-form-search" placeholder="Type to search formulations…" autocomplete="off">
+          <ul id="prod-frm-results"></ul>
+          <div id="prod-frm-chosen" style="margin-top:6px;font-size:12px;color:var(--muted)"></div>
+        </div>
+        <div class="field-block">
+          <label for="prod-log-date">Run Date</label>
+          <input type="text" id="prod-log-date" placeholder="YYYY-MM-DD">
+        </div>
+        <div class="field-block">
+          <label for="prod-log-qty">Quantity (units produced)</label>
+          <input type="number" id="prod-log-qty" step="any" placeholder="e.g. 100">
+        </div>
+      </div>
+
+      <div class="section-label">Recipe Lines</div>
+      <div style="margin-bottom:10px">
+        <button class="save-btn secondary" onclick="prodPullRecipe()">&#8635; Pull recipe</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:14px">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Ingredient</th>
+            <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Qty Used</th>
+            <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Unit</th>
+          </tr>
+        </thead>
+        <tbody id="prod-log-lines"></tbody>
+      </table>
+      <div class="save-row">
+        <button onclick="submitProdLog()">Log Run &amp; Post Consumption</button>
+      </div>
+    </div>
+
+  </div><!-- /#tab-production -->
+
 </div><!-- /#wrap -->
 
 <div id="toast"></div>
@@ -769,9 +915,10 @@ function showTab(name) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.getElementById("tab-" + name).classList.add("active");
   const btns = document.querySelectorAll(".tab-btn");
-  const labels = ["ingredients", "suppliers", "import", "formulations", "materials", "po", "inventory"];
+  const labels = ["ingredients", "suppliers", "import", "formulations", "materials", "po", "inventory", "production"];
   btns[labels.indexOf(name)].classList.add("active");
   if (name === "suppliers") loadSuppliers();
+  if (name === "production") doProdSearch();
 }
 
 // ── FMP Import ────────────────────────────────────────────────────────────────
@@ -1817,6 +1964,210 @@ async function invSeed() {
     toast("Seeded: " + (d.baselines != null ? d.baselines : "?") + " baselines, " + (d.receipts != null ? d.receipts : "?") + " receipts");
     doInvSearch(document.getElementById("inv-search").value.trim());
   } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Production tab ────────────────────────────────────────────────────────────
+let _prodSearchTimer = null;
+let prodCurrentId = null;
+let prodLogLines = [];
+let prodLogFormId = null;
+let prodFrmResults = [];
+
+document.getElementById("prod-search").addEventListener("input", function() {
+  clearTimeout(_prodSearchTimer);
+  _prodSearchTimer = setTimeout(() => doProdSearch(this.value.trim()), 280);
+});
+
+async function doProdSearch(q) {
+  q = q != null ? q : (document.getElementById("prod-search").value.trim());
+  const tbody = document.getElementById("prod-list-body");
+  const empty = document.getElementById("prod-empty");
+  tbody.innerHTML = "";
+  empty.style.display = "none";
+  try {
+    const rows = await api("/api/production/search?q=" + encodeURIComponent(q || ""));
+    if (!rows.length) { empty.style.display = "block"; return; }
+    tbody.innerHTML = rows.map(function(x) {
+      return '<tr onclick="openProd(' + x.id + ')">' +
+             '<td>' + escapeHtml(x.batch_number || "—") + '</td>' +
+             '<td>' + escapeHtml(x.formulation_name || "") + '</td>' +
+             '<td>' + escapeHtml(x.run_date || "") + '</td>' +
+             '<td>' + (x.quantity_units != null ? x.quantity_units : "") + '</td>' +
+             '</tr>';
+    }).join("");
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+async function openProd(id) {
+  prodCurrentId = id;
+  try {
+    const d = await api("/api/production/" + id);
+    document.getElementById("prod-search-section").style.display = "none";
+    const panel = document.getElementById("prod-detail-panel");
+    panel.classList.add("active");
+    document.getElementById("prod-detail-head").innerHTML =
+      "<strong>" + escapeHtml(d.run.formulation_name || "") + "</strong> — " +
+      escapeHtml(d.run.batch_number || "") + " &nbsp;·&nbsp; " + escapeHtml(d.run.run_date || "") +
+      " &nbsp;·&nbsp; qty " + (d.run.quantity_units != null ? d.run.quantity_units : "—");
+    const items = d.items || [];
+    const tbody = document.getElementById("prod-items");
+    const itemsEmpty = document.getElementById("prod-items-empty");
+    if (!items.length) {
+      tbody.innerHTML = "";
+      itemsEmpty.style.display = "block";
+    } else {
+      itemsEmpty.style.display = "none";
+      tbody.innerHTML = items.map(function(it) {
+        var name = escapeHtml(it.item_label || it.ingredient_canonical || it.material_name || "");
+        var badge = it.posted
+          ? '<span style="color:#3d8a52;font-weight:600">consumed ✓</span>'
+          : '<span style="color:var(--muted)">—</span>';
+        return "<tr>" +
+               "<td><strong>" + name + "</strong></td>" +
+               "<td style='color:var(--muted)'>" + escapeHtml(it.item_type || "") + "</td>" +
+               "<td>" + (it.qty_used != null ? it.qty_used : "") + " " + escapeHtml(it.unit || "") + "</td>" +
+               "<td>" + badge + "</td>" +
+               "</tr>";
+      }).join("");
+    }
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function closeProdDetail() {
+  prodCurrentId = null;
+  document.getElementById("prod-detail-panel").classList.remove("active");
+  document.getElementById("prod-search-section").style.display = "block";
+}
+
+// Formulation search-to-pick for the log form
+let _prodFrmTimer = null;
+
+document.getElementById("prod-log-form-search").addEventListener("input", function() {
+  clearTimeout(_prodFrmTimer);
+  const q = this.value.trim();
+  if (!q) { document.getElementById("prod-frm-results").style.display = "none"; return; }
+  _prodFrmTimer = setTimeout(() => prodFrmSearch(q), 280);
+});
+
+async function prodFrmSearch(q) {
+  try {
+    const results = await api("/api/formulations/search?q=" + encodeURIComponent(q));
+    const ul = document.getElementById("prod-frm-results");
+    if (!results.length) { ul.style.display = "none"; return; }
+    prodFrmResults = results.slice(0, 15);
+    ul.innerHTML = prodFrmResults.map(function(frm, i) {
+      return '<li onclick="prodFrmPick(' + i + ')">' +
+             escapeHtml(frm.name) + (frm.status ? ' <span style="color:var(--muted);font-size:11px">· ' + escapeHtml(frm.status) + '</span>' : '') +
+             '</li>';
+    }).join("");
+    ul.style.display = "block";
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function prodFrmPick(i) {
+  const frm = prodFrmResults[i];
+  prodLogFormId = frm.id;
+  document.getElementById("prod-log-form-search").value = escapeHtml(frm.name);
+  document.getElementById("prod-frm-results").style.display = "none";
+  document.getElementById("prod-frm-chosen").textContent = "Selected: " + escapeHtml(frm.name) + " (id=" + frm.id + ")";
+}
+
+async function prodPullRecipe() {
+  if (!prodLogFormId) { toast("Search and pick a formulation first", "error"); return; }
+  try {
+    prodLogLines = await api("/api/production/recipe/" + prodLogFormId);
+    renderProdLogLines();
+    toast("Recipe loaded — " + prodLogLines.length + " lines");
+  } catch (e) { toast("Pull recipe failed: " + e.message, "error"); }
+}
+
+function renderProdLogLines() {
+  document.getElementById("prod-log-lines").innerHTML = prodLogLines.map(function(l, i) {
+    return '<tr>' +
+           '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + escapeHtml(l.item_label || "") + '</td>' +
+           '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' +
+           '<input type="number" step="any" value="' + (l.qty_used != null ? l.qty_used : "") + '" ' +
+           'onchange="prodLogLines[' + i + '].qty_used=parseFloat(this.value)" style="width:80px;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px">' +
+           '</td>' +
+           '<td style="padding:6px 10px;border-bottom:1px solid var(--border);color:var(--muted)">' + escapeHtml(l.unit || "") + '</td>' +
+           '</tr>';
+  }).join("");
+}
+
+async function submitProdLog() {
+  if (!prodLogFormId) { toast("Search and pick a formulation first", "error"); return; }
+  const filteredItems = prodLogLines.filter(function(l) { return l.ingredient_id && l.qty_used; });
+  if (!filteredItems.length) { toast("Pull recipe and enter at least one qty", "error"); return; }
+  const body = {
+    formulation_id: prodLogFormId,
+    run_date: document.getElementById("prod-log-date").value || null,
+    quantity_units: parseFloat(document.getElementById("prod-log-qty").value) || null,
+    items: filteredItems,
+  };
+  try {
+    const r = await api("/api/production/log", { method: "POST", body: JSON.stringify(body) });
+    toast("Run logged — consumption posted");
+    prodLogLines = [];
+    renderProdLogLines();
+    prodLogFormId = null;
+    document.getElementById("prod-log-form-search").value = "";
+    document.getElementById("prod-frm-chosen").textContent = "";
+    openProd(r.id);
+    doProdSearch();
+  } catch (e) { toast("Log failed: " + e.message, "error"); }
+}
+
+async function prodImport(write) {
+  const fRuns  = document.getElementById("fmp-file-production").files[0];
+  const fItems = document.getElementById("fmp-file-production-items").files[0];
+  if (!fRuns || !fItems) { toast("Choose both production CSVs", "error"); return; }
+  const dryBtn   = document.getElementById("prod-dry-btn");
+  const writeBtn = document.getElementById("prod-write-btn");
+  const resultEl = document.getElementById("prod-result");
+  dryBtn.disabled = true;
+  writeBtn.disabled = true;
+  resultEl.style.display = "block";
+  resultEl.innerHTML = '<span style="color:var(--muted)">Uploading…</span>';
+  const fd = new FormData();
+  fd.append("production",       fRuns);
+  fd.append("production_items", fItems);
+  const mode = document.getElementById("prod-consumption-mode").value;
+  fd.append("consumption", mode);
+  const cfrom = document.getElementById("prod-consumption-from").value;
+  if (mode !== "record_only" && cfrom) fd.append("consumption_from", cfrom);
+  if (write) fd.append("write", "1");
+  try {
+    const res = await fetch("/api/production/import", { method: "POST", headers: { "X-Console-Key": KEY }, body: fd });
+    if (res.status === 401) { document.getElementById("auth-warn").style.display = "block"; resultEl.innerHTML = '<span style="color:var(--red)">Unauthorized — check your console key.</span>'; return; }
+    const j = await res.json();
+    if (!j.ok) { resultEl.innerHTML = '<span style="color:var(--red)">Error: ' + escapeHtml(j.error || "Import failed") + '</span>'; toast(j.error || "Import failed", "error"); return; }
+    const d = j.data;
+    if (d.mode === "dry_run") {
+      resultEl.innerHTML = '<strong style="color:var(--accent-light)">Dry Run — no data written</strong><br>' +
+        'Runs: <strong>' + escapeHtml(String(d.runs ?? 0)) + '</strong> &nbsp;|&nbsp; ' +
+        'Items: <strong>' + escapeHtml(String(d.items ?? 0)) + '</strong> &nbsp;|&nbsp; ' +
+        'Consumption: <strong>' + escapeHtml(String(d.consumption ?? 0)) + '</strong>';
+      toast("Dry run complete");
+    } else {
+      resultEl.innerHTML = '<strong style="color:var(--green)">Import complete</strong><br>' +
+        'Runs: <strong>' + escapeHtml(String(d.runs ?? 0)) + '</strong> &nbsp;|&nbsp; ' +
+        'Items: <strong>' + escapeHtml(String(d.items ?? 0)) + '</strong> &nbsp;|&nbsp; ' +
+        'Consumption: <strong>' + escapeHtml(String(d.consumption ?? 0)) + '</strong>';
+      toast("Import written successfully", "ok");
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<span style="color:var(--red)">Network error: ' + escapeHtml(e.message) + '</span>';
+    toast(e.message, "error");
+  } finally {
+    dryBtn.disabled = false;
+    writeBtn.disabled = false;
+  }
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
