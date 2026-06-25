@@ -946,6 +946,15 @@ def _init_formulations_tables():
 _init_formulations_tables()
 
 
+def _init_materials_tables():
+    """Materials (production inputs + packaging) — FMP-migrated, references Phase-1 suppliers."""
+    from dashboard.materials_catalog import init_materials_schema
+    with sqlite3.connect(LOG_DB) as cx:
+        init_materials_schema(cx)
+
+_init_materials_tables()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
