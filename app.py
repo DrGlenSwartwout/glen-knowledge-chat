@@ -20870,6 +20870,46 @@ def materials_import():
         return fail(str(e))
 
 
+# /api/po/*  — JSON API behind require_console_key
+from dashboard import purchase_orders as _po
+
+
+@app.route("/api/po/search", methods=["GET"])
+@require_console_key
+def api_po_search():
+    try:
+        return ok(_po.search_purchase_orders(request.args.get("q", ""), int(request.args.get("limit", 50)), int(request.args.get("offset", 0))))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/po/<int:pid>", methods=["GET"])
+@require_console_key
+def api_po_get(pid):
+    try:
+        p = _po.get_purchase_order(pid)
+        if not p: return fail("not found", status=404)
+        return ok({"po": p, "items": _po.list_po_items(pid), "receiving": _po.list_po_receiving(pid)})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/po/<int:pid>", methods=["PATCH"])
+@require_console_key
+def api_po_patch(pid):
+    try:
+        _po.update_po_curated(pid, request.get_json(silent=True) or {})
+        return ok(_po.get_purchase_order(pid))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/po/items/<int:item_id>", methods=["PATCH"])
+@require_console_key
+def api_po_item_patch(item_id):
+    try:
+        _po.update_po_item_curated(item_id, request.get_json(silent=True) or {})
+        return ok({"id": item_id})
+    except Exception as e: return fail(e)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # /console/settings — collapsible settings panel (Shipping, Active-Mac, etc.)
 # ─────────────────────────────────────────────────────────────────────────────
