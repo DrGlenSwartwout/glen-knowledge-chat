@@ -3010,6 +3010,39 @@ def qbo_invoice_status():
     return jsonify({"ok": True, "invoices": out})
 
 
+@app.route("/api/console/reconcile-qbo", methods=["POST"])
+def console_reconcile_qbo():
+    """Flip board orders to paid when their QBO invoice has actually been paid.
+    QBO hosted-page payments don't sync back, so portal-reorder/reorder orders sit
+    Unpaid even after the client pays. Polls each open QBO-invoice order's live
+    balance and marks the paid ones (method=qbo). Runs on prod where QBO auth is live.
+    Auth: X-Cron-Secret / X-Console-Key / ?key == CRON_SECRET or CONSOLE_SECRET."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    allowed = {s for s in (os.environ.get("CRON_SECRET"), os.environ.get("CONSOLE_SECRET")) if s}
+    if not allowed or key not in allowed:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import qbo_billing as _qb
+    from dashboard import qbo_reconcile as _rec
+    from dashboard import orders as _ord
+
+    def _mark_paid(cx, oid, *, method, amount_cents):
+        _ord.set_order_payment(cx, oid, method=method, amount_cents=amount_cents)
+        try:
+            _ord.settle_order_points(cx, _ord.get_order(cx, oid))   # idempotent
+        except Exception as _e:
+            print(f"[qbo-reconcile] points settle skipped for {oid}: {_e!r}", flush=True)
+
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        reconciled = _rec.reconcile_qbo_payments(
+            cx, get_invoice=_qb.get_invoice, mark_paid=_mark_paid)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "reconciled": reconciled, "count": len(reconciled)})
+
+
 @app.route("/api/qbo/test-invoice", methods=["POST"])
 def qbo_test_invoice():
     """Create ONE test invoice (no online pay) for a clearly-named test customer to
