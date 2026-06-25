@@ -21088,6 +21088,7 @@ def api_inventory_seed():
 # /api/production/* — Production run logging & batch management
 # ─────────────────────────────────────────────────────────────────────────────
 from dashboard import production as _prod
+from dashboard import reorder as _ro
 
 
 @app.route("/api/production/search", methods=["GET"])
@@ -21199,6 +21200,27 @@ def api_production_import():
     except Exception as e:
         app.logger.exception("production import error")
         return fail(str(e))
+
+
+@app.route("/api/reorder/report", methods=["GET"])
+@require_console_key
+def api_reorder_report_get():
+    try:
+        below = request.args.get("below_par", "1") != "0"
+        return ok(_ro.reorder_report(plan=None, include_below_par=below))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/reorder/report", methods=["POST"])
+@require_console_key
+def api_reorder_report_post():
+    try:
+        b = request.get_json(silent=True) or {}
+        return ok(_ro.reorder_report(plan=b.get("plan") or [],
+                                     include_below_par=bool(b.get("include_below_par", True))))
+    except Exception as e:
+        return fail(e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
