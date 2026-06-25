@@ -200,45 +200,51 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
 
     def _seed_stresses(cx, test_id, *, force=False, layers=None):
         """Synthesize reveal layers + seed the stress coverage map for this test.
-        Skips silently when no email is set, no scan is found, or (unless force)
-        the test already has scan stresses. Synthesis errors are swallowed so the
-        intake flow is never blocked by a live-pipeline failure.
-        If *layers* is supplied they are used directly, skipping the synthesis
-        network call — pass them from a route that already ran synthesize_reveal_layers
-        so the pipeline runs only once per import.
-        Profile mining (source='tag') always runs after scan seeding, even when
-        synthesis fails, so the stress panel is enriched from People-hub data."""
+        The ONLY early return is the no-email guard — nothing to mine/seed without
+        one.  Scan-seeding is conditional: runs only when a scan is found AND (force
+        OR no scan stresses exist yet) — same idempotency as before.  If *layers* is
+        supplied they are used directly, skipping the synthesis network call (pass
+        from a route that already ran synthesize_reveal_layers).  Synthesis errors
+        are swallowed so the intake flow is never blocked.
+        Profile mining (source='tag') always runs after the scan block, but at most
+        once per session: skipped when tag stresses already exist for this test.
+        This means profile mining fires even when no E4L scan is present."""
         from dashboard import biofield_reveal_import as _ri
         from dashboard import biofield_stress as _st
         import datetime as _dt
         rep = _report_for(cx, test_id)
         email = ((rep.get("client") or {}).get("email") or "").strip()
         if not email:
-            return
+            return  # only early return: nothing to mine/seed without an email
         _st.init_stress_tables(cx)
-        if not force and cx.execute(
-                "SELECT 1 FROM biofield_auth_stress WHERE test_id=? AND source='scan' LIMIT 1",
-                (int(str(test_id).lstrip("a") or 0),)).fetchone():
-            return
         ctx = scan_lookup(email)
-        if not ctx.get("found"):
-            return
-        if layers is not None:
-            coverage = _ri.build_coverage(layers)
-            _st.seed_from_scan(cx, test_id, ctx.get("findings") or [], coverage)
-        else:
+        if ctx.get("found"):
+            # Scan-seeding: skip if already seeded (unless force)
+            if force or not cx.execute(
+                    "SELECT 1 FROM biofield_auth_stress WHERE test_id=? AND source='scan' LIMIT 1",
+                    (int(str(test_id).lstrip("a") or 0),)).fetchone():
+                if layers is not None:
+                    coverage = _ri.build_coverage(layers)
+                    _st.seed_from_scan(cx, test_id, ctx.get("findings") or [], coverage)
+                else:
+                    try:
+                        res = _ri.synthesize_reveal_layers(email, today=_dt.date.today().isoformat())
+                    except Exception:
+                        pass  # synthesis failure: skip scan seeding, fall through to profile mining
+                    else:
+                        coverage = _ri.build_coverage(res.get("layers") or [])
+                        _st.seed_from_scan(cx, test_id, ctx.get("findings") or [], coverage)
+        # Always-on: mine profile stresses (best-effort, at most once per session).
+        # Guard: skip when tag stresses already exist to avoid a redundant HTTP fetch
+        # on every header-save.  The explicit /mine-profile route calls _mine_profile
+        # directly (unguarded) for on-demand re-mining.
+        if not cx.execute(
+                "SELECT 1 FROM biofield_auth_stress WHERE test_id=? AND source='tag' LIMIT 1",
+                (int(str(test_id).lstrip("a") or 0),)).fetchone():
             try:
-                res = _ri.synthesize_reveal_layers(email, today=_dt.date.today().isoformat())
+                _mine_profile(cx, test_id)
             except Exception:
-                pass  # synthesis failure: skip scan seeding, fall through to profile mining
-            else:
-                coverage = _ri.build_coverage(res.get("layers") or [])
-                _st.seed_from_scan(cx, test_id, ctx.get("findings") or [], coverage)
-        # Always-on: mine profile stresses after scan work (even if synthesis failed)
-        try:
-            _mine_profile(cx, test_id)
-        except Exception:
-            pass
+                pass
 
     with sqlite3.connect(db_path) as _cx:
         seed_dimensions(_cx)

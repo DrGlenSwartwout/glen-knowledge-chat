@@ -31,12 +31,30 @@ def test_mine_profile_adds_tag_stresses(tmp_path):
     db = str(tmp_path / "c.db")
     client = _app(db, _PROFILE, ["Chronic fatigue"]).test_client()
     tid = _new(client, "j@x.com")
+    # With always-on profile mining from the header-save hook (_seed_stresses now mines
+    # the profile even when no scan exists), the explicit /mine-profile call may return
+    # added=0 (labels already present).  Assert end-state: no error, expected labels
+    # with source='tag' visible in /stresses.
     j = client.post(f"/author/{tid}/mine-profile", json={}).get_json()
-    assert j["added"] >= 2
+    assert "error" not in j
     data = client.get(f"/author/{tid}/stresses").get_json()["data"]
     labels = {x["label"] for x in data["active"] + data["balanced"]}
     sources = {x["source"] for x in data["active"] + data["balanced"]}
     assert {"Inflammation", "Eczema", "Chronic fatigue"} <= labels and "tag" in sources
+
+
+def test_header_save_mines_profile_when_no_scan(tmp_path):
+    """header-save alone seeds tag stresses even when no E4L scan exists (Return-C fix)."""
+    db = str(tmp_path / "c.db")
+    # scan_lookup always returns not-found; fetch_profile returns a real profile
+    client = _app(db, _PROFILE, ["Chronic fatigue"]).test_client()
+    tid = _new(client, "j@x.com")
+    # No explicit /mine-profile call — header-save should have triggered mining
+    data = client.get(f"/author/{tid}/stresses").get_json()["data"]
+    labels = {x["label"] for x in data["active"] + data["balanced"]}
+    sources = {x["source"] for x in data["active"] + data["balanced"]}
+    assert {"Inflammation", "Eczema", "Chronic fatigue"} <= labels
+    assert "tag" in sources
 
 
 def test_mine_profile_no_email(tmp_path):
