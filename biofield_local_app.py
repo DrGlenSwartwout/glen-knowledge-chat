@@ -229,8 +229,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             vscript = get_video_script(cx, test_id)
             stresses = None
             try:
-                remedies = [l.get("remedy") for l in (rep.get("layers") or []) if l.get("remedy")]
-                stresses = _st.list_stresses(cx, test_id, remedies)
+                chain_rows = [{"head": l.get("head"), "remedy": l.get("remedy")}
+                              for l in (rep.get("layers") or [])]
+                stresses = _st.list_stresses(cx, test_id, chain_rows)
             except Exception:
                 stresses = None
         return Response(render_report_html(rep, notes, narrative, vscript, stresses=stresses),
