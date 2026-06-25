@@ -47,3 +47,20 @@ def inject_shell_html(html: str, mode: str) -> str:
         f'<script defer src="/static/shell.js"></script>'
     )
     return html.replace("</head>", tags + "\n</head>", 1)
+
+
+def validate_shell_map(cfg: dict, land_keys) -> list:
+    """Return a list of human-readable errors. Empty list == valid.
+    Every land must map to a real engine land key; every land's category
+    must have a style in `categories`."""
+    errors = []
+    lands = (cfg or {}).get("lands") or {}
+    cats = (cfg or {}).get("categories") or {}
+    valid = set(land_keys or ())
+    for key, land in lands.items():
+        if key not in valid:
+            errors.append(f"unknown land '{key}' (not a JOURNEY_STEPS key)")
+        cat = (land or {}).get("category")
+        if cat not in cats:
+            errors.append(f"land '{key}' references missing category style '{cat}'")
+    return errors
