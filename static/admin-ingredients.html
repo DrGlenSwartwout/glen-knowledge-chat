@@ -116,6 +116,11 @@
     #material-detail-panel { display: none; }
     #material-detail-panel.active { display: block; }
 
+    /* Purchase Orders list */
+    #po-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+    #po-detail-panel { display: none; }
+    #po-detail-panel.active { display: block; }
+
     /* Supplier list */
     #supplier-results { list-style: none; }
     #supplier-results li { padding: 10px 12px; border-bottom: 1px solid var(--border); }
@@ -162,6 +167,7 @@
     <button class="tab-btn" onclick="showTab('import')">Import from FMP</button>
     <button class="tab-btn" onclick="showTab('formulations')">Formulations</button>
     <button class="tab-btn" onclick="showTab('materials')">Materials</button>
+    <button class="tab-btn" onclick="showTab('po')">Purchase Orders</button>
   </div>
 
   <!-- ── Ingredients tab ─────────────────────────────────────────────────── -->
@@ -363,6 +369,33 @@
       </div>
 
       <div id="mat-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:28px 0">
+
+      <h3 style="margin:0 0 8px;font-size:15px;font-weight:600;color:var(--text)">Purchase Orders</h3>
+      <p class="hint" style="margin-bottom:16px">Import Suppliers + Ingredients + Materials first, then upload the 3 PO CSVs.</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="fmp-file-po">PO CSV</label>
+          <input type="file" id="fmp-file-po" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-po_items">PO Items CSV</label>
+          <input type="file" id="fmp-file-po_items" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-po_receiving">PO Receiving CSV</label>
+          <input type="file" id="fmp-file-po_receiving" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button id="po-dry-btn" onclick="poImport(false)">Dry Run</button>
+        <button id="po-write-btn" class="confirm" onclick="poImport(true)">Import (write)</button>
+      </div>
+
+      <div id="po-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
     </div>
   </div>
 
@@ -506,6 +539,109 @@
     </div><!-- /#material-detail-panel -->
   </div><!-- /#tab-materials -->
 
+  <!-- ── Purchase Orders tab ─────────────────────────────────────────────────── -->
+  <div id="tab-po" class="tab-panel">
+
+    <!-- Search -->
+    <div class="section" id="po-search-section">
+      <h2>Search Purchase Orders</h2>
+      <div class="search-row">
+        <input type="text" id="po-search" placeholder="Type to search by PO number or supplier…" autocomplete="off">
+      </div>
+      <div id="po-empty">No results.</div>
+      <ul id="po-results" style="list-style:none"></ul>
+      <div class="hint">Purchase orders imported from FMP. Search is server-side — type at least 1 character.</div>
+    </div>
+
+    <!-- PO detail panel (hidden until PO clicked) -->
+    <div id="po-detail-panel">
+
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closePoDetail()">&#8592; Back to search</button>
+          <h3 id="po-detail-title"></h3>
+          <span id="po-detail-status-badge"></span>
+        </div>
+
+        <div class="section-label">FMP Fields (read-only)</div>
+        <div class="field-grid">
+          <div class="field-block">
+            <label>Vendor PO No</label>
+            <div class="ro-val" id="po-fmp-vendor-po-no">—</div>
+          </div>
+          <div class="field-block">
+            <label>Supplier</label>
+            <div class="ro-val" id="po-fmp-supplier">—</div>
+          </div>
+          <div class="field-block">
+            <label>PO Date</label>
+            <div class="ro-val" id="po-fmp-po-date">—</div>
+          </div>
+          <div class="field-block">
+            <label>Status</label>
+            <div class="ro-val" id="po-fmp-status">—</div>
+          </div>
+          <div class="field-block">
+            <label>Tax</label>
+            <div class="ro-val" id="po-fmp-tax">—</div>
+          </div>
+          <div class="field-block">
+            <label>Shipping</label>
+            <div class="ro-val" id="po-fmp-shipping">—</div>
+          </div>
+        </div>
+
+        <div class="section-label" style="margin-top:20px">Curated Fields (editable)</div>
+        <div class="field-grid">
+          <div class="field-block field-full">
+            <label for="po-notes">Notes</label>
+            <textarea id="po-notes" placeholder="General notes about this purchase order…"></textarea>
+          </div>
+        </div>
+        <div class="save-row">
+          <button class="save-btn" onclick="savePoNotes()">Save notes</button>
+        </div>
+      </div>
+
+      <!-- Line items table -->
+      <div class="section">
+        <h2>Line Items</h2>
+        <div id="po-items-loading" class="loading" style="display:none">Loading items…</div>
+        <table id="po-items-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Kind</th>
+              <th>Qty</th>
+              <th>Unit</th>
+              <th>Cost</th>
+              <th>Notes</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="po-items-tbody"></tbody>
+        </table>
+        <div id="po-items-empty" class="hint" style="display:none">No line items on this PO.</div>
+      </div>
+
+      <!-- Receiving table -->
+      <div class="section">
+        <h2>Receiving</h2>
+        <table id="po-receiving-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Qty Received</th>
+              <th>Received Size</th>
+            </tr>
+          </thead>
+          <tbody id="po-receiving-tbody"></tbody>
+        </table>
+        <div id="po-receiving-empty" class="hint" style="display:none">No receiving records.</div>
+      </div>
+
+    </div><!-- /#po-detail-panel -->
+  </div><!-- /#tab-po -->
+
 </div><!-- /#wrap -->
 
 <div id="toast"></div>
@@ -546,7 +682,7 @@ function showTab(name) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.getElementById("tab-" + name).classList.add("active");
   const btns = document.querySelectorAll(".tab-btn");
-  const labels = ["ingredients", "suppliers", "import", "formulations", "materials"];
+  const labels = ["ingredients", "suppliers", "import", "formulations", "materials", "po"];
   btns[labels.indexOf(name)].classList.add("active");
   if (name === "suppliers") loadSuppliers();
 }
@@ -748,6 +884,75 @@ async function matImport(write) {
         Materials: <strong>${escapeHtml(String(d.materials ?? 0))}</strong> &nbsp;|&nbsp;
         Material Suppliers: <strong>${escapeHtml(String(d.material_suppliers ?? 0))}</strong> &nbsp;|&nbsp;
         Product Suppliers: <strong>${escapeHtml(String(d.product_suppliers ?? 0))}</strong>`;
+      toast("Import written successfully", "ok");
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<span style="color:var(--red)">Network error: ' + escapeHtml(e.message) + '</span>';
+    toast(e.message, "error");
+  } finally {
+    dryBtn.disabled = false;
+    writeBtn.disabled = false;
+  }
+}
+
+async function poImport(write) {
+  const fPo           = document.getElementById("fmp-file-po").files[0];
+  const fPoItems      = document.getElementById("fmp-file-po_items").files[0];
+  const fPoReceiving  = document.getElementById("fmp-file-po_receiving").files[0];
+
+  if (!fPo || !fPoItems || !fPoReceiving) {
+    toast("Please choose all 3 CSV files before running.", "error");
+    return;
+  }
+
+  const resultEl = document.getElementById("po-result");
+  const dryBtn   = document.getElementById("po-dry-btn");
+  const writeBtn = document.getElementById("po-write-btn");
+  dryBtn.disabled = true;
+  writeBtn.disabled = true;
+  resultEl.style.display = "block";
+  resultEl.innerHTML = '<span style="color:var(--muted)">Uploading…</span>';
+
+  const fd = new FormData();
+  fd.append("po",           fPo);
+  fd.append("po_items",     fPoItems);
+  fd.append("po_receiving", fPoReceiving);
+  if (write) fd.append("write", "1");
+
+  try {
+    const r = await fetch("/api/po/import", {
+      method: "POST",
+      headers: { "X-Console-Key": KEY },
+      body: fd,
+    });
+    const j = await r.json();
+
+    if (r.status === 401) {
+      document.getElementById("auth-warn").style.display = "block";
+      resultEl.innerHTML = '<span style="color:var(--red)">Unauthorized — check your console key.</span>';
+      return;
+    }
+
+    if (!j.ok) {
+      resultEl.innerHTML = '<span style="color:var(--red)">Error: ' + escapeHtml(j.error || "request failed") + '</span>';
+      toast(j.error || "Import failed", "error");
+      return;
+    }
+
+    const d = j.data;
+    if (d.mode === "dry_run") {
+      resultEl.innerHTML = `
+        <strong style="color:var(--accent-light)">Dry Run — no data written</strong><br>
+        Purchase Orders: <strong>${escapeHtml(String(d.purchase_orders ?? 0))}</strong> &nbsp;|&nbsp;
+        PO Items: <strong>${escapeHtml(String(d.po_items ?? 0))}</strong> &nbsp;|&nbsp;
+        PO Receiving: <strong>${escapeHtml(String(d.po_receiving ?? 0))}</strong>`;
+      toast("Dry run complete");
+    } else {
+      resultEl.innerHTML = `
+        <strong style="color:var(--green)">Import complete</strong><br>
+        Purchase Orders: <strong>${escapeHtml(String(d.purchase_orders ?? 0))}</strong> &nbsp;|&nbsp;
+        PO Items: <strong>${escapeHtml(String(d.po_items ?? 0))}</strong> &nbsp;|&nbsp;
+        PO Receiving: <strong>${escapeHtml(String(d.po_receiving ?? 0))}</strong>`;
       toast("Import written successfully", "ok");
     }
   } catch (e) {
@@ -1251,6 +1456,165 @@ async function setMaterialPreferred(msId) {
     await api("/api/materials/suppliers/" + msId + "/preferred", { method: "POST" });
     toast("Preferred supplier updated");
   } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Purchase Orders tab ───────────────────────────────────────────────────────
+let _poSearchTimer = null;
+let _currentPoId = null;
+
+document.getElementById("po-search").addEventListener("input", function() {
+  clearTimeout(_poSearchTimer);
+  _poSearchTimer = setTimeout(() => doPoSearch(this.value.trim()), 280);
+});
+
+async function doPoSearch(q) {
+  const list  = document.getElementById("po-results");
+  const empty = document.getElementById("po-empty");
+  list.innerHTML = "";
+  empty.style.display = "none";
+  if (!q) return;
+  try {
+    const results = await api("/api/po/search?q=" + encodeURIComponent(q));
+    if (!results.length) { empty.style.display = "block"; return; }
+    for (const po of results) {
+      const li = document.createElement("li");
+      li.style.cssText = "padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:6px";
+      const sup = po.supplier_company ? escapeHtml(po.supplier_company) : "";
+      const date = po.po_date ? " · " + escapeHtml(po.po_date) : "";
+      li.innerHTML = `
+        <div class="frm-name">${escapeHtml(po.vendor_po_no || po.fmp_id || "PO #" + po.id)}</div>
+        <div class="frm-meta">${sup}${date}${po.status ? " · " + escapeHtml(po.status) : ""}</div>`;
+      li.addEventListener("mouseover", function() { this.style.background = "rgba(212,168,67,0.08)"; this.style.color = "var(--accent-light)"; });
+      li.addEventListener("mouseout",  function() { this.style.background = ""; this.style.color = ""; });
+      li.addEventListener("click", () => openPo(po.id));
+      list.appendChild(li);
+    }
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+async function openPo(id) {
+  _currentPoId = id;
+  document.getElementById("po-search-section").style.display = "none";
+  document.getElementById("po-detail-panel").style.display = "block";
+  document.getElementById("po-detail-panel").classList.add("active");
+  document.getElementById("po-items-table").style.display = "none";
+  document.getElementById("po-items-empty").style.display = "none";
+  document.getElementById("po-items-loading").style.display = "block";
+  document.getElementById("po-receiving-table").style.display = "none";
+  document.getElementById("po-receiving-empty").style.display = "none";
+
+  try {
+    const { po, items, receiving } = await api("/api/po/" + id);
+
+    // FMP read-only
+    document.getElementById("po-detail-title").textContent = po.vendor_po_no || po.fmp_id || "PO #" + po.id;
+    document.getElementById("po-fmp-vendor-po-no").textContent = po.vendor_po_no || "—";
+    document.getElementById("po-fmp-supplier").textContent     = po.supplier_company || "—";
+    document.getElementById("po-fmp-po-date").textContent      = po.po_date || "—";
+    document.getElementById("po-fmp-status").textContent       = po.status || "—";
+    document.getElementById("po-fmp-tax").textContent          = po.tax != null ? "$" + Number(po.tax).toFixed(2) : "—";
+    document.getElementById("po-fmp-shipping").textContent     = po.shipping_amount != null ? "$" + Number(po.shipping_amount).toFixed(2) : "—";
+
+    // Status badge
+    const badge = document.getElementById("po-detail-status-badge");
+    badge.innerHTML = po.status
+      ? `<span class="badge badge-status">${escapeHtml(po.status)}</span>`
+      : "";
+
+    // Curated
+    document.getElementById("po-notes").value = po.notes || "";
+
+    // Line items
+    renderPoItems(items);
+
+    // Receiving
+    renderPoReceiving(receiving);
+  } catch (e) {
+    document.getElementById("po-items-loading").style.display = "none";
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function closePoDetail() {
+  _currentPoId = null;
+  document.getElementById("po-detail-panel").style.display = "none";
+  document.getElementById("po-detail-panel").classList.remove("active");
+  document.getElementById("po-search-section").style.display = "block";
+}
+
+async function savePoNotes() {
+  if (!_currentPoId) return;
+  try {
+    await api("/api/po/" + _currentPoId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: document.getElementById("po-notes").value.trim() }),
+    });
+    toast("PO notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function renderPoItems(items) {
+  document.getElementById("po-items-loading").style.display = "none";
+  const tbody = document.getElementById("po-items-tbody");
+  tbody.innerHTML = "";
+
+  if (!items || !items.length) {
+    document.getElementById("po-items-empty").style.display = "block";
+    return;
+  }
+
+  document.getElementById("po-items-table").style.display = "table";
+
+  for (const item of items) {
+    const tr = document.createElement("tr");
+    tr.id = "po-item-row-" + item.id;
+    const label = item.item_label || item.ingredient_canonical || item.material_name || "—";
+    const costCell = item.cost != null ? "$" + Number(item.cost).toFixed(2) : "—";
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(label)}</strong></td>
+      <td style="color:var(--muted)">${escapeHtml(item.item_kind || "—")}</td>
+      <td>${item.qty != null ? escapeHtml(String(item.qty)) : "—"}</td>
+      <td>${escapeHtml(item.qty_unit || "—")}</td>
+      <td>${costCell}</td>
+      <td><input type="text" class="po-item-notes" data-item="${item.id}" value="${escapeHtml(item.notes || "")}" placeholder="notes" style="width:140px"></td>
+      <td><button class="save-btn" onclick="savePoItem(${item.id})">Save</button></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function savePoItem(itemId) {
+  const row = document.getElementById("po-item-row-" + itemId);
+  if (!row) return;
+  const notesEl = row.querySelector(".po-item-notes[data-item='" + itemId + "']");
+  try {
+    await api("/api/po/items/" + itemId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: notesEl ? notesEl.value.trim() : "" }),
+    });
+    toast("Item notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function renderPoReceiving(receiving) {
+  const tbody = document.getElementById("po-receiving-tbody");
+  tbody.innerHTML = "";
+
+  if (!receiving || !receiving.length) {
+    document.getElementById("po-receiving-empty").style.display = "block";
+    return;
+  }
+
+  document.getElementById("po-receiving-table").style.display = "table";
+
+  for (const rec of receiving) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${rec.qty_received != null ? escapeHtml(String(rec.qty_received)) : "—"}</td>
+      <td>${escapeHtml(rec.received_size || "—")}</td>`;
+    tbody.appendChild(tr);
+  }
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

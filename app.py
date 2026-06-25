@@ -955,6 +955,15 @@ def _init_materials_tables():
 _init_materials_tables()
 
 
+def _init_purchase_orders_tables():
+    """Purchase orders (history) — FMP-migrated. PO header + line items + receiving."""
+    from dashboard.purchase_orders import init_purchase_orders_schema
+    with sqlite3.connect(LOG_DB) as cx:
+        init_purchase_orders_schema(cx)
+
+_init_purchase_orders_tables()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
@@ -20859,6 +20868,112 @@ def materials_import():
     except Exception as e:
         app.logger.exception("materials import error")
         return fail(str(e))
+
+
+@app.route("/api/po/import", methods=["POST"])
+@require_console_key
+def po_import():
+    """Upload FMP CSVs (po, po_items, po_receiving) to populate the purchase orders tables."""
+    import csv as _csv
+    import sys as _sys
+    import io as _io
+    _csv.field_size_limit(_sys.maxsize)
+
+    try:
+        from scripts.import_purchase_orders_from_fmp import (
+            import_purchase_orders, import_po_items, import_po_receiving,
+        )
+        from dashboard.ingredient_catalog import init_ingredients_schema
+        from dashboard.materials_catalog import init_materials_schema
+        from dashboard.purchase_orders import init_purchase_orders_schema
+    except Exception as e:
+        return fail(f"import error: {e}")
+
+    try:
+        po_file           = request.files.get("po")
+        po_items_file     = request.files.get("po_items")
+        po_receiving_file = request.files.get("po_receiving")
+
+        if not all([po_file, po_items_file, po_receiving_file]):
+            return fail("upload all three: po, po_items, po_receiving", status=400)
+
+        po_rows           = list(_csv.DictReader(_io.StringIO(po_file.read().decode("utf-8", errors="replace"))))
+        po_items_rows     = list(_csv.DictReader(_io.StringIO(po_items_file.read().decode("utf-8", errors="replace"))))
+        po_receiving_rows = list(_csv.DictReader(_io.StringIO(po_receiving_file.read().decode("utf-8", errors="replace"))))
+
+        write = request.form.get("write", "").lower() in ("1", "true", "yes")
+
+        if not write:
+            return ok({
+                "mode": "dry_run",
+                "purchase_orders": len(po_rows),
+                "po_items": len(po_items_rows),
+                "po_receiving": len(po_receiving_rows),
+            })
+
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx)
+            init_materials_schema(cx)
+            init_purchase_orders_schema(cx)
+            npo = import_purchase_orders(cx, po_rows)
+            npi = import_po_items(cx, po_items_rows)
+            npr = import_po_receiving(cx, po_receiving_rows)
+            cx.commit()
+        finally:
+            cx.close()
+
+        return ok({
+            "mode": "write",
+            "purchase_orders": npo,
+            "po_items": npi["items"],
+            "po_receiving": npr,
+        })
+
+    except Exception as e:
+        app.logger.exception("po import error")
+        return fail(str(e))
+
+
+# /api/po/*  — JSON API behind require_console_key
+from dashboard import purchase_orders as _po
+
+
+@app.route("/api/po/search", methods=["GET"])
+@require_console_key
+def api_po_search():
+    try:
+        return ok(_po.search_purchase_orders(request.args.get("q", ""), int(request.args.get("limit", 50)), int(request.args.get("offset", 0))))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/po/<int:pid>", methods=["GET"])
+@require_console_key
+def api_po_get(pid):
+    try:
+        p = _po.get_purchase_order(pid)
+        if not p: return fail("not found", status=404)
+        return ok({"po": p, "items": _po.list_po_items(pid), "receiving": _po.list_po_receiving(pid)})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/po/<int:pid>", methods=["PATCH"])
+@require_console_key
+def api_po_patch(pid):
+    try:
+        _po.update_po_curated(pid, request.get_json(silent=True) or {})
+        return ok(_po.get_purchase_order(pid))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/po/items/<int:item_id>", methods=["PATCH"])
+@require_console_key
+def api_po_item_patch(item_id):
+    try:
+        _po.update_po_item_curated(item_id, request.get_json(silent=True) or {})
+        return ok({"id": item_id})
+    except Exception as e: return fail(e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
