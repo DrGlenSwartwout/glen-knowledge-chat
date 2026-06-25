@@ -76,10 +76,12 @@ Mode + current-pavilion are derived from a small checked-in **route→pavilion /
 - **Fog-of-war:** unexplored pavilions sit in soft mist and **reveal as you visit**. Fogged
   next-stops carry **open-loop intrigue copy** ("Something about your terrain is waiting in here…").
   Reframes "unseen" as *discovery*, never homework.
-- **Channels kept separate (no color collision):** *where I've been* is the **quiet** channel — a
-  small ✓ on visited stops, no color. *What's best next* is the **loud** channel — the **gold gem /
-  "Start here"** quest marker, ranked by **position + emphasis**, never red (red reads as alarm)
-  and never hue-only (colorblind-safe: gem has a label/shape, not just a color).
+- **Channels kept separate (no color collision):** *where I've been* is the **trail** channel — a
+  **visible drawn walking path that connects visited pavilions** and extends as you go (the path
+  *is* your healing journey made visible — replaces a checkmark). *What's best next* is the **loud**
+  channel — the **gold gem / "Start here"** quest marker, ranked by **position + emphasis**, never
+  red (red reads as alarm) and never hue-only (colorblind-safe: gem has a label/shape, not just a
+  color).
 
 ### 4. "My Path" trail + the bug fixes
 
@@ -100,18 +102,36 @@ illustration of the marquee spine stops can be art-directed later without code c
 
 ### 6. Gamification — present but cosmetic in SP1
 
-The gem, a points counter, and celebration animations are **wired and visible**, but **client-only
-and value-free** in SP1:
+The gem, a points counter, celebration animations, and the reward layer are **wired and visible**,
+but **client-only and value-free** in SP1. Split into two increments (see Rollout):
 
-- **First-time-only earning.** A point event fires the **first** time a visitor reaches a pavilion
+**6a — Earning + celebration (ships with the shell):**
+- **First-time-only earning.** A reward event fires the **first** time a visitor reaches a pavilion
   /completes an activity (tracked in `localStorage` `seen` set) — **idempotent**, never on
   refresh/re-click. The *value to the business is familiarity* — first time doing "X" (learn the
   philosophy/systems/methods), so repeats earn nothing.
 - **Variable amount = scaled to the milestone's importance** (from the spine config), not random.
 - **Celebration keyed to the pavilion/activity** — confetti is one option; each category gets the
   animation that fits it.
-- **Hard stub boundary.** No ledger, no server balance, no real order value, no identity. SP3
-  swaps this cosmetic local counter for a real, identity-bound, audited balance.
+
+**6b — Virtual remedies + avatar (the reward layer — a guided tour of the real catalog):**
+- Each pavilion can grant a **virtual remedy or healing tool** drawn from a curated
+  **featured-formulations set** (Glen picks the marquee ~6–10 of his 150+). Each grant carries the
+  real **formulation name**, a one-line **"healing power"** (compliant mechanism/benefit language),
+  and an **open loop** to the real product. By **The Dispensary** (pavilion 10) the visitor has
+  "used" virtual versions of the remedies they can now actually receive — the game *is* the catalog
+  tour and purchase closes the loop. Pre-framing disguised as play.
+- **The avatar improves as a brightening, more *coherent biofield* — never a changing body.** As
+  remedies are collected the field glows / grows more coherent (on-brand with the coherent-field
+  model). **No before/after body imagery** — avoids implied health claims and body-image issues.
+- **Guardrails (hard requirements):** in-game "powers" stay **metaphor** and use the **same
+  compliant language as the real catalog** — a virtual remedy's ability must not become an implied
+  disease-cure claim about the real SKU. Featured copy runs through the compliance/authority
+  guardian before ship.
+
+**Hard stub boundary (all of §6).** No ledger, no server balance, no real order value, no identity.
+Collecting virtual remedies is a *learning/preframe* device, **not a currency**. SP3 swaps the
+cosmetic local counter for a real, identity-bound, audited balance.
 
 ## Data
 
@@ -151,10 +171,34 @@ Client (pure JS helpers, unit-tested in isolation + manual/visual QA for the ren
 - Additive: no schema change, no destructive ops, console/admin untouched, funnel routes unchanged.
 - Ships assets + spine config + endpoint together; flip flag to pilot, validate on `/begin/*`
   first, then member surfaces.
+- **Increment split:**
+  - **1a — shell + map + visible trail + bug-fixes** (the fast wayfinding win): ribbon→map,
+    pavilions, fog, gem, "My Path" trail, Back/Home, external-link tagging, two modes. Ships first.
+  - **1b — virtual-remedy + avatar reward layer** (§6b): featured-formulations set, avatar
+    biofield-coherence progression, open-loop teasers. Layered on after 1a, still cosmetic.
 
 ## Inputs needed from Glen (during planning, not blocking)
 
-1. **The pavilion list** — the 8–15 marquee stops of the self-healing journey, their order,
-   category, and one line of intrigue copy each. (Draft mapping from existing `/begin/*` sections
-   will be proposed in the plan for him to edit.)
+1. **Pavilion spine** — drafted below (Appendix A) from the real `/begin/*` sections; Glen edits
+   names/order/intrigue copy.
 2. **Category → art style** direction (placeholder icon set is fine to start).
+3. **Featured-formulations set for 1b** — the marquee ~6–10 formulations the avatar can collect as
+   virtual remedies, each with a one-line "healing power."
+
+## Appendix A — Drafted pavilion spine (for Glen's edits)
+
+Adventure-park flavor name + plain function, in healing-journey order. `/begin/explore`
+("Explore Everything") = the **full-map overview itself**, not a stop.
+
+| # | Pavilion (flavor) | Route | Journey beat | Virtual reward (draft) |
+|---|---|---|---|---|
+| 1 | **The Gateway** — Welcome | `/begin` | Arrive | map unlocked, starter field |
+| 2 | **The Listening Pool** — Voice & Frequencies | `/begin/voice` | Listen — your body speaks | a frequency attunement |
+| 3 | **The Hall of Mirrors** — Biofield Analysis | `/begin/biofield` | See — terrain revealed | first virtual remedy (foundational) |
+| 4 | **The Matching** — Find Your Remedy | `/begin/match` | Match — the one remedy | your matched virtual remedy |
+| 5 | **The Crossroads** — Two Ways to Begin (intake) | `/begin/path` | Choose your path | path-chosen mark |
+| 6 | **The Library** — The Research / Learn | `/begin/learn` | Understand | an insight power |
+| 7 | **The Apothecary** — Ingredient Deep-Dive | `/begin/ingredient` | Look inside — mechanisms | a mechanism tool |
+| 8 | **The Workshop** — Tools & Partners | `/begin/tools` | Equip — healing tools | a healing tool *(external partners)* |
+| 9 | **The Ascent** — Ascend / membership | `/begin/ascend` | Deepen — go further | a depth/tier unlock |
+| 10 | **The Dispensary** — Product / Order | `/begin/product` + `/begin/buy` | Receive — your real remedy | **virtual → real: loop closes** |
