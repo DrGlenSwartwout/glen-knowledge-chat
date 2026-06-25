@@ -20870,6 +20870,72 @@ def materials_import():
         return fail(str(e))
 
 
+@app.route("/api/po/import", methods=["POST"])
+@require_console_key
+def po_import():
+    """Upload FMP CSVs (po, po_items, po_receiving) to populate the purchase orders tables."""
+    import csv as _csv
+    import sys as _sys
+    import io as _io
+    _csv.field_size_limit(_sys.maxsize)
+
+    try:
+        from scripts.import_purchase_orders_from_fmp import (
+            import_purchase_orders, import_po_items, import_po_receiving,
+        )
+        from dashboard.ingredient_catalog import init_ingredients_schema
+        from dashboard.materials_catalog import init_materials_schema
+        from dashboard.purchase_orders import init_purchase_orders_schema
+    except Exception as e:
+        return fail(f"import error: {e}")
+
+    try:
+        po_file           = request.files.get("po")
+        po_items_file     = request.files.get("po_items")
+        po_receiving_file = request.files.get("po_receiving")
+
+        if not all([po_file, po_items_file, po_receiving_file]):
+            return fail("upload all three: po, po_items, po_receiving", status=400)
+
+        po_rows           = list(_csv.DictReader(_io.StringIO(po_file.read().decode("utf-8", errors="replace"))))
+        po_items_rows     = list(_csv.DictReader(_io.StringIO(po_items_file.read().decode("utf-8", errors="replace"))))
+        po_receiving_rows = list(_csv.DictReader(_io.StringIO(po_receiving_file.read().decode("utf-8", errors="replace"))))
+
+        write = request.form.get("write", "").lower() in ("1", "true", "yes")
+
+        if not write:
+            return ok({
+                "mode": "dry_run",
+                "purchase_orders": len(po_rows),
+                "po_items": len(po_items_rows),
+                "po_receiving": len(po_receiving_rows),
+            })
+
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx)
+            init_materials_schema(cx)
+            init_purchase_orders_schema(cx)
+            npo = import_purchase_orders(cx, po_rows)
+            npi = import_po_items(cx, po_items_rows)
+            npr = import_po_receiving(cx, po_receiving_rows)
+            cx.commit()
+        finally:
+            cx.close()
+
+        return ok({
+            "mode": "write",
+            "purchase_orders": npo,
+            "po_items": npi["items"],
+            "po_receiving": npr,
+        })
+
+    except Exception as e:
+        app.logger.exception("po import error")
+        return fail(str(e))
+
+
 # /api/po/*  — JSON API behind require_console_key
 from dashboard import purchase_orders as _po
 

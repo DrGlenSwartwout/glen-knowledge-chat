@@ -369,6 +369,33 @@
       </div>
 
       <div id="mat-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:28px 0">
+
+      <h3 style="margin:0 0 8px;font-size:15px;font-weight:600;color:var(--text)">Purchase Orders</h3>
+      <p class="hint" style="margin-bottom:16px">Import Suppliers + Ingredients + Materials first, then upload the 3 PO CSVs.</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="fmp-file-po">PO CSV</label>
+          <input type="file" id="fmp-file-po" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-po_items">PO Items CSV</label>
+          <input type="file" id="fmp-file-po_items" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-po_receiving">PO Receiving CSV</label>
+          <input type="file" id="fmp-file-po_receiving" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button id="po-dry-btn" onclick="poImport(false)">Dry Run</button>
+        <button id="po-write-btn" class="confirm" onclick="poImport(true)">Import (write)</button>
+      </div>
+
+      <div id="po-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
     </div>
   </div>
 
@@ -857,6 +884,75 @@ async function matImport(write) {
         Materials: <strong>${escapeHtml(String(d.materials ?? 0))}</strong> &nbsp;|&nbsp;
         Material Suppliers: <strong>${escapeHtml(String(d.material_suppliers ?? 0))}</strong> &nbsp;|&nbsp;
         Product Suppliers: <strong>${escapeHtml(String(d.product_suppliers ?? 0))}</strong>`;
+      toast("Import written successfully", "ok");
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<span style="color:var(--red)">Network error: ' + escapeHtml(e.message) + '</span>';
+    toast(e.message, "error");
+  } finally {
+    dryBtn.disabled = false;
+    writeBtn.disabled = false;
+  }
+}
+
+async function poImport(write) {
+  const fPo           = document.getElementById("fmp-file-po").files[0];
+  const fPoItems      = document.getElementById("fmp-file-po_items").files[0];
+  const fPoReceiving  = document.getElementById("fmp-file-po_receiving").files[0];
+
+  if (!fPo || !fPoItems || !fPoReceiving) {
+    toast("Please choose all 3 CSV files before running.", "error");
+    return;
+  }
+
+  const resultEl = document.getElementById("po-result");
+  const dryBtn   = document.getElementById("po-dry-btn");
+  const writeBtn = document.getElementById("po-write-btn");
+  dryBtn.disabled = true;
+  writeBtn.disabled = true;
+  resultEl.style.display = "block";
+  resultEl.innerHTML = '<span style="color:var(--muted)">Uploading…</span>';
+
+  const fd = new FormData();
+  fd.append("po",           fPo);
+  fd.append("po_items",     fPoItems);
+  fd.append("po_receiving", fPoReceiving);
+  if (write) fd.append("write", "1");
+
+  try {
+    const r = await fetch("/api/po/import", {
+      method: "POST",
+      headers: { "X-Console-Key": KEY },
+      body: fd,
+    });
+    const j = await r.json();
+
+    if (r.status === 401) {
+      document.getElementById("auth-warn").style.display = "block";
+      resultEl.innerHTML = '<span style="color:var(--red)">Unauthorized — check your console key.</span>';
+      return;
+    }
+
+    if (!j.ok) {
+      resultEl.innerHTML = '<span style="color:var(--red)">Error: ' + escapeHtml(j.error || "request failed") + '</span>';
+      toast(j.error || "Import failed", "error");
+      return;
+    }
+
+    const d = j.data;
+    if (d.mode === "dry_run") {
+      resultEl.innerHTML = `
+        <strong style="color:var(--accent-light)">Dry Run — no data written</strong><br>
+        Purchase Orders: <strong>${escapeHtml(String(d.purchase_orders ?? 0))}</strong> &nbsp;|&nbsp;
+        PO Items: <strong>${escapeHtml(String(d.po_items ?? 0))}</strong> &nbsp;|&nbsp;
+        PO Receiving: <strong>${escapeHtml(String(d.po_receiving ?? 0))}</strong>`;
+      toast("Dry run complete");
+    } else {
+      resultEl.innerHTML = `
+        <strong style="color:var(--green)">Import complete</strong><br>
+        Purchase Orders: <strong>${escapeHtml(String(d.purchase_orders ?? 0))}</strong> &nbsp;|&nbsp;
+        PO Items: <strong>${escapeHtml(String(d.po_items ?? 0))}</strong> &nbsp;|&nbsp;
+        PO Receiving: <strong>${escapeHtml(String(d.po_receiving ?? 0))}</strong>`;
       toast("Import written successfully", "ok");
     }
   } catch (e) {
