@@ -101,6 +101,16 @@
 
     .save-row { display: flex; justify-content: flex-end; margin-top: 14px; gap: 8px; }
 
+    /* Formulations list */
+    #formulation-results { list-style: none; }
+    #formulation-results li { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; border-radius: 6px; }
+    #formulation-results li:hover { background: rgba(212,168,67,0.08); color: var(--accent-light); }
+    #formulation-results li .frm-name { font-weight: 600; }
+    #formulation-results li .frm-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    #formulation-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+    #formulation-detail-panel { display: none; }
+    #formulation-detail-panel.active { display: block; }
+
     /* Supplier list */
     #supplier-results { list-style: none; }
     #supplier-results li { padding: 10px 12px; border-bottom: 1px solid var(--border); }
@@ -145,6 +155,7 @@
     <button class="tab-btn active" onclick="showTab('ingredients')">Ingredients</button>
     <button class="tab-btn" onclick="showTab('suppliers')">Suppliers</button>
     <button class="tab-btn" onclick="showTab('import')">Import from FMP</button>
+    <button class="tab-btn" onclick="showTab('formulations')">Formulations</button>
   </div>
 
   <!-- ── Ingredients tab ─────────────────────────────────────────────────── -->
@@ -299,6 +310,73 @@
     </div>
   </div>
 
+  <!-- ── Formulations tab ──────────────────────────────────────────────────── -->
+  <div id="tab-formulations" class="tab-panel">
+
+    <!-- Search -->
+    <div class="section" id="formulation-search-section">
+      <h2>Search Formulations</h2>
+      <div class="search-row">
+        <input type="text" id="frm-search" placeholder="Type to search by name…" autocomplete="off">
+      </div>
+      <div id="formulation-empty">No results.</div>
+      <ul id="formulation-results"></ul>
+      <div class="hint">Formulations imported from FMP. Search is server-side — type at least 1 character.</div>
+    </div>
+
+    <!-- Formulation detail panel (hidden until formulation clicked) -->
+    <div id="formulation-detail-panel">
+
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closeFormulationDetail()">&#8592; Back to search</button>
+          <h3 id="frm-detail-name"></h3>
+          <span id="frm-detail-status-badge"></span>
+        </div>
+
+        <div class="section-label">FMP Fields (read-only)</div>
+        <div class="field-grid">
+          <div class="field-block">
+            <label>Status</label>
+            <div class="ro-val" id="frm-fmp-status">—</div>
+          </div>
+        </div>
+
+        <div class="section-label" style="margin-top:20px">Curated Fields (editable)</div>
+        <div class="field-grid">
+          <div class="field-block field-full">
+            <label for="frm-notes">Notes</label>
+            <textarea id="frm-notes" placeholder="General notes about this formulation…"></textarea>
+          </div>
+        </div>
+        <div class="save-row">
+          <button class="save-btn" onclick="saveFormulation()">Save notes</button>
+        </div>
+      </div>
+
+      <!-- Recipe items table -->
+      <div class="section">
+        <h2>Recipe Items</h2>
+        <div id="frm-items-loading" class="loading" style="display:none">Loading items…</div>
+        <table id="frm-items-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Ingredient</th>
+              <th>Dose</th>
+              <th>Unit</th>
+              <th>Preferred Price</th>
+              <th>Notes</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="frm-items-tbody"></tbody>
+        </table>
+        <div id="frm-items-empty" class="hint" style="display:none">No items in this formulation.</div>
+      </div>
+
+    </div><!-- /#formulation-detail-panel -->
+  </div><!-- /#tab-formulations -->
+
 </div><!-- /#wrap -->
 
 <div id="toast"></div>
@@ -339,7 +417,7 @@ function showTab(name) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.getElementById("tab-" + name).classList.add("active");
   const btns = document.querySelectorAll(".tab-btn");
-  const labels = ["ingredients", "suppliers", "import"];
+  const labels = ["ingredients", "suppliers", "import", "formulations"];
   btns[labels.indexOf(name)].classList.add("active");
   if (name === "suppliers") loadSuppliers();
 }
@@ -640,6 +718,131 @@ async function saveSupplier(supId) {
       body: JSON.stringify({ notes: ta.value.trim() }),
     });
     toast("Supplier notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Formulations tab ─────────────────────────────────────────────────────────
+let _frmSearchTimer = null;
+let _currentFrmId = null;
+
+document.getElementById("frm-search").addEventListener("input", function() {
+  clearTimeout(_frmSearchTimer);
+  _frmSearchTimer = setTimeout(() => doFormulationSearch(this.value.trim()), 280);
+});
+
+async function doFormulationSearch(q) {
+  const list  = document.getElementById("formulation-results");
+  const empty = document.getElementById("formulation-empty");
+  list.innerHTML = "";
+  empty.style.display = "none";
+  if (!q) return;
+  try {
+    const results = await api("/api/formulations/search?q=" + encodeURIComponent(q));
+    if (!results.length) { empty.style.display = "block"; return; }
+    for (const frm of results) {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <div class="frm-name">${escapeHtml(frm.name)}</div>
+        <div class="frm-meta">${frm.status ? escapeHtml(frm.status) : ""}</div>`;
+      li.addEventListener("click", () => openFormulation(frm.id));
+      list.appendChild(li);
+    }
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+async function openFormulation(id) {
+  _currentFrmId = id;
+  document.getElementById("formulation-search-section").style.display = "none";
+  document.getElementById("formulation-detail-panel").style.display = "block";
+  document.getElementById("formulation-detail-panel").classList.add("active");
+  document.getElementById("frm-items-table").style.display = "none";
+  document.getElementById("frm-items-empty").style.display = "none";
+  document.getElementById("frm-items-loading").style.display = "block";
+
+  try {
+    const { formulation: frm, items } = await api("/api/formulations/" + id);
+
+    // FMP read-only
+    document.getElementById("frm-detail-name").textContent = frm.name || "";
+    document.getElementById("frm-fmp-status").textContent  = frm.status || "—";
+
+    // Status badge
+    const badge = document.getElementById("frm-detail-status-badge");
+    badge.innerHTML = frm.status
+      ? `<span class="badge badge-status">${escapeHtml(frm.status)}</span>`
+      : "";
+
+    // Curated
+    document.getElementById("frm-notes").value = frm.notes || "";
+
+    // Items
+    renderFormulationItems(items);
+  } catch (e) {
+    document.getElementById("frm-items-loading").style.display = "none";
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function closeFormulationDetail() {
+  _currentFrmId = null;
+  document.getElementById("formulation-detail-panel").style.display = "none";
+  document.getElementById("formulation-detail-panel").classList.remove("active");
+  document.getElementById("formulation-search-section").style.display = "block";
+}
+
+async function saveFormulation() {
+  if (!_currentFrmId) return;
+  try {
+    await api("/api/formulations/" + _currentFrmId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: document.getElementById("frm-notes").value.trim() }),
+    });
+    toast("Formulation notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function renderFormulationItems(items) {
+  document.getElementById("frm-items-loading").style.display = "none";
+  const tbody = document.getElementById("frm-items-tbody");
+  tbody.innerHTML = "";
+
+  if (!items || !items.length) {
+    document.getElementById("frm-items-empty").style.display = "block";
+    return;
+  }
+
+  document.getElementById("frm-items-table").style.display = "table";
+
+  for (const item of items) {
+    const tr = document.createElement("tr");
+    tr.id = "frm-item-row-" + item.id;
+    const ingName = item.ingredient_canonical || item.ingredient_name || "—";
+    const priceCell = item.preferred_price != null
+      ? "$" + Number(item.preferred_price).toFixed(2)
+      : "—";
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(ingName)}</strong></td>
+      <td>${item.dose != null ? escapeHtml(String(item.dose)) : "—"}</td>
+      <td>${escapeHtml(item.dose_unit || "—")}</td>
+      <td>${priceCell}</td>
+      <td><input type="text" class="frm-item-notes" data-item="${item.id}" value="${escapeHtml(item.notes || "")}" placeholder="notes" style="width:160px"></td>
+      <td><button class="save-btn" onclick="saveFormulationItem(${item.id})">Save</button></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function saveFormulationItem(itemId) {
+  const row = document.getElementById("frm-item-row-" + itemId);
+  if (!row) return;
+  const notesEl = row.querySelector(".frm-item-notes[data-item='" + itemId + "']");
+  try {
+    await api("/api/formulations/items/" + itemId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: notesEl ? notesEl.value.trim() : "" }),
+    });
+    toast("Item notes saved");
   } catch (e) { toast(e.message, "error"); }
 }
 
