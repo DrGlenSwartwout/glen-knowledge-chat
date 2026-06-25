@@ -103,7 +103,7 @@ def _page(title, body):
             f"<body>{_bar()}<div class=wrap>{body}</div></body></html>")
 
 
-def render_report_html(report, notes="", narrative="", video_script=""):
+def render_report_html(report, notes="", narrative="", video_script="", stresses=None):
     c = report.get("client") or {}
     name = _e(c.get("name") or "(unknown)")
     email = _e(c.get("email") or "")
@@ -191,7 +191,17 @@ def render_report_html(report, notes="", narrative="", video_script=""):
         f"<textarea id=vscript rows=6>{_e(video_script)}</textarea>"
         "<div id=audiobox class=btnrow></div>")
 
-    return _page(f"{name} — Biofield Analysis", head + chain + schedule + narr + vid)
+    stresses_section = ""
+    if stresses is not None:
+        bal = stresses.get("balanced") or []
+        if bal:
+            items = "".join(
+                f"<li><b>{_e(s.get('code') or '')}</b> {_e(s.get('label') or '')} "
+                f"<span class=food>&mdash; {_e(s.get('balanced_by') or '')}</span></li>"
+                for s in bal)
+            stresses_section = ("<h2>Stresses balanced</h2>"
+                                f"<ul style='margin:4px 0;padding-left:20px'>{items}</ul>")
+    return _page(f"{name} — Biofield Analysis", head + chain + schedule + narr + vid + stresses_section)
 
 
 _AUTHOR_JS = """
@@ -206,6 +216,9 @@ function rowVals(p){return {layer:val(p+'_layer'),head:val(p+'_head'),most_affec
  remedy:val(p+'_remedy'),dosage:val(p+'_dosage'),frequency:val(p+'_frequency'),timing:val(p+'_timing')}}
 function setE4L(j){if(j&&j.html!==undefined)document.getElementById('e4lpanel').innerHTML=j.html}
 async function loadE4L(){try{setE4L(await (await fetch('/author/__TID__/e4l')).json())}catch(e){}}
+function setStress(j){if(j&&j.html!==undefined)document.getElementById('stresspanel').innerHTML=j.html}
+async function loadStress(){try{setStress(await (await fetch('/author/__TID__/stresses')).json())}catch(e){}}
+async function balanceStress(sid,val){await post('/author/__TID__/stress/'+sid+'/balance',{value:val});loadStress()}
 async function saveHeader(){const j=await post('/author/__TID__/header',
  {name:val('h_name'),email:val('h_email'),date:val('h_date')});astat('Header saved.');setE4L(j)}
 // --- E4L client picker: name autocomplete -> email (dropdown if duplicates) -> date
@@ -342,6 +355,7 @@ async function loadLists(){
 }
 loadLists();
 loadE4L();
+loadStress();
 </script>"""
 
 
@@ -451,7 +465,12 @@ def render_author_html(report, depth_values=None, transcript=""):
         "<div class=btnrow><button class=btn onclick=saveHeader()>Save header</button>"
         "<span id=astat class=food></span></div></div>")
     rows = ""
+    shown_divider = False
     for l in report.get("layers") or []:
+        if not shown_divider and l.get("zone") == "bottom":
+            rows += ("<tr><td colspan=10 style='text-align:center;color:var(--muted);"
+                     "font-size:12px;padding:4px 0'><b>Unbalanced from scan</b></td></tr>")
+            shown_divider = True
         rid_raw = l.get("rid")
         rid = _e(str(rid_raw or ""))
         p = "r" + rid
@@ -499,7 +518,7 @@ def render_author_html(report, depth_values=None, transcript=""):
         f"<textarea id=sessText rows=6 placeholder='Live transcript appears here as you speak..."
         f"'>{_e(transcript)}</textarea>")
     return _page("Edit Biofield Test",
-                 head + hdr + "<div id=e4lpanel></div>" + table + session
+                 head + hdr + "<div id=e4lpanel></div><div id=stresspanel></div>" + table + session
                  + _AUTHOR_JS.replace("__TID__", tid))
 
 
@@ -539,7 +558,22 @@ def render_list_html(tests, q="", authored=None):
 
 
 def render_stress_panel(data):
-    """Placeholder — Task 8 will flesh this out.  Returns empty string so the
-    route is importable and the JSON ``data`` field is testable before the HTML
-    panel is written."""
-    return ""
+    data = data or {}
+    def _row(s, active):
+        tag = _e(s.get("balance") or "")
+        by = _e(s.get("balanced_by") or "")
+        bytxt = f" <span class=food>&middot; {by}</span>" if (not active and by) else ""
+        btn = (f"<button class='btn ghost' style='font-size:11px' "
+               f"onclick=\"balanceStress({int(s.get('id') or 0)},{'true' if active else 'false'})\">"
+               f"{'Balance' if active else 'Reactivate'}</button>")
+        return (f"<li><b>{_e(s.get('code') or '')}</b> {_e(s.get('label') or '')} "
+                f"<span class=pill>{tag}</span>{bytxt} {btn}</li>")
+    act = "".join(_row(s, True) for s in data.get("active") or [])
+    bal = "".join(_row(s, False) for s in data.get("balanced") or [])
+    act_html = (f"<div class=food style='font-weight:600;margin-top:6px'>Active &mdash; to balance</div>"
+                f"<ul style='margin:4px 0;padding-left:18px'>{act}</ul>") if act else (
+                "<div class=food style='margin-top:6px'>No active stresses.</div>")
+    bal_html = (f"<div class=food style='font-weight:600;margin-top:6px'>Balanced</div>"
+                f"<ul style='margin:4px 0;padding-left:18px'>{bal}</ul>") if bal else ""
+    return ("<div class=card><div class=food style='text-transform:uppercase;font-size:11px;"
+            "letter-spacing:.08em'>Stress balancing</div>" + act_html + bal_html + "</div>")
