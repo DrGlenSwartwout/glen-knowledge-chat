@@ -18,6 +18,13 @@ def _connect(db_path: Optional[str] = None) -> sqlite3.Connection:
     return cx
 
 
+def _add_col(cx: sqlite3.Connection, table: str, col: str, decl: str) -> None:
+    """Idempotent ALTER TABLE ADD COLUMN."""
+    have = {r[1] for r in cx.execute(f"PRAGMA table_info({table})")}
+    if col not in have:
+        cx.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+
+
 def init_ingredients_schema(cx: sqlite3.Connection) -> None:
     cx.execute("""
         CREATE TABLE IF NOT EXISTS suppliers (
@@ -57,6 +64,16 @@ def init_ingredients_schema(cx: sqlite3.Connection) -> None:
         )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ingsrc_fmp ON ingredient_sources(fmp_id) WHERE fmp_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_ingsrc_ing ON ingredient_sources(ingredient_id)")
+    # Override-protection columns (idempotent — safe on existing DBs)
+    _add_col(cx, "ingredients", "overrides", "TEXT")
+    _add_col(cx, "ingredients", "par_level", "REAL")
+    _add_col(cx, "ingredients", "par_level_unit", "TEXT")
+    _add_col(cx, "ingredient_sources", "overrides", "TEXT")
+    # One-time backfill: promote par_level/par_level_unit out of extras JSON
+    cx.execute("""UPDATE ingredients
+                  SET par_level = CAST(json_extract(extras,'$.par_level') AS REAL),
+                      par_level_unit = json_extract(extras,'$.par_level_unit')
+                  WHERE par_level IS NULL AND json_extract(extras,'$.par_level') IS NOT NULL""")
     cx.commit()
 
 

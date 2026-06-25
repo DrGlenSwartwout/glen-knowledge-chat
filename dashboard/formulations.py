@@ -2,7 +2,7 @@
 Mirrors dashboard/ingredient_catalog.py conventions."""
 from __future__ import annotations
 import sqlite3
-from dashboard.ingredient_catalog import _connect  # reuse Phase-1 connection helper
+from dashboard.ingredient_catalog import _connect, _add_col  # reuse Phase-1 helpers
 
 
 def init_formulations_schema(cx: sqlite3.Connection) -> None:
@@ -27,6 +27,8 @@ def init_formulations_schema(cx: sqlite3.Connection) -> None:
         )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_formitems_fmp ON formulation_items(fmp_id) WHERE fmp_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_formitems_form ON formulation_items(formulation_id)")
+    # Override-protection column (idempotent — safe on existing DBs)
+    _add_col(cx, "formulation_items", "overrides", "TEXT")
     cx.commit()
 
 
