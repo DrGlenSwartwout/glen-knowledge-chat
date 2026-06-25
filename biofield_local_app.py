@@ -367,8 +367,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         from dashboard import biofield_stress as _st
         with sqlite3.connect(db_path) as cx:
             rep = _report_for(cx, test_id)
-            remedies = [l.get("remedy") for l in (rep.get("layers") or []) if l.get("remedy")]
-            data = _st.list_stresses(cx, test_id, remedies)
+            chain_rows = [{"head": l.get("head"), "remedy": l.get("remedy")}
+                          for l in (rep.get("layers") or [])]
+            data = _st.list_stresses(cx, test_id, chain_rows)
         return {"data": data, "html": render_stress_panel(data)}
 
     @app.route("/author/<test_id>/stress/<int:sid>/balance", methods=["POST"])
@@ -450,6 +451,21 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         with sqlite3.connect(db_path) as cx:
             save_notes(cx, test_id, txt)  # box holds the full transcript -> replace
         return {"ok": True}
+
+    @app.route("/author/<test_id>/capture-stresses", methods=["POST"])
+    def author_capture_stresses(test_id):
+        from dashboard.biofield_interpret import interpret_stresses
+        from dashboard import biofield_stress as _st
+        with sqlite3.connect(db_path) as cx:
+            transcript = get_notes(cx, test_id)
+            if not transcript.strip():
+                return {"added": 0, "error": "no transcript yet -- record a session first"}
+            try:
+                labels = interpret_stresses(transcript, interpret_complete)
+            except Exception as e:
+                return {"added": 0, "error": str(e)[:200]}
+            added = sum(1 for label in labels if _st.add_voice_stress(cx, test_id, label))
+        return {"added": added}
 
     @app.route("/author/<test_id>/interpret", methods=["POST"])
     def author_interpret(test_id):
