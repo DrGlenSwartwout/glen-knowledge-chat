@@ -5281,7 +5281,7 @@ def begin_checkout(slug):
                                 allow_online_pay=allow_online, email_to=email,
                                 discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
         _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
-        if _self_coupon and _self_pct >= (_ref_pct or 0):
+        if _self_coupon and _self_pct >= (_ref_pct or 0) and _self_pct > (_gift_pct or 0):
             try:
                 from dashboard import coupons as _coupons
                 with _db_lock, sqlite3.connect(LOG_DB) as _ccx:

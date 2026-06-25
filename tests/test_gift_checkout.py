@@ -20,6 +20,7 @@ def test_resolve_gift_pct_and_self_block(appmod):
         g = coupons.mint_gift(cx, email="owner@x.com", product_slug="terrain-restore")
     pct, found = appmod._resolve_gift_coupon_pct(g["code"], "friend@y.com")
     assert pct == 15 and found and found["code"] == g["code"]
+    assert found["email"] == "owner@x.com"
     # owner cannot redeem their own gift
     assert appmod._resolve_gift_coupon_pct(g["code"], "owner@x.com")[0] == 0
     assert appmod._resolve_gift_coupon_pct("nope", "friend@y.com")[0] == 0
