@@ -937,6 +937,15 @@ def _init_ingredients_tables():
 _init_ingredients_tables()
 
 
+def _init_formulations_tables():
+    """Formulations (recipes) — FMP-migrated, references Phase-1 ingredients."""
+    from dashboard.formulations import init_formulations_schema
+    with sqlite3.connect(LOG_DB) as cx:
+        init_formulations_schema(cx)
+
+_init_formulations_tables()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
@@ -20591,6 +20600,48 @@ def ingredients_import():
     except Exception as e:
         app.logger.exception("ingredients import error")
         return fail(str(e))
+
+
+# ── Formulation Catalog ───────────────────────────────────────────────────────
+# /api/formulations/*  — JSON API behind require_console_key
+from dashboard import formulations as _formulations
+
+
+@app.route("/api/formulations/search", methods=["GET"])
+@require_console_key
+def api_formulations_search():
+    try:
+        return ok(_formulations.search_formulations(
+            request.args.get("q", ""), int(request.args.get("limit", 50)), int(request.args.get("offset", 0))))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/formulations/<int:fid>", methods=["GET"])
+@require_console_key
+def api_formulations_get(fid):
+    try:
+        f = _formulations.get_formulation(fid)
+        if not f: return fail("not found", status=404)
+        return ok({"formulation": f, "items": _formulations.list_items_for_formulation(fid)})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/formulations/<int:fid>", methods=["PATCH"])
+@require_console_key
+def api_formulations_patch(fid):
+    try:
+        _formulations.update_formulation_curated(fid, request.get_json(silent=True) or {})
+        return ok(_formulations.get_formulation(fid))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/formulations/items/<int:item_id>", methods=["PATCH"])
+@require_console_key
+def api_formulations_item_patch(item_id):
+    try:
+        _formulations.update_item_curated(item_id, request.get_json(silent=True) or {})
+        return ok({"id": item_id})
+    except Exception as e: return fail(e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
