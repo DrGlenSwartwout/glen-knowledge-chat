@@ -47,3 +47,29 @@ def test_reimport_preserves_curated(tmp_path):
         cx.row_factory = sqlite3.Row
         r = cx.execute("SELECT * FROM formulations WHERE fmp_id='f1'").fetchone()
     assert r["notes"] == "keep me"        # curated preserved
+
+
+def test_reimport_protects_overridden_item_dose(tmp_path):
+    """Re-import of formulation_items against a POPULATED table must (a) not NameError on the
+    overrides preload (regression: import json was missing), and (b) preserve a console-overridden
+    dose while still refreshing non-overridden fields on the same row."""
+    import json
+    p = _db(tmp_path)
+    with sqlite3.connect(p) as cx:
+        cx.row_factory = sqlite3.Row
+        import_formulations(cx, [{"id_pk": "f1", "product_name": "Nerve Pulse", "type": "Functional Formulation", "active": "Yes"}])
+        import_formulation_items(cx, [
+            {"id_pk": "it1", "id_fk_product": "f1", "id_fk_raw": "r1", "zc_raw_display": "100mg - R-Lipoic Acid", "zc_mg": "100"},
+        ], ff_product_ids={"f1"})
+        cx.commit()
+        # console overrides the dose
+        cx.execute("UPDATE formulation_items SET dose=999, overrides=? WHERE fmp_id='it1'", (json.dumps(["dose"]),))
+        cx.commit()
+        # re-import against the now-POPULATED table (this path NameError'd before the json-import fix)
+        import_formulation_items(cx, [
+            {"id_pk": "it1", "id_fk_product": "f1", "id_fk_raw": "r1", "zc_raw_display": "100mg - R-Lipoic Acid (updated)", "zc_mg": "100"},
+        ], ff_product_ids={"f1"})
+        cx.commit()
+        row = cx.execute("SELECT dose, ingredient_name FROM formulation_items WHERE fmp_id='it1'").fetchone()
+    assert row["dose"] == 999.0                                   # overridden dose survived re-import
+    assert row["ingredient_name"] == "R-Lipoic Acid (updated)"    # non-overridden field DID refresh

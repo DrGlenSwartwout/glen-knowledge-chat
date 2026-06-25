@@ -2,7 +2,7 @@
 + formulation_items (recipe lines referencing Phase-1 ingredients). Idempotent by
 fmp_id; curated-preserving. Dry-run default; --write."""
 from __future__ import annotations
-import argparse, csv, os, re, sqlite3, sys
+import argparse, csv, json, os, re, sqlite3, sys
 csv.field_size_limit(sys.maxsize)
 
 from scripts.import_ingredients_from_fmp import _active, _num, _clean, _extras, _upsert
@@ -41,6 +41,8 @@ def import_formulation_items(cx, item_rows, ff_product_ids):
     fmp_cols = ["formulation_id", "ingredient_id", "ingredient_name", "dose", "dose_unit", "raw_text", "extras"]
     mapped = set(fmp_cols) | {"id_pk", "id_fk_product", "id_fk_raw", "id_fk_material",
                               "qty", "unit_measurement", "zc_mg", "zc_raw_display", "notes"}
+    ov = {row[0]: set(json.loads(row[1] or "[]"))
+          for row in cx.execute("SELECT fmp_id, overrides FROM formulation_items WHERE fmp_id IS NOT NULL")}
     for r in item_rows:
         pid = (r.get("id_fk_product") or "").strip()
         if pid not in ff_product_ids:
@@ -60,7 +62,8 @@ def import_formulation_items(cx, item_rows, ff_product_ids):
             dose, unit = _num(r.get("qty")), (_clean(r.get("unit_measurement")) or None)
         name = _name_after_dash(r.get("zc_raw_display")) or None
         vals = [fid, form_id, ing_id, name, dose, unit, _clean(r.get("zc_raw_display")) or None, _extras(r, mapped)]
-        _upsert(cx, "formulation_items", fmp_cols, vals, fmp_cols)
+        upd = [c for c in fmp_cols if c not in ov.get(fid, ())]
+        _upsert(cx, "formulation_items", fmp_cols, vals, upd)
         n += 1
     return {"items": n, "unresolved": unresolved}
 

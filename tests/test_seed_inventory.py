@@ -5,14 +5,16 @@ from dashboard import inventory as inv
 def _db(tmp_path):
     db = str(tmp_path / "chat_log.db")
     with sqlite3.connect(db) as cx:
-        cx.execute("CREATE TABLE ingredients (id INTEGER PRIMARY KEY, fmp_id TEXT, name TEXT, extras TEXT)")
+        cx.execute("CREATE TABLE ingredients (id INTEGER PRIMARY KEY, fmp_id TEXT, name TEXT, extras TEXT, par_level REAL, par_level_unit TEXT)")
         cx.execute("CREATE TABLE purchase_orders (id INTEGER PRIMARY KEY, po_date TEXT, posted_date TEXT)")
         cx.execute("CREATE TABLE po_items (id INTEGER PRIMARY KEY, po_id INTEGER, ingredient_id INTEGER, material_id INTEGER)")
         cx.execute("CREATE TABLE po_receiving (id INTEGER PRIMARY KEY, po_id INTEGER, po_item_id INTEGER, qty_received REAL, received_size TEXT, created_at TEXT)")
         inv.init_inventory_schema(cx)
-        cx.execute("INSERT INTO ingredients VALUES (1,'f1','Mag',?)",
-                   (json.dumps({"inventory_starting": "1.0", "par_level_unit": "kg"}),))
-        cx.execute("INSERT INTO ingredients VALUES (2,'f2','Lipoic',?)", (json.dumps({"par_level": "0.25"}),))  # no baseline
+        # inventory_starting stays in extras; par_level_unit now in the column
+        cx.execute("INSERT INTO ingredients (id,fmp_id,name,extras,par_level_unit) VALUES (1,'f1','Mag',?,'kg')",
+                   (json.dumps({"inventory_starting": "1.0"}),))
+        cx.execute("INSERT INTO ingredients (id,fmp_id,name,extras) VALUES (2,'f2','Lipoic',?)",
+                   (json.dumps({}),))  # no baseline, no par
         cx.execute("INSERT INTO purchase_orders VALUES (10,'2026-01-01','2026-01-05')")
         cx.execute("INSERT INTO po_items VALUES (100,10,1,NULL)")        # ingredient line
         cx.execute("INSERT INTO po_items VALUES (101,10,NULL,7)")        # material-only line
@@ -57,13 +59,14 @@ def test_receipt_date_from_po(tmp_path):
 def test_receipt_date_falls_back_to_po_date(tmp_path):
     db = str(tmp_path / "chat_log.db")
     with sqlite3.connect(db) as cx:
-        cx.execute("CREATE TABLE ingredients (id INTEGER PRIMARY KEY, fmp_id TEXT, name TEXT, extras TEXT)")
+        cx.execute("CREATE TABLE ingredients (id INTEGER PRIMARY KEY, fmp_id TEXT, name TEXT, extras TEXT, par_level REAL, par_level_unit TEXT)")
         cx.execute("CREATE TABLE purchase_orders (id INTEGER PRIMARY KEY, po_date TEXT, posted_date TEXT)")
         cx.execute("CREATE TABLE po_items (id INTEGER PRIMARY KEY, po_id INTEGER, ingredient_id INTEGER, material_id INTEGER)")
         cx.execute("CREATE TABLE po_receiving (id INTEGER PRIMARY KEY, po_id INTEGER, po_item_id INTEGER, qty_received REAL, received_size TEXT, created_at TEXT)")
         inv.init_inventory_schema(cx)
-        cx.execute("INSERT INTO ingredients VALUES (1,'f1','Mag',?)",
-                   (json.dumps({"inventory_starting": "1.0", "par_level_unit": "kg"}),))
+        # inventory_starting stays in extras; par_level_unit now in the column
+        cx.execute("INSERT INTO ingredients (id,fmp_id,name,extras,par_level_unit) VALUES (1,'f1','Mag',?,'kg')",
+                   (json.dumps({"inventory_starting": "1.0"}),))
         # PO with posted_date NULL but po_date set
         cx.execute("INSERT INTO purchase_orders VALUES (20,'2025-12-20',NULL)")
         cx.execute("INSERT INTO po_items VALUES (200,20,1,NULL)")

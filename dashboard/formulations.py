@@ -2,7 +2,11 @@
 Mirrors dashboard/ingredient_catalog.py conventions."""
 from __future__ import annotations
 import sqlite3
-from dashboard.ingredient_catalog import _connect  # reuse Phase-1 connection helper
+from dashboard.ingredient_catalog import _connect, _add_col  # reuse Phase-1 helpers
+from dashboard._core_edit import _set_core as _set_core_field, _unlock_core as _unlock_core_field
+
+_ITEM_CORE = {"dose", "dose_unit"}
+_ITEM_NUMERIC_EXTRA = {"dose"}  # dose coerces to float via _coerce_core
 
 
 def init_formulations_schema(cx: sqlite3.Connection) -> None:
@@ -27,6 +31,8 @@ def init_formulations_schema(cx: sqlite3.Connection) -> None:
         )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_formitems_fmp ON formulation_items(fmp_id) WHERE fmp_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_formitems_form ON formulation_items(formulation_id)")
+    # Override-protection column (idempotent — safe on existing DBs)
+    _add_col(cx, "formulation_items", "overrides", "TEXT")
     cx.commit()
 
 
@@ -80,3 +86,18 @@ def update_formulation_curated(formulation_id, fields, db_path=None):
 
 def update_item_curated(item_id, fields, db_path=None):
     _update_allowed("formulation_items", item_id, fields, _ITEM_CURATED, db_path)
+
+
+# ---------------------------------------------------------------------------
+# Core-field editing (FMP override tracking)
+# ---------------------------------------------------------------------------
+
+def set_item_core(row_id, field, value, db_path=None):
+    """Write a core formulation_items field (dose/dose_unit) and record the override."""
+    _set_core_field(_connect, "formulation_items", _ITEM_CORE, row_id, field, value,
+                    db_path=db_path, numeric_extra=_ITEM_NUMERIC_EXTRA)
+
+
+def unlock_item_core(row_id, field, db_path=None):
+    """Remove a field from the formulation_items overrides set (value unchanged)."""
+    _unlock_core_field(_connect, "formulation_items", _ITEM_CORE, row_id, field, db_path=db_path)

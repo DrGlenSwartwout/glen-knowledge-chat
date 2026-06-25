@@ -7,12 +7,15 @@ def _db(tmp_path):
     db = str(tmp_path / "chat_log.db")
     with sqlite3.connect(db) as cx:
         cx.execute("""CREATE TABLE ingredients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, fmp_id TEXT, name TEXT, extras TEXT)""")
+            id INTEGER PRIMARY KEY AUTOINCREMENT, fmp_id TEXT, name TEXT, extras TEXT,
+            par_level REAL, par_level_unit TEXT)""")
         inv.init_inventory_schema(cx)
-        cx.execute("INSERT INTO ingredients (id,name,extras) VALUES (1,'Mag L-threonate',?)",
-                   (json.dumps({"inventory_starting": "1.0", "par_level": "3", "par_level_unit": "kg"}),))
-        cx.execute("INSERT INTO ingredients (id,name,extras) VALUES (2,'R-Lipoic',?)",
-                   (json.dumps({"par_level": "0.25", "par_level_unit": "kg"}),))
+        # par lives in the columns (Task 2); inventory_starting stays in extras
+        cx.execute(
+            "INSERT INTO ingredients (id,name,extras,par_level,par_level_unit) VALUES (1,'Mag L-threonate',?,3,'kg')",
+            (json.dumps({"inventory_starting": "1.0"}),))
+        cx.execute(
+            "INSERT INTO ingredients (id,name,par_level,par_level_unit) VALUES (2,'R-Lipoic',0.25,'kg')")
         cx.commit()
     return db
 

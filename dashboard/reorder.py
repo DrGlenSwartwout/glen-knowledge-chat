@@ -86,10 +86,10 @@ def reorder_report(plan=None, include_below_par=True, db_path=None) -> dict:
     with _connect(db_path) as cx:
         # candidate set: in demand, in on-order, or (if include_below_par) any ingredient with numeric par
         cand = set(demand) | set(onord)
-        ing_rows = {r["id"]: r for r in cx.execute("SELECT id, name, extras FROM ingredients").fetchall()}
+        ing_rows = {r["id"]: r for r in cx.execute("SELECT id, name, extras, par_level, par_level_unit FROM ingredients").fetchall()}
         if include_below_par:
             for iid, r in ing_rows.items():
-                if _num(_json_get(r["extras"], "par_level")) is not None:
+                if _num(r["par_level"]) is not None:
                     cand.add(iid)
 
         groups = {}
@@ -97,8 +97,8 @@ def reorder_report(plan=None, include_below_par=True, db_path=None) -> dict:
             ing = ing_rows.get(iid)
             if not ing:
                 continue
-            par = _num(_json_get(ing["extras"], "par_level")) or 0.0
-            par_unit = _json_get(ing["extras"], "par_level_unit")
+            par = _num(ing["par_level"]) or 0.0
+            par_unit = ing["par_level_unit"]
             dem = demand.get(iid, {}).get("demand", 0.0)
             dem_unit = demand.get(iid, {}).get("unit")
             oo = onord.get(iid, {}).get("on_order", 0.0)

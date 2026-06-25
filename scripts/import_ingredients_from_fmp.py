@@ -43,21 +43,25 @@ def _extras(row, mapped):
     return json.dumps(out, ensure_ascii=False) if out else None
 
 
-def _upsert(cx, table, fmp_cols, values, conflict_update_cols):
+def _upsert(cx, table, fmp_cols, values, conflict_update_cols=None):
     # Two-statement upsert: INSERT OR IGNORE (partial-unique-index compatible) +
-    # UPDATE only FMP cols (never touches curated cols).
+    # UPDATE only conflict_update_cols (default = fmp_cols → unchanged behavior).
+    # Empty list → skip UPDATE (fully override-locked row).
     cols = ["fmp_id"] + fmp_cols
     ph = ",".join("?" for _ in cols)
     fmp_id = values[0]
-    fmp_vals = values[1:]
     cx.execute(
         f"INSERT OR IGNORE INTO {table} ({','.join(cols)}) VALUES ({ph})",
         values,
     )
-    setc = ", ".join(f"{c}=?" for c in fmp_cols) + ", updated_at=datetime('now')"
+    upd = conflict_update_cols if conflict_update_cols is not None else fmp_cols
+    if not upd:
+        return
+    val_by_col = dict(zip(fmp_cols, values[1:]))
+    setc = ", ".join(f"{c}=?" for c in upd) + ", updated_at=datetime('now')"
     cx.execute(
         f"UPDATE {table} SET {setc} WHERE fmp_id=?",
-        (*fmp_vals, fmp_id),
+        (*[val_by_col[c] for c in upd], fmp_id),
     )
 
 
@@ -83,9 +87,12 @@ _NAME_FIELDS = ["name_common","name_compound","name_scientific","name_species","
 
 def import_ingredients(cx, rows):
     n = 0
-    fmp_cols = ["name","form","status","common_names","extras"]
-    mapped = set(fmp_cols) | {"id_pk"} | set(_NAME_FIELDS) | {"active","form",
-        "inci_name","cas_number","hygroscopic_rating","solubility","stability_notes","spec_notes","notes"}
+    fmp_cols = ["name", "form", "status", "common_names", "par_level", "par_level_unit", "extras"]
+    mapped = set(fmp_cols) | {"id_pk"} | set(_NAME_FIELDS) | {"active", "form",
+        "par_level", "par_level_unit",
+        "inci_name", "cas_number", "hygroscopic_rating", "solubility", "stability_notes", "spec_notes", "notes"}
+    ov = {row[0]: set(json.loads(row[1] or "[]"))
+          for row in cx.execute("SELECT fmp_id, overrides FROM ingredients WHERE fmp_id IS NOT NULL")}
     for r in rows:
         fid = (r.get("id_pk") or "").strip()
         if not fid: continue
@@ -93,8 +100,10 @@ def import_ingredients(cx, rows):
         name = names[0] if names else f"(unnamed FMP ingredient {fid})"
         commons = json.dumps([x for x in names[1:]], ensure_ascii=False) if len(names) > 1 else None
         status = "active" if _active(r.get("active")) == 1 else "inactive"
-        vals = [fid, name, _clean(r.get("form")) or None, status, commons, _extras(r, mapped)]
-        _upsert(cx, "ingredients", fmp_cols, vals, fmp_cols)
+        vals = [fid, name, _clean(r.get("form")) or None, status, commons,
+                _num(r.get("par_level")), _clean(r.get("par_level_unit")) or None, _extras(r, mapped)]
+        upd = [c for c in fmp_cols if c not in ov.get(fid, ())]
+        _upsert(cx, "ingredients", fmp_cols, vals, upd)
         n += 1
     return n
 
@@ -103,9 +112,11 @@ def import_sources(cx, rows):
     ing = {r[1]: r[0] for r in cx.execute("SELECT id, fmp_id FROM ingredients WHERE fmp_id IS NOT NULL")}
     sup = {r[1]: (r[0], r[2]) for r in cx.execute("SELECT id, fmp_id, company FROM suppliers WHERE fmp_id IS NOT NULL")}
     n = 0
-    fmp_cols = ["ingredient_id","supplier_id","supplier_name","sku","price_per_unit","unit_size","unit_type","shipping_quote","extras"]
-    mapped = set(fmp_cols) | {"id_pk","id_fk_raw","id_fk_supplier","product_id","price","purchase_size","purchase_size_unit","shipping",
-        "preferred","lead_time_days","minimum_order","minimum_order_unit","notes"}
+    fmp_cols = ["ingredient_id", "supplier_id", "supplier_name", "sku", "price_per_unit", "unit_size", "unit_type", "shipping_quote", "extras"]
+    mapped = set(fmp_cols) | {"id_pk", "id_fk_raw", "id_fk_supplier", "product_id", "price", "purchase_size", "purchase_size_unit", "shipping",
+        "preferred", "lead_time_days", "minimum_order", "minimum_order_unit", "notes"}
+    ov = {row[0]: set(json.loads(row[1] or "[]"))
+          for row in cx.execute("SELECT fmp_id, overrides FROM ingredient_sources WHERE fmp_id IS NOT NULL")}
     for r in rows:
         fid = (r.get("id_pk") or "").strip()
         if not fid: continue
@@ -115,7 +126,8 @@ def import_sources(cx, rows):
         vals = [fid, iid, sid, sname, _clean(r.get("product_id")) or None,
                 _num(r.get("price")), _num(r.get("purchase_size")), _clean(r.get("purchase_size_unit")) or None,
                 _num(r.get("shipping")), _extras(r, mapped)]
-        _upsert(cx, "ingredient_sources", fmp_cols, vals, fmp_cols)
+        upd = [c for c in fmp_cols if c not in ov.get(fid, ())]
+        _upsert(cx, "ingredient_sources", fmp_cols, vals, upd)
         n += 1
     return n
 
