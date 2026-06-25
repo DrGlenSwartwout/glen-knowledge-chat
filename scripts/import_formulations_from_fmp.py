@@ -2,7 +2,7 @@
 + formulation_items (recipe lines referencing Phase-1 ingredients). Idempotent by
 fmp_id; curated-preserving. Dry-run default; --write."""
 from __future__ import annotations
-import argparse, csv, os, re, sqlite3, sys
+import argparse, csv, json, os, re, sqlite3, sys
 csv.field_size_limit(sys.maxsize)
 
 from scripts.import_ingredients_from_fmp import _active, _num, _clean, _extras, _upsert
