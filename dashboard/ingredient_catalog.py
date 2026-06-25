@@ -1,9 +1,14 @@
 """Ingredients + sources catalog — FMP-migrated raw-material master in chat_log.db.
 Mirrors dashboard/shipping.py conventions (idempotent schema, _connect, db_path kwarg)."""
 from __future__ import annotations
-import os, sqlite3
+import json, os, sqlite3
 from pathlib import Path
 from typing import Optional
+
+from dashboard._core_edit import _set_core as _set_core_field, _unlock_core as _unlock_core_field
+
+_ING_CORE = {"name", "form", "common_names", "par_level", "par_level_unit"}
+_SRC_CORE = {"price_per_unit", "unit_size", "unit_type"}
 
 
 def _default_db_path() -> str:
@@ -153,3 +158,27 @@ def set_preferred_source(source_id, db_path=None):
         cx.execute("UPDATE ingredient_sources SET preferred=0, updated_at=datetime('now') WHERE ingredient_id=?", (row["ingredient_id"],))
         cx.execute("UPDATE ingredient_sources SET preferred=1, updated_at=datetime('now') WHERE id=?", (source_id,))
         cx.commit()
+
+
+# ---------------------------------------------------------------------------
+# Core-field editing (FMP override tracking)
+# ---------------------------------------------------------------------------
+
+def set_ingredient_core(row_id, field, value, db_path=None):
+    """Write a core ingredient field and record it in the overrides set."""
+    _set_core_field(_connect, "ingredients", _ING_CORE, row_id, field, value, db_path=db_path)
+
+
+def unlock_ingredient_core(row_id, field, db_path=None):
+    """Remove a field from the ingredient overrides set (value unchanged)."""
+    _unlock_core_field(_connect, "ingredients", row_id, field, db_path=db_path)
+
+
+def set_source_core(row_id, field, value, db_path=None):
+    """Write a core ingredient_sources field and record it in the overrides set."""
+    _set_core_field(_connect, "ingredient_sources", _SRC_CORE, row_id, field, value, db_path=db_path)
+
+
+def unlock_source_core(row_id, field, db_path=None):
+    """Remove a field from the ingredient_sources overrides set (value unchanged)."""
+    _unlock_core_field(_connect, "ingredient_sources", row_id, field, db_path=db_path)
