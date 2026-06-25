@@ -353,9 +353,19 @@ async function loadLists(){
  try{const c=await (await fetch('/api/catalog?limit=800')).json();
   document.getElementById('catalog').innerHTML=(c.catalog||[]).map(function(x){return opt(x.name||'')}).join('')}catch(e){}
 }
+function setPhase(p){window._phase=p;
+ document.getElementById('phaseCap').className=(p==1?'btn':'btn ghost');
+ document.getElementById('phaseBal').className=(p==2?'btn':'btn ghost');
+ document.getElementById('phaseAct').textContent=(p==1?'Capture stresses → list':'Interpret → fill fields')}
+async function phaseRun(){if((window._phase||1)==1){captureStresses()}else{interpret()}}
+async function captureStresses(){rstat('Capturing stresses from transcript…');
+ var j=await post('/author/__TID__/capture-stresses',{});
+ if(j.error){rstat('Capture: '+j.error);return}
+ rstat('Added '+j.added+' stress(es).');loadStress()}
 loadLists();
 loadE4L();
 loadStress();
+setPhase(1);
 </script>"""
 
 
@@ -509,10 +519,14 @@ def render_author_html(report, depth_values=None, transcript=""):
         "<p class=sub>Record yourself narrating the test in your own voice &mdash; the live "
         "transcript saves to this test's notes and feeds the narrative. Wear a lav/AirPods for "
         "the codes.</p>"
+        "<div class=btnrow style='margin-bottom:6px'>"
+        "<button id=phaseCap class=btn onclick='setPhase(1)'>Phase 1 &middot; Capture stresses</button>"
+        "<button id=phaseBal class='btn ghost' onclick='setPhase(2)'>Phase 2 &middot; Balance</button>"
+        "</div>"
         "<div class=btnrow>"
         "<button class=btn onclick=recStart()>&#9679; Record</button>"
         "<button class='btn ghost' onclick=recStop()>&#9632; Stop &amp; save</button>"
-        "<button class=btn onclick=interpret()>Interpret &rarr; fill fields</button>"
+        "<button id=phaseAct class=btn onclick=phaseRun()>Capture stresses &rarr; list</button>"
         "<span id=rstat class=food></span></div>"
         "<div class=food><em id=interim></em></div>"
         f"<textarea id=sessText rows=6 placeholder='Live transcript appears here as you speak..."
