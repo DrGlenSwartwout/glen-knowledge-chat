@@ -134,6 +134,17 @@
     /* Reorder tab */
     #ro-results { display: none; }
     #ro-results.active { display: block; }
+
+    /* Sourcing tab */
+    #sourcing-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+    #sourcing-detail-panel { display: none; }
+    #sourcing-detail-panel.active { display: block; }
+    .badge-pending  { background: rgba(212,168,67,0.15); color: var(--amber); border: 1px solid var(--amber); }
+    .badge-applied  { background: rgba(61,138,82,0.15);  color: var(--green); border: 1px solid var(--green); }
+    .badge-dismissed { background: rgba(100,100,100,0.12); color: var(--muted); border: 1px solid var(--border); }
+    #sourcing-list td { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+    #sourcing-list tr:hover td { background: rgba(212,168,67,0.08); }
+    #sourcing-list th { text-align: left; padding: 6px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
     #ro-frm-results { list-style: none; margin: 0; padding: 0; }
     #prod-list td { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
     #prod-list tr:hover td { background: rgba(212,168,67,0.08); }
@@ -208,6 +219,7 @@
     <button class="tab-btn" onclick="showTab('inventory')">Inventory</button>
     <button class="tab-btn" onclick="showTab('production')">Production</button>
     <button class="tab-btn" onclick="showTab('reorder')">Reorder</button>
+    <button class="tab-btn" onclick="showTab('sourcing')">Sourcing inbox</button>
   </div>
 
   <!-- ── Ingredients tab ─────────────────────────────────────────────────── -->
@@ -1103,6 +1115,117 @@
 
   </div><!-- /#tab-reorder -->
 
+  <!-- ── Sourcing inbox tab ────────────────────────────────────────────────── -->
+  <div id="tab-sourcing" class="tab-panel">
+
+    <!-- Quote list -->
+    <div class="section" id="sourcing-list-section">
+      <h2>Sourcing Inbox</h2>
+      <p class="hint" style="margin-bottom:14px">Supplier quotes extracted from email. Pending quotes shown first. Click a row to review, match an ingredient, and approve.</p>
+      <div id="sourcing-empty">No quotes found.</div>
+      <table id="sourcing-list" style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th>Supplier</th>
+            <th>Ingredient</th>
+            <th>Price/unit</th>
+            <th>MOQ</th>
+            <th>Lead time</th>
+            <th>Confidence</th>
+            <th>Received</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="sourcing-list-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Quote detail panel (hidden until row clicked) -->
+    <div id="sourcing-detail-panel">
+
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closeSourcingDetail()">&#8592; Back to list</button>
+          <h3 id="sourcing-detail-title" style="flex:1"></h3>
+          <span id="sourcing-detail-badge"></span>
+        </div>
+
+        <!-- Extracted fields (read-only display) -->
+        <div class="section-label">Extracted Fields</div>
+        <div class="field-grid">
+          <div class="field-block">
+            <label>Supplier (from email)</label>
+            <div class="ro-val" id="sq-supplier-name">—</div>
+          </div>
+          <div class="field-block">
+            <label>Ingredient (from email)</label>
+            <div class="ro-val" id="sq-ingredient-name">—</div>
+          </div>
+          <div class="field-block">
+            <label>Price</label>
+            <div class="ro-val" id="sq-price">—</div>
+          </div>
+          <div class="field-block">
+            <label>Price unit</label>
+            <div class="ro-val" id="sq-price-unit">—</div>
+          </div>
+          <div class="field-block">
+            <label>Currency</label>
+            <div class="ro-val" id="sq-currency">—</div>
+          </div>
+          <div class="field-block">
+            <label>MOQ</label>
+            <div class="ro-val" id="sq-moq">—</div>
+          </div>
+          <div class="field-block">
+            <label>MOQ unit</label>
+            <div class="ro-val" id="sq-moq-unit">—</div>
+          </div>
+          <div class="field-block">
+            <label>Lead time (days)</label>
+            <div class="ro-val" id="sq-lead-time">—</div>
+          </div>
+          <div class="field-block">
+            <label>Confidence</label>
+            <div class="ro-val" id="sq-confidence">—</div>
+          </div>
+          <div class="field-block">
+            <label>Received</label>
+            <div class="ro-val" id="sq-received-at">—</div>
+          </div>
+        </div>
+
+        <!-- Ingredient search-to-pick -->
+        <div class="section-label" style="margin-top:18px">Match to Ingredient <span style="color:var(--red)">*</span> <span id="sq-ing-matched-badge" style="display:none"><span class="badge badge-applied">matched</span></span></div>
+        <div id="sq-ing-match-block">
+          <input type="text" id="sq-ing-search" placeholder="Search ingredients to match…" autocomplete="off"
+            style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;margin-bottom:4px"
+            oninput="sqIngSearch()">
+          <ul id="sq-ing-results" style="list-style:none;background:#0d1117;border:1px solid var(--border);border-radius:6px;margin-top:4px;display:none"></ul>
+          <div id="sq-ing-chosen" style="margin-top:6px;font-size:12px;color:var(--muted)"></div>
+        </div>
+
+        <!-- Supplier search-to-pick -->
+        <div class="section-label" style="margin-top:14px">Match to Supplier (optional)</div>
+        <div id="sq-sup-match-block">
+          <input type="text" id="sq-sup-search" placeholder="Search suppliers to link…" autocomplete="off"
+            style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;margin-bottom:4px"
+            oninput="sqSupSearch()">
+          <ul id="sq-sup-results" style="list-style:none;background:#0d1117;border:1px solid var(--border);border-radius:6px;margin-top:4px;display:none"></ul>
+          <div id="sq-sup-chosen" style="margin-top:6px;font-size:12px;color:var(--muted)"></div>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="save-row" style="margin-top:20px">
+          <button class="secondary save-btn" onclick="sqDismiss()">Dismiss</button>
+          <button id="sq-approve-btn" class="save-btn confirm" onclick="sqApprove()" disabled>Approve (create source)</button>
+        </div>
+        <p id="sq-approve-hint" style="color:var(--muted);font-size:12px;margin-top:8px">Match an ingredient above to enable Approve.</p>
+      </div>
+
+    </div><!-- /#sourcing-detail-panel -->
+  </div><!-- /#tab-sourcing -->
+
 </div><!-- /#wrap -->
 
 <div id="toast"></div>
@@ -1143,10 +1266,11 @@ function showTab(name) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.getElementById("tab-" + name).classList.add("active");
   const btns = document.querySelectorAll(".tab-btn");
-  const labels = ["ingredients", "suppliers", "import", "formulations", "materials", "po", "inventory", "production", "reorder"];
+  const labels = ["ingredients", "suppliers", "import", "formulations", "materials", "po", "inventory", "production", "reorder", "sourcing"];
   btns[labels.indexOf(name)].classList.add("active");
   if (name === "suppliers") loadSuppliers();
   if (name === "production") doProdSearch();
+  if (name === "sourcing") loadSourcingQuotes();
 }
 
 // ── FMP Import ────────────────────────────────────────────────────────────────
@@ -2922,6 +3046,255 @@ async function roCompute() {
     }).join("") +
     '<p style="margin-top:14px"><strong>Total: ' + rep.totals.lines + ' lines &middot; est. $' + rep.totals.est_cost + '</strong></p>' +
     '</div>';
+}
+
+// ── Sourcing inbox ────────────────────────────────────────────────────────────
+let _sourcingQuotes = [];
+let _sourcingCurrentId = null;
+let _sqIngResults = [];
+let _sqIngPickedId = null;
+let _sqSupResults = [];
+let _sqSupPickedId = null;
+
+async function loadSourcingQuotes() {
+  const tbody = document.getElementById("sourcing-list-body");
+  const empty = document.getElementById("sourcing-empty");
+  tbody.innerHTML = "";
+  empty.style.display = "none";
+  try {
+    _sourcingQuotes = await api("/api/sourcing/quotes");
+    if (!_sourcingQuotes.length) { empty.style.display = "block"; return; }
+    // Pending first, then others
+    const sorted = _sourcingQuotes.slice().sort(function(a, b) {
+      if (a.status === "pending" && b.status !== "pending") return -1;
+      if (a.status !== "pending" && b.status === "pending") return 1;
+      return 0;
+    });
+    sorted.forEach(function(q, i) {
+      const tr = document.createElement("tr");
+      const priceDisplay = q.price != null
+        ? "$" + Number(q.price).toFixed(2) + (q.price_unit ? "/" + escapeHtml(q.price_unit) : "")
+        : "—";
+      const moqDisplay = q.moq != null
+        ? escapeHtml(String(q.moq)) + (q.moq_unit ? " " + escapeHtml(q.moq_unit) : "")
+        : "—";
+      const leadDisplay = q.lead_time_days != null ? escapeHtml(String(q.lead_time_days)) + "d" : "—";
+      const confDisplay = q.confidence != null ? escapeHtml(String(q.confidence)) : "—";
+      const recDisplay  = q.received_at ? escapeHtml(String(q.received_at).slice(0, 10)) : "—";
+      const badgeClass  = q.status === "pending" ? "badge-pending"
+                        : q.status === "applied"  ? "badge-applied"
+                        : "badge-dismissed";
+      tr.innerHTML =
+        '<td>' + escapeHtml(q.supplier_name || "—") + '</td>' +
+        '<td>' + escapeHtml(q.ingredient_name || "—") + '</td>' +
+        '<td>' + priceDisplay + '</td>' +
+        '<td>' + moqDisplay + '</td>' +
+        '<td>' + leadDisplay + '</td>' +
+        '<td>' + confDisplay + '</td>' +
+        '<td>' + recDisplay + '</td>' +
+        '<td><span class="badge ' + badgeClass + '">' + escapeHtml(q.status || "—") + '</span></td>';
+      // Only pending rows are clickable
+      if (q.status === "pending") {
+        tr.style.cursor = "pointer";
+        (function(qid) {
+          tr.addEventListener("click", function() { openSourcingDetail(qid); });
+        }(q.id));
+      }
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function openSourcingDetail(id) {
+  const q = _sourcingQuotes.find(function(x) { return x.id === id; });
+  if (!q) return;
+  _sourcingCurrentId = id;
+
+  // Populate extracted fields
+  document.getElementById("sq-supplier-name").textContent  = q.supplier_name  || "—";
+  document.getElementById("sq-ingredient-name").textContent = q.ingredient_name || "—";
+  document.getElementById("sq-price").textContent          = q.price != null ? "$" + Number(q.price).toFixed(4) : "—";
+  document.getElementById("sq-price-unit").textContent     = q.price_unit  || "—";
+  document.getElementById("sq-currency").textContent       = q.currency    || "—";
+  document.getElementById("sq-moq").textContent            = q.moq != null ? String(q.moq) : "—";
+  document.getElementById("sq-moq-unit").textContent       = q.moq_unit    || "—";
+  document.getElementById("sq-lead-time").textContent      = q.lead_time_days != null ? String(q.lead_time_days) : "—";
+  document.getElementById("sq-confidence").textContent     = q.confidence != null ? String(q.confidence) : "—";
+  document.getElementById("sq-received-at").textContent    = q.received_at ? String(q.received_at).slice(0, 19) : "—";
+
+  // Title + badge
+  document.getElementById("sourcing-detail-title").textContent =
+    (q.supplier_name || "Unknown supplier") + " — " + (q.ingredient_name || "?");
+  const badgeClass = q.status === "pending" ? "badge-pending"
+                   : q.status === "applied"  ? "badge-applied"
+                   : "badge-dismissed";
+  document.getElementById("sourcing-detail-badge").innerHTML =
+    '<span class="badge ' + badgeClass + '">' + escapeHtml(q.status || "") + '</span>';
+
+  // Reset pickers
+  _sqIngPickedId = q.ingredient_id || null;
+  _sqSupPickedId = q.supplier_id   || null;
+
+  // Ingredient picker: pre-fill if already matched
+  document.getElementById("sq-ing-search").value = "";
+  document.getElementById("sq-ing-results").style.display = "none";
+  if (_sqIngPickedId) {
+    document.getElementById("sq-ing-chosen").textContent =
+      "Matched: " + escapeHtml(q.ingredient_name || "") + " (id=" + _sqIngPickedId + ")";
+    document.getElementById("sq-ing-matched-badge").style.display = "inline";
+  } else {
+    document.getElementById("sq-ing-chosen").textContent = "";
+    document.getElementById("sq-ing-matched-badge").style.display = "none";
+  }
+
+  // Supplier picker: pre-fill if already matched
+  document.getElementById("sq-sup-search").value = "";
+  document.getElementById("sq-sup-results").style.display = "none";
+  if (_sqSupPickedId) {
+    document.getElementById("sq-sup-chosen").textContent =
+      "Linked: " + escapeHtml(q.supplier_name || "") + " (id=" + _sqSupPickedId + ")";
+  } else {
+    document.getElementById("sq-sup-chosen").textContent = "";
+  }
+
+  // Approve button — enabled only when ingredient is matched
+  _sqUpdateApproveBtn();
+
+  // Show detail panel, hide list
+  document.getElementById("sourcing-list-section").style.display = "none";
+  document.getElementById("sourcing-detail-panel").classList.add("active");
+}
+
+function closeSourcingDetail() {
+  _sourcingCurrentId = null;
+  document.getElementById("sourcing-detail-panel").classList.remove("active");
+  document.getElementById("sourcing-list-section").style.display = "block";
+}
+
+function _sqUpdateApproveBtn() {
+  const btn  = document.getElementById("sq-approve-btn");
+  const hint = document.getElementById("sq-approve-hint");
+  if (_sqIngPickedId) {
+    btn.disabled = false;
+    hint.style.display = "none";
+  } else {
+    btn.disabled = true;
+    hint.style.display = "block";
+  }
+}
+
+// Ingredient search-to-pick for sourcing
+let _sqIngTimer = null;
+function sqIngSearch() {
+  clearTimeout(_sqIngTimer);
+  const q = document.getElementById("sq-ing-search").value.trim();
+  if (!q) {
+    document.getElementById("sq-ing-results").style.display = "none";
+    return;
+  }
+  _sqIngTimer = setTimeout(async function() {
+    try {
+      _sqIngResults = (await api("/api/ingredients/search?q=" + encodeURIComponent(q) + "&limit=15")).slice(0, 15);
+      const ul = document.getElementById("sq-ing-results");
+      if (!_sqIngResults.length) { ul.style.display = "none"; return; }
+      ul.innerHTML = _sqIngResults.map(function(ing, i) {
+        return '<li style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onclick="sqIngPick(' + i + ')">' +
+               escapeHtml(ing.name) +
+               (ing.form ? ' <span style="color:var(--muted);font-size:11px">· ' + escapeHtml(ing.form) + '</span>' : '') +
+               '</li>';
+      }).join("");
+      ul.style.display = "block";
+    } catch (e) {
+      if (e.message !== "unauthorized") toast(e.message, "error");
+    }
+  }, 280);
+}
+
+function sqIngPick(i) {
+  const ing = _sqIngResults[i];
+  if (!ing) return;
+  _sqIngPickedId = ing.id;
+  document.getElementById("sq-ing-search").value = escapeHtml(ing.name);
+  document.getElementById("sq-ing-results").style.display = "none";
+  document.getElementById("sq-ing-chosen").textContent = "Selected: " + escapeHtml(ing.name) + " (id=" + ing.id + ")";
+  document.getElementById("sq-ing-matched-badge").style.display = "inline";
+  _sqUpdateApproveBtn();
+  // Persist the match immediately
+  if (_sourcingCurrentId) {
+    api("/api/sourcing/quotes/" + _sourcingCurrentId, {
+      method: "PATCH",
+      body: JSON.stringify({ ingredient_id: ing.id })
+    }).catch(function(e) { toast(e.message, "error"); });
+  }
+}
+
+// Supplier search-to-pick for sourcing
+let _sqSupTimer = null;
+function sqSupSearch() {
+  clearTimeout(_sqSupTimer);
+  const q = document.getElementById("sq-sup-search").value.trim();
+  if (!q) {
+    document.getElementById("sq-sup-results").style.display = "none";
+    return;
+  }
+  _sqSupTimer = setTimeout(async function() {
+    try {
+      _sqSupResults = (await api("/api/ingredients/suppliers?q=" + encodeURIComponent(q) + "&limit=15")).slice(0, 15);
+      const ul = document.getElementById("sq-sup-results");
+      if (!_sqSupResults.length) { ul.style.display = "none"; return; }
+      ul.innerHTML = _sqSupResults.map(function(sup, i) {
+        return '<li style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onclick="sqSupPick(' + i + ')">' +
+               escapeHtml(sup.company) + '</li>';
+      }).join("");
+      ul.style.display = "block";
+    } catch (e) {
+      if (e.message !== "unauthorized") toast(e.message, "error");
+    }
+  }, 280);
+}
+
+function sqSupPick(i) {
+  const sup = _sqSupResults[i];
+  if (!sup) return;
+  _sqSupPickedId = sup.id;
+  document.getElementById("sq-sup-search").value = escapeHtml(sup.company);
+  document.getElementById("sq-sup-results").style.display = "none";
+  document.getElementById("sq-sup-chosen").textContent = "Selected: " + escapeHtml(sup.company) + " (id=" + sup.id + ")";
+  // Persist the supplier match immediately
+  if (_sourcingCurrentId) {
+    api("/api/sourcing/quotes/" + _sourcingCurrentId, {
+      method: "PATCH",
+      body: JSON.stringify({ supplier_id: sup.id })
+    }).catch(function(e) { toast(e.message, "error"); });
+  }
+}
+
+async function sqApprove() {
+  if (!_sourcingCurrentId) return;
+  if (!_sqIngPickedId) { toast("Match an ingredient before approving", "error"); return; }
+  try {
+    await api("/api/sourcing/quotes/" + _sourcingCurrentId + "/approve", { method: "POST" });
+    toast("source created", "ok");
+    closeSourcingDetail();
+    loadSourcingQuotes();
+  } catch (e) {
+    toast(e.message, "error");
+  }
+}
+
+async function sqDismiss() {
+  if (!_sourcingCurrentId) return;
+  if (!confirm("Dismiss this quote? It will be marked dismissed and removed from the pending queue.")) return;
+  try {
+    await api("/api/sourcing/quotes/" + _sourcingCurrentId + "/dismiss", { method: "POST" });
+    toast("Quote dismissed");
+    closeSourcingDetail();
+    loadSourcingQuotes();
+  } catch (e) {
+    toast(e.message, "error");
+  }
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

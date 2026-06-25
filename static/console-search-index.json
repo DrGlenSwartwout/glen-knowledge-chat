@@ -60,5 +60,6 @@
   { "title": "Ingredients & Sources", "page": "Products", "url": "/admin/ingredients", "keywords": ["ingredient","ingredients","sources","supplier","raw","cost","sourcing","canonical"] },
   { "title": "Inventory & Stock", "page": "Products", "url": "/admin/ingredients", "keywords": ["inventory","stock","on hand","on-hand","par","reorder","balance","ledger"] },
   { "title": "Production Runs", "page": "Products", "url": "/admin/ingredients", "keywords": ["production","run","batch","made","consumption","manufacture","produced"] },
-  { "title": "Reorder / Shopping List", "page": "Products", "url": "/admin/ingredients", "keywords": ["reorder","shopping","buy","purchase","demand","bom","par","shortfall","restock"] }
+  { "title": "Reorder / Shopping List", "page": "Products", "url": "/admin/ingredients", "keywords": ["reorder","shopping","buy","purchase","demand","bom","par","shortfall","restock"] },
+  { "title": "Sourcing Inbox (supplier quotes)", "page": "Products", "url": "/admin/ingredients", "keywords": ["sourcing","quote","supplier","price","email","inbox","moq"] }
 ]
