@@ -32,9 +32,14 @@ def init_auth_tables(cx):
     cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_chain(
         id INTEGER PRIMARY KEY AUTOINCREMENT, test_id INTEGER, layer INTEGER,
         head TEXT, most_affected TEXT, remedy TEXT, dosage TEXT, frequency TEXT,
-        timing TEXT, sort_seq INTEGER, created_at TEXT, confirmed INTEGER DEFAULT 1)""")
+        timing TEXT, sort_seq INTEGER, created_at TEXT, confirmed INTEGER DEFAULT 1,
+        origin TEXT NOT NULL DEFAULT 'live')""")
     try:
         cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN confirmed INTEGER DEFAULT 1")
+    except Exception:
+        pass
+    try:
+        cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN origin TEXT NOT NULL DEFAULT 'live'")
     except Exception:
         pass
     cx.commit()
@@ -69,14 +74,15 @@ def update_header(cx, tid, name=None, email=None, date=None):
 
 
 def add_chain_row(cx, tid, layer, head, most_affected, remedy,
-                  dosage="", frequency="", timing="", confirmed=1):
+                  dosage="", frequency="", timing="", confirmed=1, origin="live"):
     init_auth_tables(cx)
     cur = cx.execute(
         "INSERT INTO biofield_auth_chain(test_id,layer,head,most_affected,remedy,"
-        "dosage,frequency,timing,sort_seq,created_at,confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "dosage,frequency,timing,sort_seq,created_at,confirmed,origin) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         (_num(tid), layer, (head or "").strip(), (most_affected or "").strip(),
          (remedy or "").strip(), dosage or "", frequency or "", timing or "", 0, _now(),
-         1 if confirmed else 0))
+         1 if confirmed else 0, (origin or "live")))
     cx.commit()
     return cur.lastrowid
 
@@ -300,20 +306,54 @@ def stress_suggestions(cx, stress, limit=8):
     return [{"remedy": r["remedy"], "count": r["n"]} for r in rows]
 
 
+def ordered_chain(cx, tid):
+    """Remedy-bearing chain rows in display order with two-zone numbering.
+    Top zone = live + confirmed rows (manual order); bottom zone = unbalanced
+    scan rows (origin='scan' AND confirmed=0), trailing. Display `layer` = 1..k."""
+    cx.row_factory = sqlite3.Row
+    rows = cx.execute(
+        "SELECT id, layer, head, most_affected, remedy, dosage, frequency, timing, "
+        "confirmed, origin FROM biofield_auth_chain "
+        "WHERE test_id=? AND TRIM(COALESCE(remedy,''))<>''", (_num(tid),)).fetchall()
+
+    def unbalanced_scan(r):
+        return (r["origin"] == "scan") and (r["confirmed"] == 0)
+
+    key = lambda r: (r["layer"] is None, r["layer"] if r["layer"] is not None else 0, r["id"])
+    top = sorted([r for r in rows if not unbalanced_scan(r)], key=key)
+    bottom = sorted([r for r in rows if unbalanced_scan(r)], key=key)
+    out = []
+    for i, r in enumerate(top + bottom, 1):
+        out.append({"id": r["id"], "layer": i, "head": r["head"] or "",
+                    "most_affected": r["most_affected"] or "", "remedy": r["remedy"] or "",
+                    "dosage": r["dosage"] or "", "frequency": r["frequency"] or "",
+                    "timing": r["timing"] or "",
+                    "confirmed": 0 if r["confirmed"] == 0 else 1,
+                    "origin": r["origin"] or "live",
+                    "zone": "bottom" if unbalanced_scan(r) else "top"})
+    return out
+
+
+def reorder_chain(cx, tid, rid, new_layer):
+    """Move top-zone row `rid` to position `new_layer` and renumber the top zone
+    contiguously. Unbalanced scan rows (bottom zone) are left untouched."""
+    top = [l for l in ordered_chain(cx, tid) if l["zone"] == "top"]
+    ids = [l["id"] for l in top]
+    if rid not in ids:
+        return
+    ids.remove(rid)
+    pos = max(1, min(int(new_layer or 1), len(ids) + 1)) - 1
+    ids.insert(pos, rid)
+    for i, _id in enumerate(ids, 1):
+        cx.execute("UPDATE biofield_auth_chain SET layer=? WHERE id=?", (i, _id))
+    cx.commit()
+
+
 def authored_report(cx, tid):
     init_auth_tables(cx)
     cx.row_factory = sqlite3.Row
     t = cx.execute("SELECT * FROM biofield_auth_tests WHERE id=?", (_num(tid),)).fetchone()
-    rows = cx.execute("""
-        SELECT id, layer, head, most_affected, remedy, dosage, frequency, timing, confirmed
-        FROM biofield_auth_chain
-        WHERE test_id=? AND TRIM(COALESCE(remedy,''))<>''
-        ORDER BY (layer IS NULL), layer, id""", (_num(tid),)).fetchall()
-    layers = [{"layer": r["layer"], "head": r["head"] or "",
-               "most_affected": r["most_affected"] or "", "remedy": r["remedy"] or "",
-               "dosage": r["dosage"] or "", "frequency": r["frequency"] or "",
-               "timing": r["timing"] or "", "rid": r["id"],
-               "confirmed": 0 if r["confirmed"] == 0 else 1} for r in rows]
+    layers = [{**l, "rid": l["id"]} for l in ordered_chain(cx, tid)]
     # Depth-of-penetration tags + reach match-check per layer (Increment 4b)
     for l in layers:
         sd = get_tag(cx, "auth_stress", l["rid"], DEPTH_KEY)

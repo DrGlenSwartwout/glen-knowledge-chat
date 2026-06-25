@@ -1,0 +1,114 @@
+"""Per-test master stress list + remedy<->stress coverage map for the local
+Biofield Intake balancing loop (B1). Pure sqlite; the caller passes a connection.
+Balanced state is DERIVED at read time, never stored (see list_stresses)."""
+import sqlite3
+from datetime import datetime, timezone
+
+
+def _now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _num(tid):
+    return int(str(tid).lstrip("a") or 0)
+
+
+def init_stress_tables(cx):
+    cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_stress(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, test_id INTEGER, code TEXT, label TEXT,
+        source TEXT NOT NULL DEFAULT 'scan', balance TEXT NOT NULL DEFAULT 'optional',
+        manual_balanced INTEGER NOT NULL DEFAULT 0, created_at TEXT, updated_at TEXT,
+        UNIQUE(test_id, source, code))""")
+    cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_remedy_coverage(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, test_id INTEGER, remedy TEXT, code TEXT,
+        UNIQUE(test_id, remedy, code))""")
+    cx.commit()
+
+
+def seed_from_scan(cx, tid, findings, coverage):
+    init_stress_tables(cx)
+    t = _num(tid)
+    covered = set()
+    for codes in (coverage or {}).values():
+        covered |= set(codes)
+    now = _now()
+    req = 0
+    for f in findings or []:
+        code = (f.get("code") or "").strip()
+        if not code:
+            continue
+        balance = "required" if code in covered else "optional"
+        if balance == "required":
+            req += 1
+        cx.execute(
+            "INSERT INTO biofield_auth_stress(test_id,code,label,source,balance,"
+            "manual_balanced,created_at,updated_at) VALUES(?,?,?,'scan',?,0,?,?) "
+            "ON CONFLICT(test_id,source,code) DO UPDATE SET "
+            "label=excluded.label, balance=excluded.balance, updated_at=excluded.updated_at",
+            (t, code, (f.get("name") or code).strip(), balance, now, now))
+    cx.execute("DELETE FROM biofield_auth_remedy_coverage WHERE test_id=?", (t,))
+    for remedy, codes in (coverage or {}).items():
+        for code in codes:
+            cx.execute("INSERT OR IGNORE INTO biofield_auth_remedy_coverage(test_id,remedy,code) "
+                       "VALUES(?,?,?)", (t, (remedy or "").strip().lower(), code))
+    cx.commit()
+    n = cx.execute("SELECT COUNT(*) FROM biofield_auth_stress WHERE test_id=? AND source='scan'", (t,)).fetchone()[0]
+    c = cx.execute("SELECT COUNT(*) FROM biofield_auth_remedy_coverage WHERE test_id=?", (t,)).fetchone()[0]
+    return {"stresses": n, "required": req, "coverage": c}
+
+
+def covered_codes(cx, tid, remedy_names):
+    t = _num(tid)
+    names = [(n or "").strip().lower() for n in (remedy_names or []) if (n or "").strip()]
+    if not names:
+        return set()
+    ph = ",".join("?" for _ in names)
+    rows = cx.execute(
+        f"SELECT DISTINCT code FROM biofield_auth_remedy_coverage "
+        f"WHERE test_id=? AND remedy IN ({ph})", (t, *names)).fetchall()
+    return {r[0] for r in rows}
+
+
+def _coverers(cx, tid, code, remedy_names):
+    t = _num(tid)
+    names = [(n or "").strip().lower() for n in (remedy_names or []) if (n or "").strip()]
+    if not names:
+        return []
+    ph = ",".join("?" for _ in names)
+    rows = cx.execute(
+        f"SELECT remedy FROM biofield_auth_remedy_coverage "
+        f"WHERE test_id=? AND code=? AND remedy IN ({ph})", (t, code, *names)).fetchall()
+    return [r[0] for r in rows]
+
+
+def list_stresses(cx, tid, chain_remedy_names):
+    init_stress_tables(cx)
+    cx.row_factory = sqlite3.Row
+    t = _num(tid)
+    covered = covered_codes(cx, tid, chain_remedy_names)
+    rows = cx.execute(
+        "SELECT id, code, label, source, balance, manual_balanced "
+        "FROM biofield_auth_stress WHERE test_id=? ORDER BY "
+        "CASE balance WHEN 'required' THEN 0 ELSE 1 END, id", (t,)).fetchall()
+    active, balanced = [], []
+    for r in rows:
+        is_cov = r["code"] in covered
+        is_bal = bool(r["manual_balanced"]) or is_cov
+        by = ""
+        if is_cov:
+            cvs = _coverers(cx, tid, r["code"], chain_remedy_names)
+            by = cvs[0] if cvs else ""
+        elif r["manual_balanced"]:
+            by = "manual"
+        item = {"id": r["id"], "code": r["code"], "label": r["label"],
+                "source": r["source"], "balance": r["balance"],
+                "balanced": is_bal, "balanced_by": by}
+        (balanced if is_bal else active).append(item)
+    return {"active": active, "balanced": balanced}
+
+
+def set_manual_balanced(cx, tid, stress_id, value):
+    cx.execute("UPDATE biofield_auth_stress SET manual_balanced=?, updated_at=? "
+               "WHERE id=? AND test_id=?",
+               (1 if value else 0, _now(), stress_id, _num(tid)))
+    cx.commit()
