@@ -82,11 +82,40 @@ def _coverers(cx, tid, code, remedy_names):
     return [r[0] for r in rows]
 
 
-def list_stresses(cx, tid, chain_remedy_names):
+def _norm(s):
+    """Normalize a stress label for dedup/label-match: lowercase, collapse internal
+    whitespace, strip surrounding non-word characters."""
+    s = re.sub(r"\s+", " ", (s or "").strip().lower())
+    return re.sub(r"^[^\w]+|[^\w]+$", "", s)
+
+
+def _chain_parts(chain_rows):
+    """Split a mixed chain-rows list into (remedy_names, [(norm_head, remedy), ...]).
+    Accepts plain remedy-name strings (no head) and {"head","remedy"} dicts."""
+    names, heads = [], []
+    for r in chain_rows or []:
+        if isinstance(r, str):
+            if r.strip():
+                names.append(r)
+        elif isinstance(r, dict):
+            rem = (r.get("remedy") or "").strip()
+            if rem:
+                names.append(rem)
+                h = _norm(r.get("head") or "")
+                if h:
+                    heads.append((h, rem))
+    return names, heads
+
+
+def list_stresses(cx, tid, chain_rows):
     init_stress_tables(cx)
     cx.row_factory = sqlite3.Row
     t = _num(tid)
-    covered = covered_codes(cx, tid, chain_remedy_names)
+    remedy_names, head_pairs = _chain_parts(chain_rows)
+    covered = covered_codes(cx, tid, remedy_names)
+    head_map = {}
+    for h, rem in head_pairs:
+        head_map.setdefault(h, rem)
     rows = cx.execute(
         "SELECT id, code, label, source, balance, manual_balanced "
         "FROM biofield_auth_stress WHERE test_id=? ORDER BY "
@@ -94,13 +123,17 @@ def list_stresses(cx, tid, chain_remedy_names):
     active, balanced = [], []
     for r in rows:
         is_cov = r["code"] in covered
-        is_bal = bool(r["manual_balanced"]) or is_cov
-        by = ""
+        lbl_rem = head_map.get(_norm(r["label"]))
+        is_bal = bool(r["manual_balanced"]) or is_cov or (lbl_rem is not None)
         if is_cov:
-            cvs = _coverers(cx, tid, r["code"], chain_remedy_names)
+            cvs = _coverers(cx, tid, r["code"], remedy_names)
             by = cvs[0] if cvs else ""
+        elif lbl_rem is not None:
+            by = lbl_rem
         elif r["manual_balanced"]:
             by = "manual"
+        else:
+            by = ""
         item = {"id": r["id"], "code": r["code"], "label": r["label"],
                 "source": r["source"], "balance": r["balance"],
                 "balanced": is_bal, "balanced_by": by}
@@ -113,13 +146,6 @@ def set_manual_balanced(cx, tid, stress_id, value):
                "WHERE id=? AND test_id=?",
                (1 if value else 0, _now(), stress_id, _num(tid)))
     cx.commit()
-
-
-def _norm(s):
-    """Normalize a stress label for dedup/label-match: lowercase, collapse internal
-    whitespace, strip surrounding non-word characters."""
-    s = re.sub(r"\s+", " ", (s or "").strip().lower())
-    return re.sub(r"^[^\w]+|[^\w]+$", "", s)
 
 
 def add_voice_stress(cx, tid, label):
