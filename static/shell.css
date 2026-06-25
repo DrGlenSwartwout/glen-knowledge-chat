@@ -34,3 +34,18 @@ body.js-shell-on { padding-top: var(--jshell-h); }
 #journey-shell .js-mnav { display: flex; gap: 10px; }
 #journey-shell .js-mnav a { color: #555; text-decoration: none; padding: 4px 6px; }
 #journey-shell .js-maptoggle { font-size: 18px; background: none; border: none; cursor: pointer; }
+/* expand-to-map overlay */
+.js-overlay { position: fixed; inset: 0; background: rgba(28,24,18,.78); z-index: 10000;
+  display: none; align-items: center; justify-content: center; }
+.js-overlay.open { display: flex; }
+.js-overlay-inner { background: #faf8f4; border-radius: 16px; padding: 20px;
+  max-width: 860px; width: 92vw; max-height: 86vh; overflow-y: auto;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+.js-pav-land { border: 1px solid #e6e0d6; border-radius: 12px; padding: 14px; }
+.js-pav-land.fog { opacity: .45; }
+.js-pav-land h3 { margin: 0 0 4px; font-size: 16px; }
+.js-pav-land .js-intrigue { font-size: 12px; color: #8a8073; margin-bottom: 8px; }
+.js-pav { display: block; padding: 5px 0; color: #555; text-decoration: none; font-size: 13px; }
+.js-pav.done::before { content: "✓ "; color: #5aa36a; }
+.js-overlay-close { position: fixed; top: 14px; right: 18px; font-size: 26px; color: #fff;
+  background: none; border: none; cursor: pointer; z-index: 10001; }

@@ -111,6 +111,36 @@
     });
   }
 
+  // --- expand-to-map overlay: lands open to their pavilions ---
+  function buildOverlay(journey, mapCfg) {
+    var lands = (mapCfg && mapCfg.lands) || {};
+    var cats = (mapCfg && mapCfg.categories) || {};
+    var ov = el("div", "js-overlay");
+    var close = el("button", "js-overlay-close", "×");
+    close.onclick = function () { ov.classList.remove("open"); };
+    var inner = el("div", "js-overlay-inner");
+    var seenNext = false;
+    journey.forEach(function (card) {
+      var meta = lands[card.key] || {};
+      var icon = (cats[meta.category] || {}).icon || "•";
+      var fog = (card.status !== "done" && card.status !== "next" && seenNext);
+      if (card.status === "next") seenNext = true;
+      var box = el("div", "js-pav-land" + (fog ? " fog" : ""));
+      box.appendChild(el("h3", null, icon + " " + (meta.name || card.label)));
+      box.appendChild(el("div", "js-intrigue", meta.intrigue || card.paren || ""));
+      (card.steps || []).forEach(function (s) {
+        var a = el("a", "js-pav" + (s.done ? " done" : ""), s.label);
+        a.href = card.href || "#";
+        box.appendChild(a);
+      });
+      inner.appendChild(box);
+    });
+    ov.appendChild(close); ov.appendChild(inner);
+    ov.onclick = function (e) { if (e.target === ov) ov.classList.remove("open"); };
+    document.body.appendChild(ov);
+    return ov;
+  }
+
   function boot() {
     var trail = recordVisit();
     tagExternalLinks();
@@ -120,8 +150,11 @@
       fetch("/static/shell-map.json").then(function (r) { return r.json(); }).catch(function () { return {}; })
     ]).then(function (res) {
       var journey = (res[0] && res[0].journey_map) || [];
-      if (journey.length) renderLands(pathEl, journey, res[1]);
-      else pathEl.appendChild(el("span", "js-land", "illtowell.com"));
+      if (journey.length) {
+        renderLands(pathEl, journey, res[1]);
+        var overlay = buildOverlay(journey, res[1]);
+        pathEl.addEventListener("click", function () { overlay.classList.add("open"); });
+      } else pathEl.appendChild(el("span", "js-land", "illtowell.com"));
     });
   }
 
