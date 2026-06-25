@@ -26,6 +26,16 @@ def test_resolve_self_coupon_pct(appmod):
     assert appmod._resolve_self_coupon_pct("nope", "terrain-restore")[0] == 0
 
 
+def test_best_active_self_coupon_auto_resolves(appmod, monkeypatch):
+    monkeypatch.setattr(appmod, "REWARDS_1B_ENABLED", True)
+    from dashboard import coupons
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        c = coupons.mint_self(cx, email="m@x.com", product_slug="terrain-restore")
+    assert appmod._best_active_self_coupon_code("m@x.com", "terrain-restore") == c["code"]
+    assert appmod._best_active_self_coupon_code("m@x.com", "other-slug") == ""
+    assert appmod._best_active_self_coupon_code("", "terrain-restore") == ""
+
+
 def test_pricing_applies_coupon_clamped_to_floor(appmod):
     from dashboard import pricing
     # 90% off would blow past the 57% wholesale floor → clamp up to the floor
@@ -36,3 +46,4 @@ def test_pricing_applies_coupon_clamped_to_floor(appmod):
     out = pricing.compute([item], settings=pricing.DEFAULTS, coupon_pct=90)
     # compute returns line_total_cents (not unit_cents); for qty=1 this is the effective unit price
     assert out["lines"][0]["line_total_cents"] >= 5700  # never below the 57% floor
+    assert out["lines"][0]["line_total_cents"] < 10000   # a discount WAS applied (not a no-op)

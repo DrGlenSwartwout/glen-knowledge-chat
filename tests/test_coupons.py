@@ -41,3 +41,16 @@ def test_wallet_lists_active_only(cx):
     w = coupons.wallet(cx, email="m@x.com")
     slugs = {r["product_slug"] for r in w}
     assert slugs == {"a"} and dead["product_slug"] == "b"
+
+
+def test_mint_self_blocks_remint_after_redeem(cx):
+    a = coupons.mint_self(cx, email="m@x.com", product_slug="x")
+    coupons.mark_redeemed(cx, a["code"], order_ref="INV-1")
+    b = coupons.mint_self(cx, email="m@x.com", product_slug="x")
+    assert b["code"] == a["code"]  # earn-once: no fresh coupon after redemption
+
+
+def test_mint_self_remints_after_unused_expiry(cx):
+    a = coupons.mint_self(cx, email="m@x.com", product_slug="x", days=-1)  # expired, unused
+    b = coupons.mint_self(cx, email="m@x.com", product_slug="x")
+    assert b["code"] != a["code"]  # a second chance if the first expired unused

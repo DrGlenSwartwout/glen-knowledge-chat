@@ -41,7 +41,7 @@ def mint_self(cx, *, email, product_slug, pct=15, days=10):
     now = _now()
     existing = _row(cx.execute(
         f"SELECT {_SEL} FROM coupons WHERE email=? AND product_slug=? AND kind='self' "
-        "AND redeemed_at IS NULL AND expires_at > ? ORDER BY minted_at DESC LIMIT 1",
+        "AND (redeemed_at IS NOT NULL OR expires_at > ?) ORDER BY minted_at DESC LIMIT 1",
         (email, product_slug, now)).fetchone())
     if existing:
         return existing

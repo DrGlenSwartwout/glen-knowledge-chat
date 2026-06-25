@@ -76,7 +76,7 @@
       bar.appendChild(walletBtn);
       var wp = el("div", "js-mypath"); wp.id = "js-wallet";
       wp.appendChild(el("h4", null, "Your offers"));
-      var body = el("div"); body.id = "js-wallet-body"; wp.appendChild(body);
+      var walletBody = el("div"); walletBody.id = "js-wallet-body"; wp.appendChild(walletBody);
       document.body.appendChild(wp);
       walletBtn.onclick = function () { wp.classList.toggle("open"); };
     }
@@ -166,6 +166,7 @@
   }
 
   function claimCoupon(land, btn) {
+    var orig = btn.textContent;
     btn.disabled = true; btn.textContent = "Claiming…";
     fetch("/api/journey/claim-coupon", {
       method: "POST", credentials: "same-origin",
@@ -174,7 +175,7 @@
       .then(function (res) {
         if (res.s === 200) { btn.textContent = "✓ In your wallet"; refreshWallet(); }
         else if (res.j && res.j.needs === "email_tos") { btn.disabled = false; location.href = "/begin/match"; }
-        else { btn.disabled = false; btn.textContent = "Complete this step to unlock"; }
+        else { btn.disabled = false; btn.textContent = orig; }
       }).catch(function () { btn.disabled = false; btn.textContent = "Claim 15% off"; });
   }
 

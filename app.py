@@ -5210,7 +5210,8 @@ def begin_checkout(slug):
                 _points.init_points_table(_bcx)
                 redeem = min(redeem, _points.balance(_bcx, email))
         _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(data.get("referral_code"), email)
-        _self_pct, _self_coupon = _resolve_self_coupon_pct(data.get("coupon_code"), slug)
+        _coupon_code = (data.get("coupon_code") or "").strip() or _best_active_self_coupon_code(email, slug)
+        _self_pct, _self_coupon = _resolve_self_coupon_pct(_coupon_code, slug)
         _eff_pct = max(_ref_pct or 0, _self_pct or 0)
         try:
             pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
@@ -10210,6 +10211,23 @@ def _resolve_checkout_coupon_pct(referral_code, referee_email):
     except Exception as e:  # noqa: BLE001 - referral never blocks checkout
         print(f"[referrals] resolve failed: {e}", flush=True)
         return daily, None
+
+
+def _best_active_self_coupon_code(email, product_slug):
+    """The visitor's active self-coupon code for this product, or '' — so an
+    earned coupon auto-applies at checkout without the client sending one."""
+    if not REWARDS_1B_ENABLED or not email or not product_slug:
+        return ""
+    try:
+        from dashboard import coupons as _coupons
+        with sqlite3.connect(LOG_DB) as cx:
+            _coupons.init_coupons_table(cx)
+            actives = [c for c in _coupons.wallet(cx, email=email)
+                       if c.get("product_slug") == product_slug]
+        return actives[0]["code"] if actives else ""
+    except Exception as e:  # noqa: BLE001 — never block checkout
+        print(f"[coupons] auto-resolve failed: {e!r}", flush=True)
+        return ""
 
 
 def _resolve_self_coupon_pct(code, product_slug):
