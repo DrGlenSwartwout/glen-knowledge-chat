@@ -3,6 +3,7 @@
 import argparse
 import csv
 import os
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -13,6 +14,21 @@ from dashboard import production as prod  # noqa: E402
 from dashboard import inventory as inv  # noqa: E402
 
 csv.field_size_limit(sys.maxsize)
+
+
+def _iso_date(v):
+    """Normalize FMP date 'M/D/YYYY' (e.g. '9/18/2025') -> ISO 'YYYY-MM-DD' so run_date
+    sorts and compares correctly as a string (the from_date consumption cutoff relies on
+    lexical >=, which is wrong for M/D/YYYY). Blank -> None; an unrecognized/already-ISO
+    value is returned cleaned as-is (never drop data)."""
+    s = _clean(v)
+    if not s:
+        return None
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", s)
+    if not m:
+        return s
+    mo, da, yr = m.groups()
+    return f"{yr}-{int(mo):02d}-{int(da):02d}"
 
 
 def import_production_runs(cx, rows) -> int:
@@ -27,7 +43,7 @@ def import_production_runs(cx, rows) -> int:
         if not fid:
             continue
         form_id = fmap.get((r.get("id_fk_product") or "").strip())
-        vals = [fid, form_id, _clean(r.get("label")) or None, _clean(r.get("production_date")) or None,
+        vals = [fid, form_id, _clean(r.get("label")) or None, _iso_date(r.get("production_date")),
                 _num(r.get("qty")), "completed", "fmp", _extras(r, mapped)]
         _upsert(cx, "production_runs", fmp_cols, vals, fmp_cols)
         n += 1
