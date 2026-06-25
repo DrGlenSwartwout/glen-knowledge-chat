@@ -49,3 +49,29 @@ body.js-shell-on { padding-top: var(--jshell-h); }
 .js-pav.done::before { content: "✓ "; color: #5aa36a; }
 .js-overlay-close { position: fixed; top: 14px; right: 18px; font-size: 26px; color: #fff;
   background: none; border: none; cursor: pointer; z-index: 10001; }
+
+/* mobile: collapse the path to the current land + a compact "n / total" */
+@media (max-width: 640px) {
+  #journey-shell .js-mnav { display: none; }
+  #journey-shell .js-path .js-land:not(.next) { display: none; }
+  #journey-shell .js-path .js-trail-link { display: none; }
+  .js-count { display: inline; }
+}
+
+/* 1b reward layer */
+#journey-shell .js-orb { width: 26px; height: 26px; border-radius: 50%; margin-left: 4px;
+  background: radial-gradient(circle at 50% 40%, var(--gold,#d4a843), transparent 70%);
+  box-shadow: 0 0 0 0 var(--gold,#d4a843); opacity: .4; transition: opacity .4s, box-shadow .4s; }
+#journey-shell .js-orb[data-lit="1"] { opacity: .7; box-shadow: 0 0 8px 1px var(--gold,#d4a843); }
+#journey-shell .js-orb[data-lit="2"] { opacity: .85; box-shadow: 0 0 12px 2px var(--gold,#d4a843); }
+#journey-shell .js-orb[data-lit="3"] { opacity: 1; box-shadow: 0 0 18px 3px var(--gold,#d4a843); }
+.js-pav-featured { margin: 4px 0 8px; padding: 8px; border-radius: 8px;
+  background: var(--surface-2,#162318); }
+.js-pav-featured .js-fname { font-weight: 600; color: var(--gold,#d4a843); }
+.js-pav-featured .js-fpower { font-size: 12px; color: var(--muted,#a89870); }
+.js-claim { margin-top: 6px; background: var(--gold,#d4a843); color: #12130f; border: none;
+  border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.js-claim[disabled] { opacity: .5; cursor: default; }
+.js-wallet-coupon { padding: 6px 8px; border: 1px dashed var(--gold,#d4a843); border-radius: 8px;
+  margin: 6px 0; font-size: 13px; }
+.js-wallet-coupon .js-exp { color: var(--muted,#a89870); font-size: 11px; }
