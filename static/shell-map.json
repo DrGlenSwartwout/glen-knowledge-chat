@@ -3,7 +3,7 @@
     "scan": {"name": "The Listening Pool", "category": "scan", "intrigue": "Your body is already speaking. Step in and listen."},
     "find": {"name": "The Hall of Mirrors", "category": "find", "intrigue": "See the one remedy your body is asking for."},
     "heal": {"name": "The Sanctuary", "category": "heal", "intrigue": "Where the root causes finally settle."},
-    "give": {"name": "The Beacon", "category": "give", "intrigue": "Light the way for someone still in the fog."}
+    "give": {"name": "The Beacon", "category": "give", "intrigue": "the gift of healing"}
   },
   "categories": {
     "scan": {"icon": "🌀", "hue": "#4aa3a2"},
