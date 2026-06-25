@@ -52,10 +52,10 @@
       if (document.referrer && new URL(document.referrer).origin === location.origin) history.back();
       else location.href = "/";
     };
+    var mapBtn = el("button", "js-mapbtn", "🗺️"); mapBtn.title = "Open your journey map";
     var path = el("div", "js-path"); path.id = "js-path";
-    path.title = "Open your journey map";
     var mypathBtn = el("button", "js-mypath-btn", "My Path");
-    bar.appendChild(home); bar.appendChild(back); bar.appendChild(path);
+    bar.appendChild(home); bar.appendChild(back); bar.appendChild(mapBtn); bar.appendChild(path);
 
     if (MODE === "member") {
       var mnav = el("div", "js-mnav",
@@ -86,7 +86,7 @@
 
     var drawer = buildMyPath(trail);
     mypathBtn.onclick = function () { drawer.classList.toggle("open"); };
-    return path;
+    return { path: path, mapBtn: mapBtn };
   }
 
   function buildMyPath(trail) {
@@ -202,14 +202,14 @@
   function boot() {
     var trail = recordVisit();
     tagExternalLinks();
-    var pathEl = buildRibbon(trail);
+    var ui = buildRibbon(trail);
     Promise.all([
       fetch("/begin/state", { credentials: "same-origin" }).then(function (r) { return r.json(); }).catch(function () { return {}; }),
       fetch("/static/shell-map.json").then(function (r) { return r.json(); }).catch(function () { return {}; })
     ]).then(function (res) {
       var journey = (res[0] && res[0].journey_map) || [];
       if (journey.length) {
-        renderLands(pathEl, journey, res[1]);
+        renderLands(ui.path, journey, res[1]);
         var overlay = buildOverlay(journey, res[1]);
         ui.mapBtn.addEventListener("click", function () { overlay.classList.add("open"); });
         refreshWallet();
