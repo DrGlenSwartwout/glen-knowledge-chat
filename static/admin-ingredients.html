@@ -130,6 +130,11 @@
     #prod-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
     #prod-detail-panel { display: none; }
     #prod-detail-panel.active { display: block; }
+
+    /* Reorder tab */
+    #ro-results { display: none; }
+    #ro-results.active { display: block; }
+    #ro-frm-results { list-style: none; margin: 0; padding: 0; }
     #prod-list td { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
     #prod-list tr:hover td { background: rgba(212,168,67,0.08); }
     #prod-list th { text-align: left; padding: 6px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
@@ -195,6 +200,7 @@
     <button class="tab-btn" onclick="showTab('po')">Purchase Orders</button>
     <button class="tab-btn" onclick="showTab('inventory')">Inventory</button>
     <button class="tab-btn" onclick="showTab('production')">Production</button>
+    <button class="tab-btn" onclick="showTab('reorder')">Reorder</button>
   </div>
 
   <!-- ── Ingredients tab ─────────────────────────────────────────────────── -->
@@ -875,6 +881,54 @@
 
   </div><!-- /#tab-production -->
 
+  <!-- ── Reorder tab ────────────────────────────────────────────────────────── -->
+  <div id="tab-reorder" class="tab-panel">
+
+    <div class="section">
+      <h2>Production Plan (optional)</h2>
+      <p class="hint" style="margin-bottom:14px">Add formulations you plan to make to calculate ingredient demand. Leave empty to see only below-par items.</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr auto auto;gap:10px;align-items:flex-end;margin-bottom:12px">
+        <div class="field-block">
+          <label>Formulation</label>
+          <input type="text" id="ro-frm-search" placeholder="Type to search formulations…" autocomplete="off" oninput="roFrmSearch()">
+          <ul id="ro-frm-results" style="background:#0d1117;border:1px solid var(--border);border-radius:6px;margin-top:4px"></ul>
+        </div>
+        <div class="field-block">
+          <label for="ro-frm-qty">Qty (units)</label>
+          <input type="number" id="ro-frm-qty" step="any" placeholder="e.g. 100" style="width:100px;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px">
+        </div>
+        <div class="field-block">
+          <label style="visibility:hidden">Add</label>
+          <button onclick="roAddPlanLine()">+ Add to plan</button>
+        </div>
+      </div>
+
+      <table id="ro-plan-table" style="width:100%;border-collapse:collapse;margin-bottom:14px">
+        <thead>
+          <tr>
+            <th style="text-align:left">Formulation</th>
+            <th style="text-align:left">Qty</th>
+            <th style="text-align:left"></th>
+          </tr>
+        </thead>
+        <tbody id="ro-plan"></tbody>
+      </table>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <input type="checkbox" id="ro-below-par" checked style="accent-color:var(--accent);width:15px;height:15px">
+        <label for="ro-below-par" style="font-size:13px;cursor:pointer">Include below-par ingredients (even without production plan)</label>
+      </div>
+
+      <div>
+        <button onclick="roCompute()">Compute reorder list</button>
+      </div>
+    </div>
+
+    <div id="ro-results"></div>
+
+  </div><!-- /#tab-reorder -->
+
 </div><!-- /#wrap -->
 
 <div id="toast"></div>
@@ -915,7 +969,7 @@ function showTab(name) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.getElementById("tab-" + name).classList.add("active");
   const btns = document.querySelectorAll(".tab-btn");
-  const labels = ["ingredients", "suppliers", "import", "formulations", "materials", "po", "inventory", "production"];
+  const labels = ["ingredients", "suppliers", "import", "formulations", "materials", "po", "inventory", "production", "reorder"];
   btns[labels.indexOf(name)].classList.add("active");
   if (name === "suppliers") loadSuppliers();
   if (name === "production") doProdSearch();
@@ -2168,6 +2222,104 @@ async function prodImport(write) {
     dryBtn.disabled = false;
     writeBtn.disabled = false;
   }
+}
+
+// ── Reorder ───────────────────────────────────────────────────────────────────
+let roFrmResults = [];
+let roPickedFormId = null, roPickedFormName = "";
+let reorderPlan = [];
+
+async function roFrmSearch() {
+  const q = document.getElementById("ro-frm-search").value.trim();
+  if (!q) { document.getElementById("ro-frm-results").innerHTML = ""; return; }
+  try {
+    roFrmResults = (await api("/api/formulations/search?q=" + encodeURIComponent(q))).slice(0, 15);
+    document.getElementById("ro-frm-results").innerHTML = roFrmResults.map(function(f, i) {
+      return '<li style="cursor:pointer;padding:8px 12px;border-bottom:1px solid var(--border);font-size:13px" onclick="roFrmPick(' + i + ')">' + escapeHtml(f.name) + '</li>';
+    }).join("");
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function roFrmPick(i) {
+  const f = roFrmResults[i];
+  if (!f) return;
+  roPickedFormId = f.id;
+  roPickedFormName = f.name;
+  document.getElementById("ro-frm-search").value = f.name;
+  document.getElementById("ro-frm-results").innerHTML = "";
+}
+
+function roAddPlanLine() {
+  const qty = parseFloat(document.getElementById("ro-frm-qty").value);
+  if (!roPickedFormId || isNaN(qty) || qty <= 0) { toast("Pick a formulation and a positive qty", "error"); return; }
+  reorderPlan.push({ formulation_id: roPickedFormId, name: roPickedFormName, qty: qty });
+  roPickedFormId = null;
+  document.getElementById("ro-frm-search").value = "";
+  document.getElementById("ro-frm-qty").value = "";
+  renderReorderPlan();
+}
+
+function roRemovePlanLine(i) { reorderPlan.splice(i, 1); renderReorderPlan(); }
+
+function renderReorderPlan() {
+  document.getElementById("ro-plan").innerHTML = reorderPlan.map(function(l, i) {
+    return '<tr>' +
+      '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + escapeHtml(l.name) + '</td>' +
+      '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + l.qty + '</td>' +
+      '<td style="padding:6px 10px;border-bottom:1px solid var(--border)"><button class="secondary save-btn" onclick="roRemovePlanLine(' + i + ')">&#10005;</button></td>' +
+      '</tr>';
+  }).join("");
+}
+
+async function roCompute() {
+  const body = {
+    plan: reorderPlan.map(function(l) { return { formulation_id: l.formulation_id, qty: l.qty }; }),
+    include_below_par: document.getElementById("ro-below-par").checked
+  };
+  let rep;
+  try {
+    rep = await api("/api/reorder/report", { method: "POST", body: JSON.stringify(body) });
+  } catch (e) { toast("Compute failed: " + e.message, "error"); return; }
+  const el = document.getElementById("ro-results");
+  el.classList.add("active");
+  if (!rep.groups || !rep.groups.length) {
+    el.innerHTML = '<div class="section"><p class="hint">Nothing to reorder — everything is at or above par/demand.</p></div>';
+    return;
+  }
+  el.innerHTML = '<div class="section">' +
+    rep.groups.map(function(g) {
+      var rows = g.lines.map(function(l) {
+        var warn = l.unit_warning ? ' <span title="unit mismatch" style="color:#b80">&#9888;</span>' : '';
+        return '<tr>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + escapeHtml(l.ingredient) + warn + '</td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + l.on_hand + '</td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + l.on_order + '</td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + l.par + '</td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + l.demand + '</td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)"><strong>' + l.shortfall + '</strong></td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + l.suggested_qty + ' ' + escapeHtml(l.unit || "") + '</td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + (l.est_cost != null ? '$' + l.est_cost : '—') + '</td>' +
+          '</tr>';
+      }).join("");
+      return '<h4 style="margin:18px 0 8px;font-size:14px">' + escapeHtml(g.supplier) + ' — subtotal $' + g.subtotal + '</h4>' +
+        '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Ingredient</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">On hand</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">On order</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Par</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Demand</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Shortfall</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Suggested</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Est. cost</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+        '</table>';
+    }).join("") +
+    '<p style="margin-top:14px"><strong>Total: ' + rep.totals.lines + ' lines &middot; est. $' + rep.totals.est_cost + '</strong></p>' +
+    '</div>';
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
