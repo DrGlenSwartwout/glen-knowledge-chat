@@ -307,6 +307,29 @@
       </div>
 
       <div id="fmp-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:28px 0">
+
+      <h3 style="margin:0 0 8px;font-size:15px;font-weight:600;color:var(--text)">Formulations (recipes)</h3>
+      <p class="hint" style="margin-bottom:16px">Import Ingredients (above) FIRST, then upload products.csv + products_items.csv. Dry-run, then Import. Re-running is safe.</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="fmp-file-products">Products CSV</label>
+          <input type="file" id="fmp-file-products" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-products_items">Products-Items CSV</label>
+          <input type="file" id="fmp-file-products_items" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button id="form-dry-btn" onclick="formImport(false)">Dry Run</button>
+        <button id="form-write-btn" class="confirm" onclick="formImport(true)">Import (write)</button>
+      </div>
+
+      <div id="form-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
     </div>
   </div>
 
@@ -484,6 +507,72 @@ async function fmpImport(write) {
         Sources: <strong>${escapeHtml(String(d.sources ?? 0))}</strong><br>
         Canonical applied: <strong>${escapeHtml(String(d.canonical_applied ?? 0))}</strong> &nbsp;|&nbsp;
         Canonical skipped: <strong>${escapeHtml(String(d.canonical_skipped ?? 0))}</strong>`;
+      toast("Import written successfully", "ok");
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<span style="color:var(--red)">Network error: ' + escapeHtml(e.message) + '</span>';
+    toast(e.message, "error");
+  } finally {
+    dryBtn.disabled = false;
+    writeBtn.disabled = false;
+  }
+}
+
+async function formImport(write) {
+  const fProducts      = document.getElementById("fmp-file-products").files[0];
+  const fProductsItems = document.getElementById("fmp-file-products_items").files[0];
+
+  if (!fProducts || !fProductsItems) {
+    toast("Please choose both CSV files before running.", "error");
+    return;
+  }
+
+  const resultEl = document.getElementById("form-result");
+  const dryBtn   = document.getElementById("form-dry-btn");
+  const writeBtn = document.getElementById("form-write-btn");
+  dryBtn.disabled = true;
+  writeBtn.disabled = true;
+  resultEl.style.display = "block";
+  resultEl.innerHTML = '<span style="color:var(--muted)">Uploading…</span>';
+
+  const fd = new FormData();
+  fd.append("products",       fProducts);
+  fd.append("products_items", fProductsItems);
+  if (write) fd.append("write", "1");
+
+  try {
+    const r = await fetch("/api/formulations/import", {
+      method: "POST",
+      headers: { "X-Console-Key": KEY },
+      body: fd,
+    });
+    const j = await r.json();
+
+    if (r.status === 401) {
+      document.getElementById("auth-warn").style.display = "block";
+      resultEl.innerHTML = '<span style="color:var(--red)">Unauthorized — check your console key.</span>';
+      return;
+    }
+
+    if (!j.ok) {
+      resultEl.innerHTML = '<span style="color:var(--red)">Error: ' + escapeHtml(j.error || "request failed") + '</span>';
+      toast(j.error || "Import failed", "error");
+      return;
+    }
+
+    const d = j.data;
+    if (d.mode === "dry_run") {
+      resultEl.innerHTML = `
+        <strong style="color:var(--accent-light)">Dry Run — no data written</strong><br>
+        Formulations: <strong>${escapeHtml(String(d.ff_formulations ?? 0))}</strong> &nbsp;|&nbsp;
+        Products-Items: <strong>${escapeHtml(String(d.products_items ?? 0))}</strong>`;
+      toast("Dry run complete");
+    } else {
+      resultEl.innerHTML = `
+        <strong style="color:var(--green)">Import complete</strong><br>
+        Formulations: <strong>${escapeHtml(String(d.formulations ?? 0))}</strong> &nbsp;|&nbsp;
+        Items: <strong>${escapeHtml(String(d.items ?? 0))}</strong> &nbsp;|&nbsp;
+        Unresolved: <strong>${escapeHtml(String(d.unresolved ?? 0))}</strong>`;
       toast("Import written successfully", "ok");
     }
   } catch (e) {
