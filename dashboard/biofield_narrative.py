@@ -96,6 +96,31 @@ _SCAN_GUIDANCE = (
     "do not invent scan findings beyond those listed, and do not treat a scan marked "
     "stale as current.")
 
+_PROFILE_GUIDANCE = (
+    "\n- If a CLIENT-STATED CONCERNS block is present, acknowledge the client's own "
+    "stated symptoms, challenges, and goals in plain, validating language and connect "
+    "them to the causal chain where honest to do so. Do not invent concerns beyond those listed.")
+
+_PROFILE_FIELDS = ("conditions", "challenges", "goals", "tags", "terrain_concerns", "body_systems")
+
+
+def _profile_content(profile):
+    return bool(profile) and any(str((profile or {}).get(f) or "").strip() for f in _PROFILE_FIELDS)
+
+
+def _profile_block(profile):
+    if not _profile_content(profile):
+        return ""
+    lines = ["CLIENT-STATED CONCERNS (acknowledge in the client's own terms):"]
+    for f in _PROFILE_FIELDS:
+        v = profile.get(f)
+        if isinstance(v, (list, tuple)):
+            v = ", ".join(str(x).strip() for x in v if str(x).strip())
+        v = str(v or "").strip()
+        if v:
+            lines.append(f"- {f.replace('_', ' ')}: {v}")
+    return "\n".join(lines)
+
 
 def _narrative_findings(scan):
     """The scan findings fed to the patient narrative = INFOCEUTICALS only. ER/MR
@@ -128,7 +153,7 @@ def _scan_block(scan):
     return "\n".join(lines)
 
 
-def _user_block(report, notes, scan=None):
+def _user_block(report, notes, scan=None, profile=None):
     c = report.get("client") or {}
     lines = [f"PATIENT: {c.get('name') or ''}",
              f"DATE: {report.get('date') or ''}",
@@ -144,6 +169,9 @@ def _user_block(report, notes, scan=None):
     sb = _scan_block(scan)
     if sb:
         lines += ["", sb]
+    pb = _profile_block(profile)
+    if pb:
+        lines += ["", pb]
     lines += ["", "CLINICIAN VERBAL NOTES (weave in naturally):", (notes or "(none)")]
     return "\n".join(lines)
 
@@ -154,14 +182,16 @@ def _system_with_scan(base, scan):
     return base + (_SCAN_GUIDANCE if _narrative_findings(scan) else "")
 
 
-def build_narrative_prompt(report, notes, scan=None):
-    return {"system": _system_with_scan(_SYSTEM, scan),
-            "user": _user_block(report, notes, scan)}
+def build_narrative_prompt(report, notes, scan=None, profile=None):
+    system = _system_with_scan(_SYSTEM, scan)
+    if _profile_content(profile):
+        system += _PROFILE_GUIDANCE
+    return {"system": system, "user": _user_block(report, notes, scan, profile)}
 
 
-def generate_narrative(report, notes, complete, scan=None):
-    """complete(system, user) -> narrative text. `scan` = optional E4L scan context."""
-    p = build_narrative_prompt(report, notes, scan)
+def generate_narrative(report, notes, complete, scan=None, profile=None):
+    """complete(system, user) -> narrative text. scan = E4L context; profile = People-hub context."""
+    p = build_narrative_prompt(report, notes, scan, profile)
     return complete(p["system"], p["user"])
 
 

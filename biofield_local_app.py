@@ -592,8 +592,13 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         with sqlite3.connect(db_path) as cx:
             save_notes(cx, test_id, notes)
             ctx, rep = _e4l(cx, test_id)  # authored or FMP report + recent E4L scan
+            prof = {}
             try:
-                text = generate_narrative(rep, notes, complete, scan=ctx)
+                prof = fetch_profile(((rep.get("client") or {}).get("email") or "").strip()) or {}
+            except Exception:
+                prof = {}
+            try:
+                text = generate_narrative(rep, notes, complete, scan=ctx, profile=prof)
             except Exception as e:  # no API key / network / model error
                 return {"error": str(e)[:200]}
             save_narrative(cx, test_id, text)
