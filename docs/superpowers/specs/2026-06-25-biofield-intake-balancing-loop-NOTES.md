@@ -51,6 +51,17 @@ spec → plan. It is NOT yet a buildable spec.
    stresses is preferred over several single-stress remedies. This is a balancing
    optimization over the remedy↔stress coverage map, not just a display preference.
 
+9. **Other / optional scan stresses (characterization):** also pull in the E4L scan's
+   OTHER stress patterns — the info-only `stress`-group findings (ER = Energetic
+   Rejuvenators, MR1..MR10; see `biofield_e4l.py` `_STRESS_CATEGORIES=("ER","MR")`) plus
+   lower-ranked patterns beyond the top set used for layers. Add them to the master
+   stress list flagged **optional** (`balance = optional`, vs the required scan/comm/tag
+   stresses). They are **optional to balance for now** — their primary job is to help
+   **establish and characterize the causal-chain layers**. If/when one IS balanced by a
+   remedy, **list it in the report as balanced**; if left unbalanced, it still appears as
+   characterizing context for its layer, not as an open to-do. So every stress carries a
+   `balance` attribute: `required` | `optional`.
+
 ## Confirmed decisions (2026-06-25)
 
 - **Layer reorder semantics:** *Insert at N + renumber* — the row moves to position N
