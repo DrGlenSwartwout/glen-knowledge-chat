@@ -94,7 +94,7 @@ def main():
         prod.init_production_schema(cx)
         nr = import_production_runs(cx, runs)
         ni = import_production_items(cx, items)
-        mode = "from_date" if args.consumption_from else args.consumption
+        mode = "record_only" if args.consumption == "record_only" else ("from_date" if args.consumption_from else args.consumption)
         nc = prod.post_consumption(cx, mode=mode, cutoff_date=args.consumption_from)
         if args.write:
             cx.commit()

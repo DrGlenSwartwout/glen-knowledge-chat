@@ -21187,7 +21187,7 @@ def api_production_import():
             init_inventory_schema(cx); init_production_schema(cx)
             nr = import_production_runs(cx, runs)
             ni = import_production_items(cx, items)
-            mode = "from_date" if cons_from else cons
+            mode = "record_only" if cons == "record_only" else ("from_date" if cons_from else cons)
             nc = post_consumption(cx, mode=mode, cutoff_date=cons_from)
             if write:
                 cx.commit()

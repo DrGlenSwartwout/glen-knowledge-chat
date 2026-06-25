@@ -2137,9 +2137,10 @@ async function prodImport(write) {
   const fd = new FormData();
   fd.append("production",       fRuns);
   fd.append("production_items", fItems);
-  fd.append("consumption",      document.getElementById("prod-consumption-mode").value);
+  const mode = document.getElementById("prod-consumption-mode").value;
+  fd.append("consumption", mode);
   const cfrom = document.getElementById("prod-consumption-from").value;
-  if (cfrom) fd.append("consumption_from", cfrom);
+  if (mode !== "record_only" && cfrom) fd.append("consumption_from", cfrom);
   if (write) fd.append("write", "1");
   try {
     const res = await fetch("/api/production/import", { method: "POST", headers: { "X-Console-Key": KEY }, body: fd });
