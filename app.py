@@ -2973,6 +2973,34 @@ def qbo_diagnostics():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/qbo/invoice-status", methods=["GET"])
+def qbo_invoice_status():
+    """Read-only: report live QBO Balance/paid state for one or more invoice Ids
+    (the value stored in orders.external_ref for portal-reorder/reorder/funnel
+    orders). Lets the console show whether a QBO-emailed invoice has actually
+    been paid, since QBO hosted-page payments don't sync back to the board."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    ids = [s.strip() for s in (request.args.get("ids") or "").split(",") if s.strip()]
+    if not ids:
+        return jsonify({"ok": False, "error": "pass ?ids=<qbo_invoice_id>[,...]"}), 400
+    from dashboard import qbo_billing as qb
+    out = []
+    for inv_id in ids[:50]:
+        try:
+            inv = qb.get_invoice(inv_id)
+            i = inv.get("Invoice", inv) if isinstance(inv, dict) else inv
+            bal = float(i.get("Balance", i.get("TotalAmt", 0)) or 0)
+            out.append({"id": inv_id, "doc_number": i.get("DocNumber"),
+                        "total": i.get("TotalAmt"), "balance": bal,
+                        "paid": bal <= 0, "txn_date": i.get("TxnDate"),
+                        "linked": [(t.get("TxnType"), t.get("TxnId"))
+                                   for t in (i.get("LinkedTxn") or [])]})
+        except Exception as e:
+            out.append({"id": inv_id, "error": str(e)[:300]})
+    return jsonify({"ok": True, "invoices": out})
+
+
 @app.route("/api/qbo/test-invoice", methods=["POST"])
 def qbo_test_invoice():
     """Create ONE test invoice (no online pay) for a clearly-named test customer to
@@ -23443,6 +23471,26 @@ def bos_orders_create():
                     o["backorder_units"] = back
             except Exception as _e:
                 print(f"[orders] backorder annotate skipped: {_e!r}", flush=True)
+            # Display-name fallback: many orders carry only a shipping name, which is
+            # blank for portal/reorder flows that don't re-collect it. Backfill the
+            # display name from the people table by email (one grouped query).
+            try:
+                need = sorted({(o.get("email") or "").strip().lower()
+                               for o in rows if not (o.get("name") or "").strip()
+                               and (o.get("email") or "").strip()})
+                if need:
+                    ph = ",".join("?" * len(need))
+                    by_email = {}
+                    for em, nm in cx.execute(
+                            f"SELECT lower(email), name FROM people WHERE lower(email) IN ({ph})",
+                            need).fetchall():
+                        if (nm or "").strip() and em not in by_email:
+                            by_email[em] = nm.strip()
+                    for o in rows:
+                        if not (o.get("name") or "").strip():
+                            o["name"] = by_email.get((o.get("email") or "").strip().lower(), o.get("name") or "")
+            except Exception as _e:
+                print(f"[orders] name backfill skipped: {_e!r}", flush=True)
         finally:
             cx.close()
         return jsonify({"ok": True, "data": rows})
