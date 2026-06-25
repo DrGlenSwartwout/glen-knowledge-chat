@@ -334,6 +334,21 @@ def ordered_chain(cx, tid):
     return out
 
 
+def reorder_chain(cx, tid, rid, new_layer):
+    """Move top-zone row `rid` to position `new_layer` and renumber the top zone
+    contiguously. Unbalanced scan rows (bottom zone) are left untouched."""
+    top = [l for l in ordered_chain(cx, tid) if l["zone"] == "top"]
+    ids = [l["id"] for l in top]
+    if rid not in ids:
+        return
+    ids.remove(rid)
+    pos = max(1, min(int(new_layer or 1), len(ids) + 1)) - 1
+    ids.insert(pos, rid)
+    for i, _id in enumerate(ids, 1):
+        cx.execute("UPDATE biofield_auth_chain SET layer=? WHERE id=?", (i, _id))
+    cx.commit()
+
+
 def authored_report(cx, tid):
     init_auth_tables(cx)
     cx.row_factory = sqlite3.Row
