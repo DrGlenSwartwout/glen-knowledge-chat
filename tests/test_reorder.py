@@ -8,7 +8,7 @@ from dashboard import inventory as inv
 def _db(tmp_path):
     db = str(tmp_path / "chat_log.db")
     with sqlite3.connect(db) as cx:
-        cx.execute("CREATE TABLE ingredients (id INTEGER PRIMARY KEY, name TEXT, extras TEXT)")
+        cx.execute("CREATE TABLE ingredients (id INTEGER PRIMARY KEY, name TEXT, extras TEXT, par_level REAL, par_level_unit TEXT)")
         cx.execute("""CREATE TABLE ingredient_sources (id INTEGER PRIMARY KEY, ingredient_id INTEGER,
             supplier_id INTEGER, supplier_name TEXT, price_per_unit REAL, unit_size REAL,
             unit_type TEXT, preferred INTEGER DEFAULT 0, minimum_order REAL, minimum_order_unit TEXT)""")
@@ -21,8 +21,8 @@ def _db(tmp_path):
         cx.execute("CREATE TABLE po_receiving (id INTEGER PRIMARY KEY, po_item_id INTEGER, qty_received REAL)")
         inv.init_inventory_schema(cx)
         # ingredient 1: par 3 kg, preferred source MOQ 2 / unit_size 0.5 / $10
-        cx.execute("INSERT INTO ingredients VALUES (1,'Mag',?)", (json.dumps({"par_level": "3", "par_level_unit": "kg"}),))
-        cx.execute("INSERT INTO ingredients VALUES (2,'Lipoic',?)", (json.dumps({"par_level": "1", "par_level_unit": "kg"}),))
+        cx.execute("INSERT INTO ingredients (id,name,par_level,par_level_unit) VALUES (1,'Mag',3,'kg')")
+        cx.execute("INSERT INTO ingredients (id,name,par_level,par_level_unit) VALUES (2,'Lipoic',1,'kg')")
         cx.execute("INSERT INTO suppliers VALUES (7,'NOW Foods')")
         cx.execute("INSERT INTO ingredient_sources (id,ingredient_id,supplier_id,supplier_name,price_per_unit,unit_size,preferred,minimum_order,minimum_order_unit) VALUES (1,1,7,'NOW Foods',10.0,0.5,1,2.0,'kg')")
         cx.execute("INSERT INTO formulations VALUES (1,'Brain Blend')")
@@ -92,8 +92,7 @@ def test_preferred_source_by_per_base_cost(tmp_path):
         # ingredient 3, par 5, on_hand 0 → shortfall 5. Two sources, neither flagged preferred:
         #   A: $77 / 250 g  = $0.308/g  (cheaper per gram)
         #   B: $50 / 100 g  = $0.500/g  (cheaper PACK price, pricier per gram)
-        cx.execute("INSERT INTO ingredients VALUES (3,'Cheap-test',?)",
-                   (json.dumps({"par_level": "5", "par_level_unit": "g"}),))
+        cx.execute("INSERT INTO ingredients (id,name,par_level,par_level_unit) VALUES (3,'Cheap-test',5,'g')")
         cx.execute("INSERT INTO suppliers VALUES (8,'PerGram Co')")
         cx.execute("INSERT INTO suppliers VALUES (9,'PackPrice Co')")
         cx.execute("INSERT INTO ingredient_sources (id,ingredient_id,supplier_id,supplier_name,price_per_unit,unit_size,preferred) VALUES (10,3,8,'PerGram Co',77.0,250.0,0)")

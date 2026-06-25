@@ -49,8 +49,8 @@ def inventory_levels(q="", limit=50, offset=0, db_path=None):
         rows = cx.execute("""
             SELECT i.id, i.name,
                    COALESCE((SELECT SUM(qty) FROM inventory_txns t WHERE t.ingredient_id=i.id),0) AS on_hand,
-                   json_extract(i.extras,'$.par_level')      AS par_level,
-                   json_extract(i.extras,'$.par_level_unit') AS par_level_unit
+                   i.par_level      AS par_level,
+                   i.par_level_unit AS par_level_unit
             FROM ingredients i
             WHERE i.name LIKE ?
             ORDER BY i.name
@@ -79,8 +79,8 @@ def get_inventory(ingredient_id, db_path=None):
         txns = [dict(x) for x in cx.execute(
             "SELECT * FROM inventory_txns WHERE ingredient_id=? ORDER BY txn_date DESC, id DESC",
             (ingredient_id,)).fetchall()]
-    par = _json_get(ing.get("extras"), "par_level")
-    par_unit = _json_get(ing.get("extras"), "par_level_unit")
+    par = ing.get("par_level")
+    par_unit = ing.get("par_level_unit")
     return {"ingredient": ing, "on_hand": float(oh or 0),
             "par_level": par, "par_level_unit": par_unit, "txns": txns}
 
@@ -145,7 +145,7 @@ def seed_baselines(cx) -> int:
     cx.row_factory = sqlite3.Row
     rows = cx.execute("""
         SELECT id, json_extract(extras,'$.inventory_starting') AS start,
-                   json_extract(extras,'$.par_level_unit')      AS unit
+                   par_level_unit AS unit
         FROM ingredients
         WHERE json_extract(extras,'$.inventory_starting') IS NOT NULL
     """).fetchall()
