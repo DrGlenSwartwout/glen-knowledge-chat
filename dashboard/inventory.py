@@ -139,3 +139,48 @@ def _json_get(extras, key):
         return json.loads(extras).get(key)
     except (ValueError, TypeError):
         return None
+
+
+def seed_baselines(cx) -> int:
+    cx.row_factory = sqlite3.Row
+    rows = cx.execute("""
+        SELECT id, json_extract(extras,'$.inventory_starting') AS start,
+                   json_extract(extras,'$.par_level_unit')      AS unit
+        FROM ingredients
+        WHERE json_extract(extras,'$.inventory_starting') IS NOT NULL
+    """).fetchall()
+    n = 0
+    for r in rows:
+        qty = _to_num(r["start"])
+        if qty is None:
+            continue
+        cur = cx.execute("""
+            INSERT OR IGNORE INTO inventory_txns
+                (ingredient_id, txn_type, qty, unit, txn_date, source_kind, source_ref)
+            VALUES (?, 'baseline', ?, ?, NULL, 'fmp_baseline', ?)
+        """, (r["id"], qty, r["unit"], f"baseline:{r['id']}"))
+        n += cur.rowcount
+    return n
+
+
+def seed_receipts(cx) -> int:
+    cx.row_factory = sqlite3.Row
+    rows = cx.execute("""
+        SELECT rec.id AS rec_id, pi.ingredient_id AS ingredient_id,
+               rec.qty_received AS qty, rec.received_size AS unit,
+               COALESCE(po.posted_date, po.po_date, date(rec.created_at)) AS txn_date
+        FROM po_receiving rec
+        JOIN po_items pi ON pi.id = rec.po_item_id
+        LEFT JOIN purchase_orders po ON po.id = rec.po_id
+        WHERE pi.ingredient_id IS NOT NULL
+          AND rec.qty_received IS NOT NULL AND rec.qty_received <> 0
+    """).fetchall()
+    n = 0
+    for r in rows:
+        cur = cx.execute("""
+            INSERT OR IGNORE INTO inventory_txns
+                (ingredient_id, txn_type, qty, unit, txn_date, source_kind, source_ref)
+            VALUES (?, 'receipt', ?, ?, ?, 'po_receiving', ?)
+        """, (r["ingredient_id"], float(r["qty"]), r["unit"], r["txn_date"], f"po_receiving:{r['rec_id']}"))
+        n += cur.rowcount
+    return n
