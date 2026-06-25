@@ -1,4 +1,4 @@
-/* Journey navigation shell (1a). Vanilla, self-contained, idempotent. */
+/* Journey navigation shell (1a + polish). Vanilla, self-contained, idempotent. */
 (function () {
   if (window.__jshellBooted) return;
   window.__jshellBooted = true;
@@ -41,6 +41,26 @@
     });
   }
 
+  // --- push the site's own fixed/sticky top bars (theme toggle, page headers)
+  //     below the ribbon so nothing tucks underneath it ---
+  function deCollideFixed(shellH) {
+    function bump(e2, force) {
+      if (!e2 || e2.dataset.jshellOffset) return;
+      if (e2.id === "journey-shell" || e2.closest("#journey-shell")) return;
+      var cs = getComputedStyle(e2);
+      if (cs.position !== "fixed" && cs.position !== "sticky") return;
+      var r = e2.getBoundingClientRect();
+      var ok = r.top < shellH && r.height > 0 && (force || (r.height < 140 && r.width > 36));
+      if (ok) {
+        e2.dataset.jshellOffset = "1";
+        e2.style.top = (parseFloat(cs.top || "0") + shellH) + "px";
+      }
+    }
+    document.querySelectorAll("body > *, header, nav, [class*='header'], [class*='navbar']").forEach(function (e2) { bump(e2, false); });
+    // the site's own theme toggle is small + added on DOMContentLoaded — force it
+    bump(document.getElementById("rm-theme-toggle"), true);
+  }
+
   // --- ribbon scaffold ---
   function buildRibbon(trail) {
     var bar = el("div"); bar.id = "journey-shell";
@@ -51,19 +71,17 @@
       if (document.referrer && new URL(document.referrer).origin === location.origin) history.back();
       else location.href = "/";
     };
+    var mapBtn = el("button", "js-mapbtn", "🗺️"); mapBtn.title = "Open your journey map";
     var path = el("div", "js-path"); path.id = "js-path";
-    path.title = "Open your journey map";
     var mypathBtn = el("button", "js-mypath-btn", "My Path");
-    bar.appendChild(home); bar.appendChild(back); bar.appendChild(path);
+    bar.appendChild(home); bar.appendChild(back); bar.appendChild(mapBtn); bar.appendChild(path);
 
+    var mnav = null;
     if (MODE === "member") {
-      var mnav = el("div", "js-mnav",
+      mnav = el("div", "js-mnav",
         '<a href="/client-portal">Journal</a><a href="/coaching">Coaching</a>' +
         '<a href="/client-portal">Account</a>');
-      var toggle = el("button", "js-maptoggle", "🗺️"); toggle.title = "Map / nav";
-      bar.insertBefore(toggle, home);  // unobtrusive upper-left toggle
       bar.appendChild(mnav);
-      toggle.onclick = function () { path.classList.toggle("js-hide"); mnav.classList.toggle("js-hide"); };
     }
 
     bar.appendChild(mypathBtn);
@@ -72,7 +90,7 @@
 
     var drawer = buildMyPath(trail);
     mypathBtn.onclick = function () { drawer.classList.toggle("open"); };
-    return path;
+    return { path: path, mapBtn: mapBtn };
   }
 
   function buildMyPath(trail) {
@@ -109,6 +127,11 @@
       land.onclick = function (e) { e.stopPropagation(); if (card.href) location.href = card.href; };
       pathEl.appendChild(land);
     });
+    // compact "n / total" shown only on mobile (CSS-gated)
+    var total = journey.length;
+    var nextIdx = journey.map(function (c) { return c.status; }).indexOf("next");
+    var current = nextIdx >= 0 ? nextIdx + 1 : total;
+    pathEl.appendChild(el("span", "js-count", current + " / " + total));
   }
 
   // --- expand-to-map overlay: lands open to their pavilions ---
@@ -144,17 +167,22 @@
   function boot() {
     var trail = recordVisit();
     tagExternalLinks();
-    var pathEl = buildRibbon(trail);
+    var ui = buildRibbon(trail);
+    deCollideFixed(52);
+    // re-run after DOMContentLoaded/load so late-added fixed bars (the theme
+    // toggle is appended on DOMContentLoaded) also get pushed below the ribbon
+    window.addEventListener("load", function () { deCollideFixed(52); });
+    setTimeout(function () { deCollideFixed(52); }, 400);
     Promise.all([
       fetch("/begin/state", { credentials: "same-origin" }).then(function (r) { return r.json(); }).catch(function () { return {}; }),
       fetch("/static/shell-map.json").then(function (r) { return r.json(); }).catch(function () { return {}; })
     ]).then(function (res) {
       var journey = (res[0] && res[0].journey_map) || [];
       if (journey.length) {
-        renderLands(pathEl, journey, res[1]);
+        renderLands(ui.path, journey, res[1]);
         var overlay = buildOverlay(journey, res[1]);
-        pathEl.addEventListener("click", function () { overlay.classList.add("open"); });
-      } else pathEl.appendChild(el("span", "js-land", "illtowell.com"));
+        ui.mapBtn.addEventListener("click", function () { overlay.classList.add("open"); });
+      } else ui.path.appendChild(el("span", "js-land", "illtowell.com"));
     });
   }
 
