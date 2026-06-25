@@ -10,9 +10,12 @@ spec → plan. It is NOT yet a buildable spec.
 ## Scope
 
 1. **Master stress list per test** — union of:
-   - scan stresses (the reveal patterns / pattern_labels), and
-   - additional stresses captured by voice in Phase 1.
-   Each stress has an active/balanced state.
+   - scan stresses (the reveal patterns / pattern_labels),
+   - additional stresses captured by voice in Phase 1,
+   - **stresses mined from recent communications** (see item 6), and
+   - **stresses from health/wellness tags** (see item 7).
+   Each stress has an active/balanced state and a source
+   (`scan` | `voice` | `comm` | `tag`).
 
 2. **Matched-remedies list per test** — from the scan AI synthesis. Each remedy
    carries the set of scan stresses (pattern codes) the synthesis matched to it.
@@ -30,6 +33,24 @@ spec → plan. It is NOT yet a buildable spec.
 
 5. **Layer reorder:** changing a remedy/row's layer number moves it to that position.
 
+6. **Recent-communication mining (always-on for reveals AND intake):** before/at
+   reveal + intake time, ALWAYS check the client's most recent communications across
+   channels — email (Gmail hub `drglenswartwout@gmail.com`), chat (`chat_log.db`),
+   Practice Better, GHL, etc. — **especially anything in the last 7 days** — for
+   mentions of **symptoms, issues, challenges, and goals**. Itemize each as a stress
+   to balance, add it to the master stress list (source=`comm`), AND weave it into the
+   generated report/reveal narrative (so the client sees their own words addressed).
+
+7. **Health/wellness tags as stresses:** pull the client's relevant health/wellness
+   tags (People hub already exposes `tags`/`conditions`/`challenges`/`goals` via
+   `/api/people` — `e4l-reveal-push.py:fetch_history` already reads these) and add the
+   relevant ones as stresses (source=`tag`) for balancing and reporting.
+
+8. **Minimal-remedy consolidation:** when balancing the master stress list, prefer the
+   **fewest remedies** that cover the most stresses. A remedy that clears several
+   stresses is preferred over several single-stress remedies. This is a balancing
+   optimization over the remedy↔stress coverage map, not just a display preference.
+
 ## Confirmed decisions (2026-06-25)
 
 - **Layer reorder semantics:** *Insert at N + renumber* — the row moves to position N
@@ -43,6 +64,21 @@ spec → plan. It is NOT yet a buildable spec.
   and mark cleared by hand).
 - **Sequencing:** SP-A (Import Reveal button) ships first; SP-B is specced and built
   afterward.
+- **Recent-comms + tags mining is always-on** for both reveals and intake, with a
+  7-day emphasis window; mined items appear as stresses AND in the report narrative.
+- **Minimal-remedy consolidation** is a hard goal of the balancing step.
+
+## Open questions added 2026-06-25 (for the SP-B spec)
+
+- Which comm channels are wired now vs. need new connectors? Gmail (hub) + chat_log.db
+  + GHL API are reachable today; Practice Better access path TBD. Per-channel
+  last-7-days fetch + an extraction pass (LLM → symptoms/issues/challenges/goals).
+- Dedup across sources (a symptom in email + a matching tag + a scan pattern should
+  collapse to one stress, not three).
+- How `comm`/`tag` stresses get remedy associations (they have none from the scan AI):
+  match them onto the scan-matched remedies' coverage, or surface for manual balancing.
+- Minimal-remedy consolidation algorithm: greedy set-cover over the remedy↔stress
+  coverage map; tie-break by clinical fit / dose practicality.
 
 ## Forward-compatibility note for SP-A
 
