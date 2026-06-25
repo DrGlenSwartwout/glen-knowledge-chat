@@ -76,9 +76,22 @@ def synthesize_reveal_layers(email, scan_id=None, *, e4l_db=DEFAULT_E4L_DB,
                        "title": (L.get("title") or "").strip(),
                        "summary": (L.get("summary") or "").strip(),
                        "most_affected": ", ".join(L.get("pattern_labels") or []),
-                       "remedy_name": name})
+                       "remedy_name": name,
+                       "codes": list(L.get("patterns") or [])})
     return {"found": True, "scan_id": scan["scan_id"], "scan_date": scan["scan_date"],
             "days_ago": days, "fresh": days is not None and days < 7, "layers": layers}
+
+
+def build_coverage(layers):
+    """Map each remedy (lowercased) to the set of scan stress codes it covers,
+    derived from the synthesized layers. Empty-remedy layers are skipped."""
+    cov = {}
+    for L in layers or []:
+        name = (L.get("remedy_name") or "").strip().lower()
+        if not name:
+            continue
+        cov.setdefault(name, set()).update(L.get("codes") or [])
+    return cov
 
 
 def import_layers_to_test(cx, tid, layers):
