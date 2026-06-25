@@ -78,9 +78,45 @@ def mark_redeemed(cx, code, *, order_ref):
     return cur.rowcount > 0
 
 
-def wallet(cx, *, email):
+def mint_gift(cx, *, email, product_slug, pct=15, days=30):
+    """One giftable coupon per (owner email, product_slug) for life. Owned by the
+    gifter; redeemable by a different email. Idempotent."""
     now = _now()
-    rows = cx.execute(
-        f"SELECT {_SEL} FROM coupons WHERE email=? AND redeemed_at IS NULL AND expires_at > ? "
-        "ORDER BY expires_at ASC", (email, now)).fetchall()
+    existing = _row(cx.execute(
+        f"SELECT {_SEL} FROM coupons WHERE email=? AND product_slug=? AND kind='gift' "
+        "ORDER BY minted_at DESC LIMIT 1", (email, product_slug)).fetchone())
+    if existing:
+        return existing
+    code = "GIFT-" + uuid.uuid4().hex[:8].upper()
+    expires = (datetime.strptime(now, "%Y-%m-%d %H:%M:%S")
+               + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    cx.execute("INSERT INTO coupons(code,product_slug,pct,kind,email,minted_at,expires_at) "
+               "VALUES (?,?,?,?,?,?,?)",
+               (code, product_slug, int(pct), "gift", email, now, expires))
+    cx.commit()
+    return _row(cx.execute(f"SELECT {_SEL} FROM coupons WHERE code=?", (code,)).fetchone())
+
+
+def validate_gift(cx, code, *, referee_email):
+    """Valid gift coupon redeemable by referee_email (not the owner). None otherwise."""
+    now = _now()
+    r = _row(cx.execute(
+        f"SELECT {_SEL} FROM coupons WHERE code=? AND kind='gift' AND redeemed_at IS NULL "
+        "AND expires_at > ?", ((code or "").strip(), now)).fetchone())
+    if not r:
+        return None
+    if (referee_email or "").strip().lower() == (r["email"] or "").strip().lower():
+        return None  # no self-gift
+    return r
+
+
+def wallet(cx, *, email, kind=None):
+    now = _now()
+    q = f"SELECT {_SEL} FROM coupons WHERE email=? AND redeemed_at IS NULL AND expires_at > ? "
+    params = [email, now]
+    if kind:
+        q += "AND kind=? "
+        params.append(kind)
+    q += "ORDER BY expires_at ASC"
+    rows = cx.execute(q, params).fetchall()
     return [_row(r) for r in rows]

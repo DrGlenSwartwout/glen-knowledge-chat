@@ -5,6 +5,7 @@
   var MODE = (window.__SHELL__ && window.__SHELL__.mode) || "funnel";
   var TRAIL_KEY = "jshell.trail";
   var REWARDS = !!(window.__SHELL__ && window.__SHELL__.rewards1b);
+  var REWARDS_GIFT = !!(window.__SHELL__ && window.__SHELL__.rewardsGift);
 
   function el(tag, cls, html) {
     var e = document.createElement(tag);
@@ -152,6 +153,21 @@
         fb.appendChild(claim);
         box.appendChild(fb);
       }
+      if (REWARDS_GIFT && card.key === "give") {
+        var gb = el("button", "js-claim", "Unlock gifting");
+        gb.onclick = function () {
+          gb.disabled = true; gb.textContent = "Activating…";
+          fetch("/api/journey/activate-gifting", {method: "POST", credentials: "same-origin",
+            headers: {"Content-Type": "application/json"}, body: "{}"})
+            .then(function (r) { return r.json().then(function (j) { return {s: r.status, j: j}; }); })
+            .then(function (res) {
+              if (res.s === 200) { gb.textContent = "✓ Gifting unlocked"; refreshWallet(); }
+              else if (res.j && res.j.needs === "email_tos") { location.href = "/begin/match"; }
+              else { gb.disabled = false; gb.textContent = "Unlock gifting"; }
+            }).catch(function () { gb.disabled = false; gb.textContent = "Unlock gifting"; });
+        };
+        box.appendChild(gb);
+      }
       (card.steps || []).forEach(function (s) {
         var a = el("a", "js-pav" + (s.done ? " done" : ""), s.label);
         a.href = card.href || "#";
@@ -194,6 +210,20 @@
             panel.appendChild(el("div", "js-wallet-coupon",
               "<b>15% off</b> " + c.product_slug +
               "<div class='js-exp'>expires " + (c.expires_at || "").slice(0, 10) + "</div>"));
+          });
+          var gifts = (j && j.gifts) || [];
+          gifts.forEach(function (g) {
+            var row = el("div", "js-wallet-coupon",
+              "<b>Gift 15% off</b> " + g.product_slug + " <span class='js-exp'>to a friend</span>");
+            var share = el("button", "js-claim", "Share");
+            share.onclick = function () {
+              var url = location.origin + g.share_url;
+              (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
+                .then(function () { share.textContent = "✓ Link copied"; })
+                .catch(function () { share.textContent = url; });
+            };
+            row.appendChild(share);
+            panel.appendChild(row);
           });
         }
       }).catch(function () {});
