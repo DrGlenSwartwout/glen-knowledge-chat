@@ -288,6 +288,35 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         return {"ok": bool(res.get("ok")), "error": res.get("error"),
                 "newer": newer, "e4l": after, "html": render_e4l_panel(after)}
 
+    @app.route("/author/<test_id>/e4l/import-reveal", methods=["POST"])
+    def author_import_reveal(test_id):
+        """Import the client's recent (<7d) E4L reveal layers + remedies as
+        needs-review causal-chain rows. Appends only after an explicit force when the
+        session already has rows. Synthesis runs in-process (PHI stays local)."""
+        import datetime as _dt
+        from dashboard import biofield_reveal_import as _ri
+        force = bool((request.get_json(silent=True) or {}).get("force"))
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            email = ((rep.get("client") or {}).get("email") or "").strip()
+            if not email:
+                return {"ok": False, "reason": "No client selected yet"}
+            try:
+                res = _ri.synthesize_reveal_layers(email, today=_dt.date.today().isoformat())
+            except Exception as e:
+                return {"ok": False, "reason": f"Reveal synthesis failed: {e}"}
+            if not res.get("found"):
+                return {"ok": False, "reason": "No E4L scan on file"}
+            if not res.get("fresh"):
+                return {"ok": False,
+                        "reason": f"Latest scan is {res.get('days_ago')} days old "
+                                  "— refresh to import"}
+            existing = len(rep.get("layers") or [])
+            if existing and not force:
+                return {"ok": False, "needs_confirm": True, "existing": existing}
+            imported = _ri.import_layers_to_test(cx, test_id, res.get("layers") or [])
+        return {"ok": True, "imported": imported}
+
     @app.route("/author/<test_id>/row", methods=["POST"])
     def author_row_add(test_id):
         d = request.get_json(silent=True) or {}
