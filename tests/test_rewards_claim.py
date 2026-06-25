@@ -57,3 +57,19 @@ def test_claim_mints_when_eligible_and_wallet_lists_it(client):
     assert body["coupon"]["pct"] == 15 and body["coupon"]["product_slug"]
     w = c.get("/api/journey/wallet").get_json()
     assert any(x["code"] == body["coupon"]["code"] for x in w["coupons"])
+
+
+def test_routes_return_404_when_flag_off(client, monkeypatch):
+    c, appmod, _bf = client
+    monkeypatch.setattr(appmod, "REWARDS_1B_ENABLED", False)
+    assert c.post("/api/journey/claim-coupon", json={"land": "scan"}).status_code == 404
+    assert c.get("/api/journey/wallet").status_code == 404
+
+
+def test_double_claim_returns_same_coupon(client):
+    c, appmod, bf = client
+    _seed_session(bf, appmod.LOG_DB, "s4", email="m@x.com", tos=True, gates=["scan", "course_ww"])
+    c.set_cookie("amg_session", "s4")
+    a = c.post("/api/journey/claim-coupon", json={"land": "scan"}).get_json()
+    b = c.post("/api/journey/claim-coupon", json={"land": "scan"}).get_json()
+    assert a["coupon"]["code"] == b["coupon"]["code"]
