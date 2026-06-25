@@ -30,6 +30,7 @@ from pinecone import Pinecone
 import anthropic
 import boto3 as _boto3
 import begin_funnel
+import shell_nav
 
 # ── Slice 4 test seam ─────────────────────────────────────────────────────────
 # Tests verify member-context injection by reading this module-level variable.
@@ -3277,6 +3278,7 @@ CHAT_TOPIC_OFFER_ENABLED = os.environ.get("CHAT_TOPIC_OFFER_ENABLED", "false").s
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_CART_ENABLED = os.environ.get("BIOFIELD_CART_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 ASCEND_PERSONALIZED_ENABLED = os.environ.get("ASCEND_PERSONALIZED_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+JOURNEY_SHELL_ENABLED = os.environ.get("JOURNEY_SHELL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _referral_pct():
@@ -24268,6 +24270,25 @@ def admin_sales_images_backfill():
             if _si.needs_topup(cx, s):
                 _si.enqueue(cx, s); enq.append(s)
     return jsonify({"ok": True, "enqueued": enq, "count": len(enq)})
+
+
+@app.after_request
+def _inject_journey_shell(response):
+    if not JOURNEY_SHELL_ENABLED:
+        return response
+    try:
+        if not shell_nav.should_inject(request.path, response.content_type or "", response.status_code):
+            return response
+        response.direct_passthrough = False  # static file responses default to True
+        html = response.get_data(as_text=True)
+        if "</head>" not in html:
+            return response
+        authed = bool(get_authenticated_user(request))
+        mode = shell_nav.resolve_mode(request.path, authed)
+        response.set_data(shell_nav.inject_shell_html(html, mode))
+    except Exception as e:  # never let the shell break a page
+        print(f"[journey-shell] inject skipped: {e!r}", flush=True)
+    return response
 
 
 if __name__ == "__main__":
