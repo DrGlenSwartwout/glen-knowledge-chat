@@ -5,7 +5,11 @@ import json, os, sqlite3
 from pathlib import Path
 from typing import Optional
 
-from dashboard._core_edit import _set_core as _set_core_field, _unlock_core as _unlock_core_field
+from dashboard._core_edit import (
+    _set_core as _set_core_field,
+    _unlock_core as _unlock_core_field,
+    _coerce_core,
+)
 
 _ING_CORE = {"name", "form", "common_names", "par_level", "par_level_unit"}
 _SRC_CORE = {"price_per_unit", "unit_size", "unit_type"}
@@ -158,6 +162,80 @@ def set_preferred_source(source_id, db_path=None):
         cx.execute("UPDATE ingredient_sources SET preferred=0, updated_at=datetime('now') WHERE ingredient_id=?", (row["ingredient_id"],))
         cx.execute("UPDATE ingredient_sources SET preferred=1, updated_at=datetime('now') WHERE id=?", (source_id,))
         cx.commit()
+
+
+# ---------------------------------------------------------------------------
+# Console-create helpers (fmp_id=NULL — importer-invisible by construction)
+# ---------------------------------------------------------------------------
+
+_ING_CREATABLE = _ING_CORE | _ING_CURATED               # name/form/common_names/par_*/curated
+_SUP_CREATABLE = {"company", "address_street", "address_city", "address_province",
+                  "address_postal_code", "email", "phone_business", "phone_cell",
+                  "phone_fax", "url", "notes"}
+_SRC_CREATABLE = {"ingredient_id", "supplier_id", "supplier_name", "sku", "price_per_unit",
+                  "unit_size", "unit_type", "shipping_quote", "preferred", "lead_time_days",
+                  "minimum_order", "minimum_order_unit", "notes"}
+_SRC_NUMERIC_EXTRA = {"minimum_order", "lead_time_days", "shipping_quote", "supplier_id", "ingredient_id"}
+
+
+def _insert_allowed(table, fields, allowed, required, numeric_extra=None, db_path=None):
+    """Insert a row using only columns in `allowed` (injection guard: cols are f-string interpolated).
+
+    Raises ValueError for any field not in `allowed` BEFORE building SQL — the allowlist
+    is the only injection guard, exactly mirroring E1's `_set_core` allowlist check.
+    """
+    fields = fields or {}
+    for k in fields:
+        if k not in allowed:
+            raise ValueError(f"{k} is not a creatable field of {table}")
+    for req in required:
+        if str(fields.get(req) if fields.get(req) is not None else "").strip() == "":
+            raise ValueError(f"{req} is required")
+    cols, vals = [], []
+    for k, v in fields.items():
+        cols.append(k)
+        vals.append(_coerce_core(k, v, numeric_extra=numeric_extra))
+    if not cols:
+        raise ValueError("no fields to insert")
+    with _connect(db_path) as cx:
+        cur = cx.execute(
+            f"INSERT INTO {table} ({','.join(cols)}) VALUES ({','.join('?' for _ in cols)})", vals)
+        cx.commit()
+        return int(cur.lastrowid)
+
+
+def create_ingredient(fields, db_path=None) -> int:
+    """Create a new ingredient with fmp_id=NULL (console-created, importer-invisible)."""
+    return _insert_allowed("ingredients", fields, _ING_CREATABLE, {"name"}, db_path=db_path)
+
+
+def create_supplier(fields, db_path=None) -> int:
+    """Create a new supplier with fmp_id=NULL (console-created, importer-invisible)."""
+    return _insert_allowed("suppliers", fields, _SUP_CREATABLE, {"company"}, db_path=db_path)
+
+
+def create_source(ingredient_id, fields, db_path=None) -> int:
+    """Create a new ingredient_source row linking to an existing ingredient.
+
+    Validates the ingredient exists; injects ingredient_id; if `preferred` is truthy,
+    calls set_preferred_source after insert to clear other preferred flags.
+    """
+    with _connect(db_path) as cx:
+        if not cx.execute("SELECT 1 FROM ingredients WHERE id=?", (ingredient_id,)).fetchone():
+            raise ValueError(f"no ingredient {ingredient_id}")
+    f = {**(fields or {}), "ingredient_id": ingredient_id}
+    # Robust truthiness (callers incl. the email collector may send 1/"1"/true/2/etc.);
+    # normalize the stored flag to 0/1 so WHERE preferred=1 always matches.
+    _pref = f.get("preferred")
+    want_pref = (_pref in (1, True)) or (str(_pref).strip().lower() in ("1", "true", "yes")) \
+        or (isinstance(_pref, (int, float)) and not isinstance(_pref, bool) and _pref != 0)
+    if "preferred" in f:
+        f["preferred"] = 1 if want_pref else 0
+    sid = _insert_allowed("ingredient_sources", f, _SRC_CREATABLE, set(),
+                          numeric_extra=_SRC_NUMERIC_EXTRA, db_path=db_path)
+    if want_pref:
+        set_preferred_source(sid, db_path=db_path)   # unsets others for this ingredient
+    return sid
 
 
 # ---------------------------------------------------------------------------
