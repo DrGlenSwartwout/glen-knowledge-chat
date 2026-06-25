@@ -20734,6 +20734,41 @@ def api_source_unlock(rid):
         return fail(e)
 
 
+# ── Create Endpoints (Ingredient Catalog) ─────────────────────────────────────
+
+@app.route("/api/ingredients", methods=["POST"])
+@require_console_key
+def api_create_ingredient():
+    try:
+        return ok({"id": _ingredients.create_ingredient(request.get_json(silent=True) or {})})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/suppliers", methods=["POST"])
+@require_console_key
+def api_create_supplier():
+    try:
+        return ok({"id": _ingredients.create_supplier(request.get_json(silent=True) or {})})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/ingredients/<int:iid>/sources", methods=["POST"])
+@require_console_key
+def api_create_source(iid):
+    try:
+        return ok({"id": _ingredients.create_source(iid, request.get_json(silent=True) or {})})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
 # ── Formulation Catalog ───────────────────────────────────────────────────────
 # /api/formulations/*  — JSON API behind require_console_key
 from dashboard import formulations as _formulations
@@ -20793,6 +20828,32 @@ def api_formulation_item_unlock(rid):
     try:
         _formulations.unlock_item_core(rid, (request.get_json(silent=True) or {}).get("field"))
         return ok({"id": rid})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+# ── Create Endpoints (Formulation Catalog) ────────────────────────────────────
+
+@app.route("/api/formulations/<int:fid>/items", methods=["POST"])
+@require_console_key
+def api_add_formulation_item(fid):
+    try:
+        b = request.get_json(silent=True) or {}
+        return ok({"id": _formulations.add_formulation_item(fid, b.get("ingredient_id"), b.get("dose"), b.get("dose_unit"))})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/formulation-items/<int:item_id>", methods=["DELETE"])
+@require_console_key
+def api_remove_formulation_item(item_id):
+    try:
+        _formulations.remove_formulation_item(item_id)
+        return ok({"id": item_id})
     except ValueError as e:
         return fail(str(e), status=400)
     except Exception as e:
