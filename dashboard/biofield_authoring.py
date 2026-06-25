@@ -32,9 +32,14 @@ def init_auth_tables(cx):
     cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_chain(
         id INTEGER PRIMARY KEY AUTOINCREMENT, test_id INTEGER, layer INTEGER,
         head TEXT, most_affected TEXT, remedy TEXT, dosage TEXT, frequency TEXT,
-        timing TEXT, sort_seq INTEGER, created_at TEXT, confirmed INTEGER DEFAULT 1)""")
+        timing TEXT, sort_seq INTEGER, created_at TEXT, confirmed INTEGER DEFAULT 1,
+        origin TEXT NOT NULL DEFAULT 'live')""")
     try:
         cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN confirmed INTEGER DEFAULT 1")
+    except Exception:
+        pass
+    try:
+        cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN origin TEXT NOT NULL DEFAULT 'live'")
     except Exception:
         pass
     cx.commit()
@@ -69,14 +74,15 @@ def update_header(cx, tid, name=None, email=None, date=None):
 
 
 def add_chain_row(cx, tid, layer, head, most_affected, remedy,
-                  dosage="", frequency="", timing="", confirmed=1):
+                  dosage="", frequency="", timing="", confirmed=1, origin="live"):
     init_auth_tables(cx)
     cur = cx.execute(
         "INSERT INTO biofield_auth_chain(test_id,layer,head,most_affected,remedy,"
-        "dosage,frequency,timing,sort_seq,created_at,confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "dosage,frequency,timing,sort_seq,created_at,confirmed,origin) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         (_num(tid), layer, (head or "").strip(), (most_affected or "").strip(),
          (remedy or "").strip(), dosage or "", frequency or "", timing or "", 0, _now(),
-         1 if confirmed else 0))
+         1 if confirmed else 0, (origin or "live")))
     cx.commit()
     return cur.lastrowid
 
