@@ -161,7 +161,13 @@ Client (pure JS helpers, unit-tested in isolation + manual/visual QA of the rend
   then member surfaces.
 - **Increment split:**
   - **1a — shell + map render + visible trail + bug-fixes, NO points** (the fast wayfinding win).
+    **BUILT 2026-06-25** (`shell_nav.py`, `static/shell.{js,css}`, `static/shell-map.json`,
+    `app.py` after_request; 20 tests). **1a go-live:** set `JOURNEY_SHELL_ENABLED=1` in Doppler
+    `remedy-match/prd` after pilot review.
   - **1b — reward layer** (§6) — virtual remedies, avatar, celebrations, reconciled with real points.
+
+**Local test command** (the suite needs prod secrets at import but a local data dir):
+`doppler run -p remedy-match -c prd -- env DATA_DIR=/tmp/jshell-test python3 -m pytest …`
 
 ## Inputs needed from Glen (during planning, not blocking)
 
