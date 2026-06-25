@@ -165,6 +165,13 @@
     .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: .04em; margin-left: 6px; }
     .badge-pref { background: rgba(61,138,82,0.2); color: var(--green); border: 1px solid var(--green); }
     .badge-status { background: rgba(212,168,67,0.12); color: var(--amber); border: 1px solid var(--border); }
+    .badge-overridden { background: rgba(212,168,67,0.18); color: var(--amber); border: 1px solid var(--amber); cursor: default; }
+
+    /* Core-field label row */
+    .core-field-label { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+    .core-field-label label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0; }
+    .unlock-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 4px; cursor: pointer; line-height: 1.6; }
+    .unlock-btn:hover { color: var(--text); border-color: var(--amber); background: rgba(212,168,67,0.08); }
 
     /* Toast */
     #toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
@@ -228,22 +235,44 @@
           <span id="detail-status-badge"></span>
         </div>
 
-        <div class="section-label">FMP Fields (read-only)</div>
+        <div class="section-label">Core Fields (editable — protected on re-import when overridden)</div>
         <div class="field-grid">
           <div class="field-block">
-            <label>Form</label>
-            <div class="ro-val" id="fmp-form">—</div>
+            <div class="core-field-label" id="ing-name-label-row">
+              <label for="ing-core-name">Name</label>
+            </div>
+            <input type="text" id="ing-core-name" placeholder="Ingredient name">
           </div>
           <div class="field-block">
-            <label>Status</label>
+            <div class="core-field-label" id="ing-form-label-row">
+              <label for="ing-core-form">Form</label>
+            </div>
+            <input type="text" id="ing-core-form" placeholder="e.g. powder / liquid">
+          </div>
+          <div class="field-block">
+            <div class="core-field-label" id="ing-par-label-row">
+              <label for="ing-core-par-level">Par Level</label>
+            </div>
+            <input type="number" id="ing-core-par-level" placeholder="e.g. 500" step="any" min="0" style="width:100%">
+          </div>
+          <div class="field-block">
+            <div class="core-field-label" id="ing-par-unit-label-row">
+              <label for="ing-core-par-unit">Par Unit</label>
+            </div>
+            <input type="text" id="ing-core-par-unit" placeholder="e.g. g / kg / units">
+          </div>
+          <div class="field-block field-full">
+            <div class="core-field-label" id="ing-common-names-label-row">
+              <label for="ing-core-common-names">Common Names</label>
+            </div>
+            <input type="text" id="ing-core-common-names" placeholder="Comma-separated alternate names">
+          </div>
+          <div class="field-block">
+            <label>Status (read-only)</label>
             <div class="ro-val" id="fmp-status">—</div>
           </div>
           <div class="field-block field-full">
-            <label>Common Names</label>
-            <div class="ro-val" id="fmp-common-names">—</div>
-          </div>
-          <div class="field-block field-full">
-            <label>Extras (raw JSON)</label>
+            <label>Extras (raw JSON, read-only)</label>
             <div class="extras-block" id="fmp-extras">—</div>
           </div>
         </div>
@@ -295,7 +324,8 @@
               <th>Supplier</th>
               <th>SKU</th>
               <th>Price/unit</th>
-              <th>Size</th>
+              <th>Unit size</th>
+              <th>Unit type</th>
               <th>Ship quote</th>
               <th>Lead (days)</th>
               <th>Min order</th>
@@ -530,6 +560,7 @@
           </thead>
           <tbody id="frm-items-tbody"></tbody>
         </table>
+        <!-- Note: Dose and Unit columns are editable core fields — save per row. -->
         <div id="frm-items-empty" class="hint" style="display:none">No items in this formulation.</div>
       </div>
 
@@ -1283,6 +1314,47 @@ async function doSearch(q) {
   }
 }
 
+// ── Core-field override helpers ───────────────────────────────────────────────
+
+// Returns HTML for an amber "overridden" badge + unlock button.
+// entity = "ing" | "src" | "item", id = numeric row id, field = field name string.
+// IMPORTANT: only simple literals are passed to onclick — no JSON.stringify.
+function coreOverrideBadge(entity, id, field) {
+  return '<span class="badge badge-overridden">overridden</span>' +
+         ' <button class="unlock-btn" onclick="unlockCoreField(\'' + entity + '\',' + id + ',\'' + field + '\')">&#8635; unlock</button>';
+}
+
+async function unlockCoreField(entity, id, field) {
+  const urlMap = { ing: "/api/ingredients/", src: "/api/sources/", item: "/api/formulation-items/" };
+  const url = urlMap[entity];
+  if (!url) return;
+  try {
+    await api(url + id + "/unlock", { method: "POST", body: JSON.stringify({ field: field }) });
+    toast("Override removed — field will update on next import");
+    // Refresh the relevant detail
+    if (entity === "ing") openIngredient(_currentIngId);
+    else if (entity === "src") openIngredient(_currentIngId);
+    else if (entity === "item") openFormulation(_currentFrmId);
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// Wires a core-field input to save on blur via PATCH /api/<entity-path>/<id>/core
+// entity = "ing" | "src" | "item", apiPath = full url prefix like "/api/ingredients/"
+function wireCoreInput(inputEl, entity, apiPath, id, field, refreshFn) {
+  const origVal = inputEl.value;
+  inputEl.addEventListener("change", async function() {
+    const newVal = this.value;
+    try {
+      await api(apiPath + id + "/core", { method: "PATCH", body: JSON.stringify({ field: field, value: newVal }) });
+      toast("Saved");
+      refreshFn();
+    } catch (e) {
+      toast(e.message, "error");
+      this.value = origVal;
+    }
+  });
+}
+
 // ── Ingredient detail ─────────────────────────────────────────────────────────
 async function openIngredient(id) {
   _currentIngId = id;
@@ -1296,11 +1368,62 @@ async function openIngredient(id) {
   try {
     const { ingredient: ing, sources } = await api("/api/ingredients/" + id);
 
-    // FMP read-only
+    // Parse overrides
+    let ovr = [];
+    try { ovr = JSON.parse(ing.overrides || "[]"); } catch (_) {}
+
+    // Core fields — editable inputs
     document.getElementById("detail-name").textContent = ing.name || "";
-    document.getElementById("fmp-form").textContent = ing.form || "—";
+    document.getElementById("ing-core-name").value = ing.name || "";
+    document.getElementById("ing-core-form").value = ing.form || "";
+    // common_names: stored as JSON array, display as comma-joined
+    let commonNamesVal = "";
+    if (ing.common_names) {
+      try {
+        const arr = JSON.parse(ing.common_names);
+        commonNamesVal = Array.isArray(arr) ? arr.join(", ") : ing.common_names;
+      } catch (_) { commonNamesVal = ing.common_names; }
+    }
+    document.getElementById("ing-core-common-names").value = commonNamesVal;
+    document.getElementById("ing-core-par-level").value = ing.par_level != null ? ing.par_level : "";
+    document.getElementById("ing-core-par-unit").value = ing.par_level_unit || "";
+
+    // Overridden badges on core label rows
+    const coreFields = ["name", "form", "common_names", "par_level", "par_level_unit"];
+    const labelRowIds = {
+      name: "ing-name-label-row", form: "ing-form-label-row",
+      common_names: "ing-common-names-label-row",
+      par_level: "ing-par-label-row", par_level_unit: "ing-par-unit-label-row"
+    };
+    coreFields.forEach(function(f) {
+      const row = document.getElementById(labelRowIds[f]);
+      if (!row) return;
+      // Remove old badge/unlock if re-opening
+      row.querySelectorAll(".badge-overridden, .unlock-btn").forEach(function(el) { el.remove(); });
+      if (ovr.indexOf(f) !== -1) {
+        row.insertAdjacentHTML("beforeend", coreOverrideBadge("ing", id, f));
+      }
+    });
+
+    // Wire core inputs to save on change
+    const ingRefresh = function() { openIngredient(id); };
+    [
+      ["ing-core-name",         "name"],
+      ["ing-core-form",         "form"],
+      ["ing-core-common-names", "common_names"],
+      ["ing-core-par-level",    "par_level"],
+      ["ing-core-par-unit",     "par_level_unit"],
+    ].forEach(function(pair) {
+      const el = document.getElementById(pair[0]);
+      if (!el) return;
+      // Remove old listeners by replacing the element clone
+      const fresh = el.cloneNode(true);
+      el.parentNode.replaceChild(fresh, el);
+      wireCoreInput(fresh, "ing", "/api/ingredients/", id, pair[1], ingRefresh);
+    });
+
+    // FMP read-only
     document.getElementById("fmp-status").textContent = ing.status || "—";
-    document.getElementById("fmp-common-names").textContent = ing.common_names || "—";
 
     // extras JSON pretty-print
     let extrasDisplay = "—";
@@ -1312,7 +1435,7 @@ async function openIngredient(id) {
 
     // Status badge
     const badge = document.getElementById("detail-status-badge");
-    badge.innerHTML = ing.status ? `<span class="badge badge-status">${escapeHtml(ing.status)}</span>` : "";
+    badge.innerHTML = ing.status ? '<span class="badge badge-status">' + escapeHtml(ing.status) + '</span>' : "";
 
     // Curated fields
     document.getElementById("ing-inci-name").value = ing.inci_name || "";
@@ -1373,28 +1496,72 @@ function renderSources(sources, ingredientId) {
   for (const s of sources) {
     const tr = document.createElement("tr");
     tr.id = "src-row-" + s.id;
-    const unitDisplay = [s.unit_size, s.unit_type].filter(Boolean).join(" ") || "—";
-    tr.innerHTML = `
-      <td><strong>${escapeHtml(s.company || s.supplier_name || "—")}</strong></td>
-      <td style="color:var(--muted)">${escapeHtml(s.sku || "—")}</td>
-      <td>${s.price_per_unit != null ? "$" + Number(s.price_per_unit).toFixed(2) : "—"}</td>
-      <td>${escapeHtml(unitDisplay)}</td>
-      <td>${s.shipping_quote != null ? "$" + Number(s.shipping_quote).toFixed(2) : "—"}</td>
-      <td><input type="number" class="src-field" data-src="${s.id}" data-field="lead_time_days" value="${s.lead_time_days ?? ""}" placeholder="days" min="0" style="width:60px"></td>
-      <td><input type="number" class="src-field" data-src="${s.id}" data-field="minimum_order" value="${s.minimum_order ?? ""}" placeholder="qty" min="0" style="width:70px"></td>
-      <td><input type="text" class="src-field" data-src="${s.id}" data-field="minimum_order_unit" value="${escapeHtml(s.minimum_order_unit || "")}" placeholder="kg / unit" style="width:70px"></td>
-      <td><input type="text" class="src-field" data-src="${s.id}" data-field="notes" value="${escapeHtml(s.notes || "")}" placeholder="notes" style="width:120px"></td>
-      <td class="cell-pref">
-        <input type="radio" class="pref-radio" name="pref-source-${ingredientId}" data-src="${s.id}" ${s.preferred ? "checked" : ""} title="Set as preferred">
-      </td>
-      <td>
-        <button class="save-btn" onclick="saveSource(${s.id})">Save</button>
-      </td>`;
+    // Parse overrides for this source row
+    let srcOvr = [];
+    try { srcOvr = JSON.parse(s.overrides || "[]"); } catch (_) {}
+
+    // Build overridden badge HTML for source core fields (no JSON.stringify in onclick)
+    const srcBadge = function(field) {
+      if (srcOvr.indexOf(field) !== -1) return coreOverrideBadge("src", s.id, field);
+      return "";
+    };
+
+    tr.innerHTML =
+      '<td><strong>' + escapeHtml(s.company || s.supplier_name || "—") + '</strong></td>' +
+      '<td style="color:var(--muted)">' + escapeHtml(s.sku || "—") + '</td>' +
+      '<td><div style="display:flex;align-items:center;gap:4px">' +
+        '<input type="number" class="src-core-field" data-src="' + s.id + '" data-field="price_per_unit"' +
+          ' value="' + (s.price_per_unit != null ? s.price_per_unit : "") + '"' +
+          ' placeholder="0.00" step="0.01" min="0" style="width:70px">' +
+        srcBadge("price_per_unit") +
+      '</div></td>' +
+      '<td><div style="display:flex;align-items:center;gap:4px">' +
+        '<input type="number" class="src-core-field" data-src="' + s.id + '" data-field="unit_size"' +
+          ' value="' + (s.unit_size != null ? s.unit_size : "") + '"' +
+          ' placeholder="qty" step="any" min="0" style="width:65px">' +
+        srcBadge("unit_size") +
+      '</div></td>' +
+      '<td><div style="display:flex;align-items:center;gap:4px">' +
+        '<input type="text" class="src-core-field" data-src="' + s.id + '" data-field="unit_type"' +
+          ' value="' + escapeHtml(s.unit_type || "") + '"' +
+          ' placeholder="g / kg…" style="width:55px">' +
+        srcBadge("unit_type") +
+      '</div></td>' +
+      '<td>' + (s.shipping_quote != null ? "$" + Number(s.shipping_quote).toFixed(2) : "—") + '</td>' +
+      '<td><input type="number" class="src-field" data-src="' + s.id + '" data-field="lead_time_days" value="' + (s.lead_time_days != null ? s.lead_time_days : "") + '" placeholder="days" min="0" style="width:60px"></td>' +
+      '<td><input type="number" class="src-field" data-src="' + s.id + '" data-field="minimum_order" value="' + (s.minimum_order != null ? s.minimum_order : "") + '" placeholder="qty" min="0" style="width:70px"></td>' +
+      '<td><input type="text" class="src-field" data-src="' + s.id + '" data-field="minimum_order_unit" value="' + escapeHtml(s.minimum_order_unit || "") + '" placeholder="kg / unit" style="width:70px"></td>' +
+      '<td><input type="text" class="src-field" data-src="' + s.id + '" data-field="notes" value="' + escapeHtml(s.notes || "") + '" placeholder="notes" style="width:120px"></td>' +
+      '<td class="cell-pref">' +
+        '<input type="radio" class="pref-radio" name="pref-source-' + ingredientId + '" data-src="' + s.id + '" ' + (s.preferred ? "checked" : "") + ' title="Set as preferred">' +
+      '</td>' +
+      '<td>' +
+        '<button class="save-btn" onclick="saveSource(' + s.id + ')">Save</button>' +
+      '</td>';
     tbody.appendChild(tr);
+
+    // Wire source core fields (price_per_unit, unit_size, unit_type) to PATCH /api/sources/<id>/core
+    const srcIngId = ingredientId; // capture for refresh
+    tr.querySelectorAll(".src-core-field").forEach(function(inp) {
+      const field = inp.dataset.field;
+      const srcId = parseInt(inp.dataset.src, 10);
+      const origVal = inp.value;
+      inp.addEventListener("change", async function() {
+        const newVal = this.value;
+        try {
+          await api("/api/sources/" + srcId + "/core", { method: "PATCH", body: JSON.stringify({ field: field, value: newVal }) });
+          toast("Saved");
+          openIngredient(srcIngId);
+        } catch (e) {
+          toast(e.message, "error");
+          this.value = origVal;
+        }
+      });
+    });
   }
 
   // Wire preferred radio
-  document.querySelectorAll(`input[name="pref-source-${ingredientId}"]`).forEach(radio => {
+  document.querySelectorAll("input[name='pref-source-" + ingredientId + "']").forEach(function(radio) {
     radio.addEventListener("change", function() {
       if (this.checked) setPreferred(parseInt(this.dataset.src, 10));
     });
@@ -1579,14 +1746,52 @@ function renderFormulationItems(items) {
     const priceCell = item.preferred_price != null
       ? "$" + Number(item.preferred_price).toFixed(2)
       : "—";
-    tr.innerHTML = `
-      <td><strong>${escapeHtml(ingName)}</strong></td>
-      <td>${item.dose != null ? escapeHtml(String(item.dose)) : "—"}</td>
-      <td>${escapeHtml(item.dose_unit || "—")}</td>
-      <td>${priceCell}</td>
-      <td><input type="text" class="frm-item-notes" data-item="${item.id}" value="${escapeHtml(item.notes || "")}" placeholder="notes" style="width:160px"></td>
-      <td><button class="save-btn" onclick="saveFormulationItem(${item.id})">Save</button></td>`;
+
+    // Parse overrides for this item
+    let itemOvr = [];
+    try { itemOvr = JSON.parse(item.overrides || "[]"); } catch (_) {}
+    const itemBadge = function(field) {
+      if (itemOvr.indexOf(field) !== -1) return coreOverrideBadge("item", item.id, field);
+      return "";
+    };
+
+    tr.innerHTML =
+      '<td><strong>' + escapeHtml(ingName) + '</strong></td>' +
+      '<td><div style="display:flex;align-items:center;gap:4px">' +
+        '<input type="number" class="frm-item-core-field" data-item="' + item.id + '" data-field="dose"' +
+          ' value="' + (item.dose != null ? item.dose : "") + '"' +
+          ' placeholder="dose" step="any" style="width:70px">' +
+        itemBadge("dose") +
+      '</div></td>' +
+      '<td><div style="display:flex;align-items:center;gap:4px">' +
+        '<input type="text" class="frm-item-core-field" data-item="' + item.id + '" data-field="dose_unit"' +
+          ' value="' + escapeHtml(item.dose_unit || "") + '"' +
+          ' placeholder="mg/g…" style="width:55px">' +
+        itemBadge("dose_unit") +
+      '</div></td>' +
+      '<td>' + priceCell + '</td>' +
+      '<td><input type="text" class="frm-item-notes" data-item="' + item.id + '" value="' + escapeHtml(item.notes || "") + '" placeholder="notes" style="width:120px"></td>' +
+      '<td><button class="save-btn" onclick="saveFormulationItem(' + item.id + ')">Save</button></td>';
     tbody.appendChild(tr);
+
+    // Wire dose / dose_unit to PATCH /api/formulation-items/<id>/core
+    const frmId = _currentFrmId; // capture for refresh
+    tr.querySelectorAll(".frm-item-core-field").forEach(function(inp) {
+      const field = inp.dataset.field;
+      const itemId = parseInt(inp.dataset.item, 10);
+      const origVal = inp.value;
+      inp.addEventListener("change", async function() {
+        const newVal = this.value;
+        try {
+          await api("/api/formulation-items/" + itemId + "/core", { method: "PATCH", body: JSON.stringify({ field: field, value: newVal }) });
+          toast("Saved");
+          openFormulation(frmId);
+        } catch (e) {
+          toast(e.message, "error");
+          this.value = origVal;
+        }
+      });
+    });
   }
 }
 
