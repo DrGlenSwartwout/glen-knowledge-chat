@@ -104,6 +104,38 @@ def interpret_transcript(transcript, complete):
     return {"header": (data.get("header") or "").strip(), "layers": layers}
 
 
+_STRESS_SYSTEM = (
+    "You read a clinician's spoken biofield-testing transcript (Dr. Glen Swartwout) and extract "
+    "ONLY the distinct stress / issue / weakness names they name as present — NOT remedies, layers, "
+    'or doses. Return STRICT JSON ONLY, no prose: {"stresses": [str, ...]}.\n'
+    "- 'the stress is X', 'I'm seeing X', 'also X', 'there's X here' -> X is a stress.\n"
+    "- If a remedy is named (e.g. 'balanced by Neuro Magnesium'), do NOT include the remedy; you MAY "
+    "include the stress it balances if that stress is named.\n"
+    "- Deduplicate. If nothing is parseable, return an empty list."
+)
+
+
+def build_stress_prompt(transcript):
+    return {"system": _STRESS_SYSTEM, "user": "TRANSCRIPT:\n" + (transcript or "")}
+
+
+def interpret_stresses(transcript, complete):
+    """transcript + complete(system,user) -> [stress label, ...] (Phase 1, stresses only)."""
+    if not (transcript or "").strip():
+        return []
+    p = build_stress_prompt(transcript)
+    data = _parse_json(complete(p["system"], p["user"]))
+    out, seen = [], set()
+    for s in (data.get("stresses") or []):
+        label = (s if isinstance(s, str) else (s.get("name") if isinstance(s, dict) else "")) or ""
+        label = label.strip()
+        k = label.lower()
+        if label and k not in seen:
+            seen.add(k)
+            out.append(label)
+    return out
+
+
 def _layer_remedies(l):
     """Normalize a layer dict's remedy/remedies into a list of dose-bearing dicts."""
     out = []
