@@ -2191,6 +2191,67 @@ def begin_card_click():
     return ("", 204)
 
 
+def _featured_for_land(land):
+    """Return (product_slug, product_name) for a land from shell-map.json, or (None, None)."""
+    try:
+        cfg = json.loads((STATIC / "shell-map.json").read_text())
+        f = ((cfg.get("lands") or {}).get(land) or {}).get("featured") or {}
+        return f.get("product_slug"), f.get("product_name")
+    except Exception:
+        return None, None
+
+
+def _land_is_done(state, land):
+    """True when the land's journey card is fully complete (fill>=1.0)."""
+    for card in begin_funnel.journey_map(state, "", {}):
+        if card["key"] == land:
+            return card["status"] == "done"
+    return False
+
+
+@app.route("/api/journey/claim-coupon", methods=["POST"])
+def journey_claim_coupon():
+    if not REWARDS_1B_ENABLED:
+        return ("", 404)
+    data = request.get_json(silent=True) or {}
+    land = (data.get("land") or "").strip()
+    slug, _name = _featured_for_land(land)
+    if not slug:
+        return jsonify({"ok": False, "error": "no featured product for land"}), 400
+    session_id = (request.cookies.get("amg_session") or "").strip()
+    au = get_authenticated_user(request)
+    email = (au["email"] if au else "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.get_state(cx, session_id=session_id, email=email)
+        email = (state.get("email") or email or "").strip().lower()
+        if not email or not state.get("tos_agreed_at"):
+            return jsonify({"ok": False, "needs": "email_tos"}), 409
+        if not _land_is_done(state, land):
+            return jsonify({"ok": False, "needs": "complete_stage"}), 409
+        from dashboard import coupons as _coupons
+        _coupons.init_coupons_table(cx)
+        coupon = _coupons.mint_self(cx, email=email, product_slug=slug)
+    return jsonify({"ok": True, "coupon": coupon})
+
+
+@app.route("/api/journey/wallet", methods=["GET"])
+def journey_wallet():
+    if not REWARDS_1B_ENABLED:
+        return ("", 404)
+    session_id = (request.cookies.get("amg_session") or "").strip()
+    au = get_authenticated_user(request)
+    email = (au["email"] if au else "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.get_state(cx, session_id=session_id, email=email)
+        email = (state.get("email") or email or "").strip().lower()
+        if not email:
+            return jsonify({"ok": True, "coupons": []})
+        from dashboard import coupons as _coupons
+        _coupons.init_coupons_table(cx)
+        items = _coupons.wallet(cx, email=email)
+    return jsonify({"ok": True, "coupons": items})
+
+
 # ToS version stamp for the /begin free-tier gate. The live T&C page at
 # remedymatch.com/info/terms-and-conditions carries no version string, so we
 # date-stamp agreement here. Bump when the T&C content materially changes.
@@ -3279,6 +3340,7 @@ BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lo
 BIOFIELD_CART_ENABLED = os.environ.get("BIOFIELD_CART_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 ASCEND_PERSONALIZED_ENABLED = os.environ.get("ASCEND_PERSONALIZED_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 JOURNEY_SHELL_ENABLED = os.environ.get("JOURNEY_SHELL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _referral_pct():
@@ -24363,7 +24425,7 @@ def _inject_journey_shell(response):
             return response
         authed = bool(get_authenticated_user(request))
         mode = shell_nav.resolve_mode(request.path, authed)
-        response.set_data(shell_nav.inject_shell_html(html, mode))
+        response.set_data(shell_nav.inject_shell_html(html, mode, REWARDS_1B_ENABLED))
     except Exception as e:  # never let the shell break a page
         print(f"[journey-shell] inject skipped: {e!r}", flush=True)
     return response

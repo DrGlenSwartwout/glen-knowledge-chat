@@ -33,7 +33,7 @@ def resolve_mode(path: str, authenticated: bool) -> str:
     return "funnel"
 
 
-def inject_shell_html(html: str, mode: str) -> str:
+def inject_shell_html(html: str, mode: str, rewards1b: bool = False) -> str:
     """Insert the shell <link>+<script> tags before </head>. Idempotent;
     no-op when there is no </head>."""
     if _MARKER in (html or ""):
@@ -41,9 +41,10 @@ def inject_shell_html(html: str, mode: str) -> str:
     if "</head>" not in html:
         return html
     mode = "member" if mode == "member" else "funnel"
+    flag = "true" if rewards1b else "false"
     tags = (
         f'<link {_MARKER} rel="stylesheet" href="/static/shell.css">'
-        f'<script>window.__SHELL__={{"mode":"{mode}"}};</script>'
+        f'<script>window.__SHELL__={{"mode":"{mode}","rewards1b":{flag}}};</script>'
         f'<script defer src="/static/shell.js"></script>'
     )
     return html.replace("</head>", tags + "\n</head>", 1)
