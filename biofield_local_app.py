@@ -221,12 +221,19 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
 
     @app.route("/test/<test_id>")
     def report(test_id):
+        from dashboard import biofield_stress as _st
         with sqlite3.connect(db_path) as cx:
             rep = (authored_report(cx, test_id) if str(test_id).startswith("a")
                    else causal_chain_report(cx, test_id))
             notes, narrative = get_notes(cx, test_id), get_narrative(cx, test_id)
             vscript = get_video_script(cx, test_id)
-        return Response(render_report_html(rep, notes, narrative, vscript),
+            stresses = None
+            try:
+                remedies = [l.get("remedy") for l in (rep.get("layers") or []) if l.get("remedy")]
+                stresses = _st.list_stresses(cx, test_id, remedies)
+            except Exception:
+                stresses = None
+        return Response(render_report_html(rep, notes, narrative, vscript, stresses=stresses),
                         mimetype="text/html")
 
     @app.route("/test/<test_id>/report")
