@@ -976,6 +976,18 @@ def _init_inventory_tables():
 _init_inventory_tables()
 
 
+def _init_production_tables():
+    """Production runs & batch logging — record formulation batches, ingredients used, timestamped."""
+    from dashboard.production import init_production_schema
+    cx = sqlite3.connect(str(LOG_DB))
+    try:
+        init_production_schema(cx)
+    finally:
+        cx.close()
+
+_init_production_tables()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
@@ -21069,6 +21081,123 @@ def api_inventory_seed():
         return ok({"mode": "write" if write else "dry_run", "baselines": nb, "receipts": nr})
     except Exception as e:
         app.logger.exception("inventory seed error")
+        return fail(str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /api/production/* — Production run logging & batch management
+# ─────────────────────────────────────────────────────────────────────────────
+from dashboard import production as _prod
+
+
+@app.route("/api/production/search", methods=["GET"])
+@require_console_key
+def api_production_search():
+    try:
+        return ok(_prod.search_production_runs(request.args.get("q",""),
+                                               int(request.args.get("limit",100)),
+                                               int(request.args.get("offset",0))))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/production/<int:run_id>", methods=["GET"])
+@require_console_key
+def api_production_get(run_id):
+    try:
+        r = _prod.get_production_run(run_id)
+        if not r:
+            return fail("not found", status=404)
+        return ok({"run": r, "items": _prod.list_run_items(run_id)})
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/production/recipe/<int:formulation_id>", methods=["GET"])
+@require_console_key
+def api_production_recipe(formulation_id):
+    try:
+        return ok(_prod.recipe_prefill(formulation_id))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/production/log", methods=["POST"])
+@require_console_key
+def api_production_log():
+    try:
+        b = request.get_json(silent=True) or {}
+        rid = _prod.log_run(b.get("formulation_id"), b.get("run_date"), b.get("quantity_units"),
+                            b.get("items") or [], b.get("batch_number"))
+        return ok({"id": rid})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/production/<int:run_id>", methods=["PATCH"])
+@require_console_key
+def api_production_patch(run_id):
+    try:
+        _prod.update_run_curated(run_id, request.get_json(silent=True) or {})
+        return ok(_prod.get_production_run(run_id))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/production/items/<int:item_id>", methods=["PATCH"])
+@require_console_key
+def api_production_item_patch(item_id):
+    try:
+        _prod.update_run_item_curated(item_id, request.get_json(silent=True) or {})
+        return ok({"id": item_id})
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/production/import", methods=["POST"])
+@require_console_key
+def api_production_import():
+    import csv as _csv, sys as _sys, io as _io
+    _csv.field_size_limit(_sys.maxsize)
+    try:
+        from scripts.import_production_from_fmp import import_production_runs, import_production_items
+        from dashboard.ingredient_catalog import init_ingredients_schema
+        from dashboard.materials_catalog import init_materials_schema
+        from dashboard.formulations import init_formulations_schema
+        from dashboard.inventory import init_inventory_schema
+        from dashboard.production import init_production_schema, post_consumption
+    except Exception as e:
+        return fail(f"import error: {e}")
+    try:
+        f_runs = request.files.get("production")
+        f_items = request.files.get("production_items")
+        if not all([f_runs, f_items]):
+            return fail("upload both: production, production_items", status=400)
+        runs = list(_csv.DictReader(_io.StringIO(f_runs.read().decode("utf-8", errors="replace"))))
+        items = list(_csv.DictReader(_io.StringIO(f_items.read().decode("utf-8", errors="replace"))))
+        write = request.form.get("write", "").lower() in ("1","true","yes")
+        cons = request.form.get("consumption", "all")
+        cons_from = request.form.get("consumption_from") or None
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx); init_materials_schema(cx); init_formulations_schema(cx)
+            init_inventory_schema(cx); init_production_schema(cx)
+            nr = import_production_runs(cx, runs)
+            ni = import_production_items(cx, items)
+            mode = "from_date" if cons_from else cons
+            nc = post_consumption(cx, mode=mode, cutoff_date=cons_from)
+            if write:
+                cx.commit()
+            else:
+                cx.rollback()
+        finally:
+            cx.close()
+        return ok({"mode": "write" if write else "dry_run", "runs": nr, "items": ni["items"], "consumption": nc})
+    except Exception as e:
+        app.logger.exception("production import error")
         return fail(str(e))
 
 
