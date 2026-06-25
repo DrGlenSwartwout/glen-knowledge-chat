@@ -1,0 +1,529 @@
+head_fmp_id,member_fmp_id,reason
+5161,4138,CBD — single canonical; form/delivery in extras
+5161,4300,CBD — single canonical; form/delivery in extras
+5161,4479,CBD — single canonical; form/delivery in extras
+5161,4481,CBD — single canonical; form/delivery in extras
+5161,4489,CBD — single canonical; form/delivery in extras
+5161,4601,CBD — single canonical; form/delivery in extras
+5161,4649,CBD — single canonical; form/delivery in extras
+5161,4699,CBD — single canonical; form/delivery in extras
+5161,4700,CBD — single canonical; form/delivery in extras
+5161,4722,CBD — single canonical; form/delivery in extras
+5161,4723,CBD — single canonical; form/delivery in extras
+5161,4724,CBD — single canonical; deliver_method=Wax preserved in extras
+5161,4725,CBD — single canonical; form/delivery in extras
+5161,4727,CBD — single canonical; form/delivery in extras
+5161,4728,CBD — single canonical; form/delivery in extras
+5161,4736,CBD — single canonical; form/delivery in extras
+5161,4739,CBD — single canonical; form/delivery in extras
+5161,4781,CBD — single canonical; botanical_source=Cannabis preserved in extras
+5161,4857,CBD — single canonical; form/delivery in extras
+5161,4912,CBD — single canonical; deliver_method=Oil preserved in extras
+5161,5305,CBD — single canonical; form/delivery in extras
+5161,5307,CBD — single canonical; form/delivery in extras
+5161,5372,CBD — single canonical; form/delivery in extras
+4872,4552,Chlorogenic acid — single canonical; botanical source in extras
+4872,4561,Chlorogenic acid — single canonical; botanical source in extras
+4872,4563,Chlorogenic acid — single canonical; botanical source in extras
+4872,4566,Chlorogenic acid — single canonical; botanical source in extras
+4872,4569,Chlorogenic acid — single canonical; botanical source in extras
+4872,4574,Chlorogenic acid — single canonical; botanical_source=Eucommia ulmoides preserved
+4872,4575,Chlorogenic acid — single canonical; botanical source in extras
+4872,4588,Chlorogenic acid — single canonical; botanical source in extras
+4872,4678,Chlorogenic acid — single canonical; botanical source in extras
+4872,4815,Chlorogenic acid — single canonical; botanical source in extras
+4872,4827,Chlorogenic acid — single canonical; botanical source in extras
+4872,5323,Chlorogenic acid — single canonical; botanical source in extras
+4872,5366,Chlorogenic acid — single canonical; botanical source in extras
+5146,3857,Polyphenols — both Camelia sinensis (green tea); other 11 rows stay unclustered (different sources or unknown)
+5115,3752,Ursolic acid — single molecule; head=Rosmarinus officinalis (most-studied source); botanical source in extras
+5115,3777,Ursolic acid — single molecule; head=Rosmarinus officinalis (most-studied source); botanical source in extras
+5115,4664,Ursolic acid — single molecule; botanical_source=Eucalyptus spp preserved in extras
+5115,4670,Ursolic acid — single molecule; head=Rosmarinus officinalis (most-studied source); botanical source in extras
+5115,4673,Ursolic acid — single molecule; head=Rosmarinus officinalis (most-studied source); botanical source in extras
+5115,4685,Ursolic acid — single molecule; head=Rosmarinus officinalis (most-studied source); botanical source in extras
+5115,4768,Ursolic acid — single molecule; head=Rosmarinus officinalis (most-studied source); botanical source in extras
+5115,5066,Ursolic acid — single molecule; head=Rosmarinus officinalis (most-studied source); botanical source in extras
+5115,5114,Ursolic acid — single molecule; head=Rosmarinus officinalis (most-studied source); botanical source in extras
+5115,5116,Ursolic acid — single molecule; head=Rosmarinus officinalis (most-studied source); botanical source in extras
+5115,5118,Ursolic acid — single molecule; head=Rosmarinus officinalis (most-studied source); botanical source in extras
+5115,5349,Ursolic acid — single molecule; head=Rosmarinus officinalis (most-studied source); botanical source in extras
+5356,3550,Glutathione — single tripeptide; common_names=Reduced Glutathione preserved on member row
+5356,4686,Glutathione — single tripeptide; reduced form is the standard supplement grade
+5356,4687,Glutathione — single tripeptide; reduced form is the standard supplement grade
+5356,4688,Glutathione — single tripeptide; reduced form is the standard supplement grade
+5356,4696,Glutathione — single tripeptide; reduced form is the standard supplement grade
+5356,5350,Glutathione — single tripeptide; reduced form is the standard supplement grade
+5356,5351,Glutathione — single tripeptide; reduced form is the standard supplement grade
+5356,5352,Glutathione — single tripeptide; reduced form is the standard supplement grade
+5356,5353,Glutathione — single tripeptide; reduced form is the standard supplement grade
+5356,5368,Glutathione — single tripeptide; reduced form is the standard supplement grade
+4450,4449,Paeoniflorin — single molecule; Paeonia lactiflora = Paeonia albiflora (same plant, synonym names)
+4450,4451,Paeoniflorin — single molecule; purification grade in extras.strength
+4450,4452,Paeoniflorin — single molecule; strength=95% preserved in extras
+4450,4453,Paeoniflorin — single molecule; purification grade in extras.strength
+4450,4454,Paeoniflorin — single molecule; purification grade in extras.strength
+4450,4461,Paeoniflorin — single molecule; purification grade in extras.strength
+4450,5297,Paeoniflorin — single molecule; purification grade in extras.strength
+4450,5298,Paeoniflorin — single molecule; strength=98% preserved in extras
+3681,3267,Bacosides — Bacopa monnieri saponin class; standardization grade in extras (typo "Bacon monnieri" on member row — FMP fix TODO)
+3681,3679,Bacosides — Bacopa monnieri saponin class; standardization grade in extras
+3681,3680,Bacosides — Bacopa monnieri saponin class; standardization grade in extras
+3681,3688,Bacosides — Bacopa monnieri saponin class; standardization grade in extras
+3681,3689,Bacosides — Bacopa monnieri saponin class; strength=65% preserved on member row
+3681,3731,Bacosides — Bacopa monnieri saponin class; standardization grade in extras
+3681,5110,Bacosides — Bacopa monnieri saponin class; standardization grade in extras
+3852,3853,Chicoric acid — single polyphenol; head=Echinacea angustifolia (most-studied source)
+3852,4491,Chicoric acid — single polyphenol; common_names=Cyanotis arachnoidea preserved on member row
+3852,4493,Chicoric acid — single polyphenol; botanical source in extras (currently empty)
+3852,4837,Chicoric acid — single polyphenol; botanical source in extras (currently empty)
+3852,4839,Chicoric acid — single polyphenol; botanical source in extras (currently empty)
+3852,5308,Chicoric acid — single polyphenol; botanical source in extras (currently empty)
+3852,5309,Chicoric acid — single polyphenol; botanical source in extras (currently empty)
+5002,4015,Phycocyanin — single phycobiliprotein; head=Spirulina platensis
+5002,4277,Phycocyanin — single phycobiliprotein; head=Spirulina platensis
+5002,4278,Phycocyanin — single phycobiliprotein; head=Spirulina platensis
+5002,4279,Phycocyanin — single phycobiliprotein; head=Spirulina platensis
+5002,4281,Phycocyanin — single phycobiliprotein; head=Spirulina platensis
+5002,4284,Phycocyanin — single phycobiliprotein; head=Spirulina platensis
+5002,5259,Phycocyanin — single phycobiliprotein; head=Spirulina platensis
+4615,4600,Polysaccharide — both Inonotus obliquus (Chaga); duplicate inactive entries; other 6 rows stay unclustered (different sources or unknown)
+4315,3895,Allicin — single sulfur compound from Allium sativum; all inactive; head=most-populated extras
+4315,4311,Allicin — single sulfur compound from Allium sativum; all inactive
+4315,4314,Allicin — single sulfur compound from Allium sativum; all inactive
+4315,4316,Allicin — single sulfur compound from Allium sativum; all inactive
+4315,4366,Allicin — single sulfur compound from Allium sativum; all inactive
+4315,5265,Allicin — single sulfur compound from Allium sativum; all inactive
+4290,4287,Anthocyanidins — both Sambucus nigra (elderberry); sequential duplicate entries; other 5 rows stay unclustered
+5534,3264,Astaxanthin — single carotenoid; all sourced rows are Haematococcus pluvialis
+5534,3711,Astaxanthin — single carotenoid; Haematococcus pluvialis is standard commercial source
+5534,3720,Astaxanthin — single carotenoid; Haematococcus pluvialis is standard commercial source
+5534,5080,Astaxanthin — single carotenoid; Haematococcus pluvialis preserved on member row
+5534,5085,Astaxanthin — single carotenoid; Haematococcus pluvialis is standard commercial source
+5534,5106,Astaxanthin — single carotenoid; Carotenoid type preserved on member row
+5557,4605,Carnosic acid — single diterpene from rosemary
+5557,4608,Carnosic acid — Rosmarinus officinalis = Salvia rosmarinus (same plant, 2017 reclassification)
+5557,4611,Carnosic acid — single diterpene from rosemary
+5557,5335,Carnosic acid — Rosmarinus officinalis = Salvia rosmarinus (same plant); question mark on source noted
+5557,5336,Carnosic acid — single diterpene from rosemary
+5557,5558,Carnosic acid — both active rows; member at 90% vs head at 98%; concentration in extras
+4737,4738,Asiaticosides — Centella asiatica saponin class; all inactive; head=oldest fmp_id
+4737,4742,Asiaticosides — Centella asiatica saponin class; all inactive
+4737,4748,Asiaticosides — Centella asiatica saponin class; all inactive
+4737,4754,Asiaticosides — Centella asiatica saponin class; all inactive
+4737,4775,Asiaticosides — Centella asiatica saponin class; all inactive
+3724,3730,Catechins — Camelia sinensis flavonoid class; all inactive; head=oldest fmp_id
+3724,3918,Catechins — Camelia sinensis flavonoid class; all inactive
+3724,3920,Catechins — Camelia sinensis flavonoid class; all inactive
+3724,3921,Catechins — Camelia sinensis flavonoid class; all inactive
+3724,5113,Catechins — Camelia sinensis flavonoid class; all inactive
+5212,4120,Chondroitin sulfate — single glycosaminoglycan polymer
+5212,4555,Chondroitin sulfate — single glycosaminoglycan polymer
+5212,4586,Chondroitin sulfate — single glycosaminoglycan polymer
+5212,5208,Chondroitin sulfate — single glycosaminoglycan polymer
+5212,5210,Chondroitin sulfate — single glycosaminoglycan polymer
+3722,3704,Coenzyme Q10 — single molecule (ubiquinone); head=member with "Ubiquinone" common_name
+3722,4634,Coenzyme Q10 — single molecule (ubiquinone)
+3722,4884,Coenzyme Q10 — single molecule (ubiquinone)
+3722,4906,Coenzyme Q10 — single molecule (ubiquinone)
+3722,5107,Coenzyme Q10 — single molecule (ubiquinone)
+5102,3685,Cryptoxanthin — single carotenoid
+5102,3691,Cryptoxanthin — single carotenoid
+5102,3705,Cryptoxanthin — single carotenoid
+5102,3707,Cryptoxanthin — single carotenoid
+5102,5103,Cryptoxanthin — single carotenoid
+3315,3316,DHA — single fatty acid (docosahexaenoic acid); both algae-sourced actives
+3315,4252,DHA — single fatty acid (docosahexaenoic acid)
+3315,4529,DHA — single fatty acid (docosahexaenoic acid)
+3315,4572,DHA — single fatty acid (docosahexaenoic acid)
+3315,4974,DHA — single fatty acid (docosahexaenoic acid); algae source preserved on member
+4911,4023,Ferulic acid — single phenolic acid; head=Oryza sativa (rice bran)
+4911,4122,Ferulic acid — single phenolic acid
+4911,4123,Ferulic acid — single phenolic acid; Oryza sativa preserved on member
+4911,4152,Ferulic acid — single phenolic acid
+4911,4155,Ferulic acid — single phenolic acid
+4047,4039,Gingerol — Zingiber officinale phenolic class (6/8/10-gingerol mixture); head=40% standardized
+4047,4053,Gingerol — both active rows; member at 25% vs head at 40%
+4047,4096,Gingerol — Zingiber officinale phenolic class
+4047,4111,Gingerol — Zingiber officinale phenolic class
+4047,5184,Gingerol — Zingiber officinalis = Zingiber officinale (same plant, spelling variant)
+4323,4298,Glucoraphanin — single glucosinolate from Brassica
+4323,4319,Glucoraphanin — single glucosinolate from Brassica
+4323,4322,Glucoraphanin — single glucosinolate from Brassica
+4323,4324,Glucoraphanin — single glucosinolate from Brassica
+4323,5264,Glucoraphanin — single glucosinolate from Brassica
+3748,3928,Rosmarinic acid — single ester from Rosmarinus
+3748,4054,Rosmarinic acid — single ester from Rosmarinus
+3748,4070,Rosmarinic acid — single ester from Rosmarinus
+3748,4679,Rosmarinic acid — single ester from Rosmarinus
+3748,4955,Rosmarinic acid — Salvia rosmarinus = Rosmarinus officinalis (same plant, 2017 reclassification)
+4914,3947,Safranal — single aldehyde from Crocus sativus
+4914,4886,Safranal — single aldehyde from Crocus sativus
+4914,4903,Safranal — single aldehyde from Crocus sativus
+4914,4904,Safranal — single aldehyde from Crocus sativus
+4914,5370,Safranal — single aldehyde from Crocus sativus
+3719,4191,Sulforaphane — single isothiocyanate from Brassica
+3719,4192,Sulforaphane — single isothiocyanate from Brassica
+3719,4196,Sulforaphane — single isothiocyanate from Brassica
+3719,5109,Sulforaphane — single isothiocyanate from Brassica
+3719,5236,Sulforaphane — single isothiocyanate from Brassica
+5243,4222,trans-Resveratrol — single stilbenoid from Polygonum cuspidatum
+5243,4228,trans-Resveratrol — single stilbenoid from Polygonum cuspidatum
+5243,4229,trans-Resveratrol — single stilbenoid from Polygonum cuspidatum
+5243,4805,trans-Resveratrol — single stilbenoid from Polygonum cuspidatum
+5243,5241,trans-Resveratrol — both Polygonum cuspidatum; member 99% vs head 98%; standardization in extras
+5230,4558,berberine - Single-compound suffix; source preserved in extras
+5230,4618,berberine - Single-compound suffix; source preserved in extras
+5230,4792,berberine - Single-compound suffix; source preserved in extras
+5230,4793,berberine - Single-compound suffix; source preserved in extras
+4464,4456,diosgenin - Single-compound suffix; source preserved in extras
+4464,4457,diosgenin - Single-compound suffix; source preserved in extras
+4464,4458,diosgenin - Single-compound suffix; source preserved in extras
+4464,4463,diosgenin - Single-compound suffix; source preserved in extras
+3889,3636,lutein - Single-compound suffix; source preserved in extras
+3889,3639,lutein - Single-compound suffix; source preserved in extras
+3889,3682,lutein - Single-compound suffix; source preserved in extras
+3889,3981,lutein - Single-compound suffix; source preserved in extras
+4694,4663,macamides - Single-compound suffix; source preserved in extras
+4694,4666,macamides - Single-compound suffix; source preserved in extras
+4694,4671,macamides - Single-compound suffix; source preserved in extras
+4694,4672,macamides - Single-compound suffix; source preserved in extras
+5125,3775,melatonin - Single-compound suffix; source preserved in extras
+5125,4883,melatonin - Single-compound suffix; source preserved in extras
+5125,5120,melatonin - Single-compound suffix; source preserved in extras
+5125,5126,melatonin - Single-compound suffix; source preserved in extras
+5100,3591,mixed tocopherols - Botanical name; same plant; consistent type
+5100,3675,mixed tocopherols - Botanical name; same plant; consistent type
+5100,3683,mixed tocopherols - Botanical name; same plant; consistent type
+5100,3894,mixed tocopherols - Botanical name; same plant; consistent type
+4259,4245,nattokinase - Default single-cluster merge; head by active>populated>newest
+4259,4250,nattokinase - Default single-cluster merge; head by active>populated>newest
+4259,4258,nattokinase - Default single-cluster merge; head by active>populated>newest
+4259,5248,nattokinase - Default single-cluster merge; head by active>populated>newest
+5320,4554,nicotinamide riboside - Botanical name; same plant; consistent type
+5320,4919,nicotinamide riboside - Botanical name; same plant; consistent type
+5320,5321,nicotinamide riboside - Botanical name; same plant; consistent type
+5320,5375,nicotinamide riboside - Botanical name; same plant; consistent type
+4650,4655,puerarin - Single-compound suffix; source preserved in extras
+4650,4656,puerarin - Single-compound suffix; source preserved in extras
+4650,4661,puerarin - Single-compound suffix; source preserved in extras
+4650,4667,puerarin - Single-compound suffix; source preserved in extras
+4609,4160,salvianolic acid b - Default single-cluster merge; head by active>populated>newest
+4609,4167,salvianolic acid b - Default single-cluster merge; head by active>populated>newest
+4609,4887,salvianolic acid b - Default single-cluster merge; head by active>populated>newest
+4609,4888,salvianolic acid b - Default single-cluster merge; head by active>populated>newest
+4877,3929,silver - Default single-cluster merge; head by active>populated>newest
+4877,4860,silver - Default single-cluster merge; head by active>populated>newest
+4877,4876,silver - Default single-cluster merge; head by active>populated>newest
+4877,4879,silver - Default single-cluster merge; head by active>populated>newest
+4343,4186,thymol - Single-compound suffix; source preserved in extras
+4343,4187,thymol - Single-compound suffix; source preserved in extras
+4343,4198,thymol - Single-compound suffix; source preserved in extras
+4343,4208,thymol - Single-compound suffix; source preserved in extras
+4496,4495,thymoquinone - Single-compound suffix; source preserved in extras
+4496,4497,thymoquinone - Single-compound suffix; source preserved in extras
+4496,4698,thymoquinone - Single-compound suffix; source preserved in extras
+4496,4704,thymoquinone - Single-compound suffix; source preserved in extras
+3690,3648,5-mthf - Default single-cluster merge; head by active>populated>newest
+3690,3693,5-mthf - Default single-cluster merge; head by active>populated>newest
+3690,3738,5-mthf - Default single-cluster merge; head by active>populated>newest
+3540,4484,astragaloside iv - Botanical name; same plant; consistent type
+3540,4485,astragaloside iv - Botanical name; same plant; consistent type
+3540,4486,astragaloside iv - Botanical name; same plant; consistent type
+3275,4301,beta sitosterol - Botanical name; same plant; consistent type
+3275,4304,beta sitosterol - Botanical name; same plant; consistent type
+3275,4365,beta sitosterol - Botanical name; same plant; consistent type
+3282,4367,black currant - Botanical name; same plant; consistent type
+3282,5133,black currant - Botanical name; same plant; consistent type
+3282,5269,black currant - Botanical name; same plant; consistent type
+5056,3283,black pepper extract - Default single-cluster merge; head by active>populated>newest
+5056,4633,black pepper extract - Default single-cluster merge; head by active>populated>newest
+5056,4966,black pepper extract - Default single-cluster merge; head by active>populated>newest
+4045,4016,centrophenoxine - Single-compound suffix; source preserved in extras
+4045,4953,centrophenoxine - Single-compound suffix; source preserved in extras
+4045,5181,centrophenoxine - Single-compound suffix; source preserved in extras
+4614,4613,cesium carbonate - Botanical name; same plant; consistent type
+4614,4616,cesium carbonate - Botanical name; same plant; consistent type
+4614,4622,cesium carbonate - Botanical name; same plant; consistent type
+3765,3745,corosolic acid - Botanical name; same plant; consistent type
+3765,3754,corosolic acid - Botanical name; same plant; consistent type
+3765,3764,corosolic acid - Botanical name; same plant; consistent type
+4978,3908,forskolin - Single-compound suffix; source preserved in extras
+4978,4630,forskolin - Single-compound suffix; source preserved in extras
+4978,4977,forskolin - Single-compound suffix; source preserved in extras
+4040,4032,glycyrrhizin - Single-compound suffix; source preserved in extras
+4040,4041,glycyrrhizin - Single-compound suffix; source preserved in extras
+4040,5186,glycyrrhizin - Single-compound suffix; source preserved in extras
+5202,4091,harmine - Single-compound suffix; source preserved in extras
+5202,4093,harmine - Single-compound suffix; source preserved in extras
+5202,4095,harmine - Single-compound suffix; source preserved in extras
+5199,4081,honokiol - Single-compound suffix; source preserved in extras
+5199,4082,honokiol - Single-compound suffix; source preserved in extras
+5199,5200,honokiol - Single-compound suffix; source preserved in extras
+5164,3971,l-carnosine - Single-compound suffix; source preserved in extras
+5164,4410,l-carnosine - Single-compound suffix; source preserved in extras
+5164,5167,l-carnosine - Single-compound suffix; source preserved in extras
+5514,4220,lycopene - Single-compound suffix; source preserved in extras
+5514,4223,lycopene - Single-compound suffix; source preserved in extras
+5514,5245,lycopene - Single-compound suffix; source preserved in extras
+4646,3635,magnesium peroxide - Botanical name; same plant; consistent type
+4646,3640,magnesium peroxide - Botanical name; same plant; consistent type
+4646,4644,magnesium peroxide - Botanical name; same plant; consistent type
+5153,3937,meso-zeaxanthin - Single-compound suffix; source preserved in extras
+5153,3940,meso-zeaxanthin - Single-compound suffix; source preserved in extras
+5153,5154,meso-zeaxanthin - Single-compound suffix; source preserved in extras
+3776,4833,oleuropein - Single-compound suffix; source preserved in extras
+3776,4873,oleuropein - Single-compound suffix; source preserved in extras
+3776,5127,oleuropein - Single-compound suffix; source preserved in extras
+5145,3841,oxindole alkaloids - Botanical name; same plant; consistent type
+5145,3917,oxindole alkaloids - Botanical name; same plant; consistent type
+5145,5147,oxindole alkaloids - Botanical name; same plant; consistent type
+4804,4795,pterostilbene - Single-compound suffix; source preserved in extras
+4804,4796,pterostilbene - Single-compound suffix; source preserved in extras
+4804,5090,pterostilbene - Single-compound suffix; source preserved in extras
+4521,3652,rebaudioside a - Botanical name; same plant; consistent type
+4521,4518,rebaudioside a - Botanical name; same plant; consistent type
+4521,4520,rebaudioside a - Botanical name; same plant; consistent type
+5159,3939,saffron - Default single-cluster merge; head by active>populated>newest
+5159,3943,saffron - Default single-cluster merge; head by active>populated>newest
+5159,4749,saffron - Default single-cluster merge; head by active>populated>newest
+5371,4161,salvianolic acid - Botanical name; same plant; consistent type
+5371,4162,salvianolic acid - Botanical name; same plant; consistent type
+5371,4908,salvianolic acid - Botanical name; same plant; consistent type
+5227,4171,tanshinone - Single-compound suffix; source preserved in extras
+5227,4172,tanshinone - Single-compound suffix; source preserved in extras
+5227,4173,tanshinone - Single-compound suffix; source preserved in extras
+5228,4169,tanshinone iia - Botanical name; same plant; consistent type
+5228,4170,tanshinone iia - Botanical name; same plant; consistent type
+5228,5229,tanshinone iia - Botanical name; same plant; consistent type
+3836,4226,withanolides - Single-compound suffix; source preserved in extras
+3836,4227,withanolides - Single-compound suffix; source preserved in extras
+3836,4926,withanolides - Single-compound suffix; source preserved in extras
+3687,3684,xanthohumol - Single-compound suffix; source preserved in extras
+3687,3710,xanthohumol - Single-compound suffix; source preserved in extras
+3687,4374,xanthohumol - Single-compound suffix; source preserved in extras
+5014,3897,amygdalin - Single-compound suffix; source preserved in extras
+5014,4506,amygdalin - Single-compound suffix; source preserved in extras
+3667,3671,apigenin - Single-compound suffix; source preserved in extras
+3667,5089,apigenin - Single-compound suffix; source preserved in extras
+3262,3261,ashwagandha root extract - Default single-cluster merge; head by active>populated>newest
+3262,3263,ashwagandha root extract - Default single-cluster merge; head by active>populated>newest
+5180,4005,avena sativa - Botanical name; same plant; consistent type
+5180,4057,avena sativa - Botanical name; same plant; consistent type
+4504,4798,bacillus subtilis - Botanical name; same plant; consistent type
+4504,5221,bacillus subtilis - Botanical name; same plant; consistent type
+3272,3616,bee propolis - Botanical name; same plant; consistent type
+3272,5073,bee propolis - Botanical name; same plant; consistent type
+4112,4009,beta glucan - Botanical name; same plant; consistent type
+4112,4044,beta glucan - Botanical name; same plant; consistent type
+4623,5209,bovine - Single-compound suffix; source preserved in extras
+4623,5345,bovine - Single-compound suffix; source preserved in extras
+4244,4256,buckminster fullerene - Botanical name; same plant; consistent type
+4244,5250,buckminster fullerene - Botanical name; same plant; consistent type
+4909,4885,c3g - Default single-cluster merge; head by active>populated>newest
+4909,4907,c3g - Default single-cluster merge; head by active>populated>newest
+5112,4010,curcumin - Single-compound suffix; source preserved in extras
+5112,4676,curcumin - Single-compound suffix; source preserved in extras
+5132,4158,dhea - Default single-cluster merge; head by active>populated>newest
+5132,4508,dhea - Default single-cluster merge; head by active>populated>newest
+3604,5240,dim - Default single-cluster merge; head by active>populated>newest
+3604,5244,dim - Default single-cluster merge; head by active>populated>newest
+4562,5211,glucosamine sulfate - Botanical name; same plant; consistent type
+4562,5318,glucosamine sulfate - Botanical name; same plant; consistent type
+5239,3516,humic acid - Botanical name; same plant; consistent type
+5239,4190,humic acid - Botanical name; same plant; consistent type
+3657,3912,huperzine a - Botanical name; same plant; consistent type
+3657,4982,huperzine a - Botanical name; same plant; consistent type
+4850,4576,hyaluronic acid - Botanical name; same plant; consistent type
+4850,4689,hyaluronic acid - Botanical name; same plant; consistent type
+5330,4582,hydroxytyrosol - Single-compound suffix; source preserved in extras
+5330,4621,hydroxytyrosol - Single-compound suffix; source preserved in extras
+5267,3868,hypericin - Single-compound suffix; source preserved in extras
+5267,4372,hypericin - Single-compound suffix; source preserved in extras
+4924,4916,lactobacillus sakei - Botanical name; same plant; consistent type
+4924,4917,lactobacillus sakei - Botanical name; same plant; consistent type
+5168,3960,lanosterol - Single-compound suffix; source preserved in extras
+5168,5169,lanosterol - Single-compound suffix; source preserved in extras
+5170,4271,mcp - Default single-cluster merge; head by active>populated>newest
+5170,4755,mcp - Default single-cluster merge; head by active>populated>newest
+4598,4599,monk fruit; luo han guo - Default single-cluster merge; head by active>populated>newest
+4598,5331,monk fruit; luo han guo - Default single-cluster merge; head by active>populated>newest
+5128,3976,naringen - Default single-cluster merge; head by active>populated>newest
+5128,5216,naringen - Default single-cluster merge; head by active>populated>newest
+4847,4017,nmn - Default single-cluster merge; head by active>populated>newest
+4847,5369,nmn - Default single-cluster merge; head by active>populated>newest
+4980,3812,opc - Default single-cluster merge; head by active>populated>newest
+4980,3896,opc - Default single-cluster merge; head by active>populated>newest
+3620,3751,oridonin - Single-compound suffix; source preserved in extras
+3620,3753,oridonin - Single-compound suffix; source preserved in extras
+4042,4036,pepsin 1:10000 - Default single-cluster merge; head by active>populated>newest
+4042,4037,pepsin 1:10000 - Default single-cluster merge; head by active>populated>newest
+4932,4577,phosphatidylcholine - Single-compound suffix; source preserved in extras
+4932,4579,phosphatidylcholine - Single-compound suffix; source preserved in extras
+4952,3666,pinus spp. - Default single-cluster merge; head by active>populated>newest
+4952,4209,pinus spp. - Default single-cluster merge; head by active>populated>newest
+4097,4094,pqq - Default single-cluster merge; head by active>populated>newest
+4097,4098,pqq - Default single-cluster merge; head by active>populated>newest
+3771,3759,pregnenolone - Single-compound suffix; source preserved in extras
+3771,3770,pregnenolone - Single-compound suffix; source preserved in extras
+4080,4078,proteoglycans - Default single-cluster merge; head by active>populated>newest
+4080,4086,proteoglycans - Default single-cluster merge; head by active>populated>newest
+4004,5178,ps - Default single-cluster merge; head by active>populated>newest
+4004,5179,ps - Default single-cluster merge; head by active>populated>newest
+3565,5006,pyrroloquinoline quinone - Botanical name; same plant; consistent type
+3565,5050,pyrroloquinoline quinone - Botanical name; same plant; consistent type
+5484,3467,rehmannia - Default single-cluster merge; head by active>populated>newest
+5484,4092,rehmannia - Default single-cluster merge; head by active>populated>newest
+4490,4478,retinyl acetate - Botanical name; same plant; consistent type
+4490,5328,retinyl acetate - Botanical name; same plant; consistent type
+3904,4221,rice ceramides - Botanical name; same plant; consistent type
+3904,5531,rice ceramides - Botanical name; same plant; consistent type
+4824,4822,rice protein - Botanical name; same plant; consistent type
+4824,4823,rice protein - Botanical name; same plant; consistent type
+4996,3728,silymarin - Single-compound suffix; source preserved in extras
+4996,3734,silymarin - Single-compound suffix; source preserved in extras
+4654,4653,sod - Default single-cluster merge; head by active>populated>newest
+4654,5142,sod - Default single-cluster merge; head by active>populated>newest
+5008,3420,steviosides - Single-compound suffix; source preserved in extras
+5008,4519,steviosides - Single-compound suffix; source preserved in extras
+3959,3785,sumac - Default single-cluster merge; head by active>populated>newest
+3959,3883,sumac - Default single-cluster merge; head by active>populated>newest
+5217,4159,synephrine - Single-compound suffix; source preserved in extras
+5217,5218,synephrine - Single-compound suffix; source preserved in extras
+4811,4826,trans-pterostilbene - Single-compound suffix; source preserved in extras
+4811,5365,trans-pterostilbene - Single-compound suffix; source preserved in extras
+3385,4302,urtica dioica - Botanical name; same plant; consistent type
+3385,5263,urtica dioica - Botanical name; same plant; consistent type
+3252,4359,vitamin c - Botanical name; same plant; consistent type
+3252,5076,vitamin c - Botanical name; same plant; consistent type
+5140,4538,yeast enzyme - Botanical name; same plant; consistent type
+5140,5137,yeast enzyme - Botanical name; same plant; consistent type
+5082,3936,zeaxanthin - Single-compound suffix; source preserved in extras
+5082,4925,zeaxanthin - Single-compound suffix; source preserved in extras
+4165,4957,5-htp - Default single-cluster merge; head by active>populated>newest
+5134,3795,acacia spp. - Default single-cluster merge; head by active>populated>newest
+5443,4735,acid protease - Botanical name; same plant; consistent type
+3787,3872,agaricus - Default single-cluster merge; head by active>populated>newest
+4441,5299,alisma orientalis 25:1 - Default single-cluster merge; head by active>populated>newest
+4280,4265,aloe spp. - Default single-cluster merge; head by active>populated>newest
+5052,3712,amp - Default single-cluster merge; head by active>populated>newest
+4934,4920,anthocyanin - Single-compound suffix; source preserved in extras
+5342,4767,artemisinin - Single-compound suffix; source preserved in extras
+5021,4225,ascorbyl palmitate - Botanical name; same plant; consistent type
+3742,5377,ashitaba - Default single-cluster merge; head by active>populated>newest
+4715,5354,atractylodes macrocephala - Botanical name; same plant; consistent type
+3714,3733,bacogenin - Single-compound suffix; source preserved in extras
+4718,5359,balloon flower - Botanical name; same plant; consistent type
+3274,3273,beet juice powder - Default single-cluster merge; head by active>populated>newest
+5119,5036,benfotiamine - Single-compound suffix; source preserved in extras
+3656,3760,berberine hcl - Botanical name; same plant; consistent type
+4194,4176,beta carotene - Botanical name; same plant; consistent type
+3802,3278,bitter orange - Botanical name; same plant; consistent type
+4606,4643,butterbur - Default single-cluster merge; head by active>populated>newest
+4145,4144,c60 - Default single-cluster merge; head by active>populated>newest
+4255,4254,carbon 70 - Default single-cluster merge; head by active>populated>newest
+5341,4628,catalpol - Single-compound suffix; source preserved in extras
+4913,4482,cbd full spectrum - Default single-cluster merge; head by active>populated>newest
+5376,3546,cesium chloride - Botanical name; same plant; consistent type
+4211,4212,chelidonine - Single-compound suffix; source preserved in extras
+4002,4008,chitosan deacetylation - Botanical name; same plant; consistent type
+5061,4011,citicoline - Single-compound suffix; source preserved in extras
+4357,4340,clove - Default single-cluster merge; head by active>populated>newest
+5183,4012,coluracetam - Default single-cluster merge; head by active>populated>newest
+4151,3856,cranesbill - Default single-cluster merge; head by active>populated>newest
+4753,4746,crocetin - Single-compound suffix; source preserved in extras
+5173,3989,cyanidin-3-glucosides - Single-compound suffix; source preserved in extras
+4573,4536,cynarin - Single-compound suffix; source preserved in extras
+4116,4113,d-glucosamine hcl - Default single-cluster merge; head by active>populated>newest
+5258,4972,d-mannose - Single-compound suffix; source preserved in extras
+4524,4527,dhea sulfate - Botanical name; same plant; consistent type
+4545,4543,eleutheroside - Single-compound suffix; source preserved in extras
+3793,5149,enoki - Default single-cluster merge; head by active>populated>newest
+4580,4553,eucommia - Default single-cluster merge; head by active>populated>newest
+5395,5394,everclear - Default single-cluster merge; head by active>populated>newest
+5094,3768,fenusides - Single-compound suffix; source preserved in extras
+4079,4083,field bindweed - Botanical name; same plant; consistent type
+3709,3708,fontainea spp.: hylandia dockrillii; fontainea picrosperma; fontainea venosa - Default single-cluster merge; head by active>populated>newest
+3567,3573,fractionated coconut oil - Default single-cluster merge; head by active>populated>newest
+3903,4274,fucoxanthin - Single-compound suffix; source preserved in extras
+5551,4635,fulvic acid - Botanical name; same plant; consistent type
+4585,5326,gamma oryzanol - Botanical name; same plant; consistent type
+3790,4855,ganoderma lucidum - Botanical name; same plant; consistent type
+5489,4950,gingerols - Single-compound suffix; source preserved in extras
+4511,3910,ginkgo - Default single-cluster merge; head by active>populated>newest
+3512,5301,glucomannan - Default single-cluster merge; head by active>populated>newest
+3767,3766,glycoside - Single-compound suffix; source preserved in extras
+5438,3359,glycyrrhiza glabra - Botanical name; same plant; consistent type
+4931,4132,goji - Default single-cluster merge; head by active>populated>newest
+5271,4134,gold ormus - Botanical name; same plant; consistent type
+4133,3478,graviola leaf 1% - Default single-cluster merge; head by active>populated>newest
+3563,3559,gray 5 mm - Default single-cluster merge; head by active>populated>newest
+3923,3922,gymnemic acids - Botanical name; same plant; consistent type
+5047,3772,hesperidin methyl chalcone - Single-compound suffix; source preserved in extras
+5348,4675,holy basil - Botanical name; same plant; consistent type
+5324,4568,honeysuckle vine - Botanical name; same plant; consistent type
+5101,3990,hops - Default single-cluster merge; head by active>populated>newest
+3737,3716,hydroxyapatite - Default single-cluster merge; head by active>populated>newest
+5108,3702,inosine - Single-compound suffix; source preserved in extras
+4834,4862,ivy - Default single-cluster merge; head by active>populated>newest
+4269,4878,kelp - Default single-cluster merge; head by active>populated>newest
+3655,4203,ketones - Single-compound suffix; source preserved in extras
+3893,3357,l-theanine - Single-compound suffix; source preserved in extras
+5287,4434,lactobacillus acidophilus - Botanical name; same plant; consistent type
+5231,5222,lactobacillus paracasei - Botanical name; same plant; consistent type
+5280,4436,lactobacillus reuteri - Botanical name; same plant; consistent type
+4651,4445,loganin - Single-compound suffix; source preserved in extras
+4182,4184,lotus leaf extract - Default single-cluster merge; head by active>populated>newest
+5049,5042,lumbrokinase - Default single-cluster merge; head by active>populated>newest
+3579,3539,magnesium citrate - Botanical name; same plant; consistent type
+5038,3511,magnesium malate - Botanical name; same plant; consistent type
+4306,4305,magnolols - Single-compound suffix; source preserved in extras
+5185,4923,maqui - Default single-cluster merge; head by active>populated>newest
+3880,3391,mentha piperita - Botanical name; same plant; consistent type
+3638,3377,milk thistle - Botanical name; same plant; consistent type
+5268,4693,mk-4 - Default single-cluster merge; head by active>populated>newest
+5467,4997,msm - Default single-cluster merge; head by active>populated>newest
+4270,5072,n-acetyl l-carnosine - Single-compound suffix; source preserved in extras
+4999,4403,nac - Default single-cluster merge; head by active>populated>newest
+5407,4141,nardostachys jatamansi - Botanical name; same plant; consistent type
+4142,5214,nardostachys root 20:1 - Default single-cluster merge; head by active>populated>newest
+4317,4488,neem - Default single-cluster merge; head by active>populated>newest
+5048,4759,neutral protease - Botanical name; same plant; consistent type
+4014,5182,noopept - Default single-cluster merge; head by active>populated>newest
+4104,4103,notoginsenosides - Single-compound suffix; source preserved in extras
+4215,4213,nuciferine - Single-compound suffix; source preserved in extras
+5358,4774,nut grass - Botanical name; same plant; consistent type
+4549,4548,oleoylethanolamide - Single-compound suffix; source preserved in extras
+5325,5327,organic edible kelp - Default single-cluster merge; head by active>populated>newest
+5099,4393,organic germanium - Botanical name; same plant; consistent type
+5135,4218,parthenolides - Single-compound suffix; source preserved in extras
+4705,3499,peppermint - Default single-cluster merge; head by active>populated>newest
+4770,4771,peptides - Single-compound suffix; source preserved in extras
+4101,4808,phenibut - Default single-cluster merge; head by active>populated>newest
+4659,5347,phillyrin - Single-compound suffix; source preserved in extras
+5418,4744,protease - Default single-cluster merge; head by active>populated>newest
+3997,4711,prunella vulgaris - Botanical name; same plant; consistent type
+4472,5123,pyridoxine - Single-compound suffix; source preserved in extras
+5338,5162,quercetin dihydrate - Botanical name; same plant; consistent type
+4522,4514,quinine - Single-compound suffix; source preserved in extras
+4515,4516,quinine hcl - Botanical name; same plant; consistent type
+5251,5071,s-methylmethionine - Single-compound suffix; source preserved in extras
+4806,4802,saikosaponin a - Botanical name; same plant; consistent type
+5069,3615,salidroside 5%; rosavin 10% - Default single-cluster merge; head by active>populated>newest
+3900,4849,same - Default single-cluster merge; head by active>populated>newest
+3927,3735,sedum sarmentosum - Botanical name; same plant; consistent type
+5193,4051,sericin - Single-compound suffix; source preserved in extras
+4546,4541,siberian ginseng - Botanical name; same plant; consistent type
+4626,5340,stilbene glycoside - Botanical name; same plant; consistent type
+4330,3911,stinging nettle - Botanical name; same plant; consistent type
+3849,3850,symphytum officinale - Botanical name; same plant; consistent type
+3301,3847,syzygium aromaticum - Botanical name; same plant; consistent type
+5448,3832,tart cherry - Botanical name; same plant; consistent type
+3649,3651,trans pterostilbene - Botanical name; same plant; consistent type
+3433,4217,trans resveratrol - Botanical name; same plant; consistent type
+5450,4355,trehalose - Single-compound suffix; source preserved in extras
+3588,3547,trigonella foenum-graecum - Default single-cluster merge; head by active>populated>newest
+4207,3901,vinpocetine - Single-compound suffix; source preserved in extras
+5019,4851,vitamin d3 - Default single-cluster merge; head by active>populated>newest
+5139,5086,yeast enzyme extract - Default single-cluster merge; head by active>populated>newest
+5253,5254,zinc carnosine - Botanical name; same plant; consistent type

@@ -20493,6 +20493,78 @@ def api_ingredients_source_preferred(src_id):
     except Exception as e: return fail(e)
 
 
+@app.route("/api/ingredients/import", methods=["POST"])
+@require_console_key
+def ingredients_import():
+    """Upload FMP CSVs (suppliers, ingredients, sources) to populate the ingredient catalog."""
+    import csv as _csv
+    import sys as _sys
+    import io as _io
+    _csv.field_size_limit(_sys.maxsize)
+
+    try:
+        from scripts.import_ingredients_from_fmp import (
+            import_suppliers, import_ingredients, import_sources,
+            apply_canonical, CANON_CSV,
+        )
+        from dashboard.ingredient_catalog import init_ingredients_schema
+    except Exception as e:
+        return fail(f"import error: {e}")
+
+    try:
+        suppliers_file = request.files.get("suppliers")
+        ingredients_file = request.files.get("ingredients")
+        sources_file = request.files.get("sources")
+
+        if not all([suppliers_file, ingredients_file, sources_file]):
+            return fail("upload all three: suppliers, ingredients, sources", status=400)
+
+        sup_rows = list(_csv.DictReader(_io.StringIO(suppliers_file.read().decode("utf-8", errors="replace"))))
+        ing_rows = list(_csv.DictReader(_io.StringIO(ingredients_file.read().decode("utf-8", errors="replace"))))
+        src_rows = list(_csv.DictReader(_io.StringIO(sources_file.read().decode("utf-8", errors="replace"))))
+
+        cluster_rows = []
+        if os.path.exists(CANON_CSV):
+            with open(CANON_CSV, newline="", encoding="utf-8") as f:
+                cluster_rows = list(_csv.DictReader(f))
+
+        write = request.form.get("write", "").lower() in ("1", "true", "yes")
+
+        if not write:
+            return ok({
+                "mode": "dry_run",
+                "suppliers": len(sup_rows),
+                "ingredients": len(ing_rows),
+                "sources": len(src_rows),
+                "clusters": len(cluster_rows),
+            })
+
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx)
+            ns = import_suppliers(cx, sup_rows)
+            ni = import_ingredients(cx, ing_rows)
+            nsrc = import_sources(cx, src_rows)
+            canon = apply_canonical(cx, cluster_rows)
+            cx.commit()
+        finally:
+            cx.close()
+
+        return ok({
+            "mode": "write",
+            "suppliers": ns,
+            "ingredients": ni,
+            "sources": nsrc,
+            "canonical_applied": canon.get("applied", 0),
+            "canonical_skipped": canon.get("skipped", 0),
+        })
+
+    except Exception as e:
+        app.logger.exception("ingredients import error")
+        return fail(str(e))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # /console/settings — collapsible settings panel (Shipping, Active-Mac, etc.)
 # ─────────────────────────────────────────────────────────────────────────────

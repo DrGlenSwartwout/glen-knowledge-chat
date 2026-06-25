@@ -9,7 +9,7 @@ csv.field_size_limit(sys.maxsize)
 
 EXPORT_DIR = os.environ.get("FMP_EXPORT_DIR", "/tmp/fmp-export/newapp")
 CANON_CSV = os.environ.get("FMP_CANONICAL_CSV",
-    str(Path(__file__).resolve().parent.parent.parent / "AI-Training" / "02 Skills" / "fmp-loaders" / "mapping" / "canonical_clusters.csv"))
+    str(Path(__file__).resolve().parent.parent / "data" / "canonical_clusters.csv"))
 
 _AUDIT = {"PrimaryKey","CreationTimestamp","CreatedBy","ModificationTimestamp","ModifiedBy","id_pk"}
 
