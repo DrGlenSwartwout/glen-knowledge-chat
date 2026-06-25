@@ -1,7 +1,7 @@
 # Phase 2 Spec — Formulations (recipes) → app DB
 
 **Date:** 2026-06-24
-**Status:** Draft for review (2 decisions assumed — see Scope; say the word to flip)
+**Status:** Decisions confirmed 2026-06-24 (Glen). Ready to turn into an implementation plan.
 **Repo:** deploy-chat. Builds on Phase 1 (PR #273, `dashboard/ingredient_catalog.py` + ingredients/suppliers/ingredient_sources tables).
 
 ## Context
@@ -25,11 +25,11 @@ Prior art: `fmp-loaders/mapping/07_formulations.sql` + `08_formulation_ingredien
 
 **Out (Phase 3):** purchase orders, BOM demand, materials/packaging. No new customer-facing UI beyond the generated panels.
 
-### Decision A — recipe↔storefront-product link (ASSUMED: add `fmp_id` to products.json)
-FMP recipes key off the FMP product id; `products.json` uses slugs with no FMP id. **Assumed:** a one-time matcher stores `fmp_id` on each storefront product (reusing the Phase-1/bottle-type fuzzy/alias matcher), giving a stable exact link reused by Phase 2 + 3. Unmatched products → review list (manual, like bottle types). *Alternative:* name-match at generate time (simpler, but fragile — the Synergy/Syntropy near-miss class). Recommend the stable id.
+### Decision A — recipe↔storefront-product link (CONFIRMED: add `fmp_id` to products.json)
+FMP recipes key off the FMP product id; `products.json` uses slugs with no FMP id. **Confirmed:** a one-time matcher stores `fmp_id` on each storefront product (reusing the Phase-1/bottle-type fuzzy/alias matcher), giving a stable exact link reused by Phase 2 + 3. Unmatched products → review list (manual, like bottle types). *Alternative:* name-match at generate time (simpler, but fragile — the Synergy/Syntropy near-miss class). Recommend the stable id.
 
-### Decision B — generate panels now (ASSUMED: yes, retire the refresher)
-**Assumed:** Phase 2 includes the one-way generator and retires `refresh_ingredients_from_fmp.py`, making the DB the sole source of the customer ingredient panels. Aligns with the confirmed "DB = authoritative" decision. *Alternative:* defer the generator, keep the refresher during a transition.
+### Decision B — generate panels now (CONFIRMED: yes, retire the refresher)
+**Confirmed:** Phase 2 includes the one-way generator and retires `refresh_ingredients_from_fmp.py`, making the DB the sole source of the customer ingredient panels. Aligns with the confirmed "DB = authoritative" decision. *Alternative:* defer the generator, keep the refresher during a transition.
 
 ## Data model (SQLite, `chat_log.db`)
 Same conventions as Phase 1 (fmp_id partial unique index, curated-vs-FMP split, JSON extras, INTEGER bools, REAL numbers).
