@@ -106,17 +106,30 @@ def reorder_report(plan=None, include_below_par=True, db_path=None) -> dict:
             shortfall = par + dem - oh - oo
             if shortfall <= 0:
                 continue
+            # Pick the preferred source: explicit `preferred` flag first, then genuinely
+            # cheapest by PER-BASE-UNIT cost (price_per_unit / unit_size), not raw pack price —
+            # else a small cheap pack wrongly beats a cheaper-per-gram large pack. Nulls sort last.
             src = cx.execute("""
                 SELECT s.supplier_id, s.supplier_name, sup.company AS company,
                        s.price_per_unit, s.unit_size, s.unit_type, s.minimum_order, s.minimum_order_unit
                 FROM ingredient_sources s LEFT JOIN suppliers sup ON sup.id = s.supplier_id
-                WHERE s.ingredient_id=? ORDER BY s.preferred DESC, s.price_per_unit LIMIT 1
+                WHERE s.ingredient_id=?
+                ORDER BY s.preferred DESC,
+                         (CASE WHEN s.price_per_unit IS NOT NULL AND s.unit_size > 0
+                               THEN s.price_per_unit * 1.0 / s.unit_size END) IS NULL,
+                         (CASE WHEN s.price_per_unit IS NOT NULL AND s.unit_size > 0
+                               THEN s.price_per_unit * 1.0 / s.unit_size END)
+                LIMIT 1
             """, (iid,)).fetchone()
             price = _num(src["price_per_unit"]) if src else None
-            unit_size = src["unit_size"] if src else None
+            unit_size = _num(src["unit_size"]) if src else None
             moq = src["minimum_order"] if src else None
             sugg = _round_up_order(shortfall, moq, unit_size)
-            est_cost = round(sugg * price, 2) if price is not None else None
+            # price_per_unit is the price for ONE purchase of size `unit_size` (e.g. $140 for a
+            # 1000 g bag), NOT a per-base-unit price. Cost = (#packs) * pack price. suggested_qty
+            # is already rounded to a unit_size multiple, so packs is a whole number.
+            packs = (sugg / unit_size) if (unit_size and unit_size > 0) else None
+            est_cost = round(packs * price, 2) if (price is not None and packs is not None) else None
             units = [u for u in [par_unit if par else None, dem_unit if dem else None,
                                  (src["minimum_order_unit"] if src else None)] if u]
             unit_warning = len(set(units)) > 1
@@ -131,9 +144,11 @@ def reorder_report(plan=None, include_below_par=True, db_path=None) -> dict:
                 "on_hand": round(oh, 4), "on_order": round(oo, 4), "par": par,
                 "demand": round(dem, 4), "shortfall": round(shortfall, 4),
                 "suggested_qty": sugg, "unit": (src["unit_type"] if src else None) or par_unit or dem_unit,
-                "price_per_unit": price, "est_cost": est_cost, "unit_warning": unit_warning,
+                "price_per_unit": price, "unit_size": unit_size,
+                "packs": round(packs, 4) if packs is not None else None,
+                "est_cost": est_cost, "unit_warning": unit_warning,
             })
-            if est_cost:
+            if est_cost is not None:
                 g["subtotal"] = round(g["subtotal"] + est_cost, 2)
 
     group_list = sorted(groups.values(), key=lambda g: (g["supplier_id"] is None, (g["supplier"] or "").lower()))

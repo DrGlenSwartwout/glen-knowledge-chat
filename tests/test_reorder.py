@@ -72,10 +72,35 @@ def test_reorder_report_par_and_plan(tmp_path):
     assert 2 not in by_ing
     assert by_ing[1]["shortfall"] == 2.0
     assert by_ing[1]["suggested_qty"] == 2.0             # MOQ 2 ≥ shortfall 2, on a 0.5 grid
-    assert by_ing[1]["est_cost"] == 20.0                 # 2.0 × $10
+    # price_per_unit $10 buys unit_size 0.5 → 2.0 needs 4 packs → $40 (NOT 2.0 × $10 = $20)
+    assert by_ing[1]["packs"] == 4.0
+    assert by_ing[1]["est_cost"] == 40.0
     assert rep["groups"][0]["supplier"] == "NOW Foods"
-    assert rep["groups"][0]["subtotal"] == 20.0
+    assert rep["groups"][0]["subtotal"] == 40.0
     # With a plan (4 units → demand 2): shortfall = 3 + 2 − 1 = 4 → suggested 4 (MOQ ok, 0.5 grid)
     rep2 = ro.reorder_report(plan=[{"formulation_id": 1, "qty": 4}], db_path=db)
     ln1 = [l for g in rep2["groups"] for l in g["lines"] if l["ingredient_id"] == 1][0]
     assert ln1["demand"] == 2.0 and ln1["shortfall"] == 4.0 and ln1["suggested_qty"] == 4.0
+    assert ln1["est_cost"] == 80.0                       # 4.0 / 0.5 = 8 packs × $10
+
+
+def test_preferred_source_by_per_base_cost(tmp_path):
+    """With no `preferred` flag, the genuinely cheapest PER-BASE source wins —
+    not the one with the lowest raw pack price."""
+    db = _db(tmp_path)
+    with sqlite3.connect(db) as cx:
+        # ingredient 3, par 5, on_hand 0 → shortfall 5. Two sources, neither flagged preferred:
+        #   A: $77 / 250 g  = $0.308/g  (cheaper per gram)
+        #   B: $50 / 100 g  = $0.500/g  (cheaper PACK price, pricier per gram)
+        cx.execute("INSERT INTO ingredients VALUES (3,'Cheap-test',?)",
+                   (json.dumps({"par_level": "5", "par_level_unit": "g"}),))
+        cx.execute("INSERT INTO suppliers VALUES (8,'PerGram Co')")
+        cx.execute("INSERT INTO suppliers VALUES (9,'PackPrice Co')")
+        cx.execute("INSERT INTO ingredient_sources (id,ingredient_id,supplier_id,supplier_name,price_per_unit,unit_size,preferred) VALUES (10,3,8,'PerGram Co',77.0,250.0,0)")
+        cx.execute("INSERT INTO ingredient_sources (id,ingredient_id,supplier_id,supplier_name,price_per_unit,unit_size,preferred) VALUES (11,3,9,'PackPrice Co',50.0,100.0,0)")
+        cx.commit()
+    line = [l for g in ro.reorder_report(db_path=db)["groups"]
+            for l in g["lines"] if l["ingredient_id"] == 3][0]
+    assert line["price_per_unit"] == 77.0                # picked the $0.308/g source, not the $50/100g one
+    assert line["unit_size"] == 250.0
+    assert line["packs"] == 1.0 and line["est_cost"] == 77.0   # shortfall 5 → 1 × 250g pack @ $77
