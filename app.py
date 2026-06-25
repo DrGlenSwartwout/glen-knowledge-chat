@@ -2249,7 +2249,7 @@ def journey_wallet():
         from dashboard import coupons as _coupons
         _coupons.init_coupons_table(cx)
         items = _coupons.wallet(cx, email=email, kind="self")
-        gifting = _gifting_active(cx, email)
+        gifting = REWARDS_1B_GIFT_ENABLED and _gifting_active(cx, email)
         gifts = []
         if gifting:
             for g in _coupons.wallet(cx, email=email, kind="gift"):
@@ -5280,7 +5280,9 @@ def begin_checkout(slug):
         inv = qb.create_invoice(cust, pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
                                 allow_online_pay=allow_online, email_to=email,
                                 discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
-        _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
+        _gift_won = bool(_gift_coupon and _gift_pct >= max(_ref_pct or 0, _self_pct or 0))
+        if not _gift_won:
+            _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
         if _self_coupon and _self_pct >= (_ref_pct or 0) and _self_pct > (_gift_pct or 0):
             try:
                 from dashboard import coupons as _coupons
@@ -5288,7 +5290,7 @@ def begin_checkout(slug):
                     _coupons.mark_redeemed(_ccx, _self_coupon["code"], order_ref=inv.get("Id"))
             except Exception as e:  # noqa: BLE001
                 print(f"[coupons] redeem-mark failed: {e!r}", flush=True)
-        if _gift_coupon and _gift_pct >= max(_ref_pct or 0, _self_pct or 0):
+        if _gift_won:
             try:
                 from dashboard import coupons as _coupons
                 from dashboard import referrals as _rf

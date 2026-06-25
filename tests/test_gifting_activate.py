@@ -54,3 +54,19 @@ def test_activate_flag_off_404(client):
     _seed_session(bf, appmod.LOG_DB, "g3", email="me@x.com", tos=True)
     c.set_cookie("amg_session", "g3")
     assert c.post("/api/journey/activate-gifting", json={}).status_code == 404
+
+
+def test_wallet_hides_gifts_when_flag_off(client):
+    c, appmod, bf = client
+    _seed_session(bf, appmod.LOG_DB, "gw", email="me@x.com", tos=True)
+    c.set_cookie("amg_session", "gw")
+    # activate while on, mint a gift twin via a seeded self-coupon
+    import sqlite3
+    from dashboard import coupons
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        coupons.mint_self(cx, email="me@x.com", product_slug="terrain-restore")
+    assert c.post("/api/journey/activate-gifting", json={}).status_code == 200
+    # now flip the flag OFF and check the wallet
+    appmod.REWARDS_1B_GIFT_ENABLED = False
+    body = c.get("/api/journey/wallet").get_json()
+    assert body.get("gifts", []) == [] and body.get("gifting") in (False, None)
