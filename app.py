@@ -2245,11 +2245,18 @@ def journey_wallet():
         state = begin_funnel.get_state(cx, session_id=session_id, email=email)
         email = (state.get("email") or email or "").strip().lower()
         if not email:
-            return jsonify({"ok": True, "coupons": []})
+            return jsonify({"ok": True, "coupons": [], "gifts": [], "gifting": False})
         from dashboard import coupons as _coupons
         _coupons.init_coupons_table(cx)
-        items = _coupons.wallet(cx, email=email)
-    return jsonify({"ok": True, "coupons": items})
+        items = _coupons.wallet(cx, email=email, kind="self")
+        gifting = _gifting_active(cx, email)
+        gifts = []
+        if gifting:
+            for g in _coupons.wallet(cx, email=email, kind="gift"):
+                g = dict(g)
+                g["share_url"] = f"/begin/buy/{g['product_slug']}?gift={g['code']}"
+                gifts.append(g)
+    return jsonify({"ok": True, "coupons": items, "gifts": gifts, "gifting": gifting})
 
 
 def _gifting_active(cx, email):
@@ -5257,7 +5264,11 @@ def begin_checkout(slug):
         _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(data.get("referral_code"), email)
         _coupon_code = (data.get("coupon_code") or "").strip() or _best_active_self_coupon_code(email, slug)
         _self_pct, _self_coupon = _resolve_self_coupon_pct(_coupon_code, slug)
-        _eff_pct = max(_ref_pct or 0, _self_pct or 0)
+        _gift_pct, _gift_coupon = _resolve_gift_coupon_pct((data.get("gift") or "").strip(), email)
+        # a gift code is product-bound — only honor it when buying the right product
+        if _gift_coupon and _gift_coupon.get("product_slug") != slug:
+            _gift_pct, _gift_coupon = 0, None
+        _eff_pct = max(_ref_pct or 0, _self_pct or 0, _gift_pct or 0)
         try:
             pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
                              coupon_pct=_eff_pct,
@@ -5277,6 +5288,15 @@ def begin_checkout(slug):
                     _coupons.mark_redeemed(_ccx, _self_coupon["code"], order_ref=inv.get("Id"))
             except Exception as e:  # noqa: BLE001
                 print(f"[coupons] redeem-mark failed: {e!r}", flush=True)
+        if _gift_coupon and _gift_pct >= max(_ref_pct or 0, _self_pct or 0):
+            try:
+                from dashboard import coupons as _coupons
+                from dashboard import referrals as _rf
+                with _db_lock, sqlite3.connect(LOG_DB) as _gcx:
+                    _coupons.mark_redeemed(_gcx, _gift_coupon["code"], order_ref=inv.get("Id"))
+                    _rf.record_redemption(_gcx, _gift_coupon["code"], _gift_coupon["email"], email, inv.get("Id"))
+            except Exception as e:  # noqa: BLE001
+                print(f"[coupons] gift redeem/attrib failed: {e!r}", flush=True)
         out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
                "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt"),
                "method": method, "customer_id": cust.get("Id"),
@@ -10271,7 +10291,7 @@ def _best_active_self_coupon_code(email, product_slug):
         from dashboard import coupons as _coupons
         with sqlite3.connect(LOG_DB) as cx:
             _coupons.init_coupons_table(cx)
-            actives = [c for c in _coupons.wallet(cx, email=email)
+            actives = [c for c in _coupons.wallet(cx, email=email, kind="self")
                        if c.get("product_slug") == product_slug]
         return actives[0]["code"] if actives else ""
     except Exception as e:  # noqa: BLE001 — never block checkout
@@ -10292,6 +10312,23 @@ def _resolve_self_coupon_pct(code, product_slug):
         return (int(found["pct"]), found) if found else (0, None)
     except Exception as e:  # noqa: BLE001 — a coupon never blocks checkout
         print(f"[coupons] resolve failed: {e!r}", flush=True)
+        return 0, None
+
+
+def _resolve_gift_coupon_pct(code, referee_email):
+    """A friend's gift coupon → (pct, coupon|None). Product-agnostic at the code level
+    (the code is product-bound); never raises; flag-gated."""
+    code = (code or "").strip()
+    if not REWARDS_1B_GIFT_ENABLED or not code:
+        return 0, None
+    try:
+        from dashboard import coupons as _coupons
+        with sqlite3.connect(LOG_DB) as cx:
+            _coupons.init_coupons_table(cx)
+            found = _coupons.validate_gift(cx, code, referee_email=referee_email)
+        return (int(found["pct"]), found) if found else (0, None)
+    except Exception as e:  # noqa: BLE001 — never block checkout
+        print(f"[coupons] gift resolve failed: {e!r}", flush=True)
         return 0, None
 
 
