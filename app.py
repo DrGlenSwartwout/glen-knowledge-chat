@@ -8600,6 +8600,11 @@ def affiliate_apply():
                 """, (ts, org or name, slug,
                       f"Affiliate: {name}" + (f" ({org})" if org else ""),
                       slug, "affiliate", "scoreapp-quiz"))
+                try:
+                    from dashboard import customers as _customers
+                    _customers.find_or_create_by_email(cx, email=email, name=name)
+                except Exception as _e:
+                    print(f"[affiliate-apply] people upsert skipped: {_e!r}", flush=True)
                 cx.commit()
         except sqlite3.IntegrityError as e:
             return jsonify({"error": f"Signup failed: {str(e)[:100]}"}), 409
@@ -8751,6 +8756,13 @@ def patch_affiliate(aff_id):
                 """, (ts, org or name, slug,
                       f"Affiliate: {name}" + (f" ({org})" if org else ""),
                       slug, "affiliate", "scoreapp-quiz"))
+            try:
+                from dashboard import customers as _customers
+                r = cx.execute("SELECT email, name FROM affiliate_signups WHERE id=?", (aff_id,)).fetchone()
+                if r and (r[0] or "").strip():
+                    _customers.find_or_create_by_email(cx, email=r[0], name=(r[1] or ""))
+            except Exception as _e:
+                print(f"[affiliate-approve] people upsert skipped: {_e!r}", flush=True)
         cx.commit()
     return jsonify({"ok": True, "status": status})
 
