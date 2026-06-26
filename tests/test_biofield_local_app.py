@@ -4,6 +4,7 @@ import sqlite3
 
 import pytest
 from biofield_local_app import create_app
+from dashboard.biofield_stress import add_voice_stress, init_stress_tables
 
 
 @pytest.fixture(autouse=True)
@@ -200,3 +201,28 @@ def test_depth_match_flagged_in_report(tmp_path):
     assert b"may not reach" in client.get("/test/" + tid).data
     ed = client.get("/author/" + tid)
     assert b"Depth of penetration" in ed.data and b"Nucleoplasm" in ed.data
+
+
+def test_report_view_shows_voice_stress_balanced_via_head_match(tmp_path):
+    """Regression: report route must pass chain_rows (not bare remedy names) to
+    list_stresses so the label-match path (head -> label) fires for voice stresses.
+    Before the fix the voice stress appeared Active in the printed report even though
+    the author/edit view correctly showed it Balanced."""
+    db = str(tmp_path / "chat_log.db")
+    _seed(db)
+    client = create_app(db).test_client()
+    # create an authored test with a chain row whose head matches a voice stress label
+    tid = client.post("/author/new").headers["Location"].rstrip("/").rsplit("/", 1)[-1]
+    client.post(f"/author/{tid}/row",
+                json={"layer": "1", "head": "Acid", "most_affected": "Liver",
+                      "remedy": "Sterol Max", "dosage": "3 caps",
+                      "frequency": "daily", "timing": "with food"})
+    # add a voice stress whose label matches the chain row head ("Acid")
+    cx = sqlite3.connect(db)
+    init_stress_tables(cx)
+    add_voice_stress(cx, tid, "Acid")
+    cx.close()
+    # the report view must show the voice stress in the "Stresses balanced" section
+    html = client.get("/test/" + tid).data.decode()
+    assert "Stresses balanced" in html
+    assert "Acid" in html.split("Stresses balanced")[1]

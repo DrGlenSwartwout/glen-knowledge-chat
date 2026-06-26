@@ -103,7 +103,7 @@ def _page(title, body):
             f"<body>{_bar()}<div class=wrap>{body}</div></body></html>")
 
 
-def render_report_html(report, notes="", narrative="", video_script=""):
+def render_report_html(report, notes="", narrative="", video_script="", stresses=None):
     c = report.get("client") or {}
     name = _e(c.get("name") or "(unknown)")
     email = _e(c.get("email") or "")
@@ -112,6 +112,9 @@ def render_report_html(report, notes="", narrative="", video_script=""):
             f"<h1>{name}</h1>"
             f"<p class=sub>{email} &nbsp;&middot;&nbsp; {date} "
             f"&nbsp;&middot;&nbsp; test {_e(report.get('test_id') or '')}</p>")
+    tid_link = _e(report.get("test_id") or "")
+    head += (f'<p class=sub><a href="/test/{tid_link}/report" target="_blank">Open clean report</a>'
+             f' &nbsp;·&nbsp; <a href="/test/{tid_link}/report.pdf" target="_blank">Download printable PDF</a></p>')
 
     # Causal chain table
     rows = ""
@@ -188,7 +191,17 @@ def render_report_html(report, notes="", narrative="", video_script=""):
         f"<textarea id=vscript rows=6>{_e(video_script)}</textarea>"
         "<div id=audiobox class=btnrow></div>")
 
-    return _page(f"{name} — Biofield Analysis", head + chain + schedule + narr + vid)
+    stresses_section = ""
+    if stresses is not None:
+        bal = stresses.get("balanced") or []
+        if bal:
+            items = "".join(
+                f"<li><b>{_e(s.get('code') or '')}</b> {_e(s.get('label') or '')} "
+                f"<span class=food>&mdash; {_e(s.get('balanced_by') or '')}</span></li>"
+                for s in bal)
+            stresses_section = ("<h2>Stresses balanced</h2>"
+                                f"<ul style='margin:4px 0;padding-left:20px'>{items}</ul>")
+    return _page(f"{name} — Biofield Analysis", head + chain + schedule + narr + vid + stresses_section)
 
 
 _AUTHOR_JS = """
@@ -201,8 +214,61 @@ async function post(p,b){const r=await fetch(p,{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return r.json()}
 function rowVals(p){return {layer:val(p+'_layer'),head:val(p+'_head'),most_affected:val(p+'_most'),
  remedy:val(p+'_remedy'),dosage:val(p+'_dosage'),frequency:val(p+'_frequency'),timing:val(p+'_timing')}}
-async function saveHeader(){await post('/author/__TID__/header',
- {name:val('h_name'),email:val('h_email'),date:val('h_date')});astat('Header saved.')}
+function setE4L(j){if(j&&j.html!==undefined)document.getElementById('e4lpanel').innerHTML=j.html}
+async function loadE4L(){try{setE4L(await (await fetch('/author/__TID__/e4l')).json())}catch(e){}}
+function setStress(j){if(j&&j.html!==undefined)document.getElementById('stresspanel').innerHTML=j.html}
+async function loadStress(){try{setStress(await (await fetch('/author/__TID__/stresses')).json())}catch(e){}}
+async function balanceStress(sid,val){await post('/author/__TID__/stress/'+sid+'/balance',{value:val});loadStress()}
+async function saveHeader(){const j=await post('/author/__TID__/header',
+ {name:val('h_name'),email:val('h_email'),date:val('h_date')});astat('Header saved.');setE4L(j)}
+// --- E4L client picker: name autocomplete -> email (dropdown if duplicates) -> date
+var E4L_CLIENT_ID=null;
+function _esc(s){var e=document.createElement('div');e.textContent=(s==null?'':s);return e.innerHTML}
+function _today(){return new Date().toISOString().slice(0,10)}
+function hideDD(){var d=document.getElementById('h_dd');if(d){d.style.display='none';d.innerHTML='';d._clients=null;d._emails=null}}
+async function nameSearch(){
+ var q=val('h_name'),d=document.getElementById('h_dd');
+ if(!q||q.length<2){hideDD();return}
+ try{var cs=((await (await fetch('/api/e4l/clients?q='+encodeURIComponent(q))).json()).clients)||[];
+  if(!cs.length){hideDD();return}
+  d.innerHTML=cs.map(function(c,i){
+   var n=c.emails?c.emails.length:0;
+   var sub=n>1?(' <span class=food>('+n+' emails)</span>'):(n==1?(' <span class=food>'+_esc(c.emails[0].email)+'</span>'):'');
+   return '<div class=ddi data-i="'+i+'">'+_esc(c.name)+sub+'</div>'}).join('');
+  d._clients=cs;d.style.display='block'}catch(e){hideDD()}
+}
+function showEmailPicker(emails){
+ var d=document.getElementById('h_dd');
+ d.innerHTML='<div class=food style="padding:5px 10px">Two clients share this name &mdash; pick the email:</div>'+
+  emails.map(function(e,i){return '<div class=ddi data-ei="'+i+'">'+_esc(e.email)+
+   (e.last_scan_date?(' <span class=food>(last scan '+_esc(e.last_scan_date)+')</span>'):'')+'</div>'}).join('');
+ d._emails=emails;d.style.display='block';
+}
+function pickName(c){
+ set('h_name',c.name);
+ if(!val('h_date'))set('h_date',_today());
+ if(!c.emails||c.emails.length<=1){var em=(c.emails&&c.emails[0])||{};set('h_email',em.email||'');
+  E4L_CLIENT_ID=em.client_id!=null?em.client_id:null;hideDD();afterClientSelected()}
+ else{showEmailPicker(c.emails)}
+}
+function pickEmail(e){set('h_email',e.email);E4L_CLIENT_ID=e.client_id!=null?e.client_id:null;hideDD();afterClientSelected()}
+async function afterClientSelected(){set('h_client_id',E4L_CLIENT_ID==null?'':E4L_CLIENT_ID);await saveHeader();checkE4L()}
+document.addEventListener('click',function(ev){
+ var d=document.getElementById('h_dd');if(!d)return;
+ var it=ev.target.closest?ev.target.closest('.ddi'):null;
+ if(it&&d.contains(it)){
+  if(it.dataset.ei!==undefined&&d._emails){pickEmail(d._emails[+it.dataset.ei])}
+  else if(it.dataset.i!==undefined&&d._clients){pickName(d._clients[+it.dataset.i])}
+ }else if(!(ev.target.id==='h_name')){hideDD()}
+});
+async function checkE4L(){
+ var s=document.getElementById('e4lchk');if(s)s.textContent='Checking E4L for a newer scan\\u2026';
+ try{var cid=val('h_client_id');
+  var j=await post('/author/__TID__/e4l/refresh',{client_id:cid?Number(cid):(E4L_CLIENT_ID!=null?E4L_CLIENT_ID:null)});
+  setE4L(j);var s2=document.getElementById('e4lchk');
+  if(s2)s2.textContent=j.ok?(j.newer?'\\u2191 Newer scan pulled.':'\\u2713 Up to date.'):('E4L check failed: '+((j.error||'error')+'').slice(0,120));
+ }catch(e){var s3=document.getElementById('e4lchk');if(s3)s3.textContent='E4L check failed.'}
+}
 async function addRow(){var b=rowVals('new');if(!b.head&&!b.remedy){astat('Enter a stress and a remedy.');return}
  await post('/author/__TID__/row',b);location.reload()}
 async function saveRow(rid){await post('/author/__TID__/row/'+rid,rowVals('r'+rid));astat('Row saved.')}
@@ -270,13 +336,44 @@ async function delTest(){if(!confirm('Delete this entire test? This cannot be un
  await post('/author/__TID__/delete',{});location.href='/'}
 async function confirmAll(){await post('/author/__TID__/confirm-all',{});location.reload()}
 async function confirmRow(rid){await post('/author/__TID__/row/'+rid+'/confirm',{});location.reload()}
+async function importReveal(){
+try{
+  var j=await post('/author/__TID__/e4l/import-reveal',{});
+  if(j && j.needs_confirm){
+    if(!confirm('This session already has '+j.existing+' rows — add the reveal layers anyway?')) return;
+    j=await post('/author/__TID__/e4l/import-reveal',{force:true});
+  }
+  if(j && j.ok){ location.reload(); }
+  else { astat((j&&j.reason)||'Import failed.'); }
+}catch(e){ astat('Import failed.'); }
+}
 async function loadLists(){
  try{const v=await (await fetch('/api/vocab?limit=500')).json();
   document.getElementById('vocab').innerHTML=(v.vocab||[]).map(opt).join('')}catch(e){}
  try{const c=await (await fetch('/api/catalog?limit=800')).json();
   document.getElementById('catalog').innerHTML=(c.catalog||[]).map(function(x){return opt(x.name||'')}).join('')}catch(e){}
 }
+function setPhase(p){window._phase=p;
+ document.getElementById('phaseCap').className=(p==1?'btn':'btn ghost');
+ document.getElementById('phaseBal').className=(p==2?'btn':'btn ghost');
+ document.getElementById('phaseAct').textContent=(p==1?'Capture stresses → list':'Interpret → fill fields')}
+async function phaseRun(){if((window._phase||1)==1){captureStresses()}else{interpret()}}
+async function captureStresses(){rstat('Capturing stresses from transcript…');
+ var j=await post('/author/__TID__/capture-stresses',{});
+ if(j.error){rstat('Capture: '+j.error);return}
+ rstat('Added '+j.added+' stress(es).');loadStress()}
+async function mineProfile(){rstat('Mining client profile for stresses…');
+ var j=await post('/author/__TID__/mine-profile',{});
+ if(j.error){rstat('Mine profile: '+j.error);return}
+ rstat('Added '+j.added+' profile stress(es).');loadStress()}
+async function suggestRemedies(){
+ try{var j=await (await fetch('/author/__TID__/suggest-remedies')).json();
+  document.getElementById('suggestpanel').innerHTML=j.html}
+ catch(e){document.getElementById('suggestpanel').innerHTML=''}}
 loadLists();
+loadE4L();
+loadStress();
+setPhase(1);
 </script>"""
 
 
@@ -292,6 +389,65 @@ def _row_inputs(p, l):
         f'<td><input id="{p}_dosage" value="{g("dosage")}"></td>'
         f'<td><input id="{p}_frequency" value="{g("frequency")}"></td>'
         f'<td><input id="{p}_timing" value="{g("timing")}"></td>')
+
+
+def render_e4l_panel(ctx):
+    """Reference panel for the most recent E4L voice scan (fresh / stale / none).
+    Always shows the scan's age + ranked findings when one exists; read-only —
+    Glen's spoken testing still fills the causal chain. All scan free-text escaped."""
+    ctx = ctx or {}
+    status = ctx.get("status") or "none"
+    color = {"fresh": "var(--ok)", "stale": "var(--accent)"}.get(status, "var(--muted)")
+    icon = {"fresh": "&#9679;", "stale": "&#9888;&#65039;"}.get(status, "&#9675;")
+    head = (f"<div style='display:flex;align-items:center;gap:8px;font-weight:600;color:{color}'>"
+            f"<span>{icon}</span><span>{_e(ctx.get('message') or '')}</span></div>")
+    date = _e(ctx.get("scan_date") or "")
+    sub = (f"<div class=food style='margin-top:2px'>scan {date}</div>"
+           if ctx.get("found") and date else "")
+    def _list(findings):
+        items = ""
+        for f in findings or []:
+            rank = _e(str(f.get("rank"))) if f.get("rank") is not None else ""
+            desc = _e(f.get("description") or "")
+            items += (f"<li><b>{_e(f.get('code') or '')}</b> {_e(f.get('name') or '')}"
+                      + (f" &mdash; <span class=food>{desc}</span>" if desc else "")
+                      + (f" <span class=pill>#{rank}</span>" if rank else "") + "</li>")
+        return f"<ol style='margin:4px 0 0;padding-left:20px'>{items}</ol>" if items else ""
+
+    def _section(label, sub, findings):
+        if not findings:
+            return ""
+        return (f"<div style='margin-top:8px'><div class=food style='font-weight:600'>"
+                f"{label}{(' &mdash; ' + sub) if sub else ''}</div>{_list(findings)}</div>")
+
+    # Two lists: infoceuticals Glen balances vs. ER/MR "stresses" (info only). Fall
+    # back to splitting `findings` by group for any caller that didn't pre-split.
+    info = ctx.get("infoceuticals")
+    stress = ctx.get("stresses")
+    if info is None and stress is None:
+        allf = ctx.get("findings") or []
+        info = [f for f in allf if f.get("group") != "stress"]
+        stress = [f for f in allf if f.get("group") == "stress"]
+    body = (_section("Infoceuticals", "", info)
+            + _section("Stresses", "information only, no balancing vial", stress))
+    note = ("<div class=food style='margin-top:6px'>Reference only &mdash; your spoken "
+            "testing fills the chain.</div>") if ctx.get("found") else ""
+    days = ctx.get("days_ago")
+    if ctx.get("found") and days is not None and days < 7:
+        imp = "<button class='btn' onclick=importReveal()>Import Reveal &rarr; Causal Chain</button>"
+    elif ctx.get("found"):
+        imp = (f"<button class='btn' disabled title='Refresh to a scan under 7 days old'>"
+               f"Import Reveal &rarr; Causal Chain</button>"
+               f"<span class=food>scan is {_e(str(days))} days old</span>")
+    else:
+        imp = ""
+    check = ("<div class=btnrow style='margin-top:8px'>"
+             "<button class='btn ghost' onclick=checkE4L()>Check E4L now</button>"
+             f"{imp}"
+             "<span id=e4lchk class=food></span></div>")
+    return (f"<div class=card style='border-left:3px solid {color}'>"
+            "<div class=food style='text-transform:uppercase;font-size:11px;letter-spacing:.08em'>"
+            f"Recent E4L voice scan</div>{head}{sub}{body}{note}{check}</div>")
 
 
 def _depth_select(rid, side, current, depth_values):
@@ -311,14 +467,28 @@ def render_author_html(report, depth_values=None, transcript=""):
             "<div class=btnrow><button class=btn onclick=confirmAll()>&#10003; Confirm all rows</button>"
             "<button class='btn ghost' onclick=delTest()>Delete test</button></div>")
     hdr = (
+        "<style>.dd{position:absolute;top:100%;left:0;display:none;background:var(--card);"
+        "border:1px solid var(--line);border-radius:6px;margin-top:2px;min-width:320px;"
+        "max-width:520px;max-height:280px;overflow:auto;z-index:50}"
+        ".ddi{padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--line)}"
+        ".ddi:hover{background:rgba(255,255,255,.06)}</style>"
         "<div class=card>"
-        f"<label>Client name</label><input id=h_name value=\"{_e(c.get('name') or '')}\" style='width:280px'>"
+        "<input type=hidden id=h_client_id value=''>"
+        "<label>Client name</label>"
+        "<span style='position:relative;display:inline-block'>"
+        f"<input id=h_name autocomplete=off oninput=nameSearch() value=\"{_e(c.get('name') or '')}\" style='width:280px'>"
+        "<div id=h_dd class=dd></div></span>"
         f"<label>Email</label><input id=h_email value=\"{_e(c.get('email') or '')}\" style='width:280px'>"
         f"<label>Date</label><input id=h_date value=\"{_e(report.get('date') or '')}\" style='width:160px'>"
         "<div class=btnrow><button class=btn onclick=saveHeader()>Save header</button>"
         "<span id=astat class=food></span></div></div>")
     rows = ""
+    shown_divider = False
     for l in report.get("layers") or []:
+        if not shown_divider and l.get("zone") == "bottom":
+            rows += ("<tr><td colspan=10 style='text-align:center;color:var(--muted);"
+                     "font-size:12px;padding:4px 0'><b>Unbalanced from scan</b></td></tr>")
+            shown_divider = True
         rid_raw = l.get("rid")
         rid = _e(str(rid_raw or ""))
         p = "r" + rid
@@ -357,16 +527,29 @@ def render_author_html(report, depth_values=None, transcript=""):
         "<p class=sub>Record yourself narrating the test in your own voice &mdash; the live "
         "transcript saves to this test's notes and feeds the narrative. Wear a lav/AirPods for "
         "the codes.</p>"
+        "<div class=btnrow style='margin-bottom:6px'>"
+        "<button id=phaseCap class=btn onclick='setPhase(1)'>Phase 1 &middot; Capture stresses</button>"
+        "<button id=phaseBal class='btn ghost' onclick='setPhase(2)'>Phase 2 &middot; Balance</button>"
+        "</div>"
         "<div class=btnrow>"
         "<button class=btn onclick=recStart()>&#9679; Record</button>"
         "<button class='btn ghost' onclick=recStop()>&#9632; Stop &amp; save</button>"
-        "<button class=btn onclick=interpret()>Interpret &rarr; fill fields</button>"
+        "<button id=phaseAct class=btn onclick=phaseRun()>Capture stresses &rarr; list</button>"
         "<span id=rstat class=food></span></div>"
         "<div class=food><em id=interim></em></div>"
         f"<textarea id=sessText rows=6 placeholder='Live transcript appears here as you speak..."
         f"'>{_e(transcript)}</textarea>")
     return _page("Edit Biofield Test",
-                 head + hdr + table + session + _AUTHOR_JS.replace("__TID__", tid))
+                 head + hdr + "<div id=e4lpanel></div>"
+                 "<div class=btnrow style='margin:6px 0'>"
+                 "<button class='btn ghost' onclick=mineProfile()>Mine profile &rarr; stresses</button>"
+                 "</div>"
+                 "<div id=stresspanel></div>"
+                 "<div class=btnrow style='margin:6px 0'>"
+                 "<button class='btn ghost' onclick=suggestRemedies()>Suggest minimal remedies</button>"
+                 "</div>"
+                 "<div id=suggestpanel></div>" + table + session
+                 + _AUTHOR_JS.replace("__TID__", tid))
 
 
 def render_list_html(tests, q="", authored=None):
@@ -402,3 +585,43 @@ def render_list_html(tests, q="", authored=None):
         "<table><tr><th>Client</th><th>Email</th><th>Date</th><th>Remedies</th></tr>"
         f"{rows}</table>")
     return _page("Biofield Analysis", body)
+
+
+def render_suggest_panel(data):
+    data = data or {}
+    picks = data.get("picks") or []
+    unc = data.get("uncovered") or []
+    if not picks and not unc:
+        return "<div class=card><div class=food>No active required stresses to consolidate.</div></div>"
+    items = ""
+    for p in picks:
+        covers = p.get("covers") or []
+        items += (f"<li><b>{_e(p.get('remedy') or '')}</b> &rarr; covers "
+                  f"{_e(', '.join(covers))} <span class=pill>{len(covers)}</span></li>")
+    body = f"<ol style='margin:4px 0 0;padding-left:20px'>{items}</ol>" if items else ""
+    unc_html = (f"<div class=food style='margin-top:6px'>No scan remedy for: "
+                f"{_e(', '.join(unc))}</div>" if unc else "")
+    return ("<div class=card><div class=food style='text-transform:uppercase;font-size:11px;"
+            f"letter-spacing:.08em'>Minimal remedy set</div>{body}{unc_html}</div>")
+
+
+def render_stress_panel(data):
+    data = data or {}
+    def _row(s, active):
+        tag = _e(s.get("balance") or "")
+        by = _e(s.get("balanced_by") or "")
+        bytxt = f" <span class=food>&middot; {by}</span>" if (not active and by) else ""
+        btn = (f"<button class='btn ghost' style='font-size:11px' "
+               f"onclick=\"balanceStress({int(s.get('id') or 0)},{'true' if active else 'false'})\">"
+               f"{'Balance' if active else 'Reactivate'}</button>")
+        return (f"<li><b>{_e(s.get('code') or '')}</b> {_e(s.get('label') or '')} "
+                f"<span class=pill>{tag}</span>{bytxt} {btn}</li>")
+    act = "".join(_row(s, True) for s in data.get("active") or [])
+    bal = "".join(_row(s, False) for s in data.get("balanced") or [])
+    act_html = (f"<div class=food style='font-weight:600;margin-top:6px'>Active &mdash; to balance</div>"
+                f"<ul style='margin:4px 0;padding-left:18px'>{act}</ul>") if act else (
+                "<div class=food style='margin-top:6px'>No active stresses.</div>")
+    bal_html = (f"<div class=food style='font-weight:600;margin-top:6px'>Balanced</div>"
+                f"<ul style='margin:4px 0;padding-left:18px'>{bal}</ul>") if bal else ""
+    return ("<div class=card><div class=food style='text-transform:uppercase;font-size:11px;"
+            "letter-spacing:.08em'>Stress balancing</div>" + act_html + bal_html + "</div>")

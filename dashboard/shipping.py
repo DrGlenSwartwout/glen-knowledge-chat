@@ -31,6 +31,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from dashboard import packing
+
 
 BOX_SIZES = ("S", "M", "L")
 PENDING = "pending"
@@ -66,6 +68,21 @@ _DEFAULT_RATES_2026_04_26 = [
     ("M", 2295, "https://www.usps.com/business/prices.htm", "2026-04-26"),
     ("L", 3150, "https://www.usps.com/business/prices.htm", "2026-04-26"),
 ]
+
+# Standard bottle types with measured dims (Ø_mm, H_mm) = cm x 10.
+_STANDARD_BOTTLES = [
+    ("120cap", "250 ml wide-mouth (120 caps / pure powder)", 80, 100),
+    ("100ml", "100 ml dropper", 50, 160),
+    ("30roll", "30 ml roll-on", 40, 100),
+    ("50ml", "50 ml dropper", 40, 140),
+    ("30ml", "30 ml dropper (infoceutical)", 40, 110),
+    ("15ml", "15 ml dropper", 30, 100),
+    ("5ml", "5 ml dropper (eye drops)", 30, 80),
+    ("30g", "100 ml cosmetic jar (30 g powder)", 70, 70),
+    ("30cap", "100 ml wide-mouth (30 caps)", 50, 90),
+]
+_PACKING_DEFAULTS = {"wrap_mm": 6, "box_margin_mm": 10}
+_PACKING_KEYS = ("wrap_mm", "box_margin_mm")
 
 
 def init_shipping_schema(cx: sqlite3.Connection) -> None:
@@ -110,6 +127,53 @@ def init_shipping_schema(cx: sqlite3.Connection) -> None:
         "ON usps_rates(box_size, effective_date)"
     )
 
+    # Add dimension columns to bottle_types if missing (idempotent migration)
+    cols = {r[1] for r in cx.execute("PRAGMA table_info(bottle_types)")}
+    if "diameter_mm" not in cols:
+        cx.execute("ALTER TABLE bottle_types ADD COLUMN diameter_mm INTEGER")
+    if "height_mm" not in cols:
+        cx.execute("ALTER TABLE bottle_types ADD COLUMN height_mm INTEGER")
+
+    # Rename legacy 100cos -> 30g if present and 30g not already there
+    have = {r[0] for r in cx.execute("SELECT name FROM bottle_types")}
+    if "100cos" in have and "30g" not in have:
+        cx.execute("UPDATE bottle_types SET name='30g' WHERE name='100cos'")
+        have.discard("100cos"); have.add("30g")
+    # Ensure 30ml exists with dims (insert if missing) — only on existing (non-empty) catalogs;
+    # fresh DBs get it via the seed block below.
+    if have and "30ml" not in have:
+        cx.execute("INSERT INTO bottle_types (name, notes, diameter_mm, height_mm) "
+                   "VALUES ('30ml', '30 ml dropper (infoceutical)', 40, 110)")
+
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS product_bottle_types (
+            slug         TEXT PRIMARY KEY,
+            bottle_type  TEXT NOT NULL,
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS packing_settings (
+            key   TEXT PRIMARY KEY,
+            value INTEGER NOT NULL
+        )
+    """)
+    for k, v in _PACKING_DEFAULTS.items():
+        cx.execute(
+            "INSERT OR IGNORE INTO packing_settings (key, value) VALUES (?, ?)",
+            (k, v),
+        )
+
+    # Seed the standard bottle types with dims only on a fresh catalog
+    has_bottles = cx.execute("SELECT 1 FROM bottle_types LIMIT 1").fetchone()
+    if not has_bottles:
+        for name, notes, d_mm, h_mm in _STANDARD_BOTTLES:
+            cx.execute(
+                "INSERT INTO bottle_types (name, notes, diameter_mm, height_mm) "
+                "VALUES (?, ?, ?, ?)",
+                (name, notes, d_mm, h_mm),
+            )
+
     # First-run seed: only if the table is empty
     has_any = cx.execute("SELECT 1 FROM usps_rates LIMIT 1").fetchone()
     if not has_any:
@@ -150,42 +214,149 @@ def _capacity_lookup(cx: sqlite3.Connection) -> Dict[str, Dict[str, int]]:
     return out
 
 
-def pick_box(
-    bottles_by_type: Dict[str, int],
-    db_path: Optional[str] = None,
-) -> Optional[str]:
-    """Return the smallest S/M/L box that fits this order, or None.
+def _expand_items(bottles_by_type, dims):
+    """Flatten {type: qty} into a list of (d_mm, h_mm) plus a parallel list of
+    type names (same order) so caps can be checked per box."""
+    items, names = [], []
+    for name, qty in bottles_by_type.items():
+        d = dims[name]
+        for _ in range(int(qty)):
+            items.append(d)
+            names.append(name)
+    return items, names
 
-    Algorithm — fractional-fill:
-        For each candidate box size, compute total fill =
-            sum(qty_in_order / capacity_in_that_box) over each bottle type.
-        If total fill ≤ 1.0, the order fits in that box.
-        Pick the smallest fitting box.
 
-    Raises UnknownBottleType if a bottle is not in the catalog.
-    Returns None if the order is empty or exceeds the Large box.
+def _caps_ok(box_size, names, placed_idx, caps):
+    """True if the placed subset honours every (type, box) override cap."""
+    from collections import Counter
+    counts = Counter(names[i] for i in placed_idx)
+    for tname, n in counts.items():
+        cap = caps.get(tname, {}).get(box_size)
+        if cap is not None and n > cap:
+            return False
+    return True
+
+
+def pick_boxes(bottles_by_type, db_path: Optional[str] = None):
+    """Geometric box selection. Returns a list of box sizes, or None.
+
+    - If every requested type has dimensions -> geometric split (multi-box),
+      honouring any (type, box) override caps from box_capacity.
+    - Otherwise -> fall back to the legacy fractional pick_box (single box),
+      returned as a one-element list, or None.
+    Raises UnknownBottleType if a type is in neither the dims set nor the
+    capacity matrix.
     """
     if not bottles_by_type:
         return None
-
+    dims = get_bottle_dims(db_path=db_path)
     with _connect(db_path) as cx:
-        capacities = _capacity_lookup(cx)
+        caps = _capacity_lookup(cx)
 
-    for bottle_name in bottles_by_type:
-        if bottle_name not in capacities:
-            raise UnknownBottleType(bottle_name)
+    for name in bottles_by_type:
+        if name not in dims and name not in caps:
+            raise UnknownBottleType(name)
 
+    if all(name in dims for name in bottles_by_type):
+        settings = get_packing_settings(db_path=db_path)
+        wrap, margin = settings["wrap_mm"], settings["box_margin_mm"]
+        items, names = _expand_items(bottles_by_type, dims)
+        # Geometric split; then verify each chosen box honours override caps.
+        boxes = packing.split_into_boxes(items, wrap_mm=wrap, box_margin_mm=margin)
+        if boxes is None:
+            return None
+        if not _caps_violated(items, names, caps, wrap, margin):
+            return boxes
+        return _split_with_caps(items, names, caps, wrap, margin)
+
+    # Legacy fractional fallback (dimensionless types present)
+    legacy = _pick_box_fractional(bottles_by_type, caps)
+    return [legacy] if legacy else None
+
+
+def _split_with_caps(items, names, caps, wrap, margin):
+    """Greedy split that also respects override caps per box. Fills boxes one at
+    a time, choosing the largest placement that satisfies caps; sizes the final
+    box down. Returns list of box sizes or None."""
+    remaining = list(range(len(items)))
+    out = []
+    while remaining:
+        sub_items = [items[i] for i in remaining]
+        sub_names = [names[i] for i in remaining]
+        # smallest single box that fits all AND honours caps
+        chosen = None
+        for s in packing.BOX_ORDER:
+            placed = packing.fit_subset(sub_items, packing.BOXES_MM[s],
+                                        wrap_mm=wrap, box_margin_mm=margin)
+            if len(placed) == len(sub_items) and _caps_ok(s, sub_names, placed, caps):
+                chosen = s
+                break
+        if chosen:
+            out.append(chosen)
+            break
+        # else pack into an L, dropping any bottle that would break a cap
+        placed = packing.fit_subset(sub_items, packing.BOXES_MM["L"],
+                                    wrap_mm=wrap, box_margin_mm=margin)
+        placed = _trim_to_caps("L", sub_names, placed, caps)
+        if not placed:
+            return None
+        out.append("L")
+        placed_global = {remaining[k] for k in placed}
+        remaining = [i for i in remaining if i not in placed_global]
+    return out
+
+
+def _trim_to_caps(box_size, names, placed_idx, caps):
+    """Drop indices from a placed set until every cap is honoured."""
+    from collections import Counter
+    placed = set(placed_idx)
+    counts = Counter(names[i] for i in placed)
+    for tname, n in list(counts.items()):
+        cap = caps.get(tname, {}).get(box_size)
+        if cap is not None and n > cap:
+            drop = [i for i in placed if names[i] == tname][cap:]
+            placed.difference_update(drop)
+    return placed
+
+
+def _caps_violated(items, names, caps, wrap, margin):
+    """Quick check: would the cap-free split place more of any type in a single
+    box than its cap allows? Conservative — if any single box could exceed a
+    cap, return True to route through _split_with_caps."""
+    if not caps:
+        return False
+    # If no cap applies to any present type, nothing to enforce.
+    present = set(names)
+    return any(present & set(caps) for _ in (0,)) and any(
+        any(s in caps.get(t, {}) for s in packing.BOX_ORDER) for t in present
+    )
+
+
+def _pick_box_fractional(bottles_by_type, caps):
+    """Legacy fractional-fill: smallest box where sum(qty/capacity) <= 1.0."""
+    for name in bottles_by_type:
+        if name not in caps:
+            raise UnknownBottleType(name)
     for size in BOX_SIZES:
         total_fill = 0.0
-        size_works = True
-        for bottle_name, qty in bottles_by_type.items():
-            cap = capacities[bottle_name].get(size)
+        ok = True
+        for name, qty in bottles_by_type.items():
+            cap = caps[name].get(size)
             if cap is None or cap <= 0:
-                size_works = False
+                ok = False
                 break
             total_fill += qty / cap
-        if size_works and total_fill <= 1.0:
+        if ok and total_fill <= 1.0:
             return size
+    return None
+
+
+def pick_box(bottles_by_type, db_path: Optional[str] = None):
+    """Smallest single box that fits, or None (multi-box -> None). Geometric
+    when all types have dims; legacy fractional otherwise."""
+    boxes = pick_boxes(bottles_by_type, db_path=db_path)
+    if boxes and len(boxes) == 1:
+        return boxes[0]
     return None
 
 
@@ -214,33 +385,41 @@ def get_current_rates(db_path: Optional[str] = None) -> Dict[str, dict]:
 
 # ── Quote (used by the order-entry page) ──────────────────────────────────────
 
-def quote(
-    bottles_by_type: Dict[str, int],
-    db_path: Optional[str] = None,
-) -> dict:
-    """Combine pick_box + current rate into a single payload for the UI."""
-    box = pick_box(bottles_by_type, db_path=db_path)
-    if box is None:
+def quote(bottles_by_type, db_path: Optional[str] = None) -> dict:
+    """pick_boxes + current rates -> a single UI/checkout payload.
+
+    Single box: {box_size, box_sizes:[size], shipping_cents, box_breakdown}.
+    Multi box:  box_sizes has >1 entry; shipping_cents is the summed charged
+                rate; box_breakdown lists each box + its charged_cents.
+    """
+    try:
+        boxes = pick_boxes(bottles_by_type, db_path=db_path)
+    except UnknownBottleType as e:
+        return {"box_size": None, "box_sizes": [], "shipping_cents": None,
+                "error": f"Unknown bottle type: {e}"}
+    if not boxes:
         return {
-            "box_size": None,
-            "shipping_cents": None,
-            "error": (
-                "Order is empty"
-                if not bottles_by_type
-                else "Order exceeds the Large flat-rate box — split shipment or use custom shipping."
-            ),
+            "box_size": None, "box_sizes": [], "shipping_cents": None,
+            "error": ("Order is empty" if not bottles_by_type
+                      else "Order exceeds available flat-rate boxes — "
+                           "split shipment or use custom shipping."),
         }
     rates = get_current_rates(db_path=db_path)
-    if box not in rates:
-        return {
-            "box_size": box,
-            "shipping_cents": None,
-            "error": f"No confirmed USPS rate for {box} — check /admin/shipping.",
-        }
+    breakdown = []
+    total = 0
+    for size in boxes:
+        if size not in rates:
+            return {"box_size": size, "box_sizes": boxes, "shipping_cents": None,
+                    "error": f"No confirmed USPS rate for {size} — check /admin/shipping."}
+        cents = rates[size]["charged_cents"]
+        breakdown.append({"box_size": size, "charged_cents": cents})
+        total += cents
     return {
-        "box_size": box,
-        "shipping_cents": rates[box]["charged_cents"],
-        "rate_effective_date": rates[box]["effective_date"],
+        "box_size": boxes[0],               # back-compat single-box field
+        "box_sizes": boxes,
+        "shipping_cents": total,
+        "box_breakdown": breakdown,
+        "rate_effective_date": rates[boxes[0]]["effective_date"],
     }
 
 
@@ -248,13 +427,16 @@ def quote(
 
 def add_bottle_type(
     name: str,
+    diameter_mm: Optional[int] = None,
+    height_mm: Optional[int] = None,
     notes: Optional[str] = None,
     db_path: Optional[str] = None,
 ) -> int:
     with _connect(db_path) as cx:
         cur = cx.execute(
-            "INSERT INTO bottle_types (name, notes) VALUES (?, ?)",
-            (name, notes),
+            "INSERT INTO bottle_types (name, notes, diameter_mm, height_mm) "
+            "VALUES (?, ?, ?, ?)",
+            (name, notes, diameter_mm, height_mm),
         )
         cx.commit()
         return int(cur.lastrowid)
@@ -263,7 +445,8 @@ def add_bottle_type(
 def list_bottle_types(db_path: Optional[str] = None) -> List[dict]:
     with _connect(db_path) as cx:
         rows = cx.execute(
-            "SELECT id, name, notes, created_at FROM bottle_types ORDER BY name"
+            "SELECT id, name, notes, diameter_mm, height_mm, created_at "
+            "FROM bottle_types ORDER BY name"
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -277,13 +460,16 @@ def delete_bottle_type(bottle_type_id: int, db_path: Optional[str] = None) -> No
 def update_bottle_type(
     bottle_type_id: int,
     name: str,
+    diameter_mm: Optional[int] = None,
+    height_mm: Optional[int] = None,
     notes: Optional[str] = None,
     db_path: Optional[str] = None,
 ) -> None:
     with _connect(db_path) as cx:
         cx.execute(
-            "UPDATE bottle_types SET name = ?, notes = ? WHERE id = ?",
-            (name, notes, bottle_type_id),
+            "UPDATE bottle_types SET name=?, notes=?, diameter_mm=?, height_mm=? "
+            "WHERE id=?",
+            (name, notes, diameter_mm, height_mm, bottle_type_id),
         )
         cx.commit()
 
@@ -329,6 +515,72 @@ def get_capacity_matrix(db_path: Optional[str] = None) -> List[dict]:
         {"id": b["id"], "name": b["name"], "notes": b["notes"], **by_id[b["id"]]}
         for b in bottles
     ]
+
+
+def get_bottle_dims(db_path: Optional[str] = None) -> Dict[str, tuple]:
+    """{name: (diameter_mm, height_mm)} for types that have both dims set."""
+    with _connect(db_path) as cx:
+        rows = cx.execute(
+            "SELECT name, diameter_mm, height_mm FROM bottle_types "
+            "WHERE diameter_mm IS NOT NULL AND height_mm IS NOT NULL"
+        ).fetchall()
+    return {r["name"]: (r["diameter_mm"], r["height_mm"]) for r in rows}
+
+
+def list_product_bottle_overrides(db_path=None):
+    with _connect(db_path) as cx:
+        rows = cx.execute("SELECT slug, bottle_type FROM product_bottle_types").fetchall()
+    return {r["slug"]: r["bottle_type"] for r in rows}
+
+
+def set_product_bottle_override(slug, bottle_type, db_path=None):
+    with _connect(db_path) as cx:
+        cx.execute(
+            "INSERT INTO product_bottle_types (slug, bottle_type, updated_at) "
+            "VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT (slug) DO UPDATE SET bottle_type=excluded.bottle_type, "
+            "updated_at=datetime('now')",
+            (slug, bottle_type),
+        )
+        cx.commit()
+
+
+def clear_product_bottle_override(slug, db_path=None):
+    with _connect(db_path) as cx:
+        cx.execute("DELETE FROM product_bottle_types WHERE slug=?", (slug,))
+        cx.commit()
+
+
+def resolve_bottle_type(slug, product, db_path=None):
+    with _connect(db_path) as cx:
+        row = cx.execute(
+            "SELECT bottle_type FROM product_bottle_types WHERE slug=?", (slug,)
+        ).fetchone()
+    if row:
+        return row["bottle_type"]
+    return (product or {}).get("bottle_type") or "default"
+
+
+def get_packing_settings(db_path: Optional[str] = None) -> Dict[str, int]:
+    with _connect(db_path) as cx:
+        rows = cx.execute("SELECT key, value FROM packing_settings").fetchall()
+    out = dict(_PACKING_DEFAULTS)
+    out.update({r["key"]: r["value"] for r in rows})
+    return {k: int(out[k]) for k in _PACKING_KEYS}
+
+
+def set_packing_setting(key: str, value: int, db_path: Optional[str] = None) -> None:
+    if key not in _PACKING_KEYS:
+        raise ValueError(f"key must be one of {_PACKING_KEYS}, got {key!r}")
+    if int(value) < 0:
+        raise ValueError("padding value must be >= 0")
+    with _connect(db_path) as cx:
+        cx.execute(
+            "INSERT INTO packing_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            (key, int(value)),
+        )
+        cx.commit()
 
 
 # ── Rate update flow (manual approval) ────────────────────────────────────────

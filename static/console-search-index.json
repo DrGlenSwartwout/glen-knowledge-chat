@@ -55,5 +55,10 @@
 
   { "title": "Topic Pages", "page": "Products", "url": "/console/topic-pages", "keywords": ["topic", "topics", "symptom", "condition", "function", "learn", "page", "pages", "approve", "compliance", "generate"] },
 
-  { "title": "Topic Suggestions", "page": "Products", "url": "/console/topic-suggestions", "keywords": ["topic", "suggestions", "suggest", "demand", "build", "dismiss", "chat", "offer", "create-a-page"] }
+  { "title": "Topic Suggestions", "page": "Products", "url": "/console/topic-suggestions", "keywords": ["topic", "suggestions", "suggest", "demand", "build", "dismiss", "chat", "offer", "create-a-page"] },
+
+  { "title": "Ingredients & Sources", "page": "Products", "url": "/admin/ingredients", "keywords": ["ingredient","ingredients","sources","supplier","raw","cost","sourcing","canonical"] },
+  { "title": "Inventory & Stock", "page": "Products", "url": "/admin/ingredients", "keywords": ["inventory","stock","on hand","on-hand","par","reorder","balance","ledger"] },
+  { "title": "Production Runs", "page": "Products", "url": "/admin/ingredients", "keywords": ["production","run","batch","made","consumption","manufacture","produced"] },
+  { "title": "Reorder / Shopping List", "page": "Products", "url": "/admin/ingredients", "keywords": ["reorder","shopping","buy","purchase","demand","bom","par","shortfall","restock"] }
 ]

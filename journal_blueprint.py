@@ -45,6 +45,7 @@ keeps tcm_mapper.py useful (QA cross-check) and future-proofs a successor swap.
 import json
 import logging
 import os
+import sqlite3
 import tempfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -53,6 +54,7 @@ import requests
 from flask import Blueprint, jsonify, request, send_from_directory
 
 from tcm_mapper import compare_haiku_to_mapper
+from dashboard import journal_store
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +73,9 @@ REMEDY_TOP_K_PER_NS   = 4
 REMEDY_FINAL_TOP_K    = 5
 
 HERE = Path(__file__).parent
+# Journal entries persist in the app's local sqlite (same chat_log.db as the rest
+# of the app), re-homed from the now-dead Supabase project. Mirrors app.py's LOG_DB.
+LOG_DB = Path(os.environ.get("DATA_DIR", str(HERE))) / "chat_log.db"
 
 
 # ---------------------------------------------------------------------------
@@ -183,11 +188,12 @@ def analyze():
     save_error = None
     saved_id = None
     try:
-        saved = _supabase_insert(record)
+        with sqlite3.connect(LOG_DB) as cx:
+            saved = journal_store.insert(cx, record)
         if isinstance(saved, list) and saved:
             saved_id = saved[0].get("id")
     except Exception as e:
-        log.exception("Supabase insert failed")
+        log.exception("journal insert failed")
         save_error = str(e)
 
     response = {
@@ -239,12 +245,8 @@ def today():
     include_test = request.args.get("include_test", "false").lower() == "true"
     include_followups = request.args.get("include_followups", "false").lower() == "true"
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-    rows = _supabase_select(
-        f"recorded_at=gte.{cutoff}&order=recorded_at.desc&limit=10"
-        "&select=id,recorded_at,duration_seconds,transcript,tcm_scores,"
-        "dominant_element,dominant_treasure,top_emotions,polyvagal_state,"
-        "congruence,lexical_metrics,top_themes,metadata"
-    )
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = journal_store.select(cx, since_iso=cutoff, order="desc", limit=10)
     if not include_test:
         rows = [r for r in rows if not (r.get("metadata") or {}).get("test")]
     if not include_followups:
@@ -260,11 +262,8 @@ def history():
     include_test      = request.args.get("include_test", "false").lower() == "true"
     include_followups = request.args.get("include_followups", "false").lower() == "true"
     cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    rows = _supabase_select(
-        f"recorded_at=gte.{cutoff}&order=recorded_at.asc"
-        "&select=recorded_at,duration_seconds,tcm_scores,"
-        "dominant_element,dominant_treasure,top_emotions,polyvagal_state,metadata"
-    )
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = journal_store.select(cx, since_iso=cutoff, order="asc")
     test_rows     = [r for r in rows if (r.get("metadata") or {}).get("test")]
     followup_rows = [r for r in rows if (r.get("metadata") or {}).get("entry_type") == "affirmation_reading"]
     if not include_test:
@@ -642,6 +641,37 @@ Be precise, not poetic. The dashboard renders these numbers directly.
 """
 
 
+# Forced-tool schema mirroring HAIKU_SYSTEM_PROMPT's output shape. Kept loose
+# (open score maps) so the model fills the named keys per the prompt while the
+# API still guarantees the result is valid, parsed JSON — which is the whole
+# point: free-text fields can't break the structure anymore.
+_NUM_MAP = {"type": "object", "additionalProperties": {"type": "number"}}
+ANALYSIS_TOOL = {
+    "name": "emit_analysis",
+    "description": "Return the structured TCM/emotional analysis for the journal entry.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "emotions": _NUM_MAP,
+            "elements": _NUM_MAP,
+            "treasures": _NUM_MAP,
+            "treasure_confidence": _NUM_MAP,
+            "polyvagal_state": _NUM_MAP,
+            "congruence": {
+                "type": "object",
+                "properties": {
+                    "score": {"type": "number"},
+                    "self_contradictions": {"type": "array", "items": {"type": "string"}},
+                    "notes": {"type": "string"},
+                },
+            },
+            "top_themes": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["emotions", "elements", "treasures"],
+    },
+}
+
+
 def _haiku_analyze(transcript: str, lexical: dict) -> dict:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -662,7 +692,7 @@ def _haiku_analyze(transcript: str, lexical: dict) -> dict:
 
     payload = {
         "model": HAIKU_MODEL,
-        "max_tokens": 2048,
+        "max_tokens": 4096,
         "system": [
             {
                 "type": "text",
@@ -673,6 +703,12 @@ def _haiku_analyze(transcript: str, lexical: dict) -> dict:
         "messages": [
             {"role": "user", "content": user_message}
         ],
+        # Force structured output. Returning the analysis as a tool input makes the
+        # API hand back already-valid structured data, so free-text fields like
+        # `self_contradictions` (which Haiku phrases with literal quotes) can no
+        # longer corrupt the JSON the way model-emitted text JSON did.
+        "tools": [ANALYSIS_TOOL],
+        "tool_choice": {"type": "tool", "name": "emit_analysis"},
     }
 
     resp = requests.post(
@@ -689,9 +725,15 @@ def _haiku_analyze(transcript: str, lexical: dict) -> dict:
         raise RuntimeError(f"Haiku {resp.status_code}: {resp.text[:300]}")
 
     body = resp.json()
+    # Primary path: the forced tool call carries the analysis as a parsed dict.
+    for b in body.get("content", []):
+        if b.get("type") == "tool_use" and b.get("name") == "emit_analysis":
+            inp = b.get("input")
+            if isinstance(inp, dict) and inp:
+                return inp
+    # Defensive fallback: older/text responses → tolerant JSON extraction.
     text_blocks = [b.get("text", "") for b in body.get("content", []) if b.get("type") == "text"]
     raw = "".join(text_blocks).strip()
-
     parsed = _extract_json(raw)
     if parsed is None:
         raise RuntimeError(f"Haiku returned non-JSON: {raw[:300]}")
@@ -748,46 +790,6 @@ def _embed_ada002(transcript: str) -> list:
     return resp.json()["data"][0]["embedding"]
 
 
-# ---------------------------------------------------------------------------
-# Supabase REST helpers (intelligence-engine project)
-# ---------------------------------------------------------------------------
-def _supabase_headers():
-    key = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not key:
-        raise RuntimeError("SUPABASE_KEY not set")
-    return {
-        "apikey": key,
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
-
-
-def _supabase_url(path: str) -> str:
-    base = os.environ.get("SUPABASE_URL")
-    if not base:
-        raise RuntimeError("SUPABASE_URL not set")
-    return f"{base.rstrip('/')}/rest/v1/{path.lstrip('/')}"
-
-
-def _supabase_insert(record: dict):
-    resp = requests.post(
-        _supabase_url("journal_entries"),
-        headers=_supabase_headers(),
-        json=record,
-        timeout=30,
-    )
-    if not resp.ok:
-        raise RuntimeError(f"Supabase insert {resp.status_code}: {resp.text[:300]}")
-    return resp.json()
-
-
-def _supabase_select(query: str) -> list:
-    resp = requests.get(
-        _supabase_url(f"journal_entries?{query}"),
-        headers=_supabase_headers(),
-        timeout=30,
-    )
-    if not resp.ok:
-        raise RuntimeError(f"Supabase select {resp.status_code}: {resp.text[:300]}")
-    return resp.json()
+# Journal persistence now lives in dashboard/journal_store.py (local sqlite,
+# LOG_DB). The former Supabase REST helpers were removed when that project went
+# dark — see analyze()/today()/history() which call journal_store directly.

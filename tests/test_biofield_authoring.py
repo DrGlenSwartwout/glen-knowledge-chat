@@ -4,7 +4,8 @@ import sqlite3
 from dashboard.biofield_authoring import (
     init_auth_tables, create_test, add_chain_row, update_chain_row,
     delete_chain_row, update_header, list_authored, authored_report,
-    delete_test, confirm_row, resolve_remedy_name)
+    delete_test, confirm_row, resolve_remedy_name, resolve_stress_name,
+    _title_case_name)
 
 
 def _cx(tmp_path):
@@ -44,7 +45,11 @@ def test_update_and_delete_row(tmp_path):
     rid = add_chain_row(cx, tid, 1, "Night", "Night", "TMG", "1 scoop", "daily", "at night")
     update_chain_row(cx, rid, layer=3, remedy="TMG Powder")
     rep = authored_report(cx, tid)
-    assert rep["layers"][0]["layer"] == 3 and rep["layers"][0]["remedy"] == "TMG Powder"
+    # display layer is always renumbered 1..k by ordered_chain; verify update took + remedy
+    assert rep["layers"][0]["layer"] == 1 and rep["layers"][0]["remedy"] == "TMG Powder"
+    # confirm stored layer value was actually updated in the DB
+    stored = cx.execute("SELECT layer FROM biofield_auth_chain WHERE id=?", (rid,)).fetchone()[0]
+    assert stored == 3
     delete_chain_row(cx, rid)
     assert authored_report(cx, tid)["layers"] == []
 
@@ -94,6 +99,65 @@ def test_resolve_remedy_name_autocorrects(tmp_path):
     assert resolve_remedy_name(cx, "Zzzqxw Nonsense") == "Zzzqxw Nonsense"   # no close match
     assert resolve_remedy_name(cx, "Perlandra Rose Essence in Terrain Restore") == \
         "Perelandra Rose Essence in Terrain Restore"                         # suffix preserved
+
+
+def test_resolve_remedy_name_is_case_insensitive(tmp_path):
+    # The mangle Glen saw: ASR lowercases, so a case-sensitive match missed
+    # "Sulfur Syntropy". Lowercasing both sides recovers it.
+    cx = _cx(tmp_path)
+    cx.execute("CREATE TABLE fmp_snap_products(id_pk TEXT,product_name TEXT,dosage TEXT,dosage_freq TEXT,dosage_timing TEXT)")
+    cx.executemany("INSERT INTO fmp_snap_products VALUES(?,?,?,?,?)",
+                   [("1", "Sulfur Syntropy", "", "", ""), ("2", "Sobopla", "", "", "")])
+    cx.commit()
+    assert resolve_remedy_name(cx, "sulfur centropy") == "Sulfur Syntropy"   # close + case-insensitive
+    assert resolve_remedy_name(cx, "sobopla") == "Sobopla"                   # casing corrected to canonical
+
+
+def test_resolve_remedy_name_matches_distinctive_token_in_longer_name(tmp_path):
+    # 'Sobopla' is a distinctive token inside a long catalog name; whole-string
+    # fuzzy can't catch it, but a unique token match should.
+    cx = _cx(tmp_path)
+    cx.execute("CREATE TABLE fmp_snap_products(id_pk TEXT,product_name TEXT,dosage TEXT,dosage_freq TEXT,dosage_timing TEXT)")
+    cx.executemany("INSERT INTO fmp_snap_products VALUES(?,?,?,?,?)", [
+        ("1", "Perelandra Nature Program Essence Sobopla in Terrain Restore", "", "", ""),
+        ("2", "Perelandra Rose Essence in Terrain Restore", "", "", ""),
+        ("3", "Microbiome", "", "", "")])
+    cx.commit()
+    full = "Perelandra Nature Program Essence Sobopla in Terrain Restore"
+    assert resolve_remedy_name(cx, "sobopla") == full
+    # spoken with the Terrain Restore suffix must not double the suffix
+    assert resolve_remedy_name(cx, "Sobopla in Terrain Restore") == full
+    # a common token shared by several products is ambiguous -> no token match
+    assert resolve_remedy_name(cx, "essence") == "Essence"
+
+
+def test_resolve_remedy_name_title_cases_when_unmatched(tmp_path):
+    # No catalog / no close match -> at least clean up the casing.
+    cx = _cx(tmp_path)  # no fmp_snap_products table at all
+    assert resolve_remedy_name(cx, "reverse age") == "Reverse Age"
+    assert resolve_remedy_name(cx, "neuro-magnesium") == "Neuro-Magnesium"
+    assert resolve_remedy_name(cx, "MB5") == "MB5"                            # code preserved
+    assert resolve_remedy_name(cx, "perelandra essence in terrain restore") == \
+        "Perelandra Essence in Terrain Restore"                              # small word + suffix
+
+
+def test_resolve_stress_name_matches_vocab_and_title_cases(tmp_path):
+    cx = _cx(tmp_path)
+    cx.execute("CREATE TABLE fmp_snap_client_active_main_stress(id_pk TEXT, main_stress TEXT)")
+    cx.executemany("INSERT INTO fmp_snap_client_active_main_stress VALUES(?,?)",
+                   [("1", "Large Intestine Meridian"), ("2", "Toxicity")])
+    cx.commit()
+    assert resolve_stress_name(cx, "large intestine meridian") == "Large Intestine Meridian"  # canonical
+    assert resolve_stress_name(cx, "toxisity") == "Toxicity"                  # fuzzy + case
+    assert resolve_stress_name(cx, "reverse age") == "Reverse Age"            # unmatched -> title case
+
+
+def test_title_case_name_edge_cases():
+    assert _title_case_name("reverse age") == "Reverse Age"
+    assert _title_case_name("head and tail of the chain") == "Head and Tail of the Chain"
+    assert _title_case_name("MB5") == "MB5"
+    assert _title_case_name("vitamin B12") == "Vitamin B12"
+    assert _title_case_name("") == ""
 
 
 def test_update_header(tmp_path):

@@ -10,6 +10,7 @@ from the numeric FMP-snapshot ids. Local + writable; PHI stays on the Mac.
 """
 import datetime
 import difflib
+import re
 import sqlite3
 
 from dashboard.biofield_schedule import build_schedule
@@ -31,9 +32,14 @@ def init_auth_tables(cx):
     cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_chain(
         id INTEGER PRIMARY KEY AUTOINCREMENT, test_id INTEGER, layer INTEGER,
         head TEXT, most_affected TEXT, remedy TEXT, dosage TEXT, frequency TEXT,
-        timing TEXT, sort_seq INTEGER, created_at TEXT, confirmed INTEGER DEFAULT 1)""")
+        timing TEXT, sort_seq INTEGER, created_at TEXT, confirmed INTEGER DEFAULT 1,
+        origin TEXT NOT NULL DEFAULT 'live')""")
     try:
         cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN confirmed INTEGER DEFAULT 1")
+    except Exception:
+        pass
+    try:
+        cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN origin TEXT NOT NULL DEFAULT 'live'")
     except Exception:
         pass
     cx.commit()
@@ -68,14 +74,15 @@ def update_header(cx, tid, name=None, email=None, date=None):
 
 
 def add_chain_row(cx, tid, layer, head, most_affected, remedy,
-                  dosage="", frequency="", timing="", confirmed=1):
+                  dosage="", frequency="", timing="", confirmed=1, origin="live"):
     init_auth_tables(cx)
     cur = cx.execute(
         "INSERT INTO biofield_auth_chain(test_id,layer,head,most_affected,remedy,"
-        "dosage,frequency,timing,sort_seq,created_at,confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "dosage,frequency,timing,sort_seq,created_at,confirmed,origin) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         (_num(tid), layer, (head or "").strip(), (most_affected or "").strip(),
          (remedy or "").strip(), dosage or "", frequency or "", timing or "", 0, _now(),
-         1 if confirmed else 0))
+         1 if confirmed else 0, (origin or "live")))
     cx.commit()
     return cur.lastrowid
 
@@ -102,12 +109,63 @@ def delete_test(cx, tid):
     cx.commit()
 
 
+_SMALL_WORDS = {"in", "of", "the", "a", "an", "and", "or", "with", "for", "to", "by", "on"}
+
+
+def _title_case_name(s):
+    """Title-case a free-text name without mangling product codes or small words.
+    'reverse age' -> 'Reverse Age', 'head and tail' -> 'Head and Tail', and a token
+    carrying a digit or an internal capital (e.g. 'MB5', 'B12', 'pH') is left as-is."""
+    s = (s or "").strip()
+    if not s:
+        return s
+    words = s.split()
+    out = []
+    for i, w in enumerate(words):
+        if any(c.isdigit() for c in w) or any(c.isupper() for c in w[1:]):
+            out.append(w)                      # preserve codes / intentional casing
+        elif i > 0 and w.lower() in _SMALL_WORDS:
+            out.append(w.lower())              # keep small connector words lowercase
+        else:                                  # capitalize each hyphen/slash chunk
+            out.append(re.sub(r"[A-Za-z]+",
+                              lambda m: m.group(0)[0].upper() + m.group(0)[1:].lower(), w))
+    return " ".join(out)
+
+
+def _best_match(spoken, names, cutoff):
+    """Case-insensitive closest match: ASR lowercases, so we compare on lowercase and
+    map back to the canonical-cased name. Returns None when nothing is close enough."""
+    by_low = {}
+    for n in names:
+        by_low.setdefault(n.lower(), n)        # first canonical spelling wins
+    hit = difflib.get_close_matches((spoken or "").lower(), list(by_low), n=1, cutoff=cutoff)
+    return by_low[hit[0]] if hit else None
+
+
+def _token_match(spoken, names, cutoff):
+    """Match a distinctive spoken token (e.g. 'Sobopla') to the catalog product whose
+    name CONTAINS it as a word — for cases where the clinician says only the unique
+    part of a long product name. Returns the canonical name only when exactly ONE
+    product qualifies, so a common shared word ('Essence') stays ambiguous and is
+    left to the Title-Case fallback. Single distinctive token only."""
+    sp = (spoken or "").strip().lower()
+    if len(sp) < 5 or " " in sp:               # too short / multi-word -> not a distinctive token
+        return None
+    hits = set()
+    for n in names:
+        for t in re.findall(r"[A-Za-z0-9]+", n.lower()):
+            if t == sp or (len(t) >= 5 and difflib.SequenceMatcher(None, sp, t).ratio() >= cutoff):
+                hits.add(n)
+                break
+    return next(iter(hits)) if len(hits) == 1 else None
+
+
 def resolve_remedy_name(cx, spoken, cutoff=0.82):
     """Best-effort auto-correct a (possibly ASR-mangled) remedy name to the closest
-    catalog product. Preserves an ' in Terrain Restore' suffix. Returns the original
-    when no close match exists."""
+    catalog product (case-insensitive). Preserves an ' in Terrain Restore' suffix.
+    Falls back to Title Case of the spoken name when there's no close catalog match."""
     spoken = (spoken or "").strip()
-    if not spoken or not _has(cx, "fmp_snap_products"):
+    if not spoken:
         return spoken
     suffix = ""
     core = spoken
@@ -115,11 +173,35 @@ def resolve_remedy_name(cx, spoken, cutoff=0.82):
     if low.endswith("in terrain restore"):
         core = spoken[: low.rfind("in terrain restore")].strip()
         suffix = " in Terrain Restore"
-    names = [r[0] for r in cx.execute(
-        "SELECT DISTINCT product_name FROM fmp_snap_products "
-        "WHERE TRIM(COALESCE(product_name,''))<>''").fetchall()]
-    match = difflib.get_close_matches(core, names, n=1, cutoff=cutoff)
-    return (match[0] + suffix) if match else spoken
+    if _has(cx, "fmp_snap_products"):
+        names = [r[0] for r in cx.execute(
+            "SELECT DISTINCT product_name FROM fmp_snap_products "
+            "WHERE TRIM(COALESCE(product_name,''))<>''").fetchall()]
+        # whole-string fuzzy first, then a distinctive-token match for long names.
+        match = _best_match(core, names, cutoff) or _token_match(core, names, cutoff)
+        if match:
+            # Don't double the suffix when the matched name already carries it.
+            if suffix and match.lower().endswith("in terrain restore"):
+                return match
+            return match + suffix
+    return _title_case_name(core) + suffix
+
+
+def resolve_stress_name(cx, spoken, cutoff=0.82):
+    """Auto-correct a spoken stress / head-of-chain name to the closest stress term
+    Glen has used before (case-insensitive), else Title Case the spoken name so stress
+    names are always capitalized."""
+    spoken = (spoken or "").strip()
+    if not spoken:
+        return spoken
+    if _has_col(cx, "fmp_snap_client_active_main_stress", "main_stress"):
+        names = [r[0] for r in cx.execute(
+            "SELECT DISTINCT main_stress FROM fmp_snap_client_active_main_stress "
+            "WHERE TRIM(COALESCE(main_stress,''))<>''").fetchall()]
+        match = _best_match(spoken, names, cutoff)
+        if match:
+            return match
+    return _title_case_name(spoken)
 
 
 def update_chain_row(cx, rid, **fields):
@@ -156,6 +238,13 @@ def list_authored(cx):
 def _has(cx, table):
     return cx.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
                       (table,)).fetchone() is not None
+
+
+def _has_col(cx, table, col):
+    """True only when `table` exists AND has column `col` (snapshot schemas vary)."""
+    if not _has(cx, table):
+        return False
+    return any(r[1] == col for r in cx.execute(f"PRAGMA table_info({table})").fetchall())
 
 
 def remedy_catalog(cx, q="", limit=20):
@@ -217,20 +306,54 @@ def stress_suggestions(cx, stress, limit=8):
     return [{"remedy": r["remedy"], "count": r["n"]} for r in rows]
 
 
+def ordered_chain(cx, tid):
+    """Remedy-bearing chain rows in display order with two-zone numbering.
+    Top zone = live + confirmed rows (manual order); bottom zone = unbalanced
+    scan rows (origin='scan' AND confirmed=0), trailing. Display `layer` = 1..k."""
+    cx.row_factory = sqlite3.Row
+    rows = cx.execute(
+        "SELECT id, layer, head, most_affected, remedy, dosage, frequency, timing, "
+        "confirmed, origin FROM biofield_auth_chain "
+        "WHERE test_id=? AND TRIM(COALESCE(remedy,''))<>''", (_num(tid),)).fetchall()
+
+    def unbalanced_scan(r):
+        return (r["origin"] == "scan") and (r["confirmed"] == 0)
+
+    key = lambda r: (r["layer"] is None, r["layer"] if r["layer"] is not None else 0, r["id"])
+    top = sorted([r for r in rows if not unbalanced_scan(r)], key=key)
+    bottom = sorted([r for r in rows if unbalanced_scan(r)], key=key)
+    out = []
+    for i, r in enumerate(top + bottom, 1):
+        out.append({"id": r["id"], "layer": i, "head": r["head"] or "",
+                    "most_affected": r["most_affected"] or "", "remedy": r["remedy"] or "",
+                    "dosage": r["dosage"] or "", "frequency": r["frequency"] or "",
+                    "timing": r["timing"] or "",
+                    "confirmed": 0 if r["confirmed"] == 0 else 1,
+                    "origin": r["origin"] or "live",
+                    "zone": "bottom" if unbalanced_scan(r) else "top"})
+    return out
+
+
+def reorder_chain(cx, tid, rid, new_layer):
+    """Move top-zone row `rid` to position `new_layer` and renumber the top zone
+    contiguously. Unbalanced scan rows (bottom zone) are left untouched."""
+    top = [l for l in ordered_chain(cx, tid) if l["zone"] == "top"]
+    ids = [l["id"] for l in top]
+    if rid not in ids:
+        return
+    ids.remove(rid)
+    pos = max(1, min(int(new_layer or 1), len(ids) + 1)) - 1
+    ids.insert(pos, rid)
+    for i, _id in enumerate(ids, 1):
+        cx.execute("UPDATE biofield_auth_chain SET layer=? WHERE id=?", (i, _id))
+    cx.commit()
+
+
 def authored_report(cx, tid):
     init_auth_tables(cx)
     cx.row_factory = sqlite3.Row
     t = cx.execute("SELECT * FROM biofield_auth_tests WHERE id=?", (_num(tid),)).fetchone()
-    rows = cx.execute("""
-        SELECT id, layer, head, most_affected, remedy, dosage, frequency, timing, confirmed
-        FROM biofield_auth_chain
-        WHERE test_id=? AND TRIM(COALESCE(remedy,''))<>''
-        ORDER BY (layer IS NULL), layer, id""", (_num(tid),)).fetchall()
-    layers = [{"layer": r["layer"], "head": r["head"] or "",
-               "most_affected": r["most_affected"] or "", "remedy": r["remedy"] or "",
-               "dosage": r["dosage"] or "", "frequency": r["frequency"] or "",
-               "timing": r["timing"] or "", "rid": r["id"],
-               "confirmed": 0 if r["confirmed"] == 0 else 1} for r in rows]
+    layers = [{**l, "rid": l["id"]} for l in ordered_chain(cx, tid)]
     # Depth-of-penetration tags + reach match-check per layer (Increment 4b)
     for l in layers:
         sd = get_tag(cx, "auth_stress", l["rid"], DEPTH_KEY)

@@ -1,0 +1,2937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ingredient Catalog — Console</title>
+  <style>
+    :root {
+      --bg: #0a150d;
+      --surface: #111f16;
+      --border: #21472d;
+      --text: #fdf4d8;
+      --muted: #a89870;
+      --accent: #d4a843;
+      --accent-light: #e8c876;
+      --green: #3d8a52;
+      --amber: #d4a843;
+      --red: #cc4b2c;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+    #wrap { max-width: 1100px; margin: 0 auto; padding: 32px 16px; }
+
+    header { margin-bottom: 28px; }
+    h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+    header p { color: var(--muted); font-size: 13px; }
+    header a { color: var(--accent-light); text-decoration: none; }
+
+    .section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+    .section h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
+    .section .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+
+    /* Tabs */
+    .tab-bar { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+    .tab-btn { background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 18px; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 0; margin-bottom: -1px; }
+    .tab-btn:hover { color: var(--text); background: transparent; }
+    .tab-btn.active { color: var(--accent-light); border-bottom-color: var(--accent); background: transparent; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Search */
+    .search-row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+    .search-row input { flex: 1; background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 14px; }
+    .search-row input:focus { outline: none; border-color: var(--accent); }
+    #search-results { list-style: none; }
+    #search-results li { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; border-radius: 6px; }
+    #search-results li:hover { background: rgba(212,168,67,0.08); color: var(--accent-light); }
+    #search-results li .ing-name { font-weight: 600; }
+    #search-results li .ing-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    #search-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+
+    /* Detail panel */
+    #detail-panel { display: none; }
+    #detail-panel.active { display: block; }
+
+    .detail-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .detail-header h3 { font-size: 18px; font-weight: 800; }
+    .detail-back { background: transparent; color: var(--muted); border: 1px solid var(--border); font-size: 12px; padding: 4px 10px; cursor: pointer; border-radius: 6px; }
+    .detail-back:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .field-block label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 5px; }
+    .field-block .ro-val { background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 13px; color: var(--muted); min-height: 34px; word-break: break-word; }
+    .field-block input[type="text"],
+    .field-block textarea,
+    .field-block select {
+      width: 100%; background: #0d1117; color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+      font-size: 13px; font-family: inherit; resize: vertical;
+    }
+    .field-block input[type="text"]:focus,
+    .field-block textarea:focus { outline: none; border-color: var(--accent); }
+    .field-block textarea { min-height: 60px; }
+    .field-full { grid-column: 1 / -1; }
+
+    .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 10px; }
+
+    /* Sources table */
+    table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 13px; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+    td input[type="text"],
+    td input[type="number"],
+    td textarea { background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px 7px; font-size: 12px; width: 100%; font-family: inherit; }
+    td input[type="number"] { width: 80px; }
+    td.cell-pref { text-align: center; width: 70px; }
+
+    /* Preferred radio */
+    .pref-radio { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+
+    /* Buttons */
+    button { background: var(--accent); color: #000; border: none; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    button:hover { background: var(--accent-light); }
+    button.secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    button.secondary:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+    button.save-btn { padding: 6px 12px; font-size: 12px; }
+    button.confirm { background: var(--green); color: #fff; }
+    button.confirm:hover { background: #4dc862; }
+
+    .save-row { display: flex; justify-content: flex-end; margin-top: 14px; gap: 8px; }
+
+    /* Formulations list */
+    #formulation-results { list-style: none; }
+    #formulation-results li { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; border-radius: 6px; }
+    #formulation-results li:hover { background: rgba(212,168,67,0.08); color: var(--accent-light); }
+    #formulation-results li .frm-name { font-weight: 600; }
+    #formulation-results li .frm-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    #formulation-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+    #formulation-detail-panel { display: none; }
+    #formulation-detail-panel.active { display: block; }
+
+    /* Materials list */
+    #material-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+    #material-detail-panel { display: none; }
+    #material-detail-panel.active { display: block; }
+
+    /* Purchase Orders list */
+    #po-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+    #po-detail-panel { display: none; }
+    #po-detail-panel.active { display: block; }
+
+    /* Inventory tab */
+    #inv-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+    #inv-detail-panel { display: none; }
+    #inv-detail-panel.active { display: block; }
+
+    /* Production tab */
+    #prod-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+    #prod-detail-panel { display: none; }
+    #prod-detail-panel.active { display: block; }
+
+    /* Reorder tab */
+    #ro-results { display: none; }
+    #ro-results.active { display: block; }
+    #ro-frm-results { list-style: none; margin: 0; padding: 0; }
+    #prod-list td { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+    #prod-list tr:hover td { background: rgba(212,168,67,0.08); }
+    #prod-list th { text-align: left; padding: 6px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+    #prod-items td { padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    #prod-items th { text-align: left; padding: 6px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+    #prod-frm-results { list-style: none; background: #0d1117; border: 1px solid var(--border); border-radius: 6px; margin-top: 4px; display: none; }
+    #prod-frm-results li { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 13px; }
+    #prod-frm-results li:last-child { border-bottom: none; }
+    #prod-frm-results li:hover { background: rgba(212,168,67,0.08); color: var(--accent-light); }
+    #inv-list { width: 100%; border-collapse: collapse; }
+    #inv-list td { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+    #inv-list tr:hover td { background: rgba(212,168,67,0.08); }
+    #inv-list th { text-align: left; padding: 6px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+    #inv-txns td { padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    #inv-txns th { text-align: left; padding: 6px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+
+    /* Supplier list */
+    #supplier-results { list-style: none; }
+    #supplier-results li { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    #supplier-results li .sup-name { font-weight: 600; }
+    #supplier-results li .sup-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .sup-notes-row { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; }
+    .sup-notes-row textarea { flex: 1; background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 6px 8px; font-size: 12px; font-family: inherit; resize: vertical; min-height: 48px; }
+    .sup-notes-row textarea:focus { outline: none; border-color: var(--accent); }
+    #supplier-empty { color: var(--muted); font-size: 13px; padding: 16px 0; display: none; }
+
+    /* Badge */
+    .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: .04em; margin-left: 6px; }
+    .badge-pref { background: rgba(61,138,82,0.2); color: var(--green); border: 1px solid var(--green); }
+    .badge-status { background: rgba(212,168,67,0.12); color: var(--amber); border: 1px solid var(--border); }
+    .badge-overridden { background: rgba(212,168,67,0.18); color: var(--amber); border: 1px solid var(--amber); cursor: default; }
+
+    /* Core-field label row */
+    .core-field-label { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+    .core-field-label label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0; }
+    .unlock-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 4px; cursor: pointer; line-height: 1.6; }
+    .unlock-btn:hover { color: var(--text); border-color: var(--amber); background: rgba(212,168,67,0.08); }
+
+    /* Toast */
+    #toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+    #toast.show { opacity: 1; }
+    #toast.error { border-color: var(--red); color: var(--red); }
+    #toast.ok { border-color: var(--green); color: var(--green); }
+
+    .auth-warn { background: rgba(248, 81, 73, 0.08); border: 1px solid var(--red); border-radius: 8px; padding: 14px; color: var(--red); margin-bottom: 20px; display: none; }
+
+    .loading { color: var(--muted); font-size: 13px; padding: 16px 0; }
+    .extras-block { background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 12px; color: var(--muted); font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 140px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="bos" data-sub="ingredients"></script>
+<div id="wrap">
+  <header>
+    <h1>Ingredient Catalog</h1>
+    <p>Raw-material master imported from FileMaker Pro. FMP fields are read-only; curated fields are editable.</p>
+  </header>
+
+  <div id="auth-warn" class="auth-warn">
+    Missing or invalid console key. Append <code>?key=YOUR_CONSOLE_SECRET</code> to the URL.
+  </div>
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="showTab('ingredients')">Ingredients</button>
+    <button class="tab-btn" onclick="showTab('suppliers')">Suppliers</button>
+    <button class="tab-btn" onclick="showTab('import')">Import from FMP</button>
+    <button class="tab-btn" onclick="showTab('formulations')">Formulations</button>
+    <button class="tab-btn" onclick="showTab('materials')">Materials</button>
+    <button class="tab-btn" onclick="showTab('po')">Purchase Orders</button>
+    <button class="tab-btn" onclick="showTab('inventory')">Inventory</button>
+    <button class="tab-btn" onclick="showTab('production')">Production</button>
+    <button class="tab-btn" onclick="showTab('reorder')">Reorder</button>
+  </div>
+
+  <!-- ── Ingredients tab ─────────────────────────────────────────────────── -->
+  <div id="tab-ingredients" class="tab-panel active">
+
+    <!-- Search -->
+    <div class="section" id="search-section">
+      <h2>Search Ingredients</h2>
+      <div class="search-row">
+        <input type="text" id="ing-search" placeholder="Type to search by name…" autocomplete="off">
+      </div>
+      <div id="search-empty">No results.</div>
+      <ul id="search-results"></ul>
+      <div class="hint">2,363 ingredients imported from FMP. Search is server-side — type at least 1 character.</div>
+    </div>
+
+    <!-- New ingredient form (collapsed by default) -->
+    <div id="new-ing-form" style="display:none" class="section">
+      <h2>New Ingredient</h2>
+      <div class="field-grid">
+        <div class="field-block field-full">
+          <label for="new-ing-name">Name <span style="color:var(--red)">*</span></label>
+          <input type="text" id="new-ing-name" placeholder="Ingredient name (required)">
+        </div>
+        <div class="field-block">
+          <label for="new-ing-form-field">Form</label>
+          <input type="text" id="new-ing-form-field" placeholder="e.g. powder / liquid">
+        </div>
+        <div class="field-block">
+          <label for="new-ing-common-names">Common Names</label>
+          <input type="text" id="new-ing-common-names" placeholder="Comma-separated alternate names">
+        </div>
+        <div class="field-block">
+          <label for="new-ing-par-level">Par Level</label>
+          <input type="number" id="new-ing-par-level" placeholder="e.g. 500" step="any" min="0" style="width:100%">
+        </div>
+        <div class="field-block">
+          <label for="new-ing-par-unit">Par Unit</label>
+          <input type="text" id="new-ing-par-unit" placeholder="e.g. g / kg / units">
+        </div>
+      </div>
+      <div class="save-row">
+        <button class="secondary save-btn" onclick="toggleNewIngForm()">Cancel</button>
+        <button class="save-btn confirm" onclick="createIngredient()">Create ingredient</button>
+      </div>
+    </div>
+    <div id="new-ing-btn-row" style="margin-bottom:14px">
+      <button class="secondary save-btn" onclick="toggleNewIngForm()">+ New ingredient</button>
+    </div>
+
+    <!-- Detail panel (hidden until ingredient clicked) -->
+    <div id="detail-panel">
+
+      <!-- FMP read-only fields -->
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closeDetail()">&#8592; Back to search</button>
+          <h3 id="detail-name"></h3>
+          <span id="detail-status-badge"></span>
+        </div>
+
+        <div class="section-label">Core Fields (editable — protected on re-import when overridden)</div>
+        <div class="field-grid">
+          <div class="field-block">
+            <div class="core-field-label" id="ing-name-label-row">
+              <label for="ing-core-name">Name</label>
+            </div>
+            <input type="text" id="ing-core-name" placeholder="Ingredient name">
+          </div>
+          <div class="field-block">
+            <div class="core-field-label" id="ing-form-label-row">
+              <label for="ing-core-form">Form</label>
+            </div>
+            <input type="text" id="ing-core-form" placeholder="e.g. powder / liquid">
+          </div>
+          <div class="field-block">
+            <div class="core-field-label" id="ing-par-label-row">
+              <label for="ing-core-par-level">Par Level</label>
+            </div>
+            <input type="number" id="ing-core-par-level" placeholder="e.g. 500" step="any" min="0" style="width:100%">
+          </div>
+          <div class="field-block">
+            <div class="core-field-label" id="ing-par-unit-label-row">
+              <label for="ing-core-par-unit">Par Unit</label>
+            </div>
+            <input type="text" id="ing-core-par-unit" placeholder="e.g. g / kg / units">
+          </div>
+          <div class="field-block field-full">
+            <div class="core-field-label" id="ing-common-names-label-row">
+              <label for="ing-core-common-names">Common Names</label>
+            </div>
+            <input type="text" id="ing-core-common-names" placeholder="Comma-separated alternate names">
+          </div>
+          <div class="field-block">
+            <label>Status (read-only)</label>
+            <div class="ro-val" id="fmp-status">—</div>
+          </div>
+          <div class="field-block field-full">
+            <label>Extras (raw JSON, read-only)</label>
+            <div class="extras-block" id="fmp-extras">—</div>
+          </div>
+        </div>
+
+        <!-- Curated editable fields -->
+        <div class="section-label" style="margin-top:20px">Curated Fields (editable)</div>
+        <div class="field-grid" id="curated-fields">
+          <div class="field-block">
+            <label for="ing-inci-name">INCI Name</label>
+            <input type="text" id="ing-inci-name" placeholder="e.g. Thioctic Acid">
+          </div>
+          <div class="field-block">
+            <label for="ing-cas-number">CAS Number</label>
+            <input type="text" id="ing-cas-number" placeholder="e.g. 1200-22-2">
+          </div>
+          <div class="field-block">
+            <label for="ing-hygroscopic">Hygroscopic Rating</label>
+            <input type="text" id="ing-hygroscopic" placeholder="e.g. low / medium / high">
+          </div>
+          <div class="field-block">
+            <label for="ing-solubility">Solubility</label>
+            <input type="text" id="ing-solubility" placeholder="e.g. water-soluble">
+          </div>
+          <div class="field-block field-full">
+            <label for="ing-stability-notes">Stability Notes</label>
+            <textarea id="ing-stability-notes" placeholder="Storage, light sensitivity, etc."></textarea>
+          </div>
+          <div class="field-block field-full">
+            <label for="ing-spec-notes">Spec Notes</label>
+            <textarea id="ing-spec-notes" placeholder="Purity, assay, certifications, etc."></textarea>
+          </div>
+          <div class="field-block field-full">
+            <label for="ing-notes">Notes</label>
+            <textarea id="ing-notes" placeholder="General notes…"></textarea>
+          </div>
+        </div>
+        <div class="save-row">
+          <button class="save-btn" onclick="saveIngredient()">Save curated fields</button>
+        </div>
+      </div>
+
+      <!-- Sources table -->
+      <div class="section">
+        <h2>Sources</h2>
+        <div id="sources-loading" class="loading" style="display:none">Loading sources…</div>
+        <table id="sources-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Supplier</th>
+              <th>SKU</th>
+              <th>Price/unit</th>
+              <th>Unit size</th>
+              <th>Unit type</th>
+              <th>Ship quote</th>
+              <th>Lead (days)</th>
+              <th>Min order</th>
+              <th>Min unit</th>
+              <th>Notes</th>
+              <th class="cell-pref">Preferred</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="sources-tbody"></tbody>
+        </table>
+        <div id="sources-empty" class="hint" style="display:none">No sources linked to this ingredient.</div>
+
+        <!-- Add source form -->
+        <div style="margin-top:16px">
+          <button class="secondary save-btn" onclick="toggleAddSourceForm()" id="add-source-toggle-btn">+ Add source</button>
+        </div>
+        <div id="add-source-form" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+          <div class="section-label">Supplier</div>
+          <!-- Supplier search-to-pick -->
+          <div style="margin-bottom:10px">
+            <input type="text" id="new-src-sup-search" placeholder="Search existing suppliers…" autocomplete="off" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px" oninput="srcSupSearch()">
+            <ul id="new-src-sup-results" style="list-style:none;background:#0d1117;border:1px solid var(--border);border-radius:6px;margin-top:4px;display:none"></ul>
+            <div id="new-src-sup-chosen" style="margin-top:6px;font-size:12px;color:var(--muted)"></div>
+          </div>
+          <div class="section-label" style="margin-top:8px">— or create a new supplier inline —</div>
+          <div class="field-grid" style="margin-bottom:10px">
+            <div class="field-block">
+              <label for="new-src-sup-inline">New supplier company name</label>
+              <input type="text" id="new-src-sup-inline" placeholder="Company name (creates new supplier)">
+            </div>
+          </div>
+          <div class="section-label">Source details</div>
+          <div class="field-grid">
+            <div class="field-block">
+              <label for="new-src-price">Price per unit</label>
+              <input type="number" id="new-src-price" placeholder="0.00" step="0.01" min="0" style="width:100%">
+            </div>
+            <div class="field-block">
+              <label for="new-src-unit-size">Unit size</label>
+              <input type="number" id="new-src-unit-size" placeholder="qty" step="any" min="0" style="width:100%">
+            </div>
+            <div class="field-block">
+              <label for="new-src-unit-type">Unit type</label>
+              <input type="text" id="new-src-unit-type" placeholder="g / kg / unit…">
+            </div>
+            <div class="field-block">
+              <label for="new-src-min-order">Minimum order</label>
+              <input type="number" id="new-src-min-order" placeholder="qty" step="any" min="0" style="width:100%">
+            </div>
+            <div class="field-block">
+              <label for="new-src-lead-time">Lead time (days)</label>
+              <input type="number" id="new-src-lead-time" placeholder="days" min="0" style="width:100%">
+            </div>
+            <div class="field-block" style="display:flex;align-items:center;gap:8px;padding-top:20px">
+              <input type="checkbox" id="new-src-preferred" style="accent-color:var(--accent);width:15px;height:15px">
+              <label for="new-src-preferred" style="font-size:13px;cursor:pointer;text-transform:none;letter-spacing:0">Preferred source</label>
+            </div>
+          </div>
+          <div class="save-row">
+            <button class="secondary save-btn" onclick="toggleAddSourceForm()">Cancel</button>
+            <button class="save-btn confirm" onclick="createSource()">Add source</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /#detail-panel -->
+  </div><!-- /#tab-ingredients -->
+
+  <!-- ── Suppliers tab ───────────────────────────────────────────────────── -->
+  <div id="tab-suppliers" class="tab-panel">
+    <!-- New supplier form (collapsed by default) -->
+    <div id="new-sup-form" style="display:none" class="section">
+      <h2>New Supplier</h2>
+      <div class="field-grid">
+        <div class="field-block field-full">
+          <label for="new-sup-company">Company <span style="color:var(--red)">*</span></label>
+          <input type="text" id="new-sup-company" placeholder="Company name (required)">
+        </div>
+        <div class="field-block">
+          <label for="new-sup-email">Email</label>
+          <input type="text" id="new-sup-email" placeholder="contact@supplier.com">
+        </div>
+        <div class="field-block">
+          <label for="new-sup-phone">Phone</label>
+          <input type="text" id="new-sup-phone" placeholder="+1 555 000 0000">
+        </div>
+        <div class="field-block field-full">
+          <label for="new-sup-url">Website URL</label>
+          <input type="text" id="new-sup-url" placeholder="https://supplier.com">
+        </div>
+      </div>
+      <div class="save-row">
+        <button class="secondary save-btn" onclick="toggleNewSupForm()">Cancel</button>
+        <button class="save-btn confirm" onclick="createSupplier()">Create supplier</button>
+      </div>
+    </div>
+    <div id="new-sup-btn-row" style="margin-bottom:14px">
+      <button class="secondary save-btn" onclick="toggleNewSupForm()">+ New supplier</button>
+    </div>
+    <div class="section">
+      <h2>Suppliers</h2>
+      <div class="search-row">
+        <input type="text" id="sup-search" placeholder="Type to filter suppliers…" autocomplete="off">
+      </div>
+      <div id="supplier-empty">No suppliers found.</div>
+      <ul id="supplier-results"></ul>
+    </div>
+  </div>
+
+  <!-- ── Import from FMP tab ────────────────────────────────────────────────── -->
+  <div id="tab-import" class="tab-panel">
+    <div class="section">
+      <h2>Import from FMP</h2>
+      <p class="hint" style="margin-bottom:16px">Upload the 3 FMP exports (suppliers.csv, ingredients.csv, ingredients_supplier.csv). Dry-run first, then Import. Re-running is safe — it never overwrites your console edits.</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="fmp-file-suppliers">Suppliers CSV</label>
+          <input type="file" id="fmp-file-suppliers" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-ingredients">Ingredients CSV</label>
+          <input type="file" id="fmp-file-ingredients" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-sources">Sources CSV</label>
+          <input type="file" id="fmp-file-sources" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button id="fmp-dry-btn" onclick="fmpImport(false)">Dry Run</button>
+        <button id="fmp-write-btn" class="confirm" onclick="fmpImport(true)">Import (write)</button>
+      </div>
+
+      <div id="fmp-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:28px 0">
+
+      <h3 style="margin:0 0 8px;font-size:15px;font-weight:600;color:var(--text)">Formulations (recipes)</h3>
+      <p class="hint" style="margin-bottom:16px">Import Ingredients (above) FIRST, then upload products.csv + products_items.csv. Dry-run, then Import. Re-running is safe.</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="fmp-file-products">Products CSV</label>
+          <input type="file" id="fmp-file-products" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-products_items">Products-Items CSV</label>
+          <input type="file" id="fmp-file-products_items" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button id="form-dry-btn" onclick="formImport(false)">Dry Run</button>
+        <button id="form-write-btn" class="confirm" onclick="formImport(true)">Import (write)</button>
+      </div>
+
+      <div id="form-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:28px 0">
+
+      <h3 style="margin:0 0 8px;font-size:15px;font-weight:600;color:var(--text)">Materials</h3>
+      <p class="hint" style="margin-bottom:16px">Import Ingredients + Suppliers first, then upload the 3 material CSVs.</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="fmp-file-materials">Materials CSV</label>
+          <input type="file" id="fmp-file-materials" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-materials_supplier">Materials-Supplier CSV</label>
+          <input type="file" id="fmp-file-materials_supplier" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-products_supplier">Products-Supplier CSV</label>
+          <input type="file" id="fmp-file-products_supplier" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button id="mat-dry-btn" onclick="matImport(false)">Dry Run</button>
+        <button id="mat-write-btn" class="confirm" onclick="matImport(true)">Import (write)</button>
+      </div>
+
+      <div id="mat-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:28px 0">
+
+      <h3 style="margin:0 0 8px;font-size:15px;font-weight:600;color:var(--text)">Purchase Orders</h3>
+      <p class="hint" style="margin-bottom:16px">Import Suppliers + Ingredients + Materials first, then upload the 3 PO CSVs.</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="fmp-file-po">PO CSV</label>
+          <input type="file" id="fmp-file-po" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-po_items">PO Items CSV</label>
+          <input type="file" id="fmp-file-po_items" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-po_receiving">PO Receiving CSV</label>
+          <input type="file" id="fmp-file-po_receiving" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button id="po-dry-btn" onclick="poImport(false)">Dry Run</button>
+        <button id="po-write-btn" class="confirm" onclick="poImport(true)">Import (write)</button>
+      </div>
+
+      <div id="po-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:28px 0">
+
+      <h3 style="margin:0 0 8px;font-size:15px;font-weight:600;color:var(--text)">Production</h3>
+      <p class="hint" style="margin-bottom:16px">Import Ingredients + Formulations first, then upload production_runs.csv + production_items.csv. Dry-run first, then Import. Re-running is safe (idempotent by fmp_id).</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="fmp-file-production">Production Runs CSV</label>
+          <input type="file" id="fmp-file-production" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+        <div class="field-block">
+          <label for="fmp-file-production-items">Production Items CSV</label>
+          <input type="file" id="fmp-file-production-items" accept=".csv" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer">
+        </div>
+      </div>
+
+      <div class="field-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label for="prod-consumption-mode">Consumption Mode</label>
+          <select id="prod-consumption-mode" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px">
+            <option value="all">Post all</option>
+            <option value="record_only">Record only</option>
+          </select>
+        </div>
+        <div class="field-block">
+          <label for="prod-consumption-from">Post consumption from (optional)</label>
+          <input type="date" id="prod-consumption-from" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button id="prod-dry-btn" onclick="prodImport(false)">Dry Run</button>
+        <button id="prod-write-btn" class="confirm" onclick="prodImport(true)">Import (write)</button>
+      </div>
+
+      <div id="prod-result" style="display:none;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px;line-height:1.7"></div>
+    </div>
+  </div>
+
+  <!-- ── Formulations tab ──────────────────────────────────────────────────── -->
+  <div id="tab-formulations" class="tab-panel">
+
+    <!-- Search -->
+    <div class="section" id="formulation-search-section">
+      <h2>Search Formulations</h2>
+      <div class="search-row">
+        <input type="text" id="frm-search" placeholder="Type to search by name…" autocomplete="off">
+      </div>
+      <div id="formulation-empty">No results.</div>
+      <ul id="formulation-results"></ul>
+      <div class="hint">Formulations imported from FMP. Search is server-side — type at least 1 character.</div>
+    </div>
+
+    <!-- Formulation detail panel (hidden until formulation clicked) -->
+    <div id="formulation-detail-panel">
+
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closeFormulationDetail()">&#8592; Back to search</button>
+          <h3 id="frm-detail-name"></h3>
+          <span id="frm-detail-status-badge"></span>
+        </div>
+
+        <div class="section-label">FMP Fields (read-only)</div>
+        <div class="field-grid">
+          <div class="field-block">
+            <label>Status</label>
+            <div class="ro-val" id="frm-fmp-status">—</div>
+          </div>
+        </div>
+
+        <div class="section-label" style="margin-top:20px">Curated Fields (editable)</div>
+        <div class="field-grid">
+          <div class="field-block field-full">
+            <label for="frm-notes">Notes</label>
+            <textarea id="frm-notes" placeholder="General notes about this formulation…"></textarea>
+          </div>
+        </div>
+        <div class="save-row">
+          <button class="save-btn" onclick="saveFormulation()">Save notes</button>
+        </div>
+      </div>
+
+      <!-- Recipe items table -->
+      <div class="section">
+        <h2>Recipe Items</h2>
+        <div id="frm-items-loading" class="loading" style="display:none">Loading items…</div>
+        <table id="frm-items-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Ingredient</th>
+              <th>Dose</th>
+              <th>Unit</th>
+              <th>Preferred Price</th>
+              <th>Notes</th>
+              <th></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="frm-items-tbody"></tbody>
+        </table>
+        <!-- Note: Dose and Unit columns are editable core fields — save per row. -->
+        <div id="frm-items-empty" class="hint" style="display:none">No items in this formulation.</div>
+
+        <!-- Add ingredient form -->
+        <div style="margin-top:16px">
+          <button class="secondary save-btn" onclick="toggleAddFrmItemForm()" id="add-frm-item-toggle-btn">+ Add ingredient</button>
+        </div>
+        <div id="add-frm-item-form" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+          <div class="section-label">Ingredient</div>
+          <div style="margin-bottom:10px">
+            <input type="text" id="new-item-ing-search" placeholder="Search ingredients…" autocomplete="off" style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px" oninput="frmItemIngSearch()">
+            <ul id="new-item-ing-results" style="list-style:none;background:#0d1117;border:1px solid var(--border);border-radius:6px;margin-top:4px;display:none"></ul>
+            <div id="new-item-ing-chosen" style="margin-top:6px;font-size:12px;color:var(--muted)"></div>
+          </div>
+          <div class="field-grid">
+            <div class="field-block">
+              <label for="new-item-dose">Dose <span style="color:var(--red)">*</span></label>
+              <input type="number" id="new-item-dose" placeholder="dose" step="any" style="width:100%">
+            </div>
+            <div class="field-block">
+              <label for="new-item-dose-unit">Unit <span style="color:var(--red)">*</span></label>
+              <input type="text" id="new-item-dose-unit" placeholder="mg / g / mL…">
+            </div>
+          </div>
+          <div class="save-row">
+            <button class="secondary save-btn" onclick="toggleAddFrmItemForm()">Cancel</button>
+            <button class="save-btn confirm" onclick="createFormulationItem()">Add to recipe</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /#formulation-detail-panel -->
+  </div><!-- /#tab-formulations -->
+
+  <!-- ── Materials tab ────────────────────────────────────────────────────── -->
+  <div id="tab-materials" class="tab-panel">
+
+    <!-- Search -->
+    <div class="section" id="material-search-section">
+      <h2>Search Materials</h2>
+      <div class="search-row">
+        <input type="text" id="mat-search" placeholder="Type to search by name…" autocomplete="off">
+      </div>
+      <div id="material-empty">No results.</div>
+      <ul id="material-results"></ul>
+      <div class="hint">Materials (packaging + production inputs) imported from FMP. Search is server-side — type at least 1 character.</div>
+    </div>
+
+    <!-- Material detail panel (hidden until material clicked) -->
+    <div id="material-detail-panel">
+
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closeMaterialDetail()">&#8592; Back to search</button>
+          <h3 id="mat-detail-name"></h3>
+          <span id="mat-detail-status-badge"></span>
+        </div>
+
+        <div class="section-label">FMP Fields (read-only)</div>
+        <div class="field-grid">
+          <div class="field-block">
+            <label>Type</label>
+            <div class="ro-val" id="mat-fmp-type">—</div>
+          </div>
+          <div class="field-block">
+            <label>Status</label>
+            <div class="ro-val" id="mat-fmp-status">—</div>
+          </div>
+        </div>
+
+        <div class="section-label" style="margin-top:20px">Curated Fields (editable)</div>
+        <div class="field-grid">
+          <div class="field-block field-full">
+            <label for="mat-notes">Notes</label>
+            <textarea id="mat-notes" placeholder="General notes about this material…"></textarea>
+          </div>
+        </div>
+        <div class="save-row">
+          <button class="save-btn" onclick="saveMaterial()">Save notes</button>
+        </div>
+      </div>
+
+      <!-- Suppliers table -->
+      <div class="section">
+        <h2>Suppliers</h2>
+        <div id="mat-sup-loading" class="loading" style="display:none">Loading suppliers…</div>
+        <table id="mat-sup-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Company</th>
+              <th>SKU</th>
+              <th>Price</th>
+              <th>Purchase Size</th>
+              <th>Mfg</th>
+              <th>Notes</th>
+              <th class="cell-pref">Preferred</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="mat-sup-tbody"></tbody>
+        </table>
+        <div id="mat-sup-empty" class="hint" style="display:none">No suppliers linked to this material.</div>
+      </div>
+
+    </div><!-- /#material-detail-panel -->
+  </div><!-- /#tab-materials -->
+
+  <!-- ── Purchase Orders tab ─────────────────────────────────────────────────── -->
+  <div id="tab-po" class="tab-panel">
+
+    <!-- Search -->
+    <div class="section" id="po-search-section">
+      <h2>Search Purchase Orders</h2>
+      <div class="search-row">
+        <input type="text" id="po-search" placeholder="Type to search by PO number or supplier…" autocomplete="off">
+      </div>
+      <div id="po-empty">No results.</div>
+      <ul id="po-results" style="list-style:none"></ul>
+      <div class="hint">Purchase orders imported from FMP. Search is server-side — type at least 1 character.</div>
+    </div>
+
+    <!-- PO detail panel (hidden until PO clicked) -->
+    <div id="po-detail-panel">
+
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closePoDetail()">&#8592; Back to search</button>
+          <h3 id="po-detail-title"></h3>
+          <span id="po-detail-status-badge"></span>
+        </div>
+
+        <div class="section-label">FMP Fields (read-only)</div>
+        <div class="field-grid">
+          <div class="field-block">
+            <label>Vendor PO No</label>
+            <div class="ro-val" id="po-fmp-vendor-po-no">—</div>
+          </div>
+          <div class="field-block">
+            <label>Supplier</label>
+            <div class="ro-val" id="po-fmp-supplier">—</div>
+          </div>
+          <div class="field-block">
+            <label>PO Date</label>
+            <div class="ro-val" id="po-fmp-po-date">—</div>
+          </div>
+          <div class="field-block">
+            <label>Status</label>
+            <div class="ro-val" id="po-fmp-status">—</div>
+          </div>
+          <div class="field-block">
+            <label>Tax</label>
+            <div class="ro-val" id="po-fmp-tax">—</div>
+          </div>
+          <div class="field-block">
+            <label>Shipping</label>
+            <div class="ro-val" id="po-fmp-shipping">—</div>
+          </div>
+        </div>
+
+        <div class="section-label" style="margin-top:20px">Curated Fields (editable)</div>
+        <div class="field-grid">
+          <div class="field-block field-full">
+            <label for="po-notes">Notes</label>
+            <textarea id="po-notes" placeholder="General notes about this purchase order…"></textarea>
+          </div>
+        </div>
+        <div class="save-row">
+          <button class="save-btn" onclick="savePoNotes()">Save notes</button>
+        </div>
+      </div>
+
+      <!-- Line items table -->
+      <div class="section">
+        <h2>Line Items</h2>
+        <div id="po-items-loading" class="loading" style="display:none">Loading items…</div>
+        <table id="po-items-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Kind</th>
+              <th>Qty</th>
+              <th>Unit</th>
+              <th>Cost</th>
+              <th>Notes</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="po-items-tbody"></tbody>
+        </table>
+        <div id="po-items-empty" class="hint" style="display:none">No line items on this PO.</div>
+      </div>
+
+      <!-- Receiving table -->
+      <div class="section">
+        <h2>Receiving</h2>
+        <table id="po-receiving-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Qty Received</th>
+              <th>Received Size</th>
+            </tr>
+          </thead>
+          <tbody id="po-receiving-tbody"></tbody>
+        </table>
+        <div id="po-receiving-empty" class="hint" style="display:none">No receiving records.</div>
+      </div>
+
+    </div><!-- /#po-detail-panel -->
+  </div><!-- /#tab-po -->
+
+  <!-- ── Inventory tab ──────────────────────────────────────────────────────── -->
+  <div id="tab-inventory" class="tab-panel">
+
+    <!-- Search / levels list -->
+    <div class="section" id="inv-search-section">
+      <h2>Inventory Levels</h2>
+      <div class="search-row">
+        <input type="text" id="inv-search" placeholder="Type to search ingredients…" autocomplete="off">
+        <button class="save-btn" id="inv-seed-btn" onclick="invSeed()" style="margin-left:12px">Seed from baseline + receipts</button>
+      </div>
+      <div id="inv-empty">No results.</div>
+      <table id="inv-list">
+        <thead>
+          <tr>
+            <th>Ingredient</th>
+            <th>On Hand</th>
+            <th>Par Level</th>
+          </tr>
+        </thead>
+        <tbody id="inv-list-body"></tbody>
+      </table>
+      <div class="hint">Shows all ingredients with inventory records. Click a row to view the ledger and add an adjustment.</div>
+    </div>
+
+    <!-- Detail panel (hidden until row clicked) -->
+    <div id="inv-detail-panel">
+
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closeInvDetail()">&#8592; Back to list</button>
+          <div id="inv-detail-head" style="flex:1;padding-left:12px"></div>
+        </div>
+
+        <!-- Add adjustment / recount form -->
+        <div class="section-label" style="margin-top:20px">Add adjustment / recount</div>
+        <div class="field-grid">
+          <div class="field-block">
+            <label for="inv-adj-qty">Qty <span style="color:var(--muted);font-size:11px">(use − to subtract)</span></label>
+            <input type="number" id="inv-adj-qty" step="any" placeholder="e.g. 5 or -2">
+          </div>
+          <div class="field-block">
+            <label for="inv-adj-unit">Unit <span style="color:var(--muted);font-size:11px">(optional)</span></label>
+            <input type="text" id="inv-adj-unit" placeholder="kg / g / units…">
+          </div>
+          <div class="field-block field-full">
+            <label for="inv-adj-notes">Notes <span style="color:var(--muted);font-size:11px">(optional)</span></label>
+            <textarea id="inv-adj-notes" placeholder="Reason for adjustment, recount source, etc."></textarea>
+          </div>
+        </div>
+        <div class="save-row">
+          <button class="save-btn" onclick="submitInvAdjust()">Save adjustment</button>
+        </div>
+      </div>
+
+      <!-- Ledger table -->
+      <div class="section">
+        <h2>Transaction Ledger</h2>
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr id="inv-txns-head">
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Date</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Type</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Qty</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Unit</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Notes</th>
+            </tr>
+          </thead>
+          <tbody id="inv-txns"></tbody>
+        </table>
+        <div id="inv-txns-empty" class="hint" style="display:none">No transactions yet.</div>
+      </div>
+
+    </div><!-- /#inv-detail-panel -->
+  </div><!-- /#tab-inventory -->
+
+  <!-- ── Production tab ────────────────────────────────────────────────────── -->
+  <div id="tab-production" class="tab-panel">
+
+    <!-- Search / run list -->
+    <div class="section" id="prod-search-section">
+      <h2>Production Runs</h2>
+      <div class="search-row">
+        <input type="text" id="prod-search" placeholder="Type to search by batch number or formulation…" autocomplete="off">
+      </div>
+      <div id="prod-empty">No results.</div>
+      <table id="prod-list" style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th>Batch #</th>
+            <th>Formulation</th>
+            <th>Run Date</th>
+            <th>Qty (units)</th>
+          </tr>
+        </thead>
+        <tbody id="prod-list-body"></tbody>
+      </table>
+      <div class="hint">Production runs logged from FMP import or manual entry. Click a row to view items and consumption status.</div>
+    </div>
+
+    <!-- Production run detail panel -->
+    <div id="prod-detail-panel">
+
+      <div class="section">
+        <div class="detail-header">
+          <button class="detail-back" onclick="closeProdDetail()">&#8592; Back to list</button>
+          <div id="prod-detail-head" style="flex:1;padding-left:12px"></div>
+        </div>
+
+        <!-- Line items table -->
+        <div class="section-label" style="margin-top:20px">Items Consumed</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr>
+              <th id="prod-items-head-label" style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Ingredient / Material</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Type</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Qty Used</th>
+              <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Consumed</th>
+            </tr>
+          </thead>
+          <tbody id="prod-items"></tbody>
+        </table>
+        <div id="prod-items-empty" class="hint" style="display:none">No items on this run.</div>
+      </div>
+
+    </div><!-- /#prod-detail-panel -->
+
+    <!-- Log a production run form -->
+    <div class="section">
+      <h2>Log a Production Run</h2>
+
+      <!-- Formulation search-to-pick -->
+      <div class="field-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="field-block">
+          <label>Formulation</label>
+          <input type="text" id="prod-log-form-search" placeholder="Type to search formulations…" autocomplete="off">
+          <ul id="prod-frm-results"></ul>
+          <div id="prod-frm-chosen" style="margin-top:6px;font-size:12px;color:var(--muted)"></div>
+        </div>
+        <div class="field-block">
+          <label for="prod-log-date">Run Date</label>
+          <input type="text" id="prod-log-date" placeholder="YYYY-MM-DD">
+        </div>
+        <div class="field-block">
+          <label for="prod-log-qty">Quantity (units produced)</label>
+          <input type="number" id="prod-log-qty" step="any" placeholder="e.g. 100">
+        </div>
+      </div>
+
+      <div class="section-label">Recipe Lines</div>
+      <div style="margin-bottom:10px">
+        <button class="save-btn secondary" onclick="prodPullRecipe()">&#8635; Pull recipe</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:14px">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Ingredient</th>
+            <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Qty Used</th>
+            <th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Unit</th>
+          </tr>
+        </thead>
+        <tbody id="prod-log-lines"></tbody>
+      </table>
+      <div class="save-row">
+        <button onclick="submitProdLog()">Log Run &amp; Post Consumption</button>
+      </div>
+    </div>
+
+  </div><!-- /#tab-production -->
+
+  <!-- ── Reorder tab ────────────────────────────────────────────────────────── -->
+  <div id="tab-reorder" class="tab-panel">
+
+    <div class="section">
+      <h2>Production Plan (optional)</h2>
+      <p class="hint" style="margin-bottom:14px">Add formulations you plan to make to calculate ingredient demand. Leave empty to see only below-par items.</p>
+
+      <div class="field-grid" style="grid-template-columns:1fr auto auto;gap:10px;align-items:flex-end;margin-bottom:12px">
+        <div class="field-block">
+          <label>Formulation</label>
+          <input type="text" id="ro-frm-search" placeholder="Type to search formulations…" autocomplete="off" oninput="roFrmSearch()">
+          <ul id="ro-frm-results" style="background:#0d1117;border:1px solid var(--border);border-radius:6px;margin-top:4px"></ul>
+        </div>
+        <div class="field-block">
+          <label for="ro-frm-qty">Qty (units)</label>
+          <input type="number" id="ro-frm-qty" step="any" placeholder="e.g. 100" style="width:100px;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px">
+        </div>
+        <div class="field-block">
+          <label style="visibility:hidden">Add</label>
+          <button onclick="roAddPlanLine()">+ Add to plan</button>
+        </div>
+      </div>
+
+      <table id="ro-plan-table" style="width:100%;border-collapse:collapse;margin-bottom:14px">
+        <thead>
+          <tr>
+            <th style="text-align:left">Formulation</th>
+            <th style="text-align:left">Qty</th>
+            <th style="text-align:left"></th>
+          </tr>
+        </thead>
+        <tbody id="ro-plan"></tbody>
+      </table>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <input type="checkbox" id="ro-below-par" checked style="accent-color:var(--accent);width:15px;height:15px">
+        <label for="ro-below-par" style="font-size:13px;cursor:pointer">Include below-par ingredients (even without production plan)</label>
+      </div>
+
+      <div>
+        <button onclick="roCompute()">Compute reorder list</button>
+      </div>
+    </div>
+
+    <div id="ro-results"></div>
+
+  </div><!-- /#tab-reorder -->
+
+</div><!-- /#wrap -->
+
+<div id="toast"></div>
+
+<script>
+// ── Auth ─────────────────────────────────────────────────────────────────────
+const _urlKey = new URLSearchParams(location.search).get("key");
+if (_urlKey) localStorage.setItem("console_key", _urlKey);
+const KEY = _urlKey || localStorage.getItem("console_key") || "";
+const HEADERS = { "Content-Type": "application/json", "X-Console-Key": KEY };
+
+function toast(msg, kind="ok") {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "show " + kind;
+  setTimeout(() => t.className = kind, 2500);
+}
+
+async function api(path, opts={}) {
+  const r = await fetch(path, { headers: HEADERS, ...opts });
+  if (r.status === 401) {
+    document.getElementById("auth-warn").style.display = "block";
+    throw new Error("unauthorized");
+  }
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "request failed");
+  return j.data;
+}
+
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("tab-" + name).classList.add("active");
+  const btns = document.querySelectorAll(".tab-btn");
+  const labels = ["ingredients", "suppliers", "import", "formulations", "materials", "po", "inventory", "production", "reorder"];
+  btns[labels.indexOf(name)].classList.add("active");
+  if (name === "suppliers") loadSuppliers();
+  if (name === "production") doProdSearch();
+}
+
+// ── FMP Import ────────────────────────────────────────────────────────────────
+async function fmpImport(write) {
+  const fSuppliers   = document.getElementById("fmp-file-suppliers").files[0];
+  const fIngredients = document.getElementById("fmp-file-ingredients").files[0];
+  const fSources     = document.getElementById("fmp-file-sources").files[0];
+
+  if (!fSuppliers || !fIngredients || !fSources) {
+    toast("Please choose all 3 CSV files before running.", "error");
+    return;
+  }
+
+  const resultEl = document.getElementById("fmp-result");
+  const dryBtn   = document.getElementById("fmp-dry-btn");
+  const writeBtn = document.getElementById("fmp-write-btn");
+  dryBtn.disabled = true;
+  writeBtn.disabled = true;
+  resultEl.style.display = "block";
+  resultEl.innerHTML = '<span style="color:var(--muted)">Uploading…</span>';
+
+  const fd = new FormData();
+  fd.append("suppliers",   fSuppliers);
+  fd.append("ingredients", fIngredients);
+  fd.append("sources",     fSources);
+  if (write) fd.append("write", "1");
+
+  try {
+    const r = await fetch("/api/ingredients/import", {
+      method: "POST",
+      headers: { "X-Console-Key": KEY },
+      body: fd,
+    });
+    const j = await r.json();
+
+    if (r.status === 401) {
+      document.getElementById("auth-warn").style.display = "block";
+      resultEl.innerHTML = '<span style="color:var(--red)">Unauthorized — check your console key.</span>';
+      return;
+    }
+
+    if (!j.ok) {
+      resultEl.innerHTML = '<span style="color:var(--red)">Error: ' + escapeHtml(j.error || "request failed") + '</span>';
+      toast(j.error || "Import failed", "error");
+      return;
+    }
+
+    const d = j.data;
+    if (d.mode === "dry_run") {
+      resultEl.innerHTML = `
+        <strong style="color:var(--accent-light)">Dry Run — no data written</strong><br>
+        Suppliers: <strong>${escapeHtml(String(d.suppliers ?? 0))}</strong> &nbsp;|&nbsp;
+        Ingredients: <strong>${escapeHtml(String(d.ingredients ?? 0))}</strong> &nbsp;|&nbsp;
+        Sources: <strong>${escapeHtml(String(d.sources ?? 0))}</strong> &nbsp;|&nbsp;
+        Clusters: <strong>${escapeHtml(String(d.clusters ?? 0))}</strong>`;
+      toast("Dry run complete");
+    } else {
+      resultEl.innerHTML = `
+        <strong style="color:var(--green)">Import complete</strong><br>
+        Suppliers: <strong>${escapeHtml(String(d.suppliers ?? 0))}</strong> &nbsp;|&nbsp;
+        Ingredients: <strong>${escapeHtml(String(d.ingredients ?? 0))}</strong> &nbsp;|&nbsp;
+        Sources: <strong>${escapeHtml(String(d.sources ?? 0))}</strong><br>
+        Canonical applied: <strong>${escapeHtml(String(d.canonical_applied ?? 0))}</strong> &nbsp;|&nbsp;
+        Canonical skipped: <strong>${escapeHtml(String(d.canonical_skipped ?? 0))}</strong>`;
+      toast("Import written successfully", "ok");
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<span style="color:var(--red)">Network error: ' + escapeHtml(e.message) + '</span>';
+    toast(e.message, "error");
+  } finally {
+    dryBtn.disabled = false;
+    writeBtn.disabled = false;
+  }
+}
+
+async function formImport(write) {
+  const fProducts      = document.getElementById("fmp-file-products").files[0];
+  const fProductsItems = document.getElementById("fmp-file-products_items").files[0];
+
+  if (!fProducts || !fProductsItems) {
+    toast("Please choose both CSV files before running.", "error");
+    return;
+  }
+
+  const resultEl = document.getElementById("form-result");
+  const dryBtn   = document.getElementById("form-dry-btn");
+  const writeBtn = document.getElementById("form-write-btn");
+  dryBtn.disabled = true;
+  writeBtn.disabled = true;
+  resultEl.style.display = "block";
+  resultEl.innerHTML = '<span style="color:var(--muted)">Uploading…</span>';
+
+  const fd = new FormData();
+  fd.append("products",       fProducts);
+  fd.append("products_items", fProductsItems);
+  if (write) fd.append("write", "1");
+
+  try {
+    const r = await fetch("/api/formulations/import", {
+      method: "POST",
+      headers: { "X-Console-Key": KEY },
+      body: fd,
+    });
+    const j = await r.json();
+
+    if (r.status === 401) {
+      document.getElementById("auth-warn").style.display = "block";
+      resultEl.innerHTML = '<span style="color:var(--red)">Unauthorized — check your console key.</span>';
+      return;
+    }
+
+    if (!j.ok) {
+      resultEl.innerHTML = '<span style="color:var(--red)">Error: ' + escapeHtml(j.error || "request failed") + '</span>';
+      toast(j.error || "Import failed", "error");
+      return;
+    }
+
+    const d = j.data;
+    if (d.mode === "dry_run") {
+      resultEl.innerHTML = `
+        <strong style="color:var(--accent-light)">Dry Run — no data written</strong><br>
+        Formulations: <strong>${escapeHtml(String(d.ff_formulations ?? 0))}</strong> &nbsp;|&nbsp;
+        Products-Items: <strong>${escapeHtml(String(d.products_items ?? 0))}</strong>`;
+      toast("Dry run complete");
+    } else {
+      resultEl.innerHTML = `
+        <strong style="color:var(--green)">Import complete</strong><br>
+        Formulations: <strong>${escapeHtml(String(d.formulations ?? 0))}</strong> &nbsp;|&nbsp;
+        Items: <strong>${escapeHtml(String(d.items ?? 0))}</strong> &nbsp;|&nbsp;
+        Unresolved: <strong>${escapeHtml(String(d.unresolved ?? 0))}</strong>`;
+      toast("Import written successfully", "ok");
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<span style="color:var(--red)">Network error: ' + escapeHtml(e.message) + '</span>';
+    toast(e.message, "error");
+  } finally {
+    dryBtn.disabled = false;
+    writeBtn.disabled = false;
+  }
+}
+
+async function matImport(write) {
+  const fMaterials         = document.getElementById("fmp-file-materials").files[0];
+  const fMaterialsSupplier = document.getElementById("fmp-file-materials_supplier").files[0];
+  const fProductsSupplier  = document.getElementById("fmp-file-products_supplier").files[0];
+
+  if (!fMaterials || !fMaterialsSupplier || !fProductsSupplier) {
+    toast("Please choose all 3 CSV files before running.", "error");
+    return;
+  }
+
+  const resultEl = document.getElementById("mat-result");
+  const dryBtn   = document.getElementById("mat-dry-btn");
+  const writeBtn = document.getElementById("mat-write-btn");
+  dryBtn.disabled = true;
+  writeBtn.disabled = true;
+  resultEl.style.display = "block";
+  resultEl.innerHTML = '<span style="color:var(--muted)">Uploading…</span>';
+
+  const fd = new FormData();
+  fd.append("materials",          fMaterials);
+  fd.append("materials_supplier", fMaterialsSupplier);
+  fd.append("products_supplier",  fProductsSupplier);
+  if (write) fd.append("write", "1");
+
+  try {
+    const r = await fetch("/api/materials/import", {
+      method: "POST",
+      headers: { "X-Console-Key": KEY },
+      body: fd,
+    });
+    const j = await r.json();
+
+    if (r.status === 401) {
+      document.getElementById("auth-warn").style.display = "block";
+      resultEl.innerHTML = '<span style="color:var(--red)">Unauthorized — check your console key.</span>';
+      return;
+    }
+
+    if (!j.ok) {
+      resultEl.innerHTML = '<span style="color:var(--red)">Error: ' + escapeHtml(j.error || "request failed") + '</span>';
+      toast(j.error || "Import failed", "error");
+      return;
+    }
+
+    const d = j.data;
+    if (d.mode === "dry_run") {
+      resultEl.innerHTML = `
+        <strong style="color:var(--accent-light)">Dry Run — no data written</strong><br>
+        Materials: <strong>${escapeHtml(String(d.materials ?? 0))}</strong> &nbsp;|&nbsp;
+        Material Suppliers: <strong>${escapeHtml(String(d.material_suppliers ?? 0))}</strong> &nbsp;|&nbsp;
+        Product Suppliers: <strong>${escapeHtml(String(d.product_suppliers ?? 0))}</strong>`;
+      toast("Dry run complete");
+    } else {
+      resultEl.innerHTML = `
+        <strong style="color:var(--green)">Import complete</strong><br>
+        Materials: <strong>${escapeHtml(String(d.materials ?? 0))}</strong> &nbsp;|&nbsp;
+        Material Suppliers: <strong>${escapeHtml(String(d.material_suppliers ?? 0))}</strong> &nbsp;|&nbsp;
+        Product Suppliers: <strong>${escapeHtml(String(d.product_suppliers ?? 0))}</strong>`;
+      toast("Import written successfully", "ok");
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<span style="color:var(--red)">Network error: ' + escapeHtml(e.message) + '</span>';
+    toast(e.message, "error");
+  } finally {
+    dryBtn.disabled = false;
+    writeBtn.disabled = false;
+  }
+}
+
+async function poImport(write) {
+  const fPo           = document.getElementById("fmp-file-po").files[0];
+  const fPoItems      = document.getElementById("fmp-file-po_items").files[0];
+  const fPoReceiving  = document.getElementById("fmp-file-po_receiving").files[0];
+
+  if (!fPo || !fPoItems || !fPoReceiving) {
+    toast("Please choose all 3 CSV files before running.", "error");
+    return;
+  }
+
+  const resultEl = document.getElementById("po-result");
+  const dryBtn   = document.getElementById("po-dry-btn");
+  const writeBtn = document.getElementById("po-write-btn");
+  dryBtn.disabled = true;
+  writeBtn.disabled = true;
+  resultEl.style.display = "block";
+  resultEl.innerHTML = '<span style="color:var(--muted)">Uploading…</span>';
+
+  const fd = new FormData();
+  fd.append("po",           fPo);
+  fd.append("po_items",     fPoItems);
+  fd.append("po_receiving", fPoReceiving);
+  if (write) fd.append("write", "1");
+
+  try {
+    const r = await fetch("/api/po/import", {
+      method: "POST",
+      headers: { "X-Console-Key": KEY },
+      body: fd,
+    });
+    const j = await r.json();
+
+    if (r.status === 401) {
+      document.getElementById("auth-warn").style.display = "block";
+      resultEl.innerHTML = '<span style="color:var(--red)">Unauthorized — check your console key.</span>';
+      return;
+    }
+
+    if (!j.ok) {
+      resultEl.innerHTML = '<span style="color:var(--red)">Error: ' + escapeHtml(j.error || "request failed") + '</span>';
+      toast(j.error || "Import failed", "error");
+      return;
+    }
+
+    const d = j.data;
+    if (d.mode === "dry_run") {
+      resultEl.innerHTML = `
+        <strong style="color:var(--accent-light)">Dry Run — no data written</strong><br>
+        Purchase Orders: <strong>${escapeHtml(String(d.purchase_orders ?? 0))}</strong> &nbsp;|&nbsp;
+        PO Items: <strong>${escapeHtml(String(d.po_items ?? 0))}</strong> &nbsp;|&nbsp;
+        PO Receiving: <strong>${escapeHtml(String(d.po_receiving ?? 0))}</strong>`;
+      toast("Dry run complete");
+    } else {
+      resultEl.innerHTML = `
+        <strong style="color:var(--green)">Import complete</strong><br>
+        Purchase Orders: <strong>${escapeHtml(String(d.purchase_orders ?? 0))}</strong> &nbsp;|&nbsp;
+        PO Items: <strong>${escapeHtml(String(d.po_items ?? 0))}</strong> &nbsp;|&nbsp;
+        PO Receiving: <strong>${escapeHtml(String(d.po_receiving ?? 0))}</strong>`;
+      toast("Import written successfully", "ok");
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<span style="color:var(--red)">Network error: ' + escapeHtml(e.message) + '</span>';
+    toast(e.message, "error");
+  } finally {
+    dryBtn.disabled = false;
+    writeBtn.disabled = false;
+  }
+}
+
+// ── Search (ingredients) ─────────────────────────────────────────────────────
+let _searchTimer = null;
+let _currentIngId = null;
+
+document.getElementById("ing-search").addEventListener("input", function() {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => doSearch(this.value.trim()), 280);
+});
+
+async function doSearch(q) {
+  const list = document.getElementById("search-results");
+  const empty = document.getElementById("search-empty");
+  list.innerHTML = "";
+  empty.style.display = "none";
+  if (!q) return;
+  try {
+    const results = await api("/api/ingredients/search?q=" + encodeURIComponent(q) + "&limit=50");
+    if (!results.length) { empty.style.display = "block"; return; }
+    for (const ing of results) {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <div class="ing-name">${escapeHtml(ing.name)}</div>
+        <div class="ing-meta">${escapeHtml(ing.form || "")}${ing.status ? " · " + escapeHtml(ing.status) : ""}</div>`;
+      li.addEventListener("click", () => openIngredient(ing.id));
+      list.appendChild(li);
+    }
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+// ── Core-field override helpers ───────────────────────────────────────────────
+
+// Returns HTML for an amber "overridden" badge + unlock button.
+// entity = "ing" | "src" | "item", id = numeric row id, field = field name string.
+// IMPORTANT: only simple literals are passed to onclick — no JSON.stringify.
+function coreOverrideBadge(entity, id, field) {
+  return '<span class="badge badge-overridden">overridden</span>' +
+         ' <button class="unlock-btn" onclick="unlockCoreField(\'' + entity + '\',' + id + ',\'' + field + '\')">&#8635; unlock</button>';
+}
+
+async function unlockCoreField(entity, id, field) {
+  const urlMap = { ing: "/api/ingredients/", src: "/api/sources/", item: "/api/formulation-items/" };
+  const url = urlMap[entity];
+  if (!url) return;
+  try {
+    await api(url + id + "/unlock", { method: "POST", body: JSON.stringify({ field: field }) });
+    toast("Override removed — field will update on next import");
+    // Refresh the relevant detail
+    if (entity === "ing") openIngredient(_currentIngId);
+    else if (entity === "src") openIngredient(_currentIngId);
+    else if (entity === "item") openFormulation(_currentFrmId);
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// Wires a core-field input to save on blur via PATCH /api/<entity-path>/<id>/core
+// entity = "ing" | "src" | "item", apiPath = full url prefix like "/api/ingredients/"
+function wireCoreInput(inputEl, entity, apiPath, id, field, refreshFn) {
+  const origVal = inputEl.value;
+  inputEl.addEventListener("change", async function() {
+    const newVal = this.value;
+    try {
+      await api(apiPath + id + "/core", { method: "PATCH", body: JSON.stringify({ field: field, value: newVal }) });
+      toast("Saved");
+      refreshFn();
+    } catch (e) {
+      toast(e.message, "error");
+      this.value = origVal;
+    }
+  });
+}
+
+// ── Ingredient detail ─────────────────────────────────────────────────────────
+async function openIngredient(id) {
+  _currentIngId = id;
+  document.getElementById("search-section").style.display = "none";
+  document.getElementById("detail-panel").style.display = "block";
+  document.getElementById("detail-panel").classList.add("active");
+  document.getElementById("sources-table").style.display = "none";
+  document.getElementById("sources-empty").style.display = "none";
+  document.getElementById("sources-loading").style.display = "block";
+
+  try {
+    const { ingredient: ing, sources } = await api("/api/ingredients/" + id);
+
+    // Parse overrides
+    let ovr = [];
+    try { ovr = JSON.parse(ing.overrides || "[]"); } catch (_) {}
+
+    // Core fields — editable inputs
+    document.getElementById("detail-name").textContent = ing.name || "";
+    document.getElementById("ing-core-name").value = ing.name || "";
+    document.getElementById("ing-core-form").value = ing.form || "";
+    // common_names: stored as JSON array, display as comma-joined
+    let commonNamesVal = "";
+    if (ing.common_names) {
+      try {
+        const arr = JSON.parse(ing.common_names);
+        commonNamesVal = Array.isArray(arr) ? arr.join(", ") : ing.common_names;
+      } catch (_) { commonNamesVal = ing.common_names; }
+    }
+    document.getElementById("ing-core-common-names").value = commonNamesVal;
+    document.getElementById("ing-core-par-level").value = ing.par_level != null ? ing.par_level : "";
+    document.getElementById("ing-core-par-unit").value = ing.par_level_unit || "";
+
+    // Overridden badges on core label rows
+    const coreFields = ["name", "form", "common_names", "par_level", "par_level_unit"];
+    const labelRowIds = {
+      name: "ing-name-label-row", form: "ing-form-label-row",
+      common_names: "ing-common-names-label-row",
+      par_level: "ing-par-label-row", par_level_unit: "ing-par-unit-label-row"
+    };
+    coreFields.forEach(function(f) {
+      const row = document.getElementById(labelRowIds[f]);
+      if (!row) return;
+      // Remove old badge/unlock if re-opening
+      row.querySelectorAll(".badge-overridden, .unlock-btn").forEach(function(el) { el.remove(); });
+      if (ovr.indexOf(f) !== -1) {
+        row.insertAdjacentHTML("beforeend", coreOverrideBadge("ing", id, f));
+      }
+    });
+
+    // Wire core inputs to save on change
+    const ingRefresh = function() { openIngredient(id); };
+    [
+      ["ing-core-name",         "name"],
+      ["ing-core-form",         "form"],
+      ["ing-core-common-names", "common_names"],
+      ["ing-core-par-level",    "par_level"],
+      ["ing-core-par-unit",     "par_level_unit"],
+    ].forEach(function(pair) {
+      const el = document.getElementById(pair[0]);
+      if (!el) return;
+      // Remove old listeners by replacing the element clone
+      const fresh = el.cloneNode(true);
+      el.parentNode.replaceChild(fresh, el);
+      wireCoreInput(fresh, "ing", "/api/ingredients/", id, pair[1], ingRefresh);
+    });
+
+    // FMP read-only
+    document.getElementById("fmp-status").textContent = ing.status || "—";
+
+    // extras JSON pretty-print
+    let extrasDisplay = "—";
+    if (ing.extras) {
+      try { extrasDisplay = JSON.stringify(JSON.parse(ing.extras), null, 2); }
+      catch (_) { extrasDisplay = ing.extras; }
+    }
+    document.getElementById("fmp-extras").textContent = extrasDisplay;
+
+    // Status badge
+    const badge = document.getElementById("detail-status-badge");
+    badge.innerHTML = ing.status ? '<span class="badge badge-status">' + escapeHtml(ing.status) + '</span>' : "";
+
+    // Curated fields
+    document.getElementById("ing-inci-name").value = ing.inci_name || "";
+    document.getElementById("ing-cas-number").value = ing.cas_number || "";
+    document.getElementById("ing-hygroscopic").value = ing.hygroscopic_rating || "";
+    document.getElementById("ing-solubility").value = ing.solubility || "";
+    document.getElementById("ing-stability-notes").value = ing.stability_notes || "";
+    document.getElementById("ing-spec-notes").value = ing.spec_notes || "";
+    document.getElementById("ing-notes").value = ing.notes || "";
+
+    // Sources
+    renderSources(sources, id);
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function closeDetail() {
+  _currentIngId = null;
+  document.getElementById("detail-panel").style.display = "none";
+  document.getElementById("detail-panel").classList.remove("active");
+  document.getElementById("search-section").style.display = "block";
+}
+
+async function saveIngredient() {
+  if (!_currentIngId) return;
+  const body = {
+    inci_name:        document.getElementById("ing-inci-name").value.trim(),
+    cas_number:       document.getElementById("ing-cas-number").value.trim(),
+    hygroscopic_rating: document.getElementById("ing-hygroscopic").value.trim(),
+    solubility:       document.getElementById("ing-solubility").value.trim(),
+    stability_notes:  document.getElementById("ing-stability-notes").value.trim(),
+    spec_notes:       document.getElementById("ing-spec-notes").value.trim(),
+    notes:            document.getElementById("ing-notes").value.trim(),
+  };
+  try {
+    await api("/api/ingredients/" + _currentIngId, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    toast("Ingredient saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Sources ────────────────────────────────────────────────────────────────
+function renderSources(sources, ingredientId) {
+  document.getElementById("sources-loading").style.display = "none";
+  const tbody = document.getElementById("sources-tbody");
+  tbody.innerHTML = "";
+
+  if (!sources || !sources.length) {
+    document.getElementById("sources-empty").style.display = "block";
+    return;
+  }
+
+  document.getElementById("sources-table").style.display = "table";
+
+  for (const s of sources) {
+    const tr = document.createElement("tr");
+    tr.id = "src-row-" + s.id;
+    // Parse overrides for this source row
+    let srcOvr = [];
+    try { srcOvr = JSON.parse(s.overrides || "[]"); } catch (_) {}
+
+    // Build overridden badge HTML for source core fields (no JSON.stringify in onclick)
+    const srcBadge = function(field) {
+      if (srcOvr.indexOf(field) !== -1) return coreOverrideBadge("src", s.id, field);
+      return "";
+    };
+
+    tr.innerHTML =
+      '<td><strong>' + escapeHtml(s.company || s.supplier_name || "—") + '</strong></td>' +
+      '<td style="color:var(--muted)">' + escapeHtml(s.sku || "—") + '</td>' +
+      '<td><div style="display:flex;align-items:center;gap:4px">' +
+        '<input type="number" class="src-core-field" data-src="' + s.id + '" data-field="price_per_unit"' +
+          ' value="' + (s.price_per_unit != null ? s.price_per_unit : "") + '"' +
+          ' placeholder="0.00" step="0.01" min="0" style="width:70px">' +
+        srcBadge("price_per_unit") +
+      '</div></td>' +
+      '<td><div style="display:flex;align-items:center;gap:4px">' +
+        '<input type="number" class="src-core-field" data-src="' + s.id + '" data-field="unit_size"' +
+          ' value="' + (s.unit_size != null ? s.unit_size : "") + '"' +
+          ' placeholder="qty" step="any" min="0" style="width:65px">' +
+        srcBadge("unit_size") +
+      '</div></td>' +
+      '<td><div style="display:flex;align-items:center;gap:4px">' +
+        '<input type="text" class="src-core-field" data-src="' + s.id + '" data-field="unit_type"' +
+          ' value="' + escapeHtml(s.unit_type || "") + '"' +
+          ' placeholder="g / kg…" style="width:55px">' +
+        srcBadge("unit_type") +
+      '</div></td>' +
+      '<td>' + (s.shipping_quote != null ? "$" + Number(s.shipping_quote).toFixed(2) : "—") + '</td>' +
+      '<td><input type="number" class="src-field" data-src="' + s.id + '" data-field="lead_time_days" value="' + (s.lead_time_days != null ? s.lead_time_days : "") + '" placeholder="days" min="0" style="width:60px"></td>' +
+      '<td><input type="number" class="src-field" data-src="' + s.id + '" data-field="minimum_order" value="' + (s.minimum_order != null ? s.minimum_order : "") + '" placeholder="qty" min="0" style="width:70px"></td>' +
+      '<td><input type="text" class="src-field" data-src="' + s.id + '" data-field="minimum_order_unit" value="' + escapeHtml(s.minimum_order_unit || "") + '" placeholder="kg / unit" style="width:70px"></td>' +
+      '<td><input type="text" class="src-field" data-src="' + s.id + '" data-field="notes" value="' + escapeHtml(s.notes || "") + '" placeholder="notes" style="width:120px"></td>' +
+      '<td class="cell-pref">' +
+        '<input type="radio" class="pref-radio" name="pref-source-' + ingredientId + '" data-src="' + s.id + '" ' + (s.preferred ? "checked" : "") + ' title="Set as preferred">' +
+      '</td>' +
+      '<td>' +
+        '<button class="save-btn" onclick="saveSource(' + s.id + ')">Save</button>' +
+      '</td>';
+    tbody.appendChild(tr);
+
+    // Wire source core fields (price_per_unit, unit_size, unit_type) to PATCH /api/sources/<id>/core
+    const srcIngId = ingredientId; // capture for refresh
+    tr.querySelectorAll(".src-core-field").forEach(function(inp) {
+      const field = inp.dataset.field;
+      const srcId = parseInt(inp.dataset.src, 10);
+      const origVal = inp.value;
+      inp.addEventListener("change", async function() {
+        const newVal = this.value;
+        try {
+          await api("/api/sources/" + srcId + "/core", { method: "PATCH", body: JSON.stringify({ field: field, value: newVal }) });
+          toast("Saved");
+          openIngredient(srcIngId);
+        } catch (e) {
+          toast(e.message, "error");
+          this.value = origVal;
+        }
+      });
+    });
+  }
+
+  // Wire preferred radio
+  document.querySelectorAll("input[name='pref-source-" + ingredientId + "']").forEach(function(radio) {
+    radio.addEventListener("change", function() {
+      if (this.checked) setPreferred(parseInt(this.dataset.src, 10));
+    });
+  });
+}
+
+async function saveSource(srcId) {
+  const row = document.getElementById("src-row-" + srcId);
+  if (!row) return;
+  const fields = row.querySelectorAll(".src-field[data-src='" + srcId + "']");
+  const body = {};
+  fields.forEach(inp => {
+    const f = inp.dataset.field;
+    const v = inp.value.trim();
+    if (f === "lead_time_days" || f === "minimum_order") {
+      body[f] = v === "" ? null : Number(v);
+    } else {
+      body[f] = v;
+    }
+  });
+  try {
+    await api("/api/ingredients/sources/" + srcId, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    toast("Source saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function setPreferred(srcId) {
+  try {
+    await api("/api/ingredients/sources/" + srcId + "/preferred", { method: "POST" });
+    toast("Preferred source updated");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Suppliers tab ────────────────────────────────────────────────────────────
+let _supTimer = null;
+
+document.getElementById("sup-search").addEventListener("input", function() {
+  clearTimeout(_supTimer);
+  _supTimer = setTimeout(() => loadSuppliers(this.value.trim()), 280);
+});
+
+async function loadSuppliers(q="") {
+  const list = document.getElementById("supplier-results");
+  const empty = document.getElementById("supplier-empty");
+  list.innerHTML = "";
+  empty.style.display = "none";
+  try {
+    const suppliers = await api("/api/ingredients/suppliers?q=" + encodeURIComponent(q) + "&limit=100");
+    if (!suppliers.length) { empty.style.display = "block"; return; }
+    for (const sup of suppliers) {
+      const li = document.createElement("li");
+      li.id = "sup-item-" + sup.id;
+      const meta = [sup.address_city, sup.address_province].filter(Boolean).join(", ");
+      li.innerHTML = `
+        <div class="sup-name">${escapeHtml(sup.company)}</div>
+        ${meta ? `<div class="sup-meta">${escapeHtml(meta)}</div>` : ""}
+        ${sup.url ? `<div class="sup-meta"><a href="${escapeHtml(sup.url)}" target="_blank" style="color:var(--accent-light)">${escapeHtml(sup.url)}</a></div>` : ""}
+        <div class="sup-notes-row">
+          <textarea id="sup-notes-${sup.id}" placeholder="Notes about this supplier…" rows="2">${escapeHtml(sup.notes || "")}</textarea>
+          <button class="save-btn" onclick="saveSupplier(${sup.id})">Save</button>
+        </div>`;
+      list.appendChild(li);
+    }
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+async function saveSupplier(supId) {
+  const ta = document.getElementById("sup-notes-" + supId);
+  if (!ta) return;
+  try {
+    await api("/api/ingredients/suppliers/" + supId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: ta.value.trim() }),
+    });
+    toast("Supplier notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Formulations tab ─────────────────────────────────────────────────────────
+let _frmSearchTimer = null;
+let _currentFrmId = null;
+
+document.getElementById("frm-search").addEventListener("input", function() {
+  clearTimeout(_frmSearchTimer);
+  _frmSearchTimer = setTimeout(() => doFormulationSearch(this.value.trim()), 280);
+});
+
+async function doFormulationSearch(q) {
+  const list  = document.getElementById("formulation-results");
+  const empty = document.getElementById("formulation-empty");
+  list.innerHTML = "";
+  empty.style.display = "none";
+  if (!q) return;
+  try {
+    const results = await api("/api/formulations/search?q=" + encodeURIComponent(q));
+    if (!results.length) { empty.style.display = "block"; return; }
+    for (const frm of results) {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <div class="frm-name">${escapeHtml(frm.name)}</div>
+        <div class="frm-meta">${frm.status ? escapeHtml(frm.status) : ""}</div>`;
+      li.addEventListener("click", () => openFormulation(frm.id));
+      list.appendChild(li);
+    }
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+async function openFormulation(id) {
+  _currentFrmId = id;
+  document.getElementById("formulation-search-section").style.display = "none";
+  document.getElementById("formulation-detail-panel").style.display = "block";
+  document.getElementById("formulation-detail-panel").classList.add("active");
+  document.getElementById("frm-items-table").style.display = "none";
+  document.getElementById("frm-items-empty").style.display = "none";
+  document.getElementById("frm-items-loading").style.display = "block";
+
+  try {
+    const { formulation: frm, items } = await api("/api/formulations/" + id);
+
+    // FMP read-only
+    document.getElementById("frm-detail-name").textContent = frm.name || "";
+    document.getElementById("frm-fmp-status").textContent  = frm.status || "—";
+
+    // Status badge
+    const badge = document.getElementById("frm-detail-status-badge");
+    badge.innerHTML = frm.status
+      ? `<span class="badge badge-status">${escapeHtml(frm.status)}</span>`
+      : "";
+
+    // Curated
+    document.getElementById("frm-notes").value = frm.notes || "";
+
+    // Items
+    renderFormulationItems(items);
+  } catch (e) {
+    document.getElementById("frm-items-loading").style.display = "none";
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function closeFormulationDetail() {
+  _currentFrmId = null;
+  document.getElementById("formulation-detail-panel").style.display = "none";
+  document.getElementById("formulation-detail-panel").classList.remove("active");
+  document.getElementById("formulation-search-section").style.display = "block";
+}
+
+async function saveFormulation() {
+  if (!_currentFrmId) return;
+  try {
+    await api("/api/formulations/" + _currentFrmId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: document.getElementById("frm-notes").value.trim() }),
+    });
+    toast("Formulation notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function renderFormulationItems(items) {
+  document.getElementById("frm-items-loading").style.display = "none";
+  const tbody = document.getElementById("frm-items-tbody");
+  tbody.innerHTML = "";
+
+  if (!items || !items.length) {
+    document.getElementById("frm-items-empty").style.display = "block";
+    return;
+  }
+
+  document.getElementById("frm-items-table").style.display = "table";
+
+  for (const item of items) {
+    const tr = document.createElement("tr");
+    tr.id = "frm-item-row-" + item.id;
+    const ingName = item.ingredient_canonical || item.ingredient_name || "—";
+    const priceCell = item.preferred_price != null
+      ? "$" + Number(item.preferred_price).toFixed(2)
+      : "—";
+
+    // Parse overrides for this item
+    let itemOvr = [];
+    try { itemOvr = JSON.parse(item.overrides || "[]"); } catch (_) {}
+    const itemBadge = function(field) {
+      if (itemOvr.indexOf(field) !== -1) return coreOverrideBadge("item", item.id, field);
+      return "";
+    };
+
+    tr.innerHTML =
+      '<td><strong>' + escapeHtml(ingName) + '</strong></td>' +
+      '<td><div style="display:flex;align-items:center;gap:4px">' +
+        '<input type="number" class="frm-item-core-field" data-item="' + item.id + '" data-field="dose"' +
+          ' value="' + (item.dose != null ? item.dose : "") + '"' +
+          ' placeholder="dose" step="any" style="width:70px">' +
+        itemBadge("dose") +
+      '</div></td>' +
+      '<td><div style="display:flex;align-items:center;gap:4px">' +
+        '<input type="text" class="frm-item-core-field" data-item="' + item.id + '" data-field="dose_unit"' +
+          ' value="' + escapeHtml(item.dose_unit || "") + '"' +
+          ' placeholder="mg/g…" style="width:55px">' +
+        itemBadge("dose_unit") +
+      '</div></td>' +
+      '<td>' + priceCell + '</td>' +
+      '<td><input type="text" class="frm-item-notes" data-item="' + item.id + '" value="' + escapeHtml(item.notes || "") + '" placeholder="notes" style="width:120px"></td>' +
+      '<td><button class="save-btn" onclick="saveFormulationItem(' + item.id + ')">Save</button></td>' +
+      '<td><button class="secondary save-btn" onclick="removeFormulationItem(' + item.id + ')" title="Remove from recipe" style="color:var(--red);border-color:var(--red)">&#10005;</button></td>';
+    tbody.appendChild(tr);
+
+    // Wire dose / dose_unit to PATCH /api/formulation-items/<id>/core
+    const frmId = _currentFrmId; // capture for refresh
+    tr.querySelectorAll(".frm-item-core-field").forEach(function(inp) {
+      const field = inp.dataset.field;
+      const itemId = parseInt(inp.dataset.item, 10);
+      const origVal = inp.value;
+      inp.addEventListener("change", async function() {
+        const newVal = this.value;
+        try {
+          await api("/api/formulation-items/" + itemId + "/core", { method: "PATCH", body: JSON.stringify({ field: field, value: newVal }) });
+          toast("Saved");
+          openFormulation(frmId);
+        } catch (e) {
+          toast(e.message, "error");
+          this.value = origVal;
+        }
+      });
+    });
+  }
+}
+
+async function saveFormulationItem(itemId) {
+  const row = document.getElementById("frm-item-row-" + itemId);
+  if (!row) return;
+  const notesEl = row.querySelector(".frm-item-notes[data-item='" + itemId + "']");
+  try {
+    await api("/api/formulations/items/" + itemId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: notesEl ? notesEl.value.trim() : "" }),
+    });
+    toast("Item notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Create: ingredient ───────────────────────────────────────────────────────
+function toggleNewIngForm() {
+  const form = document.getElementById("new-ing-form");
+  const btnRow = document.getElementById("new-ing-btn-row");
+  const visible = form.style.display !== "none";
+  form.style.display = visible ? "none" : "block";
+  btnRow.style.display = visible ? "block" : "none";
+  if (!visible) {
+    document.getElementById("new-ing-name").value = "";
+    document.getElementById("new-ing-form-field").value = "";
+    document.getElementById("new-ing-common-names").value = "";
+    document.getElementById("new-ing-par-level").value = "";
+    document.getElementById("new-ing-par-unit").value = "";
+    document.getElementById("new-ing-name").focus();
+  }
+}
+
+async function createIngredient() {
+  const name = document.getElementById("new-ing-name").value.trim();
+  if (!name) { toast("Name is required", "error"); return; }
+  const body = { name: name };
+  const form = document.getElementById("new-ing-form-field").value.trim();
+  if (form) body.form = form;
+  const commonNames = document.getElementById("new-ing-common-names").value.trim();
+  if (commonNames) body.common_names = commonNames;
+  const parLevel = document.getElementById("new-ing-par-level").value.trim();
+  if (parLevel !== "") body.par_level = parseFloat(parLevel);
+  const parUnit = document.getElementById("new-ing-par-unit").value.trim();
+  if (parUnit) body.par_level_unit = parUnit;
+  try {
+    const result = await api("/api/ingredients", { method: "POST", body: JSON.stringify(body) });
+    toast("Ingredient created");
+    toggleNewIngForm();
+    // Refresh search and open the new ingredient
+    doSearch(document.getElementById("ing-search").value.trim() || name);
+    openIngredient(result.id);
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Create: supplier ─────────────────────────────────────────────────────────
+function toggleNewSupForm() {
+  const form = document.getElementById("new-sup-form");
+  const btnRow = document.getElementById("new-sup-btn-row");
+  const visible = form.style.display !== "none";
+  form.style.display = visible ? "none" : "block";
+  btnRow.style.display = visible ? "block" : "none";
+  if (!visible) {
+    document.getElementById("new-sup-company").value = "";
+    document.getElementById("new-sup-email").value = "";
+    document.getElementById("new-sup-phone").value = "";
+    document.getElementById("new-sup-url").value = "";
+    document.getElementById("new-sup-company").focus();
+  }
+}
+
+async function createSupplier() {
+  const company = document.getElementById("new-sup-company").value.trim();
+  if (!company) { toast("Company name is required", "error"); return; }
+  const body = { company: company };
+  const email = document.getElementById("new-sup-email").value.trim();
+  if (email) body.email = email;
+  const phone = document.getElementById("new-sup-phone").value.trim();
+  if (phone) body.phone_business = phone;
+  const url = document.getElementById("new-sup-url").value.trim();
+  if (url) body.url = url;
+  try {
+    await api("/api/suppliers", { method: "POST", body: JSON.stringify(body) });
+    toast("Supplier created");
+    toggleNewSupForm();
+    loadSuppliers(document.getElementById("sup-search").value.trim());
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Create: source (add source to ingredient) ────────────────────────────────
+let _srcSupResults = [];
+let _srcSupPickedId = null;
+
+let _srcSupTimer = null;
+function srcSupSearch() {
+  clearTimeout(_srcSupTimer);
+  const q = document.getElementById("new-src-sup-search").value.trim();
+  if (!q) {
+    document.getElementById("new-src-sup-results").style.display = "none";
+    _srcSupPickedId = null;
+    document.getElementById("new-src-sup-chosen").textContent = "";
+    return;
+  }
+  _srcSupTimer = setTimeout(async function() {
+    try {
+      _srcSupResults = (await api("/api/ingredients/suppliers?q=" + encodeURIComponent(q) + "&limit=15")).slice(0, 15);
+      const ul = document.getElementById("new-src-sup-results");
+      if (!_srcSupResults.length) { ul.style.display = "none"; return; }
+      ul.innerHTML = _srcSupResults.map(function(sup, i) {
+        return '<li style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onclick="srcSupPick(' + i + ')">' +
+               escapeHtml(sup.company) + '</li>';
+      }).join("");
+      ul.style.display = "block";
+    } catch (e) {
+      if (e.message !== "unauthorized") toast(e.message, "error");
+    }
+  }, 280);
+}
+
+function srcSupPick(i) {
+  const sup = _srcSupResults[i];
+  if (!sup) return;
+  _srcSupPickedId = sup.id;
+  document.getElementById("new-src-sup-search").value = escapeHtml(sup.company);
+  document.getElementById("new-src-sup-results").style.display = "none";
+  document.getElementById("new-src-sup-chosen").textContent = "Selected: " + escapeHtml(sup.company) + " (id=" + sup.id + ")";
+  document.getElementById("new-src-sup-inline").value = "";
+}
+
+function toggleAddSourceForm() {
+  const form = document.getElementById("add-source-form");
+  const btn = document.getElementById("add-source-toggle-btn");
+  const visible = form.style.display !== "none";
+  form.style.display = visible ? "none" : "block";
+  if (!visible) {
+    _srcSupPickedId = null;
+    document.getElementById("new-src-sup-search").value = "";
+    document.getElementById("new-src-sup-results").style.display = "none";
+    document.getElementById("new-src-sup-chosen").textContent = "";
+    document.getElementById("new-src-sup-inline").value = "";
+    document.getElementById("new-src-price").value = "";
+    document.getElementById("new-src-unit-size").value = "";
+    document.getElementById("new-src-unit-type").value = "";
+    document.getElementById("new-src-min-order").value = "";
+    document.getElementById("new-src-lead-time").value = "";
+    document.getElementById("new-src-preferred").checked = false;
+  }
+}
+
+async function createSource() {
+  if (!_currentIngId) { toast("No ingredient open", "error"); return; }
+
+  // Resolve supplier_id: picked supplier OR inline new supplier
+  let supplierId = _srcSupPickedId;
+  const inlineCompany = document.getElementById("new-src-sup-inline").value.trim();
+  if (!supplierId && inlineCompany) {
+    try {
+      const newSup = await api("/api/suppliers", { method: "POST", body: JSON.stringify({ company: inlineCompany }) });
+      supplierId = newSup.id;
+    } catch (e) { toast("Could not create supplier: " + e.message, "error"); return; }
+  }
+
+  const body = {};
+  if (supplierId) body.supplier_id = supplierId;
+  else if (inlineCompany) body.supplier_name = inlineCompany;
+
+  const price = document.getElementById("new-src-price").value.trim();
+  if (price !== "") body.price_per_unit = parseFloat(price);
+  const unitSize = document.getElementById("new-src-unit-size").value.trim();
+  if (unitSize !== "") body.unit_size = parseFloat(unitSize);
+  const unitType = document.getElementById("new-src-unit-type").value.trim();
+  if (unitType) body.unit_type = unitType;
+  const minOrder = document.getElementById("new-src-min-order").value.trim();
+  if (minOrder !== "") body.minimum_order = parseFloat(minOrder);
+  const leadTime = document.getElementById("new-src-lead-time").value.trim();
+  if (leadTime !== "") body.lead_time_days = parseInt(leadTime, 10);
+  if (document.getElementById("new-src-preferred").checked) body.preferred = true;
+
+  try {
+    await api("/api/ingredients/" + _currentIngId + "/sources", { method: "POST", body: JSON.stringify(body) });
+    toast("Source added");
+    toggleAddSourceForm();
+    openIngredient(_currentIngId);
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Create: formulation item + remove ────────────────────────────────────────
+let _frmItemIngResults = [];
+let _frmItemIngPickedId = null;
+
+let _frmItemIngTimer = null;
+function frmItemIngSearch() {
+  clearTimeout(_frmItemIngTimer);
+  const q = document.getElementById("new-item-ing-search").value.trim();
+  if (!q) {
+    document.getElementById("new-item-ing-results").style.display = "none";
+    _frmItemIngPickedId = null;
+    document.getElementById("new-item-ing-chosen").textContent = "";
+    return;
+  }
+  _frmItemIngTimer = setTimeout(async function() {
+    try {
+      _frmItemIngResults = (await api("/api/ingredients/search?q=" + encodeURIComponent(q) + "&limit=15")).slice(0, 15);
+      const ul = document.getElementById("new-item-ing-results");
+      if (!_frmItemIngResults.length) { ul.style.display = "none"; return; }
+      ul.innerHTML = _frmItemIngResults.map(function(ing, i) {
+        return '<li style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onclick="frmItemIngPick(' + i + ')">' +
+               escapeHtml(ing.name) + (ing.form ? ' <span style="color:var(--muted);font-size:11px">· ' + escapeHtml(ing.form) + '</span>' : '') +
+               '</li>';
+      }).join("");
+      ul.style.display = "block";
+    } catch (e) {
+      if (e.message !== "unauthorized") toast(e.message, "error");
+    }
+  }, 280);
+}
+
+function frmItemIngPick(i) {
+  const ing = _frmItemIngResults[i];
+  if (!ing) return;
+  _frmItemIngPickedId = ing.id;
+  document.getElementById("new-item-ing-search").value = escapeHtml(ing.name);
+  document.getElementById("new-item-ing-results").style.display = "none";
+  document.getElementById("new-item-ing-chosen").textContent = "Selected: " + escapeHtml(ing.name) + " (id=" + ing.id + ")";
+}
+
+function toggleAddFrmItemForm() {
+  const form = document.getElementById("add-frm-item-form");
+  const visible = form.style.display !== "none";
+  form.style.display = visible ? "none" : "block";
+  if (!visible) {
+    _frmItemIngPickedId = null;
+    document.getElementById("new-item-ing-search").value = "";
+    document.getElementById("new-item-ing-results").style.display = "none";
+    document.getElementById("new-item-ing-chosen").textContent = "";
+    document.getElementById("new-item-dose").value = "";
+    document.getElementById("new-item-dose-unit").value = "";
+  }
+}
+
+async function createFormulationItem() {
+  if (!_currentFrmId) { toast("No formulation open", "error"); return; }
+  if (!_frmItemIngPickedId) { toast("Search and pick an ingredient first", "error"); return; }
+  const dose = document.getElementById("new-item-dose").value.trim();
+  if (dose === "") { toast("Dose is required", "error"); return; }
+  const doseUnit = document.getElementById("new-item-dose-unit").value.trim();
+  if (!doseUnit) { toast("Dose unit is required", "error"); return; }
+  const body = {
+    ingredient_id: _frmItemIngPickedId,
+    dose: parseFloat(dose),
+    dose_unit: doseUnit,
+  };
+  try {
+    await api("/api/formulations/" + _currentFrmId + "/items", { method: "POST", body: JSON.stringify(body) });
+    toast("Ingredient added to recipe");
+    toggleAddFrmItemForm();
+    openFormulation(_currentFrmId);
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function removeFormulationItem(itemId) {
+  if (!confirm("Remove this ingredient from the recipe?")) return;
+  try {
+    await api("/api/formulation-items/" + itemId, { method: "DELETE" });
+    toast("Item removed");
+    openFormulation(_currentFrmId);
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Materials tab ─────────────────────────────────────────────────────────────
+let _matSearchTimer = null;
+let _currentMatId = null;
+
+document.getElementById("mat-search").addEventListener("input", function() {
+  clearTimeout(_matSearchTimer);
+  _matSearchTimer = setTimeout(() => doMaterialSearch(this.value.trim()), 280);
+});
+
+async function doMaterialSearch(q) {
+  const list  = document.getElementById("material-results");
+  const empty = document.getElementById("material-empty");
+  list.innerHTML = "";
+  empty.style.display = "none";
+  if (!q) return;
+  try {
+    const results = await api("/api/materials/search?q=" + encodeURIComponent(q));
+    if (!results.length) { empty.style.display = "block"; return; }
+    for (const mat of results) {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <div class="frm-name">${escapeHtml(mat.name)}</div>
+        <div class="frm-meta">${mat.type ? escapeHtml(mat.type) : ""}${mat.status ? " · " + escapeHtml(mat.status) : ""}</div>`;
+      li.addEventListener("click", () => openMaterial(mat.id));
+      list.appendChild(li);
+    }
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+async function openMaterial(id) {
+  _currentMatId = id;
+  document.getElementById("material-search-section").style.display = "none";
+  document.getElementById("material-detail-panel").style.display = "block";
+  document.getElementById("material-detail-panel").classList.add("active");
+  document.getElementById("mat-sup-table").style.display = "none";
+  document.getElementById("mat-sup-empty").style.display = "none";
+  document.getElementById("mat-sup-loading").style.display = "block";
+
+  try {
+    const { material: mat, suppliers } = await api("/api/materials/" + id);
+
+    // FMP read-only
+    document.getElementById("mat-detail-name").textContent = mat.name || "";
+    document.getElementById("mat-fmp-type").textContent   = mat.type || "—";
+    document.getElementById("mat-fmp-status").textContent = mat.status || "—";
+
+    // Status badge
+    const badge = document.getElementById("mat-detail-status-badge");
+    badge.innerHTML = mat.status
+      ? `<span class="badge badge-status">${escapeHtml(mat.status)}</span>`
+      : "";
+
+    // Curated
+    document.getElementById("mat-notes").value = mat.notes || "";
+
+    // Suppliers
+    renderMaterialSuppliers(suppliers, id);
+  } catch (e) {
+    document.getElementById("mat-sup-loading").style.display = "none";
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function closeMaterialDetail() {
+  _currentMatId = null;
+  document.getElementById("material-detail-panel").style.display = "none";
+  document.getElementById("material-detail-panel").classList.remove("active");
+  document.getElementById("material-search-section").style.display = "block";
+}
+
+async function saveMaterial() {
+  if (!_currentMatId) return;
+  try {
+    await api("/api/materials/" + _currentMatId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: document.getElementById("mat-notes").value.trim() }),
+    });
+    toast("Material notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function renderMaterialSuppliers(suppliers, materialId) {
+  document.getElementById("mat-sup-loading").style.display = "none";
+  const tbody = document.getElementById("mat-sup-tbody");
+  tbody.innerHTML = "";
+
+  if (!suppliers || !suppliers.length) {
+    document.getElementById("mat-sup-empty").style.display = "block";
+    return;
+  }
+
+  document.getElementById("mat-sup-table").style.display = "table";
+
+  for (const s of suppliers) {
+    const tr = document.createElement("tr");
+    tr.id = "mat-sup-row-" + s.id;
+    const sizeDisplay = [s.purchase_size, s.purchase_size_unit].filter(Boolean).join(" ") || "—";
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(s.company || s.supplier_name || "—")}</strong></td>
+      <td style="color:var(--muted)">${escapeHtml(s.sku || "—")}</td>
+      <td>${s.price != null ? "$" + Number(s.price).toFixed(2) : "—"}</td>
+      <td>${escapeHtml(sizeDisplay)}</td>
+      <td>${escapeHtml(s.mfg || "—")}</td>
+      <td><input type="text" class="mat-sup-field" data-sup="${s.id}" data-field="notes" value="${escapeHtml(s.notes || "")}" placeholder="notes" style="width:120px"></td>
+      <td class="cell-pref">
+        <input type="radio" class="pref-radio" name="pref-matsup-${materialId}" data-sup="${s.id}" ${s.preferred ? "checked" : ""} title="Set as preferred">
+      </td>
+      <td>
+        <button class="save-btn" onclick="saveMaterialSupplier(${s.id})">Save</button>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+
+  // Wire preferred radio
+  document.querySelectorAll(`input[name="pref-matsup-${materialId}"]`).forEach(radio => {
+    radio.addEventListener("change", function() {
+      if (this.checked) setMaterialPreferred(parseInt(this.dataset.sup, 10));
+    });
+  });
+}
+
+async function saveMaterialSupplier(msId) {
+  const row = document.getElementById("mat-sup-row-" + msId);
+  if (!row) return;
+  const notesEl = row.querySelector(".mat-sup-field[data-sup='" + msId + "'][data-field='notes']");
+  try {
+    await api("/api/materials/suppliers/" + msId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: notesEl ? notesEl.value.trim() : "" }),
+    });
+    toast("Supplier notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function setMaterialPreferred(msId) {
+  try {
+    await api("/api/materials/suppliers/" + msId + "/preferred", { method: "POST" });
+    toast("Preferred supplier updated");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Purchase Orders tab ───────────────────────────────────────────────────────
+let _poSearchTimer = null;
+let _currentPoId = null;
+
+document.getElementById("po-search").addEventListener("input", function() {
+  clearTimeout(_poSearchTimer);
+  _poSearchTimer = setTimeout(() => doPoSearch(this.value.trim()), 280);
+});
+
+async function doPoSearch(q) {
+  const list  = document.getElementById("po-results");
+  const empty = document.getElementById("po-empty");
+  list.innerHTML = "";
+  empty.style.display = "none";
+  if (!q) return;
+  try {
+    const results = await api("/api/po/search?q=" + encodeURIComponent(q));
+    if (!results.length) { empty.style.display = "block"; return; }
+    for (const po of results) {
+      const li = document.createElement("li");
+      li.style.cssText = "padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:6px";
+      const sup = po.supplier_company ? escapeHtml(po.supplier_company) : "";
+      const date = po.po_date ? " · " + escapeHtml(po.po_date) : "";
+      li.innerHTML = `
+        <div class="frm-name">${escapeHtml(po.vendor_po_no || po.fmp_id || "PO #" + po.id)}</div>
+        <div class="frm-meta">${sup}${date}${po.status ? " · " + escapeHtml(po.status) : ""}</div>`;
+      li.addEventListener("mouseover", function() { this.style.background = "rgba(212,168,67,0.08)"; this.style.color = "var(--accent-light)"; });
+      li.addEventListener("mouseout",  function() { this.style.background = ""; this.style.color = ""; });
+      li.addEventListener("click", () => openPo(po.id));
+      list.appendChild(li);
+    }
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+async function openPo(id) {
+  _currentPoId = id;
+  document.getElementById("po-search-section").style.display = "none";
+  document.getElementById("po-detail-panel").style.display = "block";
+  document.getElementById("po-detail-panel").classList.add("active");
+  document.getElementById("po-items-table").style.display = "none";
+  document.getElementById("po-items-empty").style.display = "none";
+  document.getElementById("po-items-loading").style.display = "block";
+  document.getElementById("po-receiving-table").style.display = "none";
+  document.getElementById("po-receiving-empty").style.display = "none";
+
+  try {
+    const { po, items, receiving } = await api("/api/po/" + id);
+
+    // FMP read-only
+    document.getElementById("po-detail-title").textContent = po.vendor_po_no || po.fmp_id || "PO #" + po.id;
+    document.getElementById("po-fmp-vendor-po-no").textContent = po.vendor_po_no || "—";
+    document.getElementById("po-fmp-supplier").textContent     = po.supplier_company || "—";
+    document.getElementById("po-fmp-po-date").textContent      = po.po_date || "—";
+    document.getElementById("po-fmp-status").textContent       = po.status || "—";
+    document.getElementById("po-fmp-tax").textContent          = po.tax != null ? "$" + Number(po.tax).toFixed(2) : "—";
+    document.getElementById("po-fmp-shipping").textContent     = po.shipping_amount != null ? "$" + Number(po.shipping_amount).toFixed(2) : "—";
+
+    // Status badge
+    const badge = document.getElementById("po-detail-status-badge");
+    badge.innerHTML = po.status
+      ? `<span class="badge badge-status">${escapeHtml(po.status)}</span>`
+      : "";
+
+    // Curated
+    document.getElementById("po-notes").value = po.notes || "";
+
+    // Line items
+    renderPoItems(items);
+
+    // Receiving
+    renderPoReceiving(receiving);
+  } catch (e) {
+    document.getElementById("po-items-loading").style.display = "none";
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function closePoDetail() {
+  _currentPoId = null;
+  document.getElementById("po-detail-panel").style.display = "none";
+  document.getElementById("po-detail-panel").classList.remove("active");
+  document.getElementById("po-search-section").style.display = "block";
+}
+
+async function savePoNotes() {
+  if (!_currentPoId) return;
+  try {
+    await api("/api/po/" + _currentPoId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: document.getElementById("po-notes").value.trim() }),
+    });
+    toast("PO notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function renderPoItems(items) {
+  document.getElementById("po-items-loading").style.display = "none";
+  const tbody = document.getElementById("po-items-tbody");
+  tbody.innerHTML = "";
+
+  if (!items || !items.length) {
+    document.getElementById("po-items-empty").style.display = "block";
+    return;
+  }
+
+  document.getElementById("po-items-table").style.display = "table";
+
+  for (const item of items) {
+    const tr = document.createElement("tr");
+    tr.id = "po-item-row-" + item.id;
+    const label = item.item_label || item.ingredient_canonical || item.material_name || "—";
+    const costCell = item.cost != null ? "$" + Number(item.cost).toFixed(2) : "—";
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(label)}</strong></td>
+      <td style="color:var(--muted)">${escapeHtml(item.item_kind || "—")}</td>
+      <td>${item.qty != null ? escapeHtml(String(item.qty)) : "—"}</td>
+      <td>${escapeHtml(item.qty_unit || "—")}</td>
+      <td>${costCell}</td>
+      <td><input type="text" class="po-item-notes" data-item="${item.id}" value="${escapeHtml(item.notes || "")}" placeholder="notes" style="width:140px"></td>
+      <td><button class="save-btn" onclick="savePoItem(${item.id})">Save</button></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function savePoItem(itemId) {
+  const row = document.getElementById("po-item-row-" + itemId);
+  if (!row) return;
+  const notesEl = row.querySelector(".po-item-notes[data-item='" + itemId + "']");
+  try {
+    await api("/api/po/items/" + itemId, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: notesEl ? notesEl.value.trim() : "" }),
+    });
+    toast("Item notes saved");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function renderPoReceiving(receiving) {
+  const tbody = document.getElementById("po-receiving-tbody");
+  tbody.innerHTML = "";
+
+  if (!receiving || !receiving.length) {
+    document.getElementById("po-receiving-empty").style.display = "block";
+    return;
+  }
+
+  document.getElementById("po-receiving-table").style.display = "table";
+
+  for (const rec of receiving) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${rec.qty_received != null ? escapeHtml(String(rec.qty_received)) : "—"}</td>
+      <td>${escapeHtml(rec.received_size || "—")}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+// ── Inventory tab ────────────────────────────────────────────────────────────
+let _invSearchTimer = null;
+let invCurrentId = null;
+
+document.getElementById("inv-search").addEventListener("input", function() {
+  clearTimeout(_invSearchTimer);
+  _invSearchTimer = setTimeout(() => doInvSearch(this.value.trim()), 280);
+});
+
+async function doInvSearch(q) {
+  const tbody = document.getElementById("inv-list-body");
+  const empty = document.getElementById("inv-empty");
+  tbody.innerHTML = "";
+  empty.style.display = "none";
+  try {
+    const rows = await api("/api/inventory/levels?q=" + encodeURIComponent(q || ""));
+    if (!rows.length) { empty.style.display = "block"; return; }
+    tbody.innerHTML = rows.map(function(x) {
+      var par = x.par_level != null ? (x.par_level + " " + escapeHtml(x.par_level_unit || "")).trim() : "—";
+      var cls = x.below_par ? ' style="color:#b00;font-weight:600"' : "";
+      return '<tr' + cls + ' onclick="openInv(' + x.id + ')" style="cursor:pointer">' +
+             '<td>' + escapeHtml(x.name || "") + '</td>' +
+             '<td>' + (x.on_hand != null ? x.on_hand : "—") + '</td>' +
+             '<td>' + par + '</td>' +
+             '</tr>';
+    }).join("");
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+async function openInv(id) {
+  invCurrentId = id;
+  try {
+    const d = await api("/api/inventory/" + id);
+    if (!d) return;
+    document.getElementById("inv-search-section").style.display = "none";
+    const panel = document.getElementById("inv-detail-panel");
+    panel.classList.add("active");
+    // Header
+    var par = d.par_level != null ? (d.par_level + " " + escapeHtml(d.par_level_unit || "")).trim() : "—";
+    document.getElementById("inv-detail-head").innerHTML =
+      "<strong>" + escapeHtml((d.ingredient && d.ingredient.name) || "") + "</strong>" +
+      " — on hand: <strong>" + (d.on_hand != null ? d.on_hand : "—") + "</strong>" +
+      " &nbsp;·&nbsp; par: " + par;
+    // Ledger
+    const txns = d.txns || [];
+    const tbody = document.getElementById("inv-txns");
+    const txnsEmpty = document.getElementById("inv-txns-empty");
+    if (!txns.length) {
+      tbody.innerHTML = "";
+      txnsEmpty.style.display = "block";
+    } else {
+      txnsEmpty.style.display = "none";
+      tbody.innerHTML = txns.map(function(t) {
+        return "<tr>" +
+               "<td>" + escapeHtml(t.txn_date || "—") + "</td>" +
+               "<td>" + escapeHtml(t.txn_type || "") + "</td>" +
+               "<td>" + (t.qty != null ? t.qty : "—") + "</td>" +
+               "<td>" + escapeHtml(t.unit || "") + "</td>" +
+               "<td>" + escapeHtml(t.notes || "") + "</td>" +
+               "</tr>";
+      }).join("");
+    }
+    // Clear adjust form
+    document.getElementById("inv-adj-qty").value = "";
+    document.getElementById("inv-adj-unit").value = "";
+    document.getElementById("inv-adj-notes").value = "";
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function closeInvDetail() {
+  invCurrentId = null;
+  document.getElementById("inv-detail-panel").classList.remove("active");
+  document.getElementById("inv-search-section").style.display = "block";
+}
+
+async function submitInvAdjust() {
+  if (!invCurrentId) return;
+  const qtyVal = document.getElementById("inv-adj-qty").value.trim();
+  const qty = parseFloat(qtyVal);
+  if (qtyVal === "" || isNaN(qty)) { toast("Enter a numeric qty (use − to subtract)", "error"); return; }
+  const body = {
+    qty: qty,
+    unit:  document.getElementById("inv-adj-unit").value.trim()  || null,
+    notes: document.getElementById("inv-adj-notes").value.trim() || null,
+  };
+  try {
+    await api("/api/inventory/" + invCurrentId + "/adjust", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    toast("Adjustment saved");
+    openInv(invCurrentId);
+    doInvSearch(document.getElementById("inv-search").value.trim());
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function invSeed() {
+  if (!confirm("Seed baseline + receipt entries from existing data? (safe to re-run)")) return;
+  const fd = new FormData();
+  fd.append("write", "1");
+  try {
+    const res = await fetch("/api/inventory/seed", { method: "POST", headers: { "X-Console-Key": KEY }, body: fd });
+    if (res.status === 401) { document.getElementById("auth-warn").style.display = "block"; return; }
+    const j = await res.json();
+    if (!j.ok) { toast(j.error || "Seed failed", "error"); return; }
+    const d = j.data || {};
+    toast("Seeded: " + (d.baselines != null ? d.baselines : "?") + " baselines, " + (d.receipts != null ? d.receipts : "?") + " receipts");
+    doInvSearch(document.getElementById("inv-search").value.trim());
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Production tab ────────────────────────────────────────────────────────────
+let _prodSearchTimer = null;
+let prodCurrentId = null;
+let prodLogLines = [];
+let prodLogFormId = null;
+let prodFrmResults = [];
+
+document.getElementById("prod-search").addEventListener("input", function() {
+  clearTimeout(_prodSearchTimer);
+  _prodSearchTimer = setTimeout(() => doProdSearch(this.value.trim()), 280);
+});
+
+async function doProdSearch(q) {
+  q = q != null ? q : (document.getElementById("prod-search").value.trim());
+  const tbody = document.getElementById("prod-list-body");
+  const empty = document.getElementById("prod-empty");
+  tbody.innerHTML = "";
+  empty.style.display = "none";
+  try {
+    const rows = await api("/api/production/search?q=" + encodeURIComponent(q || ""));
+    if (!rows.length) { empty.style.display = "block"; return; }
+    tbody.innerHTML = rows.map(function(x) {
+      return '<tr onclick="openProd(' + x.id + ')">' +
+             '<td>' + escapeHtml(x.batch_number || "—") + '</td>' +
+             '<td>' + escapeHtml(x.formulation_name || "") + '</td>' +
+             '<td>' + escapeHtml(x.run_date || "") + '</td>' +
+             '<td>' + (x.quantity_units != null ? x.quantity_units : "") + '</td>' +
+             '</tr>';
+    }).join("");
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+async function openProd(id) {
+  prodCurrentId = id;
+  try {
+    const d = await api("/api/production/" + id);
+    document.getElementById("prod-search-section").style.display = "none";
+    const panel = document.getElementById("prod-detail-panel");
+    panel.classList.add("active");
+    document.getElementById("prod-detail-head").innerHTML =
+      "<strong>" + escapeHtml(d.run.formulation_name || "") + "</strong> — " +
+      escapeHtml(d.run.batch_number || "") + " &nbsp;·&nbsp; " + escapeHtml(d.run.run_date || "") +
+      " &nbsp;·&nbsp; qty " + (d.run.quantity_units != null ? d.run.quantity_units : "—");
+    const items = d.items || [];
+    const tbody = document.getElementById("prod-items");
+    const itemsEmpty = document.getElementById("prod-items-empty");
+    if (!items.length) {
+      tbody.innerHTML = "";
+      itemsEmpty.style.display = "block";
+    } else {
+      itemsEmpty.style.display = "none";
+      tbody.innerHTML = items.map(function(it) {
+        var name = escapeHtml(it.item_label || it.ingredient_canonical || it.material_name || "");
+        var badge = it.posted
+          ? '<span style="color:#3d8a52;font-weight:600">consumed ✓</span>'
+          : '<span style="color:var(--muted)">—</span>';
+        return "<tr>" +
+               "<td><strong>" + name + "</strong></td>" +
+               "<td style='color:var(--muted)'>" + escapeHtml(it.item_type || "") + "</td>" +
+               "<td>" + (it.qty_used != null ? it.qty_used : "") + " " + escapeHtml(it.unit || "") + "</td>" +
+               "<td>" + badge + "</td>" +
+               "</tr>";
+      }).join("");
+    }
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function closeProdDetail() {
+  prodCurrentId = null;
+  document.getElementById("prod-detail-panel").classList.remove("active");
+  document.getElementById("prod-search-section").style.display = "block";
+}
+
+// Formulation search-to-pick for the log form
+let _prodFrmTimer = null;
+
+document.getElementById("prod-log-form-search").addEventListener("input", function() {
+  clearTimeout(_prodFrmTimer);
+  const q = this.value.trim();
+  if (!q) { document.getElementById("prod-frm-results").style.display = "none"; return; }
+  _prodFrmTimer = setTimeout(() => prodFrmSearch(q), 280);
+});
+
+async function prodFrmSearch(q) {
+  try {
+    const results = await api("/api/formulations/search?q=" + encodeURIComponent(q));
+    const ul = document.getElementById("prod-frm-results");
+    if (!results.length) { ul.style.display = "none"; return; }
+    prodFrmResults = results.slice(0, 15);
+    ul.innerHTML = prodFrmResults.map(function(frm, i) {
+      return '<li onclick="prodFrmPick(' + i + ')">' +
+             escapeHtml(frm.name) + (frm.status ? ' <span style="color:var(--muted);font-size:11px">· ' + escapeHtml(frm.status) + '</span>' : '') +
+             '</li>';
+    }).join("");
+    ul.style.display = "block";
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function prodFrmPick(i) {
+  const frm = prodFrmResults[i];
+  prodLogFormId = frm.id;
+  document.getElementById("prod-log-form-search").value = escapeHtml(frm.name);
+  document.getElementById("prod-frm-results").style.display = "none";
+  document.getElementById("prod-frm-chosen").textContent = "Selected: " + escapeHtml(frm.name) + " (id=" + frm.id + ")";
+}
+
+async function prodPullRecipe() {
+  if (!prodLogFormId) { toast("Search and pick a formulation first", "error"); return; }
+  try {
+    prodLogLines = await api("/api/production/recipe/" + prodLogFormId);
+    renderProdLogLines();
+    toast("Recipe loaded — " + prodLogLines.length + " lines");
+  } catch (e) { toast("Pull recipe failed: " + e.message, "error"); }
+}
+
+function renderProdLogLines() {
+  document.getElementById("prod-log-lines").innerHTML = prodLogLines.map(function(l, i) {
+    return '<tr>' +
+           '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + escapeHtml(l.item_label || "") + '</td>' +
+           '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' +
+           '<input type="number" step="any" value="' + (l.qty_used != null ? l.qty_used : "") + '" ' +
+           'onchange="prodLogLines[' + i + '].qty_used=parseFloat(this.value)" style="width:80px;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px">' +
+           '</td>' +
+           '<td style="padding:6px 10px;border-bottom:1px solid var(--border);color:var(--muted)">' + escapeHtml(l.unit || "") + '</td>' +
+           '</tr>';
+  }).join("");
+}
+
+async function submitProdLog() {
+  if (!prodLogFormId) { toast("Search and pick a formulation first", "error"); return; }
+  const filteredItems = prodLogLines.filter(function(l) { return l.ingredient_id && l.qty_used; });
+  if (!filteredItems.length) { toast("Pull recipe and enter at least one qty", "error"); return; }
+  const body = {
+    formulation_id: prodLogFormId,
+    run_date: document.getElementById("prod-log-date").value || null,
+    quantity_units: parseFloat(document.getElementById("prod-log-qty").value) || null,
+    items: filteredItems,
+  };
+  try {
+    const r = await api("/api/production/log", { method: "POST", body: JSON.stringify(body) });
+    toast("Run logged — consumption posted");
+    prodLogLines = [];
+    renderProdLogLines();
+    prodLogFormId = null;
+    document.getElementById("prod-log-form-search").value = "";
+    document.getElementById("prod-frm-chosen").textContent = "";
+    openProd(r.id);
+    doProdSearch();
+  } catch (e) { toast("Log failed: " + e.message, "error"); }
+}
+
+async function prodImport(write) {
+  const fRuns  = document.getElementById("fmp-file-production").files[0];
+  const fItems = document.getElementById("fmp-file-production-items").files[0];
+  if (!fRuns || !fItems) { toast("Choose both production CSVs", "error"); return; }
+  const dryBtn   = document.getElementById("prod-dry-btn");
+  const writeBtn = document.getElementById("prod-write-btn");
+  const resultEl = document.getElementById("prod-result");
+  dryBtn.disabled = true;
+  writeBtn.disabled = true;
+  resultEl.style.display = "block";
+  resultEl.innerHTML = '<span style="color:var(--muted)">Uploading…</span>';
+  const fd = new FormData();
+  fd.append("production",       fRuns);
+  fd.append("production_items", fItems);
+  const mode = document.getElementById("prod-consumption-mode").value;
+  fd.append("consumption", mode);
+  const cfrom = document.getElementById("prod-consumption-from").value;
+  if (mode !== "record_only" && cfrom) fd.append("consumption_from", cfrom);
+  if (write) fd.append("write", "1");
+  try {
+    const res = await fetch("/api/production/import", { method: "POST", headers: { "X-Console-Key": KEY }, body: fd });
+    if (res.status === 401) { document.getElementById("auth-warn").style.display = "block"; resultEl.innerHTML = '<span style="color:var(--red)">Unauthorized — check your console key.</span>'; return; }
+    const j = await res.json();
+    if (!j.ok) { resultEl.innerHTML = '<span style="color:var(--red)">Error: ' + escapeHtml(j.error || "Import failed") + '</span>'; toast(j.error || "Import failed", "error"); return; }
+    const d = j.data;
+    if (d.mode === "dry_run") {
+      resultEl.innerHTML = '<strong style="color:var(--accent-light)">Dry Run — no data written</strong><br>' +
+        'Runs: <strong>' + escapeHtml(String(d.runs ?? 0)) + '</strong> &nbsp;|&nbsp; ' +
+        'Items: <strong>' + escapeHtml(String(d.items ?? 0)) + '</strong> &nbsp;|&nbsp; ' +
+        'Consumption: <strong>' + escapeHtml(String(d.consumption ?? 0)) + '</strong>';
+      toast("Dry run complete");
+    } else {
+      resultEl.innerHTML = '<strong style="color:var(--green)">Import complete</strong><br>' +
+        'Runs: <strong>' + escapeHtml(String(d.runs ?? 0)) + '</strong> &nbsp;|&nbsp; ' +
+        'Items: <strong>' + escapeHtml(String(d.items ?? 0)) + '</strong> &nbsp;|&nbsp; ' +
+        'Consumption: <strong>' + escapeHtml(String(d.consumption ?? 0)) + '</strong>';
+      toast("Import written successfully", "ok");
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<span style="color:var(--red)">Network error: ' + escapeHtml(e.message) + '</span>';
+    toast(e.message, "error");
+  } finally {
+    dryBtn.disabled = false;
+    writeBtn.disabled = false;
+  }
+}
+
+// ── Reorder ───────────────────────────────────────────────────────────────────
+let roFrmResults = [];
+let roPickedFormId = null, roPickedFormName = "";
+let reorderPlan = [];
+
+async function roFrmSearch() {
+  const q = document.getElementById("ro-frm-search").value.trim();
+  if (!q) { document.getElementById("ro-frm-results").innerHTML = ""; return; }
+  try {
+    roFrmResults = (await api("/api/formulations/search?q=" + encodeURIComponent(q))).slice(0, 15);
+    document.getElementById("ro-frm-results").innerHTML = roFrmResults.map(function(f, i) {
+      return '<li style="cursor:pointer;padding:8px 12px;border-bottom:1px solid var(--border);font-size:13px" onclick="roFrmPick(' + i + ')">' + escapeHtml(f.name) + '</li>';
+    }).join("");
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, "error");
+  }
+}
+
+function roFrmPick(i) {
+  const f = roFrmResults[i];
+  if (!f) return;
+  roPickedFormId = f.id;
+  roPickedFormName = f.name;
+  document.getElementById("ro-frm-search").value = f.name;
+  document.getElementById("ro-frm-results").innerHTML = "";
+}
+
+function roAddPlanLine() {
+  const qty = parseFloat(document.getElementById("ro-frm-qty").value);
+  if (!roPickedFormId || isNaN(qty) || qty <= 0) { toast("Pick a formulation and a positive qty", "error"); return; }
+  reorderPlan.push({ formulation_id: roPickedFormId, name: roPickedFormName, qty: qty });
+  roPickedFormId = null;
+  document.getElementById("ro-frm-search").value = "";
+  document.getElementById("ro-frm-qty").value = "";
+  renderReorderPlan();
+}
+
+function roRemovePlanLine(i) { reorderPlan.splice(i, 1); renderReorderPlan(); }
+
+function renderReorderPlan() {
+  document.getElementById("ro-plan").innerHTML = reorderPlan.map(function(l, i) {
+    return '<tr>' +
+      '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + escapeHtml(l.name) + '</td>' +
+      '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + l.qty + '</td>' +
+      '<td style="padding:6px 10px;border-bottom:1px solid var(--border)"><button class="secondary save-btn" onclick="roRemovePlanLine(' + i + ')">&#10005;</button></td>' +
+      '</tr>';
+  }).join("");
+}
+
+async function roCompute() {
+  const body = {
+    plan: reorderPlan.map(function(l) { return { formulation_id: l.formulation_id, qty: l.qty }; }),
+    include_below_par: document.getElementById("ro-below-par").checked
+  };
+  let rep;
+  try {
+    rep = await api("/api/reorder/report", { method: "POST", body: JSON.stringify(body) });
+  } catch (e) { toast("Compute failed: " + e.message, "error"); return; }
+  const el = document.getElementById("ro-results");
+  el.classList.add("active");
+  if (!rep.groups || !rep.groups.length) {
+    el.innerHTML = '<div class="section"><p class="hint">Nothing to reorder — everything is at or above par/demand.</p></div>';
+    return;
+  }
+  el.innerHTML = '<div class="section">' +
+    rep.groups.map(function(g) {
+      var rows = g.lines.map(function(l) {
+        var warn = l.unit_warning ? ' <span title="unit mismatch" style="color:#b80">&#9888;</span>' : '';
+        return '<tr>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + escapeHtml(l.ingredient) + warn + '</td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + l.on_hand + '</td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + l.on_order + '</td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + l.par + '</td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + l.demand + '</td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)"><strong>' + l.shortfall + '</strong></td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + l.suggested_qty + ' ' + escapeHtml(l.unit || "") + '</td>' +
+          '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + (l.est_cost != null ? '$' + l.est_cost : '—') + '</td>' +
+          '</tr>';
+      }).join("");
+      return '<h4 style="margin:18px 0 8px;font-size:14px">' + escapeHtml(g.supplier) + ' — subtotal $' + g.subtotal + '</h4>' +
+        '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Ingredient</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">On hand</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">On order</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Par</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Demand</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Shortfall</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Suggested</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Est. cost</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+        '</table>';
+    }).join("") +
+    '<p style="margin-top:14px"><strong>Total: ' + rep.totals.lines + ' lines &middot; est. $' + rep.totals.est_cost + '</strong></p>' +
+    '</div>';
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+function init() {
+  if (!KEY) {
+    document.getElementById("auth-warn").style.display = "block";
+  }
+}
+init();
+</script>
+<script src="/static/justus-widget.js" defer></script>
+</body>
+</html>

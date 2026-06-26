@@ -17,6 +17,7 @@ client_nosode,client_remedy,client_foods,products,products_phases,products_syste
 Then open http://127.0.0.1:8011
 """
 import argparse
+import datetime
 import os
 import sqlite3
 
@@ -24,17 +25,24 @@ from flask import Flask, Response, redirect, request, send_from_directory
 
 from dashboard.biofield_report import causal_chain_report, list_tests
 from dashboard.biofield_report_html import (
-    render_author_html, render_list_html, render_report_html)
+    render_author_html, render_e4l_panel, render_list_html, render_report_html,
+    render_stress_panel, render_suggest_panel)
+from dashboard.biofield_e4l import (
+    fetch_live as _fetch_live, scan_context as _scan_context,
+    search_clients as _search_clients)
 from dashboard.biofield_narrative import (
     generate_narrative, generate_video_script, get_narrative, get_notes,
     get_video_script, save_narrative, save_notes, save_video_script)
 from dashboard.biofield_authoring import (
     add_chain_row, authored_report, confirm_all, confirm_row, create_test,
     delete_chain_row, delete_test, list_authored, remedy_catalog, remedy_dosing,
-    resolve_remedy_name, stress_suggestions, stress_vocab, update_chain_row, update_header)
+    resolve_remedy_name, resolve_stress_name, stress_suggestions, stress_vocab,
+    update_chain_row, update_header)
 from dashboard.biofield_dimensions import (
     DEPTH_KEY, dimension_values, seed_dimensions, tag as dim_tag)
 from dashboard.biofield_interpret import interpret_transcript
+from dashboard.biofield_report_present import render_present
+from dashboard.biofield_report_pdf import report_pdf_bytes, save_report_pdf
 
 AUDIO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "biofield-audio")
 
@@ -114,17 +122,130 @@ def deepgram_browser_token():
     except Exception:
         return os.environ["DEEPGRAM_API_KEY"]
 
+
+def _default_fetch_profile(email):
+    """Best-effort: pull a client's consolidated profile from the prod People hub
+    (same endpoint e4l-reveal-push.py:fetch_history uses). Returns {} on any failure."""
+    import json as _json
+    import urllib.parse
+    import urllib.request
+    email = (email or "").strip()
+    if not email:
+        return {}
+    try:
+        key = os.environ["CONSOLE_SECRET"]
+        base = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
+        url = (f"{base}/api/people?key=" + urllib.parse.quote(key)
+               + "&q=" + urllib.parse.quote(email))
+        req = urllib.request.Request(url, headers={"X-Console-Key": key})
+        people = _json.load(urllib.request.urlopen(req, timeout=20)).get("people", [])
+        return next(
+            (p for p in people if (p.get("email") or "").lower() == email.lower()), {})
+    except Exception:
+        return {}
+
 DEFAULT_DB = os.environ.get(
     "BIOFIELD_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_log.db"))
 
 
 def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
-               interpret_complete=None):
+               interpret_complete=None, scan_lookup=None, client_search=None,
+               fetch_runner=None, fetch_profile=None):
     app = Flask(__name__)
     complete = complete or openai_complete
     tts = tts or elevenlabs_tts
     deepgram_token = deepgram_token or deepgram_browser_token
     interpret_complete = interpret_complete or openai_json
+    # E4L scan pull: as soon as the client (email) is known, surface their most recent
+    # voice scan. Default reads ~/AI-Training/e4l.db read-only as of today's date;
+    # injectable for tests. Never raises -> intake is never blocked.
+    scan_lookup = scan_lookup or (
+        lambda email: _scan_context(email, datetime.date.today().isoformat()))
+    # Name picker + on-demand live fetch (the local mirror lags, so selecting a client
+    # can pull their newest scan straight from the live E4L portal). Both injectable.
+    client_search = client_search or (lambda q: _search_clients(q))
+    fetch_runner = fetch_runner  # None -> fetch_live uses the real scraper+parser
+    fetch_profile = fetch_profile or _default_fetch_profile
+
+    def _report_for(cx, test_id):
+        return (authored_report(cx, test_id) if str(test_id).startswith("a")
+                else causal_chain_report(cx, test_id))
+
+    def _e4l(cx, test_id):
+        """Scan context + rendered panel for a test's stored client email."""
+        rep = _report_for(cx, test_id)
+        ctx = scan_lookup((rep.get("client") or {}).get("email") or "")
+        return ctx, rep
+
+    def _mine_profile(cx, test_id):
+        """Mine the client's consolidated People-hub profile into tag stresses.
+        Best-effort: returns {"added": n} on success, {"added": 0, "error": ...} on
+        any failure. Never raises."""
+        from dashboard.biofield_interpret import interpret_stresses
+        from dashboard.biofield_profile import mine_profile_stresses
+        from dashboard import biofield_stress as _st
+        rep = _report_for(cx, test_id)
+        email = ((rep.get("client") or {}).get("email") or "").strip()
+        if not email:
+            return {"added": 0, "error": "No client selected yet"}
+        try:
+            profile = fetch_profile(email) or {}
+            labels = mine_profile_stresses(
+                profile, lambda t: interpret_stresses(t, interpret_complete))
+            added = sum(1 for label in labels
+                        if _st.add_stress(cx, test_id, label, source="tag"))
+        except Exception as e:
+            return {"added": 0, "error": str(e)[:200]}
+        return {"added": added}
+
+    def _seed_stresses(cx, test_id, *, force=False, layers=None):
+        """Synthesize reveal layers + seed the stress coverage map for this test.
+        The ONLY early return is the no-email guard — nothing to mine/seed without
+        one.  Scan-seeding is conditional: runs only when a scan is found AND (force
+        OR no scan stresses exist yet) — same idempotency as before.  If *layers* is
+        supplied they are used directly, skipping the synthesis network call (pass
+        from a route that already ran synthesize_reveal_layers).  Synthesis errors
+        are swallowed so the intake flow is never blocked.
+        Profile mining (source='tag') always runs after the scan block, but at most
+        once per session: skipped when tag stresses already exist for this test.
+        This means profile mining fires even when no E4L scan is present."""
+        from dashboard import biofield_reveal_import as _ri
+        from dashboard import biofield_stress as _st
+        import datetime as _dt
+        rep = _report_for(cx, test_id)
+        email = ((rep.get("client") or {}).get("email") or "").strip()
+        if not email:
+            return  # only early return: nothing to mine/seed without an email
+        _st.init_stress_tables(cx)
+        ctx = scan_lookup(email)
+        if ctx.get("found"):
+            # Scan-seeding: skip if already seeded (unless force)
+            if force or not cx.execute(
+                    "SELECT 1 FROM biofield_auth_stress WHERE test_id=? AND source='scan' LIMIT 1",
+                    (int(str(test_id).lstrip("a") or 0),)).fetchone():
+                if layers is not None:
+                    coverage = _ri.build_coverage(layers)
+                    _st.seed_from_scan(cx, test_id, ctx.get("findings") or [], coverage)
+                else:
+                    try:
+                        res = _ri.synthesize_reveal_layers(email, today=_dt.date.today().isoformat())
+                    except Exception:
+                        pass  # synthesis failure: skip scan seeding, fall through to profile mining
+                    else:
+                        coverage = _ri.build_coverage(res.get("layers") or [])
+                        _st.seed_from_scan(cx, test_id, ctx.get("findings") or [], coverage)
+        # Always-on: mine profile stresses (best-effort, at most once per session).
+        # Guard: skip when tag stresses already exist to avoid a redundant HTTP fetch
+        # on every header-save.  The explicit /mine-profile route calls _mine_profile
+        # directly (unguarded) for on-demand re-mining.
+        if not cx.execute(
+                "SELECT 1 FROM biofield_auth_stress WHERE test_id=? AND source='tag' LIMIT 1",
+                (int(str(test_id).lstrip("a") or 0),)).fetchone():
+            try:
+                _mine_profile(cx, test_id)
+            except Exception:
+                pass
+
     with sqlite3.connect(db_path) as _cx:
         seed_dimensions(_cx)
 
@@ -159,13 +280,47 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
 
     @app.route("/test/<test_id>")
     def report(test_id):
+        from dashboard import biofield_stress as _st
         with sqlite3.connect(db_path) as cx:
             rep = (authored_report(cx, test_id) if str(test_id).startswith("a")
                    else causal_chain_report(cx, test_id))
             notes, narrative = get_notes(cx, test_id), get_narrative(cx, test_id)
             vscript = get_video_script(cx, test_id)
-        return Response(render_report_html(rep, notes, narrative, vscript),
+            stresses = None
+            try:
+                chain_rows = [{"head": l.get("head"), "remedy": l.get("remedy")}
+                              for l in (rep.get("layers") or [])]
+                stresses = _st.list_stresses(cx, test_id, chain_rows)
+            except Exception:
+                stresses = None
+        return Response(render_report_html(rep, notes, narrative, vscript, stresses=stresses),
                         mimetype="text/html")
+
+    @app.route("/test/<test_id>/report")
+    def report_present(test_id):
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            narrative = get_narrative(cx, test_id)
+        return Response(render_present(rep, narrative), mimetype="text/html")
+
+    @app.route("/test/<test_id>/report.pdf")
+    def report_present_pdf(test_id):
+        import os
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            narrative = get_narrative(cx, test_id)
+        html = render_present(rep, narrative)
+        reports_dir = os.environ.get("BIOFIELD_REPORTS_DIR",
+                                     os.path.join(os.path.expanduser("~"), "biofield-reports"))
+        date = (rep.get("date") or "").replace("/", "-") or "undated"
+        out = os.path.join(reports_dir, f"report_{test_id}_{date}.pdf")
+        try:
+            save_report_pdf(html, out)          # keep a local copy to print/ship
+            data = open(out, "rb").read()
+        except Exception as e:
+            return Response(f"PDF generation failed: {e}", status=500)
+        return Response(data, mimetype="application/pdf", headers={
+            "Content-Disposition": f'inline; filename="biofield-{test_id}.pdf"'})
 
     # --- Authoring (Increment 4a) ---
     @app.route("/author/new", methods=["POST"])
@@ -198,6 +353,102 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         with sqlite3.connect(db_path) as cx:
             update_header(cx, test_id, name=d.get("name"), email=d.get("email"),
                           date=d.get("date"))
+            ctx, _ = _e4l(cx, test_id)  # client now known -> pull recent E4L scan
+            _seed_stresses(cx, test_id)  # synthesize + seed stress coverage if scan found
+        return {"ok": True, "e4l": ctx, "html": render_e4l_panel(ctx)}
+
+    @app.route("/author/<test_id>/e4l")
+    def author_e4l(test_id):
+        with sqlite3.connect(db_path) as cx:
+            ctx, _ = _e4l(cx, test_id)
+        return {"e4l": ctx, "html": render_e4l_panel(ctx)}
+
+    @app.route("/api/e4l/clients")
+    def api_e4l_clients():
+        return {"clients": client_search(request.args.get("q", ""))}
+
+    @app.route("/author/<test_id>/e4l/refresh", methods=["POST"])
+    def author_e4l_refresh(test_id):
+        """Pull this client's newest scan from the LIVE E4L portal, then re-read the
+        panel. Synchronous (localhost + threaded server -> no gateway timeout); the
+        browser shows a spinner while it runs (~15-20s for the Playwright login)."""
+        body = request.get_json(silent=True) or {}
+        client_id = body.get("client_id")
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+        client = rep.get("client") or {}
+        email = client.get("email") or ""
+        if client_id is None and not email:
+            return {"ok": False, "error": "no client selected yet",
+                    "newer": False, "e4l": scan_lookup(""),
+                    "html": render_e4l_panel(scan_lookup(""))}
+        before = scan_lookup(email)
+        res = _fetch_live(client_id=client_id, name=client.get("name"), runner=fetch_runner)
+        after = scan_lookup(email)
+        newer = bool(after.get("found") and (
+            not before.get("found")
+            or (after.get("scan_date") or "") > (before.get("scan_date") or "")))
+        return {"ok": bool(res.get("ok")), "error": res.get("error"),
+                "newer": newer, "e4l": after, "html": render_e4l_panel(after)}
+
+    @app.route("/author/<test_id>/e4l/import-reveal", methods=["POST"])
+    def author_import_reveal(test_id):
+        """Import the client's recent (<7d) E4L reveal layers + remedies as
+        needs-review causal-chain rows. Appends only after an explicit force when the
+        session already has rows. Synthesis runs in-process (PHI stays local)."""
+        import datetime as _dt
+        from dashboard import biofield_reveal_import as _ri
+        force = bool((request.get_json(silent=True) or {}).get("force"))
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            email = ((rep.get("client") or {}).get("email") or "").strip()
+            if not email:
+                return {"ok": False, "reason": "No client selected yet"}
+            try:
+                res = _ri.synthesize_reveal_layers(email, today=_dt.date.today().isoformat())
+            except Exception as e:
+                return {"ok": False, "reason": f"Reveal synthesis failed: {e}"}
+            if not res.get("found"):
+                return {"ok": False, "reason": "No E4L scan on file"}
+            if not res.get("fresh"):
+                return {"ok": False,
+                        "reason": f"Latest scan is {res.get('days_ago')} days old "
+                                  "— refresh to import"}
+            existing = len(rep.get("layers") or [])
+            if existing and not force:
+                return {"ok": False, "needs_confirm": True, "existing": existing}
+            imported = _ri.import_layers_to_test(cx, test_id, res.get("layers") or [])
+            # Pass already-synthesized layers so the pipeline runs only once per import
+            _seed_stresses(cx, test_id, force=True, layers=res.get("layers") or [])
+        return {"ok": True, "imported": imported}
+
+    @app.route("/author/<test_id>/stresses")
+    def author_stresses(test_id):
+        from dashboard import biofield_stress as _st
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            chain_rows = [{"head": l.get("head"), "remedy": l.get("remedy")}
+                          for l in (rep.get("layers") or [])]
+            data = _st.list_stresses(cx, test_id, chain_rows)
+        return {"data": data, "html": render_stress_panel(data)}
+
+    @app.route("/author/<test_id>/suggest-remedies")
+    def author_suggest_remedies(test_id):
+        from dashboard import biofield_stress as _st
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            chain_rows = [{"head": l.get("head"), "remedy": l.get("remedy")}
+                          for l in (rep.get("layers") or [])]
+            data = _st.suggest_minimal_remedies(cx, test_id, chain_rows)
+        return {"picks": data["picks"], "uncovered": data["uncovered"],
+                "html": render_suggest_panel(data)}
+
+    @app.route("/author/<test_id>/stress/<int:sid>/balance", methods=["POST"])
+    def author_stress_balance(test_id, sid):
+        from dashboard import biofield_stress as _st
+        value = bool((request.get_json(silent=True) or {}).get("value"))
+        with sqlite3.connect(db_path) as cx:
+            _st.set_manual_balanced(cx, test_id, sid, value)
         return {"ok": True}
 
     @app.route("/author/<test_id>/row", methods=["POST"])
@@ -216,6 +467,14 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         for k in ("layer", "head", "most_affected", "remedy", "dosage", "frequency", "timing"):
             if k in d:
                 fields[k] = _layer_int(d[k]) if k == "layer" else d[k]
+        if "layer" in fields:
+            new_layer = fields.pop("layer")
+            from dashboard.biofield_authoring import reorder_chain
+            with sqlite3.connect(db_path) as cx:
+                if fields:
+                    update_chain_row(cx, rid, **fields)
+                reorder_chain(cx, test_id, rid, new_layer)
+            return {"ok": True}
         with sqlite3.connect(db_path) as cx:
             update_chain_row(cx, rid, **fields)
         return {"ok": True}
@@ -264,6 +523,26 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             save_notes(cx, test_id, txt)  # box holds the full transcript -> replace
         return {"ok": True}
 
+    @app.route("/author/<test_id>/mine-profile", methods=["POST"])
+    def author_mine_profile(test_id):
+        with sqlite3.connect(db_path) as cx:
+            return _mine_profile(cx, test_id)
+
+    @app.route("/author/<test_id>/capture-stresses", methods=["POST"])
+    def author_capture_stresses(test_id):
+        from dashboard.biofield_interpret import interpret_stresses
+        from dashboard import biofield_stress as _st
+        with sqlite3.connect(db_path) as cx:
+            transcript = get_notes(cx, test_id)
+            if not transcript.strip():
+                return {"added": 0, "error": "no transcript yet -- record a session first"}
+            try:
+                labels = interpret_stresses(transcript, interpret_complete)
+            except Exception as e:
+                return {"added": 0, "error": str(e)[:200]}
+            added = sum(1 for label in labels if _st.add_voice_stress(cx, test_id, label))
+        return {"added": added}
+
     @app.route("/author/<test_id>/interpret", methods=["POST"])
     def author_interpret(test_id):
         with sqlite3.connect(db_path) as cx:
@@ -276,12 +555,14 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 return {"error": str(e)[:200]}
             added = 0
             for l in result.get("layers", []):
-                remedy = resolve_remedy_name(cx, l["remedy"])  # auto-correct ASR mangles
+                remedy = resolve_remedy_name(cx, l["remedy"])  # auto-correct + title-case ASR mangles
+                head = resolve_stress_name(cx, l["head"])      # capitalize/match stress names too
+                most_affected = resolve_stress_name(cx, l["most_affected"])
                 dosage, frequency, timing = l.get("dosage", ""), l.get("frequency", ""), l.get("timing", "")
                 if not (dosage or frequency or timing):  # no spoken dose -> catalog minimum
                     d = remedy_dosing(cx, remedy)
                     dosage, frequency, timing = d["dosage"], d["frequency"], d["timing"]
-                add_chain_row(cx, test_id, l.get("layer"), l["head"], l["most_affected"],
+                add_chain_row(cx, test_id, l.get("layer"), head, most_affected,
                               remedy, dosage, frequency, timing, confirmed=0)  # voice -> unconfirmed
                 added += 1
         return {"added": added, "header": result.get("header", "")}
@@ -321,9 +602,14 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         notes = (request.get_json(silent=True) or {}).get("notes", "")
         with sqlite3.connect(db_path) as cx:
             save_notes(cx, test_id, notes)
-            rep = causal_chain_report(cx, test_id)
+            ctx, rep = _e4l(cx, test_id)  # authored or FMP report + recent E4L scan
+            prof = {}
             try:
-                text = generate_narrative(rep, notes, complete)
+                prof = fetch_profile(((rep.get("client") or {}).get("email") or "").strip()) or {}
+            except Exception:
+                prof = {}
+            try:
+                text = generate_narrative(rep, notes, complete, scan=ctx, profile=prof)
             except Exception as e:  # no API key / network / model error
                 return {"error": str(e)[:200]}
             save_narrative(cx, test_id, text)
@@ -333,9 +619,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     def video_generate(test_id):
         notes = (request.get_json(silent=True) or {}).get("notes", "")
         with sqlite3.connect(db_path) as cx:
-            rep = causal_chain_report(cx, test_id)
+            ctx, rep = _e4l(cx, test_id)
             try:
-                script = generate_video_script(rep, notes, complete)
+                script = generate_video_script(rep, notes, complete, scan=ctx)
             except Exception as e:
                 return {"error": str(e)[:200]}
             save_video_script(cx, test_id, script)

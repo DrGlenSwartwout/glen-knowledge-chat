@@ -31,6 +31,7 @@ import anthropic
 import boto3 as _boto3
 import begin_funnel
 import quiz_engine
+import shell_nav
 
 # ── Slice 4 test seam ─────────────────────────────────────────────────────────
 # Tests verify member-context injection by reading this module-level variable.
@@ -927,6 +928,66 @@ def _init_shipping_tables():
         init_shipping_schema(cx)
 
 _init_shipping_tables()
+
+
+def _init_ingredients_tables():
+    """Ingredients + sources catalog (FMP-migrated raw-material master)."""
+    from dashboard.ingredient_catalog import init_ingredients_schema
+    with sqlite3.connect(LOG_DB) as cx:
+        init_ingredients_schema(cx)
+
+_init_ingredients_tables()
+
+
+def _init_formulations_tables():
+    """Formulations (recipes) — FMP-migrated, references Phase-1 ingredients."""
+    from dashboard.formulations import init_formulations_schema
+    with sqlite3.connect(LOG_DB) as cx:
+        init_formulations_schema(cx)
+
+_init_formulations_tables()
+
+
+def _init_materials_tables():
+    """Materials (production inputs + packaging) — FMP-migrated, references Phase-1 suppliers."""
+    from dashboard.materials_catalog import init_materials_schema
+    with sqlite3.connect(LOG_DB) as cx:
+        init_materials_schema(cx)
+
+_init_materials_tables()
+
+
+def _init_purchase_orders_tables():
+    """Purchase orders (history) — FMP-migrated. PO header + line items + receiving."""
+    from dashboard.purchase_orders import init_purchase_orders_schema
+    with sqlite3.connect(LOG_DB) as cx:
+        init_purchase_orders_schema(cx)
+
+_init_purchase_orders_tables()
+
+
+def _init_inventory_tables():
+    """Inventory management — on-hand tracking, txn history, baselines & receipts."""
+    from dashboard.inventory import init_inventory_schema
+    cx = sqlite3.connect(str(LOG_DB))
+    try:
+        init_inventory_schema(cx)
+    finally:
+        cx.close()
+
+_init_inventory_tables()
+
+
+def _init_production_tables():
+    """Production runs & batch logging — record formulation batches, ingredients used, timestamped."""
+    from dashboard.production import init_production_schema
+    cx = sqlite3.connect(str(LOG_DB))
+    try:
+        init_production_schema(cx)
+    finally:
+        cx.close()
+
+_init_production_tables()
 
 
 def log_query(query: str, level: str, answer: str,
@@ -2340,6 +2401,118 @@ def begin_card_click():
     return ("", 204)
 
 
+def _featured_for_land(land):
+    """Return (product_slug, product_name) for a land from shell-map.json, or (None, None)."""
+    try:
+        cfg = json.loads((STATIC / "shell-map.json").read_text())
+        f = ((cfg.get("lands") or {}).get(land) or {}).get("featured") or {}
+        return f.get("product_slug"), f.get("product_name")
+    except Exception:
+        return None, None
+
+
+def _land_is_done(state, land):
+    """True when the land's journey card is fully complete (fill>=1.0)."""
+    for card in begin_funnel.journey_map(state, "", {}):
+        if card["key"] == land:
+            return card["status"] == "done"
+    return False
+
+
+@app.route("/api/journey/claim-coupon", methods=["POST"])
+def journey_claim_coupon():
+    if not REWARDS_1B_ENABLED:
+        return ("", 404)
+    data = request.get_json(silent=True) or {}
+    land = (data.get("land") or "").strip()
+    slug, _name = _featured_for_land(land)
+    if not slug:
+        return jsonify({"ok": False, "error": "no featured product for land"}), 400
+    session_id = (request.cookies.get("amg_session") or "").strip()
+    au = get_authenticated_user(request)
+    email = (au["email"] if au else "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.get_state(cx, session_id=session_id, email=email)
+        email = (state.get("email") or email or "").strip().lower()
+        if not email or not state.get("tos_agreed_at"):
+            return jsonify({"ok": False, "needs": "email_tos"}), 409
+        if not _land_is_done(state, land):
+            return jsonify({"ok": False, "needs": "complete_stage"}), 409
+        from dashboard import coupons as _coupons
+        _coupons.init_coupons_table(cx)
+        coupon = _coupons.mint_self(cx, email=email, product_slug=slug)
+    return jsonify({"ok": True, "coupon": coupon})
+
+
+@app.route("/api/journey/wallet", methods=["GET"])
+def journey_wallet():
+    if not REWARDS_1B_ENABLED:
+        return ("", 404)
+    session_id = (request.cookies.get("amg_session") or "").strip()
+    au = get_authenticated_user(request)
+    email = (au["email"] if au else "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.get_state(cx, session_id=session_id, email=email)
+        email = (state.get("email") or email or "").strip().lower()
+        if not email:
+            return jsonify({"ok": True, "coupons": [], "gifts": [], "gifting": False})
+        from dashboard import coupons as _coupons
+        _coupons.init_coupons_table(cx)
+        items = _coupons.wallet(cx, email=email, kind="self")
+        gifting = REWARDS_1B_GIFT_ENABLED and _gifting_active(cx, email)
+        gifts = []
+        if gifting:
+            for g in _coupons.wallet(cx, email=email, kind="gift"):
+                g = dict(g)
+                g["share_url"] = f"/begin/buy/{g['product_slug']}?gift={g['code']}"
+                gifts.append(g)
+    return jsonify({"ok": True, "coupons": items, "gifts": gifts, "gifting": gifting})
+
+
+def _gifting_active(cx, email):
+    if not email:
+        return False
+    try:
+        row = cx.execute("SELECT gifting_activated_at FROM affiliate_signups WHERE LOWER(email)=?",
+                         (email.lower(),)).fetchone()
+        return bool(row and row[0])
+    except Exception:
+        return False
+
+
+@app.route("/api/journey/activate-gifting", methods=["POST"])
+def journey_activate_gifting():
+    if not REWARDS_1B_GIFT_ENABLED:
+        return ("", 404)
+    session_id = (request.cookies.get("amg_session") or "").strip()
+    au = get_authenticated_user(request)
+    email = (au["email"] if au else "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.get_state(cx, session_id=session_id, email=email)
+        email = (state.get("email") or email or "").strip().lower()
+        if not email or not state.get("tos_agreed_at"):
+            return jsonify({"ok": False, "needs": "email_tos"}), 409
+        now = begin_funnel._now()
+        row = cx.execute("SELECT id FROM affiliate_signups WHERE LOWER(email)=?", (email,)).fetchone()
+        if row:
+            cx.execute("UPDATE affiliate_signups SET gifting_activated_at=? WHERE id=?", (now, row[0]))
+        else:
+            nm = ((state.get("first_name") or "") + " " + (state.get("last_name") or "")).strip() or email
+            slug = f"gift-{uuid.uuid4().hex[:8]}"
+            token = uuid.uuid4().hex
+            cx.execute(
+                "INSERT INTO affiliate_signups (created_at,name,email,slug,token,status,gifting_activated_at) "
+                "VALUES (?,?,?,?,?,?,?)", (now, nm, email, slug, token, "pending", now))
+        cx.commit()
+        # mint gift twins for every remedy the visitor has already collected (self-coupons)
+        from dashboard import coupons as _coupons
+        _coupons.init_coupons_table(cx)
+        gifts = []
+        for sc in _coupons.wallet(cx, email=email, kind="self"):
+            gifts.append(_coupons.mint_gift(cx, email=email, product_slug=sc["product_slug"]))
+    return jsonify({"ok": True, "gifting": True, "gifts": gifts})
+
+
 # ToS version stamp for the /begin free-tier gate. The live T&C page at
 # remedymatch.com/info/terms-and-conditions carries no version string, so we
 # date-stamp agreement here. Bump when the T&C content materially changes.
@@ -3185,6 +3358,67 @@ def qbo_diagnostics():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/qbo/invoice-status", methods=["GET"])
+def qbo_invoice_status():
+    """Read-only: report live QBO Balance/paid state for one or more invoice Ids
+    (the value stored in orders.external_ref for portal-reorder/reorder/funnel
+    orders). Lets the console show whether a QBO-emailed invoice has actually
+    been paid, since QBO hosted-page payments don't sync back to the board."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    ids = [s.strip() for s in (request.args.get("ids") or "").split(",") if s.strip()]
+    if not ids:
+        return jsonify({"ok": False, "error": "pass ?ids=<qbo_invoice_id>[,...]"}), 400
+    from dashboard import qbo_billing as qb
+    out = []
+    for inv_id in ids[:50]:
+        try:
+            inv = qb.get_invoice(inv_id)
+            i = inv.get("Invoice", inv) if isinstance(inv, dict) else inv
+            bal = float(i.get("Balance", i.get("TotalAmt", 0)) or 0)
+            out.append({"id": inv_id, "doc_number": i.get("DocNumber"),
+                        "total": i.get("TotalAmt"), "balance": bal,
+                        "paid": bal <= 0, "txn_date": i.get("TxnDate"),
+                        "linked": [(t.get("TxnType"), t.get("TxnId"))
+                                   for t in (i.get("LinkedTxn") or [])]})
+        except Exception as e:
+            out.append({"id": inv_id, "error": str(e)[:300]})
+    return jsonify({"ok": True, "invoices": out})
+
+
+@app.route("/api/console/reconcile-qbo", methods=["POST"])
+def console_reconcile_qbo():
+    """Flip board orders to paid when their QBO invoice has actually been paid.
+    QBO hosted-page payments don't sync back, so portal-reorder/reorder orders sit
+    Unpaid even after the client pays. Polls each open QBO-invoice order's live
+    balance and marks the paid ones (method=qbo). Runs on prod where QBO auth is live.
+    Auth: X-Cron-Secret / X-Console-Key / ?key == CRON_SECRET or CONSOLE_SECRET."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    allowed = {s for s in (os.environ.get("CRON_SECRET"), os.environ.get("CONSOLE_SECRET")) if s}
+    if not allowed or key not in allowed:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import qbo_billing as _qb
+    from dashboard import qbo_reconcile as _rec
+    from dashboard import orders as _ord
+
+    def _mark_paid(cx, oid, *, method, amount_cents):
+        _ord.set_order_payment(cx, oid, method=method, amount_cents=amount_cents)
+        try:
+            _ord.settle_order_points(cx, _ord.get_order(cx, oid))   # idempotent
+        except Exception as _e:
+            print(f"[qbo-reconcile] points settle skipped for {oid}: {_e!r}", flush=True)
+
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        reconciled = _rec.reconcile_qbo_payments(
+            cx, get_invoice=_qb.get_invoice, mark_paid=_mark_paid)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "reconciled": reconciled, "count": len(reconciled)})
+
+
 @app.route("/api/qbo/test-invoice", methods=["POST"])
 def qbo_test_invoice():
     """Create ONE test invoice (no online pay) for a clearly-named test customer to
@@ -3377,6 +3611,9 @@ CHAT_TOPIC_OFFER_ENABLED = os.environ.get("CHAT_TOPIC_OFFER_ENABLED", "false").s
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_CART_ENABLED = os.environ.get("BIOFIELD_CART_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 ASCEND_PERSONALIZED_ENABLED = os.environ.get("ASCEND_PERSONALIZED_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+JOURNEY_SHELL_ENABLED = os.environ.get("JOURNEY_SHELL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _referral_pct():
@@ -3630,7 +3867,8 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                           "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
         items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"]})
         # shipping.pick_box keys by BOTTLE TYPE (not product name); default-typed if unset.
-        bt = p.get("bottle_type") or "default"
+        slug = (c.get("slug") or "").strip()
+        bt = _shipping.resolve_bottle_type(slug, p)
         box_counts[bt] = box_counts.get(bt, 0) + qty
         total_bottles += qty
     priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
@@ -5245,9 +5483,16 @@ def begin_checkout(slug):
                 _points.init_points_table(_bcx)
                 redeem = min(redeem, _points.balance(_bcx, email))
         _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(data.get("referral_code"), email)
+        _coupon_code = (data.get("coupon_code") or "").strip() or _best_active_self_coupon_code(email, slug)
+        _self_pct, _self_coupon = _resolve_self_coupon_pct(_coupon_code, slug)
+        _gift_pct, _gift_coupon = _resolve_gift_coupon_pct((data.get("gift") or "").strip(), email)
+        # a gift code is product-bound — only honor it when buying the right product
+        if _gift_coupon and _gift_coupon.get("product_slug") != slug:
+            _gift_pct, _gift_coupon = 0, None
+        _eff_pct = max(_ref_pct or 0, _self_pct or 0, _gift_pct or 0)
         try:
             pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
-                             coupon_pct=_ref_pct,
+                             coupon_pct=_eff_pct,
                              points_to_redeem_cents=redeem)
         except CheckoutError as ce:
             return jsonify({"ok": False, "error": str(ce)}), 400
@@ -5256,7 +5501,25 @@ def begin_checkout(slug):
         inv = qb.create_invoice(cust, pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
                                 allow_online_pay=allow_online, email_to=email,
                                 discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
-        _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
+        _gift_won = bool(_gift_coupon and _gift_pct >= max(_ref_pct or 0, _self_pct or 0))
+        if not _gift_won:
+            _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
+        if _self_coupon and _self_pct >= (_ref_pct or 0) and _self_pct > (_gift_pct or 0):
+            try:
+                from dashboard import coupons as _coupons
+                with _db_lock, sqlite3.connect(LOG_DB) as _ccx:
+                    _coupons.mark_redeemed(_ccx, _self_coupon["code"], order_ref=inv.get("Id"))
+            except Exception as e:  # noqa: BLE001
+                print(f"[coupons] redeem-mark failed: {e!r}", flush=True)
+        if _gift_won:
+            try:
+                from dashboard import coupons as _coupons
+                from dashboard import referrals as _rf
+                with _db_lock, sqlite3.connect(LOG_DB) as _gcx:
+                    _coupons.mark_redeemed(_gcx, _gift_coupon["code"], order_ref=inv.get("Id"))
+                    _rf.record_redemption(_gcx, _gift_coupon["code"], _gift_coupon["email"], email, inv.get("Id"))
+            except Exception as e:  # noqa: BLE001
+                print(f"[coupons] gift redeem/attrib failed: {e!r}", flush=True)
         out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
                "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt"),
                "method": method, "customer_id": cust.get("Id"),
@@ -5409,7 +5672,17 @@ def _fulfill_biofield_trial(session_id):
                  datetime.now(timezone.utc).isoformat(),
                  (datetime.now(timezone.utc) + timedelta(days=MEMBERSHIP_CANCEL_TTL_DAYS)).isoformat()))
             _bc.commit()
-        # Lock released. Send the welcome / one-click-cancel email best-effort: it must
+        # Lock released. Record the $1 charge as a captured-charge order so it shows in
+        # the Payments ledger (digital unlock -> status 'done', not a fulfillment task).
+        # Best-effort + idempotent on (source, external_ref); never undoes the membership.
+        try:
+            _trial_cents = (int(sess.get("amount_total") or pi.get("amount_received") or 0)
+                            or _bos_payments.TRIAL_AMOUNT_CENTS)
+            _ingest_order(source="biofield_trial", external_ref=pi_id, email=bt_email,
+                          total_cents=_trial_cents, channel="retail", status="done")
+        except Exception as _oe:
+            print(f"[biofield-trial] order-ledger record failed: {_oe!r}", flush=True)
+        # Send the welcome / one-click-cancel email best-effort: it must
         # never undo the committed membership. Inside the won-claim path, so exactly once.
         try:
             if bt_email and PUBLIC_BASE_URL:
@@ -6797,6 +7070,10 @@ def _init_referral_tables():
                 cx.execute(f"ALTER TABLE affiliate_signups ADD COLUMN {col}")
             except Exception:
                 pass
+        try:
+            cx.execute("ALTER TABLE affiliate_signups ADD COLUMN gifting_activated_at TEXT")
+        except Exception:
+            pass  # already present
         cx.execute("""
             CREATE TABLE IF NOT EXISTS referral_sources (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -10266,6 +10543,56 @@ def _resolve_checkout_coupon_pct(referral_code, referee_email):
     except Exception as e:  # noqa: BLE001 - referral never blocks checkout
         print(f"[referrals] resolve failed: {e}", flush=True)
         return daily, None
+
+
+def _best_active_self_coupon_code(email, product_slug):
+    """The visitor's active self-coupon code for this product, or '' — so an
+    earned coupon auto-applies at checkout without the client sending one."""
+    if not REWARDS_1B_ENABLED or not email or not product_slug:
+        return ""
+    try:
+        from dashboard import coupons as _coupons
+        with sqlite3.connect(LOG_DB) as cx:
+            _coupons.init_coupons_table(cx)
+            actives = [c for c in _coupons.wallet(cx, email=email, kind="self")
+                       if c.get("product_slug") == product_slug]
+        return actives[0]["code"] if actives else ""
+    except Exception as e:  # noqa: BLE001 — never block checkout
+        print(f"[coupons] auto-resolve failed: {e!r}", flush=True)
+        return ""
+
+
+def _resolve_self_coupon_pct(code, product_slug):
+    """1b self-coupon → (pct, coupon|None). Product-bound; never raises."""
+    code = (code or "").strip()
+    if not REWARDS_1B_ENABLED or not code or not product_slug:
+        return 0, None
+    try:
+        from dashboard import coupons as _coupons
+        with sqlite3.connect(LOG_DB) as cx:
+            _coupons.init_coupons_table(cx)
+            found = _coupons.validate(cx, code, product_slug=product_slug)
+        return (int(found["pct"]), found) if found else (0, None)
+    except Exception as e:  # noqa: BLE001 — a coupon never blocks checkout
+        print(f"[coupons] resolve failed: {e!r}", flush=True)
+        return 0, None
+
+
+def _resolve_gift_coupon_pct(code, referee_email):
+    """A friend's gift coupon → (pct, coupon|None). Product-agnostic at the code level
+    (the code is product-bound); never raises; flag-gated."""
+    code = (code or "").strip()
+    if not REWARDS_1B_GIFT_ENABLED or not code:
+        return 0, None
+    try:
+        from dashboard import coupons as _coupons
+        with sqlite3.connect(LOG_DB) as cx:
+            _coupons.init_coupons_table(cx)
+            found = _coupons.validate_gift(cx, code, referee_email=referee_email)
+        return (int(found["pct"]), found) if found else (0, None)
+    except Exception as e:  # noqa: BLE001 — never block checkout
+        print(f"[coupons] gift resolve failed: {e!r}", flush=True)
+        return 0, None
 
 
 def _record_referral_if_any(referral_ctx, referee_email, order_ref):
@@ -20484,7 +20811,10 @@ def api_shipping_add_bottle():
         if not name:
             return fail("name is required", status=400)
         notes = (body.get("notes") or "").strip() or None
-        new_id = _shipping.add_bottle_type(name, notes=notes)
+        diameter_mm = body.get("diameter_mm")
+        height_mm = body.get("height_mm")
+        new_id = _shipping.add_bottle_type(
+            name, diameter_mm=diameter_mm, height_mm=height_mm, notes=notes)
         return ok({"id": new_id})
     except sqlite3.IntegrityError:
         return fail("bottle type already exists", status=409)
@@ -20509,7 +20839,10 @@ def api_shipping_update_bottle(bid):
         if not name:
             return fail("name is required", status=400)
         notes = (body.get("notes") or "").strip() or None
-        _shipping.update_bottle_type(bid, name, notes=notes)
+        diameter_mm = body.get("diameter_mm")
+        height_mm = body.get("height_mm")
+        _shipping.update_bottle_type(
+            bid, name, diameter_mm=diameter_mm, height_mm=height_mm, notes=notes)
         return ok({"id": bid})
     except sqlite3.IntegrityError:
         return fail("bottle name already exists", status=409)
@@ -20590,6 +20923,899 @@ def api_shipping_quote():
         return fail(f"unknown bottle type: {e}", status=400)
     except (TypeError, ValueError) as e: return fail(e, status=400)
     except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/packing-settings", methods=["GET"])
+@require_console_key
+def api_shipping_packing_settings_get():
+    try: return ok(_shipping.get_packing_settings())
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/packing-settings", methods=["POST"])
+@require_console_key
+def api_shipping_packing_settings_set():
+    try:
+        body = request.get_json(silent=True) or {}
+        for k in ("wrap_mm", "box_margin_mm"):
+            if k in body:
+                _shipping.set_packing_setting(k, int(body[k]))
+        return ok(_shipping.get_packing_settings())
+    except (TypeError, ValueError) as e: return fail(e, status=400)
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/product-bottles", methods=["GET"])
+@require_console_key
+def api_shipping_product_bottles_get():
+    try:
+        from dashboard import products as _products
+        prods = _products.load_products()
+        overrides = _shipping.list_product_bottle_overrides()
+        items = [{
+            "slug": slug,
+            "name": p.get("name"),
+            "resolved": _shipping.resolve_bottle_type(slug, p),
+            "override": overrides.get(slug),
+            "baseline": p.get("bottle_type"),
+        } for slug, p in prods.items()]
+        return ok({"items": items, "overrides": overrides})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/product-bottles", methods=["POST"])
+@require_console_key
+def api_shipping_product_bottles_set():
+    try:
+        body = request.get_json(silent=True) or {}
+        slug = (body.get("slug") or "").strip()
+        bt = (body.get("bottle_type") or "").strip()
+        if not slug or not bt:
+            return fail("slug and bottle_type required", status=400)
+        _shipping.set_product_bottle_override(slug, bt)
+        return ok({"slug": slug, "bottle_type": bt})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/shipping/product-bottles/<path:slug>", methods=["DELETE"])
+@require_console_key
+def api_shipping_product_bottles_clear(slug):
+    try:
+        _shipping.clear_product_bottle_override(slug)
+        return ok({"cleared": slug})
+    except Exception as e: return fail(e)
+
+
+# ── Ingredient Catalog ────────────────────────────────────────────────────────
+# /admin/ingredients  — Glen curates the ingredient + supplier catalog
+# /api/ingredients/*  — JSON API behind require_console_key
+from dashboard import ingredient_catalog as _ingredients
+
+
+@app.route("/admin/ingredients")
+def admin_ingredients_page():
+    resp = send_from_directory(STATIC, "admin-ingredients.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/ingredients/search", methods=["GET"])
+@require_console_key
+def api_ingredients_search():
+    try:
+        q = request.args.get("q", ""); limit = int(request.args.get("limit", 50)); offset = int(request.args.get("offset", 0))
+        return ok(_ingredients.search_ingredients(q, limit, offset))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/suppliers", methods=["GET"])
+@require_console_key
+def api_ingredients_suppliers():
+    try: return ok(_ingredients.list_suppliers(request.args.get("q", ""), int(request.args.get("limit", 50))))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/suppliers/<int:sid>", methods=["PATCH"])
+@require_console_key
+def api_ingredients_supplier_patch(sid):
+    try:
+        _ingredients.update_supplier(sid, request.get_json(silent=True) or {})
+        return ok(_ingredients.get_supplier(sid))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/<int:iid>", methods=["GET"])
+@require_console_key
+def api_ingredients_get(iid):
+    try:
+        ing = _ingredients.get_ingredient(iid)
+        if not ing: return fail("not found", status=404)
+        return ok({"ingredient": ing, "sources": _ingredients.list_sources_for_ingredient(iid)})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/<int:iid>", methods=["PATCH"])
+@require_console_key
+def api_ingredients_patch(iid):
+    try:
+        _ingredients.update_ingredient_curated(iid, request.get_json(silent=True) or {})
+        return ok(_ingredients.get_ingredient(iid))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/sources/<int:src_id>", methods=["PATCH"])
+@require_console_key
+def api_ingredients_source_patch(src_id):
+    try:
+        _ingredients.update_source_curated(src_id, request.get_json(silent=True) or {})
+        return ok({"id": src_id})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/sources/<int:src_id>/preferred", methods=["POST"])
+@require_console_key
+def api_ingredients_source_preferred(src_id):
+    try:
+        _ingredients.set_preferred_source(src_id)
+        return ok({"id": src_id})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/ingredients/import", methods=["POST"])
+@require_console_key
+def ingredients_import():
+    """Upload FMP CSVs (suppliers, ingredients, sources) to populate the ingredient catalog."""
+    import csv as _csv
+    import sys as _sys
+    import io as _io
+    _csv.field_size_limit(_sys.maxsize)
+
+    try:
+        from scripts.import_ingredients_from_fmp import (
+            import_suppliers, import_ingredients, import_sources,
+            apply_canonical, CANON_CSV,
+        )
+        from dashboard.ingredient_catalog import init_ingredients_schema
+    except Exception as e:
+        return fail(f"import error: {e}")
+
+    try:
+        suppliers_file = request.files.get("suppliers")
+        ingredients_file = request.files.get("ingredients")
+        sources_file = request.files.get("sources")
+
+        if not all([suppliers_file, ingredients_file, sources_file]):
+            return fail("upload all three: suppliers, ingredients, sources", status=400)
+
+        sup_rows = list(_csv.DictReader(_io.StringIO(suppliers_file.read().decode("utf-8", errors="replace"))))
+        ing_rows = list(_csv.DictReader(_io.StringIO(ingredients_file.read().decode("utf-8", errors="replace"))))
+        src_rows = list(_csv.DictReader(_io.StringIO(sources_file.read().decode("utf-8", errors="replace"))))
+
+        cluster_rows = []
+        if os.path.exists(CANON_CSV):
+            with open(CANON_CSV, newline="", encoding="utf-8") as f:
+                cluster_rows = list(_csv.DictReader(f))
+
+        write = request.form.get("write", "").lower() in ("1", "true", "yes")
+
+        if not write:
+            return ok({
+                "mode": "dry_run",
+                "suppliers": len(sup_rows),
+                "ingredients": len(ing_rows),
+                "sources": len(src_rows),
+                "clusters": len(cluster_rows),
+            })
+
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx)
+            ns = import_suppliers(cx, sup_rows)
+            ni = import_ingredients(cx, ing_rows)
+            nsrc = import_sources(cx, src_rows)
+            canon = apply_canonical(cx, cluster_rows)
+            cx.commit()
+        finally:
+            cx.close()
+
+        return ok({
+            "mode": "write",
+            "suppliers": ns,
+            "ingredients": ni,
+            "sources": nsrc,
+            "canonical_applied": canon.get("applied", 0),
+            "canonical_skipped": canon.get("skipped", 0),
+        })
+
+    except Exception as e:
+        app.logger.exception("ingredients import error")
+        return fail(str(e))
+
+
+def _core_patch(setter, row_id):
+    """Shared PATCH helper: reads {field, value} from JSON body, delegates to setter."""
+    b = request.get_json(silent=True) or {}
+    if "field" not in b:
+        return fail("field required", status=400)
+    setter(row_id, b["field"], b.get("value"))
+    return ok({"id": row_id})
+
+
+@app.route("/api/ingredients/<int:rid>/core", methods=["PATCH"])
+@require_console_key
+def api_ingredient_core(rid):
+    try:
+        return _core_patch(_ingredients.set_ingredient_core, rid)
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/ingredients/<int:rid>/unlock", methods=["POST"])
+@require_console_key
+def api_ingredient_unlock(rid):
+    try:
+        _ingredients.unlock_ingredient_core(rid, (request.get_json(silent=True) or {}).get("field"))
+        return ok({"id": rid})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/sources/<int:rid>/core", methods=["PATCH"])
+@require_console_key
+def api_source_core(rid):
+    try:
+        return _core_patch(_ingredients.set_source_core, rid)
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/sources/<int:rid>/unlock", methods=["POST"])
+@require_console_key
+def api_source_unlock(rid):
+    try:
+        _ingredients.unlock_source_core(rid, (request.get_json(silent=True) or {}).get("field"))
+        return ok({"id": rid})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+# ── Create Endpoints (Ingredient Catalog) ─────────────────────────────────────
+
+@app.route("/api/ingredients", methods=["POST"])
+@require_console_key
+def api_create_ingredient():
+    try:
+        return ok({"id": _ingredients.create_ingredient(request.get_json(silent=True) or {})})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/suppliers", methods=["POST"])
+@require_console_key
+def api_create_supplier():
+    try:
+        return ok({"id": _ingredients.create_supplier(request.get_json(silent=True) or {})})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/ingredients/<int:iid>/sources", methods=["POST"])
+@require_console_key
+def api_create_source(iid):
+    try:
+        return ok({"id": _ingredients.create_source(iid, request.get_json(silent=True) or {})})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+# ── Formulation Catalog ───────────────────────────────────────────────────────
+# /api/formulations/*  — JSON API behind require_console_key
+from dashboard import formulations as _formulations
+
+
+@app.route("/api/formulations/search", methods=["GET"])
+@require_console_key
+def api_formulations_search():
+    try:
+        return ok(_formulations.search_formulations(
+            request.args.get("q", ""), int(request.args.get("limit", 50)), int(request.args.get("offset", 0))))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/formulations/<int:fid>", methods=["GET"])
+@require_console_key
+def api_formulations_get(fid):
+    try:
+        f = _formulations.get_formulation(fid)
+        if not f: return fail("not found", status=404)
+        return ok({"formulation": f, "items": _formulations.list_items_for_formulation(fid)})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/formulations/<int:fid>", methods=["PATCH"])
+@require_console_key
+def api_formulations_patch(fid):
+    try:
+        _formulations.update_formulation_curated(fid, request.get_json(silent=True) or {})
+        return ok(_formulations.get_formulation(fid))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/formulations/items/<int:item_id>", methods=["PATCH"])
+@require_console_key
+def api_formulations_item_patch(item_id):
+    try:
+        _formulations.update_item_curated(item_id, request.get_json(silent=True) or {})
+        return ok({"id": item_id})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/formulation-items/<int:rid>/core", methods=["PATCH"])
+@require_console_key
+def api_formulation_item_core(rid):
+    try:
+        return _core_patch(_formulations.set_item_core, rid)
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/formulation-items/<int:rid>/unlock", methods=["POST"])
+@require_console_key
+def api_formulation_item_unlock(rid):
+    try:
+        _formulations.unlock_item_core(rid, (request.get_json(silent=True) or {}).get("field"))
+        return ok({"id": rid})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+# ── Create Endpoints (Formulation Catalog) ────────────────────────────────────
+
+@app.route("/api/formulations/<int:fid>/items", methods=["POST"])
+@require_console_key
+def api_add_formulation_item(fid):
+    try:
+        b = request.get_json(silent=True) or {}
+        return ok({"id": _formulations.add_formulation_item(fid, b.get("ingredient_id"), b.get("dose"), b.get("dose_unit"))})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/formulation-items/<int:item_id>", methods=["DELETE"])
+@require_console_key
+def api_remove_formulation_item(item_id):
+    try:
+        _formulations.remove_formulation_item(item_id)
+        return ok({"id": item_id})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/formulations/import", methods=["POST"])
+@require_console_key
+def formulations_import():
+    """Upload FMP CSVs (products, products_items) to populate the formulations catalog."""
+    import csv as _csv
+    import sys as _sys
+    import io as _io
+    _csv.field_size_limit(_sys.maxsize)
+
+    try:
+        from scripts.import_formulations_from_fmp import (
+            import_formulations, import_formulation_items,
+        )
+        from dashboard.ingredient_catalog import init_ingredients_schema
+        from dashboard.formulations import init_formulations_schema
+    except Exception as e:
+        return fail(f"import error: {e}")
+
+    try:
+        products_file = request.files.get("products")
+        products_items_file = request.files.get("products_items")
+
+        if not all([products_file, products_items_file]):
+            return fail("upload both: products, products_items", status=400)
+
+        products = list(_csv.DictReader(_io.StringIO(products_file.read().decode("utf-8", errors="replace"))))
+        items = list(_csv.DictReader(_io.StringIO(products_items_file.read().decode("utf-8", errors="replace"))))
+
+        ff_ids = {p["id_pk"].strip() for p in products if p.get("type", "").strip() == "Functional Formulation"}
+
+        write = request.form.get("write", "").lower() in ("1", "true", "yes")
+
+        if not write:
+            return ok({
+                "mode": "dry_run",
+                "ff_formulations": len(ff_ids),
+                "products_items": len(items),
+            })
+
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx)
+            init_formulations_schema(cx)
+            nf = import_formulations(cx, products)
+            res = import_formulation_items(cx, items, ff_ids)
+            cx.commit()
+        finally:
+            cx.close()
+
+        return ok({
+            "mode": "write",
+            "formulations": nf,
+            "items": res["items"],
+            "unresolved": res["unresolved"],
+        })
+
+    except Exception as e:
+        app.logger.exception("formulations import error")
+        return fail(str(e))
+
+
+# /api/materials/*  — JSON API behind require_console_key
+from dashboard import materials_catalog as _materials
+
+
+@app.route("/api/materials/search", methods=["GET"])
+@require_console_key
+def api_materials_search():
+    try:
+        return ok(_materials.search_materials(request.args.get("q", ""), int(request.args.get("limit", 50)), int(request.args.get("offset", 0))))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/materials/<int:mid>", methods=["GET"])
+@require_console_key
+def api_materials_get(mid):
+    try:
+        m = _materials.get_material(mid)
+        if not m: return fail("not found", status=404)
+        return ok({"material": m, "suppliers": _materials.list_suppliers_for_material(mid)})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/materials/<int:mid>", methods=["PATCH"])
+@require_console_key
+def api_materials_patch(mid):
+    try:
+        _materials.update_material_curated(mid, request.get_json(silent=True) or {})
+        return ok(_materials.get_material(mid))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/materials/suppliers/<int:ms_id>", methods=["PATCH"])
+@require_console_key
+def api_materials_supplier_patch(ms_id):
+    try:
+        _materials.update_material_supplier_curated(ms_id, request.get_json(silent=True) or {})
+        return ok({"id": ms_id})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/materials/suppliers/<int:ms_id>/preferred", methods=["POST"])
+@require_console_key
+def api_materials_supplier_preferred(ms_id):
+    try:
+        _materials.set_preferred_material_supplier(ms_id)
+        return ok({"id": ms_id})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/materials/import", methods=["POST"])
+@require_console_key
+def materials_import():
+    """Upload FMP CSVs (materials, materials_supplier, products_supplier) to populate the materials catalog."""
+    import csv as _csv
+    import sys as _sys
+    import io as _io
+    _csv.field_size_limit(_sys.maxsize)
+
+    try:
+        from scripts.import_materials_from_fmp import (
+            import_materials, import_material_suppliers, import_product_suppliers,
+        )
+        from dashboard.ingredient_catalog import init_ingredients_schema
+        from dashboard.materials_catalog import init_materials_schema
+    except Exception as e:
+        return fail(f"import error: {e}")
+
+    try:
+        materials_file         = request.files.get("materials")
+        materials_supplier_file = request.files.get("materials_supplier")
+        products_supplier_file  = request.files.get("products_supplier")
+
+        if not all([materials_file, materials_supplier_file, products_supplier_file]):
+            return fail("upload all three: materials, materials_supplier, products_supplier", status=400)
+
+        materials_rows         = list(_csv.DictReader(_io.StringIO(materials_file.read().decode("utf-8", errors="replace"))))
+        materials_supplier_rows = list(_csv.DictReader(_io.StringIO(materials_supplier_file.read().decode("utf-8", errors="replace"))))
+        products_supplier_rows  = list(_csv.DictReader(_io.StringIO(products_supplier_file.read().decode("utf-8", errors="replace"))))
+
+        write = request.form.get("write", "").lower() in ("1", "true", "yes")
+
+        if not write:
+            return ok({
+                "mode": "dry_run",
+                "materials": len(materials_rows),
+                "material_suppliers": len(materials_supplier_rows),
+                "product_suppliers": len(products_supplier_rows),
+            })
+
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx)
+            init_materials_schema(cx)
+            nm  = import_materials(cx, materials_rows)
+            nms = import_material_suppliers(cx, materials_supplier_rows)
+            nps = import_product_suppliers(cx, products_supplier_rows)
+            cx.commit()
+        finally:
+            cx.close()
+
+        return ok({
+            "mode": "write",
+            "materials": nm,
+            "material_suppliers": nms,
+            "product_suppliers": nps,
+        })
+
+    except Exception as e:
+        app.logger.exception("materials import error")
+        return fail(str(e))
+
+
+@app.route("/api/po/import", methods=["POST"])
+@require_console_key
+def po_import():
+    """Upload FMP CSVs (po, po_items, po_receiving) to populate the purchase orders tables."""
+    import csv as _csv
+    import sys as _sys
+    import io as _io
+    _csv.field_size_limit(_sys.maxsize)
+
+    try:
+        from scripts.import_purchase_orders_from_fmp import (
+            import_purchase_orders, import_po_items, import_po_receiving,
+        )
+        from dashboard.ingredient_catalog import init_ingredients_schema
+        from dashboard.materials_catalog import init_materials_schema
+        from dashboard.purchase_orders import init_purchase_orders_schema
+    except Exception as e:
+        return fail(f"import error: {e}")
+
+    try:
+        po_file           = request.files.get("po")
+        po_items_file     = request.files.get("po_items")
+        po_receiving_file = request.files.get("po_receiving")
+
+        if not all([po_file, po_items_file, po_receiving_file]):
+            return fail("upload all three: po, po_items, po_receiving", status=400)
+
+        po_rows           = list(_csv.DictReader(_io.StringIO(po_file.read().decode("utf-8", errors="replace"))))
+        po_items_rows     = list(_csv.DictReader(_io.StringIO(po_items_file.read().decode("utf-8", errors="replace"))))
+        po_receiving_rows = list(_csv.DictReader(_io.StringIO(po_receiving_file.read().decode("utf-8", errors="replace"))))
+
+        write = request.form.get("write", "").lower() in ("1", "true", "yes")
+
+        if not write:
+            return ok({
+                "mode": "dry_run",
+                "purchase_orders": len(po_rows),
+                "po_items": len(po_items_rows),
+                "po_receiving": len(po_receiving_rows),
+            })
+
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx)
+            init_materials_schema(cx)
+            init_purchase_orders_schema(cx)
+            npo = import_purchase_orders(cx, po_rows)
+            npi = import_po_items(cx, po_items_rows)
+            npr = import_po_receiving(cx, po_receiving_rows)
+            cx.commit()
+        finally:
+            cx.close()
+
+        return ok({
+            "mode": "write",
+            "purchase_orders": npo,
+            "po_items": npi["items"],
+            "po_receiving": npr,
+        })
+
+    except Exception as e:
+        app.logger.exception("po import error")
+        return fail(str(e))
+
+
+# /api/po/*  — JSON API behind require_console_key
+from dashboard import purchase_orders as _po
+
+
+@app.route("/api/po/search", methods=["GET"])
+@require_console_key
+def api_po_search():
+    try:
+        return ok(_po.search_purchase_orders(request.args.get("q", ""), int(request.args.get("limit", 50)), int(request.args.get("offset", 0))))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/po/<int:pid>", methods=["GET"])
+@require_console_key
+def api_po_get(pid):
+    try:
+        p = _po.get_purchase_order(pid)
+        if not p: return fail("not found", status=404)
+        return ok({"po": p, "items": _po.list_po_items(pid), "receiving": _po.list_po_receiving(pid)})
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/po/<int:pid>", methods=["PATCH"])
+@require_console_key
+def api_po_patch(pid):
+    try:
+        _po.update_po_curated(pid, request.get_json(silent=True) or {})
+        return ok(_po.get_purchase_order(pid))
+    except Exception as e: return fail(e)
+
+
+@app.route("/api/po/items/<int:item_id>", methods=["PATCH"])
+@require_console_key
+def api_po_item_patch(item_id):
+    try:
+        _po.update_po_item_curated(item_id, request.get_json(silent=True) or {})
+        return ok({"id": item_id})
+    except Exception as e: return fail(e)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /api/inventory/* — inventory levels, on-hand tracking, txn history
+# ─────────────────────────────────────────────────────────────────────────────
+from dashboard import inventory as _inv
+
+
+@app.route("/api/inventory/levels", methods=["GET"])
+@require_console_key
+def api_inventory_levels():
+    try:
+        return ok(_inv.inventory_levels(request.args.get("q",""),
+                                        int(request.args.get("limit",200)),
+                                        int(request.args.get("offset",0))))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/inventory/<int:ingredient_id>", methods=["GET"])
+@require_console_key
+def api_inventory_get(ingredient_id):
+    try:
+        d = _inv.get_inventory(ingredient_id)
+        if not d:
+            return fail("not found", status=404)
+        return ok(d)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/inventory/<int:ingredient_id>/adjust", methods=["POST"])
+@require_console_key
+def api_inventory_adjust(ingredient_id):
+    try:
+        b = request.get_json(silent=True) or {}
+        _inv.add_adjustment(ingredient_id, b.get("qty"), b.get("unit"),
+                            b.get("txn_date"), b.get("notes"))
+        return ok({"on_hand": _inv.on_hand(ingredient_id)})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/inventory/txns/<int:txn_id>", methods=["PATCH"])
+@require_console_key
+def api_inventory_txn_patch(txn_id):
+    try:
+        _inv.update_txn_curated(txn_id, request.get_json(silent=True) or {})
+        return ok({"id": txn_id})
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/inventory/seed", methods=["POST"])
+@require_console_key
+def api_inventory_seed():
+    try:
+        from dashboard.ingredient_catalog import init_ingredients_schema
+        from dashboard.purchase_orders import init_purchase_orders_schema
+        from dashboard.inventory import init_inventory_schema, seed_baselines, seed_receipts
+    except Exception as e:
+        return fail(f"import error: {e}")
+    try:
+        write = request.form.get("write", "").lower() in ("1","true","yes")
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx)
+            init_purchase_orders_schema(cx)
+            init_inventory_schema(cx)
+            nb = seed_baselines(cx)
+            nr = seed_receipts(cx)
+            if write:
+                cx.commit()
+            else:
+                cx.rollback()
+        finally:
+            cx.close()
+        return ok({"mode": "write" if write else "dry_run", "baselines": nb, "receipts": nr})
+    except Exception as e:
+        app.logger.exception("inventory seed error")
+        return fail(str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /api/production/* — Production run logging & batch management
+# ─────────────────────────────────────────────────────────────────────────────
+from dashboard import production as _prod
+from dashboard import reorder as _ro
+
+
+@app.route("/api/production/search", methods=["GET"])
+@require_console_key
+def api_production_search():
+    try:
+        return ok(_prod.search_production_runs(request.args.get("q",""),
+                                               int(request.args.get("limit",100)),
+                                               int(request.args.get("offset",0))))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/production/<int:run_id>", methods=["GET"])
+@require_console_key
+def api_production_get(run_id):
+    try:
+        r = _prod.get_production_run(run_id)
+        if not r:
+            return fail("not found", status=404)
+        return ok({"run": r, "items": _prod.list_run_items(run_id)})
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/production/recipe/<int:formulation_id>", methods=["GET"])
+@require_console_key
+def api_production_recipe(formulation_id):
+    try:
+        return ok(_prod.recipe_prefill(formulation_id))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/production/log", methods=["POST"])
+@require_console_key
+def api_production_log():
+    try:
+        b = request.get_json(silent=True) or {}
+        rid = _prod.log_run(b.get("formulation_id"), b.get("run_date"), b.get("quantity_units"),
+                            b.get("items") or [], b.get("batch_number"))
+        return ok({"id": rid})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/production/<int:run_id>", methods=["PATCH"])
+@require_console_key
+def api_production_patch(run_id):
+    try:
+        _prod.update_run_curated(run_id, request.get_json(silent=True) or {})
+        return ok(_prod.get_production_run(run_id))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/production/items/<int:item_id>", methods=["PATCH"])
+@require_console_key
+def api_production_item_patch(item_id):
+    try:
+        _prod.update_run_item_curated(item_id, request.get_json(silent=True) or {})
+        return ok({"id": item_id})
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/production/import", methods=["POST"])
+@require_console_key
+def api_production_import():
+    import csv as _csv, sys as _sys, io as _io
+    _csv.field_size_limit(_sys.maxsize)
+    try:
+        from scripts.import_production_from_fmp import import_production_runs, import_production_items
+        from dashboard.ingredient_catalog import init_ingredients_schema
+        from dashboard.materials_catalog import init_materials_schema
+        from dashboard.formulations import init_formulations_schema
+        from dashboard.inventory import init_inventory_schema
+        from dashboard.production import init_production_schema, post_consumption
+    except Exception as e:
+        return fail(f"import error: {e}")
+    try:
+        f_runs = request.files.get("production")
+        f_items = request.files.get("production_items")
+        if not all([f_runs, f_items]):
+            return fail("upload both: production, production_items", status=400)
+        runs = list(_csv.DictReader(_io.StringIO(f_runs.read().decode("utf-8", errors="replace"))))
+        items = list(_csv.DictReader(_io.StringIO(f_items.read().decode("utf-8", errors="replace"))))
+        write = request.form.get("write", "").lower() in ("1","true","yes")
+        cons = request.form.get("consumption", "all")
+        cons_from = request.form.get("consumption_from") or None
+        cx = sqlite3.connect(str(LOG_DB))
+        cx.row_factory = sqlite3.Row
+        try:
+            init_ingredients_schema(cx); init_materials_schema(cx); init_formulations_schema(cx)
+            init_inventory_schema(cx); init_production_schema(cx)
+            nr = import_production_runs(cx, runs)
+            ni = import_production_items(cx, items)
+            mode = "record_only" if cons == "record_only" else ("from_date" if cons_from else cons)
+            nc = post_consumption(cx, mode=mode, cutoff_date=cons_from)
+            if write:
+                cx.commit()
+            else:
+                cx.rollback()
+        finally:
+            cx.close()
+        return ok({"mode": "write" if write else "dry_run", "runs": nr, "items": ni["items"], "consumption": nc})
+    except Exception as e:
+        app.logger.exception("production import error")
+        return fail(str(e))
+
+
+@app.route("/api/reorder/report", methods=["GET"])
+@require_console_key
+def api_reorder_report_get():
+    try:
+        below = request.args.get("below_par", "1") != "0"
+        return ok(_ro.reorder_report(plan=None, include_below_par=below))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/reorder/report", methods=["POST"])
+@require_console_key
+def api_reorder_report_post():
+    try:
+        b = request.get_json(silent=True) or {}
+        return ok(_ro.reorder_report(plan=b.get("plan") or [],
+                                     include_below_par=bool(b.get("include_below_par", True))))
+    except Exception as e:
+        return fail(e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -22619,6 +23845,7 @@ import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals
 import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
 import dashboard.coaching as _coaching_actions  # noqa: F401 (registers coaching.grant action)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
+import dashboard.payments as _bos_payments  # noqa: F401 (Stripe payments ledger — read-only)
 import dashboard.crm as _bos_crm  # noqa: F401 (registers the CRM home signal)
 import dashboard.module_signals as _bos_module_signals  # noqa: F401 (registers 5 cell signals)
 import dashboard.products as _bos_products  # noqa: F401 (registers products signal + action; replaces module_signals' products signal)
@@ -22698,9 +23925,12 @@ def _normalize_ship_address(addr, fallback_name=""):
 
 def _ingest_order(*, source, external_ref, email="", name="", phone="",
                   items=None, total_cents=0, address=None, channel="retail",
-                  get_cents=0, discount_cents=0, points_redeemed_cents=0, shipping_cents=0):
+                  get_cents=0, discount_cents=0, points_redeemed_cents=0, shipping_cents=0,
+                  status="new"):
     """Best-effort: record an order into the BOS orders table. Never raises into
-    a checkout path. get_cents = absorbed Hawai'i GET owed (recorded, not charged)."""
+    a checkout path. get_cents = absorbed Hawai'i GET owed (recorded, not charged).
+    status defaults to 'new' (enters fulfillment); pass 'done' for digital charges
+    with nothing to ship (e.g. the $1 biofield trial membership unlock)."""
     try:
         cx = _sqlite3.connect(LOG_DB)
         try:
@@ -22710,7 +23940,7 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                 address=address or {}, channel=channel, get_cents=int(get_cents or 0),
                 discount_cents=int(discount_cents or 0),
                 points_redeemed_cents=int(points_redeemed_cents or 0),
-                shipping_cents=int(shipping_cents or 0))
+                shipping_cents=int(shipping_cents or 0), status=status)
         finally:
             cx.close()
     except Exception as e:
@@ -23357,6 +24587,54 @@ def bos_cert_page():
     return resp
 
 
+@app.route("/console/payments")
+def bos_payments_page():
+    resp = send_from_directory(STATIC, "console-payments.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/payments", methods=["GET"])
+def bos_payments_list():
+    """Read-only Stripe payments ledger: captured charges (one-time + subscription)
+    from the orders table, plus recent stripe_failures (declined/failed charges)."""
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        try:
+            limit = min(int(request.args.get("limit", 200) or 200), 1000)
+        except (TypeError, ValueError):
+            limit = 200
+        rows = _bos_payments.list_payments(
+            cx, source=request.args.get("source"), limit=limit)
+        summary = _bos_payments.payments_summary(cx)
+        failures = _bos_payments.recent_failures(cx)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "data": rows, "summary": summary, "failures": failures})
+
+
+@app.route("/api/console/backfill-trial-orders", methods=["POST"])
+def bos_backfill_trial_orders():
+    """One-time backfill: give every historical $1 biofield trial a captured-charge
+    order so it shows in /console/payments. Runs INSIDE the web container, where the
+    persistent disk (/data/chat_log.db) is mounted — the only place the trial grants
+    live. ?dry_run=1 reports counts without writing. Idempotent; safe to re-run."""
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    dry = (request.args.get("dry_run") or "").strip().lower() in ("1", "true", "yes")
+    from dashboard import stripe_pay as _sp
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        res = _bos_payments.backfill_trial_orders(cx, _sp.get_session, dry_run=dry)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "dry_run": dry, "result": res})
+
+
 @app.route("/api/products")
 def bos_products_list():
     if _bos_actor() is None:
@@ -23418,6 +24696,26 @@ def bos_orders_create():
                     o["backorder_units"] = back
             except Exception as _e:
                 print(f"[orders] backorder annotate skipped: {_e!r}", flush=True)
+            # Display-name fallback: many orders carry only a shipping name, which is
+            # blank for portal/reorder flows that don't re-collect it. Backfill the
+            # display name from the people table by email (one grouped query).
+            try:
+                need = sorted({(o.get("email") or "").strip().lower()
+                               for o in rows if not (o.get("name") or "").strip()
+                               and (o.get("email") or "").strip()})
+                if need:
+                    ph = ",".join("?" * len(need))
+                    by_email = {}
+                    for em, nm in cx.execute(
+                            f"SELECT lower(email), name FROM people WHERE lower(email) IN ({ph})",
+                            need).fetchall():
+                        if (nm or "").strip() and em not in by_email:
+                            by_email[em] = nm.strip()
+                    for o in rows:
+                        if not (o.get("name") or "").strip():
+                            o["name"] = by_email.get((o.get("email") or "").strip().lower(), o.get("name") or "")
+            except Exception as _e:
+                print(f"[orders] name backfill skipped: {_e!r}", flush=True)
         finally:
             cx.close()
         return jsonify({"ok": True, "data": rows})
@@ -23565,6 +24863,41 @@ def admin_sales_images_backfill():
             if _si.needs_topup(cx, s):
                 _si.enqueue(cx, s); enq.append(s)
     return jsonify({"ok": True, "enqueued": enq, "count": len(enq)})
+
+
+@app.route("/api/console/coupons", methods=["GET"])
+def api_console_coupons():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        from dashboard import coupons as _coupons
+        _coupons.init_coupons_table(cx)
+        rows = cx.execute(
+            "SELECT code,product_slug,pct,kind,email,minted_at,expires_at,redeemed_at "
+            "FROM coupons ORDER BY minted_at DESC LIMIT 500").fetchall()
+    keys = ["code", "product_slug", "pct", "kind", "email", "minted_at", "expires_at", "redeemed_at"]
+    return jsonify({"coupons": [dict(zip(keys, r)) for r in rows]})
+
+
+@app.after_request
+def _inject_journey_shell(response):
+    if not JOURNEY_SHELL_ENABLED:
+        return response
+    try:
+        if not shell_nav.should_inject(request.path, response.content_type or "", response.status_code):
+            return response
+        response.direct_passthrough = False  # static file responses default to True
+        html = response.get_data(as_text=True)
+        if "</head>" not in html:
+            return response
+        authed = bool(get_authenticated_user(request))
+        mode = shell_nav.resolve_mode(request.path, authed)
+        response.set_data(shell_nav.inject_shell_html(html, mode, REWARDS_1B_ENABLED, REWARDS_1B_GIFT_ENABLED))
+    except Exception as e:  # never let the shell break a page
+        print(f"[journey-shell] inject skipped: {e!r}", flush=True)
+    return response
 
 
 if __name__ == "__main__":

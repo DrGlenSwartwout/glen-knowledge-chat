@@ -90,7 +90,70 @@ _SYSTEM = (
 )
 
 
-def _user_block(report, notes):
+_SCAN_GUIDANCE = (
+    "\n- If a RECENT E4L VOICE SCAN block is present, you may reference what the scan "
+    "showed as corroborating context for the causal chain. Use observation language; "
+    "do not invent scan findings beyond those listed, and do not treat a scan marked "
+    "stale as current.")
+
+_PROFILE_GUIDANCE = (
+    "\n- If a CLIENT-STATED CONCERNS block is present, acknowledge the client's own "
+    "stated symptoms, challenges, and goals in plain, validating language and connect "
+    "them to the causal chain where honest to do so. Do not invent concerns beyond those listed.")
+
+_PROFILE_FIELDS = ("conditions", "challenges", "goals", "tags", "terrain_concerns", "body_systems")
+
+
+def _profile_content(profile):
+    return bool(profile) and any(str((profile or {}).get(f) or "").strip() for f in _PROFILE_FIELDS)
+
+
+def _profile_block(profile):
+    if not _profile_content(profile):
+        return ""
+    lines = ["CLIENT-STATED CONCERNS (acknowledge in the client's own terms):"]
+    for f in _PROFILE_FIELDS:
+        v = profile.get(f)
+        if isinstance(v, (list, tuple)):
+            v = ", ".join(str(x).strip() for x in v if str(x).strip())
+        v = str(v or "").strip()
+        if v:
+            lines.append(f"- {f.replace('_', ' ')}: {v}")
+    return "\n".join(lines)
+
+
+def _narrative_findings(scan):
+    """The scan findings fed to the patient narrative = INFOCEUTICALS only. ER/MR
+    'stresses' are information Glen doesn't balance, so they stay off the patient
+    message. Falls back to splitting `findings` by group for un-split callers."""
+    if not (scan and scan.get("found")):
+        return []
+    fs = scan.get("infoceuticals")
+    if fs is None:
+        fs = [f for f in (scan.get("findings") or []) if f.get("group") != "stress"]
+    return fs or []
+
+
+def _scan_block(scan):
+    """Optional context block from the client's most recent E4L voice scan. Empty
+    string unless the scan has infoceutical findings (back-compatible)."""
+    findings = _narrative_findings(scan)
+    if not findings:
+        return ""
+    days = scan.get("days_ago")
+    age = f"{days} day{'s' if days != 1 else ''} ago" if days is not None else "date unknown"
+    fresh = "fresh" if scan.get("fresh") else "STALE — older than the 2-week window"
+    lines = [f"RECENT E4L VOICE SCAN ({age}, {fresh}; scan {scan.get('scan_date') or ''}):"]
+    for f in findings:
+        rank = f.get("rank")
+        desc = (f.get("description") or "").strip()
+        lines.append(f"- {('#' + str(rank) + ' ') if rank is not None else ''}"
+                     f"{f.get('code') or ''} {f.get('name') or ''}"
+                     f"{(' — ' + desc) if desc else ''}".rstrip())
+    return "\n".join(lines)
+
+
+def _user_block(report, notes, scan=None, profile=None):
     c = report.get("client") or {}
     lines = [f"PATIENT: {c.get('name') or ''}",
              f"DATE: {report.get('date') or ''}",
@@ -103,17 +166,32 @@ def _user_block(report, notes):
             f" (most affected: {l.get('most_affected') or ''})"
             f" -> remedy: {l.get('remedy') or ''}; dose: {l.get('dosage') or ''}"
             f" {l.get('frequency') or ''} {l.get('timing') or ''}".rstrip())
+    sb = _scan_block(scan)
+    if sb:
+        lines += ["", sb]
+    pb = _profile_block(profile)
+    if pb:
+        lines += ["", pb]
     lines += ["", "CLINICIAN VERBAL NOTES (weave in naturally):", (notes or "(none)")]
     return "\n".join(lines)
 
 
-def build_narrative_prompt(report, notes):
-    return {"system": _SYSTEM, "user": _user_block(report, notes)}
+def _system_with_scan(base, scan):
+    """Append scan guidance only when the narrative actually carries scan findings, so
+    the no-scan prompt stays byte-identical to before (back-compat)."""
+    return base + (_SCAN_GUIDANCE if _narrative_findings(scan) else "")
 
 
-def generate_narrative(report, notes, complete):
-    """complete(system, user) -> narrative text."""
-    p = build_narrative_prompt(report, notes)
+def build_narrative_prompt(report, notes, scan=None, profile=None):
+    system = _system_with_scan(_SYSTEM, scan)
+    if _profile_content(profile):
+        system += _PROFILE_GUIDANCE
+    return {"system": system, "user": _user_block(report, notes, scan, profile)}
+
+
+def generate_narrative(report, notes, complete, scan=None, profile=None):
+    """complete(system, user) -> narrative text. scan = E4L context; profile = People-hub context."""
+    p = build_narrative_prompt(report, notes, scan, profile)
     return complete(p["system"], p["user"])
 
 
@@ -136,11 +214,12 @@ _VIDEO_SYSTEM = (
 )
 
 
-def build_video_script_prompt(report, notes):
-    return {"system": _VIDEO_SYSTEM, "user": _user_block(report, notes)}
+def build_video_script_prompt(report, notes, scan=None):
+    return {"system": _system_with_scan(_VIDEO_SYSTEM, scan),
+            "user": _user_block(report, notes, scan)}
 
 
-def generate_video_script(report, notes, complete):
-    """complete(system, user) -> short spoken walkthrough script."""
-    p = build_video_script_prompt(report, notes)
+def generate_video_script(report, notes, complete, scan=None):
+    """complete(system, user) -> short spoken walkthrough script. `scan` optional."""
+    p = build_video_script_prompt(report, notes, scan)
     return complete(p["system"], p["user"])

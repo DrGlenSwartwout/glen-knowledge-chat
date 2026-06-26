@@ -14,13 +14,20 @@ _SYSTEM = (
     "structured causal chain. Return STRICT JSON ONLY, no prose:\n"
     '{"header": str, "layers": [{"layer": int, "head": str, "most_affected": str, '
     '"remedy": str, "dosage": str, "frequency": str, "timing": str}]}\n'
+    "A single causal layer can need MORE THAN ONE remedy to balance. When a layer is "
+    "balanced by several remedies, list them all in a `remedies` array on that layer "
+    '(each item {"remedy": str, "dosage": str, "frequency": str, "timing": str}); use the '
+    "plain `remedy` string only when a layer has exactly one. NEVER keep just the first "
+    "remedy and drop the rest.\n"
     "Glen's grammar:\n"
     "- 'BSI N times A to B times C, phase P' and 'the location of the N is X' -> summarize into `header` "
     "(a short string); do NOT turn the BSI/phase/location into a layer.\n"
     "- 'X is the head and tail of the [first/second/...] causal chain' OR 'the [Nth] layer is X, head and "
     "tail' -> a layer at that number with head = most_affected = X ('head and tail' means the stress is both "
     "the head and the most-affected end of that layer).\n"
-    "- 'balanced by [REMEDY]' or 'balances with [REMEDY]' -> that layer's `remedy`; keep the remedy as spoken.\n"
+    "- 'balanced by [REMEDY]' or 'balances with [REMEDY]' -> that layer's `remedy`; keep the remedy as spoken. "
+    "'balanced by [REMEDY A] and [REMEDY B]' (or 'and also [REMEDY C]') -> that layer needs ALL of them: put "
+    "each in the layer's `remedies` array.\n"
     "- If a DOSE is spoken with the remedy (e.g. 'neuromagnesium one scoop twice a day', or '10 drops "
     "three times a day before food'), put ONLY the product name in `remedy` ('neuromagnesium'), the amount in "
     "`dosage` ('one scoop' / '10 drops'), the rate in `frequency` ('twice a day'), and any with/before-food "
@@ -73,18 +80,75 @@ def interpret_transcript(transcript, complete):
         if not isinstance(l, dict):
             continue
         head = (l.get("head") or "").strip()
-        remedy = (l.get("remedy") or "").strip()
-        if not (head and remedy):
+        if not head:
             continue
         try:
             layer = int(l.get("layer"))
         except (TypeError, ValueError):
             layer = None
-        layers.append({"layer": layer, "head": head,
-                       "most_affected": (l.get("most_affected") or head).strip(),
-                       "remedy": remedy,
-                       "dosage": (l.get("dosage") or "").strip(),
-                       "frequency": (l.get("frequency") or "").strip(),
-                       "timing": (l.get("timing") or "").strip()})
+        most_affected = (l.get("most_affected") or head).strip()
+        # A layer can carry several remedies. Accept both forms: a `remedies` array
+        # (items are strings or {remedy,dosage,frequency,timing} dicts) and the plain
+        # single `remedy`. Emit one chain entry per remedy, sharing layer/head.
+        for spec in _layer_remedies(l):
+            remedy = (spec.get("remedy") or "").strip()
+            if not remedy:
+                continue
+            layers.append({"layer": layer, "head": head, "most_affected": most_affected,
+                           "remedy": remedy,
+                           "dosage": (spec.get("dosage") or "").strip(),
+                           "frequency": (spec.get("frequency") or "").strip(),
+                           "timing": (spec.get("timing") or "").strip()})
+    # Stable sort by layer keeps multiple remedies for the same layer in spoken order.
     layers.sort(key=lambda x: (x["layer"] is None, x["layer"] or 0))
     return {"header": (data.get("header") or "").strip(), "layers": layers}
+
+
+_STRESS_SYSTEM = (
+    "You read a clinician's spoken biofield-testing transcript (Dr. Glen Swartwout) and extract "
+    "ONLY the distinct stress / issue / weakness names they name as present — NOT remedies, layers, "
+    'or doses. Return STRICT JSON ONLY, no prose: {"stresses": [str, ...]}.\n'
+    "- 'the stress is X', 'I'm seeing X', 'also X', 'there's X here' -> X is a stress.\n"
+    "- If a remedy is named (e.g. 'balanced by Neuro Magnesium'), do NOT include the remedy; you MAY "
+    "include the stress it balances if that stress is named.\n"
+    "- Deduplicate. If nothing is parseable, return an empty list."
+)
+
+
+def build_stress_prompt(transcript):
+    return {"system": _STRESS_SYSTEM, "user": "TRANSCRIPT:\n" + (transcript or "")}
+
+
+def interpret_stresses(transcript, complete):
+    """transcript + complete(system,user) -> [stress label, ...] (Phase 1, stresses only)."""
+    if not (transcript or "").strip():
+        return []
+    p = build_stress_prompt(transcript)
+    data = _parse_json(complete(p["system"], p["user"]))
+    out, seen = [], set()
+    for s in (data.get("stresses") or []):
+        label = (s if isinstance(s, str) else (s.get("name") if isinstance(s, dict) else "")) or ""
+        label = label.strip()
+        k = label.lower()
+        if label and k not in seen:
+            seen.add(k)
+            out.append(label)
+    return out
+
+
+def _layer_remedies(l):
+    """Normalize a layer dict's remedy/remedies into a list of dose-bearing dicts."""
+    out = []
+    raw = l.get("remedies")
+    if isinstance(raw, list) and raw:
+        for it in raw:
+            if isinstance(it, str):
+                out.append({"remedy": it})
+            elif isinstance(it, dict):
+                out.append({"remedy": it.get("remedy") or it.get("name") or "",
+                            "dosage": it.get("dosage"), "frequency": it.get("frequency"),
+                            "timing": it.get("timing")})
+        return out
+    # Single-remedy fallback: dose lives on the layer itself.
+    return [{"remedy": l.get("remedy") or "", "dosage": l.get("dosage"),
+             "frequency": l.get("frequency"), "timing": l.get("timing")}]

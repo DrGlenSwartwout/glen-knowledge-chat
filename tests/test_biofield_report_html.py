@@ -61,6 +61,29 @@ def test_report_html_has_notes_and_narrative_section():
     assert "/test/10/generate" in html    # generate endpoint
 
 
+def test_report_html_shows_stresses_balanced_section():
+    stresses = {
+        "active": [{"id": 1, "code": "MR2", "label": "Calm Mind", "source": "scan",
+                    "balance": "optional", "balanced": False, "balanced_by": ""}],
+        "balanced": [{"id": 2, "code": "ED1", "label": "Membrane", "source": "scan",
+                      "balance": "required", "balanced": True,
+                      "balanced_by": "neuro magnesium"}],
+    }
+    html = render_report_html(_report(), stresses=stresses)
+    assert "Stresses balanced" in html       # section header
+    assert "Membrane" in html                # balanced stress label
+    assert "neuro magnesium" in html         # covering remedy shown
+
+
+def test_report_html_omits_stresses_section_when_none_balanced():
+    # No stress data -> no section; empty balanced list -> no section either.
+    assert "Stresses balanced" not in render_report_html(_report())
+    empty = {"active": [{"id": 1, "code": "MR2", "label": "Calm", "source": "scan",
+                         "balance": "optional", "balanced": False, "balanced_by": ""}],
+             "balanced": []}
+    assert "Stresses balanced" not in render_report_html(_report(), stresses=empty)
+
+
 def test_report_html_has_video_section():
     html = render_report_html(_report(), video_script="Aloha Lewis, short version")
     assert "Aloha Lewis, short version" in html   # saved script pre-filled
