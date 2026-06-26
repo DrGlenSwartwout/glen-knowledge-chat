@@ -194,23 +194,35 @@ def add_voice_stress(cx, tid, label):
 
 
 def suggest_minimal_remedies(cx, tid, chain_rows):
-    """Fewest remedies covering the active+required+scan stresses. Returns picks
-    (remedy + covered stress LABELS) and the uncovered labels. Read-only."""
+    """Fewest remedies covering active+required stresses (scan via the coverage map,
+    non-scan via historical stress_suggestions). Cover token = E4L code (scan) or
+    _norm(label) (non-scan). Returns picks (remedy + covered LABELS) + uncovered labels."""
     from dashboard.biofield_setcover import minimal_remedies
     data = list_stresses(cx, tid, chain_rows)
-    code_label, active_codes = {}, set()
-    for s in data["active"]:
-        code = s.get("code") or ""
-        if code and s.get("balance") == "required" and s.get("source") == "scan":
-            active_codes.add(code)
-            code_label[code] = s.get("label") or code
-    coverage = {}
+    token_label, active_tokens, coverage = {}, set(), {}
+    # scan coverage from the persisted map
     for remedy, code in cx.execute(
             "SELECT remedy, code FROM biofield_auth_remedy_coverage WHERE test_id=?",
             (_num(tid),)).fetchall():
         coverage.setdefault(remedy, set()).add(code)
-    res = minimal_remedies(active_codes, coverage)
-    picks = [{"remedy": p["remedy"], "covers": [code_label.get(c, c) for c in p["covers"]]}
+    for s in data["active"]:
+        if s.get("balance") != "required":
+            continue
+        if s.get("source") == "scan":
+            code = s.get("code") or ""
+            if code:
+                active_tokens.add(code)
+                token_label[code] = s.get("label") or code
+        else:                                            # non-scan: token = norm-label
+            tok = _norm(s.get("label") or "")
+            if not tok:
+                continue
+            active_tokens.add(tok)
+            token_label[tok] = s.get("label") or tok
+            for rem in historical_remedies(cx, s.get("label") or ""):
+                coverage.setdefault(rem, set()).add(tok)
+    res = minimal_remedies(active_tokens, coverage)
+    picks = [{"remedy": p["remedy"], "covers": [token_label.get(c, c) for c in p["covers"]]}
              for p in res["picks"]]
-    uncovered = [code_label.get(c, c) for c in res["uncovered"]]
+    uncovered = [token_label.get(c, c) for c in res["uncovered"]]
     return {"picks": picks, "uncovered": uncovered}
