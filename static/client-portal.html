@@ -461,6 +461,23 @@ function render(d, v){
       <p class="small err" id="offerErr" hidden></p></div>`;
   }
 
+  // Ambassador — enrolled (referral + recruit links) / pending (under review) / none (become CTA).
+  if(v && v.ambassador){
+    const amb = v.ambassador;
+    if(amb.status === "enrolled"){
+      html += `<div class="card"><h2>Your Ambassador links</h2>
+        <div class="kv"><span class="k">Share &amp; earn</span><span class="v"><a href="${esc(amb.referral_url)}" target="_blank" rel="noopener">${esc(amb.referral_url)}</a></span></div>
+        <div class="kv"><span class="k">Invite ambassadors</span><span class="v"><a href="${esc(amb.recruit_url)}" target="_blank" rel="noopener">${esc(amb.recruit_url)}</a></span></div>
+      </div>`;
+    } else if(amb.status === "pending"){
+      html += `<div class="card"><h2>Ambassador</h2><p class="muted">Your ambassador application is under review.</p></div>`;
+    } else {
+      html += `<div class="card"><h2>Become an Ambassador</h2>
+        <p class="muted">Earn rewards by sharing.</p>
+        <a class="btn full" href="${esc(amb.signup_url)}" target="_blank" rel="noopener">Become an Ambassador</a></div>`;
+    }
+  }
+
   // Notification preference: lets a client see and change their opt status,
   // so anyone who unsubscribed via the email link can re-subscribe here.
   if(typeof d.notify_on !== "undefined"){
