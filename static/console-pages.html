@@ -5,33 +5,33 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pages &middot; Console</title>
 <style>
-  :root{ --bg:#0f1115; --card:#171a21; --line:#262b36; --fg:#e8ebf0; --muted:#9aa3b2;
-         --accent:#5b8cff; --ok:#3fb968; --err:#e0556a; }
+  :root{ --bg:#0a150d; --surface:#111f16; --border:#21472d; --cream:#fdf4d8; --muted:#a89870;
+         --gold:#d4a843; --ok:#3d8a52; --err:#c0432b; }
   *{ box-sizing:border-box; }
-  body{ margin:0; background:var(--bg); color:var(--fg);
+  body{ margin:0; background:var(--bg); color:var(--cream);
         font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; }
   .wrap{ max-width:1100px; margin:0 auto; padding:18px; display:flex; gap:18px; }
   .col-list{ flex:0 0 280px; } .col-edit{ flex:1; min-width:0; }
-  .card{ background:var(--card); border:1px solid var(--line); border-radius:10px;
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:10px;
          padding:14px; margin-bottom:14px; }
   h1{ font-size:20px; margin:0 0 4px; } h2{ font-size:15px; margin:0 0 8px; }
   .sub{ color:var(--muted); margin:0 0 14px; }
-  .item{ padding:9px 11px; border:1px solid var(--line); border-radius:8px;
+  .item{ padding:9px 11px; border:1px solid var(--border); border-radius:8px;
          margin-bottom:7px; cursor:pointer; display:flex; justify-content:space-between; }
-  .item:hover{ border-color:var(--accent); } .item.sel{ border-color:var(--accent); }
-  .pill{ font-size:11px; padding:1px 7px; border-radius:20px; border:1px solid var(--line);
+  .item:hover{ border-color:var(--gold); } .item.sel{ border-color:var(--gold); }
+  .pill{ font-size:11px; padding:1px 7px; border-radius:20px; border:1px solid var(--border);
          color:var(--muted); } .pill.approved{ color:var(--ok); border-color:var(--ok); }
   label{ display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
-  textarea{ width:100%; min-height:90px; background:#0c0e12; color:var(--fg);
-            border:1px solid var(--line); border-radius:8px; padding:9px; font:inherit; resize:vertical; }
-  input[type=number]{ background:#0c0e12; color:var(--fg); border:1px solid var(--line);
+  textarea{ width:100%; min-height:90px; background:var(--bg); color:var(--cream);
+            border:1px solid var(--border); border-radius:8px; padding:9px; font:inherit; resize:vertical; }
+  input[type=number]{ background:var(--bg); color:var(--cream); border:1px solid var(--border);
                       border-radius:8px; padding:7px 9px; font:inherit; width:80px; }
-  .btn{ background:var(--accent); color:#fff; border:0; border-radius:8px;
+  .btn{ background:var(--gold); color:#0a150d; border:0; border-radius:8px;
         padding:8px 14px; font:inherit; cursor:pointer; }
-  .btn.ghost{ background:transparent; color:var(--fg); border:1px solid var(--line); }
-  .btn.ok{ background:var(--ok); }
+  .btn.ghost{ background:transparent; color:var(--cream); border:1px solid var(--border); }
+  .btn.ok{ background:var(--ok); color:var(--cream); }
   .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px; }
-  .preview{ color:var(--accent); text-decoration:none; font-size:13px; }
+  .preview{ color:var(--gold); text-decoration:none; font-size:13px; }
   .status{ min-height:20px; color:var(--muted); font-size:13px; margin-top:10px; }
   #gate{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
          background:var(--bg); z-index:50; }
@@ -39,11 +39,9 @@
   .compliance-fail{ color:var(--err); font-size:13px; }
   .compliance-flags{ margin:4px 0 0 0; padding:0; list-style:none; font-size:12px; color:var(--err); }
   .compliance-flags li::before{ content:"! "; }
-  .pages-tabs{ display:flex; gap:6px; padding:0 20px; border-bottom:1px solid var(--line);
-               max-width:1100px; margin:0 auto; }
-  .ptab{ background:transparent; border:0; border-bottom:2px solid transparent;
-         color:var(--muted); font:600 14px/1 inherit; padding:10px 16px; cursor:pointer; }
-  .ptab.active{ color:var(--fg); border-bottom-color:var(--accent); }
+  .pages-tabs{display:flex;gap:6px;padding:0 20px;border-bottom:1px solid var(--border)}
+  .ptab{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted);font:600 14px/1 inherit;padding:10px 16px;cursor:pointer}
+  .ptab.active{color:var(--cream);border-bottom-color:var(--gold)}
 </style>
 </head>
 <body>
@@ -288,6 +286,7 @@ async function select(slug){
 }
 
 async function saveSection(id){
+  if(!ACTIVE.edit) return;
   const ta = $('sec-' + id);
   if(!CURRENT || !ta) return;
   $('status').textContent = 'Saving ' + id + '...';
