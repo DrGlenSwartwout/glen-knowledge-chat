@@ -24833,7 +24833,10 @@ def api_console_backfill_member_people():
 def api_console_fmp_orders_ingest():
     """Load the FMP order-history projection (built locally from the CSV export)
     into the prod LOG_DB. Console-gated; dry_run reports counts only. Idempotent
-    replace of the four projection tables. Read-only reference data."""
+    replace of the four projection tables. Read-only reference data.
+
+    Expects the payload from fmp_orders.to_payload(): invoice_date is already
+    ISO-normalized at build time, so this path stores it as-is (no re-normalize)."""
     if _bos_actor() is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard import fmp_orders as _fo
