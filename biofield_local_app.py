@@ -144,13 +144,33 @@ def _default_fetch_profile(email):
     except Exception:
         return {}
 
+
+def _default_fetch_recent_comms(email):
+    """Best-effort: pull a client's windowed recent comms from the prod endpoint.
+    Returns {} on any failure (incl. missing CONSOLE_SECRET -> no network call)."""
+    import json as _json
+    import urllib.parse
+    import urllib.request
+    email = (email or "").strip()
+    if not email:
+        return {}
+    try:
+        key = os.environ["CONSOLE_SECRET"]
+        base = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
+        url = (f"{base}/api/people/recent-comms?key=" + urllib.parse.quote(key)
+               + "&q=" + urllib.parse.quote(email))
+        req = urllib.request.Request(url, headers={"X-Console-Key": key})
+        return _json.load(urllib.request.urlopen(req, timeout=20)) or {}
+    except Exception:
+        return {}
+
 DEFAULT_DB = os.environ.get(
     "BIOFIELD_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_log.db"))
 
 
 def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                interpret_complete=None, scan_lookup=None, client_search=None,
-               fetch_runner=None, fetch_profile=None):
+               fetch_runner=None, fetch_profile=None, fetch_recent_comms=None):
     app = Flask(__name__)
     complete = complete or openai_complete
     tts = tts or elevenlabs_tts
@@ -166,6 +186,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     client_search = client_search or (lambda q: _search_clients(q))
     fetch_runner = fetch_runner  # None -> fetch_live uses the real scraper+parser
     fetch_profile = fetch_profile or _default_fetch_profile
+    fetch_recent_comms = fetch_recent_comms or _default_fetch_recent_comms
 
     def _report_for(cx, test_id):
         return (authored_report(cx, test_id) if str(test_id).startswith("a")
@@ -194,6 +215,24 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 profile, lambda t: interpret_stresses(t, interpret_complete))
             added = sum(1 for label in labels
                         if _st.add_stress(cx, test_id, label, source="tag"))
+        except Exception as e:
+            return {"added": 0, "error": str(e)[:200]}
+        return {"added": added}
+
+    def _mine_comms(cx, test_id):
+        """Mine the client's recent communications into comm stresses. Best-effort."""
+        from dashboard.biofield_interpret import interpret_stresses
+        from dashboard.biofield_comms import comms_to_text
+        from dashboard import biofield_stress as _st
+        rep = _report_for(cx, test_id)
+        email = ((rep.get("client") or {}).get("email") or "").strip()
+        if not email:
+            return {"added": 0, "error": "No client selected yet"}
+        try:
+            ctx = fetch_recent_comms(email) or {}
+            text = comms_to_text(ctx)
+            labels = interpret_stresses(text, interpret_complete) if text.strip() else []
+            added = sum(1 for label in labels if _st.add_stress(cx, test_id, label, source="comm"))
         except Exception as e:
             return {"added": 0, "error": str(e)[:200]}
         return {"added": added}
@@ -243,6 +282,13 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 (int(str(test_id).lstrip("a") or 0),)).fetchone():
             try:
                 _mine_profile(cx, test_id)
+            except Exception:
+                pass
+        if not cx.execute(
+                "SELECT 1 FROM biofield_auth_stress WHERE test_id=? AND source='comm' LIMIT 1",
+                (int(str(test_id).lstrip("a") or 0),)).fetchone():
+            try:
+                _mine_comms(cx, test_id)
             except Exception:
                 pass
 
@@ -527,6 +573,11 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     def author_mine_profile(test_id):
         with sqlite3.connect(db_path) as cx:
             return _mine_profile(cx, test_id)
+
+    @app.route("/author/<test_id>/mine-comms", methods=["POST"])
+    def author_mine_comms(test_id):
+        with sqlite3.connect(db_path) as cx:
+            return _mine_comms(cx, test_id)
 
     @app.route("/author/<test_id>/capture-stresses", methods=["POST"])
     def author_capture_stresses(test_id):
