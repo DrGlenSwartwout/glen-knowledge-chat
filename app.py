@@ -15265,9 +15265,11 @@ def patch_calendar(event_id):
     data = request.get_json(force=True) or {}
     action = data.get("action", "hide")
 
-    # Delegate: copy the event onto another owner's console calendar. Console-only
+    # Delegate: MOVE the event onto another owner's console calendar. Console-only
     # (synthetic google id, google_cal_id='delegated' so the Google sync never
-    # touches it); non-destructive (original stays on the delegator's calendar).
+    # touches it). The delegated copy appears on the delegatee's lane and the
+    # original is hidden from the delegator's lane (status='hidden' so the next
+    # Google sync's `WHERE status='visible'` upsert won't resurrect it).
     if action == "delegate":
         to = (data.get("to") or "").lower()
         if to not in ("glen", "rae", "shaira"):
@@ -15291,6 +15293,8 @@ def patch_calendar(event_id):
             """, (datetime.now(timezone.utc).isoformat(), f"deleg-{event_id}-{to}",
                   f"Delegated by {(from_owner or 'glen').title()}",
                   summary, start, end, location, to))
+            # Hide the original from the delegator's lane (move, not copy).
+            cx.execute("UPDATE calendar_events SET status='hidden' WHERE id=?", (event_id,))
             cx.commit()
         return jsonify({"ok": True, "delegated_to": to})
 

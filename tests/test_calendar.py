@@ -144,6 +144,37 @@ def test_range_filters_out_of_window(client):
     assert summaries == {"today"}
 
 
+# ── delegate (move, not copy) ─────────────────────────────────────────────────
+
+def _delegate(c, event_id, to):
+    return c.patch(f"/api/calendar/{event_id}",
+                   headers=ADMIN, json={"action": "delegate", "to": to})
+
+
+def test_delegate_moves_event_off_delegator_lane(client):
+    c, appmod = client
+    _seed_event(appmod, owner="glen", summary="Hand to Rae", evid="d1")
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        eid = cx.execute("SELECT id FROM calendar_events WHERE google_event_id='d1'").fetchone()[0]
+    assert _delegate(c, eid, "rae").status_code == 200
+
+    # Original no longer visible on Glen's lane (moved, not copied).
+    g = c.get("/api/calendar?range=today&date=2026-06-22&owners=glen", headers=ADMIN)
+    assert "Hand to Rae" not in {e["summary"] for e in g.get_json()["events"]}
+
+
+def test_delegate_shows_event_on_delegatee_lane(client):
+    c, appmod = client
+    _seed_event(appmod, owner="glen", summary="Hand to Rae", evid="d2")
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        eid = cx.execute("SELECT id FROM calendar_events WHERE google_event_id='d2'").fetchone()[0]
+    assert _delegate(c, eid, "rae").status_code == 200
+
+    r = c.get("/api/calendar?range=today&date=2026-06-22&owners=rae", headers=ADMIN)
+    rae = [e for e in r.get_json()["events"] if e["summary"] == "Hand to Rae"]
+    assert rae and rae[0]["owner"] == "rae"
+
+
 # ── accomplishments ───────────────────────────────────────────────────────────
 
 def test_accomplishment_add_and_list(client):

@@ -1274,7 +1274,7 @@ function formatCalDate(iso) {
   } catch { return { label: iso.substring(0,10), isToday: false }; }
 }
 
-const CAL_OWNER_ORDER = ['glen', 'rae', 'shaira'];
+const CAL_OWNER_ORDER = ['rae', 'glen', 'shaira'];
 const CAL_OWNER_LABEL = { glen: 'Glen', rae: 'Rae', shaira: 'Shaira' };
 
 function _calEventCard(ev) {
@@ -1391,9 +1391,17 @@ function calDelegateOptions(id) {
 async function doCalDelegate(id, to) {
   closeAllMenus();
   const r = await apiFetch(`/api/calendar/${id}`, { method: 'PATCH', body: JSON.stringify({ action: 'delegate', to }) });
+  if (!r.ok) return;
   const cap = to.charAt(0).toUpperCase() + to.slice(1);
+  // Delegation is a move: confirm briefly, then remove the card from this lane.
   const wrap = document.querySelector(`#cal-ev-${id} .cal-delegate-wrap`);
-  if (r.ok && wrap) wrap.innerHTML = `<span class="cal-deleg-done">✓ Sent to ${cap}</span>`;
+  if (wrap) wrap.innerHTML = `<span class="cal-deleg-done">✓ Moved to ${cap}</span>`;
+  const el = document.getElementById(`cal-ev-${id}`);
+  if (el) {
+    el.style.transition = 'opacity .3s';
+    setTimeout(() => { el.style.opacity = '0'; }, 600);
+    setTimeout(() => el.remove(), 900);
+  }
 }
 
 // ── Todo render ───────────────────────────────────────────────────────────────
