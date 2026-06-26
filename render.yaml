@@ -63,6 +63,11 @@ services:
       # raw onrender host. Code default is also https://illtowell.com.
       - key: PUBLIC_BASE_URL
         value: https://illtowell.com
+      # Client self-login (magic-link -> session) for the personal portal. The
+      # flow is built (/portal/login -> login-request -> login-verify -> /portal/me);
+      # this flag lights it up. Non-secret feature flag. Accepts 1/true/yes/on.
+      - key: CLIENT_LOGIN_ENABLED
+        value: "1"
       - key: BRAIN_SNAPSHOT_PATH
         value: /data/brain-state.json
       - key: DATA_DIR
