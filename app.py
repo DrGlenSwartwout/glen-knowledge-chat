@@ -10889,6 +10889,8 @@ def api_client_portal(token):
         "actionable": bf_actionable, "scan_date": bf_scan_date, "scan_dates": bf_scan_dates,
         "greeting": bf_content.get("greeting", ""),
         "video": bf_content.get("video") or {},
+        "audio": (bf_content.get("audio") or {}) if bf_confirmed else {},
+        "report_pdf": (bf_content.get("report_pdf") or {}) if bf_confirmed else {},
         "layers": bf_layers,
         "findings": client_findings,
         "pricing_note": bf_content.get("pricing_note", "") if bf_confirmed else "",
