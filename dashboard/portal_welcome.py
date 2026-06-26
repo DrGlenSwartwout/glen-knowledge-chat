@@ -42,6 +42,10 @@ def _first_name(name):
     # Guard against an email-as-name slipping through (e.g. "this.elf@gmail.com").
     if "@" in first or "." in first:
         return ""
+    # Tidy all-lowercase records ("glen" -> "Glen") without disturbing names that
+    # carry intentional internal casing ("McDonald", "deShawn" stay as stored).
+    if first.islower():
+        first = first[:1].upper() + first[1:]
     return first
 
 

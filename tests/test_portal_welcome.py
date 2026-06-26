@@ -42,6 +42,21 @@ def test_content_falls_back_when_no_name_or_email_as_name():
     assert "this.elf" not in html2
 
 
+def test_lowercase_name_is_capitalized_intentional_casing_preserved():
+    # all-lowercase record gets tidied
+    _, text, html = pw.welcome_email_content("glen", "https://x/portal/login")
+    assert "Aloha Glen," in text
+    assert "Aloha Glen," in html
+    # already proper-cased is unchanged
+    _, text2, _ = pw.welcome_email_content("Karin Takahashi", "https://x/portal/login")
+    assert "Aloha Karin," in text2
+    # intentional internal casing preserved (not flattened by .capitalize())
+    _, text3, _ = pw.welcome_email_content("deShawn", "https://x/portal/login")
+    assert "Aloha deShawn," in text3
+    _, text4, _ = pw.welcome_email_content("McDonald", "https://x/portal/login")
+    assert "Aloha McDonald," in text4
+
+
 def test_content_has_no_token_or_secret():
     _, text, html = pw.welcome_email_content("Bob", "https://x/portal/login")
     # self-serve link only — no embedded token query string
