@@ -114,7 +114,8 @@ def top_products(cx, *, year=None, by="revenue", limit=20):
         params.append(f"{int(year)}-%")
     rows = cx.execute(
         f"SELECT product_fmp_id, MAX(product_name) name, MAX(product_slug) slug, "
-        f"SUM(units) units, SUM(revenue_cents) rev FROM product_sales {where} "
+        f"SUM(units) units, SUM(revenue_cents) rev, COUNT(DISTINCT period) periods, MAX(source) src "
+        f"FROM product_sales {where} "
         f"GROUP BY product_fmp_id ORDER BY {order} LIMIT ?", params + [int(limit)]).fetchall()
     return [{"product_fmp_id": r[0], "product_name": r[1], "product_slug": r[2],
-             "units": r[3], "revenue_cents": r[4]} for r in rows]
+             "units": r[3], "revenue_cents": r[4], "periods": r[5], "source": r[6]} for r in rows]
