@@ -162,7 +162,14 @@
         '<span class="js-icon">' + icon + '</span>' +
         '<span>' + (meta.name || card.label) + '</span>');
       land.title = (meta.intrigue || card.paren || "");
-      land.onclick = function (e) { e.stopPropagation(); if (card.href) location.href = card.href; };
+      land.onclick = function (e) {
+        e.stopPropagation();
+        if (!card.href) return;
+        // External destinations (e.g. the E4L Listening Pool) open in a new tab;
+        // internal ones navigate in place.
+        if (isExternal(card.href)) window.open(card.href, "_blank", "noopener");
+        else location.href = card.href;
+      };
       pathEl.appendChild(land);
     });
   }
@@ -212,6 +219,7 @@
       (card.steps || []).forEach(function (s) {
         var a = el("a", "js-pav" + (s.done ? " done" : ""), s.label);
         a.href = card.href || "#";
+        if (isExternal(a.getAttribute("href"))) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
         box.appendChild(a);
       });
       inner.appendChild(box);
