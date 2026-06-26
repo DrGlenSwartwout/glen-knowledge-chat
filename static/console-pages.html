@@ -138,16 +138,17 @@ const TYPES = {
   },
   suggestions: {
     key: 'suggestions',
-    list: '/api/console/page-suggestions',
+    list: '/api/console/topic-suggestions',
     respKey: 'suggestions',
-    detail: function(slug){ return '/api/console/page-suggestion/' + encodeURIComponent(slug); },
-    edit: null,
+    detail: function(slug){ return '/api/console/topic-page/' + encodeURIComponent(slug); },
+    edit: 'topic_page.edit',
     regen: null,
     approve: null,
     approveLabel: null,
     approveMsg: null,
-    live: function(){ return '#'; },
-    labels: {},
+    live: function(slug){ return '/learn/' + encodeURIComponent(slug); },
+    labels: { overview: 'Overview', symptoms: 'Symptoms', causes: 'Causes',
+               solutions: 'Solutions', lifestyle: 'Lifestyle', when_to_seek: 'When to Seek Help' },
     mode: 'queue'
   }
 };
