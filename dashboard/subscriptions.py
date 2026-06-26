@@ -9,6 +9,8 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
+from dashboard import customers as _customers
+
 # ---------------------------------------------------------------------------
 # Tier math
 # ---------------------------------------------------------------------------
@@ -306,6 +308,10 @@ def create_membership(cx, *, email, stripe_customer_id, stripe_payment_method_id
          int(cadence_months), next_charge_date, "{}", now, now, int(amount_cents)),
     )
     cx.commit()
+    try:
+        _customers.find_or_create_by_email(cx, email=email)
+    except Exception:
+        pass
     return cur.lastrowid
 
 
@@ -484,3 +490,26 @@ def count_founding(cx, founding_slug: str) -> int:
     except sqlite3.OperationalError:
         return 0
     return int(row[0]) if row else 0
+
+
+def backfill_member_people(cx):
+    """Ensure every current member (active membership subscription OR unexpired access
+    grant) has a people row, so their personal portal is reachable via self-login.
+    Reuses customers.find_or_create_by_email. Idempotent; returns count created."""
+    now = _now_iso()
+    rows = cx.execute(
+        "SELECT DISTINCT email FROM subscriptions WHERE kind='membership' AND status='active' "
+        "UNION SELECT DISTINCT email FROM memberships WHERE expires_at > ?", (now,)).fetchall()
+    created = 0
+    for (email,) in rows:
+        em = (email or "").strip().lower()
+        if not em:
+            continue
+        try:
+            if cx.execute("SELECT 1 FROM people WHERE lower(email)=?", (em,)).fetchone():
+                continue
+            _customers.find_or_create_by_email(cx, email=em)
+            created += 1
+        except Exception:
+            continue
+    return created

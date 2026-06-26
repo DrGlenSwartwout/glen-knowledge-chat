@@ -7539,6 +7539,11 @@ def _grant_membership(cx, email, days, source):
         "VALUES (?,?,?,?,?,?,?,?)",
         (mid, email, now.isoformat() + "Z", (now + timedelta(days=days)).isoformat() + "Z",
          source, source, "", ""))
+    try:
+        from dashboard import customers as _customers
+        _customers.find_or_create_by_email(cx, email=email)
+    except Exception as _e:
+        print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
     return mid
 
 
@@ -24693,6 +24698,26 @@ def api_console_backfill_affiliate_people():
         if dry:
             return jsonify({"ok": True, "dry_run": True, "would_create": len(missing), "emails": missing})
         created = _ad.backfill_affiliate_people(cx)
+    return jsonify({"ok": True, "created": created, "emails": missing})
+
+
+@app.route("/api/console/backfill-member-people", methods=["POST"])
+def api_console_backfill_member_people():
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import subscriptions as _subs
+    dry = request.args.get("dry_run", "0") == "1"
+    now = _subs._now_iso()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        missing = [r[0] for r in cx.execute(
+            "SELECT DISTINCT m.email FROM ("
+            "  SELECT email FROM subscriptions WHERE kind='membership' AND status='active' "
+            "  UNION SELECT email FROM memberships WHERE expires_at > ?) m "
+            "WHERE m.email IS NOT NULL AND TRIM(m.email)<>'' "
+            "AND NOT EXISTS (SELECT 1 FROM people p WHERE lower(p.email)=lower(m.email))", (now,)).fetchall()]
+        if dry:
+            return jsonify({"ok": True, "dry_run": True, "would_create": len(missing), "emails": missing})
+        created = _subs.backfill_member_people(cx)
     return jsonify({"ok": True, "created": created, "emails": missing})
 
 
