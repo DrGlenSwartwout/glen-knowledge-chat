@@ -84,8 +84,7 @@
     { id: "crm",      label: "CRM",       href: "/console/crm" + qs },
     { id: "products", label: "Products",  href: "/console/products" + qs },
     { id: "biofield", label: "Biofield",  href: "/console/biofield-portal" + qs },
-    { id: "sales",    label: "Sales Pages", href: "/console/sales-pages" + qs },
-    { id: "ingredients", label: "Ingredient Pages", href: "/console/ingredient-pages" + qs },
+    { id: "pages",    label: "Pages",      href: "/console/pages" + qs },
     { id: "biofield-reveals", label: "Biofield Reveals", href: "/console/biofield-reveals" + qs },
     { id: "biofield-intake", label: "Biofield Intake", href: "/console/biofield-intake" + qs },
     { id: "reviews",  label: "Reviews",    href: "/console/reviews" + qs },
@@ -93,8 +92,6 @@
     { id: "neworder", label: "New Order", href: "/orders/new" + qs },
     { id: "practitioners", label: "Practitioners", href: "/console/practitioners" + qs },
     { id: "top-products",  label: "Top Products",  href: "/console/top-products" + qs },
-    { id: "topic-pages",   label: "Topic Pages",   href: "/console/topic-pages" + qs },
-    { id: "topic-suggestions", label: "Topic Suggestions", href: "/console/topic-suggestions" + qs },
     { id: "remedy-meanings", label: "Remedy Meanings", href: "/console/remedy-meanings" + qs },
     { id: "ingredients-ops", label: "Ingredients (Ops)", href: "/admin/ingredients" + qs },
     { id: "cert",          label: "Cert",          href: "/console/cert" + qs },
@@ -280,8 +277,8 @@
   var NAV_PROFILES = {
     glen: {
       tabs: ["dashboard","console","bos","projects","inbox","settings","funnel"],
-      bos:  ["orders","money","crm","products","biofield","sales",
-             "ingredients","topic-pages","biofield-reveals","biofield-intake",
+      bos:  ["orders","money","crm","products","biofield","pages",
+             "biofield-reveals","biofield-intake",
              "reviews","shipping","neworder"]
     },
     rae: {

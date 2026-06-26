@@ -9553,10 +9553,7 @@ def _sales_console_ok():
 
 @app.route("/console/sales-pages")
 def console_sales_pages_page():
-    resp = send_from_directory(STATIC, "console-sales-pages.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    resp.headers["Pragma"] = "no-cache"
-    return resp
+    return redirect("/console/pages#sales", code=302)
 
 
 @app.route("/console/pages")
@@ -9599,13 +9596,7 @@ def api_console_sales_page_load(slug):
 
 @app.route("/console/ingredient-pages")
 def console_ingredient_pages_page():
-    bad = _sales_console_ok()
-    if bad:
-        return bad
-    resp = send_from_directory(STATIC, "console-ingredient-pages.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    resp.headers["Pragma"] = "no-cache"
-    return resp
+    return redirect("/console/pages#ingredient", code=302)
 
 
 @app.route("/api/console/ingredient-pages", methods=["GET"])
@@ -9660,13 +9651,7 @@ def api_console_ingredient_page_load(slug):
 
 @app.route("/console/topic-pages")
 def console_topic_pages_page():
-    bad = _sales_console_ok()
-    if bad:
-        return bad
-    resp = send_from_directory(STATIC, "console-topic-pages.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    resp.headers["Pragma"] = "no-cache"
-    return resp
+    return redirect("/console/pages#topic", code=302)
 
 
 @app.route("/api/console/topic-pages", methods=["GET"])
@@ -9705,13 +9690,7 @@ def api_console_topic_page_load(slug):
 
 @app.route("/console/topic-suggestions")
 def console_topic_suggestions_page():
-    bad = _sales_console_ok()
-    if bad:
-        return bad
-    resp = send_from_directory(STATIC, "console-topic-suggestions.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    resp.headers["Pragma"] = "no-cache"
-    return resp
+    return redirect("/console/pages#suggestions", code=302)
 
 
 @app.route("/api/console/topic-suggestions", methods=["GET"])

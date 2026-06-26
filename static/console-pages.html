@@ -398,7 +398,7 @@ function onApproveFail(r){  // returns true if it handled the message
   return false;
 }
 
-// Lifted verbatim from console-topic-pages.html
+// Renders compliance block for topic pages
 function renderCompliance(compliance){
   const el = $('ed-compliance');
   el.innerHTML = '';
@@ -435,7 +435,7 @@ function renderCompliance(compliance){
   }
 }
 
-// Lifted from console-ingredient-pages.html select() body
+// Renders ingredient panels (scores, traditional use, related forms)
 function renderIngredientPanels(match){
   // Scores
   const scoresEl = $('ed-scores');
