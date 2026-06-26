@@ -11791,46 +11791,46 @@
       "ingredients": [
         {
           "name": "Magnesium N-Acetyl-Taurate (ATA Mg)",
-          "dose": "385 mg"
+          "dose": "770 mg"
         },
         {
           "name": "L-Theanine",
-          "dose": "50 mg"
+          "dose": "100 mg"
         },
         {
           "name": "HydroCurc (cold-water-dispersible curcumin)",
-          "dose": "24.9 mg"
+          "dose": "49.8 mg"
         },
         {
           "name": "Apigenin",
-          "dose": "10 mg"
+          "dose": "20 mg"
         },
         {
           "name": "Mogroside V 50%",
-          "dose": "15 mg"
+          "dose": "30 mg"
         },
         {
           "name": "Lithium Orotate",
-          "dose": "9 mg"
+          "dose": "18 mg"
         },
         {
           "name": "Vitamin B6 (Pyridoxal-5-Phosphate)",
-          "dose": "5 mg"
+          "dose": "10 mg"
         },
         {
           "name": "Methylcobalamin (Vitamin B12)",
-          "dose": "250 mcg"
+          "dose": "500 mcg"
         },
         {
           "name": "L-Methylfolate",
-          "dose": "200 mcg"
+          "dose": "400 mcg"
         },
         {
           "name": "Vitamin D3 (Cholecalciferol)",
-          "dose": "375 IU"
+          "dose": "750 IU"
         }
       ],
-      "ingredients_source": "vault-locked-panel-2026-05-31 (HydroCurc switch 2026-06-25); per-scoop, 2 scoops/day"
+      "ingredients_source": "vault-locked-panel-2026-05-31 (HydroCurc switch 2026-06-25); doses per daily dose (2 scoops)"
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
