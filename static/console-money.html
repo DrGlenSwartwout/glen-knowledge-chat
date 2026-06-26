@@ -21,7 +21,7 @@
   #gate { display:flex; gap:8px; align-items:center; padding:20px; }
   #gate input { padding:8px 10px; border-radius:6px; border:1px solid var(--border,#21472d); background:#0d1117; color:var(--cream,#fdf4d8); }
 
-  /* ---- Payments panel CSS (lifted from console-payments.html, panel-scoped) ---- */
+  /* ---- Payments panel CSS (panel-scoped) ---- */
   #panel-payments h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
   #panel-payments .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
   #panel-payments .fail-banner { background:#2a1110; border:1px solid var(--red); border-radius:10px;
@@ -65,7 +65,7 @@
   #p-err { color:var(--red); margin-top:16px; font-size:13px; display:none; }
   #p-empty { color:var(--muted); font-size:13px; margin-top:16px; display:none; }
 
-  /* ---- Receivables panel CSS (lifted from console-finance.html, panel-scoped) ---- */
+  /* ---- Receivables panel CSS (panel-scoped) ---- */
   #panel-receivables h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
   #panel-receivables .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
   #panel-receivables .summary-strip { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:24px; }
@@ -181,7 +181,7 @@
   }
   function reveal(){ document.getElementById('money-wrap').style.display=''; var t=(location.hash||'').replace('#',''); showMoneyTab(t); }
 
-  // ---- Payments module (lifted from console-payments.html) ----
+  // ---- Payments module ----
   var MoneyPayments = (function(){
     function fmt(cents){ return '$'+((Number(cents)||0)/100).toFixed(2); }
     function when(s){ if(!s) return ''; var d=new Date(s); return isNaN(d)? esc(s) : d.toLocaleString(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}); }
@@ -254,7 +254,7 @@
     return { load: load, setFilter: setFilter };
   })();
 
-  // ---- Receivables module (lifted from console-finance.html) ----
+  // ---- Receivables module ----
   var MoneyReceivables = (function(){
     function fmt(n){ return '$'+(Number(n)||0).toFixed(2); }
 
