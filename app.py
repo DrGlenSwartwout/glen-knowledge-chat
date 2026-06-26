@@ -7539,6 +7539,11 @@ def _grant_membership(cx, email, days, source):
         "VALUES (?,?,?,?,?,?,?,?)",
         (mid, email, now.isoformat() + "Z", (now + timedelta(days=days)).isoformat() + "Z",
          source, source, "", ""))
+    try:
+        from dashboard import customers as _customers
+        _customers.find_or_create_by_email(cx, email=email)
+    except Exception as _e:
+        print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
     return mid
 
 
