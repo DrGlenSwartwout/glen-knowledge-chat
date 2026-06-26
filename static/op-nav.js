@@ -289,7 +289,7 @@
         moved++;
       }
     });
-    wrap.style.display = moved ? "inline-flex" : "none";
+    wrap.style.display = (moved || menu.querySelectorAll("a").length) ? "inline-flex" : "none";
   }
 
   function applyNavProfile(navName) {
