@@ -63,11 +63,10 @@ services:
       # raw onrender host. Code default is also https://illtowell.com.
       - key: PUBLIC_BASE_URL
         value: https://illtowell.com
-      # Client self-login (magic-link -> session) for the personal portal. The
-      # flow is built (/portal/login -> login-request -> login-verify -> /portal/me);
-      # this flag lights it up. Non-secret feature flag. Accepts 1/true/yes/on.
-      - key: CLIENT_LOGIN_ENABLED
-        value: "1"
+      # NOTE: prod env (incl. feature flags like CLIENT_LOGIN_ENABLED) is set in
+      # DOPPLER (remedy-match/prd) and synced to Render — render.yaml is NOT the
+      # lever for flags (a value here doesn't apply on a code deploy + competes
+      # with the Doppler sync). See claude-memory/feedback_render_env_not_doppler.
       - key: BRAIN_SNAPSHOT_PATH
         value: /data/brain-state.json
       - key: DATA_DIR
