@@ -6,6 +6,7 @@ sqlite3 connection passed in by the caller so tests can use :memory:.
 
 import calendar
 import json
+import sqlite3
 from datetime import datetime, timezone
 
 # ---------------------------------------------------------------------------
@@ -468,9 +469,18 @@ def list_founding_pending(cx, founding_slug: str) -> list[dict]:
 
 
 def count_founding(cx, founding_slug: str) -> int:
-    """Count of founding slots consumed for a launch (pending + active, not cancelled)."""
-    row = cx.execute(
-        "SELECT COUNT(*) FROM subscriptions WHERE founding=1 AND founding_slug=?"
-        " AND status!='cancelled'", (founding_slug,)
-    ).fetchone()
+    """Count of founding slots consumed for a launch (pending + active, not cancelled).
+
+    Returns 0 if the subscriptions table does not exist yet. On a fresh database
+    (no subscription ever written) the table is created lazily on first write, so
+    a read-only founding path (e.g. the public /begin/founding/status counter or
+    the reserve open-check) would otherwise raise 'no such table: subscriptions'
+    and 500. No table means no reservations, which is exactly 0."""
+    try:
+        row = cx.execute(
+            "SELECT COUNT(*) FROM subscriptions WHERE founding=1 AND founding_slug=?"
+            " AND status!='cancelled'", (founding_slug,)
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return 0
     return int(row[0]) if row else 0
