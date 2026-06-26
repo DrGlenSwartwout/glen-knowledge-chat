@@ -320,6 +320,98 @@ def send_magic_link_email(to_email: str, name: str, magic_url: str) -> tuple:
     return "console-log", "no email send mechanism configured"
 
 
+def send_portal_welcome_email(to_email, name, login_url):
+    """Send the one-time 'your portal is ready' welcome. Mirrors
+    send_magic_link_email's cascade (GHL workflow -> SMTP -> console-log).
+    Pure network/IO; the caller (_member_join_welcome) has already checked
+    suppression + the once-per-email guard. Returns (sent_via, error_or_none).
+    """
+    from dashboard import portal_welcome as _pw
+    subject, body, html_body = _pw.welcome_email_content(name, login_url)
+
+    # Path 1: GHL workflow trigger (reuse the magic-link workflow channel)
+    if GHL_MAGIC_WORKFLOW:
+        try:
+            contact_id, _, err = ghl_upsert_contact(to_email, name or "", "",
+                                                     source_tag="portal-welcome")
+            if contact_id:
+                _ghl_post(f"/workflows/{GHL_MAGIC_WORKFLOW}/run",
+                          {"contactId": contact_id, "customValues": {
+                              "magic_link_url": login_url,
+                          }})
+                return "ghl-workflow", None
+        except Exception as e:
+            print(f"[welcome] GHL send failed: {e}", flush=True)
+
+    # Path 2: SMTP
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    if smtp_host and smtp_user and smtp_pass:
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = smtp_from
+            msg["To"]      = to_email
+            msg.attach(MIMEText(body, "plain"))
+            msg.attach(MIMEText(html_body, "html"))
+            port = int(os.environ.get("SMTP_PORT", "587"))
+            with smtplib.SMTP(smtp_host, port, timeout=10) as s:
+                s.starttls()
+                s.login(smtp_user, smtp_pass)
+                s.sendmail(smtp_from, [to_email], msg.as_string())
+            return "smtp", None
+        except Exception as e:
+            print(f"[welcome] SMTP send failed: {e}", flush=True)
+
+    # Path 3: console fallback
+    print(f"\n[welcome] PORTAL WELCOME for {to_email}: {login_url}\n", flush=True)
+    return "console-log", "no email send mechanism configured"
+
+
+def _member_join_welcome(cx, email, source=None):
+    """Best-effort: send the one-time portal welcome on a membership join.
+    Called from both join chokepoints (_grant_membership + each create_membership
+    site). Excludes the $1 biofield trial, respects suppression, and sends at most
+    once per email (guard). DB work runs here on the request connection; the
+    network send runs in a daemon thread so the join flow never blocks on SMTP.
+    Never raises.
+    """
+    try:
+        em = (email or "").strip().lower()
+        if not em:
+            return
+        if source == "biofield_trial":
+            return  # $1 biofield trial is not a member join (per spec)
+        try:
+            from dashboard import email_suppression as _es
+            if _es.is_suppressed(cx, em):
+                print(f"[welcome] suppressed, skip {em}", flush=True)
+                return
+        except Exception as _se:
+            print(f"[welcome] suppression check failed: {_se!r}", flush=True)
+        from dashboard import portal_welcome as _pw
+        if not _pw.mark_welcome_sent(cx, em):
+            return  # already sent
+        name = ""
+        try:
+            row = cx.execute("SELECT name FROM people WHERE lower(email)=lower(?)", (em,)).fetchone()
+            if row and row[0]:
+                name = row[0]
+        except Exception:
+            pass
+        login_url = PUBLIC_BASE_URL + "/portal/login"
+        threading.Thread(
+            target=send_portal_welcome_email, args=(em, name, login_url), daemon=True
+        ).start()
+    except Exception as _e:
+        print(f"[welcome] _member_join_welcome skipped: {_e!r}", flush=True)
+
+
 def _link_resend_generic(purpose, url_template, ttl):
     """Factory: mint a fresh `purpose` token (preserving extra) and email its URL."""
     def handler(email, extra):
@@ -5316,6 +5408,7 @@ def studio_claim_return():
                         amount_cents=_gb.MEMBERSHIP_AMOUNT_CENTS,
                         next_charge_date=next_date)
                     _sbr.mark_granted(_cx, email, sub_id)
+                    _member_join_welcome(_cx, email, "subscription")
                     print(f"[studio] free month granted for {email} sub={sub_id}",
                           flush=True)
         except Exception as e:
@@ -5665,6 +5758,7 @@ def _fulfill_biofield_trial(session_id):
                 stripe_payment_method_id=pi["payment_method"],
                 amount_cents=_bt_gb.MEMBERSHIP_AMOUNT_CENTS,
                 next_charge_date=next_charge)
+            _member_join_welcome(_bc, bt_email, "biofield_trial")  # excluded in orchestrator
             _grant_membership(_bc, bt_email, 31, "biofield_trial")
             cancel_tok = secrets.token_urlsafe(32)
             _bc.execute(
@@ -5874,6 +5968,7 @@ def begin_checkout_return():
                                             stripe_payment_method_id=g_pm,
                                             amount_cents=_gb.MEMBERSHIP_AMOUNT_CENTS,
                                             next_charge_date=start)
+                                        _member_join_welcome(_gcx, g_email, "subscription")
                                     _gcx.execute(
                                         "INSERT INTO group_bundle_grants (invoice_id, created_at) "
                                         "VALUES (?,?)", (g_invoice, _now_utc().isoformat()))
@@ -7544,6 +7639,7 @@ def _grant_membership(cx, email, days, source):
         _customers.find_or_create_by_email(cx, email=email)
     except Exception as _e:
         print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
+    _member_join_welcome(cx, email, source)
     return mid
 
 
@@ -11283,6 +11379,7 @@ def portal_group_join_return():
                         cx, email=email, stripe_customer_id=cus,
                         stripe_payment_method_id=pm,
                         amount_cents=_po.MEMBERSHIP_PRICE_CENTS, next_charge_date=next_date)
+                    _member_join_welcome(cx, email, "subscription")
         except Exception as e:
             print(f"[group-join] return failed: {e!r}", flush=True)
     return _redir("/portal/me?joined=1")
@@ -24723,6 +24820,52 @@ def api_console_backfill_member_people():
             return jsonify({"ok": True, "dry_run": True, "would_create": len(missing), "emails": missing})
         created = _subs.backfill_member_people(cx)
     return jsonify({"ok": True, "created": created, "emails": missing})
+
+
+@app.route("/api/console/test-portal-welcome", methods=["POST"])
+def api_console_test_portal_welcome():
+    """Live-verify the portal welcome email. dry_run=1 (default) reports what
+    WOULD happen for ?email= (resolved name, login_url, subject, skip reason)
+    without sending or marking. Without dry_run, sends one welcome to that email
+    and records the once-per-email guard. Console-gated; no mass backfill."""
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import portal_welcome as _pw
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    dry = request.args.get("dry_run", "1") == "1"
+    login_url = PUBLIC_BASE_URL + "/portal/login"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("CREATE TABLE IF NOT EXISTS portal_welcome_sent ("
+                   "  email TEXT PRIMARY KEY, sent_at TEXT)")
+        name = ""
+        try:
+            row = cx.execute("SELECT name FROM people WHERE lower(email)=lower(?)", (email,)).fetchone()
+            if row and row[0]:
+                name = row[0]
+        except Exception:
+            pass
+        suppressed = False
+        try:
+            from dashboard import email_suppression as _es
+            suppressed = bool(_es.is_suppressed(cx, email))
+        except Exception:
+            pass
+        already = bool(cx.execute("SELECT 1 FROM portal_welcome_sent WHERE email=?", (email,)).fetchone())
+        subject, _, _ = _pw.welcome_email_content(name, login_url)
+        if dry:
+            reason = "suppressed" if suppressed else ("already-sent" if already else "would-send")
+            return jsonify({"ok": True, "dry_run": True, "email": email, "name": name,
+                            "login_url": login_url, "subject": subject,
+                            "suppressed": suppressed, "already_sent": already, "result": reason})
+        if suppressed:
+            return jsonify({"ok": True, "email": email, "result": "skipped-suppressed"})
+        if not _pw.mark_welcome_sent(cx, email):
+            return jsonify({"ok": True, "email": email, "result": "already-sent"})
+    sent_via, err = send_portal_welcome_email(email, name, login_url)
+    return jsonify({"ok": err is None, "email": email, "result": "sent",
+                    "sent_via": sent_via, "error": err})
 
 
 @app.route("/api/products")
