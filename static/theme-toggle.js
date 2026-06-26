@@ -35,6 +35,10 @@
   var relabel = function(){};
   function addBtn(){
     if (inFunnelIframe || document.getElementById('rm-theme-toggle') || !document.body) return;
+    // Don't add a second control when another owner already provides the toggle:
+    // the GLEN·OPS bar (op-nav.js) on internal pages, or the journey ribbon
+    // (window.__SHELL__) on public pages.
+    if (document.querySelector('.op-nav-bar') || window.__SHELL__) return;
     var b = document.createElement('button');
     b.id = 'rm-theme-toggle';
     b.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;' +
