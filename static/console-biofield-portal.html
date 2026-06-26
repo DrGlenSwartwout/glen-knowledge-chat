@@ -142,6 +142,8 @@ function boot(){
   if(!key()){ $('gate').style.display='flex'; return; }
   $('app').style.display='block';
   loadCatalog();
+  var _urlEmail = new URLSearchParams(location.search).get('email');
+  if (_urlEmail) { $('email').value = _urlEmail; loadExisting(); }
   if($('#layers') && $('layers').children.length===0) addLayer();
   $('email').addEventListener('input', clientSearch);
   $('name').addEventListener('input', clientSearch);

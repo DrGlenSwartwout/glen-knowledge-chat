@@ -387,6 +387,15 @@ function buildCard(d){
     row.appendChild(sendBtn);
   }
 
+  var portalLink = document.createElement('a');
+  portalLink.href = '/console/biofield-portal?email=' + encodeURIComponent(d.email || '')
+                  + '&key=' + encodeURIComponent(key());
+  portalLink.target = '_blank';
+  portalLink.rel = 'noopener';
+  portalLink.textContent = 'Open Portal →';
+  portalLink.style.cssText = 'margin-left:10px;color:var(--gold,#d4a843);text-decoration:none;font-size:13px';
+  row.appendChild(portalLink);
+
   wrap.appendChild(row);
 
   var statusEl = document.createElement('div');
