@@ -66,7 +66,6 @@
     border: 1px solid var(--border);
   }
   details.section > summary .badge.live { color: var(--green); border-color: var(--green); }
-  details.section > summary .badge.soon { color: var(--amber); border-color: var(--amber); }
 
   details.section > .body {
     padding: 4px 20px 20px 20px;
@@ -193,93 +192,9 @@
     </div>
   </details>
 
-  <!-- ─────────── 3. MAINTENANCE MODE ─────────── -->
-  <details class="section">
-    <summary>
-      <span class="title">Maintenance Mode</span>
-      <span class="badge soon">Coming soon</span>
-    </summary>
-    <div class="body">
-      <p>Global toggle to pause all perpetual cron agents (rae-reconciliation, knowledge-base-hygienist, mentor-keeper, etc.) for travel, debugging, or holidays. Currently each agent has its own schedule; this would add a single off-switch.</p>
-    </div>
-  </details>
-
-  <!-- ─────────── 4. VOICE ROUTING ─────────── -->
-  <details class="section">
-    <summary>
-      <span class="title">Voice Routing</span>
-      <span class="badge soon">Coming soon</span>
-    </summary>
-    <div class="body">
-      <p>Default voice for outbound content: <strong>Justus</strong> (the AI integrator) vs <strong>Glen</strong> (Glen's clone) vs <strong>per-context</strong>. Today this is decided per-task; surfacing it as a setting would let you flip it for a whole campaign.</p>
-    </div>
-  </details>
-
-  <!-- ─────────── 5. NOTIFICATIONS ─────────── -->
-  <details class="section">
-    <summary>
-      <span class="title">Notifications</span>
-      <span class="badge soon">Coming soon</span>
-    </summary>
-    <div class="body">
-      <p>Routing matrix: who (Glen / Rae / Shaira) gets pinged for which event type (E4L scan completed, payment received, support ticket, agent failure). Reduces inbox spam and clarifies ownership.</p>
-    </div>
-  </details>
-
-  <!-- ─────────── 6. QUIET HOURS ─────────── -->
-  <details class="section">
-    <summary>
-      <span class="title">Quiet Hours</span>
-      <span class="badge soon">Coming soon</span>
-    </summary>
-    <div class="body">
-      <p>Time window (default 21:00–07:00 HST) during which no agent sends notifications to Glen. Critical alerts can override.</p>
-    </div>
-  </details>
-
-  <!-- ─────────── 7. AI MODEL DEFAULTS ─────────── -->
-  <details class="section">
-    <summary>
-      <span class="title">AI Model Defaults</span>
-      <span class="badge soon">Coming soon</span>
-    </summary>
-    <div class="body">
-      <p>Per-task model picker: Haiku for chatbot retrieval, Sonnet for follow-up drafts, Opus for synthesis/distinction work. Cost lever — change without redeploying.</p>
-    </div>
-  </details>
-
-  <!-- ─────────── 8. CRON SCHEDULE ─────────── -->
-  <details class="section">
-    <summary>
-      <span class="title">Cron Schedule</span>
-      <span class="badge soon">Coming soon</span>
-    </summary>
-    <div class="body">
-      <p>Read-only view (initially) of every perpetual agent's next-run time, last-run status, and last error. Editable in v2.</p>
-    </div>
-  </details>
-
-  <!-- ─────────── 9. SYNC HEALTH ─────────── -->
-  <details class="section">
-    <summary>
-      <span class="title">Sync Health</span>
-      <span class="badge soon">Coming soon</span>
-    </summary>
-    <div class="body">
-      <p>One-click "Run sync test" — drops a timestamped file in <code>00 System/</code>, watches for round-trip on all 3 Macs, reports mesh health. Plus last-backup timestamps for PB / QB / Pinecone / Supabase.</p>
-    </div>
-  </details>
-
-  <!-- ─────────── 10. ENVIRONMENT ─────────── -->
-  <details class="section">
-    <summary>
-      <span class="title">Environment</span>
-      <span class="badge soon">Coming soon</span>
-    </summary>
-    <div class="body">
-      <p>Doppler config selector (prd / dev / staging) — for safer toggling between live and test environments without editing shell config.</p>
-    </div>
-  </details>
+  <!-- Planned Settings features (Maintenance Mode, Voice Routing, Notifications, Quiet Hours,
+       AI Model Defaults, Cron Schedule, Sync Health, Environment) were "Coming soon" stubs —
+       removed in B4; the roadmap lives in docs/console-settings-roadmap.md. -->
 
 </div>
 <div id="toast"></div>
