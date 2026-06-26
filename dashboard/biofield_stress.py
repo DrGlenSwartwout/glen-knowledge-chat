@@ -172,3 +172,26 @@ def add_stress(cx, tid, label, *, source="voice", balance="required"):
 def add_voice_stress(cx, tid, label):
     """Voice-captured stress (required). Thin wrapper over add_stress."""
     return add_stress(cx, tid, label, source="voice", balance="required")
+
+
+def suggest_minimal_remedies(cx, tid, chain_rows):
+    """Fewest remedies covering the active+required+scan stresses. Returns picks
+    (remedy + covered stress LABELS) and the uncovered labels. Read-only."""
+    from dashboard.biofield_setcover import minimal_remedies
+    data = list_stresses(cx, tid, chain_rows)
+    code_label, active_codes = {}, set()
+    for s in data["active"]:
+        code = s.get("code") or ""
+        if code and s.get("balance") == "required" and s.get("source") == "scan":
+            active_codes.add(code)
+            code_label[code] = s.get("label") or code
+    coverage = {}
+    for remedy, code in cx.execute(
+            "SELECT remedy, code FROM biofield_auth_remedy_coverage WHERE test_id=?",
+            (_num(tid),)).fetchall():
+        coverage.setdefault(remedy, set()).add(code)
+    res = minimal_remedies(active_codes, coverage)
+    picks = [{"remedy": p["remedy"], "covers": [code_label.get(c, c) for c in p["covers"]]}
+             for p in res["picks"]]
+    uncovered = [code_label.get(c, c) for c in res["uncovered"]]
+    return {"picks": picks, "uncovered": uncovered}
