@@ -107,6 +107,17 @@ def _chain_parts(chain_rows):
     return names, heads
 
 
+def historical_remedies(cx, label):
+    """Lowercased remedies Glen historically used for this stress name (FMP snapshot).
+    Empty set on no history or missing snapshot. Never raises."""
+    try:
+        from dashboard.biofield_authoring import stress_suggestions
+        return {(s.get("remedy") or "").strip().lower()
+                for s in stress_suggestions(cx, label) if (s.get("remedy") or "").strip()}
+    except Exception:
+        return set()
+
+
 def list_stresses(cx, tid, chain_rows):
     init_stress_tables(cx)
     cx.row_factory = sqlite3.Row
@@ -120,16 +131,24 @@ def list_stresses(cx, tid, chain_rows):
         "SELECT id, code, label, source, balance, manual_balanced "
         "FROM biofield_auth_stress WHERE test_id=? ORDER BY "
         "CASE balance WHEN 'required' THEN 0 ELSE 1 END, id", (t,)).fetchall()
+    chain_rem_lower = {(n or "").strip().lower() for n in remedy_names if (n or "").strip()}
     active, balanced = [], []
     for r in rows:
         is_cov = r["code"] in covered
         lbl_rem = head_map.get(_norm(r["label"]))
-        is_bal = bool(r["manual_balanced"]) or is_cov or (lbl_rem is not None)
+        hist_rem = None
+        if not is_cov and lbl_rem is None and r["source"] != "scan" and chain_rem_lower:
+            hist = historical_remedies(cx, r["label"]) & chain_rem_lower
+            if hist:
+                hist_rem = sorted(hist)[0]                # deterministic
+        is_bal = bool(r["manual_balanced"]) or is_cov or (lbl_rem is not None) or (hist_rem is not None)
         if is_cov:
             cvs = _coverers(cx, tid, r["code"], remedy_names)
             by = cvs[0] if cvs else ""
         elif lbl_rem is not None:
             by = lbl_rem
+        elif hist_rem is not None:
+            by = hist_rem
         elif r["manual_balanced"]:
             by = "manual"
         else:
