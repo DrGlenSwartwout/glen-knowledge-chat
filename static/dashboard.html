@@ -191,6 +191,7 @@
   .intel-md li{margin-bottom:3px}
   .intel-md strong{color:var(--ink); font-weight:600}
   .intel-md em{color:var(--gold-soft); font-style:italic}
+  .intel-md a.rec-link{ color:var(--accent,#7aa2f7); text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
   /* Recommended-action callouts — color = significance / financial impact */
   .intel-md .act{display:flex; gap:7px; align-items:baseline; font-size:12px; line-height:1.4;
     margin:4px 0; padding:6px 9px; border-radius:6px; border-left:3px solid var(--gold-soft);
@@ -963,9 +964,36 @@ function mdRender(src){
   return out.join("");
 }
 
+/* === record-link resolver (test-extracted) === */
+function resolveRefLinks(html, links){
+  links = links || {};
+  return String(html).replace(
+    /<a href="ref:([^"]+)"[^>]*>([\s\S]*?)<\/a>/g,
+    function(_m, ref, text){
+      var rec = links[ref];
+      if(!rec || !rec.url) return text;            // unknown/missing ref -> plain text
+      var safeUrl = String(rec.url).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+      return '<a href="' + safeUrl + '" class="rec-link" '
+           + 'onclick="recNavigate(this,event)">' + text + '</a>';
+    });
+}
+/* === end record-link resolver === */
+
+// Record links navigate to the console with the console key appended at click
+// time (mirrors actNavigate), so the secret never lives in the stored markdown.
+function recNavigate(el, e){
+  if(e) e.preventDefault();
+  var href = el.getAttribute("href") || "/console";
+  var hash = "";
+  var hi = href.indexOf("#");
+  if(hi >= 0){ hash = href.slice(hi); href = href.slice(0, hi); }
+  var sep = href.indexOf("?") >= 0 ? "&" : "?";
+  location.assign(href + sep + "key=" + encodeURIComponent(consoleKey) + hash);
+}
+
 R.briefing = (d) => {
   if(d.empty) return `<div class="empty">${escapeHtml(d.message||"awaiting first run")}</div>`;
-  return `<div class="intel-md">${mdRender(d.markdown||"")}</div>`;
+  return `<div class="intel-md">${resolveRefLinks(mdRender(d.markdown||""), d.links||{})}</div>`;
 };
 
 // ── Interactive action items (Intelligence cards) ──────────────────────────
