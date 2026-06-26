@@ -4,6 +4,7 @@ Pure / none-raising builder + an injectable prod POST. PHI stays local; only the
 finished portal payload crosses to prod via the existing /admin/portal/upsert.
 """
 import re
+import secrets
 import requests
 
 from dashboard.practitioner_portal import name_to_slug
@@ -92,7 +93,8 @@ def segment_narrative(narrative, layers):
     return segs
 
 
-def build_portal_content(cx, test_id, *, special_price_cents, catalog=None):
+def build_portal_content(cx, test_id, *, special_price_cents, catalog=None,
+                         audio_url=None, report_pdf_url=None):
     """Map an authored intake report to the portal content payload.
 
     Returns {email, name, scan_date, scan_id, content, unresolved}. Never raises
@@ -144,6 +146,10 @@ def build_portal_content(cx, test_id, *, special_price_cents, catalog=None):
         "findings": [],
         "biofield_status": "confirmed",
     }
+    if audio_url:
+        content["audio"] = {"url": audio_url, "label": "Listen to your walkthrough"}
+    if report_pdf_url:
+        content["report_pdf"] = {"url": report_pdf_url}
     return {
         "email": (client.get("email") or "").strip().lower(),
         "name": name,
@@ -154,13 +160,33 @@ def build_portal_content(cx, test_id, *, special_price_cents, catalog=None):
     }
 
 
-def publish_to_portal(payload, *, base_url, console_key, http_post=None):
-    """POST the portal payload to the prod /admin/portal/upsert (send disabled).
+def publish_to_portal(payload, *, base_url, console_key, send=False, http_post=None):
+    """POST the portal payload to the prod /admin/portal/upsert.
+
+    send=True asks the prod upsert to auto-email the portal link, but the upsert
+    only emails when a NEW token is minted (first publish); re-publishing an
+    existing portal returns token=None and never re-sends.
     Returns the parsed JSON (contains url/token). Raises RuntimeError on non-2xx."""
     post = http_post or requests.post
     url = f"{base_url.rstrip('/')}/admin/portal/upsert"
-    body = {**payload, "send": False}
+    body = {**payload, "send": bool(send)}
     r = post(url, json=body, headers={"X-Console-Key": console_key}, timeout=30)
     if not (200 <= r.status_code < 300):
         raise RuntimeError(f"portal upsert failed {r.status_code}: {r.text[:300]}")
     return r.json()
+
+
+def _asset_name(ext):
+    """Return an opaque portal asset filename: biofield-<16 hex chars>.<ext>."""
+    return f"biofield-{secrets.token_hex(8)}.{ext}"
+
+
+def upload_asset(data_bytes, filename, *, base_url, console_key, http_put=None):
+    """PUT raw bytes to the prod /portal-asset/upload; return the served url.
+    Raises RuntimeError on non-2xx. http_put injectable (defaults requests.put)."""
+    put = http_put or requests.put
+    url = f"{base_url.rstrip('/')}/portal-asset/upload?filename={filename}"
+    r = put(url, data=data_bytes, headers={"X-Console-Key": console_key}, timeout=60)
+    if not (200 <= r.status_code < 300):
+        raise RuntimeError(f"asset upload failed {r.status_code}: {r.text[:300]}")
+    return r.json()["url"]

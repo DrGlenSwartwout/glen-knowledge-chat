@@ -263,6 +263,22 @@ function render(d, v){
       </div>`;
   }
 
+  if(d.audio && d.audio.url){
+    html += `
+      <div class="card audio-card">
+        <h2>Your audio walkthrough</h2>
+        <audio controls preload="none" src="${esc(d.audio.url)}" style="width:100%"></audio>
+        ${d.audio.label?`<p class="muted">${esc(d.audio.label)}</p>`:""}
+      </div>`;
+  }
+  if(d.report_pdf && d.report_pdf.url){
+    html += `
+      <div class="card report-card">
+        <h2>Your written report</h2>
+        <a class="btn" href="${esc(d.report_pdf.url)}" target="_blank" rel="noopener" download>Download your report (PDF)</a>
+      </div>`;
+  }
+
   // Cold portal: a freshly-created link arrives with biofield_status === "pending"
   // and no analysis. Show a "Preparing your analysis…" card, post ONE
   // process-request (a local watcher synthesizes + publishes the ai_draft), and
