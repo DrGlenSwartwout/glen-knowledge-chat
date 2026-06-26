@@ -491,6 +491,13 @@ function render(d, v){
       const recruitHtml = dash.recruit_url
         ?`<div class="kv"><span class="k">Recruited</span><span class="v"><a href="${esc(dash.recruit_url)}" target="_blank" rel="noopener">${esc(dash.recruited_count||0)} recruited</a></span></div>`
         :"";
+      const socialLinks = dash.social_links || [];
+      const socialHtml = socialLinks.length
+        ? socialLinks.map(s =>
+            `<div class="kv"><span class="k"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a></span>`+
+            `<span class="v muted small">${esc(s.points||0)} pts · ${esc(s.views||0)} views · ${esc(s.likes||0)} likes · ${esc(s.shares||0)} shares</span></div>`
+          ).join("")
+        : `<p class="muted small">No social shares yet.</p>`;
       html += `<div class="card"><h2>Your Ambassador links</h2>
         <div class="kv"><span class="k">Share &amp; earn</span><span class="v"><a href="${esc(amb.referral_url)}" target="_blank" rel="noopener">${esc(amb.referral_url)}</a></span></div>
         <div class="kv"><span class="k">Invite ambassadors</span><span class="v"><a href="${esc(amb.recruit_url)}" target="_blank" rel="noopener">${esc(amb.recruit_url)}</a></span></div>
@@ -499,6 +506,13 @@ function render(d, v){
         <h3 style="margin:.8rem 0 .3rem;font-size:.9rem">Recent referrals</h3>
         ${recentHtml}
         ${recruitHtml}
+        <h3 style="margin:.8rem 0 .3rem;font-size:.9rem">Social shares</h3>
+        ${socialHtml}
+        <div style="margin-top:.6rem">
+          <textarea id="social-url-input" rows="2" placeholder="Paste URL(s) — one per line or comma-separated" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;font-family:inherit;resize:vertical"></textarea>
+          <button class="btn full" id="socialAddBtn" style="margin-top:.5rem">Add social share</button>
+          <p class="small err" id="socialErr" hidden></p>
+        </div>
       </div>`;
     } else if(amb.status === "pending"){
       html += `<div class="card"><h2>Ambassador</h2><p class="muted">Your ambassador application is under review.</p></div>`;
@@ -545,6 +559,9 @@ function render(d, v){
 
   const nbtn = document.getElementById("notifBtn");
   if(nbtn) nbtn.addEventListener("click", ()=>setNotifyPref(nbtn));
+
+  const sabtn = document.getElementById("socialAddBtn");
+  if(sabtn) sabtn.addEventListener("click", addSocial);
 }
 
 async function setNotifyPref(btn){
@@ -612,6 +629,29 @@ async function reorder(){
     throw new Error(cj.error || "Checkout is temporarily unavailable. Please reach out to us and we’ll help.");
   }catch(e){
     err.textContent = e.message || "Something went wrong. Please reach out and we’ll help.";
+    err.hidden = false; btn.disabled = false; btn.textContent = label;
+  }
+}
+
+async function addSocial(){
+  const input = document.getElementById("social-url-input");
+  const err = document.getElementById("socialErr");
+  const btn = document.getElementById("socialAddBtn");
+  if(!input || !btn) return;
+  const urls = input.value.split(/[\n,]/).map(u=>u.trim()).filter(Boolean);
+  if(!urls.length) return;
+  err.hidden = true; btn.disabled = true; const label = btn.textContent; btn.textContent = "Adding…";
+  try{
+    const r = await fetch(`/api/portal/${encodeURIComponent(seg)}/social-links`, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({urls}),
+    });
+    if(!r.ok) throw new Error();
+    input.value = "";
+    await load();
+  }catch(e){
+    err.textContent = "Something went wrong. Please try again.";
     err.hidden = false; btn.disabled = false; btn.textContent = label;
   }
 }
