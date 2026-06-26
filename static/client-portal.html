@@ -224,7 +224,12 @@ function render(d, v){
   d = d || {};
   const app = document.getElementById("app");
   const displayName = d.name || (v && v.account && v.account.name) || "";
-  const first = (displayName||"").split(" ")[0] || "friend";
+  // Greet by real first name; never show an email-derived token. A name that is
+  // blank, or whose first word contains "@" or "." (e.g. "bob@x.com" stored as a
+  // name, or "this.elf" mis-synced as a first name) falls back to "friend". Real
+  // first names ("Glen", "Prof", "Mary") have no "@"/"." and pass through.
+  let first = (displayName||"").split(" ")[0] || "";
+  if (!first || /[@.]/.test(first)) first = "friend";
   const badges = (v && v.account && v.account.role_badges) || [];
   let html = `
     <div class="hero">
