@@ -283,6 +283,7 @@
         + '<div class="right">'
           + '<div class="bal">'+esc(bal)+'</div>'
           + '<div class="acts">'
+            + '<button onclick="MoneyReceivables.recordPayment('+iid+','+(Number(r.balance)||0)+')">Record payment</button>'
             + '<button onclick="MoneyReceivables.act('+iid+',\'finance.send_payment_reminder\','+escAttr(params_reminder)+')">Send reminder</button>'
             + '<button class="void" onclick="MoneyReceivables.act('+iid+',\'finance.void_invoice\','+escAttr(params_void)+')">Void</button>'
           + '</div>'
@@ -337,6 +338,16 @@
       load();
     }
 
+    function recordPayment(id, balance){
+      var amtStr = prompt('Amount to record against invoice ' + id + ':', String(balance || ''));
+      if (amtStr === null) return;
+      var amount = parseFloat(amtStr);
+      if (!(amount > 0)) { alert('Enter a positive amount.'); return; }
+      var method = prompt('Method (Zelle / Wise / Card / Check / Cash / Other):', 'Zelle');
+      if (method === null) return;
+      act(id, 'finance.record_payment', { invoice_id: String(id), amount: amount, method: method });
+    }
+
     async function doRefund(){
       var inv = (document.getElementById('r-invoice').value || '').trim();
       var amt = parseFloat(document.getElementById('r-amount').value);
@@ -361,7 +372,7 @@
       load();
     }
 
-    return { load: load, act: act, doRefund: doRefund };
+    return { load: load, act: act, doRefund: doRefund, recordPayment: recordPayment };
   })();
 
   // ---- init: reveal if already unlocked, else show gate ----
