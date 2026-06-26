@@ -9118,6 +9118,16 @@ def api_practitioner_portal_data():
     except Exception:
         pass
     data["branding"] = branding
+    # Ambassador block (reuse the client-portal helper; affiliate_signups lives in LOG_DB,
+    # joined to the practitioner by email). Best-effort — never crash portal-data.
+    try:
+        from dashboard import portal_view as _pv
+        _amb_email = (data.get("email") or "").strip()
+        with sqlite3.connect(LOG_DB) as _cx:
+            data["ambassador"] = _pv._ambassador_block(
+                _cx, _amb_email, QUIZ_URL, PUBLIC_BASE_URL)
+    except Exception:
+        pass
     return jsonify({"ok": True, **data})
 
 
