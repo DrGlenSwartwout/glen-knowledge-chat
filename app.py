@@ -16079,6 +16079,35 @@ def clips_delete(filename):
     return jsonify({"ok": True})
 
 
+_PORTAL_ASSETS_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "portal-assets"
+_PORTAL_ASSETS_DIR.mkdir(exist_ok=True)
+_PORTAL_ASSET_RE = r'^[\w\-]+\.(mp3|pdf)$'
+_PORTAL_ASSET_MIME = {"mp3": "audio/mpeg", "pdf": "application/pdf"}
+
+
+@app.route("/portal-asset/upload", methods=["PUT"])
+def portal_asset_upload():
+    secret = request.headers.get("X-Console-Key", "")
+    cs = os.environ.get("CONSOLE_SECRET", "")
+    if cs and secret != cs:
+        return jsonify({"error": "unauthorized"}), 401
+    filename = request.args.get("filename", "")
+    if not filename or not re.match(_PORTAL_ASSET_RE, filename):
+        return jsonify({"error": "invalid filename (alphanumeric, hyphens, .mp3/.pdf only)"}), 400
+    (_PORTAL_ASSETS_DIR / filename).write_bytes(request.data)
+    base_url = os.environ.get("RENDER_EXTERNAL_URL", "https://glen-knowledge-chat.onrender.com")
+    return jsonify({"ok": True, "url": f"{base_url}/portal-asset/{filename}"})
+
+
+@app.route("/portal-asset/<filename>")
+def portal_asset_serve(filename):
+    m = re.match(_PORTAL_ASSET_RE, filename)
+    if not m:
+        return jsonify({"error": "invalid filename"}), 400
+    return send_from_directory(str(_PORTAL_ASSETS_DIR), filename,
+                               mimetype=_PORTAL_ASSET_MIME[m.group(1)])
+
+
 # ── Rae Feedback (humor / speech monitoring) ──────────────────────────────────
 
 def _init_rae_feedback_table():
