@@ -257,6 +257,23 @@
     bar += '</nav>';
   }
 
+  if (active === "settings") {
+    var setMods = [
+      { id: "pricing",  label: "Pricing",         href: "/console/pricing-settings" + qs },
+      { id: "shipping", label: "Shipping-config",  href: "/admin/shipping" + qs },
+      { id: "tax",      label: "Tax",              href: "/admin/tax" + qs },
+      { id: "writemac", label: "Write-Mac",        href: "/console/settings" + qs }
+    ];
+    bar += '<nav class="op-nav-sub" role="navigation" aria-label="Settings">'
+      + '<span class="op-nav-sub-brand">Settings</span>';
+    for (var s = 0; s < setMods.length; s++) {
+      var sm = setMods[s];
+      var smcls = (sm.id === sub) ? "op-nav-subtab active" : "op-nav-subtab";
+      bar += '<a class="' + smcls + '" data-id="' + sm.id + '" href="' + sm.href + '">' + sm.label + '</a>';
+    }
+    bar += '</nav>';
+  }
+
   document.write(styles + bar);
 
   // ── Role-aware nav: reorganize the rendered bar per the caller's nav profile ──
