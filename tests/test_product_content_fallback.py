@@ -63,7 +63,7 @@ def test_learn_more_blank_when_no_page_and_no_sources(monkeypatch):
 def test_learn_more_falls_back_to_products_json(monkeypatch, tmp_path):
     monkeypatch.setattr(pc, "LOG_DB", tmp_path / "chat_log.db")
     monkeypatch.setattr(pc, "_page_text", lambda p: None)          # Pinecone empty
-    monkeypatch.setattr(pc, "_research_sources", lambda n, k=8: [])
+    monkeypatch.setattr(pc, "_research_sources", lambda n, k=8, ingredients=None: [])
     cl = _FakeCl()
     monkeypatch.setattr(pc, "_clients", lambda: (None, cl, None))
     prod = {"slug": "longevity", "name": "Longevity",
@@ -79,7 +79,7 @@ def test_learn_more_falls_back_to_products_json(monkeypatch, tmp_path):
 def test_learn_more_no_data_caches_no_refusal(monkeypatch, tmp_path):
     monkeypatch.setattr(pc, "LOG_DB", tmp_path / "chat_log.db")
     monkeypatch.setattr(pc, "_page_text", lambda p: None)
-    monkeypatch.setattr(pc, "_research_sources", lambda n, k=8: [])
+    monkeypatch.setattr(pc, "_research_sources", lambda n, k=8, ingredients=None: [])
     cl = _FakeCl()
     monkeypatch.setattr(pc, "_clients", lambda: (None, cl, None))
     prod = {"slug": "empty", "name": "Empty"}

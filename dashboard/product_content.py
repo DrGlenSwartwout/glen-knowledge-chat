@@ -168,9 +168,32 @@ def _page_text_from_product(product):
             "price": "", "n_chunks": 0}
 
 
-def _research_sources(name, k=8):
+def _norm_ing(s):
+    """Lowercase, strip punctuation to spaces, collapse whitespace — for matching
+    a research source's ingredient against the product's own ingredient names."""
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", (s or "").lower())).strip()
+
+
+def _ingredient_in_product(source_ing, product_norms):
+    """True if a research source's ingredient belongs to THIS product. Matched by
+    bidirectional substring on normalized names so the legacy 'Magnesium L-Threonate'
+    study is dropped for an ATA-Mg product, while short/long form variants of a real
+    ingredient (e.g. 'Pyridoxal-5-Phosphate' vs 'Vitamin B6 (Pyridoxal-5-Phosphate)')
+    still match. An empty/unknown source ingredient cannot be verified, so it drops."""
+    s = _norm_ing(source_ing)
+    if not s:
+        return False
+    return any(s in p or p in s for p in product_norms if p)
+
+
+def _research_sources(name, k=8, ingredients=None):
     """Per-ingredient research studies from the `ingredients` namespace. Each carries
-    a real study URL — the only URLs the learn-more copy is allowed to cite."""
+    a real study URL — the only URLs the learn-more copy is allowed to cite.
+
+    When `ingredients` (the product's own ingredient list) is supplied, sources are
+    filtered to those whose ingredient belongs to this product, so a semantically
+    similar but wrong-formula study (e.g. Magnesium L-Threonate for an ATA-Mg product)
+    never reaches the learn_more prompt. With no ingredient list, behavior is unchanged."""
     idx, _cl, embed = _clients()
     try:
         vec = embed(f"{name} mechanism clinical research evidence")
@@ -179,11 +202,19 @@ def _research_sources(name, k=8):
     except Exception as e:
         print(f"[product_content] research query failed {name}: {e}", flush=True)
         return []
+    product_norms = []
+    for it in (ingredients or []):
+        nm = it.get("name") if isinstance(it, dict) else it
+        n = _norm_ing(nm)
+        if n:
+            product_norms.append(n)
     out, seen = [], set()
     for m in matches:
         md = m.metadata or {}
         url = (md.get("url") or "").strip()
         if not url or url in seen:
+            continue
+        if product_norms and not _ingredient_in_product(md.get("ingredient", ""), product_norms):
             continue
         seen.add(url)
         out.append({
@@ -217,12 +248,27 @@ _COMPLIANCE = (
     "Keep it clinically honest and never overclaim."
 )
 
+# Ingredient-fidelity guardrail. Appended to every generator's system prompt via
+# _VOICE. Stops cross-product bleed: two formulas can share a name (the ATA-Mg
+# "Neuro Magnesium" vs the legacy Magnesium-L-Threonate "Focus Neuro-Magnesium"),
+# and the model would otherwise carry the wrong form's mechanism over from research.
+_FIDELITY = (
+    "INGREDIENT FIDELITY (mandatory): describe ONLY the ingredients shown for THIS product "
+    "in the supplied page copy / ingredient list, in exactly the forms listed. Do NOT mention, "
+    "compare to, substitute, or describe any ingredient or alternative form that is not listed "
+    "for this product. In particular, if the formula lists one form of a mineral, do NOT mention "
+    "any other form of it (for example, if it lists Magnesium N-Acetyl-Taurate or ATA Mg, do NOT "
+    "mention Magnesium L-Threonate, Magtein, or any other magnesium form). Never carry over "
+    "content, mechanism, or studies from a different product that happens to share a similar name."
+)
+
 _VOICE = (
     "Write in Dr. Glen Swartwout's voice: calm, consultative, clinically grounded with a "
     "light spiritual register. Lead with validation of the reader's lived experience. "
     "Do NOT use em dashes (use commas, colons, or periods). Do NOT use ALL CAPS for emphasis "
     "(acronyms are fine). Never prefix anything with the word 'Hook:'. Never invent ingredients, "
-    "prices, claims, or URLs that are not present in the supplied material.\n\n" + _COMPLIANCE
+    "prices, claims, or URLs that are not present in the supplied material.\n\n"
+    + _COMPLIANCE + "\n\n" + _FIDELITY
 )
 
 
@@ -386,7 +432,7 @@ def get_or_generate(product, content_type, force=False):
         content = _generate_how_it_works(product, page)
         sources = []
     elif content_type == "learn_more":
-        research = _research_sources(product.get("name", ""))
+        research = _research_sources(product.get("name", ""), ingredients=product.get("ingredients"))
         content = _generate_learn_more(product, page, research)
         sources = [{"label": f"{s['study_title']} ({s['publication']} {s['year']})".strip(),
                     "url": s["url"]} for s in research]
