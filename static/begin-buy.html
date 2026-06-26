@@ -520,7 +520,16 @@
 
       if (hasIng){
         var il = document.getElementById('p-ingredients');
-        p.ingredients.forEach(function(ing){ var li=document.createElement('li'); li.textContent=String(ing); il.appendChild(li); });
+        p.ingredients.forEach(function(ing){
+          var li=document.createElement('li');
+          // Ingredients may be plain strings or {name, dose} objects (per data/products.json).
+          if (ing && typeof ing === 'object'){
+            li.textContent = (ing.name || '') + (ing.dose ? ' · ' + ing.dose : '');
+          } else {
+            li.textContent = String(ing);
+          }
+          il.appendChild(li);
+        });
         document.getElementById('t-ingredients').textContent = p.ingredients.length + ' key ingredient' + (p.ingredients.length>1?'s':'');
       } else { document.getElementById('acc-ingredients').classList.add('hidden'); }
 
