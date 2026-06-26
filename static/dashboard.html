@@ -972,9 +972,9 @@ R.briefing = (d) => {
 // Whole item navigates to the card's console area; the ⋯ menu opens local
 // controls (hand to AI / done / dismiss / snooze).
 const ACT_AREA = {
-  "money-cash":       "/console/finance",
+  "money-cash":       "/console/money#receivables",
   "clients-pipeline": "/console",
-  "signals-patterns": "/console/home",
+  "signals-patterns": "/console",
   "shaira-daily":     "/console",
 };
 function actSlug(el){
@@ -986,9 +986,12 @@ function actSlug(el){
 }
 function actNavigate(el, e){
   if (e && e.target.closest(".act-menu, .act-panel")) return;  // menu interactions don't navigate
-  const href = ACT_AREA[actSlug(el)] || "/console";
-  const sep = href.indexOf("?") >= 0 ? "&" : "?";
-  location.assign(href + sep + "key=" + encodeURIComponent(consoleKey));
+  var href = ACT_AREA[actSlug(el)] || "/console";
+  var hash = "";
+  var hi = href.indexOf("#");
+  if (hi >= 0){ hash = href.slice(hi); href = href.slice(0, hi); }
+  var sep = href.indexOf("?") >= 0 ? "&" : "?";
+  location.assign(href + sep + "key=" + encodeURIComponent(consoleKey) + hash);
 }
 function actMenu(e, btn){
   e.stopPropagation();
