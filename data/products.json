@@ -4,6 +4,13 @@
   "default_bottle_type": "default",
   "_wholesale_schema": "Phase 1 wholesale pricing engine (dashboard/wholesale_pricing.py): a product MAY add optional fields — bottle_type (string; matches dashboard.shipping bottle_types.name, used to source the box-fit large-box capacity B), cogs_cents (int; landed product cost), fulfillment_cents (int; per-bottle pick/pack/ship). Retail = price_cents. cogs+fulfillment gate the wholesale margin floor; when unset the margin is left unverified (loud warning). Populate per product before wholesale go-live (data task, see spec 2026-06-01 section 5).",
   "products": {
+    "biofield-analysis": {
+      "name": "Biofield Analysis",
+      "price_cents": 99700,
+      "pinecone_title": "Biofield Analysis",
+      "info_only": true,
+      "_note": "Consultation service line for in-house invoices (SRP $997; bill per-client via unit_cents override). info_only keeps it out of the funnel/store + self-checkout + the shipping packer; the in-house manual-order builder still accepts it."
+    },
     "ei8-microbes-liver-integrator": {
       "name": "EI8 Microbes-Liver Integrator",
       "price_cents": 3997,
