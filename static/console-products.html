@@ -76,6 +76,7 @@
     <h2>Backorders &mdash; reorder worklist <span id="bocount" class="meta" style="font-size:12px"></span></h2>
     <div id="backorders"></div>
     <div class="note">Units owed to customers across open orders (ordered minus shipped). Recorded as you fulfill on the Orders board; clears automatically when fully shipped.</div>
+    <div style="margin-top:12px"><a href="/admin/ingredients?tab=reorder" id="bo-reorder-link">Open reorder report →</a></div>
   </div>
 
   <div id="pane-stale" class="panel">
@@ -145,7 +146,8 @@
   }
 
   function loadAll(){ loadStale(); loadCatalog(); loadBackorders();
-    if (location.hash === '#backorders') showTab('backorders'); }
+    if (location.hash === '#backorders') showTab('backorders');
+    var k = key(); if (k) document.getElementById('bo-reorder-link').href = '/admin/ingredients?tab=reorder&key=' + encodeURIComponent(k); }
 
   async function loadStale(){
     try {
