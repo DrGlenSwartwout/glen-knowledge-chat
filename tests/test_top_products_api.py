@@ -28,3 +28,19 @@ def test_top_products_authed_year_filter(client):
 
 def test_top_products_requires_auth(client):
     assert client.get("/api/console/top-products").status_code in (401, 403)
+
+
+def test_sales_import_form_key_dry_then_write(client):
+    import io
+    csv_bytes = (b"id_fk_product,qty,zc_ext_price,zc_year,zc_month,invoice_date,description,fee_name\n"
+                 b"425,2,138,2026,6,6/3/2026,Microbiome,\n"
+                 b",1,10,2026,6,6/3/2026,Shipping,Shipping\n")
+    def post(extra):
+        data = {"invoice_items": (io.BytesIO(csv_bytes), "invoice_items.csv")}
+        data.update(extra)
+        return client.post("/api/console/sales/import", data=data, content_type="multipart/form-data")
+    assert post({}).status_code == 401                      # no key
+    j1 = post({"key": "test-secret"}).get_json()            # form key, dry-run
+    assert j1["product_rows"] == 1 and j1["written"] == 0
+    j2 = post({"key": "test-secret", "write": "1"}).get_json()
+    assert j2["written"] == 1                                # form key accepted + write

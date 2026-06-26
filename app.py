@@ -24630,7 +24630,10 @@ def api_console_top_products():
             return jsonify({"error": "Unauthorized"}), 401
     year = request.args.get("year")
     by = request.args.get("by", "revenue")
-    limit = int(request.args.get("limit", 20))
+    try:
+        limit = int(request.args.get("limit", 20))
+    except (ValueError, TypeError):
+        limit = 20
     from dashboard import product_sales as _ps
     with sqlite3.connect(LOG_DB) as cx:
         _ps.init_product_sales_table(cx)
@@ -24641,7 +24644,7 @@ def api_console_top_products():
 @app.route("/api/console/sales/import", methods=["POST"])
 def api_console_sales_import():
     if CONSOLE_SECRET:
-        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "") or request.form.get("key", "")
         if key != CONSOLE_SECRET:
             return jsonify({"error": "Unauthorized"}), 401
     f = request.files.get("invoice_items")
