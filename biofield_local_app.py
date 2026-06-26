@@ -26,7 +26,7 @@ from flask import Flask, Response, redirect, request, send_from_directory
 from dashboard.biofield_report import causal_chain_report, list_tests
 from dashboard.biofield_report_html import (
     render_author_html, render_e4l_panel, render_list_html, render_report_html,
-    render_stress_panel)
+    render_stress_panel, render_suggest_panel)
 from dashboard.biofield_e4l import (
     fetch_live as _fetch_live, scan_context as _scan_context,
     search_clients as _search_clients)
@@ -431,6 +431,17 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                           for l in (rep.get("layers") or [])]
             data = _st.list_stresses(cx, test_id, chain_rows)
         return {"data": data, "html": render_stress_panel(data)}
+
+    @app.route("/author/<test_id>/suggest-remedies")
+    def author_suggest_remedies(test_id):
+        from dashboard import biofield_stress as _st
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            chain_rows = [{"head": l.get("head"), "remedy": l.get("remedy")}
+                          for l in (rep.get("layers") or [])]
+            data = _st.suggest_minimal_remedies(cx, test_id, chain_rows)
+        return {"picks": data["picks"], "uncovered": data["uncovered"],
+                "html": render_suggest_panel(data)}
 
     @app.route("/author/<test_id>/stress/<int:sid>/balance", methods=["POST"])
     def author_stress_balance(test_id, sid):

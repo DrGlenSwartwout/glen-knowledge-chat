@@ -579,6 +579,10 @@ def render_list_html(tests, q="", authored=None):
     return _page("Biofield Analysis", body)
 
 
+def render_suggest_panel(data):
+    return ""
+
+
 def render_stress_panel(data):
     data = data or {}
     def _row(s, active):
