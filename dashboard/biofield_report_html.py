@@ -191,6 +191,25 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
         f"<textarea id=vscript rows=6>{_e(video_script)}</textarea>"
         "<div id=audiobox class=btnrow></div>")
 
+    # Portal publish — send to illtowell.com client portal
+    portal_pub = (
+        "<h2>Publish to portal</h2>"
+        "<div class=btnrow>"
+        "<button class=btn onclick=publishPortal()>Publish to portal</button>"
+        "<span id=portal-url></span></div>"
+        "<script>\nasync function publishPortal(){\n"
+        "  var cents=parseInt(prompt('Courtesy price per bottle, in cents (e.g. 5000 = $50)','5000'),10);\n"
+        "  if(!cents)return;\n"
+        "  var r=await fetch('/test/__TID__/publish-portal',{method:'POST',"
+        "headers:{'Content-Type':'application/json'},body:JSON.stringify({special_price_cents:cents})});\n"
+        "  var d=await r.json();\n"
+        "  var el=document.getElementById('portal-url');\n"
+        "  if(d.ok){if(d.url){el.innerHTML='<a href=\"'+d.url+'\" target=\"_blank\">'+d.url+'</a> (copy into her email)';}else{el.textContent=d.note||'Portal updated — previously shared link still works.';}}\n"
+        "  else if(d.unresolved){el.textContent='Unresolved remedies (fix names): '+d.unresolved.join(', ');}\n"
+        "  else{el.textContent='Error: '+(d.error||'publish failed');}\n"
+        "}\n</script>"
+    ).replace("__TID__", tid)
+
     stresses_section = ""
     if stresses is not None:
         bal = stresses.get("balanced") or []
@@ -201,7 +220,7 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
                 for s in bal)
             stresses_section = ("<h2>Stresses balanced</h2>"
                                 f"<ul style='margin:4px 0;padding-left:20px'>{items}</ul>")
-    return _page(f"{name} — Biofield Analysis", head + chain + schedule + narr + vid + stresses_section)
+    return _page(f"{name} — Biofield Analysis", head + chain + schedule + narr + vid + portal_pub + stresses_section)
 
 
 _AUTHOR_JS = """
