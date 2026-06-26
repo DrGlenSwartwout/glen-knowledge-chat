@@ -24728,6 +24728,22 @@ def bos_backfill_trial_orders():
     return jsonify({"ok": True, "dry_run": dry, "result": res})
 
 
+@app.route("/api/console/backfill-affiliate-people", methods=["POST"])
+def api_console_backfill_affiliate_people():
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import affiliate_dashboard as _ad
+    dry = request.args.get("dry_run", "0") == "1"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        missing = [r[0] for r in cx.execute(
+            "SELECT a.email FROM affiliate_signups a WHERE a.status='approved' "
+            "AND NOT EXISTS (SELECT 1 FROM people p WHERE lower(p.email)=lower(a.email))").fetchall()]
+        if dry:
+            return jsonify({"ok": True, "dry_run": True, "would_create": len(missing), "emails": missing})
+        created = _ad.backfill_affiliate_people(cx)
+    return jsonify({"ok": True, "created": created, "emails": missing})
+
+
 @app.route("/api/products")
 def bos_products_list():
     if _bos_actor() is None:
