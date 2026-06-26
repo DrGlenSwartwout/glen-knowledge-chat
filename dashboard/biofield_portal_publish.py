@@ -161,7 +161,11 @@ def build_portal_content(cx, test_id, *, special_price_cents, catalog=None,
 
 
 def publish_to_portal(payload, *, base_url, console_key, send=False, http_post=None):
-    """POST the portal payload to the prod /admin/portal/upsert (send disabled).
+    """POST the portal payload to the prod /admin/portal/upsert.
+
+    send=True asks the prod upsert to auto-email the portal link, but the upsert
+    only emails when a NEW token is minted (first publish); re-publishing an
+    existing portal returns token=None and never re-sends.
     Returns the parsed JSON (contains url/token). Raises RuntimeError on non-2xx."""
     post = http_post or requests.post
     url = f"{base_url.rstrip('/')}/admin/portal/upsert"
