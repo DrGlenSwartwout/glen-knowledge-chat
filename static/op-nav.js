@@ -92,6 +92,19 @@
     { id: "reviews",  label: "Reviews",    href: "/console/reviews" + qs },
     { id: "shipping", label: "Shipping",  href: "/admin/shipping" + qs },
     { id: "neworder", label: "New Order", href: "/orders/new" + qs },
+    { id: "practitioners", label: "Practitioners", href: "/console/practitioners" + qs },
+    { id: "top-products",  label: "Top Products",  href: "/console/top-products" + qs },
+    { id: "topic-pages",   label: "Topic Pages",   href: "/console/topic-pages" + qs },
+    { id: "topic-suggestions", label: "Topic Suggestions", href: "/console/topic-suggestions" + qs },
+    { id: "remedy-meanings", label: "Remedy Meanings", href: "/console/remedy-meanings" + qs },
+    { id: "ingredients-ops", label: "Ingredients (Ops)", href: "/admin/ingredients" + qs },
+    { id: "cert",          label: "Cert",          href: "/console/cert" + qs },
+    { id: "coaching",      label: "Coaching",      href: "/console/coaching-cohort" + qs },
+    { id: "studio-credits", label: "Studio Credits", href: "/console/studio-credits" + qs },
+    { id: "membership",    label: "Membership",    href: "/admin/membership" + qs },
+    { id: "atlas",         label: "Atlas",         href: "/admin/atlas" + qs },
+    { id: "wholesale",     label: "Wholesale",     href: "/admin/wholesale" + qs },
+    { id: "clips",         label: "Clips",         href: "/admin/clips" + qs },
   ];
 
   var styles = ''
@@ -177,6 +190,15 @@
     +   '.op-nav-search:focus{width:150px}'
     +   '.op-nav-dropdown{width:86vw;right:-8px}'
     + '}'
+    // "More ▾" overflow dropdown
+    + '.op-nav-more{position:relative;display:inline-flex;align-items:center}'
+    + '.op-nav-more-btn{cursor:pointer;background:transparent;border:0;font:inherit}'
+    + '.op-nav-more-menu{position:absolute;top:100%;left:0;min-width:180px;'
+    +   'background:#0d0d14;border:1px solid #2a2a35;border-radius:8px;'
+    +   'box-shadow:0 10px 30px rgba(0,0,0,.5);padding:4px 0;display:none;z-index:10000}'
+    + '.op-nav-more.open .op-nav-more-menu{display:block}'
+    + '.op-nav-more-menu a{display:block;padding:7px 14px;color:#9aa0b4;text-decoration:none;border-bottom:0}'
+    + '.op-nav-more-menu a:hover{background:rgba(124,92,191,.16);color:#e6edf3}'
     // light/dark toggle button in the bar
     + '.op-nav-theme{background:transparent;border:1px solid #2a2a35;border-radius:6px;'
     +   'color:#9aa0b4;font:inherit;font-size:13px;line-height:1;padding:4px 8px;margin-right:8px;'
@@ -201,8 +223,11 @@
   for (var i = 0; i < tabs.length; i++) {
     var t = tabs[i];
     var cls = (t.id === active) ? "op-nav-tab active" : "op-nav-tab";
-    bar += '<a class="' + cls + '" href="' + t.href + '">' + t.label + '</a>';
+    bar += '<a class="' + cls + '" data-id="' + t.id + '" href="' + t.href + '">' + t.label + '</a>';
   }
+  bar += '<span class="op-nav-more" id="op-nav-more-top" style="display:none">'
+    + '<button type="button" class="op-nav-tab op-nav-more-btn">More ▾</button>'
+    + '<span class="op-nav-more-menu"></span></span>';
   bar += '<span class="op-nav-spacer"></span>';
   if (!effKey) {
     bar += '<span class="op-nav-key-warn">no ?key — paste &amp; reload</span>';
@@ -224,12 +249,81 @@
     for (var j = 0; j < bosMods.length; j++) {
       var m = bosMods[j];
       var scls = (m.id === sub) ? "op-nav-subtab active" : "op-nav-subtab";
-      bar += '<a class="' + scls + '" href="' + m.href + '">' + m.label + '</a>';
+      bar += '<a class="' + scls + '" data-id="' + m.id + '" href="' + m.href + '">' + m.label + '</a>';
     }
+    bar += '<span class="op-nav-more" id="op-nav-more-bos" style="display:none">'
+      + '<button type="button" class="op-nav-subtab op-nav-more-btn">More ▾</button>'
+      + '<span class="op-nav-more-menu"></span></span>';
     bar += '</nav>';
   }
 
   document.write(styles + bar);
+
+  // ── Role-aware nav: reorganize the rendered bar per the caller's nav profile ──
+  // primary = stays on the bar; everything else moves into the matching "More ▾".
+  var NAV_PROFILES = {
+    glen: {
+      tabs: ["dashboard","console","bos","projects","inbox","settings","funnel"],
+      bos:  ["orders","payments","finance","crm","products","biofield","sales",
+             "ingredients","topic-pages","biofield-reveals","biofield-intake",
+             "reviews","shipping","neworder"]
+    },
+    rae: {
+      tabs: ["dashboard","console","bos","inbox"],
+      bos:  ["orders","payments","finance","crm","reviews","shipping","neworder"]
+    }
+  };
+
+  function reorg(wrapId, linkSelector, primaryIds) {
+    var wrap = document.getElementById(wrapId);
+    if (!wrap) return;
+    var menu = wrap.querySelector(".op-nav-more-menu");
+    var bar = wrap.parentNode;
+    var moved = 0;
+    bar.querySelectorAll(linkSelector).forEach(function (a) {
+      var id = a.getAttribute("data-id");
+      if (!id) return;
+      if (primaryIds.indexOf(id) === -1) {
+        a.classList.remove("op-nav-tab", "op-nav-subtab");
+        menu.appendChild(a);
+        moved++;
+      }
+    });
+    wrap.style.display = moved ? "inline-flex" : "none";
+  }
+
+  function applyNavProfile(navName) {
+    var prof = NAV_PROFILES[navName] || NAV_PROFILES.glen;
+    reorg("op-nav-more-top", ".op-nav-bar > a.op-nav-tab", prof.tabs);
+    reorg("op-nav-more-bos", ".op-nav-sub > a.op-nav-subtab", prof.bos);
+  }
+
+  // Toggle "More" dropdowns (event delegation; survives reorg).
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest && e.target.closest(".op-nav-more-btn");
+    document.querySelectorAll(".op-nav-more.open").forEach(function (w) {
+      if (!btn || w !== btn.parentNode) w.classList.remove("open");
+    });
+    if (btn) { btn.parentNode.classList.toggle("open"); e.preventDefault(); }
+  });
+
+  // Render instantly from the cached profile (no flash on repeat visits),
+  // then revalidate via /api/me. Owner-safe: any failure leaves the full bar.
+  var NAV_CACHE_KEY = "op_nav_profile";
+  try {
+    var cached = localStorage.getItem(NAV_CACHE_KEY);
+    if (cached === "rae" || cached === "glen") applyNavProfile(cached);
+  } catch (e) {}
+
+  fetch("/api/me" + (effKey ? "?key=" + encodeURIComponent(effKey) : ""),
+        { headers: effKey ? { "X-Console-Key": effKey } : {} })
+    .then(function (r) { return r.json(); })
+    .then(function (me) {
+      var navName = (me && me.nav === "rae") ? "rae" : "glen";  // only 'rae' streamlines
+      try { localStorage.setItem(NAV_CACHE_KEY, navName); } catch (e) {}
+      applyNavProfile(navName);
+    })
+    .catch(function () { /* leave full bar */ });
 
   // Wire the light/dark toggle. Reflects the active theme, persists to localStorage,
   // and live-syncs across same-origin documents via the 'storage' event.
