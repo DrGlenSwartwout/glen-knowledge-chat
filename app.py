@@ -81,6 +81,7 @@ FEEDBACK_VIEW_URL   = os.environ.get("FEEDBACK_VIEW_URL",   "https://Truly.VIP/F
 # dashboard/openai_failover.py.
 from dashboard.openai_failover import build_openai_client as _build_openai_client
 from dashboard.people import set_person_tags, distinct_tags
+from dashboard import affiliate_dashboard
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -8649,16 +8650,7 @@ def affiliate_social_links_submit():
         slug, email, status = row
         if status != "approved":
             return jsonify({"error": "application pending review"}), 403
-        ts = datetime.now(timezone.utc).isoformat()
-        count = 0
-        for u in (urls or [])[:10]:
-            u = (u or "").strip()[:500]
-            if not u.startswith(("http://", "https://")):
-                continue
-            cx.execute("INSERT INTO affiliate_social_links (ts, slug, email, url) VALUES (?,?,?,?)",
-                       (ts, slug, email, u))
-            count += 1
-        cx.commit()
+        count = affiliate_dashboard.add_social_links(cx, slug, email, urls)
     return jsonify({"ok": True, "count": count})
 
 
