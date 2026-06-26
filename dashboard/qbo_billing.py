@@ -238,10 +238,11 @@ def apply_invoice_discount(invoice_id, discount_cents):
     return _post("/invoice", body).get("Invoice")
 
 
-def record_payment(customer_id, amount_cents, invoice_id):
-    """Record a QBO Payment applied to an invoice (marks it paid) — used when Stripe
-    confirms a card payment. Idempotent: skips when the invoice balance is already
-    zero (so a re-hit of the return URL won't double-pay)."""
+def record_payment(customer_id, amount_cents, invoice_id, method=None):
+    """Record a QBO Payment applied to an invoice. Idempotent: skips when the invoice
+    balance is already ≤ 0 (so a re-hit of the return URL won't double-pay). `method`
+    (optional) is recorded as a free-text memo (PrivateNote) so split payments by
+    different methods are distinguishable."""
     inv = get_invoice(invoice_id)
     if not inv:
         raise RuntimeError(f"invoice {invoice_id} not found")
@@ -258,6 +259,8 @@ def record_payment(customer_id, amount_cents, invoice_id):
         "Line": [{"Amount": amt,
                   "LinkedTxn": [{"TxnId": str(invoice_id), "TxnType": "Invoice"}]}],
     }
+    if method:
+        body["PrivateNote"] = "Console payment — method: " + str(method)
     return _post("/payment", body).get("Payment")
 
 

@@ -235,3 +235,33 @@ action(key="finance.refund_order", module="money", title="Refund order",
        description="Record a customer refund in QuickBooks (money-out RefundReceipt).",
        risk_tier=MONEY_SEND, permission=(OWNER, OPS, "va"),
        confirm_summary=_refund_confirm_summary)(_refund_order_exec)
+
+
+def _record_payment_confirm_summary(params):
+    amt = float(params.get("amount") or 0)
+    m = params.get("method")
+    return "Record $%.2f against invoice %s%s?" % (amt, params.get("invoice_id"), (" via " + str(m)) if m else "")
+
+
+def _record_payment_exec(params, ctx):
+    invoice_id = params.get("invoice_id")
+    try:
+        amount = float(params.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    if not invoice_id or amount <= 0:
+        return {"ok": False, "error": "invoice_id and a positive amount are required"}
+    from dashboard import qbo_billing as qb
+    inv = qb.get_invoice(invoice_id)
+    if not inv:
+        return {"ok": False, "error": "invoice %s not found" % invoice_id}
+    customer_id = (inv.get("CustomerRef") or {}).get("value")
+    qb.record_payment(customer_id, round(amount * 100), invoice_id, method=params.get("method"))
+    _cache.clear()
+    return {"ok": True, "invoice_id": invoice_id, "amount": amount}
+
+
+action(key="finance.record_payment", module="money", title="Record payment",
+       description="Record a customer payment against a QuickBooks invoice (partial/split supported).",
+       risk_tier=MONEY_SEND, permission=(OWNER, OPS),
+       confirm_summary=_record_payment_confirm_summary)(_record_payment_exec)
