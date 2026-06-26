@@ -80,8 +80,7 @@
   // from the old standalone top tabs.
   var bosMods = [
     { id: "orders",   label: "Orders",    href: "/console/orders" + qs },
-    { id: "payments", label: "Payments",  href: "/console/payments" + qs },
-    { id: "finance",  label: "Finance",   href: "/console/finance" + qs },
+    { id: "money",    label: "Money",     href: "/console/money" + qs },
     { id: "crm",      label: "CRM",       href: "/console/crm" + qs },
     { id: "products", label: "Products",  href: "/console/products" + qs },
     { id: "biofield", label: "Biofield",  href: "/console/biofield-portal" + qs },
@@ -281,13 +280,13 @@
   var NAV_PROFILES = {
     glen: {
       tabs: ["dashboard","console","bos","projects","inbox","settings","funnel"],
-      bos:  ["orders","payments","finance","crm","products","biofield","sales",
+      bos:  ["orders","money","crm","products","biofield","sales",
              "ingredients","topic-pages","biofield-reveals","biofield-intake",
              "reviews","shipping","neworder"]
     },
     rae: {
       tabs: ["dashboard","console","bos","inbox"],
-      bos:  ["orders","payments","finance","crm","reviews","shipping","neworder"]
+      bos:  ["orders","money","crm","reviews","shipping","neworder"]
     }
   };
 

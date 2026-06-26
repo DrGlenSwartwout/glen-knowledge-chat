@@ -24706,7 +24706,12 @@ def bos_cert_page():
 
 @app.route("/console/payments")
 def bos_payments_page():
-    resp = send_from_directory(STATIC, "console-payments.html")
+    return redirect("/console/money#payments", code=302)
+
+
+@app.route("/console/money")
+def bos_money_page():
+    resp = send_from_directory(STATIC, "console-money.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
 
@@ -24871,9 +24876,7 @@ def bos_backorders():
 
 @app.route("/console/finance")
 def bos_finance_page():
-    resp = send_from_directory(STATIC, "console-finance.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return resp
+    return redirect("/console/money#receivables", code=302)
 
 
 @app.route("/console/crm")
