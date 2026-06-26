@@ -99,3 +99,30 @@ def rebuild_people_columns(cx, email):
          json.dumps(p["terrain_concerns"]), json.dumps(p["body_systems"]),
          p["challenges"], p["goals"], email))
     cx.commit()
+
+
+def _parse_list(s):
+    try:
+        v = json.loads(s or "[]")
+    except Exception:
+        return []
+    return [str(x).strip() for x in v if str(x).strip()] if isinstance(v, list) else []
+
+
+def import_from_people(cx):
+    init_tables(cx)
+    cx.row_factory = sqlite3.Row
+    rows = cx.execute(
+        "SELECT email, tags, conditions, terrain_concerns, body_systems, challenges, goals "
+        "FROM people WHERE TRIM(COALESCE(email,''))<>''").fetchall()
+    persons, attrs = 0, 0
+    for r in rows:
+        persons += 1
+        for f in DISCRETE_FIELDS:
+            for val in _parse_list(r[f]):
+                if set_attr(cx, r["email"], f, val, source="import"):
+                    attrs += 1
+        for f in SCALAR_FIELDS:
+            if (r[f] or "").strip() and set_attr(cx, r["email"], f, r[f], source="import"):
+                attrs += 1
+    return {"persons": persons, "attrs": attrs}
