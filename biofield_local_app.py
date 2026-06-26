@@ -724,7 +724,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             res = _bpp.publish_to_portal(payload, base_url=base, console_key=key)
         except Exception as e:
             return {"ok": False, "error": str(e)[:300]}, 502
-        return {"ok": True, "url": res.get("url", ""), "unresolved": []}
+        return {"ok": True, "url": res.get("url", ""),
+                "updated": bool(res.get("updated")), "note": res.get("note", ""),
+                "unresolved": []}
 
     return app
 

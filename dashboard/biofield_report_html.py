@@ -204,7 +204,7 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
         "headers:{'Content-Type':'application/json'},body:JSON.stringify({special_price_cents:cents})});\n"
         "  var d=await r.json();\n"
         "  var el=document.getElementById('portal-url');\n"
-        "  if(d.ok){el.innerHTML='<a href=\"'+d.url+'\" target=\"_blank\">'+d.url+'</a> (copy into her email)';}\n"
+        "  if(d.ok){if(d.url){el.innerHTML='<a href=\"'+d.url+'\" target=\"_blank\">'+d.url+'</a> (copy into her email)';}else{el.textContent=d.note||'Portal updated — previously shared link still works.';}}\n"
         "  else if(d.unresolved){el.textContent='Unresolved remedies (fix names): '+d.unresolved.join(', ');}\n"
         "  else{el.textContent='Error: '+(d.error||'publish failed');}\n"
         "}\n</script>"

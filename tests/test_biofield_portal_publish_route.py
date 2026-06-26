@@ -42,3 +42,38 @@ def test_publish_route_409_on_unresolved(tmp_path, monkeypatch):
     assert r.status_code == 409
     assert r.get_json()["unresolved"] == ["Vitality"]
     assert called["n"] == 0      # no publish attempted
+
+
+def test_publish_route_repub_no_url(tmp_path, monkeypatch):
+    """Re-publish: upsert returns updated=True but no url key — route surfaces note."""
+    monkeypatch.setattr(bpp, "load_catalog", lambda: {"vitality": {"name": "Vitality"}})
+    monkeypatch.setattr(bpp, "publish_to_portal",
+                        lambda payload, **kw: {
+                            "ok": True, "updated": True, "portal_id": 1,
+                            "note": "existing portal updated; prior link unchanged"})
+    monkeypatch.setenv("PORTAL_PUBLISH_BASE_URL", "https://illtowell.com")
+    monkeypatch.setenv("CONSOLE_SECRET", "")
+    client, aid = _client(tmp_path)
+    r = client.post(f"/test/{aid}/publish-portal", json={"special_price_cents": 5000})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["url"] == ""
+    assert body["updated"] is True
+    assert "existing portal updated" in body["note"]
+
+
+def test_publish_route_502_on_runtime_error(tmp_path, monkeypatch):
+    """publish_to_portal raises -> route returns 502 with ok=False."""
+    monkeypatch.setattr(bpp, "load_catalog", lambda: {"vitality": {"name": "Vitality"}})
+
+    def _fail(payload, **kw):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(bpp, "publish_to_portal", _fail)
+    monkeypatch.setenv("PORTAL_PUBLISH_BASE_URL", "https://illtowell.com")
+    monkeypatch.setenv("CONSOLE_SECRET", "")
+    client, aid = _client(tmp_path)
+    r = client.post(f"/test/{aid}/publish-portal", json={"special_price_cents": 5000})
+    assert r.status_code == 502
+    assert r.get_json()["ok"] is False
