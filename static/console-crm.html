@@ -56,7 +56,10 @@
   <div class="panel">
     <h2>Act on a contact</h2>
     <label for="email">Contact email</label>
-    <input id="email" type="email" placeholder="person@example.com" />
+    <div style="position:relative">
+      <input id="email" type="email" placeholder="person@example.com" autocomplete="off" />
+      <div id="crm-ac" style="position:absolute;z-index:50;background:var(--surface,#111f16);border:1px solid var(--border,#21472d);border-radius:8px;display:none;max-height:240px;overflow:auto;left:0;right:0;top:calc(100% + 2px)"></div>
+    </div>
     <label for="tag">Tag (for Add tag)</label>
     <input id="tag" type="text" placeholder="e.g. warm-lead" />
     <label for="note">Note (for Log note)</label>
@@ -121,10 +124,43 @@
       if (!items.length){ host.innerHTML = '<div class="row meta">Nothing waiting to sync.</div>'; return; }
       host.innerHTML = items.map(function(q){
         return '<div class="row"><span><span class="op">'+esc(q.op)+'</span>'+esc(q.email)+'</span>'
-             + '<span class="meta">'+esc((q.created_at||'').slice(0,16).replace('T',' '))+'</span></div>';
+             + '<span class="meta">'+esc((q.created_at||'').slice(0,16).replace('T',' '))
+             + ' <button onclick="cancelQ('+Number(q.id)+')">Cancel</button>'
+             + ' <button onclick="retryQ('+Number(q.id)+')">Retry</button></span></div>';
       }).join('');
     } catch(e){ /* leave as-is */ }
   }
+
+  async function _setQ(id, status){
+    await fetch('/api/ghl/queue/result', {method:'POST', headers:hdr(), body:JSON.stringify({id:id, status:status})});
+    loadQueue();
+  }
+  function cancelQ(id){ _setQ(id, 'cancelled'); }
+  function retryQ(id){ _setQ(id, 'pending'); }
+
+  var _crmAcTimer=null;
+  function crmAcHide(){ var d=document.getElementById('crm-ac'); if(d){ d.style.display='none'; } }
+  function crmSearch(ev){
+    var input=ev.target, q=(input.value||'').trim();
+    clearTimeout(_crmAcTimer);
+    if(q.length<2){ crmAcHide(); return; }
+    _crmAcTimer=setTimeout(async function(){
+      var r=await fetch('/api/people?q='+encodeURIComponent(q)+'&limit=8', {headers:hdr()});
+      var j=await r.json().catch(function(){return {};});
+      var people=(j && j.people) || [];
+      var d=document.getElementById('crm-ac');
+      if(!people.length){ crmAcHide(); return; }
+      d.innerHTML=people.map(function(p){
+        var nm=esc(p.name || [p.first_name,p.last_name].filter(Boolean).join(' ') || '(no name)');
+        return '<div class="ac-item" data-email="'+esc(p.email||'')+'" style="padding:7px 12px;cursor:pointer">'+nm+' <span class="meta">'+esc(p.email||'')+'</span></div>';
+      }).join('');
+      d.style.display='block';
+      d.querySelectorAll('.ac-item').forEach(function(it){ it.onclick=function(){ document.getElementById('email').value=it.dataset.email; crmAcHide(); }; });
+    }, 250);
+  }
+  document.getElementById('email').addEventListener('input', crmSearch);
+  document.addEventListener('click', function(e){ if(!e.target.closest('#crm-ac') && e.target!==document.getElementById('email')) crmAcHide(); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') crmAcHide(); });
 
   if (key()) { document.getElementById('gate').style.display='none'; loadQueue(); }
 </script>
