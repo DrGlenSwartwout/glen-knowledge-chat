@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Money - Business OS</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<style>
+  :root { --bg:#0a150d; --surface:#111f16; --surface2:#162318; --border:#21472d;
+          --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --red:#c0432b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  /* Page chrome + tabs. The two source pages' <style> blocks are pasted below,
+     each rule prefixed with its panel selector to avoid CSS collisions. */
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg,#0a150d); color:var(--cream,#fdf4d8); }
+  .money-head { padding:16px 20px 0; }
+  .money-head h1 { margin:0 0 12px; font-size:20px; }
+  .money-tabs { display:flex; gap:6px; padding:0 20px; border-bottom:1px solid var(--border,#21472d); }
+  .mtab { background:transparent; border:0; border-bottom:2px solid transparent; color:var(--muted,#a89870); font:600 14px/1 inherit; padding:10px 16px; cursor:pointer; }
+  .mtab.active { color:var(--cream,#fdf4d8); border-bottom-color:var(--gold,#d4a843); }
+  .money-panel { padding:16px 20px; }
+  #gate { display:flex; gap:8px; align-items:center; padding:20px; }
+  #gate input { padding:8px 10px; border-radius:6px; border:1px solid var(--border,#21472d); background:#0d1117; color:var(--cream,#fdf4d8); }
+
+  /* ---- Payments panel CSS (lifted from console-payments.html, panel-scoped) ---- */
+  #panel-payments h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
+  #panel-payments .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+  #panel-payments .fail-banner { background:#2a1110; border:1px solid var(--red); border-radius:10px;
+                 padding:14px 16px; margin-bottom:22px; display:none; }
+  #panel-payments .fail-banner.show { display:block; }
+  #panel-payments .fail-banner .hd { color:var(--red); font-weight:700; font-size:14px;
+                     font-family:"Raleway",sans-serif; margin-bottom:8px;
+                     display:flex; align-items:center; gap:8px; }
+  #panel-payments .fail-row { font-size:12px; color:var(--cream); padding:5px 0;
+              border-top:1px solid rgba(192,67,43,.3); line-height:1.5; }
+  #panel-payments .fail-row:first-of-type { border-top:0; }
+  #panel-payments .fail-row .ctx { color:var(--gold); }
+  #panel-payments .fail-row .when { color:var(--muted); }
+  #panel-payments .fail-row .em { color:var(--muted); font-size:11px; }
+  #panel-payments .summary-strip { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:22px; }
+  #panel-payments .summary-tile { background:var(--surface); border:1px solid var(--border);
+                  border-radius:10px; padding:12px 18px; min-width:160px; }
+  #panel-payments .summary-tile .label { font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+                         color:var(--muted); margin-bottom:4px; }
+  #panel-payments .summary-tile .value { font-size:20px; font-weight:700; font-family:"Raleway",sans-serif; }
+  #panel-payments .filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  #panel-payments .filters button { font-size:12px; border:1px solid var(--border); background:transparent;
+                    color:var(--muted); border-radius:14px; padding:5px 14px; cursor:pointer; }
+  #panel-payments .filters button:hover { border-color:var(--gold); color:var(--gold); }
+  #panel-payments .filters button.active { border-color:var(--gold); color:var(--gold); background:var(--surface2); }
+  #panel-payments table { width:100%; border-collapse:collapse; background:var(--surface);
+          border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  #panel-payments thead th { text-align:left; font-size:10px; letter-spacing:.07em; text-transform:uppercase;
+             color:var(--muted); padding:10px 14px; border-bottom:1px solid var(--border);
+             font-weight:600; }
+  #panel-payments tbody td { padding:11px 14px; font-size:13px; border-top:1px solid var(--border); vertical-align:top; }
+  #panel-payments tbody tr:hover { background:var(--surface2); }
+  #panel-payments td.amt { font-weight:700; font-family:"Raleway",sans-serif; white-space:nowrap; }
+  #panel-payments .src { display:inline-block; font-size:10px; letter-spacing:.04em; text-transform:uppercase;
+         border-radius:5px; padding:1px 7px; border:1px solid var(--border); color:var(--muted); }
+  #panel-payments .src.subscription { border-color:var(--gold); color:var(--gold); }
+  #panel-payments .pi { font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:11px; color:var(--muted); }
+  #panel-payments .who .nm { font-weight:600; }
+  #panel-payments .who .em { color:var(--muted); font-size:12px; }
+  #panel-payments .when { color:var(--muted); font-size:12px; white-space:nowrap; }
+  #p-err { color:var(--red); margin-top:16px; font-size:13px; display:none; }
+  #p-empty { color:var(--muted); font-size:13px; margin-top:16px; display:none; }
+
+  /* ---- Receivables panel CSS (lifted from console-finance.html, panel-scoped) ---- */
+  #panel-receivables h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
+  #panel-receivables .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+  #panel-receivables .summary-strip { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:24px; }
+  #panel-receivables .summary-tile { background:var(--surface); border:1px solid var(--border);
+                  border-radius:10px; padding:12px 18px; min-width:160px; }
+  #panel-receivables .summary-tile .label { font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+                         color:var(--muted); margin-bottom:4px; }
+  #panel-receivables .summary-tile .value { font-size:20px; font-weight:700; font-family:"Raleway",sans-serif; }
+  #panel-receivables .summary-tile .value.overdue { color:var(--red); }
+  #panel-receivables .ar-list { display:flex; flex-direction:column; gap:10px; }
+  #panel-receivables .ar-row { background:var(--surface); border:1px solid var(--border);
+            border-radius:10px; padding:14px 16px;
+            display:grid; grid-template-columns:1fr auto; gap:8px; align-items:start; }
+  #panel-receivables .ar-row .left .who { font-weight:600; font-size:14px; }
+  #panel-receivables .ar-row .left .meta { color:var(--muted); font-size:12px; margin-top:4px; line-height:1.6; }
+  #panel-receivables .ar-row .left .badge { display:inline-block; font-size:10px; letter-spacing:.05em;
+                         text-transform:uppercase; border-radius:5px; padding:1px 7px;
+                         border:1px solid var(--border); color:var(--muted); }
+  #panel-receivables .ar-row .left .badge.old { border-color:var(--red); color:var(--red); }
+  #panel-receivables .ar-row .right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+  #panel-receivables .ar-row .right .bal { font-size:16px; font-weight:700; font-family:"Raleway",sans-serif; }
+  #panel-receivables .acts { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  #panel-receivables .acts button { font-size:11px; border:1px solid var(--border); background:transparent;
+                 color:var(--cream); border-radius:6px; padding:3px 9px; cursor:pointer; }
+  #panel-receivables .acts button:hover { border-color:var(--gold); color:var(--gold); }
+  #panel-receivables .acts button.void:hover { border-color:var(--red); color:var(--red); }
+  #f-err { color:var(--red); margin-top:16px; font-size:13px; display:none; }
+  #f-empty { color:var(--muted); font-size:13px; margin-top:16px; display:none; }
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="bos" data-sub="money"></script>
+
+<div id="gate">
+  <input id="key" type="password" placeholder="Console key">
+  <button onclick="unlock()">Unlock</button>
+</div>
+
+<div id="money-wrap" style="display:none">
+  <div class="money-head"><h1>Money</h1></div>
+  <div class="money-tabs">
+    <button class="mtab active" data-tab="payments" onclick="showMoneyTab('payments')">Payments</button>
+    <button class="mtab" data-tab="receivables" onclick="showMoneyTab('receivables')">Receivables</button>
+  </div>
+
+  <div id="panel-payments" class="money-panel">
+    <h1>Payments</h1>
+    <div class="sub">Stripe charges — one-time checkouts and subscription renewals. Read-only.</div>
+
+    <div class="fail-banner" id="p-failBanner"></div>
+
+    <div class="summary-strip" id="p-summary"></div>
+
+    <div class="filters" id="p-filters">
+      <button data-src="" class="active" onclick="MoneyPayments.setFilter(this)">All</button>
+      <button data-src="subscription" onclick="MoneyPayments.setFilter(this)">Subscriptions</button>
+      <button data-src="membership" onclick="MoneyPayments.setFilter(this)">Coaching</button>
+      <button data-src="biofield_trial" onclick="MoneyPayments.setFilter(this)">Trials</button>
+      <button data-src="funnel" onclick="MoneyPayments.setFilter(this)">Funnel</button>
+    </div>
+
+    <table id="p-tbl" style="display:none">
+      <thead><tr>
+        <th>When</th><th>Customer</th><th>Source</th><th>Amount</th><th>Status</th><th>PaymentIntent</th>
+      </tr></thead>
+      <tbody id="p-board"></tbody>
+    </table>
+    <div id="p-err"></div>
+    <div id="p-empty">No Stripe payments yet.</div>
+  </div>
+
+  <div id="panel-receivables" class="money-panel" style="display:none">
+    <h1>Finance</h1>
+    <div class="sub">Accounts receivable aging and payment actions.</div>
+
+    <div class="summary-strip" id="f-summary"></div>
+
+    <div data-goto="refund" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:20px">
+      <div style="font-family:'Raleway',sans-serif;font-size:14px;font-weight:600;margin-bottom:10px">Issue a refund</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <input id="r-invoice" placeholder="QBO invoice id" style="flex:1;min-width:140px;padding:7px 10px;background:var(--bg);color:var(--cream);border:1px solid var(--border);border-radius:6px;font-size:13px" />
+        <input id="r-amount" type="number" step="0.01" placeholder="amount $" style="width:120px;padding:7px 10px;background:var(--bg);color:var(--cream);border:1px solid var(--border);border-radius:6px;font-size:13px" />
+        <input id="r-reason" placeholder="reason (optional)" style="flex:1;min-width:140px;padding:7px 10px;background:var(--bg);color:var(--cream);border:1px solid var(--border);border-radius:6px;font-size:13px" />
+        <input id="r-stripe" placeholder="Stripe pi_ (optional, refunds the card)" style="flex:1;min-width:160px;padding:7px 10px;background:var(--bg);color:var(--cream);border:1px solid var(--border);border-radius:6px;font-size:13px" />
+        <button onclick="MoneyReceivables.doRefund()" style="border:1px solid var(--red);background:transparent;color:var(--red);border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px">Refund</button>
+      </div>
+      <div id="r-result" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
+    </div>
+
+    <div class="ar-list" id="f-board" data-goto="invoices"></div>
+    <div id="f-err"></div>
+    <div id="f-empty">No open invoices.</div>
+  </div>
+</div>
+
+<script>
+  // ---- shared (identical in both source pages) ----
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  (function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; reveal(); }
+
+  var _moneyLoaded = { payments:false, receivables:false };
+  function showMoneyTab(t){
+    if (t!=='payments' && t!=='receivables') t='payments';
+    document.querySelectorAll('.mtab').forEach(function(b){ b.classList.toggle('active', b.dataset.tab===t); });
+    document.getElementById('panel-payments').style.display    = (t==='payments') ? '' : 'none';
+    document.getElementById('panel-receivables').style.display = (t==='receivables') ? '' : 'none';
+    if (location.hash !== '#'+t) location.hash = t;
+    if (!_moneyLoaded[t]) { _moneyLoaded[t]=true; (t==='payments' ? MoneyPayments : MoneyReceivables).load(); }
+  }
+  function reveal(){ document.getElementById('money-wrap').style.display=''; var t=(location.hash||'').replace('#',''); showMoneyTab(t); }
+
+  // ---- Payments module (lifted from console-payments.html) ----
+  var MoneyPayments = (function(){
+    function fmt(cents){ return '$'+((Number(cents)||0)/100).toFixed(2); }
+    function when(s){ if(!s) return ''; var d=new Date(s); return isNaN(d)? esc(s) : d.toLocaleString(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}); }
+
+    var curSrc = '';
+    function setFilter(btn){
+      curSrc = btn.getAttribute('data-src') || '';
+      var bs = document.querySelectorAll('#p-filters button');
+      for (var i=0;i<bs.length;i++) bs[i].className = (bs[i]===btn) ? 'active' : '';
+      load();
+    }
+
+    function tile(label, value){
+      return '<div class="summary-tile"><div class="label">'+esc(label)+'</div>'
+        + '<div class="value">'+esc(value)+'</div></div>';
+    }
+
+    function rowHtml(r){
+      var nm = r.name ? '<div class="nm">'+esc(r.name)+'</div>' : '';
+      var em = r.email ? '<div class="em">'+esc(r.email)+'</div>' : '';
+      var srcCls = (r.source==='subscription') ? 'src subscription' : 'src';
+      return '<tr>'
+        + '<td class="when">'+when(r.paid_at||r.created_at)+'</td>'
+        + '<td class="who">'+nm+em+'</td>'
+        + '<td><span class="'+srcCls+'">'+esc(r.source||'')+'</span></td>'
+        + '<td class="amt">'+fmt(r.amount_cents)+'</td>'
+        + '<td>'+esc(r.pay_status||'paid')+'</td>'
+        + '<td class="pi">'+esc(r.stripe_payment_intent||'—')+'</td>'
+      + '</tr>';
+    }
+
+    function renderFailures(fails){
+      var b = document.getElementById('p-failBanner');
+      if (!fails || !fails.length){ b.className='fail-banner'; b.innerHTML=''; return; }
+      var html = '<div class="hd">⚠️ '+fails.length+' recent card-payment failure'+(fails.length>1?'s':'')+'</div>';
+      fails.forEach(function(f){
+        html += '<div class="fail-row"><span class="ctx">'+esc(f.context||'charge')+'</span> — '
+          + esc(f.error||'') + ' <span class="when">'+when(f.created_at)+'</span>'
+          + (f.emailed_at ? ' <span class="em">(owner alerted)</span>' : '') + '</div>';
+      });
+      b.innerHTML = html; b.className = 'fail-banner show';
+    }
+
+    async function load(){
+      var errEl=document.getElementById('p-err'), emptyEl=document.getElementById('p-empty'),
+          sumEl=document.getElementById('p-summary'), board=document.getElementById('p-board'),
+          tbl=document.getElementById('p-tbl');
+      errEl.style.display='none'; emptyEl.style.display='none';
+
+      var q = curSrc ? ('?source='+encodeURIComponent(curSrc)) : '';
+      var r = await fetch('/api/payments'+q, {headers:hdr()});
+      if (r.status===401){ document.getElementById('gate').style.display='flex'; return; }
+      var res = await r.json();
+      if (!res.ok){
+        errEl.textContent='Error: '+esc(res.error||'unknown'); errEl.style.display='block';
+        board.innerHTML=''; sumEl.innerHTML=''; tbl.style.display='none'; return;
+      }
+      // The failures banner + summary reflect ALL payments, independent of the row filter.
+      renderFailures(res.failures);
+      var s = res.summary||{};
+      sumEl.innerHTML = tile('Captured charges', esc(s.count||0))
+        + tile('Total collected', fmt(s.total_cents));
+
+      var rows = res.data||[];
+      if (!rows.length){ tbl.style.display='none'; board.innerHTML=''; emptyEl.style.display='block'; return; }
+      board.innerHTML = rows.map(rowHtml).join('');
+      tbl.style.display='table';
+    }
+
+    return { load: load, setFilter: setFilter };
+  })();
+
+  // ---- Receivables module (lifted from console-finance.html) ----
+  var MoneyReceivables = (function(){
+    function fmt(n){ return '$'+(Number(n)||0).toFixed(2); }
+
+    function ageBadge(days){
+      var d = Number(days)||0;
+      if (d > 0) return '<span class="badge old">'+esc(d)+'d overdue</span>';
+      return '<span class="badge">due in '+esc(Math.abs(d))+'d</span>';
+    }
+
+    function escAttr(s){ return "'"+s.replace(/'/g,'&#39;')+"'"; }
+
+    function rowHtml(r){
+      var who = esc(r.customer||r.email||'Invoice '+r.id);
+      var doc  = esc(r.doc||r.id);
+      var bal  = fmt(r.balance);
+      var due  = esc(r.due_date||'');
+      var badge = ageBadge(r.days_overdue);
+      var iid  = Number(r.id);
+      var params_reminder = JSON.stringify({invoice_id:iid, doc:r.doc||'', email:r.email||'', amount:r.balance});
+      var params_void     = JSON.stringify({invoice_id:iid});
+      return '<div class="ar-row">'
+        + '<div class="left">'
+          + '<div class="who">'+who+'</div>'
+          + '<div class="meta">Doc: '+doc+(due ? ' &middot; Due: '+due : '')+' &middot; '+badge+'</div>'
+        + '</div>'
+        + '<div class="right">'
+          + '<div class="bal">'+esc(bal)+'</div>'
+          + '<div class="acts">'
+            + '<button onclick="MoneyReceivables.act('+iid+',\'finance.send_payment_reminder\','+escAttr(params_reminder)+')">Send reminder</button>'
+            + '<button class="void" onclick="MoneyReceivables.act('+iid+',\'finance.void_invoice\','+escAttr(params_void)+')">Void</button>'
+          + '</div>'
+        + '</div>'
+      + '</div>';
+    }
+
+    async function load(){
+      var errEl   = document.getElementById('f-err');
+      var emptyEl = document.getElementById('f-empty');
+      var sumEl   = document.getElementById('f-summary');
+      var board   = document.getElementById('f-board');
+      errEl.style.display='none'; emptyEl.style.display='none';
+
+      var r = await fetch('/api/finance/ar', {headers:hdr()});
+      if (r.status===401){ document.getElementById('gate').style.display='flex'; return; }
+      var res = await r.json();
+      if (!res.ok){
+        errEl.textContent = 'Error: '+esc(res.error||'unknown');
+        errEl.style.display='block';
+        board.innerHTML=''; sumEl.innerHTML='';
+        return;
+      }
+      var s = res.summary||{};
+      sumEl.innerHTML =
+        tile('Cash collected', fmt(s.cash_total), '')
+        + tile('Open AR', fmt(s.open_total)+' ('+esc(s.open_count||0)+')', '')
+        + tile('Overdue', fmt(s.overdue_total)+' ('+esc(s.overdue_count||0)+')', 'overdue');
+
+      var rows = res.data||[];
+      if (!rows.length){ board.innerHTML=''; emptyEl.style.display='block'; return; }
+      board.innerHTML = rows.map(rowHtml).join('');
+    }
+
+    function tile(label, value, cls){
+      return '<div class="summary-tile">'
+        + '<div class="label">'+esc(label)+'</div>'
+        + '<div class="value '+esc(cls)+'">'+esc(value)+'</div>'
+      + '</div>';
+    }
+
+    async function act(id, actionKey, params){
+      if (typeof params === 'string') params = JSON.parse(params);
+      var r = await fetch('/api/action/'+actionKey, {method:'POST', headers:hdr(), body:JSON.stringify(params)});
+      var res = await r.json();
+      if (res.status === 'needs_confirmation'){
+        if (confirm(res.summary || 'Confirm this action?')){
+          params.confirmed = true;
+          await fetch('/api/action/'+actionKey, {method:'POST', headers:hdr(), body:JSON.stringify(params)});
+        } else { return; }
+      }
+      load();
+    }
+
+    async function doRefund(){
+      var inv = (document.getElementById('r-invoice').value || '').trim();
+      var amt = parseFloat(document.getElementById('r-amount').value);
+      var reason = (document.getElementById('r-reason').value || '').trim();
+      var out = document.getElementById('r-result');
+      if (!inv || !(amt > 0)){ out.textContent = 'Enter an invoice id and a positive amount.'; return; }
+      out.textContent = 'Working...';
+      var params = {invoice_id: inv, amount: amt};
+      if (reason) params.reason = reason;
+      var spi = (document.getElementById('r-stripe').value || '').trim();
+      if (spi) params.stripe_payment_intent = spi;
+      var res = await fetch('/api/action/finance.refund_order', {method:'POST', headers:hdr(), body:JSON.stringify(params)});
+      var body = await res.json();
+      if (body.status === 'needs_confirmation'){
+        if (!confirm(body.summary || 'Confirm this refund?')){ out.textContent = 'Cancelled.'; return; }
+        params.confirmed = true;
+        body = await (await fetch('/api/action/finance.refund_order', {method:'POST', headers:hdr(), body:JSON.stringify(params)})).json();
+      }
+      out.textContent = body.status === 'done'
+        ? ((body.result && body.result.message) || 'Refund recorded.')
+        : ('Error: ' + (body.error || body.status));
+      load();
+    }
+
+    return { load: load, act: act, doRefund: doRefund };
+  })();
+
+  // ---- init: reveal if already unlocked, else show gate ----
+  (function(){ if (key()){ document.getElementById('gate').style.display='none'; reveal(); } })();
+</script>
+</body>
+</html>
