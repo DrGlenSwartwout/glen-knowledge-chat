@@ -120,7 +120,35 @@ def _upgrade_block(cx, email, roles, enabled_keys):
     return {"enabled": True, "offer": offers[0]}
 
 
-def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None):
+def _ambassador_block(cx, email, quiz_url, public_base_url):
+    """Affiliate/ambassador status for the personal portal, by email. None-raising.
+    enrolled -> referral links (from slug); pending -> under review; else signup CTA."""
+    em = (email or "").strip().lower()
+    base = (public_base_url or "").rstrip("/")
+    signup = {"status": "none", "signup_url": f"{base}/affiliate/apply-form"}
+    if not em:
+        return signup
+    try:
+        row = cx.execute(
+            "SELECT slug, status FROM affiliate_signups WHERE lower(email)=? LIMIT 1",
+            (em,)).fetchone()
+    except Exception:
+        return signup
+    if not row:
+        return signup
+    slug, status = row[0], (row[1] or "")
+    if status != "approved":
+        return {"status": "pending"}
+    return {
+        "status": "enrolled",
+        "slug": slug,
+        "referral_url": f"{quiz_url}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz",
+        "recruit_url": f"{base}/affiliate?ref={slug}",
+    }
+
+
+def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
+                    quiz_url="", public_base_url=""):
     import sqlite3
     cx.row_factory = sqlite3.Row
     prow = cx.execute("SELECT * FROM people WHERE id=?", (person_id,)).fetchone()
@@ -150,4 +178,5 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None):
         "orders": _orders_block(cx, email, roles),
         "biofield": _biofield_block(cx, email, scan_date=scan_date),
         "upgrade": _upgrade_block(cx, email, roles, offers_enabled_keys),
+        "ambassador": _ambassador_block(cx, email, quiz_url, public_base_url),
     }
