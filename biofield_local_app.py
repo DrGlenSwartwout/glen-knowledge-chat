@@ -713,20 +713,35 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         except (TypeError, ValueError):
             return {"ok": False, "error": "special_price_cents must be an integer"}, 400
         with sqlite3.connect(db_path) as cx:
-            payload = _bpp.build_portal_content(cx, test_id, special_price_cents=special)
-        if payload["unresolved"]:
-            return {"ok": False, "unresolved": payload["unresolved"]}, 409
+            pre = _bpp.build_portal_content(cx, test_id, special_price_cents=special)
+            if pre["unresolved"]:
+                return {"ok": False, "unresolved": pre["unresolved"]}, 409
+            # report HTML -> pdf bytes (reuse the report renderer)
+            rep = _report_for(cx, test_id)
+            narrative = get_narrative(cx, test_id)
         base = os.environ.get("PORTAL_PUBLISH_BASE_URL", "")
         key = os.environ.get("CONSOLE_SECRET", "")
         if not base:
             return {"ok": False, "error": "PORTAL_PUBLISH_BASE_URL not set"}, 500
         try:
-            res = _bpp.publish_to_portal(payload, base_url=base, console_key=key)
+            pdf_bytes = report_pdf_bytes(render_present(rep, narrative))
+            pdf_url = _bpp.upload_asset(pdf_bytes, _bpp._asset_name("pdf"),
+                                        base_url=base, console_key=key)
+            audio_url = None
+            audio_path = os.path.join(AUDIO_DIR, f"test_{test_id}.mp3")
+            if os.path.exists(audio_path):
+                with open(audio_path, "rb") as af:
+                    audio_url = _bpp.upload_asset(af.read(), _bpp._asset_name("mp3"),
+                                                  base_url=base, console_key=key)
+            with sqlite3.connect(db_path) as cx:
+                payload = _bpp.build_portal_content(cx, test_id, special_price_cents=special,
+                                                    audio_url=audio_url, report_pdf_url=pdf_url)
+            res = _bpp.publish_to_portal(payload, base_url=base, console_key=key, send=True)
         except Exception as e:
             return {"ok": False, "error": str(e)[:300]}, 502
         return {"ok": True, "url": res.get("url", ""),
                 "updated": bool(res.get("updated")), "note": res.get("note", ""),
-                "unresolved": []}
+                "emailed": bool(res.get("emailed")), "unresolved": []}
 
     return app
 
