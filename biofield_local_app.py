@@ -704,6 +704,28 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     def serve_audio(fname):
         return send_from_directory(AUDIO_DIR, fname, mimetype="audio/mpeg")
 
+    @app.route("/test/<test_id>/publish-portal", methods=["POST"])
+    def publish_portal(test_id):
+        from dashboard import biofield_portal_publish as _bpp
+        body = request.get_json(silent=True) or {}
+        try:
+            special = int(body.get("special_price_cents") or 0)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "special_price_cents must be an integer"}, 400
+        with sqlite3.connect(db_path) as cx:
+            payload = _bpp.build_portal_content(cx, test_id, special_price_cents=special)
+        if payload["unresolved"]:
+            return {"ok": False, "unresolved": payload["unresolved"]}, 409
+        base = os.environ.get("PORTAL_PUBLISH_BASE_URL", "")
+        key = os.environ.get("CONSOLE_SECRET", "")
+        if not base:
+            return {"ok": False, "error": "PORTAL_PUBLISH_BASE_URL not set"}, 500
+        try:
+            res = _bpp.publish_to_portal(payload, base_url=base, console_key=key)
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:300]}, 502
+        return {"ok": True, "url": res.get("url", ""), "unresolved": []}
+
     return app
 
 
