@@ -197,12 +197,31 @@ def _research_sources(name, k=8):
 
 
 # ── Voice ─────────────────────────────────────────────────────────────────────
+# Mandatory structure-function guardrail. Appended to every generator's system
+# prompt via _VOICE so card/how-it-works/learn-more cannot emit disease claims,
+# even when the supplied page copy or research sources mention conditions.
+_COMPLIANCE = (
+    "COMPLIANCE (mandatory; this is dietary-supplement copy): use STRUCTURE-FUNCTION "
+    "language only. Describe how the formula supports the normal structure and function "
+    "of the body's tissues (for example 'supports the vitreous body', 'supports "
+    "connective-tissue resilience', 'supports the body's own antioxidant defenses'). "
+    "NEVER state or imply that the product diagnoses, treats, cures, prevents, reverses, "
+    "addresses, stops, fixes, slows, or reduces any disease, condition, or symptom. Do NOT "
+    "name a disease, condition, or symptom as something the product acts on (for example "
+    "floaters, vitreous or retinal detachment, macular degeneration, glaucoma, cataract). "
+    "Do NOT describe the product as halting a disease process (for example 'keeps the "
+    "vitreous from shrinking or detaching'). You may describe the tissue or structure being "
+    "supported, but not a condition being fixed. Prefer the verbs supports, nourishes, helps "
+    "maintain; avoid treats, prevents, cures, reverses, addresses, stops, slows, eliminates. "
+    "Keep it clinically honest and never overclaim."
+)
+
 _VOICE = (
     "Write in Dr. Glen Swartwout's voice: calm, consultative, clinically grounded with a "
     "light spiritual register. Lead with validation of the reader's lived experience. "
     "Do NOT use em dashes (use commas, colons, or periods). Do NOT use ALL CAPS for emphasis "
     "(acronyms are fine). Never prefix anything with the word 'Hook:'. Never invent ingredients, "
-    "prices, claims, or URLs that are not present in the supplied material."
+    "prices, claims, or URLs that are not present in the supplied material.\n\n" + _COMPLIANCE
 )
 
 
