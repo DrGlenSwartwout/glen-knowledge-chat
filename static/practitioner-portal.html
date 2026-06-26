@@ -276,10 +276,43 @@ function render(d){
   if (amb && ac) {
     ac.style.display = '';
     if (amb.status === 'enrolled') {
-      ac.innerHTML = '<h2>Your Ambassador links</h2>'
+      var dash = amb.dashboard || {};
+      function row(label, valHtml){ return '<div style="margin-bottom:6px"><span class="muted" style="font-size:13px">' + label + ': </span>' + valHtml + '</div>'; }
+      var html = '<h2>Your Ambassador links</h2>'
         + '<div class="muted" style="font-size:13px;margin:4px 0 10px">Share &amp; earn rewards.</div>'
         + '<div style="margin-bottom:8px"><span class="muted" style="font-size:13px">Referral link: </span><a href="' + escapeHtml(amb.referral_url) + '" target="_blank" rel="noopener" style="color:var(--gold)">' + escapeHtml(amb.referral_url) + '</a></div>'
-        + '<div><span class="muted" style="font-size:13px">Invite ambassadors: </span><a href="' + escapeHtml(amb.recruit_url) + '" target="_blank" rel="noopener" style="color:var(--gold)">' + escapeHtml(amb.recruit_url) + '</a></div>';
+        + '<div style="margin-bottom:10px"><span class="muted" style="font-size:13px">Invite ambassadors: </span><a href="' + escapeHtml(amb.recruit_url) + '" target="_blank" rel="noopener" style="color:var(--gold)">' + escapeHtml(amb.recruit_url) + '</a></div>';
+      // Stats
+      var stats = '';
+      if (dash.total_leads != null) stats += row('Leads', escapeHtml(String(dash.total_leads)));
+      if (dash.last_lead) stats += row('Last lead', escapeHtml(dash.last_lead));
+      if (dash.conversions_count != null) stats += row('Conversions', escapeHtml(String(dash.conversions_count)));
+      if (dash.member_since) stats += row('Member since', escapeHtml(dash.member_since));
+      if (stats) html += '<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">' + stats + '</div>';
+      // Offers
+      var offers = (dash.offers || []).map(function(o){
+        return '<div style="margin:8px 0"><b style="color:var(--gold)">' + escapeHtml(o.name || '') + '</b>'
+          + (o.description ? '<div class="muted" style="font-size:13px;margin:2px 0">' + escapeHtml(o.description) + '</div>' : '')
+          + (o.url ? '<div style="margin:4px 0"><a href="' + escapeHtml(o.url) + '" target="_blank" rel="noopener" style="color:var(--gold)">View offer &rarr;</a></div>' : '')
+          + (o.instructions ? '<div style="font-size:13px;margin:3px 0">' + escapeHtml(o.instructions) + '</div>' : '')
+          + '</div>';
+      }).join('');
+      if (offers) html += '<h3 style="margin:14px 0 4px;font-size:14px">Offers</h3>' + offers;
+      // Recent referrals
+      var recent = dash.recent || [];
+      html += '<h3 style="margin:14px 0 4px;font-size:14px">Recent referrals</h3>';
+      html += recent.length
+        ? recent.map(function(r){ return row(escapeHtml(r.name || ''), '<span class="muted" style="font-size:13px">score ' + escapeHtml(String(r.score || '')) + ' &middot; ' + escapeHtml(r.received_at || '') + '</span>'); }).join('')
+        : '<p class="muted" style="font-size:13px">No referrals yet.</p>';
+      // Recruited
+      if (dash.recruit_url) html += row('Recruited', '<a href="' + escapeHtml(dash.recruit_url) + '" target="_blank" rel="noopener" style="color:var(--gold)">' + escapeHtml(String(dash.recruited_count || 0)) + ' recruited</a>');
+      // Social shares (read-only)
+      var social = dash.social_links || [];
+      html += '<h3 style="margin:14px 0 4px;font-size:14px">Social shares</h3>';
+      html += social.length
+        ? social.map(function(s){ return '<div style="margin-bottom:6px"><a href="' + escapeHtml(s.url) + '" target="_blank" rel="noopener" style="color:var(--gold)">' + escapeHtml(s.url) + '</a><div class="muted" style="font-size:13px">' + escapeHtml(String(s.points || 0)) + ' pts &middot; ' + escapeHtml(String(s.views || 0)) + ' views &middot; ' + escapeHtml(String(s.likes || 0)) + ' likes &middot; ' + escapeHtml(String(s.shares || 0)) + ' shares</div></div>'; }).join('')
+        : '<p class="muted" style="font-size:13px">No social shares yet.</p>';
+      ac.innerHTML = html;
     } else if (amb.status === 'pending') {
       ac.innerHTML = '<h2>Ambassador</h2><p class="muted" style="font-size:13px;margin:4px 0">Your ambassador application is under review.</p>';
     } else {
