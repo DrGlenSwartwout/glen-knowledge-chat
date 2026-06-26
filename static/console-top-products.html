@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Top Products — Console</title>
+  <style>
+    body { font-family: sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    h1 { font-size: 1.4rem; margin-bottom: 1rem; }
+    .controls { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1.5rem; }
+    label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; font-weight: 600; }
+    input, select { padding: 0.4rem 0.6rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+    button { padding: 0.45rem 1rem; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+    button:hover { background: #1d4ed8; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid #ddd; padding: 0.5rem 0.75rem; text-align: left; }
+    th { background: #f3f4f6; font-weight: 600; }
+    tr:nth-child(even) { background: #f9fafb; }
+    .rank { text-align: center; font-weight: 700; color: #6b7280; }
+    .import-section { margin-top: 2.5rem; border-top: 1px solid #e5e7eb; padding-top: 1.5rem; }
+    .import-section h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+    .import-row { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; }
+    #importResult { margin-top: 0.75rem; font-size: 0.85rem; color: #374151; background: #f3f4f6; padding: 0.5rem 0.75rem; border-radius: 4px; display: none; }
+    .error { color: #dc2626; }
+  </style>
+</head>
+<body>
+  <h1>Top Products</h1>
+
+  <div class="controls">
+    <label>Console Key
+      <input type="password" id="consoleKey" placeholder="X-Console-Key" size="28">
+    </label>
+    <label>Year
+      <select id="year">
+        <option value="">All years</option>
+      </select>
+    </label>
+    <label>Sort by
+      <select id="by">
+        <option value="revenue">Revenue</option>
+        <option value="units">Units</option>
+      </select>
+    </label>
+    <label>Limit
+      <input type="number" id="limit" value="20" min="1" max="200" style="width:5rem">
+    </label>
+    <button onclick="loadTable()">Load</button>
+  </div>
+
+  <div id="tableWrap">
+    <p style="color:#888">Enter your console key and click Load.</p>
+  </div>
+
+  <div class="import-section">
+    <h2>Import FMP Invoice CSV</h2>
+    <div class="import-row">
+      <label>Console Key (same as above)
+        <input type="password" id="importKey" placeholder="X-Console-Key" size="28">
+      </label>
+      <label>invoice_items CSV
+        <input type="file" id="csvFile" accept=".csv">
+      </label>
+      <label style="flex-direction:row;align-items:center;gap:0.4rem">
+        <input type="checkbox" id="writeFlag"> Write to DB
+      </label>
+      <button onclick="doImport()">Import</button>
+    </div>
+    <div id="importResult"></div>
+  </div>
+
+  <script>
+    // Populate year selector with last 5 years + next year
+    (function () {
+      const sel = document.getElementById("year");
+      const now = new Date().getFullYear();
+      for (let y = now + 1; y >= now - 4; y--) {
+        const opt = document.createElement("option");
+        opt.value = y;
+        opt.textContent = y;
+        if (y === now) opt.selected = true;
+        sel.appendChild(opt);
+      }
+    })();
+
+    function getKey() {
+      return document.getElementById("consoleKey").value.trim();
+    }
+
+    async function loadTable() {
+      const key = getKey();
+      const year = document.getElementById("year").value;
+      const by = document.getElementById("by").value;
+      const limit = document.getElementById("limit").value || 20;
+      const wrap = document.getElementById("tableWrap");
+      wrap.innerHTML = "<p style='color:#888'>Loading…</p>";
+
+      const params = new URLSearchParams({ by, limit });
+      if (year) params.set("year", year);
+      if (key) params.set("key", key);
+
+      try {
+        const resp = await fetch(`/api/console/top-products?${params}`);
+        if (!resp.ok) {
+          wrap.innerHTML = `<p class="error">Error ${resp.status}: ${await resp.text()}</p>`;
+          return;
+        }
+        const data = await resp.json();
+        const products = data.products || [];
+        if (!products.length) {
+          wrap.innerHTML = "<p style='color:#888'>No data found for the selected filters.</p>";
+          return;
+        }
+        renderTable(products);
+      } catch (e) {
+        wrap.innerHTML = `<p class="error">Network error: ${e.message}</p>`;
+      }
+    }
+
+    function fmt(cents) {
+      return "$" + (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function renderTable(rows) {
+      const wrap = document.getElementById("tableWrap");
+      let html = `<table>
+        <thead><tr>
+          <th class="rank">#</th>
+          <th>Product</th>
+          <th>FMP ID</th>
+          <th>Slug</th>
+          <th>Revenue</th>
+          <th>Units</th>
+          <th>Periods</th>
+          <th>Source</th>
+        </tr></thead><tbody>`;
+      rows.forEach((r, i) => {
+        html += `<tr>
+          <td class="rank">${i + 1}</td>
+          <td>${r.product_name || "—"}</td>
+          <td>${r.product_fmp_id || "—"}</td>
+          <td>${r.product_slug || "—"}</td>
+          <td>${fmt(r.revenue_cents || 0)}</td>
+          <td>${(r.units || 0).toLocaleString()}</td>
+          <td>${r.periods || "—"}</td>
+          <td>${r.source || "—"}</td>
+        </tr>`;
+      });
+      html += "</tbody></table>";
+      wrap.innerHTML = html;
+    }
+
+    async function doImport() {
+      const key = document.getElementById("importKey").value.trim() || getKey();
+      const fileInput = document.getElementById("csvFile");
+      const write = document.getElementById("writeFlag").checked;
+      const resultDiv = document.getElementById("importResult");
+
+      if (!fileInput.files.length) {
+        resultDiv.style.display = "block";
+        resultDiv.textContent = "Please select a CSV file first.";
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append("invoice_items", fileInput.files[0]);
+      if (write) fd.append("write", "1");
+      if (key) fd.append("key", key);
+
+      resultDiv.style.display = "block";
+      resultDiv.textContent = "Uploading…";
+
+      try {
+        const resp = await fetch("/api/console/sales/import", { method: "POST", body: fd });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          resultDiv.innerHTML = `<span class="error">Error ${resp.status}: ${JSON.stringify(data)}</span>`;
+          return;
+        }
+        resultDiv.textContent = `Done — ${data.line_items} line items → ${data.product_rows} product rows aggregated` +
+          (data.written ? ` → ${data.written} rows written to DB` : " (dry run, not written)") + ".";
+      } catch (e) {
+        resultDiv.innerHTML = `<span class="error">Network error: ${e.message}</span>`;
+      }
+    }
+  </script>
+</body>
+</html>

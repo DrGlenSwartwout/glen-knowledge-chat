@@ -24620,6 +24620,55 @@ def api_console_coupons():
     return jsonify({"coupons": [dict(zip(keys, r)) for r in rows]})
 
 
+# ── Product Sales — top-products query + FMP import ──────────────────────────
+
+@app.route("/api/console/top-products", methods=["GET"])
+def api_console_top_products():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    year = request.args.get("year")
+    by = request.args.get("by", "revenue")
+    limit = int(request.args.get("limit", 20))
+    from dashboard import product_sales as _ps
+    with sqlite3.connect(LOG_DB) as cx:
+        _ps.init_product_sales_table(cx)
+        items = _ps.top_products(cx, year=year, by=by, limit=limit)
+    return jsonify({"products": items})
+
+
+@app.route("/api/console/sales/import", methods=["POST"])
+def api_console_sales_import():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    f = request.files.get("invoice_items")
+    if not f:
+        return jsonify({"ok": False, "error": "invoice_items CSV required"}), 400
+    import csv as _csv, io as _io
+    from dashboard import product_sales as _ps
+    _csv.field_size_limit(2**31 - 1)
+    rows = list(_csv.DictReader(_io.StringIO(f.read().decode("utf-8", "replace"))))
+    slug_for = _ps.slug_map_from_products_json(str(STATIC.parent / "data" / "products.json"))
+    agg = _ps.aggregate_rows(rows, slug_for)
+    write = (request.form.get("write", "") or "").strip().lower() in ("1", "true", "yes", "on")
+    written = 0
+    if write:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _ps.init_product_sales_table(cx)
+            written = _ps.write_fmp_sales(cx, agg)
+    return jsonify({"ok": True, "line_items": len(rows), "product_rows": len(agg), "written": written})
+
+
+@app.route("/console/top-products")
+def console_top_products_page():
+    resp = send_from_directory(STATIC, "console-top-products.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.after_request
 def _inject_journey_shell(response):
     if not JOURNEY_SHELL_ENABLED:
