@@ -5,6 +5,14 @@ import json
 import sqlite3
 
 
+def _json_list(s):
+    try:
+        v = json.loads(s or "[]")
+    except Exception:
+        return []
+    return [str(x).strip() for x in v if str(x).strip()] if isinstance(v, list) else []
+
+
 def _intake_summary(first_name, raw_json_str):
     parts = []
     if first_name:
@@ -27,7 +35,8 @@ def _intake_summary(first_name, raw_json_str):
 
 
 def recent_comms(cx, email, *, days_window=7, query_log_n=20):
-    out = {"intake_summary": "", "recent_inquiries": [], "recent_queries": []}
+    out = {"intake_summary": "", "recent_inquiries": [], "recent_queries": [],
+           "recent_feedback": []}
     email = (email or "").strip()
     if not email:
         return out
@@ -63,6 +72,20 @@ def recent_comms(cx, email, *, days_window=7, query_log_n=20):
                 "SELECT query, ts FROM query_log WHERE email=? AND ts > datetime('now', ?) "
                 "ORDER BY id DESC LIMIT ?", (email, win, int(query_log_n))).fetchall()
             out["recent_queries"] = [{"question": r["query"], "ts": r["ts"]} for r in rows]
+    except Exception:
+        pass
+    try:                                                  # email feedback: windowed, joined
+        out["recent_feedback"] = [
+            {"summary": r["ai_summary"] or "",
+             "topics": _json_list(r["extracted_topics"]),
+             "conditions": _json_list(r["extracted_conditions"]),
+             "received_at": r["received_at"]}
+            for r in cx.execute(
+                "SELECT pf.ai_summary, pf.extracted_topics, pf.extracted_conditions, "
+                "pf.received_at FROM personal_email_feedback pf "
+                "JOIN users u ON u.id = pf.user_id "
+                "WHERE lower(u.email)=lower(?) AND pf.received_at > datetime('now', ?) "
+                "ORDER BY pf.received_at DESC", (email, win)).fetchall()]
     except Exception:
         pass
     return out

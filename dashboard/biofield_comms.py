@@ -18,4 +18,11 @@ def comms_to_text(context):
         qq = (q.get("question") or "").strip()
         if qq:
             parts.append(qq)
+    for fb in context.get("recent_feedback") or []:
+        s2 = (fb.get("summary") or "").strip()
+        if s2:
+            parts.append(s2)
+        tc = ", ".join([*(fb.get("topics") or []), *(fb.get("conditions") or [])])
+        if tc.strip():
+            parts.append(tc)
     return "\n".join(parts)
