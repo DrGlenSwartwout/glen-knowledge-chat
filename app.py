@@ -23998,12 +23998,30 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
         print(f"[orders] ingest {source}/{external_ref}: {e!r}", flush=True)
 
 
+def _role_for_token(token):
+    """Map an access token -> rbac role via its workspace scope. None if unknown."""
+    if not token:
+        return None
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            row = cx.execute(
+                "SELECT u.scope FROM access_tokens t "
+                "JOIN workspace_users u ON u.id = t.user_id "
+                "WHERE t.token = ? AND t.revoked_at IS NULL", (token,)).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    return _bos_rbac.actor_for_scope(row[0]).role
+
+
 def _bos_actor():
-    """Resolve the calling actor. Owner master key (CONSOLE_SECRET) for now;
-    scoped token->role mapping is added in the RBAC-UX task of Phase 1.
-    Unlike the legacy @require_console_key decorator, BOS routes return 401 when CONSOLE_SECRET is unset (resolve_actor returns None) rather than passing through; this is intentional."""
+    """Resolve the calling actor: owner master key (CONSOLE_SECRET) first, then a
+    per-user access token -> its rbac role (Rae=owner, Shaira=va)."""
     key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-    return _bos_rbac.resolve_actor(key, console_secret=dashboard.CONSOLE_SECRET)
+    return _bos_rbac.resolve_actor(
+        key, console_secret=dashboard.CONSOLE_SECRET,
+        token=key, role_for_token=_role_for_token)
 
 
 @app.route("/api/action/<path:key>", methods=["POST"])
