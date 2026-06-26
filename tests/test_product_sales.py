@@ -10,6 +10,7 @@ def _rows():
         {"id_fk_product": "425", "qty": "3", "zc_ext_price": "207", "zc_year": "2025", "zc_month": "12", "invoice_date": "12/1/2025", "description": "Microbiome", "fee_name": ""},
         {"id_fk_product": "", "qty": "1", "zc_ext_price": "10", "zc_year": "2026", "zc_month": "6", "invoice_date": "6/3/2026", "description": "Shipping", "fee_name": "Shipping"},  # fee → skip
         {"id_fk_product": "73", "qty": "1", "zc_ext_price": "90", "zc_year": "", "zc_month": "", "invoice_date": "2026-06-15", "description": "Nous Energy", "fee_name": ""},  # period from invoice_date
+        {"id_fk_product": "73", "qty": "1", "zc_ext_price": "45", "zc_year": "", "zc_month": "", "invoice_date": "3/15/2026", "description": "Nous Energy", "fee_name": ""},  # M/D/YYYY fallback
     ]
 
 
@@ -21,6 +22,7 @@ def test_aggregate_groups_skips_fees_and_converts():
     assert m["units"] == 3 and m["revenue_cents"] == 20700 and m["product_slug"] == "microbiome" and m["product_name"] == "Microbiome"
     assert by[("425", "2025-12")]["revenue_cents"] == 20700
     assert by[("73", "2026-06")]["units"] == 1 and by[("73", "2026-06")]["product_slug"] is None  # date fallback + unmatched slug
+    assert ("73", "2026-03") in by  # M/D/YYYY invoice_date fallback parsed to 2026-03
 
 
 def test_write_idempotent_and_top_products():

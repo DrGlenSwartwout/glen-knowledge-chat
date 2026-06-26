@@ -27,7 +27,8 @@ def init_product_sales_table(cx):
 def slug_map_from_products_json(path):
     out = {}
     try:
-        prods = (json.load(open(path)) or {}).get("products", {})
+        with open(path) as f:
+            prods = (json.load(f) or {}).get("products", {})
         for slug, p in prods.items():
             fid = str((p or {}).get("fmp_id") or "").strip()
             if fid:
