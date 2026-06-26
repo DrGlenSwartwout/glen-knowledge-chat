@@ -1101,6 +1101,30 @@
 
     <div id="ro-results"></div>
 
+    <div class="section" style="margin-top:24px">
+      <h2>From Sales Velocity</h2>
+      <p class="hint" style="margin-bottom:14px">Project ingredient demand from historical order velocity.</p>
+      <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <div class="field-block">
+          <label for="velBasis">Velocity basis</label>
+          <select id="velBasis" style="background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px">
+            <option value="3mo">3 months</option>
+            <option value="12mo">12 months</option>
+            <option value="max">All time</option>
+          </select>
+        </div>
+        <div class="field-block">
+          <label for="velHorizon">Horizon (months)</label>
+          <input type="number" id="velHorizon" value="3" min="1" max="24" style="width:90px;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px">
+        </div>
+        <div class="field-block">
+          <label style="visibility:hidden">Run</label>
+          <button onclick="loadVelocity()">From sales velocity</button>
+        </div>
+      </div>
+      <div id="velTableWrap"></div>
+    </div>
+
   </div><!-- /#tab-reorder -->
 
 </div><!-- /#wrap -->
@@ -2875,16 +2899,7 @@ function renderReorderPlan() {
   }).join("");
 }
 
-async function roCompute() {
-  const body = {
-    plan: reorderPlan.map(function(l) { return { formulation_id: l.formulation_id, qty: l.qty }; }),
-    include_below_par: document.getElementById("ro-below-par").checked
-  };
-  let rep;
-  try {
-    rep = await api("/api/reorder/report", { method: "POST", body: JSON.stringify(body) });
-  } catch (e) { toast("Compute failed: " + e.message, "error"); return; }
-  const el = document.getElementById("ro-results");
+function renderReorderReport(el, rep) {
   el.classList.add("active");
   if (!rep.groups || !rep.groups.length) {
     el.innerHTML = '<div class="section"><p class="hint">Nothing to reorder — everything is at or above par/demand.</p></div>';
@@ -2922,6 +2937,54 @@ async function roCompute() {
     }).join("") +
     '<p style="margin-top:14px"><strong>Total: ' + rep.totals.lines + ' lines &middot; est. $' + rep.totals.est_cost + '</strong></p>' +
     '</div>';
+}
+
+async function roCompute() {
+  const body = {
+    plan: reorderPlan.map(function(l) { return { formulation_id: l.formulation_id, qty: l.qty }; }),
+    include_below_par: document.getElementById("ro-below-par").checked
+  };
+  let rep;
+  try {
+    rep = await api("/api/reorder/report", { method: "POST", body: JSON.stringify(body) });
+  } catch (e) { toast("Compute failed: " + e.message, "error"); return; }
+  renderReorderReport(document.getElementById("ro-results"), rep);
+}
+
+async function loadVelocity() {
+  const basis = document.getElementById("velBasis").value;
+  const horizon = document.getElementById("velHorizon").value || 3;
+  let rep;
+  try {
+    rep = await api("/api/reorder/report?source=velocity&basis=" + basis + "&horizon=" + horizon);
+  } catch (e) { toast("Velocity load failed: " + e.message, "error"); return; }
+  const wrap = document.getElementById("velTableWrap");
+  // Velocity formulation table
+  var vtRows = "";
+  if (rep.velocity_table && rep.velocity_table.length) {
+    vtRows = rep.velocity_table.map(function(r) {
+      return '<tr>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + escapeHtml(r.name) + '</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + (r.vel_3mo != null ? r.vel_3mo : '—') + '</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + (r.vel_12mo != null ? r.vel_12mo : '—') + '</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border)"><strong>' + r.projected_qty + '</strong></td>' +
+        '</tr>';
+    }).join("");
+  }
+  var vtHtml = vtRows
+    ? '<table style="width:100%;border-collapse:collapse;margin-bottom:20px">' +
+        '<thead><tr>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Formulation</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">3-mo /mo</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">12-mo /mo</th>' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">Projected qty</th>' +
+        '</tr></thead>' +
+        '<tbody>' + vtRows + '</tbody>' +
+        '</table>'
+    : '<p class="hint" style="margin-bottom:16px">No velocity data returned.</p>';
+  wrap.innerHTML = vtHtml + '<div id="vel-reorder-results"></div>';
+  // Reorder shopping list — reuse the same renderer as the manual report
+  renderReorderReport(document.getElementById("vel-reorder-results"), rep);
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

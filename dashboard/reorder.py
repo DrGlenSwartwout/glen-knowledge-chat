@@ -167,3 +167,82 @@ def _json_get(extras, key):
         return json.loads(extras).get(key)
     except (ValueError, TypeError):
         return None
+
+
+def _period_minus(period, n):
+    """The 'YYYY-MM' that is n months before `period` (inclusive window helper)."""
+    y, m = int(period[:4]), int(period[5:7])
+    total = y * 12 + (m - 1) - n
+    return f"{total // 12:04d}-{total % 12 + 1:02d}"
+
+
+def product_velocity(db_path=None) -> dict:
+    """Per product_fmp_id: avg units/month over the trailing 3 and 12 months,
+    anchored to MAX(period) in product_sales (missing months count as 0)."""
+    with _connect(db_path) as cx:
+        try:
+            row = cx.execute("SELECT MAX(period) FROM product_sales").fetchone()
+        except sqlite3.OperationalError:
+            return {}
+        latest = row[0] if row else None
+        if not latest:
+            return {}
+        out = {}
+        for months, col in ((3, "vel_3mo"), (12, "vel_12mo")):
+            cutoff = _period_minus(latest, months - 1)  # first period in the window
+            for pid, units in cx.execute(
+                    "SELECT product_fmp_id, SUM(units) FROM product_sales "
+                    "WHERE period >= ? AND period <= ? GROUP BY product_fmp_id",
+                    (cutoff, latest)).fetchall():
+                d = out.setdefault(pid, {"vel_3mo": 0.0, "vel_12mo": 0.0})
+                d[col] = (_num(units) or 0.0) / months
+        return out
+
+
+def _pick_velocity(v, basis):
+    if basis == "12mo":
+        return v["vel_12mo"]
+    if basis == "max":
+        return max(v["vel_3mo"], v["vel_12mo"])
+    return v["vel_3mo"]
+
+
+def _formulations_by_fmp(cx):
+    return {r["fmp_id"]: (r["id"], r["name"]) for r in cx.execute(
+        "SELECT id, fmp_id, name FROM formulations WHERE fmp_id IS NOT NULL").fetchall()}
+
+
+def velocity_plan(basis="3mo", horizon_months=3, db_path=None) -> list:
+    """Project sales velocity into a reorder plan [{formulation_id, qty}]. Products
+    with no formulation match or zero projected qty are dropped."""
+    vel = product_velocity(db_path)
+    if not vel:
+        return []
+    with _connect(db_path) as cx:
+        forms = _formulations_by_fmp(cx)
+    plan = []
+    for pid, v in vel.items():
+        f = forms.get(pid)
+        if not f:
+            continue
+        qty = _pick_velocity(v, basis) * float(horizon_months)
+        if qty > 0:
+            plan.append({"formulation_id": f[0], "qty": qty})
+    return plan
+
+
+def velocity_table(basis="3mo", horizon_months=3, db_path=None) -> list:
+    """Per matched formulation: 3-mo & 12-mo velocity + the projected qty (basis × horizon)."""
+    vel = product_velocity(db_path)
+    with _connect(db_path) as cx:
+        forms = _formulations_by_fmp(cx)
+    rows = []
+    for pid, v in vel.items():
+        f = forms.get(pid)
+        if not f:
+            continue
+        rows.append({"formulation_id": f[0], "fmp_id": pid, "name": f[1],
+                     "vel_3mo": round(v["vel_3mo"], 2), "vel_12mo": round(v["vel_12mo"], 2),
+                     "projected_qty": round(_pick_velocity(v, basis) * float(horizon_months), 2)})
+    rows.sort(key=lambda r: -r["projected_qty"])
+    return rows

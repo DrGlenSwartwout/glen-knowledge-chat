@@ -21814,6 +21814,16 @@ def api_production_import():
 def api_reorder_report_get():
     try:
         below = request.args.get("below_par", "1") != "0"
+        if request.args.get("source") == "velocity":
+            basis = request.args.get("basis", "3mo")
+            try:
+                horizon = int(request.args.get("horizon", 3))
+            except (ValueError, TypeError):
+                horizon = 3
+            plan = _ro.velocity_plan(basis=basis, horizon_months=horizon)
+            rep = _ro.reorder_report(plan=plan, include_below_par=below)
+            rep["velocity_table"] = _ro.velocity_table(basis=basis, horizon_months=horizon)
+            return ok(rep)
         return ok(_ro.reorder_report(plan=None, include_below_par=below))
     except Exception as e:
         return fail(e)
