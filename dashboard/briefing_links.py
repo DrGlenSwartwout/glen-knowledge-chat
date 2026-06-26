@@ -7,12 +7,48 @@ beside the briefing and resolved client-side. No console key is ever stored in
 the url; it is appended at click time in the dashboard.
 """
 
+import os
 import re
 
 from urllib.parse import quote
 
 
 _ANGLE_RE = re.compile(r"<([^>]+)>")
+
+# Inbox "oldest senders" include the connected mailbox itself and automated
+# system addresses (bounces, no-reply). None of those are linkable clients.
+# The self list is env-overridable; default covers the connected Gmail account
+# and its aggregated identities.
+_SELF_EMAILS = {
+    e.strip().lower()
+    for e in os.environ.get(
+        "BRIEFING_LINK_EXCLUDE_EMAILS",
+        "drglenswartwout@gmail.com,this.elf@gmail.com,suerae1111@gmail.com",
+    ).split(",")
+    if e.strip()
+}
+_AUTOMATED_LOCALPARTS = {
+    "mailer-daemon", "postmaster", "no-reply", "noreply", "donotreply",
+    "do-not-reply", "notifications", "notification", "bounce", "bounces",
+    "noreply-dmarc-support",
+}
+
+
+def _is_person_email(email):
+    """True only for an address that could be a real, linkable client: a valid
+    address that is neither the connected mailbox itself nor an automated /
+    no-reply system sender."""
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        return False
+    if email in _SELF_EMAILS:
+        return False
+    local = email.split("@", 1)[0]
+    if local in _AUTOMATED_LOCALPARTS:
+        return False
+    if local.startswith(("no-reply", "noreply", "do-not-reply", "donotreply")):
+        return False
+    return True
 
 
 def _parse_sender(raw):
@@ -59,7 +95,7 @@ def build_linkables(snapshot):
     n = 0
     for rec, display, email in _iter_person_records(snapshot):
         email = (email or "").strip().lower()
-        if "@" not in email:
+        if not _is_person_email(email):
             continue
         url = person_url(email)
         ref = url_to_ref.get(url)

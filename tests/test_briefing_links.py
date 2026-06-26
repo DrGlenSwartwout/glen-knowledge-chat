@@ -72,3 +72,34 @@ def test_build_linkables_dedupes_case_insensitively():
     reg = bl.build_linkables(snap)
     assert [r.get("ref") for r in snap["inbox"]["oldest"]] == ["r1", "r1"]
     assert list(reg.keys()) == ["r1"]
+
+
+def test_build_linkables_excludes_self_and_automated_senders():
+    # Real inbox senders include the connected mailbox itself and bounce/no-reply
+    # system addresses; none of those are linkable clients.
+    snap = {"inbox": {"oldest": [
+        {"from": "Glen Swartwout <drglenswartwout@gmail.com>", "age_days": 9},
+        {"from": "Mail Delivery Subsystem <mailer-daemon@googlemail.com>", "age_days": 7},
+        {"from": "no-reply@stripe.com", "age_days": 4},
+        {"from": "Real Client <client@example.com>", "age_days": 3},
+    ]}}
+    reg = bl.build_linkables(snap)
+    oldest = snap["inbox"]["oldest"]
+    assert "ref" not in oldest[0]           # self (connected mailbox)
+    assert "ref" not in oldest[1]           # mailer-daemon
+    assert "ref" not in oldest[2]           # no-reply@
+    assert oldest[3]["ref"] == "r1"         # the only real client links
+    assert list(reg.keys()) == ["r1"]
+    assert reg["r1"]["url"] == "/console/crm?email=client%40example.com"
+
+
+def test_is_person_email_filters():
+    assert bl._is_person_email("client@example.com") is True
+    assert bl._is_person_email("drglenswartwout@gmail.com") is False   # default self
+    assert bl._is_person_email("mailer-daemon@googlemail.com") is False
+    assert bl._is_person_email("postmaster@x.com") is False
+    assert bl._is_person_email("noreply@x.com") is False
+    assert bl._is_person_email("no-reply@x.com") is False
+    assert bl._is_person_email("notifications@x.com") is False
+    assert bl._is_person_email("") is False
+    assert bl._is_person_email("not-an-email") is False
