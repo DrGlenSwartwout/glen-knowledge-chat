@@ -8105,11 +8105,8 @@ def affiliate_hub_data(slug):
 
 @app.route("/affiliate/portal")
 def affiliate_portal_page():
-    # Token-only access. Email-based instant-redirect was removed in favor of
-    # /affiliate/login-request → email magic-link → /affiliate/login-verify.
-    resp = send_from_directory(STATIC, "affiliate-portal.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return resp
+    from flask import redirect as _redir
+    return _redir("/portal/login")
 
 
 def _send_affiliate_magic_link(to_email: str, name: str, magic_url: str) -> tuple:
@@ -8357,76 +8354,14 @@ def _compose_share_email(client_first, client_email, main_challenge, main_goal,
 
 @app.route("/affiliate/login-request", methods=["POST"])
 def affiliate_login_request():
-    """Email-based sign-in. Always redirects to /affiliate?info=... — never
-    leaks whether the email is registered (prevents enumeration). If the
-    email matches an approved affiliate, a single-use magic-link is emailed.
-    """
     from flask import redirect as _redir
-    import urllib.parse as _up
-    email = (request.form.get("email") or "").strip().lower()
-    if not email or "@" not in email:
-        return _redir("/affiliate?error=" + _up.quote("Valid email required"))
-
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        row = cx.execute(
-            "SELECT name FROM affiliate_signups WHERE LOWER(email)=? AND status='approved'",
-            (email,)
-        ).fetchone()
-        if row:
-            magic = secrets.token_urlsafe(32)
-            th    = _hash_token(magic)
-            now   = _now_utc()
-            expires = now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)
-            cx.execute(
-                """INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at)
-                   VALUES (?,?,?,?,?)""",
-                (th, email, "affiliate_magic_link", now.isoformat(), expires.isoformat())
-            )
-            cx.commit()
-            magic_url = f"{PUBLIC_BASE_URL}/affiliate/login-verify?token={magic}"
-            _send_affiliate_magic_link(email, row[0] or "", magic_url)
-
-    return _redir("/affiliate?info=" + _up.quote(
-        f"If that email matches an approved affiliate, we just sent a sign-in link. "
-        f"Check your inbox — the link expires in {AUTH_TOKEN_TTL_LABEL}."
-    ))
+    return _redir("/portal/login")
 
 
 @app.route("/affiliate/login-verify", methods=["GET"])
 def affiliate_login_verify():
-    """Consume the magic-link token and 302 to the affiliate's portal."""
     from flask import redirect as _redir
-    import urllib.parse as _up
-    token = (request.args.get("token") or "").strip()
-    if not token:
-        return _redir("/affiliate?error=" + _up.quote("Missing sign-in token"))
-    th = _hash_token(token)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        cx.row_factory = sqlite3.Row
-        row = cx.execute(
-            """SELECT email, expires_at, consumed_at FROM auth_tokens
-               WHERE token_hash=? AND purpose='affiliate_magic_link'""",
-            (th,)
-        ).fetchone()
-        if not row:
-            return _redir("/affiliate?error=" + _up.quote("Sign-in link invalid or already used. Request a new one."))
-        if row["consumed_at"]:
-            return _redir("/affiliate?error=" + _up.quote("Sign-in link already used. Request a new one."))
-        try:
-            if datetime.fromisoformat(row["expires_at"]) < _now_utc():
-                return _redir("/affiliate?error=" + _up.quote("Sign-in link expired. Request a new one."))
-        except Exception:
-            return _redir("/affiliate?error=" + _up.quote("Sign-in link corrupted. Request a new one."))
-        cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
-                   (_now_utc().isoformat(), th))
-        aff = cx.execute(
-            "SELECT token FROM affiliate_signups WHERE LOWER(email)=? AND status='approved'",
-            (row["email"],)
-        ).fetchone()
-        cx.commit()
-    if not aff:
-        return _redir("/affiliate?error=" + _up.quote("Affiliate account no longer active. Apply below."))
-    return _redir(f"/affiliate/portal?token={aff[0]}")
+    return _redir("/portal/login")
 
 
 @app.route("/affiliate/apply-form", methods=["POST"])
@@ -8482,7 +8417,7 @@ def affiliate_apply_form():
     with sqlite3.connect(LOG_DB) as cx:
         existing = cx.execute("SELECT token FROM affiliate_signups WHERE email=?", (email,)).fetchone()
     if existing:
-        resp = _redirect(f"/affiliate/portal?token={existing[0]}")
+        resp = _redirect("/portal/login")
         _stamp_affiliate_journey(_session_id, email, _first, _last, _recruiter_slug)
         if _minted_session:
             resp.set_cookie("amg_session", _session_id, max_age=60 * 60 * 24 * 365,
@@ -8515,11 +8450,16 @@ def affiliate_apply_form():
             """, (ts, org or name, slug,
                   f"Affiliate: {name}" + (f" ({org})" if org else ""),
                   slug, "affiliate", "scoreapp-quiz"))
+            try:
+                from dashboard import customers as _customers
+                _customers.find_or_create_by_email(cx, email=email, name=name)
+            except Exception as _e:
+                print(f"[affiliate-apply-form] people upsert skipped: {_e!r}", flush=True)
             cx.commit()
     except Exception as e:
         return _redirect("/affiliate?error=" + _urlparse.quote(f"Signup failed: {str(e)[:80]}"))
 
-    resp = _redirect(f"/affiliate/portal?token={token}")
+    resp = _redirect("/portal/login")
     _stamp_affiliate_journey(_session_id, email, _first, _last, _recruiter_slug)
     if _minted_session:
         resp.set_cookie("amg_session", _session_id, max_age=60 * 60 * 24 * 365,
@@ -8600,6 +8540,11 @@ def affiliate_apply():
                 """, (ts, org or name, slug,
                       f"Affiliate: {name}" + (f" ({org})" if org else ""),
                       slug, "affiliate", "scoreapp-quiz"))
+                try:
+                    from dashboard import customers as _customers
+                    _customers.find_or_create_by_email(cx, email=email, name=name)
+                except Exception as _e:
+                    print(f"[affiliate-apply] people upsert skipped: {_e!r}", flush=True)
                 cx.commit()
         except sqlite3.IntegrityError as e:
             return jsonify({"error": f"Signup failed: {str(e)[:100]}"}), 409
@@ -8607,7 +8552,7 @@ def affiliate_apply():
     tracking_url = (
         f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
     )
-    portal_url = f"/affiliate/portal?token={token}"
+    portal_url = "/portal/login"
     resp = jsonify({
         "ok": True,
         "portal_url": portal_url,
@@ -8751,6 +8696,13 @@ def patch_affiliate(aff_id):
                 """, (ts, org or name, slug,
                       f"Affiliate: {name}" + (f" ({org})" if org else ""),
                       slug, "affiliate", "scoreapp-quiz"))
+            try:
+                from dashboard import customers as _customers
+                r = cx.execute("SELECT email, name FROM affiliate_signups WHERE id=?", (aff_id,)).fetchone()
+                if r and (r[0] or "").strip():
+                    _customers.find_or_create_by_email(cx, email=r[0], name=(r[1] or ""))
+            except Exception as _e:
+                print(f"[affiliate-approve] people upsert skipped: {_e!r}", flush=True)
         cx.commit()
     return jsonify({"ok": True, "status": status})
 
@@ -24726,6 +24678,22 @@ def bos_backfill_trial_orders():
     finally:
         cx.close()
     return jsonify({"ok": True, "dry_run": dry, "result": res})
+
+
+@app.route("/api/console/backfill-affiliate-people", methods=["POST"])
+def api_console_backfill_affiliate_people():
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import affiliate_dashboard as _ad
+    dry = request.args.get("dry_run", "0") == "1"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        missing = [r[0] for r in cx.execute(
+            "SELECT a.email FROM affiliate_signups a WHERE a.status='approved' "
+            "AND NOT EXISTS (SELECT 1 FROM people p WHERE lower(p.email)=lower(a.email))").fetchall()]
+        if dry:
+            return jsonify({"ok": True, "dry_run": True, "would_create": len(missing), "emails": missing})
+        created = _ad.backfill_affiliate_people(cx)
+    return jsonify({"ok": True, "created": created, "emails": missing})
 
 
 @app.route("/api/products")
