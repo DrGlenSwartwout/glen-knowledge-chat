@@ -35,3 +35,55 @@ def resolve_remedy_slug(name, catalog):
     if alias:
         return alias
     return name_to_slug(name, catalog)
+
+
+def _dosing(layer):
+    parts = [(layer.get("dosage") or "").strip(),
+             (layer.get("frequency") or "").strip(),
+             (layer.get("timing") or "").strip()]
+    return " ".join(p for p in parts if p)
+
+
+def _cue_candidates(layer):
+    """Ordered phrases to locate this layer in the narrative blob."""
+    rem = (layer.get("remedy") or "").strip()
+    out = []
+    if rem:
+        out.append(rem)
+        first = rem.split(",")[0].strip()      # "Focus, Neuromagnesium" -> "Focus"
+        if first and first != rem:
+            out.append(first)
+    head = (layer.get("head") or "").strip()
+    if head:
+        out.append(head)
+    return out
+
+
+def segment_narrative(narrative, layers):
+    """Split the single narrative blob into one segment per layer, by locating
+    each layer's cue (remedy, else its first word, else head) in increasing
+    order. Returns a list aligned to ``layers``; ``[]`` when it cannot align."""
+    text = narrative or ""
+    if not text or not layers:
+        return []
+    low = text.lower()
+    positions = []
+    cursor = 0
+    for layer in layers:
+        found = -1
+        for cue in _cue_candidates(layer):
+            idx = low.find(cue.lower(), cursor)
+            if idx != -1:
+                found = idx
+                break
+        if found == -1:
+            return []                          # a layer has no cue -> fall back
+        positions.append(found)
+        cursor = found + 1
+    # positions are strictly increasing by construction (each search starts past
+    # the previous hit). Slice between consecutive cue starts.
+    segs = []
+    for i, start in enumerate(positions):
+        end = positions[i + 1] if i + 1 < len(positions) else len(text)
+        segs.append(text[start:end].strip())
+    return segs
