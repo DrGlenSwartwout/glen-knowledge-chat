@@ -74,19 +74,23 @@ def set_attr(cx, email, field, value, *, source):
 
 def get_person(cx, email):
     init_tables(cx)
+    prev = cx.row_factory
     cx.row_factory = sqlite3.Row
-    email = (email or "").strip().lower()
-    out = {f: ([] if f in DISCRETE_FIELDS else "") for f in ALL_FIELDS}
-    for r in cx.execute(
-            "SELECT field, value FROM person_attributes WHERE email=?", (email,)).fetchall():
-        f = r["field"]
-        if f in DISCRETE_FIELDS:
-            out[f].append(r["value"])
-        elif f in SCALAR_FIELDS:
-            out[f] = r["value"]
-    for f in DISCRETE_FIELDS:
-        out[f] = sorted(out[f])
-    return out
+    try:
+        email = (email or "").strip().lower()
+        out = {f: ([] if f in DISCRETE_FIELDS else "") for f in ALL_FIELDS}
+        for r in cx.execute(
+                "SELECT field, value FROM person_attributes WHERE email=?", (email,)).fetchall():
+            f = r["field"]
+            if f in DISCRETE_FIELDS:
+                out[f].append(r["value"])
+            elif f in SCALAR_FIELDS:
+                out[f] = r["value"]
+        for f in DISCRETE_FIELDS:
+            out[f] = sorted(out[f])
+        return out
+    finally:
+        cx.row_factory = prev
 
 
 def rebuild_people_columns(cx, email):
@@ -111,18 +115,22 @@ def _parse_list(s):
 
 def import_from_people(cx):
     init_tables(cx)
+    prev = cx.row_factory
     cx.row_factory = sqlite3.Row
-    rows = cx.execute(
-        "SELECT email, tags, conditions, terrain_concerns, body_systems, challenges, goals "
-        "FROM people WHERE TRIM(COALESCE(email,''))<>''").fetchall()
-    persons, attrs = 0, 0
-    for r in rows:
-        persons += 1
-        for f in DISCRETE_FIELDS:
-            for val in _parse_list(r[f]):
-                if set_attr(cx, r["email"], f, val, source="import"):
+    try:
+        rows = cx.execute(
+            "SELECT email, tags, conditions, terrain_concerns, body_systems, challenges, goals "
+            "FROM people WHERE TRIM(COALESCE(email,''))<>''").fetchall()
+        persons, attrs = 0, 0
+        for r in rows:
+            persons += 1
+            for f in DISCRETE_FIELDS:
+                for val in _parse_list(r[f]):
+                    if set_attr(cx, r["email"], f, val, source="import"):
+                        attrs += 1
+            for f in SCALAR_FIELDS:
+                if (r[f] or "").strip() and set_attr(cx, r["email"], f, r[f], source="import"):
                     attrs += 1
-        for f in SCALAR_FIELDS:
-            if (r[f] or "").strip() and set_attr(cx, r["email"], f, r[f], source="import"):
-                attrs += 1
-    return {"persons": persons, "attrs": attrs}
+        return {"persons": persons, "attrs": attrs}
+    finally:
+        cx.row_factory = prev
