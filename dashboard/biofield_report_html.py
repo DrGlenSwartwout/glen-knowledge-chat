@@ -366,6 +366,10 @@ async function mineProfile(){rstat('Mining client profile for stresses…');
  var j=await post('/author/__TID__/mine-profile',{});
  if(j.error){rstat('Mine profile: '+j.error);return}
  rstat('Added '+j.added+' profile stress(es).');loadStress()}
+async function mineComms(){rstat('Mining recent comms for stresses…');
+ var j=await post('/author/__TID__/mine-comms',{});
+ if(j.error){rstat('Mine comms: '+j.error);return}
+ rstat('Added '+j.added+' comm stress(es).');loadStress()}
 async function suggestRemedies(){
  try{var j=await (await fetch('/author/__TID__/suggest-remedies')).json();
   document.getElementById('suggestpanel').innerHTML=j.html}
@@ -543,6 +547,7 @@ def render_author_html(report, depth_values=None, transcript=""):
                  head + hdr + "<div id=e4lpanel></div>"
                  "<div class=btnrow style='margin:6px 0'>"
                  "<button class='btn ghost' onclick=mineProfile()>Mine profile &rarr; stresses</button>"
+                 "<button class='btn ghost' onclick=mineComms()>Mine recent comms &rarr; stresses</button>"
                  "</div>"
                  "<div id=stresspanel></div>"
                  "<div class=btnrow style='margin:6px 0'>"
