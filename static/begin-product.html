@@ -549,21 +549,33 @@
           prevBtn.className = 'miron-btn';
           prevBtn.setAttribute('aria-label', 'Previous image');
           prevBtn.textContent = '‹ Prev';
-          prevBtn.addEventListener('click', function(){ advance(-1); });
+          prevBtn.addEventListener('click', function(){ stopAutoPermanently(); advance(-1); });
           var nextBtn = document.createElement('button');
           nextBtn.type = 'button';
           nextBtn.className = 'miron-btn';
           nextBtn.setAttribute('aria-label', 'Next image');
           nextBtn.textContent = 'Next ›';
-          nextBtn.addEventListener('click', function(){ advance(1); });
+          nextBtn.addEventListener('click', function(){ stopAutoPermanently(); advance(1); });
           controls.appendChild(prevBtn);
           controls.appendChild(nextBtn);
           rotator.appendChild(controls);
 
-          // Auto-rotate unless reduced-motion requested
-          if (!reducedMotion){
-            intervalId = setInterval(function(){ advance(1); }, 9000);
+          // Auto-rotate at a relaxed 5s pace. Hover pauses (and resumes); clicking
+          // an arrow hands control fully to the user (no more auto-advance) -- the
+          // accessible pattern. Disabled entirely under prefers-reduced-motion.
+          var manualStop = false;
+          function startAuto(){
+            if (!reducedMotion && !manualStop && !intervalId){
+              intervalId = setInterval(function(){ advance(1); }, 5000);
+            }
           }
+          function pauseAuto(){
+            if (intervalId){ clearInterval(intervalId); intervalId = null; }
+          }
+          function stopAutoPermanently(){ manualStop = true; pauseAuto(); }
+          rotator.addEventListener('mouseenter', pauseAuto);
+          rotator.addEventListener('mouseleave', startAuto);
+          startAuto();
         }
 
         // "Learn the science" link
