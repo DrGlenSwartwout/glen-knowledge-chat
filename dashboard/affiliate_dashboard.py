@@ -2,6 +2,7 @@
 route and the personal portal's Ambassador section. Pure, LOG_DB-based, none-raising."""
 
 from datetime import datetime, timezone
+from dashboard import customers as _customers
 
 
 def _mask_lead_name(first, last):
@@ -84,3 +85,25 @@ def add_social_links(cx, slug, email, urls):
         count += 1
     cx.commit()
     return count
+
+
+def backfill_affiliate_people(cx):
+    """Ensure every APPROVED affiliate has a people row (so they can self-login to
+    the personal portal). Reuses customers.find_or_create_by_email. Idempotent;
+    returns the count of people rows created. None-raising per affiliate."""
+    rows = cx.execute(
+        "SELECT email, name FROM affiliate_signups WHERE status='approved'").fetchall()
+    created = 0
+    for email, name in rows:
+        em = (email or "").strip().lower()
+        if not em:
+            continue
+        try:
+            existing = cx.execute("SELECT 1 FROM people WHERE lower(email)=?", (em,)).fetchone()
+            if existing:
+                continue
+            _customers.find_or_create_by_email(cx, email=em, name=(name or "").strip())
+            created += 1
+        except Exception:
+            continue
+    return created
