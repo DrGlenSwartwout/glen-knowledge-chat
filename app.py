@@ -24838,6 +24838,18 @@ def bos_orders_create():
                             o["name"] = by_email.get((o.get("email") or "").strip().lower(), o.get("name") or "")
             except Exception as _e:
                 print(f"[orders] name backfill skipped: {_e!r}", flush=True)
+            # Annotate each order with the client's published biofield report PDF
+            # (latest CONFIRMED report only), so Rae can print it at pack time.
+            try:
+                from dashboard import portal_biofield_reports as _pbr
+                _pbr.init_table(cx)
+                emails = {(o.get("email") or "").strip().lower()
+                          for o in rows if (o.get("email") or "").strip()}
+                pdf_urls = _pbr.report_pdf_urls(cx, emails)
+                for o in rows:
+                    o["biofield_pdf_url"] = pdf_urls.get((o.get("email") or "").strip().lower(), "")
+            except Exception as _e:
+                print(f"[orders] biofield pdf annotate skipped: {_e!r}", flush=True)
         finally:
             cx.close()
         return jsonify({"ok": True, "data": rows})

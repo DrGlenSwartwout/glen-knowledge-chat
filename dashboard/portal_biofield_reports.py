@@ -95,3 +95,27 @@ def is_actionable(scan_date, today):
     except (ValueError, TypeError):
         return False
     return 0 <= (td - sd).days <= 30
+
+
+def report_pdf_urls(cx, emails):
+    """{email_lower: url} for each email whose LATEST confirmed report carries a
+    non-empty content.report_pdf.url. Emails without one are omitted. None-raising."""
+    wanted = sorted({(e or "").strip().lower() for e in (emails or []) if (e or "").strip()})
+    if not wanted:
+        return {}
+    ph = ",".join("?" * len(wanted))
+    rows = cx.execute(
+        f"SELECT lower(email), content_json FROM portal_biofield_reports "
+        f"WHERE lower(email) IN ({ph}) AND status='confirmed' "
+        f"ORDER BY scan_date DESC", wanted).fetchall()
+    out = {}
+    for em, content_json in rows:
+        if em in out:
+            continue                      # rows are newest-first; keep the first per email
+        try:
+            url = ((json.loads(content_json or "{}").get("report_pdf") or {}).get("url") or "").strip()
+        except Exception:
+            url = ""
+        if url:
+            out[em] = url
+    return out

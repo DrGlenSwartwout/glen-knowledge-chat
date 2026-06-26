@@ -119,7 +119,8 @@
     return '<div class="card"><div class="who">'+esc(o.name||o.email||'Order #'+o.id)+badge+'</div>'
       + '<div class="meta">'+(items?items+'<br>':'')
       + (total?total+' &middot; ':'')+'<span class="src">'+esc(srcLabel(o.source))+'</span> &middot; <span class="age'+(isOld(o.created_at)?' old':'')+'">'+age+'</span>'
-      + (o.tracking_number?'<br>tracking '+esc(o.tracking_number):'')+'</div>'
+      + (o.tracking_number?'<br>tracking '+esc(o.tracking_number):'')
+      + (o.biofield_pdf_url?'<br><a href="'+esc(o.biofield_pdf_url)+'" target="_blank" rel="noopener">&#128424; Biofield report (PDF)</a>':'')+'</div>'
       + fulfillHtml(o)
       + '<div class="acts">'+acts+'</div></div>';
   }
