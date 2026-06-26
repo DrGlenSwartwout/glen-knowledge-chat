@@ -27,6 +27,7 @@ from . import scoreapp as _scoreapp
 from . import heygen as _heygen
 from . import inbox as _inbox
 from . import briefing_actions as _ba
+from . import briefing_links as _links
 
 
 MODEL = os.environ.get("BRIEFING_MODEL", "claude-haiku-4-5-20251001")
@@ -147,6 +148,13 @@ def _build_user_prompt(snapshot, slug):
         f"appears, with the short form in parentheses, e.g. 'End of Day (EOD)'. "
         f"Only reference pipelines and sources that appear in the snapshot; never "
         f"mention retired ones (e.g. MCTB, Email Paramedic).\n\n"
+        f"RECORD LINKS: some records in the snapshot include a `ref` field (an "
+        f"inbox sender, an invoice client). Whenever you mention such a record by "
+        f"name or email in your prose or actions, write that mention as a markdown "
+        f"link using its ref as the URL, e.g. `[Jane Doe](ref:r3)` or "
+        f"`[jane@example.com](ref:r3)`. Use ONLY a `ref` value that actually appears "
+        f"in the snapshot; never invent one and never write a real web address. A "
+        f"record with no `ref` is mentioned as plain text.\n\n"
         f"End the card with a '## Recommended actions' section: 1 to 3 actions, "
         f"each on its own line, each STARTING with a severity tag in square "
         f"brackets chosen from urgency AND potential financial impact: "
@@ -176,6 +184,7 @@ def regenerate_all():
         raise RuntimeError("ANTHROPIC_API_KEY not set")
 
     snapshot = gather_snapshot()
+    registry = _links.build_linkables(snapshot)   # stamps refs onto the snapshot
     client = anthropic.Anthropic()
 
     results = {}
@@ -186,6 +195,7 @@ def regenerate_all():
             try:
                 markdown = fut.result()
                 _intel.write_briefing(slug, markdown)
+                _intel.write_links(slug, registry)
                 _ba.reset_slug(slug)   # fresh briefing => clear handled-action state
                 results[slug] = {"ok": True, "bytes": len(markdown)}
             except Exception as e:

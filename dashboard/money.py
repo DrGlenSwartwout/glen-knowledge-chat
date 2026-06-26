@@ -85,6 +85,7 @@ def pb_data(days=30):
             recent.append({
                 "date": date_str[:10],
                 "name": f"{client.get('firstName','')} {client.get('lastName','')}".strip(),
+                "email": client.get("email", ""),
                 "amount": total, "paid": paid, "due": due,
                 "invoice": inv.get("invoiceNumber", "—"),
             })

@@ -163,6 +163,11 @@
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') crmAcHide(); });
 
   if (key()) { document.getElementById('gate').style.display='none'; loadQueue(); }
+  // Deep-link: ?email= pre-fills the contact so a briefing record-link lands ready.
+  (function(){
+    var em = new URLSearchParams(location.search).get('email');
+    if(em){ var f = document.getElementById('email'); if(f) f.value = em; }
+  })();
 </script>
 </body>
 </html>

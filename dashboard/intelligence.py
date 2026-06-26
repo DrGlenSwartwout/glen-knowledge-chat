@@ -31,6 +31,30 @@ def _slug_path(slug):
     return DATA_DIR / f"{slug}.md"
 
 
+def _links_path(slug):
+    if slug not in VALID_SLUGS:
+        raise ValueError(f"Unknown slug: {slug}. Valid: {sorted(VALID_SLUGS)}")
+    return DATA_DIR / f"{slug}.links.json"
+
+
+def write_links(slug, links):
+    """Persist the link registry (ref -> {type, display, url}) for a briefing."""
+    p = _links_path(slug)
+    p.write_text(json.dumps(links or {}))
+    return {"slug": slug, "links": len(links or {})}
+
+
+def read_links(slug):
+    """Return the link registry for a briefing, or {} if absent/unreadable."""
+    p = _links_path(slug)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return {}
+
+
 # Canonical card title per slug (also covers the separate shaira-daily feed).
 # Forced at serve time so the title is deterministic regardless of LLM wording.
 CANONICAL_TITLE = {
@@ -117,6 +141,7 @@ def read_briefing(slug):
         "slug": slug,
         "empty": False,
         "markdown": p.read_text(),
+        "links": read_links(slug),
         "generated_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
         "bytes": stat.st_size,
     }
