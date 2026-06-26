@@ -8450,6 +8450,11 @@ def affiliate_apply_form():
             """, (ts, org or name, slug,
                   f"Affiliate: {name}" + (f" ({org})" if org else ""),
                   slug, "affiliate", "scoreapp-quiz"))
+            try:
+                from dashboard import customers as _customers
+                _customers.find_or_create_by_email(cx, email=email, name=name)
+            except Exception as _e:
+                print(f"[affiliate-apply-form] people upsert skipped: {_e!r}", flush=True)
             cx.commit()
     except Exception as e:
         return _redirect("/affiliate?error=" + _urlparse.quote(f"Signup failed: {str(e)[:80]}"))
