@@ -9559,6 +9559,14 @@ def console_sales_pages_page():
     return resp
 
 
+@app.route("/console/pages")
+def bos_pages_page():
+    resp = send_from_directory(STATIC, "console-pages.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/console/sales-pages", methods=["GET"])
 def api_console_sales_pages_list():
     bad = _sales_console_ok()
