@@ -7,6 +7,8 @@ import re
 
 from dashboard.practitioner_portal import name_to_slug
 from dashboard import wholesale_pricing as _pricing
+from dashboard.biofield_authoring import authored_report
+from dashboard.biofield_narrative import get_narrative
 
 # Protocol wordings that differ from the catalog. Keyed by alphanumeric-only,
 # lowercased remedy text so "Focus, Neuromagnesium" and "Focus Neuro-Magnesium"
@@ -87,3 +89,65 @@ def segment_narrative(narrative, layers):
         end = positions[i + 1] if i + 1 < len(positions) else len(text)
         segs.append(text[start:end].strip())
     return segs
+
+
+def build_portal_content(cx, test_id, *, special_price_cents, catalog=None):
+    """Map an authored intake report to the portal content payload.
+
+    Returns {email, name, scan_date, scan_id, content, unresolved}. Never raises
+    on missing narrative (falls back to greeting=full narrative, blank meanings)."""
+    cat = catalog if catalog is not None else load_catalog()
+    rep = authored_report(cx, test_id)
+    raw_layers = rep.get("layers") or []
+    client = rep.get("client") or {}
+    name = (client.get("name") or "").strip()
+    first = name.split()[0] if name else ""
+
+    narrative = get_narrative(cx, test_id) or ""
+    segs = segment_narrative(narrative, raw_layers)
+    if segs:
+        greeting = f"Aloha {first}," if first else "Aloha,"
+        meanings = segs
+    else:
+        greeting = narrative or (f"Aloha {first}," if first else "Aloha,")
+        meanings = [""] * len(raw_layers)
+
+    layers, reorder, seen, unresolved = [], [], set(), []
+    for i, L in enumerate(raw_layers):
+        remedy = (L.get("remedy") or "").strip()
+        layers.append({
+            "n": L.get("layer"),
+            "title": (L.get("head") or "").strip(),
+            "meaning": meanings[i] if i < len(meanings) else "",
+            "remedy": remedy,
+            "dosing": _dosing(L),
+        })
+        if not remedy:
+            continue
+        slug = resolve_remedy_slug(remedy, cat)
+        if slug is None:
+            if remedy not in unresolved:
+                unresolved.append(remedy)
+            continue
+        if slug in seen:
+            continue
+        seen.add(slug)
+        reorder.append({"slug": slug, "qty": 1, "price_cents": int(special_price_cents)})
+
+    content = {
+        "greeting": greeting,
+        "video": {"url": "", "label": "Watch your message from Dr. Glen"},
+        "layers": layers,
+        "reorder_items": reorder,
+        "pricing_note": "",
+        "findings": [],
+        "biofield_status": "confirmed",
+    }
+    return {
+        "email": (client.get("email") or "").strip().lower(),
+        "name": name,
+        "scan_date": rep.get("date") or "",
+        "scan_id": "",
+        "content": content,
+        "unresolved": unresolved,
+    }
