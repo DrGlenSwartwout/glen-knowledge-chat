@@ -24170,6 +24170,7 @@ def api_orders_manual():
     body = request.get_json(silent=True) or {}
     customer = body.get("customer") or {}
     lines_in = body.get("lines") or []
+    pickup = bool(body.get("pickup"))
     if not lines_in:
         return jsonify({"ok": False, "error": "no line items"}), 400
     addr_in = customer.get("address") or {}
@@ -24222,7 +24223,7 @@ def api_orders_manual():
     # _price_cart is used solely for shipping + absorbed GET.
     try:
         pc = _price_cart(cart, ship=ship, channel="retail")
-        shipping_cents = int(pc.get("shipping_cents") or 0)
+        shipping_cents = _bos_orders.effective_shipping_cents(pickup, pc.get("shipping_cents"))
         get_cents = int((pc.get("priced") or {}).get("get_cents") or 0)
     except CheckoutError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -24266,7 +24267,7 @@ def api_orders_manual():
             address={"name": ship["name"], "street": ship["street"],
                      "address2": ship["address2"], "city": ship["city"],
                      "state": ship["state"], "zip": ship["zip"], "country": ship["country"]},
-            channel="retail", get_cents=get_cents,
+            channel=("pickup" if pickup else "retail"), get_cents=get_cents,
             discount_cents=discount_cents, shipping_cents=shipping_cents,
             points_redeemed_cents=points_redeemed_cents)
         if _gift_rows and oid:
@@ -24423,7 +24424,8 @@ def api_invoice_update(token):
     try:
         pc = _price_cart(cart, ship=ship, channel="retail")
         discount_cents = int(pc.get("discount_cents") or 0)
-        shipping_cents = int(pc.get("shipping_cents") or 0)
+        shipping_cents = _bos_orders.effective_shipping_cents(
+            (order.get("channel") or "") == "pickup", pc.get("shipping_cents"))
         get_cents = int((pc.get("priced") or {}).get("get_cents") or 0)
     except Exception as e:
         print(f"[invoice.update] pricing fell back: {e!r}", flush=True)
@@ -24439,7 +24441,8 @@ def api_invoice_update(token):
             cx, source=order["source"], external_ref=order["external_ref"],
             email=order.get("email") or "", name=order.get("name") or "",
             phone=order.get("phone") or "", person_id=order.get("person_id"),
-            items=items_rec, total_cents=total_cents, address=ship, channel="retail",
+            items=items_rec, total_cents=total_cents, address=ship,
+            channel=(order.get("channel") or "retail"),
             get_cents=get_cents, discount_cents=discount_cents,
             points_redeemed_cents=points, shipping_cents=shipping_cents)
         updated = _bos_orders.get_order(cx, order["id"])
