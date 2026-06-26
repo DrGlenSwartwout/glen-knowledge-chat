@@ -13,7 +13,6 @@ def _mask_lead_name(first, last):
 def build_dashboard(cx, slug, *, quiz_url, public_base_url):
     """Full affiliate dashboard dict for a slug. {} if the slug isn't an enrolled
     affiliate. Mirrors the legacy /affiliate/portal-data payload exactly."""
-    cx.row_factory = None
     row = cx.execute(
         "SELECT name, organization, short_url, created_at FROM affiliate_signups WHERE slug=?",
         (slug,)).fetchone()
