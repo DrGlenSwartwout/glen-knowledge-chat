@@ -81,6 +81,7 @@ FEEDBACK_VIEW_URL   = os.environ.get("FEEDBACK_VIEW_URL",   "https://Truly.VIP/F
 # dashboard/openai_failover.py.
 from dashboard.openai_failover import build_openai_client as _build_openai_client
 from dashboard.people import set_person_tags, distinct_tags
+from dashboard import affiliate_dashboard
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -8649,16 +8650,7 @@ def affiliate_social_links_submit():
         slug, email, status = row
         if status != "approved":
             return jsonify({"error": "application pending review"}), 403
-        ts = datetime.now(timezone.utc).isoformat()
-        count = 0
-        for u in (urls or [])[:10]:
-            u = (u or "").strip()[:500]
-            if not u.startswith(("http://", "https://")):
-                continue
-            cx.execute("INSERT INTO affiliate_social_links (ts, slug, email, url) VALUES (?,?,?,?)",
-                       (ts, slug, email, u))
-            count += 1
-        cx.commit()
+        count = affiliate_dashboard.add_social_links(cx, slug, email, urls)
     return jsonify({"ok": True, "count": count})
 
 
@@ -11190,6 +11182,29 @@ def api_portal_biofield_interest(token):
 @app.route("/api/portal/<token>/biofield/request", methods=["POST"])
 def api_portal_biofield_request(token):
     return _biofield_transition(token, "requested", "e4l:requested")
+
+
+@app.route("/api/portal/<token>/social-links", methods=["POST"])
+def api_portal_social_links(token):
+    from dashboard import portal_identity as _pi
+    from dashboard import client_portal as _cp
+    from dashboard import affiliate_dashboard as _ad
+    sess = request.cookies.get("rm_portal_session", "")
+    urls = (request.get_json(silent=True) or {}).get("urls") or []
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _pi._ensure_people_table(cx)
+        ident = _pi.resolve_identity(cx, token=token, session_token=sess,
+                                     client_login_enabled=_client_login_enabled())
+        if ident is None:
+            return jsonify({"error": "not found"}), 404
+        row = cx.execute(
+            "SELECT slug FROM affiliate_signups WHERE lower(email)=? AND status='approved' LIMIT 1",
+            (ident.email,)).fetchone()
+        if not row:
+            return jsonify({"error": "not an approved ambassador"}), 403
+        count = _ad.add_social_links(cx, row[0], ident.email, urls)
+    return jsonify({"ok": True, "count": count})
 
 
 # ── Scaffolded client login (DARK behind CLIENT_LOGIN_ENABLED) ────────────────

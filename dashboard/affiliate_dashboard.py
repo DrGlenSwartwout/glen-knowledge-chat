@@ -1,6 +1,8 @@
 """Affiliate/ambassador dashboard data — shared by the standalone /affiliate/portal-data
 route and the personal portal's Ambassador section. Pure, LOG_DB-based, none-raising."""
 
+from datetime import datetime, timezone
+
 
 def _mask_lead_name(first, last):
     fn = (first or "").strip()
@@ -59,3 +61,26 @@ def build_dashboard(cx, slug, *, quiz_url, public_base_url):
                           "shares": s[4], "ts": s[5]} for s in social],
         "member_since": created_at,
     }
+
+
+def add_social_links(cx, slug, email, urls):
+    """Store an ambassador's social-share URLs (http/https only, <=500 chars, max 10).
+    Self-contained (creates the table if absent). Returns the count inserted."""
+    cx.execute(
+        "CREATE TABLE IF NOT EXISTS affiliate_social_links ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, slug TEXT, email TEXT, url TEXT, "
+        "points INTEGER DEFAULT 0, views INTEGER DEFAULT 0, likes INTEGER DEFAULT 0, "
+        "shares INTEGER DEFAULT 0)")
+    if not isinstance(urls, (list, tuple)):
+        return 0
+    ts = datetime.now(timezone.utc).isoformat()
+    count = 0
+    for u in list(urls)[:10]:
+        u = (u or "").strip()[:500]
+        if not u.startswith(("http://", "https://")):
+            continue
+        cx.execute("INSERT INTO affiliate_social_links (ts, slug, email, url) VALUES (?,?,?,?)",
+                   (ts, slug, email, u))
+        count += 1
+    cx.commit()
+    return count
