@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Client Orders - Business OS</title>
+<style>
+  :root { --bg:#0a150d; --surface:#111f16; --surface2:#162318; --border:#21472d;
+          --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --red:#c0432b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--cream);
+         font-family:"Open Sans",system-ui,sans-serif; padding:24px; }
+  body > :not(.op-nav-bar):not(.op-nav-sub):not(#gate):not(script):not(style) {
+    max-width:1000px; margin-left:auto; margin-right:auto; }
+  h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+  .search { display:flex; gap:8px; margin-bottom:20px; }
+  .search input { flex:1; padding:10px 12px; border:1px solid var(--border); background:var(--surface2);
+                  color:var(--cream); border-radius:8px; font-size:14px; }
+  .search button { padding:10px 16px; border:1px solid var(--border); background:var(--gold);
+                   color:#0a150d; border-radius:8px; cursor:pointer; font-weight:600; }
+  .client { background:var(--surface); border:1px solid var(--border); border-radius:12px;
+            padding:16px; margin-bottom:16px; }
+  .client .name { font-family:"Raleway",sans-serif; font-size:17px; }
+  .client .co { color:var(--gold); font-size:13px; }
+  .client .contact { color:var(--muted); font-size:12px; margin-top:3px; }
+  .addrs { margin:12px 0; padding:10px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:9px; }
+  .addrs h3 { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  .addrs .a { font-size:13px; margin:3px 0; }
+  .order { border-top:1px solid var(--border); padding:10px 0; }
+  .order .head { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:baseline; }
+  .order .date { font-weight:600; font-size:14px; }
+  .order .tot { color:var(--gold); font-size:14px; }
+  .order .st { font-size:11px; color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:1px 6px; }
+  .order .owe { color:var(--red); font-size:12px; }
+  .order .items { margin:6px 0 0; font-size:13px; color:var(--cream); }
+  .order .items .it { color:var(--muted); margin:2px 0; }
+  .muted { color:var(--muted); }
+  #msg { color:var(--muted); font-size:13px; }
+  #gate { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; }
+  #gate input { padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--cream); }
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="bos" data-sub="client-orders"></script>
+  <div id="gate"><div style="text-align:center">
+    <p style="margin-bottom:10px;color:var(--muted)">Enter console key</p>
+    <input id="key" type="password" placeholder="console key" />
+    <button onclick="unlock()" style="padding:10px 14px;margin-left:6px;border-radius:8px;border:1px solid var(--border);background:var(--gold);color:#0a150d;cursor:pointer">Unlock</button>
+  </div></div>
+
+  <h1>Client Orders</h1>
+  <div class="sub">Past orders from FileMaker — read-only reference.</div>
+  <div class="search">
+    <input id="q" type="text" placeholder="Search by client name, company, or email…" />
+    <button onclick="search()">Search</button>
+  </div>
+  <div id="msg"></div>
+  <div id="results"></div>
+
+<script>
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  (function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; }
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function money(v){ v=String(v==null?'':v).trim(); if(v==='') return ''; var n=parseFloat(v); return isNaN(n)?esc(v):('$'+n.toFixed(2)); }
+
+  function addrLine(a){
+    var parts=[a.street,a.city,a.province,a.postal_code,a.country].filter(function(x){return x&&x.trim();});
+    return (a.type&&a.type.trim()?('['+esc(a.type)+'] '):'')+esc(parts.join(', '));
+  }
+  function renderOrder(o){
+    var items=(o.items||[]).map(function(i){
+      return '<div class="it">'+esc(i.qty)+' × '+esc(i.description)+(i.ext_price?(' — '+money(i.ext_price)):'')+'</div>';
+    }).join('') || '<div class="it muted">No line items.</div>';
+    var owe=(o.outstanding&&parseFloat(o.outstanding)>0)?('<span class="owe">balance '+money(o.outstanding)+'</span>'):'';
+    return '<div class="order"><div class="head"><span class="date">'+esc(o.date||'—')+'</span>'+
+      '<span>'+(o.status?('<span class="st">'+esc(o.status)+'</span> '):'')+owe+' <span class="tot">'+money(o.total)+'</span></span></div>'+
+      '<div class="items">'+items+'</div></div>';
+  }
+  function renderClient(c){
+    var cl=c.client||{};
+    var phones=(cl.phones||[]).map(esc).join(' · ');
+    var addrs=(c.addresses||[]);
+    var addrHtml=addrs.length
+      ? '<div class="addrs"><h3>Addresses on file (client-level — not per-order)</h3>'+
+        addrs.map(function(a){return '<div class="a">'+addrLine(a)+'</div>';}).join('')+'</div>'
+      : '';
+    var orders=(c.orders||[]);
+    var ordHtml=orders.length
+      ? orders.map(renderOrder).join('')
+      : '<div class="order muted">No FMP orders on record for this client.</div>';
+    return '<div class="client"><div class="name">'+esc(cl.name||'(no name)')+'</div>'+
+      (cl.company?('<div class="co">'+esc(cl.company)+'</div>'):'')+
+      '<div class="contact">'+esc(cl.email||'')+(phones?(' · '+phones):'')+'</div>'+
+      addrHtml+ordHtml+'</div>';
+  }
+
+  async function search(){
+    var q=document.getElementById('q').value.trim();
+    var msg=document.getElementById('msg'), out=document.getElementById('results');
+    out.innerHTML=''; msg.textContent='';
+    if(q.length<2){ msg.textContent='Type at least 2 characters.'; return; }
+    msg.textContent='Searching…';
+    var param = q.indexOf('@')>=0 ? ('email='+encodeURIComponent(q)) : ('name='+encodeURIComponent(q));
+    try {
+      var r=await fetch('/api/console/fmp-orders?'+param, {headers:hdr()});
+      if(r.status===401){ msg.textContent='Unauthorized — check the console key.'; return; }
+      var d=await r.json();
+      var res=(d.results||[]);
+      if(!res.length){ msg.textContent='No matching clients.'; return; }
+      msg.textContent=res.length+' client'+(res.length>1?'s':'')+' found.';
+      out.innerHTML=res.map(renderClient).join('');
+    } catch(e){ msg.textContent='Error: '+e; }
+  }
+  document.getElementById('q').addEventListener('keydown', function(e){ if(e.key==='Enter') search(); });
+  if(key()) document.getElementById('gate').style.display='none';
+</script>
+</body>
+</html>
