@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 
 from dashboard import briefing_runner as br

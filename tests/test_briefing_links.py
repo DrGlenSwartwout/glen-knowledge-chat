@@ -52,3 +52,23 @@ def test_build_linkables_survives_error_blocks():
     snap = {"inbox": {"_error": "inbox: TimeoutError: boom"},
             "money": {"practice_better": {"_error": "pb_data: KeyError"}}}
     assert bl.build_linkables(snap) == {}  # no crash, no refs
+
+
+def test_build_linkables_parses_from_header_with_display_name():
+    snap = {"inbox": {"oldest": [
+        {"subject": "Re: order", "from": "Jane Doe <Jane@X.com>", "age_days": 5},
+    ]}}
+    reg = bl.build_linkables(snap)
+    ref = snap["inbox"]["oldest"][0]["ref"]
+    assert reg[ref]["url"] == "/console/crm?email=jane%40x.com"
+    assert reg[ref]["display"] == "Jane Doe"
+
+
+def test_build_linkables_dedupes_case_insensitively():
+    snap = {"inbox": {"oldest": [
+        {"from": "Jane@X.com", "age_days": 5},
+        {"from": "jane@x.com", "age_days": 2},
+    ]}}
+    reg = bl.build_linkables(snap)
+    assert [r.get("ref") for r in snap["inbox"]["oldest"]] == ["r1", "r1"]
+    assert list(reg.keys()) == ["r1"]

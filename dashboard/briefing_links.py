@@ -7,7 +7,26 @@ beside the briefing and resolved client-side. No console key is ever stored in
 the url; it is appended at click time in the dashboard.
 """
 
+import re
+
 from urllib.parse import quote
+
+
+_ANGLE_RE = re.compile(r"<([^>]+)>")
+
+
+def _parse_sender(raw):
+    """From a possibly 'Name <addr@x.com>' From-header, return (email, display).
+    No angle brackets -> the whole string is treated as both email and display.
+    Mirrors dashboard.inbox._normalize_sender_email's extraction, kept local so
+    this module stays pure."""
+    raw = (raw or "").strip()
+    m = _ANGLE_RE.search(raw)
+    if m:
+        email = m.group(1).strip()
+        name = raw[:m.start()].strip().strip('"').strip()
+        return email, (name or email)
+    return raw, raw
 
 
 def person_url(email):
@@ -24,7 +43,8 @@ def _iter_person_records(snapshot):
     inbox = snapshot.get("inbox") or {}
     for rec in (inbox.get("oldest") or []):
         if isinstance(rec, dict):
-            yield rec, rec.get("from"), rec.get("from")
+            email, display = _parse_sender(rec.get("from"))
+            yield rec, display, email
     pb = ((snapshot.get("money") or {}).get("practice_better") or {})
     for rec in (pb.get("invoices") or []):
         if isinstance(rec, dict):
@@ -38,7 +58,7 @@ def build_linkables(snapshot):
     url_to_ref = {}
     n = 0
     for rec, display, email in _iter_person_records(snapshot):
-        email = (email or "").strip()
+        email = (email or "").strip().lower()
         if "@" not in email:
             continue
         url = person_url(email)

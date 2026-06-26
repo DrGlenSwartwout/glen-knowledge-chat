@@ -38,3 +38,9 @@ def test_read_briefing_empty_has_no_links(monkeypatch, tmp_path):
     data = intel.read_briefing("money-cash")
     assert data["empty"] is True
     assert "links" not in data
+
+
+def test_read_links_corrupt_returns_empty(monkeypatch, tmp_path):
+    d = _use_tmp(monkeypatch, tmp_path)
+    (d / "money-cash.links.json").write_text("not valid json{{")
+    assert intel.read_links("money-cash") == {}
