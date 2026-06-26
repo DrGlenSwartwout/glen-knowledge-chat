@@ -11,6 +11,7 @@ Order/points/biofield reads are defensive: a failure degrades to an empty block.
 import datetime
 import json
 
+from dashboard import affiliate_dashboard as _ad
 from dashboard import client_portal as _cp
 from dashboard import portal_biofield_reports as _pbr
 from dashboard import portal_offers as _po
@@ -139,12 +140,17 @@ def _ambassador_block(cx, email, quiz_url, public_base_url):
     slug, status = row[0], (row[1] or "")
     if status != "approved":
         return {"status": "pending"}
-    return {
+    block = {
         "status": "enrolled",
         "slug": slug,
         "referral_url": f"{quiz_url}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz",
         "recruit_url": f"{base}/affiliate?ref={slug}",
     }
+    try:
+        block["dashboard"] = _ad.build_dashboard(cx, slug, quiz_url=quiz_url, public_base_url=public_base_url)
+    except Exception:
+        pass
+    return block
 
 
 def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,

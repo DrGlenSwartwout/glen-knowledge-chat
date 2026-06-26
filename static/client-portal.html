@@ -465,9 +465,35 @@ function render(d, v){
   if(v && v.ambassador){
     const amb = v.ambassador;
     if(amb.status === "enrolled"){
+      const dash = amb.dashboard || {};
+      const statsHtml = [
+        dash.total_leads!=null?`<div class="kv"><span class="k">Leads</span><span class="v">${esc(dash.total_leads)}</span></div>`:"",
+        dash.last_lead?`<div class="kv"><span class="k">Last lead</span><span class="v">${esc(dash.last_lead)}</span></div>`:"",
+        dash.conversions_count!=null?`<div class="kv"><span class="k">Conversions</span><span class="v">${esc(dash.conversions_count)}</span></div>`:"",
+        dash.member_since?`<div class="kv"><span class="k">Member since</span><span class="v">${esc(dash.member_since)}</span></div>`:""
+      ].join("");
+      const offersHtml = (dash.offers||[]).map(o=>
+        `<div style="margin:.5rem 0"><b>${esc(o.name||"")}</b>`+
+        (o.description?`<p class="muted small" style="margin:.2rem 0">${esc(o.description)}</p>`:"")+
+        (o.url?`<a class="btn" href="${esc(o.url)}" target="_blank" rel="noopener" style="margin:.4rem 0">View offer</a>`:"")+
+        (o.instructions?`<p class="small" style="margin:.3rem 0">${esc(o.instructions)}</p>`:"")+
+        `</div>`
+      ).join("");
+      const recentList = dash.recent||[];
+      const recentHtml = recentList.length
+        ?recentList.map(r=>`<div class="kv"><span class="k">${esc(r.name||"")}</span><span class="v">score ${esc(r.score||"")} · ${esc(r.received_at||"")}</span></div>`).join("")
+        :`<p class="muted small">No referrals yet.</p>`;
+      const recruitHtml = dash.recruit_url
+        ?`<div class="kv"><span class="k">Recruited</span><span class="v"><a href="${esc(dash.recruit_url)}" target="_blank" rel="noopener">${esc(dash.recruited_count||0)} recruited</a></span></div>`
+        :"";
       html += `<div class="card"><h2>Your Ambassador links</h2>
         <div class="kv"><span class="k">Share &amp; earn</span><span class="v"><a href="${esc(amb.referral_url)}" target="_blank" rel="noopener">${esc(amb.referral_url)}</a></span></div>
         <div class="kv"><span class="k">Invite ambassadors</span><span class="v"><a href="${esc(amb.recruit_url)}" target="_blank" rel="noopener">${esc(amb.recruit_url)}</a></span></div>
+        ${statsHtml}
+        ${offersHtml?`<h3 style="margin:.8rem 0 .3rem;font-size:.9rem">Offers</h3>${offersHtml}`:""}
+        <h3 style="margin:.8rem 0 .3rem;font-size:.9rem">Recent referrals</h3>
+        ${recentHtml}
+        ${recruitHtml}
       </div>`;
     } else if(amb.status === "pending"){
       html += `<div class="card"><h2>Ambassador</h2><p class="muted">Your ambassador application is under review.</p></div>`;
