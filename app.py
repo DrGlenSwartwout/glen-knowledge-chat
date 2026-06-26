@@ -8105,11 +8105,8 @@ def affiliate_hub_data(slug):
 
 @app.route("/affiliate/portal")
 def affiliate_portal_page():
-    # Token-only access. Email-based instant-redirect was removed in favor of
-    # /affiliate/login-request → email magic-link → /affiliate/login-verify.
-    resp = send_from_directory(STATIC, "affiliate-portal.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return resp
+    from flask import redirect as _redir
+    return _redir("/portal/login")
 
 
 def _send_affiliate_magic_link(to_email: str, name: str, magic_url: str) -> tuple:
@@ -8357,76 +8354,14 @@ def _compose_share_email(client_first, client_email, main_challenge, main_goal,
 
 @app.route("/affiliate/login-request", methods=["POST"])
 def affiliate_login_request():
-    """Email-based sign-in. Always redirects to /affiliate?info=... — never
-    leaks whether the email is registered (prevents enumeration). If the
-    email matches an approved affiliate, a single-use magic-link is emailed.
-    """
     from flask import redirect as _redir
-    import urllib.parse as _up
-    email = (request.form.get("email") or "").strip().lower()
-    if not email or "@" not in email:
-        return _redir("/affiliate?error=" + _up.quote("Valid email required"))
-
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        row = cx.execute(
-            "SELECT name FROM affiliate_signups WHERE LOWER(email)=? AND status='approved'",
-            (email,)
-        ).fetchone()
-        if row:
-            magic = secrets.token_urlsafe(32)
-            th    = _hash_token(magic)
-            now   = _now_utc()
-            expires = now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)
-            cx.execute(
-                """INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at)
-                   VALUES (?,?,?,?,?)""",
-                (th, email, "affiliate_magic_link", now.isoformat(), expires.isoformat())
-            )
-            cx.commit()
-            magic_url = f"{PUBLIC_BASE_URL}/affiliate/login-verify?token={magic}"
-            _send_affiliate_magic_link(email, row[0] or "", magic_url)
-
-    return _redir("/affiliate?info=" + _up.quote(
-        f"If that email matches an approved affiliate, we just sent a sign-in link. "
-        f"Check your inbox — the link expires in {AUTH_TOKEN_TTL_LABEL}."
-    ))
+    return _redir("/portal/login")
 
 
 @app.route("/affiliate/login-verify", methods=["GET"])
 def affiliate_login_verify():
-    """Consume the magic-link token and 302 to the affiliate's portal."""
     from flask import redirect as _redir
-    import urllib.parse as _up
-    token = (request.args.get("token") or "").strip()
-    if not token:
-        return _redir("/affiliate?error=" + _up.quote("Missing sign-in token"))
-    th = _hash_token(token)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        cx.row_factory = sqlite3.Row
-        row = cx.execute(
-            """SELECT email, expires_at, consumed_at FROM auth_tokens
-               WHERE token_hash=? AND purpose='affiliate_magic_link'""",
-            (th,)
-        ).fetchone()
-        if not row:
-            return _redir("/affiliate?error=" + _up.quote("Sign-in link invalid or already used. Request a new one."))
-        if row["consumed_at"]:
-            return _redir("/affiliate?error=" + _up.quote("Sign-in link already used. Request a new one."))
-        try:
-            if datetime.fromisoformat(row["expires_at"]) < _now_utc():
-                return _redir("/affiliate?error=" + _up.quote("Sign-in link expired. Request a new one."))
-        except Exception:
-            return _redir("/affiliate?error=" + _up.quote("Sign-in link corrupted. Request a new one."))
-        cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
-                   (_now_utc().isoformat(), th))
-        aff = cx.execute(
-            "SELECT token FROM affiliate_signups WHERE LOWER(email)=? AND status='approved'",
-            (row["email"],)
-        ).fetchone()
-        cx.commit()
-    if not aff:
-        return _redir("/affiliate?error=" + _up.quote("Affiliate account no longer active. Apply below."))
-    return _redir(f"/affiliate/portal?token={aff[0]}")
+    return _redir("/portal/login")
 
 
 @app.route("/affiliate/apply-form", methods=["POST"])
@@ -8482,7 +8417,7 @@ def affiliate_apply_form():
     with sqlite3.connect(LOG_DB) as cx:
         existing = cx.execute("SELECT token FROM affiliate_signups WHERE email=?", (email,)).fetchone()
     if existing:
-        resp = _redirect(f"/affiliate/portal?token={existing[0]}")
+        resp = _redirect("/portal/login")
         _stamp_affiliate_journey(_session_id, email, _first, _last, _recruiter_slug)
         if _minted_session:
             resp.set_cookie("amg_session", _session_id, max_age=60 * 60 * 24 * 365,
@@ -8519,7 +8454,7 @@ def affiliate_apply_form():
     except Exception as e:
         return _redirect("/affiliate?error=" + _urlparse.quote(f"Signup failed: {str(e)[:80]}"))
 
-    resp = _redirect(f"/affiliate/portal?token={token}")
+    resp = _redirect("/portal/login")
     _stamp_affiliate_journey(_session_id, email, _first, _last, _recruiter_slug)
     if _minted_session:
         resp.set_cookie("amg_session", _session_id, max_age=60 * 60 * 24 * 365,
@@ -8612,7 +8547,7 @@ def affiliate_apply():
     tracking_url = (
         f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
     )
-    portal_url = f"/affiliate/portal?token={token}"
+    portal_url = "/portal/login"
     resp = jsonify({
         "ok": True,
         "portal_url": portal_url,
