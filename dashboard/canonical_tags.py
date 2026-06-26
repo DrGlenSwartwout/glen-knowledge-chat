@@ -70,3 +70,32 @@ def set_attr(cx, email, field, value, *, source):
         "VALUES(?,?,?,?,?,?)", (email, field, canon, vn, source, now))
     cx.commit()
     return cur.rowcount > 0
+
+
+def get_person(cx, email):
+    init_tables(cx)
+    cx.row_factory = sqlite3.Row
+    email = (email or "").strip().lower()
+    out = {f: ([] if f in DISCRETE_FIELDS else "") for f in ALL_FIELDS}
+    for r in cx.execute(
+            "SELECT field, value FROM person_attributes WHERE email=?", (email,)).fetchall():
+        f = r["field"]
+        if f in DISCRETE_FIELDS:
+            out[f].append(r["value"])
+        elif f in SCALAR_FIELDS:
+            out[f] = r["value"]
+    for f in DISCRETE_FIELDS:
+        out[f] = sorted(out[f])
+    return out
+
+
+def rebuild_people_columns(cx, email):
+    email = (email or "").strip().lower()
+    p = get_person(cx, email)
+    cx.execute(
+        "UPDATE people SET tags=?, conditions=?, terrain_concerns=?, body_systems=?, "
+        "challenges=?, goals=? WHERE lower(email)=?",
+        (json.dumps(p["tags"]), json.dumps(p["conditions"]),
+         json.dumps(p["terrain_concerns"]), json.dumps(p["body_systems"]),
+         p["challenges"], p["goals"], email))
+    cx.commit()
