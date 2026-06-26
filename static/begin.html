@@ -1000,6 +1000,9 @@
       var a = document.createElement('a');
       a.className = 'journey-card status-' + (s.status || 'available');
       a.href = s.href || '#';
+      // External destinations (e.g. Scan -> E4L, Heal -> truly.vip) open in a new
+      // tab, matching the surfaced-card behavior; internal (/...) navigate in place.
+      if (s.href && s.href.charAt(0) !== '/') { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
       var lab = document.createElement('span');
       lab.className = 'jc-label';
       lab.textContent = s.label;                       // static server label - textContent (XSS-safe)
