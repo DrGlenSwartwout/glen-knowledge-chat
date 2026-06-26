@@ -7,6 +7,29 @@
   var REWARDS = !!(window.__SHELL__ && window.__SHELL__.rewards1b);
   var REWARDS_GIFT = !!(window.__SHELL__ && window.__SHELL__.rewardsGift);
 
+  // --- Light/Dark theme (shared mechanism: localStorage 'rm-theme' + <html data-theme>).
+  //     The ribbon is theme-aware and owns its own toggle; theme-toggle.js suppresses its
+  //     floating button when the ribbon (window.__SHELL__) is present. ---
+  function applyTheme(t) {
+    if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+    else document.documentElement.removeAttribute("data-theme");
+  }
+  function applyShellTheme() {
+    try { applyTheme(localStorage.getItem("rm-theme")); } catch (e) {}
+    // Inject the light-palette override only if no other owner already did (theme-toggle.js
+    // or op-nav.js). Keep in sync with static/theme-toggle.js.
+    if (!document.getElementById("rm-theme-style") && !document.getElementById("op-nav-theme-style")) {
+      var s = document.createElement("style"); s.id = "rm-theme-style";
+      s.textContent = ':root[data-theme="light"]{' +
+        '--bg:#FBF8F3;--bg-2:#F4ECDE;--surface:#FFFFFF;--surface-2:#F4ECDE;--surface2:#F4ECDE;' +
+        '--border:#E2D9C9;--rule:#E2D9C9;--hair:#E2D9C9;--cream:#1E2A2A;' +
+        '--muted:#5F6B6B;--dim:#5F6B6B;--gray:#5F6B6B;--ink:#1E2A2A;--ink-2:#5F6B6B;--ink-3:#7A8585;' +
+        '--gold:#B08A3E;--gold-soft:#EFE4C8;--green:#2D7A6A;--panel:#FFFFFF;--panel-2:#F4ECDE;' +
+        '--text:#1E2A2A;--text-muted:#5F6B6B;--accent:#B08A3E;--accent2:#2D7A6A;}';
+      (document.head || document.documentElement).appendChild(s);
+    }
+  }
+
   function el(tag, cls, html) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -81,6 +104,24 @@
       document.body.appendChild(wp);
       walletBtn.onclick = function () { wp.classList.toggle("open"); };
     }
+
+    // Light/Dark toggle — the ribbon owns the theme control on public pages.
+    var themeBtn = el("button", "js-theme", "☀"); themeBtn.title = "Light / Dark";
+    function relabelTheme() {
+      themeBtn.textContent = document.documentElement.getAttribute("data-theme") === "light" ? "☾" : "☀";
+    }
+    relabelTheme();
+    themeBtn.onclick = function () {
+      var next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+      applyTheme(next);
+      try { localStorage.setItem("rm-theme", next); } catch (e) {}
+      relabelTheme();
+    };
+    bar.appendChild(themeBtn);
+    window.addEventListener("storage", function (e) {
+      if (e.key !== "rm-theme") return;
+      applyTheme(e.newValue); relabelTheme();
+    });
 
     document.body.appendChild(bar);
     document.body.classList.add("js-shell-on");
@@ -230,6 +271,13 @@
   }
 
   function boot() {
+    // The journey ribbon is a CUSTOMER wayfinding bar. Suppress it inside an embedded
+    // frame (e.g. the funnel chat iframe), and on internal ops pages — those carry the
+    // GLEN·OPS bar (op-nav.js), which is their header and owns their theme toggle.
+    // Without this, the ribbon stacks on top of op-nav as a duplicate header.
+    try { if (window.top !== window.self) return; } catch (e) { return; }
+    if (document.querySelector(".op-nav-bar")) return;
+    applyShellTheme();
     var trail = recordVisit();
     tagExternalLinks();
     var ui = buildRibbon(trail);

@@ -27,6 +27,15 @@
   var active = (script && script.dataset && script.dataset.active) || "";
   var sub = (script && script.dataset && script.dataset.sub) || "";
 
+  // --- Light/Dark theme: shared mechanism (localStorage 'rm-theme' + <html data-theme>),
+  //     same as static/theme-toggle.js. op-nav owns the toggle on every internal page so
+  //     Dashboard + Business OS get a light/dark control without per-page edits. ---
+  function rmApplyTheme(t) {
+    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    else document.documentElement.removeAttribute('data-theme');
+  }
+  try { rmApplyTheme(localStorage.getItem('rm-theme')); } catch (e) {}
+
   // Resolve the console key: a URL ?key= wins and is persisted; otherwise fall
   // back to a previously-stored key. This lets every internal link carry the key
   // even when the current page's URL doesn't have it (e.g. unlocked via a gate).
@@ -168,6 +177,23 @@
     +   '.op-nav-search:focus{width:150px}'
     +   '.op-nav-dropdown{width:86vw;right:-8px}'
     + '}'
+    // light/dark toggle button in the bar
+    + '.op-nav-theme{background:transparent;border:1px solid #2a2a35;border-radius:6px;'
+    +   'color:#9aa0b4;font:inherit;font-size:13px;line-height:1;padding:4px 8px;margin-right:8px;'
+    +   'cursor:pointer;transition:color .15s ease,border-color .15s ease}'
+    + '.op-nav-theme:hover{color:#e6edf3;border-color:#7c5cbf}'
+    // Light-palette override (superset of the funnel/console/dashboard var names).
+    // Distinct id from theme-toggle.js's 'rm-theme-style' so dual-load pages stay valid;
+    // op-nav's lives in <body> (after any head copy) so its superset wins the cascade.
+    + '</style>'
+    + '<style id="op-nav-theme-style">'
+    + ':root[data-theme="light"]{'
+    +   '--bg:#FBF8F3;--bg-2:#F4ECDE;--surface:#FFFFFF;--surface-2:#F4ECDE;--surface2:#F4ECDE;'
+    +   '--border:#E2D9C9;--rule:#E2D9C9;--hair:#E2D9C9;--cream:#1E2A2A;'
+    +   '--muted:#5F6B6B;--dim:#5F6B6B;--gray:#5F6B6B;--ink:#1E2A2A;--ink-2:#5F6B6B;--ink-3:#7A8585;'
+    +   '--gold:#B08A3E;--gold-soft:#EFE4C8;--green:#2D7A6A;--panel:#FFFFFF;--panel-2:#F4ECDE;'
+    +   '--text:#1E2A2A;--text-muted:#5F6B6B;--accent:#B08A3E;--accent2:#2D7A6A;'
+    + '}'
     + '</style>';
 
   var bar = '<nav class="op-nav-bar" role="navigation" aria-label="Glen ops">'
@@ -181,6 +207,7 @@
   if (!effKey) {
     bar += '<span class="op-nav-key-warn">no ?key — paste &amp; reload</span>';
   }
+  bar += '<button type="button" class="op-nav-theme" id="op-nav-theme" title="Light / Dark" aria-label="Toggle light or dark theme">☀</button>';
   bar += '<span class="op-nav-search-wrap">'
     + '<span class="op-nav-mode-toggle" id="op-nav-mode">'
     +   '<button type="button" data-mode="pages">Pages</button>'
@@ -203,6 +230,28 @@
   }
 
   document.write(styles + bar);
+
+  // Wire the light/dark toggle. Reflects the active theme, persists to localStorage,
+  // and live-syncs across same-origin documents via the 'storage' event.
+  (function () {
+    var themeBtn = document.getElementById('op-nav-theme');
+    if (!themeBtn) return;
+    function relabelTheme() {
+      themeBtn.textContent = document.documentElement.getAttribute('data-theme') === 'light' ? '☾' : '☀';
+    }
+    relabelTheme();
+    themeBtn.addEventListener('click', function () {
+      var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      rmApplyTheme(next);
+      try { localStorage.setItem('rm-theme', next); } catch (e) {}
+      relabelTheme();
+    });
+    window.addEventListener('storage', function (e) {
+      if (e.key !== 'rm-theme') return;
+      rmApplyTheme(e.newValue);
+      relabelTheme();
+    });
+  })();
 
   // ---------------------------------------------------------------------------
   // Site-wide search — one box, two modes.

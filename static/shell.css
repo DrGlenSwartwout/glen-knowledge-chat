@@ -1,34 +1,42 @@
 /* Journey shell — all scoped under #journey-shell to never clobber page CSS. */
 :root { --jshell-h: 52px; }
 body.js-shell-on { padding-top: var(--jshell-h); }
+/* Ribbon is theme-aware: it reads the page's own palette vars (dark by default on
+   illtowell.com), and the [data-theme="light"] override flips them to light — so the
+   ribbon always matches the page instead of being permanently light-cream. */
 #journey-shell { position: fixed; top: 0; left: 0; right: 0; height: var(--jshell-h);
   display: flex; align-items: center; gap: 12px; padding: 0 12px; z-index: 9999;
-  background: #faf8f4; border-bottom: 1px solid #e6e0d6; font: 14px/1.2 system-ui, sans-serif; }
-#journey-shell .js-home, #journey-shell .js-back { background: none; border: none;
-  cursor: pointer; font-size: 18px; color: #555; padding: 4px 6px; border-radius: 6px; }
-#journey-shell .js-home:hover, #journey-shell .js-back:hover { background: #efe9df; }
+  background: var(--surface, #14201a); border-bottom: 1px solid var(--border, #25402d);
+  color: var(--text, #e9e2cf); font: 14px/1.2 system-ui, sans-serif; }
+#journey-shell .js-home, #journey-shell .js-back, #journey-shell .js-theme { background: none;
+  border: none; cursor: pointer; font-size: 18px; color: var(--muted, #9aa08f);
+  padding: 4px 6px; border-radius: 6px; }
+#journey-shell .js-theme { font-size: 15px; }
+#journey-shell .js-home:hover, #journey-shell .js-back:hover,
+#journey-shell .js-theme:hover { background: rgba(127,127,127,.16); }
 #journey-shell .js-path { flex: 1; display: flex; align-items: center; gap: 6px;
   overflow-x: auto; cursor: pointer; }
 .js-land { display: flex; align-items: center; gap: 6px; white-space: nowrap;
-  padding: 4px 8px; border-radius: 14px; color: #6b6256; opacity: .65; }
+  padding: 4px 8px; border-radius: 14px; color: var(--muted, #9aa08f); opacity: .7; }
 .js-land .js-icon { font-size: 16px; }
-.js-land.done { opacity: 1; color: #3c6b4a; }
-.js-land.next { opacity: 1; color: #8a6d1f; font-weight: 600; }
+.js-land.done { opacity: 1; color: var(--green, #6aa37a); }
+.js-land.next { opacity: 1; color: var(--gold, #d4a843); font-weight: 600; }
 .js-land.next::after { content: "💎"; margin-left: 2px; }   /* gold gem on current */
 .js-land.fog { opacity: .35; filter: blur(.3px); }
-.js-trail-link { color: #b8ad99; }                          /* drawn path between lands */
-.js-trail-link.done { color: #6aa37a; }
+.js-trail-link { color: var(--muted, #6b6f63); }            /* drawn path between lands */
+.js-trail-link.done { color: var(--green, #6aa37a); }
 .js-hide { display: none !important; }
-#journey-shell .js-mypath-btn { background: none; border: 1px solid #e6e0d6;
-  border-radius: 14px; padding: 4px 10px; cursor: pointer; color: #555; }
+#journey-shell .js-mypath-btn { background: none; border: 1px solid var(--border, #3a4a3f);
+  border-radius: 14px; padding: 4px 10px; cursor: pointer; color: var(--text, #cfc9b8); }
 .js-mypath { position: fixed; top: var(--jshell-h); right: 8px; width: 280px; max-height: 60vh;
-  overflow-y: auto; background: #fff; border: 1px solid #e6e0d6; border-radius: 10px;
+  overflow-y: auto; background: var(--surface, #1a261f); color: var(--text, #e9e2cf);
+  border: 1px solid var(--border, #2c4233); border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: 8px; z-index: 9999; display: none; }
 .js-mypath.open { display: block; }
-.js-mypath h4 { margin: 4px 8px; font-size: 12px; text-transform: uppercase; color: #999; }
-.js-mypath a { display: block; padding: 6px 8px; color: #444; text-decoration: none;
+.js-mypath h4 { margin: 4px 8px; font-size: 12px; text-transform: uppercase; color: var(--muted, #999); }
+.js-mypath a { display: block; padding: 6px 8px; color: var(--text, #cfc9b8); text-decoration: none;
   border-radius: 6px; }
-.js-mypath a:hover { background: #f4f0e8; }
+.js-mypath a:hover { background: rgba(127,127,127,.14); }
 .js-ext-mark { font-size: .8em; opacity: .6; margin-left: 2px; }
 /* member efficient nav */
 #journey-shell .js-mnav { display: flex; gap: 10px; }

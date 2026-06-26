@@ -11,7 +11,7 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    background: #0a0a0f;
+    background: var(--bg, #0a0a0f);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
   /* op-nav.js writes the top tab row here (sticky, 40px) */
@@ -21,14 +21,14 @@
     align-items: center;
     gap: 6px;
     padding: 9px 14px;
-    background: #0f0f16;
-    border-bottom: 1px solid #2a2a35;
+    background: var(--surface, #0f0f16);
+    border-bottom: 1px solid var(--border, #2a2a35);
     overflow-x: auto;
     flex: 0 0 auto;
     box-shadow: 0 2px 8px rgba(0,0,0,.2);
   }
   .funnel-subnav .fn-label {
-    color: #9a9384;
+    color: var(--muted, #9a9384);
     letter-spacing: .16em;
     text-transform: uppercase;
     font-size: 10px;
@@ -40,9 +40,9 @@
   .funnel-tab {
     padding: 6px 16px;
     border-radius: 20px;
-    border: 1px solid #2a2a35;
+    border: 1px solid var(--border, #2a2a35);
     background: transparent;
-    color: #9aa0b4;
+    color: var(--muted, #9aa0b4);
     cursor: pointer;
     font-size: 13px;
     font-weight: 600;
@@ -54,7 +54,7 @@
 
   .fn-open {
     margin-left: auto;
-    color: #9aa0b4;
+    color: var(--muted, #9aa0b4);
     font-size: 12px;
     text-decoration: none;
     padding: 6px 12px;
