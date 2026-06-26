@@ -334,9 +334,39 @@ async function approve(){
   }
 }
 
-// Stub handlers for Suggestions queue mode (wired in Task 2)
-function build(){ $('status').textContent = 'Build not yet implemented.'; }
-function dismiss(){ $('status').textContent = 'Dismiss not yet implemented.'; }
+async function build(){
+  if(!CURRENT) return;
+  $('status').textContent = 'Building...';
+  $('btn-build').disabled = true;
+  const r = await act('topic_page.regenerate', {slug: CURRENT});
+  $('btn-build').disabled = false;
+  if(r.ok){
+    const c = (r.json.result || {});
+    const content = c.content || {};
+    Object.keys(content).forEach(function(id){
+      const t = $('sec-' + id);
+      if(t) t.value = content[id];
+    });
+    setStatePill('draft');
+    renderCompliance(c.compliance || {});
+    $('status').textContent = 'Built. Review in Topic Pages to approve.';
+    loadList();
+  } else {
+    $('status').textContent = 'Build failed: ' + ((r.json || {}).error || r.status);
+  }
+}
+async function dismiss(){
+  if(!CURRENT) return;
+  const r = await act('topic_page.dismiss', {slug: CURRENT});
+  if(r.ok){
+    CURRENT = null;
+    $('editor').style.display = 'none';
+    $('empty').style.display = '';
+    loadList();
+  } else {
+    $('status').textContent = 'Dismiss failed: ' + ((r.json || {}).error || r.status);
+  }
+}
 
 // Per-type hooks
 function afterSections(match){
