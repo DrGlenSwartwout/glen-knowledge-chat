@@ -366,6 +366,10 @@ async function mineProfile(){rstat('Mining client profile for stresses…');
  var j=await post('/author/__TID__/mine-profile',{});
  if(j.error){rstat('Mine profile: '+j.error);return}
  rstat('Added '+j.added+' profile stress(es).');loadStress()}
+async function suggestRemedies(){
+ try{var j=await (await fetch('/author/__TID__/suggest-remedies')).json();
+  document.getElementById('suggestpanel').innerHTML=j.html}
+ catch(e){document.getElementById('suggestpanel').innerHTML=''}}
 loadLists();
 loadE4L();
 loadStress();
@@ -540,7 +544,11 @@ def render_author_html(report, depth_values=None, transcript=""):
                  "<div class=btnrow style='margin:6px 0'>"
                  "<button class='btn ghost' onclick=mineProfile()>Mine profile &rarr; stresses</button>"
                  "</div>"
-                 "<div id=stresspanel></div>" + table + session
+                 "<div id=stresspanel></div>"
+                 "<div class=btnrow style='margin:6px 0'>"
+                 "<button class='btn ghost' onclick=suggestRemedies()>Suggest minimal remedies</button>"
+                 "</div>"
+                 "<div id=suggestpanel></div>" + table + session
                  + _AUTHOR_JS.replace("__TID__", tid))
 
 
@@ -580,7 +588,21 @@ def render_list_html(tests, q="", authored=None):
 
 
 def render_suggest_panel(data):
-    return ""
+    data = data or {}
+    picks = data.get("picks") or []
+    unc = data.get("uncovered") or []
+    if not picks and not unc:
+        return "<div class=card><div class=food>No active required stresses to consolidate.</div></div>"
+    items = ""
+    for p in picks:
+        covers = p.get("covers") or []
+        items += (f"<li><b>{_e(p.get('remedy') or '')}</b> &rarr; covers "
+                  f"{_e(', '.join(covers))} <span class=pill>{len(covers)}</span></li>")
+    body = f"<ol style='margin:4px 0 0;padding-left:20px'>{items}</ol>" if items else ""
+    unc_html = (f"<div class=food style='margin-top:6px'>No scan remedy for: "
+                f"{_e(', '.join(unc))}</div>" if unc else "")
+    return ("<div class=card><div class=food style='text-transform:uppercase;font-size:11px;"
+            f"letter-spacing:.08em'>Minimal remedy set</div>{body}{unc_html}</div>")
 
 
 def render_stress_panel(data):
