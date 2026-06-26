@@ -11790,43 +11790,47 @@
       "bottle_type": "30g",
       "ingredients": [
         {
-          "name": "Magnesium",
-          "dose": "330 mg"
-        },
-        {
-          "name": "Pyridoxal-5-Phosphate (P5P)",
-          "dose": "3.35 mg"
-        },
-        {
-          "name": "Vitamin D3 (Cholecalciferol)",
-          "dose": "0.65 mg"
-        },
-        {
-          "name": "Tetrahydrocurcumin",
-          "dose": "33 mg"
-        },
-        {
-          "name": "Mogroside V",
-          "dose": "17 mg"
+          "name": "Magnesium N-Acetyl-Taurate (ATA Mg)",
+          "dose": "385 mg"
         },
         {
           "name": "L-Theanine",
-          "dose": "65 mg"
+          "dose": "50 mg"
+        },
+        {
+          "name": "HydroCurc (cold-water-dispersible curcumin)",
+          "dose": "24.9 mg"
         },
         {
           "name": "Apigenin",
-          "dose": "17 mg"
+          "dose": "10 mg"
         },
         {
-          "name": "Zinc Glycinate",
-          "dose": "25 mg"
+          "name": "Mogroside V 50%",
+          "dose": "15 mg"
         },
         {
           "name": "Lithium Orotate",
           "dose": "9 mg"
+        },
+        {
+          "name": "Vitamin B6 (Pyridoxal-5-Phosphate)",
+          "dose": "5 mg"
+        },
+        {
+          "name": "Methylcobalamin (Vitamin B12)",
+          "dose": "250 mcg"
+        },
+        {
+          "name": "L-Methylfolate",
+          "dose": "200 mcg"
+        },
+        {
+          "name": "Vitamin D3 (Cholecalciferol)",
+          "dose": "375 IU"
         }
       ],
-      "ingredients_source": "fmp_new"
+      "ingredients_source": "vault-locked-panel-2026-05-31 (HydroCurc switch 2026-06-25); per-scoop, 2 scoops/day"
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
