@@ -18691,6 +18691,35 @@ def workspace_page(owner):
     return resp
 
 
+def _nav_profile(scope):
+    """Layout profile for op-nav. Distinct from rbac role (Glen and Rae are both
+    OWNER): 'admin'->'glen', 'workspace:rae'->'rae', anything else scoped->'va'."""
+    if not scope or scope == "admin":
+        return "glen"
+    owner = (_owner_from_scope(scope) or "").lower()
+    if owner == "glen":
+        return "glen"
+    if owner == "rae":
+        return "rae"
+    return "va"
+
+
+@app.route("/api/me")
+def api_me():
+    """Identity for the front-end nav. Always 200; unauthenticated -> all-null."""
+    ok, ctx, _code = _auth()
+    if not ok or not ctx:
+        return jsonify({"role": None, "name": None, "nav": None, "scope": None})
+    scope = ctx.get("scope") or "admin"
+    actor = _bos_rbac.actor_for_scope(scope)
+    if scope == "admin":
+        name = "Glen"
+    else:
+        name = (ctx.get("user_name") or "").title() or None
+    return jsonify({"role": actor.role, "name": name,
+                    "nav": _nav_profile(scope), "scope": scope})
+
+
 @app.route("/api/todos/<int:todo_id>/focus", methods=["POST"])
 def todo_focus(todo_id):
     ok, ctx, code = _auth()
