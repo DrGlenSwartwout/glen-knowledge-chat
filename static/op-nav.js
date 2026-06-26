@@ -278,7 +278,7 @@
     },
     rae: {
       tabs: ["dashboard","console","bos","inbox"],
-      bos:  ["orders","money","crm","reviews","shipping","neworder"]
+      bos:  ["orders","money","crm","approvals","shipping","neworder"]
     }
   };
 
