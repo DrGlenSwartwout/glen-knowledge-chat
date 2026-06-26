@@ -122,13 +122,35 @@ def deepgram_browser_token():
     except Exception:
         return os.environ["DEEPGRAM_API_KEY"]
 
+
+def _default_fetch_profile(email):
+    """Best-effort: pull a client's consolidated profile from the prod People hub
+    (same endpoint e4l-reveal-push.py:fetch_history uses). Returns {} on any failure."""
+    import json as _json
+    import urllib.parse
+    import urllib.request
+    email = (email or "").strip()
+    if not email:
+        return {}
+    try:
+        key = os.environ["CONSOLE_SECRET"]
+        base = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
+        url = (f"{base}/api/people?key=" + urllib.parse.quote(key)
+               + "&q=" + urllib.parse.quote(email))
+        req = urllib.request.Request(url, headers={"X-Console-Key": key})
+        people = _json.load(urllib.request.urlopen(req, timeout=20)).get("people", [])
+        return next(
+            (p for p in people if (p.get("email") or "").lower() == email.lower()), {})
+    except Exception:
+        return {}
+
 DEFAULT_DB = os.environ.get(
     "BIOFIELD_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_log.db"))
 
 
 def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                interpret_complete=None, scan_lookup=None, client_search=None,
-               fetch_runner=None):
+               fetch_runner=None, fetch_profile=None):
     app = Flask(__name__)
     complete = complete or openai_complete
     tts = tts or elevenlabs_tts
@@ -143,6 +165,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     # can pull their newest scan straight from the live E4L portal). Both injectable.
     client_search = client_search or (lambda q: _search_clients(q))
     fetch_runner = fetch_runner  # None -> fetch_live uses the real scraper+parser
+    fetch_profile = fetch_profile or _default_fetch_profile
 
     def _report_for(cx, test_id):
         return (authored_report(cx, test_id) if str(test_id).startswith("a")
@@ -154,38 +177,74 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         ctx = scan_lookup((rep.get("client") or {}).get("email") or "")
         return ctx, rep
 
+    def _mine_profile(cx, test_id):
+        """Mine the client's consolidated People-hub profile into tag stresses.
+        Best-effort: returns {"added": n} on success, {"added": 0, "error": ...} on
+        any failure. Never raises."""
+        from dashboard.biofield_interpret import interpret_stresses
+        from dashboard.biofield_profile import mine_profile_stresses
+        from dashboard import biofield_stress as _st
+        rep = _report_for(cx, test_id)
+        email = ((rep.get("client") or {}).get("email") or "").strip()
+        if not email:
+            return {"added": 0, "error": "No client selected yet"}
+        try:
+            profile = fetch_profile(email) or {}
+            labels = mine_profile_stresses(
+                profile, lambda t: interpret_stresses(t, interpret_complete))
+            added = sum(1 for label in labels
+                        if _st.add_stress(cx, test_id, label, source="tag"))
+        except Exception as e:
+            return {"added": 0, "error": str(e)[:200]}
+        return {"added": added}
+
     def _seed_stresses(cx, test_id, *, force=False, layers=None):
         """Synthesize reveal layers + seed the stress coverage map for this test.
-        Skips silently when no email is set, no scan is found, or (unless force)
-        the test already has scan stresses. Synthesis errors are swallowed so the
-        intake flow is never blocked by a live-pipeline failure.
-        If *layers* is supplied they are used directly, skipping the synthesis
-        network call — pass them from a route that already ran synthesize_reveal_layers
-        so the pipeline runs only once per import."""
+        The ONLY early return is the no-email guard — nothing to mine/seed without
+        one.  Scan-seeding is conditional: runs only when a scan is found AND (force
+        OR no scan stresses exist yet) — same idempotency as before.  If *layers* is
+        supplied they are used directly, skipping the synthesis network call (pass
+        from a route that already ran synthesize_reveal_layers).  Synthesis errors
+        are swallowed so the intake flow is never blocked.
+        Profile mining (source='tag') always runs after the scan block, but at most
+        once per session: skipped when tag stresses already exist for this test.
+        This means profile mining fires even when no E4L scan is present."""
         from dashboard import biofield_reveal_import as _ri
         from dashboard import biofield_stress as _st
         import datetime as _dt
         rep = _report_for(cx, test_id)
         email = ((rep.get("client") or {}).get("email") or "").strip()
         if not email:
-            return
+            return  # only early return: nothing to mine/seed without an email
         _st.init_stress_tables(cx)
-        if not force and cx.execute(
-                "SELECT 1 FROM biofield_auth_stress WHERE test_id=? AND source='scan' LIMIT 1",
-                (int(str(test_id).lstrip("a") or 0),)).fetchone():
-            return
         ctx = scan_lookup(email)
-        if not ctx.get("found"):
-            return
-        if layers is not None:
-            coverage = _ri.build_coverage(layers)
-        else:
+        if ctx.get("found"):
+            # Scan-seeding: skip if already seeded (unless force)
+            if force or not cx.execute(
+                    "SELECT 1 FROM biofield_auth_stress WHERE test_id=? AND source='scan' LIMIT 1",
+                    (int(str(test_id).lstrip("a") or 0),)).fetchone():
+                if layers is not None:
+                    coverage = _ri.build_coverage(layers)
+                    _st.seed_from_scan(cx, test_id, ctx.get("findings") or [], coverage)
+                else:
+                    try:
+                        res = _ri.synthesize_reveal_layers(email, today=_dt.date.today().isoformat())
+                    except Exception:
+                        pass  # synthesis failure: skip scan seeding, fall through to profile mining
+                    else:
+                        coverage = _ri.build_coverage(res.get("layers") or [])
+                        _st.seed_from_scan(cx, test_id, ctx.get("findings") or [], coverage)
+        # Always-on: mine profile stresses (best-effort, at most once per session).
+        # Guard: skip when tag stresses already exist to avoid a redundant HTTP fetch
+        # on every header-save.  The explicit /mine-profile route calls _mine_profile
+        # directly (unguarded) for on-demand re-mining.
+        if not cx.execute(
+                "SELECT 1 FROM biofield_auth_stress WHERE test_id=? AND source='tag' LIMIT 1",
+                (int(str(test_id).lstrip("a") or 0),)).fetchone():
             try:
-                res = _ri.synthesize_reveal_layers(email, today=_dt.date.today().isoformat())
+                _mine_profile(cx, test_id)
             except Exception:
-                return
-            coverage = _ri.build_coverage(res.get("layers") or [])
-        _st.seed_from_scan(cx, test_id, ctx.get("findings") or [], coverage)
+                pass
 
     with sqlite3.connect(db_path) as _cx:
         seed_dimensions(_cx)
@@ -453,6 +512,11 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             save_notes(cx, test_id, txt)  # box holds the full transcript -> replace
         return {"ok": True}
 
+    @app.route("/author/<test_id>/mine-profile", methods=["POST"])
+    def author_mine_profile(test_id):
+        with sqlite3.connect(db_path) as cx:
+            return _mine_profile(cx, test_id)
+
     @app.route("/author/<test_id>/capture-stresses", methods=["POST"])
     def author_capture_stresses(test_id):
         from dashboard.biofield_interpret import interpret_stresses
@@ -528,8 +592,13 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         with sqlite3.connect(db_path) as cx:
             save_notes(cx, test_id, notes)
             ctx, rep = _e4l(cx, test_id)  # authored or FMP report + recent E4L scan
+            prof = {}
             try:
-                text = generate_narrative(rep, notes, complete, scan=ctx)
+                prof = fetch_profile(((rep.get("client") or {}).get("email") or "").strip()) or {}
+            except Exception:
+                prof = {}
+            try:
+                text = generate_narrative(rep, notes, complete, scan=ctx, profile=prof)
             except Exception as e:  # no API key / network / model error
                 return {"error": str(e)[:200]}
             save_narrative(cx, test_id, text)

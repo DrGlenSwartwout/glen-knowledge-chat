@@ -362,6 +362,10 @@ async function captureStresses(){rstat('Capturing stresses from transcript…');
  var j=await post('/author/__TID__/capture-stresses',{});
  if(j.error){rstat('Capture: '+j.error);return}
  rstat('Added '+j.added+' stress(es).');loadStress()}
+async function mineProfile(){rstat('Mining client profile for stresses…');
+ var j=await post('/author/__TID__/mine-profile',{});
+ if(j.error){rstat('Mine profile: '+j.error);return}
+ rstat('Added '+j.added+' profile stress(es).');loadStress()}
 loadLists();
 loadE4L();
 loadStress();
@@ -532,7 +536,11 @@ def render_author_html(report, depth_values=None, transcript=""):
         f"<textarea id=sessText rows=6 placeholder='Live transcript appears here as you speak..."
         f"'>{_e(transcript)}</textarea>")
     return _page("Edit Biofield Test",
-                 head + hdr + "<div id=e4lpanel></div><div id=stresspanel></div>" + table + session
+                 head + hdr + "<div id=e4lpanel></div>"
+                 "<div class=btnrow style='margin:6px 0'>"
+                 "<button class='btn ghost' onclick=mineProfile()>Mine profile &rarr; stresses</button>"
+                 "</div>"
+                 "<div id=stresspanel></div>" + table + session
                  + _AUTHOR_JS.replace("__TID__", tid))
 
 
