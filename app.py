@@ -11181,7 +11181,8 @@ def api_client_portal_view(token):
         if ident is None:
             return jsonify({"error": "not found"}), 404
         view = _pv.get_portal_view(cx, ident.person_id,
-                                   offers_enabled_keys=_enabled_offer_keys())
+                                   offers_enabled_keys=_enabled_offer_keys(),
+                                   quiz_url=QUIZ_URL, public_base_url=PUBLIC_BASE_URL)
     if view is None:
         return jsonify({"error": "not found"}), 404
     view["auth_method"] = ident.auth_method
