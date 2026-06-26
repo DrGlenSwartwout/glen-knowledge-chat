@@ -2,7 +2,9 @@
 Line items reference Phase-1 ingredients / Phase-3a materials / Phase-2 products.
 Mirrors dashboard/ingredient_catalog.py."""
 from __future__ import annotations
+import json
 import sqlite3
+from datetime import date
 from dashboard.ingredient_catalog import _connect
 
 
@@ -81,6 +83,36 @@ def list_po_receiving(po_id, db_path=None):
     with _connect(db_path) as cx:
         rows = cx.execute("SELECT * FROM po_receiving WHERE po_id=? ORDER BY id", (po_id,)).fetchall()
     return [dict(r) for r in rows]
+
+
+def create_draft_po(cx, supplier_id, supplier_name, lines):
+    """Create a draft purchase order + its line items from reorder-report lines.
+    `cx` is an open sqlite3 connection. Lines missing ingredient_id or suggested_qty are
+    skipped; price_per_unit may be None (cost stored NULL). Returns {po_id, line_count}."""
+    today = date.today().isoformat()
+    vendor_po_no = "DRAFT-" + today.replace("-", "") + "-" + str(supplier_id)
+    cur = cx.execute(
+        "INSERT INTO purchase_orders (supplier_id, supplier_name, vendor_po_no, po_date, status) "
+        "VALUES (?,?,?,?,'draft')",
+        (supplier_id, supplier_name or "", vendor_po_no, today))
+    po_id = cur.lastrowid
+    n = 0
+    for ln in (lines or []):
+        ing_id = ln.get("ingredient_id")
+        qty = ln.get("suggested_qty")
+        if ing_id is None or qty is None:
+            continue
+        c = ln.get("price_per_unit")
+        cost = float(c) if c not in (None, "") else None
+        extras = json.dumps({k: ln.get(k) for k in ("unit_size", "packs", "est_cost")})
+        cx.execute(
+            "INSERT INTO po_items (po_id, item_kind, item_label, ingredient_id, qty, qty_unit, cost, extras) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (po_id, "ingredient", ln.get("ingredient") or "", int(ing_id),
+             float(qty), ln.get("unit"), cost, extras))
+        n += 1
+    cx.commit()
+    return {"po_id": po_id, "line_count": n}
 
 
 _PO_CURATED = {"notes"}

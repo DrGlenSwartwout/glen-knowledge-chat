@@ -24125,6 +24125,10 @@ _esa.register()
 from dashboard import reviews_actions as _ra
 _ra.register()
 
+# ── C1: reorder → draft PO action ────────────────────────────────────────────
+from dashboard import reorder_actions as _roa
+_roa.register()
+
 # ── Canonical remedy meanings console actions ────────────────────────────────
 from dashboard import remedy_meaning_actions as _rma
 _rma.configure(client=_cl, products=(_PRODUCTS.get("products") or {}))
