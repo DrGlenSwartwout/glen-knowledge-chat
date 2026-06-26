@@ -4,6 +4,7 @@ Pure / none-raising builder + an injectable prod POST. PHI stays local; only the
 finished portal payload crosses to prod via the existing /admin/portal/upsert.
 """
 import re
+import requests
 
 from dashboard.practitioner_portal import name_to_slug
 from dashboard import wholesale_pricing as _pricing
@@ -151,3 +152,15 @@ def build_portal_content(cx, test_id, *, special_price_cents, catalog=None):
         "content": content,
         "unresolved": unresolved,
     }
+
+
+def publish_to_portal(payload, *, base_url, console_key, http_post=None):
+    """POST the portal payload to the prod /admin/portal/upsert (send disabled).
+    Returns the parsed JSON (contains url/token). Raises RuntimeError on non-2xx."""
+    post = http_post or requests.post
+    url = f"{base_url.rstrip('/')}/admin/portal/upsert"
+    body = {**payload, "send": False}
+    r = post(url, json=body, headers={"X-Console-Key": console_key}, timeout=30)
+    if not (200 <= r.status_code < 300):
+        raise RuntimeError(f"portal upsert failed {r.status_code}: {r.text[:300]}")
+    return r.json()
