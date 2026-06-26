@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **Projection columns are the privacy boundary.** Carry ONLY: client `id_pk, name_first, name_last, company, email, phone_res, phone_cell, phone_business`; invoice `id_pk, id_fk_client, invoice_date, status, subtotal, total, shipping, outstanding`; item `id_pk, id_fk_invoice, id_fk_product, description, qty, price, ext_price`; address `id_pk, id_fk_client, type, street, city, province, postal_code, country`. NEVER include `diagnose1..3, dob, gender, doctor, notes` or any biofield/clinical field.
-- FMP→projection column mapping (invoices): `zcRecordStatus`→status, `zc_invoice_subtotal`→subtotal, `zc_invoice_total`→total, `shipping_fee`→shipping, `zs_ar_os_total`→outstanding. (items): `zc_ext_price`→ext_price. (addresses): `address_street`→street, `address_city`→city, `address_province`→province, `address_postal_code`→postal_code, `address_country`→country.
+- FMP→projection column mapping (invoices): `closed`→status (real status flag e.g. "Active"; NOT `zcRecordStatus`, a record-position calc), `zc_invoice_subtotal`→subtotal, `zc_invoice_total`→total, `shipping_fee`→shipping, `zc_overdue_balance`→outstanding (per-invoice; NOT `zs_ar_os_total`, a client-level AR summary). (items): `zc_ext_price`→ext_price. (addresses): `address_street`→street, `address_city`→city, `address_province`→province, `address_postal_code`→postal_code, `address_country`→country.
 - Ship-to is **client-level, not per-order** — surface addresses labeled as such; do not imply a per-order link.
 - All projection tables TEXT columns. Builder + ingest are idempotent (DROP/recreate then bulk insert).
 - Export dir: `/tmp/fmp-export/newapp/`. Local DB: `chat_log.db`. Prod DB: `LOG_DB`.
