@@ -30,6 +30,7 @@ from pinecone import Pinecone
 import anthropic
 import boto3 as _boto3
 import begin_funnel
+import quiz_engine
 import shell_nav
 
 # ── Slice 4 test seam ─────────────────────────────────────────────────────────
@@ -1530,6 +1531,215 @@ def begin_tools():
     return resp
 
 
+_ACTIVE_QUIZ_ID = "eye-brain"
+
+
+@app.route("/begin/quiz")
+def begin_quiz():
+    resp = send_from_directory(STATIC, "begin-quiz.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/quiz-data")
+def begin_quiz_data():
+    q = quiz_engine.get_quiz(_ACTIVE_QUIZ_ID)
+    if not q:
+        return jsonify({"error": "no_quiz"}), 404
+    public = {k: v for k, v in q.items() if k != "bands"}
+    return jsonify(public)
+
+
+@app.route("/begin/quiz/answer", methods=["POST", "OPTIONS"])
+def begin_quiz_answer():
+    if request.method == "OPTIONS":
+        return "", 200
+    data = request.get_json() or {}
+    quiz_id = (data.get("quiz_id") or "").strip()
+    answers = data.get("answers") or {}
+    if not quiz_engine.get_quiz(quiz_id):
+        return jsonify({"error": "unknown_quiz"}), 404
+    session_id = (request.cookies.get("amg_session")
+                  or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
+    if not isinstance(answers, dict):
+        return jsonify({"error": "bad_answers"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        quiz_engine.store_response(cx, session_id=session_id, quiz_id=quiz_id, answers=answers)
+    resp = jsonify({"ok": True, "segment": quiz_engine.segment_of(answers)})
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", session_id, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/quiz/opt-in", methods=["POST", "OPTIONS"])
+def begin_quiz_optin():
+    if request.method == "OPTIONS":
+        return "", 200
+    data = request.get_json() or {}
+    quiz_id = (data.get("quiz_id") or "").strip()
+    if not quiz_engine.get_quiz(quiz_id):
+        return jsonify({"error": "unknown_quiz"}), 404
+    name = (data.get("name") or "").strip()
+    first_name = name.split(None, 1)[0] if name else ""
+    email = (data.get("email") or "").strip().lower()
+    tos = bool(data.get("tos"))
+    if not email or "@" not in email:
+        return jsonify({"error": "valid email required"}), 400
+    if not tos:
+        return jsonify({"error": "tos required"}), 400
+    session_id = (request.cookies.get("amg_session")
+                  or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
+    ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
+
+    # capture email + ToS (free_tier) and mark the assessment gate
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        # `state` is captured from the ToS unlock so the response reports the
+        # free_tier rung the visitor just earned. The quiz gate below advances
+        # the PERSISTED rung to `assess` (monotonic); that elevated rung is
+        # intentionally not reflected in this response (it only redirects to
+        # the result page).
+        state = begin_funnel.record_unlock(
+            cx, session_id=session_id, trigger="tos", email=email,
+            first_name=first_name, tos=True, ref_slug=ref_slug,
+            tos_version=BEGIN_TOS_VERSION)
+        begin_funnel.record_unlock(
+            cx, session_id=session_id, trigger="quiz", email=email,
+            detail=f"quiz:{quiz_id}", ref_slug=ref_slug)
+        seg = ""
+        existing = quiz_engine.get_response(cx, session_id=session_id, quiz_id=quiz_id)
+        if existing:
+            seg = existing["segment"]
+            quiz_engine.store_response(cx, session_id=session_id, quiz_id=quiz_id,
+                                       answers=existing["answers"], email=email)
+
+    # GHL onboarding + lead-magnet/segment tags, non-blocking (same pattern as /begin/unlock)
+    import threading as _threading
+
+    def _onboard():
+        try:
+            tags = ["begin", "lead-magnet", "quiz-completed"]
+            if seg:
+                tags.append(f"awareness:{seg}")
+            if ref_slug:
+                tags.append(f"ref:{ref_slug}")
+                _capture_concierge_referral(email, first_name, "", ref_slug)
+            ghl_onboard_contact(email, first_name, "", source_tag="lead-magnet", extra_tags=tags)
+        except Exception as e:
+            print(f"[quiz-optin] {e!r}", flush=True)
+
+    _threading.Thread(target=_onboard, daemon=True).start()
+
+    guide_token = _mint_lead_magnet_guide_link(email)
+    resp = jsonify({"ok": True, "current_rung": state["current_rung"],
+                    "guide_token": guide_token, "redirect": "/begin/quiz/result"})
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", session_id, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+# personalized founding one-liner per result band (structure-function only)
+_QUIZ_FOUNDING_LINES = {
+    "barrier": "You're a strong fit for the founding batch: a magnesium formulated to reach where ordinary magnesium can't.",
+    "calm": "You're a strong fit for the founding batch: calm, steady support without the fog.",
+    "clarity": "You're a strong fit for the founding batch: foundational support for a clear, steady mind.",
+    "hardworking": "You're a strong fit for the founding batch: foundational support for eyes that work hard.",
+    "foundational": "You're a strong fit for the founding batch: foundational eye-and-brain support.",
+}
+
+
+@app.route("/begin/quiz/result")
+def begin_quiz_result():
+    resp = send_from_directory(STATIC, "begin-quiz-result.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/begin/quiz/result-data")
+def begin_quiz_result_data():
+    quiz_id = (request.args.get("quiz_id") or "eye-brain").strip()
+    quiz = quiz_engine.get_quiz(quiz_id)
+    if not quiz:
+        return jsonify({"error": "unknown_quiz"}), 404
+    session_id = (request.cookies.get("amg_session") or "").strip()
+    resp_row = None
+    if session_id:
+        with sqlite3.connect(LOG_DB) as cx:
+            resp_row = quiz_engine.get_response(cx, session_id=session_id, quiz_id=quiz_id)
+    if not resp_row:
+        return jsonify({"taken": False, "disclaimer": quiz.get("disclaimer", "")})
+    profile = quiz_engine.result_for(quiz, resp_row["answers"])
+    slug = quiz["product_slug"]
+    founding = None
+    try:
+        from dashboard import founding as _founding
+        launch = _founding.get_launch(slug)
+        if launch:
+            today = _now_utc().strftime("%Y-%m-%d")
+            with sqlite3.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                if _founding.is_open(cx, slug, now_iso=today):
+                    founding = {
+                        "batch_label": launch.get("batch_label", ""),
+                        "cap": int(launch.get("cap", 0)),
+                        "remaining": _founding.remaining(cx, slug),
+                        "personal_line": _QUIZ_FOUNDING_LINES.get(
+                            profile["band"], _QUIZ_FOUNDING_LINES["foundational"]),
+                    }
+    except Exception as e:
+        print(f"[quiz-result] founding enrich failed: {e!r}", flush=True)
+    return jsonify({
+        "taken": True, "profile": profile, "disclaimer": quiz.get("disclaimer", ""),
+        "founding": founding, "product_url": f"/begin/product/{slug}",
+    })
+
+
+_GUIDE_PENDING_HTML = (
+    "<!doctype html><meta charset=utf-8><title>Your guide</title>"
+    "<div style='font-family:Georgia,serif;max-width:560px;margin:60px auto;padding:0 20px;color:#1f2a37'>"
+    "<h1>Your free guide is on its way</h1>"
+    "<p>Thank you. Your guide is being finalized and is coming shortly. "
+    "We'll email it to you as soon as it's ready.</p>"
+    "<p><a href='/begin/quiz/result' style='color:#4b6b57'>Back to your result</a></p></div>")
+
+_GUIDE_EXPIRED_HTML = (
+    "<!doctype html><meta charset=utf-8><title>Link expired</title>"
+    "<div style='font-family:Georgia,serif;max-width:560px;margin:60px auto;padding:0 20px;color:#1f2a37'>"
+    "<h1>That link has expired</h1>"
+    "<p>For your security, guide links expire. "
+    "<a href='/begin/quiz' style='color:#4b6b57'>Take the assessment again</a> to get a fresh link.</p></div>")
+
+
+@app.route("/begin/quiz/guide")
+def begin_quiz_guide():
+    token = (request.args.get("token") or "").strip()
+    email = _validate_lead_magnet_guide_link(token)
+    if not email:
+        return Response(_GUIDE_EXPIRED_HTML, mimetype="text/html")
+    key = (os.environ.get("LEAD_MAGNET_PDF_KEY") or "").strip()
+    if not key:
+        return Response(_GUIDE_PENDING_HTML, mimetype="text/html")
+    try:
+        obj = _r2().get_object(Bucket=os.environ.get("R2_BUCKET", "rm-clips"), Key=key)
+    except Exception as e:
+        print(f"[quiz-guide] r2 fetch failed key={key}: {e!r}", flush=True)
+        return Response(_GUIDE_PENDING_HTML, mimetype="text/html")
+    headers = {
+        "Content-Type": obj.get("ContentType", "application/pdf"),
+        "Content-Disposition": 'inline; filename="foundational-eye-and-brain-guide.pdf"',
+        "Cache-Control": "private, max-age=0, no-store",
+    }
+    if obj.get("ContentLength") is not None:
+        headers["Content-Length"] = str(obj["ContentLength"])
+    return Response(obj["Body"].iter_chunks(chunk_size=65536), status=200, headers=headers)
+
+
 @app.route("/begin/voice")
 def begin_voice():
     resp = send_from_directory(STATIC, "begin-voice.html")
@@ -2394,7 +2604,18 @@ def begin_unlock():
 
     redirect = begin_funnel.resolve_want(want, ref_slug) if want else None
     payload = dict(state)
-    payload["surfaced_cards"] = begin_funnel.surface(state, query_texts, ref_slug)
+    _founding_open = False
+    try:
+        from dashboard import founding as _founding
+        if _founding.get_launch("neuro-magnesium"):
+            with sqlite3.connect(LOG_DB) as _fcx:
+                _fcx.row_factory = sqlite3.Row
+                _founding_open = _founding.is_open(
+                    _fcx, "neuro-magnesium", now_iso=_now_utc().strftime("%Y-%m-%d"))
+    except Exception:
+        _founding_open = False
+    payload["surfaced_cards"] = begin_funnel.surface_with_founding(
+        state, query_texts, ref_slug, founding_open=_founding_open)
     if redirect:
         payload["redirect"] = redirect
     resp = jsonify(payload)
@@ -7070,8 +7291,9 @@ _init_referral_tables()
 # ── /begin funnel journey-state engine ───────────────────────────────────────
 
 def _init_journey_tables():
-    with sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
         begin_funnel.init_journey_tables(cx)
+        quiz_engine.init_quiz_tables(cx)
 
 _init_journey_tables()
 
@@ -7261,6 +7483,45 @@ def _validate_membership_magic_link(token):
     try:
         exp_dt = datetime.fromisoformat(expires_at.rstrip("Z"))
         if exp_dt < datetime.utcnow():
+            return None
+    except Exception:
+        return None
+    return email
+
+
+def _mint_lead_magnet_guide_link(email, ttl_min=60 * 24 * 30):
+    """Single-use token (purpose lead_magnet_guide, 30-day TTL) for the free-guide
+    download. Returns plaintext token; caller emails/returns it."""
+    import secrets, json as _json
+    plain = secrets.token_urlsafe(32)
+    th = _hash_token(plain)
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    exp_iso = (datetime.utcnow() + timedelta(minutes=int(ttl_min))).isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (th, email, "lead_magnet_guide", _json.dumps({}), now_iso, exp_iso))
+    return plain
+
+
+def _validate_lead_magnet_guide_link(token):
+    """Return the email for a valid (not consumed, not expired) lead_magnet_guide
+    token, else None. Does not mark consumed (the guide is re-downloadable)."""
+    if not token:
+        return None
+    th = _hash_token(token)
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='lead_magnet_guide'", (th,)).fetchone()
+    if not row:
+        return None
+    email, expires_at, consumed_at = row
+    if consumed_at:
+        return None
+    try:
+        if datetime.fromisoformat(expires_at.rstrip("Z")) < datetime.utcnow():
             return None
     except Exception:
         return None

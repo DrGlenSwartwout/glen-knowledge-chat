@@ -401,6 +401,9 @@ CARD_CATALOG = {
     "product":            {"title": "Formulations Matched to You",
                            "sub": "Explore remedies suited to what your body needs",
                            "base_url": "https://remedymatch.com", "internal": False},
+    "founding_offer":     {"title": "Neuro Magnesium - Founding Batch",
+                           "sub": "Reserve your bottle from the first founding batch",
+                           "base_url": "/begin/product/neuro-magnesium", "internal": True},
     "ash_course":         {"title": "Wellness Whispering MasterClass & Community",
                            "sub": "The Accelerated Self Healing™ approach, step by step",
                            "base_url": "https://truly.vip/WellnessWhispering", "internal": False},
@@ -721,6 +724,16 @@ def surface(state, query_texts, ref=""):
     if not keys:
         keys = list(_DEFAULT_TRIO)
     return [_card(k, ref) for k in keys[:3]]
+
+
+def surface_with_founding(state, query_texts, ref="", founding_open=False):
+    """surface() plus the founding-offer card prepended when a launch is open.
+    Deduped and capped at 3. When founding_open is False this equals surface()."""
+    cards = surface(state, query_texts, ref)
+    if not founding_open:
+        return cards
+    cards = [c for c in cards if c["key"] != "founding_offer"]
+    return ([_card("founding_offer", ref)] + cards)[:3]
 
 
 def surface_for_chat(state, query_texts, ref=""):

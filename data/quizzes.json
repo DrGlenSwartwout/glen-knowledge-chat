@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "quizzes": {
+    "eye-brain": {
+      "id": "eye-brain",
+      "product_slug": "neuro-magnesium",
+      "title": "Your Foundational Eye-and-Brain Self-Assessment",
+      "hook": "Have you been told your vision changes are just aging, as if there's nothing you can do? There's now foundational support that actually reaches your eyes and brain. Take 60 seconds to see if it's for you.",
+      "disclaimer": "These statements have not been evaluated by the Food and Drug Administration. This product is not intended to diagnose, treat, cure, or prevent any disease.",
+      "questions": [
+        {"id": "q1", "ordinal": 1, "prompt": "What brought you here today?", "type": "single", "options": [
+          {"value": "watch_wait", "label": "My doctor told me to monitor and watch and wait"},
+          {"value": "noticing", "label": "I'm noticing changes in my focus or clarity"},
+          {"value": "family", "label": "Vision runs in my family and I want to be proactive"},
+          {"value": "supplement_gap", "label": "I supplement, but I wonder if I'm missing something"},
+          {"value": "general", "label": "General foundational health"}
+        ]},
+        {"id": "q2", "ordinal": 2, "prompt": "How restful is your sleep and how calm do you feel day to day?", "type": "single", "options": [
+          {"value": "restful", "label": "Restful and calm"},
+          {"value": "occasional", "label": "Occasional restlessness"},
+          {"value": "frequent", "label": "Frequent tension or poor sleep"}
+        ]},
+        {"id": "q3", "ordinal": 3, "prompt": "Do you notice muscle tension, cramps, or twitches?", "type": "single", "options": [
+          {"value": "rarely", "label": "Rarely"},
+          {"value": "sometimes", "label": "Sometimes"},
+          {"value": "often", "label": "Often"}
+        ]},
+        {"id": "q4", "ordinal": 4, "prompt": "How is your mental clarity and focus?", "type": "single", "options": [
+          {"value": "sharp", "label": "Sharp"},
+          {"value": "occasional_fog", "label": "Occasional fog"},
+          {"value": "frequent_fog", "label": "Frequent fog"}
+        ]},
+        {"id": "q5", "ordinal": 5, "prompt": "How many hours a day are you on screens?", "type": "single", "options": [
+          {"value": "under2", "label": "Under 2"},
+          {"value": "2to6", "label": "2 to 6"},
+          {"value": "6plus", "label": "6 or more"}
+        ]},
+        {"id": "q6", "ordinal": 6, "prompt": "How comfortable are you driving at night or in low light?", "type": "single", "options": [
+          {"value": "comfortable", "label": "Comfortable"},
+          {"value": "some_difficulty", "label": "Some difficulty"},
+          {"value": "avoid", "label": "I avoid it"}
+        ]},
+        {"id": "q7", "ordinal": 7, "prompt": "Do you eat magnesium-rich foods daily, like greens, nuts, and seeds?", "type": "single", "options": [
+          {"value": "yes", "label": "Yes, most days"},
+          {"value": "sometimes", "label": "Sometimes"},
+          {"value": "rarely", "label": "Rarely"}
+        ]},
+        {"id": "q8", "ordinal": 8, "prompt": "What are you currently taking?", "type": "single", "options": [
+          {"value": "magnesium", "label": "A magnesium supplement"},
+          {"value": "eye_formula", "label": "An eye formula (AREDS type)"},
+          {"value": "both", "label": "Both"},
+          {"value": "none", "label": "Neither"}
+        ]},
+        {"id": "q9", "ordinal": 9, "prompt": "How proactive do you want to be about your long-term eye and brain health?", "type": "single", "options": [
+          {"value": "yes", "label": "Very proactive"},
+          {"value": "somewhat", "label": "Somewhat"}
+        ]}
+      ],
+      "bands": {
+        "barrier": {
+          "headline": "Your foundation may be missing a magnesium that can actually reach where it counts.",
+          "reasoning": "Based on what you shared, ordinary magnesium and a standard eye formula may not be crossing the barrier into your eyes and brain. Neuro Magnesium is formulated to reach the blood-brain and blood-eye barrier, where ordinary magnesium can't go.",
+          "bullets": [
+            "Forms chosen to cross the blood-brain and blood-eye barrier",
+            "Foundational support that complements a standard eye formula",
+            "Made in violet Miron glass, with no non-nutritive fillers"
+          ]
+        },
+        "calm": {
+          "headline": "Your body may be asking for calm, without the fog.",
+          "reasoning": "The tension, restlessness, and cramping you described are classic signs the body draws on. Neuro Magnesium is formulated for calm without the dullness, in forms designed to reach the brain.",
+          "bullets": [
+            "Calm, steady support without the daytime fog",
+            "Forms designed to reach the brain, not just the gut",
+            "Made in violet Miron glass, with no non-nutritive fillers"
+          ]
+        },
+        "clarity": {
+          "headline": "Your foundation may be asking for a clearer, steadier mind.",
+          "reasoning": "The mental fog you described is something the body's foundation can influence. Neuro Magnesium is formulated to support a clear, steady mind, in forms designed to reach the brain.",
+          "bullets": [
+            "Support for a clear, steady mind",
+            "Forms designed to reach the brain",
+            "Made in violet Miron glass, with no non-nutritive fillers"
+          ]
+        },
+        "hardworking": {
+          "headline": "Your eyes work hard. Their foundation should keep up.",
+          "reasoning": "Long screen hours and low-light strain ask a lot of your eyes. Neuro Magnesium gives foundational support for eyes and a brain that work hard, in forms designed to reach them.",
+          "bullets": [
+            "Foundational support for eyes that work hard",
+            "Forms designed to reach the eyes and brain",
+            "Made in violet Miron glass, with no non-nutritive fillers"
+          ]
+        },
+        "foundational": {
+          "headline": "A strong foundation is the most proactive place to start.",
+          "reasoning": "You're being proactive, and the foundation is the right place to begin. Neuro Magnesium offers foundational eye-and-brain support in forms designed to reach where ordinary magnesium can't.",
+          "bullets": [
+            "Foundational eye-and-brain support",
+            "Forms designed to reach the eyes and brain",
+            "Made in violet Miron glass, with no non-nutritive fillers"
+          ]
+        }
+      }
+    }
+  }
+}
