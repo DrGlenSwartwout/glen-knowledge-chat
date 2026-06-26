@@ -16340,6 +16340,18 @@ def get_people():
     return jsonify({"total": total, "people": [dict(r) for r in rows]})
 
 
+@app.route("/api/people/recent-comms", methods=["GET"])
+def get_recent_comms():
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard.recent_comms import recent_comms
+    email = (request.args.get("q", "") or "").strip()
+    with sqlite3.connect(LOG_DB) as cx:
+        return jsonify(recent_comms(cx, email))
+
+
 @app.route("/api/people/<int:person_id>", methods=["GET"])
 def get_person(person_id):
     if CONSOLE_SECRET:
