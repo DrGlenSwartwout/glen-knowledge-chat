@@ -3332,7 +3332,7 @@ def begin_match_voice_signal():
 def _qbo_auth_ok():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return False
     return True
 
@@ -7939,7 +7939,7 @@ def _format_member_context_block(member, ctx):
 def get_referral_sources():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     with sqlite3.connect(LOG_DB) as cx:
         rows = cx.execute("""
@@ -7954,7 +7954,7 @@ def get_referral_sources():
 def post_referral_source():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     data = request.get_json(force=True) or {}
     name     = (data.get("name") or "").strip()
@@ -7983,7 +7983,7 @@ def post_referral_source():
 def get_referrals():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     # Stats per utm_source
     with sqlite3.connect(LOG_DB) as cx:
@@ -8743,7 +8743,7 @@ def affiliate_payload_peek():
     Better forwards utm). Payloads contain customer PII — console key required."""
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     source = (request.args.get("source") or "").strip().lower()
     try:
@@ -8773,7 +8773,7 @@ def affiliate_payload_peek():
 def get_affiliates():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     with sqlite3.connect(LOG_DB) as cx:
         rows = cx.execute("""
@@ -8793,7 +8793,7 @@ def get_affiliates():
 def patch_affiliate(aff_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     data   = request.get_json(force=True) or {}
     status = data.get("status", "")
@@ -8820,7 +8820,7 @@ def patch_affiliate(aff_id):
 def backfill_affiliate_links():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     results = []
     with sqlite3.connect(LOG_DB) as cx:
@@ -9770,7 +9770,7 @@ def api_console_biofield_reveals():
     """List pending biofield reveals (first_approved=0) for console review."""
     if CONSOLE_SECRET:
         _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if _key != CONSOLE_SECRET:
+        if _key != CONSOLE_SECRET and not _owner_token_ok(_key):
             return jsonify({"error": "unauthorized"}), 401
     from dashboard import biofield_reveals as _br
     with sqlite3.connect(LOG_DB) as cx:
@@ -9787,7 +9787,7 @@ def console_biofield_reveals_page():
     """Serve the biofield reveals review console page."""
     if CONSOLE_SECRET:
         _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if _key != CONSOLE_SECRET:
+        if _key != CONSOLE_SECRET and not _owner_token_ok(_key):
             return jsonify({"error": "unauthorized"}), 401
     resp = send_from_directory(STATIC, "console-biofield-reveals.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -9800,7 +9800,7 @@ def api_console_remedy_meanings():
     """Return one row per catalog product joined with stored canonical meanings."""
     if CONSOLE_SECRET:
         _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if _key != CONSOLE_SECRET:
+        if _key != CONSOLE_SECRET and not _owner_token_ok(_key):
             return jsonify({"error": "unauthorized"}), 401
     from dashboard import biofield_meanings as _bm
     with sqlite3.connect(LOG_DB) as cx:
@@ -9826,7 +9826,7 @@ def console_remedy_meanings_page():
     """Serve the canonical remedy meanings curation console page."""
     if CONSOLE_SECRET:
         _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if _key != CONSOLE_SECRET:
+        if _key != CONSOLE_SECRET and not _owner_token_ok(_key):
             return jsonify({"error": "unauthorized"}), 401
     resp = send_from_directory(STATIC, "console-remedy-meanings.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -9839,7 +9839,7 @@ def api_console_studio_credits():
     """List studio-credit claims for console review (default: pending first)."""
     if CONSOLE_SECRET:
         _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if _key != CONSOLE_SECRET:
+        if _key != CONSOLE_SECRET and not _owner_token_ok(_key):
             return jsonify({"error": "unauthorized"}), 401
     from dashboard import studio_credit as _sc
     status = request.args.get("status") or None
@@ -9854,7 +9854,7 @@ def console_studio_credits_page():
     """Serve the studio-credit review console page."""
     if CONSOLE_SECRET:
         _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if _key != CONSOLE_SECRET:
+        if _key != CONSOLE_SECRET and not _owner_token_ok(_key):
             return jsonify({"error": "unauthorized"}), 401
     resp = send_from_directory(STATIC, "console-studio-credits.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -10739,7 +10739,7 @@ def reorder_auth(token):
 def _portal_console_ok():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return False
     return True
 
@@ -11748,7 +11748,7 @@ def api_cert_mine():
 def _cert_console_ok():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return False
     return True
 
@@ -12355,7 +12355,7 @@ def admin_biofield_photo():
     private biofield-photos dir (never a symlink/abs path pointing elsewhere)."""
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     from dashboard import biofield_store as _bf
     email = (request.args.get("email") or "").strip()
@@ -12384,7 +12384,7 @@ def admin_biofield_photo_delete():
     there is no time-based purge."""
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     from dashboard import biofield_store as _bf
     email = (request.args.get("email")
@@ -12493,7 +12493,7 @@ def api_cert_commitment():
     Body: {email, kind, started_at, clear?}. Returns the commitment dict."""
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "unauthorized"}), 401
     from dashboard import cert_bonus
     body = request.get_json(silent=True) or {}
@@ -12521,7 +12521,7 @@ def api_cert_student():
     (portal_role coach + modules_completed 0-12). Feeds the cert bonus + cert referral."""
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     body = request.get_json(silent=True) or {}
     email = (body.get("email") or "").strip()
@@ -12544,7 +12544,7 @@ def api_cert_show_contact():
     (show_contact). Default is hidden; flip true to publish their email/phone."""
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     body = request.get_json(silent=True) or {}
     email = (body.get("email") or "").strip()
@@ -12567,7 +12567,7 @@ def api_cert_portal_invite():
     """Console-gated: email a cert participant their practitioner-portal magic link."""
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     body = request.get_json(silent=True) or {}
     email = (body.get("email") or "").strip()
@@ -12590,12 +12590,23 @@ def api_cert_portal_invite():
 
 # ── Console practitioner admin (add + roster + edit) ───────────────────────────
 
+def _owner_token_ok(key):
+    """True if `key` is an OWNER-role per-user access token (e.g. Rae). Lets the
+    console's CONSOLE_SECRET gates also accept an owner token. VA tokens (Shaira)
+    map to 'va' and return False. Defined here; resolves _role_for_token at call
+    time (it is a module global, defined later in this file)."""
+    try:
+        return bool(key) and _role_for_token(key) == _bos_rbac.OWNER
+    except Exception:
+        return False
+
+
 def _console_key_ok():
-    """True if the request carries the console key (or no key is configured)."""
+    """True if the request carries the console key, an OWNER token, or no key is configured."""
     if not CONSOLE_SECRET:
         return True
     key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-    return key == CONSOLE_SECRET
+    return key == CONSOLE_SECRET or _owner_token_ok(key)
 
 
 def _send_practitioner_invite(email, name, pid):
@@ -13074,7 +13085,7 @@ def api_founding_ship():
     only returns founding_state='pending' rows) — so re-running is safe."""
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "forbidden"}), 403
     slug = (request.get_json(silent=True) or {}).get("slug", "")
     from dashboard import subscriptions as _subs
@@ -13430,7 +13441,7 @@ def api_practitioner_admin_clear_orders():
     history (e.g. to tidy test data). Does not touch QBO or the wallet."""
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"ok": False, "error": "unauthorized"}), 401
     pid = ((request.get_json(silent=True) or {}).get("practitioner_id") or "").strip()
     if not pid:
@@ -13685,7 +13696,7 @@ def ghl_queue_result():
 def _lead_auth_or_401():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     return None
 
@@ -15228,7 +15239,7 @@ def get_calendar():
 def post_calendar():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
 
     items = request.get_json(force=True) or []
@@ -15329,7 +15340,7 @@ def post_calendar_accomplishment():
 def patch_calendar(event_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json(force=True) or {}
@@ -15380,7 +15391,7 @@ def patch_calendar(event_id):
 def patch_calendar_alert(event_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     enabled = (request.get_json(force=True) or {}).get("alert", True)
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -15394,7 +15405,7 @@ def get_calendar_alerts():
     """Return events with cal_alert=1 whose start is within the next 90 minutes."""
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     from datetime import datetime, timezone, timedelta
     now = datetime.now(timezone.utc)
@@ -15414,7 +15425,7 @@ def get_calendar_alerts():
 def calendar_delete_queue():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     with sqlite3.connect(LOG_DB) as cx:
         rows = cx.execute("""
@@ -15428,7 +15439,7 @@ def calendar_delete_queue():
 def clear_delete_queue():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     ids = (request.get_json(force=True) or {}).get("ids", [])
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -15441,7 +15452,7 @@ def clear_delete_queue():
 def unsuppress_calendar_event(event_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         row = cx.execute(
@@ -15465,7 +15476,7 @@ def unsuppress_calendar_event(event_id):
 def suppress_calendar_event(event_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         row = cx.execute(
@@ -15553,7 +15564,7 @@ def get_todos():
 def post_todos():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
 
     items = request.get_json(force=True) or {}
@@ -15605,7 +15616,7 @@ def post_todos():
 def patch_todo(todo_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
 
     data   = request.get_json(force=True) or {}
@@ -15657,7 +15668,7 @@ def patch_todo(todo_id):
 def draft_reply_endpoint(todo_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     data     = request.get_json(force=True) or {}
     guidance = (data.get("guidance") or "").strip()
@@ -15696,7 +15707,7 @@ def draft_reply_endpoint(todo_id):
 def delete_todo(todo_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.execute("UPDATE todos SET status='dismissed' WHERE id=?", (todo_id,))
@@ -16115,7 +16126,7 @@ _init_heygen_reviewed_table()
 def post_rae_feedback():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
 
     events = request.get_json(force=True) or {}
@@ -16151,7 +16162,7 @@ def post_rae_feedback():
 def get_rae_feedback():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
 
     event_type = request.args.get("event_type")       # optional filter
@@ -16177,7 +16188,7 @@ def get_rae_feedback_summary():
     """Laugh counts grouped by greeting_style — reveals which humor lands best."""
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
 
     with sqlite3.connect(LOG_DB) as cx:
@@ -16214,7 +16225,7 @@ def get_rae_feedback_summary():
 def api_rae_feedback_tag(fb_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     data = request.get_json(force=True) or {}
     tag  = (data.get("tag") or "").strip().lower()
@@ -16232,7 +16243,7 @@ def api_rae_feedback_tag(fb_id):
 def api_rae_feedback_mark_reviewed(fb_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     ts = datetime.now(timezone.utc).isoformat()
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -16581,7 +16592,7 @@ def _people_search_query(params):
 def get_people():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key","") or request.args.get("key","")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error":"Unauthorized"}), 401
     limit  = min(int(request.args.get("limit", 50)), 200)
     offset = int(request.args.get("offset", 0))
@@ -16605,7 +16616,7 @@ def get_people():
 def get_recent_comms():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     from dashboard.recent_comms import recent_comms
     email = (request.args.get("q", "") or "").strip()
@@ -16617,7 +16628,7 @@ def get_recent_comms():
 def get_person(person_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key","") or request.args.get("key","")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error":"Unauthorized"}), 401
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
@@ -16631,7 +16642,7 @@ def get_person(person_id):
 def upsert_people():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key","") or request.args.get("key","")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error":"Unauthorized"}), 401
     items = request.get_json(force=True) or []
     if isinstance(items, dict):
@@ -16694,7 +16705,7 @@ def upsert_people():
 def add_person_note(person_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key","") or request.args.get("key","")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error":"Unauthorized"}), 401
     note = (request.get_json(force=True) or {}).get("note","").strip()
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
@@ -16713,7 +16724,7 @@ def add_person_note(person_id):
 def list_person_tags_route():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     with sqlite3.connect(LOG_DB) as cx:
         rows = cx.execute("SELECT tags FROM people").fetchall()
@@ -16724,7 +16735,7 @@ def list_person_tags_route():
 def update_person_tags_route(person_id):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     body = request.get_json(force=True, silent=True)
     if not isinstance(body, dict):
@@ -16758,7 +16769,7 @@ def _check_console_auth():
     if not CONSOLE_SECRET:
         return None
     key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-    if key != CONSOLE_SECRET:
+    if key != CONSOLE_SECRET and not _owner_token_ok(key):
         return jsonify({"error": "Unauthorized"}), 401
     return None
 
@@ -18523,7 +18534,7 @@ def _do_capture_split(text: str, owner: str) -> dict:
 def capture_split():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     data  = request.get_json(force=True) or {}
     text  = (data.get("text") or "").strip()
@@ -19477,7 +19488,7 @@ _init_tokens_table()
 def get_token(name):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key","") or request.args.get("key","")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error":"Unauthorized"}), 401
     with sqlite3.connect(LOG_DB) as cx:
         row = cx.execute("SELECT token_json, updated_at FROM oauth_tokens WHERE name=?", (name,)).fetchone()
@@ -19490,7 +19501,7 @@ def get_token(name):
 def put_token(name):
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key","") or request.args.get("key","")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error":"Unauthorized"}), 401
     data = request.get_json(force=True) or {}
     token_json = data.get("token_json","")
@@ -24024,6 +24035,12 @@ def _bos_actor():
         token=key, role_for_token=_role_for_token)
 
 
+# Let the legacy require_console_key decorator accept an OWNER-role per-user token
+# (Rae) in addition to CONSOLE_SECRET, so her token works on the console's
+# read/data endpoints. VA tokens (Shaira) map to 'va' and remain rejected there.
+dashboard.set_owner_token_check(_owner_token_ok)
+
+
 @app.route("/api/action/<path:key>", methods=["POST"])
 def bos_action(key):
     actor = _bos_actor()
@@ -24888,7 +24905,7 @@ def api_console_pricing_settings():
     pricing-settings.json in DATA_DIR (live-reloaded by _pricing_settings)."""
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     from dashboard import pricing_settings as _ps
     if request.method == "GET":
@@ -24938,7 +24955,7 @@ def admin_sales_images_backfill():
 def api_console_coupons():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     with sqlite3.connect(LOG_DB) as cx:
         from dashboard import coupons as _coupons
@@ -24956,7 +24973,7 @@ def api_console_coupons():
 def api_console_top_products():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     year = request.args.get("year")
     by = request.args.get("by", "revenue")
@@ -24975,7 +24992,7 @@ def api_console_top_products():
 def api_console_sales_import():
     if CONSOLE_SECRET:
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "") or request.form.get("key", "")
-        if key != CONSOLE_SECRET:
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     f = request.files.get("invoice_items")
     if not f:
