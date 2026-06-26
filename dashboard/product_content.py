@@ -20,6 +20,7 @@ model extracts/cites rather than invents. Results are cached in chat_log.db keye
 by (product_slug, content_type); regenerate via the console-gated refresh endpoint.
 """
 import os
+import re
 import json
 import sqlite3
 import datetime as _dt
@@ -237,6 +238,43 @@ _CARD_SYSTEM = (
 )
 
 
+# ── Post-generation compliance gate ───────────────────────────────────────────
+# The prompt guardrail (_COMPLIANCE in _VOICE) reduces but does not guarantee
+# compliant output, because the research sources are condition-heavy and the
+# model can drift on long-form copy. This deterministic gate is the backstop:
+# scan generated text for disease/condition names + treatment-claim verbs, retry
+# once with explicit feedback, and if it still violates, the caller degrades that
+# section (empty rather than a non-compliant claim on a live page).
+_DENY_RE = re.compile(
+    r"\b(floaters?|detachment|macular degeneration|glaucoma|cataracts?|"
+    r"treatments?|treats?|prevents?|cures?|reverses?|addresses)\b", re.I)
+
+
+def _deny_hits(text: str) -> list:
+    return sorted({m.group(0).lower() for m in _DENY_RE.finditer(text or "")})
+
+
+def _gen_compliant(cl, system, user, max_tokens, check):
+    """Generate text; if check(raw) contains denied terms, retry once with
+    feedback. Returns (raw_text, ok); ok is False if it still violates."""
+    def _run(u):
+        msg = cl.messages.create(model=_MODEL, max_tokens=max_tokens, system=system,
+                                 messages=[{"role": "user", "content": u}])
+        return (msg.content[0].text if msg.content else "").strip()
+
+    raw = _run(user)
+    if not _deny_hits(check(raw)):
+        return raw, True
+    hits = _deny_hits(check(raw))
+    fb = (user + "\n\nYOUR PREVIOUS DRAFT VIOLATED COMPLIANCE by using these forbidden words: "
+          + ", ".join(hits) + ". Rewrite the ENTIRE response in pure structure-function language with "
+          "ZERO disease/condition/symptom names (no 'floaters', no 'detachment', no disease names) and "
+          "ZERO treatment-claim verbs (no treats/prevents/cures/reverses/addresses/treatment). Describe "
+          "only how the formula supports the normal structure and function of the body's tissues.")
+    raw2 = _run(fb)
+    return raw2, not _deny_hits(check(raw2))
+
+
 def _generate_card(product, page):
     idx, cl, embed = _clients()
     name = product.get("name", "")
@@ -245,14 +283,19 @@ def _generate_card(product, page):
         return {"description": "", "ingredients": [], "benefits": []}
     user = f"PRODUCT: {name}\n\nPAGE COPY:\n{page_text[:14000]}"
     try:
-        msg = cl.messages.create(model=_MODEL, max_tokens=1200, system=_CARD_SYSTEM,
-                                 messages=[{"role": "user", "content": user}])
-        raw = (msg.content[0].text if msg.content else "").strip()
+        raw, ok = _gen_compliant(cl, _CARD_SYSTEM, user, 1200, lambda r: r)
         raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         data = json.loads(raw)
-        return {"description": _dd((data.get("description") or "").strip()),
+        # If still non-compliant after retry, drop the generated prose (keep the
+        # factual, verbatim ingredient list); benefits/description can be pinned.
+        desc = _dd((data.get("description") or "").strip())
+        bens = [_dd(s.strip()) for s in (data.get("benefits") or []) if s.strip()]
+        if not ok:
+            desc, bens = "", []
+            print(f"[product_content] card still non-compliant after retry, dropped prose: {name}", flush=True)
+        return {"description": desc,
                 "ingredients": [s.strip() for s in (data.get("ingredients") or []) if s.strip()],
-                "benefits": [_dd(s.strip()) for s in (data.get("benefits") or []) if s.strip()]}
+                "benefits": bens}
     except Exception as e:
         print(f"[product_content] card gen failed {name}: {e}", flush=True)
         return {"description": "", "ingredients": [], "benefits": []}
@@ -284,9 +327,11 @@ def _generate_learn_more(product, page, sources):
     user = (f"PRODUCT: {name}\n\nPAGE COPY:\n{page_text[:9000]}\n\n"
             f"RESEARCH SOURCES (cite only these urls):\n{src_block[:8000]}")
     try:
-        msg = cl.messages.create(model=_MODEL, max_tokens=2400, system=_LEARN_SYSTEM,
-                                 messages=[{"role": "user", "content": user}])
-        markdown = _dd((msg.content[0].text if msg.content else "").strip())
+        raw, ok = _gen_compliant(cl, _LEARN_SYSTEM, user, 2400, lambda r: r)
+        if not ok:
+            print(f"[product_content] learn_more still non-compliant after retry, degraded to empty: {name}", flush=True)
+            return {"markdown": ""}
+        markdown = _dd(raw)
     except Exception as e:
         print(f"[product_content] learn_more gen failed {name}: {e}", flush=True)
         markdown = ""
@@ -311,9 +356,11 @@ def _generate_how_it_works(product, page):
         return {"text": ""}
     user = f"PRODUCT: {name}\n\nPAGE COPY:\n{page_text[:12000]}"
     try:
-        msg = cl.messages.create(model=_MODEL, max_tokens=600, system=_HOW_SYSTEM,
-                                 messages=[{"role": "user", "content": user}])
-        return {"text": _dd((msg.content[0].text if msg.content else "").strip())}
+        raw, ok = _gen_compliant(cl, _HOW_SYSTEM, user, 600, lambda r: r)
+        if not ok:
+            print(f"[product_content] how_it_works still non-compliant after retry, degraded to empty: {name}", flush=True)
+            return {"text": ""}
+        return {"text": _dd(raw)}
     except Exception as e:
         print(f"[product_content] how_it_works gen failed {name}: {e}", flush=True)
         return {"text": ""}
