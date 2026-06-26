@@ -2900,7 +2900,8 @@ function renderReorderPlan() {
 }
 
 function renderReorderReport(el, rep) {
-  window._lastReorderRep = rep;
+  window._reorderReps = window._reorderReps || {};
+  window._reorderReps[el.id] = rep;
   el.classList.add("active");
   if (!rep.groups || !rep.groups.length) {
     el.innerHTML = '<div class="section"><p class="hint">Nothing to reorder — everything is at or above par/demand.</p></div>';
@@ -2923,7 +2924,7 @@ function renderReorderReport(el, rep) {
       }).join("");
       return '<h4 style="margin:18px 0 8px;font-size:14px">' + escapeHtml(g.supplier) + ' — subtotal $' + g.subtotal +
         (g.supplier_id != null
-          ? ' <button class="btn" style="margin-left:10px" onclick="createDraftPO(' + i + ')">Create draft PO</button>'
+          ? ' <button class="btn" style="margin-left:10px" onclick="createDraftPO(\'' + el.id + '\', ' + i + ')">Create draft PO</button>'
           : ' <span style="margin-left:10px;color:var(--muted);font-size:12px">Assign a preferred source to order these</span>')
         + '</h4>' +
         '<table style="width:100%;border-collapse:collapse">' +
@@ -2944,23 +2945,31 @@ function renderReorderReport(el, rep) {
     '</div>';
 }
 
-async function createDraftPO(idx) {
-  var rep = window._lastReorderRep || {};
+async function createDraftPO(repKey, idx) {
+  var rep = (window._reorderReps || {})[repKey] || {};
   var g = (rep.groups || [])[idx];
   if (!g || g.supplier_id == null) return;
   if (!confirm('Create draft PO for ' + g.supplier + ' — ' + (g.lines || []).length + ' lines, ~$' + g.subtotal + '?')) return;
-  var r = await fetch('/api/action/reorder.create_po', {
-    method: 'POST',
-    headers: HEADERS,
-    body: JSON.stringify({ supplier_id: g.supplier_id, supplier_name: g.supplier, lines: g.lines })
-  });
-  var res = await r.json();
-  // BOS action endpoint returns {status, result, event_id} — not the {ok, data} envelope used by api()
-  if (res && res.status === 'done' && res.result && res.result.po_id) {
-    showTab('po');
-    openPo(res.result.po_id);
-  } else {
-    alert('Could not create PO: ' + ((res && (res.error || (res.result && res.result.error))) || 'unknown error'));
+  if (window._poCreating) return;
+  window._poCreating = true;
+  try {
+    var r = await fetch('/api/action/reorder.create_po', {
+      method: 'POST',
+      headers: HEADERS,
+      body: JSON.stringify({ supplier_id: g.supplier_id, supplier_name: g.supplier, lines: g.lines })
+    });
+    var res = await r.json();
+    // BOS action endpoint returns {status, result, event_id} — not the {ok, data} envelope used by api()
+    if (res && res.status === 'done' && res.result && res.result.po_id) {
+      showTab('po');
+      openPo(res.result.po_id);
+    } else {
+      alert('Could not create PO: ' + ((res && (res.error || (res.result && res.result.error))) || 'unknown error'));
+    }
+  } catch (e) {
+    alert('Could not create PO: network error');
+  } finally {
+    window._poCreating = false;
   }
 }
 
