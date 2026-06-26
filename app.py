@@ -16093,8 +16093,12 @@ def portal_asset_serve(filename):
     m = re.match(_PORTAL_ASSET_RE, filename)
     if not m:
         return jsonify({"error": "invalid filename"}), 400
-    return send_from_directory(str(_PORTAL_ASSETS_DIR), filename,
-                               mimetype=_PORTAL_ASSET_MIME[m.group(1)])
+    is_pdf = m.group(1) == "pdf"
+    return send_from_directory(
+        str(_PORTAL_ASSETS_DIR), filename,
+        mimetype=_PORTAL_ASSET_MIME[m.group(1)],
+        as_attachment=is_pdf,
+        download_name=("Biofield-Analysis.pdf" if is_pdf else None))
 
 
 # ── Rae Feedback (humor / speech monitoring) ──────────────────────────────────
