@@ -733,3 +733,14 @@ def orders_signal(cx, actor=None, now=None):
     return {"level": level, "summary": summary,
             "top_actions": [{"label": "Open orders board", "href": "/console/orders"}],
             "count": n}
+
+
+def effective_shipping_cents(pickup, computed_cents):
+    """Shipping for an order: 0 when it's a pickup (no shipping), else the
+    computed amount. Single source of the pickup-shipping rule."""
+    if pickup:
+        return 0
+    try:
+        return int(computed_cents or 0)
+    except (TypeError, ValueError):
+        return 0
