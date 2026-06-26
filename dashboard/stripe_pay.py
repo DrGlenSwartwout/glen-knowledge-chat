@@ -67,16 +67,40 @@ def create_checkout_session(amount_cents, *, customer_email, description, metada
     return {"id": j.get("id"), "url": j.get("url")}
 
 
+def _find_or_create_customer(email: str) -> str:
+    """Find a Stripe Customer by email, or create one. Returns the customer id ("" on
+    failure). A setup-mode Checkout Session only saves the card to a Customer when one
+    is supplied, so off-session charges later (founding on-ship, studio bridge) need it."""
+    email = (email or "").strip()
+    if email:
+        try:
+            from urllib.parse import quote
+            res = _get(f"/customers?email={quote(email)}&limit=1")
+            data = res.get("data") or []
+            if data and data[0].get("id"):
+                return data[0]["id"]
+        except Exception:
+            pass
+    j = _post("/customers", {"email": email} if email else {})
+    return j.get("id") or ""
+
+
 def create_setup_session(*, customer_email, metadata, success_url, cancel_url) -> dict:
     """Stripe Checkout in mode=setup — vaults a card with NO charge (for later
-    off-session use). Returns {id, url}."""
+    off-session use). Binds the session to a Customer so the saved card can be
+    charged off-session later; without a customer Stripe leaves SetupIntent.customer
+    null and the on-ship charge has nothing to bill. Returns {id, url}."""
+    customer_id = _find_or_create_customer(customer_email)
     params = {
         "mode": "setup",
-        "customer_email": customer_email,
         "success_url": success_url,
         "cancel_url": cancel_url,
         "payment_method_types[0]": "card",
     }
+    if customer_id:
+        params["customer"] = customer_id          # can't pass both customer + customer_email
+    elif customer_email:
+        params["customer_email"] = customer_email
     for k, v in (metadata or {}).items():
         if v is None:
             continue
