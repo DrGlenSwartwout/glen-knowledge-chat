@@ -49,6 +49,18 @@ def test_velocity_plan_feeds_bom_demand(db):
     assert dem[99]["demand"] == pytest.approx(36.0)  # dose 2 * qty 18
 
 
+def test_product_velocity_absent_table_returns_empty(tmp_path):
+    """product_sales table doesn't exist yet → no error, just empty results."""
+    p = str(tmp_path / "absent.db")
+    cx = sqlite3.connect(p)
+    # No product_sales table — only formulations (always present in prod)
+    cx.execute("CREATE TABLE formulations (id INTEGER PRIMARY KEY, fmp_id TEXT, name TEXT)")
+    cx.commit(); cx.close()
+    assert ro.product_velocity(db_path=p) == {}
+    assert ro.velocity_plan(db_path=p) == []
+    assert ro.velocity_table(db_path=p) == []
+
+
 def test_empty_product_sales_returns_empty(tmp_path):
     p = str(tmp_path / "empty.db")
     cx = sqlite3.connect(p)

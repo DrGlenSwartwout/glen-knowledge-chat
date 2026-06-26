@@ -180,7 +180,10 @@ def product_velocity(db_path=None) -> dict:
     """Per product_fmp_id: avg units/month over the trailing 3 and 12 months,
     anchored to MAX(period) in product_sales (missing months count as 0)."""
     with _connect(db_path) as cx:
-        row = cx.execute("SELECT MAX(period) FROM product_sales").fetchone()
+        try:
+            row = cx.execute("SELECT MAX(period) FROM product_sales").fetchone()
+        except sqlite3.OperationalError:
+            return {}
         latest = row[0] if row else None
         if not latest:
             return {}
