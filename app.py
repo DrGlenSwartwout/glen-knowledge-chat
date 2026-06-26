@@ -24726,6 +24726,13 @@ def bos_orders_page():
     return resp
 
 
+@app.route("/console/client-orders")
+def bos_client_orders_page():
+    resp = send_from_directory(STATIC, "console-client-orders.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/console/cert")
 def bos_cert_page():
     resp = send_from_directory(STATIC, "console-cert.html")
@@ -24820,6 +24827,47 @@ def api_console_backfill_member_people():
             return jsonify({"ok": True, "dry_run": True, "would_create": len(missing), "emails": missing})
         created = _subs.backfill_member_people(cx)
     return jsonify({"ok": True, "created": created, "emails": missing})
+
+
+@app.route("/api/console/fmp-orders-ingest", methods=["POST"])
+def api_console_fmp_orders_ingest():
+    """Load the FMP order-history projection (built locally from the CSV export)
+    into the prod LOG_DB. Console-gated; dry_run reports counts only. Idempotent
+    replace of the four projection tables. Read-only reference data.
+
+    Expects the payload from fmp_orders.to_payload(): invoice_date is already
+    ISO-normalized at build time, so this path stores it as-is (no re-normalize)."""
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import fmp_orders as _fo
+    payload = request.get_json(silent=True) or {}
+    if not any(k in payload for k in ("clients", "invoices", "items", "addresses")):
+        return jsonify({"ok": False, "error": "empty payload"}), 400
+    dry = request.args.get("dry_run", "0") == "1"
+    if dry:
+        return jsonify({"ok": True, "dry_run": True,
+                        "counts": {k: len(payload.get(k, [])) for k in ("clients", "invoices", "items", "addresses")}})
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _fo.ensure_tables(cx)
+        counts = _fo.ingest_payload(cx, payload)
+    return jsonify({"ok": True, "counts": counts})
+
+
+@app.route("/api/console/fmp-orders", methods=["GET"])
+def api_console_fmp_orders():
+    """Look up a client's FMP order history (orders + line items + addresses on
+    file). Console-gated. Requires client_id, email, or name (>=2 chars)."""
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import fmp_orders as _fo
+    client_id = (request.args.get("client_id") or "").strip() or None
+    email = (request.args.get("email") or "").strip() or None
+    name = (request.args.get("name") or "").strip() or None
+    if not (client_id or email or (name and len(name) >= 2)):
+        return jsonify({"ok": True, "results": []})
+    with sqlite3.connect(LOG_DB) as cx:
+        results = _fo.client_order_history(cx, client_id=client_id, email=email, name=name)
+    return jsonify({"ok": True, "results": results})
 
 
 @app.route("/api/console/test-portal-welcome", methods=["POST"])

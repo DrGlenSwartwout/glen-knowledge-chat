@@ -8,7 +8,7 @@
  * Business OS sub-tabs: when data-active="bos", a secondary row of the BOS module
  * boards renders under the main bar. Mark the active board with data-sub, e.g.
  *   <script src="/static/op-nav.js" data-active="bos" data-sub="finance"></script>
- * Valid data-sub values: "orders" | "payments" | "finance" | "crm" | "products" | "biofield" | "sales" | "ingredients" | "reviews" | "shipping" | "neworder"
+ * Valid data-sub values: "orders" | "client-orders" | "payments" | "finance" | "crm" | "products" | "biofield" | "sales" | "ingredients" | "reviews" | "shipping" | "neworder"
  * (Shipping = /admin/shipping, New Order = /orders/new — folded in from the old
  *  standalone top tabs. The old "home" board is retired; its signals now live on
  *  the /console front door.)
@@ -80,6 +80,7 @@
   // from the old standalone top tabs.
   var bosMods = [
     { id: "orders",   label: "Orders",    href: "/console/orders" + qs },
+    { id: "client-orders", label: "Client Orders", href: "/console/client-orders" + qs },
     { id: "money",    label: "Money",     href: "/console/money" + qs },
     { id: "crm",      label: "CRM",       href: "/console/crm" + qs },
     { id: "products", label: "Products",  href: "/console/products" + qs },
@@ -277,13 +278,13 @@
   var NAV_PROFILES = {
     glen: {
       tabs: ["dashboard","console","bos","projects","inbox","settings","funnel"],
-      bos:  ["orders","money","crm","products","biofield","pages",
+      bos:  ["orders","client-orders","money","crm","products","biofield","pages",
              "biofield-reveals","biofield-intake",
              "reviews","shipping","neworder"]
     },
     rae: {
       tabs: ["dashboard","console","bos","inbox"],
-      bos:  ["orders","money","crm","reviews","shipping","neworder"]
+      bos:  ["orders","client-orders","money","crm","reviews","shipping","neworder"]
     }
   };
 
