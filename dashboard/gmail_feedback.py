@@ -21,10 +21,13 @@ def _from_email(value):
     return m.group(0).lower() if m else ""
 
 
-def recent_client_messages(known_emails, *, days=90, limit=200, service=None):
+def recent_client_messages(known_emails, *, days=90, limit=200, service=None, diag=None):
     """{client_email: text} for inbox messages from known clients in the window.
-    Best-effort: returns {} on any Gmail/auth error."""
+    Best-effort: returns {} on any Gmail/auth error. If `diag` (dict) is given, fills
+    known/listed/matched/error for debugging."""
     known = {(e or "").strip().lower() for e in (known_emails or []) if e}
+    if diag is not None:
+        diag["known"] = len(known)
     if not known:
         return {}
     try:
@@ -33,6 +36,8 @@ def recent_client_messages(known_emails, *, days=90, limit=200, service=None):
             service = _inbox._get_gmail_service()
         listing = service.users().messages().list(
             userId="me", q=f"in:inbox newer_than:{int(days)}d", maxResults=int(limit)).execute()
+        if diag is not None:
+            diag["listed"] = len(listing.get("messages") or [])
         out = {}
         for m in (listing.get("messages") or []):
             try:
@@ -47,7 +52,11 @@ def recent_client_messages(known_emails, *, days=90, limit=200, service=None):
             text = (_hdr(msg, "Subject") + ". " + (msg.get("snippet") or "")).strip()
             if text:
                 out[frm] = (out.get(frm, "") + "\n" + text).strip()[:2000]
+        if diag is not None:
+            diag["matched"] = len(out)
         return out
     except Exception as e:  # noqa: BLE001
+        if diag is not None:
+            diag["error"] = repr(e)[:200]
         print(f"[gmail_feedback] read failed: {e!r}", flush=True)
         return {}
