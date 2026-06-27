@@ -424,12 +424,20 @@ def _send_portal_welcome(email, name, token):
     if not em or not token:
         return
     try:
-        from dashboard import email_suppression as _es, portal_welcome as _pw
+        from dashboard import email_suppression as _es
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             _es.init_table(cx)
             if _es.is_suppressed(cx, em):
                 return
-            if not _pw.mark_welcome_sent(cx, em):   # already sent
+            # Dedicated once-guard for the order-time PORTAL TOKEN link. Kept
+            # SEPARATE from the membership-join /portal/login welcome guard so a
+            # member who later buys still receives their token link.
+            cx.execute("CREATE TABLE IF NOT EXISTS portal_token_welcome_sent ("
+                       "email TEXT PRIMARY KEY, sent_at TEXT)")
+            cur = cx.execute(
+                "INSERT OR IGNORE INTO portal_token_welcome_sent (email, sent_at) VALUES (?, ?)",
+                (em, datetime.now(timezone.utc).isoformat()))
+            if cur.rowcount == 0:   # token link already sent to this email
                 return
         url = f"{PUBLIC_BASE_URL}/portal/{token}"
         body = (f"Aloha {name or ''},\n\nYour personal healing home is ready:\n\n{url}\n\n"
@@ -24985,7 +24993,12 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
             # NEW: every buyer gets a portal home (idempotent, fail-open)
             try:
                 from dashboard import portal_provision as _pp
-                _tok = _pp.ensure_portal_for_buyer(cx, email, name)
+                # Serialize the SELECT-then-INSERT mint so two concurrent first-ever
+                # orders for the same new email can't create duplicate portals.
+                # Release the lock BEFORE _send_portal_welcome (it reacquires it; the
+                # lock is non-reentrant).
+                with _db_lock:
+                    _tok = _pp.ensure_portal_for_buyer(cx, email, name)
                 if _tok:
                     _send_portal_welcome(email, name, _tok)
             except Exception as _pe:
