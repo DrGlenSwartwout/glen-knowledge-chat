@@ -62,6 +62,13 @@
     font-family:var(--font); transition:border-color .12s, color .12s; }
   .example-q:hover{ border-color:var(--gold); color:var(--cream); }
 
+  /* ── Quick-reply chips ── */
+  .chip-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .quick-chip{ background:var(--surface-2); border:1px solid var(--border); border-radius:999px;
+    padding:6px 14px; font-size:13px; color:var(--muted); cursor:pointer; font-family:var(--font);
+    transition:border-color .12s, color .12s; }
+  .quick-chip:hover{ border-color:var(--gold); color:var(--cream); }
+
   .message{ margin-bottom:12px; padding:12px 14px; border-radius:10px; }
   .message.user{ background:#152019; border-left:3px solid var(--gold); }
   .message.assistant{ background:var(--surface-2); border-left:3px solid var(--green); }
@@ -241,6 +248,35 @@
     function fillQuery(text){
       const inp = document.getElementById('query-input');
       inp.value = text; autoResize(inp); inp.focus();
+    }
+
+    function renderChips(chips) {
+      try {
+        if (!Array.isArray(chips) || !chips.length) return;
+        var msgs = document.getElementById('messages');
+        if (!msgs) return;
+        var assist = msgs.querySelectorAll('.message.assistant');
+        var lastMsg = assist.length ? assist[assist.length - 1] : null;
+        if (!lastMsg) return;
+        var wrap = document.createElement('div');
+        wrap.className = 'chip-row';
+        chips.slice(0, 4).forEach(function (label) {
+          if (!label) return;
+          var b = document.createElement('button');
+          b.className = 'quick-chip';
+          b.type = 'button';
+          b.textContent = label;
+          b.addEventListener('click', function () {
+            try { fetch(BASE + '/api/chip-tap', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId, label: label }) }).catch(function(){}); } catch (_) {}
+            wrap.remove();
+            fillQuery(label);
+            sendQuery();
+          });
+          wrap.appendChild(b);
+        });
+        lastMsg.appendChild(wrap);
+        msgs.scrollTop = msgs.scrollHeight;
+      } catch (_) {}
     }
 
     function appendThinking(id){
@@ -425,6 +461,7 @@
                 }
                 history.push({ role: 'user', content: query });
                 if (accumulated) history.push({ role: 'assistant', content: accumulated });
+                if (evt.chips && evt.chips.length) renderChips(evt.chips);
               }
             }
           }
