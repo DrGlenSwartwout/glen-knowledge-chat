@@ -125,6 +125,23 @@ services:
           name: glen-knowledge-chat
           envVarKey: CRON_SECRET
 
+  # Daily testimonial-invite scan — mines recent client comms + Gmail (from known
+  # clients) for positive results, adding review candidates to the Invite Queue.
+  # Cross-container pattern: cron curls the web service (which holds the Gmail token + DB).
+  - type: cron
+    name: glen-testimonial-invites-scan
+    runtime: python
+    schedule: "30 13 * * *"   # 3:30 AM HST daily (HST is UTC-10)
+    buildCommand: "true"      # stdlib-only, no deps to install
+    startCommand: python scripts/run_testimonial_invites_scan_cron.py
+    envVars:
+      - key: WEB_URL
+        value: https://glen-knowledge-chat.onrender.com
+      - fromService:
+          type: web
+          name: glen-knowledge-chat
+          envVarKey: CONSOLE_SECRET
+
   - type: cron
     name: glen-reply-watcher
     runtime: python
