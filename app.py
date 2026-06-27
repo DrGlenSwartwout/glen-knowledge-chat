@@ -5564,6 +5564,10 @@ def _recent_active_emails(cx, days=7, limit=500):
         "WHERE email IS NOT NULL AND email<>'' AND ts > datetime('now', ?)",
         "SELECT DISTINCT lower(client_email) FROM inquiries "
         "WHERE client_email IS NOT NULL AND client_email<>'' AND created_at > datetime('now', ?)",
+        # email feedback (where clients reply 'this helped me') — joined to users for the email
+        "SELECT DISTINCT lower(u.email) FROM personal_email_feedback pf "
+        "JOIN users u ON u.id = pf.user_id "
+        "WHERE u.email IS NOT NULL AND u.email<>'' AND pf.received_at > datetime('now', ?)",
     ):
         try:
             for row in cx.execute(sql, (win,)).fetchall():

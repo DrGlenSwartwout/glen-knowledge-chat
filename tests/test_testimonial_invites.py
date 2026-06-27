@@ -153,6 +153,22 @@ def test_recent_active_emails_window(monkeypatch, tmp_path):
     assert "active@x.com" in emails and "old@x.com" not in emails
 
 
+def test_recent_active_emails_includes_email_feedback(monkeypatch, tmp_path):
+    """personal_email_feedback (joined to users) is part of the scan population."""
+    appmod = _reload_app(monkeypatch, tmp_path)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT)")
+        cx.execute("CREATE TABLE IF NOT EXISTS personal_email_feedback "
+                   "(id INTEGER PRIMARY KEY, user_id INTEGER, received_at TEXT, ai_summary TEXT)")
+        cx.execute("INSERT INTO users (id,email,created_at) "
+                   "VALUES (1,'fb@x.com',datetime('now')),(2,'oldfb@x.com',datetime('now'))")
+        cx.execute("INSERT INTO personal_email_feedback (user_id,received_at,ai_summary) "
+                   "VALUES (1, datetime('now'), 'feeling great'), (2, datetime('now','-200 days'), 'old')")
+        cx.commit()
+        emails = appmod._recent_active_emails(cx, days=90)
+    assert "fb@x.com" in emails and "oldfb@x.com" not in emails
+
+
 def test_scan_404_when_flag_off(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path, invites="false")
     assert appmod.app.test_client().post("/api/console/testimonial-invites/scan").status_code == 404
