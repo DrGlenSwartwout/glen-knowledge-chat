@@ -5246,6 +5246,60 @@ def _testimonial_practitioner_id(tok: str) -> int:
     return int(row[0]) if row and row[0] is not None else 0
 
 
+def _testimonial_token_for_practitioner(practitioner_id) -> str:
+    """Stable per-practitioner ?p= token: reuse an existing one, else mint. '' for no pid."""
+    pid = int(practitioner_id or 0)
+    if pid <= 0:
+        return ""
+    _init_testimonial_tokens()
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT token FROM testimonial_tokens WHERE practitioner_id=? LIMIT 1", (pid,)).fetchone()
+        if row:
+            return row[0]
+    return _testimonial_token_mint(pid)
+
+
+# ── Cert L1 portal assignment (subsystem A beachhead) ─────────────────────────
+_ASH_L1_TAG = "ash-cert-l1"
+
+
+def _assignment_status(modules_completed, has_submission) -> str:
+    """not_started -> in_review (submitted, awaiting approval) -> complete (Level 1 granted)."""
+    if int(modules_completed or 0) >= 1:
+        return "complete"
+    return "in_review" if has_submission else "not_started"
+
+
+def _cert_l1_assignment(practitioner_id, email, modules_completed):
+    """Assignment card for a practitioner: auto-attributed record link + current status."""
+    tok = _testimonial_token_for_practitioner(practitioner_id)
+    base = f"{PUBLIC_BASE_URL}/results?tag={_ASH_L1_TAG}"
+    record_url = f"{base}&p={tok}" if tok else base
+    has_sub = False
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            has_sub = _pr_module().cohort_submission(
+                cx, _ASH_L1_TAG, email=email or "",
+                practitioner_id=int(practitioner_id or 0)) is not None
+    except Exception:
+        has_sub = False
+    return {
+        "key": "ash-cert-l1-video",
+        "title": "Level 1 — Share your story on video",
+        "body": ("Record a short video (60-90 seconds) about something you've learned in the course "
+                 "that's been meaningful, or a result you've experienced. Completing this reflection "
+                 "earns your Level 1 assignment."),
+        "record_url": record_url,
+        "status": _assignment_status(modules_completed, has_sub),
+    }
+
+
+def _pr_module():
+    from dashboard import product_reviews as _pr
+    return _pr
+
+
 @app.route("/results")
 def testimonials_form_page():
     if not _TESTIMONIALS_ENABLED:
@@ -9244,6 +9298,12 @@ def api_practitioner_portal_data():
         with sqlite3.connect(LOG_DB) as _cx:
             data["ambassador"] = _pv._ambassador_block(
                 _cx, _amb_email, QUIZ_URL, PUBLIC_BASE_URL)
+    except Exception:
+        pass
+    # Cert L1 video assignment card (subsystem A beachhead). Best-effort.
+    try:
+        data["assignment"] = _cert_l1_assignment(
+            pid, data.get("email"), data.get("modules_completed"))
     except Exception:
         pass
     return jsonify({"ok": True, **data})

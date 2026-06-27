@@ -60,6 +60,13 @@
     <div class="stat"><b id="status">–</b><span>Reselling access</span></div>
   </div>
 
+  <div class="panel" id="assignment-panel" style="display:none">
+    <h2 id="assignment-title">Assignment</h2>
+    <div class="muted" id="assignment-body" style="font-size:13px;margin:4px 0 10px"></div>
+    <div id="assignment-status" style="font-size:13px;margin-bottom:12px"></div>
+    <button id="assignment-record">Record your video</button>
+  </div>
+
   <div class="panel" id="assist-panel" style="display:none">
     <h2>Formulation assistant</h2>
     <div class="muted" style="font-size:13px;margin:4px 0 10px">Describe a patient or condition and I'll suggest formulations you can add to your order.</div>
@@ -191,6 +198,26 @@ function applyBranding(b){
   }
 }
 
+function renderAssignment(asg){
+  var panel = $('assignment-panel');
+  if(!asg){ panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  $('assignment-title').textContent = asg.title || 'Assignment';
+  $('assignment-body').textContent = asg.body || '';
+  var stEl = $('assignment-status'), recBtn = $('assignment-record');
+  if(asg.status === 'complete'){
+    stEl.innerHTML = '<span class="badge ok">Level 1 complete &#10003;</span>';
+    recBtn.style.display = 'none';
+  } else {
+    stEl.innerHTML = (asg.status === 'in_review')
+      ? '<span class="badge" style="background:#caa43a;color:#0a150d">Submitted &mdash; in review</span>'
+      : '';
+    recBtn.textContent = (asg.status === 'in_review') ? 'Re-record / update' : 'Record your video';
+    recBtn.style.display = 'inline-block';
+    recBtn.onclick = function(){ window.open(asg.record_url, '_blank', 'noopener'); };
+  }
+}
+
 function render(d){
   var practiceName = (d.branding && d.branding.practice_name) || d.practice_name || '';
   $('who').textContent = (d.name || '') + (practiceName ? ' · ' + practiceName : '');
@@ -207,6 +234,7 @@ function render(d){
   } else {
     $('status').innerHTML = '<span class="badge no">Locked</span>';
   }
+  renderAssignment(d.assignment);
   // Ordering is ALWAYS available to a signed-in participant. When unlocked
   // (licensed or resale-approved) the order is a resale-exempt WHOLESALE order;
   // otherwise it is a taxed PERSONAL order at their cert-level price.
