@@ -941,6 +941,7 @@ def _init_log_db():
             "extracted_image_data TEXT",
             "image_count          INTEGER DEFAULT 0",
             "email_sent_at        TEXT",
+            "word_count           INTEGER DEFAULT 0",
         ]:
             try:
                 cx.execute(f"ALTER TABLE query_log ADD COLUMN {col_def}")
@@ -1087,7 +1088,8 @@ def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
               user_agent: str = "", referer: str = "",
-              extracted_image_data: str = "", image_count: int = 0) -> int:
+              extracted_image_data: str = "", image_count: int = 0,
+              word_count: int = 0) -> int:
     """Insert a row into query_log. Always logs, even for anonymous sessions.
 
     Image bytes are NEVER persisted — only the extracted text output of
@@ -1095,16 +1097,17 @@ def log_query(query: str, level: str, answer: str,
     contributed to the question.
     """
     ts = datetime.now(timezone.utc).isoformat()
+    wc = word_count or len((answer or "").split())
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cur = cx.execute(
             """INSERT INTO query_log
                (ts, query, level, answer, session_id, email, name,
                 ghl_contact_id, mode, user_agent, referer,
-                extracted_image_data, image_count)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                extracted_image_data, image_count, word_count)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (ts, query, level, answer[:8000], session_id, email, name,
              ghl_contact_id, mode, user_agent[:500], referer[:500],
-             extracted_image_data[:8000], image_count)
+             extracted_image_data[:8000], image_count, wc)
         )
         cx.commit()
         return cur.lastrowid
