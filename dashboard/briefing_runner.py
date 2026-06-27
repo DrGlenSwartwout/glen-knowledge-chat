@@ -29,6 +29,7 @@ from . import heygen as _heygen
 from . import inbox as _inbox
 from . import briefing_actions as _ba
 from . import briefing_links as _links
+from . import orders as _orders
 
 
 MODEL = os.environ.get("BRIEFING_MODEL", "claude-haiku-4-5-20251001")
@@ -77,7 +78,13 @@ SLUG_PROMPTS = {
         "week, then new leads worth contacting. Do NOT cover cash / accounts "
         "receivable or system health. If a source has an `_error`, say it is "
         "unavailable rather than inventing. Then one short '## Insight' line on "
-        "the biggest retention risk or best conversion bet. Voice: triage-officer; "
+        "the biggest retention risk or best conversion bet. "
+        "Also surface ORDERS NEEDING ACTION from the snapshot's top-level `orders` "
+        "block: name them by customer and status, separating unpaid carts to recover "
+        "(status new with pay_status unpaid, or cart/proposed) from paid-but-unshipped "
+        "or backordered orders to fulfill. These are funnel/fulfillment orders, NOT the "
+        "QuickBooks accounts receivable the Finance card owns. "
+        "Voice: triage-officer; "
         "name the oldest waiting senders, pipelines, stages, counts, and lead names."
     ),
     "signals-patterns": (
@@ -122,8 +129,9 @@ def gather_snapshot():
             "authorize_net":   _safe(lambda: _money.an_data(days=30), label="an_data"),
             "qbo_ar":          _safe(_finance.open_invoices, label="qbo_ar"),
         },
-        "gohighlevel": _safe(_ghl.opportunities_by_stage, label="ghl"),
-        "inbox":       _safe(_inbox.backlog_summary,      label="inbox"),
+        "gohighlevel": _safe(_ghl.opportunities_by_stage,   label="ghl"),
+        "inbox":       _safe(_inbox.backlog_summary,        label="inbox"),
+        "orders":      _safe(_orders.attention_orders,      label="orders"),
         "pinecone":    _safe(_pc_stats.index_stats,       label="pinecone"),
         "scoreapp":    _safe(lambda: _scoreapp.recent_signups(limit=20), label="scoreapp"),
         "heygen":      _safe(lambda: _heygen.recent_videos(limit=5),     label="heygen"),
@@ -158,7 +166,8 @@ def _build_user_prompt(snapshot, slug):
         f"Only reference pipelines and sources that appear in the snapshot; never "
         f"mention retired ones (e.g. MCTB, Email Paramedic).\n\n"
         f"RECORD LINKS: some records in the snapshot include a `ref` field (an "
-        f"inbox sender, an invoice client, or an overdue invoice by customer/amount). "
+        f"inbox sender, an invoice client, an overdue invoice by customer/amount, "
+        f"or an order to act on (by customer/status)). "
         f"Whenever you mention such a record by name, email, or customer/amount in "
         f"your prose or actions, write that mention as a markdown "
         f"link using its ref as the URL, e.g. `[Jane Doe](ref:r3)` or "
