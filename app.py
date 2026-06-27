@@ -5271,28 +5271,67 @@ def _assignment_status(modules_completed, has_submission) -> str:
     return "in_review" if has_submission else "not_started"
 
 
+# Member-facing feedback dimensions: (label, column, pass-min). Compliance bars at 8, rest at 6.
+_FEEDBACK_DIMS = [
+    ("Compliance", "compliance_score", 8),
+    ("Publication", "publication_score", 6),
+    ("Authenticity", "authenticity_score", 6),
+    ("Specificity", "specificity_score", 6),
+    ("Audio", "audio_quality", 6),
+    ("Visual", "visual_quality", 6),
+]
+
+
+def _cert_feedback(sub):
+    """Member-facing feedback for a REVIEWED cohort submission: outcome + framed scores.
+    Returns None until a human has decided (status approved/rejected) — we never surface
+    raw pre-review AI scores to the submitter. Only scored (>0) dimensions are included."""
+    if not sub:
+        return None
+    st = str(sub.get("status") or "").lower()
+    if st not in ("approved", "rejected"):
+        return None
+    scores = []
+    for label, col, mn in _FEEDBACK_DIMS:
+        v = int(sub.get(col) or 0)
+        if v <= 0:
+            continue
+        level = "strong" if v >= 8 else ("low" if v < mn else "ok")
+        scores.append({"label": label, "value": v, "min": mn, "level": level})
+    return {
+        "outcome": "approved" if st == "approved" else "refine",
+        "headline": ("Your Level 1 assignment is approved." if st == "approved"
+                     else "Thank you — let's refine it together."),
+        "scores": scores,
+    }
+
+
 def _cert_l1_assignment(practitioner_id, email, modules_completed):
-    """Assignment card for a practitioner: auto-attributed record link + current status."""
+    """Assignment card for a practitioner: auto-attributed record link, status, and (once
+    reviewed) a feedback block."""
     tok = _testimonial_token_for_practitioner(practitioner_id)
     base = f"{PUBLIC_BASE_URL}/results?tag={_ASH_L1_TAG}"
     record_url = f"{base}&p={tok}" if tok else base
-    has_sub = False
+    sub = None
     try:
         with sqlite3.connect(LOG_DB) as cx:
-            has_sub = _pr_module().cohort_submission(
-                cx, _ASH_L1_TAG, email=email or "",
-                practitioner_id=int(practitioner_id or 0)) is not None
+            sub = _pr_module().cohort_submission(
+                cx, _ASH_L1_TAG, email=email or "", practitioner_id=int(practitioner_id or 0))
     except Exception:
-        has_sub = False
-    return {
+        sub = None
+    out = {
         "key": "ash-cert-l1-video",
         "title": "Level 1 — Share your story on video",
         "body": ("Record a short video (60-90 seconds) about something you've learned in the course "
                  "that's been meaningful, or a result you've experienced. Completing this reflection "
                  "earns your Level 1 assignment."),
         "record_url": record_url,
-        "status": _assignment_status(modules_completed, has_sub),
+        "status": _assignment_status(modules_completed, sub is not None),
     }
+    fb = _cert_feedback(sub)
+    if fb:
+        out["feedback"] = fb
+    return out
 
 
 def _pr_module():

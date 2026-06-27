@@ -329,6 +329,47 @@ def test_cert_l1_assignment_block(monkeypatch, tmp_path):
     assert appmod._cert_l1_assignment(77, "stu@x.com", 1)["status"] == "complete"
 
 
+def test_cert_feedback_hidden_until_reviewed(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    assert appmod._cert_feedback(None) is None
+    assert appmod._cert_feedback({"status": "pending", "compliance_score": 9}) is None
+
+
+def test_cert_feedback_approved_outcome_and_levels(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    sub = {"status": "approved", "compliance_score": 9, "publication_score": 7,
+           "authenticity_score": 8, "specificity_score": 5, "audio_quality": 6, "visual_quality": 0}
+    fb = appmod._cert_feedback(sub)
+    assert fb["outcome"] == "approved"
+    by = {s["label"]: s for s in fb["scores"]}
+    # only scored (>0) dims appear -> Visual (0) excluded
+    assert "Visual" not in by
+    assert by["Compliance"]["level"] == "strong"      # 9 >= 8
+    assert by["Publication"]["level"] == "ok"         # 7 in [6,8)
+    assert by["Specificity"]["level"] == "low"        # 5 < 6
+    assert by["Audio"]["level"] == "ok"               # 6
+
+
+def test_cert_feedback_rejected_outcome(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    fb = appmod._cert_feedback({"status": "rejected", "compliance_score": 4})
+    assert fb["outcome"] == "refine"
+    comp = next(s for s in fb["scores"] if s["label"] == "Compliance")
+    assert comp["level"] == "low"                     # 4 < 8 compliance bar
+
+
+def test_assignment_block_includes_feedback_when_reviewed(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    from dashboard import product_reviews as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, "_results", "stu@x.com", "Stu", 5, body="b",
+                               kind="testimonial", source_tag="ash-cert-l1", practitioner_id=77)
+        pr.set_scores(cx, rid, compliance=9, publication=7, authenticity=8, specificity=6)
+        pr.set_status(cx, rid, "approved", by="Glen")
+    a = appmod._cert_l1_assignment(77, "stu@x.com", 1)
+    assert a.get("feedback") and a["feedback"]["outcome"] == "approved"
+
+
 def test_set_quality_action_sets_audio_visual(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     from dashboard import product_reviews as pr, dispatch as d
