@@ -62,7 +62,8 @@
     <div class="chk"><input type="checkbox" id="f-finder"><label style="margin:0;color:var(--ink)">List in finder</label></div>
     <div class="chk"><input type="checkbox" id="f-invite" checked><label style="margin:0;color:var(--ink)">Email portal invite</label></div>
   </div>
-  <div style="margin-top:14px"><button onclick="addPractitioner()">Add practitioner</button></div>
+  <div style="margin-top:14px"><button onclick="addPractitioner()">Add practitioner</button>
+    <button class="alt" style="margin-left:8px" onclick="notifyCohort()">Email Level&nbsp;1 assignment to cohort</button></div>
 </div>
 
 <!-- Roster -->
@@ -132,6 +133,19 @@ async function addPractitioner(){
 }
 const val=id=>document.getElementById(id).value.trim();
 const chk=id=>document.getElementById(id).checked;
+
+async function notifyCohort(){
+  const prev=await api('/api/console/cert/notify-cohort?dry_run=1',{method:'POST'});
+  if(prev.error){flash(prev.error,false);return;}
+  if(!prev.count){flash('No cert students (portal_role=coach) to notify.',false);return;}
+  if(!confirm('Email the Level 1 assignment to '+prev.count+' cert student(s)?\n\n'+
+              (prev.recipients||[]).map(r=>r.email).join('\n'))) return;
+  flash('Sending to '+prev.count+'…',true);
+  const res=await api('/api/console/cert/notify-cohort',{method:'POST'});
+  if(res.error){flash(res.error,false);return;}
+  const sent=(res.recipients||[]).filter(r=>r.sent).length;
+  flash('Assignment emailed to '+sent+' of '+res.count+' cert students.',true);
+}
 
 async function load(){
   const term=document.getElementById('search').value.trim();

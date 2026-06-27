@@ -24,6 +24,19 @@ def _grant_cert(email, level):
         return False
 
 
+def _notify_feedback(rv, outcome):
+    """Auto-send the 'your feedback is ready' portal email for a reviewed cohort testimonial.
+    Best-effort; only cert-tagged testimonials, never blocks moderation."""
+    try:
+        if (rv.get("kind") == "testimonial" and rv.get("email")
+                and (rv.get("source_tag") or "").strip() in _CERT_TAG_LEVELS):
+            from dashboard import cert_notify
+            cert_notify.send_feedback_ready(rv["email"], rv.get("name"), outcome,
+                                            practitioner_id=rv.get("practitioner_id") or 0)
+    except Exception as e:  # noqa: BLE001
+        print(f"[reviews] feedback-ready notify failed: {e!r}", flush=True)
+
+
 def _exec_approve(params, ctx):
     rid = int(params.get("id") or 0)
     if not rid:
@@ -37,6 +50,7 @@ def _exec_approve(params, ctx):
         lvl = _CERT_TAG_LEVELS.get((rv.get("source_tag") or "").strip())
         if lvl and _grant_cert(rv["email"], lvl):
             out["cert_granted"] = {"email": rv["email"], "level": lvl}
+    _notify_feedback(rv, "approved")
     return out
 
 
@@ -44,7 +58,9 @@ def _exec_reject(params, ctx):
     rid = int(params.get("id") or 0)
     if not rid:
         raise ValueError("id required")
-    _pr.set_status(ctx["cx"], rid, "rejected", by=_name(ctx.get("actor")))
+    cx = ctx["cx"]
+    _pr.set_status(cx, rid, "rejected", by=_name(ctx.get("actor")))
+    _notify_feedback(_pr.get_review(cx, rid) or {}, "refine")
     return {"id": rid, "status": "rejected"}
 
 
