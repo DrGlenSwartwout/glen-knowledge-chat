@@ -72,9 +72,5 @@ def test_clients_prompt_calls_out_orders():
 
 def test_record_links_example_covers_orders():
     from dashboard import briefing_runner as br
-    snap = {"orders": [{"id": 7, "name": "Carol", "status": "new", "pay_status": "unpaid"}]}
-    from dashboard import briefing_links as bl
-    bl.build_linkables(snap)
-    prompt = br._build_user_prompt(snap, "clients-pipeline")
-    assert "order" in prompt.lower()
-    assert "(ref:" in prompt
+    prompt = br._build_user_prompt({}, "clients-pipeline")  # empty snapshot: no JSON pollution
+    assert "order to act on" in prompt

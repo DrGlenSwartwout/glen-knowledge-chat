@@ -14,6 +14,7 @@ def _seed(db_path):
         ("Done Dan",    "dan@x.com",   "done",      "paid",   1000),
         ("Cancel Cal",  "cal@x.com",   "cancelled", "unpaid", 900),
         ("Prop Pria",   "pria@x.com",  "proposed",  "unpaid", 800),
+        ("Deliv Dev",   "dev@x.com",   "delivered", "paid",   700),
     ]
     for i, (nm, em, st, ps, tc) in enumerate(rows):
         cx.execute("INSERT INTO orders (source,external_ref,name,email,status,pay_status,total_cents,"
