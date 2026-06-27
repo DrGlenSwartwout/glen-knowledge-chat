@@ -54,6 +54,8 @@
   button.ff-rec:hover { border-color:var(--gold); color:var(--gold); }
   #gate { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; }
   #gate input { padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--cream); }
+  @keyframes ord-flash { 0% { background: rgba(212,175,55,0.45); } 100% { background: transparent; } }
+  .card.ord-flash { animation: ord-flash 2.4s ease-out; }
 </style>
 </head>
 <body>
@@ -117,7 +119,7 @@
     if (ps==='paid') badge += ' <span class="pay-badge paid">Paid'+(o.pay_method?' &middot; '+esc(o.pay_method):'')+'</span>';
     else if (ps==='claimed') badge += ' <span class="pay-badge claimed">payment claimed — confirm'+(o.pay_method?' ('+esc(o.pay_method)+')':'')+'</span>';
     else badge += ' <span class="pay-badge unpaid">Unpaid</span>';
-    return '<div class="card"><div class="who">'+esc(o.name||o.email||'Order #'+o.id)+badge+'</div>'
+    return '<div class="card" data-oid="'+o.id+'"><div class="who">'+esc(o.name||o.email||'Order #'+o.id)+badge+'</div>'
       + '<div class="meta">'+(items?items+'<br>':'')
       + (total?total+' &middot; ':'')+'<span class="src">'+esc(srcLabel(o.source))+'</span> &middot; <span class="age'+(isOld(o.created_at)?' old':'')+'">'+age+'</span>'
       + (o.tracking_number?'<br>tracking '+esc(o.tracking_number):'')
@@ -195,6 +197,17 @@
         + inLane.map(cardHtml).join('');
       board.appendChild(col);
     });
+    maybeHighlight();
+  }
+
+  function maybeHighlight(){
+    var id = new URLSearchParams(location.search).get('order');
+    if (!id) return;
+    var card = document.querySelector('.card[data-oid="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+    if (!card) return;
+    card.scrollIntoView({behavior:'smooth', block:'center'});
+    card.classList.add('ord-flash');
+    setTimeout(function(){ card.classList.remove('ord-flash'); }, 2600);
   }
 
   async function act(id, key, params){
