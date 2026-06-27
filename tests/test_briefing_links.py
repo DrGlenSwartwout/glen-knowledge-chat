@@ -103,3 +103,43 @@ def test_is_person_email_filters():
     assert bl._is_person_email("notifications@x.com") is False
     assert bl._is_person_email("") is False
     assert bl._is_person_email("not-an-email") is False
+
+
+def test_invoice_url_encodes_id():
+    assert bl.invoice_url("123") == "/console/money?invoice=123#receivables"
+
+
+def test_build_linkables_mints_invoice_links_from_qbo_ar():
+    snap = {"money": {"qbo_ar": [
+        {"id": "501", "doc": "1024", "customer": "Acme Co",
+         "email": "ar@acme.com", "balance": 5000.0, "days_overdue": 32},
+        {"id": "502", "doc": "1025", "customer": "", "balance": 90.0,
+         "days_overdue": 3},
+    ]}}
+    reg = bl.build_linkables(snap)
+    rows = snap["money"]["qbo_ar"]
+    assert reg[rows[0]["ref"]] == {"type": "invoice", "display": "Acme Co",
+                                   "url": "/console/money?invoice=501#receivables"}
+    # no customer -> display falls back to "Invoice <doc>"
+    assert reg[rows[1]["ref"]]["display"] == "Invoice 1025"
+    assert reg[rows[1]["ref"]]["url"] == "/console/money?invoice=502#receivables"
+    assert all(v["type"] == "invoice" for v in reg.values())
+
+
+def test_build_linkables_qbo_ar_error_block_is_safe():
+    snap = {"money": {"qbo_ar": {"_error": "qbo_ar: HTTPError"}}}
+    assert bl.build_linkables(snap) == {}  # _error is a dict, not a list -> skipped
+
+
+def test_build_linkables_mixed_person_and_invoice_share_counter():
+    snap = {
+        "inbox": {"oldest": [{"from": "Real Client <client@example.com>", "age_days": 4}]},
+        "money": {"qbo_ar": [{"id": "77", "doc": "9", "customer": "Beta LLC",
+                              "balance": 200.0, "days_overdue": 10}]},
+    }
+    reg = bl.build_linkables(snap)
+    # person minted first (r1), invoice second (r2)
+    assert snap["inbox"]["oldest"][0]["ref"] == "r1"
+    assert snap["money"]["qbo_ar"][0]["ref"] == "r2"
+    assert reg["r1"]["type"] == "person"
+    assert reg["r2"]["type"] == "invoice"

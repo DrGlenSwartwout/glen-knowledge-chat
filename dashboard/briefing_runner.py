@@ -21,6 +21,7 @@ import anthropic
 
 from . import intelligence as _intel
 from . import money as _money
+from . import finance as _finance
 from . import ghl as _ghl
 from . import pinecone_stats as _pc_stats
 from . import scoreapp as _scoreapp
@@ -48,13 +49,19 @@ SLUG_PROMPTS = {
         "You write the Finance card. The first line must be exactly '# Finance' "
         "and nothing else. "
         "Cover ONLY money, from the snapshot's `money` block: the combined cash "
-        "position (bank balances + Wise together), money in today and over 7 "
-        "days, accounts receivable / overdue, and any Practice Better or "
-        "Authorize.net processor issues. Name the single revenue constraint "
-        "(the Schwerpunkt) limiting cash this week. Do NOT cover pipeline, "
-        "leads, or system health; other cards own those. State each figure "
-        "once. Then one short '## Insight' line on runway / trend. Voice: "
-        "calm, precise, money-first."
+        "position (bank balances + Wise together) and money in today and over 7 "
+        "days. ACCOUNTS RECEIVABLE / OVERDUE comes from `money.qbo_ar` "
+        "(QuickBooks open invoices; each row has customer, balance, days_overdue, "
+        "doc); name the most overdue by customer and amount, oldest first. "
+        "`money.practice_better` is SEPARATE clinical-billing activity "
+        "(collected / outstanding) and `money.authorize_net` is processor "
+        "settlement; mention processor issues if any, but do NOT report Practice "
+        "Better or Authorize.net figures as accounts receivable and do NOT repeat "
+        "the same dollars twice. Name the single revenue constraint (the "
+        "Schwerpunkt) limiting cash this week. Do NOT cover pipeline, leads, or "
+        "system health; other cards own those. State each figure once. Then one "
+        "short '## Insight' line on runway / trend. Voice: calm, precise, "
+        "money-first."
     ),
     "clients-pipeline": (
         "You write the Clients card. The first line must be exactly '# Clients' "
@@ -113,6 +120,7 @@ def gather_snapshot():
             "wise":            _safe(_money.wise_data,     label="wise"),
             "practice_better": _safe(lambda: _money.pb_data(days=30), label="pb_data"),
             "authorize_net":   _safe(lambda: _money.an_data(days=30), label="an_data"),
+            "qbo_ar":          _safe(_finance.open_invoices, label="qbo_ar"),
         },
         "gohighlevel": _safe(_ghl.opportunities_by_stage, label="ghl"),
         "inbox":       _safe(_inbox.backlog_summary,      label="inbox"),
@@ -131,6 +139,7 @@ def _build_user_prompt(snapshot, slug):
         "Glossary (use these exact names, do NOT invent alternatives):\n"
         "  • practice_better → Practice Better (clinical-practice billing/EHR; PB)\n"
         "  • authorize_net   → Authorize.net (storefront card processor; AuthNet)\n"
+        "  • qbo_ar          → QuickBooks open invoices (accounts receivable / overdue)\n"
         "  • gohighlevel     → GoHighLevel (CRM + pipelines; GHL)\n"
         "  • wise            → Wise (multi-currency banking)\n"
         "  • scoreapp        → ScoreApp (quiz-funnel intake at healing.scoreapp.com)\n"
@@ -149,8 +158,9 @@ def _build_user_prompt(snapshot, slug):
         f"Only reference pipelines and sources that appear in the snapshot; never "
         f"mention retired ones (e.g. MCTB, Email Paramedic).\n\n"
         f"RECORD LINKS: some records in the snapshot include a `ref` field (an "
-        f"inbox sender, an invoice client). Whenever you mention such a record by "
-        f"name or email in your prose or actions, write that mention as a markdown "
+        f"inbox sender, an invoice client, or an overdue invoice by customer/amount). "
+        f"Whenever you mention such a record by name, email, or customer/amount in "
+        f"your prose or actions, write that mention as a markdown "
         f"link using its ref as the URL, e.g. `[Jane Doe](ref:r3)` or "
         f"`[jane@example.com](ref:r3)`. Use ONLY a `ref` value that actually appears "
         f"in the snapshot; never invent one and never write a real web address. A "
