@@ -78,6 +78,12 @@ def invoice_url(qbo_id):
     return "/console/money?invoice=" + quote(str(qbo_id or ""), safe="") + "#receivables"
 
 
+def order_url(order_id):
+    """Canonical console destination for an order: its card on the orders board.
+    No console key (appended client-side at click time)."""
+    return "/console/orders?order=" + quote(str(order_id or ""), safe="")
+
+
 def _iter_person_records(snapshot):
     """Yield (record_dict, display, email) for each person-bearing record.
     Phase 1 sources: inbox oldest senders (email in `from`) and Practice Better
@@ -106,11 +112,23 @@ def _iter_invoice_records(snapshot):
             yield rec, display, rec.get("id")
 
 
+def _iter_order_records(snapshot):
+    """Yield (record_dict, display, order_id) for each order in the snapshot's
+    top-level `orders` block (a list on success, {"_error": ...} on failure ->
+    skipped)."""
+    orders = snapshot.get("orders")
+    rows = orders if isinstance(orders, list) else None
+    for rec in (rows or []):
+        if isinstance(rec, dict) and rec.get("id") is not None:
+            display = rec.get("name") or rec.get("email") or ("Order #" + str(rec.get("id")))
+            yield rec, display, rec.get("id")
+
+
 def build_linkables(snapshot):
     """Stamp `ref` onto each linkable record and return the registry
     {ref: {type, display, url}}. People (inbox senders + PB invoice clients) are
-    minted first, then QBO accounts-receivable invoices. Dedup by url. Mutates
-    `snapshot`."""
+    minted first, then QBO accounts-receivable invoices, then orders. Dedup by url.
+    Mutates `snapshot`."""
     registry = {}
     url_to_ref = {}
     state = {"n": 0}
@@ -135,5 +153,11 @@ def build_linkables(snapshot):
         if not qid:
             continue
         mint(rec, "invoice", display, invoice_url(qid))
+
+    for rec, display, oid in _iter_order_records(snapshot):
+        oid = str(oid or "").strip()
+        if not oid:
+            continue
+        mint(rec, "order", display or ("Order #" + oid), order_url(oid))
 
     return registry
