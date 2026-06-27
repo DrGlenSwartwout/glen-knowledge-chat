@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from dashboard.chat_limits import client_ip, VelocityLimiter, LIMITS, tier_for, monthly_full_words
+from dashboard.chat_limits import client_ip, VelocityLimiter, LIMITS, tier_for, monthly_full_words, is_flagged
 
 def test_client_ip_takes_first_xff_hop():
     assert client_ip("1.2.3.4, 5.6.7.8", "9.9.9.9") == "1.2.3.4"
@@ -51,6 +51,52 @@ def _db(tmp_path):
     cx = sqlite3.connect(str(tmp_path / "t.db"))
     cx.execute("CREATE TABLE query_log (ts TEXT, email TEXT, mode TEXT, word_count INTEGER DEFAULT 0)")
     return cx
+
+def _abuse_db(tmp_path):
+    cx = sqlite3.connect(str(tmp_path / "a.db"))
+    cx.execute(
+        "CREATE TABLE abuse_flags "
+        "(id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, ip TEXT, reason TEXT, ts TEXT)"
+    )
+    cx.execute("CREATE INDEX IF NOT EXISTS idx_abuse_flags_ts ON abuse_flags(ts)")
+    cx.commit()
+    return cx
+
+def test_is_flagged_true_for_matching_session(tmp_path):
+    cx = _abuse_db(tmp_path)
+    now = datetime(2026, 6, 27, 12, 0, 0, tzinfo=timezone.utc)
+    recent = (now - timedelta(hours=1)).isoformat()
+    cx.execute("INSERT INTO abuse_flags (session_id, ip, reason, ts) VALUES (?,?,?,?)",
+               ("sess-abc", "1.2.3.4", "velocity", recent))
+    cx.commit()
+    assert is_flagged(cx, "sess-abc", "9.9.9.9", now.isoformat()) is True
+
+def test_is_flagged_true_for_matching_ip(tmp_path):
+    cx = _abuse_db(tmp_path)
+    now = datetime(2026, 6, 27, 12, 0, 0, tzinfo=timezone.utc)
+    recent = (now - timedelta(hours=2)).isoformat()
+    cx.execute("INSERT INTO abuse_flags (session_id, ip, reason, ts) VALUES (?,?,?,?)",
+               ("sess-xyz", "5.5.5.5", "velocity", recent))
+    cx.commit()
+    assert is_flagged(cx, "sess-unrelated", "5.5.5.5", now.isoformat()) is True
+
+def test_is_flagged_false_for_unrelated_session_and_ip(tmp_path):
+    cx = _abuse_db(tmp_path)
+    now = datetime(2026, 6, 27, 12, 0, 0, tzinfo=timezone.utc)
+    recent = (now - timedelta(hours=1)).isoformat()
+    cx.execute("INSERT INTO abuse_flags (session_id, ip, reason, ts) VALUES (?,?,?,?)",
+               ("sess-other", "8.8.8.8", "velocity", recent))
+    cx.commit()
+    assert is_flagged(cx, "sess-abc", "1.2.3.4", now.isoformat()) is False
+
+def test_is_flagged_false_for_old_row(tmp_path):
+    cx = _abuse_db(tmp_path)
+    now = datetime(2026, 6, 27, 12, 0, 0, tzinfo=timezone.utc)
+    old = (now - timedelta(hours=25)).isoformat()
+    cx.execute("INSERT INTO abuse_flags (session_id, ip, reason, ts) VALUES (?,?,?,?)",
+               ("sess-abc", "1.2.3.4", "velocity", old))
+    cx.commit()
+    assert is_flagged(cx, "sess-abc", "1.2.3.4", now.isoformat()) is False
 
 def test_monthly_full_words_sums_only_full_in_window(tmp_path):
     cx = _db(tmp_path)

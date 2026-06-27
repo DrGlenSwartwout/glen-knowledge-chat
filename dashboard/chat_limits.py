@@ -59,6 +59,19 @@ def tier_for(has_auth: bool, has_membership: bool, has_email: bool) -> str:
         return "registered"
     return "anonymous"
 
+def is_flagged(cx, session_id: str, ip: str, now_iso: str, within_hours: int = 24) -> bool:
+    """True if a recent abuse_flags row matches this session_id OR ip."""
+    try:
+        cutoff = (datetime.fromisoformat(now_iso) - timedelta(hours=within_hours)).isoformat()
+        row = cx.execute(
+            "SELECT 1 FROM abuse_flags WHERE ts >= ? AND (session_id = ? OR ip = ?) LIMIT 1",
+            (cutoff, session_id or "", ip or ""),
+        ).fetchone()
+        return row is not None
+    except Exception:
+        return False
+
+
 def monthly_full_words(cx, email: str, now_iso: str) -> int:
     if not email:
         return 0

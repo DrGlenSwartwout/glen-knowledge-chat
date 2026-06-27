@@ -83,7 +83,7 @@ from dashboard.openai_failover import build_openai_client as _build_openai_clien
 from dashboard.people import set_person_tags, distinct_tags
 from dashboard import affiliate_dashboard
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
-                                    tier_for, monthly_full_words)
+                                    tier_for, monthly_full_words, is_flagged)
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -1015,6 +1015,18 @@ def _init_log_db():
         cx.commit()
 
 _init_log_db()
+
+
+def _init_abuse_flags():
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "CREATE TABLE IF NOT EXISTS abuse_flags "
+            "(id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, ip TEXT, reason TEXT, ts TEXT)"
+        )
+        cx.execute("CREATE INDEX IF NOT EXISTS idx_abuse_flags_ts ON abuse_flags(ts)")
+        cx.commit()
+
+_init_abuse_flags()
 
 
 def _init_shipping_tables():
@@ -2838,13 +2850,23 @@ def _resolve_chat_tier(req, session_id, email):
         return "anonymous", (email or "")
 
 
-def _velocity_guard(req, tier):
+def _velocity_guard(req, tier, session_id=""):
     """Return a Flask 429 response if over limit, else None. Fail open."""
     try:
         ip = client_ip(req.headers.get("X-Forwarded-For", ""), req.remote_addr or "")
         pol = LIMITS.get(tier, LIMITS["anonymous"])
         allowed, retry = _chat_velocity.check(ip, pol["per_min"], pol["per_day"])
         if not allowed:
+            try:
+                with _db_lock, sqlite3.connect(LOG_DB) as _af:
+                    _af.execute(
+                        "INSERT INTO abuse_flags (session_id, ip, reason, ts) VALUES (?,?,?,?)",
+                        (session_id or "", ip, "velocity",
+                         datetime.now(timezone.utc).isoformat()),
+                    )
+                    _af.commit()
+            except Exception as _e:
+                print(f"[chat-limit] abuse_flags insert failed: {_e!r}", flush=True)
             return jsonify({"error": "rate_limited", "retry_after": retry}), 429
     except Exception as e:
         print(f"[chat-limit] velocity guard failed: {e!r}", flush=True)
@@ -2891,7 +2913,7 @@ def chat():
             name = auth_user["name"]
 
     _tier, _eff_email = _resolve_chat_tier(request, session_id, email)
-    _blocked = _velocity_guard(request, _tier)
+    _blocked = _velocity_guard(request, _tier, session_id)
     if _blocked is not None:
         return _blocked
 
@@ -2903,12 +2925,26 @@ def chat():
         gated_log_id = log_query(query, level, "",
                                  session_id=session_id, email="", name=name,
                                  mode="brief")
-        def _gated():
-            yield sse({"gated": "email_required",
-                       "message": "Enter your email and I'll send you the full report.",
-                       "log_id": gated_log_id,
-                       "session_id": session_id})
-            yield sse({"done": True})
+        _ip = client_ip(request.headers.get("X-Forwarded-For", ""), request.remote_addr or "")
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as _fx:
+                _flagged = is_flagged(_fx, session_id, _ip, datetime.now(timezone.utc).isoformat())
+        except Exception:
+            _flagged = False
+        if _flagged:
+            def _gated():
+                yield sse({"gated": "verify_email_required",
+                           "message": "Please confirm your email to receive the full report.",
+                           "log_id": gated_log_id,
+                           "session_id": session_id})
+                yield sse({"done": True})
+        else:
+            def _gated():
+                yield sse({"gated": "email_required",
+                           "message": "Enter your email and I'll send you the full report.",
+                           "log_id": gated_log_id,
+                           "session_id": session_id})
+                yield sse({"done": True})
         return Response(stream_with_context(_gated()), content_type="text/event-stream")
     # ── end depth gate ─────────────────────────────────────────────────────────
 
@@ -3353,7 +3389,7 @@ def begin_match_chat():
         if not name and auth_user.get("name"):
             name = auth_user["name"]
     _tier, _eff_email = _resolve_chat_tier(request, session_id, email)
-    _blocked = _velocity_guard(request, _tier)
+    _blocked = _velocity_guard(request, _tier, session_id)
     if _blocked is not None:
         return _blocked
     if not query:
@@ -6418,7 +6454,7 @@ def begin_concierge_chat():
                   or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
     email = (data.get("email") or "").strip().lower()
     _tier, _eff_email = _resolve_chat_tier(request, session_id, email)
-    _blocked = _velocity_guard(request, _tier)
+    _blocked = _velocity_guard(request, _tier, session_id)
     if _blocked is not None:
         return _blocked
     if not query:
