@@ -140,6 +140,19 @@ def _reload_app(monkeypatch, tmp_path, invites="true"):
     return appmod
 
 
+def test_recent_active_emails_window(monkeypatch, tmp_path):
+    """Recent (within window) emails are found; old ones excluded. Guards the ts-format
+    comparison (stored 'YYYY-MM-DD HH:MM:SS' must compare correctly)."""
+    appmod = _reload_app(monkeypatch, tmp_path)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.execute("CREATE TABLE IF NOT EXISTS query_log (id INTEGER PRIMARY KEY, email TEXT, query TEXT, ts TEXT)")
+        cx.execute("INSERT INTO query_log (email, query, ts) VALUES (?,?,datetime('now'))", ("active@x.com", "hi"))
+        cx.execute("INSERT INTO query_log (email, query, ts) VALUES (?,?,datetime('now','-30 days'))", ("old@x.com", "hi"))
+        cx.commit()
+        emails = appmod._recent_active_emails(cx, days=7)
+    assert "active@x.com" in emails and "old@x.com" not in emails
+
+
 def test_scan_404_when_flag_off(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path, invites="false")
     assert appmod.app.test_client().post("/api/console/testimonial-invites/scan").status_code == 404
