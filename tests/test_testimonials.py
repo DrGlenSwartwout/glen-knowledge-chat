@@ -329,6 +329,44 @@ def test_cert_l1_assignment_block(monkeypatch, tmp_path):
     assert appmod._cert_l1_assignment(77, "stu@x.com", 1)["status"] == "complete"
 
 
+def test_notify_cohort_endpoint_dry_run_then_send(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "")  # pass-through (_console_key_ok)
+    from dashboard import practitioner_admin as pa, cert_notify as cn
+    monkeypatch.setattr(pa, "list_practitioners", lambda *a, **k: [
+        {"id": 1, "email": "coach@x.com", "name": "Coach", "portal_role": "coach", "modules_completed": 0},
+        {"id": 2, "email": "org@x.com", "name": "Org", "portal_role": "org_member", "modules_completed": 0},
+    ])
+    sent = []
+    monkeypatch.setattr(cn, "send_assignment_notice",
+                        lambda email, name, url, **k: sent.append(email) or True)
+    c = appmod.app.test_client()
+    dry = c.post("/api/console/cert/notify-cohort?dry_run=1").get_json()
+    assert dry["count"] == 1 and dry["recipients"][0]["email"] == "coach@x.com"  # coaches only
+    assert sent == []  # dry run sends nothing
+    res = c.post("/api/console/cert/notify-cohort").get_json()
+    assert res["count"] == 1 and sent == ["coach@x.com"]
+
+
+def test_review_fires_feedback_ready_email(monkeypatch, tmp_path):
+    """Approving/rejecting a cert-tagged testimonial auto-sends the feedback-ready email."""
+    appmod = _reload_app(monkeypatch, tmp_path)
+    from dashboard import cert_notify as cn
+    calls = []
+    monkeypatch.setattr(cn, "send_feedback_ready",
+                        lambda email, name, outcome, **k: calls.append((email, outcome)) or True)
+    from dashboard import product_reviews as pr, dispatch as d
+    from dashboard.rbac import Actor, OWNER
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, "_results", "stu@x.com", "Stu", 5, body="b",
+                               kind="testimonial", source_tag="ash-cert-l1", practitioner_id=7)
+        d.dispatch_action(cx, "reviews.approve", {"id": rid}, Actor(role=OWNER, name="Glen"), source="panel")
+        # an untagged testimonial does NOT email
+        r2 = pr.upsert_review(cx, "_results", "b@x.com", "B", 5, body="b", kind="testimonial")
+        d.dispatch_action(cx, "reviews.reject", {"id": r2}, Actor(role=OWNER, name="Glen"), source="panel")
+    assert calls == [("stu@x.com", "approved")]
+
+
 def test_cert_feedback_hidden_until_reviewed(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     assert appmod._cert_feedback(None) is None

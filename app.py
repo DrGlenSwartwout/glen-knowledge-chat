@@ -12880,6 +12880,35 @@ def api_console_practitioners_list():
     return jsonify({"ok": True, "rows": rows})
 
 
+@app.route("/api/console/cert/notify-cohort", methods=["POST"])
+def api_cert_notify_cohort():
+    """Console button: email the Level 1 assignment notice to cert students (portal_role=coach).
+    Pass ?dry_run=1 to preview the recipient list without sending."""
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    dry = (request.args.get("dry_run") or "").strip().lower() in ("1", "true", "yes")
+    from dashboard import practitioner_admin as _pa
+    from dashboard import cert_notify as _cn
+    try:
+        roster = _pa.list_practitioners()
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"ok": False, "error": f"roster unavailable: {e}"}), 502
+    students = [p for p in roster if (p.get("email") and p.get("portal_role") == "coach")]
+    recipients = []
+    for p in students:
+        pid = int(p.get("id") or 0)
+        email = (p.get("email") or "").strip()
+        name = p.get("name") or ""
+        record_url = _cert_l1_assignment(pid, email, p.get("modules_completed") or 0)["record_url"]
+        if dry:
+            recipients.append({"email": email, "name": name})
+        else:
+            recipients.append({"email": email,
+                               "sent": bool(_cn.send_assignment_notice(
+                                   email, name, record_url, practitioner_id=pid))})
+    return jsonify({"ok": True, "dry_run": dry, "count": len(students), "recipients": recipients})
+
+
 @app.route("/api/console/practitioners", methods=["POST"])
 def api_console_practitioners_create():
     """Console-gated: add (or link by email) a practitioner — role, classification,
