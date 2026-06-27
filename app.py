@@ -82,6 +82,8 @@ FEEDBACK_VIEW_URL   = os.environ.get("FEEDBACK_VIEW_URL",   "https://Truly.VIP/F
 from dashboard.openai_failover import build_openai_client as _build_openai_client
 from dashboard.people import set_person_tags, distinct_tags
 from dashboard import affiliate_dashboard
+from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
+                                    tier_for, monthly_full_words)
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -2776,6 +2778,7 @@ def static_files(filename):
     return send_from_directory(STATIC, filename)
 
 
+_chat_velocity = VelocityLimiter()
 _CHAT_PAGE_LINK_CACHE = {"at": 0.0, "index": {}}
 
 
@@ -2822,6 +2825,32 @@ def _chat_page_link_index():
     return index
 
 
+def _resolve_chat_tier(req, session_id, email):
+    """Best-effort; fail open to 'anonymous' on any error."""
+    try:
+        auth = get_authenticated_user(req)
+        eff_email = (email or (auth or {}).get("email") or "").strip()
+        has_membership = bool(eff_email) and _active_membership_for_email(eff_email) is not None
+        has_email = bool(eff_email) or is_member(session_id, eff_email)
+        return tier_for(bool(auth), has_membership, has_email), eff_email
+    except Exception as e:
+        print(f"[chat-limit] tier resolve failed: {e!r}", flush=True)
+        return "anonymous", (email or "")
+
+
+def _velocity_guard(req, tier):
+    """Return a Flask 429 response if over limit, else None. Fail open."""
+    try:
+        ip = client_ip(req.headers.get("X-Forwarded-For", ""), req.remote_addr or "")
+        pol = LIMITS.get(tier, LIMITS["anonymous"])
+        allowed, retry = _chat_velocity.check(ip, pol["per_min"], pol["per_day"])
+        if not allowed:
+            return jsonify({"error": "rate_limited", "retry_after": retry}), 429
+    except Exception as e:
+        print(f"[chat-limit] velocity guard failed: {e!r}", flush=True)
+    return None
+
+
 @app.route("/chat", methods=["POST", "OPTIONS"])
 def chat():
     if request.method == "OPTIONS":
@@ -2860,6 +2889,11 @@ def chat():
         email = auth_user["email"]
         if not name and auth_user.get("name"):
             name = auth_user["name"]
+
+    _tier, _eff_email = _resolve_chat_tier(request, session_id, email)
+    _blocked = _velocity_guard(request, _tier)
+    if _blocked is not None:
+        return _blocked
 
     # Image attachments — opt-in gated, multi-image (max 3), extraction-only
     # storage. Image bytes are passed to Claude vision for extraction and then
@@ -3274,6 +3308,10 @@ def begin_match_chat():
         email = auth_user["email"]
         if not name and auth_user.get("name"):
             name = auth_user["name"]
+    _tier, _eff_email = _resolve_chat_tier(request, session_id, email)
+    _blocked = _velocity_guard(request, _tier)
+    if _blocked is not None:
+        return _blocked
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
@@ -6335,6 +6373,10 @@ def begin_concierge_chat():
     session_id = (request.cookies.get("amg_session")
                   or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
     email = (data.get("email") or "").strip().lower()
+    _tier, _eff_email = _resolve_chat_tier(request, session_id, email)
+    _blocked = _velocity_guard(request, _tier)
+    if _blocked is not None:
+        return _blocked
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
