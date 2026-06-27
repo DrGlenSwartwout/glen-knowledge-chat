@@ -2912,6 +2912,28 @@ def chat():
         return Response(stream_with_context(_gated()), content_type="text/event-stream")
     # ── end depth gate ─────────────────────────────────────────────────────────
 
+    # ── Monthly full-answer word ceiling (registered/member) ──────────────────
+    # Must run BEFORE generate() is defined so _ceiling_hit is in closure scope.
+    # mode may be reassigned here (registered over cap → "brief" downgrade).
+    # synth_instr and max_tok are computed INSIDE generate(), so they naturally
+    # see the updated mode value.
+    _ceiling_hit = False
+    if mode == "full" and _tier in ("registered", "member") and _eff_email:
+        _pol = LIMITS[_tier]
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                _used = monthly_full_words(_cx, _eff_email, datetime.now(timezone.utc).isoformat())
+        except Exception:
+            _used = 0
+        _cap = _pol.get("monthly_full_words")
+        if _cap is not None and _used >= _cap:
+            mode = "brief"        # graceful downgrade — synth_instr/max_tok read mode after this
+            _ceiling_hit = True
+        _flag = _pol.get("flag_full_words")
+        if _flag is not None and _used >= _flag:
+            print(f"[chat-limit] FULL-WORD FLAG email={_eff_email} used={_used}", flush=True)
+    # ── end monthly ceiling ────────────────────────────────────────────────────
+
     # Image attachments — opt-in gated, multi-image (max 3), extraction-only
     # storage. Image bytes are passed to Claude vision for extraction and then
     # discarded; only the extracted text is persisted to query_log.
@@ -3073,6 +3095,11 @@ def chat():
         except Exception as e:
             yield sse({"error": f"Claude error: {e}"})
             return
+
+        # Upgrade nudge when the registered ceiling was hit and we downgraded
+        # to brief — render as a trailing italic line before the done event.
+        if _ceiling_hit:
+            yield sse({"token": "\n\n_You've reached this month's full-report limit — here's the summary. Members get unlimited full reports._"})
 
         answer = "".join(full_answer)
         log_id = log_query(
