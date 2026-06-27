@@ -151,12 +151,21 @@ async function loadList(){
     const publishRiskBlock = rv.publish_risk
       ? `<div class="publish-risk"><span class="risk-icon">!</span>PUBLISH RISK: ${esc(rv.video_verdict || '')}</div>`
       : '';
+    const isTestimonial = rv.product_slug === '_results';
+    const testimonialBlock = isTestimonial
+      ? `<div class="meta" style="opacity:.85;font-size:13px">`
+        + `Public consent: ${rv.consent_public ? 'Yes' : 'No'}`
+        + (rv.practitioner_id ? ` &middot; Practitioner #${esc(rv.practitioner_id)}` : '')
+        + `</div>`
+      : '';
     return `<div class="review-row" id="row-${i}">
       <div class="meta">
         <span class="product">${esc(rv.product_name || rv.product_slug)}</span>
+        ${isTestimonial ? '<span class="tag" style="color:var(--gold,#d4a843)">· Testimonial</span>' : ''}
         <span class="stars">${esc(stars(rv.rating))}</span>
         <span class="author">${esc(rv.email)}</span>
       </div>
+      ${testimonialBlock}
       <div class="body">${esc(rv.body || '')}</div>
       ${videoLinkBlock}
       ${publishRiskBlock}

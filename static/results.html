@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Share your results · Remedy Match</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+    --maxw:680px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1); }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{ background:var(--bg); color:var(--cream); font-family:"Open Sans",system-ui,sans-serif;
+    font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%);
+    background-attachment:fixed; }
+  h1,h2,h3{ font-family:"Raleway",system-ui,sans-serif; font-weight:600; line-height:1.25; letter-spacing:-0.01em; }
+  a{ color:var(--gold); text-decoration:none; }
+  .shell{ max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+  .brandbar{ max-width:var(--maxw); margin:0 auto; padding:30px 24px 8px; display:flex; align-items:center; justify-content:center; gap:14px; }
+  .brand-mark{ width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 4px rgba(212,168,67,0.12); }
+  .brand-name{ font-family:"Raleway",sans-serif; font-weight:600; font-size:13px; letter-spacing:0.32em; color:var(--muted); }
+  .intro{ text-align:center; padding-top:48px; }
+  .eyebrow{ font-family:"Raleway",sans-serif; font-weight:600; font-size:12px; letter-spacing:0.34em; color:var(--green); margin-bottom:18px; }
+  .intro h1{ font-size:clamp(21px,4.5vw,29px); color:var(--cream); max-width:560px; margin:0 auto; }
+  .intro p{ color:var(--muted); font-size:15px; margin:14px auto 0; max-width:500px; }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:28px 32px; margin:28px auto 0; }
+  .field{ margin-bottom:20px; }
+  .field label{ display:block; font-family:"Raleway",sans-serif; font-weight:600; font-size:13px; letter-spacing:0.04em; color:var(--gold); margin-bottom:8px; }
+  .field .hint{ color:var(--muted); font-size:13px; font-weight:400; letter-spacing:0; }
+  input[type=text], input[type=email], input[type=url], textarea{
+    width:100%; padding:12px 14px; background:var(--surface-2); color:var(--cream);
+    border:1px solid var(--border); border-radius:10px; font-family:"Open Sans",sans-serif;
+    font-size:15px; }
+  textarea{ resize:vertical; min-height:120px; }
+  input[type=file]{ color:var(--muted); font-size:14px; }
+  .stars{ font-size:30px; letter-spacing:6px; cursor:pointer; user-select:none; color:var(--gold); }
+  .consent{ display:flex; gap:10px; align-items:flex-start; color:var(--cream); font-size:14px; }
+  .consent input{ margin-top:4px; flex:0 0 auto; width:17px; height:17px; accent-color:var(--green); }
+  button[type=submit], .btn-submit{ display:block; width:100%; padding:14px 24px;
+    background:var(--green); color:var(--cream); font-family:"Raleway",sans-serif;
+    font-weight:600; font-size:16px; border:none; border-radius:var(--radius);
+    cursor:pointer; transition:background .3s var(--ease); margin-top:8px; }
+  button[type=submit]:hover{ background:#2d6e3e; }
+  button[disabled]{ opacity:.6; cursor:default; }
+  .msg{ text-align:center; color:var(--muted); font-size:14px; margin-top:14px; min-height:18px; }
+  .confirmed{ text-align:center; padding:40px 0; }
+  .confirmed .check-icon{ font-size:40px; margin-bottom:16px; color:var(--gold); }
+  .confirmed h2{ font-size:22px; color:var(--gold); margin-bottom:10px; }
+  .confirmed p{ color:var(--muted); font-size:15px; max-width:440px; margin:0 auto; }
+  footer{ margin-top:60px; padding:28px 24px 44px; text-align:center; border-top:1px solid rgba(33,71,45,0.5); }
+  .foot-note{ font-size:12.5px; color:var(--muted); opacity:0.7; max-width:540px; margin:0 auto; line-height:1.7; }
+  @media(max-width:560px){ body{font-size:16px;} .shell{padding:0 18px;} .card{padding:22px 20px;} }
+</style>
+</head>
+<body>
+  <div class="brandbar">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;·&nbsp; Healing&nbsp;Oasis</span>
+  </div>
+
+  <section class="shell intro">
+    <p class="eyebrow">Biofield Analysis™ · Functional Formulations™</p>
+    <h1>Accelerated Self&#8209;Healing™ — please pay it forward.</h1>
+    <p>Help us help others. If Dr.&nbsp;Glen's work has made a difference for you, share your experience below. A short video means the most, but a few written words are a gift too.</p>
+  </section>
+
+  <section class="shell" id="form-section">
+    <div class="card">
+      <form id="results-form">
+        <div class="field">
+          <label>Your rating</label>
+          <div class="stars" id="stars" role="radiogroup" aria-label="rating">&#9734;&#9734;&#9734;&#9734;&#9734;</div>
+        </div>
+
+        <div class="field">
+          <label>Your story <span class="hint">— what changed for you? (How you feel, function, energy — not a medical diagnosis.)</span></label>
+          <textarea id="body" placeholder="Since starting, I have noticed..."></textarea>
+        </div>
+
+        <div class="field">
+          <label>Video <span class="hint">— optional. Upload a clip, or paste a link (YouTube, Drive, etc.).</span></label>
+          <input type="file" id="video" accept="video/*" />
+          <input type="url" id="video_url" placeholder="…or paste a video link" style="margin-top:10px;" />
+        </div>
+
+        <div class="field">
+          <label>Your name</label>
+          <input type="text" id="name" placeholder="First and last name" />
+        </div>
+
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="email" placeholder="you@example.com" />
+        </div>
+
+        <div class="field">
+          <label>Photo <span class="hint">— optional.</span></label>
+          <input type="file" id="photo" accept="image/*" />
+        </div>
+
+        <div class="field consent">
+          <input type="checkbox" id="consent" />
+          <label for="consent" style="color:var(--cream);font-weight:400;letter-spacing:0;margin:0;font-family:'Open Sans',sans-serif;">
+            I give Dr.&nbsp;Glen Swartwout and Healing&nbsp;Oasis permission to share my words, photo, and video publicly — on the website, social media, and in marketing.
+          </label>
+        </div>
+
+        <button type="submit" id="submit-btn">Share my results</button>
+        <p class="msg" id="msg"></p>
+      </form>
+    </div>
+  </section>
+
+  <section class="shell confirmed" id="confirmed" style="display:none;">
+    <div class="check-icon">&#10003;</div>
+    <h2>Thank you for paying it forward.</h2>
+    <p>Your testimonial has been received and is awaiting a quick review. We are grateful — sharing your experience helps others take their first step toward healing.</p>
+  </section>
+
+  <footer>
+    <p class="foot-note">Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA. Individual results vary; these statements have not been evaluated by the FDA and are not intended to diagnose, treat, cure, or prevent any disease.</p>
+  </footer>
+
+  <script>
+  (function(){
+    var chosenRating = 0;
+    var starsEl = document.getElementById("stars");
+    function paint(n){ starsEl.textContent = "★".repeat(n) + "☆".repeat(5 - n); }
+    starsEl.addEventListener("click", function(e){
+      var rect = starsEl.getBoundingClientRect();
+      var n = Math.min(5, Math.max(1, Math.ceil((e.clientX - rect.left) / (rect.width / 5))));
+      chosenRating = n; paint(n);
+    });
+
+    var qp = new URLSearchParams(location.search);
+    var ptoken = qp.get("p") || "";
+
+    var form = document.getElementById("results-form");
+    var btn = document.getElementById("submit-btn");
+    var msg = document.getElementById("msg");
+
+    form.addEventListener("submit", function(ev){
+      ev.preventDefault();
+      var name = (document.getElementById("name").value || "").trim();
+      var email = (document.getElementById("email").value || "").trim();
+      var body = (document.getElementById("body").value || "").trim();
+      var consent = document.getElementById("consent").checked;
+      var vid = document.getElementById("video").files[0];
+      var vidUrl = (document.getElementById("video_url").value || "").trim();
+      var photo = document.getElementById("photo").files[0];
+
+      if(!chosenRating){ msg.textContent = "Please choose a star rating."; return; }
+      if(!name){ msg.textContent = "Please enter your name."; return; }
+      if(!email){ msg.textContent = "Please enter your email."; return; }
+      if(!consent){ msg.textContent = "Please tick the consent box so we may share your testimonial."; return; }
+
+      btn.disabled = true; msg.textContent = "Sending…";
+      var fd = new FormData();
+      fd.append("name", name);
+      fd.append("email", email);
+      fd.append("rating", String(chosenRating));
+      fd.append("body", body);
+      fd.append("consent_public", "1");
+      if(ptoken) fd.append("p", ptoken);
+      if(vid){ fd.append("video", vid, vid.name); }
+      else if(vidUrl){ fd.append("video_url", vidUrl); }
+      if(photo){ fd.append("photo", photo, photo.name); }
+
+      fetch("/api/testimonials", {method:"POST", credentials:"same-origin", body:fd})
+        .then(function(r){ return r.json(); })
+        .then(function(resp){
+          if(resp && resp.ok){
+            document.getElementById("form-section").style.display = "none";
+            document.getElementById("confirmed").style.display = "block";
+            window.scrollTo(0, 0);
+          } else {
+            btn.disabled = false;
+            msg.textContent = "Error: " + ((resp && resp.error) || "submission failed");
+          }
+        })
+        .catch(function(){ btn.disabled = false; msg.textContent = "Network error. Please try again."; });
+    });
+  })();
+  </script>
+</body>
+</html>
