@@ -79,3 +79,15 @@ def test_product_reviews_stores_dimension_scores():
     # default 0 before scoring
     rid2 = pr.upsert_review(cx, "_results", "b@x.com", "B", 5, body="b", kind="testimonial")
     assert pr.get_review(cx, rid2)["compliance_score"] == 0
+
+
+def test_manual_audio_visual_quality():
+    cx = sqlite3.connect(":memory:")
+    rid = pr.upsert_review(cx, "_results", "a@x.com", "A", 5, body="b", kind="testimonial")
+    assert pr.get_review(cx, rid)["audio_quality"] == 0  # unset default
+    pr.set_manual_quality(cx, rid, audio=8, visual=6)
+    r = pr.get_review(cx, rid)
+    assert r["audio_quality"] == 8 and r["visual_quality"] == 6
+    pr.set_manual_quality(cx, rid, audio=15, visual=-2)  # clamp 0..10
+    r = pr.get_review(cx, rid)
+    assert r["audio_quality"] == 10 and r["visual_quality"] == 0

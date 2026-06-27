@@ -21,7 +21,8 @@ def init_table(cx):
                  "kind TEXT DEFAULT 'product'", "practitioner_id INTEGER DEFAULT 0",
                  "consent_public INTEGER DEFAULT 0", "source_tag TEXT DEFAULT ''",
                  "compliance_score INTEGER DEFAULT 0", "publication_score INTEGER DEFAULT 0",
-                 "authenticity_score INTEGER DEFAULT 0", "specificity_score INTEGER DEFAULT 0"):
+                 "authenticity_score INTEGER DEFAULT 0", "specificity_score INTEGER DEFAULT 0",
+                 "audio_quality INTEGER DEFAULT 0", "visual_quality INTEGER DEFAULT 0"):
         try:
             cx.execute(f"ALTER TABLE product_reviews ADD COLUMN {_col}")
         except sqlite3.OperationalError:
@@ -74,6 +75,15 @@ def set_scores(cx, review_id, *, compliance=0, publication=0, authenticity=0, sp
         "UPDATE product_reviews SET compliance_score=?, publication_score=?, "
         "authenticity_score=?, specificity_score=? WHERE id=?",
         (_clamp(compliance), _clamp(publication), _clamp(authenticity), _clamp(specificity), review_id))
+    cx.commit()
+
+
+def set_manual_quality(cx, review_id, *, audio=0, visual=0):
+    """Store the human-entered Audio & Visual quality scores (1-10; 0 = unset)."""
+    init_table(cx)
+    _clamp = lambda v: max(0, min(10, int(v or 0)))
+    cx.execute("UPDATE product_reviews SET audio_quality=?, visual_quality=? WHERE id=?",
+               (_clamp(audio), _clamp(visual), review_id))
     cx.commit()
 
 

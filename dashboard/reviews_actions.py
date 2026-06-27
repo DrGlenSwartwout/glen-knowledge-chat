@@ -56,6 +56,17 @@ def _exec_feature(params, ctx):
     return {"id": rid, "featured": bool(params.get("on"))}
 
 
+def _exec_set_quality(params, ctx):
+    """Reviewer-entered Audio & Visual quality scores (1-10) — judged by eye/ear, not AI."""
+    rid = int(params.get("id") or 0)
+    if not rid:
+        raise ValueError("id required")
+    _pr.set_manual_quality(ctx["cx"], rid, audio=params.get("audio") or 0,
+                           visual=params.get("visual") or 0)
+    r = _pr.get_review(ctx["cx"], rid) or {}
+    return {"id": rid, "audio_quality": r.get("audio_quality"), "visual_quality": r.get("visual_quality")}
+
+
 def _exec_gift_approve(params, ctx):
     from dashboard import review_gifts as _rg
     rid = int(params.get("review_id") or 0)
@@ -94,6 +105,9 @@ def register():
     register_action(Action(key="reviews.feature", module="reviews", title="Feature review",
         description="Pin/unpin a product review at the top of its section.",
         risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_feature))
+    register_action(Action(key="reviews.set_quality", module="reviews", title="Set A/V quality",
+        description="Save reviewer-entered Audio & Visual quality scores (1-10) on a review.",
+        risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_set_quality))
     register_action(Action(key="reviews.gift_approve", module="reviews", title="Approve review gift",
         description="Approve the AI-suggested gift (optionally swap the item) for a 5-point review.",
         risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_gift_approve))

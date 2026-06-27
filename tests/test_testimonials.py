@@ -287,3 +287,16 @@ def test_dimension_scores_stored_and_listed(monkeypatch, tmp_path):
     listed = c.get("/api/console/reviews").get_json()["pending"]
     r = next((x for x in listed if x["email"] == "ann@x.com"), None)
     assert r and r["compliance_score"] == 9 and r["specificity_score"] == 6
+
+
+def test_set_quality_action_sets_audio_visual(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    from dashboard import product_reviews as pr, dispatch as d
+    from dashboard.rbac import Actor, OWNER
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, "_results", "a@x.com", "A", 5, body="b", kind="testimonial")
+        res = d.dispatch_action(cx, "reviews.set_quality", {"id": rid, "audio": 9, "visual": 7},
+                                Actor(role=OWNER, name="Glen"), source="panel")
+        assert res["status"] == "done"
+        r = pr.get_review(cx, rid)
+    assert r["audio_quality"] == 9 and r["visual_quality"] == 7
