@@ -1,11 +1,14 @@
-"""Integration tests for per-IP velocity limiting on the three chat endpoints.
+"""Tests for per-IP velocity limiting on the three chat endpoints.
 
-We monkeypatch _chat_velocity with a fresh VelocityLimiter and tighten LIMITS
-to per_min=2 so a third request from the same IP hits the 429 guard without
-needing real Claude/Pinecone calls.
+Design:
+  Integration tests — prove the guard is wired into each real endpoint: exhaust
+  the per-IP budget (per_min=2) via direct _velocity_guard calls inside a
+  test_request_context (zero DB I/O), then POST to the real endpoint for the
+  blocking case only.  The guard fires before any DB/Pinecone work, so the POST
+  returns 429 without touching query_log.
 
-The guard fires before any retrieval/streaming, so an empty or minimal POST
-body is fine — the handler returns 429 before it ever calls embed() or Claude.
+  Unit tests — verify _velocity_guard and _resolve_chat_tier directly using
+  test_request_context.  No chat pipeline runs, no tables needed.
 """
 import importlib
 import sys
@@ -36,8 +39,8 @@ _TIGHT_LIMITS = {
 @pytest.fixture
 def velocity_app(monkeypatch, tmp_path):
     """App with a fresh velocity limiter and tight per_min=2 limits."""
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
     app_module = _load_app()
-    monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "chat_log.db"))
     # Fresh limiter — no prior hits
     monkeypatch.setattr(app_module, "_chat_velocity", VelocityLimiter())
     # Tighten the per_min limit so tests don't need to hammer 10+ requests
@@ -45,84 +48,143 @@ def velocity_app(monkeypatch, tmp_path):
     return app_module
 
 
-def _post_chat(client, path="/chat", body=None):
-    return client.post(
-        path,
-        json=body or {"query": "hi", "mode": "brief"},
+def _exhaust_budget(velocity_app, ip, n=2, tier="anonymous"):
+    """Fire n direct _velocity_guard calls for ip without touching any DB."""
+    with velocity_app.app.test_request_context(
+        "/chat", headers={"X-Forwarded-For": ip}
+    ):
+        from flask import request as _rq
+        for i in range(n):
+            result = velocity_app._velocity_guard(_rq, tier)
+            assert result is None, f"Guard unexpectedly blocked hit {i + 1}/{n}"
+
+
+# ── Integration: over-limit → 429 (guard fires BEFORE handler body) ──────────
+# Budget exhausted via direct guard calls; only the (per_min+1)th request is a
+# real HTTP POST — it gets 429 before the handler body runs.
+
+def test_chat_blocks_on_over_limit(velocity_app):
+    """Guard is wired into /chat: (per_min+1)th request from same IP → 429."""
+    ip = "203.0.113.1"
+    _exhaust_budget(velocity_app, ip)  # 2 hits consumed
+    client = velocity_app.app.test_client()
+    r = client.post(
+        "/chat",
+        json={"query": "hi", "mode": "brief"},
         content_type="application/json",
+        headers={"X-Forwarded-For": ip},
     )
-
-
-# ── /chat ────────────────────────────────────────────────────────────────────
-
-def test_chat_blocks_third_request_same_ip(velocity_app):
-    """Two requests pass, the third hits the 429 guard (per_min=2)."""
-    client = velocity_app.app.test_client()
-
-    r1 = _post_chat(client, "/chat")
-    r2 = _post_chat(client, "/chat")
-    # First two must NOT be 429
-    assert r1.status_code != 429, f"First request unexpectedly 429: {r1.get_data(as_text=True)}"
-    assert r2.status_code != 429, f"Second request unexpectedly 429: {r2.get_data(as_text=True)}"
-
-    r3 = _post_chat(client, "/chat")
-    assert r3.status_code == 429
-    body = r3.get_json()
-    assert body is not None and body.get("error") == "rate_limited"
-
-
-def test_chat_under_limit_not_blocked(velocity_app):
-    """A single request should never be 429 (well under per_min=2)."""
-    client = velocity_app.app.test_client()
-    r = _post_chat(client, "/chat")
-    assert r.status_code != 429
-
-
-# ── /begin/match/chat ────────────────────────────────────────────────────────
-
-def test_begin_match_chat_blocks_third_request(velocity_app):
-    """/begin/match/chat also rate-limits at per_min=2."""
-    client = velocity_app.app.test_client()
-
-    r1 = _post_chat(client, "/begin/match/chat")
-    r2 = _post_chat(client, "/begin/match/chat")
-    assert r1.status_code != 429
-    assert r2.status_code != 429
-
-    r3 = _post_chat(client, "/begin/match/chat")
-    assert r3.status_code == 429
-    body = r3.get_json()
-    assert body is not None and body.get("error") == "rate_limited"
-
-
-# ── /begin/concierge/chat ────────────────────────────────────────────────────
-
-def test_begin_concierge_chat_blocks_third_request(velocity_app):
-    """/begin/concierge/chat also rate-limits at per_min=2."""
-    client = velocity_app.app.test_client()
-
-    r1 = _post_chat(client, "/begin/concierge/chat")
-    r2 = _post_chat(client, "/begin/concierge/chat")
-    assert r1.status_code != 429
-    assert r2.status_code != 429
-
-    r3 = _post_chat(client, "/begin/concierge/chat")
-    assert r3.status_code == 429
-    body = r3.get_json()
-    assert body is not None and body.get("error") == "rate_limited"
-
-
-# ── cross-endpoint isolation (velocity is per-IP across all three) ───────────
-
-def test_velocity_shared_across_endpoints(velocity_app):
-    """Hits are shared by IP across all three endpoints — two requests on
-    /chat and /begin/match/chat exhaust the per_min=2 budget; a third on
-    /begin/concierge/chat is blocked."""
-    client = velocity_app.app.test_client()
-
-    _post_chat(client, "/chat")
-    _post_chat(client, "/begin/match/chat")
-
-    r = _post_chat(client, "/begin/concierge/chat")
     assert r.status_code == 429
-    assert (r.get_json() or {}).get("error") == "rate_limited"
+    body = r.get_json()
+    assert body is not None and body.get("error") == "rate_limited"
+
+
+def test_begin_match_chat_blocks_on_over_limit(velocity_app):
+    """Guard is wired into /begin/match/chat: (per_min+1)th request → 429."""
+    ip = "203.0.113.2"
+    _exhaust_budget(velocity_app, ip)
+    client = velocity_app.app.test_client()
+    r = client.post(
+        "/begin/match/chat",
+        json={"query": "hi", "mode": "brief"},
+        content_type="application/json",
+        headers={"X-Forwarded-For": ip},
+    )
+    assert r.status_code == 429
+    body = r.get_json()
+    assert body is not None and body.get("error") == "rate_limited"
+
+
+def test_begin_concierge_chat_blocks_on_over_limit(velocity_app):
+    """Guard is wired into /begin/concierge/chat: (per_min+1)th request → 429."""
+    ip = "203.0.113.3"
+    _exhaust_budget(velocity_app, ip)
+    client = velocity_app.app.test_client()
+    r = client.post(
+        "/begin/concierge/chat",
+        json={"query": "hi", "mode": "brief"},
+        content_type="application/json",
+        headers={"X-Forwarded-For": ip},
+    )
+    assert r.status_code == 429
+    body = r.get_json()
+    assert body is not None and body.get("error") == "rate_limited"
+
+
+# ── Unit tests: _velocity_guard via test_request_context (no chat pipeline) ──
+
+def test_velocity_guard_under_limit_returns_none(velocity_app):
+    """First request under the per_min budget is not blocked (returns None)."""
+    with velocity_app.app.test_request_context(
+        "/chat", headers={"X-Forwarded-For": "203.0.113.10"}
+    ):
+        from flask import request as _rq
+        assert velocity_app._velocity_guard(_rq, "anonymous") is None
+
+
+def test_velocity_guard_over_limit_returns_429_tuple(velocity_app):
+    """After per_min hits from the same IP, guard returns a (response, 429) tuple."""
+    with velocity_app.app.test_request_context(
+        "/chat", headers={"X-Forwarded-For": "203.0.113.11"}
+    ):
+        from flask import request as _rq
+        # per_min=2: first two pass
+        assert velocity_app._velocity_guard(_rq, "anonymous") is None
+        assert velocity_app._velocity_guard(_rq, "anonymous") is None
+        # third is blocked
+        result = velocity_app._velocity_guard(_rq, "anonymous")
+        assert result is not None, "Guard should block after per_min exceeded"
+        assert result[1] == 429
+
+
+def test_velocity_guard_shared_counter_across_paths(velocity_app):
+    """The IP budget is shared regardless of which path the context uses."""
+    ip = "203.0.113.12"
+    with velocity_app.app.test_request_context(
+        "/chat", headers={"X-Forwarded-For": ip}
+    ):
+        from flask import request as _rq
+        assert velocity_app._velocity_guard(_rq, "anonymous") is None  # hit 1
+
+    with velocity_app.app.test_request_context(
+        "/begin/match/chat", headers={"X-Forwarded-For": ip}
+    ):
+        from flask import request as _rq
+        assert velocity_app._velocity_guard(_rq, "anonymous") is None  # hit 2
+
+    with velocity_app.app.test_request_context(
+        "/begin/concierge/chat", headers={"X-Forwarded-For": ip}
+    ):
+        from flask import request as _rq
+        result = velocity_app._velocity_guard(_rq, "anonymous")  # hit 3 — blocked
+        assert result is not None and result[1] == 429
+
+
+def test_velocity_guard_different_ips_independent(velocity_app):
+    """Two different IPs have independent counters; exhausting one doesn't block the other."""
+    with velocity_app.app.test_request_context(
+        "/chat", headers={"X-Forwarded-For": "203.0.113.20"}
+    ):
+        from flask import request as _rq
+        # Exhaust IP .20
+        velocity_app._velocity_guard(_rq, "anonymous")
+        velocity_app._velocity_guard(_rq, "anonymous")
+        velocity_app._velocity_guard(_rq, "anonymous")  # blocked
+
+    with velocity_app.app.test_request_context(
+        "/chat", headers={"X-Forwarded-For": "203.0.113.21"}
+    ):
+        from flask import request as _rq
+        # IP .21 is fresh — should not be blocked
+        assert velocity_app._velocity_guard(_rq, "anonymous") is None
+
+
+# ── Unit test: _resolve_chat_tier fail-open ───────────────────────────────────
+
+def test_resolve_chat_tier_unauthenticated_returns_anonymous(velocity_app):
+    """Unauthenticated request resolves to ('anonymous', '') without raising."""
+    with velocity_app.app.test_request_context("/chat"):
+        from flask import request as _rq
+        tier, eff_email = velocity_app._resolve_chat_tier(_rq, "", "")
+        assert tier == "anonymous"
+        assert eff_email == ""
