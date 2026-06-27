@@ -37,6 +37,15 @@ def test_upsert_testimonial_stores_new_fields():
     assert r["product_slug"] == "_results"
 
 
+def test_upsert_source_tag_stores_and_defaults():
+    cx = _cx()
+    tagged = pr.upsert_review(cx, "_results", "a@x.com", "Ann", 5, body="b",
+                              kind="testimonial", source_tag="ash-cert-l1")
+    plain = pr.upsert_review(cx, "_results", "b@x.com", "Bo", 5, body="b", kind="testimonial")
+    assert pr.get_review(cx, tagged)["source_tag"] == "ash-cert-l1"
+    assert pr.get_review(cx, plain)["source_tag"] == ""
+
+
 def test_resubmit_testimonial_preserves_kind_and_consent():
     """Re-submitting (same slug,email) keeps testimonial kind/consent, not the product defaults."""
     cx = _cx()
@@ -193,3 +202,22 @@ def test_console_list_labels_testimonial(monkeypatch, tmp_path):
     row = next((r for r in body["pending"] if r["email"] == "a@x.com"), None)
     assert row is not None and row["product_name"] == "Testimonial"
     assert row["consent_public"] == 1
+
+
+def test_source_tag_captured_from_query_and_listed(monkeypatch, tmp_path):
+    """?tag= on the submission is stored and surfaced in the console queue (cohort grading)."""
+    appmod = _reload_app(monkeypatch, tmp_path)
+    _pass_scorer(monkeypatch)
+    import dashboard as _d
+    _d.CONSOLE_SECRET = ""
+    c = appmod.app.test_client()
+    j = c.post("/api/testimonials",
+               json={"name": "Ann", "email": "ann@x.com", "rating": 5,
+                     "body": "the course changed how I see healing",
+                     "consent_public": "1", "tag": "ash-cert-l1"}).get_json()
+    from dashboard import product_reviews as _pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert _pr.get_review(cx, j["review_id"])["source_tag"] == "ash-cert-l1"
+    listed = c.get("/api/console/reviews").get_json()["pending"]
+    row = next((r for r in listed if r["email"] == "ann@x.com"), None)
+    assert row is not None and row["source_tag"] == "ash-cert-l1"

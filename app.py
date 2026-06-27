@@ -5274,6 +5274,8 @@ def api_submit_testimonial():
         return jsonify({"ok": False, "error": "public-use consent is required"}), 400
     body = (data.get("body") or "").strip()
     pid = _testimonial_practitioner_id((data.get("p") or "").strip())
+    # Optional campaign/cohort tag from ?tag= (e.g. ash-cert-l1) — for finding/grading a cohort.
+    tag = re.sub(r"[^\w.\-]", "", (data.get("tag") or "").strip())[:64]
 
     try:
         video_kind, video_ref = _extract_review_video("_results", data)
@@ -5285,7 +5287,8 @@ def api_submit_testimonial():
     _ctx = {"name": "Dr. Glen Swartwout — Biofield Analysis & Functional Formulations"}
     with sqlite3.connect(LOG_DB) as cx:
         rid = _pr.upsert_review(cx, "_results", email, name, rating, body, video_kind, video_ref,
-                                kind="testimonial", practitioner_id=pid, consent_public=1)
+                                kind="testimonial", practitioner_id=pid, consent_public=1,
+                                source_tag=tag)
         score = _rs.score_review(_cl, _ctx, body, strip=_strip_dash) if body else {
             "compliance_ok": True, "reasons": "", "quality_points": 0, "recommend_publish": False}
         _pr.set_ai_result(cx, rid, score["quality_points"], score["reasons"], score["recommend_publish"])

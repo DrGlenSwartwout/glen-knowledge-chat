@@ -138,6 +138,7 @@
 
     var qp = new URLSearchParams(location.search);
     var ptoken = qp.get("p") || "";
+    var srcTag = qp.get("tag") || "";
 
     var form = document.getElementById("results-form");
     var btn = document.getElementById("submit-btn");
@@ -166,6 +167,7 @@
       fd.append("body", body);
       fd.append("consent_public", "1");
       if(ptoken) fd.append("p", ptoken);
+      if(srcTag) fd.append("tag", srcTag);
       if(vid){ fd.append("video", vid, vid.name); }
       else if(vidUrl){ fd.append("video_url", vidUrl); }
       if(photo){ fd.append("photo", photo, photo.name); }
