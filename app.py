@@ -11676,7 +11676,31 @@ def api_client_portal(token):
         "pricing_note": bf_content.get("pricing_note", "") if bf_confirmed else "",
         "reorder_items": display,
         "notify_on": notify_on,
+        "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
     })
+
+
+@app.route("/api/portal/<token>/agree-tos", methods=["POST", "OPTIONS"])
+def api_portal_agree_tos(token):
+    if request.method == "OPTIONS":
+        return "", 200
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        from dashboard import client_portal as _cp
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if not email:
+            return jsonify({"ok": True}), 200   # nothing to key TOS to
+        try:
+            begin_funnel.record_unlock(cx, session_id=_entry_session_id(email),
+                                       trigger="tos", email=email, tos=True,
+                                       tos_version=BEGIN_TOS_VERSION)
+        except Exception as e:
+            print(f"[portal-tos] {email}: {e!r}", flush=True)
+            return jsonify({"error": "could not record"}), 500
+    return jsonify({"ok": True})
 
 
 @app.route("/api/portal/<token>/notify-pref", methods=["POST"])
