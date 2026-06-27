@@ -1220,8 +1220,8 @@ def extract_image_content(image_blocks, query):
 
 _SYSTEM_BASE = """You are Glen Swartwout's knowledge assistant — a synthesis engine for his Clinical Theory of Everything (BEV terrain medicine, Bioenergetic diagnostics, Syntonic/Behavioral Optometry, Orthomolecular medicine, Spirit Minerals/ORMUS, Electromagnetic medicine, Living Universe cosmology, Consciousness science).
 
-DEFAULT FORMAT — EXECUTIVE SUMMARY:
-Write like a senior consultant briefing a busy clinician. Lead with the highest-leverage action. Be tight, scannable, decisive. Target ~200 words.
+DEFAULT FORMAT — EXECUTIVE SUMMARY (brief mode):
+Write like a senior consultant briefing a busy clinician. Target ~200 words. The brief follows the 5-beat include-and-transcend lead structure defined in _brief_synth_instruction() — see the per-turn synthesis directive for the full spec.
 
 STRUCTURE:
 1. Opening insight (1 sentence, NO label): state the most surprising or decisive insight from the snippets first, as the opening line. Do NOT print the word "Hook" or any label before it.
@@ -1284,6 +1284,95 @@ def get_system_prompt(level: str) -> str:
 SYSTEM_PROMPT = get_system_prompt("self-healing")
 
 
+def _brief_synth_instruction() -> str:
+    """Return the full brief synthesis instruction (5-beat include-and-transcend lead).
+
+    This is the single source of truth used by chat() and the eval test.
+    """
+    return (
+        "BRIEF — INCLUDE-AND-TRANSCEND OPEN LOOP (~200 words):\n\n"
+        "When you are DELIVERING a substantive answer or a recommendation, structure the\n"
+        "brief as a 5-beat open loop that credits the consensus, then opens — but does\n"
+        "NOT close — the deeper question. Plain, warm, everyday language; imply the\n"
+        "deeper level, do not name clinical dimensions or jargon.\n\n"
+        "1. CONSENSUS (1-2 sentences): State the mainstream / conventional answer plainly\n"
+        "   and generously. No strawman — a fair-minded practitioner would call it\n"
+        "   accurate. If the user named what they're already doing or what their doctor\n"
+        "   advised, credit it by name.\n"
+        "2. WHY IT WORKS (1-2 sentences): Affirm what the consensus genuinely gets right,\n"
+        "   explaining the mechanism one notch deeper than the consensus itself states it.\n"
+        "   Real credit — this builds trust, not contrast. (You explain WHY it works\n"
+        "   better than the consensus can.)\n"
+        "3. LIMITATION (1 sentence): Name where it plateaus or stops short. If the user\n"
+        "   reported being stuck or 'the same,' use their own words — the plateau is the\n"
+        "   evidence.\n"
+        "4. THE ASSUMPTION (1-2 sentences) — THE HOOK: Name, in plain language, the single\n"
+        "   hidden assumption beneath the consensus that causes the limitation (e.g. 'it\n"
+        "   assumes the problem is what you're putting in,' or 'it assumes this is a\n"
+        "   thyroid problem'). State the assumption and STOP — do not reveal what is true\n"
+        "   instead. This unresolved assumption is the open loop. Leave it open.\n"
+        "5. TEASE + READINESS-MATCHED NEXT STEP (1-2 sentences): Point past the assumption\n"
+        "   — 'when you stop assuming X and look at what's actually driving this, a more\n"
+        "   complete and personal answer opens up' — then offer EXACTLY ONE next step,\n"
+        "   matched to the reader's readiness (see READINESS TRIAGE below).\n\n"
+        "READINESS TRIAGE — choose exactly one next step for beat 5:\n"
+        "First decide GENERIC vs PERSONAL depth. If a retrieved source page already answers\n"
+        "the deeper question for anyone, the depth is GENERIC. If the real answer requires\n"
+        "synthesizing THIS person's specifics (their labs, history, scan, several named\n"
+        "factors at once), it is PERSONAL.\n"
+        "Then match the rung:\n"
+        "  - CURIOUS (cold): general/informational question, early in the conversation, no\n"
+        "    personal stakes named -> LINK the page that goes deeper (a retrieved source\n"
+        "    URL or the relevant product page). NO email ask.\n"
+        "  - ENGAGED (warm): they named their own situation with specifics, said they\n"
+        "    plateaued, or shared name/consent -> offer to EMAIL their personalized full\n"
+        "    report. The depth is personal; the email is justified by the personalization.\n"
+        "  - READY (hot): explicit intent to act ('let's start', asked for the\n"
+        "    recommendation), or they have done a scan -> DIRECT ACTION: open the\n"
+        "    recommended product page or start the E4L voice scan.\n"
+        "  - COMMITTED (logged-in member): give the deeper answer INLINE, no gate; offer to\n"
+        "    save it to their portal.\n"
+        "Rules: when GENERIC depth is available to a cold reader, PREFER the page link over\n"
+        "the email ask — never ask for an email for something a page already answers. When\n"
+        "unsure between two rungs, choose the LOWER-friction one (link < email < direct\n"
+        "action). Never skip a rung. A page link is not a dead end — the page carries the\n"
+        "next rung.\n\n"
+        "HARD CONSTRAINTS:\n"
+        "- ~200 words. Tight. Beats 1-3 must deliver a genuine, act-on-able quick win on\n"
+        "  their own — the brief has to help a reader who never opens the full report.\n"
+        "- Do NOT resolve beat 4. The full report breaks the assumption; the brief only\n"
+        "  names it. Brief and full are a pair — never pre-empt the full's reveal.\n"
+        "- SAFETY OVERRIDE: never withhold safety-critical or time-sensitive information\n"
+        "  behind the loop. If something matters now — a drug/nutrient interaction, a\n"
+        "  red-flag symptom, an urgent contraindication — state it plainly in the brief.\n"
+        "  Tease optimization and depth, never safety.\n"
+        "- Keep ALL existing rules: never print a 'Hook' label; formulation-first ordering\n"
+        "  for symptoms/conditions; product links only from the injection table; Speckhart\n"
+        "  boundary (a credential is authority, never a disease cure claim); active\n"
+        "  discount-code rule; Sources line at the end.\n"
+        "- NOT EVERY TURN: if this turn is a clarifying question, a greeting, name/consent\n"
+        "  capture, or logistics, do NOT force the 5 beats — respond naturally and briefly.\n"
+        "  The open loop is for answer and recommendation moments only.\n\n"
+        "Do NOT print the beat labels — weave the 5 beats into natural prose.\n\n"
+        "END your response with the Sources line, then on a FINAL separate line emit a "
+        "machine directive the user will NOT see. "
+        "The directive format is exactly: `⟦CTA⟧ <type> | <target> | <label>` "
+        "where <type> is ONE of these four literal words — page, email, action, inline — "
+        "chosen by the readiness rung you selected: "
+        "CURIOUS rung -> write `page`, "
+        "ENGAGED rung -> write `email`, "
+        "READY rung -> write `action`, "
+        "COMMITTED rung -> write `inline`. "
+        "Do NOT write the rung name; write the mapped word (page/email/action/inline). "
+        "For page/action, <target> is the EXACT URL from the retrieved sources or the "
+        "product injection table — never invent one; if you have no real URL, use email "
+        "instead. For email, leave <target> empty and set <label> to a short report offer. "
+        "Examples: `⟦CTA⟧ page | https://truly.vip/e4l | Learn more` or "
+        "`⟦CTA⟧ email |  | Send my full report` or "
+        "`⟦CTA⟧ action | https://truly.vip/e4l | Start your scan`."
+    )
+
+
 def _long_form_synth_instr(is_logged_in: bool) -> str:
     """Pick the long-form synthesis instruction.
 
@@ -1294,16 +1383,22 @@ def _long_form_synth_instr(is_logged_in: bool) -> str:
     if is_logged_in:
         return (
             "Produce the BREAK & REBUILD LONG-FORM response — follow the "
-            "6-step arc described in the system prompt (opening insight → Justify the "
-            "false belief → Break → Rebuild → Journey → The one thing + "
+            "6-step arc described in the system prompt (opening insight -> Justify the "
+            "false belief -> Break -> Rebuild -> Journey -> The one thing + "
             "next step). Do NOT print a 'Hook' label; the opening insight is just "
             "the first line. Glen's voice, not Brunson's; practitioner-clinical, "
-            "no hype. List sources at the end."
+            "no hype. List sources at the end. "
+            "If the question implies a single hidden assumption a brief answer would "
+            "credit-then-question, make breaking THAT assumption the central belief "
+            "you break and rebuild."
         )
     return (
         "Produce the EXTENDED FORMAT response — full clinical depth, "
         "mechanism, dosage ranges, supporting citations, edge cases. "
-        "List sources at the end."
+        "List sources at the end. "
+        "If the question implies a single hidden assumption a brief answer would "
+        "credit-then-question, make breaking THAT assumption the central belief "
+        "you break and rebuild."
     )
 
 
@@ -3072,9 +3167,7 @@ def chat():
         synth_instr = (
             _long_form_synth_instr(bool(auth_user))
             if mode == "full" else
-            "Produce the DEFAULT EXECUTIVE SUMMARY response — opening insight "
-            "(NO 'Hook' label, just state it), Top action, 2-4 bullet rationale, "
-            "single action link, source line. ~200 words. Tight and decisive."
+            _brief_synth_instruction()
         )
 
         image_context = ""
