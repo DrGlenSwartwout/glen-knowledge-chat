@@ -132,6 +132,7 @@
   }
 
   function say(text, pitch, rate, vol) {
+    if (_muted) { return; }
     if (!window.speechSynthesis) { return; }
     var u = new SpeechSynthesisUtterance(text);
     u.pitch = pitch == null ? 1 : pitch;
