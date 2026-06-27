@@ -151,6 +151,8 @@ TRULY_SO_DOMAIN   = "truly.so"
 LOG_DB   = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "chat_log.db"
 _db_lock = threading.Lock()
 
+_CTA_RUNG = {"page": "curious", "email": "engaged", "action": "ready", "inline": "committed"}
+
 
 def _init_shortlink_cache():
     with sqlite3.connect(LOG_DB) as cx:
@@ -944,6 +946,8 @@ def _init_log_db():
             "image_count          INTEGER DEFAULT 0",
             "email_sent_at        TEXT",
             "word_count           INTEGER DEFAULT 0",
+            "cta_type             TEXT",
+            "cta_rung             TEXT",
         ]:
             try:
                 cx.execute(f"ALTER TABLE query_log ADD COLUMN {col_def}")
@@ -1098,12 +1102,27 @@ def _init_production_tables():
 _init_production_tables()
 
 
+def _init_cta_clicks():
+    """CTA click log — public endpoint, minimal data, no console key."""
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS cta_clicks (
+                ts       TEXT NOT NULL,
+                log_id   INTEGER,
+                cta_type TEXT
+            )
+        """)
+
+_init_cta_clicks()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
               user_agent: str = "", referer: str = "",
               extracted_image_data: str = "", image_count: int = 0,
-              word_count: int = 0) -> int:
+              word_count: int = 0,
+              cta_type: str = None, cta_rung: str = None) -> int:
     """Insert a row into query_log. Always logs, even for anonymous sessions.
 
     Image bytes are NEVER persisted — only the extracted text output of
@@ -1117,11 +1136,13 @@ def log_query(query: str, level: str, answer: str,
             """INSERT INTO query_log
                (ts, query, level, answer, session_id, email, name,
                 ghl_contact_id, mode, user_agent, referer,
-                extracted_image_data, image_count, word_count)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                extracted_image_data, image_count, word_count,
+                cta_type, cta_rung)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (ts, query, level, answer[:8000], session_id, email, name,
              ghl_contact_id, mode, user_agent[:500], referer[:500],
-             extracted_image_data[:8000], image_count, wc)
+             extracted_image_data[:8000], image_count, wc,
+             cta_type, cta_rung)
         )
         cx.commit()
         return cur.lastrowid
@@ -1220,8 +1241,8 @@ def extract_image_content(image_blocks, query):
 
 _SYSTEM_BASE = """You are Glen Swartwout's knowledge assistant — a synthesis engine for his Clinical Theory of Everything (BEV terrain medicine, Bioenergetic diagnostics, Syntonic/Behavioral Optometry, Orthomolecular medicine, Spirit Minerals/ORMUS, Electromagnetic medicine, Living Universe cosmology, Consciousness science).
 
-DEFAULT FORMAT — EXECUTIVE SUMMARY:
-Write like a senior consultant briefing a busy clinician. Lead with the highest-leverage action. Be tight, scannable, decisive. Target ~200 words.
+DEFAULT FORMAT — EXECUTIVE SUMMARY (brief mode):
+Write like a senior consultant briefing a busy clinician. Target ~200 words. The brief follows the 5-beat include-and-transcend lead structure defined in _brief_synth_instruction() — see the per-turn synthesis directive for the full spec.
 
 STRUCTURE:
 1. Opening insight (1 sentence, NO label): state the most surprising or decisive insight from the snippets first, as the opening line. Do NOT print the word "Hook" or any label before it.
@@ -1284,6 +1305,135 @@ def get_system_prompt(level: str) -> str:
 SYSTEM_PROMPT = get_system_prompt("self-healing")
 
 
+def _brief_synth_instruction() -> str:
+    """Return the full brief synthesis instruction (5-beat include-and-transcend lead).
+
+    This is the single source of truth used by chat() and the eval test.
+    """
+    return (
+        "ABSOLUTE WORD CAP: Beats 1-5 of this brief must total 200 words or fewer\n"
+        "(the Sources line and the ⟦CTA⟧ directive line do not count). Count before you\n"
+        "emit. If over 200, cut. No exceptions. Target 150-170 words so natural variation\n"
+        "stays safely under 200.\n\n"
+        "BRIEF — INCLUDE-AND-TRANSCEND OPEN LOOP (≤200 words):\n\n"
+        "When you are DELIVERING a substantive answer or a recommendation, structure the\n"
+        "brief as a 5-beat open loop that credits the consensus, then opens — but does\n"
+        "NOT close — the deeper question. Plain, warm, everyday language; imply the\n"
+        "deeper level, do not name clinical dimensions or jargon.\n\n"
+        "1. CONSENSUS (1-2 sentences): State the mainstream / conventional answer plainly\n"
+        "   and generously. No strawman — a fair-minded practitioner would call it\n"
+        "   accurate. If the user named what they're already doing or what their doctor\n"
+        "   advised, credit it by name.\n"
+        "2. WHY IT WORKS (1-2 sentences): Affirm what the consensus genuinely gets right,\n"
+        "   explaining the mechanism one notch deeper than the consensus itself states it.\n"
+        "   Real credit — this builds trust, not contrast. (You explain WHY it works\n"
+        "   better than the consensus can.)\n"
+        "3. LIMITATION (1 sentence): Name where it plateaus or stops short. If the user\n"
+        "   reported being stuck or 'the same,' use their own words — the plateau is the\n"
+        "   evidence.\n"
+        "4. THE ASSUMPTION (1-2 sentences) — THE HOOK: Name, in plain language, the single\n"
+        "   hidden assumption beneath the consensus that causes the limitation (e.g. 'it\n"
+        "   assumes the problem is what you're putting in,' or 'it assumes this is a\n"
+        "   thyroid problem'). State the assumption and STOP — do not reveal what is true\n"
+        "   instead. This unresolved assumption is the open loop. Leave it open.\n"
+        "5. TEASE + READINESS-MATCHED NEXT STEP (1-2 sentences): Point past the assumption\n"
+        "   — 'when you stop assuming X and look at what's actually driving this, a more\n"
+        "   complete and personal answer opens up' — then offer EXACTLY ONE next step,\n"
+        "   matched to the reader's readiness (see READINESS TRIAGE below).\n\n"
+        "READINESS TRIAGE GOVERNS THE NEXT STEP. It SUPERSEDES the system prompt's default\n"
+        "behavior of offering the E4L voice scan / a generic action link on every answer.\n"
+        "Do NOT default to the E4L scan. Follow these rules exactly:\n"
+        "  CURIOUS -> `page` (link the source/product page that answers it).\n"
+        "  ENGAGED -> `email` (offer the personalized report; leave target empty).\n"
+        "  READY -> `action` (NOW the E4L scan https://Truly.VIP/E4L is appropriate).\n"
+        "  COMMITTED -> `inline`.\n\n"
+        "CRITICAL EXAMPLES:\n"
+        "  'What foods are best for macular degeneration?' -> CURIOUS -> `page`\n"
+        "    (general question, no personal ownership claimed).\n"
+        "  'I have wet AMD; I changed my diet but my bloodwork is the same. Should I try\n"
+        "   Gundry protocol?' -> ENGAGED -> `email` (personal ownership: 'I have'; personal\n"
+        "    plateau: 'my bloodwork'; asking for personalized synthesis, not a buy link).\n"
+        "  'Let\\'s start the scan now' -> READY -> `action`.\n"
+        "  NEVER choose `action` for 'I have [condition], should I try X?' -- that is\n"
+        "  ENGAGED. `action` requires explicit purchase/start/scan intent, not just asking\n"
+        "  for a recommendation.\n\n"
+        "If you do NOT have a real page/product URL from the retrieved sources or the\n"
+        "product injection table, do NOT invent one and do NOT fall back to the scan --\n"
+        "choose `email` (the personalized report needs no URL).\n\n"
+        "READINESS TRIAGE — choose exactly one next step for beat 5:\n"
+        "First decide GENERIC vs PERSONAL depth. If a retrieved source page already answers\n"
+        "the deeper question for anyone, the depth is GENERIC. If the real answer requires\n"
+        "synthesizing THIS person's specifics (their labs, history, scan, several named\n"
+        "factors at once), it is PERSONAL.\n"
+        "Then match the rung:\n"
+        "  - CURIOUS (cold): The user has NOT claimed the condition, symptom, or situation\n"
+        "    as their own. A question like 'What foods are best for macular degeneration?'\n"
+        "    is CURIOUS even though it mentions a specific condition -- because the person\n"
+        "    has not said 'I have AMD' or 'my eyes'. No personal ownership = CURIOUS.\n"
+        "    Choose `page`: link the retrieved source page or the relevant product page.\n"
+        "    NO email ask. Even if the topic sounds personal, absent explicit personal\n"
+        "    claim it is CURIOUS.\n"
+        "  - ENGAGED (warm): The user EXPLICITLY CLAIMED the condition, history, or plateau\n"
+        "    as their own: 'I have [condition]', 'my bloodwork', 'I changed my diet',\n"
+        "    'I tried X but it\\'s not working', 'should I try X?' stated with their own\n"
+        "    history or labs. Explicit personal ownership makes the answer PERSONAL.\n"
+        "    Even if a product URL is available, choose `email` -- their situation needs\n"
+        "    individual synthesis, not a generic link.\n"
+        "  - READY (hot): They explicitly said 'let\\'s start', 'I want to order', 'where\n"
+        "    do I buy', 'sign me up', or have already completed a scan. NOT merely asking\n"
+        "    'should I try X?' -- that is ENGAGED. READY = unmistakable purchase intent.\n"
+        "    -> DIRECT ACTION: E4L scan or product page.\n"
+        "  - COMMITTED (logged-in member): give the deeper answer INLINE, no gate; offer to\n"
+        "    save it to their portal.\n"
+        "RUNG SELECTION RULES:\n"
+        "  1. Ask: did the user EXPLICITLY claim 'I have this'/'my [situation]'? If yes\n"
+        "     -> ENGAGED or above. If no -> CURIOUS.\n"
+        "  2. A specific condition mentioned without personal ownership = CURIOUS (page).\n"
+        "  3. Personal ownership + plateau/history = ENGAGED (email).\n"
+        "  4. Explicit buy/start/scan intent = READY (action).\n"
+        "  5. When unsure: choose LOWER friction (CURIOUS < ENGAGED < READY).\n"
+        "Never skip a rung. A page link or email is not a dead end -- each carries the\n"
+        "next rung.\n\n"
+        "HARD CONSTRAINTS:\n"
+        "- HARD LIMIT: Beats 1-5 combined must total NO MORE THAN 200 words (the Sources\n"
+        "  line and the ⟦CTA⟧ directive do not count toward the limit). Target 160-180;\n"
+        "  treat every word above 160 as fat to be cut. Compress beats 1 and 2 first.\n"
+        "  Do not go over 200. Brevity is a hard requirement.\n"
+        "- Beats 1-3 must deliver a genuine, act-on-able quick win on their own — the\n"
+        "  brief has to help a reader who never opens the full report.\n"
+        "- Do NOT resolve beat 4. The full report breaks the assumption; the brief only\n"
+        "  names it. Brief and full are a pair — never pre-empt the full's reveal.\n"
+        "- SAFETY OVERRIDE: never withhold safety-critical or time-sensitive information\n"
+        "  behind the loop. If something matters now — a drug/nutrient interaction, a\n"
+        "  red-flag symptom, an urgent contraindication — state it plainly in the brief.\n"
+        "  Tease optimization and depth, never safety.\n"
+        "- Keep ALL existing rules: never print a 'Hook' label; formulation-first ordering\n"
+        "  for symptoms/conditions; product links only from the injection table; Speckhart\n"
+        "  boundary (a credential is authority, never a disease cure claim); active\n"
+        "  discount-code rule; Sources line at the end.\n"
+        "- NOT EVERY TURN: if this turn is a clarifying question, a greeting, name/consent\n"
+        "  capture, or logistics, do NOT force the 5 beats — respond naturally and briefly.\n"
+        "  The open loop is for answer and recommendation moments only.\n\n"
+        "Do NOT print the beat labels — weave the 5 beats into natural prose.\n\n"
+        "END your response with the Sources line, then on a FINAL separate line emit a "
+        "machine directive the user will NOT see. "
+        "The directive format is exactly: `⟦CTA⟧ <type> | <target> | <label>` "
+        "where <type> is ONE of these four literal words — page, email, action, inline — "
+        "chosen by the readiness rung you selected: "
+        "CURIOUS rung -> write `page`, "
+        "ENGAGED rung -> write `email`, "
+        "READY rung -> write `action`, "
+        "COMMITTED rung -> write `inline`. "
+        "Do NOT write the rung name; write the mapped word (page/email/action/inline). "
+        "For page/action, <target> is the EXACT URL from the retrieved sources or the "
+        "product injection table — never invent one; if you have no real URL, use email "
+        "instead. For email, leave <target> empty and set <label> to a short report offer. "
+        "Examples: `⟦CTA⟧ page | https://truly.vip/e4l | Learn more` or "
+        "`⟦CTA⟧ email |  | Send my full report` or "
+        "`⟦CTA⟧ action | https://truly.vip/e4l | Start your scan`."
+    )
+
+
 def _long_form_synth_instr(is_logged_in: bool) -> str:
     """Pick the long-form synthesis instruction.
 
@@ -1294,16 +1444,22 @@ def _long_form_synth_instr(is_logged_in: bool) -> str:
     if is_logged_in:
         return (
             "Produce the BREAK & REBUILD LONG-FORM response — follow the "
-            "6-step arc described in the system prompt (opening insight → Justify the "
-            "false belief → Break → Rebuild → Journey → The one thing + "
+            "6-step arc described in the system prompt (opening insight -> Justify the "
+            "false belief -> Break -> Rebuild -> Journey -> The one thing + "
             "next step). Do NOT print a 'Hook' label; the opening insight is just "
             "the first line. Glen's voice, not Brunson's; practitioner-clinical, "
-            "no hype. List sources at the end."
+            "no hype. List sources at the end. "
+            "If the question implies a single hidden assumption a brief answer would "
+            "credit-then-question, make breaking THAT assumption the central belief "
+            "you break and rebuild."
         )
     return (
         "Produce the EXTENDED FORMAT response — full clinical depth, "
         "mechanism, dosage ranges, supporting citations, edge cases. "
-        "List sources at the end."
+        "List sources at the end. "
+        "If the question implies a single hidden assumption a brief answer would "
+        "credit-then-question, make breaking THAT assumption the central belief "
+        "you break and rebuild."
     )
 
 
@@ -3072,9 +3228,7 @@ def chat():
         synth_instr = (
             _long_form_synth_instr(bool(auth_user))
             if mode == "full" else
-            "Produce the DEFAULT EXECUTIVE SUMMARY response — opening insight "
-            "(NO 'Hook' label, just state it), Top action, 2-4 bullet rationale, "
-            "single action link, source line. ~200 words. Tight and decisive."
+            _brief_synth_instruction()
         )
 
         image_context = ""
@@ -3119,15 +3273,21 @@ def chat():
 
         full_answer = []
         try:
-            with _cl.messages.stream(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=max_tok,
-                system=_system,
-                messages=messages
-            ) as stream:
-                for token in stream.text_stream:
-                    full_answer.append(token)
-                    yield sse({"token": token})
+            from dashboard.chat_cta import parse_cta, stream_visible
+
+            def _toks():
+                with _cl.messages.stream(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=max_tok,
+                    system=_system,
+                    messages=messages
+                ) as stream:
+                    for token in stream.text_stream:
+                        full_answer.append(token)
+                        yield token
+
+            for delta in stream_visible(_toks()):
+                yield sse({"token": delta})
         except Exception as e:
             yield sse({"error": f"Claude error: {e}"})
             return
@@ -3137,13 +3297,20 @@ def chat():
         if _ceiling_hit:
             yield sse({"token": "\n\n_You've reached this month's full-report limit — here's the summary. Members get unlimited full reports._"})
 
-        answer = "".join(full_answer)
+        try:
+            _clean, _cta = parse_cta("".join(full_answer))
+        except Exception:
+            _clean, _cta = "".join(full_answer), None
+        _rung = _CTA_RUNG.get((_cta or {}).get("type"))
+        answer = _clean  # directive-stripped; downstream Socratic/surface code uses this
+
         log_id = log_query(
-            query, level, answer,
+            query, level, _clean,
             session_id=session_id, email=email, name=name,
             mode=mode, user_agent=user_agent, referer=referer,
             extracted_image_data=extracted_text,
             image_count=len(image_blocks),
+            cta_type=(_cta or {}).get("type"), cta_rung=_rung,
         )
 
         # GHL onboarding for email opt-ins (non-blocking)
@@ -3259,6 +3426,7 @@ def chat():
             "session_id": session_id, "mode": mode,
             "surfaced_cards": surfaced_cards,
             "member_mode": bool(_member_active),
+            "cta": _cta,
         }
         if _member_active:
             _done_payload["days_remaining"] = _member_active.get("days_remaining", 0)
@@ -7381,6 +7549,25 @@ def me():
         "name":          row["name"] or "",
         "authenticated": False,
     })
+
+
+@app.route("/api/cta-click", methods=["POST", "OPTIONS"])
+def api_cta_click():
+    if request.method == "OPTIONS":
+        return "", 200
+    try:
+        data = request.get_json(silent=True) or {}
+        log_id = data.get("log_id")
+        cta_type = str(data.get("cta_type", ""))[:64]
+        ts = datetime.now(timezone.utc).isoformat()
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO cta_clicks (ts, log_id, cta_type) VALUES (?, ?, ?)",
+                (ts, log_id, cta_type),
+            )
+    except Exception:
+        pass
+    return jsonify({"ok": True})
 
 
 @app.route("/rate", methods=["POST", "OPTIONS"])

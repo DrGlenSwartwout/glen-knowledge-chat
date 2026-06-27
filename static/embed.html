@@ -868,6 +868,54 @@
       </div>`;
   }
 
+  // ── Readiness-matched CTA renderer ──────────────────────────────────────────
+  // Called after a /chat done event when evt.cta is non-null.
+  // Guards all field access; never throws; no console.log noise.
+  function renderCta(cta, logId) {
+    try {
+      if (!cta || typeof cta !== 'object') return;
+      var type = cta.type || '';
+      if (type === 'inline' || !type) return;
+
+      var msgs = document.getElementById('messages');
+      if (!msgs) return;
+      var lastMsg = msgs.querySelector('.message.assistant:last-of-type');
+      if (!lastMsg) return;
+
+      if (type === 'email') {
+        // Reuse existing email-capture flow (defined below)
+        handleGatedFullReport(logId);
+        return;
+      }
+
+      if (type === 'page' || type === 'action') {
+        var target = (cta.target || '').toString().trim();
+        var label  = (cta.label  || '').toString().trim() || 'Learn more';
+        if (!target) return;
+
+        var btn = document.createElement('a');
+        btn.href = target;
+        btn.target = '_blank';
+        btn.rel = 'noopener';
+        btn.textContent = label;
+        btn.style.cssText = 'display:inline-block;margin-top:10px;padding:8px 16px;background:#3d8a52;color:#fdf4d8;border-radius:6px;text-decoration:none;font-size:14px;cursor:pointer;';
+        btn.addEventListener('click', function() {
+          try {
+            fetch('/api/cta-click', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ log_id: logId, cta_type: type })
+            });
+          } catch (_) {}
+        });
+        lastMsg.appendChild(btn);
+        msgs.scrollTop = msgs.scrollHeight;
+        return;
+      }
+    } catch (_) {}
+  }
+
   async function sendQuery() {
     if (isLoading) return;
     const inp = document.getElementById('query-input');
@@ -1023,6 +1071,8 @@
                 }
               }
               // ── end member_mode hook ─────────────────────────────────────
+              // ── Readiness-matched CTA ─────────────────────────────────────
+              if (evt.cta) { renderCta(evt.cta, evt.log_id); }
             }
           }
         }
@@ -1753,6 +1803,7 @@
                   appendMessage('assistant', accumulated || '(no response)', evt.sources, evt.chunks_retrieved, evt.log_id);
                   history.push({ role: 'user', content: query });
                   history.push({ role: 'assistant', content: accumulated });
+                  if (evt.cta) { renderCta(evt.cta, evt.log_id); }
                 }
                 isLoading = false;
                 if (sb) sb.disabled = false;
@@ -1897,6 +1948,8 @@
                 appendMessage('assistant', accumulated || '(no response)', evt.sources, evt.chunks_retrieved, evt.log_id);
                 history.push({ role: 'user', content: query });
                 history.push({ role: 'assistant', content: accumulated });
+                // Readiness-matched CTA
+                if (evt.cta) { renderCta(evt.cta, evt.log_id); }
                 // Surfaced cards
                 if (evt.surfaced_cards && evt.surfaced_cards.length) {
                   var _assist = msgs.querySelectorAll('.message.assistant');
