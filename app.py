@@ -3516,6 +3516,13 @@ _REMEDY_MATCH_SYSTEM = (
     "- You may suggest a quick 10-second E4L voice scan (truly.vip/E4L) to read current stress "
     "patterns when that would sharpen the match.\n"
     "- Never invent product URLs or prices. Keep replies short. Sign off warmly as Dr. Glen."
+    " \nQUICK-REPLY CHIPS: When the question you ask has a few discrete answers"
+    " (yes/no, a confirm, or 2-4 distinct choices), end your message with a hidden"
+    " directive on its OWN FINAL LINE: ⟦CHIPS⟧ opt1 | opt2 | ... — 2 to 4 SHORT"
+    " tap-able answers (each <= 4 words), phrased exactly as the PERSON would reply"
+    " (e.g. 'Yes' | 'No' | 'Not sure', or 'Overactive' | 'Underactive'). OMIT the"
+    " directive entirely when your question is open-ended (e.g. 'What is your main"
+    " concern?'). The person can always type instead — chips are just a shortcut."
 )
 
 _MATCH_EXTRACT_SYSTEM = (
@@ -3632,13 +3639,21 @@ def begin_match_chat():
 
         full = []
         try:
+            from dashboard.chat_cta import stream_visible, parse_chips, CHIPS_SENTINEL
             with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=900,
                                      system=_match_system, messages=messages) as stream:
-                for tok in stream.text_stream:
-                    tok = _strip_dash(tok); full.append(tok); yield sse({"token": tok})
+                def _toks():
+                    for tok in stream.text_stream:
+                        t = _strip_dash(tok); full.append(t); yield t
+                for delta in stream_visible(_toks(), sentinel=CHIPS_SENTINEL):
+                    yield sse({"token": delta})
         except Exception as e:
             yield sse({"error": f"Claude error: {e}"}); return
-        answer = "".join(full)
+        try:
+            _clean, _chips = parse_chips("".join(full))
+        except Exception:
+            _clean, _chips = "".join(full), []
+        answer = _clean
 
         try:
             log_query(query, "self-healing", answer, session_id=session_id,
@@ -3674,7 +3689,8 @@ def begin_match_chat():
             yield sse({"match": match_evt})
 
         yield sse({"done": True, "session_id": session_id,
-                   "sources": sources_list, "chunks_retrieved": len(matches)})
+                   "sources": sources_list, "chunks_retrieved": len(matches),
+                   "chips": _chips})
 
     resp = Response(stream_with_context(generate()), content_type="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
