@@ -5554,16 +5554,19 @@ def _ts_complete(system, user):
 
 
 def _recent_active_emails(cx, days=7, limit=500):
-    """Distinct client emails with chat/inquiry activity in the window (the scan population)."""
-    cutoff = (_now_utc() - timedelta(days=days)).isoformat()
+    """Distinct client emails with chat/inquiry activity in the window (the scan population).
+    Uses sqlite datetime('now', '-N days') to match the stored 'YYYY-MM-DD HH:MM:SS' ts format
+    (an ISO cutoff string would mis-compare and silently match nothing)."""
+    win = f"-{int(days)} days"
     emails = set()
     for sql in (
-        "SELECT DISTINCT lower(email) FROM query_log WHERE email IS NOT NULL AND email<>'' AND ts>=?",
+        "SELECT DISTINCT lower(email) FROM query_log "
+        "WHERE email IS NOT NULL AND email<>'' AND ts > datetime('now', ?)",
         "SELECT DISTINCT lower(client_email) FROM inquiries "
-        "WHERE client_email IS NOT NULL AND client_email<>'' AND created_at>=?",
+        "WHERE client_email IS NOT NULL AND client_email<>'' AND created_at > datetime('now', ?)",
     ):
         try:
-            for row in cx.execute(sql, (cutoff,)).fetchall():
+            for row in cx.execute(sql, (win,)).fetchall():
                 if row[0]:
                     emails.add(row[0])
         except sqlite3.OperationalError:
