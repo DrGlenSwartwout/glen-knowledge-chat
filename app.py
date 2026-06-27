@@ -5390,8 +5390,9 @@ def _testimonial_token_for_practitioner(practitioner_id) -> str:
 
 # ── Cert L1 portal assignment (subsystem A beachhead) ─────────────────────────
 _ASH_L1_TAG = "ash-cert-l1"
-# Coach records that should NOT receive the cohort assignment blast (owner's own record).
-_COHORT_EXCLUDE_EMAILS = {"drglenswartwout@gmail.com"}
+# Coach records that should NOT receive the cohort assignment blast:
+# the owner's own record + legacy test records (fake @x.com).
+_COHORT_EXCLUDE_EMAILS = {"drglenswartwout@gmail.com", "doc@x.com", "stu@x.com"}
 
 
 def _assignment_status(modules_completed, has_submission) -> str:
