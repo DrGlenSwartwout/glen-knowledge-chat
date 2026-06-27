@@ -3,17 +3,41 @@ from dashboard.actions import register_action, Action, LOW_WRITE, get_action
 from dashboard.rbac import OWNER, OPS
 from dashboard import product_reviews as _pr
 
+# Testimonial cohort tags that grant a certification level when the testimonial is APPROVED.
+# Scoped to kind='testimonial' rows carrying one of these source_tags (e.g. the ASH cert-L1
+# video homework). The grant is non-downgrading + idempotent; the human approval is the gate.
+_CERT_TAG_LEVELS = {"ash-cert-l1": 1}
+
 
 def _name(actor):
     return (getattr(actor, "name", "") or getattr(actor, "role", "") or "console")
+
+
+def _grant_cert(email, level):
+    """Best-effort idempotent cert-level grant (Supabase). Never raises into the approval."""
+    try:
+        from dashboard import practitioner_portal as _pp
+        _pp.grant_cert_level_at_least(email, int(level))
+        return True
+    except Exception as e:  # noqa: BLE001 - cert grant must never block moderation
+        print(f"[reviews] cert grant failed for {email!r} L{level}: {e!r}", flush=True)
+        return False
 
 
 def _exec_approve(params, ctx):
     rid = int(params.get("id") or 0)
     if not rid:
         raise ValueError("id required")
-    _pr.set_status(ctx["cx"], rid, "approved", by=_name(ctx.get("actor")))
-    return {"id": rid, "status": "approved"}
+    cx = ctx["cx"]
+    _pr.set_status(cx, rid, "approved", by=_name(ctx.get("actor")))
+    out = {"id": rid, "status": "approved"}
+    # Cohort homework: approving a cert-tagged testimonial grants that student their level.
+    rv = _pr.get_review(cx, rid) or {}
+    if rv.get("kind") == "testimonial" and rv.get("email"):
+        lvl = _CERT_TAG_LEVELS.get((rv.get("source_tag") or "").strip())
+        if lvl and _grant_cert(rv["email"], lvl):
+            out["cert_granted"] = {"email": rv["email"], "level": lvl}
+    return out
 
 
 def _exec_reject(params, ctx):

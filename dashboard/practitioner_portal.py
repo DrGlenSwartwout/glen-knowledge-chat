@@ -539,6 +539,19 @@ def upsert_cert_student(email, *, name="", modules_completed=0) -> Tuple[str, in
     return str(pid), mc
 
 
+def grant_cert_level_at_least(email, level, *, name="") -> int:
+    """Idempotently ensure the cert student for `email` is at least `level` (1-12).
+
+    NEVER downgrades: a student already past `level` keeps their higher level. Creates the
+    cert-student record if absent (same create-or-update semantics as the cert-review approve
+    path). Returns the resulting modules_completed. Reuses modules_completed_for_email (current)
+    + upsert_cert_student (write)."""
+    cur = modules_completed_for_email(email) or 0
+    target = max(int(cur), int(level or 0))
+    _pid, mc = upsert_cert_student(email, name=name, modules_completed=target)
+    return mc
+
+
 def unlock_wholesale(practitioner_id, *, now=None) -> None:
     """Flip a coach to unlocked once their first module is committed."""
     from db_supabase import supabase_cursor
