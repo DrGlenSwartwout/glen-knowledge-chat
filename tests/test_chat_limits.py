@@ -1,4 +1,6 @@
-from dashboard.chat_limits import client_ip, VelocityLimiter, LIMITS
+import sqlite3
+from datetime import datetime, timedelta, timezone
+from dashboard.chat_limits import client_ip, VelocityLimiter, LIMITS, tier_for, monthly_full_words
 
 def test_client_ip_takes_first_xff_hop():
     assert client_ip("1.2.3.4, 5.6.7.8", "9.9.9.9") == "1.2.3.4"
@@ -38,3 +40,23 @@ def test_velocity_recovers_after_window():
 def test_limits_has_three_tiers():
     assert set(LIMITS) == {"anonymous", "registered", "member"}
     assert LIMITS["anonymous"]["per_min"] == 10
+
+def test_tier_precedence():
+    assert tier_for(True, True, True) == "member"
+    assert tier_for(True, False, True) == "registered"
+    assert tier_for(False, False, True) == "registered"   # email alone = registered
+    assert tier_for(False, False, False) == "anonymous"
+
+def _db(tmp_path):
+    cx = sqlite3.connect(str(tmp_path / "t.db"))
+    cx.execute("CREATE TABLE query_log (ts TEXT, email TEXT, mode TEXT, word_count INTEGER DEFAULT 0)")
+    return cx
+
+def test_monthly_full_words_sums_only_full_in_window(tmp_path):
+    cx = _db(tmp_path)
+    now = datetime(2026, 6, 27, tzinfo=timezone.utc)
+    recent = now.isoformat(); old = (now - timedelta(days=40)).isoformat()
+    rows = [(recent,"a@x","full",300),(recent,"a@x","brief",999),
+            (recent,"a@x","full",200),(old,"a@x","full",500),(recent,"b@x","full",111)]
+    cx.executemany("INSERT INTO query_log VALUES (?,?,?,?)", rows); cx.commit()
+    assert monthly_full_words(cx, "a@x", now.isoformat()) == 500  # 300+200 only

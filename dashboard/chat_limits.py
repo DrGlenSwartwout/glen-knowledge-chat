@@ -3,6 +3,7 @@ Keep this importable with no app/network deps so it unit-tests in isolation."""
 import ipaddress
 import threading
 import time
+from datetime import datetime, timedelta
 
 # Tunable in ONE place. per_min/per_day are per-IP velocity; monthly_full_words
 # is the per-email/per-member full-answer ceiling (None = no hard wall).
@@ -50,3 +51,24 @@ class VelocityLimiter:
             hits.append(now)
             self._hits[ip] = hits
             return (True, 0)
+
+def tier_for(has_auth: bool, has_membership: bool, has_email: bool) -> str:
+    if has_membership:
+        return "member"
+    if has_auth or has_email:
+        return "registered"
+    return "anonymous"
+
+def monthly_full_words(cx, email: str, now_iso: str) -> int:
+    if not email:
+        return 0
+    try:
+        cutoff = (datetime.fromisoformat(now_iso) - timedelta(days=30)).isoformat()
+    except Exception:
+        return 0
+    row = cx.execute(
+        "SELECT COALESCE(SUM(word_count),0) FROM query_log "
+        "WHERE email=? AND mode='full' AND ts >= ?",
+        (email, cutoff),
+    ).fetchone()
+    return int(row[0] or 0)
