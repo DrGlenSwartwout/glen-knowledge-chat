@@ -78,6 +78,21 @@ def set_scores(cx, review_id, *, compliance=0, publication=0, authenticity=0, sp
     cx.commit()
 
 
+def cohort_submission(cx, tag, *, email="", practitioner_id=0):
+    """Latest kind='testimonial' row for a cohort `tag` belonging to this person
+    (matched by email OR by practitioner_id). Returns the row dict or None."""
+    init_table(cx)
+    cur = cx.cursor()
+    cur.row_factory = sqlite3.Row
+    e = (email or "").strip().lower()
+    pid = int(practitioner_id or 0)
+    row = cur.execute(
+        "SELECT * FROM product_reviews WHERE kind='testimonial' AND source_tag=? "
+        "AND (email=? OR (practitioner_id<>0 AND practitioner_id=?)) "
+        "ORDER BY id DESC LIMIT 1", (tag, e, pid)).fetchone()
+    return dict(row) if row else None
+
+
 def set_manual_quality(cx, review_id, *, audio=0, visual=0):
     """Store the human-entered Audio & Visual quality scores (1-10; 0 = unset)."""
     init_table(cx)

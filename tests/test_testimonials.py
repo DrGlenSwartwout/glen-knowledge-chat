@@ -289,6 +289,46 @@ def test_dimension_scores_stored_and_listed(monkeypatch, tmp_path):
     assert r and r["compliance_score"] == 9 and r["specificity_score"] == 6
 
 
+def test_cohort_submission_lookup_by_email_and_pid():
+    cx = sqlite3.connect(":memory:")
+    from dashboard import product_reviews as pr
+    assert pr.cohort_submission(cx, "ash-cert-l1", email="a@x.com") is None
+    pr.upsert_review(cx, "_results", "a@x.com", "A", 5, body="b",
+                     kind="testimonial", source_tag="ash-cert-l1", practitioner_id=42)
+    assert pr.cohort_submission(cx, "ash-cert-l1", email="a@x.com")["email"] == "a@x.com"
+    assert pr.cohort_submission(cx, "ash-cert-l1", practitioner_id=42)["practitioner_id"] == 42
+    # wrong tag / wrong person -> None
+    assert pr.cohort_submission(cx, "other-tag", email="a@x.com") is None
+    assert pr.cohort_submission(cx, "ash-cert-l1", email="z@x.com") is None
+
+
+def test_assignment_status_pure(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    assert appmod._assignment_status(0, False) == "not_started"
+    assert appmod._assignment_status(0, True) == "in_review"
+    assert appmod._assignment_status(1, True) == "complete"
+    assert appmod._assignment_status(3, False) == "complete"  # already past L1
+
+
+def test_testimonial_token_for_practitioner_get_or_mint(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    t1 = appmod._testimonial_token_for_practitioner(77)
+    t2 = appmod._testimonial_token_for_practitioner(77)  # stable: reuse, don't re-mint
+    assert t1 and t1 == t2
+    assert appmod._testimonial_practitioner_id(t1) == 77
+    assert appmod._testimonial_token_for_practitioner(0) == ""  # no pid -> no token
+
+
+def test_cert_l1_assignment_block(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    a = appmod._cert_l1_assignment(77, "stu@x.com", 0)
+    assert a["status"] == "not_started"
+    assert "tag=ash-cert-l1" in a["record_url"] and "/results" in a["record_url"]
+    assert "p=" in a["record_url"]  # auto-attributed
+    # already at level 1 -> complete
+    assert appmod._cert_l1_assignment(77, "stu@x.com", 1)["status"] == "complete"
+
+
 def test_set_quality_action_sets_audio_visual(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     from dashboard import product_reviews as pr, dispatch as d
