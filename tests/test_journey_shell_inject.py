@@ -86,6 +86,7 @@ def test_quest_disabled_no_quest_assets():
     out = shell_nav.inject_shell_html("<head></head>", "funnel", quest_enabled=False)
     assert "journey-quest.js" not in out
     assert "journey-quest.css" not in out
+    assert '"questEnabled":false' in out
 
 
 def test_quest_enabled_injects_assets():
