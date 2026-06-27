@@ -3829,6 +3829,11 @@ JOURNEY_SHELL_ENABLED = os.environ.get("JOURNEY_SHELL_ENABLED", "").strip().lowe
 REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 _TESTIMONIALS_ENABLED = os.environ.get("TESTIMONIALS_ENABLED", "").strip().lower() in ("1", "true", "yes")
+_TESTIMONIAL_INVITES_ENABLED = os.environ.get("TESTIMONIAL_INVITES_ENABLED", "").strip().lower() in ("1", "true", "yes")
+try:
+    _TESTIMONIAL_INVITE_MIN_CONFIDENCE = float(os.environ.get("TESTIMONIAL_INVITE_MIN_CONFIDENCE", "0.6"))
+except ValueError:
+    _TESTIMONIAL_INVITE_MIN_CONFIDENCE = 0.6
 
 
 def _referral_pct():
@@ -5533,6 +5538,108 @@ def api_submit_testimonial():
             _video_status = "pending"
     return jsonify({"ok": True, "review_id": rid, "status": "pending",
                     "video_status": _video_status})
+
+
+# ── Phase 4: positive-sentiment-triggered testimonial invites (review-queue-first) ──
+
+def _ts_complete(system, user):
+    """LLM completer for the positive-result classifier (Haiku). '' on error."""
+    try:
+        msg = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=300,
+                                  system=system, messages=[{"role": "user", "content": user}])
+        return "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
+    except Exception as e:  # noqa: BLE001
+        print(f"[testimonial-invites] complete failed: {e!r}", flush=True)
+        return ""
+
+
+def _recent_active_emails(cx, days=7, limit=500):
+    """Distinct client emails with chat/inquiry activity in the window (the scan population)."""
+    cutoff = (_now_utc() - timedelta(days=days)).isoformat()
+    emails = set()
+    for sql in (
+        "SELECT DISTINCT lower(email) FROM query_log WHERE email IS NOT NULL AND email<>'' AND ts>=?",
+        "SELECT DISTINCT lower(client_email) FROM inquiries "
+        "WHERE client_email IS NOT NULL AND client_email<>'' AND created_at>=?",
+    ):
+        try:
+            for row in cx.execute(sql, (cutoff,)).fetchall():
+                if row[0]:
+                    emails.add(row[0])
+        except sqlite3.OperationalError:
+            pass
+    return sorted(emails)[:limit]
+
+
+def _gather_comms_text(cx, email):
+    """Assemble a client's recent comms into one blob for the classifier — AI summaries / their own
+    words only (recent_comms never exposes email raw_text)."""
+    parts = []
+    try:
+        from dashboard import recent_comms as _rc
+        rc = _rc.recent_comms(cx, email, days_window=14)
+        if rc.get("intake_summary"):
+            parts.append("Intake: " + str(rc["intake_summary"]))
+        for q in (rc.get("recent_queries") or []):
+            parts.append("Chat: " + str(q.get("question") or q.get("query") or ""))
+        for inq in (rc.get("recent_inquiries") or []):
+            parts.append("Inquiry: " + str(inq.get("main_challenge") or "")
+                         + " / " + str(inq.get("main_goal") or ""))
+        for fb in (rc.get("recent_feedback") or []):
+            parts.append("Email feedback: " + str(fb.get("ai_summary") or ""))
+    except Exception as e:  # noqa: BLE001
+        print(f"[testimonial-invites] gather failed for {email!r}: {e!r}", flush=True)
+    return "\n".join(p for p in parts if p.strip())
+
+
+@app.route("/api/console/testimonial-invites/scan", methods=["POST"])
+def api_testimonial_invites_scan():
+    if not _TESTIMONIAL_INVITES_ENABLED:
+        return ("", 404)
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    dry = (request.args.get("dry_run") or "").strip().lower() in ("1", "true", "yes")
+    from dashboard import testimonial_signals as _ts, testimonial_invites as _ti
+    found, scanned = [], 0
+    with sqlite3.connect(LOG_DB) as cx:
+        active = _recent_active_emails(cx)
+        for e in active:
+            if _ti.should_skip(cx, e):
+                continue
+            text = _gather_comms_text(cx, e)
+            if not text.strip():
+                continue
+            scanned += 1
+            r = _ts.classify_positive_result(text, _ts_complete)
+            if r["positive"] and r["confidence"] >= _TESTIMONIAL_INVITE_MIN_CONFIDENCE:
+                if not dry:
+                    name = (_people_brief(cx, e) or {}).get("client_name", "")
+                    _ti.upsert_candidate(cx, e, name, r["quote"], "comms", r["kind"], r["confidence"])
+                found.append({"email": e, "quote": r["quote"], "confidence": r["confidence"],
+                              "kind": r["kind"]})
+    return jsonify({"ok": True, "dry_run": dry, "active": len(active), "scanned": scanned,
+                    "candidates": found})
+
+
+@app.route("/console/testimonial-invites")
+def console_testimonial_invites_page():
+    if not _TESTIMONIAL_INVITES_ENABLED:
+        return ("", 404)
+    resp = send_from_directory(STATIC, "console-testimonial-invites.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/console/testimonial-invites", methods=["GET"])
+def api_testimonial_invites_list():
+    if not _TESTIMONIAL_INVITES_ENABLED:
+        return ("", 404)
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import testimonial_invites as _ti
+    with sqlite3.connect(LOG_DB) as cx:
+        pending = _ti.pending_queue(cx)
+    return jsonify({"ok": True, "pending": pending})
 
 
 @app.route("/begin/product-image-gen/<slug>", methods=["POST"])
@@ -24544,6 +24651,8 @@ _esa.register()
 # ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────
 from dashboard import reviews_actions as _ra
 _ra.register()
+from dashboard import testimonial_invite_actions as _tia
+_tia.register()
 
 # ── C1: reorder → draft PO action ────────────────────────────────────────────
 from dashboard import reorder_actions as _roa
