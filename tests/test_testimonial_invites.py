@@ -163,7 +163,7 @@ def test_scan_dry_run_then_create_and_list(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     monkeypatch.setattr(appmod, "CONSOLE_SECRET", "")  # pass-through
     monkeypatch.setattr(appmod, "_recent_active_emails", lambda cx, **k: ["happy@x.com", "calm@x.com"])
-    monkeypatch.setattr(appmod, "_gather_comms_text", lambda cx, e: "comms for " + e)
+    monkeypatch.setattr(appmod, "_gather_comms_text", lambda cx, e, **k: "comms for " + e)
     monkeypatch.setattr(appmod, "_ts_complete",
                         lambda s, u: '{"positive": true, "confidence": 0.9, "quote": "so much better", "kind": "remedy"}')
     c = appmod.app.test_client()

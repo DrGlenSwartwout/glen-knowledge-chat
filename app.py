@@ -5574,13 +5574,13 @@ def _recent_active_emails(cx, days=7, limit=500):
     return sorted(emails)[:limit]
 
 
-def _gather_comms_text(cx, email):
+def _gather_comms_text(cx, email, days=14):
     """Assemble a client's recent comms into one blob for the classifier — AI summaries / their own
     words only (recent_comms never exposes email raw_text)."""
     parts = []
     try:
         from dashboard import recent_comms as _rc
-        rc = _rc.recent_comms(cx, email, days_window=14)
+        rc = _rc.recent_comms(cx, email, days_window=max(14, int(days)))
         if rc.get("intake_summary"):
             parts.append("Intake: " + str(rc["intake_summary"]))
         for q in (rc.get("recent_queries") or []):
@@ -5602,14 +5602,18 @@ def api_testimonial_invites_scan():
     if not _console_key_ok():
         return jsonify({"error": "Unauthorized"}), 401
     dry = (request.args.get("dry_run") or "").strip().lower() in ("1", "true", "yes")
+    try:
+        days = max(1, min(365, int(request.args.get("days") or 7)))
+    except (TypeError, ValueError):
+        days = 7
     from dashboard import testimonial_signals as _ts, testimonial_invites as _ti
     found, scanned = [], 0
     with sqlite3.connect(LOG_DB) as cx:
-        active = _recent_active_emails(cx)
+        active = _recent_active_emails(cx, days=days)
         for e in active:
             if _ti.should_skip(cx, e):
                 continue
-            text = _gather_comms_text(cx, e)
+            text = _gather_comms_text(cx, e, days=days)
             if not text.strip():
                 continue
             scanned += 1
@@ -5620,8 +5624,8 @@ def api_testimonial_invites_scan():
                     _ti.upsert_candidate(cx, e, name, r["quote"], "comms", r["kind"], r["confidence"])
                 found.append({"email": e, "quote": r["quote"], "confidence": r["confidence"],
                               "kind": r["kind"]})
-    return jsonify({"ok": True, "dry_run": dry, "active": len(active), "scanned": scanned,
-                    "candidates": found})
+    return jsonify({"ok": True, "dry_run": dry, "days": days, "active": len(active),
+                    "scanned": scanned, "candidates": found})
 
 
 @app.route("/console/testimonial-invites")
