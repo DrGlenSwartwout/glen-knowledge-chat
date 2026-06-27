@@ -1375,7 +1375,7 @@ def _brief_synth_instruction() -> str:
         "next rung.\n\n"
         "HARD CONSTRAINTS:\n"
         "- HARD LIMIT: Beats 1-5 combined must total NO MORE THAN 200 words (the Sources\n"
-        "  line and the ⧦CTA⧧ directive do not count toward the limit). Target 160-180;\n"
+        "  line and the ⟦CTA⟧ directive do not count toward the limit). Target 160-180;\n"
         "  treat every word above 160 as fat to be cut. Compress beats 1 and 2 first.\n"
         "  Do not go over 200. Brevity is a hard requirement.\n"
         "- Beats 1-3 must deliver a genuine, act-on-able quick win on their own — the\n"

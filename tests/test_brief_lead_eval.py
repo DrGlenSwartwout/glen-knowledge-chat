@@ -2,21 +2,18 @@
 
 Calls Haiku with the real brief instruction, injecting a representative
 retrieval context so a real page URL exists in the model's context.
-Samples EACH case 3 times and asserts as a PASS-RATE.
+Samples EACH case 5 times and asserts as PASS-RATES (LLM output is stochastic;
+a single rogue sample must not fail the gate).
 
-Per-sample invariants (ALL 3 must pass per case):
-- A CTA directive is emitted (cta is not None)
-- cta type is in VALID_TYPES
+Structural invariants (>= SAMPLES-1 of SAMPLES per case):
+- A CTA directive is emitted (cta is not None) with a valid type
 - The sentinel ⟦CTA⟧ is NOT visible in the cleaned text
-- Word count <= 280 (instruction targets 200; Haiku overshoots by 30-60 words
-  despite explicit cap; max observed in testing was 259 words, so 280 gives safe
-  headroom while enforcing a meaningful reduction from the pre-fix 287-word max)
+- Word count <= WORD_CEIL (a "bounded brief" check, not the ~200 aspiration)
 - The string "Hook" does not appear in the cleaned text
 
-Differentiation assertions (the key bug we fixed):
-- COLD/generic case: at least 1 of 3 samples has type == "page"
-- WARM/personal-plateau case: at least 1 of 3 samples has type == "email"
-- NOT every result across the whole run is the same single type (anti-collapse)
+Differentiation (the key bug we fixed: every case collapsed to 'action'):
+- COLD/generic case: >= 2 of 5 samples have type == "page"
+- WARM/personal-plateau case: >= 2 of 5 samples have type == "email"
 
 Skips if ANTHROPIC_API_KEY is absent.
 """
@@ -77,7 +74,7 @@ def test_brief_emits_valid_cta_and_is_bounded(monkeypatch, tmp_path):
     # (a single rogue sample must not fail the gate). Structural invariants must
     # hold for at least SAMPLES-1 of SAMPLES; differentiation needs a minority
     # (>=2) so it stays stable while still catching a full collapse-to-one-type.
-    WORD_CEIL = 300            # "is it a bounded brief", not the ~200 aspiration
+    WORD_CEIL = 280            # "is it a bounded brief", not the ~200 aspiration (max observed ~242)
     MIN_STRUCT_OK = SAMPLES - 1
     MIN_DIFFERENTIATED = 2
 
@@ -133,8 +130,4 @@ def test_brief_emits_valid_cta_and_is_bounded(monkeypatch, tmp_path):
     assert warm_emails >= MIN_DIFFERENTIATED, (
         f"WARM/personal case produced type='email' only {warm_emails}/{SAMPLES} times "
         f"(need >= {MIN_DIFFERENTIATED}). Got {results['warm']}. Triage not working."
-    )
-    assert len(set(results["cold"] + results["warm"])) > 1, (
-        f"Anti-collapse: all results were the same type. "
-        f"cold={results['cold']} warm={results['warm']}"
     )
