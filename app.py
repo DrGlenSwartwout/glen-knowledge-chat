@@ -11666,6 +11666,80 @@ def api_portal_notify_pref(token):
     return jsonify({"ok": True, "pref": pref})
 
 
+@app.route("/api/portal/<token>/chat", methods=["POST", "OPTIONS"])
+def api_portal_chat(token):
+    if request.method == "OPTIONS":
+        return "", 200
+    data = request.get_json() or {}
+    query = (data.get("query") or "").strip()
+    history = data.get("history") or []
+    with sqlite3.connect(LOG_DB) as cx:
+        from dashboard import client_portal as _cp
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+    if not portal:
+        return jsonify({"error": "not found"}), 404
+    email = (portal.get("email") or "").strip().lower()
+    content = portal.get("content") or {}
+    try:
+        with sqlite3.connect(LOG_DB) as ocx:
+            ocx.row_factory = sqlite3.Row
+            from dashboard import orders as _o
+            client_orders = _o.list_orders_by_email(ocx, email)
+    except Exception:
+        client_orders = []
+    from dashboard import portal_concierge as _pcz
+    ctx = _pcz.build_context(content, client_orders)
+    _sys = _pcz.system_prompt(ctx)
+    # RAG (best-effort, fail-open)
+    context_str = ""
+    try:
+        matches = _match_query_namespaces(embed(query))
+        context_str, _ = build_context(matches) if matches else ("", [])
+    except Exception as e:
+        print(f"[portal-concierge] retrieval: {e}", flush=True)
+    messages = []
+    for m in history[-8:]:
+        c = (m.get("content") or "").strip()
+        if not c:
+            continue  # Anthropic rejects empty content strings
+        r = "user" if m.get("role") == "user" else "assistant"
+        messages.append({"role": r, "content": c[:2000]})
+    user_block = (f"CONTEXT:\n{context_str}\n\n" if context_str else "") + query
+    messages.append({"role": "user", "content": user_block})
+
+    def generate():
+        full = []
+        try:
+            with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=700,
+                                     system=_sys, messages=messages) as stream:
+                for tok in stream.text_stream:
+                    tok = _strip_dash(tok); full.append(tok); yield sse({"token": tok})
+        except Exception as e:
+            yield sse({"error": f"Claude error: {e}"}); return
+        answer = "".join(full)
+        try:
+            convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-2:]) + f"\nassistant: {answer}"
+            mx = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=120,
+                                     system=_CONCIERGE_EXTRACT_SYSTEM,
+                                     messages=[{"role": "user", "content": convo[:3500]}])
+            txt = mx.content[0].text.strip()
+            if txt.startswith("```"):
+                txt = txt.split("```", 2)[1]
+                if txt.startswith("json\n"): txt = txt[5:]
+            obj = json.loads(txt)
+            if obj.get("suggest") and obj.get("name"):
+                c = _resolve_complement(obj["name"])
+                if c and (c["in_catalog"] or c["url"]):
+                    yield sse({"suggestion": c})
+        except Exception as e:
+            print(f"[portal-concierge] extract: {e!r}", flush=True)
+        yield sse({"done": True})
+
+    return Response(stream_with_context(generate()), content_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.route("/sms/inbound", methods=["POST"])
 def sms_inbound():
     from dashboard import notify_state as _ns
