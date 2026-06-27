@@ -1116,6 +1116,20 @@ def _init_cta_clicks():
 _init_cta_clicks()
 
 
+def _init_chip_taps():
+    """Chip-tap log — public endpoint, minimal data, no console key."""
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS chip_taps (
+                ts         TEXT NOT NULL,
+                session_id TEXT,
+                label      TEXT
+            )
+        """)
+
+_init_chip_taps()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
@@ -7582,6 +7596,25 @@ def api_cta_click():
             cx.execute(
                 "INSERT INTO cta_clicks (ts, log_id, cta_type) VALUES (?, ?, ?)",
                 (ts, log_id, cta_type),
+            )
+    except Exception:
+        pass
+    return jsonify({"ok": True})
+
+
+@app.route("/api/chip-tap", methods=["POST", "OPTIONS"])
+def api_chip_tap():
+    if request.method == "OPTIONS":
+        return "", 200
+    try:
+        data = request.get_json(silent=True) or {}
+        session_id = str(data.get("session_id", ""))[:200]
+        label = str(data.get("label", ""))[:200]
+        ts = datetime.now(timezone.utc).isoformat()
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO chip_taps (ts, session_id, label) VALUES (?, ?, ?)",
+                (ts, session_id, label),
             )
     except Exception:
         pass

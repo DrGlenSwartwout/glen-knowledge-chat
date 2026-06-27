@@ -267,6 +267,7 @@
           b.type = 'button';
           b.textContent = label;
           b.addEventListener('click', function () {
+            try { fetch(BASE + '/api/chip-tap', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId, label: label }) }).catch(function(){}); } catch (_) {}
             wrap.remove();
             fillQuery(label);
             sendQuery();
