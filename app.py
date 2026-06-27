@@ -1102,6 +1102,20 @@ def _init_production_tables():
 _init_production_tables()
 
 
+def _init_cta_clicks():
+    """CTA click log — public endpoint, minimal data, no console key."""
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS cta_clicks (
+                ts       TEXT NOT NULL,
+                log_id   INTEGER,
+                cta_type TEXT
+            )
+        """)
+
+_init_cta_clicks()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
@@ -7363,6 +7377,25 @@ def me():
         "name":          row["name"] or "",
         "authenticated": False,
     })
+
+
+@app.route("/api/cta-click", methods=["POST", "OPTIONS"])
+def api_cta_click():
+    if request.method == "OPTIONS":
+        return "", 200
+    try:
+        data = request.get_json(silent=True) or {}
+        log_id = data.get("log_id")
+        cta_type = str(data.get("cta_type", ""))[:64]
+        ts = datetime.now(timezone.utc).isoformat()
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "INSERT INTO cta_clicks (ts, log_id, cta_type) VALUES (?, ?, ?)",
+                (ts, log_id, cta_type),
+            )
+    except Exception:
+        pass
+    return jsonify({"ok": True})
 
 
 @app.route("/rate", methods=["POST", "OPTIONS"])
