@@ -709,9 +709,10 @@ function renderSuggestion(sugg){
   var url = (sugg.url != null) ? String(sugg.url) : "";
   var el = document.createElement("div");
   el.className = "chat-sugg";
+  var safeUrl = /^https?:\/\//i.test(url) ? url : "";   // only http(s) hrefs (defense-in-depth)
   var inner = '<span class="chat-sugg-name">' + esc(name) + "</span>";
-  if(price){ inner += '<span class="chat-sugg-price"> &mdash; ' + esc(price) + "</span>"; }
-  if(url){ inner += '<a class="btn chat-sugg-btn" href="' + esc(url) + '" target="_blank" rel="noopener">Order now</a>'; }
+  if(price){ inner += '<span class="chat-sugg-price"> &middot; ' + esc(price) + "</span>"; }
+  if(safeUrl){ inner += '<a class="btn chat-sugg-btn" href="' + esc(safeUrl) + '" target="_blank" rel="noopener">Order now</a>'; }
   el.innerHTML = inner;
   return el;
 }
