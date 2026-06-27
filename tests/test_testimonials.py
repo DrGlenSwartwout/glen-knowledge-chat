@@ -340,19 +340,22 @@ def test_notify_cohort_endpoint_dry_run_then_send(monkeypatch, tmp_path):
     from dashboard import practitioner_admin as pa, cert_notify as cn
     monkeypatch.setattr(pa, "list_practitioners", lambda *a, **k: [
         {"id": "uuid-coach", "email": "coach@x.com", "name": "Coach", "portal_role": "coach", "modules_completed": 0},
+        {"id": "uuid-mona", "email": "mona@x.com", "name": "Mona", "portal_role": "coach", "modules_completed": 1},
         {"id": "uuid-org", "email": "org@x.com", "name": "Org", "portal_role": "org_member", "modules_completed": 0},
-        {"id": "uuid-glen", "email": "drglenswartwout@gmail.com", "name": "Glen", "portal_role": "coach", "modules_completed": 0},
+        {"id": "uuid-glen", "email": "drglenswartwout@gmail.com", "name": "Glen", "portal_role": "coach", "modules_completed": 12},
+        {"id": "uuid-instr", "email": "instructor@x.com", "name": "Instructor", "portal_role": "coach", "modules_completed": 12},
     ])
     sent = []
     monkeypatch.setattr(cn, "send_assignment_notice",
                         lambda email, name, url, **k: sent.append(email) or True)
     c = appmod.app.test_client()
     dry = c.post("/api/console/cert/notify-cohort?dry_run=1").get_json()
-    # coaches only, AND the owner's own coach record is excluded
-    assert dry["count"] == 1 and dry["recipients"][0]["email"] == "coach@x.com"
+    # coaches only; non-coach, owner, and Level-12 instructors excluded; Level-1 (Mona) kept
+    emails = sorted(r["email"] for r in dry["recipients"])
+    assert dry["count"] == 2 and emails == ["coach@x.com", "mona@x.com"]
     assert sent == []  # dry run sends nothing
     res = c.post("/api/console/cert/notify-cohort").get_json()
-    assert res["count"] == 1 and sent == ["coach@x.com"]
+    assert res["count"] == 2 and sorted(sent) == ["coach@x.com", "mona@x.com"]
 
 
 def test_review_fires_feedback_ready_email(monkeypatch, tmp_path):

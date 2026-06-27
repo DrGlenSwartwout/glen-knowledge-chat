@@ -5390,9 +5390,9 @@ def _testimonial_token_for_practitioner(practitioner_id) -> str:
 
 # ── Cert L1 portal assignment (subsystem A beachhead) ─────────────────────────
 _ASH_L1_TAG = "ash-cert-l1"
-# Coach records that should NOT receive the cohort assignment blast:
-# the owner's own record + legacy test records (fake @x.com).
-_COHORT_EXCLUDE_EMAILS = {"drglenswartwout@gmail.com", "doc@x.com", "stu@x.com"}
+# Owner's own coach record — never receives the cohort assignment blast (belt-and-suspenders;
+# Level-12 instructors are also filtered out below).
+_COHORT_EXCLUDE_EMAILS = {"drglenswartwout@gmail.com"}
 
 
 def _assignment_status(modules_completed, has_submission) -> str:
@@ -13028,8 +13028,10 @@ def api_cert_notify_cohort():
         roster = _pa.list_practitioners()
     except Exception as e:  # noqa: BLE001
         return jsonify({"ok": False, "error": f"roster unavailable: {e}"}), 502
+    # Cert students = coaches below Level 12 (Level-12 = instructors, who don't get the homework).
     students = [p for p in roster
                 if (p.get("email") and p.get("portal_role") == "coach"
+                    and int(p.get("modules_completed") or 0) < 12
                     and (p.get("email") or "").strip().lower() not in _COHORT_EXCLUDE_EMAILS)]
     recipients = []
     for p in students:
