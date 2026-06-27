@@ -104,3 +104,23 @@ def test_stream_visible_param_sentinel_hides_chips():
 def test_stream_visible_default_still_hides_cta():
     out = "".join(stream_visible(["Body.", "⟦CTA⟧ email |  | x"]))
     assert out == "Body." and SENTINEL not in out
+
+# --- End-to-end: the directive PAYLOAD (after the sentinel) must survive in the
+# caller's `full` accumulator. stream_visible must DRAIN its input generator so
+# the per-token side effect (full.append) runs for the post-sentinel tokens.
+# Regression for the Critical: parse(full) returned empty because the option
+# tokens after the sentinel were never pulled. (CTA path had the same defect.)
+
+def test_stream_visible_drains_input_so_chips_payload_survives():
+    full = []
+    tokens = ["Pick one.", "\n", "⟦CHIPS⟧", " Yes", " |", " No", " |", " Maybe"]
+    def gen():
+        for t in tokens:
+            full.append(t)
+            yield t
+    visible = "".join(stream_visible(gen(), sentinel=CHIPS_SENTINEL))
+    assert visible == "Pick one.\n"                 # directive hidden from stream
+    clean, chips = parse_chips("".join(full))        # full kept the WHOLE answer
+    assert chips == ["Yes", "No", "Maybe"]           # payload survives (the fix)
+    assert clean == "Pick one."
+    # (the CTA-payload-survives regression lives above; not duplicated here)

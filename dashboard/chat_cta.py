@@ -16,11 +16,11 @@ def stream_visible(tokens, sentinel=SENTINEL):
 
     IMPORTANT: when the sentinel is found we stop YIELDING, but we still fully
     drain the input iterator. Callers feed a generator whose iteration has a side
-    effect (appending every token to a `full_answer` accumulator that is later
-    re-parsed for the directive's payload). If we abandoned the generator at the
-    sentinel, the directive's own argument tokens (which come AFTER the sentinel)
-    would never be pulled, never accumulated, and the re-parse would see an empty
-    directive (parse_cta -> None). So drain the rest before returning."""
+    effect (appending every token to a `full`/`full_answer` accumulator that is
+    later re-parsed for the directive's payload). If we abandoned the generator at
+    the sentinel, the directive's own option/argument tokens (which come AFTER the
+    sentinel) would never be pulled, never accumulated, and the re-parse would see
+    an empty directive. So drain the rest before returning."""
     it = iter(tokens)
     acc = ""
     emitted = 0
