@@ -64,4 +64,25 @@ def validate_shell_map(cfg: dict, land_keys) -> list:
         cat = (land or {}).get("category")
         if cat not in cats:
             errors.append(f"land '{key}' references missing category style '{cat}'")
+    # land display fields
+    for key, land in lands.items():
+        if not (land or {}).get("name"):
+            errors.append(f"land '{key}' has empty name")
+        if not (land or {}).get("thumb"):
+            errors.append(f"land '{key}' missing thumb")
+    # scene block (optional, but if present must be well-formed)
+    scene = (cfg or {}).get("scene")
+    if scene is not None:
+        if not scene.get("image"):
+            errors.append("scene.image is empty")
+        spots = scene.get("hotspots") or {}
+        expected = set(valid) | {"home"}
+        for key in expected:
+            spot = spots.get(key)
+            if not spot:
+                errors.append(f"scene hotspot '{key}' missing")
+                continue
+            for f in ("x", "y", "w", "h"):
+                if not isinstance(spot.get(f), (int, float)):
+                    errors.append(f"scene hotspot '{key}.{f}' not numeric")
     return errors
