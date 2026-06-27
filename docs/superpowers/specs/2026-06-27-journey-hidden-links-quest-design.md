@@ -108,9 +108,8 @@ Each stage has a **two-phase** sound: an **approach** ambient and an **arrival**
 **Visual reward:** on-screen celebration toast per find/clear; a bigger finale when all five are lit.
 **Auditory reward:** the stage's signature fanfare (per §4) plus a short rising flourish; a fuller fanfare on full completion.
 
-### OPEN DECISION (needs Glen's confirmation)
-Is the **5/10/15** counted **per-stage** (each stage can reach 15% on its own by doing all three rails there) **or once across the whole journey** (a single personal coupon climbs 5→10→15 as paths accumulate anywhere)?
-**Proposed default:** *single growing personal coupon* (simpler to reason about, simpler to redeem, and matches "get the coupon for yourself with the first stage … % can still increase with path finding"). The prototype implements this default. **Confirm or override before implementation.**
+### Reward scope — CONFIRMED (Glen, 2026-06-27)
+The **5/10/15** is counted **once across the whole journey**: a **single growing personal coupon** climbs 5→10→15% as the user accumulates distinct paths (chat/video/hunt) anywhere across the quest, capping at 15%. Issued at the user's first stage completion, then upgraded as more paths are completed. Simpler to reason about and to redeem; matches "get the coupon for yourself with the first stage … % can still increase with path finding." (The prototype already implements this.)
 
 ---
 
@@ -152,7 +151,7 @@ Is the **5/10/15** counted **per-stage** (each stage can reach 15% on its own by
 
 ## 10. Open items to resolve before/within implementation
 
-1. **Reward scope:** per-stage vs single growing coupon (§5 OPEN DECISION) — proposed default = single growing coupon.
+1. ~~Reward scope: per-stage vs single growing coupon~~ — **RESOLVED 2026-06-27: single growing personal coupon (§5).**
 2. **"And I'm going with you"** rights check (§4) — keep or swap to an original line.
 3. **Coupon redemption mechanics** — how coupon #1 and the giftable coupon #2 are actually issued/redeemed in the existing store/membership flow.
 4. Final **hotspot coordinate** tuning on `scene.webp` (Phase-1 gate).
