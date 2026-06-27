@@ -416,6 +416,33 @@ def _member_join_welcome(cx, email, source=None):
         print(f"[welcome] _member_join_welcome skipped: {_e!r}", flush=True)
 
 
+def _send_portal_welcome(email, name, token):
+    """Best-effort: send a one-time portal welcome after a portal is minted at
+    order time. Suppression-aware, once-guarded, never raises. Network send runs
+    in a daemon thread so the caller (order ingest) is never blocked."""
+    em = (email or "").strip().lower()
+    if not em or not token:
+        return
+    try:
+        from dashboard import email_suppression as _es, portal_welcome as _pw
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _es.init_table(cx)
+            if _es.is_suppressed(cx, em):
+                return
+            if not _pw.mark_welcome_sent(cx, em):   # already sent
+                return
+        url = f"{PUBLIC_BASE_URL}/portal/{token}"
+        body = (f"Aloha {name or ''},\n\nYour personal healing home is ready:\n\n{url}\n\n"
+                f"It is where your remedies, protocol, and your concierge live. "
+                f"Reply anytime.\n\nWith aloha,\nDr. Glen & Rae")
+        import threading
+        threading.Thread(target=_send_full_report_email,
+                         args=(em, name, "Your healing home is ready \U0001f33a", body),
+                         daemon=True).start()
+    except Exception as e:
+        print(f"[portal-welcome] {em}: {e!r}", flush=True)
+
+
 def _link_resend_generic(purpose, url_template, ttl):
     """Factory: mint a fresh `purpose` token (preserving extra) and email its URL."""
     def handler(email, extra):
@@ -24931,6 +24958,14 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                 discount_cents=int(discount_cents or 0),
                 points_redeemed_cents=int(points_redeemed_cents or 0),
                 shipping_cents=int(shipping_cents or 0), status=status)
+            # NEW: every buyer gets a portal home (idempotent, fail-open)
+            try:
+                from dashboard import portal_provision as _pp
+                _tok = _pp.ensure_portal_for_buyer(cx, email, name)
+                if _tok:
+                    _send_portal_welcome(email, name, _tok)
+            except Exception as _pe:
+                print(f"[orders] portal-provision {source}/{external_ref}: {_pe!r}", flush=True)
         finally:
             cx.close()
     except Exception as e:
