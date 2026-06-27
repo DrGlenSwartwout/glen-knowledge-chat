@@ -44,6 +44,12 @@ def has_reviewed(cx, slug, email):
                       (slug, e)).fetchone() is not None
 
 
+def _norm_pid(p):
+    """Practitioner ids are Supabase UUID strings (or 0/none for product reviews). Never int()."""
+    s = str(p or "").strip()
+    return 0 if (not s or s == "0") else s
+
+
 def upsert_review(cx, slug, email, name, rating, body="", video_kind="", video_ref="",
                   *, kind="product", practitioner_id=0, consent_public=0, source_tag=""):
     init_table(cx)
@@ -60,7 +66,7 @@ def upsert_review(cx, slug, email, name, rating, body="", video_kind="", video_r
         "status='pending', ai_score=0, ai_verdict='', ai_recommend_publish=0, points_awarded=0, "
         "featured=0, reviewed_at='', reviewed_by=''",
         (slug, e, name or "", int(rating), body or "", video_kind or "", video_ref or "",
-         kind or "product", int(practitioner_id or 0), 1 if consent_public else 0,
+         kind or "product", _norm_pid(practitioner_id), 1 if consent_public else 0,
          (source_tag or "")[:64], now))
     cx.commit()
     return cx.execute("SELECT id FROM product_reviews WHERE product_slug=? AND email=?",
@@ -85,11 +91,11 @@ def cohort_submission(cx, tag, *, email="", practitioner_id=0):
     cur = cx.cursor()
     cur.row_factory = sqlite3.Row
     e = (email or "").strip().lower()
-    pid = int(practitioner_id or 0)
+    pid = _norm_pid(practitioner_id)
     row = cur.execute(
         "SELECT * FROM product_reviews WHERE kind='testimonial' AND source_tag=? "
-        "AND (email=? OR (practitioner_id<>0 AND practitioner_id=?)) "
-        "ORDER BY id DESC LIMIT 1", (tag, e, pid)).fetchone()
+        "AND (email=? OR (practitioner_id<>0 AND practitioner_id<>'' AND practitioner_id=?)) "
+        "ORDER BY id DESC LIMIT 1", (tag, e, pid if pid else "\x00")).fetchone()
     return dict(row) if row else None
 
 

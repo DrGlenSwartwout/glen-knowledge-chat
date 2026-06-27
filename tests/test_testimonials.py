@@ -177,9 +177,10 @@ def test_compliance_result_recorded(monkeypatch, tmp_path):
 def test_practitioner_attribution_from_token(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     _pass_scorer(monkeypatch)
-    tok = appmod._testimonial_token_mint(99)
-    assert appmod._testimonial_practitioner_id(tok) == 99
-    assert appmod._testimonial_practitioner_id("garbage") == 0
+    uid = "fb6f2f66-28ab-4c11-9d3e-deadbeef9999"  # Supabase UUID
+    tok = appmod._testimonial_token_mint(uid)
+    assert appmod._testimonial_practitioner_id(tok) == uid
+    assert appmod._testimonial_practitioner_id("garbage") == ""
     c = appmod.app.test_client()
     j = c.post("/api/testimonials",
                json={"name": "Ann", "email": "ann@x.com", "rating": 5,
@@ -187,7 +188,7 @@ def test_practitioner_attribution_from_token(monkeypatch, tmp_path):
     from dashboard import product_reviews as _pr
     with sqlite3.connect(appmod.LOG_DB) as cx:
         row = _pr.get_review(cx, j["review_id"])
-    assert row["practitioner_id"] == 99
+    assert row["practitioner_id"] == uid
 
 
 def test_console_list_labels_testimonial(monkeypatch, tmp_path):
@@ -292,11 +293,12 @@ def test_dimension_scores_stored_and_listed(monkeypatch, tmp_path):
 def test_cohort_submission_lookup_by_email_and_pid():
     cx = sqlite3.connect(":memory:")
     from dashboard import product_reviews as pr
+    uid = "22493df4-uuid-pid"  # Supabase UUID, not an int
     assert pr.cohort_submission(cx, "ash-cert-l1", email="a@x.com") is None
     pr.upsert_review(cx, "_results", "a@x.com", "A", 5, body="b",
-                     kind="testimonial", source_tag="ash-cert-l1", practitioner_id=42)
+                     kind="testimonial", source_tag="ash-cert-l1", practitioner_id=uid)
     assert pr.cohort_submission(cx, "ash-cert-l1", email="a@x.com")["email"] == "a@x.com"
-    assert pr.cohort_submission(cx, "ash-cert-l1", practitioner_id=42)["practitioner_id"] == 42
+    assert pr.cohort_submission(cx, "ash-cert-l1", practitioner_id=uid)["practitioner_id"] == uid
     # wrong tag / wrong person -> None
     assert pr.cohort_submission(cx, "other-tag", email="a@x.com") is None
     assert pr.cohort_submission(cx, "ash-cert-l1", email="z@x.com") is None
@@ -312,21 +314,24 @@ def test_assignment_status_pure(monkeypatch, tmp_path):
 
 def test_testimonial_token_for_practitioner_get_or_mint(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
-    t1 = appmod._testimonial_token_for_practitioner(77)
-    t2 = appmod._testimonial_token_for_practitioner(77)  # stable: reuse, don't re-mint
+    uid = "22493df4-7a3e-4a15-a8e2-0a4334dca8b8"  # Supabase UUID — NOT an int
+    t1 = appmod._testimonial_token_for_practitioner(uid)
+    t2 = appmod._testimonial_token_for_practitioner(uid)  # stable: reuse, don't re-mint
     assert t1 and t1 == t2
-    assert appmod._testimonial_practitioner_id(t1) == 77
-    assert appmod._testimonial_token_for_practitioner(0) == ""  # no pid -> no token
+    assert appmod._testimonial_practitioner_id(t1) == uid  # round-trips the UUID string
+    assert appmod._testimonial_token_for_practitioner(0) == ""   # no pid -> no token
+    assert appmod._testimonial_token_for_practitioner("") == ""
 
 
 def test_cert_l1_assignment_block(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
-    a = appmod._cert_l1_assignment(77, "stu@x.com", 0)
+    uid = "eaf8ccf5-ea00-4b9c-9f0e-deadbeef0001"  # UUID pid must not crash int()
+    a = appmod._cert_l1_assignment(uid, "stu@x.com", 0)
     assert a["status"] == "not_started"
     assert "tag=ash-cert-l1" in a["record_url"] and "/results" in a["record_url"]
     assert "p=" in a["record_url"]  # auto-attributed
     # already at level 1 -> complete
-    assert appmod._cert_l1_assignment(77, "stu@x.com", 1)["status"] == "complete"
+    assert appmod._cert_l1_assignment(uid, "stu@x.com", 1)["status"] == "complete"
 
 
 def test_notify_cohort_endpoint_dry_run_then_send(monkeypatch, tmp_path):
@@ -334,15 +339,17 @@ def test_notify_cohort_endpoint_dry_run_then_send(monkeypatch, tmp_path):
     monkeypatch.setattr(appmod, "CONSOLE_SECRET", "")  # pass-through (_console_key_ok)
     from dashboard import practitioner_admin as pa, cert_notify as cn
     monkeypatch.setattr(pa, "list_practitioners", lambda *a, **k: [
-        {"id": 1, "email": "coach@x.com", "name": "Coach", "portal_role": "coach", "modules_completed": 0},
-        {"id": 2, "email": "org@x.com", "name": "Org", "portal_role": "org_member", "modules_completed": 0},
+        {"id": "uuid-coach", "email": "coach@x.com", "name": "Coach", "portal_role": "coach", "modules_completed": 0},
+        {"id": "uuid-org", "email": "org@x.com", "name": "Org", "portal_role": "org_member", "modules_completed": 0},
+        {"id": "uuid-glen", "email": "drglenswartwout@gmail.com", "name": "Glen", "portal_role": "coach", "modules_completed": 0},
     ])
     sent = []
     monkeypatch.setattr(cn, "send_assignment_notice",
                         lambda email, name, url, **k: sent.append(email) or True)
     c = appmod.app.test_client()
     dry = c.post("/api/console/cert/notify-cohort?dry_run=1").get_json()
-    assert dry["count"] == 1 and dry["recipients"][0]["email"] == "coach@x.com"  # coaches only
+    # coaches only, AND the owner's own coach record is excluded
+    assert dry["count"] == 1 and dry["recipients"][0]["email"] == "coach@x.com"
     assert sent == []  # dry run sends nothing
     res = c.post("/api/console/cert/notify-cohort").get_json()
     assert res["count"] == 1 and sent == ["coach@x.com"]

@@ -5346,31 +5346,38 @@ def _init_testimonial_tokens():
 _init_testimonial_tokens()
 
 
-def _testimonial_token_mint(practitioner_id: int) -> str:
+def _norm_pid(practitioner_id) -> str:
+    """Practitioner ids are Supabase UUIDs (strings) — NOT integers. Normalize to a string,
+    empty for none/0. (Never int() a practitioner id; that crashes on a UUID.)"""
+    s = str(practitioner_id or "").strip()
+    return "" if s == "0" else s
+
+
+def _testimonial_token_mint(practitioner_id) -> str:
     """Mint a ?p= token attributing a testimonial to a practitioner. Returns plaintext token."""
     tok = secrets.token_urlsafe(24)
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.execute(
             "INSERT OR IGNORE INTO testimonial_tokens (token, practitioner_id, created_at) "
-            "VALUES (?,?,?)", (tok, int(practitioner_id or 0), _now_utc().isoformat()))
+            "VALUES (?,?,?)", (tok, _norm_pid(practitioner_id), _now_utc().isoformat()))
         cx.commit()
     return tok
 
 
-def _testimonial_practitioner_id(tok: str) -> int:
-    """Resolve a ?p= token to a practitioner id. Returns 0 for unknown/blank tokens."""
+def _testimonial_practitioner_id(tok: str) -> str:
+    """Resolve a ?p= token to a practitioner id (UUID string). '' for unknown/blank tokens."""
     if not tok:
-        return 0
+        return ""
     with sqlite3.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT practitioner_id FROM testimonial_tokens WHERE token=?", (tok,)).fetchone()
-    return int(row[0]) if row and row[0] is not None else 0
+    return str(row[0]) if row and row[0] is not None else ""
 
 
 def _testimonial_token_for_practitioner(practitioner_id) -> str:
     """Stable per-practitioner ?p= token: reuse an existing one, else mint. '' for no pid."""
-    pid = int(practitioner_id or 0)
-    if pid <= 0:
+    pid = _norm_pid(practitioner_id)
+    if not pid:
         return ""
     _init_testimonial_tokens()
     with sqlite3.connect(LOG_DB) as cx:
@@ -5383,6 +5390,9 @@ def _testimonial_token_for_practitioner(practitioner_id) -> str:
 
 # ── Cert L1 portal assignment (subsystem A beachhead) ─────────────────────────
 _ASH_L1_TAG = "ash-cert-l1"
+# Coach records that should NOT receive the cohort assignment blast:
+# the owner's own record + legacy test records (fake @x.com).
+_COHORT_EXCLUDE_EMAILS = {"drglenswartwout@gmail.com", "doc@x.com", "stu@x.com"}
 
 
 def _assignment_status(modules_completed, has_submission) -> str:
@@ -5437,7 +5447,7 @@ def _cert_l1_assignment(practitioner_id, email, modules_completed):
     try:
         with sqlite3.connect(LOG_DB) as cx:
             sub = _pr_module().cohort_submission(
-                cx, _ASH_L1_TAG, email=email or "", practitioner_id=int(practitioner_id or 0))
+                cx, _ASH_L1_TAG, email=email or "", practitioner_id=_norm_pid(practitioner_id))
     except Exception:
         sub = None
     out = {
@@ -13018,10 +13028,12 @@ def api_cert_notify_cohort():
         roster = _pa.list_practitioners()
     except Exception as e:  # noqa: BLE001
         return jsonify({"ok": False, "error": f"roster unavailable: {e}"}), 502
-    students = [p for p in roster if (p.get("email") and p.get("portal_role") == "coach")]
+    students = [p for p in roster
+                if (p.get("email") and p.get("portal_role") == "coach"
+                    and (p.get("email") or "").strip().lower() not in _COHORT_EXCLUDE_EMAILS)]
     recipients = []
     for p in students:
-        pid = int(p.get("id") or 0)
+        pid = _norm_pid(p.get("id"))
         email = (p.get("email") or "").strip()
         name = p.get("name") or ""
         record_url = _cert_l1_assignment(pid, email, p.get("modules_completed") or 0)["record_url"]

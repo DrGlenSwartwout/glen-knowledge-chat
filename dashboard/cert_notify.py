@@ -28,14 +28,15 @@ def _portal_magic_url(pid, email) -> str:
 
 
 def _resolve_pid(practitioner_id, email):
-    pid = int(practitioner_id or 0)
-    if pid > 0:
+    """Practitioner ids are Supabase UUID strings. Resolve from the arg or by email; '' if none."""
+    pid = str(practitioner_id or "").strip()
+    if pid and pid != "0":
         return pid
     try:
         got = _pp.id_for_email(email)
-        return int(got) if got else 0
+        return str(got).strip() if got else ""
     except Exception:
-        return 0
+        return ""
 
 
 def send_feedback_ready(email, name, outcome, *, practitioner_id=0, send=None) -> bool:
