@@ -3707,6 +3707,7 @@ ASCEND_PERSONALIZED_ENABLED = os.environ.get("ASCEND_PERSONALIZED_ENABLED", "").
 JOURNEY_SHELL_ENABLED = os.environ.get("JOURNEY_SHELL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+_TESTIMONIALS_ENABLED = os.environ.get("TESTIMONIALS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 
 
 def _referral_pct():
@@ -5014,6 +5015,36 @@ def _review_verified_buyer(cx, email, slug):
     return False
 
 
+class _ReviewVideoError(ValueError):
+    """Raised by _extract_review_video for a client-facing 400 (bad type / too large)."""
+
+
+def _extract_review_video(slug, data):
+    """Resolve an optional review/testimonial video from the current request.
+
+    Returns (video_kind, video_ref): ("upload", filename) for a saved file,
+    ("link", url) for a pasted link, or ("", "") when none. Raises
+    _ReviewVideoError on an unsupported type or oversize upload. Shared by
+    /api/reviews and /api/testimonials so both validate + store identically.
+    """
+    f = request.files.get("video") if request.files else None
+    if f and f.filename:
+        safe = re.sub(r"[^\w.\-]", "_", f.filename)[-80:]
+        ext = Path(safe).suffix.lower()
+        if ext not in _REVIEW_VIDEO_EXTS:
+            raise _ReviewVideoError("unsupported video type")
+        f.seek(0, 2); size = f.tell(); f.seek(0)
+        if size > _REVIEW_VIDEO_MAX_BYTES:
+            raise _ReviewVideoError("video too large")
+        d = _REVIEW_MEDIA_DIR / slug
+        d.mkdir(parents=True, exist_ok=True)
+        f.save(str(d / safe))
+        return ("upload", safe)
+    if (data.get("video_url") or "").strip():
+        return ("link", (data.get("video_url") or "").strip()[:500])
+    return ("", "")
+
+
 @app.route("/api/reviews", methods=["POST"])
 def api_submit_review():
     if not _REVIEWS_ENABLED:
@@ -5035,22 +5066,10 @@ def api_submit_review():
     body = (data.get("body") or "").strip()
 
     # optional video: link (video_url) or upload (file 'video')
-    video_kind, video_ref = "", ""
-    f = request.files.get("video") if request.files else None
-    if f and f.filename:
-        safe = re.sub(r"[^\w.\-]", "_", f.filename)[-80:]
-        ext = Path(safe).suffix.lower()
-        if ext not in _REVIEW_VIDEO_EXTS:
-            return jsonify({"ok": False, "error": "unsupported video type"}), 400
-        f.seek(0, 2); size = f.tell(); f.seek(0)
-        if size > _REVIEW_VIDEO_MAX_BYTES:
-            return jsonify({"ok": False, "error": "video too large"}), 400
-        d = _REVIEW_MEDIA_DIR / slug
-        d.mkdir(parents=True, exist_ok=True)
-        f.save(str(d / safe))
-        video_kind, video_ref = "upload", safe
-    elif (data.get("video_url") or "").strip():
-        video_kind, video_ref = "link", (data.get("video_url") or "").strip()[:500]
+    try:
+        video_kind, video_ref = _extract_review_video(slug, data)
+    except _ReviewVideoError as ve:
+        return jsonify({"ok": False, "error": str(ve)}), 400
 
     from dashboard import product_reviews as _pr
     from dashboard import review_scoring as _rs
@@ -5183,6 +5202,102 @@ def _send_review_invite(email: str, name: str, slug: str):
         )
     except Exception as _e:
         print(f"[reviews] _send_review_invite failed for {email}/{slug}: {_e!r}", flush=True)
+
+
+# ── Testimonials (Phase 1: in-house Boast.io replacement) ─────────────────────
+# Reuse the product_reviews engine under the reserved campaign slug "_results"
+# (kind='testimonial'). Open submission (no verified-buyer gate, no points/gift);
+# rewards stay exclusive to the verified-buyer product-review path. Practitioner
+# attribution resolves a ?p= token against a LOCAL table (no Supabase dependency).
+
+def _init_testimonial_tokens():
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "CREATE TABLE IF NOT EXISTS testimonial_tokens "
+            "(token TEXT PRIMARY KEY, practitioner_id INTEGER, created_at TEXT)"
+        )
+        cx.commit()
+
+_init_testimonial_tokens()
+
+
+def _testimonial_token_mint(practitioner_id: int) -> str:
+    """Mint a ?p= token attributing a testimonial to a practitioner. Returns plaintext token."""
+    tok = secrets.token_urlsafe(24)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT OR IGNORE INTO testimonial_tokens (token, practitioner_id, created_at) "
+            "VALUES (?,?,?)", (tok, int(practitioner_id or 0), _now_utc().isoformat()))
+        cx.commit()
+    return tok
+
+
+def _testimonial_practitioner_id(tok: str) -> int:
+    """Resolve a ?p= token to a practitioner id. Returns 0 for unknown/blank tokens."""
+    if not tok:
+        return 0
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT practitioner_id FROM testimonial_tokens WHERE token=?", (tok,)).fetchone()
+    return int(row[0]) if row and row[0] is not None else 0
+
+
+@app.route("/results")
+def testimonials_form_page():
+    if not _TESTIMONIALS_ENABLED:
+        return ("", 404)
+    resp = send_from_directory(STATIC, "results.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/api/testimonials", methods=["POST"])
+def api_submit_testimonial():
+    if not _TESTIMONIALS_ENABLED:
+        return ("", 404)
+    data = request.get_json(silent=True) or request.form
+    au = get_authenticated_user(request) or {}
+    email = ((data.get("email") or au.get("email") or "")).strip().lower()
+    name = (data.get("name") or au.get("name") or "").strip()
+    try:
+        rating = int(data.get("rating") or 0)
+    except (TypeError, ValueError):
+        rating = 0
+    consent = str(data.get("consent_public") or "").strip().lower() in ("1", "true", "yes", "on")
+    if not name or not email or rating < 1 or rating > 5:
+        return jsonify({"ok": False, "error": "name, email and rating 1-5 required"}), 400
+    if not consent:
+        return jsonify({"ok": False, "error": "public-use consent is required"}), 400
+    body = (data.get("body") or "").strip()
+    pid = _testimonial_practitioner_id((data.get("p") or "").strip())
+
+    try:
+        video_kind, video_ref = _extract_review_video("_results", data)
+    except _ReviewVideoError as ve:
+        return jsonify({"ok": False, "error": str(ve)}), 400
+
+    from dashboard import product_reviews as _pr
+    from dashboard import review_scoring as _rs
+    _ctx = {"name": "Dr. Glen Swartwout — Biofield Analysis & Functional Formulations"}
+    with sqlite3.connect(LOG_DB) as cx:
+        rid = _pr.upsert_review(cx, "_results", email, name, rating, body, video_kind, video_ref,
+                                kind="testimonial", practitioner_id=pid, consent_public=1)
+        score = _rs.score_review(_cl, _ctx, body, strip=_strip_dash) if body else {
+            "compliance_ok": True, "reasons": "", "quality_points": 0, "recommend_publish": False}
+        _pr.set_ai_result(cx, rid, score["quality_points"], score["reasons"], score["recommend_publish"])
+        # NOTE: ungated path — no points/store-credit and no review-gift by design.
+        _video_status = ""
+        if _REVIEWS_VIDEO and video_kind == "upload" and video_ref:
+            from dashboard import review_video_jobs as _vj
+            _pr.set_video_result(cx, rid, 0, "", "pending")
+            _vj.enqueue(cx, rid)
+            _video_status = "pending"
+    return jsonify({"ok": True, "review_id": rid, "status": "pending",
+                    "video_status": _video_status})
 
 
 @app.route("/begin/product-image-gen/<slug>", methods=["POST"])
@@ -9723,7 +9838,10 @@ def api_console_reviews_list():
     with sqlite3.connect(LOG_DB) as cx:
         pending = _pr.pending_queue(cx)
     for r in pending:
-        r["product_name"] = (_get_product(r["product_slug"]) or {}).get("name", r["product_slug"])
+        if r.get("product_slug") == "_results":
+            r["product_name"] = "Testimonial"
+        else:
+            r["product_name"] = (_get_product(r["product_slug"]) or {}).get("name", r["product_slug"])
         if r.get("video_kind") == "upload" and r.get("video_ref"):
             r["video_url"] = f"/review-media/{r['product_slug']}/{r['video_ref']}"
         elif r.get("video_kind") == "link":
