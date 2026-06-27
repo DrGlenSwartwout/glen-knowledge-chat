@@ -127,6 +127,64 @@
   line-height: 1.35;
 }
 
+/* ---------- HOTSPOT LOCK STATES ---------- */
+/* Locked: not yet reachable — dim + default cursor */
+.jq-overlay .jq-stage .jq-hot.jq-locked {
+  opacity: 0.25;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Current target: gentle gold pulse via box-shadow */
+.jq-overlay .jq-stage .jq-hot.jq-current {
+  background: rgba(212, 168, 67, 0.08);
+  animation: jq-hotpulse 1.6s ease-in-out infinite;
+  cursor: crosshair;
+}
+
+@keyframes jq-hotpulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(212, 168, 67, 0.3) inset; }
+  50%       { box-shadow: 0 0 0 2.5px rgba(212, 168, 67, 0.85) inset;
+              background: rgba(212, 168, 67, 0.14); }
+}
+
+/* Unlocked (done): full opacity, normal pointer */
+.jq-overlay .jq-stage .jq-hot.jq-unlocked {
+  opacity: 1;
+}
+
+/* ---------- RIBBON LAND LOCK STATES (quest-active only) ---------- */
+/* Gate on body.jq-quest-active so non-quest pages are completely unaffected. */
+
+/* Locked: grayscale + dim */
+body.jq-quest-active .js-land.jq-locked {
+  filter: grayscale(1);
+  opacity: 0.35;
+}
+
+/* Current target: gold color + animated box-shadow pulse (avoids ::after conflict
+   with the existing .js-land.next::after "💎" gem marker) */
+body.jq-quest-active .js-land.jq-current {
+  color: var(--gold, #d4a843);
+  font-weight: 600;
+  opacity: 1;
+  filter: none;
+  animation: jq-landpulse 1.6s ease-in-out infinite;
+}
+
+@keyframes jq-landpulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 168, 67, 0.25); }
+  50%       { box-shadow: 0 0 0 3px rgba(212, 168, 67, 0.65); }
+}
+
+/* Unlocked (done): full color */
+body.jq-quest-active .js-land.jq-unlocked {
+  filter: none;
+  opacity: 1;
+  color: var(--green, #6aa37a);
+  animation: none;
+}
+
 /* ---------- MOBILE HINT (tap to reveal) ---------- */
 @media (hover: none) {
   .jq-overlay .jq-stage .jq-hot {
