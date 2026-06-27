@@ -40,6 +40,14 @@ bakes in the two fields the later phases need *at collection time* (practitioner
   genuinely new frontend piece, deliberately split out.
 - **Phase 2:** embeddable proof widget (approved + `consent_public` testimonials).
 - **Phase 3:** submitter self-share loop + approved→branded social post / Facebook auto-publish.
+- **Phase 4 (Glen, 2026-06-26): positive-sentiment-triggered invitations.** Auto-detect when a client
+  expresses a positive result/success in chat, email, or feedback and fire a testimonial invitation —
+  a link to `/results` with a "rate this remedy/service or share a quick video" ask. Reuses the
+  recent-comms mining pipeline (`dashboard/recent_comms.py`, `personal_email_feedback`, chat/inquiries,
+  journal emotion analysis) for sentiment detection and the `_send_review_invite` send pattern.
+  Needs: a sentiment/result detector, a per-person de-dup/cooldown (don't re-ask the same person), an
+  attribution-aware link (`?p=` when the praise came via a practitioner), and a console review-before
+  -send queue (avoid auto-emailing on a false-positive). Its own spec.
 
 ## Decision: extend the existing review engine (sentinel campaign slug)
 
