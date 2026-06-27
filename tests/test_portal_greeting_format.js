@@ -27,6 +27,15 @@ eq(escGreeting("<script>x"), "<p>&lt;script&gt;x</p>", "html is escaped (no raw 
 eq(escGreeting(""), "", "empty string -> empty (default fallback still applies)");
 eq(escGreeting("one"), "<p>one</p>", "plain text -> one paragraph");
 eq(escGreeting("a\n\n\n\nb"), "<p>a</p><p>b</p>", "multiple blank lines collapse");
+eq(escGreeting("see https://illtowell.com/begin/product/microbiome here"),
+   '<p>see <a href="https://illtowell.com/begin/product/microbiome" target="_blank" rel="noopener">https://illtowell.com/begin/product/microbiome</a> here</p>',
+   "bare http(s) URL -> anchor");
+eq(escGreeting("visit https://clinicalpraxis.com/titration."),
+   '<p>visit <a href="https://clinicalpraxis.com/titration" target="_blank" rel="noopener">https://clinicalpraxis.com/titration</a>.</p>',
+   "trailing period stays outside the link");
+eq(escGreeting("plain clinicalpraxis.com/titration text"),
+   "<p>plain clinicalpraxis.com/titration text</p>",
+   "scheme-less domain is NOT linkified (avoids false positives)");
 
 if (failed) { console.error(`\n${failed} failure(s)`); process.exit(1); }
 console.log("\nall passed");

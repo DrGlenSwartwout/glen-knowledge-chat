@@ -183,7 +183,15 @@ const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&l
 // single newlines -> <br>. Empty input yields "" so callers' default-string
 // fallback still applies. Returns <p>...</p> blocks, so wrap in a <div>, not a <p>.
 const escGreeting = (s)=>{
-  const e = esc(s).replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
+  let e = esc(s).replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
+  // Linkify bare http(s) URLs (scheme required, so plain "foo.com" is left alone);
+  // trailing sentence punctuation is peeled out of the href.
+  e = e.replace(/https?:\/\/[^\s<]+/g, (m)=>{
+    const t = m.match(/[.,;:!?)]+$/);
+    const tail = t ? t[0] : "";
+    const url = tail ? m.slice(0, -tail.length) : m;
+    return '<a href="'+url+'" target="_blank" rel="noopener">'+url+'</a>'+tail;
+  });
   return e.split(/\n\s*\n/).map(b=>b.trim()).filter(Boolean)
           .map(b=>"<p>"+b.replace(/\n/g,"<br>")+"</p>").join("");
 };
