@@ -21,6 +21,7 @@ import anthropic
 
 from . import intelligence as _intel
 from . import money as _money
+from . import finance as _finance
 from . import ghl as _ghl
 from . import pinecone_stats as _pc_stats
 from . import scoreapp as _scoreapp
@@ -48,13 +49,19 @@ SLUG_PROMPTS = {
         "You write the Finance card. The first line must be exactly '# Finance' "
         "and nothing else. "
         "Cover ONLY money, from the snapshot's `money` block: the combined cash "
-        "position (bank balances + Wise together), money in today and over 7 "
-        "days, accounts receivable / overdue, and any Practice Better or "
-        "Authorize.net processor issues. Name the single revenue constraint "
-        "(the Schwerpunkt) limiting cash this week. Do NOT cover pipeline, "
-        "leads, or system health; other cards own those. State each figure "
-        "once. Then one short '## Insight' line on runway / trend. Voice: "
-        "calm, precise, money-first."
+        "position (bank balances + Wise together) and money in today and over 7 "
+        "days. ACCOUNTS RECEIVABLE / OVERDUE comes from `money.qbo_ar` "
+        "(QuickBooks open invoices; each row has customer, balance, days_overdue, "
+        "doc); name the most overdue by customer and amount, oldest first. "
+        "`money.practice_better` is SEPARATE clinical-billing activity "
+        "(collected / outstanding) and `money.authorize_net` is processor "
+        "settlement; mention processor issues if any, but do NOT report Practice "
+        "Better or Authorize.net figures as accounts receivable and do NOT repeat "
+        "the same dollars twice. Name the single revenue constraint (the "
+        "Schwerpunkt) limiting cash this week. Do NOT cover pipeline, leads, or "
+        "system health; other cards own those. State each figure once. Then one "
+        "short '## Insight' line on runway / trend. Voice: calm, precise, "
+        "money-first."
     ),
     "clients-pipeline": (
         "You write the Clients card. The first line must be exactly '# Clients' "
@@ -113,6 +120,7 @@ def gather_snapshot():
             "wise":            _safe(_money.wise_data,     label="wise"),
             "practice_better": _safe(lambda: _money.pb_data(days=30), label="pb_data"),
             "authorize_net":   _safe(lambda: _money.an_data(days=30), label="an_data"),
+            "qbo_ar":          _safe(_finance.open_invoices, label="qbo_ar"),
         },
         "gohighlevel": _safe(_ghl.opportunities_by_stage, label="ghl"),
         "inbox":       _safe(_inbox.backlog_summary,      label="inbox"),

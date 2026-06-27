@@ -29,3 +29,17 @@ def test_pb_data_surfaces_client_email():
     # source-assert: pb_data's recent entry includes an email field
     src = (_repo() / "dashboard" / "money.py").read_text()
     assert 'client.get("email"' in src
+
+
+def test_money_snapshot_includes_qbo_ar():
+    src = (_repo() / "dashboard" / "briefing_runner.py").read_text()
+    assert "import finance as _finance" in src
+    assert '"qbo_ar"' in src
+    assert "_finance.open_invoices" in src
+
+
+def test_money_prompt_uses_qbo_ar_for_receivables():
+    from dashboard import briefing_runner as br
+    p = br.SLUG_PROMPTS["money-cash"]
+    assert "qbo_ar" in p                      # AR comes from the QBO block
+    assert "practice_better" in p             # PB still named, as separate activity
