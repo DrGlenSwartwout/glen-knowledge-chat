@@ -143,3 +143,40 @@ def test_build_linkables_mixed_person_and_invoice_share_counter():
     assert snap["money"]["qbo_ar"][0]["ref"] == "r2"
     assert reg["r1"]["type"] == "person"
     assert reg["r2"]["type"] == "invoice"
+
+
+def test_order_url_encodes_id():
+    assert bl.order_url("42") == "/console/orders?order=42"
+
+
+def test_build_linkables_mints_order_links():
+    snap = {"orders": [
+        {"id": 42, "name": "Jane Doe", "email": "jane@x.com", "status": "new",
+         "pay_status": "unpaid", "total_cents": 6997},
+        {"id": 43, "name": "", "email": "", "status": "packed", "pay_status": "paid"},
+    ]}
+    reg = bl.build_linkables(snap)
+    rows = snap["orders"]
+    assert reg[rows[0]["ref"]] == {"type": "order", "display": "Jane Doe",
+                                   "url": "/console/orders?order=42"}
+    assert reg[rows[1]["ref"]]["display"] == "Order #43"   # no name/email fallback
+    assert reg[rows[1]["ref"]]["url"] == "/console/orders?order=43"
+    assert all(v["type"] == "order" for v in reg.values())
+
+
+def test_build_linkables_orders_error_block_is_safe():
+    snap = {"orders": {"_error": "orders: OperationalError"}}
+    assert bl.build_linkables(snap) == {}
+
+
+def test_build_linkables_mixed_person_invoice_order_share_counter():
+    snap = {
+        "inbox": {"oldest": [{"from": "Real Client <c@example.com>", "age_days": 4}]},
+        "money": {"qbo_ar": [{"id": "5", "doc": "9", "customer": "Beta", "balance": 10, "days_overdue": 1}]},
+        "orders": [{"id": 7, "name": "Carol", "status": "new", "pay_status": "unpaid"}],
+    }
+    reg = bl.build_linkables(snap)
+    assert snap["inbox"]["oldest"][0]["ref"] == "r1"       # person first
+    assert snap["money"]["qbo_ar"][0]["ref"] == "r2"        # invoice second
+    assert snap["orders"][0]["ref"] == "r3"                 # order third
+    assert reg["r3"] == {"type": "order", "display": "Carol", "url": "/console/orders?order=7"}

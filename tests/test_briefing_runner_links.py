@@ -55,3 +55,22 @@ def test_record_links_instruction_covers_invoices():
     prompt = br._build_user_prompt(snap, "money-cash")
     assert "invoice" in prompt.lower()
     assert "(ref:" in prompt  # the markdown-link form is still shown
+
+
+def test_snapshot_includes_orders():
+    src = (_repo() / "dashboard" / "briefing_runner.py").read_text()
+    assert "import orders as _orders" in src
+    assert '"orders"' in src
+    assert "_orders.attention_orders" in src
+
+
+def test_clients_prompt_calls_out_orders():
+    from dashboard import briefing_runner as br
+    p = br.SLUG_PROMPTS["clients-pipeline"]
+    assert "orders" in p.lower()
+
+
+def test_record_links_example_covers_orders():
+    from dashboard import briefing_runner as br
+    prompt = br._build_user_prompt({}, "clients-pipeline")  # empty snapshot: no JSON pollution
+    assert "order to act on" in prompt

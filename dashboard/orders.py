@@ -5,13 +5,16 @@ sqlite connection for testability. Lifecycle actions + the Home signal register
 on import (see Task 2)."""
 import json
 import os
+import sqlite3
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 ORDER_STATUSES = ("proposed", "confirmed", "paid",
                   "new", "packed", "shipped", "done", "cancelled", "delivered")
 _OPEN = ("new", "packed")  # unfulfilled
 # Pre-fulfillment lead-in for in-house proposed invoices (before the kanban).
 _PRE_FULFILL = ("proposed", "confirmed")
+_TERMINAL_STATUSES = ("shipped", "delivered", "done", "cancelled")
 
 
 def _now():
@@ -196,6 +199,35 @@ def list_orders_by_email(cx, email, limit=200):
         "SELECT * FROM orders WHERE lower(email)=? ORDER BY created_at DESC, id DESC LIMIT ?",
         ((email or "").strip().lower(), limit))
     return [_row_to_dict(r) for r in cur.fetchall()]
+
+
+def attention_orders(limit=20):
+    """Open orders needing attention (status not terminal), newest first, as a
+    minimal subset for the briefing snapshot. Self-connects to chat_log.db
+    (mirrors briefing_actions._DB). Best-effort: callers wrap in _safe."""
+    db = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent))) / "chat_log.db"
+    cx = sqlite3.connect(str(db), timeout=5)
+    try:
+        cx.row_factory = sqlite3.Row
+        out = []
+        for o in list_orders(cx, limit=200):
+            if o.get("status") in _TERMINAL_STATUSES:
+                continue
+            out.append({
+                "id": o.get("id"),
+                "name": o.get("name") or "",
+                "email": o.get("email") or "",
+                "status": o.get("status"),
+                "pay_status": o.get("pay_status") or "",
+                "total_cents": o.get("total_cents") or 0,
+                "created_at": o.get("created_at"),
+                "backorder_units": order_backorder_units(cx, o.get("id")),
+            })
+            if len(out) >= limit:
+                break
+        return out
+    finally:
+        cx.close()
 
 
 def set_order_status(cx, order_id, status):
