@@ -41,6 +41,8 @@ class VelocityLimiter:
         now = self._clock()
         with self._lock:
             hits = [t for t in self._hits.get(ip, []) if now - t < self._DAY_WINDOW]
+            if not hits:
+                self._hits.pop(ip, None)
             minute = [t for t in hits if now - t < self._MIN_WINDOW]
             if len(minute) >= per_min:
                 self._hits[ip] = hits

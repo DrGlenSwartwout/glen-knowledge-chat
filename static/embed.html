@@ -1328,13 +1328,14 @@
     try { localStorage.setItem('amg_email', email); } catch (_) {}
     const name = (optNameEl && optNameEl.value || '').trim();
     try {
-      await fetch('/auth/magic-link/request', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
+      const r = await fetch(‘/auth/magic-link/request’, {
+        method: ‘POST’,
+        credentials: ‘same-origin’,
+        headers: { ‘Content-Type’: ‘application/json’ },
         body: JSON.stringify({ email, name }),
       });
-      appendMessage('assistant', '📩 To protect against abuse, please check your email and click the link to confirm — then I’ll send your full report.', null, null);
+      if (!r.ok) { appendMessage(‘assistant’, ‘**Error sending confirmation — please try again.**’, null, null); return; }
+      appendMessage(‘assistant’, ‘📩 To protect against abuse, please check your email and click the link to confirm — then I\’ll send your full report.’, null, null);
     } catch (e) {
       appendMessage('assistant', '**Connection error:** ' + e.message, null, null);
     }

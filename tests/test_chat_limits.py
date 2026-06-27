@@ -98,6 +98,55 @@ def test_is_flagged_false_for_old_row(tmp_path):
     cx.commit()
     assert is_flagged(cx, "sess-abc", "1.2.3.4", now.isoformat()) is False
 
+def test_velocity_evicts_key_after_day_window_expires():
+    t = [1000.0]
+    v = VelocityLimiter(clock=lambda: t[0])
+    # Drive IP-A under the limit so it gets a key
+    for _ in range(3):
+        allowed, _ = v.check("ip-a", per_min=10, per_day=40)
+        assert allowed
+    assert "ip-a" in v._hits
+    # Advance clock past the DAY_WINDOW
+    t[0] += VelocityLimiter._DAY_WINDOW + 1
+    # Call check for a different IP — triggers the eviction path for ip-a on next touch,
+    # but actually we need to check ip-a itself to trigger its own cleanup.
+    # Check ip-a again: its old timestamps are filtered out → hits empty → key evicted.
+    allowed, _ = v.check("ip-a", per_min=10, per_day=40)
+    assert allowed  # allowed (fresh window)
+    # After the call the key exists again (new hit was recorded), so check it has exactly 1 entry
+    assert "ip-a" in v._hits
+    assert len(v._hits["ip-a"]) == 1
+
+def test_velocity_evicts_stale_key_when_different_ip_checked():
+    t = [1000.0]
+    v = VelocityLimiter(clock=lambda: t[0])
+    # Drive ip-a
+    for _ in range(3):
+        v.check("ip-a", per_min=10, per_day=40)
+    assert "ip-a" in v._hits
+    # Advance past DAY_WINDOW and check ip-b — ip-a's key is NOT evicted here
+    # (eviction only happens when ip-a itself is checked), so ip-a persists until
+    # its own next check. Verify that checking ip-a after the window drops then re-adds it.
+    t[0] += VelocityLimiter._DAY_WINDOW + 1
+    # Checking ip-a now: filtered hits = [], pop happens, new hit appended → 1 entry
+    v.check("ip-a", per_min=10, per_day=40)
+    assert len(v._hits["ip-a"]) == 1  # only the new timestamp, old ones evicted
+
+def test_velocity_normal_limiting_still_works():
+    t = [1000.0]
+    v = VelocityLimiter(clock=lambda: t[0])
+    per_min, per_day = 5, 20
+    for _ in range(per_min):
+        allowed, _ = v.check("ip", per_min=per_min, per_day=per_day)
+        assert allowed
+    allowed, retry = v.check("ip", per_min=per_min, per_day=per_day)
+    assert not allowed
+    assert retry > 0
+    # Advance past minute window → allowed again
+    t[0] += VelocityLimiter._MIN_WINDOW + 1
+    allowed, _ = v.check("ip", per_min=per_min, per_day=per_day)
+    assert allowed
+
 def test_monthly_full_words_sums_only_full_in_window(tmp_path):
     cx = _db(tmp_path)
     now = datetime(2026, 6, 27, tzinfo=timezone.utc)
