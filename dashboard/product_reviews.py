@@ -19,7 +19,10 @@ def init_table(cx):
                  "video_status TEXT DEFAULT ''", "publish_risk INTEGER DEFAULT 0",
                  "video_verdict TEXT DEFAULT ''", "video_orig_ref TEXT DEFAULT ''",
                  "kind TEXT DEFAULT 'product'", "practitioner_id INTEGER DEFAULT 0",
-                 "consent_public INTEGER DEFAULT 0", "source_tag TEXT DEFAULT ''"):
+                 "consent_public INTEGER DEFAULT 0", "source_tag TEXT DEFAULT ''",
+                 "compliance_score INTEGER DEFAULT 0", "publication_score INTEGER DEFAULT 0",
+                 "authenticity_score INTEGER DEFAULT 0", "specificity_score INTEGER DEFAULT 0",
+                 "audio_quality INTEGER DEFAULT 0", "visual_quality INTEGER DEFAULT 0"):
         try:
             cx.execute(f"ALTER TABLE product_reviews ADD COLUMN {_col}")
         except sqlite3.OperationalError:
@@ -62,6 +65,26 @@ def upsert_review(cx, slug, email, name, rating, body="", video_kind="", video_r
     cx.commit()
     return cx.execute("SELECT id FROM product_reviews WHERE product_slug=? AND email=?",
                       (slug, e)).fetchone()[0]
+
+
+def set_scores(cx, review_id, *, compliance=0, publication=0, authenticity=0, specificity=0):
+    """Store the four 1-10 AI rating dimensions (10 = best; 0 = unscored) on a review."""
+    init_table(cx)
+    _clamp = lambda v: max(0, min(10, int(v or 0)))
+    cx.execute(
+        "UPDATE product_reviews SET compliance_score=?, publication_score=?, "
+        "authenticity_score=?, specificity_score=? WHERE id=?",
+        (_clamp(compliance), _clamp(publication), _clamp(authenticity), _clamp(specificity), review_id))
+    cx.commit()
+
+
+def set_manual_quality(cx, review_id, *, audio=0, visual=0):
+    """Store the human-entered Audio & Visual quality scores (1-10; 0 = unset)."""
+    init_table(cx)
+    _clamp = lambda v: max(0, min(10, int(v or 0)))
+    cx.execute("UPDATE product_reviews SET audio_quality=?, visual_quality=? WHERE id=?",
+               (_clamp(audio), _clamp(visual), review_id))
+    cx.commit()
 
 
 def set_ai_result(cx, review_id, ai_score, ai_verdict, recommend_publish):

@@ -159,6 +159,29 @@ async function loadList(){
         + (rv.source_tag ? ` &middot; <span style="color:var(--gold,#d4a843)">Tag: ${esc(rv.source_tag)}</span>` : '')
         + `</div>`
       : '';
+    const _sc = (label, v) => {
+      v = v | 0;
+      const col = v >= 8 ? '#3d8a52' : v >= 5 ? '#d4a843' : v >= 1 ? '#c0623a' : '#666';
+      return `<span style="display:inline-block;margin:2px 10px 2px 0;font-size:12px;color:#cfc8b0">`
+        + `${label} <b style="color:${col}">${v || '–'}</b><span style="opacity:.5">/10</span></span>`;
+    };
+    const hasScores = (rv.compliance_score || rv.publication_score || rv.authenticity_score || rv.specificity_score);
+    const scoresBlock = hasScores
+      ? `<div class="scores" style="margin:6px 0;padding-top:6px;border-top:1px solid rgba(33,71,45,.4)">`
+        + `<span style="opacity:.6;font-size:11px;margin-right:6px">AI</span>`
+        + _sc('Compliance', rv.compliance_score) + _sc('Publication', rv.publication_score)
+        + _sc('Authenticity', rv.authenticity_score) + _sc('Specificity', rv.specificity_score)
+        + `</div>`
+      : '';
+    const _qin = (id, v) => `<input id="${id}" type="number" min="1" max="10" value="${v || ''}" `
+      + `style="width:50px;background:#162318;color:#fdf4d8;border:1px solid #21472d;border-radius:6px;padding:3px 6px;margin:0 4px" />`;
+    const qualityBlock = `<div class="qual" style="margin:6px 0;font-size:12px;color:#cfc8b0">`
+      + `<span style="opacity:.6;font-size:11px;margin-right:6px">YOU</span>`
+      + `Audio${_qin('aq-' + rv.id, rv.audio_quality)} Visual${_qin('vq-' + rv.id, rv.visual_quality)}`
+      + `<button class="btn" onclick="act(${rv.id}, 'reviews.set_quality', {id:${rv.id}, `
+      + `audio:+(document.getElementById('aq-${rv.id}').value||0), `
+      + `visual:+(document.getElementById('vq-${rv.id}').value||0)}, ${i})">Save A/V</button>`
+      + `</div>`;
     return `<div class="review-row" id="row-${i}">
       <div class="meta">
         <span class="product">${esc(rv.product_name || rv.product_slug)}</span>
@@ -175,6 +198,8 @@ async function loadList(){
         <span class="rec ${recCls}">${esc(recLabel)}</span>
         ${rv.ai_verdict ? ` &mdash; ${esc(rv.ai_verdict)}` : ''}
       </div>
+      ${scoresBlock}
+      ${qualityBlock}
       <div class="pts">Points awarded: ${esc(rv.points_awarded != null ? rv.points_awarded : 0)}</div>
       ${giftBlock(rv, i)}
       <div class="row">

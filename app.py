@@ -5082,6 +5082,10 @@ def api_submit_review():
         score = _rs.score_review(_cl, p, body, strip=_strip_dash) if body else {
             "compliance_ok": True, "reasons": "", "quality_points": 0, "recommend_publish": False}
         _pr.set_ai_result(cx, rid, score["quality_points"], score["reasons"], score["recommend_publish"])
+        _pr.set_scores(cx, rid, compliance=score.get("compliance_score", 0),
+                       publication=score.get("publication_score", 0),
+                       authenticity=score.get("authenticity_score", 0),
+                       specificity=score.get("specificity_score", 0))
         pts = min(5, score["quality_points"]) if score["compliance_ok"] else 0
         if pts > 0:
             try:
@@ -5292,6 +5296,10 @@ def api_submit_testimonial():
         score = _rs.score_review(_cl, _ctx, body, strip=_strip_dash) if body else {
             "compliance_ok": True, "reasons": "", "quality_points": 0, "recommend_publish": False}
         _pr.set_ai_result(cx, rid, score["quality_points"], score["reasons"], score["recommend_publish"])
+        _pr.set_scores(cx, rid, compliance=score.get("compliance_score", 0),
+                       publication=score.get("publication_score", 0),
+                       authenticity=score.get("authenticity_score", 0),
+                       specificity=score.get("specificity_score", 0))
         # NOTE: ungated path — no points/store-credit and no review-gift by design.
         _video_status = ""
         if _REVIEWS_VIDEO and video_kind == "upload" and video_ref:
@@ -19790,6 +19798,10 @@ def _drain_review_videos():
                 _pr.set_video_result(cx, rid, sc["video_points"], transcript, "scored",
                                      publish_risk=1 if sc["publish_risk"] else 0,
                                      video_verdict=sc["risk_reasons"])
+                _pr.set_scores(cx, rid, compliance=sc.get("compliance_score", 0),
+                               publication=sc.get("publication_score", 0),
+                               authenticity=sc.get("authenticity_score", 0),
+                               specificity=sc.get("specificity_score", 0))
                 _vj.mark(cx, rid, "done")
             if _REVIEWS_VIDEO_TRIM:
                 try:

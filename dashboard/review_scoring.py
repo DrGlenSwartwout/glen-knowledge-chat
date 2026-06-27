@@ -8,22 +8,47 @@ _COMPLIANCE = (
     "abusive. Otherwise compliance_ok=true. Use structure/function framing for what is acceptable."
 )
 
+# Shared 1-10 rating dimensions (10 = best) appended to both the text and video prompts.
+_DIMENSIONS = (
+    " Also rate the submission on four integer 1-10 scales (10 = best, 1 = worst), as keys "
+    "compliance_score (10 = fully structure/function compliant with NO disease diagnose/treat/cure "
+    "claims and no PII; 1 = explicit disease-cure claims or high regulatory risk), "
+    "publication_score (10 = compelling, specific, on-message, ready to feature for marketing or "
+    "education; 1 = generic or unusable), authenticity_score (10 = genuine, specific, believable "
+    "personal experience; 1 = vague, scripted, or exaggerated), and specificity_score (10 = concrete "
+    "details with a clear before/after transformation; 1 = no specifics)."
+)
+_DIM_KEYS = ("compliance_score", "publication_score", "authenticity_score", "specificity_score")
+_ZERO_DIMS = {k: 0 for k in _DIM_KEYS}
+
+
+def _dims(data):
+    """Parse + clamp the four 1-10 rating dimensions to 0..10 (0 = unscored/missing)."""
+    out = {}
+    for k in _DIM_KEYS:
+        try:
+            out[k] = max(0, min(10, int(data.get(k, 0))))
+        except (TypeError, ValueError):
+            out[k] = 0
+    return out
+
 
 def build_review_prompt(product, body):
     name = (product or {}).get("name", "")
     system = (
         "You score short customer product reviews for Dr. Glen Swartwout's supplements. "
         "Return ONLY a JSON object with keys: compliance_ok (bool), reasons (short string), "
-        "quality_points (integer 0, 1, or 2), recommend_publish (bool). "
-        "quality_points rewards specificity, authenticity, and usefulness to other shoppers, "
-        "NOT length or keyword stuffing. " + _COMPLIANCE)
+        "quality_points (integer 0, 1, or 2), recommend_publish (bool), and the four rating scales "
+        "below. quality_points rewards specificity, authenticity, and usefulness to other shoppers, "
+        "NOT length or keyword stuffing. " + _COMPLIANCE + _DIMENSIONS)
     user = (f"Product: {name}\n\nReview:\n{body or '(no written review)'}\n\n"
             "Return only the JSON object, no prose.")
     return system, user
 
 
 def _safe_default(reasons):
-    return {"compliance_ok": False, "reasons": reasons, "quality_points": 0, "recommend_publish": False}
+    return {"compliance_ok": False, "reasons": reasons, "quality_points": 0,
+            "recommend_publish": False, **_ZERO_DIMS}
 
 
 def score_review(client, product, body, *, strip=lambda s: s):
@@ -42,6 +67,7 @@ def score_review(client, product, body, *, strip=lambda s: s):
             "reasons": strip(str(data.get("reasons", "")))[:500],
             "quality_points": max(0, min(2, int(data.get("quality_points", 0)))),
             "recommend_publish": bool(data.get("recommend_publish")),
+            **_dims(data),
         }
     except Exception as e:  # noqa: BLE001
         return _safe_default(f"scoring error: {e}")
@@ -59,16 +85,18 @@ def build_video_prompt(product, transcript):
     system = (
         "You score the transcript of a short spoken customer video review of Dr. Glen Swartwout's "
         "supplements. Return ONLY a JSON object with keys: video_points (integer 0..5), "
-        "publish_risk (bool), risk_reasons (short string), recommend_publish (bool). "
+        "publish_risk (bool), risk_reasons (short string), recommend_publish (bool), and the four "
+        "rating scales below. "
         "video_points rewards a clear, specific, authentic spoken experience; low-effort, vague, "
-        "spammy, or abusive transcripts score 0. " + _VIDEO_RISK)
+        "spammy, or abusive transcripts score 0. " + _VIDEO_RISK + _DIMENSIONS)
     user = (f"Product: {name}\n\nVideo transcript:\n{transcript or '(empty)'}\n\n"
             "Return only the JSON object, no prose.")
     return system, user
 
 
 def _safe_video_default(reasons):
-    return {"video_points": 0, "publish_risk": False, "risk_reasons": reasons, "recommend_publish": False}
+    return {"video_points": 0, "publish_risk": False, "risk_reasons": reasons,
+            "recommend_publish": False, **_ZERO_DIMS}
 
 
 def score_video(client, product, transcript, *, strip=lambda s: s):
@@ -86,6 +114,7 @@ def score_video(client, product, transcript, *, strip=lambda s: s):
             "publish_risk": bool(data.get("publish_risk")),
             "risk_reasons": strip(str(data.get("risk_reasons", "")))[:500],
             "recommend_publish": bool(data.get("recommend_publish")),
+            **_dims(data),
         }
     except Exception as e:  # noqa: BLE001
         return _safe_video_default(f"scoring error: {e}")
