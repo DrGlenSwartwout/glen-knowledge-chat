@@ -3523,6 +3523,8 @@ _REMEDY_MATCH_SYSTEM = (
     " (e.g. 'Yes' | 'No' | 'Not sure', or 'Overactive' | 'Underactive'). OMIT the"
     " directive entirely when your question is open-ended (e.g. 'What is your main"
     " concern?'). The person can always type instead — chips are just a shortcut."
+    " Separate options with the pipe character | ONLY — never use a slash (/) or"
+    " comma to separate options."
 )
 
 _MATCH_EXTRACT_SYSTEM = (
