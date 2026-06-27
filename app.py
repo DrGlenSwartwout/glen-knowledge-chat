@@ -151,6 +151,8 @@ TRULY_SO_DOMAIN   = "truly.so"
 LOG_DB   = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "chat_log.db"
 _db_lock = threading.Lock()
 
+_CTA_RUNG = {"page": "curious", "email": "engaged", "action": "ready", "inline": "committed"}
+
 
 def _init_shortlink_cache():
     with sqlite3.connect(LOG_DB) as cx:
@@ -944,6 +946,8 @@ def _init_log_db():
             "image_count          INTEGER DEFAULT 0",
             "email_sent_at        TEXT",
             "word_count           INTEGER DEFAULT 0",
+            "cta_type             TEXT",
+            "cta_rung             TEXT",
         ]:
             try:
                 cx.execute(f"ALTER TABLE query_log ADD COLUMN {col_def}")
@@ -1103,7 +1107,8 @@ def log_query(query: str, level: str, answer: str,
               ghl_contact_id: str = "", mode: str = "brief",
               user_agent: str = "", referer: str = "",
               extracted_image_data: str = "", image_count: int = 0,
-              word_count: int = 0) -> int:
+              word_count: int = 0,
+              cta_type: str = None, cta_rung: str = None) -> int:
     """Insert a row into query_log. Always logs, even for anonymous sessions.
 
     Image bytes are NEVER persisted — only the extracted text output of
@@ -1117,11 +1122,13 @@ def log_query(query: str, level: str, answer: str,
             """INSERT INTO query_log
                (ts, query, level, answer, session_id, email, name,
                 ghl_contact_id, mode, user_agent, referer,
-                extracted_image_data, image_count, word_count)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                extracted_image_data, image_count, word_count,
+                cta_type, cta_rung)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (ts, query, level, answer[:8000], session_id, email, name,
              ghl_contact_id, mode, user_agent[:500], referer[:500],
-             extracted_image_data[:8000], image_count, wc)
+             extracted_image_data[:8000], image_count, wc,
+             cta_type, cta_rung)
         )
         cx.commit()
         return cur.lastrowid
@@ -3258,9 +3265,15 @@ def chat():
                 system=_system,
                 messages=messages
             ) as stream:
+                _emitted = 0
                 for token in stream.text_stream:
                     full_answer.append(token)
-                    yield sse({"token": token})
+                    acc = "".join(full_answer)
+                    cut = acc.find("⟦CTA⟧")
+                    visible = acc if cut == -1 else acc[:cut]
+                    if len(visible) > _emitted:
+                        yield sse({"token": visible[_emitted:]})
+                        _emitted = len(visible)
         except Exception as e:
             yield sse({"error": f"Claude error: {e}"})
             return
@@ -3270,13 +3283,21 @@ def chat():
         if _ceiling_hit:
             yield sse({"token": "\n\n_You've reached this month's full-report limit — here's the summary. Members get unlimited full reports._"})
 
-        answer = "".join(full_answer)
+        from dashboard.chat_cta import parse_cta
+        try:
+            _clean, _cta = parse_cta("".join(full_answer))
+        except Exception:
+            _clean, _cta = "".join(full_answer), None
+        _rung = _CTA_RUNG.get((_cta or {}).get("type"))
+        answer = _clean  # directive-stripped; downstream Socratic/surface code uses this
+
         log_id = log_query(
-            query, level, answer,
+            query, level, _clean,
             session_id=session_id, email=email, name=name,
             mode=mode, user_agent=user_agent, referer=referer,
             extracted_image_data=extracted_text,
             image_count=len(image_blocks),
+            cta_type=(_cta or {}).get("type"), cta_rung=_rung,
         )
 
         # GHL onboarding for email opt-ins (non-blocking)
@@ -3392,6 +3413,7 @@ def chat():
             "session_id": session_id, "mode": mode,
             "surfaced_cards": surfaced_cards,
             "member_mode": bool(_member_active),
+            "cta": _cta,
         }
         if _member_active:
             _done_payload["days_remaining"] = _member_active.get("days_remaining", 0)
