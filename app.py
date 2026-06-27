@@ -3834,6 +3834,8 @@ try:
     _TESTIMONIAL_INVITE_MIN_CONFIDENCE = float(os.environ.get("TESTIMONIAL_INVITE_MIN_CONFIDENCE", "0.6"))
 except ValueError:
     _TESTIMONIAL_INVITE_MIN_CONFIDENCE = 0.6
+# Opt-in: read the drglenswartwout Gmail inbox (FROM known clients only) as a scan source.
+_GMAIL_FEEDBACK_ENABLED = os.environ.get("GMAIL_FEEDBACK_ENABLED", "").strip().lower() in ("1", "true", "yes")
 
 
 def _referral_pct():
@@ -5578,6 +5580,34 @@ def _recent_active_emails(cx, days=7, limit=500):
     return sorted(emails)[:limit]
 
 
+def _known_client_emails(cx, limit=5000):
+    """Distinct known client emails (to filter the Gmail inbox to clients only)."""
+    out = set()
+    for sql in ("SELECT DISTINCT lower(email) FROM people WHERE email LIKE '%@%'",
+                "SELECT DISTINCT lower(email) FROM users WHERE email LIKE '%@%'",
+                "SELECT DISTINCT lower(client_email) FROM inquiries WHERE client_email LIKE '%@%'"):
+        try:
+            for row in cx.execute(sql).fetchall():
+                if row[0]:
+                    out.add(row[0])
+        except sqlite3.OperationalError:
+            pass
+    return set(list(out)[:limit])
+
+
+def _gmail_client_texts(cx, days):
+    """{client_email: text} from the Gmail inbox (known clients only). Off unless enabled."""
+    if not _GMAIL_FEEDBACK_ENABLED:
+        return {}
+    try:
+        known = _known_client_emails(cx)
+        from dashboard import gmail_feedback as _gf
+        return _gf.recent_client_messages(known, days=int(days))
+    except Exception as e:  # noqa: BLE001
+        print(f"[testimonial-invites] gmail read failed: {e!r}", flush=True)
+        return {}
+
+
 def _gather_comms_text(cx, email, days=14):
     """Assemble a client's recent comms into one blob for the classifier — AI summaries / their own
     words only (recent_comms never exposes email raw_text)."""
@@ -5613,23 +5643,28 @@ def api_testimonial_invites_scan():
     from dashboard import testimonial_signals as _ts, testimonial_invites as _ti
     found, scanned = [], 0
     with sqlite3.connect(LOG_DB) as cx:
-        active = _recent_active_emails(cx, days=days)
+        gmail_texts = _gmail_client_texts(cx, days)
+        active = sorted(set(_recent_active_emails(cx, days=days)) | set(gmail_texts.keys()))
         for e in active:
             if _ti.should_skip(cx, e):
                 continue
-            text = _gather_comms_text(cx, e, days=days)
-            if not text.strip():
+            db_text = _gather_comms_text(cx, e, days=days)
+            gm_text = gmail_texts.get(e, "")
+            text = (db_text + "\n" + gm_text).strip()
+            if not text:
                 continue
             scanned += 1
             r = _ts.classify_positive_result(text, _ts_complete)
             if r["positive"] and r["confidence"] >= _TESTIMONIAL_INVITE_MIN_CONFIDENCE:
+                src = ("comms+gmail" if (gm_text and db_text.strip())
+                       else "gmail" if gm_text else "comms")
                 if not dry:
                     name = (_people_brief(cx, e) or {}).get("client_name", "")
-                    _ti.upsert_candidate(cx, e, name, r["quote"], "comms", r["kind"], r["confidence"])
+                    _ti.upsert_candidate(cx, e, name, r["quote"], src, r["kind"], r["confidence"])
                 found.append({"email": e, "quote": r["quote"], "confidence": r["confidence"],
-                              "kind": r["kind"]})
+                              "kind": r["kind"], "source": src})
     return jsonify({"ok": True, "dry_run": dry, "days": days, "active": len(active),
-                    "scanned": scanned, "candidates": found})
+                    "gmail_clients": len(gmail_texts), "scanned": scanned, "candidates": found})
 
 
 @app.route("/console/testimonial-invites")

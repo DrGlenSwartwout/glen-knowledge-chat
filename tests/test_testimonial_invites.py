@@ -191,3 +191,20 @@ def test_scan_dry_run_then_create_and_list(monkeypatch, tmp_path):
     assert len(res["candidates"]) == 2
     listed = c.get("/api/console/testimonial-invites").get_json()["pending"]
     assert sorted(r["email"] for r in listed) == ["calm@x.com", "happy@x.com"]
+
+
+def test_scan_includes_gmail_source(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "")
+    monkeypatch.setattr(appmod, "_recent_active_emails", lambda cx, **k: [])   # no DB comms
+    monkeypatch.setattr(appmod, "_gather_comms_text", lambda cx, e, **k: "")
+    monkeypatch.setattr(appmod, "_gmail_client_texts",
+                        lambda cx, days: {"gm@x.com": "thank you, I feel amazing"})
+    monkeypatch.setattr(appmod, "_ts_complete",
+                        lambda s, u: '{"positive": true, "confidence": 0.9, "quote": "I feel amazing", "kind": "remedy"}')
+    c = appmod.app.test_client()
+    res = c.post("/api/console/testimonial-invites/scan").get_json()
+    assert res["gmail_clients"] == 1
+    assert len(res["candidates"]) == 1 and res["candidates"][0]["source"] == "gmail"
+    listed = c.get("/api/console/testimonial-invites").get_json()["pending"]
+    assert any(r["email"] == "gm@x.com" and r["source"] == "gmail" for r in listed)
