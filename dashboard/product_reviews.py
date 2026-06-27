@@ -19,7 +19,7 @@ def init_table(cx):
                  "video_status TEXT DEFAULT ''", "publish_risk INTEGER DEFAULT 0",
                  "video_verdict TEXT DEFAULT ''", "video_orig_ref TEXT DEFAULT ''",
                  "kind TEXT DEFAULT 'product'", "practitioner_id INTEGER DEFAULT 0",
-                 "consent_public INTEGER DEFAULT 0"):
+                 "consent_public INTEGER DEFAULT 0", "source_tag TEXT DEFAULT ''"):
         try:
             cx.execute(f"ALTER TABLE product_reviews ADD COLUMN {_col}")
         except sqlite3.OperationalError:
@@ -42,22 +42,23 @@ def has_reviewed(cx, slug, email):
 
 
 def upsert_review(cx, slug, email, name, rating, body="", video_kind="", video_ref="",
-                  *, kind="product", practitioner_id=0, consent_public=0):
+                  *, kind="product", practitioner_id=0, consent_public=0, source_tag=""):
     init_table(cx)
     e = (email or "").strip().lower()
     now = _now()
     cx.execute(
         "INSERT INTO product_reviews (product_slug, email, name, rating, body, video_kind, "
-        "video_ref, kind, practitioner_id, consent_public, status, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?) "
+        "video_ref, kind, practitioner_id, consent_public, source_tag, status, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',?) "
         "ON CONFLICT(product_slug, email) DO UPDATE SET name=excluded.name, rating=excluded.rating, "
         "body=excluded.body, video_kind=excluded.video_kind, video_ref=excluded.video_ref, "
         "kind=excluded.kind, practitioner_id=excluded.practitioner_id, "
-        "consent_public=excluded.consent_public, "
+        "consent_public=excluded.consent_public, source_tag=excluded.source_tag, "
         "status='pending', ai_score=0, ai_verdict='', ai_recommend_publish=0, points_awarded=0, "
         "featured=0, reviewed_at='', reviewed_by=''",
         (slug, e, name or "", int(rating), body or "", video_kind or "", video_ref or "",
-         kind or "product", int(practitioner_id or 0), 1 if consent_public else 0, now))
+         kind or "product", int(practitioner_id or 0), 1 if consent_public else 0,
+         (source_tag or "")[:64], now))
     cx.commit()
     return cx.execute("SELECT id FROM product_reviews WHERE product_slug=? AND email=?",
                       (slug, e)).fetchone()[0]

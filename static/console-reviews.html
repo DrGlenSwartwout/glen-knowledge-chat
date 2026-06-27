@@ -156,6 +156,7 @@ async function loadList(){
       ? `<div class="meta" style="opacity:.85;font-size:13px">`
         + `Public consent: ${rv.consent_public ? 'Yes' : 'No'}`
         + (rv.practitioner_id ? ` &middot; Practitioner #${esc(rv.practitioner_id)}` : '')
+        + (rv.source_tag ? ` &middot; <span style="color:var(--gold,#d4a843)">Tag: ${esc(rv.source_tag)}</span>` : '')
         + `</div>`
       : '';
     return `<div class="review-row" id="row-${i}">
