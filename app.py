@@ -2895,6 +2895,23 @@ def chat():
     if _blocked is not None:
         return _blocked
 
+    # ── Depth gate: anonymous full-report requests route to email flow ────────
+    # Do NOT generate or stream the full answer for anonymous visitors.
+    # Log the query (empty answer) to mint a log_id the /full-report flow can
+    # use to regenerate later, then emit a one-shot gated SSE and return.
+    if _tier == "anonymous" and mode == "full":
+        gated_log_id = log_query(query, level, "",
+                                 session_id=session_id, email="", name=name,
+                                 mode="brief")
+        def _gated():
+            yield sse({"gated": "email_required",
+                       "message": "Enter your email and I'll send you the full report.",
+                       "log_id": gated_log_id,
+                       "session_id": session_id})
+            yield sse({"done": True})
+        return Response(stream_with_context(_gated()), content_type="text/event-stream")
+    # ── end depth gate ─────────────────────────────────────────────────────────
+
     # Image attachments — opt-in gated, multi-image (max 3), extraction-only
     # storage. Image bytes are passed to Claude vision for extraction and then
     # discarded; only the extracted text is persisted to query_log.

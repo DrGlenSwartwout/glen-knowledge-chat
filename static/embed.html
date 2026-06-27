@@ -1267,6 +1267,46 @@
     }
   }
 
+  // ── Depth gate: anonymous full-report → email capture ──
+  // Called when the /chat SSE stream returns gated:"email_required".
+  // Captures an email (from the optin field, localStorage, or a prompt),
+  // then POSTs to /full-report so the server regenerates + emails the answer.
+  async function handleGatedFullReport(logId) {
+    if (!logId) {
+      appendMessage('assistant', 'Full report unavailable — please refresh and try again.', null, null);
+      return;
+    }
+    const optEmailEl = document.getElementById('optin-email');
+    const optNameEl  = document.getElementById('optin-name');
+    let email = (optEmailEl && optEmailEl.value || '').trim();
+    if (!email) {
+      try { email = localStorage.getItem('amg_email') || ''; } catch (_) {}
+    }
+    if (!email || !email.includes('@')) {
+      email = (prompt('Enter your email to receive the full report:') || '').trim();
+      if (!email || !email.includes('@')) return;
+    }
+    if (optEmailEl) optEmailEl.value = email;
+    try { localStorage.setItem('amg_email', email); } catch (_) {}
+    const name = (optNameEl && optNameEl.value || '').trim();
+    try {
+      const r = await fetch('/full-report', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ log_id: logId, email, name }),
+      });
+      const d = await r.json();
+      if (r.ok && d.ok) {
+        appendMessage('assistant', '✓ I\'ll email your full report to ' + email, null, null);
+      } else {
+        appendMessage('assistant', '**Error:** ' + (d && d.error ? d.error : r.status), null, null);
+      }
+    } catch (e) {
+      appendMessage('assistant', '**Connection error:** ' + e.message, null, null);
+    }
+  }
+
   // ── Mic / voice input ──
   (function () {
     // Hide the mic button if the browser lacks MediaRecorder or getUserMedia.
@@ -1641,6 +1681,13 @@
               if (!raw) continue;
               var evt;
               try { evt = JSON.parse(raw); } catch (_) { continue; }
+              if (evt.gated === 'email_required') {
+                removeEl(tid2);
+                isLoading = false;
+                if (sb) sb.disabled = false;
+                handleGatedFullReport(evt.log_id);
+                return;
+              }
               if (evt.token) {
                 if (!streamDiv) {
                   removeEl(tid2);
