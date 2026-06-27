@@ -236,6 +236,27 @@ function pollPending(){
 
 function render(d, v){
   d = d || {};
+  if (d && d.tos_agreed === false) {
+    var g = '<div class="card"><h2>Welcome to your healing home</h2>'
+      + '<p>Before we continue, please review and agree to our Terms of Service.</p>'
+      + '<p><a href="' + esc((window.TOS_URL || "https://illtowell.com/terms")) + '" target="_blank" rel="noopener">Read the Terms</a></p>'
+      + '<button class="btn" id="tosAgreeBtn">I agree to the Terms</button>'
+      + '<div class="err" id="tosErr" hidden></div></div>';
+    document.getElementById("app").innerHTML = g;
+    var b = document.getElementById("tosAgreeBtn");
+    if (b) b.addEventListener("click", async function () {
+      b.disabled = true;
+      try {
+        var r = await fetch("/api/portal/" + encodeURIComponent(seg) + "/agree-tos", {method:"POST", credentials:"same-origin"});
+        if (r.ok) { load(); return; }
+        throw new Error("retry");
+      } catch (e) {
+        b.disabled = false;
+        var er = document.getElementById("tosErr"); if (er) { er.textContent = "Please try again."; er.hidden = false; }
+      }
+    });
+    return;   // suppress the home until agreed
+  }
   const app = document.getElementById("app");
   const displayName = d.name || (v && v.account && v.account.name) || "";
   // Greet by real first name; never show an email-derived token. A name that is
@@ -323,6 +344,10 @@ function render(d, v){
   } else if(_ppTimer){
     // The analysis has landed (or we navigated away from pending) — stop polling.
     clearInterval(_ppTimer); _ppTimer = null;
+  } else if (d.biofield_status === "none") {
+    html += '<div class="card"><h2>Curious what your body is asking for?</h2>'
+      + '<p>A quick biofield voice scan reads your stress and terrain patterns and tailors your next steps. It takes about 30 seconds.</p>'
+      + '<a class="btn" href="https://Truly.VIP/E4L" target="_blank" rel="noopener">Do your free voice scan</a></div>';
   }
 
   // Biofield "healing path" — server-gated by status. Remedies/dosing never reach
