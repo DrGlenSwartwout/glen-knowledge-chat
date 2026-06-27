@@ -33,7 +33,7 @@ def resolve_mode(path: str, authenticated: bool) -> str:
     return "funnel"
 
 
-def inject_shell_html(html: str, mode: str, rewards1b: bool = False, rewards_gift: bool = False) -> str:
+def inject_shell_html(html: str, mode: str, rewards1b: bool = False, rewards_gift: bool = False, quest_enabled: bool = False) -> str:
     """Insert the shell <link>+<script> tags before </head>. Idempotent; no-op when no </head>."""
     if _MARKER in (html or ""):
         return html
@@ -42,11 +42,17 @@ def inject_shell_html(html: str, mode: str, rewards1b: bool = False, rewards_gif
     mode = "member" if mode == "member" else "funnel"
     r1 = "true" if rewards1b else "false"
     rg = "true" if rewards_gift else "false"
+    qe = "true" if quest_enabled else "false"
     tags = (
         f'<link {_MARKER} rel="stylesheet" href="/static/shell.css">'
-        f'<script>window.__SHELL__={{"mode":"{mode}","rewards1b":{r1},"rewardsGift":{rg}}};</script>'
+        f'<script>window.__SHELL__={{"mode":"{mode}","rewards1b":{r1},"rewardsGift":{rg},"questEnabled":{qe}}};</script>'
         f'<script defer src="/static/shell.js"></script>'
     )
+    if quest_enabled:
+        tags += (
+            '<link rel="stylesheet" href="/static/journey-quest.css">'
+            '<script defer src="/static/journey-quest.js"></script>'
+        )
     return html.replace("</head>", tags + "\n</head>", 1)
 
 

@@ -297,7 +297,13 @@
       if (journey.length) {
         renderLands(ui.path, journey, res[1]);
         var overlay = buildOverlay(journey, res[1]);
-        ui.mapBtn.addEventListener("click", function () { overlay.classList.add("open"); });
+        // Default: open the pavilion overlay.  Switch to quest if __JQUEST__ already
+        // resolved (covers the race where journey-quest.js fetched faster than us).
+        // journey-quest.js hooks this same button via DOM query when IT resolves last.
+        ui.mapBtn.onclick = function () { overlay.classList.add("open"); };
+        if (window.__SHELL__ && window.__SHELL__.questEnabled && window.__JQUEST__) {
+          ui.mapBtn.onclick = function () { window.__JQUEST__.open(); };
+        }
         refreshWallet();
       } else ui.path.appendChild(el("span", "js-land", "illtowell.com"));
     });

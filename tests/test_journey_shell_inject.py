@@ -80,3 +80,16 @@ def test_shell_noop_when_flag_off(client):
     appmod.JOURNEY_SHELL_ENABLED = False
     body = c.get("/begin").get_data(as_text=True)
     assert "/static/shell.js" not in body
+
+
+def test_quest_disabled_no_quest_assets():
+    out = shell_nav.inject_shell_html("<head></head>", "funnel", quest_enabled=False)
+    assert "journey-quest.js" not in out
+    assert "journey-quest.css" not in out
+
+
+def test_quest_enabled_injects_assets():
+    out = shell_nav.inject_shell_html("<head></head>", "funnel", quest_enabled=True)
+    assert "journey-quest.js" in out
+    assert "journey-quest.css" in out
+    assert '"questEnabled":true' in out
