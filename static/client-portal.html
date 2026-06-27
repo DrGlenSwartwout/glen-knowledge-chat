@@ -127,6 +127,20 @@
   .pat-chip{display:inline-block;margin:3px 5px 3px 0;padding:4px 10px;border-radius:14px;
     background:var(--brand-soft);border:1px solid var(--line,#21472d);font-size:.85rem}
   @media (prefers-reduced-motion: reduce){.reveal{animation:none;opacity:1;transform:none}}
+  /* Ask Dr. Glen concierge chat */
+  .chat-msgs{max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:.8rem;min-height:48px}
+  .chat-bubble{border-radius:12px;padding:9px 13px;max-width:88%;font-size:.93rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+  .chat-bubble.user{align-self:flex-end;background:var(--brand);color:var(--btn-fg)}
+  .chat-bubble.assistant{align-self:flex-start;background:var(--card2);border:1px solid var(--line)}
+  .chat-bubble.error{align-self:flex-start;border:1px solid var(--err);color:var(--err)}
+  .chat-input-row{display:flex;gap:8px;align-items:center;margin-top:.2rem}
+  .chat-input-row input{flex:1;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:.95rem;font-family:inherit;outline:0}
+  .chat-input-row input:focus{border-color:var(--brand)}
+  .chat-input-row input::placeholder{color:var(--muted)}
+  .chat-sugg{background:var(--brand-soft);border:1px solid var(--line);border-radius:10px;padding:10px 13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .chat-sugg-name{font-weight:600;font-size:.9rem}
+  .chat-sugg-price{color:var(--muted);font-size:.86rem}
+  .chat-sugg-btn{font-size:.82rem;padding:5px 12px;border-radius:8px;text-decoration:none;margin-left:auto;display:inline-block}
 </style>
 </head>
 <body>
@@ -426,6 +440,17 @@ function render(d, v){
     }
   }
 
+  // "Ask Dr. Glen" concierge chat — always shown for every portal client.
+  html += `<div class="card" id="chatCard">
+    <h2>Ask Dr. Glen</h2>
+    <p class="muted small" style="margin:.3rem 0 .7rem">Questions about your healing path, remedies, or how to feel better? Ask here.</p>
+    <div id="chatMsgs" class="chat-msgs"></div>
+    <div class="chat-input-row">
+      <input id="chatInput" type="text" placeholder="Ask about your scan or remedies..." autocomplete="off">
+      <button class="btn" id="chatSend">Send</button>
+    </div>
+  </div>`;
+
   if(Array.isArray(d.reorder_items) && d.reorder_items.length){
     let rows = "";
     d.reorder_items.forEach(it=>{
@@ -537,6 +562,12 @@ function render(d, v){
   app.innerHTML = html;
   document.getElementById("loading").hidden = true;
   app.hidden = false;
+
+  var chatSendEl = document.getElementById("chatSend");
+  if(chatSendEl){ chatSendEl.addEventListener("click", sendChatMessage); }
+  var chatInputEl = document.getElementById("chatInput");
+  if(chatInputEl){ chatInputEl.addEventListener("keydown", function(e){ if(e.key==="Enter"&&!e.shiftKey){ sendChatMessage(); } }); }
+  repopulateChatHistory();
 
   const btn = document.getElementById("reorderBtn");
   if(btn) btn.addEventListener("click", reorder);
@@ -653,6 +684,124 @@ async function addSocial(){
   }catch(e){
     err.textContent = "Something went wrong. Please try again.";
     err.hidden = false; btn.disabled = false; btn.textContent = label;
+  }
+}
+
+// ---- Ask Dr. Glen concierge chat ----
+let chatHistory = [];
+
+function repopulateChatHistory(){
+  var msgs = document.getElementById("chatMsgs");
+  if(!msgs || !chatHistory.length) return;
+  chatHistory.forEach(function(entry){
+    var div = document.createElement("div");
+    div.className = "chat-bubble " + (entry.role === "user" ? "user" : "assistant");
+    div.textContent = entry.content || "";
+    msgs.appendChild(div);
+  });
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function renderSuggestion(sugg){
+  if(!sugg || typeof sugg !== "object") return null;
+  var name = (sugg.name != null) ? String(sugg.name) : "";
+  var price = (sugg.price != null) ? String(sugg.price) : "";
+  var url = (sugg.url != null) ? String(sugg.url) : "";
+  var el = document.createElement("div");
+  el.className = "chat-sugg";
+  var inner = '<span class="chat-sugg-name">' + esc(name) + "</span>";
+  if(price){ inner += '<span class="chat-sugg-price"> &mdash; ' + esc(price) + "</span>"; }
+  if(url){ inner += '<a class="btn chat-sugg-btn" href="' + esc(url) + '" target="_blank" rel="noopener">Order now</a>'; }
+  el.innerHTML = inner;
+  return el;
+}
+
+function appendChatBubble(role, text){
+  var msgs = document.getElementById("chatMsgs");
+  if(!msgs) return null;
+  var div = document.createElement("div");
+  div.className = "chat-bubble " + role;
+  if(text) div.textContent = text;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+async function sendChatMessage(){
+  var input = document.getElementById("chatInput");
+  var sendBtn = document.getElementById("chatSend");
+  if(!input || !sendBtn) return;
+  var query = (input.value || "").trim();
+  if(!query) return;
+  input.value = "";
+  input.disabled = true;
+  sendBtn.disabled = true;
+  try{
+    appendChatBubble("user", query);
+    var assistantBubble = appendChatBubble("assistant", "");
+    var assistantText = "";
+    var resp = await fetch(
+      "/api/portal/" + encodeURIComponent(token) + "/chat",
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({query: query, history: chatHistory}),
+      }
+    );
+    if(!resp.ok){
+      if(assistantBubble){
+        assistantBubble.className = "chat-bubble error";
+        assistantBubble.textContent = "Unable to reach Dr. Glen right now. Please try again.";
+      }
+    } else {
+      var reader = resp.body.getReader();
+      var decoder = new TextDecoder();
+      var buf = "";
+      var streamDone = false;
+      var msgs = document.getElementById("chatMsgs");
+      while(!streamDone){
+        var chunk = await reader.read();
+        if(chunk.done) break;
+        buf += decoder.decode(chunk.value, {stream: true});
+        var lines = buf.split("\n");
+        buf = lines.pop();
+        for(var i = 0; i < lines.length; i++){
+          var line = lines[i];
+          if(line.slice(0,6) !== "data: ") continue;
+          var payload = line.slice(6).trim();
+          if(!payload) continue;
+          try{
+            var evt = JSON.parse(payload);
+            if(evt.token){
+              assistantText += evt.token;
+              if(assistantBubble) assistantBubble.textContent = assistantText;
+              if(msgs) msgs.scrollTop = msgs.scrollHeight;
+            } else if(evt.suggestion){
+              var suggEl = renderSuggestion(evt.suggestion);
+              if(suggEl && msgs){ msgs.appendChild(suggEl); }
+            } else if(evt.error){
+              if(assistantBubble){
+                assistantBubble.className = "chat-bubble error";
+                assistantBubble.textContent = String(evt.error);
+              }
+            } else if(evt.done){
+              streamDone = true;
+              chatHistory.push({role: "user", content: query});
+              chatHistory.push({role: "assistant", content: assistantText});
+            }
+          } catch(parseErr){ /* skip malformed SSE lines */ }
+        }
+      }
+    }
+  } catch(err){
+    try{
+      appendChatBubble("error", (err && err.message) ? err.message : "Something went wrong. Please try again.");
+    } catch(innerErr){ /* never break the portal */ }
+  } finally {
+    if(input) input.disabled = false;
+    if(sendBtn) sendBtn.disabled = false;
+    if(input) input.focus();
   }
 }
 
