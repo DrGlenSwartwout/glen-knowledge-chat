@@ -53,6 +53,22 @@
   .confirmed p{ color:var(--muted); font-size:15px; max-width:440px; margin:0 auto; }
   footer{ margin-top:60px; padding:28px 24px 44px; text-align:center; border-top:1px solid rgba(33,71,45,0.5); }
   .foot-note{ font-size:12.5px; color:var(--muted); opacity:0.7; max-width:540px; margin:0 auto; line-height:1.7; }
+  .vmodes{ display:flex; gap:8px; margin-bottom:12px; }
+  .vmode{ flex:1; padding:9px 8px; background:var(--surface-2); color:var(--muted);
+    border:1px solid var(--border); border-radius:9px; font-family:"Raleway",sans-serif;
+    font-size:13px; font-weight:600; cursor:pointer; text-align:center; }
+  .vmode.active{ background:var(--green); color:var(--cream); border-color:var(--green); }
+  .vpanel{ display:none; }
+  .vpanel.show{ display:block; }
+  #recPreview{ width:100%; max-height:260px; background:#000; border-radius:10px; display:none; margin-bottom:10px; }
+  #recPreview.show{ display:block; }
+  .recbtns{ display:flex; gap:8px; justify-content:center; }
+  .recbtn{ padding:10px 16px; background:var(--surface-2); color:var(--cream);
+    border:1px solid var(--border); border-radius:9px; font-family:"Raleway",sans-serif;
+    font-size:14px; font-weight:600; cursor:pointer; }
+  .recbtn[disabled]{ opacity:.5; cursor:default; }
+  .recbtn.rec.recording{ background:#7a2230; border-color:#a3303f; }
+  .recstatus{ color:var(--muted); font-size:13px; margin-top:8px; min-height:16px; text-align:center; }
   @media(max-width:560px){ body{font-size:16px;} .shell{padding:0 18px;} .card{padding:22px 20px;} }
 </style>
 </head>
@@ -82,9 +98,27 @@
         </div>
 
         <div class="field">
-          <label>Video <span class="hint">— optional. Upload a clip, or paste a link (YouTube, Drive, etc.).</span></label>
-          <input type="file" id="video" accept="video/*" />
-          <input type="url" id="video_url" placeholder="…or paste a video link" style="margin-top:10px;" />
+          <label>Video <span class="hint">— record it right here, upload a clip, or paste a link.</span></label>
+          <div class="vmodes">
+            <div class="vmode active" data-mode="record">&#127909; Record</div>
+            <div class="vmode" data-mode="upload">&#8593; Upload</div>
+            <div class="vmode" data-mode="link">&#128279; Link</div>
+          </div>
+          <div class="vpanel show" data-panel="record">
+            <video id="recPreview" playsinline muted></video>
+            <div class="recbtns">
+              <button type="button" class="recbtn rec" id="recBtn">Record</button>
+              <button type="button" class="recbtn" id="stopBtn" disabled>Stop</button>
+              <button type="button" class="recbtn" id="rerecBtn" disabled>Re-record</button>
+            </div>
+            <div class="recstatus" id="recStatus">Tap Record — your browser will ask for camera &amp; mic access.</div>
+          </div>
+          <div class="vpanel" data-panel="upload">
+            <input type="file" id="video" accept="video/*" />
+          </div>
+          <div class="vpanel" data-panel="link">
+            <input type="url" id="video_url" placeholder="Paste a video link (YouTube, Drive, etc.)" />
+          </div>
         </div>
 
         <div class="field">
@@ -140,6 +174,85 @@
     var ptoken = qp.get("p") || "";
     var srcTag = qp.get("tag") || "";
 
+    // ── Video: record-in-browser (default) / upload / link ────────────────────
+    var activeMode = "record";
+    var _recBlob = null, _recorder = null, _recStream = null, _recChunks = [], _recTimer = null;
+    var REC_MAX_SEC = 120;
+    var recPreview = document.getElementById("recPreview");
+    var recBtn = document.getElementById("recBtn");
+    var stopBtn = document.getElementById("stopBtn");
+    var rerecBtn = document.getElementById("rerecBtn");
+    var recStatus = document.getElementById("recStatus");
+
+    document.querySelectorAll(".vmode").forEach(function(tab){
+      tab.addEventListener("click", function(){
+        activeMode = tab.dataset.mode;
+        document.querySelectorAll(".vmode").forEach(function(t){ t.classList.toggle("active", t === tab); });
+        document.querySelectorAll(".vpanel").forEach(function(p){
+          p.classList.toggle("show", p.dataset.panel === activeMode);
+        });
+      });
+    });
+
+    function recReset(){
+      _recBlob = null; _recChunks = [];
+      recPreview.classList.remove("show"); recPreview.removeAttribute("src"); recPreview.srcObject = null;
+      recPreview.muted = true; recPreview.controls = false;
+      recBtn.disabled = false; stopBtn.disabled = true; rerecBtn.disabled = true;
+      recBtn.classList.remove("recording");
+      recStatus.textContent = "Tap Record — your browser will ask for camera & mic access.";
+    }
+
+    function recTick(start){
+      var elapsed = Math.round((Date.now() - start) / 1000);
+      recStatus.textContent = "Recording " + elapsed + "s / " + REC_MAX_SEC + "s max";
+      if(elapsed >= REC_MAX_SEC && _recorder && _recorder.state === "recording"){ _recorder.stop(); }
+    }
+
+    if(recBtn){
+      recBtn.addEventListener("click", function(){
+        if(!navigator.mediaDevices || !window.MediaRecorder){
+          recStatus.textContent = "Your browser can't record here — please use Upload instead.";
+          return;
+        }
+        _recBlob = null;
+        navigator.mediaDevices.getUserMedia({video:true, audio:true}).then(function(stream){
+          _recStream = stream; _recChunks = [];
+          recPreview.srcObject = stream; recPreview.muted = true; recPreview.controls = false;
+          recPreview.classList.add("show"); recPreview.play().catch(function(){});
+          var mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus") ? "video/webm;codecs=vp8,opus"
+                   : (MediaRecorder.isTypeSupported("video/webm") ? "video/webm" : "");
+          _recorder = mime ? new MediaRecorder(stream, {mimeType:mime}) : new MediaRecorder(stream);
+          _recorder.ondataavailable = function(e){ if(e.data && e.data.size > 0) _recChunks.push(e.data); };
+          _recorder.onstop = function(){
+            if(_recStream){ _recStream.getTracks().forEach(function(t){ t.stop(); }); _recStream = null; }
+            clearInterval(_recTimer); recPreview.srcObject = null;
+            if(!_recChunks.length){ recStatus.textContent = "No video captured — try again."; recReset(); return; }
+            var blobMime = (_recorder.mimeType || "video/webm").split(";")[0];
+            _recBlob = new Blob(_recChunks, {type: blobMime});
+            recPreview.src = URL.createObjectURL(_recBlob);
+            recPreview.muted = false; recPreview.controls = true;
+            recBtn.disabled = true; stopBtn.disabled = true; rerecBtn.disabled = false;
+            recBtn.classList.remove("recording");
+            recStatus.textContent = "Looks good? Submit below — or Re-record.";
+          };
+          _recorder.start();
+          var start = Date.now();
+          _recTimer = setInterval(function(){ recTick(start); }, 500);
+          recBtn.disabled = true; stopBtn.disabled = false; recBtn.classList.add("recording");
+          recStatus.textContent = "Recording…";
+        }).catch(function(){ recStatus.textContent = "Camera/mic access was blocked. Allow it, or use Upload."; });
+      });
+      stopBtn.addEventListener("click", function(){
+        if(_recorder && _recorder.state === "recording"){ _recorder.stop(); }
+        stopBtn.disabled = true; clearInterval(_recTimer);
+      });
+      rerecBtn.addEventListener("click", function(){
+        if(recPreview.src){ URL.revokeObjectURL(recPreview.src); }
+        recReset();
+      });
+    }
+
     var form = document.getElementById("results-form");
     var btn = document.getElementById("submit-btn");
     var msg = document.getElementById("msg");
@@ -150,8 +263,6 @@
       var email = (document.getElementById("email").value || "").trim();
       var body = (document.getElementById("body").value || "").trim();
       var consent = document.getElementById("consent").checked;
-      var vid = document.getElementById("video").files[0];
-      var vidUrl = (document.getElementById("video_url").value || "").trim();
       var photo = document.getElementById("photo").files[0];
 
       if(!chosenRating){ msg.textContent = "Please choose a star rating."; return; }
@@ -168,8 +279,15 @@
       fd.append("consent_public", "1");
       if(ptoken) fd.append("p", ptoken);
       if(srcTag) fd.append("tag", srcTag);
-      if(vid){ fd.append("video", vid, vid.name); }
-      else if(vidUrl){ fd.append("video_url", vidUrl); }
+      if(activeMode === "record" && _recBlob){
+        fd.append("video", _recBlob, "testimonial.webm");
+      } else if(activeMode === "upload"){
+        var up = document.getElementById("video").files[0];
+        if(up) fd.append("video", up, up.name);
+      } else if(activeMode === "link"){
+        var lk = (document.getElementById("video_url").value || "").trim();
+        if(lk) fd.append("video_url", lk);
+      }
       if(photo){ fd.append("photo", photo, photo.name); }
 
       fetch("/api/testimonials", {method:"POST", credentials:"same-origin", body:fd})
