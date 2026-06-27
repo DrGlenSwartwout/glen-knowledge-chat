@@ -65,6 +65,7 @@
     <div class="muted" id="assignment-body" style="font-size:13px;margin:4px 0 10px"></div>
     <div id="assignment-status" style="font-size:13px;margin-bottom:12px"></div>
     <button id="assignment-record">Record your video</button>
+    <div id="assignment-feedback"></div>
   </div>
 
   <div class="panel" id="assist-panel" style="display:none">
@@ -216,6 +217,25 @@ function renderAssignment(asg){
     recBtn.style.display = 'inline-block';
     recBtn.onclick = function(){ window.open(asg.record_url, '_blank', 'noopener'); };
   }
+  renderFeedback(asg.feedback);
+}
+
+function renderFeedback(fb){
+  var el = $('assignment-feedback');
+  if(!fb){ el.innerHTML = ''; return; }
+  var col = {strong:'#3d8a52', ok:'#caa43a', low:'#c0623a'};
+  var bars = (fb.scores||[]).map(function(s){
+    return '<span style="display:inline-block;margin:2px 12px 2px 0;font-size:12px">'
+      + s.label + ' <b style="color:'+(col[s.level]||'#888')+'">'+s.value+'</b>'
+      + '<span style="opacity:.5">/10</span></span>';
+  }).join('');
+  var head = (fb.outcome === 'approved')
+    ? '<span class="badge ok">'+fb.headline+'</span>'
+    : '<span class="badge" style="background:#caa43a;color:#0a150d">'+fb.headline+'</span>';
+  el.innerHTML = '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">'
+    + '<div style="margin-bottom:8px">'+head+'</div>'
+    + (bars ? '<div class="muted" style="font-size:11px;margin-bottom:4px">Your quality scores, for reference</div><div>'+bars+'</div>' : '')
+    + '</div>';
 }
 
 function render(d){
