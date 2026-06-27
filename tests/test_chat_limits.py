@@ -9,7 +9,7 @@ def test_client_ip_falls_back_to_remote_addr():
 def test_client_ip_ipv6_normalized_to_64():
     # two addresses in the same /64 collapse to one key
     a = client_ip("2001:db8:abcd:1234:1::1", "")
-    b = client_ip("2001:db8:abcd:1234:ffff:: ff", "")
+    b = client_ip("2001:db8:abcd:1234:ffff::ff", "")
     assert a == b == "2001:db8:abcd:1234::/64"
 
 def test_velocity_allows_under_limit():

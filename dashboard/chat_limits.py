@@ -17,16 +17,14 @@ def client_ip(xff: str, remote_addr: str) -> str:
     raw = (xff or "").split(",")[0].strip() or (remote_addr or "").strip()
     if not raw:
         return "anon"
-    # Remove all whitespace from the raw address (handles formatting artifacts)
-    raw_clean = raw.replace(" ", "")
     try:
-        ip = ipaddress.ip_address(raw_clean)
+        ip = ipaddress.ip_address(raw)
     except ValueError:
         return raw
     if ip.version == 6:
-        net = ipaddress.ip_network(f"{raw_clean}/64", strict=False)
+        net = ipaddress.ip_network(f"{raw}/64", strict=False)
         return f"{net.network_address}/64"
-    return raw_clean
+    return raw
 
 class VelocityLimiter:
     """In-memory per-IP sliding-window counter. Two windows: 60s and 86400s."""
