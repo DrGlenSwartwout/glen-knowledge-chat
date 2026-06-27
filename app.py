@@ -3273,21 +3273,21 @@ def chat():
 
         full_answer = []
         try:
-            with _cl.messages.stream(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=max_tok,
-                system=_system,
-                messages=messages
-            ) as stream:
-                _emitted = 0
-                for token in stream.text_stream:
-                    full_answer.append(token)
-                    acc = "".join(full_answer)
-                    cut = acc.find("⟦CTA⟧")
-                    visible = acc if cut == -1 else acc[:cut]
-                    if len(visible) > _emitted:
-                        yield sse({"token": visible[_emitted:]})
-                        _emitted = len(visible)
+            from dashboard.chat_cta import parse_cta, stream_visible
+
+            def _toks():
+                with _cl.messages.stream(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=max_tok,
+                    system=_system,
+                    messages=messages
+                ) as stream:
+                    for token in stream.text_stream:
+                        full_answer.append(token)
+                        yield token
+
+            for delta in stream_visible(_toks()):
+                yield sse({"token": delta})
         except Exception as e:
             yield sse({"error": f"Claude error: {e}"})
             return
@@ -3297,7 +3297,6 @@ def chat():
         if _ceiling_hit:
             yield sse({"token": "\n\n_You've reached this month's full-report limit — here's the summary. Members get unlimited full reports._"})
 
-        from dashboard.chat_cta import parse_cta
         try:
             _clean, _cta = parse_cta("".join(full_answer))
         except Exception:

@@ -1,4 +1,4 @@
-from dashboard.chat_cta import parse_cta, SENTINEL
+from dashboard.chat_cta import parse_cta, stream_visible, SENTINEL
 
 def test_parse_email_directive():
     ans = "Here is your brief answer.\n\n⟦CTA⟧ email |  | Send my full report"
@@ -23,3 +23,43 @@ def test_unknown_type_stripped_and_none():
 def test_inline_type():
     _, cta = parse_cta("Body.\n⟦CTA⟧ inline | | ")
     assert cta == {"type": "inline", "target": "", "label": ""}
+
+
+# --- stream_visible tests ---
+
+def _join(tokens):
+    return "".join(stream_visible(tokens))
+
+
+def test_stream_visible_no_sentinel():
+    result = _join(["Hello ", "world", " today"])
+    assert result == "Hello world today"
+
+
+def test_stream_visible_split_sentinel_each_char():
+    # The bug: sentinel arrives as separate tokens
+    tokens = ["Body text.", "⟦", "CTA", "⟧", " email |  | x"]
+    result = _join(tokens)
+    assert result == "Body text."
+    assert "⟦" not in result
+
+
+def test_stream_visible_whole_sentinel_one_token():
+    tokens = ["Body.", "⟦CTA⟧ page | u | l"]
+    result = _join(tokens)
+    assert result == "Body."
+    assert "⟦" not in result
+
+
+def test_stream_visible_sentinel_split_ctabracket():
+    # Sentinel split as ⟦CTA | ⟧
+    tokens = ["A.", "⟦CTA", "⟧ inline | | "]
+    result = _join(tokens)
+    assert result == "A."
+    assert "⟦" not in result
+
+
+def test_stream_visible_short_tail_flushed():
+    # Tail shorter than hold must still be flushed at stream end
+    result = _join(["Hi"])
+    assert result == "Hi"
