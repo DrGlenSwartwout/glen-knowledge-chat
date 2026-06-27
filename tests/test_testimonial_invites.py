@@ -199,7 +199,7 @@ def test_scan_includes_gmail_source(monkeypatch, tmp_path):
     monkeypatch.setattr(appmod, "_recent_active_emails", lambda cx, **k: [])   # no DB comms
     monkeypatch.setattr(appmod, "_gather_comms_text", lambda cx, e, **k: "")
     monkeypatch.setattr(appmod, "_gmail_client_texts",
-                        lambda cx, days: {"gm@x.com": "thank you, I feel amazing"})
+                        lambda cx, days, **k: {"gm@x.com": "thank you, I feel amazing"})
     monkeypatch.setattr(appmod, "_ts_complete",
                         lambda s, u: '{"positive": true, "confidence": 0.9, "quote": "I feel amazing", "kind": "remedy"}')
     c = appmod.app.test_client()

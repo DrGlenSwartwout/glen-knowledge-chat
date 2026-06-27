@@ -5595,7 +5595,7 @@ def _known_client_emails(cx, limit=5000):
     return set(list(out)[:limit])
 
 
-def _gmail_client_texts(cx, days, diag=None):
+def _gmail_client_texts(cx, days, limit=200, diag=None):
     """{client_email: text} from the Gmail inbox (known clients only). Off unless enabled."""
     if not _GMAIL_FEEDBACK_ENABLED:
         if diag is not None:
@@ -5604,7 +5604,7 @@ def _gmail_client_texts(cx, days, diag=None):
     try:
         known = _known_client_emails(cx)
         from dashboard import gmail_feedback as _gf
-        return _gf.recent_client_messages(known, days=int(days), diag=diag)
+        return _gf.recent_client_messages(known, days=int(days), limit=int(limit), diag=diag)
     except Exception as e:  # noqa: BLE001
         if diag is not None:
             diag["error"] = repr(e)[:200]
@@ -5646,9 +5646,13 @@ def api_testimonial_invites_scan():
         days = 7
     from dashboard import testimonial_signals as _ts, testimonial_invites as _ti
     found, scanned = [], 0
+    try:
+        gmail_limit = max(1, min(1000, int(request.args.get("gmail_limit") or 200)))
+    except (TypeError, ValueError):
+        gmail_limit = 200
     gmail_diag = {"enabled": _GMAIL_FEEDBACK_ENABLED}
     with sqlite3.connect(LOG_DB) as cx:
-        gmail_texts = _gmail_client_texts(cx, days, diag=gmail_diag)
+        gmail_texts = _gmail_client_texts(cx, days, limit=gmail_limit, diag=gmail_diag)
         active = sorted(set(_recent_active_emails(cx, days=days)) | set(gmail_texts.keys()))
         for e in active:
             if _ti.should_skip(cx, e):
