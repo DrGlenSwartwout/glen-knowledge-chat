@@ -43,3 +43,15 @@ def test_money_prompt_uses_qbo_ar_for_receivables():
     p = br.SLUG_PROMPTS["money-cash"]
     assert "qbo_ar" in p                      # AR comes from the QBO block
     assert "practice_better" in p             # PB still named, as separate activity
+
+
+def test_record_links_instruction_covers_invoices():
+    from dashboard import briefing_runner as br
+    # _build_user_prompt embeds the RECORD LINKS rule; it must invite linking invoices, not just people
+    snap = {"money": {"qbo_ar": [{"id": "501", "doc": "1024", "customer": "Acme Co",
+                                  "balance": 5000.0, "days_overdue": 32}]}}
+    from dashboard import briefing_links as bl
+    bl.build_linkables(snap)
+    prompt = br._build_user_prompt(snap, "money-cash")
+    assert "invoice" in prompt.lower()
+    assert "(ref:" in prompt  # the markdown-link form is still shown

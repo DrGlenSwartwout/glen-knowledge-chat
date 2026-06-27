@@ -134,6 +134,6 @@ def build_linkables(snapshot):
         qid = str(qid or "").strip()
         if not qid:
             continue
-        mint(rec, "invoice", display or ("Invoice " + qid), invoice_url(qid))
+        mint(rec, "invoice", display, invoice_url(qid))
 
     return registry
