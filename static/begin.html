@@ -876,20 +876,70 @@
     var firstQuestionFired = false;
     var loading = false;
 
+    function escapeHtml(s){
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+        return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]); });
+    }
+    // Escape, then make any http(s) URL a tappable link (so links the AI gives survive + work).
+    window.heroLinkify = function(text){
+      return escapeHtml(text).replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)])/g, function(u){
+        return '<a href="' + u + '" target="_blank" rel="noopener">' + u + '</a>'; });
+    };
+
     window.heroAppend = function(role, text){
       var d = document.createElement('div');
       d.className = 'hero-msg ' + (role === 'user' ? 'user' : 'assistant');
-      d.textContent = text;
+      d.innerHTML = heroLinkify(text);
       msgsEl.appendChild(d);
       msgsEl.scrollTop = msgsEl.scrollHeight;
       return d;
     };
 
+    // Persist the conversation so a reload / device-sleep doesn't lose it (or the AI's links).
+    var HERO_KEY = 'begin_hero_chat';
+    var HERO_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+    window.heroSave = function(){
+      try {
+        localStorage.setItem(HERO_KEY, JSON.stringify({
+          ts: Date.now(), history: heroHistory,
+          nameCaptured: nameCaptured, exchanges: window.heroExchanges || 0 }));
+      } catch (_){}
+    };
+    window.heroResetChat = function(){
+      try { localStorage.removeItem(HERO_KEY); } catch (_){}
+      location.reload();
+    };
+
     // Scripted first assistant message asks the name (instant, no model call).
     var GREETING = "Aloha. I am here to help with your health goals. So I can "
       + "tailor this and remember you - what should I call you?";
-    heroAppend('assistant', GREETING);
-    heroHistory.push({ role: 'assistant', content: GREETING });
+    // Resume a saved conversation (within TTL) instead of starting fresh.
+    var heroRestored = false;
+    try {
+      var _saved = JSON.parse(localStorage.getItem(HERO_KEY) || 'null');
+      if (_saved && _saved.history && _saved.history.length > 1
+          && (Date.now() - (_saved.ts || 0)) < HERO_TTL_MS) {
+        _saved.history.forEach(function(m){ heroAppend(m.role, m.content); });
+        window.heroHistory = _saved.history.slice();
+        nameCaptured = true;
+        firstQuestionFired = _saved.history.some(function(m){ return m.role === 'user'; });
+        window.heroExchanges = _saved.exchanges
+          || _saved.history.filter(function(m){ return m.role === 'user'; }).length;
+        var rn = document.createElement('div');
+        rn.className = 'hero-msg assistant';
+        rn.style.cssText = 'opacity:.65;font-size:12px;';
+        rn.innerHTML = 'Resumed your previous conversation. '
+          + '<a href="#" id="hero-startover">Start over</a>';
+        msgsEl.appendChild(rn);
+        var so = document.getElementById('hero-startover');
+        if (so) so.addEventListener('click', function(ev){ ev.preventDefault(); heroResetChat(); });
+        heroRestored = true;
+      }
+    } catch (_){}
+    if (!heroRestored) {
+      heroAppend('assistant', GREETING);
+      heroHistory.push({ role: 'assistant', content: GREETING });
+    }
 
     // Clean a free-text reply into a first name: drop a leading "I'm/my name
     // is/it's/this is/call me", strip punctuation, take the first 1-2 tokens.
@@ -921,7 +971,7 @@
         var buf = '';
         function pump(){
           return reader.read().then(function(chunk){
-            if (chunk.done) { heroHistory.push({ role: 'assistant', content: acc }); return; }
+            if (chunk.done) { box.innerHTML = heroLinkify(acc); heroHistory.push({ role: 'assistant', content: acc }); heroSave(); return; }
             buf += decoder.decode(chunk.value, { stream: true });
             var lines = buf.split('\n'); buf = lines.pop();
             lines.forEach(function(line){
@@ -945,6 +995,7 @@
       heroAppend('user', q);
       heroHistory.push({ role: 'user', content: q });
       heroExchanges += 1;
+      heroSave();
       if (!firstQuestionFired) { firstQuestionFired = true; unlock('question'); }
       loading = true; sendEl.disabled = true;
 
