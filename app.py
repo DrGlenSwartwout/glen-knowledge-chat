@@ -5595,15 +5595,19 @@ def _known_client_emails(cx, limit=5000):
     return set(list(out)[:limit])
 
 
-def _gmail_client_texts(cx, days):
+def _gmail_client_texts(cx, days, diag=None):
     """{client_email: text} from the Gmail inbox (known clients only). Off unless enabled."""
     if not _GMAIL_FEEDBACK_ENABLED:
+        if diag is not None:
+            diag["enabled"] = False
         return {}
     try:
         known = _known_client_emails(cx)
         from dashboard import gmail_feedback as _gf
-        return _gf.recent_client_messages(known, days=int(days))
+        return _gf.recent_client_messages(known, days=int(days), diag=diag)
     except Exception as e:  # noqa: BLE001
+        if diag is not None:
+            diag["error"] = repr(e)[:200]
         print(f"[testimonial-invites] gmail read failed: {e!r}", flush=True)
         return {}
 
@@ -5642,8 +5646,9 @@ def api_testimonial_invites_scan():
         days = 7
     from dashboard import testimonial_signals as _ts, testimonial_invites as _ti
     found, scanned = [], 0
+    gmail_diag = {"enabled": _GMAIL_FEEDBACK_ENABLED}
     with sqlite3.connect(LOG_DB) as cx:
-        gmail_texts = _gmail_client_texts(cx, days)
+        gmail_texts = _gmail_client_texts(cx, days, diag=gmail_diag)
         active = sorted(set(_recent_active_emails(cx, days=days)) | set(gmail_texts.keys()))
         for e in active:
             if _ti.should_skip(cx, e):
@@ -5664,7 +5669,8 @@ def api_testimonial_invites_scan():
                 found.append({"email": e, "quote": r["quote"], "confidence": r["confidence"],
                               "kind": r["kind"], "source": src})
     return jsonify({"ok": True, "dry_run": dry, "days": days, "active": len(active),
-                    "gmail_clients": len(gmail_texts), "scanned": scanned, "candidates": found})
+                    "gmail_clients": len(gmail_texts), "gmail_diag": gmail_diag,
+                    "scanned": scanned, "candidates": found})
 
 
 @app.route("/console/testimonial-invites")
