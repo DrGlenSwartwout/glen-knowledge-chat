@@ -63,3 +63,20 @@ def test_stream_visible_short_tail_flushed():
     # Tail shorter than hold must still be flushed at stream end
     result = _join(["Hi"])
     assert result == "Hi"
+
+
+def test_stream_visible_drains_input_so_cta_payload_survives():
+    # Regression: stream_visible must DRAIN its input so the caller's `full_answer`
+    # accumulator keeps the directive's argument tokens (which come AFTER the
+    # sentinel). Previously the generator was abandoned at the sentinel and
+    # parse_cta saw an empty directive -> None (CTA never rendered).
+    full = []
+    tokens = ["Body.", "⟦CTA⟧", " email", " | ", " | ", "Send report"]
+    def gen():
+        for t in tokens:
+            full.append(t)
+            yield t
+    visible = "".join(stream_visible(gen()))
+    assert SENTINEL not in visible
+    clean, cta = parse_cta("".join(full))
+    assert cta is not None and cta["type"] == "email"   # payload survives the stream

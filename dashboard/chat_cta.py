@@ -11,18 +11,30 @@ def stream_visible(tokens):
     directive (the sentinel onward) and never flashing a PARTIAL sentinel.
     Holds back the trailing chars that could be the start of SENTINEL until
     they are confirmed safe, flushing the legitimate remainder at the end.
-    `tokens` is any iterable of str chunks. Yields str deltas to send to the client."""
+    `tokens` is any iterable of str chunks. Yields str deltas to send to the client.
+
+    IMPORTANT: when the sentinel is found we stop YIELDING, but we still fully
+    drain the input iterator. Callers feed a generator whose iteration has a side
+    effect (appending every token to a `full_answer` accumulator that is later
+    re-parsed for the directive's payload). If we abandoned the generator at the
+    sentinel, the directive's own argument tokens (which come AFTER the sentinel)
+    would never be pulled, never accumulated, and the re-parse would see an empty
+    directive (parse_cta -> None). So drain the rest before returning."""
+    it = iter(tokens)
     acc = ""
     emitted = 0
     hold = len(SENTINEL) - 1
-    for tok in tokens:
+    for tok in it:
         acc += (tok or "")
         cut = acc.find(SENTINEL)
         if cut != -1:
-            # full sentinel present: emit up to it, then stop forever
+            # full sentinel present: emit up to it, stop yielding, but DRAIN the
+            # rest of the input so the caller's per-token side effects all run.
             if cut > emitted:
                 yield acc[emitted:cut]
             emitted = cut
+            for _ in it:
+                pass
             return
         # no full sentinel yet: safe to emit everything except a possible
         # partial sentinel at the tail (the last `hold` chars)
