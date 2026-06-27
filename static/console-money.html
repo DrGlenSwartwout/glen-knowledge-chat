@@ -94,6 +94,11 @@
   #panel-receivables .acts button.void:hover { border-color:var(--red); color:var(--red); }
   #f-err { color:var(--red); margin-top:16px; font-size:13px; display:none; }
   #f-empty { color:var(--muted); font-size:13px; margin-top:16px; display:none; }
+@keyframes inv-flash {
+  0%   { background: rgba(212,175,55,0.45); }
+  100% { background: transparent; }
+}
+.ar-row.inv-flash { animation: inv-flash 2.4s ease-out; border-radius: 8px; }
 </style>
 </head>
 <body>
@@ -275,7 +280,7 @@
       var iid  = Number(r.id);
       var params_reminder = JSON.stringify({invoice_id:iid, doc:r.doc||'', email:r.email||'', amount:r.balance});
       var params_void     = JSON.stringify({invoice_id:iid});
-      return '<div class="ar-row">'
+      return '<div class="ar-row" data-inv="'+iid+'">'
         + '<div class="left">'
           + '<div class="who">'+who+'</div>'
           + '<div class="meta">Doc: '+doc+(due ? ' &middot; Due: '+due : '')+' &middot; '+badge+'</div>'
@@ -316,6 +321,17 @@
       var rows = res.data||[];
       if (!rows.length){ board.innerHTML=''; emptyEl.style.display='block'; return; }
       board.innerHTML = rows.map(rowHtml).join('');
+      maybeHighlight();
+    }
+
+    function maybeHighlight(){
+      var id = new URLSearchParams(location.search).get('invoice');
+      if (!id) return;
+      var row = document.querySelector('.ar-row[data-inv="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+      if (!row) return;
+      row.scrollIntoView({behavior:'smooth', block:'center'});
+      row.classList.add('inv-flash');
+      setTimeout(function(){ row.classList.remove('inv-flash'); }, 2600);
     }
 
     function tile(label, value, cls){
