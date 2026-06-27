@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Testimonial Invites — Console</title>
+<style>
+  :root{ --bg:#0f1411; --surface:#161d18; --border:#28392e; --ink:#e8efe6; --muted:#9fb0a4;
+    --gold:#d4a843; --green:#3d8a52; }
+  *{box-sizing:border-box;}
+  body{ background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,sans-serif; margin:0; padding:0 0 60px; }
+  .wrap{ max-width:860px; margin:0 auto; padding:0 20px; }
+  h1{ font-size:22px; margin:24px 0 4px; }
+  .hint{ color:var(--muted); font-size:13px; margin:0 0 16px; }
+  button{ background:var(--green); color:#fff; border:none; border-radius:8px; padding:9px 14px; font-size:14px; font-weight:600; cursor:pointer; }
+  button.alt{ background:var(--surface); color:var(--ink); border:1px solid var(--border); }
+  button.reject{ background:#5a2530; }
+  button[disabled]{ opacity:.5; cursor:default; }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin:12px 0; }
+  .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+  .who{ font-weight:600; } .em{ color:var(--muted); font-size:13px; }
+  .quote{ font-style:italic; color:var(--ink); margin:8px 0; border-left:3px solid var(--gold); padding-left:10px; }
+  .meta{ color:var(--muted); font-size:12px; }
+  .conf{ color:var(--gold); font-weight:600; }
+  .msg{ font-size:13px; margin-left:8px; }
+  .msg.ok{ color:var(--green); } .msg.err{ color:#d98; }
+  .empty{ color:var(--muted); padding:24px 0; }
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="bos" data-sub="testimonial-invites"></script>
+<div class="wrap">
+  <h1>◼ Testimonial Invites</h1>
+  <p class="hint">Clients who expressed a positive result in recent comms. Review each, then <b>Approve &amp; send</b> (emails them a link to /results) or <b>Dismiss</b>. Nothing sends without your click.</p>
+  <div class="row">
+    <button onclick="runScan()">Scan recent comms for new candidates</button>
+    <span class="msg" id="scan-msg"></span>
+  </div>
+  <div id="list" style="margin-top:18px"></div>
+</div>
+<script>
+  var KEY = (new URLSearchParams(location.search).get('key')) || localStorage.getItem('console_key') || '';
+  if(KEY) localStorage.setItem('console_key', KEY);
+  function q(p){ return p + (p.includes('?')?'&':'?') + 'key=' + encodeURIComponent(KEY); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]);}); }
+  async function api(path, opts){
+    var r = await fetch(q(path), opts);
+    if(r.status===401){ flash('scan-msg','Add ?key=CONSOLE_SECRET to the URL.',false); throw new Error('401'); }
+    return r.json();
+  }
+  function flash(id, t, ok){ var m=document.getElementById(id); m.textContent=t; m.className='msg '+(ok?'ok':'err'); }
+
+  async function load(){
+    var j = await api('/api/console/testimonial-invites');
+    var rows = (j && j.pending) || [];
+    var el = document.getElementById('list');
+    if(!rows.length){ el.innerHTML = '<p class="empty">No suggested invites right now. Run a scan to look for new ones.</p>'; return; }
+    el.innerHTML = rows.map(function(r){
+      return '<div class="card" id="c-'+r.id+'">'
+        + '<div><span class="who">'+esc(r.name||'(unknown)')+'</span> <span class="em">'+esc(r.email)+'</span></div>'
+        + (r.quote ? '<div class="quote">'+esc(r.quote)+'</div>' : '')
+        + '<div class="meta">source: '+esc(r.source||'comms')+' · kind: '+esc(r.kind||'general')+' · confidence: <span class="conf">'+Math.round((r.confidence||0)*100)+'%</span></div>'
+        + '<div class="row">'
+        + '<button onclick="act('+r.id+",'testimonial_invite.approve')\">Approve &amp; send</button>"
+        + '<button class="reject" onclick="act('+r.id+",'testimonial_invite.dismiss')\">Dismiss</button>"
+        + '<span class="msg" id="m-'+r.id+'"></span>'
+        + '</div></div>';
+    }).join('');
+  }
+
+  async function act(id, key){
+    flash('m-'+id, 'Working…', true);
+    try{
+      var res = await api('/api/action/'+key, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id:id})});
+      var st = (res && res.result && res.result.status) || (res && res.status);
+      flash('m-'+id, st==='sent'?'Invite sent ✓':(st==='dismissed'?'Dismissed':(st||'done')), true);
+      var card = document.getElementById('c-'+id); if(card){ card.style.opacity=.5; }
+      setTimeout(load, 800);
+    }catch(e){ flash('m-'+id, 'Error', false); }
+  }
+
+  async function runScan(){
+    flash('scan-msg', 'Previewing…', true);
+    try{
+      var prev = await api('/api/console/testimonial-invites/scan?dry_run=1', {method:'POST'});
+      if(prev.error){ flash('scan-msg', prev.error, false); return; }
+      var n = (prev.candidates||[]).length;
+      if(!n){ flash('scan-msg', 'Scanned '+prev.scanned+' active client(s) — no new positive-result candidates.', true); return; }
+      if(!confirm('Found '+n+' new candidate(s) from '+prev.scanned+' scanned. Add them to the review queue?\n\n'+(prev.candidates||[]).map(function(c){return c.email+' ('+Math.round(c.confidence*100)+'%)';}).join('\n'))) { flash('scan-msg','Cancelled.',true); return; }
+      var res = await api('/api/console/testimonial-invites/scan', {method:'POST'});
+      flash('scan-msg', 'Added '+((res.candidates||[]).length)+' candidate(s) to the queue.', true);
+      load();
+    }catch(e){ flash('scan-msg', 'Scan failed.', false); }
+  }
+
+  load();
+</script>
+</body>
+</html>

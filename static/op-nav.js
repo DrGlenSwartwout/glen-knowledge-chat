@@ -89,6 +89,7 @@
     { id: "biofield-reveals", label: "Biofield Reveals", href: "/console/biofield-reveals" + qs },
     { id: "biofield-intake", label: "Biofield Intake", href: "/console/biofield-intake" + qs },
     { id: "reviews",  label: "Reviews",    href: "/console/reviews" + qs },
+    { id: "testimonial-invites", label: "Invite Queue", href: "/console/testimonial-invites" + qs },
     { id: "shipping", label: "Shipping",  href: "/admin/shipping" + qs },
     { id: "neworder", label: "New Order", href: "/orders/new" + qs },
     { id: "practitioners", label: "Practitioners", href: "/console/practitioners" + qs },
