@@ -94,3 +94,15 @@ def test_quest_enabled_injects_assets():
     assert "journey-quest.js" in out
     assert "journey-quest.css" in out
     assert '"questEnabled":true' in out
+
+
+def test_quest_audio_script_injected_when_enabled():
+    out = shell_nav.inject_shell_html("<head></head>", "funnel", quest_enabled=True)
+    assert "journey-audio.js" in out
+    # audio script must appear before quest script so __JQAUDIO__ is defined first
+    assert out.index("journey-audio.js") < out.index("journey-quest.js")
+
+
+def test_quest_audio_script_absent_when_disabled():
+    out = shell_nav.inject_shell_html("<head></head>", "funnel", quest_enabled=False)
+    assert "journey-audio.js" not in out

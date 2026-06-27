@@ -13,6 +13,7 @@
   var _overlayOpen = false;
   var _overlay = null;
   var _order = [];   // populated from scene.order after fetch
+  var _soundMap = {};  // key → sound string, populated from scene.hotspots in buildOverlay
 
   // --- Quest progress state ---
   // Per-key {found:bool, done:bool} for each stage in scene.order.
@@ -83,6 +84,13 @@
         if (land) { setLockClass(land, lockState); }
       }
     }
+    // Sync approach soundscape to current target
+    if (window.__JQAUDIO__) {
+      try {
+        var curKey = cur >= 0 ? _order[cur] : null;
+        __JQAUDIO__.setTarget(curKey, curKey ? (_soundMap[curKey] || null) : null);
+      } catch (e) {}
+    }
   }
 
   // tryFind: called when a hotspot is clicked.
@@ -96,6 +104,10 @@
     _qs[key].found = true;
     _qs[key].done = true;
     saveQS();
+    // Fire arrival cue
+    if (window.__JQAUDIO__) {
+      try { __JQAUDIO__.arrival(key, _soundMap[key] || null); } catch (e) {}
+    }
     render();
   }
 
@@ -110,6 +122,8 @@
     if (!_overlay) { return; }
     _overlay.classList.add("open");
     _overlayOpen = true;
+    // Init audio on overlay open (user gesture context)
+    if (window.__JQAUDIO__) { try { __JQAUDIO__.init(); } catch (e) {} }
   }
 
   function close() {
@@ -139,6 +153,15 @@
     _order = scene.order || Object.keys(scene.hotspots || {});
     ensureKeys(_order);
     saveQS();
+
+    // Populate sound map from scene.hotspots
+    var _hs = scene.hotspots || {};
+    var _sk;
+    for (_sk in _hs) {
+      if (_hs.hasOwnProperty(_sk) && _hs[_sk].sound) {
+        _soundMap[_sk] = _hs[_sk].sound;
+      }
+    }
 
     // Build href map: home comes from scene.home.href; lands from /begin/state journey_map
     var hrefMap = {};
@@ -182,6 +205,50 @@
       btn.style.height = spot.h + "%";
       btn.onclick = function () { tryFind(key); };
       stage.appendChild(btn);
+    });
+
+    // Mute toggle button
+    var muteBtn = document.createElement("button");
+    muteBtn.className = "jq-mute-btn";
+    muteBtn.setAttribute("aria-label", "Toggle sound");
+    muteBtn.setAttribute("title", "Toggle sound");
+    function updateMuteBtn() {
+      muteBtn.textContent = (window.__JQAUDIO__ && __JQAUDIO__.isMuted()) ? "🔇" : "🔊";
+    }
+    updateMuteBtn();
+    muteBtn.onclick = function () {
+      if (window.__JQAUDIO__) {
+        try { __JQAUDIO__.toggleMute(); } catch (e) {}
+      } else {
+        // No audio engine loaded — toggle via localStorage only
+        try {
+          var cur = !!JSON.parse(localStorage.getItem("jquest.muted"));
+          localStorage.setItem("jquest.muted", JSON.stringify(!cur));
+        } catch (ex) {}
+      }
+      updateMuteBtn();
+    };
+    stage.appendChild(muteBtn);
+
+    // Proximity: mousemove on stage drives approach gain for the current hotspot
+    stage.addEventListener("mousemove", function (e) {
+      if (!window.__JQAUDIO__) { return; }
+      var cur = curIdx();
+      if (cur < 0) { try { __JQAUDIO__.proximity(0); } catch (ex) {} return; }
+      var key = _order[cur];
+      var spot = (_hs)[key];
+      if (!spot) { return; }
+      var r = stage.getBoundingClientRect();
+      var px = (e.clientX - r.left) / r.width * 100;
+      var py = (e.clientY - r.top) / r.height * 100;
+      var dx = px - spot.x;
+      var dy = py - spot.y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      var p = Math.max(0, 1 - dist / 40);
+      try { __JQAUDIO__.proximity(p); } catch (ex) {}
+    });
+    stage.addEventListener("mouseleave", function () {
+      if (window.__JQAUDIO__) { try { __JQAUDIO__.proximity(0); } catch (e) {} }
     });
 
     // Close on backdrop click

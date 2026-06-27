@@ -51,6 +51,7 @@ def inject_shell_html(html: str, mode: str, rewards1b: bool = False, rewards_gif
     if quest_enabled:
         tags += (
             '<link rel="stylesheet" href="/static/journey-quest.css">'
+            '<script defer src="/static/journey-audio.js"></script>'
             '<script defer src="/static/journey-quest.js"></script>'
         )
     return html.replace("</head>", tags + "\n</head>", 1)
