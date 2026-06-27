@@ -416,6 +416,41 @@ def _member_join_welcome(cx, email, source=None):
         print(f"[welcome] _member_join_welcome skipped: {_e!r}", flush=True)
 
 
+def _send_portal_welcome(email, name, token):
+    """Best-effort: send a one-time portal welcome after a portal is minted at
+    order time. Suppression-aware, once-guarded, never raises. Network send runs
+    in a daemon thread so the caller (order ingest) is never blocked."""
+    em = (email or "").strip().lower()
+    if not em or not token:
+        return
+    try:
+        from dashboard import email_suppression as _es
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _es.init_table(cx)
+            if _es.is_suppressed(cx, em):
+                return
+            # Dedicated once-guard for the order-time PORTAL TOKEN link. Kept
+            # SEPARATE from the membership-join /portal/login welcome guard so a
+            # member who later buys still receives their token link.
+            cx.execute("CREATE TABLE IF NOT EXISTS portal_token_welcome_sent ("
+                       "email TEXT PRIMARY KEY, sent_at TEXT)")
+            cur = cx.execute(
+                "INSERT OR IGNORE INTO portal_token_welcome_sent (email, sent_at) VALUES (?, ?)",
+                (em, datetime.now(timezone.utc).isoformat()))
+            if cur.rowcount == 0:   # token link already sent to this email
+                return
+        url = f"{PUBLIC_BASE_URL}/portal/{token}"
+        body = (f"Aloha {name or ''},\n\nYour personal healing home is ready:\n\n{url}\n\n"
+                f"It is where your remedies, protocol, and your concierge live. "
+                f"Reply anytime.\n\nWith aloha,\nDr. Glen & Rae")
+        import threading
+        threading.Thread(target=_send_full_report_email,
+                         args=(em, name, "Your healing home is ready \U0001f33a", body),
+                         daemon=True).start()
+    except Exception as e:
+        print(f"[portal-welcome] {em}: {e!r}", flush=True)
+
+
 def _link_resend_generic(purpose, url_template, ttl):
     """Factory: mint a fresh `purpose` token (preserving extra) and email its URL."""
     def handler(email, extra):
@@ -11649,7 +11684,31 @@ def api_client_portal(token):
         "pricing_note": bf_content.get("pricing_note", "") if bf_confirmed else "",
         "reorder_items": display,
         "notify_on": notify_on,
+        "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
     })
+
+
+@app.route("/api/portal/<token>/agree-tos", methods=["POST", "OPTIONS"])
+def api_portal_agree_tos(token):
+    if request.method == "OPTIONS":
+        return "", 200
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        from dashboard import client_portal as _cp
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if not email:
+            return jsonify({"ok": True}), 200   # nothing to key TOS to
+        try:
+            begin_funnel.record_unlock(cx, session_id=_entry_session_id(email),
+                                       trigger="tos", email=email, tos=True,
+                                       tos_version=BEGIN_TOS_VERSION)
+        except Exception as e:
+            print(f"[portal-tos] {email}: {e!r}", flush=True)
+            return jsonify({"error": "could not record"}), 500
+    return jsonify({"ok": True})
 
 
 @app.route("/api/portal/<token>/notify-pref", methods=["POST"])
@@ -24931,6 +24990,19 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                 discount_cents=int(discount_cents or 0),
                 points_redeemed_cents=int(points_redeemed_cents or 0),
                 shipping_cents=int(shipping_cents or 0), status=status)
+            # NEW: every buyer gets a portal home (idempotent, fail-open)
+            try:
+                from dashboard import portal_provision as _pp
+                # Serialize the SELECT-then-INSERT mint so two concurrent first-ever
+                # orders for the same new email can't create duplicate portals.
+                # Release the lock BEFORE _send_portal_welcome (it reacquires it; the
+                # lock is non-reentrant).
+                with _db_lock:
+                    _tok = _pp.ensure_portal_for_buyer(cx, email, name)
+                if _tok:
+                    _send_portal_welcome(email, name, _tok)
+            except Exception as _pe:
+                print(f"[orders] portal-provision {source}/{external_ref}: {_pe!r}", flush=True)
         finally:
             cx.close()
     except Exception as e:
