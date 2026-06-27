@@ -11413,8 +11413,11 @@ def api_portal_chat(token):
         print(f"[portal-concierge] retrieval: {e}", flush=True)
     messages = []
     for m in history[-8:]:
+        c = (m.get("content") or "").strip()
+        if not c:
+            continue  # Anthropic rejects empty content strings
         r = "user" if m.get("role") == "user" else "assistant"
-        messages.append({"role": r, "content": (m.get("content") or "")[:2000]})
+        messages.append({"role": r, "content": c[:2000]})
     user_block = (f"CONTEXT:\n{context_str}\n\n" if context_str else "") + query
     messages.append({"role": "user", "content": user_block})
 
