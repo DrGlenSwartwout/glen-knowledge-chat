@@ -221,3 +221,46 @@ def test_source_tag_captured_from_query_and_listed(monkeypatch, tmp_path):
     listed = c.get("/api/console/reviews").get_json()["pending"]
     row = next((r for r in listed if r["email"] == "ann@x.com"), None)
     assert row is not None and row["source_tag"] == "ash-cert-l1"
+
+
+# ── Cert-cohort: approving a tagged testimonial grants Level 1 credit ──────────
+
+def _capture_grants(monkeypatch):
+    from dashboard import reviews_actions as ra
+    calls = []
+    monkeypatch.setattr(ra, "_grant_cert", lambda email, level: calls.append((email, level)) or True)
+    return calls
+
+
+def test_cert_cohort_approval_grants_level1(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    calls = _capture_grants(monkeypatch)
+    from dashboard import product_reviews as pr, dispatch as d
+    from dashboard.rbac import Actor, OWNER
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        rid = pr.upsert_review(cx, "_results", "student@x.com", "Stu", 5,
+                               body="the course was the most meaningful thing",
+                               kind="testimonial", consent_public=1, source_tag="ash-cert-l1")
+        res = d.dispatch_action(cx, "reviews.approve", {"id": rid},
+                                Actor(role=OWNER, name="Glen"), source="panel")
+    assert res["status"] == "done"
+    assert calls == [("student@x.com", 1)]
+
+
+def test_untagged_or_product_approval_grants_nothing(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    calls = _capture_grants(monkeypatch)
+    from dashboard import product_reviews as pr, dispatch as d
+    from dashboard.rbac import Actor, OWNER
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        # untagged testimonial → no grant
+        r1 = pr.upsert_review(cx, "_results", "a@x.com", "A", 5, body="b",
+                              kind="testimonial", consent_public=1)
+        d.dispatch_action(cx, "reviews.approve", {"id": r1},
+                          Actor(role=OWNER, name="Glen"), source="panel")
+        # a PRODUCT review that happens to carry the tag → no grant (kind gate)
+        r2 = pr.upsert_review(cx, "longevity", "b@x.com", "B", 5, body="b",
+                              source_tag="ash-cert-l1")
+        d.dispatch_action(cx, "reviews.approve", {"id": r2},
+                          Actor(role=OWNER, name="Glen"), source="panel")
+    assert calls == []
