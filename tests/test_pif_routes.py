@@ -64,7 +64,7 @@ def test_summary_returns_balance_and_chain(monkeypatch, tmp_path):
     body = r.get_json()
     assert body["ok"] is True
     assert body["balance_cents"] == 500
-    assert body["chain"] == {"reached": 0, "l1": 0, "l2": 0, "levels": []}
+    assert body["chain"] == {"reached": 0, "l1": 0, "l2": 0, "levels": [], "recipients": []}
     assert body["healer_level"] == 1
     assert body["gift_wallet"] == []
 
@@ -95,3 +95,28 @@ def test_summary_gift_wallet_omits_secret_fields(monkeypatch, tmp_path):
     assert "code" not in entry
     assert "session_id" not in entry
     assert "email" not in entry
+
+
+def test_summary_includes_chain_recipients(monkeypatch, tmp_path):
+    import sqlite3
+    from dashboard import referrals
+    c = _client(monkeypatch, tmp_path)
+    monkeypatch.setattr(appmod, "PAY_IT_FORWARD_ENABLED", True)
+    monkeypatch.setattr(appmod, "is_member", lambda session_id="", email="": True)
+    cx = sqlite3.connect(str(tmp_path / "t.db"))
+    cx.execute("CREATE TABLE IF NOT EXISTS people "
+               "(email TEXT UNIQUE, first_name TEXT, last_name TEXT, name TEXT)")
+    cx.execute("INSERT INTO people (email, first_name, last_name, name) "
+               "VALUES ('b@x.com','Sarah','Hill','Sarah Hill')")
+    referrals.init_tables(cx)
+    referrals.record_redemption(cx, "G1", "m@x.com", "b@x.com", "o1")
+    cx.commit(); cx.close()
+    r = c.get("/api/pif/summary?email=m@x.com")
+    assert r.status_code == 200
+    body = r.get_json()
+    recips = body["chain"]["recipients"]
+    assert isinstance(recips, list) and len(recips) == 1
+    assert recips[0]["name"] == "Sarah H."
+    # existing fields intact
+    assert "reached" in body["chain"]
+    assert "balance_cents" in body and "gift_wallet" in body and "healer_level" in body

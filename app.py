@@ -24188,6 +24188,11 @@ def api_pif_summary():
         balance_cents = _points.balance(cx, email)
         chain = _pif.chain_summary(cx, email)
         try:
+            chain["recipients"] = _pif.chain_recipients(cx, email)
+        except Exception as _re:
+            print(f"[pif] chain recipients lookup failed: {_re!r}", flush=True)
+            chain["recipients"] = []
+        try:
             gift_wallet = [
                 {"product_slug": e["product_slug"], "pct": e["pct"],
                  "expires_at": e["expires_at"]}
