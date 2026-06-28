@@ -24168,7 +24168,7 @@ def admin_pif_milestone():
     value_cents = data.get("value_cents")
     if value_cents is not None:
         try:
-            value_cents = int(value_cents)
+            value_cents = max(0, int(value_cents))
         except (ValueError, TypeError):
             return jsonify({"ok": False, "error": "value_cents must be an integer"}), 400
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -24198,7 +24198,11 @@ def api_pif_summary():
         balance_cents = _points.balance(cx, email)
         chain = _pif.chain_summary(cx, email)
         try:
-            gift_wallet = _coupons.wallet(cx, email=email, kind="gift")
+            gift_wallet = [
+                {"product_slug": e["product_slug"], "pct": e["pct"],
+                 "expires_at": e["expires_at"]}
+                for e in _coupons.wallet(cx, email=email, kind="gift")
+            ]
         except Exception as _we:
             print(f"[pif] wallet lookup failed: {_we!r}", flush=True)
             gift_wallet = []

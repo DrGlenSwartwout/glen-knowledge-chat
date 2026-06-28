@@ -74,3 +74,24 @@ def test_summary_dark_when_flag_off(monkeypatch, tmp_path):
     monkeypatch.setattr(appmod, "PAY_IT_FORWARD_ENABLED", False)
     r = c.get("/api/pif/summary?email=m@x.com")
     assert r.status_code == 404
+
+
+def test_summary_gift_wallet_omits_secret_fields(monkeypatch, tmp_path):
+    from dashboard import coupons
+    c = _client(monkeypatch, tmp_path)
+    monkeypatch.setattr(appmod, "PAY_IT_FORWARD_ENABLED", True)
+    monkeypatch.setattr(appmod, "is_member", lambda session_id="", email="": True)
+    # Mint a gift coupon so the wallet is non-empty
+    cx = sqlite3.connect(str(tmp_path / "t.db"))
+    coupons.init_coupons_table(cx)
+    coupons.mint_gift(cx, email="m@x.com", product_slug="neuro-magnesium", pct=15)
+    cx.close()
+    r = c.get("/api/pif/summary?email=m@x.com")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert len(body["gift_wallet"]) == 1
+    entry = body["gift_wallet"][0]
+    assert set(entry.keys()) == {"product_slug", "pct", "expires_at"}
+    assert "code" not in entry
+    assert "session_id" not in entry
+    assert "email" not in entry
