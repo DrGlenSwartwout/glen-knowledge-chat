@@ -15,7 +15,7 @@ from dashboard.rbac import OWNER, OPS, VA
     key="rewards.process_payout",
     module="money",
     title="Process affiliate cash-out",
-    description="Approve and record an affiliate cash-out (cash: mark paid; points: redeem at face value).",
+    description="Approve and record an affiliate cash-out (cash: mark paid; points are not cashable).",
     risk_tier=MONEY_SEND,
     permission=(OWNER, OPS, VA),
 )
