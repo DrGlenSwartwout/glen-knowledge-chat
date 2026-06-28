@@ -9,7 +9,10 @@
       "price_cents": 99700,
       "pinecone_title": "Biofield Analysis",
       "info_only": true,
-      "_note": "Consultation service line for in-house invoices (SRP $997; bill per-client via unit_cents override). info_only keeps it out of the funnel/store + self-checkout + the shipping packer; the in-house manual-order builder still accepts it."
+      "service": true,
+      "service_value_cents": 100000,
+      "service_regular_cents": 30000,
+      "_note": "Consultation service line for in-house invoices (SRP $997; bill per-client via unit_cents override). info_only keeps it out of the funnel/store + self-checkout + the shipping packer; the in-house manual-order builder still accepts it. service:true → the invoice sorts it to the TOP and shows Value/Regular anchored above the per-client Special (unit_cents)."
     },
     "ei8-microbes-liver-integrator": {
       "name": "EI8 Microbes-Liver Integrator",

@@ -25484,6 +25484,21 @@ def _invoice_points_balance(order):
         cx.close()
 
 
+def _invoice_line_view(l):
+    """Customer-safe line + service-fee anchoring. A line whose product is a
+    `service` (e.g. Biofield Analysis) carries its catalog Value/Regular anchors so
+    the invoice can sort it to the top and show them above the per-client Special
+    (unit_cents). Public page can't reach the console catalog API, so resolve here."""
+    out = {"slug": l.get("slug"), "name": l.get("name"), "qty": int(l.get("qty") or 0),
+           "unit_cents": int(l.get("unit_cents") or 0), "line_cents": int(l.get("line_cents") or 0)}
+    p = _get_product(l.get("slug") or "")
+    if p and p.get("service"):
+        out["service"] = True
+        out["service_value_cents"] = p.get("service_value_cents")
+        out["service_regular_cents"] = p.get("service_regular_cents")
+    return out
+
+
 def _invoice_summary(order):
     """Customer-safe view — no person_id, notes, phone, or full address."""
     lines = order.get("items") or []
@@ -25492,9 +25507,7 @@ def _invoice_summary(order):
         "points_balance_cents": _invoice_points_balance(order),
         "external_ref": order.get("external_ref"),
         "name": order.get("name") or "",
-        "lines": [{"slug": l.get("slug"), "name": l.get("name"), "qty": int(l.get("qty") or 0),
-                   "unit_cents": int(l.get("unit_cents") or 0),
-                   "line_cents": int(l.get("line_cents") or 0)} for l in lines],
+        "lines": [_invoice_line_view(l) for l in lines],
         "subtotal_cents": subtotal,
         "discount_cents": int(order.get("discount_cents") or 0),
         "shipping_cents": int(order.get("shipping_cents") or 0),
