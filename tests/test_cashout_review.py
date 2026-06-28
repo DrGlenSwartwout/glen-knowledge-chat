@@ -35,3 +35,15 @@ def test_no_review_under_threshold(monkeypatch, tmp_path):
     rewards.accrue_cash(cx, slug="jane", email="jane@x.com", order_ref="INV1", amount_cents=500)
     appmod._maybe_raise_cashout_review(cx, "jane", "cash")
     assert cx.execute("SELECT COUNT(*) FROM todos WHERE source='affiliate-cashout'").fetchone()[0] == 0
+
+
+def test_no_review_points_mode(monkeypatch, tmp_path):
+    cx = _db(monkeypatch, tmp_path)
+    cx.execute("INSERT INTO affiliate_signups VALUES ('doc','doc@x.com','approved')")
+    # points balance well over the 10000-cent threshold
+    points.credit(cx, "doc@x.com", value_cents=50000, reason="referral", order_ref="r1")
+    cx.commit()
+    appmod._maybe_raise_cashout_review(cx, "doc", "points")
+    assert cx.execute(
+        "SELECT COUNT(*) FROM todos WHERE source='affiliate-cashout'"
+    ).fetchone()[0] == 0
