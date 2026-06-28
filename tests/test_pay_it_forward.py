@@ -52,6 +52,7 @@ def test_chain_summary_counts_two_levels():
     assert s["l1"] == 2
     assert s["l2"] == 1
     assert s["reached"] == 3
+    assert s["levels"] == [2, 1]
 
 
 def test_chain_summary_empty_for_unknown():
@@ -69,3 +70,4 @@ def test_chain_summary_excludes_self_and_dedupes():
     assert s["reached"] == 1
     assert s["l1"] == 1
     assert s["l2"] == 0
+    assert s["levels"] == [1, 0]

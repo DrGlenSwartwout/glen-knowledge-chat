@@ -48,9 +48,8 @@ def chain_summary(cx, email, *, max_depth=2):
             f"WHERE lower(owner_email) IN ({placeholders})",
             tuple(frontier)).fetchall()
         nxt = {r[0] for r in rows if r[0] and r[0] != seed and r[0] not in reached}
-        if not nxt:
-            break
-        levels.append(len(nxt))
+        if nxt or levels:
+            levels.append(len(nxt))
         reached |= nxt
         frontier = nxt
     return {
