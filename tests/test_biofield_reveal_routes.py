@@ -83,6 +83,32 @@ def test_console_list_drafts(monkeypatch, tmp_path):
     assert body["drafts"][0]["remedies"][0]["name"] == "Cistus"
 
 
+def test_console_list_includes_board_signals(monkeypatch, tmp_path):
+    # The reveals board buckets by paid + shows an order badge, so the list
+    # endpoint must enrich each reveal with paid/ordered/order_total_cents.
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "CONSOLE_SECRET", "ck", raising=False)
+    from dashboard import biofield_reveals
+    with sqlite3.connect(db) as cx:
+        biofield_reveals.upsert(cx, "buyer@x.com", "2026-06-19",
+                                {"greeting": "Aloha", "body": "reading"},
+                                [{"name": "Cistus", "slug": "cistus", "meaning": "calm"}], "s")
+        cx.execute("CREATE TABLE IF NOT EXISTS orders "
+                   "(id INTEGER PRIMARY KEY, email TEXT, total_cents INTEGER, status TEXT)")
+        cx.execute("INSERT INTO orders (email, total_cents, status) VALUES (?,?,?)",
+                   ("buyer@x.com", 5000, "done"))
+        cx.execute("INSERT INTO orders (email, total_cents, status) VALUES (?,?,?)",
+                   ("buyer@x.com", 2000, "cancelled"))   # excluded
+        cx.commit()
+    client = app_module.app.test_client()
+    body = client.get("/api/console/biofield-reveals?key=ck").get_json()
+    d = body["drafts"][0]
+    assert d["paid"] is False                    # no active membership
+    assert d["ordered"] is True
+    assert d["order_count"] == 1                  # cancelled order excluded
+    assert d["order_total_cents"] == 5000
+
+
 def test_console_page_served(monkeypatch, tmp_path):
     app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
     monkeypatch.setattr(app_module, "CONSOLE_SECRET", "ck", raising=False)

@@ -10574,6 +10574,29 @@ def api_console_reviews_list():
     return jsonify({"ok": True, "pending": pending, "recent": []})
 
 
+def _biofield_status_brief(cx, email):
+    """Board signals for a reveal's owner email: paid (active member) + order rollup.
+    Drives the reveals board columns + order badge. Best-effort, never raises."""
+    out = {"paid": False, "ordered": False, "order_count": 0, "order_total_cents": 0}
+    email = (email or "").strip().lower()
+    if not email:
+        return out
+    try:
+        out["paid"] = bool(_active_membership_for_email(email))
+    except Exception:
+        pass
+    try:
+        rows = cx.execute(
+            "SELECT total_cents FROM orders WHERE lower(email)=? AND status!='cancelled'",
+            (email,)).fetchall()
+        out["order_count"] = len(rows)
+        out["ordered"] = len(rows) > 0
+        out["order_total_cents"] = sum(int(r[0] or 0) for r in rows)
+    except Exception:
+        pass
+    return out
+
+
 def _people_brief(cx, email):
     """Best-effort name + tags for a reveal's owner email. Empty on miss/error."""
     out = {"client_name": "", "tags": []}
@@ -10606,6 +10629,7 @@ def api_console_biofield_reveals():
         approved = _br.list_approved(cx)
         for d in drafts + approved:
             d.update(_people_brief(cx, d.get("email")))
+            d.update(_biofield_status_brief(cx, d.get("email")))
     return jsonify({"drafts": drafts, "approved": approved})
 
 
