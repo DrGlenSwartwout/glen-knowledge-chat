@@ -115,8 +115,17 @@
       <div id="reitems"></div>
       <button class="btn ghost sm" onclick="addItem()">+ Add remedy</button>
       <button class="btn ghost sm" onclick="syncOrderFromLayers()">Sync order list from layers</button>
-      <label style="margin-top:.8rem">Pricing note (optional)</label>
-      <input id="pricingNote" type="text" placeholder="Your certified-practitioner price.">
+      <div class="row" style="margin-top:.8rem">
+        <div>
+          <label>Pricing note (optional)</label>
+          <input id="pricingNote" type="text" placeholder="Your certified-practitioner price.">
+        </div>
+        <div style="flex:0 0 220px">
+          <label>FF special price ($/bottle)</label>
+          <input id="ffSpecial" type="number" min="0" step="0.01" placeholder="e.g. 50">
+        </div>
+      </div>
+      <p class="muted small" style="margin-top:.4rem">This account's special price for Functional Formulations — sets the price for every remedy above that doesn't have its own ¢ override.</p>
     </div>
 
     <div id="status" class="status"></div>
@@ -231,14 +240,21 @@ function collectLayers(){
 }
 
 // ── Reorder items ───────────────────────────────────────────────────────────
-function addItem(it){
+function addItem(it, specialCents){
   it = it || {};
+  // Show the per-item ¢ override only when it's a genuine override that differs
+  // from the account special price; an item priced at the special price stays
+  // blank so it keeps following the FF special-price field.
+  let priceVal = '';
+  if(it.price_cents != null && !(specialCents != null && it.price_cents === specialCents)){
+    priceVal = it.price_cents;
+  }
   const el = document.createElement('div'); el.className='reitem';
   el.innerHTML = `
     <div class="top">
       <input class="rs" list="catalog" placeholder="product-slug" value="${esc(it.slug||'')}" style="flex:1">
       <input class="rq" type="number" min="1" value="${it.qty||1}" style="width:64px" title="qty">
-      <input class="rp" type="number" min="0" placeholder="¢ override" value="${it.price_cents!=null?it.price_cents:''}" style="width:110px" title="price override (cents)">
+      <input class="rp" type="number" min="0" placeholder="¢ override" value="${priceVal!==''?priceVal:''}" style="width:110px" title="price override (cents) — blank uses the FF special price">
       <button class="x" onclick="this.closest('.reitem').remove()">delete</button>
     </div>`;
   $('reitems').appendChild(el);
@@ -322,9 +338,11 @@ function populate(d){
   $('videoUrl').value = (d.video&&d.video.url)||'';
   $('videoLabel').value = (d.video&&d.video.label)||'';
   $('pricingNote').value = d.pricing_note||'';
+  const sp = (typeof d.special_price_cents === 'number') ? d.special_price_cents : null;
+  $('ffSpecial').value = sp != null ? (sp/100) : '';
   $('layers').innerHTML=''; (d.layers||[]).forEach(addLayer);
   if($('layers').children.length===0) addLayer();
-  $('reitems').innerHTML=''; (d.reorder_items||[]).forEach(addItem);
+  $('reitems').innerHTML=''; (d.reorder_items||[]).forEach(it => addItem(it, sp));
   FINDINGS_LIST = d.findings || []; FINDINGS = {};
   FINDINGS_LIST.forEach(f=>{ FINDINGS[f.code]=f; });
   renderFindings();
@@ -368,11 +386,23 @@ async function importFmp(){
   setStatus('Imported from FMP — review the layers and the drafted greeting/meanings, then Publish.', true);
 }
 
+function ffSpecialCents(){
+  const v = val('ffSpecial');
+  if(v === '') return null;
+  const n = Math.round(parseFloat(v) * 100);
+  return (isFinite(n) && n >= 0) ? n : null;
+}
+
 function buildContent(){
   const c = { greeting: val('greeting'), layers: collectLayers() };
   const vu = val('videoUrl');
   if(vu) c.video = { url: vu, label: val('videoLabel') || 'Watch your Biofield walkthrough' };
-  const items = collectItems(); if(items.length) c.reorder_items = items;
+  const items = collectItems();
+  // FF special price sets the order price for any remedy without its own override.
+  const special = ffSpecialCents();
+  if(special != null) items.forEach(it => { if(it.price_cents == null) it.price_cents = special; });
+  if(items.length) c.reorder_items = items;
+  if(special != null) c.special_price_cents = special;
   const pn = val('pricingNote'); if(pn) c.pricing_note = pn;
   if(FINDINGS_LIST.length) c.findings = FINDINGS_LIST;
   return c;
@@ -392,8 +422,14 @@ async function publish(send){
   if(!r.ok){ setStatus(r.json.error || 'Publish failed.', false); return; }
   const link = $('previewLink');
   if(r.json.url){ link.href = r.json.url; link.style.display='inline-block'; }
-  setStatus((r.json.updated ? 'Updated — same link.' : 'Published! New portal link created.')
-    + (r.json.emailed ? ' Email sent to the client.' : '') + (r.json.url ? '  ' + r.json.url : ''), true);
+  let msg = (r.json.updated ? 'Updated — same link.' : 'Published! New portal link created.');
+  let ok = true;
+  if(send){
+    if(r.json.emailed){ msg += ' Email sent to the client.'; }
+    else { msg += ' ⚠ Email NOT sent (' + (r.json.email_status||'unknown') + ') — send the link to the client manually.'; ok = false; }
+  }
+  if(r.json.url) msg += '  ' + r.json.url;
+  setStatus(msg, ok);
 }
 
 function setStatus(msg, ok){ const s=$('status'); s.textContent=msg; s.className='status '+(ok?'ok':'bad'); }
