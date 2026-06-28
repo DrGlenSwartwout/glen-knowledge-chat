@@ -259,7 +259,6 @@
 
     // First find: mark found (NOT done yet), fire hunt reward, show pop, then engage panel
     _qs[key].found = true;
-    saveQS();
     huntReward(key);
     showPop(key);
     setTimeout(function () { openEngage(key); }, 1300);
