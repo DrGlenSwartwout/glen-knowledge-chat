@@ -35,7 +35,7 @@
   // Per-key {found:bool, done:bool} for each stage in scene.order.
   // state.paths: distinct rails ever used (values: "hunt"|"video"|"chat").
   // state.entered: true after the user completes the intro gate.
-  var _qs = { paths: [], entered: false };
+  var _qs = { paths: [], entered: false, claimed: [], gifted: false };
 
   function loadQS() {
     try {
@@ -43,14 +43,75 @@
       var parsed = raw ? JSON.parse(raw) : null;
       if (parsed && typeof parsed === "object") {
         _qs = parsed;
-        if (!_qs.paths)           { _qs.paths = []; }
-        if (!_qs.entered)         { _qs.entered = false; }
+        if (!_qs.paths)                         { _qs.paths = []; }
+        if (!_qs.entered)                       { _qs.entered = false; }
+        if (!Array.isArray(_qs.claimed))        { _qs.claimed = []; }
+        if (typeof _qs.gifted !== "boolean")    { _qs.gifted = false; }
       }
     } catch (e) { /* malformed -- start fresh */ }
   }
 
   function saveQS() {
     try { localStorage.setItem(LS, JSON.stringify(_qs)); } catch (e) {}
+    _syncPush();
+  }
+
+  // --- Server sync (members only, best-effort) ---
+  var _isMember = !!(window.__SHELL__ && window.__SHELL__.mode === "member");
+  var _syncUrl = "/api/journey/quest-state";
+
+  function _mergeServerState(serverState) {
+    if (!serverState || typeof serverState !== "object") { return; }
+    var keys = ["home", "scan", "find", "heal", "give"];
+    var i, k;
+    // OR: never downgrade a local true flag
+    if (serverState.entered) { _qs.entered = true; }
+    if (Array.isArray(serverState.paths)) {
+      for (i = 0; i < serverState.paths.length; i++) {
+        var p = serverState.paths[i];
+        if (p && !arrayIncludes(_qs.paths, p)) { _qs.paths.push(p); }
+      }
+    }
+    if (Array.isArray(serverState.claimed)) {
+      for (i = 0; i < serverState.claimed.length; i++) {
+        var cl = serverState.claimed[i];
+        if (cl && !arrayIncludes(_qs.claimed, cl)) { _qs.claimed.push(cl); }
+      }
+    }
+    if (serverState.gifted) { _qs.gifted = true; }
+    for (i = 0; i < keys.length; i++) {
+      k = keys[i];
+      if (serverState[k] && typeof serverState[k] === "object") {
+        if (!_qs[k]) { _qs[k] = { found: false, done: false }; }
+        if (serverState[k].found) { _qs[k].found = true; }
+        if (serverState[k].done)  { _qs[k].done  = true; }
+      }
+    }
+  }
+
+  function _syncPull() {
+    if (!_isMember) { return; }
+    fetch(_syncUrl, { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (d && d.ok && d.state) {
+          _mergeServerState(d.state);
+          try { localStorage.setItem(LS, JSON.stringify(_qs)); } catch (e) {}
+          render();
+          _claimCoupons();
+        }
+      })
+      .catch(function () {});
+  }
+
+  function _syncPush() {
+    if (!_isMember) { return; }
+    fetch(_syncUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(_qs)
+    }).catch(function () {});
   }
 
   function ensureKeys(order) {
@@ -175,6 +236,9 @@
     saveQS();
     gateReward(key);
     render();
+    // Fire coupon claim (best-effort; fetch may be cut off by navigation below;
+    // _syncPull on next quest-open is the reliable catch-up path).
+    if (_isMember) { _claimCoupons(); }
     // Navigate to this stage's real land href (external -> new tab, internal -> same tab).
     var href = _hrefMap[key] || null;
     if (href) {
@@ -207,29 +271,94 @@
   function huntReward(key) {
     addPath("hunt");
     saveQS();
-    var pct = couponPct();
     var name = _nameMap[key] || key;
-    showReward(name + " found!", "A hidden link discovered — " + pct + "% off coupon unlocked.", pct, 2400);
+    showReward(name + " found!", "A hidden link discovered — gate opened!", 0, 2400);
     if (window.__JQAUDIO__) {
       try { __JQAUDIO__.arrival(key, _soundMap[key] || null); } catch (e) {}
     }
   }
 
   // gateReward: fired when a stage is fully done (engage step cleared). Finale on all 5 done.
+  // Real coupon toasts come from _claimCoupons / _maybeActivateGifting (async, member-only).
   function gateReward(key) {
     var allDone = curIdx() === -1;
-    var pct = couponPct();
     if (allDone) {
       showReward(
         "✨ Journey Unlocked! ✨",
-        "Your coupon is maxed at 15% — and here is a second one to give away.",
-        15,
+        "All gates open. Check your wallet for your offers.",
+        0,
         3600
       );
     } else {
       var name = _nameMap[key] || key;
-      showReward(name + " opened", "A gate opens — your path lights up above.", pct, 1800);
+      showReward(name + " opened", "A gate opens — your path lights up above.", 0, 1800);
     }
+  }
+
+  // --- Coupon issuance (member-only, best-effort, ES5) ---
+  // Only these four stages have featured products; home is excluded.
+  var _COUPON_STAGES = ["scan", "find", "heal", "give"];
+
+  // POST claim-coupon for one land key. On 200+coupon: marks claimed, shows wallet toast.
+  // On 409/400/404 (needs:email_tos, needs:complete_stage, no product, flag off):
+  //   leaves unclaimed so _claimCoupons retries on the next quest open.
+  function _claimOne(key) {
+    var k = key;
+    fetch("/api/journey/claim-coupon", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ land: k })
+    }).then(function (r) {
+      return r.json();
+    }).then(function (d) {
+      if (!d || !d.ok || !d.coupon) { return; }
+      _qs.claimed.push(k);
+      saveQS();
+      var label = d.coupon.product_slug || k;
+      showReward("15% off " + label, "Added to your wallet — view your offers anytime.", 0, 2800);
+    }).catch(function () {});
+  }
+
+  // If all 5 stages are done and gifting not yet activated, fire activate-gifting once.
+  function _maybeActivateGifting() {
+    if (!_isMember) { return; }
+    if (_qs.gifted) { return; }
+    if (curIdx() !== -1) { return; }
+    fetch("/api/journey/activate-gifting", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" }
+    }).then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d || !d.ok) { return; }
+      _qs.gifted = true;
+      saveQS();
+      var gc = d.gifts && d.gifts.length ? d.gifts.length : 0;
+      var giftLine = gc > 0 ? " + " + gc + " coupon(s) to give away." : "";
+      showReward(
+        "✨ Journey Unlocked! ✨",
+        "Your remedy offers are in your wallet" + giftLine,
+        0,
+        4000
+      );
+    }).catch(function () {});
+  }
+
+  // For each COUPON_STAGE that is done but not yet claimed, fire _claimOne.
+  // Idempotent via state.claimed. A fetch failure never breaks the hunt.
+  // Called from: (a) engageDone (fire-and-forget, may be cut by navigation);
+  //              (b) _syncPull on quest open (reliable catch-up path).
+  function _claimCoupons() {
+    if (!_isMember) { return; }
+    var i, key;
+    for (i = 0; i < _COUPON_STAGES.length; i++) {
+      key = _COUPON_STAGES[i];
+      if (!(_qs[key] && _qs[key].done)) { continue; }
+      if (arrayIncludes(_qs.claimed, key)) { continue; }
+      _claimOne(key);
+    }
+    _maybeActivateGifting();
   }
 
   // --- Entry gate ---
@@ -276,6 +405,7 @@
     if (!_overlay) { return; }
     _overlay.classList.add("open");
     _overlayOpen = true;
+    _syncPull();
     if (!_qs.entered) {
       // Show intro gate; audio deferred until user explicitly enters
       if (_introCard) { _introCard.style.display = "flex"; }
