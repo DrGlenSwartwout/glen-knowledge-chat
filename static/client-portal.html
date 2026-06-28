@@ -257,6 +257,11 @@ function pollPending(){
 function render(d, v){
   d = d || {};
   if (d && d.tos_agreed === false) {
+    // Reveal the page before painting the gate: this branch returns early, before
+    // the normal show (loading->hidden, app->shown) below, so without this the
+    // "I agree" card lands in a still-hidden #app and the spinner never clears.
+    document.getElementById("loading").hidden = true;
+    document.getElementById("app").hidden = false;
     var g = '<div class="card"><h2>Welcome to your healing home</h2>'
       + '<p>Before we continue, please review and agree to our Terms of Service.</p>'
       + '<p><a href="' + esc((window.TOS_URL || "https://illtowell.com/terms")) + '" target="_blank" rel="noopener">Read the Terms</a></p>'
