@@ -25492,10 +25492,16 @@ def _invoice_line_view(l):
     out = {"slug": l.get("slug"), "name": l.get("name"), "qty": int(l.get("qty") or 0),
            "unit_cents": int(l.get("unit_cents") or 0), "line_cents": int(l.get("line_cents") or 0)}
     p = _get_product(l.get("slug") or "")
-    if p and p.get("service"):
-        out["service"] = True
-        out["service_value_cents"] = p.get("service_value_cents")
-        out["service_regular_cents"] = p.get("service_regular_cents")
+    if p:
+        if p.get("service"):
+            # Service fee carries explicit Value(SRP)/Regular anchors + sorts to top.
+            out["service"] = True
+            out["srp_cents"] = p.get("service_value_cents")
+            out["regular_cents"] = p.get("service_regular_cents")
+        else:
+            # Products store one retail price (price_cents); show it as SRP + Regular.
+            out["srp_cents"] = p.get("price_cents")
+            out["regular_cents"] = p.get("price_cents")
     return out
 
 

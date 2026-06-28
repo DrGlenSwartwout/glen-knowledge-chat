@@ -26,6 +26,7 @@
   .totals { font-size:14px; }
   .totals .row { display:flex; justify-content:space-between; padding:4px 0; }
   .totals .grand { font-weight:700; font-size:17px; border-top:1px solid var(--border); margin-top:6px; padding-top:8px; }
+  .totals .save { color:#2f7d4f; font-weight:600; }
   select, input[type=text] { padding:8px; border:1px solid var(--border); border-radius:8px; font-size:14px; }
   button.primary { background:var(--brand); color:#fff; border:0; border-radius:8px; padding:11px 18px; font-size:14px; font-weight:600; cursor:pointer; }
   button.ghost { background:#fff; color:var(--brand); border:1px solid var(--border); border-radius:8px; padding:9px 14px; font-size:13px; cursor:pointer; }
@@ -61,6 +62,8 @@
   #print-root table.pd-lines td{ padding:5px 6px; border-bottom:1px solid #ececec; }
   #print-root table.pd-lines td.num,#print-root table.pd-lines th.num{ text-align:right; white-space:nowrap; }
   #print-root table.pd-lines tr.svc td:first-child{ font-weight:700; }
+  #print-root table.pd-lines td.anc{ color:#9a9a9a; font-size:11px; }
+  #print-root .pd-tot .save{ color:#3a5a40; font-weight:700; }
   #print-root .pd-anchor{ font-weight:400; font-size:10.5px; color:#8a8a8a; margin-top:2px; }
   #print-root .pd-anchor s{ opacity:.85; }
   #print-root .pd-tot{ width:48%; margin-left:auto; font-size:12.5px; }
@@ -129,13 +132,21 @@ const money = c => '$' + (Number(c||0)/100).toLocaleString('en-US',{minimumFract
 // anchors above its per-client Special (unit_cents). `inline` = on-screen <span>,
 // else a block <div> for the print table cell.
 function svcAnchor(l, inline){
-  if(!l || !l.service) return '';
-  const p=[];
-  if(l.service_value_cents)   p.push('Value <s>'+money(l.service_value_cents)+'</s>');
-  if(l.service_regular_cents) p.push('Regular <s>'+money(l.service_regular_cents)+'</s>');
+  if(!l) return '';
+  const price = l.unit_cents||0, p=[];
+  if(l.srp_cents && l.srp_cents>price) p.push('Value <s>'+money(l.srp_cents)+'</s>');
+  // Show Regular only when it's a distinct middle tier (e.g. the service); for
+  // products Regular == Value, so we don't repeat it on screen.
+  if(l.regular_cents && l.regular_cents>price && l.regular_cents!==l.srp_cents)
+    p.push('Regular <s>'+money(l.regular_cents)+'</s>');
   if(!p.length) return '';
   return inline ? ' <span class="anchor">'+p.join(' · ')+'</span>'
                 : '<div class="pd-anchor">'+p.join(' · ')+'</div>';
+}
+// Total saved vs Value (SRP) across all lines — the comparative-savings figure.
+function totalSavings(lines){
+  return (lines||[]).reduce((s,l)=>{ const pr=l.unit_cents||0;
+    return s + ((l.srp_cents && l.srp_cents>pr) ? (l.srp_cents-pr)*(l.qty||0) : 0); }, 0);
 }
 // Service-fee lines sort to the TOP of the invoice; otherwise original order is kept.
 function svcFirst(lines){ return lines.map((x,i)=>[x,i])
@@ -171,16 +182,25 @@ const PRINT_HEADER = (title)=>`
 function buildInvoicePrintHtml(o){
   o = o || {};
   const lines = Array.isArray(o.lines) ? o.lines : [];
-  const rows = svcFirst(lines).map(([l])=>`<tr${l.service?' class="svc"':''}>`
-    + `<td>${esc(l.name||l.slug||'')}${svcAnchor(l,false)}</td><td class="num">${esc(l.qty)}</td>`
-    + `<td class="num">${money(l.unit_cents)}</td><td class="num">${money((l.unit_cents||0)*(l.qty||0))}</td></tr>`).join('');
-  const r = (lbl,v,neg)=>`<div class="r"><span>${esc(lbl)}</span><span>${neg?'−':''}${money(v)}</span></div>`;
+  const anc = (v,price)=> (v && v>price) ? '<s>'+money(v)+'</s>' : '';
+  const rows = svcFirst(lines).map(([l])=>{
+    const price = l.unit_cents||0, qty = l.qty||0;
+    return `<tr${l.service?' class="svc"':''}>`
+      + `<td>${esc(l.name||l.slug||'')}</td>`
+      + `<td class="num anc">${anc(l.srp_cents, price)}</td>`
+      + `<td class="num anc">${anc(l.regular_cents, price)}</td>`
+      + `<td class="num">${money(price)}</td><td class="num">${esc(qty)}</td>`
+      + `<td class="num">${money(price*qty)}</td></tr>`;
+  }).join('');
+  const r = (lbl,v,neg,cls)=>`<div class="r${cls?' '+cls:''}"><span>${esc(lbl)}</span><span>${neg?'−':''}${money(v)}</span></div>`;
   let tot = r('Subtotal', o.subtotal_cents);
   if(o.discount_cents) tot += r('Discount', o.discount_cents, true);
   tot += r('Shipping', o.shipping_cents);
   if(o.get_cents) tot += r('Hawai‘i GET (absorbed)', o.get_cents);
   if(o.points_redeemed_cents) tot += r('Points', o.points_redeemed_cents, true);
   tot += `<div class="r grand"><span>Total</span><span>${money(o.total_cents)}</span></div>`;
+  const savings = totalSavings(lines);
+  if(savings>0) tot += r('You save', savings, false, 'save');
   const today = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
   return `<div class="pd invoice">
     ${PRINT_HEADER("Invoice")}
@@ -189,8 +209,8 @@ function buildInvoicePrintHtml(o){
       ${o.name?`<div><span class="pd-k">Billed to</span> ${esc(o.name)}</div>`:""}
       <div><span class="pd-k">Date</span> ${esc(today)}</div>
     </div>
-    <table class="pd-lines"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Amount</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4">No items.</td></tr>'}</tbody></table>
+    <table class="pd-lines"><thead><tr><th>Item</th><th class="num">Value</th><th class="num">Regular</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Amount</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6">No items.</td></tr>'}</tbody></table>
     <div class="pd-tot">${tot}</div>
     ${o.pay_status==='paid' ? `<div class="pd-paid">PAID — Mahalo 🌿</div>` : ''}
     <div class="pd-foot">Thank you. Questions? (808) 217-9647 · Remedy Match LLC, Hilo, Hawai‘i</div>
@@ -232,7 +252,8 @@ function renderTotals() {
     row('Subtotal', t.subtotal_cents) + (t.discount_cents?row('Discount','-'+money(t.discount_cents),true):'')
     + row('Shipping', t.shipping_cents) + (t.get_cents?row('Hawai‘i GET (absorbed)', t.get_cents):'')
     + pointsRow
-    + '<div class="row grand"><span>Total</span><span>'+money(t.total_cents)+'</span></div>';
+    + '<div class="row grand"><span>Total</span><span>'+money(t.total_cents)+'</span></div>'
+    + (totalSavings(ORDER.lines)>0 ? '<div class="row save"><span>You save</span><span>'+money(totalSavings(ORDER.lines))+'</span></div>' : '');
 }
 async function applyPoints(){
   const cents = Math.max(0, Math.round(parseFloat(($('pts-in')||{}).value||'0')*100));
