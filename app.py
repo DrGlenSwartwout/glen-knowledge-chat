@@ -4476,33 +4476,23 @@ def _settle_referral(order, *, order_ref: str) -> None:
 
 
 def _maybe_raise_cashout_review(cx, slug: str, mode: str) -> None:
-    """Insert a review todo if the referrer's balance has crossed a threshold band.
-    Idempotent: dedup_key prevents duplicates within the same threshold band."""
+    """Insert a review todo if a CASH-mode affiliate's pending earnings cross a
+    threshold band. Points are store-credit/gift only and not cashable, so
+    points-mode raises no review. Idempotent: dedup_key prevents duplicates
+    within the same threshold band."""
     try:
         from dashboard import rewards as _rewards
-        from dashboard import points as _points
         settings = _rewards.load_settings(_rewards_settings())
         threshold = int(settings["cash_out_threshold_cents"])
-        if mode == "cash":
-            amount = _rewards.pending_cash_total(cx, slug)
-        else:
-            referrer_email = _rewards.referrer_email_for_slug(cx, slug)
-            if not referrer_email:
-                return
-            amount = _points.balance(cx, referrer_email)
+        if mode != "cash":
+            return  # points are not cashable; no cash-out review
+        amount = _rewards.pending_cash_total(cx, slug)
         if amount < threshold:
             return
         band = amount // threshold
         dedup_key = f"cashout:{slug}:{band}"
-        cash_value = round(amount * float(settings["cash_out_face_pct"]))
-        if mode == "cash":
-            body = (f"Affiliate '{slug}' has ${amount/100:.2f} pending cash earnings "
-                    f"(threshold ${threshold/100:.2f}). Approve payout via rewards.process_payout.")
-        else:
-            body = (f"Affiliate '{slug}' has {amount} points pending "
-                    f"(threshold {threshold} pts). Cash value at "
-                    f"{int(settings['cash_out_face_pct']*100)}% face: ${cash_value/100:.2f}. "
-                    f"Approve via rewards.process_payout.")
+        body = (f"Affiliate '{slug}' has ${amount/100:.2f} pending cash earnings "
+                f"(threshold ${threshold/100:.2f}). Approve payout via rewards.process_payout.")
         from datetime import datetime as _dt, timezone as _tz
         now = _dt.now(_tz.utc).isoformat()
         cx.execute(
