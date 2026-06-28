@@ -11950,6 +11950,16 @@ def api_console_biofield_publish():
         _cp.init_client_portal_table(cx)
         token, pid = _cp.upsert_portal(cx, email, name, content)
         _cp.set_biofield_status(cx, email, "confirmed")
+        # upsert returns token=None on UPDATE (only the link's hash is stored), so a
+        # plain `if token` guard skipped the email on every republish — "Publish &
+        # email client" silently sent nothing for any existing portal. When a send is
+        # requested, recover a stable re-sendable token so the email always goes out.
+        link_token = token
+        if body.get("send") and not link_token:
+            try:
+                link_token = _cp.ensure_token(cx, email, name)
+            except Exception as e:
+                print(f"[biofield-publish] ensure_token failed: {e!r}", flush=True)
         try:
             from dashboard import ghl_queue as _gq
             _gq.init_ghl_queue_table(cx)
@@ -11963,10 +11973,10 @@ def api_console_biofield_publish():
             _pbr.upsert_report(cx, email, scan_date,
                                (body.get("scan_id") or ""), content, "confirmed")
         _log_biofield_correction(cx, email, scan_date, content)
-    url = f"{PUBLIC_BASE_URL}/portal/{token}" if token else None
+    url = f"{PUBLIC_BASE_URL}/portal/{link_token}" if link_token else None
     emailed = False
     email_status = None
-    if token and body.get("send"):
+    if link_token and body.get("send"):
         try:
             sent_via, err = _send_full_report_email(
                 email, name, "Your personal healing home is ready 🌺",

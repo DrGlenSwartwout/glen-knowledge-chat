@@ -82,6 +82,30 @@ def test_post_send_console_log_not_marked_emailed(client, monkeypatch):
     assert j["emailed"] is False and j["email_status"] == "console-log"
 
 
+def test_post_send_emails_on_republish_existing_portal(client, monkeypatch):
+    # Regression: re-publishing an existing portal makes upsert return token=None
+    # (only the hash is stored). The old `if token and send` guard then skipped the
+    # email entirely, so "Publish & email client" sent nothing on any republish.
+    c, appmod = client
+    c.post("/api/console/biofield-portal?key=test-secret",
+           json={"email": "karin@y.com", "name": "Karin",
+                 "content": {"greeting": "hi", "layers": [_LAYER]}})
+    sent = {}
+    def _fake(to, name, subj, body, **k):
+        sent.update(to=to, body=body)
+        return ("gmail-api", None)
+    monkeypatch.setattr(appmod, "_send_full_report_email", _fake)
+    r = c.post("/api/console/biofield-portal?key=test-secret",
+               json={"email": "karin@y.com", "name": "Karin", "send": True,
+                     "content": {"greeting": "hi again", "layers": [_LAYER]}})
+    j = r.get_json()
+    assert j["updated"] is True                        # was an update (token None)
+    assert sent.get("to") == "karin@y.com"             # email STILL attempted
+    assert j["emailed"] is True
+    assert j["url"] and "/portal/" in j["url"]         # usable link returned
+    assert "/portal/" in sent["body"]                  # email carries a working link
+
+
 def _seed(appmod, email="seed@y.com", name="Seed"):
     from dashboard import client_portal as cp
     cx = sqlite3.connect(appmod.LOG_DB)
