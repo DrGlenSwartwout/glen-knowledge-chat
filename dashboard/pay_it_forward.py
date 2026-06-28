@@ -69,3 +69,61 @@ def healer_level(reached):
     if r >= 3:
         return 2
     return 1
+
+
+def _masked_name(cx, email):
+    """Display name for a recipient email: 'First L.' (first name + last initial),
+    or just the first name, else 'A friend'. Never returns the email or a prefix.
+    Best-effort: a missing people table or row yields 'A friend'."""
+    e = _norm(email)
+    try:
+        row = cx.execute(
+            "SELECT first_name, last_name, name FROM people WHERE lower(email)=?",
+            (e,)).fetchone()
+    except Exception:
+        return "A friend"
+    if not row:
+        return "A friend"
+    first = (row[0] or "").strip()
+    last = (row[1] or "").strip()
+    full = (row[2] or "").strip()
+    if not first and full:
+        parts = full.split()
+        first = parts[0]
+        last = parts[1] if len(parts) > 1 else last
+    if not first:
+        return "A friend"
+    return f"{first} {last[0]}." if last else first
+
+
+def _product_for_code(cx, code):
+    """Best-effort gifted-product slug for a redemption's coupon code; '' if unknown
+    or the coupons table is absent."""
+    if not code:
+        return ""
+    try:
+        row = cx.execute("SELECT product_slug FROM coupons WHERE code=?", (code,)).fetchone()
+    except Exception:
+        return ""
+    return (row[0] or "") if row else ""
+
+
+def chain_recipients(cx, email, *, limit=10):
+    """The requester's most-recent direct (L1) gift recipients, newest first,
+    capped at `limit`. Returns [{"name", "product", "redeemed_at"}] with masked
+    names. Read-only; L2+ are intentionally excluded (counts only via chain_summary).
+    Only rows the requester owns (owner_email == email) are returned."""
+    _referrals.init_tables(cx)
+    owner = _norm(email)
+    rows = cx.execute(
+        "SELECT referee_email, code, created_at FROM referral_redemptions "
+        "WHERE lower(owner_email)=? ORDER BY created_at DESC LIMIT ?",
+        (owner, int(limit))).fetchall()
+    out = []
+    for referee_email, code, created_at in rows:
+        out.append({
+            "name": _masked_name(cx, referee_email),
+            "product": _product_for_code(cx, code),
+            "redeemed_at": created_at,
+        })
+    return out

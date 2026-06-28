@@ -79,3 +79,81 @@ def test_healer_level_thresholds():
     assert pif.healer_level(3) == 2
     assert pif.healer_level(9) == 2
     assert pif.healer_level(10) == 3
+
+
+def test_chain_recipients_masked_name_and_date():
+    cx = _cx()
+    referrals.init_tables(cx)
+    cx.execute("CREATE TABLE people (email TEXT UNIQUE, first_name TEXT, last_name TEXT, name TEXT)")
+    cx.execute("INSERT INTO people (email, first_name, last_name, name) "
+               "VALUES ('b@x.com','Sarah','Hill','Sarah Hill')")
+    cx.commit()
+    referrals.record_redemption(cx, "GIFT1", "a@x.com", "b@x.com", "o1")
+    out = pif.chain_recipients(cx, "A@x.com")  # case-insensitive owner
+    assert len(out) == 1
+    assert out[0]["name"] == "Sarah H."
+    assert out[0]["redeemed_at"]  # non-empty ISO timestamp
+
+
+def test_chain_recipients_excludes_l2():
+    cx = _cx()
+    referrals.init_tables(cx)
+    cx.execute("CREATE TABLE people (email TEXT UNIQUE, first_name TEXT, last_name TEXT, name TEXT)")
+    cx.execute("INSERT INTO people (email, first_name, last_name, name) "
+               "VALUES ('b@x.com','Bob','Brown','Bob Brown')")
+    cx.commit()
+    referrals.record_redemption(cx, "C1", "a@x.com", "b@x.com", "o1")  # A->B (L1)
+    referrals.record_redemption(cx, "C2", "b@x.com", "c@x.com", "o2")  # B->C (L2)
+    out = pif.chain_recipients(cx, "a@x.com")
+    assert len(out) == 1
+    assert out[0]["name"] == "Bob B."
+
+
+def test_chain_recipients_a_friend_fallback():
+    cx = _cx()
+    referrals.init_tables(cx)  # no people table created
+    referrals.record_redemption(cx, "C1", "a@x.com", "nameless@x.com", "o1")
+    out = pif.chain_recipients(cx, "a@x.com")
+    assert out[0]["name"] == "A friend"
+    assert "@" not in out[0]["name"]
+
+
+def test_chain_recipients_product_from_code():
+    cx = _cx()
+    referrals.init_tables(cx)
+    cx.execute("CREATE TABLE coupons (code TEXT PRIMARY KEY, product_slug TEXT)")
+    cx.execute("INSERT INTO coupons (code, product_slug) VALUES ('GIFT9','neuro-magnesium')")
+    cx.commit()
+    referrals.record_redemption(cx, "GIFT9", "a@x.com", "b@x.com", "o1")
+    out = pif.chain_recipients(cx, "a@x.com")
+    assert out[0]["product"] == "neuro-magnesium"
+
+
+def test_chain_recipients_missing_coupon_blank_product():
+    cx = _cx()
+    referrals.init_tables(cx)  # no coupons table
+    referrals.record_redemption(cx, "NOPE", "a@x.com", "b@x.com", "o1")
+    out = pif.chain_recipients(cx, "a@x.com")
+    assert out[0]["product"] == ""
+
+
+def test_chain_recipients_newest_first_and_limit():
+    cx = _cx()
+    referrals.init_tables(cx)
+    for i in range(3):
+        cx.execute(
+            "INSERT INTO referral_redemptions (referee_email, code, owner_email, order_ref, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (f"r{i}@x.com", f"C{i}", "a@x.com", f"o{i}", f"2026-06-0{i+1}T00:00:00"))
+    cx.commit()
+    out = pif.chain_recipients(cx, "a@x.com", limit=2)
+    assert len(out) == 2
+    assert out[0]["redeemed_at"] == "2026-06-03T00:00:00"  # newest first
+    assert out[1]["redeemed_at"] == "2026-06-02T00:00:00"
+
+
+def test_chain_recipients_no_cross_owner_leak():
+    cx = _cx()
+    referrals.init_tables(cx)
+    referrals.record_redemption(cx, "C1", "other@x.com", "b@x.com", "o1")
+    assert pif.chain_recipients(cx, "a@x.com") == []
