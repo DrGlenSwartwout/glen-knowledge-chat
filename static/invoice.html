@@ -36,12 +36,39 @@
   .sugg button { margin:4px 4px 0 0; }
   .row-add { display:flex; gap:8px; margin-top:10px; }
   .muted { color:var(--muted); font-size:12px; }
+
+  /* ── Print / Save-as-PDF: render ONLY #print-root (no chat, no pay buttons). ── */
+  #print-root{ display:none; }
+  @media print{
+    body > *:not(#print-root){ display:none !important; }
+    #print-root{ display:block !important; }
+    html,body{ background:#fff !important; }
+    @page{ margin:0.6in; }
+  }
+  #print-root .pd{ color:#1b1b1b; font:13px/1.55 Georgia,"Times New Roman",serif; max-width:7.3in; }
+  #print-root .pd-head{ display:flex; align-items:center; gap:14px; border-bottom:2px solid #b8902f; padding-bottom:10px; margin-bottom:14px; }
+  #print-root .pd-logo{ width:76px; height:76px; object-fit:contain; }
+  #print-root .pd-org-name{ font-size:18px; font-weight:700; color:#3a5a40; }
+  #print-root .pd-org-line{ font-size:11px; color:#444; }
+  #print-root .pd-title{ margin-left:auto; text-align:right; font-size:20px; font-weight:700; color:#b8902f; letter-spacing:.4px; }
+  #print-root .pd-meta{ display:flex; flex-wrap:wrap; gap:8px 26px; font-size:12px; margin-bottom:14px; }
+  #print-root .pd-k{ color:#8a8a8a; }
+  #print-root table.pd-lines{ width:100%; border-collapse:collapse; font-size:12.5px; margin:6px 0 12px; }
+  #print-root table.pd-lines th{ text-align:left; border-bottom:1.5px solid #3a5a40; padding:5px 6px; font-size:11px; color:#3a5a40; text-transform:uppercase; letter-spacing:.4px; }
+  #print-root table.pd-lines td{ padding:5px 6px; border-bottom:1px solid #ececec; }
+  #print-root table.pd-lines td.num,#print-root table.pd-lines th.num{ text-align:right; white-space:nowrap; }
+  #print-root .pd-tot{ width:48%; margin-left:auto; font-size:12.5px; }
+  #print-root .pd-tot .r{ display:flex; justify-content:space-between; padding:3px 6px; }
+  #print-root .pd-tot .grand{ border-top:1.5px solid #3a5a40; margin-top:4px; padding-top:6px; font-weight:700; font-size:14px; }
+  #print-root .pd-paid{ display:inline-block; margin-top:12px; padding:3px 10px; border:1.5px solid #3a5a40; color:#3a5a40; border-radius:6px; font-weight:700; font-size:12px; }
+  #print-root .pd-foot{ margin-top:20px; padding-top:10px; border-top:1px solid #e2e2e2; font-style:italic; color:#555; font-size:12px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Your Remedy Match invoice</h1>
   <div class="ref" id="ref">Loading…</div>
+  <button class="ghost" id="print-btn" onclick="printInvoice()" style="display:none;margin-bottom:16px">🖨 Save Invoice as PDF</button>
 
   <div id="paid-banner" class="paid" style="display:none">This invoice is paid. Mahalo! 🌿</div>
 
@@ -83,6 +110,8 @@
     <div id="pay-msg" class="muted" style="margin-top:8px"></div>
   </div>
 </div>
+<!-- Print/PDF surface: filled on demand by printInvoice(); shown only when printing. -->
+<div id="print-root" aria-hidden="true"></div>
 
 <script>
 const TOKEN = location.pathname.split('/').filter(Boolean).pop();
@@ -101,7 +130,58 @@ async function load() {
     $('paid-banner').style.display = ORDER.pay_status==='paid' ? 'block' : 'none';
   }
   renderLines(); renderTotals(); setupPay();
+  $('print-btn').style.display = 'inline-block';
   try { const cr = await fetch('/api/products?all=1'); CATALOG = (await cr.json()).products||[]; fillAdd(); } catch(e){}
+}
+
+// ── Print / Save-as-PDF: a self-contained invoice (logo header + line items +
+// totals only) into #print-root; @media print hides the rest (chat, pay UI). ──
+const PRINT_HEADER = (title)=>`
+  <div class="pd-head">
+    <img class="pd-logo" src="/static/logo.png" alt="Healing Oasis logo">
+    <div class="pd-org">
+      <div class="pd-org-name">Healing Oasis</div>
+      <div class="pd-org-line">Dr. Glen Swartwout</div>
+      <div class="pd-org-line">351 Wailuku Drive, Hilo, Hawai‘i 96720</div>
+      <div class="pd-org-line">(808) 217-9647 · illtowell.com</div>
+    </div>
+    <div class="pd-title">${esc(title)}</div>
+  </div>`;
+function buildInvoicePrintHtml(o){
+  o = o || {};
+  const lines = Array.isArray(o.lines) ? o.lines : [];
+  const rows = lines.map(l=>`<tr><td>${esc(l.name||l.slug||'')}</td><td class="num">${esc(l.qty)}</td>`
+    + `<td class="num">${money(l.unit_cents)}</td><td class="num">${money((l.unit_cents||0)*(l.qty||0))}</td></tr>`).join('');
+  const r = (lbl,v,neg)=>`<div class="r"><span>${esc(lbl)}</span><span>${neg?'−':''}${money(v)}</span></div>`;
+  let tot = r('Subtotal', o.subtotal_cents);
+  if(o.discount_cents) tot += r('Discount', o.discount_cents, true);
+  tot += r('Shipping', o.shipping_cents);
+  if(o.get_cents) tot += r('Hawai‘i GET (absorbed)', o.get_cents);
+  if(o.points_redeemed_cents) tot += r('Points', o.points_redeemed_cents, true);
+  tot += `<div class="r grand"><span>Total</span><span>${money(o.total_cents)}</span></div>`;
+  const today = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+  return `<div class="pd invoice">
+    ${PRINT_HEADER("Invoice")}
+    <div class="pd-meta">
+      ${o.external_ref?`<div><span class="pd-k">Invoice</span> ${esc(o.external_ref)}</div>`:""}
+      ${o.name?`<div><span class="pd-k">Billed to</span> ${esc(o.name)}</div>`:""}
+      <div><span class="pd-k">Date</span> ${esc(today)}</div>
+    </div>
+    <table class="pd-lines"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Amount</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4">No items.</td></tr>'}</tbody></table>
+    <div class="pd-tot">${tot}</div>
+    ${o.pay_status==='paid' ? `<div class="pd-paid">PAID — Mahalo 🌿</div>` : ''}
+    <div class="pd-foot">Thank you. Questions? (808) 217-9647 · Healing Oasis, Hilo, Hawai‘i</div>
+  </div>`;
+}
+function printInvoice(){
+  const root = document.getElementById('print-root');
+  if(!root || !ORDER) return;
+  root.innerHTML = buildInvoicePrintHtml(ORDER);
+  const img = root.querySelector('.pd-logo');
+  const go = ()=>{ window.print(); };
+  if(img && !img.complete){ img.onload = go; img.onerror = go; setTimeout(go, 1200); }
+  else { go(); }
 }
 function renderLines() {
   $('lines').innerHTML = LINES.map((l,i) =>
