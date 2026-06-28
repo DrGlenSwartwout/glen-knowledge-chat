@@ -2828,6 +2828,53 @@ def journey_activate_gifting():
     return jsonify({"ok": True, "gifting": True, "gifts": gifts})
 
 
+@app.route("/api/journey/quest-state", methods=["GET", "POST"])
+def journey_quest_state():
+    if not JOURNEY_QUEST_ENABLED:
+        return ("", 404)
+    from dashboard.journey_quest import (
+        normalize as _nq_normalize,
+        merge_quest as _nq_merge,
+        load as _nq_load,
+        save as _nq_save,
+        empty_state as _nq_empty,
+    )
+    try:
+        session_id = (request.cookies.get("amg_session") or "").strip()
+        au = get_authenticated_user(request)
+        email = (au["email"] if au else "").strip()
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            state = begin_funnel.get_state(cx, session_id=session_id, email=email)
+            email = (state.get("email") or email or "").strip().lower()
+            if request.method == "POST":
+                try:
+                    posted = request.get_json(force=True, silent=True) or {}
+                except Exception:
+                    posted = {}
+                client_state = _nq_normalize(posted)
+                if not email:
+                    return jsonify({"ok": True, "state": client_state})
+                stored = _nq_load(cx, email)
+                merged = _nq_merge(stored, client_state)
+                _nq_save(cx, email, merged)
+                return jsonify({"ok": True, "state": merged})
+            else:
+                # GET
+                if not email:
+                    return jsonify({"ok": True, "state": _nq_empty()})
+                stored = _nq_load(cx, email)
+                return jsonify({"ok": True, "state": stored})
+    except Exception:
+        try:
+            fallback = _nq_normalize(
+                request.get_json(force=True, silent=True) or {}
+            ) if request.method == "POST" else _nq_empty()
+        except Exception:
+            from dashboard.journey_quest import empty_state as _fb_empty
+            fallback = _fb_empty()
+        return jsonify({"ok": True, "state": fallback})
+
+
 # ToS version stamp for the /begin free-tier gate. The live T&C page at
 # remedymatch.com/info/terms-and-conditions carries no version string, so we
 # date-stamp agreement here. Bump when the T&C content materially changes.

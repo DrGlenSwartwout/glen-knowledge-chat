@@ -51,6 +51,57 @@
 
   function saveQS() {
     try { localStorage.setItem(LS, JSON.stringify(_qs)); } catch (e) {}
+    _syncPush();
+  }
+
+  // --- Server sync (members only, best-effort) ---
+  var _isMember = !!(window.__SHELL__ && window.__SHELL__.mode === "member");
+  var _syncUrl = "/api/journey/quest-state";
+
+  function _mergeServerState(serverState) {
+    if (!serverState || typeof serverState !== "object") { return; }
+    var keys = ["home", "scan", "find", "heal", "give"];
+    var i, k;
+    // OR: never downgrade a local true flag
+    if (serverState.entered) { _qs.entered = true; }
+    if (Array.isArray(serverState.paths)) {
+      for (i = 0; i < serverState.paths.length; i++) {
+        var p = serverState.paths[i];
+        if (p && !arrayIncludes(_qs.paths, p)) { _qs.paths.push(p); }
+      }
+    }
+    for (i = 0; i < keys.length; i++) {
+      k = keys[i];
+      if (serverState[k] && typeof serverState[k] === "object") {
+        if (!_qs[k]) { _qs[k] = { found: false, done: false }; }
+        if (serverState[k].found) { _qs[k].found = true; }
+        if (serverState[k].done)  { _qs[k].done  = true; }
+      }
+    }
+  }
+
+  function _syncPull() {
+    if (!_isMember) { return; }
+    fetch(_syncUrl, { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (d && d.ok && d.state) {
+          _mergeServerState(d.state);
+          try { localStorage.setItem(LS, JSON.stringify(_qs)); } catch (e) {}
+          render();
+        }
+      })
+      .catch(function () {});
+  }
+
+  function _syncPush() {
+    if (!_isMember) { return; }
+    fetch(_syncUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(_qs)
+    }).catch(function () {});
   }
 
   function ensureKeys(order) {
@@ -276,6 +327,7 @@
     if (!_overlay) { return; }
     _overlay.classList.add("open");
     _overlayOpen = true;
+    _syncPull();
     if (!_qs.entered) {
       // Show intro gate; audio deferred until user explicitly enters
       if (_introCard) { _introCard.style.display = "flex"; }
