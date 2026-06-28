@@ -411,6 +411,9 @@ function buildContent(){
 async function publish(send){
   const email = val('email');
   if(!email){ setStatus('Email is required.', false); return; }
+  // Close any open client autocomplete so picking a row can't later overwrite the
+  // publish result via loadExisting() — the result must stay readable after publish.
+  acHide();
   const content = buildContent();
   if(!(content.layers.length || (content.video&&content.video.url) || content.greeting)){
     setStatus('Add at least one layer, a video, or a greeting.', false); return; }
@@ -430,6 +433,9 @@ async function publish(send){
   }
   if(r.json.url) msg += '  ' + r.json.url;
   setStatus(msg, ok);
+  // Scroll the outcome into view so the "Email sent" / "Email NOT sent" result is
+  // never missed — the buttons sit far below the status line on a long form.
+  try { $('status').scrollIntoView({behavior:'smooth', block:'center'}); } catch(e){}
 }
 
 function setStatus(msg, ok){ const s=$('status'); s.textContent=msg; s.className='status '+(ok?'ok':'bad'); }
