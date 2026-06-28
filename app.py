@@ -11965,17 +11965,23 @@ def api_console_biofield_publish():
         _log_biofield_correction(cx, email, scan_date, content)
     url = f"{PUBLIC_BASE_URL}/portal/{token}" if token else None
     emailed = False
+    email_status = None
     if token and body.get("send"):
         try:
-            _send_full_report_email(
+            sent_via, err = _send_full_report_email(
                 email, name, "Your personal healing home is ready 🌺",
                 f"Aloha {name or ''},\n\nYour personal healing home is ready:\n\n{url}\n\n"
                 f"With aloha,\nDr. Glen & Rae")
-            emailed = True
+            email_status = sent_via
+            # Only a real delivery counts. console-log / suppressed must NOT read as sent.
+            emailed = sent_via in ("gmail-api", "smtp")
+            if not emailed:
+                print(f"[biofield-publish] email not delivered (via={sent_via}, err={err!r})", flush=True)
         except Exception as e:
+            email_status = "error"
             print(f"[biofield-publish] send failed: {e!r}", flush=True)
     return jsonify({"ok": True, "token": token, "url": url, "portal_id": pid,
-                    "updated": token is None, "emailed": emailed})
+                    "updated": token is None, "emailed": emailed, "email_status": email_status})
 
 
 @app.route("/api/console/biofield-portal", methods=["GET"])

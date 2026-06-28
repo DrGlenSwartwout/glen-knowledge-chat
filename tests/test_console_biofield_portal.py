@@ -55,13 +55,31 @@ def test_post_requires_some_content(client):
 def test_post_send_emails_link(client, monkeypatch):
     c, appmod = client
     sent = {}
-    monkeypatch.setattr(appmod, "_send_full_report_email",
-                        lambda to, name, subj, body, **k: sent.update(to=to, body=body))
+    # _send_full_report_email returns (sent_via, error); a delivering path => emailed.
+    def _fake(to, name, subj, body, **k):
+        sent.update(to=to, body=body)
+        return ("gmail-api", None)
+    monkeypatch.setattr(appmod, "_send_full_report_email", _fake)
     r = c.post("/api/console/biofield-portal?key=test-secret",
                json={"email": "e@y.com", "name": "E", "send": True,
                      "content": {"greeting": "hi", "layers": [_LAYER]}})
-    tok = r.get_json()["token"]
+    j = r.get_json()
+    tok = j["token"]
     assert sent["to"] == "e@y.com" and tok in sent["body"]
+    assert j["emailed"] is True and j["email_status"] == "gmail-api"
+
+
+def test_post_send_console_log_not_marked_emailed(client, monkeypatch):
+    # If the send falls through to console-log (nothing actually delivered), the
+    # response must NOT claim the client was emailed.
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_send_full_report_email",
+                        lambda to, name, subj, body, **k: ("console-log", "no email-send mechanism configured"))
+    r = c.post("/api/console/biofield-portal?key=test-secret",
+               json={"email": "e@y.com", "name": "E", "send": True,
+                     "content": {"greeting": "hi", "layers": [_LAYER]}})
+    j = r.get_json()
+    assert j["emailed"] is False and j["email_status"] == "console-log"
 
 
 def _seed(appmod, email="seed@y.com", name="Seed"):
