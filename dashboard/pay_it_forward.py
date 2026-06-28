@@ -93,6 +93,8 @@ def _masked_name(cx, email):
         last = parts[1] if len(parts) > 1 else last
     if not first:
         return "A friend"
+    if "@" in first:
+        return "A friend"
     return f"{first} {last[0]}." if last else first
 
 

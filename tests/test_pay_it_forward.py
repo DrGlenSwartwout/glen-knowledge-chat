@@ -157,3 +157,27 @@ def test_chain_recipients_no_cross_owner_leak():
     referrals.init_tables(cx)
     referrals.record_redemption(cx, "C1", "other@x.com", "b@x.com", "o1")
     assert pif.chain_recipients(cx, "a@x.com") == []
+
+
+def test_masked_name_first_only():
+    cx = _cx()
+    cx.execute("CREATE TABLE people (email TEXT UNIQUE, first_name TEXT, last_name TEXT, name TEXT)")
+    cx.execute("INSERT INTO people (email, first_name, last_name, name) VALUES ('s@x.com','Sam','','')")
+    cx.commit()
+    assert pif._masked_name(cx, "s@x.com") == "Sam"
+
+
+def test_masked_name_from_name_column():
+    cx = _cx()
+    cx.execute("CREATE TABLE people (email TEXT UNIQUE, first_name TEXT, last_name TEXT, name TEXT)")
+    cx.execute("INSERT INTO people (email, first_name, last_name, name) VALUES ('s@x.com','','','Sam Smith')")
+    cx.commit()
+    assert pif._masked_name(cx, "s@x.com") == "Sam S."
+
+
+def test_masked_name_never_leaks_email_in_name_column():
+    cx = _cx()
+    cx.execute("CREATE TABLE people (email TEXT UNIQUE, first_name TEXT, last_name TEXT, name TEXT)")
+    cx.execute("INSERT INTO people (email, first_name, last_name, name) VALUES ('s@x.com','','','bob@example.com')")
+    cx.commit()
+    assert pif._masked_name(cx, "s@x.com") == "A friend"
