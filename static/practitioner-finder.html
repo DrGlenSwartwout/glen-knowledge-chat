@@ -469,6 +469,7 @@
       <button class="chip" data-parent="dental" aria-pressed="false">Dental</button>
       <button class="chip" data-parent="holistic_health" aria-pressed="false">Holistic Health</button>
       <button class="chip" data-parent="certification" aria-pressed="false">Certification</button>
+      <button class="chip" data-parent="healing_oasis" aria-pressed="false" title="Wholistic Healing Oasis&trade; locations open to connection">&#127807; Healing Oasis</button>
       <button class="chip" data-parent="__all__" aria-pressed="false">Show All</button>
       <button class="chip fellow-toggle" id="fellow-toggle" aria-pressed="false"
               title="Show only practitioners with org-vetted fellowship credentials (FCOVD, MIAOMT, MIABDM, FOWNS, etc.)">
@@ -833,6 +834,9 @@
         if (!p.email && !p.phone) {
           parts.push('<div style="color:var(--muted);font-size:0.85rem;margin-top:0.2rem">To reach this practitioner, select them in the results list and use "Send inquiry".</div>');
         }
+      }
+      if (!isCert && !p.email && !p.phone) {
+        parts.push('<div style="color:var(--muted);font-size:0.85rem;margin-top:0.2rem">To connect, select this location in the results list and use "Send inquiry".</div>');
       }
       if (p.phone) parts.push(`<div style="margin-top:0.4rem"><a href="tel:${escapeHtml(p.phone)}" style="color:var(--gold)">${escapeHtml(p.phone)}</a></div>`);
       if (p.email) parts.push(`<div><a href="mailto:${escapeHtml(p.email)}" style="color:var(--gold)">${escapeHtml(p.email)}</a></div>`);

@@ -23073,7 +23073,7 @@ def practitioner_finder_search():
     # public payload — contact is routed through the inquiry form (which fetches
     # the address server-side). Website + cert level stay visible.
     for r in results:
-        if r.get("tier") in ("panel_in_cert", "panel_certified") and not r.get("show_contact"):
+        if r.get("tier") in ("panel_in_cert", "panel_certified", "healing_oasis") and not r.get("show_contact"):
             r["email"] = None
             r["phone"] = None
         r.pop("show_contact", None)
