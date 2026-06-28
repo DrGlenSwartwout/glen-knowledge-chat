@@ -16,6 +16,13 @@
   h1{ font-size:20px; margin:0 0 4px; }
   h2{ font-size:14px; margin:0 0 10px; color:var(--muted); font-weight:500; }
   .meta{ font-size:12px; color:var(--muted); margin-bottom:10px; }
+  .card-summary{ display:flex; align-items:baseline; gap:8px; cursor:pointer;
+                 font-size:14px; color:var(--fg); margin-bottom:0; user-select:none; }
+  .card-summary .caret{ color:var(--muted); font-size:12px; width:12px; flex:0 0 auto; }
+  .card-summary .sum-id{ color:var(--muted); }
+  .card-summary .sum-name{ font-weight:600; }
+  .card-summary .sum-rest{ color:var(--muted); }
+  .card-body{ margin-top:14px; }
   .section-head{ font-size:13px; font-weight:600; margin:14px 0 6px; color:var(--muted); }
   label{ display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
   input[type=text], textarea{
@@ -29,6 +36,8 @@
   .btn{ background:var(--accent); color:#fff; border:0; border-radius:8px;
         padding:8px 14px; font:inherit; cursor:pointer; }
   .btn.ok{ background:var(--ok); }
+  .btn.approved{ background:#2f5d43; color:#cfe9d8; cursor:default; }
+  .btn.approved::before{ content:'✓ '; }
   .btn.ghost{ background:transparent; color:var(--fg); border:1px solid var(--line); }
   .status{ min-height:18px; color:var(--muted); font-size:13px; margin-top:8px; }
   .dropped-note{ color:var(--muted); font-size:13px; margin-top:8px; }
@@ -151,19 +160,33 @@ function buildCard(d){
   wrap.className = 'card';
   wrap.dataset.id = String(d.id);
 
+  // Always-visible summary row: click to expand the full reveal. Shows the key
+  // data (name, email, date) so the list can be scanned and the right one opened.
   var meta = document.createElement('div');
-  meta.className = 'meta';
+  meta.className = 'card-summary';
+
+  var caret = document.createElement('span');
+  caret.className = 'caret';
+  caret.textContent = '▸';   // ▸
+  meta.appendChild(caret);
+
   var idSpan = document.createElement('span');
-  idSpan.textContent = '#' + (d.id != null ? d.id : '?') + '  ';
-  var emailSpan = document.createElement('span');
-  emailSpan.textContent = (d.email || '') + ' - ' + (d.scan_date || '');
+  idSpan.className = 'sum-id';
+  idSpan.textContent = '#' + (d.id != null ? d.id : '?');
   meta.appendChild(idSpan);
-  meta.appendChild(emailSpan);
+
   if (d.client_name) {
     var nameSpan = document.createElement('span');
-    nameSpan.textContent = '  -  ' + d.client_name;
+    nameSpan.className = 'sum-name';
+    nameSpan.textContent = d.client_name;
     meta.appendChild(nameSpan);
   }
+
+  var restSpan = document.createElement('span');
+  restSpan.className = 'sum-rest';
+  restSpan.textContent = (d.email || '(no email)') + ' · ' + (d.scan_date || 'no date');
+  meta.appendChild(restSpan);
+
   wrap.appendChild(meta);
   var tags = Array.isArray(d.tags) ? d.tags : [];
   if (tags.length) {
@@ -368,9 +391,15 @@ function buildCard(d){
   row.appendChild(saveBtn);
 
   var approveBtn = document.createElement('button');
-  approveBtn.className = 'btn ok';
-  approveBtn.textContent = 'Approve top remedy';
-  approveBtn.onclick = function(){ doApprove(wrap, d.id, approveBtn); };
+  if(d.first_approved){
+    approveBtn.className = 'btn approved';
+    approveBtn.disabled = true;
+    approveBtn.textContent = 'Top Remedy Approved' + (d.approved_at ? ' ' + d.approved_at.slice(0,10) : '');
+  } else {
+    approveBtn.className = 'btn ok';
+    approveBtn.textContent = 'Approve top remedy';
+    approveBtn.onclick = function(){ doApprove(wrap, d.id, approveBtn); };
+  }
   row.appendChild(approveBtn);
 
   var deleteBtn = document.createElement('button');
@@ -401,6 +430,23 @@ function buildCard(d){
   var statusEl = document.createElement('div');
   statusEl.className = 'status';
   wrap.appendChild(statusEl);
+
+  // Collapse everything except the summary header into a togglable body so the
+  // list opens scannable; click the header (or caret) to expand one reveal.
+  var body = document.createElement('div');
+  body.className = 'card-body';
+  while (wrap.childNodes.length > 1) {   // childNodes[0] is the summary header
+    body.appendChild(wrap.childNodes[1]);
+  }
+  wrap.appendChild(body);
+  body.style.display = 'none';
+  wrap.classList.add('collapsed');
+  meta.addEventListener('click', function(){
+    var open = body.style.display === 'none';
+    body.style.display = open ? 'block' : 'none';
+    caret.textContent = open ? '▾' : '▸';   // ▾ / ▸
+    wrap.classList.toggle('collapsed', !open);
+  });
 
   return wrap;
 }
@@ -488,9 +534,10 @@ async function doApprove(card, id, btn){
   var r = await api('POST', '/api/action/biofield_reveal.approve', { id: id });
   if(r.ok && r.json.status === 'done'){
     statusEl.textContent = 'Top remedy approved. Visitor can now see it.';
-    card.style.opacity = '0.5';
-    // Reload so the approved (now non-pending) reveal clears from the list - otherwise
-    // the card just dims in place and the approve reads as having no effect.
+    btn.className = 'btn approved';
+    btn.disabled = true;
+    btn.textContent = 'Top Remedy Approved ' + new Date().toISOString().slice(0,10);
+    // Reload so the approved (now non-pending) reveal moves to the Approved section.
     setTimeout(loadList, 900);
   } else {
     btn.disabled = false;
