@@ -271,9 +271,9 @@
       tone(440, 0.5, 0.16, "sine", 0, 330);
       say("Ahhh", 0.9, 0.7, 0.9);
     } else if (sound === "doppler") {
-      // "We will walk this path together" in Glendalf's voice
+      // "And we're going with you" in Glendalf's voice
       tone(300, 0.7, 0.3, "sawtooth", 0, 1200, 0.9);
-      setTimeout(function () { say("We will walk this path together.", 0.6, 0.92); }, 250);
+      setTimeout(function () { say("And we're going with you.", 0.6, 0.92); }, 250);
     } else if (sound === "oasis") {
       // Breeze + birds, plus fountains and wind chimes on arrival
       burst(1.4, 0.06, 600, "bandpass");
