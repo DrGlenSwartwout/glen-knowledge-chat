@@ -1,6 +1,7 @@
 import sqlite3
 from dashboard import pay_it_forward as pif
 from dashboard import points
+from dashboard import referrals
 
 
 def _cx():
@@ -34,3 +35,37 @@ def test_award_milestone_ignores_blank():
     pif.award_milestone(cx, "", milestone_key="x")
     pif.award_milestone(cx, "m@x.com", milestone_key="")
     assert points.balance(cx, "m@x.com") == 0
+
+
+def _seed_redemption(cx, owner, referee):
+    referrals.init_tables(cx)
+    referrals.record_redemption(cx, "CODE", owner, referee, order_ref=f"o:{referee}")
+
+
+def test_chain_summary_counts_two_levels():
+    cx = _cx()
+    # A gifted B and C (L1); B gifted D (L2)
+    _seed_redemption(cx, "a@x.com", "b@x.com")
+    _seed_redemption(cx, "a@x.com", "c@x.com")
+    _seed_redemption(cx, "b@x.com", "d@x.com")
+    s = pif.chain_summary(cx, "A@X.com")
+    assert s["l1"] == 2
+    assert s["l2"] == 1
+    assert s["reached"] == 3
+
+
+def test_chain_summary_empty_for_unknown():
+    cx = _cx()
+    referrals.init_tables(cx)
+    s = pif.chain_summary(cx, "nobody@x.com")
+    assert s == {"reached": 0, "l1": 0, "l2": 0, "levels": []}
+
+
+def test_chain_summary_excludes_self_and_dedupes():
+    cx = _cx()
+    _seed_redemption(cx, "a@x.com", "b@x.com")
+    _seed_redemption(cx, "b@x.com", "a@x.com")  # cycle back to seed: must not recount A
+    s = pif.chain_summary(cx, "a@x.com")
+    assert s["reached"] == 1
+    assert s["l1"] == 1
+    assert s["l2"] == 0
