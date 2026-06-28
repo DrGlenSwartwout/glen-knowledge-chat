@@ -58,3 +58,14 @@ def chain_summary(cx, email, *, max_depth=2):
         "l2": levels[1] if len(levels) > 1 else 0,
         "levels": levels,
     }
+
+
+def healer_level(reached):
+    """Derived Healer status from distinct people reached. Recognition only;
+    gates nothing in this slice. 1 = Giver, 2 = Healer, 3 = Lightkeeper."""
+    r = int(reached or 0)
+    if r >= 10:
+        return 3
+    if r >= 3:
+        return 2
+    return 1

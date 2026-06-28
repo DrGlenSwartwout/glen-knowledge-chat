@@ -42,3 +42,35 @@ def test_milestone_route_rejects_bad_value_cents(monkeypatch, tmp_path):
     r = c.post("/admin/pif/milestone?key=testsecret",
                json={"email": "m@x.com", "milestone_key": "k", "value_cents": "abc"})
     assert r.status_code == 400
+
+
+def test_summary_requires_member(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    monkeypatch.setattr(appmod, "PAY_IT_FORWARD_ENABLED", True)
+    monkeypatch.setattr(appmod, "is_member", lambda session_id="", email="": False)
+    r = c.get("/api/pif/summary?email=m@x.com")
+    assert r.status_code == 403
+
+
+def test_summary_returns_balance_and_chain(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    monkeypatch.setattr(appmod, "PAY_IT_FORWARD_ENABLED", True)
+    monkeypatch.setattr(appmod, "is_member", lambda session_id="", email="": True)
+    # credit a milestone so the member has a balance
+    c.post("/admin/pif/milestone?key=testsecret",
+           json={"email": "m@x.com", "milestone_key": "k1"})
+    r = c.get("/api/pif/summary?email=m@x.com")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["balance_cents"] == 500
+    assert body["chain"] == {"reached": 0, "l1": 0, "l2": 0, "levels": []}
+    assert body["healer_level"] == 1
+    assert body["gift_wallet"] == []
+
+
+def test_summary_dark_when_flag_off(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    monkeypatch.setattr(appmod, "PAY_IT_FORWARD_ENABLED", False)
+    r = c.get("/api/pif/summary?email=m@x.com")
+    assert r.status_code == 404

@@ -4111,6 +4111,7 @@ JOURNEY_SHELL_ENABLED = os.environ.get("JOURNEY_SHELL_ENABLED", "").strip().lowe
 JOURNEY_QUEST_ENABLED = os.environ.get("JOURNEY_QUEST_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 _TESTIMONIALS_ENABLED = os.environ.get("TESTIMONIALS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _TESTIMONIAL_INVITES_ENABLED = os.environ.get("TESTIMONIAL_INVITES_ENABLED", "").strip().lower() in ("1", "true", "yes")
 try:
@@ -24177,6 +24178,37 @@ def admin_pif_milestone():
             _pif.award_milestone(cx, email, milestone_key=key)
         bal = _points.balance(cx, email)
     return jsonify({"ok": True, "balance_cents": bal})
+
+
+@app.route("/api/pif/summary", methods=["GET"])
+def api_pif_summary():
+    """Member-gated read-only Pay It Forward summary: gift-power balance, healing
+    chain, gift wallet, and derived Healer level. Dark behind PAY_IT_FORWARD_ENABLED."""
+    if not PAY_IT_FORWARD_ENABLED:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    email = (request.args.get("email") or "").strip().lower()
+    session_id = request.cookies.get("amg_session", "")
+    if not email or not is_member(session_id, email):
+        return jsonify({"ok": False, "error": "members only"}), 403
+    from dashboard import pay_it_forward as _pif
+    from dashboard import points as _points
+    from dashboard import coupons as _coupons
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _points.init_points_table(cx)
+        balance_cents = _points.balance(cx, email)
+        chain = _pif.chain_summary(cx, email)
+        try:
+            gift_wallet = _coupons.wallet(cx, email=email, kind="gift")
+        except Exception as _we:
+            print(f"[pif] wallet lookup failed: {_we!r}", flush=True)
+            gift_wallet = []
+    return jsonify({
+        "ok": True,
+        "balance_cents": balance_cents,
+        "chain": chain,
+        "gift_wallet": gift_wallet,
+        "healer_level": _pif.healer_level(chain["reached"]),
+    })
 
 
 @app.route("/admin/escalations", methods=["GET"])

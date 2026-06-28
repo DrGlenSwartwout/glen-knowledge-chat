@@ -71,3 +71,11 @@ def test_chain_summary_excludes_self_and_dedupes():
     assert s["l1"] == 1
     assert s["l2"] == 0
     assert s["levels"] == [1, 0]
+
+
+def test_healer_level_thresholds():
+    assert pif.healer_level(0) == 1
+    assert pif.healer_level(2) == 1
+    assert pif.healer_level(3) == 2
+    assert pif.healer_level(9) == 2
+    assert pif.healer_level(10) == 3
