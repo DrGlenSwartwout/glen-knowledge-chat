@@ -1,0 +1,462 @@
+/* Journey Quest Overlay — Tasks 3–6.
+   All selectors scoped under .jq-overlay; all component classes use .jq- prefix.
+   Ported from hunt-prototype.html visual rules. */
+
+/* ---------- OVERLAY BACKDROP ---------- */
+/* Keep display:flex always so opacity transition works (display:none blocks transitions).
+   Use visibility:hidden + pointer-events:none for the closed state. */
+.jq-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(7, 13, 10, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 18px;
+  box-sizing: border-box;
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s, visibility 0s 0.3s;
+}
+
+.jq-overlay.open {
+  visibility: visible;
+  pointer-events: auto;
+  opacity: 1;
+  transition: opacity 0.3s, visibility 0s 0s;
+}
+
+/* ---------- CLOSE BUTTON ---------- */
+.jq-overlay .jq-close-btn {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  z-index: 901;
+  background: rgba(14, 23, 18, 0.9);
+  color: #e9e2cf;
+  border: 1px solid #2f5a3c;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  padding: 0;
+}
+
+.jq-overlay .jq-close-btn:hover {
+  background: rgba(28, 51, 39, 0.95);
+}
+
+/* ---------- INTRO CARD ---------- */
+/* Absolute overlay inside .jq-overlay; covers stage on first open. */
+.jq-overlay .jq-intro-card {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: radial-gradient(circle at 50% 40%, #13231b, #070d0a);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  text-align: center;
+  padding: 24px;
+  border-radius: inherit;
+}
+
+.jq-overlay .jq-intro-card h2 {
+  font-family: Palatino, Georgia, 'Times New Roman', serif;
+  color: #e9e2cf;
+  font-size: 24px;
+  margin: 0;
+  max-width: 520px;
+  line-height: 1.35;
+}
+
+.jq-overlay .jq-intro-card p {
+  color: #9aa08f;
+  max-width: 460px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.jq-overlay .jq-intro-opts {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.jq-overlay .jq-intro-opts button {
+  background: #1c3327;
+  color: #e9e2cf;
+  border: 1px solid #2f5a3c;
+  border-radius: 12px;
+  padding: 15px 20px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 160px;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.jq-overlay .jq-intro-opts button:hover {
+  background: #244231;
+}
+
+/* ---------- SCENE STAGE ---------- */
+.jq-overlay .jq-stage {
+  position: relative;
+  width: 100%;
+  max-width: 1328px;
+  aspect-ratio: 1328 / 800;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 40px #000a;
+  margin: 0 auto;
+}
+
+/* ---------- SCENE IMAGE ---------- */
+.jq-overlay .jq-stage .jq-scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ---------- INVISIBLE HOTSPOTS ---------- */
+.jq-overlay .jq-stage .jq-hot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  cursor: crosshair;
+  background: transparent;
+  border: none;
+  padding: 0;
+  transition: box-shadow 0.2s;
+}
+
+.jq-overlay .jq-stage .jq-hot:hover {
+  box-shadow: 0 0 0 2px rgba(212, 168, 67, 0.5) inset;
+  background: rgba(212, 168, 67, 0.08);
+}
+
+/* ---------- POPUP TOOLTIP ---------- */
+.jq-overlay .jq-stage .jq-pop {
+  position: absolute;
+  transform: translate(-50%, -115%);
+  min-width: 180px;
+  max-width: 240px;
+  padding: 12px 15px 11px;
+  border-radius: 11px;
+  background: rgba(252, 248, 240, 0.98);
+  color: #241a0e;
+  text-align: center;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(168, 131, 46, 0.5);
+  z-index: 6;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+
+.jq-overlay .jq-stage .jq-pop.on {
+  opacity: 1;
+  transform: translate(-50%, -125%);
+}
+
+.jq-overlay .jq-stage .jq-pop .jq-pop-title {
+  font-weight: 700;
+  font-size: 16px;
+  color: #3a2c14;
+  letter-spacing: 0.03em;
+}
+
+.jq-overlay .jq-stage .jq-pop .jq-pop-sub {
+  font-size: 12.5px;
+  color: #6a5a40;
+  margin-top: 4px;
+  font-style: italic;
+  line-height: 1.35;
+}
+
+/* ---------- ENGAGE PANEL (second step) ---------- */
+.jq-overlay .jq-stage .jq-engage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0.96);
+  z-index: 8;
+  background: rgba(14, 23, 18, 0.97);
+  border: 1px solid #2f5a3c;
+  border-radius: 14px;
+  padding: 22px 24px;
+  text-align: center;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.75);
+  min-width: 300px;
+  max-width: 90%;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.22s, transform 0.22s, visibility 0s 0.22s;
+}
+
+.jq-overlay .jq-stage .jq-engage.on {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -50%) scale(1);
+  transition: opacity 0.22s, transform 0.22s, visibility 0s 0s;
+}
+
+.jq-overlay .jq-stage .jq-engage .jq-engage-title {
+  font-family: Palatino, Georgia, 'Times New Roman', serif;
+  color: #d4a843;
+  margin: 0 0 6px;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.jq-overlay .jq-stage .jq-engage p {
+  color: #9aa08f;
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
+.jq-overlay .jq-stage .jq-engage-opts {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.jq-overlay .jq-stage .jq-engage-opts button {
+  background: #1c3327;
+  color: #e9e2cf;
+  border: 1px solid #2f5a3c;
+  border-radius: 10px;
+  padding: 13px 18px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 130px;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.jq-overlay .jq-stage .jq-engage-opts button:hover {
+  background: #244231;
+}
+
+.jq-overlay .jq-stage .jq-engage-opts .jq-em {
+  font-size: 18px;
+}
+
+/* ---------- MUTE BUTTON ---------- */
+.jq-overlay .jq-stage .jq-mute-btn {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+  z-index: 7;
+  background: rgba(14, 23, 18, 0.82);
+  color: #e9e2cf;
+  border: 1px solid #2f5a3c;
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.2s;
+}
+
+.jq-overlay .jq-stage .jq-mute-btn:hover {
+  background: rgba(28, 51, 39, 0.95);
+}
+
+/* ---------- REWARD TOAST ---------- */
+/* Fixed position, appended to body; floats above overlay. */
+.jq-reward {
+  position: fixed;
+  left: 50%;
+  top: 16%;
+  transform: translateX(-50%) translateY(-12px);
+  z-index: 1100;
+  background: linear-gradient(160deg, #fbf6ea, #f3e6c6);
+  color: #241a0e;
+  border-radius: 14px;
+  padding: 16px 26px;
+  text-align: center;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.62);
+  border: 1px solid #d8b766;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s, transform 0.3s, visibility 0s 0.3s;
+  min-width: 240px;
+  max-width: 360px;
+}
+
+.jq-reward.on {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+  transition: opacity 0.3s, transform 0.3s, visibility 0s 0s;
+}
+
+.jq-reward .jq-reward-big {
+  font-family: Palatino, Georgia, 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 19px;
+  color: #7a5a14;
+}
+
+.jq-reward .jq-reward-sub {
+  font-size: 13px;
+  color: #6a5a40;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.jq-reward .jq-reward-off {
+  display: inline-block;
+  margin-top: 8px;
+  background: #7a5a14;
+  color: #fbf6ea;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  border-radius: 20px;
+  padding: 4px 12px;
+}
+
+/* ---------- HOTSPOT LOCK STATES ---------- */
+/* Locked: not yet reachable -- dim + default cursor */
+.jq-overlay .jq-stage .jq-hot.jq-locked {
+  opacity: 0.25;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Current target: gentle gold pulse via box-shadow */
+.jq-overlay .jq-stage .jq-hot.jq-current {
+  background: rgba(212, 168, 67, 0.08);
+  animation: jq-hotpulse 1.6s ease-in-out infinite;
+  cursor: crosshair;
+}
+
+@keyframes jq-hotpulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(212, 168, 67, 0.3) inset; }
+  50%       { box-shadow: 0 0 0 2.5px rgba(212, 168, 67, 0.85) inset;
+              background: rgba(212, 168, 67, 0.14); }
+}
+
+/* Unlocked (done): full opacity, normal pointer */
+.jq-overlay .jq-stage .jq-hot.jq-unlocked {
+  opacity: 1;
+}
+
+/* ---------- RIBBON LAND LOCK STATES (quest-active only) ---------- */
+/* Gate on body.jq-quest-active so non-quest pages are completely unaffected. */
+
+/* Locked: grayscale + dim */
+body.jq-quest-active .js-land.jq-locked {
+  filter: grayscale(1);
+  opacity: 0.35;
+}
+
+/* Current target: gold color + animated box-shadow pulse (avoids ::after conflict
+   with the existing .js-land.next::after "💎" gem marker) */
+body.jq-quest-active .js-land.jq-current {
+  color: var(--gold, #d4a843);
+  font-weight: 600;
+  opacity: 1;
+  filter: none;
+  animation: jq-landpulse 1.6s ease-in-out infinite;
+}
+
+@keyframes jq-landpulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 168, 67, 0.25); }
+  50%       { box-shadow: 0 0 0 3px rgba(212, 168, 67, 0.65); }
+}
+
+/* Unlocked (done): full color */
+body.jq-quest-active .js-land.jq-unlocked {
+  filter: none;
+  opacity: 1;
+  color: var(--green, #6aa37a);
+  animation: none;
+}
+
+/* ---------- MOBILE HINT (sound-off guarantee) ---------- */
+/* Hidden by default; shown on touch devices or when overlay has .jq-soundoff class. */
+.jq-overlay .jq-stage .jq-mobile-hint {
+  display: none;
+  position: absolute;
+  bottom: 52px;
+  right: 12px;
+  z-index: 7;
+  background: rgba(14, 23, 18, 0.88);
+  border: 1px solid #2f5a3c;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #cfc8b6;
+  max-width: 200px;
+  text-align: right;
+  pointer-events: none;
+  line-height: 1.4;
+}
+
+.jq-overlay .jq-stage .jq-mobile-hint .jq-hint-name {
+  font-weight: 700;
+  color: #d4a843;
+}
+
+.jq-overlay .jq-stage .jq-mobile-hint .jq-hint-line {
+  color: #9aa08f;
+  font-style: italic;
+}
+
+/* Show on touch/hover-none devices */
+@media (hover: none) {
+  .jq-overlay .jq-stage .jq-mobile-hint {
+    display: block;
+  }
+
+  /* Subtle pulse on ALL hotspots to hint interactivity on touch */
+  .jq-overlay .jq-stage .jq-hot {
+    animation: jq-pulse-hint 2.4s ease-in-out infinite;
+  }
+
+  @keyframes jq-pulse-hint {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(212, 168, 67, 0.0); }
+    50%       { box-shadow: 0 0 0 2px rgba(212, 168, 67, 0.3) inset; }
+  }
+}
+
+/* Show when muted (sound-off mode -- audio proximity cue unavailable) */
+.jq-overlay.jq-soundoff .jq-stage .jq-mobile-hint {
+  display: block;
+}

@@ -80,3 +80,29 @@ def test_shell_noop_when_flag_off(client):
     appmod.JOURNEY_SHELL_ENABLED = False
     body = c.get("/begin").get_data(as_text=True)
     assert "/static/shell.js" not in body
+
+
+def test_quest_disabled_no_quest_assets():
+    out = shell_nav.inject_shell_html("<head></head>", "funnel", quest_enabled=False)
+    assert "journey-quest.js" not in out
+    assert "journey-quest.css" not in out
+    assert '"questEnabled":false' in out
+
+
+def test_quest_enabled_injects_assets():
+    out = shell_nav.inject_shell_html("<head></head>", "funnel", quest_enabled=True)
+    assert "journey-quest.js" in out
+    assert "journey-quest.css" in out
+    assert '"questEnabled":true' in out
+
+
+def test_quest_audio_script_injected_when_enabled():
+    out = shell_nav.inject_shell_html("<head></head>", "funnel", quest_enabled=True)
+    assert "journey-audio.js" in out
+    # audio script must appear before quest script so __JQAUDIO__ is defined first
+    assert out.index("journey-audio.js") < out.index("journey-quest.js")
+
+
+def test_quest_audio_script_absent_when_disabled():
+    out = shell_nav.inject_shell_html("<head></head>", "funnel", quest_enabled=False)
+    assert "journey-audio.js" not in out

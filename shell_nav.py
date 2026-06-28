@@ -33,7 +33,7 @@ def resolve_mode(path: str, authenticated: bool) -> str:
     return "funnel"
 
 
-def inject_shell_html(html: str, mode: str, rewards1b: bool = False, rewards_gift: bool = False) -> str:
+def inject_shell_html(html: str, mode: str, rewards1b: bool = False, rewards_gift: bool = False, quest_enabled: bool = False) -> str:
     """Insert the shell <link>+<script> tags before </head>. Idempotent; no-op when no </head>."""
     if _MARKER in (html or ""):
         return html
@@ -42,11 +42,18 @@ def inject_shell_html(html: str, mode: str, rewards1b: bool = False, rewards_gif
     mode = "member" if mode == "member" else "funnel"
     r1 = "true" if rewards1b else "false"
     rg = "true" if rewards_gift else "false"
+    qe = "true" if quest_enabled else "false"
     tags = (
         f'<link {_MARKER} rel="stylesheet" href="/static/shell.css">'
-        f'<script>window.__SHELL__={{"mode":"{mode}","rewards1b":{r1},"rewardsGift":{rg}}};</script>'
+        f'<script>window.__SHELL__={{"mode":"{mode}","rewards1b":{r1},"rewardsGift":{rg},"questEnabled":{qe}}};</script>'
         f'<script defer src="/static/shell.js"></script>'
     )
+    if quest_enabled:
+        tags += (
+            '<link rel="stylesheet" href="/static/journey-quest.css">'
+            '<script defer src="/static/journey-audio.js"></script>'
+            '<script defer src="/static/journey-quest.js"></script>'
+        )
     return html.replace("</head>", tags + "\n</head>", 1)
 
 
@@ -64,4 +71,25 @@ def validate_shell_map(cfg: dict, land_keys) -> list:
         cat = (land or {}).get("category")
         if cat not in cats:
             errors.append(f"land '{key}' references missing category style '{cat}'")
+    # land display fields
+    for key, land in lands.items():
+        if not (land or {}).get("name"):
+            errors.append(f"land '{key}' has empty name")
+        if not (land or {}).get("thumb"):
+            errors.append(f"land '{key}' missing thumb")
+    # scene block (optional, but if present must be well-formed)
+    scene = (cfg or {}).get("scene")
+    if scene is not None:
+        if not scene.get("image"):
+            errors.append("scene.image is empty")
+        spots = scene.get("hotspots") or {}
+        expected = set(valid) | {"home"}
+        for key in expected:
+            spot = spots.get(key)
+            if not spot:
+                errors.append(f"scene hotspot '{key}' missing")
+                continue
+            for f in ("x", "y", "w", "h"):
+                if not isinstance(spot.get(f), (int, float)):
+                    errors.append(f"scene hotspot '{key}.{f}' not numeric")
     return errors

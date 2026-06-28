@@ -161,6 +161,7 @@
       var land = el("div", cls,
         '<span class="js-icon">' + icon + '</span>' +
         '<span>' + (meta.name || card.label) + '</span>');
+      land.setAttribute("data-key", card.key);
       land.title = (meta.intrigue || card.paren || "");
       land.onclick = function (e) {
         e.stopPropagation();
@@ -296,8 +297,20 @@
       var journey = (res[0] && res[0].journey_map) || [];
       if (journey.length) {
         renderLands(ui.path, journey, res[1]);
+        // If the quest is active and resolved first, it couldn't style the lands
+        // (they didn't exist yet). Re-render now that they're in the DOM.
+        if (window.__SHELL__ && window.__SHELL__.questEnabled &&
+            window.__JQUEST__ && typeof window.__JQUEST__.render === "function") {
+          window.__JQUEST__.render();
+        }
         var overlay = buildOverlay(journey, res[1]);
-        ui.mapBtn.addEventListener("click", function () { overlay.classList.add("open"); });
+        // Default: open the pavilion overlay.  Switch to quest if __JQUEST__ already
+        // resolved (covers the race where journey-quest.js fetched faster than us).
+        // journey-quest.js hooks this same button via DOM query when IT resolves last.
+        ui.mapBtn.onclick = function () { overlay.classList.add("open"); };
+        if (window.__SHELL__ && window.__SHELL__.questEnabled && window.__JQUEST__) {
+          ui.mapBtn.onclick = function () { window.__JQUEST__.open(); };
+        }
         refreshWallet();
       } else ui.path.appendChild(el("span", "js-land", "illtowell.com"));
     });
