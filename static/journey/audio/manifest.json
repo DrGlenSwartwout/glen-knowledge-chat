@@ -1,1 +1,6 @@
-{}
+{
+  "home": { "arrival": "/static/journey/audio/welcome.mp3" },
+  "scan": { "approach": "/static/journey/audio/bowl-172hz.mp3", "arrival": "/static/journey/audio/count.mp3" },
+  "find": { "arrival": "/static/journey/audio/ahhh.mp3" },
+  "heal": { "arrival": "/static/journey/audio/going-with-you.mp3" }
+}
