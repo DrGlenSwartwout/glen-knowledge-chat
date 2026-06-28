@@ -24152,6 +24152,28 @@ def admin_membership_grant():
     }), 200
 
 
+@app.route("/admin/pif/milestone", methods=["POST"])
+@require_console_key
+def admin_pif_milestone():
+    """Console-gated: credit gift-power points for a confirmed healing milestone.
+    Body: {email, milestone_key, value_cents?}. Idempotent per (email, milestone_key)."""
+    from dashboard import pay_it_forward as _pif
+    from dashboard import points as _points
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    key = (data.get("milestone_key") or "").strip()
+    if not email or "@" not in email or not key:
+        return jsonify({"ok": False, "error": "email and milestone_key required"}), 400
+    value_cents = data.get("value_cents")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        if value_cents is not None:
+            _pif.award_milestone(cx, email, milestone_key=key, value_cents=int(value_cents))
+        else:
+            _pif.award_milestone(cx, email, milestone_key=key)
+        bal = _points.balance(cx, email)
+    return jsonify({"ok": True, "balance_cents": bal})
+
+
 @app.route("/admin/escalations", methods=["GET"])
 @require_console_key
 def admin_escalations_list():
