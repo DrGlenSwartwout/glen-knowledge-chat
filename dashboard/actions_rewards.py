@@ -3,8 +3,7 @@
 Registered as a MONEY_SEND action so owner approval is required before
 any payout is processed. Cash mode: marks all pending earnings as paid
 (actual money transfer is handled via the owner's existing finance tools).
-Points mode: redeems the full points balance at cash_out_face_pct value
-and records the conversion.
+Points mode: refused — points are store-credit/gift only and not cashable.
 """
 from datetime import datetime, timezone
 
@@ -48,20 +47,9 @@ def process_payout(params, ctx):
             "paid_at": now,
         }
     else:
-        # Points mode: redeem the full balance at the face-value rate
-        referrer_email = _rewards.referrer_email_for_slug(cx, slug)
-        if not referrer_email:
-            raise ValueError(f"no approved affiliate found for slug={slug!r}")
-        bal = _points.balance(cx, referrer_email)
-        if bal <= 0:
-            return {"slug": slug, "mode": "points", "points_redeemed": 0, "cash_value_cents": 0}
-        cash_value = round(bal * face_pct)
-        order_ref = f"cashout:{slug}:{int(datetime.now(timezone.utc).timestamp())}"
-        _points.redeem(cx, referrer_email, value_cents=bal, order_ref=order_ref)
-        return {
-            "slug": slug,
-            "mode": "points",
-            "points_redeemed": bal,
-            "cash_value_cents": cash_value,
-            "order_ref": order_ref,
-        }
+        # Points are store-credit / gift-power only and are NOT cashable.
+        # Cash flows exclusively through the pro-influencer affiliate_earnings rail.
+        raise ValueError(
+            "points are store-credit/gift only and not cashable; "
+            "only pro-affiliate (tier:pro-influencer) cash earnings are payable"
+        )
