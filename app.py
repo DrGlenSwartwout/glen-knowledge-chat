@@ -24165,9 +24165,14 @@ def admin_pif_milestone():
     if not email or "@" not in email or not key:
         return jsonify({"ok": False, "error": "email and milestone_key required"}), 400
     value_cents = data.get("value_cents")
+    if value_cents is not None:
+        try:
+            value_cents = int(value_cents)
+        except (ValueError, TypeError):
+            return jsonify({"ok": False, "error": "value_cents must be an integer"}), 400
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         if value_cents is not None:
-            _pif.award_milestone(cx, email, milestone_key=key, value_cents=int(value_cents))
+            _pif.award_milestone(cx, email, milestone_key=key, value_cents=value_cents)
         else:
             _pif.award_milestone(cx, email, milestone_key=key)
         bal = _points.balance(cx, email)

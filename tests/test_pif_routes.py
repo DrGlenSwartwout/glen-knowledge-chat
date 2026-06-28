@@ -2,6 +2,7 @@ import sqlite3
 import app as appmod
 import dashboard
 from dashboard import points
+from dashboard.pay_it_forward import MILESTONE_REWARD_CENTS
 
 
 def _client(monkeypatch, tmp_path):
@@ -27,10 +28,17 @@ def test_milestone_route_credits(monkeypatch, tmp_path):
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is True
-    assert body["balance_cents"] == 500
+    assert body["balance_cents"] == MILESTONE_REWARD_CENTS
 
 
 def test_milestone_route_validates_input(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     r = c.post("/admin/pif/milestone?key=testsecret", json={"email": "m@x.com"})
+    assert r.status_code == 400
+
+
+def test_milestone_route_rejects_bad_value_cents(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    r = c.post("/admin/pif/milestone?key=testsecret",
+               json={"email": "m@x.com", "milestone_key": "k", "value_cents": "abc"})
     assert r.status_code == 400
