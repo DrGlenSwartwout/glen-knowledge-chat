@@ -290,6 +290,7 @@
     if (!_overlay) { return; }
     _overlay.classList.remove("open");
     _overlayOpen = false;
+    if (window.__JQAUDIO__) { window.__JQAUDIO__.stopAll(); }
   }
 
   // Load persisted quest state before exposing the API, so callers see correct state
