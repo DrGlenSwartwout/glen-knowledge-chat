@@ -4112,6 +4112,8 @@ JOURNEY_QUEST_ENABLED = os.environ.get("JOURNEY_QUEST_ENABLED", "").strip().lowe
 REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
+PIF_GIFT_NOTE_MAX_AGE_DAYS = int(os.environ.get("PIF_GIFT_NOTE_MAX_AGE_DAYS", "60"))
 _TESTIMONIALS_ENABLED = os.environ.get("TESTIMONIALS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _TESTIMONIAL_INVITES_ENABLED = os.environ.get("TESTIMONIAL_INVITES_ENABLED", "").strip().lower() in ("1", "true", "yes")
 try:
@@ -8480,6 +8482,63 @@ def _validate_membership_magic_link(token):
     except Exception:
         return None
     return email
+
+
+def _mint_gift_note_link(email, *, order_ref, ttl_min=60 * 24 * 30):
+    """Single-use token (purpose pif_gift_note, 30-day TTL) carrying the redemption
+    order_ref so the submit can attribute the note to the giver + product.
+    Returns plaintext token; caller emails it."""
+    import secrets, json
+    plain = secrets.token_urlsafe(32)
+    th = _hash_token(plain)
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    exp_iso = (datetime.utcnow() + timedelta(minutes=int(ttl_min))).isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (th, (email or "").strip().lower(), "pif_gift_note",
+             json.dumps({"order_ref": order_ref or ""}), now_iso, exp_iso))
+    return plain
+
+
+def _validate_gift_note_link(token):
+    """Return {'email', 'order_ref'} for a valid (purpose, unconsumed, unexpired)
+    pif_gift_note token, else None. Does NOT consume."""
+    if not token:
+        return None
+    import json
+    th = _hash_token(token)
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email, extra, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='pif_gift_note'", (th,)).fetchone()
+    if not row:
+        return None
+    email, extra, expires_at, consumed_at = row
+    if consumed_at:
+        return None
+    try:
+        if datetime.fromisoformat(expires_at.rstrip("Z")) < datetime.utcnow():
+            return None
+    except Exception:
+        return None
+    try:
+        order_ref = (json.loads(extra or "{}") or {}).get("order_ref", "")
+    except Exception:
+        order_ref = ""
+    return {"email": email, "order_ref": order_ref}
+
+
+def _consume_gift_note_token(token):
+    """Mark a pif_gift_note token consumed (single-use). Best-effort."""
+    if not token:
+        return
+    th = _hash_token(token)
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=? AND purpose='pif_gift_note'",
+                   (now_iso, th))
 
 
 def _mint_lead_magnet_guide_link(email, ttl_min=60 * 24 * 30):
@@ -24427,6 +24486,56 @@ def api_pif_summary():
     })
 
 
+@app.route("/api/pif/gift-note", methods=["POST"])
+def api_pif_gift_note():
+    """Recipient submits a 'this helped me' note via a pif_gift_note token. Stores it
+    as a kind='gift' review on the gifted product, attributed to the giver, AI-scored.
+    Dark behind PAY_IT_FORWARD_ENABLED."""
+    if not PAY_IT_FORWARD_ENABLED:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    data = request.get_json(silent=True) or request.form
+    token = (data.get("token") or "").strip()
+    tok = _validate_gift_note_link(token)
+    if not tok:
+        return jsonify({"ok": False, "error": "invalid or expired link"}), 400
+    recipient = (tok["email"] or "").lower()
+    order_ref = tok["order_ref"]
+    name = (data.get("name") or "").strip()
+    body = (data.get("body") or "").strip()
+    consent = str(data.get("consent_public") or "").strip().lower() in ("1", "true", "yes", "on")
+    if not body:
+        return jsonify({"ok": False, "error": "please share a few words"}), 400
+    from dashboard import referrals as _rf
+    from dashboard import pay_it_forward as _pif
+    from dashboard import product_reviews as _pr
+    from dashboard import review_scoring as _rs
+    _ctx = {"name": "Dr. Glen Swartwout — Biofield Analysis & Functional Formulations"}
+    with sqlite3.connect(LOG_DB) as cx:
+        red = _rf.redemption_by_order_ref(cx, order_ref)
+        if not red or (red.get("referee_email") or "").lower() != recipient:
+            return jsonify({"ok": False, "error": "redemption not found"}), 400
+        owner_email = red.get("owner_email") or ""
+        product_slug = _pif._product_for_code(cx, red.get("code") or "") or "_gift"
+        rid = _pr.upsert_review(cx, product_slug, recipient, name, 0, body,
+                                kind="gift", consent_public=1 if consent else 0,
+                                source_tag="gift", gift_owner_email=owner_email)
+        try:
+            score = _rs.score_review(_cl, _ctx, body, strip=_strip_dash)
+        except Exception as _se:
+            print(f"[pif-t2] score_review failed rid={rid}: {_se!r}", flush=True)
+            score = {"quality_points": 0, "reasons": "", "recommend_publish": False}
+        _pr.set_ai_result(cx, rid, score.get("quality_points", 0), score.get("reasons", ""),
+                          score.get("recommend_publish", False))
+        _pr.set_scores(cx, rid, compliance=score.get("compliance_score", 0),
+                       publication=score.get("publication_score", 0),
+                       authenticity=score.get("authenticity_score", 0),
+                       specificity=score.get("specificity_score", 0))
+        cx.execute(
+            "UPDATE auth_tokens SET consumed_at=? WHERE token_hash=? AND purpose='pif_gift_note'",
+            (datetime.utcnow().isoformat() + "Z", _hash_token(token)))
+    return jsonify({"ok": True, "review_id": rid, "status": "pending"})
+
+
 @app.route("/admin/escalations", methods=["GET"])
 @require_console_key
 def admin_escalations_list():
@@ -24741,6 +24850,46 @@ def cron_membership_renewals():
                 print(f"[renewal-cron] journey_events insert failed: {e!r}", flush=True)
             reminded += 1
     return jsonify({"reminded": reminded}), 200
+
+
+@app.route("/api/cron/pif-gift-note-invites", methods=["POST"])
+@require_console_key
+def cron_pif_gift_note_invites():
+    """Daily: email gift recipients (~N days after redemption) a tokened link to share
+    how the gift helped. Idempotent via note_invited_at. No-op when the feature is dark."""
+    dry_run = str(request.args.get("dry_run") or "").strip().lower() in ("1", "true", "yes", "on")
+    if not PAY_IT_FORWARD_ENABLED:
+        return jsonify({"invited": 0, "dry_run": dry_run, "disabled": True}), 200
+    from dashboard import pif_gift_notes as _gn
+    base = request.host_url.rstrip("/")
+    invited = 0
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = _gn.pending_invites(cx, days=PIF_GIFT_NOTE_DELAY_DAYS, max_age_days=PIF_GIFT_NOTE_MAX_AGE_DAYS)
+    for row in rows:
+        if dry_run:
+            continue
+        try:
+            plain = _mint_gift_note_link(row["referee_email"], order_ref=row["order_ref"])
+            link = f"{base}/results?gift={plain}"
+            subject = "Your gift from a friend, how is it helping?"
+            body = (
+                f"Hi,\n\n"
+                f"A friend gifted you something from Remedy Match, and we'd love to know how "
+                f"it is helping you. It takes a minute, and with your permission your friend will "
+                f"see that their gift made a difference.\n\n"
+                f"Share a few words here:\n{link}\n\n"
+                f"---\n"
+                f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n")
+            ok_sent = _send_inquiry_email(to_email=row["referee_email"], subject=subject,
+                                          body=body, reply_to=RM_COACHING_REPLY_EMAIL)
+        except Exception as e:
+            print(f"[pif-t2 invite] send failed for {row['referee_email']}: {e!r}", flush=True)
+            ok_sent = False
+        if ok_sent:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _gn.mark_invited(cx, row["referee_email"], row["order_ref"])
+            invited += 1
+    return jsonify({"invited": invited, "dry_run": dry_run}), 200
 
 
 @app.route("/coaching/login-request", methods=["POST"])
