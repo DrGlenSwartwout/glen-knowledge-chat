@@ -178,11 +178,15 @@ async function submitOptin() {
     polyvagal_state: analysis && analysis.polyvagal_state,
     top_themes: analysis && analysis.top_themes,
   };
-  const r = await fetch(OPTIN_URL, { method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ name: $('nameInput').value, email, tos: true, ref: REF, signals }) });
-  if (!r.ok) { $('status').textContent = 'Something went wrong. Please try again.'; return; }
-  $('optin').style.display = 'none';
-  $('onward').style.display = 'block';
+  try {
+    const r = await fetch(OPTIN_URL, { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ name: $('nameInput').value, email, tos: true, ref: REF, signals }) });
+    if (!r.ok) { $('status').textContent = 'Something went wrong. Please try again.'; return; }
+    $('optin').style.display = 'none';
+    $('onward').style.display = 'block';
+  } catch (e) {
+    $('status').textContent = 'Network error. Please try again.';
+  }
 }
 
 window.addEventListener('DOMContentLoaded', () => {

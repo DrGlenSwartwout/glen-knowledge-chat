@@ -8206,6 +8206,11 @@ def _init_referral_tables():
                     ?,
                     1)
             """, (f"{PUBLIC_BASE_URL}/begin/doorway?ref={{slug}}",))
+        else:
+            # Repoint any stale prod row (e.g. old scoreapp.com template) to the doorway URL.
+            cx.execute(
+                "UPDATE affiliate_offers SET url_template=? WHERE name='Accelerate Self-Healing Quiz'",
+                (f"{PUBLIC_BASE_URL}/begin/doorway?ref={{slug}}",))
         # Seed E4L bioenergetic wellness scan
         E4L_INSTRUCTIONS = (
             "New here? Get a free account at https://truly.vip/E4L\n"

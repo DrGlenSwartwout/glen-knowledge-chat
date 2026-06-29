@@ -59,6 +59,24 @@ def test_doorway_optin_captures_and_records_gates(appmod):
     assert "voice-doorway" in g["tags"] and "element:water" in g["tags"]
 
 
+def test_init_referral_repoints_existing_scoreapp_offer(tmp_path, monkeypatch):
+    import app as appmod, sqlite3
+    db = tmp_path / "ref.db"
+    monkeypatch.setattr(appmod, "LOG_DB", db)
+    appmod._init_referral_tables()  # creates schema + seeds (fresh -> doorway URL)
+    cx = sqlite3.connect(db)
+    cx.execute("UPDATE affiliate_offers SET url_template='https://healing.scoreapp.com?utm_source={slug}' WHERE name='Accelerate Self-Healing Quiz'")
+    cx.commit()
+    cx.close()
+    appmod._init_referral_tables()  # second run must repoint the now-stale row
+    cx2 = sqlite3.connect(db)
+    row = cx2.execute("SELECT url_template FROM affiliate_offers WHERE name='Accelerate Self-Healing Quiz'").fetchone()
+    cx2.close()
+    assert row is not None
+    assert "scoreapp.com" not in row[0]
+    assert "/begin/doorway?ref={slug}" in row[0]
+
+
 def test_no_scoreapp_url_outside_dormant_webhook():
     import re, pathlib
     src = pathlib.Path("app.py").read_text()
