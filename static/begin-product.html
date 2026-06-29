@@ -884,10 +884,14 @@
         card.className = 'sp-review-card';
         var header = document.createElement('p');
         header.className = 'sp-review-header';
-        var rating = typeof r.rating === 'number' ? r.rating : 0;
-        var rStars = '';
-        for (var j = 0; j < 5; j++) rStars += (j < rating) ? '★' : '☆';
-        header.textContent = (r.name || 'A verified buyer') + '  ' + rStars;
+        var hasRating = (typeof r.rating === 'number' && r.rating > 0);
+        if (hasRating) {
+          var rStars = '';
+          for (var j = 0; j < 5; j++) rStars += (j < r.rating) ? '★' : '☆';
+          header.textContent = (r.name || 'A verified buyer') + '  ' + rStars;
+        } else {
+          header.textContent = (r.name || 'A friend');
+        }
         card.appendChild(header);
         var bodyEl = document.createElement('p');
         bodyEl.className = 'sp-review-body';
