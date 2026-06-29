@@ -283,7 +283,7 @@ function buildReportPrintHtml(d){
     <div class="pd-layer">
       <div class="pd-layer-h"><span class="pd-num">${esc(L.n!=null?L.n:i+1)}</span><span class="pd-layer-title">${esc(L.title||"")}</span></div>
       ${L.meaning?`<div class="pd-mean">${escGreeting(L.meaning)}</div>`:""}
-      ${L.remedy?`<div class="pd-rx"><b>${esc(L.remedy)}</b>${L.dosing?` — ${esc(L.dosing)}`:""}</div>`:""}
+      ${L.remedy?`<div class="pd-rx"><b>${esc(L.remedy)}</b>${L.dosing?`: ${esc(L.dosing)}`:""}</div>`:""}
     </div>`).join("");
   const finds = findings.length ? `<div class="pd-sec"><h3>What we observed</h3>${findings.map(f=>`
       <div class="pd-find"><b>${esc(f.name||f.code||"")}</b>${f.description?`<div>${esc(f.description)}</div>`:""}</div>`).join("")}</div>` : "";
@@ -294,9 +294,9 @@ function buildReportPrintHtml(d){
       ${when?`<div><span class="pd-k">Scan date</span> ${esc(when)}</div>`:""}
     </div>
     ${d.greeting?`<div class="pd-greeting">${escGreeting(d.greeting)}</div>`:""}
-    ${path?`<div class="pd-sec"><h3>Your healing path</h3><p class="pd-muted">From the surface layer down to the deepest root — supported in order, so the whole chain unwinds.</p>${path}</div>`:""}
+    ${path?`<div class="pd-sec"><h3>Your healing path</h3><p class="pd-muted">From the surface layer down to the deepest root, supported in order, so the whole chain unwinds.</p>${path}</div>`:""}
     ${finds}
-    <div class="pd-foot">It is an honor to be on your wellness team. — Dr. Glen &amp; Rae</div>
+    <div class="pd-foot">It is an honor to be on your wellness team. Aloha, Dr. Glen &amp; Rae</div>
   </div>`;
 }
 
