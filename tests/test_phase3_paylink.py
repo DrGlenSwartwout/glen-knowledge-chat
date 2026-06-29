@@ -66,6 +66,35 @@ def test_mark_invoice_sent():
     assert O.get_order(cx, oid)["invoice_sent_at"]
 
 
+def test_record_payment_on_cart_new_order():
+    # A portal-reorder lands unpaid in 'new' (Cart). Paying in person by check/cash
+    # records on the 'new' order: marks it paid, stays 'new' (now in the Paid lane).
+    O, cx = _orders_db()
+    oid = O.upsert_order(cx, source="portal-reorder", external_ref="QB-CART",
+                         status="new", total_cents=65000, email="k@b.com")
+    res = O._record_payment_exec({"order_id": oid, "method": "Check"}, {"cx": cx})
+    assert res["pay_status"] == "paid"
+    o = O.get_order(cx, oid)
+    assert o["pay_status"] == "paid" and o["pay_method"] == "Check" and o["status"] == "new"
+
+
+def test_record_payment_rejects_already_paid():
+    O, cx = _orders_db()
+    oid = O.upsert_order(cx, source="portal-reorder", external_ref="QB-PAID",
+                         status="new", total_cents=5000, email="k@b.com")
+    O.set_order_payment(cx, oid, method="Cash", amount_cents=5000)
+    with pytest.raises(ValueError, match="already marked paid"):
+        O._record_payment_exec({"order_id": oid, "method": "Cash"}, {"cx": cx})
+
+
+def test_record_payment_rejects_shipped():
+    O, cx = _orders_db()
+    oid = O.upsert_order(cx, source="in-house", external_ref="SHIP-1",
+                         status="shipped", total_cents=5000, email="k@b.com")
+    with pytest.raises(ValueError, match="before it ships"):
+        O._record_payment_exec({"order_id": oid, "method": "Check"}, {"cx": cx})
+
+
 # ── send_invoice action gating ───────────────────────────────────────────────
 
 def test_send_invoice_blocked_when_flag_off(monkeypatch):
