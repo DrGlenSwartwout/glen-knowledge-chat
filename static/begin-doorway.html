@@ -55,7 +55,9 @@
     and the right path forward often begins the moment someone truly hears you.
   </p>
 
-  <div class="controls">
+  <button class="cta" id="beginBtn">I am ready to begin</button>
+
+  <div class="controls" id="controls" style="display:none;">
     <button class="rec" id="recBtn">Start speaking</button>
     <button class="stop" id="stopBtn" disabled>Stop</button>
     <span id="timer">0:00</span>
@@ -198,7 +200,20 @@ async function submitOptin() {
   }
 }
 
+// SP1.6: spoken welcome gate — speak the invitation in Dr. Glen's voice on first tap,
+// then reveal the record controls.
+function beginExperience() {
+  const introEl = document.querySelector('.intro');
+  if (window.TTS && window.TTS.attachAndSpeak && introEl) {
+    const spoken = introEl.innerText.replace(/\s*--\s*/g, ', ').replace(/\s+/g, ' ').trim();
+    window.TTS.attachAndSpeak(introEl, spoken);
+  }
+  $('beginBtn').style.display = 'none';
+  $('controls').style.display = '';
+}
+
 window.addEventListener('DOMContentLoaded', () => {
+  $('beginBtn').addEventListener('click', beginExperience);
   $('recBtn').addEventListener('click', record);
   $('stopBtn').addEventListener('click', stop);
   $('optinBtn').addEventListener('click', submitOptin);
