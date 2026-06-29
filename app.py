@@ -10787,6 +10787,63 @@ def console_studio_credits_page():
     return resp
 
 
+def _member_name_for(cx, email):
+    """Read-only display name for a member email from the people directory ('' if
+    unknown). Never mutates (unlike customers.find_or_create_by_email)."""
+    try:
+        r = cx.execute(
+            "SELECT name FROM people WHERE lower(email)=? AND coalesce(name,'')<>'' LIMIT 1",
+            ((email or "").strip().lower(),)).fetchone()
+        if not r:
+            return ""
+        return (r["name"] if hasattr(r, "keys") else r[0]) or ""
+    except Exception:
+        return ""
+
+
+@app.route("/api/console/members", methods=["GET"])
+def api_console_members():
+    """Trial / Full / Paused membership board. Trial rows carry the accrued
+    upgrade credit (the conversion call-list)."""
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET and not _owner_token_ok(_key):
+            return jsonify({"error": "unauthorized"}), 401
+    from dashboard import subscriptions as _subs
+    buckets = {"trial": [], "full": [], "paused": []}
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _subs.migrate_add_failed_count(cx)
+        _subs.migrate_add_membership_columns(cx)
+        # One row per member (list_active_memberships dedupes by email). N+1 here
+        # (_member_name_for + _trial_credit_for_email per trial row) is fine at
+        # current member scale; revisit if the trial cohort grows large.
+        for s in _subs.list_active_memberships(cx):
+            cat = _subs.classify_sub(s)
+            email = s.get("email") or ""
+            credit = _trial_credit_for_email(cx, email) if cat == "trial" else 0
+            row = _subs.member_board_row(s, name=_member_name_for(cx, email),
+                                         credit_cents=credit)
+            buckets[cat].append(row)  # cat is always trial/full/paused (pre-seeded)
+    # Trial = the call-list: highest accrued credit first.
+    buckets["trial"].sort(key=lambda r: r.get("credit_cents", 0), reverse=True)
+    counts = {k: len(v) for k, v in buckets.items()}
+    return jsonify({"buckets": buckets, "counts": counts})
+
+
+@app.route("/console/members", methods=["GET"])
+def console_members_page():
+    """Serve the Trial/Full/Paused membership board."""
+    if CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != CONSOLE_SECRET and not _owner_token_ok(_key):
+            return jsonify({"error": "unauthorized"}), 401
+    resp = send_from_directory(STATIC, "console-members.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/console/search", methods=["GET"])
 def api_console_search():
     """Site-wide Records search for the header search box (Records mode): look up a

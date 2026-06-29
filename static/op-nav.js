@@ -100,6 +100,7 @@
     { id: "coaching",      label: "Coaching",      href: "/console/coaching-cohort" + qs },
     { id: "studio-credits", label: "Studio Credits", href: "/console/studio-credits" + qs },
     { id: "membership",    label: "Membership",    href: "/admin/membership" + qs },
+    { id: "members",       label: "Members",       href: "/console/members" + qs },
     { id: "atlas",         label: "Atlas",         href: "/admin/atlas" + qs },
     { id: "wholesale",     label: "Wholesale",     href: "/admin/wholesale" + qs },
     { id: "clips",         label: "Clips",         href: "/admin/clips" + qs },

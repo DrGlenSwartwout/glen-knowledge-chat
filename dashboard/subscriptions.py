@@ -344,10 +344,70 @@ def category_for(cx, email) -> str:
         # owns the memberships-grant table. For PR1 pricing this 'none' is safe
         # (errs toward no-discount); the _is_paid_member gate is grant-aware.
         return "none"
-    sub = rows[0]
+    return classify_sub(rows[0])
+
+
+def classify_sub(sub) -> str:
+    """Classify a SINGLE active kind=membership subscription row into
+    'trial' | 'full' | 'paused' (see category_for for the rules). Pure — takes a
+    row dict, no DB. Used per-row by the /console/members board so each sub is
+    classified on its own merits."""
     if sub.get("skip_next"):
         return "paused"
     return "full" if int(sub.get("order_count") or 0) >= 1 else "trial"
+
+
+def list_active_memberships(cx) -> list:
+    """ONE row per member for the /console/members board: every active
+    kind=membership subscription, deduped to a single sub per email. Cancelled subs
+    (status!='active') and product subs are excluded.
+
+    Dedup keeps the OLDEST sub (lowest id) per email so the board's classification
+    agrees with category_for (which keys off active_memberships_by_email's rows[0],
+    ORDER BY id) — and therefore with the _is_paid_member pricing gate. Without this,
+    a buyer holding two active membership subs (e.g. a $1-biofield-trial sub plus a
+    later separate join — join idempotency is not unified across funnel paths) would
+    appear in two columns and inflate the counts. Returned newest-member-first."""
+    rows = cx.execute(
+        "SELECT * FROM subscriptions WHERE status='active' AND kind='membership' "
+        "ORDER BY id ASC"
+    ).fetchall()
+    seen, out = set(), []
+    for r in rows:
+        d = _row_to_dict(r)
+        em = (d.get("email") or "").strip().lower()
+        if em in seen:
+            continue
+        seen.add(em)
+        out.append(d)
+    out.sort(key=lambda d: d.get("created_at") or "", reverse=True)
+    return out
+
+
+def member_board_row(sub, *, name="", credit_cents=0) -> dict:
+    """Build one /console/members row from a membership sub. Trial rows carry the
+    accrued upgrade `credit_cents` (the call-list signal); paused rows carry a
+    `resume_date` (next_charge_date advanced by the cadence); full rows carry
+    neither. `started` = the sub's created_at."""
+    cat = classify_sub(sub)
+    next_charge = sub.get("next_charge_date") or ""
+    cadence = int(sub.get("cadence_months") or 1)
+    order_count = int(sub.get("order_count") or 0)
+    row = {
+        "email": sub.get("email") or "",
+        "name": name or "",
+        "category": cat,
+        "plan_cents": int(sub.get("amount_cents") or 0),
+        "started": sub.get("created_at") or "",
+        "next_charge_date": next_charge,
+        "tier": tier_for(order_count),
+        "order_count": order_count,
+    }
+    if cat == "paused":
+        row["resume_date"] = add_months(next_charge, cadence) if next_charge else ""
+    elif cat == "trial":
+        row["credit_cents"] = int(credit_cents or 0)
+    return row
 
 
 def bump_failed_count(cx, sub_id: int) -> None:
