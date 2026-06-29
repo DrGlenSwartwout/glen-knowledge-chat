@@ -588,9 +588,14 @@ def _record_payment_exec(params, ctx):
     order = get_order(cx, oid)
     if not order:
         raise ValueError(f"order #{oid} not found")
-    if order.get("status") not in _PRE_FULFILL:
-        raise ValueError(f"order #{oid} is '{order.get('status')}'; payment is recorded on a "
-                         "proposed/confirmed invoice")
+    # Payment can be recorded on a pre-fulfillment invoice (proposed/confirmed) OR on
+    # an unpaid Cart order (status 'new', e.g. a portal-reorder the customer pays in
+    # person by check/cash). An already-paid order is rejected (no double-record).
+    status = order.get("status")
+    if status not in _PRE_FULFILL and status != "new":
+        raise ValueError(f"order #{oid} is '{status}'; payment is recorded before it ships")
+    if order.get("pay_status") == "paid":
+        raise ValueError(f"order #{oid} is already marked paid")
     method = str(params.get("method", "")).strip()
     amount_cents = int(params.get("amount_cents") or order.get("total_cents") or 0)
     set_order_payment(cx, oid, method=method, amount_cents=amount_cents)

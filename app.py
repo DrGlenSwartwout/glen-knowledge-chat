@@ -4510,9 +4510,13 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         subtotal_list += it["unit_cents"] * qty
         qbo_lines.append({"name": p["name"], "amount": round(it["unit_cents"] / 100.0, 2),
                           "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
-        items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"]})
         # shipping.pick_box keys by BOTTLE TYPE (not product name); default-typed if unset.
         slug = (c.get("slug") or "").strip()
+        # Persist per-line LIST pricing on the stored order (cart-level discounts ride
+        # the order's discount_cents, which the invoice renders separately, so
+        # subtotal − discount still reconciles to the total).
+        items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"],
+                          "slug": slug, "unit_cents": it["unit_cents"], "line_cents": it["unit_cents"] * qty})
         bt = _shipping.resolve_bottle_type(slug, p)
         box_counts[bt] = box_counts.get(bt, 0) + qty
         total_bottles += qty
@@ -11919,7 +11923,11 @@ def _portal_priced_lines(items, member=False):
         subtotal_cents += unit_cents * qty
         lines.append({"name": p["name"], "amount": round(unit_cents / 100.0, 2),
                       "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
-        items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"]})
+        # Persist per-line pricing on the stored order so the invoice/print page shows
+        # real line prices (the order total alone isn't enough). slug lets the invoice
+        # resolve Value/Regular anchors; unit_cents is the effective per-bottle price.
+        items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"],
+                          "slug": slug, "unit_cents": unit_cents, "line_cents": unit_cents * qty})
     return lines, items_rec, subtotal_cents
 
 
@@ -14247,7 +14255,9 @@ def reorder_checkout():
         subtotal_cents += unit_cents * qty
         lines.append({"name": p["name"], "amount": round(unit_cents / 100.0, 2),
                       "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
-        items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"]})
+        # Persist per-line pricing so the invoice/print page can show real line prices.
+        items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"],
+                          "slug": slug, "unit_cents": unit_cents, "line_cents": unit_cents * qty})
     if not lines:
         return jsonify({"ok": False,
                         "error": "Your cart is empty or those items are no longer available."}), 400
@@ -25626,6 +25636,97 @@ def console_order_invoice_link(oid):
     tok = create_order_invoice_token(oid)
     return jsonify({"ok": True,
                     "link": f"{PUBLIC_BASE_URL.rstrip('/')}/invoice/{tok}?print=1"})
+
+
+_SHIPPING_LINE_NAMES = ("shipping", "shipping & handling", "shipping and handling", "s&h")
+
+
+def _qbo_invoice_to_items(inv, catalog):
+    """Pure: rebuild priced order line items from a QBO invoice's Line array. Returns
+    (items, line_sum_cents). Each item = {name, qty, desc, slug, unit_cents, line_cents}.
+    Shipping lines are dropped (the order carries shipping separately). slug is resolved
+    via the product catalog (None if unresolved). Used to repair reorder/portal-reorder
+    orders whose stored items were saved without per-line pricing."""
+    items, line_sum = [], 0
+    for L in (inv.get("Line") or []):
+        if L.get("DetailType") != "SalesItemLineDetail":
+            continue
+        d = L.get("SalesItemLineDetail") or {}
+        try:
+            qty = int(d.get("Qty") or 1) or 1
+        except (TypeError, ValueError):
+            qty = 1
+        amount = int(round(float(L.get("Amount") or 0) * 100))
+        nm = ((d.get("ItemRef") or {}).get("name") or L.get("Description") or "").strip()
+        if nm.lower() in _SHIPPING_LINE_NAMES:
+            continue
+        unit = int(round(amount / qty)) if qty else amount
+        slug = _pp.name_to_slug(nm, catalog) if nm else None
+        items.append({"name": nm, "qty": qty, "desc": nm,
+                      "slug": slug, "unit_cents": unit, "line_cents": unit * qty})
+        line_sum += unit * qty
+    return items, line_sum
+
+
+@app.route("/api/console/orders/reprice-from-qbo", methods=["POST"])
+def console_reprice_orders_from_qbo():
+    """Prod-ops: repair reorder/portal-reorder orders whose stored line items have no
+    per-line price (saved name+qty only), so the invoice/print page shows real pricing.
+    Rebuilds each order's items from its authoritative QBO invoice (external_ref). Only
+    touches items_json — total/discount/shipping/status are left untouched.
+    Console-key gated. Query params: ?dry_run=1 to preview without writing; ?order_id=N
+    to scope to one order (and force re-pricing even if it already has prices)."""
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    dry = request.args.get("dry_run") in ("1", "true", "yes", "on")
+    only = (request.args.get("order_id") or "").strip()
+    from dashboard import qbo_billing as _qb_local
+    catalog = (_PRODUCTS.get("products") or {})
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    results = []
+    try:
+        orders = _bos_orders.list_orders(cx, limit=500)
+        for o in orders:
+            if only and str(o.get("id")) != only:
+                continue
+            if o.get("source") not in ("reorder", "portal-reorder"):
+                continue
+            its = o.get("items") or []
+            already_priced = any((i.get("unit_cents") or i.get("line_cents")) for i in its)
+            # Default sweep skips already-priced orders; an explicit order_id re-prices.
+            if already_priced and not only:
+                continue
+            ref = (o.get("external_ref") or "").strip()
+            rec = {"id": o.get("id"), "external_ref": ref, "status": o.get("status"),
+                   "order_total_cents": int(o.get("total_cents") or 0)}
+            if not ref:
+                rec["skipped"] = "no external_ref"
+                results.append(rec)
+                continue
+            try:
+                inv = _qb_local.get_invoice(ref)
+            except Exception as e:
+                rec["error"] = f"qbo get_invoice failed: {type(e).__name__}: {e}"
+                results.append(rec)
+                continue
+            new_items, line_sum = _qbo_invoice_to_items(inv, catalog)
+            rec["lines"] = new_items
+            rec["line_sum_cents"] = line_sum
+            if not new_items:
+                rec["skipped"] = "no product lines on QBO invoice"
+                results.append(rec)
+                continue
+            if not dry:
+                cx.execute("UPDATE orders SET items_json=?, updated_at=? WHERE id=?",
+                           (json.dumps(new_items), _bos_orders._now(), o.get("id")))
+                cx.commit()
+                rec["applied"] = True
+            results.append(rec)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "dry_run": dry, "count": len(results), "results": results})
 
 
 # ── Phase 5: sales-page review actions (approve/edit/regenerate) ──────────────
