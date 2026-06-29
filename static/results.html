@@ -276,7 +276,7 @@
       if(!giftToken && !chosenRating){ msg.textContent = "Please choose a star rating."; return; }
       if(!name){ msg.textContent = "Please enter your name."; return; }
       if(!email){ msg.textContent = "Please enter your email."; return; }
-      if(!consent){ msg.textContent = "Please tick the consent box so we may share your experience."; return; }
+      if(!consent){ msg.textContent = giftToken ? "Please tick the consent box to share your experience." : "Please tick the consent box so we may share your testimonial."; return; }
 
       btn.disabled = true; msg.textContent = "Sending…";
 
@@ -289,6 +289,8 @@
           });
           var giftJson = await giftResp.json();
           if(giftJson.ok){
+            document.querySelector("#confirmed h2").textContent = "Thank you for sharing.";
+            document.querySelector("#confirmed p").textContent = "Your note about how this gift is helping has been received.";
             document.getElementById("form-section").style.display = "none";
             document.getElementById("confirmed").style.display = "block";
             window.scrollTo(0, 0);
