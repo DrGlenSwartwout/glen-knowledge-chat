@@ -677,6 +677,17 @@
     document.body.appendChild(ov);
     _overlay = ov;
 
+    // Arm audio on the FIRST real pointer interaction with the scene. Returning users
+    // skip the intro gate (which used to be the audio-start gesture), so without this
+    // the AudioContext / HTMLAudio never resumes and the hunt is silent. Capture-phase
+    // + once, so it fires before any hotspot handler and only the first time.
+    var _audioArmed = false;
+    ov.addEventListener("pointerdown", function () {
+      if (_audioArmed) { return; }
+      _audioArmed = true;
+      if (window.__JQAUDIO__) { try { window.__JQAUDIO__.init(); } catch (e) {} }
+    }, true);
+
     // Reward toast -- appended to body so it floats above the overlay
     var reward = document.createElement("div");
     reward.className = "jq-reward";
