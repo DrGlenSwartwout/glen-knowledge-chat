@@ -11739,9 +11739,10 @@ def _portal_console_ok():
 
 
 def _client_login_enabled() -> bool:
-    """Real client login (magic-link → session cookie) is dark by default. While
-    off, the emailed /portal/<token> link is the only auth and resolve_identity
-    ignores any session cookie. Flip this flag (next slice) to light up login."""
+    """Real client login (magic-link → session cookie), gated by CLIENT_LOGIN_ENABLED.
+    LIVE in prod since 2026-06-26 (set in Doppler prd; see PRs #333/#334) as part of
+    the personal-portal self-login rollout. When off, the emailed /portal/<token>
+    link is the only auth and resolve_identity ignores any session cookie."""
     return os.environ.get("CLIENT_LOGIN_ENABLED", "").strip().lower() in (
         "1", "true", "yes", "on")
 
