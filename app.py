@@ -4173,6 +4173,8 @@ _ALT_PAY = {
 # drops by quantity (Glen 2026-05-30): 3+ $59.97, 6+ $49.97, 12+ $39.97. Applies only
 # to products flagged qty_pricing=true in products.json (capsule + $69.97).
 _QTY_TIERS = [(12, 3997), (6, 4997), (3, 5997), (1, 6997)]   # (min_qty, unit_cents) desc
+_FF_BASE_CENTS = 6997     # $69.97 — the functional-formulation (FF) capsule regular price
+_FF_SRP_CENTS  = 8000     # $80.00 — FF SRP/Value anchor (shown above the $69.97 Regular)
 _FORMATS = [
     {"id": "bottle", "label": "Standard bottles", "note": "30 capsules per bottle"},
     {"id": "larger", "label": "Larger bottle", "note": "90, 180, or 360 capsules in one bottle (quantity 3, 6, or 12)"},
@@ -25499,9 +25501,11 @@ def _invoice_line_view(l):
             out["srp_cents"] = p.get("service_value_cents")
             out["regular_cents"] = p.get("service_regular_cents")
         else:
-            # Products store one retail price (price_cents); show it as SRP + Regular.
-            out["srp_cents"] = p.get("price_cents")
-            out["regular_cents"] = p.get("price_cents")
+            base = p.get("price_cents")
+            out["regular_cents"] = base
+            # FF ($69.97 functional-formulation capsules) carry an $80 SRP/Value above
+            # the $69.97 Regular; other products have no distinct SRP (Value == Regular).
+            out["srp_cents"] = _FF_SRP_CENTS if (base == _FF_BASE_CENTS and not p.get("info_only")) else base
     return out
 
 
