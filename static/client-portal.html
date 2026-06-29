@@ -398,6 +398,18 @@ function render(d, v){
       ${badges.length?`<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>`:""}
     </div>`;
 
+  // "Ask Dr. Glen" concierge chat — promoted to the TOP of the portal (first card
+  // below the hero) so it's the first thing the client sees. Always shown.
+  html += `<div class="card" id="chatCard">
+    <h2>Ask Dr. Glen</h2>
+    <p class="muted small" style="margin:.3rem 0 .7rem">Questions about your healing path, remedies, or how to feel better? Ask here.</p>
+    <div id="chatMsgs" class="chat-msgs"></div>
+    <div class="chat-input-row">
+      <input id="chatInput" type="text" placeholder="Ask about your scan or remedies..." autocomplete="off">
+      <button class="btn" id="chatSend">Send</button>
+    </div>
+  </div>`;
+
   // Trial-upgrade hook: show the member discount we're setting aside while they're
   // on the trial (becomes points when their membership continues). Trial only.
   if(d.membership_category === "trial"){
@@ -602,17 +614,6 @@ function render(d, v){
         ${status !== "confirmed" ? disclose : ""}</div>`;
     }
   }
-
-  // "Ask Dr. Glen" concierge chat — always shown for every portal client.
-  html += `<div class="card" id="chatCard">
-    <h2>Ask Dr. Glen</h2>
-    <p class="muted small" style="margin:.3rem 0 .7rem">Questions about your healing path, remedies, or how to feel better? Ask here.</p>
-    <div id="chatMsgs" class="chat-msgs"></div>
-    <div class="chat-input-row">
-      <input id="chatInput" type="text" placeholder="Ask about your scan or remedies..." autocomplete="off">
-      <button class="btn" id="chatSend">Send</button>
-    </div>
-  </div>`;
 
   if(Array.isArray(d.reorder_items) && d.reorder_items.length){
     let rows = "";
