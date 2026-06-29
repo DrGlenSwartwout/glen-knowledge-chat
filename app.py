@@ -25862,7 +25862,11 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     if not cart:
         return None
     # _price_cart is used solely for shipping + absorbed GET (FF volume is already baked
-    # into the per-line prices above, so the order applies only a manual discount).
+    # into the per-line prices above, so the order applies only a manual discount). For a
+    # pickup order there's no shipment, so neutralize a non-US ship country (which
+    # _price_cart would otherwise reject) — pickup zeroes shipping regardless.
+    if pickup:
+        ship = {**(ship or {}), "country": "US"}
     try:
         pc = _price_cart(cart, ship=ship, channel="retail")
         shipping_cents = _bos_orders.effective_shipping_cents(pickup, pc.get("shipping_cents"))
@@ -25949,15 +25953,27 @@ def api_orders_edit(oid):
                 "address2": addr.get("address2") or "", "city": addr.get("city") or "",
                 "state": addr.get("state") or "", "zip": addr.get("zip") or "",
                 "country": (addr.get("country") or "US").upper()}
+        # Price WITHOUT points: editing an invoice must never re-touch the points ledger
+        # (settle_order_points is idempotent per order_ref, so a changed points figure
+        # would silently desync the ledger). We carry the order's already-redeemed points
+        # forward unchanged and apply them to the recomputed total.
         try:
             priced = _price_inhouse_invoice(
                 lines_in, email=email, pickup=pickup, ship=ship,
                 discount_cents_in=body.get("discount_cents"),
-                points_redeem_cents_in=body.get("points_redeem_cents"))
+                points_redeem_cents_in=None)
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
         if priced is None:
             return jsonify({"ok": False, "error": "no valid products"}), 400
+        existing_points = int(order.get("points_redeemed_cents") or 0)
+        priced["points_redeemed_cents"] = existing_points
+        priced["total_cents"] = max(0, priced["total_cents"] - existing_points)
+        # Preserve any $0 approved review-gift lines (the editor form drops them; they're
+        # not owner-editable but must stay on the invoice + keep their fulfillment link).
+        for _g in (order.get("items") or []):
+            if _g.get("gift"):
+                priced["items_rec"].append(_g)
         note = body.get("invoice_note")
         _bos_orders.upsert_order(
             cx, source=order["source"], external_ref=order["external_ref"],
@@ -25968,10 +25984,17 @@ def api_orders_edit(oid):
             points_redeemed_cents=priced["points_redeemed_cents"],
             shipping_cents=priced["shipping_cents"],
             invoice_note=(note.strip() if isinstance(note, str) else None))
+        was_paid = (order.get("pay_status") == "paid")
     finally:
         cx.close()
     qbo = _push_invoice_edit_to_qbo(order.get("external_ref"), priced)
-    return jsonify({"ok": True, "order_id": oid, "qbo": qbo,
+    # Editing a PAID order changes the invoice total but NOT the recorded payment — alert
+    # the owner to collect/refund the difference and reconcile QBO by hand (per design,
+    # paid orders are editable but payment + QBO aren't auto-adjusted).
+    warning = ("This order was already marked PAID — the recorded payment amount was not "
+               "changed. Collect or refund the difference and reconcile QuickBooks manually."
+               ) if was_paid else None
+    return jsonify({"ok": True, "order_id": oid, "qbo": qbo, "warning": warning,
                     "totals": {"subtotal_cents": priced["subtotal_cents"],
                                "discount_cents": priced["discount_cents"],
                                "shipping_cents": priced["shipping_cents"],

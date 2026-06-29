@@ -49,6 +49,17 @@ def test_price_inhouse_discount_reduces_total():
     assert res["total_cents"] == 5997
 
 
+def test_price_inhouse_pickup_neutralizes_non_us_country():
+    # A pickup order with a stored non-US address must still price (no shipment) —
+    # _price_cart's non-US guard would otherwise reject it.
+    res = app._price_inhouse_invoice(
+        [{"slug": "neuro-magnesium", "qty": 1, "unit_cents": 5000}],
+        email="", pickup=True, ship={"country": "PH", "state": ""})
+    assert res is not None
+    assert res["shipping_cents"] == 0
+    assert res["total_cents"] == 5000
+
+
 def test_price_inhouse_none_when_no_valid_products():
     assert app._price_inhouse_invoice(
         [{"slug": "not-a-real-slug", "qty": 1}],

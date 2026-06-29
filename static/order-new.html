@@ -297,7 +297,9 @@ async function editInvoice(){
     LAST_ORDER = {order_id: j.order_id, external_ref: "#"+j.order_id, totals: j.totals};
     showInvoice({external_ref:"#"+j.order_id, totals:j.totals, lines:j.lines});
     const q = j.qbo||{};
-    toast(q.warning ? ("Saved — "+q.warning) : (q.pushed ? "Saved + synced to QuickBooks" : "Invoice saved"), q.warning?"error":"ok");
+    const msg = j.warning ? j.warning : (q.warning ? ("Saved — "+q.warning) : (q.pushed ? "Saved + synced to QuickBooks" : "Invoice saved"));
+    toast(msg, (j.warning||q.warning)?"error":"ok");
+    if (j.warning) alert(j.warning);  // paid-order edit: make the reconcile notice impossible to miss
   }catch(e){ toast(e.message,"error"); }
 }
 
