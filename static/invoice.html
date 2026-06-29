@@ -70,6 +70,8 @@
   #print-root .pd-tot .r{ display:flex; justify-content:space-between; padding:3px 6px; }
   #print-root .pd-tot .grand{ border-top:1.5px solid #3a5a40; margin-top:4px; padding-top:6px; font-weight:700; font-size:14px; }
   #print-root .pd-paid{ display:inline-block; margin-top:12px; padding:3px 10px; border:1.5px solid #3a5a40; color:#3a5a40; border-radius:6px; font-weight:700; font-size:12px; }
+  #print-root .pd-note{ margin-top:16px; padding:10px 12px; background:#f7f6fb; border:1px solid #e2e2e2; border-radius:6px; font-size:12px; color:#1b1b1b; white-space:pre-wrap; }
+  #print-root .pd-note-k{ display:block; font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:#8a8a8a; margin-bottom:3px; }
   #print-root .pd-foot{ margin-top:20px; padding-top:10px; border-top:1px solid #e2e2e2; font-style:italic; color:#555; font-size:12px; }
 </style>
 </head>
@@ -93,6 +95,11 @@
   <div class="card">
     <h2>Summary</h2>
     <div class="totals" id="totals"></div>
+  </div>
+
+  <div class="card" id="note-card" style="display:none">
+    <h2>Notes</h2>
+    <div id="note-text" style="font-size:14px;color:#1c1830;white-space:pre-wrap"></div>
   </div>
 
   <div class="card" id="chat-card">
@@ -158,11 +165,12 @@ async function load() {
   const j = await r.json(); ORDER = j.order;
   $('ref').textContent = 'Invoice ' + (ORDER.external_ref||'') + ' · for ' + (ORDER.name||'you');
   LINES = ORDER.lines.map(l => ({slug:l.slug, name:l.name, qty:l.qty, unit_cents:l.unit_cents,
-    service:l.service, service_value_cents:l.service_value_cents, service_regular_cents:l.service_regular_cents}));
+    service:l.service, srp_cents:l.srp_cents, regular_cents:l.regular_cents}));
   if (ORDER.pay_status === 'paid' || !ORDER.editable) {
     $('paid-banner').style.display = ORDER.pay_status==='paid' ? 'block' : 'none';
   }
   renderLines(); renderTotals(); setupPay();
+  if (ORDER.invoice_note){ $('note-text').textContent = ORDER.invoice_note; $('note-card').style.display=''; }
   $('print-btn').style.display = 'inline-block';
   try { const cr = await fetch('/api/products?all=1'); CATALOG = (await cr.json()).products||[]; fillAdd(); } catch(e){}
 }
@@ -212,7 +220,8 @@ function buildInvoicePrintHtml(o){
     <table class="pd-lines"><thead><tr><th>Item</th><th class="num">Value</th><th class="num">Regular</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Amount</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="6">No items.</td></tr>'}</tbody></table>
     <div class="pd-tot">${tot}</div>
-    ${o.pay_status==='paid' ? `<div class="pd-paid">PAID — Mahalo 🌿</div>` : ''}
+    ${o.pay_status==='paid' ? `<div class="pd-paid">PAID. Mahalo 🌿</div>` : ''}
+    ${o.invoice_note ? `<div class="pd-note"><span class="pd-note-k">Notes</span>${esc(o.invoice_note)}</div>` : ''}
     <div class="pd-foot">Thank you. Questions? (808) 217-9647 · Remedy Match LLC, Hilo, Hawai‘i</div>
   </div>`;
 }
@@ -273,7 +282,7 @@ async function pushUpdate(){
   const r = await fetch(API+'/update', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({lines})});
   const j = await r.json(); if(!j.ok){ alert(j.error||'update failed'); return; }
   ORDER=j.order; LINES=ORDER.lines.map(l=>({slug:l.slug,name:l.name,qty:l.qty,unit_cents:l.unit_cents,
-    service:l.service, service_value_cents:l.service_value_cents, service_regular_cents:l.service_regular_cents}));
+    service:l.service, srp_cents:l.srp_cents, regular_cents:l.regular_cents}));
   renderLines(); renderTotals();
 }
 function setupPay(){

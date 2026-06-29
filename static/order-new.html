@@ -109,6 +109,8 @@
       <div><label>Points to apply $ (off the total)</label><input id="o-points" type="number" step="0.01" placeholder="0"><small id="o-points-avail" style="display:block;color:var(--muted);margin-top:3px"></small></div>
     </div>
     <div style="margin-top:10px"><label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;font-size:14px;color:var(--text);cursor:pointer"><input type="checkbox" id="pickup"> Pickup (no shipping)</label></div>
+    <div style="margin-top:10px"><label>Invoice notes (optional — shown to the customer on the invoice)</label>
+      <textarea id="o-note" rows="2" style="width:100%" placeholder="e.g. Take with food. Follow-up scan in 30 days."></textarea></div>
     <div class="totals">
       <div class="row"><span>Subtotal</span><span id="t-sub">$0.00</span></div>
       <div class="row"><span>Discount</span><span id="t-disc">—</span></div>
@@ -259,6 +261,7 @@ async function createInvoice(){
     lines: linesPayload(),
     method: $("o-method").value,
     pickup: $("pickup").checked,
+    invoice_note: $("o-note").value.trim(),
   };
   if (dRaw!=="") body.discount_cents = Math.round(parseFloat(dRaw)*100);
   const pRaw=$("o-points").value.trim();

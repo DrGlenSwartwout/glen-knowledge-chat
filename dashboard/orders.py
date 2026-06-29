@@ -70,6 +70,9 @@ def init_orders_table(cx):
         "ALTER TABLE orders ADD COLUMN paid_cents INTEGER DEFAULT 0",
         # Phase 3: customer pay-link invoice send timestamp.
         "ALTER TABLE orders ADD COLUMN invoice_sent_at TEXT",
+        # Optional customer-facing note shown on the invoice (distinct from the
+        # internal `notes` column, which never reaches the customer view).
+        "ALTER TABLE orders ADD COLUMN invoice_note TEXT",
     ):
         try:
             cx.execute(ddl)
@@ -81,7 +84,8 @@ def init_orders_table(cx):
 def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
                  items=None, total_cents=0, address=None, channel="retail",
                  status="new", get_cents=0, person_id=None,
-                 discount_cents=0, points_redeemed_cents=0, shipping_cents=0):
+                 discount_cents=0, points_redeemed_cents=0, shipping_cents=0,
+                 invoice_note=None):
     """Idempotent on (source, external_ref). Inserts a new order, or updates the
     soft fields of an existing one WITHOUT regressing its lifecycle status.
     items and address are only overwritten when explicitly provided (not None).
@@ -109,6 +113,9 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
         if person_id is not None:
             sets.append("person_id=?")
             vals.append(int(person_id))
+        if invoice_note is not None:
+            sets.append("invoice_note=?")
+            vals.append(str(invoice_note))
         vals.append(row[0])
         cx.execute(f"UPDATE orders SET {', '.join(sets)} WHERE id=?", vals)
         cx.commit()
@@ -116,13 +123,14 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
     cur = cx.execute(
         "INSERT INTO orders (created_at, source, external_ref, channel, email, name, "
         "phone, items_json, total_cents, address_json, status, get_cents, person_id, "
-        "discount_cents, points_redeemed_cents, shipping_cents) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "discount_cents, points_redeemed_cents, shipping_cents, invoice_note) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (_now(), source, ref, channel, email, name, phone,
          json.dumps(items or []), int(total_cents or 0), json.dumps(address or {}),
          status, int(get_cents or 0),
          (int(person_id) if person_id is not None else None),
-         int(discount_cents or 0), int(points_redeemed_cents or 0), int(shipping_cents or 0)))
+         int(discount_cents or 0), int(points_redeemed_cents or 0), int(shipping_cents or 0),
+         (str(invoice_note) if invoice_note is not None else None)))
     cx.commit()
     return cur.lastrowid
 
