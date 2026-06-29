@@ -84,6 +84,7 @@ from dashboard.people import set_person_tags, distinct_tags
 from dashboard import affiliate_dashboard
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
+from dashboard.voice_doorway import voice_signal_tags
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -1952,6 +1953,74 @@ def begin_quiz_optin():
     guide_token = _mint_lead_magnet_guide_link(email)
     resp = jsonify({"ok": True, "current_rung": state["current_rung"],
                     "guide_token": guide_token, "redirect": "/begin/quiz/result"})
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", session_id, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/doorway")
+def begin_doorway():
+    resp = send_from_directory(STATIC, "begin-doorway.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/doorway/opt-in", methods=["POST", "OPTIONS"])
+def begin_doorway_optin():
+    if request.method == "OPTIONS":
+        return "", 200
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+    parts = name.split(None, 1)
+    first_name = parts[0] if parts else ""
+    last_name = parts[1] if len(parts) > 1 else ""
+    email = (data.get("email") or "").strip().lower()
+    tos = bool(data.get("tos"))
+    if not email or "@" not in email:
+        return jsonify({"error": "valid email required"}), 400
+    if not tos:
+        return jsonify({"error": "tos required"}), 400
+    session_id = (request.cookies.get("amg_session")
+                  or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
+    ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
+    signals = data.get("signals") or {}
+    sig_tags = voice_signal_tags(signals)
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.record_unlock(
+            cx, session_id=session_id, trigger="tos", email=email,
+            first_name=first_name, tos=True, ref_slug=ref_slug,
+            tos_version=BEGIN_TOS_VERSION)
+        begin_funnel.record_unlock(
+            cx, session_id=session_id, trigger="quiz", email=email,
+            detail="doorway:voice", ref_slug=ref_slug)
+
+    import threading as _threading
+
+    def _onboard():
+        try:
+            tags = ["begin", "voice-doorway"] + sig_tags
+            if ref_slug:
+                tags.append(f"ref:{ref_slug}")
+                _capture_concierge_referral(email, first_name, last_name, ref_slug)
+            ghl_result = ghl_onboard_contact(
+                email, first_name, last_name,
+                source_tag="source:voice", extra_tags=tags)
+            _log_inbound_lead("voice", email, first_name, last_name, "",
+                              json.dumps({"signals": signals}), ghl_result)
+        except Exception as e:
+            print(f"[doorway-optin] {e!r}", flush=True)
+
+    _threading.Thread(target=_onboard, daemon=True).start()
+
+    guide_token = _mint_lead_magnet_guide_link(email)
+    resp = jsonify({"ok": True, "current_rung": state.get("current_rung"),
+                    "guide_token": guide_token})
     if not request.cookies.get("amg_session"):
         resp.set_cookie("amg_session", session_id, max_age=60 * 60 * 24 * 365,
                         httponly=True, samesite="Lax", secure=request.is_secure)
@@ -8136,9 +8205,14 @@ def _init_referral_tables():
                 INSERT INTO affiliate_offers (sort_order, name, description, url_template, active)
                 VALUES (1, 'Accelerate Self-Healing Quiz',
                     'Free quiz — discover your top healing opportunities. Share with anyone curious about natural healing.',
-                    'https://healing.scoreapp.com?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz',
+                    ?,
                     1)
-            """)
+            """, (f"{PUBLIC_BASE_URL}/begin/doorway?ref={{slug}}",))
+        else:
+            # Repoint any stale prod row (e.g. old scoreapp.com template) to the doorway URL.
+            cx.execute(
+                "UPDATE affiliate_offers SET url_template=? WHERE name='Accelerate Self-Healing Quiz'",
+                (f"{PUBLIC_BASE_URL}/begin/doorway?ref={{slug}}",))
         # Seed E4L bioenergetic wellness scan
         E4L_INSTRUCTIONS = (
             "New here? Get a free account at https://truly.vip/E4L\n"
@@ -9052,7 +9126,7 @@ def post_referral_source():
     except sqlite3.IntegrityError:
         return jsonify({"error": f"slug '{slug}' already exists"}), 409
     return jsonify({"ok": True, "slug": slug,
-                    "tracking_url": f"https://healing.scoreapp.com?utm_source={utm_src}&utm_medium={utm_med}&utm_campaign={utm_camp}"}), 201
+                    "tracking_url": f"{QUIZ_URL}?ref={slug}"}), 201
 
 
 @app.route("/api/referrals", methods=["GET"])
@@ -9084,7 +9158,7 @@ def get_referrals():
     return jsonify({"stats": stat_list, "recent": recent_list})
 
 
-QUIZ_URL            = "https://healing.scoreapp.com"
+QUIZ_URL            = f"{PUBLIC_BASE_URL}/begin/doorway"
 # Internal system-notification sink (FYI mail the app sends itself, e.g. a new
 # studio-credit intent). Gmail-filtered to a "RM / System" label that skips Primary.
 RM_INBOUND_INQUIRY_EMAIL = "drglenswartwout+rm-inquiry@gmail.com"
@@ -9330,7 +9404,7 @@ def _send_client_receipt(client_email, client_name, sent_records, base_url):
         "You can reply directly to each practitioner just by hitting Reply on their email.",
         "",
         "While you wait, here's a 60-second self-assessment that helps you understand your health context:",
-        "https://healing.scoreapp.com",
+        QUIZ_URL,
         "",
         "---",
         "Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA",
@@ -9625,7 +9699,7 @@ def affiliate_apply():
             return jsonify({"error": f"Signup failed: {str(e)[:100]}"}), 409
 
     tracking_url = (
-        f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+        f"{QUIZ_URL}?ref={slug}"
     )
     portal_url = "/portal/login"
     resp = jsonify({

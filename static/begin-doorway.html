@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Healing Doorway</title>
+<style>
+  :root { --ink:#1f2a37; --bg:#faf7f2; --accent:#4b6b57; --gold:#b8962e; --muted:#6b7280; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Georgia,'Times New Roman',serif; color:var(--ink);
+         background:var(--bg); line-height:1.6; }
+  .wrap { max-width:620px; margin:0 auto; padding:40px 20px 72px; }
+  h1 { font-size:1.6rem; line-height:1.3; margin-bottom:8px; }
+  .intro { color:var(--muted); font-size:1.02rem; margin-bottom:32px; }
+  .controls { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:10px; }
+  button.rec { background:var(--accent); color:#fff; border:none; border-radius:50px;
+    padding:13px 24px; font:inherit; font-size:1rem; cursor:pointer; letter-spacing:.01em; }
+  button.rec:disabled { opacity:.45; cursor:not-allowed; }
+  button.stop { background:#fff; color:var(--accent); border:2px solid var(--accent);
+    border-radius:50px; padding:11px 22px; font:inherit; font-size:1rem; cursor:pointer; }
+  button.stop:disabled { opacity:.45; cursor:not-allowed; }
+  #timer { font-size:.95rem; color:var(--muted); min-width:3rem; }
+  #status { font-size:.95rem; color:var(--muted); margin-top:6px; min-height:1.4em; }
+  .card { background:#fff; border:1px solid #e2ddd5; border-radius:12px;
+    padding:24px 20px; margin-top:28px; }
+  .card h2 { font-size:1.15rem; margin:0 0 12px; color:var(--accent); }
+  .card ul { margin:10px 0; padding-left:20px; }
+  .card li { margin:5px 0; }
+  .optin-section { margin-top:28px; }
+  .optin-section h2 { font-size:1.15rem; color:var(--ink); margin-bottom:6px; }
+  .optin-section p { color:var(--muted); font-size:.97rem; margin-bottom:18px; }
+  .optin-section label { display:block; margin:12px 0 5px; font-size:.95rem; }
+  .optin-section input[type=text],
+  .optin-section input[type=email] { width:100%; padding:12px; font:inherit;
+    border:1px solid #ccc; border-radius:8px; font-size:1rem; }
+  .optin-section .tos { font-size:.87rem; color:var(--muted); margin:16px 0 18px; }
+  .optin-section .tos label { display:inline; margin:0; }
+  button.cta { background:var(--accent); color:#fff; border:none; border-radius:10px;
+    padding:14px 22px; font:inherit; font-size:1rem; cursor:pointer; width:100%; letter-spacing:.01em; }
+  button.cta:disabled { opacity:.45; cursor:not-allowed; }
+  .onward { background:#fff; border:1px solid #c8e2d0; border-radius:12px;
+    padding:24px 20px; margin-top:28px; text-align:center; }
+  .onward h2 { color:var(--accent); margin-bottom:8px; }
+  .disc { font-size:.78rem; color:var(--muted); margin-top:36px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Your Voice Is a Doorway Into Healing</h1>
+  <p class="intro">
+    What you are carrying right now -- the fatigue, the fog, the ache that no one has quite named --
+    it is real, and it matters. Speak it aloud for a minute or two. Tell me what you are living with
+    and what you most want to heal. Your voice holds information your words alone cannot carry,
+    and the right path forward often begins the moment someone truly hears you.
+  </p>
+
+  <div class="controls">
+    <button class="rec" id="recBtn">Start speaking</button>
+    <button class="stop" id="stopBtn" disabled>Stop</button>
+    <span id="timer">0:00</span>
+  </div>
+  <div id="status"></div>
+
+  <div id="reflection" class="card" style="display:none;">
+    <h2>What I heard in your voice</h2>
+    <div id="reflectionContent"></div>
+  </div>
+
+  <div id="optin" class="optin-section" style="display:none;">
+    <h2>Take the next step</h2>
+    <p>Enter your name and email to receive a personalized note with where to begin.</p>
+    <label for="nameInput">First name</label>
+    <input type="text" id="nameInput" autocomplete="given-name" placeholder="Your first name">
+    <label for="emailInput">Email</label>
+    <input type="email" id="emailInput" autocomplete="email" placeholder="your@email.com">
+    <div class="tos">
+      <label>
+        <input type="checkbox" id="tosChk">
+        I agree to the Terms of Service and to receive related emails from Remedy Match.
+      </label>
+    </div>
+    <button class="cta" id="optinBtn">Send my personalized note</button>
+  </div>
+
+  <div id="onward" class="onward" style="display:none;">
+    <h2>You are on your way.</h2>
+    <p>Check your inbox. Your personalized note is on the way. We are glad you are here.</p>
+  </div>
+
+  <p class="disc">
+    This experience is for informational purposes only and does not constitute medical advice.
+    Your voice recording is processed to surface themes and is not stored beyond this session.
+  </p>
+
+</div>
+<script>
+const ANALYZE_URL = '/journal/analyze';
+const MATCH_URL   = '/journal/match';
+const OPTIN_URL   = '/begin/doorway/opt-in';
+const REF = new URLSearchParams(location.search).get('ref') || '';
+let stream, mediaRecorder, chunks = [], startedAt = 0, timer = null, analysis = null;
+const $ = id => document.getElementById(id);
+
+async function record() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch (e) { $('status').textContent = 'Mic blocked: ' + e.message; return; }
+  chunks = [];
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+    : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+  mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+  mediaRecorder.onstop = onStopped;
+  mediaRecorder.start();
+  startedAt = Date.now();
+  $('recBtn').disabled = true; $('stopBtn').disabled = false;
+  $('status').textContent = 'Listening...';
+  timer = setInterval(() => {
+    const s = (Date.now() - startedAt) / 1000;
+    $('timer').textContent = Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0');
+    if (s >= 300) stop();
+  }, 200);
+}
+
+function stop() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  clearInterval(timer);
+  $('recBtn').disabled = false; $('stopBtn').disabled = true;
+}
+
+async function onStopped() {
+  const blob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+  const dur = (Date.now() - startedAt) / 1000;
+  const form = new FormData();
+  form.append('audio', blob, 'doorway.webm');
+  form.append('duration_seconds', dur.toFixed(1));
+  $('status').textContent = 'Hearing you...';
+  try {
+    const a = await fetch(ANALYZE_URL, { method: 'POST', body: form });
+    if (!a.ok) { $('status').textContent = 'Could not read that. Please try again.'; return; }
+    analysis = await a.json();
+    let remedy = null;
+    try {
+      const m = await fetch(MATCH_URL, { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ transcript: analysis.transcript,
+          dominant_element: analysis.dominant_element, dominant_treasure: analysis.dominant_treasure }) });
+      if (m.ok) { const md = await m.json(); remedy = (md.matches || [])[0] || null; }
+    } catch (e) {}
+    renderReflection(analysis, remedy);
+  } catch (e) { $('status').textContent = 'Network error. Please try again.'; }
+}
+
+function renderReflection(a, remedy) {
+  const themes = (a.top_themes || []).slice(0, 3);
+  const remedyName = remedy && remedy.metadata
+    ? (remedy.metadata.name || remedy.metadata.title || remedy.metadata.formulation || '') : '';
+  $('reflection').innerHTML =
+    '<h2>What I heard in your voice</h2>' +
+    '<p>Here is what I heard in your voice.</p>' +
+    (themes.length ? '<ul>' + themes.map(t => '<li>' + t + '</li>').join('') + '</ul>' : '') +
+    (a.dominant_element ? '<p>Your body is speaking most through the ' + a.dominant_element + ' element right now.</p>' : '') +
+    (remedyName ? '<p>One place to begin: <strong>' + remedyName + '</strong>.</p>' : '');
+  $('reflection').style.display = 'block';
+  $('optin').style.display = 'block';
+  $('status').textContent = '';
+}
+
+async function submitOptin() {
+  const email = ($('emailInput').value || '').trim();
+  if (!email || email.indexOf('@') < 0) { $('status').textContent = 'Please enter a valid email.'; return; }
+  if (!$('tosChk').checked) { $('status').textContent = 'Please agree to continue.'; return; }
+  const signals = {
+    dominant_element: analysis && analysis.dominant_element,
+    dominant_treasure: analysis && analysis.dominant_treasure,
+    polyvagal_state: analysis && analysis.polyvagal_state,
+    top_themes: analysis && analysis.top_themes,
+  };
+  try {
+    const r = await fetch(OPTIN_URL, { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ name: $('nameInput').value, email, tos: true, ref: REF, signals }) });
+    if (!r.ok) { $('status').textContent = 'Something went wrong. Please try again.'; return; }
+    $('optin').style.display = 'none';
+    $('onward').style.display = 'block';
+  } catch (e) {
+    $('status').textContent = 'Network error. Please try again.';
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  $('recBtn').addEventListener('click', record);
+  $('stopBtn').addEventListener('click', stop);
+  $('optinBtn').addEventListener('click', submitOptin);
+});
+</script>
+</body>
+</html>
