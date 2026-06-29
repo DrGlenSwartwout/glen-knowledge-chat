@@ -323,6 +323,33 @@ def active_memberships_by_email(cx, email) -> list:
     return [_row_to_dict(r) for r in rows]
 
 
+def category_for(cx, email) -> str:
+    """Classify a member into 'none' | 'trial' | 'full' | 'paused'.
+
+    Source of truth = the member's active kind=membership subscription (mirrors
+    pause_membership_by_email / set_membership_cadence_by_email, which treat the
+    member's membership as rows[0]):
+      paused  -> active membership sub with skip_next set
+      full    -> active membership sub, not paused, order_count >= 1 (>=1 real $99 charge cleared)
+      trial   -> active membership sub, not paused, order_count == 0 (free first month)
+      none    -> no active membership sub
+
+    'full' is the gate for paid-member volume pricing; 'trial' pays regular and
+    accrues the missed discount as upgrade credit.
+    """
+    rows = active_memberships_by_email(cx, email)
+    if not rows:
+        # NOTE: spec §1 defensive fallback (a biofield_trial *grant* with no
+        # membership sub → 'trial') is deferred to the credit-accrual PR, which
+        # owns the memberships-grant table. For PR1 pricing this 'none' is safe
+        # (errs toward no-discount); the _is_paid_member gate is grant-aware.
+        return "none"
+    sub = rows[0]
+    if sub.get("skip_next"):
+        return "paused"
+    return "full" if int(sub.get("order_count") or 0) >= 1 else "trial"
+
+
 def bump_failed_count(cx, sub_id: int) -> None:
     """Increment failed_count by 1. Used by the charge scheduler on payment failure."""
     cx.execute(
