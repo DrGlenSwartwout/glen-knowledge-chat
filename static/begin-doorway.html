@@ -94,6 +94,7 @@
   </p>
 
 </div>
+<script src="/static/tts-output.js"></script>
 <script>
 const ANALYZE_URL = '/journal/analyze';
 const MATCH_URL   = '/journal/match';
@@ -166,6 +167,14 @@ function renderReflection(a, remedy) {
   $('reflection').style.display = 'block';
   $('optin').style.display = 'block';
   $('status').textContent = '';
+  // SP1.5: speak the reflection in Dr. Glen's voice (auto, with a Listen button to replay)
+  if (window.TTS && window.TTS.attachAndSpeak) {
+    const spoken = 'Here is what I heard in your voice. '
+      + (themes.length ? themes.join('. ') + '. ' : '')
+      + (a.dominant_element ? 'Your body is speaking most through the ' + a.dominant_element + ' element right now. ' : '')
+      + (remedyName ? 'One place to begin is ' + remedyName + '.' : '');
+    window.TTS.attachAndSpeak($('reflection'), spoken);
+  }
 }
 
 async function submitOptin() {

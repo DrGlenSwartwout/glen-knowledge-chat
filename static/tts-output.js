@@ -108,5 +108,12 @@
     return btn;
   }
 
-  window.TTS = { attach: attach, stop: stopActive };
+  // ── public: attach a Listen button AND speak once now (auto voice-out) ─────
+  function attachAndSpeak(container, text) {
+    var btn = attach(container, text);
+    if (btn) { stopActive(); speak(btn, (text || '').replace(/\s+/g, ' ').trim()); }
+    return btn;
+  }
+
+  window.TTS = { attach: attach, attachAndSpeak: attachAndSpeak, stop: stopActive };
 })();
