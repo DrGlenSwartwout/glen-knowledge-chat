@@ -25638,7 +25638,12 @@ def console_order_invoice_link(oid):
                     "link": f"{PUBLIC_BASE_URL.rstrip('/')}/invoice/{tok}?print=1"})
 
 
-_SHIPPING_LINE_NAMES = ("shipping", "shipping & handling", "shipping and handling", "s&h")
+def _is_shipping_line_name(name):
+    """True for any QBO shipping/handling line. Substring match on 'shipping' (covers
+    the funnel/reorder line 'Shipping (USPS)' / 'USPS shipping' as well as plain
+    'Shipping & Handling'); no formulation in the catalog is named with 'shipping'."""
+    n = (name or "").strip().lower()
+    return ("shipping" in n) or (n in ("s&h", "handling"))
 
 
 def _qbo_invoice_to_items(inv, catalog):
@@ -25658,7 +25663,7 @@ def _qbo_invoice_to_items(inv, catalog):
             qty = 1
         amount = int(round(float(L.get("Amount") or 0) * 100))
         nm = ((d.get("ItemRef") or {}).get("name") or L.get("Description") or "").strip()
-        if nm.lower() in _SHIPPING_LINE_NAMES:
+        if _is_shipping_line_name(nm):
             continue
         unit = int(round(amount / qty)) if qty else amount
         slug = _pp.name_to_slug(nm, catalog) if nm else None
@@ -25674,10 +25679,15 @@ def console_reprice_orders_from_qbo():
     per-line price (saved name+qty only), so the invoice/print page shows real pricing.
     Rebuilds each order's items from its authoritative QBO invoice (external_ref). Only
     touches items_json — total/discount/shipping/status are left untouched.
-    Console-key gated. Query params: ?dry_run=1 to preview without writing; ?order_id=N
-    to scope to one order (and force re-pricing even if it already has prices)."""
-    actor = _bos_actor()
-    if actor is None:
+    Owner-only (CONSOLE_SECRET / CRON_SECRET — a per-user VA token can't reach this
+    write), mirroring the sibling /api/console/reconcile-qbo. Query params: ?dry_run=1
+    to preview without writing; ?order_id=N to scope to one order (and force re-pricing
+    even if it already has prices)."""
+    key = (request.headers.get("X-Console-Key", "")
+           or request.headers.get("X-Cron-Secret", "")
+           or request.args.get("key", ""))
+    allowed = {s for s in (os.environ.get("CONSOLE_SECRET"), os.environ.get("CRON_SECRET")) if s}
+    if not allowed or key not in allowed:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     dry = request.args.get("dry_run") in ("1", "true", "yes", "on")
     only = (request.args.get("order_id") or "").strip()
@@ -25709,6 +25719,11 @@ def console_reprice_orders_from_qbo():
                 inv = _qb_local.get_invoice(ref)
             except Exception as e:
                 rec["error"] = f"qbo get_invoice failed: {type(e).__name__}: {e}"
+                results.append(rec)
+                continue
+            if not inv:
+                # get_invoice returns the bare Invoice dict (None when QBO has none).
+                rec["skipped"] = "QBO invoice not found"
                 results.append(rec)
                 continue
             new_items, line_sum = _qbo_invoice_to_items(inv, catalog)

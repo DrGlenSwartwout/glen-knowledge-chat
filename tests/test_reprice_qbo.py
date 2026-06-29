@@ -28,12 +28,14 @@ def test_qbo_invoice_to_items_prices_lines_and_drops_shipping():
          "SalesItemLineDetail": {"Qty": 2, "ItemRef": {"name": "Neuro Magnesium"}}},
         {"DetailType": "SalesItemLineDetail", "Amount": 50.0, "Description": "Vitality",
          "SalesItemLineDetail": {"Qty": 1}},
+        # The funnel/reorder shipping line is named "Shipping (USPS)" — must be dropped.
         {"DetailType": "SalesItemLineDetail", "Amount": 9.0,
-         "SalesItemLineDetail": {"Qty": 1, "ItemRef": {"name": "Shipping"}}},
+         "SalesItemLineDetail": {"Qty": 1, "ItemRef": {"name": "Shipping (USPS)"}}},
         {"DetailType": "SubTotalLineDetail", "Amount": 150.0},
     ]}
     items, line_sum = app._qbo_invoice_to_items(inv, cat)
-    assert len(items) == 2  # shipping + subtotal lines dropped
+    assert len(items) == 2  # shipping ("Shipping (USPS)") + subtotal lines dropped
+    assert all("shipping" not in i["name"].lower() for i in items)
     assert items[0] == {"name": "Neuro Magnesium", "qty": 2, "desc": "Neuro Magnesium",
                         "slug": "neuro-magnesium", "unit_cents": 5000, "line_cents": 10000}
     assert items[1]["unit_cents"] == 5000 and items[1]["name"] == "Vitality"
