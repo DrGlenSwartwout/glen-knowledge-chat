@@ -176,7 +176,7 @@
       .catch(function(){ if (w) w.close(); alert('Could not open invoice.'); });
   }
   function recordPay(id){
-    var m = prompt('Payment method (Check / Cash / Credit card / Zelle / Wise):','Check');
+    var m = prompt('Payment method (Check / Cash / Venmo / PayPal / Credit card / Zelle / Wise):','Check');
     if (m===null) return;
     var a = prompt('Amount in dollars (blank = invoice total):','');
     var p = { method: m };

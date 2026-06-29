@@ -56,7 +56,7 @@
 <div id="wrap">
   <header>
     <h1>Order Entry — Proposed Invoice</h1>
-    <p>Create an in-house order. This produces a <strong>proposed invoice</strong> — confirm it with the customer, then record payment (Credit card / Zelle / Wise). It then enters the <a href="/console/orders">fulfillment board</a>.</p>
+    <p>Create an in-house order. This produces a <strong>proposed invoice</strong> — confirm it with the customer, then record payment (Check / Cash / Venmo / PayPal / Credit card / Zelle / Wise). It then enters the <a href="/console/orders">fulfillment board</a>.</p>
   </header>
 
   <div id="auth-warn" class="auth-warn">Missing or invalid console key. Append <code>?key=YOUR_CONSOLE_SECRET</code> to the URL.</div>
@@ -105,7 +105,7 @@
     <div class="grid2">
       <div><label>Order discount $ (blank = rule-based)</label><input id="o-discount" type="number" step="0.01" placeholder="auto"></div>
       <div><label>Payment method</label>
-        <select id="o-method"><option>Credit card</option><option>Zelle</option><option>Wise</option></select></div>
+        <select id="o-method"><option>Check</option><option>Cash</option><option>Venmo</option><option>PayPal</option><option>Credit card</option><option>Zelle</option><option>Wise</option></select></div>
       <div><label>Points to apply $ (off the total)</label><input id="o-points" type="number" step="0.01" placeholder="0"><small id="o-points-avail" style="display:block;color:var(--muted);margin-top:3px"></small></div>
     </div>
     <div style="margin-top:10px"><label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;font-size:14px;color:var(--text);cursor:pointer"><input type="checkbox" id="pickup"> Pickup (no shipping)</label></div>

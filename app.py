@@ -25831,6 +25831,156 @@ def api_customers_search():
     return jsonify({"ok": True, "people": people})
 
 
+def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
+                           discount_cents_in=None, points_redeem_cents_in=None):
+    """Shared server-authoritative pricing for the in-house order builder AND the
+    console invoice editor. Honors per-line unit_cents overrides; FF capsules get the
+    order-wide volume rate for paid members; shipping/GET via _price_cart (pickup → no
+    shipping); a manual order discount; points capped to the customer's real balance.
+    Returns a dict of items_rec + the pricing breakdown, or None when no line resolves
+    to a real product. Raises CheckoutError for a ship-to the engine rejects."""
+    from dashboard import pricing as _pricing
+    settings = _pricing.load_settings(_pricing_settings())
+    total_ff_qty = _inhouse_total_ff_qty(lines_in)
+    member = _is_paid_member((email or ""))  # gates volume pricing
+    cart, items_rec, subtotal_list = [], [], 0
+    for ln in lines_in:
+        slug = (ln.get("slug") or "").strip()
+        p = _get_product(slug)
+        if not p:
+            continue
+        qty = max(1, min(int(ln.get("qty") or 1), 99))
+        unit_cents = _inhouse_line_unit_cents(p, ln.get("unit_cents"), total_ff_qty, settings, member=member)
+        line_cents = unit_cents * qty
+        subtotal_list += line_cents
+        cart.append({"slug": slug, "qty": qty})
+        rec = {"slug": slug, "name": p["name"], "qty": qty,
+               "unit_cents": unit_cents, "line_cents": line_cents}
+        if p.get("service"):
+            rec["service"] = True
+        items_rec.append(rec)
+    if not cart:
+        return None
+    # _price_cart is used solely for shipping + absorbed GET (FF volume is already baked
+    # into the per-line prices above, so the order applies only a manual discount).
+    try:
+        pc = _price_cart(cart, ship=ship, channel="retail")
+        shipping_cents = _bos_orders.effective_shipping_cents(pickup, pc.get("shipping_cents"))
+        get_cents = int((pc.get("priced") or {}).get("get_cents") or 0)
+    except CheckoutError:
+        raise
+    except Exception as e:
+        print(f"[inhouse-price] pricing fell back: {e!r}", flush=True)
+        shipping_cents, get_cents = 0, 0
+    discount_cents = (max(0, int(discount_cents_in))
+                      if discount_cents_in not in (None, "") else 0)
+    total_cents = max(0, subtotal_list - discount_cents) + shipping_cents
+    points_redeemed_cents = 0
+    if points_redeem_cents_in not in (None, ""):
+        from dashboard import points as _points
+        _pemail = (email or "").strip().lower()
+        _pcx = _sqlite3.connect(LOG_DB)
+        try:
+            _points.init_points_table(_pcx)
+            _pbal = _points.balance(_pcx, _pemail) if _pemail else 0
+        finally:
+            _pcx.close()
+        points_redeemed_cents = max(0, min(int(points_redeem_cents_in), total_cents, _pbal))
+        total_cents -= points_redeemed_cents
+    return {"items_rec": items_rec, "cart": cart, "subtotal_cents": subtotal_list,
+            "shipping_cents": shipping_cents, "get_cents": get_cents,
+            "discount_cents": discount_cents, "points_redeemed_cents": points_redeemed_cents,
+            "total_cents": total_cents}
+
+
+def _push_invoice_edit_to_qbo(external_ref, priced):
+    """Best-effort: mirror an edited invoice onto its linked QBO invoice. Only acts when
+    external_ref is a numeric QBO invoice id (in-house INH-* orders have no QBO invoice).
+    Points fold into the QBO discount (as in checkout) so the QBO total matches the
+    console total; GET stays absorbed (not stamped on QBO, matching how invoices were
+    created). Returns {pushed: bool, warning?: str} — never raises."""
+    ref = (external_ref or "").strip()
+    if not ref.isdigit():
+        return {"pushed": False, "skipped": "no QBO invoice"}
+    try:
+        from dashboard import qbo_billing as _qb_local
+        qlines = []
+        for it in priced["items_rec"]:
+            p = _get_product(it.get("slug") or "")
+            qlines.append({"name": it["name"], "amount": round(int(it["unit_cents"]) / 100.0, 2),
+                           "qty": it["qty"], "item_id": (p or {}).get("qbo_item_id"),
+                           "description": it["name"]})
+        qlines += _shipping_line(priced["shipping_cents"])
+        _qb_local.replace_invoice_lines(
+            ref, qlines,
+            discount_cents=priced["discount_cents"] + priced["points_redeemed_cents"],
+            tax_cents=0)
+        return {"pushed": True}
+    except Exception as e:
+        return {"pushed": False, "warning": f"QBO sync failed: {type(e).__name__}: {e}"}
+
+
+@app.route("/api/orders/<int:oid>/edit", methods=["POST"])
+def api_orders_edit(oid):
+    """Owner: edit an existing order's invoice — replace its line items + shipping +
+    discount, recompute the total, and (best-effort) push the same change to the linked
+    QBO invoice. The console copy ALWAYS saves; a QBO failure is returned as a warning,
+    never blocks the edit. Allowed on any non-cancelled order (incl. paid)."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    lines_in = body.get("lines") or []
+    if not lines_in:
+        return jsonify({"ok": False, "error": "no line items"}), 400
+    pickup = bool(body.get("pickup"))
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        order = _bos_orders.get_order(cx, oid)
+        if not order:
+            return jsonify({"ok": False, "error": "order not found"}), 404
+        if order.get("status") == "cancelled":
+            return jsonify({"ok": False, "error": "a cancelled order can't be edited"}), 400
+        email = order.get("email") or ""
+        addr = order.get("address") or {}
+        ship = {"name": order.get("name") or "",
+                "street": addr.get("street") or addr.get("address1") or "",
+                "address2": addr.get("address2") or "", "city": addr.get("city") or "",
+                "state": addr.get("state") or "", "zip": addr.get("zip") or "",
+                "country": (addr.get("country") or "US").upper()}
+        try:
+            priced = _price_inhouse_invoice(
+                lines_in, email=email, pickup=pickup, ship=ship,
+                discount_cents_in=body.get("discount_cents"),
+                points_redeem_cents_in=body.get("points_redeem_cents"))
+        except CheckoutError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        if priced is None:
+            return jsonify({"ok": False, "error": "no valid products"}), 400
+        note = body.get("invoice_note")
+        _bos_orders.upsert_order(
+            cx, source=order["source"], external_ref=order["external_ref"],
+            email=email, name=order.get("name") or "", phone=order.get("phone") or "",
+            items=priced["items_rec"], total_cents=priced["total_cents"],
+            channel=("pickup" if pickup else (order.get("channel") or "retail")),
+            get_cents=priced["get_cents"], discount_cents=priced["discount_cents"],
+            points_redeemed_cents=priced["points_redeemed_cents"],
+            shipping_cents=priced["shipping_cents"],
+            invoice_note=(note.strip() if isinstance(note, str) else None))
+    finally:
+        cx.close()
+    qbo = _push_invoice_edit_to_qbo(order.get("external_ref"), priced)
+    return jsonify({"ok": True, "order_id": oid, "qbo": qbo,
+                    "totals": {"subtotal_cents": priced["subtotal_cents"],
+                               "discount_cents": priced["discount_cents"],
+                               "shipping_cents": priced["shipping_cents"],
+                               "get_cents": priced["get_cents"],
+                               "points_redeemed_cents": priced["points_redeemed_cents"],
+                               "total_cents": priced["total_cents"]},
+                    "lines": priced["items_rec"]})
+
+
 @app.route("/api/orders/manual", methods=["POST"])
 def api_orders_manual():
     """Create a proposed invoice (in-house order entry). Computes rule-based
@@ -25855,29 +26005,25 @@ def api_orders_manual():
         "city": addr_in.get("city") or "", "state": addr_in.get("state") or "",
         "zip": addr_in.get("zip") or "", "country": (addr_in.get("country") or "US").upper(),
     }
-    # Build cart + structured line items. FF capsules ($69.97) are priced at the
-    # order-wide volume rate per line (see _inhouse_ff_unit_cents); an explicit
-    # unit override wins; everything else is its list price.
-    from dashboard import pricing as _pricing
-    settings = _pricing.load_settings(_pricing_settings())
-    total_ff_qty = _inhouse_total_ff_qty(lines_in)
-    member = _is_paid_member((customer.get("email") or ""))  # gates volume pricing
-    cart, items_rec, subtotal_list = [], [], 0
-    for ln in lines_in:
-        slug = (ln.get("slug") or "").strip()
-        p = _get_product(slug)
-        if not p:
-            continue
-        qty = max(1, min(int(ln.get("qty") or 1), 99))
-        unit_cents = _inhouse_line_unit_cents(p, ln.get("unit_cents"), total_ff_qty, settings, member=member)
-        line_cents = unit_cents * qty
-        subtotal_list += line_cents
-        cart.append({"slug": slug, "qty": qty})
-        items_rec.append({"slug": slug, "name": p["name"], "qty": qty,
-                          "unit_cents": unit_cents, "line_cents": line_cents})
-    if not cart:
+    # Server-authoritative pricing (shared with the console invoice editor): per-line
+    # overrides, FF volume rate for paid members, shipping/GET, discount, points.
+    try:
+        priced = _price_inhouse_invoice(
+            lines_in, email=customer.get("email"), pickup=pickup, ship=ship,
+            discount_cents_in=body.get("discount_cents"),
+            points_redeem_cents_in=body.get("points_redeem_cents"))
+    except CheckoutError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    if priced is None:
         return jsonify({"ok": False, "error": "no valid products"}), 400
-    # Approved review gifts: append as $0 lines AFTER subtotal is computed (no price impact).
+    items_rec = priced["items_rec"]
+    subtotal_list = priced["subtotal_cents"]
+    shipping_cents = priced["shipping_cents"]
+    get_cents = priced["get_cents"]
+    discount_cents = priced["discount_cents"]
+    points_redeemed_cents = priced["points_redeemed_cents"]
+    total_cents = priced["total_cents"]
+    # Approved review gifts: append as $0 lines (no price impact) — manual-create only.
     _gift_rows = []
     _gift_email = (customer.get("email") or "").strip().lower()
     if _REVIEWS_GIFTS and _gift_email:
@@ -25893,36 +26039,6 @@ def api_orders_manual():
                                   "qty": 1, "unit_cents": 0, "line_cents": 0, "gift": True})
         except Exception as e:  # noqa: BLE001 - gift never blocks order creation
             print(f"[orders.manual] gift add failed: {e}", flush=True); _gift_rows = []
-    # Volume is already baked into the per-line FF prices above, so the order does
-    # NOT apply the engine's months-volume discount — only a manual order discount.
-    # _price_cart is used solely for shipping + absorbed GET.
-    try:
-        pc = _price_cart(cart, ship=ship, channel="retail")
-        shipping_cents = _bos_orders.effective_shipping_cents(pickup, pc.get("shipping_cents"))
-        get_cents = int((pc.get("priced") or {}).get("get_cents") or 0)
-    except CheckoutError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-    except Exception as e:
-        print(f"[orders.manual] pricing fell back: {e!r}", flush=True)
-        shipping_cents, get_cents = 0, 0
-    discount_cents = (max(0, int(body.get("discount_cents")))
-                      if body.get("discount_cents") not in (None, "") else 0)
-    total_cents = max(0, subtotal_list - discount_cents) + shipping_cents
-    # Points apply at the bottom of the invoice, against the total. Server is the
-    # ONLY authority on the amount: capped to the total AND to the customer's actual
-    # redeemable balance (email-keyed, lowercased) — never trust the client number.
-    points_redeemed_cents = 0
-    if body.get("points_redeem_cents") not in (None, ""):
-        from dashboard import points as _points
-        _pemail = (customer.get("email") or "").strip().lower()
-        _pcx = _sqlite3.connect(LOG_DB)
-        try:
-            _points.init_points_table(_pcx)
-            _pbal = _points.balance(_pcx, _pemail) if _pemail else 0
-        finally:
-            _pcx.close()
-        points_redeemed_cents = max(0, min(int(body.get("points_redeem_cents")), total_cents, _pbal))
-        total_cents -= points_redeemed_cents
     person_id = customer.get("person_id")
     cx = _sqlite3.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row

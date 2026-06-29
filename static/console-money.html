@@ -359,7 +359,7 @@
       if (amtStr === null) return;
       var amount = parseFloat(amtStr);
       if (!(amount > 0)) { alert('Enter a positive amount.'); return; }
-      var method = prompt('Method (Zelle / Wise / Card / Check / Cash / Other):', 'Zelle');
+      var method = prompt('Method (Check / Cash / Venmo / PayPal / Credit card / Zelle / Wise / Other):', 'Check');
       if (method === null) return;
       act(id, 'finance.record_payment', { invoice_id: String(id), amount: amount, method: method });
     }
