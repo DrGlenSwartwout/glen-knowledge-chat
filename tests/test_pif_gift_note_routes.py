@@ -1,6 +1,13 @@
 import sqlite3
+from datetime import datetime, timedelta
+
 import app as appmod
 from dashboard import referrals, points  # noqa
+
+
+def _ago(days):
+    """Return an ISO-format datetime string `days` ago (UTC)."""
+    return (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def _db(monkeypatch, tmp_path):
@@ -126,7 +133,8 @@ def test_invite_cron_sends_and_marks(monkeypatch, tmp_path):
     cx = sqlite3.connect(appmod.LOG_DB)
     from dashboard import pif_gift_notes as gn
     gn.ensure_columns(cx)
-    cx.execute("UPDATE referral_redemptions SET created_at='2026-01-01T00:00:00' WHERE order_ref='o1'")
+    # 20 days ago: past the 14-day delay, within the 60-day max_age window
+    cx.execute("UPDATE referral_redemptions SET created_at=? WHERE order_ref='o1'", (_ago(20),))
     cx.commit(); cx.close()
     sent = []
     monkeypatch.setattr(appmod, "_send_inquiry_email",
@@ -147,7 +155,8 @@ def test_invite_cron_dry_run_sends_nothing(monkeypatch, tmp_path):
     cx = sqlite3.connect(appmod.LOG_DB)
     from dashboard import pif_gift_notes as gn
     gn.ensure_columns(cx)
-    cx.execute("UPDATE referral_redemptions SET created_at='2026-01-01T00:00:00' WHERE order_ref='o1'")
+    # 20 days ago: past the 14-day delay, within the 60-day max_age window
+    cx.execute("UPDATE referral_redemptions SET created_at=? WHERE order_ref='o1'", (_ago(20),))
     cx.commit(); cx.close()
     sent = []
     monkeypatch.setattr(appmod, "_send_inquiry_email", lambda **k: sent.append(k) or True)
@@ -159,3 +168,28 @@ def test_invite_cron_dry_run_sends_nothing(monkeypatch, tmp_path):
     # still pending (not marked) after dry run
     r2 = c.post("/api/cron/pif-gift-note-invites?key=testsecret")
     assert r2.get_json()["invited"] == 1
+
+
+def test_gift_note_no_coupon_uses_gift_slug(monkeypatch, tmp_path):
+    """When the coupon code has no coupons row, _product_for_code returns '' and the
+    review must be written with product_slug '_gift' (not '_results') to avoid colliding
+    with the recipient's own testimonial stored under the _results reserved slug.
+    Uses a distinct recipient (c@x.com) to avoid the referee_email PK collision
+    with the b@x.com redemption already seeded by _client()."""
+    c = _client(monkeypatch, tmp_path)
+    # seed a redemption for a NEW recipient with a code NOT in the coupons table
+    cx = sqlite3.connect(appmod.LOG_DB)
+    referrals.record_redemption(cx, "NOCODE", "a@x.com", "c@x.com", "o_nocoupon")
+    cx.commit(); cx.close()
+    tok = appmod._mint_gift_note_link("c@x.com", order_ref="o_nocoupon")
+    r = c.post("/api/pif/gift-note", json={"token": tok, "name": "Carol",
+                                           "body": "made a real difference", "consent_public": True})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    from dashboard import product_reviews as pr
+    cx = sqlite3.connect(appmod.LOG_DB)
+    row = pr.get_review(cx, body["review_id"])
+    assert row["product_slug"] == "_gift"   # NOT "_results"
+    assert row["kind"] == "gift"
+    assert row["gift_owner_email"] == "a@x.com"

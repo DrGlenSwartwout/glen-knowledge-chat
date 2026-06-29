@@ -4113,6 +4113,7 @@ REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
+PIF_GIFT_NOTE_MAX_AGE_DAYS = int(os.environ.get("PIF_GIFT_NOTE_MAX_AGE_DAYS", "60"))
 _TESTIMONIALS_ENABLED = os.environ.get("TESTIMONIALS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _TESTIMONIAL_INVITES_ENABLED = os.environ.get("TESTIMONIAL_INVITES_ENABLED", "").strip().lower() in ("1", "true", "yes")
 try:
@@ -24514,7 +24515,7 @@ def api_pif_gift_note():
         if not red or (red.get("referee_email") or "").lower() != recipient:
             return jsonify({"ok": False, "error": "redemption not found"}), 400
         owner_email = red.get("owner_email") or ""
-        product_slug = _pif._product_for_code(cx, red.get("code") or "") or "_results"
+        product_slug = _pif._product_for_code(cx, red.get("code") or "") or "_gift"
         rid = _pr.upsert_review(cx, product_slug, recipient, name, 0, body,
                                 kind="gift", consent_public=1 if consent else 0,
                                 source_tag="gift", gift_owner_email=owner_email)
@@ -24863,7 +24864,7 @@ def cron_pif_gift_note_invites():
     base = request.host_url.rstrip("/")
     invited = 0
     with sqlite3.connect(LOG_DB) as cx:
-        rows = _gn.pending_invites(cx, days=PIF_GIFT_NOTE_DELAY_DAYS)
+        rows = _gn.pending_invites(cx, days=PIF_GIFT_NOTE_DELAY_DAYS, max_age_days=PIF_GIFT_NOTE_MAX_AGE_DAYS)
     for row in rows:
         if dry_run:
             continue

@@ -22,19 +22,23 @@ def ensure_columns(cx):
         pass  # already present
 
 
-def pending_invites(cx, *, days, limit=200):
-    """Redemptions older than `days`, never invited, with a non-empty recipient email.
+def pending_invites(cx, *, days, max_age_days=60, limit=200):
+    """Redemptions between `days` and `max_age_days` old, never invited, with a non-empty
+    recipient email.  The max_age_days upper bound prevents blasting the historical backlog
+    when the feature flag is first flipped on.
     Returns [{referee_email, owner_email, code, order_ref, created_at}]."""
     ensure_columns(cx)
     cutoff = f"-{int(days)} days"
+    max_age = f"-{int(max_age_days)} days"
     rows = cx.execute(
         "SELECT referee_email, owner_email, code, order_ref, created_at "
         "FROM referral_redemptions "
         "WHERE note_invited_at IS NULL "
         "AND TRIM(COALESCE(referee_email,'')) <> '' "
         "AND datetime(created_at) <= datetime('now', ?) "
+        "AND datetime(created_at) >= datetime('now', ?) "
         "ORDER BY created_at ASC LIMIT ?",
-        (cutoff, int(limit))).fetchall()
+        (cutoff, max_age, int(limit))).fetchall()
     return [{"referee_email": r[0], "owner_email": r[1], "code": r[2],
              "order_ref": r[3], "created_at": r[4]} for r in rows]
 
