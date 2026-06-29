@@ -232,7 +232,10 @@ function printInvoice(){
   if(!root || !ORDER) return;
   root.innerHTML = buildInvoicePrintHtml(ORDER);
   const img = root.querySelector('.pd-logo');
-  const go = ()=>{ window.print(); };
+  // Print exactly once: the logo may resolve via onload/onerror OR the timeout
+  // fallback — without this guard both fire and open two identical print dialogs.
+  let fired = false;
+  const go = ()=>{ if(fired) return; fired = true; window.print(); };
   if(img && !img.complete){ img.onload = go; img.onerror = go; setTimeout(go, 1200); }
   else { go(); }
 }
