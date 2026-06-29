@@ -4955,7 +4955,7 @@ def begin_product_page_data(slug):
             _revs = [{"name": (r.get("name") or "A verified buyer"),
                       "rating": (None if (r.get("kind") == "gift") else r.get("rating")),
                       "body": r.get("body") or ""}
-                     for r in _approved if (r.get("body") or "").strip()]
+                     for r in _approved if (r.get("body") or "").strip() and (r.get("kind") != "gift" or r.get("consent_public"))]
             _rsec = {"id": "reviews", "title": "What people are saying", "default_open": False,
                      "body": {"aggregate": _agg, "reviews": _revs,
                               "disclaimer": "Individual results vary."}}
