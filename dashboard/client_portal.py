@@ -69,6 +69,15 @@ def upsert_portal(cx, email: str, name: str, content: dict):
         (_hash(token), email, name, payload, now, now),
     )
     cx.commit()
+    # Persist the raw token so a later "Publish & email" REUSES this exact link rather
+    # than rotating to a new one (which would dead-link the URL already shared/emailed).
+    # ensure_token() reads it back from notify_state; only the hash lives in this table.
+    try:
+        from dashboard import notify_state as _ns
+        _ns.init_table(cx)
+        _ns.set_token(cx, email, token)
+    except Exception:
+        pass
     return token, cur.lastrowid
 
 
@@ -85,6 +94,14 @@ def reissue_token(cx, email):
     cx.execute("UPDATE client_portals SET token_hash=?, updated_at=? WHERE id=?",
                (_hash(token), _now_iso(), row[0]))
     cx.commit()
+    # The freshly-rotated link is now the reusable one — keep notify_state in sync so
+    # a subsequent "Publish & email" reuses it instead of rotating again.
+    try:
+        from dashboard import notify_state as _ns
+        _ns.init_table(cx)
+        _ns.set_token(cx, email, token)
+    except Exception:
+        pass
     return token
 
 
