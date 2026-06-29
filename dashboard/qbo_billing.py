@@ -238,6 +238,32 @@ def apply_invoice_discount(invoice_id, discount_cents):
     return _post("/invoice", body).get("Invoice")
 
 
+def replace_invoice_lines(invoice_id, lines, *, discount_cents=0, tax_cents=0):
+    """Replace ALL of an unpaid invoice's lines wholesale (QBO replaces Line on a
+    sparse update) with a new set — used by the console invoice editor. `lines` is the
+    same shape create_invoice takes: [{name, amount(unit $), qty, description?, item_id?}]
+    (include a shipping line if any). item_ids are resolved/created like create_invoice;
+    one fixed-amount discount line is appended when discount_cents > 0. tax_cents stamps
+    an app-computed GET override (0 = none). Returns the updated invoice (new TotalAmt +
+    SyncToken). Raises if the invoice is missing or QBO rejects the update (e.g. paid)."""
+    inv = get_invoice(invoice_id)
+    if not inv:
+        raise RuntimeError(f"invoice {invoice_id} not found")
+    resolved = []
+    for ln in lines:
+        item_id = ln.get("item_id")
+        if not item_id:
+            unit = round(float(ln["amount"]), 2)
+            item_id = find_or_create_item(ln.get("name", "RemedyMatch Product"), unit)["Id"]
+        resolved.append({**ln, "item_id": item_id})
+    body = {"Id": str(invoice_id), "SyncToken": inv["SyncToken"], "sparse": True,
+            "Line": _build_invoice_lines(resolved, discount_cents)}
+    if tax_cents and int(tax_cents) > 0:
+        body["TxnTaxDetail"] = {"TotalTax": round(int(tax_cents) / 100.0, 2)}
+        body["GlobalTaxCalculation"] = "TaxExcluded"
+    return _post("/invoice", body).get("Invoice")
+
+
 def record_payment(customer_id, amount_cents, invoice_id, method=None):
     """Record a QBO Payment applied to an invoice. Idempotent: skips when the invoice
     balance is already ≤ 0 (so a re-hit of the return URL won't double-pay). `method`

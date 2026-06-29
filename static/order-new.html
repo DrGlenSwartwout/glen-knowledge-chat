@@ -55,8 +55,8 @@
 <script src="/static/op-nav.js" data-active="bos" data-sub="neworder"></script>
 <div id="wrap">
   <header>
-    <h1>Order Entry — Proposed Invoice</h1>
-    <p>Create an in-house order. This produces a <strong>proposed invoice</strong> — confirm it with the customer, then record payment (Credit card / Zelle / Wise). It then enters the <a href="/console/orders">fulfillment board</a>.</p>
+    <h1 id="page-title">Order Entry — Proposed Invoice</h1>
+    <p id="page-intro">Create an in-house order. This produces a <strong>proposed invoice</strong> — confirm it with the customer, then record payment (Check / Cash / Venmo / PayPal / Credit card / Zelle / Wise). It then enters the <a href="/console/orders">fulfillment board</a>.</p>
   </header>
 
   <div id="auth-warn" class="auth-warn">Missing or invalid console key. Append <code>?key=YOUR_CONSOLE_SECRET</code> to the URL.</div>
@@ -105,7 +105,7 @@
     <div class="grid2">
       <div><label>Order discount $ (blank = rule-based)</label><input id="o-discount" type="number" step="0.01" placeholder="auto"></div>
       <div><label>Payment method</label>
-        <select id="o-method"><option>Credit card</option><option>Zelle</option><option>Wise</option></select></div>
+        <select id="o-method"><option>Check</option><option>Cash</option><option>Venmo</option><option>PayPal</option><option>Credit card</option><option>Zelle</option><option>Wise</option></select></div>
       <div><label>Points to apply $ (off the total)</label><input id="o-points" type="number" step="0.01" placeholder="0"><small id="o-points-avail" style="display:block;color:var(--muted);margin-top:3px"></small></div>
     </div>
     <div style="margin-top:10px"><label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;font-size:14px;color:var(--text);cursor:pointer"><input type="checkbox" id="pickup"> Pickup (no shipping)</label></div>
@@ -119,7 +119,7 @@
       <div class="row"><span>Points applied</span><span id="t-points">—</span></div>
       <div class="row grand"><span>Total</span><span id="t-total">$0.00</span></div>
     </div>
-    <div style="margin-top:16px"><button class="primary" onclick="createInvoice()">Create proposed invoice</button></div>
+    <div style="margin-top:16px"><button id="submit-btn" class="primary" onclick="submitOrder()">Create proposed invoice</button></div>
   </div>
 </div>
 
@@ -133,6 +133,7 @@ const HEADERS = { "Content-Type":"application/json", "X-Console-Key":KEY };
 let CATALOG = [];          // [{slug,name,price_cents}]
 let LINES = [];            // [{slug,name,qty,unit_cents,edited}]
 let LAST_ORDER = null;     // {order_id, external_ref, totals}
+const EDIT_OID = new URLSearchParams(location.search).get("edit_order");  // edit mode if set
 let POINTS_BAL = 0;        // selected customer's redeemable points balance (cents)
 let PREVIEW = {subtotal_cents:null, lines:[]};  // server price preview
 let previewTimer = null;
@@ -253,6 +254,55 @@ $("o-points").addEventListener("input", recalc);
 // Membership gates volume pricing, so re-price when the customer email changes.
 $("c-email").addEventListener("input", refreshPreview);
 
+// ── create vs edit dispatch ──
+function submitOrder(){ return EDIT_OID ? editInvoice() : createInvoice(); }
+
+// ── edit an existing order's invoice ──
+async function loadOrderForEdit(oid){
+  const r = await fetch("/api/orders?limit=300", {headers:HEADERS});
+  if (r.status===401){ $("auth-warn").style.display="block"; return; }
+  const o = ((await r.json()).data||[]).find(x=>String(x.id)===String(oid));
+  if (!o){ toast("Order #"+oid+" not found","error"); return; }
+  // Retitle + relabel for edit mode.
+  $("page-title").textContent = "Edit Invoice — Order #"+oid+(o.external_ref?" ("+esc(o.external_ref)+")":"");
+  $("page-intro").innerHTML = "Edit this order's line items, prices, shipping and discount. Saving updates the invoice"
+    + " and (for QuickBooks-backed orders) pushes the same change to QuickBooks.";
+  $("submit-btn").textContent = "Save invoice changes";
+  // Prefill customer (read-only context — pricing/membership keyed off email).
+  $("person_id").value = o.person_id||""; $("c-name").value = o.name||""; $("c-email").value = o.email||""; $("c-phone").value = o.phone||"";
+  const a = o.address||{};
+  $("a-addr1").value=a.street||a.address1||""; $("a-addr2").value=a.address2||""; $("a-city").value=a.city||"";
+  $("a-state").value=a.state||""; $("a-zip").value=a.zip||""; $("a-country").value=a.country||"US";
+  if (o.name||o.email) $("cust-search").value = o.name||o.email;
+  // Prefill lines from the stored invoice. edited:true so the exact stored price is
+  // preserved on save unless the owner changes it (server still re-caps overrides).
+  LINES = (o.items||[]).filter(l=>!l.gift).map(l=>({slug:l.slug||"", name:l.name||l.slug||"",
+            qty:Number(l.qty||1), unit_cents:Number(l.unit_cents||0), edited:true}));
+  if (o.discount_cents) $("o-discount").value = (o.discount_cents/100).toFixed(2);
+  if (o.channel==="pickup") $("pickup").checked = true;
+  if (o.invoice_note) $("o-note").value = o.invoice_note;
+  renderLines();
+}
+async function editInvoice(){
+  if (!LINES.length){ toast("Add at least one line item","error"); return; }
+  const dRaw=$("o-discount").value.trim();
+  const body = { lines: linesPayload(), pickup: $("pickup").checked, invoice_note: $("o-note").value.trim() };
+  if (dRaw!=="") body.discount_cents = Math.round(parseFloat(dRaw)*100);
+  const pRaw=$("o-points").value.trim();
+  if (pRaw!=="") body.points_redeem_cents = Math.round(parseFloat(pRaw)*100);
+  try{
+    const r = await fetch("/api/orders/"+encodeURIComponent(EDIT_OID)+"/edit", {method:"POST", headers:HEADERS, body:JSON.stringify(body)});
+    const j = await r.json();
+    if (!j.ok){ toast(j.error||"failed","error"); return; }
+    LAST_ORDER = {order_id: j.order_id, external_ref: "#"+j.order_id, totals: j.totals};
+    showInvoice({external_ref:"#"+j.order_id, totals:j.totals, lines:j.lines});
+    const q = j.qbo||{};
+    const msg = j.warning ? j.warning : (q.warning ? ("Saved — "+q.warning) : (q.pushed ? "Saved + synced to QuickBooks" : "Invoice saved"));
+    toast(msg, (j.warning||q.warning)?"error":"ok");
+    if (j.warning) alert(j.warning);  // paid-order edit: make the reconcile notice impossible to miss
+  }catch(e){ toast(e.message,"error"); }
+}
+
 // ── create / lifecycle ──
 async function createInvoice(){
   if (!LINES.length){ toast("Add at least one line item","error"); return; }
@@ -318,7 +368,8 @@ function copyInv(){ const txt=$("invoice").querySelector("pre").textContent;
 
 async function init(){
   if (!KEY){ $("auth-warn").style.display="block"; return; }
-  try{ await loadCatalog(); }catch(e){ if(e.message!=="unauthorized") toast(e.message,"error"); }
+  try{ await loadCatalog(); }catch(e){ if(e.message!=="unauthorized") toast(e.message,"error"); return; }
+  if (EDIT_OID){ try{ await loadOrderForEdit(EDIT_OID); }catch(e){ toast(e.message,"error"); } }
 }
 init();
 </script>
