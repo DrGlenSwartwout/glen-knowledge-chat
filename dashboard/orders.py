@@ -611,7 +611,8 @@ action(key="orders.confirm", module="orders", title="Confirm proposed invoice",
        description="Mark a proposed invoice confirmed (customer agreed).",
        risk_tier=LOW_WRITE, permission=(OWNER,))(_confirm_exec)
 action(key="orders.record_payment", module="orders", title="Record payment",
-       description="Record payment on a proposed/confirmed invoice and move it into fulfillment.",
+       description="Record payment on a proposed/confirmed invoice or an unpaid Cart "
+                   "order (e.g. in-person check/cash) and move it into fulfillment.",
        risk_tier=LOW_WRITE, permission=(OWNER,))(_record_payment_exec)
 action(key="orders.send_invoice", module="orders", title="Send invoice to customer",
        description="Email the customer a pay-link for a proposed/confirmed invoice.",
