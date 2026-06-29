@@ -77,13 +77,54 @@ def test_send_invoice_blocked_when_flag_off(monkeypatch):
         O._send_invoice_exec({"order_id": oid}, {"cx": cx})
 
 
-def test_send_invoice_requires_proposed_or_confirmed(monkeypatch):
+def test_send_invoice_rejects_fulfilled_order(monkeypatch):
+    # A 'new' order is now sendable (Cart + Paid lanes); once it ships, it's not.
     O, cx = _orders_db()
     monkeypatch.setenv("INVOICE_PAYLINK_ENABLED", "1")
     oid = O.upsert_order(cx, source="in-house", external_ref="INH-4",
-                         status="new", total_cents=100, email="a@b.com")
-    with pytest.raises(ValueError, match="proposed/confirmed"):
+                         status="shipped", total_cents=100, email="a@b.com")
+    with pytest.raises(ValueError, match="before it ships"):
         O._send_invoice_exec({"order_id": oid}, {"cx": cx})
+
+
+def _capture_send_email(monkeypatch):
+    """Patch dashboard.inbox.send_email and return the dict it captures."""
+    from dashboard import inbox
+    cap = {}
+
+    def _fake(to, subject, plain, *, from_name=None, html=None):
+        cap.update(to=to, subject=subject, plain=plain, from_name=from_name, html=html)
+        return {"id": "1"}
+
+    monkeypatch.setattr(inbox, "send_email", _fake)
+    return cap
+
+
+def test_send_invoice_paid_order_sends_receipt(monkeypatch):
+    O, cx = _orders_db()
+    monkeypatch.setenv("INVOICE_PAYLINK_ENABLED", "1")
+    cap = _capture_send_email(monkeypatch)
+    oid = O.upsert_order(cx, source="in-house", external_ref="INH-PAID",
+                         status="confirmed", total_cents=5000, email="a@b.com")
+    O.set_order_payment(cx, oid, method="Zelle", amount_cents=5000)  # -> new + paid
+    res = O._send_invoice_exec({"order_id": oid}, {"cx": cx})
+    assert "receipt" in cap["subject"].lower()
+    assert "paid in full" in cap["plain"].lower()
+    assert "pay here" not in cap["plain"].lower()
+    assert res["message"].startswith("Receipt ")
+    assert O.get_order(cx, oid)["invoice_sent_at"]
+
+
+def test_send_invoice_unpaid_cart_sends_pay_link(monkeypatch):
+    O, cx = _orders_db()
+    monkeypatch.setenv("INVOICE_PAYLINK_ENABLED", "1")
+    cap = _capture_send_email(monkeypatch)
+    oid = O.upsert_order(cx, source="portal-reorder", external_ref="INH-CART",
+                         status="new", total_cents=100, email="a@b.com")
+    res = O._send_invoice_exec({"order_id": oid}, {"cx": cx})
+    assert "invoice" in cap["subject"].lower() and "receipt" not in cap["subject"].lower()
+    assert "pay here" in cap["plain"].lower()
+    assert res["message"].startswith("Invoice ")
 
 
 # ── HTML email extension ─────────────────────────────────────────────────────

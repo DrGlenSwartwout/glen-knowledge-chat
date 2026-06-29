@@ -25605,6 +25605,29 @@ def bos_action(key):
     return jsonify(res)
 
 
+@app.route("/api/console/order/<int:oid>/invoice-link", methods=["GET"])
+def console_order_invoice_link(oid):
+    """Console-only: mint a fresh invoice token for an order and return its
+    /invoice/<token> URL (with ?print=1 so the page auto-opens the print dialog).
+    Used by the Orders board's "Print invoice" button. Internal/owner action —
+    not gated by INVOICE_PAYLINK_ENABLED (no customer email, no Stripe)."""
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        order = _bos_orders.get_order(cx, oid)
+    finally:
+        cx.close()
+    if not order:
+        return jsonify({"ok": False, "error": "order not found"}), 404
+    from dashboard.practitioner_portal import create_order_invoice_token
+    tok = create_order_invoice_token(oid)
+    return jsonify({"ok": True,
+                    "link": f"{PUBLIC_BASE_URL.rstrip('/')}/invoice/{tok}?print=1"})
+
+
 # ── Phase 5: sales-page review actions (approve/edit/regenerate) ──────────────
 from dashboard import sales_pages_actions as _spa
 _spa.register()
