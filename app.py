@@ -24496,7 +24496,7 @@ def api_pif_gift_note():
     tok = _validate_gift_note_link(token)
     if not tok:
         return jsonify({"ok": False, "error": "invalid or expired link"}), 400
-    recipient = tok["email"]
+    recipient = (tok["email"] or "").lower()
     order_ref = tok["order_ref"]
     name = (data.get("name") or "").strip()
     body = (data.get("body") or "").strip()
@@ -24528,7 +24528,9 @@ def api_pif_gift_note():
                        publication=score.get("publication_score", 0),
                        authenticity=score.get("authenticity_score", 0),
                        specificity=score.get("specificity_score", 0))
-    _consume_gift_note_token(token)
+        cx.execute(
+            "UPDATE auth_tokens SET consumed_at=? WHERE token_hash=? AND purpose='pif_gift_note'",
+            (datetime.utcnow().isoformat() + "Z", _hash_token(token)))
     return jsonify({"ok": True, "review_id": rid, "status": "pending"})
 
 

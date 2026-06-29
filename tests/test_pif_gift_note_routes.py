@@ -1,5 +1,6 @@
 import sqlite3
 import app as appmod
+from dashboard import referrals, points  # noqa
 
 
 def _db(monkeypatch, tmp_path):
@@ -55,9 +56,6 @@ def test_gift_note_token_expired_is_none(monkeypatch, tmp_path):
     assert appmod._validate_gift_note_link(tok) is None
 
 
-from dashboard import referrals, points  # noqa
-
-
 def _client(monkeypatch, tmp_path):
     db = _db(monkeypatch, tmp_path)
     monkeypatch.setattr(appmod, "PAY_IT_FORWARD_ENABLED", True)
@@ -109,4 +107,15 @@ def test_gift_note_submit_flag_off_404(monkeypatch, tmp_path):
 def test_gift_note_submit_bad_token_400(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     r = c.post("/api/pif/gift-note", json={"token": "nope", "name": "Bob", "body": "x", "consent_public": True})
+    assert r.status_code == 400
+
+
+def test_gift_note_rejects_cross_attribution(monkeypatch, tmp_path):
+    """A token minted for attacker@x.com cannot be used against order o1 whose
+    referee is b@x.com — different email means the route returns 400."""
+    c = _client(monkeypatch, tmp_path)  # seeds redemption o1 with referee b@x.com
+    # mint a token for a DIFFERENT recipient but pointing at o1 (whose referee is b@x.com)
+    tok = appmod._mint_gift_note_link("attacker@x.com", order_ref="o1")
+    r = c.post("/api/pif/gift-note", json={"token": tok, "name": "X",
+                                           "body": "x", "consent_public": True})
     assert r.status_code == 400
