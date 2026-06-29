@@ -8203,7 +8203,7 @@ def _init_referral_tables():
                 INSERT INTO affiliate_offers (sort_order, name, description, url_template, active)
                 VALUES (1, 'Accelerate Self-Healing Quiz',
                     'Free quiz — discover your top healing opportunities. Share with anyone curious about natural healing.',
-                    'https://healing.scoreapp.com?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz',
+                    f"{PUBLIC_BASE_URL}/begin/doorway?ref={{slug}}",
                     1)
             """)
         # Seed E4L bioenergetic wellness scan
@@ -9062,7 +9062,7 @@ def post_referral_source():
     except sqlite3.IntegrityError:
         return jsonify({"error": f"slug '{slug}' already exists"}), 409
     return jsonify({"ok": True, "slug": slug,
-                    "tracking_url": f"https://healing.scoreapp.com?utm_source={utm_src}&utm_medium={utm_med}&utm_campaign={utm_camp}"}), 201
+                    "tracking_url": f"{QUIZ_URL}?ref={slug}"}), 201
 
 
 @app.route("/api/referrals", methods=["GET"])
@@ -9094,7 +9094,7 @@ def get_referrals():
     return jsonify({"stats": stat_list, "recent": recent_list})
 
 
-QUIZ_URL            = "https://healing.scoreapp.com"
+QUIZ_URL            = f"{PUBLIC_BASE_URL}/begin/doorway"
 # Internal system-notification sink (FYI mail the app sends itself, e.g. a new
 # studio-credit intent). Gmail-filtered to a "RM / System" label that skips Primary.
 RM_INBOUND_INQUIRY_EMAIL = "drglenswartwout+rm-inquiry@gmail.com"
@@ -9340,7 +9340,7 @@ def _send_client_receipt(client_email, client_name, sent_records, base_url):
         "You can reply directly to each practitioner just by hitting Reply on their email.",
         "",
         "While you wait, here's a 60-second self-assessment that helps you understand your health context:",
-        "https://healing.scoreapp.com",
+        QUIZ_URL,
         "",
         "---",
         "Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA",
@@ -9635,7 +9635,7 @@ def affiliate_apply():
             return jsonify({"error": f"Signup failed: {str(e)[:100]}"}), 409
 
     tracking_url = (
-        f"{QUIZ_URL}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+        f"{QUIZ_URL}?ref={slug}"
     )
     portal_url = "/portal/login"
     resp = jsonify({

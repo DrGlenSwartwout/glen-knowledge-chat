@@ -57,3 +57,12 @@ def test_doorway_optin_captures_and_records_gates(appmod):
     g = appmod._test_calls["ghl"][0]
     assert g["source_tag"] == "source:voice"
     assert "voice-doorway" in g["tags"] and "element:water" in g["tags"]
+
+
+def test_no_scoreapp_url_outside_dormant_webhook():
+    import re, pathlib
+    src = pathlib.Path("app.py").read_text()
+    # allow the route name/handler to mention scoreapp, but no built URLs
+    bad = [ln for ln in src.splitlines()
+           if "healing.scoreapp.com" in ln]
+    assert bad == [], f"scoreapp URLs still present: {bad}"
