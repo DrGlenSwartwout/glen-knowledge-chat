@@ -172,6 +172,8 @@ async function load() {
   renderLines(); renderTotals(); setupPay();
   if (ORDER.invoice_note){ $('note-text').textContent = ORDER.invoice_note; $('note-card').style.display=''; }
   $('print-btn').style.display = 'inline-block';
+  // Console "Print invoice" deep-links here with ?print=1 to auto-open the dialog.
+  if (new URLSearchParams(location.search).get('print')) setTimeout(printInvoice, 250);
   try { const cr = await fetch('/api/products?all=1'); CATALOG = (await cr.json()).products||[]; fillAdd(); } catch(e){}
 }
 

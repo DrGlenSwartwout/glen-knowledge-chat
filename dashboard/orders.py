@@ -499,9 +499,16 @@ def _invoice_paylink_enabled():
     return os.environ.get("INVOICE_PAYLINK_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+# Statuses for which a customer invoice may be emailed: the pre-fulfillment
+# invoice stages plus 'new' (covers both the unpaid Cart lane and the Paid lane,
+# where a paid order sends as a receipt copy). Fulfilled/closed orders are excluded.
+_SENDABLE_INVOICE = _PRE_FULFILL + ("new",)
+
+
 def _send_invoice_exec(params, ctx):
-    """OWNER: email the customer a tokenized pay-link for a proposed/confirmed
-    invoice. Flag-gated (INVOICE_PAYLINK_ENABLED) — real customer email."""
+    """OWNER: email the customer a tokenized invoice link. For an unpaid invoice
+    it's a review-and-pay link; for a paid order it's a paid-invoice receipt.
+    Flag-gated (INVOICE_PAYLINK_ENABLED) — real customer email."""
     cx = (ctx or {}).get("cx") or (params or {}).get("cx")
     if cx is None:
         raise ValueError("no db connection")
@@ -511,9 +518,9 @@ def _send_invoice_exec(params, ctx):
     order = get_order(cx, oid)
     if not order:
         raise ValueError(f"order #{oid} not found")
-    if order.get("status") not in _PRE_FULFILL:
-        raise ValueError(f"order #{oid} is '{order.get('status')}' — only a proposed/confirmed "
-                         "invoice can be sent")
+    if order.get("status") not in _SENDABLE_INVOICE:
+        raise ValueError(f"order #{oid} is '{order.get('status')}' — an invoice can only be "
+                         "sent before it ships")
     email = (order.get("email") or "").strip()
     if not email:
         raise ValueError(f"order #{oid} has no customer email")
@@ -525,22 +532,34 @@ def _send_invoice_exec(params, ctx):
     name = order.get("name") or "there"
     ref = order.get("external_ref") or f"#{oid}"
     total = f"${(int(order.get('total_cents') or 0))/100:,.2f}"
-    plain = (f"Hi {name},\n\nYour invoice {ref} is ready ({total}). View, adjust, ask "
-             f"questions, and pay here:\n{link}\n\nMahalo,\nDr. Glen Swartwout")
-    html = (f"<p>Hi {name},</p><p>Your invoice <b>{ref}</b> is ready "
-            f"(<b>{total}</b>). You can review it, adjust quantities, ask questions, "
-            f"and pay securely here:</p>"
-            f"<p><a href='{link}' style='background:#7c5cbf;color:#fff;padding:10px 18px;"
-            f"border-radius:6px;text-decoration:none'>View &amp; pay your invoice</a></p>"
-            f"<p>Mahalo,<br>Dr. Glen Swartwout</p>")
+    paid = (order.get("pay_status") == "paid")
+    if paid:
+        subject = f"Your Remedy Match receipt {ref}"
+        plain = (f"Hi {name},\n\nHere's your paid invoice {ref} ({total}) — paid in full, "
+                 f"mahalo. View or download it here:\n{link}\n\nMahalo,\nDr. Glen Swartwout")
+        html = (f"<p>Hi {name},</p><p>Here's your paid invoice <b>{ref}</b> "
+                f"(<b>{total}</b>) — paid in full, mahalo. You can view or download it here:</p>"
+                f"<p><a href='{link}' style='background:#3a5a40;color:#fff;padding:10px 18px;"
+                f"border-radius:6px;text-decoration:none'>View &amp; download your invoice</a></p>"
+                f"<p>Mahalo,<br>Dr. Glen Swartwout</p>")
+    else:
+        subject = f"Your Remedy Match invoice {ref}"
+        plain = (f"Hi {name},\n\nYour invoice {ref} is ready ({total}). View, adjust, ask "
+                 f"questions, and pay here:\n{link}\n\nMahalo,\nDr. Glen Swartwout")
+        html = (f"<p>Hi {name},</p><p>Your invoice <b>{ref}</b> is ready "
+                f"(<b>{total}</b>). You can review it, adjust quantities, ask questions, "
+                f"and pay securely here:</p>"
+                f"<p><a href='{link}' style='background:#7c5cbf;color:#fff;padding:10px 18px;"
+                f"border-radius:6px;text-decoration:none'>View &amp; pay your invoice</a></p>"
+                f"<p>Mahalo,<br>Dr. Glen Swartwout</p>")
     try:
-        _inbox.send_email(email, f"Your Remedy Match invoice {ref}", plain,
+        _inbox.send_email(email, subject, plain,
                           from_name="Dr. Glen Swartwout", html=html)
     except Exception as e:
         raise ValueError(f"could not send invoice email: {e}")
     mark_invoice_sent(cx, oid)
     return {"order_id": oid, "link": link,
-            "message": f"Invoice {ref} emailed to {email}."}
+            "message": f"{'Receipt' if paid else 'Invoice'} {ref} emailed to {email}."}
 
 
 def _confirm_exec(params, ctx):
