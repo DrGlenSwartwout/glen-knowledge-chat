@@ -1,6 +1,6 @@
 {
-  "home": { "arrival": "/static/journey/audio/welcome.mp3" },
-  "scan": { "approach": "/static/journey/audio/bowl-172hz.mp3", "arrival": "/static/journey/audio/count.mp3" },
+  "home": { "approach": "/static/journey/audio/hobbit-dinner.mp3", "arrival": "/static/journey/audio/welcome.mp3" },
+  "scan": { "approach": "/static/journey/audio/count.mp3", "arrival": "/static/journey/audio/bowl-arrival.mp3" },
   "find": { "arrival": "/static/journey/audio/ahhh.mp3" },
   "heal": { "arrival": "/static/journey/audio/going-with-you.mp3" }
 }
