@@ -173,6 +173,14 @@
     var qp = new URLSearchParams(location.search);
     var ptoken = qp.get("p") || "";
     var srcTag = qp.get("tag") || "";
+    var giftToken = qp.get("gift") || "";
+
+    if(giftToken){
+      document.querySelector(".intro h1").textContent = "Share how your gift is making a difference.";
+      document.getElementById("submit-btn").textContent = "Share my experience";
+      var ratingField = document.querySelector("#stars").closest(".field");
+      if(ratingField){ ratingField.style.display = "none"; }
+    }
 
     // ── Video: record-in-browser (default) / upload / link ────────────────────
     var activeMode = "record";
@@ -257,7 +265,7 @@
     var btn = document.getElementById("submit-btn");
     var msg = document.getElementById("msg");
 
-    form.addEventListener("submit", function(ev){
+    form.addEventListener("submit", async function(ev){
       ev.preventDefault();
       var name = (document.getElementById("name").value || "").trim();
       var email = (document.getElementById("email").value || "").trim();
@@ -265,12 +273,33 @@
       var consent = document.getElementById("consent").checked;
       var photo = document.getElementById("photo").files[0];
 
-      if(!chosenRating){ msg.textContent = "Please choose a star rating."; return; }
+      if(!giftToken && !chosenRating){ msg.textContent = "Please choose a star rating."; return; }
       if(!name){ msg.textContent = "Please enter your name."; return; }
       if(!email){ msg.textContent = "Please enter your email."; return; }
-      if(!consent){ msg.textContent = "Please tick the consent box so we may share your testimonial."; return; }
+      if(!consent){ msg.textContent = "Please tick the consent box so we may share your experience."; return; }
 
       btn.disabled = true; msg.textContent = "Sending…";
+
+      if(giftToken){
+        try{
+          var giftResp = await fetch("/api/pif/gift-note", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({token: giftToken, name: name, body: body, consent_public: consent})
+          });
+          var giftJson = await giftResp.json();
+          if(giftJson.ok){
+            document.getElementById("form-section").style.display = "none";
+            document.getElementById("confirmed").style.display = "block";
+            window.scrollTo(0, 0);
+          } else {
+            btn.disabled = false;
+            msg.textContent = giftJson.error || "Something went wrong.";
+          }
+        } catch(e){ btn.disabled = false; msg.textContent = "Network error. Please try again."; }
+        return;
+      }
+
       var fd = new FormData();
       fd.append("name", name);
       fd.append("email", email);
