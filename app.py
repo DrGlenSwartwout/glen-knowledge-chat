@@ -4186,9 +4186,12 @@ def _qty_eligible(p):
     return bool(p.get("qty_pricing")) and p.get("price_cents") == 6997 and not p.get("info_only")
 
 
-def _qty_unit_cents(p, qty):
-    """Per-unit price honoring the capsule quantity tiers for eligible products."""
-    if not _qty_eligible(p):
+def _qty_unit_cents(p, qty, member=False):
+    """Per-unit price honoring the capsule quantity tiers for eligible products.
+    Quantity ("member") pricing is PAID-MEMBERS ONLY — non-members pay the regular
+    list price regardless of quantity. Default member=False so any flow that forgets
+    to pass membership charges the regular price (never leaks a discount)."""
+    if not member or not _qty_eligible(p):
         return p.get("price_cents", 6997)
     for min_q, unit in _QTY_TIERS:
         if qty >= min_q:
@@ -4196,14 +4199,15 @@ def _qty_unit_cents(p, qty):
     return p.get("price_cents", 6997)
 
 
-def _inhouse_ff_unit_cents(p, total_ff_qty, settings):
+def _inhouse_ff_unit_cents(p, total_ff_qty, settings, member=False):
     """Effective in-house unit price (cents) for a $69.97 functional-formulation
     capsule (_qty_eligible): the order-wide volume rate driven by the TOTAL FF
     capsule quantity (1 bottle = 1 month). The linear volume curve is monotonic,
     so the total-quantity rate is the best price each FF line can get. Clamped at
     the wholesale discount floor so a console max above 43% can't breach it.
-    Non-eligible products return their list price (callers handle overrides)."""
-    if not _qty_eligible(p):
+    Volume ("member") pricing is PAID-MEMBERS ONLY; non-members (and non-eligible
+    products) return the list price (callers handle overrides)."""
+    if not member or not _qty_eligible(p):
         return int(p.get("price_cents") or 0)
     from dashboard import pricing as _pricing
     pct = _pricing.volume_pct(int(total_ff_qty or 0), settings)
@@ -4222,12 +4226,23 @@ def _inhouse_total_ff_qty(lines_in):
     return tot
 
 
-def _inhouse_line_unit_cents(p, override, total_ff_qty, settings):
+def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, member=False):
     """Per-line unit price for the in-house form: an explicit owner override wins;
-    else FF capsules get the volume rate, everything else its list price."""
+    else FF capsules get the volume rate (PAID MEMBERS ONLY), everything else its
+    list price."""
     if override not in (None, ""):
         return int(override)
-    return _inhouse_ff_unit_cents(p, total_ff_qty, settings)
+    return _inhouse_ff_unit_cents(p, total_ff_qty, settings, member=member)
+
+
+def _is_paid_member(email):
+    """True iff the email has an active PAID membership — the gate for quantity
+    ("member") pricing. Anyone else pays regular price. Fail-closed (False on error)
+    so a lookup hiccup never hands a non-member a discount."""
+    try:
+        return bool(email) and bool(_active_membership_for_email(email))
+    except Exception:
+        return False
 
 
 # Recurring membership tiers (Group Coaching). One QBO Item, price set per tier.
@@ -6453,14 +6468,14 @@ def begin_checkout(slug):
         try:
             from dashboard import qbo_billing as qb
             cust = qb.find_or_create_customer(email, name)
-            unit = round(_qty_unit_cents(p, qty) / 100.0, 2)   # capsule quantity tiers
+            unit = round(_qty_unit_cents(p, qty, _is_paid_member(email)) / 100.0, 2)   # capsule quantity tiers (paid members only)
             desc = p["name"]
             fmt_label = next((f["label"] for f in _FORMATS if f["id"] == fmt), "")
             if fmt and fmt != "bottle" and fmt_label:
                 desc = f"{p['name']} ({fmt_label})"
             allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
             from dashboard import tax as _tax
-            subtotal_cents = int(_qty_unit_cents(p, qty)) * qty
+            subtotal_cents = int(_qty_unit_cents(p, qty, _is_paid_member(email))) * qty
             # Absorb-and-track: GET is recorded on the order (below), NOT added to the
             # invoice — the customer pays the all-in price.
             get_cents = _tax.compute_get_cents(
@@ -11623,7 +11638,7 @@ def _enabled_offer_keys() -> set:
     return keys
 
 
-def _portal_priced_lines(items):
+def _portal_priced_lines(items, member=False):
     """Build QBO invoice lines from a portal's reorder items, honoring an optional
     per-item ``price_cents`` override (the client's practitioner-special price);
     falls back to catalog/volume pricing when no override is present.
@@ -11639,7 +11654,7 @@ def _portal_priced_lines(items):
         except Exception:
             qty = 1
         override = it.get("price_cents")
-        unit_cents = int(override) if override is not None else int(_qty_unit_cents(p, qty))
+        unit_cents = int(override) if override is not None else int(_qty_unit_cents(p, qty, member))
         subtotal_cents += unit_cents * qty
         lines.append({"name": p["name"], "amount": round(unit_cents / 100.0, 2),
                       "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
@@ -11916,7 +11931,7 @@ def api_client_portal_checkout(token):
         return jsonify({"error": "not found"}), 404
     email = (portal.get("email") or "").strip().lower()
     items = (portal.get("content") or {}).get("reorder_items") or []
-    lines, items_rec, _subtotal = _portal_priced_lines(items)
+    lines, items_rec, _subtotal = _portal_priced_lines(items, member=_is_paid_member(email))
     if not lines:
         return jsonify({"error": "Your remedies are no longer available — please reach out and we'll help."}), 400
     if not _STRIPE_ACTIVE:
@@ -13953,7 +13968,7 @@ def reorder_checkout():
         p = _get_product(slug) if slug else None
         if not p:
             continue
-        unit_cents = int(_qty_unit_cents(p, qty))
+        unit_cents = int(_qty_unit_cents(p, qty, _is_paid_member(email)))
         subtotal_cents += unit_cents * qty
         lines.append({"name": p["name"], "amount": round(unit_cents / 100.0, 2),
                       "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
@@ -25323,6 +25338,7 @@ def api_orders_manual():
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
+    member = _is_paid_member((customer.get("email") or ""))  # gates volume pricing
     cart, items_rec, subtotal_list = [], [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
@@ -25330,7 +25346,7 @@ def api_orders_manual():
         if not p:
             continue
         qty = max(1, min(int(ln.get("qty") or 1), 99))
-        unit_cents = _inhouse_line_unit_cents(p, ln.get("unit_cents"), total_ff_qty, settings)
+        unit_cents = _inhouse_line_unit_cents(p, ln.get("unit_cents"), total_ff_qty, settings, member=member)
         line_cents = unit_cents * qty
         subtotal_list += line_cents
         cart.append({"slug": slug, "qty": qty})
@@ -25432,9 +25448,11 @@ def api_orders_price_preview():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
-    lines_in = (request.get_json(silent=True) or {}).get("lines") or []
+    _body = request.get_json(silent=True) or {}
+    lines_in = _body.get("lines") or []
+    member = _is_paid_member((_body.get("email") or ""))  # volume pricing = members only
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
-    vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2)
+    vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2) if member else 0.0
     out_lines, subtotal = [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
@@ -25445,7 +25463,7 @@ def api_orders_price_preview():
         ov = ln.get("unit_cents")
         is_ff = _qty_eligible(p)
         list_cents = int(p.get("price_cents") or 0)
-        unit = _inhouse_line_unit_cents(p, ov, total_ff_qty, settings)
+        unit = _inhouse_line_unit_cents(p, ov, total_ff_qty, settings, member=member)
         overridden = ov not in (None, "")
         line_cents = unit * qty
         subtotal += line_cents

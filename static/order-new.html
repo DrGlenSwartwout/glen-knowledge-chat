@@ -174,6 +174,7 @@ function pickPerson(p){
   $("c-phone").value=p.phone||""; $("a-addr1").value=p.address1||""; $("a-addr2").value=p.address2||"";
   $("a-city").value=p.city||""; $("a-state").value=p.state||""; $("a-zip").value=p.zip||""; $("a-country").value=p.country||"US";
   $("cust-results").style.display="none"; $("cust-search").value=p.name||p.email||"";
+  refreshPreview();  // re-price: the picked customer's membership gates volume pricing
   // Auto-pull the customer's redeemable points balance and apply it (capped on recalc).
   POINTS_BAL = Number(p.points_balance_cents||0);
   $("o-points-avail").textContent = POINTS_BAL>0 ? ("Points available: "+dollars(POINTS_BAL)+" — auto-applied") : "No points available";
@@ -215,7 +216,7 @@ function refreshPreview(){
   if (!LINES.length){ PREVIEW={subtotal_cents:0, lines:[]}; recalc(); return; }
   previewTimer = setTimeout(async ()=>{
     try{
-      const r = await fetch("/api/orders/price-preview", {method:"POST", headers:HEADERS, body:JSON.stringify({lines:linesPayload()})});
+      const r = await fetch("/api/orders/price-preview", {method:"POST", headers:HEADERS, body:JSON.stringify({lines:linesPayload(), email:$("c-email").value.trim()})});
       const j = await r.json(); if (!j.ok) return;
       PREVIEW = {subtotal_cents:j.subtotal_cents, lines:j.lines};
       (j.lines||[]).forEach((pl,i)=>{
@@ -249,6 +250,8 @@ function recalc(){
 }
 $("o-discount").addEventListener("input", recalc);
 $("o-points").addEventListener("input", recalc);
+// Membership gates volume pricing, so re-price when the customer email changes.
+$("c-email").addEventListener("input", refreshPreview);
 
 // ── create / lifecycle ──
 async function createInvoice(){
