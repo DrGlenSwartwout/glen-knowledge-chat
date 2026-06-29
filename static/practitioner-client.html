@@ -937,16 +937,9 @@
     // Inject styles
     var style = document.createElement('style');
     style.textContent = [
-      '#scoped-chat-launcher{position:fixed;bottom:24px;right:24px;z-index:9000;',
-      'background:var(--glen);color:#fff;border:0;border-radius:28px;',
-      'padding:12px 20px;font-size:14px;font-weight:600;cursor:pointer;',
-      'font-family:var(--font);box-shadow:0 4px 16px rgba(0,0,0,.18);',
-      'display:flex;align-items:center;gap:8px;}',
-      '#scoped-chat-panel{position:fixed;bottom:80px;right:24px;z-index:9000;',
-      'width:340px;max-width:calc(100vw - 32px);',
-      'background:var(--surface);border:1px solid var(--border);',
-      'border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.18);',
-      'display:flex;flex-direction:column;max-height:480px;}',
+      '#scoped-chat-launcher{display:none;}',
+      '#scoped-chat-panel{background:var(--surface);border:1px solid var(--border);',
+      'border-radius:16px;display:flex;flex-direction:column;max-height:420px;margin-bottom:16px;}',
       '#scoped-chat-panel.hidden{display:none!important;}',
       '#scoped-chat-header{padding:12px 16px;border-bottom:1px solid var(--border);',
       'font-weight:600;font-size:14px;color:var(--ink);',
@@ -972,43 +965,34 @@
     ].join('');
     document.head.appendChild(style);
 
-    // Inject launcher button
-    var launcher = document.createElement('button');
-    launcher.id = 'scoped-chat-launcher';
-    launcher.innerHTML = '&#128172; Ask for help';
-    launcher.onclick = scopedChatToggle;
-    document.body.appendChild(launcher);
-
-    // Inject panel
+    // Inline chat panel at the TOP of the page content (no floating launcher).
     var panel = document.createElement('div');
     panel.id = 'scoped-chat-panel';
-    panel.className = 'hidden';
     panel.innerHTML =
-      '<div id="scoped-chat-header">Product assistant' +
-      '<button id="scoped-chat-close" onclick="scopedChatToggle()" title="Close">&times;</button></div>' +
+      '<div id="scoped-chat-header">Product assistant</div>' +
       '<div id="scoped-chat-log"></div>' +
       '<div id="scoped-chat-input-row">' +
       '<input id="scoped-chat-input" placeholder="Ask about a product…" autocomplete="off">' +
       '<button id="scoped-chat-send" onclick="scopedChatSend()">Send</button>' +
       '</div>';
-    document.body.appendChild(panel);
+    var mount = document.getElementById('main') || document.body;
+    mount.insertBefore(panel, mount.firstChild);
 
     document.getElementById('scoped-chat-input').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') window.scopedChatSend();
     });
 
-    var chatOpen = false;
     var chatHistory = [];
     var chatEndpoint = BASE + '/api/client/' + encodeURIComponent(dispensaryCode) + '/chat';
 
-    window.scopedChatToggle = function () {
-      chatOpen = !chatOpen;
-      document.getElementById('scoped-chat-panel').classList.toggle('hidden', !chatOpen);
-      if (chatOpen && !document.getElementById('scoped-chat-log').children.length) {
+    // Inline chat is always shown; seed the greeting once on mount.
+    function scopedChatGreet() {
+      var log = document.getElementById('scoped-chat-log');
+      if (log && !log.children.length) {
         scopedChatAppendBot('Hi! I can help you find the right product. What are you looking for?');
       }
-      if (chatOpen) document.getElementById('scoped-chat-input').focus();
-    };
+    }
+    scopedChatGreet();
 
     function scopedChatAppendUser(text) {
       var el = document.createElement('div');
