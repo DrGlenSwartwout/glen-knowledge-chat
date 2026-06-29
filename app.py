@@ -4112,6 +4112,7 @@ JOURNEY_QUEST_ENABLED = os.environ.get("JOURNEY_QUEST_ENABLED", "").strip().lowe
 REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
 _TESTIMONIALS_ENABLED = os.environ.get("TESTIMONIALS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _TESTIMONIAL_INVITES_ENABLED = os.environ.get("TESTIMONIAL_INVITES_ENABLED", "").strip().lower() in ("1", "true", "yes")
 try:
@@ -24848,6 +24849,46 @@ def cron_membership_renewals():
                 print(f"[renewal-cron] journey_events insert failed: {e!r}", flush=True)
             reminded += 1
     return jsonify({"reminded": reminded}), 200
+
+
+@app.route("/api/cron/pif-gift-note-invites", methods=["POST"])
+@require_console_key
+def cron_pif_gift_note_invites():
+    """Daily: email gift recipients (~N days after redemption) a tokened link to share
+    how the gift helped. Idempotent via note_invited_at. No-op when the feature is dark."""
+    dry_run = str(request.args.get("dry_run") or "").strip().lower() in ("1", "true", "yes", "on")
+    if not PAY_IT_FORWARD_ENABLED:
+        return jsonify({"invited": 0, "dry_run": dry_run, "disabled": True}), 200
+    from dashboard import pif_gift_notes as _gn
+    base = request.host_url.rstrip("/")
+    invited = 0
+    with sqlite3.connect(LOG_DB) as cx:
+        rows = _gn.pending_invites(cx, days=PIF_GIFT_NOTE_DELAY_DAYS)
+    for row in rows:
+        if dry_run:
+            continue
+        try:
+            plain = _mint_gift_note_link(row["referee_email"], order_ref=row["order_ref"])
+            link = f"{base}/results?gift={plain}"
+            subject = "Your gift from a friend, how is it helping?"
+            body = (
+                f"Hi,\n\n"
+                f"A friend gifted you something from Remedy Match, and we'd love to know how "
+                f"it is helping you. It takes a minute, and with your permission your friend will "
+                f"see that their gift made a difference.\n\n"
+                f"Share a few words here:\n{link}\n\n"
+                f"---\n"
+                f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n")
+            ok_sent = _send_inquiry_email(to_email=row["referee_email"], subject=subject,
+                                          body=body, reply_to=RM_COACHING_REPLY_EMAIL)
+        except Exception as e:
+            print(f"[pif-t2 invite] send failed for {row['referee_email']}: {e!r}", flush=True)
+            ok_sent = False
+        if ok_sent:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _gn.mark_invited(cx, row["referee_email"], row["order_ref"])
+            invited += 1
+    return jsonify({"invited": invited, "dry_run": dry_run}), 200
 
 
 @app.route("/coaching/login-request", methods=["POST"])

@@ -119,3 +119,43 @@ def test_gift_note_rejects_cross_attribution(monkeypatch, tmp_path):
     r = c.post("/api/pif/gift-note", json={"token": tok, "name": "X",
                                            "body": "x", "consent_public": True})
     assert r.status_code == 400
+
+
+def test_invite_cron_sends_and_marks(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)  # seeds redemption o1 (created now) — make it old:
+    cx = sqlite3.connect(appmod.LOG_DB)
+    from dashboard import pif_gift_notes as gn
+    gn.ensure_columns(cx)
+    cx.execute("UPDATE referral_redemptions SET created_at='2026-01-01T00:00:00' WHERE order_ref='o1'")
+    cx.commit(); cx.close()
+    sent = []
+    monkeypatch.setattr(appmod, "_send_inquiry_email",
+                        lambda **k: sent.append(k) or True)
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "testsecret")
+    monkeypatch.setattr(appmod.dashboard, "CONSOLE_SECRET", "testsecret")
+    r = c.post("/api/cron/pif-gift-note-invites?key=testsecret")
+    assert r.status_code == 200
+    assert r.get_json()["invited"] == 1
+    assert len(sent) == 1 and sent[0]["to_email"] == "b@x.com"
+    # idempotent: second run sends nothing
+    r2 = c.post("/api/cron/pif-gift-note-invites?key=testsecret")
+    assert r2.get_json()["invited"] == 0
+
+
+def test_invite_cron_dry_run_sends_nothing(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    cx = sqlite3.connect(appmod.LOG_DB)
+    from dashboard import pif_gift_notes as gn
+    gn.ensure_columns(cx)
+    cx.execute("UPDATE referral_redemptions SET created_at='2026-01-01T00:00:00' WHERE order_ref='o1'")
+    cx.commit(); cx.close()
+    sent = []
+    monkeypatch.setattr(appmod, "_send_inquiry_email", lambda **k: sent.append(k) or True)
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "testsecret")
+    monkeypatch.setattr(appmod.dashboard, "CONSOLE_SECRET", "testsecret")
+    r = c.post("/api/cron/pif-gift-note-invites?key=testsecret&dry_run=1")
+    assert r.status_code == 200 and r.get_json()["dry_run"] is True
+    assert sent == []
+    # still pending (not marked) after dry run
+    r2 = c.post("/api/cron/pif-gift-note-invites?key=testsecret")
+    assert r2.get_json()["invited"] == 1
