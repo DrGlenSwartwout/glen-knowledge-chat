@@ -99,7 +99,7 @@ def test_summary_gift_wallet_omits_secret_fields(monkeypatch, tmp_path):
 
 def test_summary_includes_chain_recipients(monkeypatch, tmp_path):
     import sqlite3
-    from dashboard import referrals
+    from dashboard import referrals, product_reviews as pr
     c = _client(monkeypatch, tmp_path)
     monkeypatch.setattr(appmod, "PAY_IT_FORWARD_ENABLED", True)
     monkeypatch.setattr(appmod, "is_member", lambda session_id="", email="": True)
@@ -110,6 +110,10 @@ def test_summary_includes_chain_recipients(monkeypatch, tmp_path):
                "VALUES ('b@x.com','Sarah','Hill','Sarah Hill')")
     referrals.init_tables(cx)
     referrals.record_redemption(cx, "G1", "m@x.com", "b@x.com", "o1")
+    rid = pr.upsert_review(cx, "neuro-magnesium", "b@x.com", "Sarah", 0,
+                           body="best mornings in years", kind="gift",
+                           consent_public=1, source_tag="gift", gift_owner_email="m@x.com")
+    pr.set_scores(cx, rid, compliance=9)
     cx.commit(); cx.close()
     r = c.get("/api/pif/summary?email=m@x.com")
     assert r.status_code == 200
@@ -117,6 +121,7 @@ def test_summary_includes_chain_recipients(monkeypatch, tmp_path):
     recips = body["chain"]["recipients"]
     assert isinstance(recips, list) and len(recips) == 1
     assert recips[0]["name"] == "Sarah H."
+    assert recips[0]["note"] == "best mornings in years"
     # existing fields intact
     assert "reached" in body["chain"]
     assert "balance_cents" in body and "gift_wallet" in body and "healer_level" in body
