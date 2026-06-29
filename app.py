@@ -4253,6 +4253,37 @@ def _is_paid_member(email):
         return False
 
 
+def _trial_credit_for_email(cx, email):
+    """Accrued trial-upgrade credit (cents) for a $1-trial buyer: the member volume
+    discount they left on the table on in-window remedy orders, priced with the real
+    catalog. Pure math lives in dashboard.trial_credit; this wires the pricing
+    callback. Returns 0 when there's no trial order / nothing eligible.
+
+    Per-line _qty_unit_cents is the canonical "missed discount" — it is exactly the
+    pricing the portal reorder path (_portal_priced_lines) applies, which is the
+    trial buyer's actual reorder channel."""
+    from dashboard import trial_credit as _tc
+    from dashboard import practitioner_portal as _pp
+    cat = (_PRODUCTS.get("products") or {})
+
+    def price_line(item, order):
+        # Order line items are persisted by canonical catalog NAME (items_rec stores
+        # p["name"], no slug), so name_to_slug's exact-match branch resolves them. If
+        # items_rec ever gains a "slug" field, prefer item.get("slug") here.
+        slug = (item.get("slug") or "").strip() or _pp.name_to_slug((item.get("name") or "").strip(), cat)
+        p = _get_product(slug) if slug else None
+        if not p or not _qty_eligible(p):
+            return (0, 0, 0)
+        try:
+            qty = max(1, min(int(item.get("qty") or 1), 99))
+        except (TypeError, ValueError):
+            qty = 1
+        return (_qty_unit_cents(p, qty, member=False),
+                _qty_unit_cents(p, qty, member=True), qty)
+
+    return _tc.accrued_credit_cents(cx, email, price_line=price_line)
+
+
 # Recurring membership tiers (Group Coaching). One QBO Item, price set per tier.
 _MEMBERSHIP_ITEM = "Group Coaching Membership"
 _MEMBERSHIP_TIERS = {
@@ -21511,8 +21542,27 @@ def cron_charge_subscriptions():
                         _ingest_order(source="membership", external_ref=res.get("id") or inv_id,
                                       email=sub["email"], items=[], total_cents=amount_cents,
                                       address={}, channel="retail")
+                        # Trial -> full conversion: this is the FIRST $99 charge iff
+                        # order_count is still 0 before advance_after_charge bumps it.
+                        # Hand back the volume discount the trial buyer left on the
+                        # table (30-day window) as loyalty points for their next order.
+                        was_trial = int(sub.get("order_count") or 0) == 0
                         _subs.advance_after_charge(cx, sid)
                         _subs.reset_failed_count(cx, sid)
+                        if was_trial:
+                            try:
+                                from dashboard import trial_credit as _tc
+                                from dashboard import points as _points
+                                _points.init_points_table(cx)
+                                _credit = _trial_credit_for_email(cx, sub["email"])
+                                if _credit > 0:
+                                    _points.credit(cx, sub["email"], value_cents=_credit,
+                                                   reason=_tc.CREDIT_REASON,
+                                                   order_ref=_tc.credit_order_ref(sub["email"]))
+                                    print(f"[sub-cron] trial-credit granted sub={sid} "
+                                          f"email={sub['email']} cents={_credit}", flush=True)
+                            except Exception as _tce:
+                                print(f"[sub-cron] trial-credit sub={sid}: {_tce!r}", flush=True)
                         updated = _subs.get(cx, sid)
                         try:
                             if updated and updated.get("next_charge_date"):
