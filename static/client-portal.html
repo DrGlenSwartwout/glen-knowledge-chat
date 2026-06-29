@@ -144,6 +144,48 @@
   .chat-sugg-name{font-weight:600;font-size:.9rem}
   .chat-sugg-price{color:var(--muted);font-size:.86rem}
   .chat-sugg-btn{font-size:.82rem;padding:5px 12px;border-radius:8px;text-decoration:none;margin-left:auto;display:inline-block}
+
+  /* ── Print / Save-as-PDF: a self-contained doc in #print-root. On screen it is
+     hidden; when printing we hide everything ELSE so the PDF is ONLY this doc
+     (no nav, account, chat, ambassador links, journey shell). ── */
+  #print-root{ display:none; }
+  @media print{
+    body > *:not(#print-root){ display:none !important; }
+    #print-root{ display:block !important; }
+    html,body{ background:#fff !important; }
+    @page{ margin:0.6in; }
+  }
+  #print-root .pd{ color:#1b1b1b; font:13px/1.55 Georgia,"Times New Roman",serif; max-width:7.3in; }
+  #print-root .pd-head{ display:flex; align-items:center; gap:14px; border-bottom:2px solid #b8902f; padding-bottom:10px; margin-bottom:14px; }
+  #print-root .pd-logo{ width:76px; height:76px; object-fit:contain; }
+  #print-root .pd-org-name{ font-size:18px; font-weight:700; color:#3a5a40; }
+  #print-root .pd-org-line{ font-size:11px; color:#444; }
+  #print-root .pd-title{ margin-left:auto; text-align:right; font-size:20px; font-weight:700; color:#b8902f; letter-spacing:.4px; }
+  #print-root .pd-meta{ display:flex; flex-wrap:wrap; gap:8px 26px; font-size:12px; margin-bottom:12px; }
+  #print-root .pd-k{ color:#8a8a8a; }
+  #print-root .pd-greeting{ margin:0 0 14px; }
+  #print-root .pd-greeting p{ margin:0 0 8px; }
+  #print-root .pd-sec{ margin:14px 0; }
+  #print-root .pd-sec h3{ font-size:14px; color:#3a5a40; border-bottom:1px solid #e2e2e2; padding-bottom:3px; margin:0 0 8px; }
+  #print-root .pd-muted{ color:#777; font-size:11px; margin:0 0 8px; }
+  #print-root .pd-layer{ margin:0 0 11px; break-inside:avoid; }
+  #print-root .pd-layer-h{ display:flex; align-items:baseline; gap:8px; }
+  #print-root .pd-num{ flex:0 0 auto; width:18px; height:18px; line-height:18px; text-align:center; background:#3a5a40; color:#fff; border-radius:50%; font-size:11px; }
+  #print-root .pd-layer-title{ font-weight:700; }
+  #print-root .pd-mean{ margin:3px 0 3px 26px; }
+  #print-root .pd-mean p{ margin:0 0 4px; }
+  #print-root .pd-rx{ margin:3px 0 0 26px; color:#3a5a40; }
+  #print-root .pd-find{ margin:0 0 7px; break-inside:avoid; }
+  #print-root .pd-foot{ margin-top:20px; padding-top:10px; border-top:1px solid #e2e2e2; font-style:italic; color:#555; font-size:12px; }
+  /* invoice table */
+  #print-root table.pd-lines{ width:100%; border-collapse:collapse; font-size:12.5px; margin:6px 0 12px; }
+  #print-root table.pd-lines th{ text-align:left; border-bottom:1.5px solid #3a5a40; padding:5px 6px; font-size:11px; color:#3a5a40; text-transform:uppercase; letter-spacing:.4px; }
+  #print-root table.pd-lines td{ padding:5px 6px; border-bottom:1px solid #ececec; }
+  #print-root table.pd-lines td.num{ text-align:right; white-space:nowrap; }
+  #print-root .pd-tot{ width:46%; margin-left:auto; font-size:12.5px; }
+  #print-root .pd-tot .r{ display:flex; justify-content:space-between; padding:3px 6px; }
+  #print-root .pd-tot .grand{ border-top:1.5px solid #3a5a40; margin-top:4px; padding-top:6px; font-weight:700; font-size:14px; }
+  #print-root .pd-paid{ display:inline-block; margin-top:8px; padding:3px 10px; border:1.5px solid #3a5a40; color:#3a5a40; border-radius:6px; font-weight:700; font-size:12px; }
 </style>
 </head>
 <body>
@@ -168,6 +210,8 @@
     <p class="err">We couldn’t find that link.</p>
     <p>Please check the link Dr. Glen &amp; Rae sent you, or reach out and we’ll send a fresh one.</p>
   </div>
+  <!-- Print/PDF surface: filled on demand by printReport(); shown only when printing. -->
+  <div id="print-root" aria-hidden="true"></div>
 
 <script>
 // The last path segment is either an emailed portal token or the literal "me"
@@ -212,6 +256,61 @@ const fmtDate = (d)=>{
   if(isNaN(dt)) return String(d);
   return dt.toLocaleDateString("en-US", {month:"short", day:"numeric", year:"numeric"});
 };
+
+// ── Print / Save-as-PDF ──────────────────────────────────────────────────────
+// Each builder returns a self-contained document (logo header + ONLY that
+// document's content) injected into #print-root. The @media print CSS hides
+// everything else, so the saved PDF never includes nav, account, chat, the
+// ambassador card, or the journey shell. esc/escGreeting/fmtDate are reused.
+const PRINT_HEADER = (title)=>`
+  <div class="pd-head">
+    <img class="pd-logo" src="/static/favicon.png" alt="Remedy Match LLC logo">
+    <div class="pd-org">
+      <div class="pd-org-name">Remedy Match LLC</div>
+      <div class="pd-org-line">351 Wailuku Drive, Hilo, Hawai‘i 96720</div>
+      <div class="pd-org-line">(808) 217-9647 · illtowell.com</div>
+    </div>
+    <div class="pd-title">${esc(title)}</div>
+  </div>`;
+
+function buildReportPrintHtml(d){
+  d = d || {};
+  const name = d.name || "";
+  const when = d.scan_date ? fmtDate(d.scan_date) : "";
+  const layers = Array.isArray(d.layers) ? d.layers : [];
+  const findings = Array.isArray(d.findings) ? d.findings : [];
+  const path = layers.map((L,i)=>`
+    <div class="pd-layer">
+      <div class="pd-layer-h"><span class="pd-num">${esc(L.n!=null?L.n:i+1)}</span><span class="pd-layer-title">${esc(L.title||"")}</span></div>
+      ${L.meaning?`<div class="pd-mean">${escGreeting(L.meaning)}</div>`:""}
+      ${L.remedy?`<div class="pd-rx"><b>${esc(L.remedy)}</b>${L.dosing?` — ${esc(L.dosing)}`:""}</div>`:""}
+    </div>`).join("");
+  const finds = findings.length ? `<div class="pd-sec"><h3>What we observed</h3>${findings.map(f=>`
+      <div class="pd-find"><b>${esc(f.name||f.code||"")}</b>${f.description?`<div>${esc(f.description)}</div>`:""}</div>`).join("")}</div>` : "";
+  return `<div class="pd report">
+    ${PRINT_HEADER("Biofield Analysis")}
+    <div class="pd-meta">
+      ${name?`<div><span class="pd-k">Prepared for</span> ${esc(name)}</div>`:""}
+      ${when?`<div><span class="pd-k">Scan date</span> ${esc(when)}</div>`:""}
+    </div>
+    ${d.greeting?`<div class="pd-greeting">${escGreeting(d.greeting)}</div>`:""}
+    ${path?`<div class="pd-sec"><h3>Your healing path</h3><p class="pd-muted">From the surface layer down to the deepest root — supported in order, so the whole chain unwinds.</p>${path}</div>`:""}
+    ${finds}
+    <div class="pd-foot">It is an honor to be on your wellness team. — Dr. Glen &amp; Rae</div>
+  </div>`;
+}
+
+function printDoc(html){
+  const root = document.getElementById("print-root");
+  if(!root) return;
+  root.innerHTML = html;
+  // Let the logo decode before the print dialog so it appears in the PDF.
+  const img = root.querySelector(".pd-logo");
+  const go = ()=>{ try{ window.print(); }finally{ /* leave content; harmless, hidden on screen */ } };
+  if(img && !img.complete){ img.onload = go; img.onerror = go; setTimeout(go, 1200); }
+  else { go(); }
+}
+function printReport(){ printDoc(buildReportPrintHtml(window.__reportData)); }
 // Inline SVG icons (no emoji), matching the page's stroked-icon style.
 const ICON_INFO = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>';
 const ICON_LOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
@@ -283,6 +382,7 @@ function render(d, v){
     return;   // suppress the home until agreed
   }
   const app = document.getElementById("app");
+  try{ window.__reportData = d; }catch(e){}   // for printReport()
   const displayName = d.name || (v && v.account && v.account.name) || "";
   // Greet by real first name; never show an email-derived token. A name that is
   // blank, or whose first word contains "@" or "." (e.g. "bob@x.com" stored as a
@@ -486,6 +586,7 @@ function render(d, v){
         <p class="muted small">From the surface layer down to the deepest root, we support them in order, and the whole chain unwinds.</p>
         <div class="path">${path}</div>
         ${extra}
+        ${status === "confirmed" ? `<div style="margin-top:1.1rem"><button class="btn" onclick="printReport()">🖨 Save Report as PDF</button></div>` : ""}
         ${status !== "confirmed" ? disclose : ""}</div>`;
     }
   }

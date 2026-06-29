@@ -17,12 +17,16 @@
   .line:last-child { border-bottom:0; }
   .line .nm { flex:1; font-size:14px; }
   .line .pr { color:var(--muted); font-size:13px; min-width:72px; text-align:right; }
+  .line.svc .nm { font-weight:600; }
+  .line .anchor { display:block; color:var(--muted); font-size:11px; margin-top:2px; }
+  .line .anchor s { opacity:.85; }
   .qty { display:flex; align-items:center; gap:6px; }
   .qty button { width:26px; height:26px; border:1px solid var(--border); background:#fff; border-radius:6px; cursor:pointer; font-size:15px; }
   .qty input { width:40px; text-align:center; padding:4px; border:1px solid var(--border); border-radius:6px; }
   .totals { font-size:14px; }
   .totals .row { display:flex; justify-content:space-between; padding:4px 0; }
   .totals .grand { font-weight:700; font-size:17px; border-top:1px solid var(--border); margin-top:6px; padding-top:8px; }
+  .totals .save { color:#2f7d4f; font-weight:600; }
   select, input[type=text] { padding:8px; border:1px solid var(--border); border-radius:8px; font-size:14px; }
   button.primary { background:var(--brand); color:#fff; border:0; border-radius:8px; padding:11px 18px; font-size:14px; font-weight:600; cursor:pointer; }
   button.ghost { background:#fff; color:var(--brand); border:1px solid var(--border); border-radius:8px; padding:9px 14px; font-size:13px; cursor:pointer; }
@@ -36,12 +40,44 @@
   .sugg button { margin:4px 4px 0 0; }
   .row-add { display:flex; gap:8px; margin-top:10px; }
   .muted { color:var(--muted); font-size:12px; }
+
+  /* ── Print / Save-as-PDF: render ONLY #print-root (no chat, no pay buttons). ── */
+  #print-root{ display:none; }
+  @media print{
+    body > *:not(#print-root){ display:none !important; }
+    #print-root{ display:block !important; }
+    html,body{ background:#fff !important; }
+    @page{ margin:0.6in; }
+  }
+  #print-root .pd{ color:#1b1b1b; font:13px/1.55 Georgia,"Times New Roman",serif; max-width:7.3in; }
+  #print-root .pd-head{ display:flex; align-items:center; gap:14px; border-bottom:2px solid #b8902f; padding-bottom:10px; margin-bottom:14px; }
+  #print-root .pd-logo{ width:76px; height:76px; object-fit:contain; }
+  #print-root .pd-org-name{ font-size:18px; font-weight:700; color:#3a5a40; }
+  #print-root .pd-org-line{ font-size:11px; color:#444; }
+  #print-root .pd-title{ margin-left:auto; text-align:right; font-size:20px; font-weight:700; color:#b8902f; letter-spacing:.4px; }
+  #print-root .pd-meta{ display:flex; flex-wrap:wrap; gap:8px 26px; font-size:12px; margin-bottom:14px; }
+  #print-root .pd-k{ color:#8a8a8a; }
+  #print-root table.pd-lines{ width:100%; border-collapse:collapse; font-size:12.5px; margin:6px 0 12px; }
+  #print-root table.pd-lines th{ text-align:left; border-bottom:1.5px solid #3a5a40; padding:5px 6px; font-size:11px; color:#3a5a40; text-transform:uppercase; letter-spacing:.4px; }
+  #print-root table.pd-lines td{ padding:5px 6px; border-bottom:1px solid #ececec; }
+  #print-root table.pd-lines td.num,#print-root table.pd-lines th.num{ text-align:right; white-space:nowrap; }
+  #print-root table.pd-lines tr.svc td:first-child{ font-weight:700; }
+  #print-root table.pd-lines td.anc{ color:#9a9a9a; font-size:11px; }
+  #print-root .pd-tot .save{ color:#3a5a40; font-weight:700; }
+  #print-root .pd-anchor{ font-weight:400; font-size:10.5px; color:#8a8a8a; margin-top:2px; }
+  #print-root .pd-anchor s{ opacity:.85; }
+  #print-root .pd-tot{ width:48%; margin-left:auto; font-size:12.5px; }
+  #print-root .pd-tot .r{ display:flex; justify-content:space-between; padding:3px 6px; }
+  #print-root .pd-tot .grand{ border-top:1.5px solid #3a5a40; margin-top:4px; padding-top:6px; font-weight:700; font-size:14px; }
+  #print-root .pd-paid{ display:inline-block; margin-top:12px; padding:3px 10px; border:1.5px solid #3a5a40; color:#3a5a40; border-radius:6px; font-weight:700; font-size:12px; }
+  #print-root .pd-foot{ margin-top:20px; padding-top:10px; border-top:1px solid #e2e2e2; font-style:italic; color:#555; font-size:12px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Your Remedy Match invoice</h1>
   <div class="ref" id="ref">Loading…</div>
+  <button class="ghost" id="print-btn" onclick="printInvoice()" style="display:none;margin-bottom:16px">🖨 Save Invoice as PDF</button>
 
   <div id="paid-banner" class="paid" style="display:none">This invoice is paid. Mahalo! 🌿</div>
 
@@ -83,33 +119,123 @@
     <div id="pay-msg" class="muted" style="margin-top:8px"></div>
   </div>
 </div>
+<!-- Print/PDF surface: filled on demand by printInvoice(); shown only when printing. -->
+<div id="print-root" aria-hidden="true"></div>
 
 <script>
 const TOKEN = location.pathname.split('/').filter(Boolean).pop();
 const API = '/api/invoice/' + TOKEN;
 let ORDER = null, LINES = [], CATALOG = [], curMethod = 'card';
 const $ = id => document.getElementById(id);
-const money = c => '$' + (Number(c||0)/100).toFixed(2);
+const money = c => '$' + (Number(c||0)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+// A service-fee line (e.g. Biofield Analysis) shows struck-through Value/Regular
+// anchors above its per-client Special (unit_cents). `inline` = on-screen <span>,
+// else a block <div> for the print table cell.
+function svcAnchor(l, inline){
+  if(!l) return '';
+  const price = l.unit_cents||0, p=[];
+  if(l.srp_cents && l.srp_cents>price) p.push('Value <s>'+money(l.srp_cents)+'</s>');
+  // Show Regular only when it's a distinct middle tier (e.g. the service); for
+  // products Regular == Value, so we don't repeat it on screen.
+  if(l.regular_cents && l.regular_cents>price && l.regular_cents!==l.srp_cents)
+    p.push('Regular <s>'+money(l.regular_cents)+'</s>');
+  if(!p.length) return '';
+  return inline ? ' <span class="anchor">'+p.join(' · ')+'</span>'
+                : '<div class="pd-anchor">'+p.join(' · ')+'</div>';
+}
+// Total saved vs Value (SRP) across all lines — the comparative-savings figure.
+function totalSavings(lines){
+  return (lines||[]).reduce((s,l)=>{ const pr=l.unit_cents||0;
+    return s + ((l.srp_cents && l.srp_cents>pr) ? (l.srp_cents-pr)*(l.qty||0) : 0); }, 0);
+}
+// Service-fee lines sort to the TOP of the invoice; otherwise original order is kept.
+function svcFirst(lines){ return lines.map((x,i)=>[x,i])
+  .sort((a,b)=>((b[0]&&b[0].service?1:0)-(a[0]&&a[0].service?1:0))||(a[1]-b[1])); }
 
 async function load() {
   const r = await fetch(API);
   if (!r.ok) { $('ref').textContent = 'This invoice link is invalid or expired.'; return; }
   const j = await r.json(); ORDER = j.order;
   $('ref').textContent = 'Invoice ' + (ORDER.external_ref||'') + ' · for ' + (ORDER.name||'you');
-  LINES = ORDER.lines.map(l => ({slug:l.slug, name:l.name, qty:l.qty, unit_cents:l.unit_cents}));
+  LINES = ORDER.lines.map(l => ({slug:l.slug, name:l.name, qty:l.qty, unit_cents:l.unit_cents,
+    service:l.service, service_value_cents:l.service_value_cents, service_regular_cents:l.service_regular_cents}));
   if (ORDER.pay_status === 'paid' || !ORDER.editable) {
     $('paid-banner').style.display = ORDER.pay_status==='paid' ? 'block' : 'none';
   }
   renderLines(); renderTotals(); setupPay();
+  $('print-btn').style.display = 'inline-block';
   try { const cr = await fetch('/api/products?all=1'); CATALOG = (await cr.json()).products||[]; fillAdd(); } catch(e){}
 }
+
+// ── Print / Save-as-PDF: a self-contained invoice (logo header + line items +
+// totals only) into #print-root; @media print hides the rest (chat, pay UI). ──
+const PRINT_HEADER = (title)=>`
+  <div class="pd-head">
+    <img class="pd-logo" src="/static/favicon.png" alt="Remedy Match LLC logo">
+    <div class="pd-org">
+      <div class="pd-org-name">Remedy Match LLC</div>
+      <div class="pd-org-line">351 Wailuku Drive, Hilo, Hawai‘i 96720</div>
+      <div class="pd-org-line">(808) 217-9647 · illtowell.com</div>
+    </div>
+    <div class="pd-title">${esc(title)}</div>
+  </div>`;
+function buildInvoicePrintHtml(o){
+  o = o || {};
+  const lines = Array.isArray(o.lines) ? o.lines : [];
+  const anc = (v,price)=> (v && v>price) ? '<s>'+money(v)+'</s>' : '';
+  const rows = svcFirst(lines).map(([l])=>{
+    const price = l.unit_cents||0, qty = l.qty||0;
+    return `<tr${l.service?' class="svc"':''}>`
+      + `<td>${esc(l.name||l.slug||'')}</td>`
+      + `<td class="num anc">${anc(l.srp_cents, price)}</td>`
+      + `<td class="num anc">${anc(l.regular_cents, price)}</td>`
+      + `<td class="num">${money(price)}</td><td class="num">${esc(qty)}</td>`
+      + `<td class="num">${money(price*qty)}</td></tr>`;
+  }).join('');
+  const r = (lbl,v,neg,cls)=>`<div class="r${cls?' '+cls:''}"><span>${esc(lbl)}</span><span>${neg?'−':''}${money(v)}</span></div>`;
+  let tot = r('Subtotal', o.subtotal_cents);
+  if(o.discount_cents) tot += r('Discount', o.discount_cents, true);
+  tot += r('Shipping', o.shipping_cents);
+  if(o.get_cents) tot += r('Hawai‘i GET (absorbed)', o.get_cents);
+  if(o.points_redeemed_cents) tot += r('Points', o.points_redeemed_cents, true);
+  tot += `<div class="r grand"><span>Total</span><span>${money(o.total_cents)}</span></div>`;
+  const savings = totalSavings(lines);
+  if(savings>0) tot += r('You save', savings, false, 'save');
+  const today = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+  return `<div class="pd invoice">
+    ${PRINT_HEADER("Invoice")}
+    <div class="pd-meta">
+      ${o.external_ref?`<div><span class="pd-k">Invoice</span> ${esc(o.external_ref)}</div>`:""}
+      ${o.name?`<div><span class="pd-k">Billed to</span> ${esc(o.name)}</div>`:""}
+      <div><span class="pd-k">Date</span> ${esc(today)}</div>
+    </div>
+    <table class="pd-lines"><thead><tr><th>Item</th><th class="num">Value</th><th class="num">Regular</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Amount</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6">No items.</td></tr>'}</tbody></table>
+    <div class="pd-tot">${tot}</div>
+    ${o.pay_status==='paid' ? `<div class="pd-paid">PAID — Mahalo 🌿</div>` : ''}
+    <div class="pd-foot">Thank you. Questions? (808) 217-9647 · Remedy Match LLC, Hilo, Hawai‘i</div>
+  </div>`;
+}
+function printInvoice(){
+  const root = document.getElementById('print-root');
+  if(!root || !ORDER) return;
+  root.innerHTML = buildInvoicePrintHtml(ORDER);
+  const img = root.querySelector('.pd-logo');
+  const go = ()=>{ window.print(); };
+  if(img && !img.complete){ img.onload = go; img.onerror = go; setTimeout(go, 1200); }
+  else { go(); }
+}
 function renderLines() {
-  $('lines').innerHTML = LINES.map((l,i) =>
-    '<div class="line"><span class="nm">'+esc(l.name)+'</span>'
-    + (ORDER.editable ? '<span class="qty"><button onclick="bump('+i+',-1)">−</button>'
-        + '<input type="number" min="0" value="'+l.qty+'" onchange="setQty('+i+',this.value)">'
-        + '<button onclick="bump('+i+',1)">+</button></span>' : '<span class="muted">×'+l.qty+'</span>')
-    + '<span class="pr">'+money(l.unit_cents*l.qty)+'</span></div>').join('') || '<div class="muted">No items.</div>';
+  // Services to the top; keep the ORIGINAL index for the qty controls (LINES order
+  // is unchanged, so bump/setQty/pushUpdate still address the right line).
+  $('lines').innerHTML = svcFirst(LINES).map(([l,i]) => {
+    const qty = l.service ? '<span class="muted">×'+l.qty+'</span>'
+      : (ORDER.editable ? '<span class="qty"><button onclick="bump('+i+',-1)">−</button>'
+          + '<input type="number" min="0" value="'+l.qty+'" onchange="setQty('+i+',this.value)">'
+          + '<button onclick="bump('+i+',1)">+</button></span>' : '<span class="muted">×'+l.qty+'</span>');
+    return '<div class="line'+(l.service?' svc':'')+'"><span class="nm">'+esc(l.name)+svcAnchor(l,true)+'</span>'
+      + qty + '<span class="pr">'+money(l.unit_cents*l.qty)+'</span></div>';
+  }).join('') || '<div class="muted">No items.</div>';
   $('add-row').style.display = ORDER.editable ? 'flex' : 'none';
 }
 function renderTotals() {
@@ -126,7 +252,8 @@ function renderTotals() {
     row('Subtotal', t.subtotal_cents) + (t.discount_cents?row('Discount','-'+money(t.discount_cents),true):'')
     + row('Shipping', t.shipping_cents) + (t.get_cents?row('Hawai‘i GET (absorbed)', t.get_cents):'')
     + pointsRow
-    + '<div class="row grand"><span>Total</span><span>'+money(t.total_cents)+'</span></div>';
+    + '<div class="row grand"><span>Total</span><span>'+money(t.total_cents)+'</span></div>'
+    + (totalSavings(ORDER.lines)>0 ? '<div class="row save"><span>You save</span><span>'+money(totalSavings(ORDER.lines))+'</span></div>' : '');
 }
 async function applyPoints(){
   const cents = Math.max(0, Math.round(parseFloat(($('pts-in')||{}).value||'0')*100));
@@ -145,7 +272,8 @@ async function pushUpdate(){
   const lines = LINES.filter(l=>l.qty>0).map(l=>({slug:l.slug, qty:l.qty}));
   const r = await fetch(API+'/update', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({lines})});
   const j = await r.json(); if(!j.ok){ alert(j.error||'update failed'); return; }
-  ORDER=j.order; LINES=ORDER.lines.map(l=>({slug:l.slug,name:l.name,qty:l.qty,unit_cents:l.unit_cents}));
+  ORDER=j.order; LINES=ORDER.lines.map(l=>({slug:l.slug,name:l.name,qty:l.qty,unit_cents:l.unit_cents,
+    service:l.service, service_value_cents:l.service_value_cents, service_regular_cents:l.service_regular_cents}));
   renderLines(); renderTotals();
 }
 function setupPay(){

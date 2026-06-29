@@ -4173,6 +4173,8 @@ _ALT_PAY = {
 # drops by quantity (Glen 2026-05-30): 3+ $59.97, 6+ $49.97, 12+ $39.97. Applies only
 # to products flagged qty_pricing=true in products.json (capsule + $69.97).
 _QTY_TIERS = [(12, 3997), (6, 4997), (3, 5997), (1, 6997)]   # (min_qty, unit_cents) desc
+_FF_BASE_CENTS = 6997     # $69.97 — the functional-formulation (FF) capsule regular price
+_FF_SRP_CENTS  = 8000     # $80.00 — FF SRP/Value anchor (shown above the $69.97 Regular)
 _FORMATS = [
     {"id": "bottle", "label": "Standard bottles", "note": "30 capsules per bottle"},
     {"id": "larger", "label": "Larger bottle", "note": "90, 180, or 360 capsules in one bottle (quantity 3, 6, or 12)"},
@@ -25484,6 +25486,29 @@ def _invoice_points_balance(order):
         cx.close()
 
 
+def _invoice_line_view(l):
+    """Customer-safe line + service-fee anchoring. A line whose product is a
+    `service` (e.g. Biofield Analysis) carries its catalog Value/Regular anchors so
+    the invoice can sort it to the top and show them above the per-client Special
+    (unit_cents). Public page can't reach the console catalog API, so resolve here."""
+    out = {"slug": l.get("slug"), "name": l.get("name"), "qty": int(l.get("qty") or 0),
+           "unit_cents": int(l.get("unit_cents") or 0), "line_cents": int(l.get("line_cents") or 0)}
+    p = _get_product(l.get("slug") or "")
+    if p:
+        if p.get("service"):
+            # Service fee carries explicit Value(SRP)/Regular anchors + sorts to top.
+            out["service"] = True
+            out["srp_cents"] = p.get("service_value_cents")
+            out["regular_cents"] = p.get("service_regular_cents")
+        else:
+            base = p.get("price_cents")
+            out["regular_cents"] = base
+            # FF ($69.97 functional-formulation capsules) carry an $80 SRP/Value above
+            # the $69.97 Regular; other products have no distinct SRP (Value == Regular).
+            out["srp_cents"] = _FF_SRP_CENTS if (base == _FF_BASE_CENTS and not p.get("info_only")) else base
+    return out
+
+
 def _invoice_summary(order):
     """Customer-safe view — no person_id, notes, phone, or full address."""
     lines = order.get("items") or []
@@ -25492,9 +25517,7 @@ def _invoice_summary(order):
         "points_balance_cents": _invoice_points_balance(order),
         "external_ref": order.get("external_ref"),
         "name": order.get("name") or "",
-        "lines": [{"slug": l.get("slug"), "name": l.get("name"), "qty": int(l.get("qty") or 0),
-                   "unit_cents": int(l.get("unit_cents") or 0),
-                   "line_cents": int(l.get("line_cents") or 0)} for l in lines],
+        "lines": [_invoice_line_view(l) for l in lines],
         "subtotal_cents": subtotal,
         "discount_cents": int(order.get("discount_cents") or 0),
         "shipping_cents": int(order.get("shipping_cents") or 0),

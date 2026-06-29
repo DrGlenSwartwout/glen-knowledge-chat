@@ -59,7 +59,12 @@ def catalog(with_ingredients_only=True, include_inactive=False):
             continue
         out.append({"slug": s, "name": p.get("name"), "price_cents": p.get("price_cents"),
                     "ingredients": p.get("ingredients", []), "description": p.get("description", ""),
-                    "ingredients_source": p.get("ingredients_source"), "gk_stale": bool(p.get("gk_stale"))})
+                    "ingredients_source": p.get("ingredients_source"), "gk_stale": bool(p.get("gk_stale")),
+                    # Service-fee lines (e.g. Biofield Analysis): the invoice sorts these to the
+                    # top and shows the Value/Regular anchors above the per-client Special price.
+                    "service": bool(p.get("service")),
+                    "service_value_cents": p.get("service_value_cents"),
+                    "service_regular_cents": p.get("service_regular_cents")})
     out.sort(key=lambda x: (x["name"] or "").lower())
     return out
 
