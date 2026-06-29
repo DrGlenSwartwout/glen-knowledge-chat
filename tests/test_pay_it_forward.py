@@ -224,6 +224,12 @@ def test_giver_note_blank_for_other_owner():
     assert pif._giver_note(cx, "a@x.com", "b@x.com") == ""  # not this giver's note
 
 
+def test_giver_note_at_exact_threshold_passes():
+    cx = _cx()
+    _gift_note(cx, owner="a@x.com", referee="b@x.com", compliance=7)  # exactly the threshold
+    assert pif._giver_note(cx, "a@x.com", "b@x.com") == "helps my sleep"
+
+
 def test_giver_note_blank_when_no_row():
     cx = _cx()
     from dashboard import product_reviews as pr
