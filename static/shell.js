@@ -303,13 +303,18 @@
             window.__JQUEST__ && typeof window.__JQUEST__.render === "function") {
           window.__JQUEST__.render();
         }
-        var overlay = buildOverlay(journey, res[1]);
-        // Default: open the pavilion overlay.  Switch to quest if __JQUEST__ already
-        // resolved (covers the race where journey-quest.js fetched faster than us).
-        // journey-quest.js hooks this same button via DOM query when IT resolves last.
-        ui.mapBtn.onclick = function () { overlay.classList.add("open"); };
-        if (window.__SHELL__ && window.__SHELL__.questEnabled && window.__JQUEST__) {
-          ui.mapBtn.onclick = function () { window.__JQUEST__.open(); };
+        // When the quest is enabled it OWNS the map button (decided at CLICK time, so
+        // script load order can't matter) and the old pavilion overlay is not built at
+        // all — otherwise the button could fall through to the pavilion "cards".
+        if (window.__SHELL__ && window.__SHELL__.questEnabled) {
+          ui.mapBtn.onclick = function () {
+            if (window.__JQUEST__ && typeof window.__JQUEST__.open === "function") {
+              window.__JQUEST__.open();
+            }
+          };
+        } else {
+          var overlay = buildOverlay(journey, res[1]);
+          ui.mapBtn.onclick = function () { overlay.classList.add("open"); };
         }
         refreshWallet();
       } else ui.path.appendChild(el("span", "js-land", "illtowell.com"));
