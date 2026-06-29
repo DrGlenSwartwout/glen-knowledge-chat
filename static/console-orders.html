@@ -101,10 +101,10 @@
     var items = (o.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||''); }).join(', ');
     var age = ageStr(o.created_at);
     var acts = '';
-    if (o.status==='proposed') acts = btn(o.id,'orders.confirm','Confirm') + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
-    else if (o.status==='confirmed') acts = btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
-    else if (o.status==='new' && !isPaidReady(o)) acts = btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
-    else if (o.status==='new')     acts = btn(o.id,'orders.mark_packed','Pack') + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + printInvBtn(o.id);
+    if (o.status==='proposed') acts = editBtn(o.id) + ' ' + btn(o.id,'orders.confirm','Confirm') + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
+    else if (o.status==='confirmed') acts = editBtn(o.id) + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
+    else if (o.status==='new' && !isPaidReady(o)) acts = editBtn(o.id) + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
+    else if (o.status==='new')     acts = editBtn(o.id) + ' ' + btn(o.id,'orders.mark_packed','Pack') + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + printInvBtn(o.id);
     else if (o.status==='packed') acts = btn(o.id,'orders.create_label','Create label') + ' ' + shipBtn(o.id);
     else if (o.status==='shipped') acts = btn(o.id,'orders.send_tracking','Send tracking') + ' ' + btn(o.id,'orders.mark_delivered','Mark delivered') + ' ' + btn(o.id,'orders.mark_done','Mark done');
     if (o.pay_status === 'claimed') acts = '<button onclick="confirmClaimed(' + Number(o.id) + ",'" + String(o.pay_method || '').replace(/'/g, '') + "'" + ')">Confirm payment' + (o.pay_method ? ' (' + esc(o.pay_method) + ')' : '') + '</button> ' + acts;
@@ -163,6 +163,9 @@
   function shipBtn(id){ return '<button onclick="ship('+Number(id)+')">Ship + tracking</button>'; }
   function payBtn(id){ return '<button onclick="recordPay('+Number(id)+')">Record payment</button>'; }
   function printInvBtn(id){ return '<button onclick="printInvoice('+Number(id)+')">Print invoice</button>'; }
+  function editBtn(id){ return '<button onclick="editInvoice('+Number(id)+')">Edit</button>'; }
+  // Open the data-entry form in edit mode (prefilled with this order's lines/prices).
+  function editInvoice(id){ location.href = '/orders/new?edit_order='+Number(id)+'&key='+encodeURIComponent(key()); }
   // Open the customer invoice page (with ?print=1 to auto-trigger the print dialog).
   // Open a blank tab synchronously first so the async fetch doesn't trip popup blockers.
   function printInvoice(id){
