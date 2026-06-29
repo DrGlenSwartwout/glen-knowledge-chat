@@ -8482,6 +8482,63 @@ def _validate_membership_magic_link(token):
     return email
 
 
+def _mint_gift_note_link(email, *, order_ref, ttl_min=60 * 24 * 30):
+    """Single-use token (purpose pif_gift_note, 30-day TTL) carrying the redemption
+    order_ref so the submit can attribute the note to the giver + product.
+    Returns plaintext token; caller emails it."""
+    import secrets, json
+    plain = secrets.token_urlsafe(32)
+    th = _hash_token(plain)
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    exp_iso = (datetime.utcnow() + timedelta(minutes=int(ttl_min))).isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (th, (email or "").strip().lower(), "pif_gift_note",
+             json.dumps({"order_ref": order_ref or ""}), now_iso, exp_iso))
+    return plain
+
+
+def _validate_gift_note_link(token):
+    """Return {'email', 'order_ref'} for a valid (purpose, unconsumed, unexpired)
+    pif_gift_note token, else None. Does NOT consume."""
+    if not token:
+        return None
+    import json
+    th = _hash_token(token)
+    with sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email, extra, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose='pif_gift_note'", (th,)).fetchone()
+    if not row:
+        return None
+    email, extra, expires_at, consumed_at = row
+    if consumed_at:
+        return None
+    try:
+        if datetime.fromisoformat(expires_at.rstrip("Z")) < datetime.utcnow():
+            return None
+    except Exception:
+        return None
+    try:
+        order_ref = (json.loads(extra or "{}") or {}).get("order_ref", "")
+    except Exception:
+        order_ref = ""
+    return {"email": email, "order_ref": order_ref}
+
+
+def _consume_gift_note_token(token):
+    """Mark a pif_gift_note token consumed (single-use). Best-effort."""
+    if not token:
+        return
+    th = _hash_token(token)
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=? AND purpose='pif_gift_note'",
+                   (now_iso, th))
+
+
 def _mint_lead_magnet_guide_link(email, ttl_min=60 * 24 * 30):
     """Single-use token (purpose lead_magnet_guide, 30-day TTL) for the free-guide
     download. Returns plaintext token; caller emails/returns it."""
