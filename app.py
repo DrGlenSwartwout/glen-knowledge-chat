@@ -4953,7 +4953,8 @@ def begin_product_page_data(slug):
                 _agg = _pr.aggregate(_rcx, slug)
                 _approved = _pr.approved_for_slug(_rcx, slug)
             _revs = [{"name": (r.get("name") or "A verified buyer"),
-                      "rating": r.get("rating"), "body": r.get("body") or ""}
+                      "rating": (None if (r.get("kind") == "gift") else r.get("rating")),
+                      "body": r.get("body") or ""}
                      for r in _approved if (r.get("body") or "").strip()]
             _rsec = {"id": "reviews", "title": "What people are saying", "default_open": False,
                      "body": {"aggregate": _agg, "reviews": _revs,
