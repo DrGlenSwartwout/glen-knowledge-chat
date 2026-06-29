@@ -1959,6 +1959,17 @@ def begin_quiz_optin():
     return resp
 
 
+@app.route("/begin/doorway")
+def begin_doorway():
+    resp = send_from_directory(STATIC, "begin-doorway.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 @app.route("/begin/doorway/opt-in", methods=["POST", "OPTIONS"])
 def begin_doorway_optin():
     if request.method == "OPTIONS":
