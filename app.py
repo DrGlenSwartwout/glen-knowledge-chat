@@ -8203,9 +8203,9 @@ def _init_referral_tables():
                 INSERT INTO affiliate_offers (sort_order, name, description, url_template, active)
                 VALUES (1, 'Accelerate Self-Healing Quiz',
                     'Free quiz — discover your top healing opportunities. Share with anyone curious about natural healing.',
-                    f"{PUBLIC_BASE_URL}/begin/doorway?ref={{slug}}",
+                    ?,
                     1)
-            """)
+            """, (f"{PUBLIC_BASE_URL}/begin/doorway?ref={{slug}}",))
         # Seed E4L bioenergetic wellness scan
         E4L_INSTRUCTIONS = (
             "New here? Get a free account at https://truly.vip/E4L\n"
