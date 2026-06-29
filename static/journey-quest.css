@@ -152,10 +152,7 @@
   transition: box-shadow 0.2s;
 }
 
-.jq-overlay .jq-stage .jq-hot:hover {
-  box-shadow: 0 0 0 2px rgba(212, 168, 67, 0.5) inset;
-  background: rgba(212, 168, 67, 0.08);
-}
+/* No hover ring — hotspots stay fully invisible; the hunt is by AUDIO proximity. */
 
 /* ---------- POPUP TOOLTIP ---------- */
 .jq-overlay .jq-stage .jq-pop {
