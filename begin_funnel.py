@@ -131,7 +131,7 @@ def infer_awareness_heuristic(want, gates, query_texts):
 
 WANT_TARGETS = {
     "e4l":     "https://truly.vip/E4L",
-    "quiz":    "https://healing.scoreapp.com",
+    "quiz":    "/begin/doorway",
     "join":    "https://truly.vip/Join",
     "results": "https://truly.vip/Results",
     "voice":   "/begin/voice",
@@ -383,9 +383,9 @@ def set_awareness(cx, session_id, stage):
 # ---------------------------------------------------------------------------
 
 CARD_CATALOG = {
-    "quiz":               {"title": "Discover Your Healing Path",
-                           "sub": "Uncover your top wellness opportunities in 3 minutes",
-                           "base_url": "https://healing.scoreapp.com", "internal": False},
+    "quiz":               {"title": "Speak with your guide",
+                           "sub": "Say what you are living with. In a minute, hear what your body is asking for.",
+                           "base_url": "/begin/doorway", "internal": True},
     "e4l_scan":           {"title": "Your Voice Reveals What Your Body Knows",
                            "sub": "A 10-second scan shows your body's current priorities",
                            "base_url": "https://truly.vip/E4L", "internal": False},

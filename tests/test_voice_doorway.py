@@ -21,3 +21,15 @@ def test_voice_signal_tags_empty_is_empty():
 
 def test_voice_signal_tags_polyvagal_string_ok():
     assert "state:sympathetic" in voice_signal_tags({"polyvagal_state": "sympathetic"})
+
+
+def test_quiz_land_repointed_to_internal_doorway():
+    import importlib, begin_funnel
+    importlib.reload(begin_funnel)
+    card = begin_funnel.CARD_CATALOG["quiz"]
+    assert card["base_url"] == "/begin/doorway"
+    assert card["internal"] is True
+    assert begin_funnel.WANT_TARGETS["quiz"] == "/begin/doorway"
+    # no scoreapp URL left in the funnel land config
+    import json as _j
+    assert "scoreapp.com" not in _j.dumps(begin_funnel.CARD_CATALOG["quiz"])
