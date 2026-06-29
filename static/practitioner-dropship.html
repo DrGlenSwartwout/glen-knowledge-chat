@@ -70,6 +70,15 @@
   </div>
 
   <div id="main-content" style="display:none">
+    <!-- Product assistant — inline chat at the top of the portal -->
+    <div id="scoped-chat-panel">
+      <div id="scoped-chat-header">Product assistant</div>
+      <div id="scoped-chat-log"></div>
+      <div id="scoped-chat-input-row">
+        <input id="scoped-chat-input" placeholder="Ask about a product or condition&hellip;" autocomplete="off">
+        <button id="scoped-chat-send" onclick="scopedChatSend()">Send</button>
+      </div>
+    </div>
     <!-- Cart -->
     <div class="panel">
       <h2>Your Functional Formulations cart</h2>
@@ -337,20 +346,11 @@ loadPortalData();
 
 <!-- ── Scoped chat widget ─────────────────────────────────────────────────── -->
 <style>
-  #scoped-chat-launcher {
-    position: fixed; bottom: 24px; right: 24px; z-index: 9000;
-    background: var(--green); color: #fff; border: 0; border-radius: 28px;
-    padding: 12px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
-    font-family: var(--font); box-shadow: 0 4px 16px rgba(0,0,0,.35);
-    display: flex; align-items: center; gap: 8px;
-  }
+  #scoped-chat-launcher { display: none; }  /* replaced by an inline card at the top */
   #scoped-chat-panel {
-    position: fixed; bottom: 80px; right: 24px; z-index: 9000;
-    width: 340px; max-width: calc(100vw - 32px);
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,.4);
-    display: flex; flex-direction: column; max-height: 480px;
-    font-family: var(--font);
+    border-radius: 16px; display: flex; flex-direction: column; max-height: 420px;
+    font-family: var(--font); margin-bottom: 16px;
   }
   #scoped-chat-panel.hidden { display: none; }
   #scoped-chat-header {
@@ -393,25 +393,8 @@ loadPortalData();
   #scoped-chat-send:disabled { opacity: .5; cursor: default; }
 </style>
 
-<button id="scoped-chat-launcher" onclick="scopedChatToggle()">
-  &#128172; Ask for help
-</button>
-
-<div id="scoped-chat-panel" class="hidden">
-  <div id="scoped-chat-header">
-    Product assistant
-    <button id="scoped-chat-close" onclick="scopedChatToggle()" title="Close">&times;</button>
-  </div>
-  <div id="scoped-chat-log"></div>
-  <div id="scoped-chat-input-row">
-    <input id="scoped-chat-input" placeholder="Ask about a product or condition&hellip;" autocomplete="off">
-    <button id="scoped-chat-send" onclick="scopedChatSend()">Send</button>
-  </div>
-</div>
-
 <script>
 (function () {
-  var chatOpen = false;
   var chatHistory = [];
   var chatEndpoint = '/api/practitioner/chat';
 
@@ -424,14 +407,13 @@ loadPortalData();
     }).then(function(r){ return r.json(); }).then(function(d){ if(d.ok) loadQuote(); });
   }
 
-  window.scopedChatToggle = function () {
-    chatOpen = !chatOpen;
-    document.getElementById('scoped-chat-panel').classList.toggle('hidden', !chatOpen);
-    if (chatOpen && !document.getElementById('scoped-chat-log').children.length) {
+  // Inline chat is always shown; seed the greeting once on load.
+  function scopedChatGreet() {
+    var log = document.getElementById('scoped-chat-log');
+    if (log && !log.children.length) {
       scopedChatAppendBot('Hi! I can help you find the right Functional Formulations product. Describe a patient or condition and I\'ll suggest what to add to your drop-ship order.');
     }
-    if (chatOpen) document.getElementById('scoped-chat-input').focus();
-  };
+  }
 
   function scopedChatAppendUser(text) {
     var el = document.createElement('div');
@@ -502,6 +484,7 @@ loadPortalData();
   document.getElementById('scoped-chat-input').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') window.scopedChatSend();
   });
+  scopedChatGreet();
 })();
 </script>
 </body>
