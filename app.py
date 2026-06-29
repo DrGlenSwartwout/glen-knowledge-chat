@@ -4253,35 +4253,47 @@ def _is_paid_member(email):
         return False
 
 
+def _member_unit_prices(item):
+    """(regular_unit_cents, member_unit_cents, qty) for one order/invoice line, or
+    None when the line isn't a volume-eligible product. Resolves the product by
+    slug first (invoice lines carry it), else by canonical catalog NAME (order
+    items_rec store p["name"], no slug). Per-line _qty_unit_cents is the canonical
+    "missed discount" — exactly the pricing the portal reorder path
+    (_portal_priced_lines) applies, the trial buyer's actual reorder channel."""
+    from dashboard import practitioner_portal as _pp
+    cat = (_PRODUCTS.get("products") or {})
+    slug = (item.get("slug") or "").strip() or _pp.name_to_slug((item.get("name") or "").strip(), cat)
+    p = _get_product(slug) if slug else None
+    if not p or not _qty_eligible(p):
+        return None
+    try:
+        qty = max(1, min(int(item.get("qty") or 1), 99))
+    except (TypeError, ValueError):
+        qty = 1
+    return (_qty_unit_cents(p, qty, member=False), _qty_unit_cents(p, qty, member=True), qty)
+
+
+def _missed_member_discount_cents(lines):
+    """Σ over volume-eligible lines of max(0, regular − member) × qty — the quantity
+    discount a non-member leaves on the table on this set of lines (the invoice
+    'become a member and get $X back' figure)."""
+    total = 0
+    for it in (lines or []):
+        pr = _member_unit_prices(it)
+        if pr:
+            reg, mem, qty = pr
+            total += max(0, reg - mem) * qty
+    return max(0, total)
+
+
 def _trial_credit_for_email(cx, email):
     """Accrued trial-upgrade credit (cents) for a $1-trial buyer: the member volume
     discount they left on the table on in-window remedy orders, priced with the real
     catalog. Pure math lives in dashboard.trial_credit; this wires the pricing
-    callback. Returns 0 when there's no trial order / nothing eligible.
-
-    Per-line _qty_unit_cents is the canonical "missed discount" — it is exactly the
-    pricing the portal reorder path (_portal_priced_lines) applies, which is the
-    trial buyer's actual reorder channel."""
+    callback. Returns 0 when there's no trial order / nothing eligible."""
     from dashboard import trial_credit as _tc
-    from dashboard import practitioner_portal as _pp
-    cat = (_PRODUCTS.get("products") or {})
-
-    def price_line(item, order):
-        # Order line items are persisted by canonical catalog NAME (items_rec stores
-        # p["name"], no slug), so name_to_slug's exact-match branch resolves them. If
-        # items_rec ever gains a "slug" field, prefer item.get("slug") here.
-        slug = (item.get("slug") or "").strip() or _pp.name_to_slug((item.get("name") or "").strip(), cat)
-        p = _get_product(slug) if slug else None
-        if not p or not _qty_eligible(p):
-            return (0, 0, 0)
-        try:
-            qty = max(1, min(int(item.get("qty") or 1), 99))
-        except (TypeError, ValueError):
-            qty = 1
-        return (_qty_unit_cents(p, qty, member=False),
-                _qty_unit_cents(p, qty, member=True), qty)
-
-    return _tc.accrued_credit_cents(cx, email, price_line=price_line)
+    return _tc.accrued_credit_cents(
+        cx, email, price_line=lambda item, order: _member_unit_prices(item) or (0, 0, 0))
 
 
 # Recurring membership tiers (Group Coaching). One QBO Item, price set per tier.
@@ -11865,8 +11877,22 @@ def api_client_portal(token):
     from dashboard import notify_state as _ns
     with sqlite3.connect(LOG_DB) as _cxn:
         notify_on = (_ns.get_state(_cxn, email_for_reports)["opt_status"] != "out") if email_for_reports else True
+    # Trial-upgrade hook: a $1-trial buyer sees their accrued credit so far (lands
+    # as points when their membership continues). Only computed for trial members.
+    membership_cat, trial_credit_cents = "none", 0
+    if email_for_reports:
+        try:
+            membership_cat = membership_category(email_for_reports)
+            if membership_cat == "trial":
+                with sqlite3.connect(LOG_DB) as _cxtc:
+                    _cxtc.row_factory = sqlite3.Row
+                    trial_credit_cents = _trial_credit_for_email(_cxtc, email_for_reports)
+        except Exception as e:
+            print(f"[portal-credit] {email_for_reports}: {e!r}", flush=True)
     return jsonify({
         "name": portal.get("name"),
+        "membership_category": membership_cat,
+        "trial_credit_cents": trial_credit_cents,
         "biofield_status": bf_status, "blurred": not bf_confirmed,
         "actionable": bf_actionable, "scan_date": bf_scan_date, "scan_dates": bf_scan_dates,
         "greeting": bf_content.get("greeting", ""),
@@ -25665,7 +25691,19 @@ def _invoice_summary(order):
     """Customer-safe view — no person_id, notes, phone, or full address."""
     lines = order.get("items") or []
     subtotal = sum(int(l.get("line_cents") or 0) for l in lines)
+    # Upgrade hook: the quantity discount this buyer missed by not being a paid
+    # member. Shown only to non-paid-members (none/trial) — paused/full already get
+    # volume pricing, so they'd see no "become a member" pitch. (Spec §4 says
+    # "non-full"; refined to not-a-paid-member so paused members are excluded too.)
+    member_credit_cents = 0
+    try:
+        if not _is_paid_member((order.get("email") or "").strip().lower()):
+            member_credit_cents = _missed_member_discount_cents(lines)
+    except Exception as e:
+        print(f"[invoice-credit] {order.get('external_ref')}: {e!r}", flush=True)
+        member_credit_cents = 0
     return {
+        "member_credit_cents": member_credit_cents,
         "points_balance_cents": _invoice_points_balance(order),
         "external_ref": order.get("external_ref"),
         "name": order.get("name") or "",

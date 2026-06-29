@@ -262,7 +262,13 @@ function renderTotals() {
     + row('Shipping', t.shipping_cents) + (t.get_cents?row('Hawai‘i GET (absorbed)', t.get_cents):'')
     + pointsRow
     + '<div class="row grand"><span>Total</span><span>'+money(t.total_cents)+'</span></div>'
-    + (totalSavings(ORDER.lines)>0 ? '<div class="row save"><span>You save</span><span>'+money(totalSavings(ORDER.lines))+'</span></div>' : '');
+    + (totalSavings(ORDER.lines)>0 ? '<div class="row save"><span>You save</span><span>'+money(totalSavings(ORDER.lines))+'</span></div>' : '')
+    // Upgrade hook (on-screen only — deliberately NOT in the print/PDF #print-root,
+    // which buildInvoicePrintHtml renders separately): the volume discount this
+    // non-member missed on this order. Shown only when there's a discount to gain.
+    + (Number(t.member_credit_cents||0)>0
+        ? '<div style="margin-top:12px;background:#fffbf3;border:1px solid #f0c987;border-radius:6px;padding:9px 11px;color:#7a4a00;font-size:13px">Become a member and get <strong>'+money(t.member_credit_cents)+'</strong> back toward your next order.</div>'
+        : '');
 }
 async function applyPoints(){
   const cents = Math.max(0, Math.round(parseFloat(($('pts-in')||{}).value||'0')*100));
