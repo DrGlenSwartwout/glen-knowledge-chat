@@ -156,7 +156,8 @@ def approved_for_slug(cx, slug):
 def aggregate(cx, slug):
     init_table(cx)
     row = cx.execute(
-        "SELECT COUNT(*), AVG(rating) FROM product_reviews WHERE product_slug=? AND status='approved'",
+        "SELECT COUNT(*), AVG(rating) FROM product_reviews "
+        "WHERE product_slug=? AND status='approved' AND COALESCE(kind,'') <> 'gift'",
         (slug,)).fetchone()
     n = row[0] or 0
     return {"count": n, "avg": round(row[1], 1) if n else 0.0}

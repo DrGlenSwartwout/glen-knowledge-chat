@@ -181,3 +181,74 @@ def test_masked_name_never_leaks_email_in_name_column():
     cx.execute("INSERT INTO people (email, first_name, last_name, name) VALUES ('s@x.com','','','bob@example.com')")
     cx.commit()
     assert pif._masked_name(cx, "s@x.com") == "A friend"
+
+
+def _gift_note(cx, *, owner, referee, body="helps my sleep", consent=1, compliance=8, status="pending"):
+    from dashboard import product_reviews as pr
+    rid = pr.upsert_review(cx, "neuro-magnesium", referee, "Bob", 0, body=body,
+                           kind="gift", consent_public=consent, source_tag="gift",
+                           gift_owner_email=owner)
+    pr.set_scores(cx, rid, compliance=compliance)
+    if status != "pending":
+        pr.set_status(cx, rid, status)
+    return rid
+
+
+def test_giver_note_returned_when_all_gates_pass():
+    cx = _cx()
+    _gift_note(cx, owner="a@x.com", referee="b@x.com")
+    assert pif._giver_note(cx, "A@x.com", "B@x.com") == "helps my sleep"
+
+
+def test_giver_note_blank_without_consent():
+    cx = _cx()
+    _gift_note(cx, owner="a@x.com", referee="b@x.com", consent=0)
+    assert pif._giver_note(cx, "a@x.com", "b@x.com") == ""
+
+
+def test_giver_note_blank_below_compliance_threshold():
+    cx = _cx()
+    _gift_note(cx, owner="a@x.com", referee="b@x.com", compliance=6)  # < 7
+    assert pif._giver_note(cx, "a@x.com", "b@x.com") == ""
+
+
+def test_giver_note_blank_when_rejected():
+    cx = _cx()
+    _gift_note(cx, owner="a@x.com", referee="b@x.com", status="rejected")
+    assert pif._giver_note(cx, "a@x.com", "b@x.com") == ""
+
+
+def test_giver_note_blank_for_other_owner():
+    cx = _cx()
+    _gift_note(cx, owner="someoneelse@x.com", referee="b@x.com")
+    assert pif._giver_note(cx, "a@x.com", "b@x.com") == ""  # not this giver's note
+
+
+def test_giver_note_at_exact_threshold_passes():
+    cx = _cx()
+    _gift_note(cx, owner="a@x.com", referee="b@x.com", compliance=7)  # exactly the threshold
+    assert pif._giver_note(cx, "a@x.com", "b@x.com") == "helps my sleep"
+
+
+def test_giver_note_blank_when_no_row():
+    cx = _cx()
+    from dashboard import product_reviews as pr
+    pr.init_table(cx)  # table exists but empty
+    assert pif._giver_note(cx, "a@x.com", "b@x.com") == ""
+
+
+def test_chain_recipients_includes_note():
+    cx = _cx()
+    referrals.init_tables(cx)
+    cx.execute("CREATE TABLE IF NOT EXISTS people (email TEXT UNIQUE, first_name TEXT, last_name TEXT, name TEXT)")
+    cx.execute("INSERT INTO people (email, first_name, last_name, name) VALUES ('b@x.com','Barbara','','Barbara')")
+    cx.commit()
+    referrals.record_redemption(cx, "C1", "a@x.com", "b@x.com", "o1")
+    _gift_note(cx, owner="a@x.com", referee="b@x.com", body="changed my mornings")
+    out = pif.chain_recipients(cx, "a@x.com")
+    assert out[0]["note"] == "changed my mornings"
+    # a recipient with no qualifying note -> note is ""
+    referrals.record_redemption(cx, "C2", "a@x.com", "c@x.com", "o2")
+    out2 = pif.chain_recipients(cx, "a@x.com")
+    notes = {e["name"]: e["note"] for e in out2}  # names masked; just assert one "" present
+    assert "" in notes.values()

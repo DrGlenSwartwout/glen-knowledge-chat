@@ -19,3 +19,17 @@ def test_upsert_default_gift_owner_blank_for_normal_reviews():
     rid = pr.upsert_review(cx, "_results", "c@x.com", "Cy", 5, body="great")
     row = pr.get_review(cx, rid)
     assert (row["gift_owner_email"] or "") == ""
+
+
+def test_aggregate_excludes_gift_notes():
+    cx = sqlite3.connect(":memory:")
+    # one approved 5-star rated review
+    rid1 = pr.upsert_review(cx, "neuro-magnesium", "rater@x.com", "Ray", 5, body="great")
+    pr.set_status(cx, rid1, "approved")
+    # one approved gift note (rating 0)
+    rid2 = pr.upsert_review(cx, "neuro-magnesium", "gift@x.com", "Gigi", 0, body="helped",
+                            kind="gift", consent_public=1, gift_owner_email="a@x.com")
+    pr.set_status(cx, rid2, "approved")
+    agg = pr.aggregate(cx, "neuro-magnesium")
+    assert agg["count"] == 1      # gift note not counted
+    assert agg["avg"] == 5.0      # gift rating 0 not averaged in

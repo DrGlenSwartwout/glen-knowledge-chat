@@ -11,6 +11,9 @@ from dashboard import referrals as _referrals
 # Gift-power granted per confirmed healing milestone (redemption-value cents).
 MILESTONE_REWARD_CENTS = 500
 
+# A gift note auto-surfaces to the giver at or above this compliance score (0-10).
+GIFT_NOTE_GIVER_MIN_COMPLIANCE = 7
+
 
 def _norm(email):
     return (email or "").strip().lower()
@@ -110,9 +113,29 @@ def _product_for_code(cx, code):
     return (row[0] or "") if row else ""
 
 
+def _giver_note(cx, owner_email, referee_email):
+    """The recipient's gift note shown to the giver, or "". Surfaces iff a kind='gift'
+    product_reviews row exists for this (gift_owner_email, email) pair with
+    consent_public, compliance_score >= GIFT_NOTE_GIVER_MIN_COMPLIANCE, and a
+    non-rejected status. Best-effort; most recent row wins. Never returns an email."""
+    owner = _norm(owner_email)
+    ref = _norm(referee_email)
+    try:
+        row = cx.execute(
+            "SELECT body FROM product_reviews "
+            "WHERE kind='gift' AND lower(gift_owner_email)=? AND lower(email)=? "
+            "AND consent_public=1 AND compliance_score >= ? "
+            "AND COALESCE(status,'') <> 'rejected' "
+            "ORDER BY id DESC LIMIT 1",
+            (owner, ref, GIFT_NOTE_GIVER_MIN_COMPLIANCE)).fetchone()
+    except Exception:
+        return ""
+    return (row[0] or "").strip() if row else ""
+
+
 def chain_recipients(cx, email, *, limit=10):
     """The requester's most-recent direct (L1) gift recipients, newest first,
-    capped at `limit`. Returns [{"name", "product", "redeemed_at"}] with masked
+    capped at `limit`. Returns [{"name", "product", "redeemed_at", "note"}] with masked
     names. Read-only; L2+ are intentionally excluded (counts only via chain_summary).
     Only rows the requester owns (owner_email == email) are returned."""
     _referrals.init_tables(cx)
@@ -127,5 +150,6 @@ def chain_recipients(cx, email, *, limit=10):
             "name": _masked_name(cx, referee_email),
             "product": _product_for_code(cx, code),
             "redeemed_at": created_at,
+            "note": _giver_note(cx, owner, referee_email),
         })
     return out
