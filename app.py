@@ -84,6 +84,7 @@ from dashboard.people import set_person_tags, distinct_tags
 from dashboard import affiliate_dashboard
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
+from dashboard.voice_doorway import voice_signal_tags
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -1952,6 +1953,63 @@ def begin_quiz_optin():
     guide_token = _mint_lead_magnet_guide_link(email)
     resp = jsonify({"ok": True, "current_rung": state["current_rung"],
                     "guide_token": guide_token, "redirect": "/begin/quiz/result"})
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", session_id, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/doorway/opt-in", methods=["POST", "OPTIONS"])
+def begin_doorway_optin():
+    if request.method == "OPTIONS":
+        return "", 200
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+    parts = name.split(None, 1)
+    first_name = parts[0] if parts else ""
+    last_name = parts[1] if len(parts) > 1 else ""
+    email = (data.get("email") or "").strip().lower()
+    tos = bool(data.get("tos"))
+    if not email or "@" not in email:
+        return jsonify({"error": "valid email required"}), 400
+    if not tos:
+        return jsonify({"error": "tos required"}), 400
+    session_id = (request.cookies.get("amg_session")
+                  or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
+    ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
+    signals = data.get("signals") or {}
+    sig_tags = voice_signal_tags(signals)
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.record_unlock(
+            cx, session_id=session_id, trigger="tos", email=email,
+            first_name=first_name, tos=True, ref_slug=ref_slug,
+            tos_version=BEGIN_TOS_VERSION)
+        begin_funnel.record_unlock(
+            cx, session_id=session_id, trigger="quiz", email=email,
+            detail="doorway:voice", ref_slug=ref_slug)
+
+    import threading as _threading
+
+    def _onboard():
+        try:
+            tags = ["begin", "voice-doorway"] + sig_tags
+            if ref_slug:
+                tags.append(f"ref:{ref_slug}")
+                _capture_concierge_referral(email, first_name, last_name, ref_slug)
+            ghl_result = ghl_onboard_contact(
+                email, first_name, last_name,
+                source_tag="source:voice", extra_tags=tags)
+            _log_inbound_lead("voice", email, first_name, last_name, "",
+                              json.dumps({"signals": signals}), ghl_result)
+        except Exception as e:
+            print(f"[doorway-optin] {e!r}", flush=True)
+
+    _threading.Thread(target=_onboard, daemon=True).start()
+
+    guide_token = _mint_lead_magnet_guide_link(email)
+    resp = jsonify({"ok": True, "current_rung": state.get("current_rung"),
+                    "guide_token": guide_token})
     if not request.cookies.get("amg_session"):
         resp.set_cookie("amg_session", session_id, max_age=60 * 60 * 24 * 365,
                         httponly=True, samesite="Lax", secure=request.is_secure)
