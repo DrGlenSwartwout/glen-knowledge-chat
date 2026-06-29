@@ -53,11 +53,28 @@ Notes:
 
 ### Gate change
 
-Redefine **`_is_paid_member(email)` ⇒ `membership_category(email) == 'full'`**.
+Redefine **`_is_paid_member(email)`** to grant member (volume) pricing to an active
+member of ANY kind EXCEPT an unconverted trial:
 
-Audit confirms `_is_paid_member`'s only callers are the four pricing sites #394 touched:
+```
+_is_paid_member(email) ⇒ _active_membership_for_email(email) AND membership_category(email) != 'trial'
+```
+
+This is grant-aware on purpose (corrected after code review): the gate's *backing
+population* must stay the `memberships` access table (`_active_membership_for_email`),
+not the `subscriptions` table — otherwise **founding / studio-credit / coaching**
+members (who hold a `memberships` grant but no `kind=membership` $99 subscription)
+would silently lose volume pricing. Decision (Glen): all real members — founding,
+studio-credit, coaching, paused-but-still-current, and full $99/mo — keep volume
+pricing; **only** the unconverted $1-trial buyer (`membership_category == 'trial'`,
+free first month) pays regular. The cheap grant check short-circuits non-members
+first (the common funnel case). `category_for` itself stays subscription-based for
+the members page (§2).
+
+Audit (code-review-verified) confirms `_is_paid_member`'s only callers are the six pricing sites #394 touched:
 - `_qty_unit_cents` callers (app.py ~6471, ~6478, ~13971)
 - `_portal_priced_lines(... member=_is_paid_member(email))` (app.py ~11934)
+- in-house order builder `/api/orders/manual` (~25341) + live `/api/orders/price-preview` (~25453)
 
 All other membership checks (biofield reveal visibility ~2315, biofield-trial "already member" ~2567, `_ingredient_paid_ok` ~5055, portal `out["paid"]` ~10602) call `_active_membership_for_email` **directly** and are intentionally left unchanged — trial members keep content/biofield/ingredient access.
 

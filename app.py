@@ -4236,11 +4236,19 @@ def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, member=False):
 
 
 def _is_paid_member(email):
-    """True iff the email has an active PAID membership — the gate for quantity
-    ("member") pricing. Anyone else pays regular price. Fail-closed (False on error)
-    so a lookup hiccup never hands a non-member a discount."""
+    """True iff the email gets member (quantity/volume) pricing: an active
+    membership of ANY kind EXCEPT an unconverted $1-trial buyer
+    (membership_category == 'trial', the free first month). Founding, studio-credit,
+    coaching, paused-but-still-current, and full $99/mo members all keep volume
+    pricing — only the trial cohort pays regular (its missed discount is accrued and
+    handed back as upgrade credit on conversion). The cheap grant check short-circuits
+    non-members first (the common funnel case) so only actual members pay for the
+    second lookup. Fail-closed (False on error) so a lookup hiccup never hands a
+    non-member a discount."""
     try:
-        return bool(email) and bool(_active_membership_for_email(email))
+        if not (email and _active_membership_for_email(email)):
+            return False
+        return membership_category(email) != "trial"
     except Exception:
         return False
 
@@ -8590,6 +8598,24 @@ def _active_membership_for_email(email):
     except Exception:
         d["days_remaining"] = 0
     return d
+
+
+def membership_category(email):
+    """Classify a member into 'none' | 'trial' | 'full' | 'paused' (see
+    dashboard.subscriptions.category_for). 'full' is the gate for paid-member
+    volume pricing; 'trial' (the $1-trial free first month, order_count=0) pays
+    regular and accrues the missed discount as upgrade credit. Fail-closed to
+    'none' so a lookup hiccup never grants the discount."""
+    email = (email or "").strip().lower()
+    if not email:
+        return "none"
+    try:
+        from dashboard import subscriptions as _subs
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            return _subs.category_for(cx, email)
+    except Exception:
+        return "none"
 
 
 def _membership_active_at(cx, email, when_iso):
