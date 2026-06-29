@@ -24484,6 +24484,54 @@ def api_pif_summary():
     })
 
 
+@app.route("/api/pif/gift-note", methods=["POST"])
+def api_pif_gift_note():
+    """Recipient submits a 'this helped me' note via a pif_gift_note token. Stores it
+    as a kind='gift' review on the gifted product, attributed to the giver, AI-scored.
+    Dark behind PAY_IT_FORWARD_ENABLED."""
+    if not PAY_IT_FORWARD_ENABLED:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    data = request.get_json(silent=True) or request.form
+    token = (data.get("token") or "").strip()
+    tok = _validate_gift_note_link(token)
+    if not tok:
+        return jsonify({"ok": False, "error": "invalid or expired link"}), 400
+    recipient = tok["email"]
+    order_ref = tok["order_ref"]
+    name = (data.get("name") or "").strip()
+    body = (data.get("body") or "").strip()
+    consent = str(data.get("consent_public") or "").strip().lower() in ("1", "true", "yes", "on")
+    if not body:
+        return jsonify({"ok": False, "error": "please share a few words"}), 400
+    from dashboard import referrals as _rf
+    from dashboard import pay_it_forward as _pif
+    from dashboard import product_reviews as _pr
+    from dashboard import review_scoring as _rs
+    _ctx = {"name": "Dr. Glen Swartwout — Biofield Analysis & Functional Formulations"}
+    with sqlite3.connect(LOG_DB) as cx:
+        red = _rf.redemption_by_order_ref(cx, order_ref)
+        if not red or (red.get("referee_email") or "").lower() != recipient:
+            return jsonify({"ok": False, "error": "redemption not found"}), 400
+        owner_email = red.get("owner_email") or ""
+        product_slug = _pif._product_for_code(cx, red.get("code") or "") or "_results"
+        rid = _pr.upsert_review(cx, product_slug, recipient, name, 0, body,
+                                kind="gift", consent_public=1 if consent else 0,
+                                source_tag="gift", gift_owner_email=owner_email)
+        try:
+            score = _rs.score_review(_cl, _ctx, body, strip=_strip_dash)
+        except Exception as _se:
+            print(f"[pif-t2] score_review failed rid={rid}: {_se!r}", flush=True)
+            score = {"quality_points": 0, "reasons": "", "recommend_publish": False}
+        _pr.set_ai_result(cx, rid, score.get("quality_points", 0), score.get("reasons", ""),
+                          score.get("recommend_publish", False))
+        _pr.set_scores(cx, rid, compliance=score.get("compliance_score", 0),
+                       publication=score.get("publication_score", 0),
+                       authenticity=score.get("authenticity_score", 0),
+                       specificity=score.get("specificity_score", 0))
+    _consume_gift_note_token(token)
+    return jsonify({"ok": True, "review_id": rid, "status": "pending"})
+
+
 @app.route("/admin/escalations", methods=["GET"])
 @require_console_key
 def admin_escalations_list():
