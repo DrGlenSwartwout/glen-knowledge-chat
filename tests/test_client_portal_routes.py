@@ -284,8 +284,12 @@ def test_group_join_return_creates_membership(client, monkeypatch):
 
 # ── Scaffolded client login (dark behind CLIENT_LOGIN_ENABLED) ───────────────
 
-def test_client_login_routes_dark_by_default(client):
-    c, _ = client
+def test_client_login_routes_dark_by_default(client, monkeypatch):
+    c, appmod = client
+    # Force the flag OFF so this asserts the dark behavior deterministically — the
+    # ambient env (e.g. CLIENT_LOGIN_ENABLED=1 in the prod Doppler config used to
+    # run the suite) must not leak in and flip these routes live.
+    monkeypatch.setattr(appmod, "_client_login_enabled", lambda: False)
     assert c.get("/portal/login").status_code == 404
     assert c.get("/portal/login-verify?token=x").status_code == 404
     assert c.post("/portal/login-request", json={"email": "a@b.com"}).status_code == 404
