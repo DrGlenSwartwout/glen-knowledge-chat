@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Members — Console</title>
+<style>
+  body{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#f6f7f9;color:#1c2430}
+  header{background:#0f5132;color:#fff;padding:14px 20px;font-weight:600;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  header .sub{font-weight:400;font-size:13px;color:#bfe3cd}
+  main{max-width:1120px;margin:0 auto;padding:20px}
+  .cols{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .col{flex:1 1 320px;min-width:300px}
+  .col-head{display:flex;align-items:baseline;justify-content:space-between;margin:0 2px 10px}
+  .col-head h2{font-size:15px;margin:0;text-transform:uppercase;letter-spacing:.06em}
+  .col-head .count{font-size:13px;color:#697586;background:#eef2f6;border-radius:999px;padding:2px 10px}
+  .trial .col-head h2{color:#b54708}
+  .full .col-head h2{color:#0f5132}
+  .paused .col-head h2{color:#52606d}
+  .card{background:#fff;border:1px solid #e2e6eb;border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .trial .card{border-left:4px solid #f79009}
+  .full .card{border-left:4px solid #198754}
+  .paused .card{border-left:4px solid #98a2b3}
+  .name{font-weight:600}
+  .email{font-size:13px;color:#52606d;word-break:break-all}
+  .email a{color:#0f5132;text-decoration:none}
+  .meta{font-size:12px;color:#697586;margin-top:6px;display:flex;gap:10px;flex-wrap:wrap}
+  .credit{display:inline-block;margin-top:8px;font-weight:700;color:#b54708;background:#fff4e5;border:1px solid #f0c987;border-radius:6px;padding:3px 10px;font-size:14px}
+  .credit.zero{color:#697586;background:#eef2f6;border-color:#e2e6eb;font-weight:600}
+  .tier{font-size:11px;background:#eef2f6;border-radius:999px;padding:1px 8px}
+  .empty{color:#98a2b3;font-size:13px;padding:10px 2px}
+  .err{color:#b42318;padding:20px}
+</style>
+</head>
+<body>
+<header>
+  Members
+  <span class="sub" id="summary">loading…</span>
+</header>
+<main>
+  <div class="cols">
+    <section class="col trial">
+      <div class="col-head"><h2>Trial</h2><span class="count" id="c-trial">0</span></div>
+      <div class="muted" style="font-size:12px;color:#697586;margin:-4px 2px 10px">Upgrade call-list — highest accrued credit first.</div>
+      <div id="list-trial"></div>
+    </section>
+    <section class="col full">
+      <div class="col-head"><h2>Full</h2><span class="count" id="c-full">0</span></div>
+      <div id="list-full"></div>
+    </section>
+    <section class="col paused">
+      <div class="col-head"><h2>Paused</h2><span class="count" id="c-paused">0</span></div>
+      <div id="list-paused"></div>
+    </section>
+  </div>
+</main>
+<script>
+const KEY = new URLSearchParams(location.search).get("key") || "";
+const H = {"X-Console-Key": KEY};
+function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function money(cents){return "$" + (Math.round(cents||0)/100).toFixed(2);}
+function day(s){return (s||"").slice(0,10);}
+
+function card(m){
+  const credit = m.category==="trial"
+    ? `<div class="credit ${(m.credit_cents||0)>0?"":"zero"}">${money(m.credit_cents)} credit waiting</div>` : "";
+  const when = m.category==="paused"
+    ? `<span>resumes ${esc(day(m.resume_date)) || "—"}</span>`
+    : `<span>next charge ${esc(day(m.next_charge_date)) || "—"}</span>`;
+  const nameLine = m.name ? esc(m.name) : `<span class="muted" style="color:#98a2b3">(no name)</span>`;
+  return `<div class="card">
+    <div class="name">${nameLine}</div>
+    <div class="email"><a href="mailto:${esc(m.email)}">${esc(m.email)}</a></div>
+    <div class="meta">
+      <span>${money(m.plan_cents)}/mo</span>
+      ${when}
+      <span>started ${esc(day(m.started)) || "—"}</span>
+      <span class="tier">tier ${esc(String(m.tier ?? 0))}</span>
+    </div>
+    ${credit}
+  </div>`;
+}
+
+function render(bucket, rows){
+  const el = document.getElementById("list-"+bucket);
+  document.getElementById("c-"+bucket).textContent = rows.length;
+  el.innerHTML = rows.length ? rows.map(card).join("") : `<div class="empty">None.</div>`;
+}
+
+async function load(){
+  try{
+    const r = await fetch("/api/console/members?key="+encodeURIComponent(KEY), {headers:H});
+    if(!r.ok){ document.body.insertAdjacentHTML("beforeend", `<div class="err">Failed to load (${r.status}). Check your console key in the URL.</div>`); return; }
+    const d = await r.json();
+    const b = d.buckets || {trial:[],full:[],paused:[]};
+    render("trial", b.trial||[]);
+    render("full", b.full||[]);
+    render("paused", b.paused||[]);
+    const c = d.counts || {};
+    document.getElementById("summary").textContent =
+      `${(c.trial||0)} trial · ${(c.full||0)} full · ${(c.paused||0)} paused`;
+  }catch(e){
+    document.body.insertAdjacentHTML("beforeend", `<div class="err">Error: ${esc(String(e))}</div>`);
+  }
+}
+load();
+</script>
+</body>
+</html>
