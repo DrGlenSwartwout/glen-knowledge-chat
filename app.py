@@ -25405,7 +25405,8 @@ def api_orders_manual():
                      "state": ship["state"], "zip": ship["zip"], "country": ship["country"]},
             channel=("pickup" if pickup else "retail"), get_cents=get_cents,
             discount_cents=discount_cents, shipping_cents=shipping_cents,
-            points_redeemed_cents=points_redeemed_cents)
+            points_redeemed_cents=points_redeemed_cents,
+            invoice_note=((body.get("invoice_note") or "").strip() or None))
         if _gift_rows and oid:
             from dashboard import review_gifts as _rg2
             for _g in _gift_rows:
@@ -25517,6 +25518,7 @@ def _invoice_summary(order):
         "points_balance_cents": _invoice_points_balance(order),
         "external_ref": order.get("external_ref"),
         "name": order.get("name") or "",
+        "invoice_note": order.get("invoice_note") or "",
         "lines": [_invoice_line_view(l) for l in lines],
         "subtotal_cents": subtotal,
         "discount_cents": int(order.get("discount_cents") or 0),
