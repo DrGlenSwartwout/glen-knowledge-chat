@@ -71,6 +71,11 @@ On **send**:
 
 This sequence is the heart of the build — get it smooth and the conversation feels alive.
 
+### Strategic interjections ("breaking in")
+A real conversation isn't strict turn-taking. **Judiciously and rarely**, Glendalf should *break in* — play a short spoken interjection **while the user is still typing** ("Ah—", "Yes, go on…", "Mm—", "Oh…", "Now *that's* the heart of it—"), as if he's listening so intently he can't hold back. This is the single biggest "he's *alive*" lever — but it's a delight only when **strategic**: rare, well-timed (at a natural typing pause), and never stepping on every message. Overuse is maddening.
+- **v1 (light):** occasional interjection triggered by a typing pause (input focused + content present + a brief idle), capped to a low rate (e.g. at most once every few turns), from the interjection subset of the repertoire. Returns to listening immediately after.
+- **Follow-on:** *content-aware* interjections — analyze the partial input and break in on an emotionally-charged or resonant phrase. This pairs with the emotion-matched video/filler work.
+
 ---
 
 ## 6. Data / persistence
@@ -96,7 +101,7 @@ Persisted so a returning visitor can resume ("when we last spoke, you mentioned�
 - **1× rendered lip-synced intro video** — Glendalf by the fire, in Glen's voice, ~10–20s greeting (HeyGen-style; the only lip-synced asset).
 - **1× speaking loop** — mouth hidden (pipe/hand/beard), seamless, ~6–12s.
 - **1× pondering/listening loop** — the characterful gap-cover actions: pipe + magical smoke ring, sip from the glass, reaching for/opening a book, turning to poke the fire (can be one montage loop or a couple short clips chosen at random). Doubles as the "thinking" cover and the idle "listening" state.
-- **Filler-phrase repertoire** (~8–12 short clips) in Glen's clone, pre-cached for instant playback: *"Hmmm…", "Well…", "I see.", "That's very interesting.", "Let me consider that.", "You've given me much to contemplate there.", "Here's what I think…"*, etc. — a mix of acknowledgments, thinking beats, and bridges. Picked at random in v1 (contextual selection = follow-on).
+- **Filler-phrase repertoire** (~8–12 short clips) in Glen's clone, pre-cached for instant playback: *"Hmmm…", "Well…", "I see.", "That's very interesting.", "Let me consider that.", "You've given me much to contemplate there.", "Here's what I think…"*, etc. — a mix of acknowledgments, thinking beats, and bridges. Picked at random in v1 (contextual selection = follow-on). Includes a short **interjection subset** for the "breaking in" feature (§5): *"Ah—", "Yes, go on…", "Mm—", "Oh…", "Now that's the heart of it—"*.
 - All assets are placeholders-swappable (manifest/asset-driven where practical); the **emotion-matched library is the follow-on**.
 
 ---
@@ -112,3 +117,4 @@ Persisted so a returning visitor can resume ("when we last spoke, you mentioned�
 2. Whether to run per-turn `/journal/analyze` on typed input (probably a lighter text-only signal pass) to feed the ASH coverage map.
 3. Subtitle timing: word-stream-with-text vs reveal-in-sync-with-audio (lean: stream text immediately, let voice catch up).
 4. The pondering loop as one montage vs a few short randomly-chosen clips.
+5. The strategic-interjection cadence + trigger (§5): how rare, what idle-pause threshold, the per-session rate cap — tune to feel alive without being intrusive.
