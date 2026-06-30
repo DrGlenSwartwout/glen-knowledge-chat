@@ -113,6 +113,20 @@ Staging: **separable standalone glance clips first (A), gaze baked into hero rea
 
 Short break-in clips played *while the traveler is still typing*, rate-capped (the single biggest "he's alive" lever; magic when rare, maddening when overused). Already shipped as audio in the manifest; this project adds matching short **video** beats. v1 set: "Ah—", "Yes, go on…", "Mm—", "Oh…", "Now that's the heart of it—".
 
+#### 3.4b Once-per-client off-screen interruption (the hobbit call)
+
+A rare, magical beat fired **at most once per client**, in its own `tier: "interruption"`. An **off-screen** hobbit/villager voice calls "Glendalf!"; he turns toward it, **waves them off** warmly, and says some version of *"Not right now… I'm with a friend."* — then returns his full attention to the traveler. It is the strongest "you are chosen, you matter to me" beat in the whole experience, and it draws directly on the world *The Hobbit* (read to Glen as a boy — the emotional root of the character).
+
+- **Once per client**, gated by a persistent seen-flag (localStorage `fireside_interruption_seen`, mirroring the shipped `begin_hero_chat` pattern; server-per-email later).
+- **Variety pool of 4–6 clips** so it never feels canned across clients / repeat visits — different off-screen lines/voices + different Glendalf responses. Each client sees exactly one, chosen at random from the unshown pool. Examples:
+  - "Glendalf!" → glance + wave: *"Not now, lad — I'm with a friend."*
+  - "Master Glendalf, a moment?" → *"Later, later. This one has my full attention."*
+  - "Glendalf, the kettle's on!" → soft chuckle: *"In a while. Sit, my friend — go on."*
+  - knock + "Are you there?" → *"Not just now. We're in the middle of something that matters."*
+  - "Glendalf, they're asking for you!" → *"Let them ask. I'm here with you."*
+- **Timing:** a natural pause a few turns in — never turn 1, never mid-emotional-typing; at most one, ever.
+- **Audio:** each clip carries its off-screen-voice line + Glendalf's reply (Glen records the hobbit voices + his lines, or ElevenLabs for the villager voice).
+
 ### 3.5 Channel 5 — Ambient soundscape (atmosphere)
 
 Independent of the reaction director — it runs continuously to give the space dimensionality and the felt realism of a real room in a real world. Two parts:
@@ -172,7 +186,7 @@ Extends the existing `static/fireside/fireside-manifest.json` (which already has
       "gaze": null,                     // null | "up_right" | "lat_right" | "down_right" | "up_left" | "lat_left" | "down_left"
       "hand": null,                     // null | gesture id (e.g. "hand_to_heart", "snap", "table_tap", "point")
       "intensity": "med",               // "low" | "med" | "high"
-      "tier": "backchannel",            // "backchannel" (small, while typing) | "hero" (big, on submit) | "ponder" | "gaze" | "interjection"
+      "tier": "backchannel",            // "backchannel" (small, while typing) | "hero" (big, on submit) | "ponder" | "gaze" | "interjection" | "interruption" (once-per-client hobbit call, §3.4b)
       "duration_s": 2.4,
       "loopable": false,
       "file": "/static/fireside/video/react-concern-silent.mp4",
@@ -239,6 +253,8 @@ Render in sub-waves so the loop comes alive early, then deepens:
 **Wave 1.2 — give him eyes (~6):** gaze glances, **right triad first** (up_right, lat_right, down_right), then left triad (up_left, lat_left, down_left).
 
 **Wave 1.3 — interjection video beats (~5):** match the shipped interjection audio ("Ah—", "Yes go on…", "Mm—", "Oh…", "Now that's the heart of it—").
+
+**Wave 1.4 — once-per-client interruptions (~4–6, §3.4b):** the off-screen hobbit call — Glendalf glances to his side, waves them off, replies; each clip carries its off-screen-voice line + his reply. `tier: "interruption"`.
 
 Total ≈ 36; trim to the strongest ~32 after review. Expand toward the full palette over time.
 
