@@ -32,3 +32,14 @@ def test_blank_map_has_all_twelve_untouched_and_is_fresh():
     # fresh dict each call — mutating one does not leak into the next
     m["body"]["notes"] = "x"
     assert am._blank_map()["body"]["notes"] == ""
+
+
+def test_now_iso_is_valid_iso8601_with_seconds():
+    from datetime import datetime
+    ts = am._now_iso()
+    # parseable as ISO 8601 (strip trailing Z for fromisoformat)
+    parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    assert parsed.year >= 2026
+    # seconds field present: THH:MM:SS.ffffff -> the time part has 3 colon-separated groups
+    time_part = ts.split("T")[1].rstrip("Z")
+    assert len(time_part.split(":")) == 3, ts

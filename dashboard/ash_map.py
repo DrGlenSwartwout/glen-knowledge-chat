@@ -53,7 +53,7 @@ STATE_ORDER = {"untouched": 0, "opened": 1, "explored": 2, "deep": 3}
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%fZ")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def _norm_email(email: str) -> str:
