@@ -296,3 +296,34 @@ def test_update_from_turn_persists_and_accumulates(monkeypatch):
     assert m2["dimensions"]["body"]["state"] == "untouched"
     # persisted: a fresh get sees turn-2 state
     assert am.get(cx, "u@x.com")["dimensions"]["symptoms"]["state"] == "deep"
+
+
+def test_two_turn_walk(monkeypatch):
+    cx = sqlite3.connect(":memory:")
+    turns = iter([
+        {"dimensions": {
+            "symptoms": {"state": "opened", "excerpt": "stomach burns after meals",
+                         "notes": "post-meal burning"},
+            "terrain": {"state": "opened", "excerpt": "", "notes": "run down lately"}},
+         "summary": "New, guarded, gut trouble."},
+        {"dimensions": {
+            "symptoms": {"state": "deep", "excerpt": "this should be ignored",
+                         "notes": "waking at night with it"},
+            "inheritance": {"state": "opened", "excerpt": "", "notes": "dad had ulcers"}},
+         "summary": "Gut issue likely familial; opening up."},
+    ])
+    monkeypatch.setattr(am, "_haiku_extract",
+                        lambda *a, **k: next(turns))
+
+    am.update_from_turn(cx, "walk@x.com", "my stomach burns after I eat", "")
+    final = am.update_from_turn(cx, "walk@x.com", "it wakes me at night; dad had ulcers", "")
+
+    d = final["dimensions"]
+    assert d["symptoms"]["state"] == "deep"
+    assert d["symptoms"]["opened_excerpt"] == "stomach burns after meals"  # turn-1 wording
+    assert "post-meal burning" in d["symptoms"]["notes"]
+    assert "waking at night with it" in d["symptoms"]["notes"]
+    assert d["terrain"]["state"] == "opened"
+    assert d["inheritance"]["state"] == "opened"
+    assert d["body"]["state"] == "untouched"   # untouched dims stay untouched
+    assert final["summary"] == "Gut issue likely familial; opening up."
