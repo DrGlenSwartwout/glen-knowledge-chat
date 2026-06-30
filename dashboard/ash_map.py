@@ -1,0 +1,319 @@
+# dashboard/ash_map.py
+"""Email-keyed ASH coverage map + ally memory (SP2a).
+
+A durable per-person record of which of the 12 ASH dimensions a conversation
+has touched, plus a rolling "who they are" summary and verbatim opening
+excerpts. Pure module: all DB functions take a caller-supplied sqlite3
+connection (no app/Flask import), mirroring dashboard/journal_store.py. The
+per-turn updater (_haiku_extract) mirrors journal_blueprint._haiku_analyze's
+forced-tool-use structured output, but never raises — it runs fire-and-forget
+after an ally reply, so any failure degrades to "learned nothing this turn".
+"""
+import copy as _copy
+import json
+import os
+import sqlite3
+from datetime import datetime, timezone
+
+import requests  # module-level so tests can monkeypatch ash_map.requests.post
+
+ANTHROPIC_MESSAGES = "https://api.anthropic.com/v1/messages"
+HAIKU_MODEL = "claude-haiku-4-5-20251001"
+
+# The 12 ASH dimensions — canonical keys, display names, and one-line meanings
+# the updater prompt renders so Haiku can map turn content -> dimensions.
+ASH_DIMENSIONS = [
+    {"key": "body", "name": "Body / States of Matter",
+     "meaning": "the physical body's substance, density, structure"},
+    {"key": "mind", "name": "Mind / 5 C's",
+     "meaning": "mental focus, emotional patterns, how they connect and communicate"},
+    {"key": "spirit", "name": "Spirit / 5 Elements",
+     "meaning": "meaning, purpose, emotional-elemental balance"},
+    {"key": "inheritance", "name": "Inheritance / 5 Generations",
+     "meaning": "family, genetic, lineage health patterns"},
+    {"key": "personal_history", "name": "Personal History / 5 Penetration",
+     "meaning": "their own health history and how deep issues have gone"},
+    {"key": "epigenetics", "name": "Epigenetics / 5 Infoceuticals",
+     "meaning": "bioenergetic / informational regulation (terrain, organs, meridians, systems)"},
+    {"key": "symptoms", "name": "Symptoms / 5 Cardinal Signs",
+     "meaning": "active symptoms: pain, heat, swelling, redness, loss of function"},
+    {"key": "terrain", "name": "Terrain / 5 R's",
+     "meaning": "the body's vitality and capacity to heal"},
+    {"key": "diagnosis", "name": "Diagnosis / 5 Pathology Types",
+     "meaning": "diagnosed conditions or tissue changes"},
+    {"key": "treatment", "name": "Treatment / 5 Therapy Levels",
+     "meaning": "treatments they use and how invasive vs. supportive"},
+    {"key": "regulation", "name": "Regulation / 5 Levels",
+     "meaning": "how the body responds when they try to heal"},
+    {"key": "prognosis", "name": "Prognosis / 5 Stages",
+     "meaning": "seriousness or trajectory of their main concern"},
+]
+DIM_KEYS = [d["key"] for d in ASH_DIMENSIONS]
+
+STATE_ORDER = {"untouched": 0, "opened": 1, "explored": 2, "deep": 3}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _norm_email(email: str) -> str:
+    return (email or "").strip().lower()
+
+
+def _blank_map() -> dict:
+    return {
+        k: {"state": "untouched", "opened_excerpt": "",
+            "notes": "", "last_touched_at": None}
+        for k in DIM_KEYS
+    }
+
+
+def merge_turn(memory: dict, updater_output: dict) -> dict:
+    """Apply one updater result to a memory, PURELY. Forward-only state ladder,
+    set-once excerpt, deduped note accumulation. Returns a new dict. Note: a
+    dimension key's mere presence in updater_output["dimensions"] is treated as
+    a touch, so last_touched_at is stamped for it even if no field materially
+    changed."""
+    merged = _copy.deepcopy(memory)
+    dims = merged.setdefault("dimensions", _blank_map())
+    now = _now_iso()
+
+    for key, delta in (updater_output.get("dimensions") or {}).items():
+        if key not in DIM_KEYS or not isinstance(delta, dict):
+            continue
+        cell = dims.setdefault(key, {
+            "state": "untouched", "opened_excerpt": "",
+            "notes": "", "last_touched_at": None})
+
+        proposed = delta.get("state", "untouched")
+        cur_rank = STATE_ORDER.get(cell.get("state", "untouched"), 0)
+        prop_rank = STATE_ORDER.get(proposed, 0)
+        if prop_rank > cur_rank:
+            cell["state"] = proposed
+
+        excerpt = (delta.get("excerpt") or "").strip()
+        if excerpt and not cell.get("opened_excerpt"):
+            cell["opened_excerpt"] = excerpt
+
+        note = (delta.get("notes") or "").strip()
+        if note:
+            existing = cell.get("notes", "")
+            existing_lines = existing.split("\n") if existing else []
+            if note not in existing_lines:
+                existing_lines.append(note)
+                cell["notes"] = "\n".join(line for line in existing_lines if line)
+
+        cell["last_touched_at"] = now
+
+    new_summary = (updater_output.get("summary") or "").strip()
+    if new_summary:
+        merged["summary"] = new_summary
+
+    return merged
+
+
+def init_table(cx) -> None:
+    cx.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ash_ally_memory (
+          email           TEXT PRIMARY KEY,
+          summary         TEXT NOT NULL DEFAULT '',
+          dimensions_json TEXT NOT NULL DEFAULT '{}',
+          created_at      TEXT NOT NULL,
+          updated_at      TEXT NOT NULL
+        )
+        """
+    )
+    cx.commit()
+
+
+def _full_dimensions(stored: dict) -> dict:
+    """Backfill any missing of the 12 keys from a blank map so callers see all 12."""
+    full = _blank_map()
+    for k, v in (stored or {}).items():
+        if k in full and isinstance(v, dict):
+            full[k].update(v)
+    return full
+
+
+def get(cx, email: str) -> dict:
+    init_table(cx)
+    em = _norm_email(email)
+    row = cx.execute(
+        "SELECT summary, dimensions_json, created_at, updated_at "
+        "FROM ash_ally_memory WHERE email = ?", (em,)
+    ).fetchone()
+    if row is None:
+        return {"email": em, "summary": "", "dimensions": _blank_map(),
+                "created_at": None, "updated_at": None}
+    try:
+        stored = json.loads(row[1]) or {}
+    except (ValueError, TypeError):
+        stored = {}
+    return {
+        "email": em,
+        "summary": row[0] or "",
+        "dimensions": _full_dimensions(stored),
+        "created_at": row[2],
+        "updated_at": row[3],
+    }
+
+
+def _upsert(cx, email: str, summary: str, dimensions: dict) -> None:
+    init_table(cx)
+    em = _norm_email(email)
+    now = _now_iso()
+    existing = cx.execute(
+        "SELECT created_at FROM ash_ally_memory WHERE email = ?", (em,)
+    ).fetchone()
+    created_at = existing[0] if existing else now
+    cx.execute(
+        "INSERT OR REPLACE INTO ash_ally_memory "
+        "(email, summary, dimensions_json, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (em, summary or "", json.dumps(dimensions or {}), created_at, now),
+    )
+    cx.commit()
+
+
+_DIM_NAME = {d["key"]: d["name"] for d in ASH_DIMENSIONS}
+
+
+def context_block(memory: dict) -> str:
+    dims = (memory or {}).get("dimensions") or _blank_map()
+    summary = ((memory or {}).get("summary") or "").strip()
+
+    explored, opened, untouched = [], [], []
+    for k in DIM_KEYS:
+        cell = dims.get(k, {})
+        state = cell.get("state", "untouched")
+        name = _DIM_NAME[k]
+        if state in ("explored", "deep"):
+            notes = " ".join((cell.get("notes") or "").split())
+            explored.append(f"{name}: {notes}" if notes else name)
+        elif state == "opened":
+            ex = (cell.get("opened_excerpt") or "").strip()
+            opened.append(f'{name}: "{ex}"' if ex else name)
+        else:
+            untouched.append(name)
+
+    if not summary and not explored and not opened:
+        return "This is your first conversation with them — nothing covered yet."
+
+    lines = []
+    if summary:
+        lines.append(f"Who they are: {summary}")
+    if explored:
+        lines.append("Already explored (do not re-ask): "
+                     + "; ".join(explored))
+    if opened:
+        lines.append("Opened, go deeper when they return to it: "
+                     + "; ".join(opened))
+    if untouched:
+        lines.append("Not yet touched: " + ", ".join(untouched))
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Task 5: LLM updater + orchestrator
+# ---------------------------------------------------------------------------
+
+_DIM_LIST_FOR_PROMPT = "\n".join(
+    f"  {d['key']}: {d['name']} — {d['meaning']}" for d in ASH_DIMENSIONS
+)
+
+_EXTRACT_SYSTEM = (
+    "You quietly maintain a private health-conversation coverage map across 12 "
+    "dimensions. Given the latest exchange and what is already known, report ONLY "
+    "the dimensions this turn genuinely touched. Never invent; prefer fewer "
+    "dimensions. For each touched dimension give: state (opened = first surfaced, "
+    "explored = real detail given, deep = worked through), excerpt = the person's "
+    "OWN words that opened/deepened it (or '' if none), notes = what was learned "
+    "this turn. Also refresh a 1-2 sentence 'who they are' summary, or '' to keep "
+    "the prior one.\n\nThe 12 dimensions:\n" + _DIM_LIST_FOR_PROMPT
+)
+
+COVERAGE_TOOL = {
+    "name": "emit_coverage",
+    "description": "Report which ASH dimensions this conversational turn touched.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "dimensions": {
+                "type": "object",
+                "propertyNames": {"enum": DIM_KEYS},
+                "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                        "state": {"type": "string",
+                                  "enum": ["opened", "explored", "deep"]},
+                        "excerpt": {"type": "string"},
+                        "notes": {"type": "string"},
+                    },
+                    "required": ["state"],
+                },
+            },
+            "summary": {"type": "string"},
+        },
+        "required": ["dimensions"],
+    },
+}
+
+def _haiku_extract(memory: dict, user_text: str, ally_text: str = "") -> dict:
+    """One Haiku call mapping the latest turn -> touched dimensions. NEVER raises;
+    returns the empty default on any failure (it runs fire-and-forget)."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return {"dimensions": {}, "summary": ""}
+
+    try:
+        known = context_block(memory)
+        user_message = (
+            f"Already known about them:\n{known}\n\n"
+            f"Latest exchange:\nPERSON: {user_text}\n"
+            f"ALLY: {ally_text}\n\nReport the coverage now."
+        )
+        payload = {
+            "model": HAIKU_MODEL,
+            "max_tokens": 1024,
+            "system": [{"type": "text", "text": _EXTRACT_SYSTEM,
+                        "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": user_message}],
+            "tools": [COVERAGE_TOOL],
+            "tool_choice": {"type": "tool", "name": "emit_coverage"},
+        }
+        resp = requests.post(
+            ANTHROPIC_MESSAGES,
+            headers={"x-api-key": api_key,
+                     "anthropic-version": "2023-06-01",
+                     "content-type": "application/json"},
+            json=payload, timeout=60,
+        )
+        if not resp.ok:
+            return {"dimensions": {}, "summary": ""}
+        body = resp.json()
+        for b in body.get("content", []):
+            if b.get("type") == "tool_use" and b.get("name") == "emit_coverage":
+                inp = b.get("input")
+                if isinstance(inp, dict):
+                    return {"dimensions": inp.get("dimensions") or {},
+                            "summary": inp.get("summary") or ""}
+        return {"dimensions": {}, "summary": ""}
+    except Exception:
+        return {"dimensions": {}, "summary": ""}
+
+
+def update_from_turn(cx, email: str, user_text: str, ally_text: str = "") -> dict:
+    """get -> Haiku extract -> pure merge -> persist -> return merged memory.
+    The LLM step (_haiku_extract) degrades silently, so a model/network failure
+    just yields a no-op merge. NOTE: the sqlite reads/writes (get, _upsert) can
+    still raise (locked DB, I/O); the SP2b caller should wrap this call and hold
+    the DB lock across it, since this read-modify-write on one email can race two
+    concurrent turns."""
+    memory = get(cx, email)
+    extracted = _haiku_extract(memory, user_text, ally_text)
+    merged = merge_turn(memory, extracted)
+    _upsert(cx, email, merged.get("summary", ""), merged["dimensions"])
+    merged["email"] = _norm_email(email)
+    return merged
