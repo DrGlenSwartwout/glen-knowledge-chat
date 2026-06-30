@@ -106,6 +106,13 @@ services:
           type: web
           name: glen-knowledge-chat
           envVarKey: CRON_SECRET
+      # CONSOLE_SECRET (distinct from CRON_SECRET): this cron also fires the
+      # Pay It Forward gift-note invites at /api/cron/pif-gift-note-invites,
+      # which is gated by require_console_key (X-Console-Key), not X-Cron-Secret.
+      - fromService:
+          type: web
+          name: glen-knowledge-chat
+          envVarKey: CONSOLE_SECRET
 
   # Reconcile QBO-side invoice payments onto the orders board. portal-reorder/
   # reorder orders carry a QBO invoice + hosted pay link; QBO payments don't sync

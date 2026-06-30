@@ -25,6 +25,9 @@ import urllib.error
 
 WEB_URL = os.environ.get("WEB_URL", "https://glen-knowledge-chat.onrender.com").rstrip("/")
 CRON_SECRET = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+# Distinct from CRON_SECRET: used only for the piggybacked Pay It Forward invite,
+# whose endpoint is gated by require_console_key (X-Console-Key), not X-Cron-Secret.
+CONSOLE_SECRET = os.environ.get("CONSOLE_SECRET", "")
 
 if not CRON_SECRET:
     print("ERROR: CRON_SECRET (or CONSOLE_SECRET) not set on cron service", flush=True)
@@ -65,5 +68,37 @@ def main():
         sys.exit(5)
 
 
+def invite_pif_gift_notes():
+    """Also fire the Pay It Forward gift-note invites (recipients ~14-60 days post-redeem).
+    Piggybacked on this (the one always-on Render cron) so the invite reliably runs daily.
+    Independent + best-effort: never affects the personal-email send. 404 = feature dark
+    (PAY_IT_FORWARD_ENABLED off) -> skip. The endpoint is idempotent (note_invited_at) +
+    windowed, so daily runs never re-invite and never blast the historical backlog.
+    Uses CONSOLE_SECRET (X-Console-Key) because the endpoint is require_console_key-gated."""
+    if not CONSOLE_SECRET:
+        print("[pif-gift-note-cron] CONSOLE_SECRET not set on cron service — skip", flush=True)
+        return
+    url = f"{WEB_URL}/api/cron/pif-gift-note-invites"
+    req = urllib.request.Request(
+        url, data=b"{}", method="POST",
+        headers={"X-Console-Key": CONSOLE_SECRET, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=240) as r:
+            body = json.load(r)
+        print(f"[pif-gift-note-cron] invited {body.get('invited')}", flush=True)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            print("[pif-gift-note-cron] endpoint 404 (PAY_IT_FORWARD_ENABLED off) — skip",
+                  flush=True)
+            return
+        print(f"[pif-gift-note-cron] HTTP {e.code}: {e.read()[:300]!r}", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[pif-gift-note-cron] failed: {e!r}", flush=True)
+
+
 if __name__ == "__main__":
-    main()
+    # `finally` guarantees the PIF invite fires even if the personal-email send sys.exit()s.
+    try:
+        main()
+    finally:
+        invite_pif_gift_notes()
