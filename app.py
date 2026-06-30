@@ -11624,7 +11624,15 @@ def api_client_chat(code):
     history = body.get("history") or []
 
     catalog = _build_ff_catalog()
-    result = _chat.scoped_reply(message, history, catalog)
+    _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
+    result = _chat.scoped_reply(message, history, catalog, overlay=_ally_ov)
+    try:
+        import threading as _t
+        _t.Thread(target=ash_ally.record_turn,
+                  args=(LOG_DB, _db_lock, email, message, result.get("reply", "")),
+                  daemon=True).start()
+    except Exception:
+        pass
 
     suggestions = []
     for slug in (result.get("suggested_slugs") or []):
