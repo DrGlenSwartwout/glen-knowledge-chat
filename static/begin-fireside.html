@@ -1,1 +1,245 @@
-<!doctype html><html><head><title>Fireside</title></head><body><main id="fireside">stub</main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>By the Fire with Glendalf</title>
+<style>
+  :root { --warm:#f3e2c7; --dim:#b89a72; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:#0c0703; color:var(--warm);
+    font-family: Georgia, 'Times New Roman', serif; overflow:hidden; }
+  #fireside { position:fixed; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:flex-end; }
+  #stage { position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+    background:#0c0703; }
+  #vignette { position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse at 50% 40%, transparent 30%, rgba(0,0,0,.78) 100%); }
+  #subtitle { position:relative; z-index:2; max-width:760px; width:92%;
+    text-align:center; font-size:clamp(20px,3.4vw,30px); line-height:1.45;
+    text-shadow:0 2px 18px rgba(0,0,0,.95); margin-bottom:18px; min-height:1.5em; }
+  #replay { display:inline-flex; vertical-align:middle; margin-left:.4em; }
+  #replay .tts-btn { background:none; border:none; color:var(--dim); cursor:pointer;
+    font-size:.7em; }
+  #composer { position:relative; z-index:2; width:92%; max-width:760px;
+    display:flex; gap:10px; margin-bottom:max(22px, env(safe-area-inset-bottom));
+    transition:opacity .4s; }
+  #say { flex:1; background:rgba(20,12,6,.72); border:1px solid #6b5436;
+    color:var(--warm); border-radius:26px; padding:14px 20px;
+    font-size:18px; font-family:inherit; outline:none; }
+  #say::placeholder { color:#7d6647; }
+  #send { background:#6b5436; border:none; color:var(--warm); border-radius:50%;
+    width:52px; height:52px; font-size:22px; cursor:pointer; }
+  #send:disabled { opacity:.4; cursor:default; }
+  #begin-overlay { position:absolute; inset:0; z-index:5; display:flex;
+    align-items:center; justify-content:center; background:rgba(6,3,1,.55); }
+  #begin-overlay button { background:#6b5436; color:var(--warm); border:none;
+    border-radius:30px; padding:16px 34px; font-size:20px; font-family:inherit;
+    cursor:pointer; }
+  #yes { display:none; position:relative; z-index:2; margin-bottom:26px;
+    background:linear-gradient(#caa86a,#8a6a38); color:#1a0f06; border:none;
+    border-radius:30px; padding:16px 40px; font-size:22px; font-family:inherit;
+    cursor:pointer; box-shadow:0 0 26px 6px rgba(220,180,90,.7);
+    animation:glow 2.2s ease-in-out infinite; }
+  @keyframes glow { 0%,100%{box-shadow:0 0 22px 4px rgba(220,180,90,.55);}
+    50%{box-shadow:0 0 40px 12px rgba(240,200,110,.95);} }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<main id="fireside">
+  <video id="stage" playsinline muted loop preload="auto"></video>
+  <div id="vignette"></div>
+  <div id="subtitle" aria-live="polite"></div>
+  <button id="yes" type="button">Yes</button>
+  <form id="composer" autocomplete="off">
+    <input id="say" name="say" type="text" placeholder="Tell me what's on your heart…"
+           aria-label="Speak to Glendalf" />
+    <button id="send" type="submit" aria-label="Send">➤</button>
+  </form>
+  <div id="begin-overlay"><button id="begin-btn" type="button">Sit by the fire</button></div>
+</main>
+
+<script src="/static/tts-output.js"></script>
+<script>
+(function () {
+  "use strict";
+  var stage = document.getElementById('stage');
+  var sub = document.getElementById('subtitle');
+  var say = document.getElementById('say');
+  var send = document.getElementById('send');
+  var composer = document.getElementById('composer');
+  var yes = document.getElementById('yes');
+  var overlay = document.getElementById('begin-overlay');
+  var beginBtn = document.getElementById('begin-btn');
+
+  var manifest = null;
+  var state = 'intro';
+  var lastFiller = null, lastInter = null;
+  var travelerTurns = 0, interjections = 0, turnsSinceInterjection = 99;
+  var idleTimer = null;
+  var fillerAudio = new Audio();
+  var replyAudio = new Audio();
+
+  function pick(arr, lastId) {
+    if (!arr || !arr.length) return null;
+    if (arr.length === 1) return arr[0];
+    var c; do { c = arr[Math.floor(Math.random() * arr.length)]; } while (c.id === lastId);
+    return c;
+  }
+
+  function setVideo(src, opts) {
+    opts = opts || {};
+    if (stage.getAttribute('data-src') === src) return;
+    stage.setAttribute('data-src', src);
+    stage.src = src;
+    stage.loop = opts.loop !== false;
+    stage.muted = true;
+    stage.play().catch(function () {});
+  }
+
+  function pondering() { var p = manifest.pondering_loops; setVideo(p[Math.floor(Math.random() * p.length)], {loop:true}); }
+  function listening()  { pondering(); state = 'listening'; }   // pondering loop doubles as idle
+  function speakingLoop(){ setVideo(manifest.speaking_loop, {loop:true}); }
+
+  function playClip(audio, file) {
+    try { audio.pause(); audio.currentTime = 0; } catch (e) {}
+    audio.src = file; audio.muted = false;
+    return audio.play().catch(function () {});
+  }
+
+  // --- Interjection: rare, on a typing pause, rate-capped, never on turn 1 ---
+  function maybeInterject() {
+    if (state !== 'listening') return;
+    if (!say.value.trim()) return;
+    if (travelerTurns < 1) return;                 // never before the first real turn
+    if (interjections >= 3) return;                // hard cap per session
+    if (turnsSinceInterjection < 3) return;        // at most once per 3 turns
+    var clip = pick(manifest.interjections, lastInter);
+    if (!clip) return;
+    lastInter = clip.id; interjections++; turnsSinceInterjection = 0;
+    playClip(fillerAudio, clip.file);
+  }
+  function armIdle() {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(maybeInterject, 3500);
+  }
+
+  // --- A turn ---
+  function sendTurn(message) {
+    state = 'pondering';
+    send.disabled = true;
+    if (idleTimer) clearTimeout(idleTimer);
+    travelerTurns++; turnsSinceInterjection++;
+    sub.textContent = '';
+    // 1. instant filler (zero-latency, so never silent)
+    var f = pick(manifest.fillers, lastFiller);
+    if (f) { lastFiller = f.id; playClip(fillerAudio, f.file); }
+    // 2. pondering video while we think
+    pondering();
+    // 3 + 4. stream subtitles via SSE while TTS renders in parallel
+    streamReply(message);
+  }
+
+  function streamReply(message) {
+    var full = '';
+    fetch('/begin/fireside/agent', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: message})
+    }).then(function (r) {
+      var reader = r.body.getReader(), dec = new TextDecoder(), buf = '';
+      (function pump() {
+        return reader.read().then(function (res) {
+          if (res.done) return finishReply(full, false);
+          buf += dec.decode(res.value, {stream: true});
+          var parts = buf.split('\n\n'); buf = parts.pop();
+          parts.forEach(function (p) {
+            var line = p.replace(/^data: /, '').trim();
+            if (!line) return;
+            var msg; try { msg = JSON.parse(line); } catch (e) { return; }
+            if (msg.token) { full += msg.token; sub.textContent = full; }
+            else if (msg.error) { finishReply(full || 'My thoughts wandered. Say that again?', false); }
+            else if (msg.done) { finishReply(full, !!msg.hook); }
+          });
+          return pump();
+        });
+      })();
+    }).catch(function () { finishReply('My thoughts wandered. Tell me again?', false); });
+  }
+
+  function finishReply(text, hook) {
+    sub.textContent = text;
+    // render the reply voice (parallel path); play when ready, then return to listening
+    fetch('/chat/tts', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: text})
+    }).then(function (r) {
+      if (!r.ok) throw new Error('tts ' + r.status);
+      return r.blob();
+    }).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      replyAudio.src = url; replyAudio.muted = false;
+      speakingLoop(); state = 'speaking';
+      replyAudio.onended = function () { URL.revokeObjectURL(url); afterReply(text, hook); };
+      replyAudio.onerror = function () { URL.revokeObjectURL(url); afterReply(text, hook); };
+      replyAudio.play().catch(function () { afterReply(text, hook); });
+    }).catch(function () {
+      // voice failed -> speechSynthesis fallback via TTS helper, then continue
+      if (window.TTS && window.TTS.attachAndSpeak) { try { window.TTS.attachAndSpeak(sub, text); } catch (e) {} }
+      setTimeout(function () { afterReply(text, hook); }, 600);
+    });
+  }
+
+  function afterReply(text, hook) {
+    // free replay affordance (cached /chat/tts) + speechSynthesis fallback
+    var holder = document.getElementById('replay');
+    if (holder) holder.remove();
+    holder = document.createElement('span'); holder.id = 'replay';
+    sub.appendChild(holder);
+    if (window.TTS && window.TTS.attach) { try { window.TTS.attach(holder, text); } catch (e) {} }
+    if (hook) { endOnHook(); return; }
+    send.disabled = false; listening(); say.focus();
+  }
+
+  function endOnHook() {
+    state = 'ended';
+    composer.classList.add('hidden');
+    yes.style.display = 'inline-block';
+    listening();
+  }
+
+  // --- Intro ---
+  function startIntro() {
+    overlay.remove();
+    state = 'intro';
+    setVideo(manifest.intro_video, {loop: false});
+    stage.muted = false;
+    stage.onended = function () { stage.muted = true; listening(); say.focus(); };
+    // safety: if the intro can't play, fall straight to listening
+    stage.play().catch(function () { listening(); say.focus(); });
+  }
+
+  // --- wire up ---
+  composer.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var m = say.value.trim();
+    if (!m || state === 'pondering' || state === 'speaking' || state === 'ended') return;
+    say.value = '';
+    sendTurn(m);
+  });
+  say.addEventListener('input', armIdle);
+  say.addEventListener('blur', function () { if (idleTimer) clearTimeout(idleTimer); });
+  yes.addEventListener('click', function () {
+    // End of this slice: the Remedy Match wiring is the next spec.
+    sub.textContent = 'Then let us go and find it.';
+  });
+  beginBtn.addEventListener('click', startIntro);
+
+  fetch('/static/fireside/fireside-manifest.json')
+    .then(function (r) { return r.json(); })
+    .then(function (m) { manifest = m; stage.poster = m.intro_poster; })
+    .catch(function () { sub.textContent = 'The fire is not lit just now. Please return shortly.'; });
+})();
+</script>
+</body>
+</html>
