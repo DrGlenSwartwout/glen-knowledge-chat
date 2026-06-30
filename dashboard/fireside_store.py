@@ -51,55 +51,67 @@ def _decode(row: sqlite3.Row) -> dict:
 
 def get(cx, fireside_id: int) -> dict | None:
     init_table(cx)
+    _saved_rf = cx.row_factory
     cx.row_factory = sqlite3.Row
-    row = cx.execute(
-        "SELECT * FROM fireside_sessions WHERE id = ?", (int(fireside_id),)
-    ).fetchone()
-    return _decode(row) if row is not None else None
+    try:
+        row = cx.execute(
+            "SELECT * FROM fireside_sessions WHERE id = ?", (int(fireside_id),)
+        ).fetchone()
+        return _decode(row) if row is not None else None
+    finally:
+        cx.row_factory = _saved_rf
 
 
 def get_or_create(cx, amg_session: str) -> dict:
     init_table(cx)
+    _saved_rf = cx.row_factory
     cx.row_factory = sqlite3.Row
-    row = cx.execute(
-        "SELECT * FROM fireside_sessions "
-        "WHERE amg_session = ? AND ended_at IS NULL "
-        "ORDER BY id DESC LIMIT 1",
-        (amg_session or "",),
-    ).fetchone()
-    if row is not None:
-        return _decode(row)
-    cur = cx.execute(
-        f"INSERT INTO fireside_sessions (amg_session, last_turn_at) "
-        f"VALUES (?, {_NOW})",
-        (amg_session or "",),
-    )
-    cx.commit()
-    return get(cx, cur.lastrowid)
+    try:
+        row = cx.execute(
+            "SELECT * FROM fireside_sessions "
+            "WHERE amg_session = ? AND ended_at IS NULL "
+            "ORDER BY id DESC LIMIT 1",
+            (amg_session or "",),
+        ).fetchone()
+        if row is not None:
+            return _decode(row)
+        cur = cx.execute(
+            f"INSERT INTO fireside_sessions (amg_session, last_turn_at) "
+            f"VALUES (?, {_NOW})",
+            (amg_session or "",),
+        )
+        cx.commit()
+        return get(cx, cur.lastrowid)
+    finally:
+        cx.row_factory = _saved_rf
 
 
 def append_turn(cx, fireside_id: int, speaker: str, text: str) -> None:
     init_table(cx)
+    _saved_rf = cx.row_factory
     cx.row_factory = sqlite3.Row
-    row = cx.execute(
-        "SELECT transcript FROM fireside_sessions WHERE id = ?", (int(fireside_id),)
-    ).fetchone()
-    if row is None:
-        return
     try:
-        transcript = json.loads(row["transcript"]) or []
-    except (ValueError, TypeError):
-        transcript = []
-    ts = cx.execute(f"SELECT {_NOW}").fetchone()[0]
-    transcript.append({"speaker": speaker, "text": text or "", "ts": ts})
-    inc = 1 if speaker == "traveler" else 0
-    cx.execute(
-        "UPDATE fireside_sessions "
-        "SET transcript = ?, last_turn_at = ?, turn_count = turn_count + ? "
-        "WHERE id = ?",
-        (json.dumps(transcript), ts, inc, int(fireside_id)),
-    )
-    cx.commit()
+        row = cx.execute(
+            "SELECT transcript FROM fireside_sessions WHERE id = ?", (int(fireside_id),)
+        ).fetchone()
+        if row is None:
+            return
+        try:
+            transcript = json.loads(row["transcript"]) or []
+        except (ValueError, TypeError):
+            transcript = []
+        ts = cx.execute(f"SELECT {_NOW}").fetchone()[0]
+        transcript.append({"speaker": speaker, "text": text or "", "ts": ts})
+        inc = 1 if speaker == "traveler" else 0
+        cx.execute(
+            "UPDATE fireside_sessions "
+            "SET transcript = ?, last_turn_at = ?, turn_count = turn_count + ? "
+            "WHERE id = ?",
+            (json.dumps(transcript), ts, inc, int(fireside_id)),
+        )
+        cx.commit()
+    finally:
+        cx.row_factory = _saved_rf
 
 
 def update_coverage(cx, fireside_id: int, coverage: dict) -> None:
