@@ -11595,9 +11595,24 @@ def api_practitioner_chat():
     body = request.get_json(silent=True) or {}
     message = body.get("message") or ""
     history = body.get("history") or []
+    client_email = (body.get("client_email") or "").strip().lower()
+
+    # Only act on a client this practitioner actually owns (authorization re-checked
+    # every turn — client_email from the request is never trusted). Empty/unowned -> "".
+    _subject = client_email if (client_email and _pp.client_belongs_to_practitioner(pid, client_email)) else ""
+    _ally_ov = ash_ally.ally_overlay(LOG_DB, _subject)
 
     catalog = _build_ff_catalog()
-    result = _chat.scoped_reply(message, history, catalog)
+    result = _chat.scoped_reply(message, history, catalog, overlay=_ally_ov)
+
+    if _subject:
+        try:
+            import threading as _t
+            _t.Thread(target=ash_ally.record_turn,
+                      args=(LOG_DB, _db_lock, _subject, message, result.get("reply", "")),
+                      daemon=True).start()
+        except Exception:
+            pass
 
     suggestions = []
     for slug in (result.get("suggested_slugs") or []):
