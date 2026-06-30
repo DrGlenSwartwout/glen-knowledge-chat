@@ -327,3 +327,41 @@ def test_two_turn_walk(monkeypatch):
     assert d["inheritance"]["state"] == "opened"
     assert d["body"]["state"] == "untouched"   # untouched dims stay untouched
     assert final["summary"] == "Gut issue likely familial; opening up."
+
+
+def test_persist_extract_merges_and_persists():
+    cx = sqlite3.connect(":memory:")
+    extracted = {"dimensions": {"symptoms": {"state": "opened",
+                 "excerpt": "knee aches", "notes": "AM knee"}}, "summary": "In pain."}
+    merged = am.persist_extract(cx, "p@x.com", extracted)
+    assert merged["dimensions"]["symptoms"]["state"] == "opened"
+    assert merged["summary"] == "In pain."
+    assert merged["email"] == "p@x.com"
+    # persisted: a fresh get sees it
+    assert am.get(cx, "p@x.com")["dimensions"]["symptoms"]["state"] == "opened"
+
+
+def test_persist_extract_equals_manual_merge_then_persist():
+    cx = sqlite3.connect(":memory:")
+    extracted = {"dimensions": {"terrain": {"state": "explored", "excerpt": "",
+                 "notes": "low energy"}}, "summary": "Tired."}
+    expected = am.merge_turn(am.get(cx, "q@x.com"), extracted)
+    got = am.persist_extract(cx, "q@x.com", extracted)
+    # strip microsecond timestamps before comparing — two merge_turn calls at
+    # different wall-clock instants produce different last_touched_at values
+    def _strip_ts(dims):
+        return {k: {f: v for f, v in cell.items() if f != "last_touched_at"}
+                for k, cell in dims.items()}
+    assert _strip_ts(got["dimensions"]) == _strip_ts(expected["dimensions"])
+    assert got["summary"] == expected["summary"]
+
+
+def test_update_from_turn_still_works_via_seam(monkeypatch):
+    cx = sqlite3.connect(":memory:")
+    monkeypatch.setattr(am, "_haiku_extract", lambda *a, **k: {
+        "dimensions": {"mind": {"state": "opened", "excerpt": "racing thoughts",
+                       "notes": "anxious"}}, "summary": "Anxious."})
+    out = am.update_from_turn(cx, "r@x.com", "my mind races", "")
+    assert out["dimensions"]["mind"]["state"] == "opened"
+    assert out["summary"] == "Anxious."
+    assert am.get(cx, "r@x.com")["dimensions"]["mind"]["state"] == "opened"

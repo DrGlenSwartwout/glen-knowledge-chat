@@ -82,6 +82,7 @@ FEEDBACK_VIEW_URL   = os.environ.get("FEEDBACK_VIEW_URL",   "https://Truly.VIP/F
 from dashboard.openai_failover import build_openai_client as _build_openai_client
 from dashboard.people import set_person_tags, distinct_tags
 from dashboard import affiliate_dashboard
+from dashboard import ash_ally
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
 from dashboard.voice_doorway import voice_signal_tags
@@ -3428,6 +3429,9 @@ def chat():
         # surface the soft opt-in. Decided BEFORE the stream so gated content
         # never partially leaks. Members are unaffected (no classifier call).
         _system = get_system_prompt(level)
+        _ally_ov = ash_ally.ally_overlay(LOG_DB, email or _member_email)
+        if _ally_ov:
+            _system = _ally_ov + "\n\n" + _system
         if not is_member(session_id, email) and _is_gated_question(query):
             _system = _system + _EDUCATE_ONLY_POLICY
             yield sse({"gate": True})
@@ -3477,6 +3481,13 @@ def chat():
             image_count=len(image_blocks),
             cta_type=(_cta or {}).get("type"), cta_rung=_rung,
         )
+        try:
+            import threading as _t
+            _t.Thread(target=ash_ally.record_turn,
+                      args=(LOG_DB, _db_lock, (email or _member_email), query, _clean),
+                      daemon=True).start()
+        except Exception:
+            pass
 
         # GHL onboarding for email opt-ins (non-blocking)
         if email:
@@ -3803,6 +3814,10 @@ def begin_match_chat():
         if not _member and _is_gated_question(query):
             _match_system = _REMEDY_MATCH_SYSTEM + _EDUCATE_ONLY_POLICY
             yield sse({"gate": True})
+        _ally_subject = email if for_whom != "someone-else" else ""
+        _ally_ov = ash_ally.ally_overlay(LOG_DB, _ally_subject)
+        if _ally_ov:
+            _match_system = _ally_ov + "\n\n" + _match_system
 
         full = []
         try:
@@ -3825,6 +3840,14 @@ def begin_match_chat():
         try:
             log_query(query, "self-healing", answer, session_id=session_id,
                       email=email, name=name, mode="brief")
+        except Exception:
+            pass
+        try:
+            import threading as _t
+            _t.Thread(target=ash_ally.record_turn,
+                      args=(LOG_DB, _db_lock,
+                            (email if for_whom != "someone-else" else ""), query, answer),
+                      daemon=True).start()
         except Exception:
             pass
 
@@ -7163,6 +7186,9 @@ def begin_concierge_chat():
     except Exception as e:
         print(f"[concierge] retrieval: {e}", flush=True)
 
+    _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
+    _sys_concierge = (_ally_ov + "\n\n" + _CONCIERGE_SYSTEM) if _ally_ov else _CONCIERGE_SYSTEM
+
     def generate():
         if not is_member(session_id, email):
             yield sse({"gate": True})
@@ -7181,12 +7207,19 @@ def begin_concierge_chat():
         full = []
         try:
             with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=700,
-                                     system=_CONCIERGE_SYSTEM, messages=messages) as stream:
+                                     system=_sys_concierge, messages=messages) as stream:
                 for tok in stream.text_stream:
                     tok = _strip_dash(tok); full.append(tok); yield sse({"token": tok})
         except Exception as e:
             yield sse({"error": f"Claude error: {e}"}); return
         answer = "".join(full)
+        try:
+            import threading as _t
+            _t.Thread(target=ash_ally.record_turn,
+                      args=(LOG_DB, _db_lock, email, query, answer),
+                      daemon=True).start()
+        except Exception:
+            pass
 
         # Extract a single suggested complement (separate call) and resolve it.
         try:
@@ -12113,6 +12146,9 @@ def api_portal_chat(token):
     from dashboard import portal_concierge as _pcz
     ctx = _pcz.build_context(content, client_orders)
     _sys = _pcz.system_prompt(ctx)
+    _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
+    if _ally_ov:
+        _sys = _ally_ov + "\n\n" + _sys
     # RAG (best-effort, fail-open)
     context_str = ""
     try:
@@ -12140,6 +12176,13 @@ def api_portal_chat(token):
         except Exception as e:
             yield sse({"error": f"Claude error: {e}"}); return
         answer = "".join(full)
+        try:
+            import threading as _t
+            _t.Thread(target=ash_ally.record_turn,
+                      args=(LOG_DB, _db_lock, email, query, answer),
+                      daemon=True).start()
+        except Exception:
+            pass
         try:
             convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-2:]) + f"\nassistant: {answer}"
             mx = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=120,
