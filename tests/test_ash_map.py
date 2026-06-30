@@ -230,7 +230,7 @@ def test_haiku_extract_bad_response_returns_empty_default(monkeypatch):
     assert out == {"dimensions": {}, "summary": ""}
 
 
-def test_haiku_extract_http_error_returns_empty_default(monkeypatch):
+def test_haiku_extract_network_exception_returns_empty_default(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
     def boom(*a, **k):
@@ -238,6 +238,24 @@ def test_haiku_extract_http_error_returns_empty_default(monkeypatch):
 
     monkeypatch.setattr(am.requests, "post", boom)
     assert am._haiku_extract(am._blank_map(), "hi", "") == {"dimensions": {}, "summary": ""}
+
+
+def test_haiku_extract_http_status_error_returns_empty_default(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(am.requests, "post",
+                        lambda *a, **k: _Resp({"error": "x"}, ok=False, status=500))
+    assert am._haiku_extract(am._blank_map(), "hi", "") == {"dimensions": {}, "summary": ""}
+
+
+def test_haiku_extract_never_raises_if_context_block_fails(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    def boom(_):
+        raise ValueError("malformed memory")
+
+    monkeypatch.setattr(am, "context_block", boom)
+    # must NOT raise — returns the empty default
+    assert am._haiku_extract({"bad": "memory"}, "hi", "") == {"dimensions": {}, "summary": ""}
 
 
 def test_update_from_turn_persists_and_accumulates(monkeypatch):

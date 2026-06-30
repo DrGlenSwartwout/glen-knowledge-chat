@@ -256,32 +256,29 @@ COVERAGE_TOOL = {
     },
 }
 
-_EMPTY_EXTRACT = {"dimensions": {}, "summary": ""}
-
-
 def _haiku_extract(memory: dict, user_text: str, ally_text: str = "") -> dict:
     """One Haiku call mapping the latest turn -> touched dimensions. NEVER raises;
     returns the empty default on any failure (it runs fire-and-forget)."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        return dict(_EMPTY_EXTRACT)
+        return {"dimensions": {}, "summary": ""}
 
-    known = context_block(memory)
-    user_message = (
-        f"Already known about them:\n{known}\n\n"
-        f"Latest exchange:\nPERSON: {user_text}\n"
-        f"ALLY: {ally_text}\n\nReport the coverage now."
-    )
-    payload = {
-        "model": HAIKU_MODEL,
-        "max_tokens": 1024,
-        "system": [{"type": "text", "text": _EXTRACT_SYSTEM,
-                    "cache_control": {"type": "ephemeral"}}],
-        "messages": [{"role": "user", "content": user_message}],
-        "tools": [COVERAGE_TOOL],
-        "tool_choice": {"type": "tool", "name": "emit_coverage"},
-    }
     try:
+        known = context_block(memory)
+        user_message = (
+            f"Already known about them:\n{known}\n\n"
+            f"Latest exchange:\nPERSON: {user_text}\n"
+            f"ALLY: {ally_text}\n\nReport the coverage now."
+        )
+        payload = {
+            "model": HAIKU_MODEL,
+            "max_tokens": 1024,
+            "system": [{"type": "text", "text": _EXTRACT_SYSTEM,
+                        "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": user_message}],
+            "tools": [COVERAGE_TOOL],
+            "tool_choice": {"type": "tool", "name": "emit_coverage"},
+        }
         resp = requests.post(
             ANTHROPIC_MESSAGES,
             headers={"x-api-key": api_key,
@@ -290,18 +287,17 @@ def _haiku_extract(memory: dict, user_text: str, ally_text: str = "") -> dict:
             json=payload, timeout=60,
         )
         if not resp.ok:
-            return dict(_EMPTY_EXTRACT)
+            return {"dimensions": {}, "summary": ""}
         body = resp.json()
         for b in body.get("content", []):
             if b.get("type") == "tool_use" and b.get("name") == "emit_coverage":
                 inp = b.get("input")
                 if isinstance(inp, dict):
-                    inp.setdefault("dimensions", {})
-                    inp.setdefault("summary", "")
-                    return inp
-        return dict(_EMPTY_EXTRACT)
+                    return {"dimensions": inp.get("dimensions") or {},
+                            "summary": inp.get("summary") or ""}
+        return {"dimensions": {}, "summary": ""}
     except Exception:
-        return dict(_EMPTY_EXTRACT)
+        return {"dimensions": {}, "summary": ""}
 
 
 def update_from_turn(cx, email: str, user_text: str, ally_text: str = "") -> dict:
