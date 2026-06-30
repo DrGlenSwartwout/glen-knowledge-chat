@@ -210,3 +210,106 @@ def context_block(memory: dict) -> str:
     if untouched:
         lines.append("Not yet touched: " + ", ".join(untouched))
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Task 5: LLM updater + orchestrator
+# ---------------------------------------------------------------------------
+
+_DIM_LIST_FOR_PROMPT = "\n".join(
+    f"  {d['key']}: {d['name']} — {d['meaning']}" for d in ASH_DIMENSIONS
+)
+
+_EXTRACT_SYSTEM = (
+    "You quietly maintain a private health-conversation coverage map across 12 "
+    "dimensions. Given the latest exchange and what is already known, report ONLY "
+    "the dimensions this turn genuinely touched. Never invent; prefer fewer "
+    "dimensions. For each touched dimension give: state (opened = first surfaced, "
+    "explored = real detail given, deep = worked through), excerpt = the person's "
+    "OWN words that opened/deepened it (or '' if none), notes = what was learned "
+    "this turn. Also refresh a 1-2 sentence 'who they are' summary, or '' to keep "
+    "the prior one.\n\nThe 12 dimensions:\n" + _DIM_LIST_FOR_PROMPT
+)
+
+COVERAGE_TOOL = {
+    "name": "emit_coverage",
+    "description": "Report which ASH dimensions this conversational turn touched.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "dimensions": {
+                "type": "object",
+                "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                        "state": {"type": "string",
+                                  "enum": ["opened", "explored", "deep"]},
+                        "excerpt": {"type": "string"},
+                        "notes": {"type": "string"},
+                    },
+                    "required": ["state"],
+                },
+            },
+            "summary": {"type": "string"},
+        },
+        "required": ["dimensions"],
+    },
+}
+
+_EMPTY_EXTRACT = {"dimensions": {}, "summary": ""}
+
+
+def _haiku_extract(memory: dict, user_text: str, ally_text: str = "") -> dict:
+    """One Haiku call mapping the latest turn -> touched dimensions. NEVER raises;
+    returns the empty default on any failure (it runs fire-and-forget)."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return dict(_EMPTY_EXTRACT)
+
+    known = context_block(memory)
+    user_message = (
+        f"Already known about them:\n{known}\n\n"
+        f"Latest exchange:\nPERSON: {user_text}\n"
+        f"ALLY: {ally_text}\n\nReport the coverage now."
+    )
+    payload = {
+        "model": HAIKU_MODEL,
+        "max_tokens": 1024,
+        "system": [{"type": "text", "text": _EXTRACT_SYSTEM,
+                    "cache_control": {"type": "ephemeral"}}],
+        "messages": [{"role": "user", "content": user_message}],
+        "tools": [COVERAGE_TOOL],
+        "tool_choice": {"type": "tool", "name": "emit_coverage"},
+    }
+    try:
+        resp = requests.post(
+            ANTHROPIC_MESSAGES,
+            headers={"x-api-key": api_key,
+                     "anthropic-version": "2023-06-01",
+                     "content-type": "application/json"},
+            json=payload, timeout=60,
+        )
+        if not resp.ok:
+            return dict(_EMPTY_EXTRACT)
+        body = resp.json()
+        for b in body.get("content", []):
+            if b.get("type") == "tool_use" and b.get("name") == "emit_coverage":
+                inp = b.get("input")
+                if isinstance(inp, dict):
+                    inp.setdefault("dimensions", {})
+                    inp.setdefault("summary", "")
+                    return inp
+        return dict(_EMPTY_EXTRACT)
+    except Exception:
+        return dict(_EMPTY_EXTRACT)
+
+
+def update_from_turn(cx, email: str, user_text: str, ally_text: str = "") -> dict:
+    """get -> Haiku extract -> pure merge -> persist -> return merged memory.
+    Safe to call fire-and-forget after an ally reply."""
+    memory = get(cx, email)
+    extracted = _haiku_extract(memory, user_text, ally_text)
+    merged = merge_turn(memory, extracted)
+    _upsert(cx, email, merged.get("summary", ""), merged["dimensions"])
+    merged["email"] = _norm_email(email)
+    return merged

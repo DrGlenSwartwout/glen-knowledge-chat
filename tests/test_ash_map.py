@@ -177,3 +177,104 @@ def test_context_block_populated_sections():
     # touched dims are NOT in the not-yet-touched list
     not_touched_line = [l for l in block.splitlines() if l.startswith("Not yet touched:")][0]
     assert "Symptoms / 5 Cardinal Signs" not in not_touched_line
+
+
+# ---------------------------------------------------------------------------
+# Task 5: _haiku_extract + update_from_turn
+# ---------------------------------------------------------------------------
+
+class _Resp:
+    def __init__(self, body, ok=True, status=200):
+        self._b, self.ok, self.status_code = body, ok, status
+        self.text = "x"
+
+    def json(self):
+        return self._b
+
+
+def _coverage_body(payload):
+    return {"content": [{"type": "tool_use", "name": "emit_coverage", "input": payload}]}
+
+
+def test_haiku_extract_forces_tool_and_parses(monkeypatch):
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["payload"] = json
+        return _Resp(_coverage_body(
+            {"dimensions": {"symptoms": {"state": "opened",
+                "excerpt": "knee aches", "notes": "AM knee pain"}},
+             "summary": "In pain."}))
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(am.requests, "post", fake_post)
+    out = am._haiku_extract(am._blank_map(), "my knee aches", "")
+    assert out["dimensions"]["symptoms"]["state"] == "opened"
+    assert out["summary"] == "In pain."
+    p = captured["payload"]
+    assert any(t.get("name") == "emit_coverage" for t in p["tools"])
+    assert p["tool_choice"]["name"] == "emit_coverage"
+
+
+def test_haiku_extract_no_key_returns_empty_default(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    out = am._haiku_extract(am._blank_map(), "hi", "")
+    assert out == {"dimensions": {}, "summary": ""}
+
+
+def test_haiku_extract_bad_response_returns_empty_default(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(am.requests, "post",
+                        lambda *a, **k: _Resp({"content": []}, ok=True))
+    out = am._haiku_extract(am._blank_map(), "hi", "")
+    assert out == {"dimensions": {}, "summary": ""}
+
+
+def test_haiku_extract_http_error_returns_empty_default(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    def boom(*a, **k):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(am.requests, "post", boom)
+    assert am._haiku_extract(am._blank_map(), "hi", "") == {"dimensions": {}, "summary": ""}
+
+
+def test_update_from_turn_persists_and_accumulates(monkeypatch):
+    cx = sqlite3.connect(":memory:")
+    seq = [
+        {"dimensions": {"symptoms": {"state": "opened",
+            "excerpt": "knee aches morning", "notes": "AM knee"},
+                        "terrain": {"state": "opened", "excerpt": "", "notes": "low energy"}},
+         "summary": "Turn one."},
+        {"dimensions": {"symptoms": {"state": "deep",
+            "excerpt": "ignored second excerpt", "notes": "worse in cold"},
+                        "inheritance": {"state": "opened", "excerpt": "", "notes": "mother had it"}},
+         "summary": "Turn two."},
+    ]
+    calls = {"i": 0}
+
+    def fake_extract(memory, user_text, ally_text=""):
+        out = seq[calls["i"]]
+        calls["i"] += 1
+        return out
+
+    monkeypatch.setattr(am, "_haiku_extract", fake_extract)
+
+    m1 = am.update_from_turn(cx, "u@x.com", "my knee aches and I'm wiped", "")
+    assert m1["dimensions"]["symptoms"]["state"] == "opened"
+    assert m1["dimensions"]["terrain"]["state"] == "opened"
+    assert m1["summary"] == "Turn one."
+
+    m2 = am.update_from_turn(cx, "u@x.com", "it's worse in the cold; mom had it too", "")
+    # turn-1 excerpt preserved, state deepened, notes accumulated
+    assert m2["dimensions"]["symptoms"]["state"] == "deep"
+    assert m2["dimensions"]["symptoms"]["opened_excerpt"] == "knee aches morning"
+    assert "AM knee" in m2["dimensions"]["symptoms"]["notes"]
+    assert "worse in cold" in m2["dimensions"]["symptoms"]["notes"]
+    assert m2["dimensions"]["inheritance"]["state"] == "opened"
+    assert m2["summary"] == "Turn two."
+    # untouched dims still untouched
+    assert m2["dimensions"]["body"]["state"] == "untouched"
+    # persisted: a fresh get sees turn-2 state
+    assert am.get(cx, "u@x.com")["dimensions"]["symptoms"]["state"] == "deep"
