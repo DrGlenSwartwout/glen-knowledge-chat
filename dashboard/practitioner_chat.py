@@ -30,7 +30,7 @@ def _scrub(text):
     return text.strip()
 
 
-def scoped_reply(message, history, catalog):
+def scoped_reply(message, history, catalog, overlay=""):
     """Return {reply, suggested_slugs} grounded only in `catalog`
     ([{slug,name,description}]). Suggested slugs are validated against the catalog;
     the reply is scrubbed of any external links/store mentions."""
@@ -39,7 +39,7 @@ def scoped_reply(message, history, catalog):
                         for c in (catalog or []))
     msgs = list(history or []) + [{"role": "user", "content": str(message or "")}]
     try:
-        out = _llm_json(_SYSTEM + cat_txt, msgs)
+        out = _llm_json(_SYSTEM + (overlay + "\n\n" if overlay else "") + cat_txt, msgs)
     except Exception:
         return {"reply": "Sorry, I had trouble — please pick from the list.", "suggested_slugs": []}
     slugs = [s for s in (out.get("suggested_slugs") or []) if s in valid]
