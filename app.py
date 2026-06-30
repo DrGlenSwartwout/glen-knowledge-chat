@@ -26471,11 +26471,22 @@ def api_invoice_claim_paid(token):
 
 @app.route("/api/invoice/<token>/chat", methods=["POST"])
 def api_invoice_chat(token):
-    if not _pp.order_id_from_invoice_token(token):
+    order = _invoice_order_for_token(token)
+    if not order:
         return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    email = (order.get("email") or "").strip().lower()
     body = request.get_json(silent=True) or {}
     catalog = _build_ff_catalog()
-    result = _chat.scoped_reply(body.get("message") or "", body.get("history") or [], catalog)
+    _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
+    _msg = body.get("message") or ""
+    result = _chat.scoped_reply(_msg, body.get("history") or [], catalog, overlay=_ally_ov)
+    try:
+        import threading as _t
+        _t.Thread(target=ash_ally.record_turn,
+                  args=(LOG_DB, _db_lock, email, _msg, result.get("reply", "")),
+                  daemon=True).start()
+    except Exception:
+        pass
     suggestions = []
     for slug in (result.get("suggested_slugs") or []):
         p = _get_product(slug)
