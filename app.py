@@ -2009,12 +2009,16 @@ def begin_fireside_agent():
     from dashboard import fireside_store, fireside_agent
 
     data = request.get_json(silent=True) or {}
-    message = (data.get("message") or "").strip()
+    message = (data.get("message") or "").strip()[:FIRESIDE_MAX_CHARS]
     if not message:
         return jsonify({"error": "empty"}), 400
     session_id = (request.cookies.get("amg_session")
                   or (data.get("session_id") or "").strip()
                   or uuid.uuid4().hex)
+
+    _blocked = _velocity_guard(request, "anonymous", session_id)
+    if _blocked is not None:
+        return _blocked
 
     # Read state + record the traveler turn under the lock.
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -2057,7 +2061,7 @@ def begin_fireside_agent():
                 fireside_store.mark_ended(cx, fireside_id)
         _fireside_coverage_async(fireside_id, message, clean, coverage)
         yield sse({"done": True, "hook": hooked, "fireside_id": fireside_id,
-                   "turn_count": this_turn, "session_id": session_id})
+                   "turn_count": this_turn})
 
     resp = Response(stream_with_context(generate()), content_type="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -4279,6 +4283,7 @@ REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 FIRESIDE_ENABLED = os.environ.get("FIRESIDE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+FIRESIDE_MAX_CHARS = 4000  # cap a single fireside message (cost + row growth)
 PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
 PIF_GIFT_NOTE_MAX_AGE_DAYS = int(os.environ.get("PIF_GIFT_NOTE_MAX_AGE_DAYS", "60"))
 _TESTIMONIALS_ENABLED = os.environ.get("TESTIMONIALS_ENABLED", "").strip().lower() in ("1", "true", "yes")

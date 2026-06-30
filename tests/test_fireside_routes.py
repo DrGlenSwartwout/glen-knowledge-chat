@@ -25,8 +25,6 @@ def test_fireside_page_served_when_on(monkeypatch, tmp_path):
     assert any("amg_session" in (h or "") for h in r.headers.getlist("Set-Cookie"))
 
 
-import types
-
 class _FakeStream:
     def __init__(self, toks): self._toks = toks
     def __enter__(self): return self
@@ -135,6 +133,14 @@ def test_agent_split_hook_marker_does_not_leak(monkeypatch, tmp_path):
     assert "⟦" not in body and "HOOK" not in body   # no sentinel fragment leaks
     assert '"hook": true' in body                          # still detected -> hook fires
     assert "Shall we go find it?" in _tokens(body)
+
+
+def test_agent_rate_limited_returns_429(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path, enabled="true")
+    monkeypatch.setattr(appmod, "_fireside_coverage_async", lambda *a, **k: None)
+    monkeypatch.setattr(appmod, "_velocity_guard",
+                        lambda *a, **k: (appmod.jsonify({"error": "rate_limited"}), 429))
+    assert _post(appmod, "hello").status_code == 429
 
 
 def test_manifest_served(monkeypatch, tmp_path):

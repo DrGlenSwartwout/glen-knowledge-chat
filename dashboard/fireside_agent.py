@@ -88,12 +88,22 @@ def build_system(coverage: dict, turn_count: int) -> str:
 
 
 def build_messages(transcript: list, user_message: str) -> list:
-    msgs = []
+    raw = []
     for t in (transcript or [])[-MAX_HISTORY_TURNS:]:
         content = (t.get("text") or "").strip()
         if not content:
             continue
         role = "assistant" if t.get("speaker") == "glendalf" else "user"
-        msgs.append({"role": role, "content": content})
-    msgs.append({"role": "user", "content": (user_message or "").strip()})
+        raw.append({"role": role, "content": content})
+    raw.append({"role": "user", "content": (user_message or "").strip()})
+    # Coalesce consecutive same-role messages. Anthropic requires alternating
+    # roles; a dangling traveler turn (stream abandoned) or a dropped empty
+    # Glendalf turn would otherwise produce two user messages in a row -> 400
+    # -> the session soft-locks on every later turn. Merge them instead.
+    msgs = []
+    for m in raw:
+        if msgs and msgs[-1]["role"] == m["role"]:
+            msgs[-1]["content"] += "\n\n" + m["content"]
+        else:
+            msgs.append({"role": m["role"], "content": m["content"]})
     return msgs

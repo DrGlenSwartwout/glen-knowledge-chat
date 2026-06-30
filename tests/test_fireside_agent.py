@@ -63,8 +63,28 @@ def test_build_messages_maps_roles_and_appends():
 
 
 def test_build_messages_caps_history():
-    transcript = [{"speaker": "traveler", "text": f"m{i}"} for i in range(40)]
+    transcript = [{"speaker": "traveler" if i % 2 == 0 else "glendalf",
+                   "text": f"m{i}"} for i in range(40)]
     msgs = fa.build_messages(transcript, "now")
-    # last MAX_HISTORY_TURNS of history + the new user message
-    assert len(msgs) == fa.MAX_HISTORY_TURNS + 1
-    assert msgs[-1]["content"] == "now"
+    assert len(msgs) <= fa.MAX_HISTORY_TURNS + 1      # capped
+    assert msgs[-1] == {"role": "user", "content": "now"}
+    assert "m0" not in " ".join(m["content"] for m in msgs)   # oldest dropped
+    assert "m39" in " ".join(m["content"] for m in msgs)      # newest kept
+    for a, b in zip(msgs, msgs[1:]):
+        assert a["role"] != b["role"]                  # strictly alternating
+
+
+def test_build_messages_coalesces_consecutive_same_role():
+    # dangling traveler turn (stream died, no Glendalf reply persisted) must
+    # NOT yield two consecutive user messages (Anthropic 400 -> soft-lock).
+    transcript = [
+        {"speaker": "traveler", "text": "first thing"},
+        {"speaker": "glendalf", "text": "I hear you"},
+        {"speaker": "traveler", "text": "dangling, stream died"},
+    ]
+    msgs = fa.build_messages(transcript, "second message")
+    for a, b in zip(msgs, msgs[1:]):
+        assert a["role"] != b["role"]
+    assert msgs[-1]["role"] == "user"
+    assert "dangling, stream died" in msgs[-1]["content"]
+    assert "second message" in msgs[-1]["content"]
