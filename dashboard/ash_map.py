@@ -9,6 +9,7 @@ per-turn updater (_haiku_extract) mirrors journal_blueprint._haiku_analyze's
 forced-tool-use structured output, but never raises — it runs fire-and-forget
 after an ally reply, so any failure degrades to "learned nothing this turn".
 """
+import copy as _copy
 import json
 import os
 import sqlite3
@@ -66,9 +67,6 @@ def _blank_map() -> dict:
             "notes": "", "last_touched_at": None}
         for k in DIM_KEYS
     }
-
-
-import copy as _copy
 
 
 def merge_turn(memory: dict, updater_output: dict) -> dict:
@@ -139,7 +137,6 @@ def _full_dimensions(stored: dict) -> dict:
 def get(cx, email: str) -> dict:
     init_table(cx)
     em = _norm_email(email)
-    cx.row_factory = sqlite3.Row
     row = cx.execute(
         "SELECT summary, dimensions_json, created_at, updated_at "
         "FROM ash_ally_memory WHERE email = ?", (em,)
@@ -148,15 +145,15 @@ def get(cx, email: str) -> dict:
         return {"email": em, "summary": "", "dimensions": _blank_map(),
                 "created_at": None, "updated_at": None}
     try:
-        stored = json.loads(row["dimensions_json"]) or {}
+        stored = json.loads(row[1]) or {}
     except (ValueError, TypeError):
         stored = {}
     return {
         "email": em,
-        "summary": row["summary"] or "",
+        "summary": row[0] or "",
         "dimensions": _full_dimensions(stored),
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"],
+        "created_at": row[2],
+        "updated_at": row[3],
     }
 
 

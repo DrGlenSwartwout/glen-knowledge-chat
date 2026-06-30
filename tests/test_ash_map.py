@@ -1,3 +1,6 @@
+import copy
+import sqlite3
+
 import dashboard.ash_map as am
 
 
@@ -43,9 +46,6 @@ def test_now_iso_is_valid_iso8601_with_seconds():
     # seconds field present: THH:MM:SS.ffffff -> the time part has 3 colon-separated groups
     time_part = ts.split("T")[1].rstrip("Z")
     assert len(time_part.split(":")) == 3, ts
-
-
-import copy
 
 
 def _mem(summary="", dims=None):
@@ -108,9 +108,6 @@ def test_merge_ignores_unknown_dimension_keys():
     merged = am.merge_turn(mem, out)
     assert "not_a_dim" not in merged["dimensions"]
     assert all(merged["dimensions"][k]["state"] == "untouched" for k in am.DIM_KEYS)
-
-
-import sqlite3
 
 
 def _cx():
