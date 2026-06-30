@@ -2,7 +2,7 @@
 # No Flask import: everything here is unit-testable in isolation.
 
 _EXCLUDE_PREFIXES = ("/console/", "/admin/", "/api/", "/static/")
-_EXCLUDE_EXACT = ("/begin/state",)
+_EXCLUDE_EXACT = ("/begin/state", "/begin/fireside")
 _MEMBER_PREFIXES = ("/client-portal", "/coaching", "/affiliate-hub",
                     "/cert-portal", "/practitioner", "/dashboard", "/workspace")
 
