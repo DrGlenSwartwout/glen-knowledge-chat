@@ -73,6 +73,12 @@
     <!-- Product assistant — inline chat at the top of the portal -->
     <div id="scoped-chat-panel">
       <div id="scoped-chat-header">Product assistant</div>
+      <div id="client-focus-row" style="display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap">
+        <input id="client-search" placeholder="Search your clients by name or email&hellip;" autocomplete="off" style="flex:1;min-width:180px">
+        <span id="client-focus-badge" style="display:none;font-size:13px;background:#eef;padding:3px 8px;border-radius:10px"></span>
+        <button id="client-focus-clear" type="button" style="display:none" onclick="clientFocusClear()">Clear</button>
+      </div>
+      <div id="client-search-results" style="display:none;border:1px solid #ddd;border-radius:6px;max-height:160px;overflow:auto"></div>
       <div id="scoped-chat-log"></div>
       <div id="scoped-chat-input-row">
         <input id="scoped-chat-input" placeholder="Ask about a product or condition&hellip;" autocomplete="off">
@@ -398,6 +404,61 @@ loadPortalData();
   var chatHistory = [];
   var chatEndpoint = '/api/practitioner/chat';
 
+  var currentClientEmail = '';
+  var clientSearchTimer = null;
+
+  function escapeHtml(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  function renderClientResults(clients){
+    var box = document.getElementById('client-search-results');
+    if(!clients || !clients.length){ box.style.display='none'; box.innerHTML=''; return; }
+    box.innerHTML = clients.map(function(c){
+      var em = escapeHtml(c.email);
+      var label = (c.name ? escapeHtml(c.name) + ' — ' : '') + em;
+      return '<div class="client-result" data-email="'+em+'" style="padding:6px 10px;cursor:pointer">'+label+'</div>';
+    }).join('');
+    box.style.display='block';
+    Array.prototype.forEach.call(box.querySelectorAll('.client-result'), function(el){
+      el.onclick = function(){ clientFocusSet(el.getAttribute('data-email'), el.textContent); };
+    });
+  }
+  function clientFocusSet(email, label){
+    currentClientEmail = email || '';
+    var badge = document.getElementById('client-focus-badge');
+    badge.textContent = 'Client in focus: ' + (label || email);
+    badge.style.display = 'inline-block';
+    document.getElementById('client-focus-clear').style.display = 'inline-block';
+    var box = document.getElementById('client-search-results');
+    box.style.display='none'; box.innerHTML='';
+    document.getElementById('client-search').value = '';
+  }
+  window.clientFocusClear = function(){
+    currentClientEmail = '';
+    document.getElementById('client-focus-badge').style.display='none';
+    document.getElementById('client-focus-clear').style.display='none';
+  };
+  function clientSearch(q){
+    if(!q || !q.trim()){ renderClientResults([]); return; }
+    fetch('/api/practitioner/clients/search?token=' + encodeURIComponent(TOKEN) + '&q=' + encodeURIComponent(q.trim()))
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(d && d.ok) renderClientResults(d.clients || []); })
+      .catch(function(){ /* fail-soft: no results */ });
+  }
+  (function(){
+    var inp = document.getElementById('client-search');
+    if(inp){
+      inp.addEventListener('input', function(){
+        clearTimeout(clientSearchTimer);
+        var v = inp.value;
+        clientSearchTimer = setTimeout(function(){ clientSearch(v); }, 250);
+      });
+    }
+  })();
+
   // addToCart for the dropship page: add to practitioner order cart
   function chatAddToCart(slug, name, priceCents) {
     fetch('/api/practitioner/cart', {
@@ -458,7 +519,7 @@ loadPortalData();
     var sendBtn = document.getElementById('scoped-chat-send');
     sendBtn.disabled = true;
 
-    var body = {message: msg, history: chatHistory.slice(-10)};
+    var body = {token: TOKEN, message: msg, history: chatHistory.slice(-10), client_email: currentClientEmail};
 
     fetch(chatEndpoint, {
       method: 'POST',

@@ -187,6 +187,48 @@ def dispensary_order_history(practitioner_id, *, limit=20, db_path=None) -> List
              "credit_earned_cents": r[3], "created_at": r[4]} for r in rows]
 
 
+def client_belongs_to_practitioner(practitioner_id, email, *, db_path=None) -> bool:
+    """True iff `email` is a client of `practitioner_id` (has a dispensary order under
+    them). The authorization guard before any ASH read/write keyed on a client email —
+    a practitioner may only act on their own clients. Case-insensitive on email."""
+    em = (email or "").strip().lower()
+    if not practitioner_id or not em:
+        return False
+    p = db_path or _db_path()
+    with sqlite3.connect(p) as cx:
+        _ensure_dispensary_table(cx)
+        row = cx.execute(
+            "SELECT 1 FROM dispensary_orders "
+            "WHERE practitioner_id=? AND lower(customer_email)=? LIMIT 1",
+            (str(practitioner_id), em),
+        ).fetchone()
+    return row is not None
+
+
+def search_clients(practitioner_id, q, *, limit=8, db_path=None) -> List[dict]:
+    """The practitioner's own dispensary clients matching `q` (email substring or joined
+    people.name), for the chat client-focus picker. Deduped by email; scoped to the
+    practitioner (never returns another practitioner's client). Empty q -> []."""
+    qq = (q or "").strip().lower()
+    if not practitioner_id or not qq:
+        return []
+    like = f"%{qq}%"
+    p = db_path or _db_path()
+    with sqlite3.connect(p) as cx:
+        _ensure_dispensary_table(cx)
+        rows = cx.execute(
+            "SELECT DISTINCT d.customer_email AS email, COALESCE(pe.name,'') AS name "
+            "FROM dispensary_orders d "
+            "LEFT JOIN people pe ON lower(pe.email) = lower(d.customer_email) "
+            "WHERE d.practitioner_id = ? "
+            "  AND d.customer_email IS NOT NULL AND d.customer_email <> '' "
+            "  AND (lower(d.customer_email) LIKE ? OR lower(COALESCE(pe.name,'')) LIKE ?) "
+            "ORDER BY name, email LIMIT ?",
+            (str(practitioner_id), like, like, int(limit)),
+        ).fetchall()
+    return [{"email": r[0], "name": r[1]} for r in rows]
+
+
 def practitioner_id_by_dispensary_code(code) -> Optional[str]:
     if not code:
         return None
