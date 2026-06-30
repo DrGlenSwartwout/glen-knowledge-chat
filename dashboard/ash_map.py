@@ -304,6 +304,19 @@ def _haiku_extract(memory: dict, user_text: str, ally_text: str = "") -> dict:
         return {"dimensions": {}, "summary": ""}
 
 
+def persist_extract(cx, email: str, extracted: dict) -> dict:
+    """Apply an already-extracted updater result to a person's memory and persist it.
+    This is the locked tail of update_from_turn: get -> merge -> upsert. The caller
+    holds the DB lock around this (it does fast sqlite I/O only, no LLM call), so a
+    cross-surface writer can run the slow _haiku_extract OUTSIDE the lock and pass the
+    result here. Returns the merged memory with email set."""
+    memory = get(cx, email)
+    merged = merge_turn(memory, extracted)
+    _upsert(cx, email, merged.get("summary", ""), merged["dimensions"])
+    merged["email"] = _norm_email(email)
+    return merged
+
+
 def update_from_turn(cx, email: str, user_text: str, ally_text: str = "") -> dict:
     """get -> Haiku extract -> pure merge -> persist -> return merged memory.
     The LLM step (_haiku_extract) degrades silently, so a model/network failure
@@ -313,7 +326,4 @@ def update_from_turn(cx, email: str, user_text: str, ally_text: str = "") -> dic
     concurrent turns."""
     memory = get(cx, email)
     extracted = _haiku_extract(memory, user_text, ally_text)
-    merged = merge_turn(memory, extracted)
-    _upsert(cx, email, merged.get("summary", ""), merged["dimensions"])
-    merged["email"] = _norm_email(email)
-    return merged
+    return persist_extract(cx, email, extracted)
