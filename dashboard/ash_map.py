@@ -71,7 +71,10 @@ def _blank_map() -> dict:
 
 def merge_turn(memory: dict, updater_output: dict) -> dict:
     """Apply one updater result to a memory, PURELY. Forward-only state ladder,
-    set-once excerpt, deduped note accumulation. Returns a new dict."""
+    set-once excerpt, deduped note accumulation. Returns a new dict. Note: a
+    dimension key's mere presence in updater_output["dimensions"] is treated as
+    a touch, so last_touched_at is stamped for it even if no field materially
+    changed."""
     merged = _copy.deepcopy(memory)
     dims = merged.setdefault("dimensions", _blank_map())
     now = _now_iso()
@@ -188,7 +191,7 @@ def context_block(memory: dict) -> str:
         name = _DIM_NAME[k]
         if state in ("explored", "deep"):
             notes = " ".join((cell.get("notes") or "").split())
-            explored.append(f"{name}: {notes}".rstrip(": ").rstrip())
+            explored.append(f"{name}: {notes}" if notes else name)
         elif state == "opened":
             ex = (cell.get("opened_excerpt") or "").strip()
             opened.append(f'{name}: "{ex}"' if ex else name)
@@ -239,6 +242,7 @@ COVERAGE_TOOL = {
         "properties": {
             "dimensions": {
                 "type": "object",
+                "propertyNames": {"enum": DIM_KEYS},
                 "additionalProperties": {
                     "type": "object",
                     "properties": {
@@ -302,7 +306,11 @@ def _haiku_extract(memory: dict, user_text: str, ally_text: str = "") -> dict:
 
 def update_from_turn(cx, email: str, user_text: str, ally_text: str = "") -> dict:
     """get -> Haiku extract -> pure merge -> persist -> return merged memory.
-    Safe to call fire-and-forget after an ally reply."""
+    The LLM step (_haiku_extract) degrades silently, so a model/network failure
+    just yields a no-op merge. NOTE: the sqlite reads/writes (get, _upsert) can
+    still raise (locked DB, I/O); the SP2b caller should wrap this call and hold
+    the DB lock across it, since this read-modify-write on one email can race two
+    concurrent turns."""
     memory = get(cx, email)
     extracted = _haiku_extract(memory, user_text, ally_text)
     merged = merge_turn(memory, extracted)
