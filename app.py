@@ -11573,6 +11573,17 @@ def _build_ff_catalog():
     return catalog
 
 
+@app.route("/api/practitioner/clients/search", methods=["GET"])
+def api_practitioner_clients_search():
+    """Search the authenticated practitioner's own clients (dispensary-order clients)
+    by name/email for the chat client-focus picker. Scoped to the practitioner."""
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "authentication required"}), 401
+    q = (request.args.get("q") or "").strip()
+    return jsonify({"ok": True, "clients": _pp.search_clients(pid, q)})
+
+
 @app.route("/api/practitioner/chat", methods=["POST"])
 def api_practitioner_chat():
     """Practitioner-authenticated product-selection chat scoped to FF catalog.
