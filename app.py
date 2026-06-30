@@ -12146,6 +12146,9 @@ def api_portal_chat(token):
     from dashboard import portal_concierge as _pcz
     ctx = _pcz.build_context(content, client_orders)
     _sys = _pcz.system_prompt(ctx)
+    _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
+    if _ally_ov:
+        _sys = _ally_ov + "\n\n" + _sys
     # RAG (best-effort, fail-open)
     context_str = ""
     try:
@@ -12173,6 +12176,13 @@ def api_portal_chat(token):
         except Exception as e:
             yield sse({"error": f"Claude error: {e}"}); return
         answer = "".join(full)
+        try:
+            import threading as _t
+            _t.Thread(target=ash_ally.record_turn,
+                      args=(LOG_DB, _db_lock, email, query, answer),
+                      daemon=True).start()
+        except Exception:
+            pass
         try:
             convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-2:]) + f"\nassistant: {answer}"
             mx = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=120,
