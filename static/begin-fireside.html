@@ -75,6 +75,7 @@
 
   var manifest = null;
   var state = 'intro';
+  var replyFinished = false;
   var lastFiller = null, lastInter = null;
   var travelerTurns = 0, interjections = 0, turnsSinceInterjection = 99;
   var idleTimer = null;
@@ -142,6 +143,7 @@
   }
 
   function streamReply(message) {
+    replyFinished = false;
     var full = '';
     fetch('/begin/fireside/agent', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -168,6 +170,8 @@
   }
 
   function finishReply(text, hook) {
+    if (replyFinished) return;
+    replyFinished = true;
     sub.textContent = text;
     // render the reply voice (parallel path); play when ready, then return to listening
     fetch('/chat/tts', {
@@ -205,11 +209,12 @@
     state = 'ended';
     composer.classList.add('hidden');
     yes.style.display = 'inline-block';
-    listening();
+    pondering();
   }
 
   // --- Intro ---
   function startIntro() {
+    if (!manifest) return;
     overlay.remove();
     state = 'intro';
     setVideo(manifest.intro_video, {loop: false});
@@ -223,7 +228,7 @@
   composer.addEventListener('submit', function (e) {
     e.preventDefault();
     var m = say.value.trim();
-    if (!m || state === 'pondering' || state === 'speaking' || state === 'ended') return;
+    if (!m || state === 'intro' || state === 'pondering' || state === 'speaking' || state === 'ended') return;
     say.value = '';
     sendTurn(m);
   });
