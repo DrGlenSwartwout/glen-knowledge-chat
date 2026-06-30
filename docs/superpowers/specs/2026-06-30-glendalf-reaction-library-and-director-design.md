@@ -226,7 +226,10 @@ Total ≈ 36; trim to the strongest ~32 after review. Expand toward the full pal
 
 - **Source still:** the locked master `n11-N1.jpg` (Glendalf, his real likeness) is the start image for every Kling i2v render → consistent character across the whole library.
 - **Render:** `kwaivgi/kling-v1.6-standard` image-to-video, per-clip prompt encoding expression + head/camera motion + (optional) gaze direction + (optional) hand gesture; `negative_prompt` to suppress talking-mouth where the family is silent. Camera moves (dolly/close-up) used for hero/emphasis variety, as validated in the proof batch.
-- **Voice/SFX:** vocalized backchannels rendered in Glen's clone (ElevenLabs `jFxSqMckq2I4mET3C5QC`), trimmed; audible-action SFX either captured in-clip or synced as a separate `audio` track. Non-verbal sounds (laugh, gasp, "ahh") may need careful TTS or light sound design.
+- **Voice/SFX (decided):**
+  - **Audible actions** (snap, clap, slap, table-tap, page-turn, throat-clear, clink) and **non-verbal vocalizations** (laugh, gasp, wordless "ahh", soft chuckle) → **Glen-recorded real samples.** TTS mangles non-lexical sound; a real sample is most authentic (it's literally his laugh/snap). Synced as a separate `audio` track or captured in-clip.
+  - **Borderline-verbal backchannels** ("mm-hmm", "oh?", "hmm") → **ElevenLabs clone (`jFxSqMckq2I4mET3C5QC`) first, Glen reviews/approves before lock;** fall back to a Glen recording if the clone sounds off.
+  - *Light sound design* = the minimal mixing on the above: trim, EQ, level-match, light room tone — not a scored track.
 - **Post:** ffmpeg faststart + uniform encode; name by `id` from the manifest; small inline-GIF proof for review before locking.
 - **Naming:** `react-<family>-<form>[-<gaze>][-<hand>].mp4`, gaze clips `gaze-<dir>.mp4`, resting `listen-rest-N.mp4`.
 
@@ -249,6 +252,8 @@ The director's selection layer is input-agnostic; only its *signal source* chang
 - **Gaze/gesture baked into hero reactions** (the "B" of A→B staging): signature clips with gaze + gesture pre-paired for the highest-value moments.
 - **Live-composited puppet ("someday"):** rebuild Glendalf as a rigged 3D/2.5D real-time avatar for true infinite combination — a major pipeline change, only if the curated-video ceiling is ever hit.
 
+- **Interface-transition mechanic — "the book" (Glen's idea):** when the experience moves from conversation into a *different* interface (e.g. a form for E4L account creation, payment, or a results page), Glendalf performs a **diegetic transition** so the spell isn't broken: he **opens a page in the book, picks the book up, and holds the open page toward the camera** — the page becomes the new surface. Art direction: the page is **old parchment with period graphics**, and **some of the fireside scene stays visible around the book** for context (not a hard cut to a bare form). Reusable for any conversation→interface handoff. Render once as a transition clip + a "page-held" hold frame the real UI can overlay onto. Deferred — it serves the funnel-binding / form slices, not v1 reactions.
+
 ---
 
 ## 12. Testing
@@ -264,8 +269,9 @@ The director's selection layer is input-agnostic; only its *signal source* chang
 
 **Locked in brainstorming:** scope = reactions-first then whole library (B later); gaze = separable A then baked B; hand audible actions = own category, no vocal combining; production = Model A (flat tagged clips + crossfade); director = Model A (hybrid heuristics + existing Haiku); listening gaze = right/construct triad, pondering = left/remembered triad.
 
+**Audio sourcing (decided, §9):** audible actions + non-verbal vocalizations = Glen-recorded samples; borderline-verbal backchannels = ElevenLabs clone with Glen approval, recording as fallback.
+
 **Open for the plan:**
 1. Exact hero-emotion field name and where it rides on the existing analysis response.
 2. Crossfade mechanism in the client (two stacked `<video>` elements with opacity transition vs. a single element with a brief dissolve) — pick the one that doesn't flash on the immersive page.
-3. Non-verbal vocalization production: which backchannels (laugh, gasp, "ahh") come from ElevenLabs vs. light sound design.
-4. Whether `resting_loops` variants need matched first/last frames for seamless crossfade, or whether the dissolve hides the seam.
+3. Whether `resting_loops` variants need matched first/last frames for seamless crossfade, or whether the dissolve hides the seam.
