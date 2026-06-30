@@ -13577,6 +13577,10 @@ def member_scan_analysis_chat():
     else:
         system = system + _EDUCATE_ONLY_POLICY
 
+    _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
+    if _ally_ov:
+        system = _ally_ov + "\n\n" + system
+
     try:
         msg = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=500,
                                   system=system, messages=[{"role": "user", "content": q[:1500]}])
@@ -13587,6 +13591,14 @@ def member_scan_analysis_chat():
 
     resp = jsonify({"answer": answer, "access": access, "upsell": ctx["upsell"]})
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    if email:
+        try:
+            import threading as _t
+            _t.Thread(target=ash_ally.record_turn,
+                      args=(LOG_DB, _db_lock, email, q, answer),
+                      daemon=True).start()
+        except Exception:
+            pass
     return resp
 
 
