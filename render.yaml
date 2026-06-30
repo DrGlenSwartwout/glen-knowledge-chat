@@ -137,20 +137,21 @@ services:
   # Cross-container pattern: cron curls the web service (which holds the Gmail token + DB).
   # NOTE: NOT provisioned as a standalone Render service — folded into the daily
   # glen-personal-email-daily cron (run_daily_piggybacks) so it fires without a
-  # dedicated cron service. This block is kept only as documentation of the job.
-  - type: cron
-    name: glen-testimonial-invites-scan
-    runtime: python
-    schedule: "30 13 * * *"   # 3:30 AM HST daily (HST is UTC-10)
-    buildCommand: "true"      # stdlib-only, no deps to install
-    startCommand: python scripts/run_testimonial_invites_scan_cron.py
-    envVars:
-      - key: WEB_URL
-        value: https://glen-knowledge-chat.onrender.com
-      - fromService:
-          type: web
-          name: glen-knowledge-chat
-          envVarKey: CONSOLE_SECRET
+  # dedicated cron service. Commented out (not a live spec) so applying this
+  # blueprint can't re-provision it and cause double-runs. Documentation only:
+  #   - type: cron
+  #     name: glen-testimonial-invites-scan
+  #     runtime: python
+  #     schedule: "30 13 * * *"   # 3:30 AM HST daily (HST is UTC-10)
+  #     buildCommand: "true"      # stdlib-only, no deps to install
+  #     startCommand: python scripts/run_testimonial_invites_scan_cron.py
+  #     envVars:
+  #       - key: WEB_URL
+  #         value: https://glen-knowledge-chat.onrender.com
+  #       - fromService:
+  #           type: web
+  #           name: glen-knowledge-chat
+  #           envVarKey: CONSOLE_SECRET
 
   # Reply watcher — runs the Gmail inbox reply watcher. Now a thin stdlib-only curl
   # to /api/cron/reply-watch (was an in-process job needing pip + the Gmail token).
@@ -176,21 +177,22 @@ services:
   # cross-container pattern as glen-personal-email-daily: cron just curls
   # the web service, which holds the persistent disk + DB.
   # NOTE: NOT provisioned as a standalone Render service — folded into the daily
-  # glen-personal-email-daily cron (run_daily_piggybacks), Monday-gated. Kept here
-  # only as documentation of the job.
-  - type: cron
-    name: glen-usps-rate-check
-    runtime: python
-    schedule: "0 16 * * 1"     # Mondays 6 AM HST (HST is UTC-10)
-    buildCommand: "true"       # stdlib-only, no deps to install
-    startCommand: python scripts/run_usps_rate_check_cron.py
-    envVars:
-      - key: WEB_URL
-        value: https://glen-knowledge-chat.onrender.com
-      - fromService:
-          type: web
-          name: glen-knowledge-chat
-          envVarKey: CRON_SECRET
+  # glen-personal-email-daily cron (run_daily_piggybacks), Monday-gated. Commented
+  # out (not a live spec) so applying this blueprint can't re-provision it and cause
+  # double-runs. Documentation only:
+  #   - type: cron
+  #     name: glen-usps-rate-check
+  #     runtime: python
+  #     schedule: "0 16 * * 1"     # Mondays 6 AM HST (HST is UTC-10)
+  #     buildCommand: "true"       # stdlib-only, no deps to install
+  #     startCommand: python scripts/run_usps_rate_check_cron.py
+  #     envVars:
+  #       - key: WEB_URL
+  #         value: https://glen-knowledge-chat.onrender.com
+  #       - fromService:
+  #           type: web
+  #           name: glen-knowledge-chat
+  #           envVarKey: CRON_SECRET
 
   # Daily Intelligence-briefings regenerator — refreshes the 5 Intelligence
   # cards (daily-briefing, eyes-on-every-street, founders-radar, revenue-x-ray,
@@ -220,18 +222,19 @@ services:
   # the cron only curls; the work runs in the web container with the disk + creds.
   # (run_pb_tag_sync_cron.py also curls a 4th endpoint: /api/cron/charge-subscriptions.)
   # NOTE: NOT provisioned as a standalone Render service — the 4-step chain is folded
-  # into the daily glen-personal-email-daily cron (run_daily_piggybacks). Kept here
-  # only as documentation of the job.
-  - type: cron
-    name: glen-pb-tag-sync-daily
-    runtime: python
-    schedule: "0 13 * * *"     # 3 AM HST daily (HST is UTC-10)
-    buildCommand: "true"       # stdlib-only, no deps to install
-    startCommand: python scripts/run_pb_tag_sync_cron.py
-    envVars:
-      - key: WEB_URL
-        value: https://glen-knowledge-chat.onrender.com
-      - fromService:
-          type: web
-          name: glen-knowledge-chat
-          envVarKey: CRON_SECRET
+  # into the daily glen-personal-email-daily cron (run_daily_piggybacks). Commented
+  # out (not a live spec) so applying this blueprint can't re-provision it and cause
+  # double-runs. Documentation only:
+  #   - type: cron
+  #     name: glen-pb-tag-sync-daily
+  #     runtime: python
+  #     schedule: "0 13 * * *"     # 3 AM HST daily (HST is UTC-10)
+  #     buildCommand: "true"       # stdlib-only, no deps to install
+  #     startCommand: python scripts/run_pb_tag_sync_cron.py
+  #     envVars:
+  #       - key: WEB_URL
+  #         value: https://glen-knowledge-chat.onrender.com
+  #       - fromService:
+  #           type: web
+  #           name: glen-knowledge-chat
+  #           envVarKey: CRON_SECRET

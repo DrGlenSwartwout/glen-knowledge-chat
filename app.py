@@ -14164,6 +14164,7 @@ def cron_reply_watch():
         max_messages = int(request.args.get("max", "50"))
     except (TypeError, ValueError):
         max_messages = 50
+    max_messages = max(1, max_messages)  # 0/negative would silently scan nothing or 400 Gmail
     from reply_watcher import process_inbox_replies
     try:
         counts = process_inbox_replies(db_path=str(LOG_DB), dry_run=dry_run,

@@ -36,9 +36,15 @@ def main():
         if not body.get("ok"):
             print(f"[reply-watcher-cron] failed: {body.get('error')}", flush=True)
             sys.exit(2)
-        print(f"[reply-watcher-cron] processed={body.get('processed')} "
+        processed = body.get("processed") or 0
+        errored = body.get("errored") or 0
+        print(f"[reply-watcher-cron] processed={processed} "
               f"skipped_nonuser={body.get('skipped_nonuser')} "
-              f"errored={body.get('errored')}", flush=True)
+              f"errored={errored}", flush=True)
+        # Systematic failure (e.g. token lost gmail.modify): nothing processed but the
+        # batch errored. Surface as a failed job instead of a healthy-looking exit 0.
+        if errored and not processed:
+            sys.exit(3)
     except urllib.error.HTTPError as e:
         print(f"[reply-watcher-cron] HTTP {e.code}: {e.read()[:300]!r}", flush=True)
         sys.exit(1)
