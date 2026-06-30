@@ -32,6 +32,13 @@
   .card .src { display:inline-block; font-size:10px; letter-spacing:.05em; text-transform:uppercase;
                color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:1px 6px; }
   .card .age.old { color:var(--red); }
+  /* Collapsed by default: header shows; body (products, fulfillment, actions) opens on click. */
+  .card-head { cursor:pointer; }
+  .card .chev { display:inline-block; color:var(--muted); font-size:10px; margin-left:4px; transition:transform .15s; }
+  .card.open .chev { transform:rotate(90deg); }
+  .card-body { display:none; margin-top:8px; }
+  .card.open .card-body { display:block; }
+  .card-body .prods { color:var(--cream); }
   .acts { margin-top:9px; display:flex; flex-wrap:wrap; gap:6px; }
   .acts button { font-size:11px; border:1px solid var(--border); background:transparent;
                  color:var(--cream); border-radius:6px; padding:3px 9px; cursor:pointer; }
@@ -89,17 +96,9 @@
   // Display-only relabel of order source (DB values unchanged).
   function srcLabel(s){ var m={'reorder':'Order','portal-reorder':'Portal-Order'}; return m[s]||s; }
 
-  function ageStr(iso){
-    try { var h = (Date.now() - new Date(iso).getTime())/3600000;
-      if (h < 1) return Math.round(h*60)+'m'; if (h < 48) return Math.round(h)+'h'; return Math.round(h/24)+'d'; }
-    catch(e){ return ''; }
-  }
-  function isOld(iso){ try { return (Date.now()-new Date(iso).getTime())/3600000 > 24; } catch(e){ return false; } }
-
   function cardHtml(o){
     var total = o.total_cents ? '$'+(o.total_cents/100).toFixed(2) : '';
     var items = (o.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||''); }).join(', ');
-    var age = ageStr(o.created_at);
     var acts = '';
     if (o.status==='proposed') acts = editBtn(o.id) + ' ' + btn(o.id,'orders.confirm','Confirm') + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
     else if (o.status==='confirmed') acts = editBtn(o.id) + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
@@ -119,13 +118,35 @@
     if (ps==='paid') badge += ' <span class="pay-badge paid">Paid'+(o.pay_method?' &middot; '+esc(o.pay_method):'')+'</span>';
     else if (ps==='claimed') badge += ' <span class="pay-badge claimed">payment claimed — confirm'+(o.pay_method?' ('+esc(o.pay_method)+')':'')+'</span>';
     else badge += ' <span class="pay-badge unpaid">Unpaid</span>';
-    return '<div class="card" data-oid="'+o.id+'"><div class="who">'+esc(o.name||o.email||'Order #'+o.id)+badge+'</div>'
-      + '<div class="meta">'+(items?items+'<br>':'')
-      + (total?total+' &middot; ':'')+'<span class="src">'+esc(srcLabel(o.source))+'</span> &middot; <span class="age'+(isOld(o.created_at)?' old':'')+'">'+age+'</span>'
-      + (o.tracking_number?'<br>tracking '+esc(o.tracking_number):'')
-      + (o.biofield_pdf_url?'<br><a href="'+esc(o.biofield_pdf_url)+'" target="_blank" rel="noopener">&#128424; Biofield report (PDF)</a>':'')+'</div>'
+    // Collapsed default: clickable HEADER (name + pay/backorder badge ; date placed ·
+    // where/how placed · amount). Click opens the BODY (products, tracking, fulfillment,
+    // actions). Action buttons live in the body, so clicking them never toggles the card.
+    var head = '<div class="card-head" onclick="toggleCard(this)">'
+      + '<div class="who">'+esc(o.name||o.email||'Order #'+o.id)+badge+'<span class="chev">&#9656;</span></div>'
+      + '<div class="meta">'+esc(dateStr(o.created_at))+' &middot; <span class="src">'+esc(whereLabel(o))+'</span>'
+        + (total?' &middot; '+total:'')+'</div>'
+      + '</div>';
+    var body = '<div class="card-body">'
+      + (items?'<div class="meta prods">'+items+'</div>':'')
+      + (o.tracking_number?'<div class="meta">tracking '+esc(o.tracking_number)+'</div>':'')
+      + (o.biofield_pdf_url?'<div class="meta"><a href="'+esc(o.biofield_pdf_url)+'" target="_blank" rel="noopener">&#128424; Biofield report (PDF)</a></div>':'')
       + fulfillHtml(o)
-      + '<div class="acts">'+acts+'</div></div>';
+      + '<div class="acts">'+acts+'</div>'
+      + '</div>';
+    return '<div class="card" data-oid="'+o.id+'">'+head+body+'</div>';
+  }
+  // Click the header to expand/collapse a card. Bound to .card-head (not the buttons),
+  // so action clicks in the body don't toggle it.
+  function toggleCard(head){ if(head && head.parentNode) head.parentNode.classList.toggle('open'); }
+  // Date the order was placed, e.g. "Jun 28, 2026".
+  function dateStr(iso){ try { return new Date(iso).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}); } catch(e){ return ''; } }
+  // Friendly "where/how placed" label from the order source (+ pickup), plain text (esc'd by caller).
+  function whereLabel(o){
+    var m={'in-house':'In-house (phone/email)','portal-reorder':'Portal reorder','reorder':'Reorder',
+           'funnel':'Website','biofield_trial':'Biofield trial','biofield':'Biofield'};
+    var lbl = m[(o.source||'')] || srcLabel(o.source) || o.source || '—';
+    if (o.channel==='pickup') lbl += ' · Pickup';
+    return lbl;
   }
   // Per-line partial fulfillment (Phase 2): record qty shipped; shortfall stays backordered.
   function showFulfill(o){ return o.status==='new' || o.status==='packed' || o.status==='shipped'; }
@@ -229,6 +250,7 @@
     if (!id) return;
     var card = document.querySelector('.card[data-oid="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
     if (!card) return;
+    card.classList.add('open');  // expand the deep-linked card so its details are visible
     card.scrollIntoView({behavior:'smooth', block:'center'});
     card.classList.add('ord-flash');
     setTimeout(function(){ card.classList.remove('ord-flash'); }, 2600);
