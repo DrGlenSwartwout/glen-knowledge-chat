@@ -7186,6 +7186,9 @@ def begin_concierge_chat():
     except Exception as e:
         print(f"[concierge] retrieval: {e}", flush=True)
 
+    _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
+    _sys_concierge = (_ally_ov + "\n\n" + _CONCIERGE_SYSTEM) if _ally_ov else _CONCIERGE_SYSTEM
+
     def generate():
         if not is_member(session_id, email):
             yield sse({"gate": True})
@@ -7204,12 +7207,19 @@ def begin_concierge_chat():
         full = []
         try:
             with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=700,
-                                     system=_CONCIERGE_SYSTEM, messages=messages) as stream:
+                                     system=_sys_concierge, messages=messages) as stream:
                 for tok in stream.text_stream:
                     tok = _strip_dash(tok); full.append(tok); yield sse({"token": tok})
         except Exception as e:
             yield sse({"error": f"Claude error: {e}"}); return
         answer = "".join(full)
+        try:
+            import threading as _t
+            _t.Thread(target=ash_ally.record_turn,
+                      args=(LOG_DB, _db_lock, email, query, answer),
+                      daemon=True).start()
+        except Exception:
+            pass
 
         # Extract a single suggested complement (separate call) and resolve it.
         try:
