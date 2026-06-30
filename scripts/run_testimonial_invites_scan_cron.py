@@ -47,5 +47,33 @@ def main():
         sys.exit(1)
 
 
+def invite_pif_gift_notes():
+    """Also fire the Pay It Forward gift-note invites (recipients ~14-60 days post-redeem).
+    Piggybacked on this daily cron to stay under Render's cron-service limit. Independent
+    and best-effort: never fails (or is failed by) the testimonial scan. 404 = the feature
+    is dark (PAY_IT_FORWARD_ENABLED off) -> skip. The web endpoint is idempotent + windowed,
+    so daily runs never re-invite and never blast the historical backlog."""
+    url = f"{WEB_URL}/api/cron/pif-gift-note-invites"
+    req = urllib.request.Request(
+        url, data=b"{}", method="POST",
+        headers={"X-Console-Key": KEY, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=240) as r:
+            body = json.load(r)
+        print(f"[pif-gift-note-cron] invited {body.get('invited')}", flush=True)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            print("[pif-gift-note-cron] endpoint 404 (PAY_IT_FORWARD_ENABLED off) — skip",
+                  flush=True)
+            return
+        print(f"[pif-gift-note-cron] HTTP {e.code}: {e.read()[:300]!r}", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[pif-gift-note-cron] failed: {e!r}", flush=True)
+
+
 if __name__ == "__main__":
-    main()
+    # `finally` guarantees the PIF invite fires even if the testimonial scan sys.exit()s.
+    try:
+        main()
+    finally:
+        invite_pif_gift_notes()
