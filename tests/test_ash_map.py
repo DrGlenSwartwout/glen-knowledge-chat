@@ -108,3 +108,48 @@ def test_merge_ignores_unknown_dimension_keys():
     merged = am.merge_turn(mem, out)
     assert "not_a_dim" not in merged["dimensions"]
     assert all(merged["dimensions"][k]["state"] == "untouched" for k in am.DIM_KEYS)
+
+
+import sqlite3
+
+
+def _cx():
+    return sqlite3.connect(":memory:")
+
+
+def test_get_unseen_email_returns_all_untouched_skeleton():
+    cx = _cx()
+    m = am.get(cx, "  New@User.com ")
+    assert m["email"] == "new@user.com"
+    assert m["summary"] == ""
+    assert set(m["dimensions"].keys()) == set(am.DIM_KEYS)
+    assert all(m["dimensions"][k]["state"] == "untouched" for k in am.DIM_KEYS)
+    assert m["created_at"] is None and m["updated_at"] is None
+
+
+def test_upsert_then_get_round_trips_and_backfills_missing_keys():
+    cx = _cx()
+    am.init_table(cx)
+    dims = am._blank_map()
+    dims["symptoms"].update({"state": "opened", "opened_excerpt": "knee", "notes": "AM"})
+    # store a PARTIAL dimensions map (only one key) to prove get() backfills the rest
+    am._upsert(cx, "a@b.com", "A summary.", {"symptoms": dims["symptoms"]})
+    got = am.get(cx, "A@B.com")
+    assert got["summary"] == "A summary."
+    assert got["dimensions"]["symptoms"]["state"] == "opened"
+    assert got["dimensions"]["symptoms"]["opened_excerpt"] == "knee"
+    # the other 11 keys are backfilled as untouched
+    assert got["dimensions"]["body"]["state"] == "untouched"
+    assert set(got["dimensions"].keys()) == set(am.DIM_KEYS)
+    assert got["created_at"] and got["updated_at"]
+
+
+def test_upsert_preserves_created_at_on_update():
+    cx = _cx()
+    am.init_table(cx)
+    am._upsert(cx, "a@b.com", "first", am._blank_map())
+    first = am.get(cx, "a@b.com")["created_at"]
+    am._upsert(cx, "a@b.com", "second", am._blank_map())
+    again = am.get(cx, "a@b.com")
+    assert again["summary"] == "second"
+    assert again["created_at"] == first  # created_at preserved across updates

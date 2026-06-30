@@ -110,3 +110,68 @@ def merge_turn(memory: dict, updater_output: dict) -> dict:
         merged["summary"] = new_summary
 
     return merged
+
+
+def init_table(cx) -> None:
+    cx.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ash_ally_memory (
+          email           TEXT PRIMARY KEY,
+          summary         TEXT NOT NULL DEFAULT '',
+          dimensions_json TEXT NOT NULL DEFAULT '{}',
+          created_at      TEXT NOT NULL,
+          updated_at      TEXT NOT NULL
+        )
+        """
+    )
+    cx.commit()
+
+
+def _full_dimensions(stored: dict) -> dict:
+    """Backfill any missing of the 12 keys from a blank map so callers see all 12."""
+    full = _blank_map()
+    for k, v in (stored or {}).items():
+        if k in full and isinstance(v, dict):
+            full[k].update(v)
+    return full
+
+
+def get(cx, email: str) -> dict:
+    init_table(cx)
+    em = _norm_email(email)
+    cx.row_factory = sqlite3.Row
+    row = cx.execute(
+        "SELECT summary, dimensions_json, created_at, updated_at "
+        "FROM ash_ally_memory WHERE email = ?", (em,)
+    ).fetchone()
+    if row is None:
+        return {"email": em, "summary": "", "dimensions": _blank_map(),
+                "created_at": None, "updated_at": None}
+    try:
+        stored = json.loads(row["dimensions_json"]) or {}
+    except (ValueError, TypeError):
+        stored = {}
+    return {
+        "email": em,
+        "summary": row["summary"] or "",
+        "dimensions": _full_dimensions(stored),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _upsert(cx, email: str, summary: str, dimensions: dict) -> None:
+    init_table(cx)
+    em = _norm_email(email)
+    now = _now_iso()
+    existing = cx.execute(
+        "SELECT created_at FROM ash_ally_memory WHERE email = ?", (em,)
+    ).fetchone()
+    created_at = existing[0] if existing else now
+    cx.execute(
+        "INSERT OR REPLACE INTO ash_ally_memory "
+        "(email, summary, dimensions_json, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (em, summary or "", json.dumps(dimensions or {}), created_at, now),
+    )
+    cx.commit()
