@@ -14144,6 +14144,36 @@ def cron_biofield_bonuses():
     return jsonify(_run_biofield_bonuses(dry_run=dry_run))
 
 
+@app.route("/api/cron/reply-watch", methods=["POST"])
+def cron_reply_watch():
+    """Run the Gmail inbox reply watcher inside the web container — where the Gmail token
+    on the persistent disk (/data/google-token.json) and chat_log.db live. A standalone
+    Render cron container has neither, so (like every other cron here) the thin curl cron
+    calls this and the work happens here. Auth: X-Cron-Secret (== CRON_SECRET, falls back
+    to CONSOLE_SECRET). Idempotent: already-labeled messages (AMG_PROCESSED / AMG_NONUSER)
+    are excluded by the search query, so re-running is safe. ?dry_run=1 classifies without
+    sending/labeling; ?max=N caps messages scanned (default 50)."""
+    key = (request.headers.get("X-Cron-Secret", "")
+           or request.headers.get("X-Console-Key", "")
+           or request.args.get("key", ""))
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+    try:
+        max_messages = int(request.args.get("max", "50"))
+    except (TypeError, ValueError):
+        max_messages = 50
+    from reply_watcher import process_inbox_replies
+    try:
+        counts = process_inbox_replies(db_path=str(LOG_DB), dry_run=dry_run,
+                                       max_messages=max_messages)
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(e)}), 500
+    # Drop the per-message `details` blob to keep the cron response small.
+    return jsonify({"ok": True, **{k: v for k, v in counts.items() if k != "details"}})
+
+
 @app.route("/api/reorder/items", methods=["GET"])
 def api_reorder_items():
     email = _reorder_email_from_cookie()
