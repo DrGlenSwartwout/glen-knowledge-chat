@@ -169,7 +169,7 @@
     // 3 + 4. stream subtitles via SSE while TTS renders in parallel
     streamReply(message);
     // director: hero-reaction on submit then ponder (no-ops when reactions:[])
-    if (director) director.onSubmit(message);
+    try { if (director) director.onSubmit(message); } catch (e) { console.warn('director.onSubmit failed', e); }
   }
 
   function streamReply(message) {
@@ -214,7 +214,7 @@
       var url = URL.createObjectURL(blob);
       replyAudio.src = url; replyAudio.muted = false;
       speakingLoop(); state = 'speaking';
-      if (director) director.onReplyReady();  // crossfade to speaking on Director's back panel
+      try { if (director) director.onReplyReady(); } catch (e) { console.warn('director.onReplyReady failed', e); }  // crossfade to speaking on Director's back panel
       replyAudio.onended = function () { URL.revokeObjectURL(url); afterReply(text, hook); };
       replyAudio.onerror = function () { URL.revokeObjectURL(url); afterReply(text, hook); };
       replyAudio.play().catch(function () { afterReply(text, hook); });
@@ -283,11 +283,18 @@
       manifest = m;
       stage.poster = m.intro_poster;
       // Initialize reaction director + ambience via the module script's init function
-      if (window.__firesideInit) {
-        var r = window.__firesideInit(m, replyAudio);
-        director = r.director;
-        ambience = r.ambience;
-      }
+      // Bounded retry: module script may load after a cache-warm manifest fetch resolves
+      (function initDirectorWhenReady(tries){
+        if (window.__firesideInit) {
+          try {
+            var r = window.__firesideInit(m, replyAudio);
+            if (r) { director = r.director; ambience = r.ambience; }
+          } catch (e) { console.warn('fireside director init failed', e); }
+        } else if (tries < 40) {
+          setTimeout(function(){ initDirectorWhenReady(tries + 1); }, 50);
+        }
+        // after 40 tries (~2s) give up: director/ambience stay null → existing behavior preserved (graceful degradation)
+      })(0);
     })
     .catch(function () { sub.textContent = 'The fire is not lit just now. Please return shortly.'; });
 })();
@@ -307,10 +314,15 @@
   // Dedicated audio element for Director-triggered interjection/reaction audio
   const _interAudio = new Audio();
 
+  // Stable array ref for hearth spark origin — mutated in syncCanvas so it stays current after resize
+  const sparkXY = [0, 0];
+
   // Keep canvas pixel dimensions in sync with its display size for correct spark rendering
   function syncCanvas() {
     canvas.width  = canvas.clientWidth  || window.innerWidth;
     canvas.height = canvas.clientHeight || window.innerHeight;
+    sparkXY[0] = canvas.width  * 0.22;
+    sparkXY[1] = canvas.height * 0.62;
   }
   syncCanvas();
   window.addEventListener('resize', syncCanvas);
@@ -342,10 +354,8 @@
       },
       sparkCtx: ctx,
       // Hearth is roughly 22% from left, 62% down the frame
-      sparkXY: [
-        canvas.width  * 0.22 || window.innerWidth  * 0.22,
-        canvas.height * 0.62 || window.innerHeight * 0.62,
-      ],
+      // sparkXY is a stable module-level array; syncCanvas() mutates [0]/[1] on resize
+      sparkXY: sparkXY,
     });
 
     // Mute toggle: affects ambience bed + oneshots only (voice TTS is never muted here)
