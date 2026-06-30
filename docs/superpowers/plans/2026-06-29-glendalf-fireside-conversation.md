@@ -682,9 +682,12 @@ class _FakeCl:
     def __init__(self, toks, boom=False): self.messages = _FakeMessages(toks, boom)
 
 
-def _post(appmod, message):
-    # disable the fire-and-forget coverage thread so tests stay deterministic + offline
-    return appmod.app.test_client().post("/begin/fireside/agent", json={"message": message})
+def _post(appmod, message, sess="fixedsess"):
+    # Send a fixed amg_session cookie so the route reuses a known session id
+    # (otherwise it mints a random uuid and persistence is unreadable).
+    return appmod.app.test_client().post(
+        "/begin/fireside/agent", json={"message": message},
+        headers={"Cookie": "amg_session=" + sess})
 
 
 def test_agent_404_when_flag_off(monkeypatch, tmp_path):
@@ -710,8 +713,8 @@ def test_agent_streams_tokens_and_persists(monkeypatch, tmp_path):
     import sqlite3
     from dashboard import fireside_store as fs
     with sqlite3.connect(appmod.LOG_DB) as cx:
-        s = fs.get_or_create(cx, "")  # no cookie -> amg_session ""
-    # transcript should hold both turns under the session we just created
+        s = fs.get_or_create(cx, "fixedsess")  # same cookie the POST sent
+    # transcript should hold both turns under that session
     assert any(t["speaker"] == "glendalf" and "I hear you, friend." == t["text"]
                for t in s["transcript"])
 
