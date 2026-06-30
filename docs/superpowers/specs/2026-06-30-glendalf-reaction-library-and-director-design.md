@@ -113,6 +113,19 @@ Staging: **separable standalone glance clips first (A), gaze baked into hero rea
 
 Short break-in clips played *while the traveler is still typing*, rate-capped (the single biggest "he's alive" lever; magic when rare, maddening when overused). Already shipped as audio in the manifest; this project adds matching short **video** beats. v1 set: "Ah—", "Yes, go on…", "Mm—", "Oh…", "Now that's the heart of it—".
 
+### 3.5 Channel 5 — Ambient soundscape (atmosphere)
+
+Independent of the reaction director — it runs continuously to give the space dimensionality and the felt realism of a real room in a real world. Two parts:
+
+- **Continuous bed (very low):** a soft fire-crackle / room-tone loop under everything, mixed well below his voice.
+- **Randomized one-shot accents (low, occasional, never distracting):** scheduled at randomized intervals so they feel incidental, never looped/predictable, and never overlap his voice prominently:
+  - **fire pop** — a crackle **paired with a brief visual spark burst** at the hearth (the only ambient cue with a visual)
+  - **muffled outdoor sounds** (as if heard through the walls): distant **dog bark**, **birdsong**, **wind gust against the window**, **rain on the pane**, **owl at dusk**, distant **bell/chime**, faint **cart/hooves**
+  - **interior**: a **timber creak**, a settling **log shift**, a faint **kettle/pot bubble**
+- **Governance:** each accent has a min/max gap and a low volume ceiling; the scheduler ducks or skips an accent while his TTS voice is playing; the whole bed respects the page's mute control.
+
+**Visual spark accents:** the simplest implementation is a lightweight canvas/CSS ember burst near the hearth, triggered on a `spark:true` accent — no re-render of the base loop needed. Audio-only is the graceful fallback if the spark layer is disabled.
+
 ---
 
 ## 4. Production Model — Flat Tagged Clip Library + Crossfade
@@ -140,6 +153,17 @@ Extends the existing `static/fireside/fireside-manifest.json` (which already has
     "/static/fireside/video/listen-rest-1.mp4",
     "/static/fireside/video/listen-rest-2.mp4"      // 2-3 variants to avoid robotic repetition
   ],
+  "ambience": {
+    "bed": "/static/fireside/audio/amb-fire-bed.mp3",     // continuous low loop; null disables
+    "bed_volume": 0.18,
+    "oneshots": [
+      {"id": "fire-pop",  "file": "/static/fireside/audio/amb-fire-pop.mp3",  "volume": 0.30, "spark": true,  "min_gap_s": 25, "max_gap_s": 70},
+      {"id": "dog-bark",  "file": "/static/fireside/audio/amb-dog.mp3",       "volume": 0.12, "spark": false, "min_gap_s": 120, "max_gap_s": 300},
+      {"id": "birdsong",  "file": "/static/fireside/audio/amb-birds.mp3",     "volume": 0.10, "spark": false, "min_gap_s": 90,  "max_gap_s": 240},
+      {"id": "wind",      "file": "/static/fireside/audio/amb-wind.mp3",      "volume": 0.14, "spark": false, "min_gap_s": 80,  "max_gap_s": 220},
+      {"id": "timber",    "file": "/static/fireside/audio/amb-creak.mp3",     "volume": 0.10, "spark": false, "min_gap_s": 150, "max_gap_s": 360}
+    ]
+  },
   "reactions": [
     {
       "id": "concern-silent",
@@ -189,7 +213,14 @@ pick by intensity match; tie-break random; crossfade in; on end → resting
 if no candidate: stay in resting (never error)
 ```
 
-### 6.5 Rate / taste governance (carry fireside's discipline)
+### 6.5 Ambience scheduler (independent of the director)
+A small standalone loop, started on first user interaction (autoplay-policy safe), separate from the reaction state machine:
+- Starts the `bed` loop at `bed_volume`.
+- For each one-shot, schedules the next play at `random(min_gap_s, max_gap_s)`; on fire, plays at its `volume`, and if `spark` triggers the hearth ember-burst visual; then reschedules.
+- **Ducks** (skips/lowers) an accent while Glendalf's TTS voice element is playing, so atmosphere never competes with speech.
+- Honors the page mute control and pauses when the tab is hidden.
+
+### 6.6 Rate / taste governance (carry fireside's discipline)
 - Backchannels: ≤1 per ~5s while typing.
 - Interjections: idle≥3.5s, ≤3/session, never turn 1 (reuse shipped constants).
 - Hero: exactly one per submitted turn, during the pondering gap only.
@@ -230,6 +261,7 @@ Total ≈ 36; trim to the strongest ~32 after review. Expand toward the full pal
   - **Audible actions** (snap, clap, slap, table-tap, page-turn, throat-clear, clink) and **non-verbal vocalizations** (laugh, gasp, wordless "ahh", soft chuckle) → **Glen-recorded real samples.** TTS mangles non-lexical sound; a real sample is most authentic (it's literally his laugh/snap). Synced as a separate `audio` track or captured in-clip.
   - **Borderline-verbal backchannels** ("mm-hmm", "oh?", "hmm") → **ElevenLabs clone (`jFxSqMckq2I4mET3C5QC`) first, Glen reviews/approves before lock;** fall back to a Glen recording if the clone sounds off.
   - *Light sound design* = the minimal mixing on the above: trim, EQ, level-match, light room tone — not a scored track.
+- **Ambient SFX** (fire bed, fire pop, dog, birds, wind, creak): royalty-free library sources or Glen-recorded, mixed low per the manifest `volume`/`bed_volume`. One-time cheap assets; loop the bed seamlessly (matched ends).
 - **Post:** ffmpeg faststart + uniform encode; name by `id` from the manifest; small inline-GIF proof for review before locking.
 - **Naming:** `react-<family>-<form>[-<gaze>][-<hand>].mp4`, gaze clips `gaze-<dir>.mp4`, resting `listen-rest-N.mp4`.
 
