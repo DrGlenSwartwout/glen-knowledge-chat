@@ -1970,6 +1970,19 @@ def begin_doorway():
     return resp
 
 
+@app.route("/begin/fireside")
+def begin_fireside():
+    if not FIRESIDE_ENABLED:
+        return ("", 404)
+    resp = send_from_directory(STATIC, "begin-fireside.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 @app.route("/begin/doorway/opt-in", methods=["POST", "OPTIONS"])
 def begin_doorway_optin():
     if request.method == "OPTIONS":
@@ -4181,6 +4194,7 @@ JOURNEY_QUEST_ENABLED = os.environ.get("JOURNEY_QUEST_ENABLED", "").strip().lowe
 REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+FIRESIDE_ENABLED = os.environ.get("FIRESIDE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
 PIF_GIFT_NOTE_MAX_AGE_DAYS = int(os.environ.get("PIF_GIFT_NOTE_MAX_AGE_DAYS", "60"))
 _TESTIMONIALS_ENABLED = os.environ.get("TESTIMONIALS_ENABLED", "").strip().lower() in ("1", "true", "yes")
