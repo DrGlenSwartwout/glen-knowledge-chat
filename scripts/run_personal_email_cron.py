@@ -21,6 +21,7 @@ import sys
 import json
 import urllib.request
 import urllib.error
+from datetime import datetime, timezone
 
 
 WEB_URL = os.environ.get("WEB_URL", "https://glen-knowledge-chat.onrender.com").rstrip("/")
@@ -96,9 +97,59 @@ def invite_pif_gift_notes():
         print(f"[pif-gift-note-cron] failed: {e!r}", flush=True)
 
 
+# --- Additional daily piggybacks ------------------------------------------------------
+# These were each declared as their own cron in render.yaml but are NOT provisioned as
+# dedicated Render cron services (and were silently not running anywhere). Folding them
+# onto this one always-on daily cron — the same pattern as invite_pif_gift_notes — makes
+# them fire daily without depending on a Mac being awake. Each call is independent and
+# best-effort: a failure here never affects the personal-email send or the other jobs.
+
+def _piggyback_post(label, path, header, secret, *, timeout=300):
+    """Best-effort POST to a web-service cron/admin endpoint. Never raises.
+    404 = the endpoint/feature is dark -> skip quietly. The web service holds the
+    persistent disk + creds, so (as with every cron here) the work happens there."""
+    if not secret:
+        print(f"[{label}] secret not set on cron service — skip", flush=True)
+        return
+    req = urllib.request.Request(
+        f"{WEB_URL}{path}", data=b"{}", method="POST",
+        headers={header: secret, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read().decode("utf-8", errors="replace")
+        print(f"[{label}] ok: {body[:300]}", flush=True)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            print(f"[{label}] endpoint 404 (feature off) — skip", flush=True)
+            return
+        print(f"[{label}] HTTP {e.code}: {e.read()[:300]!r}", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[{label}] failed: {e!r}", flush=True)
+
+
+def run_daily_piggybacks():
+    """Daily jobs folded onto this always-on cron. All best-effort.
+      - testimonial-invite scan (require_console_key -> X-Console-Key)
+      - People-hub + subscription sync chain, ordered so tags are fresh before the GHL
+        mirror; last step charges due subscriptions (X-Cron-Secret; each step idempotent)
+      - USPS Flat Rate rate-check, weekly: only on Mondays (UTC)
+    """
+    _piggyback_post("testimonial-invites-cron",
+                    "/api/console/testimonial-invites/scan?days=3&gmail_limit=200",
+                    "X-Console-Key", CONSOLE_SECRET)
+    for path in ("/admin/sync-pb-tags", "/admin/sync-practitioner-tags",
+                 "/admin/sync-people-to-ghl", "/api/cron/charge-subscriptions"):
+        _piggyback_post(f"pb-sync-chain {path}", path, "X-Cron-Secret", CRON_SECRET, timeout=600)
+    if datetime.now(timezone.utc).weekday() == 0:  # Monday
+        _piggyback_post("usps-rate-check", "/cron/usps-rate-check", "X-Cron-Secret", CRON_SECRET)
+    else:
+        print("[usps-rate-check] not Monday (UTC) — skip", flush=True)
+
+
 if __name__ == "__main__":
-    # `finally` guarantees the PIF invite fires even if the personal-email send sys.exit()s.
+    # `finally` guarantees the piggybacked jobs fire even if the personal-email send sys.exit()s.
     try:
         main()
     finally:
         invite_pif_gift_notes()
+        run_daily_piggybacks()
