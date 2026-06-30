@@ -49,3 +49,26 @@ def ally_overlay(db_path, subject_email: str) -> str:
         return FRAME_HEADER + ash_map.context_block(memory) + FRAME_FOOTER
     except Exception:
         return ""
+
+
+def record_turn(db_path, lock, subject_email: str, user_text: str, ally_text: str = "") -> None:
+    """Update a person's ASH memory from one turn. Designed to be dispatched off the
+    request path (a daemon thread). No-op when disabled / no email. Fail-open: never
+    raises. Lock-split: the slow Haiku extract runs with NO lock held; only the fast
+    sqlite read and write hold `lock`."""
+    try:
+        if not ENABLED() or not (subject_email or "").strip():
+            return
+        # (1) locked read of current memory (for extract context)
+        with lock:
+            with sqlite3.connect(db_path) as cx:
+                memory = ash_map.get(cx, subject_email)
+        # (2) UNLOCKED slow LLM call
+        extracted = ash_map._haiku_extract(memory, user_text, ally_text)
+        # (3) locked merge + persist (re-reads under the lock so concurrent same-email
+        #     turns converge; merge_turn is forward-only)
+        with lock:
+            with sqlite3.connect(db_path) as cx:
+                ash_map.persist_extract(cx, subject_email, extracted)
+    except Exception:
+        return
