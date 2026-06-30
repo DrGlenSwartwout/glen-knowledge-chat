@@ -111,9 +111,17 @@
     stage.play().catch(function () {});
   }
 
-  function pondering() { var p = manifest.pondering_loops; setVideo(p[Math.floor(Math.random() * p.length)], {loop:true}); }
+  function pondering() {
+    if (director) return;                 // Director owns the stage pair (its _ponder/toResting drive video)
+    var p = manifest.pondering_loops;
+    if (!p || !p.length) return;
+    setVideo(p[Math.floor(Math.random() * p.length)], {loop:true});
+  }
   function listening()  { pondering(); state = 'listening'; if (director) director.toResting(); }
-  function speakingLoop(){ setVideo(manifest.speaking_loop, {loop:true}); }
+  function speakingLoop(){
+    if (director) return;                 // Director.toSpeaking() handles the speaking loop crossfade
+    setVideo(manifest.speaking_loop, {loop:true});
+  }
 
   function playClip(audio, file) {
     try { audio.pause(); audio.currentTime = 0; } catch (e) {}
@@ -240,7 +248,7 @@
     state = 'ended';
     composer.classList.add('hidden');
     yes.style.display = 'inline-block';
-    pondering();
+    if (director) director.toResting(); else pondering();
   }
 
   // --- Intro ---

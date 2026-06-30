@@ -14,6 +14,8 @@ export class Ambience {
   }
 
   start() {
+    if (this._started) return;
+    this._started = true;
     if (this.amb.bed) {
       this.bedEl = new Audio(this.amb.bed);
       this.bedEl.loop = true;

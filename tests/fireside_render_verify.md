@@ -22,10 +22,15 @@ interruption governance + ambience-gap math, spark particle spawn. **28 tests gr
 `tests/fireside_js/director-integration.test.mjs` drives the real `Director`
 against a fake video/DOM, asserting no-throws + correct video-state transitions:
 
-- **Graceful degradation:** with an empty manifest, every method
-  (`toResting/onType/onSubmit/maybeInterject/maybeInterruption/onReplyReady`) is a
-  no-op that never throws and never sets a video src → the page falls back to its
-  pre-existing single-loop behavior.
+- **Graceful degradation:** with an empty manifest (`reactions:[]`), every Director
+  method (`toResting/onType/onSubmit/maybeInterject/maybeInterruption/onReplyReady`) is
+  a no-op that never throws and never sets a video src. However, the Director IS active
+  on prod even with `reactions:[]` because `normalizeManifest` falls `resting_loops`
+  back to `pondering_loops` (non-empty in prod), so the Director is mounted and is the
+  sole video controller once initialized — the inline `pondering()`/`speakingLoop()`
+  helpers no-op when `director` is present. True full inertness only occurs if module
+  init never runs (manifest fetch fails / retry exhausted), in which case the inline
+  helpers retain control and the page behaves as before the Director was added.
 - **Dance:** `toResting` → looping resting clip; `onType` → crossfade to a reaction
   clip, then `onended` returns to resting; rate-gating suppresses a 2nd reaction
   within 5s; `onSubmit` → hero clip, then pondering on its end; `onReplyReady` →
