@@ -1971,6 +1971,107 @@ def begin_doorway():
     return resp
 
 
+def _fireside_coverage_async(fireside_id, user_text, ally_text, coverage):
+    """Fire-and-forget: update the session ASH coverage map after a reply.
+    Reuses ash_map's PURE functions (session-scoped, no email key). Never blocks
+    the stream; any failure degrades to 'learned nothing this turn'."""
+    def _work():
+        try:
+            from dashboard import fireside_store, ash_map
+            extracted = ash_map._haiku_extract(coverage or {}, user_text, ally_text)
+            merged = ash_map.merge_turn(coverage or {}, extracted)
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                fireside_store.update_coverage(cx, fireside_id, merged)
+        except Exception as e:
+            print(f"[fireside] coverage update failed: {e!r}", flush=True)
+    threading.Thread(target=_work, daemon=True).start()
+
+
+@app.route("/begin/fireside")
+def begin_fireside():
+    if not FIRESIDE_ENABLED:
+        return ("", 404)
+    resp = send_from_directory(STATIC, "begin-fireside.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/fireside/agent", methods=["POST", "OPTIONS"])
+def begin_fireside_agent():
+    if request.method == "OPTIONS":
+        return ("", 200)
+    if not FIRESIDE_ENABLED:
+        return ("", 404)
+
+    from dashboard import fireside_store, fireside_agent
+
+    data = request.get_json(silent=True) or {}
+    message = (data.get("message") or "").strip()[:FIRESIDE_MAX_CHARS]
+    if not message:
+        return jsonify({"error": "empty"}), 400
+    session_id = (request.cookies.get("amg_session")
+                  or (data.get("session_id") or "").strip()
+                  or uuid.uuid4().hex)
+
+    _blocked = _velocity_guard(request, "anonymous", session_id)
+    if _blocked is not None:
+        return _blocked
+
+    # Read state + record the traveler turn under the lock.
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        sess = fireside_store.get_or_create(cx, session_id)
+        fireside_id = sess["id"]
+        coverage = sess.get("ash_coverage") or {}
+        transcript = sess.get("transcript") or []
+        prior_turns = int(sess.get("turn_count") or 0)
+        fireside_store.append_turn(cx, fireside_id, "traveler", message)
+
+    this_turn = prior_turns + 1
+    system = fireside_agent.build_system(coverage, this_turn)
+    messages = fireside_agent.build_messages(transcript, message)
+    full = []
+
+    def generate():
+        def _toks():
+            with _cl.messages.stream(
+                model=fireside_agent.FIRESIDE_MODEL,
+                max_tokens=512,
+                system=system,
+                messages=messages,
+            ) as stream:
+                for tok in stream.text_stream:
+                    full.append(tok)
+                    yield tok
+        from dashboard.chat_cta import stream_visible
+        try:
+            for delta in stream_visible(_toks(), sentinel=fireside_agent.HOOK_SENTINEL):
+                yield sse({"token": delta})
+        except Exception as e:
+            yield sse({"error": True, "detail": str(e)})
+            return
+
+        clean, hooked = fireside_agent.parse_hook("".join(full))
+        hooked = bool(hooked and fireside_agent.hook_eligible(this_turn, coverage))
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            fireside_store.append_turn(cx, fireside_id, "glendalf", clean)
+            if hooked:
+                fireside_store.mark_ended(cx, fireside_id)
+        _fireside_coverage_async(fireside_id, message, clean, coverage)
+        yield sse({"done": True, "hook": hooked, "fireside_id": fireside_id,
+                   "turn_count": this_turn})
+
+    resp = Response(stream_with_context(generate()), content_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", session_id, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 @app.route("/begin/doorway/opt-in", methods=["POST", "OPTIONS"])
 def begin_doorway_optin():
     if request.method == "OPTIONS":
@@ -4204,6 +4305,8 @@ JOURNEY_QUEST_ENABLED = os.environ.get("JOURNEY_QUEST_ENABLED", "").strip().lowe
 REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+FIRESIDE_ENABLED = os.environ.get("FIRESIDE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+FIRESIDE_MAX_CHARS = 4000  # cap a single fireside message (cost + row growth)
 PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
 PIF_GIFT_NOTE_MAX_AGE_DAYS = int(os.environ.get("PIF_GIFT_NOTE_MAX_AGE_DAYS", "60"))
 _TESTIMONIALS_ENABLED = os.environ.get("TESTIMONIALS_ENABLED", "").strip().lower() in ("1", "true", "yes")

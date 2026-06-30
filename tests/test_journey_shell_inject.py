@@ -10,8 +10,10 @@ def test_should_inject_public_html_200():
 
 
 @pytest.mark.parametrize("path", ["/console/orders", "/admin/x", "/api/journey",
-                                  "/static/shell.js", "/begin/state"])
+                                  "/static/shell.js", "/begin/state",
+                                  "/begin/fireside", "/begin/fireside/"])
 def test_should_not_inject_excluded_paths(path):
+    # /begin/fireside is the chrome-less immersive fireside: no shell ribbon.
     assert shell_nav.should_inject(path, "text/html", 200) is False
 
 
