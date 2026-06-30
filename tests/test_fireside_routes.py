@@ -135,3 +135,13 @@ def test_agent_split_hook_marker_does_not_leak(monkeypatch, tmp_path):
     assert "⟦" not in body and "HOOK" not in body   # no sentinel fragment leaks
     assert '"hook": true' in body                          # still detected -> hook fires
     assert "Shall we go find it?" in _tokens(body)
+
+
+def test_manifest_served(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path, enabled="true")
+    r = appmod.app.test_client().get("/static/fireside/fireside-manifest.json")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["intro_video"].endswith("intro.mp4")
+    assert len(data["fillers"]) >= 5
+    assert len(data["interjections"]) >= 3

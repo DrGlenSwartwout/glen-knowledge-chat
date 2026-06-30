@@ -1,0 +1,22 @@
+{
+  "intro_video": "/static/fireside/video/intro.mp4",
+  "intro_poster": "/static/fireside/video/intro-poster.jpg",
+  "speaking_loop": "/static/fireside/video/speaking-loop.mp4",
+  "pondering_loops": ["/static/fireside/video/pondering-1.mp4"],
+  "fillers": [
+    {"id": "hmm",     "kind": "think",  "text": "Hmmm…",                                  "file": "/static/fireside/audio/filler-hmm.mp3"},
+    {"id": "well",    "kind": "think",  "text": "Well…",                                  "file": "/static/fireside/audio/filler-well.mp3"},
+    {"id": "isee",    "kind": "ack",    "text": "I see.",                                 "file": "/static/fireside/audio/filler-isee.mp3"},
+    {"id": "interesting", "kind": "ack", "text": "That's very interesting.",             "file": "/static/fireside/audio/filler-interesting.mp3"},
+    {"id": "consider", "kind": "think", "text": "Let me consider that.",                 "file": "/static/fireside/audio/filler-consider.mp3"},
+    {"id": "contemplate", "kind": "think", "text": "You've given me much to contemplate there.", "file": "/static/fireside/audio/filler-contemplate.mp3"},
+    {"id": "heres",   "kind": "bridge", "text": "Here's what I think…",                  "file": "/static/fireside/audio/filler-heres.mp3"}
+  ],
+  "interjections": [
+    {"id": "ah",      "text": "Ah—",                       "file": "/static/fireside/audio/inter-ah.mp3"},
+    {"id": "goon",    "text": "Yes, go on…",               "file": "/static/fireside/audio/inter-goon.mp3"},
+    {"id": "mm",      "text": "Mm—",                        "file": "/static/fireside/audio/inter-mm.mp3"},
+    {"id": "oh",      "text": "Oh…",                        "file": "/static/fireside/audio/inter-oh.mp3"},
+    {"id": "heart",   "text": "Now that's the heart of it—","file": "/static/fireside/audio/inter-heart.mp3"}
+  ]
+}
