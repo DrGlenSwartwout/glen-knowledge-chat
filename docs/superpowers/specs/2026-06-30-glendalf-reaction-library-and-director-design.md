@@ -237,6 +237,7 @@ Total ≈ 36; trim to the strongest ~32 after review. Expand toward the full pal
 Typing is the shipped modality, so v1 reactions are real-time. When tap-to-talk lands:
 - **Batch STT** (today's `/begin/doorway` Whisper flow): word-based gaze/content reactions lag ~1–3s (fire *after* they finish speaking). Mitigate with **acoustic** emotional backchannels driven by prosody (laughter, distress, excitement) straight from the audio — no transcription needed, near-real-time.
 - **Streaming STT** (Deepgram/Whisper-streaming): ~0.3–0.8s partial transcripts → near-parity with typing, at the cost of a new dependency. Adopt only if the lag proves to hurt.
+  - **Cost:** ~$0.0025–$0.015 per audio-minute (AssemblyAI ~$0.0025, OpenAI/Deepgram ~$0.006, Google/Azure ~$0.016–0.024); ~$0.006/min midpoint. A conversation carries only 1–3 min of actual speech → **~$0.003–$0.02 per conversation** — negligible vs. the ElevenLabs voice-*out* cost, which dominates the per-conversation bill. The decision driver is the new dependency, not price.
 
 The director's selection layer is input-agnostic; only its *signal source* changes.
 
