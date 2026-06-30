@@ -172,3 +172,41 @@ def _upsert(cx, email: str, summary: str, dimensions: dict) -> None:
         (em, summary or "", json.dumps(dimensions or {}), created_at, now),
     )
     cx.commit()
+
+
+_DIM_NAME = {d["key"]: d["name"] for d in ASH_DIMENSIONS}
+
+
+def context_block(memory: dict) -> str:
+    dims = (memory or {}).get("dimensions") or _blank_map()
+    summary = ((memory or {}).get("summary") or "").strip()
+
+    explored, opened, untouched = [], [], []
+    for k in DIM_KEYS:
+        cell = dims.get(k, {})
+        state = cell.get("state", "untouched")
+        name = _DIM_NAME[k]
+        if state in ("explored", "deep"):
+            notes = " ".join((cell.get("notes") or "").split())
+            explored.append(f"{name}: {notes}".rstrip(": ").rstrip())
+        elif state == "opened":
+            ex = (cell.get("opened_excerpt") or "").strip()
+            opened.append(f'{name}: "{ex}"' if ex else name)
+        else:
+            untouched.append(name)
+
+    if not summary and not explored and not opened:
+        return "This is your first conversation with them — nothing covered yet."
+
+    lines = []
+    if summary:
+        lines.append(f"Who they are: {summary}")
+    if explored:
+        lines.append("Already explored (do not re-ask): "
+                     + "; ".join(explored))
+    if opened:
+        lines.append("Opened, go deeper when they return to it: "
+                     + "; ".join(opened))
+    if untouched:
+        lines.append("Not yet touched: " + ", ".join(untouched))
+    return "\n".join(lines)

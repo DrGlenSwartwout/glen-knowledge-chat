@@ -150,3 +150,30 @@ def test_upsert_preserves_created_at_on_update():
     again = am.get(cx, "a@b.com")
     assert again["summary"] == "second"
     assert again["created_at"] == first  # created_at preserved across updates
+
+
+def test_context_block_first_conversation_line():
+    mem = {"summary": "", "dimensions": am._blank_map()}
+    assert am.context_block(mem) == (
+        "This is your first conversation with them — nothing covered yet."
+    )
+
+
+def test_context_block_populated_sections():
+    mem = {"summary": "A tired caregiver in pain.", "dimensions": am._blank_map()}
+    mem["dimensions"]["symptoms"].update(
+        {"state": "explored", "notes": "AM knee pain\nworse in cold"})
+    mem["dimensions"]["terrain"].update(
+        {"state": "opened", "opened_excerpt": "I just have no energy left"})
+    block = am.context_block(mem)
+    assert "Who they are: A tired caregiver in pain." in block
+    assert "Already explored (do not re-ask):" in block
+    assert "AM knee pain worse in cold" in block          # notes flattened
+    assert "Opened, go deeper when they return to it:" in block
+    assert '"I just have no energy left"' in block
+    assert "Not yet touched:" in block
+    # an untouched dim's display name appears in the not-yet-touched list
+    assert "Body / States of Matter" in block
+    # touched dims are NOT in the not-yet-touched list
+    not_touched_line = [l for l in block.splitlines() if l.startswith("Not yet touched:")][0]
+    assert "Symptoms / 5 Cardinal Signs" not in not_touched_line
