@@ -11,8 +11,7 @@
     font-family: Georgia, 'Times New Roman', serif; overflow:hidden; }
   #fireside { position:fixed; inset:0; display:flex; flex-direction:column;
     align-items:center; justify-content:flex-end; }
-  #stage { position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
-    background:#0c0703; }
+  #stage-wrap { position:absolute; inset:0; }
   #vignette { position:absolute; inset:0; pointer-events:none;
     background:radial-gradient(ellipse at 50% 40%, transparent 30%, rgba(0,0,0,.78) 100%); }
   #subtitle { position:relative; z-index:2; max-width:760px; width:92%;
@@ -48,7 +47,16 @@
 </head>
 <body>
 <main id="fireside">
-  <video id="stage" playsinline muted loop preload="auto"></video>
+  <div id="stage-wrap">
+    <video id="stageA" playsinline muted loop preload="auto"
+      style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#0c0703;opacity:1;"></video>
+    <video id="stageB" playsinline muted loop
+      style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;"></video>
+    <canvas id="sparks"
+      style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></canvas>
+    <button id="muteBtn" aria-label="Toggle ambient sound"
+      style="position:absolute;right:12px;bottom:12px;background:rgba(20,12,6,.72);border:1px solid #6b5436;color:var(--warm);border-radius:50%;width:36px;height:36px;font-size:16px;cursor:pointer;z-index:2;">🔊</button>
+  </div>
   <div id="vignette"></div>
   <div id="subtitle" aria-live="polite"></div>
   <button id="yes" type="button">Yes</button>
@@ -64,7 +72,7 @@
 <script>
 (function () {
   "use strict";
-  var stage = document.getElementById('stage');
+  var stage = document.getElementById('stageA');  // stageA is the primary/intro video panel
   var sub = document.getElementById('subtitle');
   var say = document.getElementById('say');
   var send = document.getElementById('send');
@@ -81,6 +89,10 @@
   var idleTimer = null;
   var fillerAudio = new Audio();
   var replyAudio = new Audio();
+  // Reaction director + ambience (initialized after manifest loads, via module script)
+  var director = null, ambience = null;
+  var lastInputMs = 0;
+  var typeDebounceTimer = null;
 
   function pick(arr, lastId) {
     if (!arr || !arr.length) return null;
@@ -100,7 +112,7 @@
   }
 
   function pondering() { var p = manifest.pondering_loops; setVideo(p[Math.floor(Math.random() * p.length)], {loop:true}); }
-  function listening()  { pondering(); state = 'listening'; }   // pondering loop doubles as idle
+  function listening()  { pondering(); state = 'listening'; if (director) director.toResting(); }
   function speakingLoop(){ setVideo(manifest.speaking_loop, {loop:true}); }
 
   function playClip(audio, file) {
@@ -122,8 +134,24 @@
     playClip(fillerAudio, clip.file);
   }
   function armIdle() {
+    lastInputMs = Date.now();
     if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(maybeInterject, 3500);
+    if (typeDebounceTimer) clearTimeout(typeDebounceTimer);
+    // 400ms debounce: director onType for video backchannels
+    typeDebounceTimer = setTimeout(function () {
+      if (director) director.onType(say.value, {nowMs: Date.now(), turn: travelerTurns});
+    }, 400);
+    // 3500ms idle: existing audio interjection + director interjection/interruption
+    idleTimer = setTimeout(function () {
+      maybeInterject();
+      if (director) {
+        var idleMs = Date.now() - lastInputMs;
+        director.maybeInterject({idleMs: idleMs, sessionCount: interjections, turn: travelerTurns});
+        if (director.maybeInterruption({turn: travelerTurns, idleMs: idleMs})) {
+          localStorage.setItem('fireside_interruption_seen', '1');
+        }
+      }
+    }, 3500);
   }
 
   // --- A turn ---
@@ -140,6 +168,8 @@
     pondering();
     // 3 + 4. stream subtitles via SSE while TTS renders in parallel
     streamReply(message);
+    // director: hero-reaction on submit then ponder (no-ops when reactions:[])
+    if (director) director.onSubmit(message);
   }
 
   function streamReply(message) {
@@ -184,6 +214,7 @@
       var url = URL.createObjectURL(blob);
       replyAudio.src = url; replyAudio.muted = false;
       speakingLoop(); state = 'speaking';
+      if (director) director.onReplyReady();  // crossfade to speaking on Director's back panel
       replyAudio.onended = function () { URL.revokeObjectURL(url); afterReply(text, hook); };
       replyAudio.onerror = function () { URL.revokeObjectURL(url); afterReply(text, hook); };
       replyAudio.play().catch(function () { afterReply(text, hook); });
@@ -233,18 +264,100 @@
     sendTurn(m);
   });
   say.addEventListener('input', armIdle);
-  say.addEventListener('blur', function () { if (idleTimer) clearTimeout(idleTimer); });
+  say.addEventListener('blur', function () {
+    if (idleTimer) clearTimeout(idleTimer);
+    if (typeDebounceTimer) clearTimeout(typeDebounceTimer);
+  });
   yes.addEventListener('click', function () {
     // End of this slice: the Remedy Match wiring is the next spec.
     sub.textContent = 'Then let us go and find it.';
   });
-  beginBtn.addEventListener('click', startIntro);
+  beginBtn.addEventListener('click', function () {
+    startIntro();
+    if (ambience) ambience.start();  // autoplay-safe: only runs after user gesture
+  });
 
   fetch('/static/fireside/fireside-manifest.json')
     .then(function (r) { return r.json(); })
-    .then(function (m) { manifest = m; stage.poster = m.intro_poster; })
+    .then(function (m) {
+      manifest = m;
+      stage.poster = m.intro_poster;
+      // Initialize reaction director + ambience via the module script's init function
+      if (window.__firesideInit) {
+        var r = window.__firesideInit(m, replyAudio);
+        director = r.director;
+        ambience = r.ambience;
+      }
+    })
     .catch(function () { sub.textContent = 'The fire is not lit just now. Please return shortly.'; });
 })();
+</script>
+
+<script type="module">
+  import { normalizeManifest } from '/static/fireside/manifest-normalize.js';
+  import { Director } from '/static/fireside/director.js';
+  import { Ambience } from '/static/fireside/ambience.js';
+
+  const stageA = document.getElementById('stageA');
+  const stageB = document.getElementById('stageB');
+  const canvas  = document.getElementById('sparks');
+  const ctx     = canvas.getContext('2d');
+  const muteBtn = document.getElementById('muteBtn');
+
+  // Dedicated audio element for Director-triggered interjection/reaction audio
+  const _interAudio = new Audio();
+
+  // Keep canvas pixel dimensions in sync with its display size for correct spark rendering
+  function syncCanvas() {
+    canvas.width  = canvas.clientWidth  || window.innerWidth;
+    canvas.height = canvas.clientHeight || window.innerHeight;
+  }
+  syncCanvas();
+  window.addEventListener('resize', syncCanvas);
+
+  // Called by the inline script after the manifest fetch resolves.
+  // Returns { director, ambience } so the inline script can hold references.
+  window.__firesideInit = function (rawManifest, ttsAudioEl) {
+    const norm = normalizeManifest(rawManifest);
+
+    const director = new Director(norm, {
+      videoA: stageA,
+      videoB: stageB,
+      onInterjectionAudio: function (clip) {
+        // Reuse the interjection audio pattern: play clip.audio if present
+        if (!clip || !clip.audio) return;
+        try { _interAudio.pause(); _interAudio.currentTime = 0; } catch (e) {}
+        _interAudio.src = clip.audio;
+        _interAudio.play().catch(function () {});
+      },
+    });
+
+    // Seed once-per-client interruption flag so Glendalf never waves off the
+    // same hobbit-voice intruder twice across sessions on this browser.
+    director._interruptionSeen = localStorage.getItem('fireside_interruption_seen') === '1';
+
+    const ambience = new Ambience(norm.ambience, {
+      isVoicePlaying: function () {
+        return ttsAudioEl && !ttsAudioEl.paused && !ttsAudioEl.ended;
+      },
+      sparkCtx: ctx,
+      // Hearth is roughly 22% from left, 62% down the frame
+      sparkXY: [
+        canvas.width  * 0.22 || window.innerWidth  * 0.22,
+        canvas.height * 0.62 || window.innerHeight * 0.62,
+      ],
+    });
+
+    // Mute toggle: affects ambience bed + oneshots only (voice TTS is never muted here)
+    let _muted = false;
+    muteBtn.addEventListener('click', function () {
+      _muted = !_muted;
+      ambience.setMuted(_muted);
+      muteBtn.textContent = _muted ? '🔇' : '🔊';
+    });
+
+    return { director, ambience };
+  };
 </script>
 </body>
 </html>

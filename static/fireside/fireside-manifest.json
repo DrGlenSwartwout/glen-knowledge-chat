@@ -18,5 +18,8 @@
     {"id": "mm",      "text": "Mm—",                        "file": "/static/fireside/audio/inter-mm.mp3"},
     {"id": "oh",      "text": "Oh…",                        "file": "/static/fireside/audio/inter-oh.mp3"},
     {"id": "heart",   "text": "Now that's the heart of it—","file": "/static/fireside/audio/inter-heart.mp3"}
-  ]
+  ],
+  "resting_loops": [],
+  "reactions": [],
+  "ambience": { "bed": null, "bed_volume": 0.18, "oneshots": [] }
 }
