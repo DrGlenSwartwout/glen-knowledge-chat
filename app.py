@@ -82,6 +82,7 @@ FEEDBACK_VIEW_URL   = os.environ.get("FEEDBACK_VIEW_URL",   "https://Truly.VIP/F
 from dashboard.openai_failover import build_openai_client as _build_openai_client
 from dashboard.people import set_person_tags, distinct_tags
 from dashboard import affiliate_dashboard
+from dashboard import ash_ally
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
 from dashboard.voice_doorway import voice_signal_tags
@@ -3428,6 +3429,9 @@ def chat():
         # surface the soft opt-in. Decided BEFORE the stream so gated content
         # never partially leaks. Members are unaffected (no classifier call).
         _system = get_system_prompt(level)
+        _ally_ov = ash_ally.ally_overlay(LOG_DB, email or _member_email)
+        if _ally_ov:
+            _system = _ally_ov + "\n\n" + _system
         if not is_member(session_id, email) and _is_gated_question(query):
             _system = _system + _EDUCATE_ONLY_POLICY
             yield sse({"gate": True})
@@ -3477,6 +3481,13 @@ def chat():
             image_count=len(image_blocks),
             cta_type=(_cta or {}).get("type"), cta_rung=_rung,
         )
+        try:
+            import threading as _t
+            _t.Thread(target=ash_ally.record_turn,
+                      args=(LOG_DB, _db_lock, (email or _member_email), query, _clean),
+                      daemon=True).start()
+        except Exception:
+            pass
 
         # GHL onboarding for email opt-ins (non-blocking)
         if email:
