@@ -46,6 +46,12 @@ class _FakeCl:
     def __init__(self, toks, boom=False): self.messages = _FakeMessages(toks, boom)
 
 
+import re as _re, json as _json
+def _tokens(body):
+    return "".join(_json.loads(m)["token"]
+                   for m in _re.findall(r'data: (\{"token":.*?\})\n\n', body))
+
+
 def _post(appmod, message, sess="fixedsess"):
     # Send a fixed amg_session cookie so the route reuses a known session id
     # (otherwise it mints a random uuid and persistence is unreadable).
@@ -72,7 +78,7 @@ def test_agent_streams_tokens_and_persists(monkeypatch, tmp_path):
     monkeypatch.setattr(appmod, "_fireside_coverage_async", lambda *a, **k: None)
     monkeypatch.setattr(appmod, "_cl", _FakeCl(["I hear ", "you, ", "friend."]))
     body = _post(appmod, "I'm exhausted").get_data(as_text=True)
-    assert "I hear " in body
+    assert "I hear you, friend." in _tokens(body)
     assert '"done": true' in body
     assert '"hook": false' in body
     # persisted: one traveler turn + one glendalf turn
@@ -95,7 +101,7 @@ def test_agent_hides_hook_marker_and_flags_when_eligible(monkeypatch, tmp_path):
                         _FakeCl(["Shall we go and find it?", "\n", "⟦HOOK⟧"]))
     body = _post(appmod, "I think I'm ready").get_data(as_text=True)
     assert "⟦HOOK⟧" not in body          # marker never reaches the client
-    assert "Shall we go and find it?" in body
+    assert "Shall we go and find it?" in _tokens(body)
     assert '"hook": true' in body
 
 
@@ -116,3 +122,16 @@ def test_agent_error_frame_on_model_failure(monkeypatch, tmp_path):
     monkeypatch.setattr(appmod, "_cl", _FakeCl([], boom=True))
     body = _post(appmod, "hello").get_data(as_text=True)
     assert '"error": true' in body
+
+
+def test_agent_split_hook_marker_does_not_leak(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path, enabled="true")
+    monkeypatch.setattr(appmod, "_fireside_coverage_async", lambda *a, **k: None)
+    from dashboard import fireside_agent as fa
+    monkeypatch.setattr(fa, "hook_eligible", lambda *a, **k: True)
+    # sentinel arrives SPLIT across tokens, as real streaming does
+    monkeypatch.setattr(appmod, "_cl", _FakeCl(["Shall we go find it?", "\n", "⟦HO", "OK⟧"]))
+    body = _post(appmod, "ready").get_data(as_text=True)
+    assert "⟦" not in body and "HOOK" not in body   # no sentinel fragment leaks
+    assert '"hook": true' in body                          # still detected -> hook fires
+    assert "Shall we go find it?" in _tokens(body)

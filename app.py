@@ -2041,15 +2041,10 @@ def begin_fireside_agent():
                 for tok in stream.text_stream:
                     full.append(tok)
                     yield tok
-        sentinel = fireside_agent.HOOK_SENTINEL
+        from dashboard.chat_cta import stream_visible
         try:
-            for tok in _toks():
-                if sentinel in tok:
-                    before = tok[:tok.find(sentinel)]
-                    if before:
-                        yield sse({"token": before})
-                    break
-                yield sse({"token": tok})
+            for delta in stream_visible(_toks(), sentinel=fireside_agent.HOOK_SENTINEL):
+                yield sse({"token": delta})
         except Exception as e:
             yield sse({"error": True, "detail": str(e)})
             return
