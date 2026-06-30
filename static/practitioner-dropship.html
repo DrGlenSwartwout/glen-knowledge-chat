@@ -407,12 +407,19 @@ loadPortalData();
   var currentClientEmail = '';
   var clientSearchTimer = null;
 
+  function escapeHtml(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
   function renderClientResults(clients){
     var box = document.getElementById('client-search-results');
     if(!clients || !clients.length){ box.style.display='none'; box.innerHTML=''; return; }
     box.innerHTML = clients.map(function(c){
-      var label = (c.name ? c.name + ' — ' : '') + c.email;
-      return '<div class="client-result" data-email="'+c.email+'" style="padding:6px 10px;cursor:pointer">'+label+'</div>';
+      var em = escapeHtml(c.email);
+      var label = (c.name ? escapeHtml(c.name) + ' — ' : '') + em;
+      return '<div class="client-result" data-email="'+em+'" style="padding:6px 10px;cursor:pointer">'+label+'</div>';
     }).join('');
     box.style.display='block';
     Array.prototype.forEach.call(box.querySelectorAll('.client-result'), function(el){
