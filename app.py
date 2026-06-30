@@ -3814,6 +3814,10 @@ def begin_match_chat():
         if not _member and _is_gated_question(query):
             _match_system = _REMEDY_MATCH_SYSTEM + _EDUCATE_ONLY_POLICY
             yield sse({"gate": True})
+        _ally_subject = email if for_whom != "someone-else" else ""
+        _ally_ov = ash_ally.ally_overlay(LOG_DB, _ally_subject)
+        if _ally_ov:
+            _match_system = _ally_ov + "\n\n" + _match_system
 
         full = []
         try:
@@ -3836,6 +3840,14 @@ def begin_match_chat():
         try:
             log_query(query, "self-healing", answer, session_id=session_id,
                       email=email, name=name, mode="brief")
+        except Exception:
+            pass
+        try:
+            import threading as _t
+            _t.Thread(target=ash_ally.record_turn,
+                      args=(LOG_DB, _db_lock,
+                            (email if for_whom != "someone-else" else ""), query, answer),
+                      daemon=True).start()
         except Exception:
             pass
 
