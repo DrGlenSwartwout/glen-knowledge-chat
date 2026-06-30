@@ -43,3 +43,68 @@ def test_now_iso_is_valid_iso8601_with_seconds():
     # seconds field present: THH:MM:SS.ffffff -> the time part has 3 colon-separated groups
     time_part = ts.split("T")[1].rstrip("Z")
     assert len(time_part.split(":")) == 3, ts
+
+
+import copy
+
+
+def _mem(summary="", dims=None):
+    m = {"summary": summary, "dimensions": am._blank_map()}
+    for k, v in (dims or {}).items():
+        m["dimensions"][k].update(v)
+    return m
+
+
+def test_merge_bumps_state_forward_and_sets_excerpt_once():
+    mem = _mem()
+    out = {"dimensions": {"symptoms": {"state": "opened",
+            "excerpt": "my knee aches every morning", "notes": "AM knee pain"}},
+           "summary": "Cautious, in pain."}
+    merged = am.merge_turn(mem, out)
+    s = merged["dimensions"]["symptoms"]
+    assert s["state"] == "opened"
+    assert s["opened_excerpt"] == "my knee aches every morning"
+    assert s["notes"] == "AM knee pain"
+    assert s["last_touched_at"] is not None
+    assert merged["summary"] == "Cautious, in pain."
+    # untouched dims stay untouched
+    assert merged["dimensions"]["body"]["state"] == "untouched"
+
+
+def test_merge_never_downgrades_and_preserves_first_excerpt():
+    mem = _mem(dims={"symptoms": {"state": "deep",
+        "opened_excerpt": "first words", "notes": "old"}})
+    out = {"dimensions": {"symptoms": {"state": "opened",
+            "excerpt": "second words", "notes": "new detail"}}, "summary": ""}
+    merged = am.merge_turn(mem, out)
+    s = merged["dimensions"]["symptoms"]
+    assert s["state"] == "deep"               # max(deep, opened) = deep, no downgrade
+    assert s["opened_excerpt"] == "first words"  # excerpt set once, preserved
+    assert s["notes"] == "old\nnew detail"    # appended
+
+
+def test_merge_dedupes_identical_note_line():
+    mem = _mem(dims={"terrain": {"state": "explored", "notes": "low vitality"}})
+    out = {"dimensions": {"terrain": {"state": "explored",
+            "excerpt": "", "notes": "low vitality"}}, "summary": ""}
+    merged = am.merge_turn(mem, out)
+    assert merged["dimensions"]["terrain"]["notes"] == "low vitality"  # not duplicated
+
+
+def test_merge_empty_summary_preserves_prior_and_input_not_mutated():
+    mem = _mem(summary="Prior who-they-are.")
+    snapshot = copy.deepcopy(mem)
+    out = {"dimensions": {"mind": {"state": "opened", "excerpt": "", "notes": "n"}},
+           "summary": ""}
+    merged = am.merge_turn(mem, out)
+    assert merged["summary"] == "Prior who-they-are."  # empty summary keeps prior
+    assert mem == snapshot                             # input untouched
+
+
+def test_merge_ignores_unknown_dimension_keys():
+    mem = _mem()
+    out = {"dimensions": {"not_a_dim": {"state": "deep", "excerpt": "x", "notes": "y"}},
+           "summary": ""}
+    merged = am.merge_turn(mem, out)
+    assert "not_a_dim" not in merged["dimensions"]
+    assert all(merged["dimensions"][k]["state"] == "untouched" for k in am.DIM_KEYS)

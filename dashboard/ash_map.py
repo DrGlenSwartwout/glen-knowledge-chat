@@ -66,3 +66,47 @@ def _blank_map() -> dict:
             "notes": "", "last_touched_at": None}
         for k in DIM_KEYS
     }
+
+
+import copy as _copy
+
+
+def merge_turn(memory: dict, updater_output: dict) -> dict:
+    """Apply one updater result to a memory, PURELY. Forward-only state ladder,
+    set-once excerpt, deduped note accumulation. Returns a new dict."""
+    merged = _copy.deepcopy(memory)
+    dims = merged.setdefault("dimensions", _blank_map())
+    now = _now_iso()
+
+    for key, delta in (updater_output.get("dimensions") or {}).items():
+        if key not in DIM_KEYS or not isinstance(delta, dict):
+            continue
+        cell = dims.setdefault(key, {
+            "state": "untouched", "opened_excerpt": "",
+            "notes": "", "last_touched_at": None})
+
+        proposed = delta.get("state", "untouched")
+        cur_rank = STATE_ORDER.get(cell.get("state", "untouched"), 0)
+        prop_rank = STATE_ORDER.get(proposed, 0)
+        if prop_rank > cur_rank:
+            cell["state"] = proposed
+
+        excerpt = (delta.get("excerpt") or "").strip()
+        if excerpt and not cell.get("opened_excerpt"):
+            cell["opened_excerpt"] = excerpt
+
+        note = (delta.get("notes") or "").strip()
+        if note:
+            existing = cell.get("notes", "")
+            existing_lines = existing.split("\n") if existing else []
+            if note not in existing_lines:
+                existing_lines.append(note)
+                cell["notes"] = "\n".join(line for line in existing_lines if line)
+
+        cell["last_touched_at"] = now
+
+    new_summary = (updater_output.get("summary") or "").strip()
+    if new_summary:
+        merged["summary"] = new_summary
+
+    return merged
