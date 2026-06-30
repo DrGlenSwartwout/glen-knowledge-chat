@@ -157,3 +157,13 @@ identically (existing SP2a tests must stay green).
 - Per-email (vs global) lock granularity — the lock-splitting here keeps hold times to fast sqlite ops;
   finer locking is a future optimization only if contention shows up.
 - Backfilling memory from historical `query_log` (a later option).
+
+## Go-live checklist (ordered)
+
+1. Merge with the flag dark (`ASH_ALLY_ENABLED` unset). The layer is inert on prod — `ally_overlay` returns `""`, `record_turn` no-ops — so nothing changes for any user and no extra Haiku calls are made.
+2. Set `ASH_ALLY_ENABLED=1` in Render; redeploy/restart.
+3. Render-verify each of the 4 SSE surfaces in a headless browser as an identified user who already has `ash_map` memory:
+   - `/chat`, `/begin/match/chat` (with `for_whom=me`), `/begin/concierge/chat` (as a gated member), a `/portal/<token>` page.
+   - For each: the reply reflects continuity (no re-asking known facts), zero console errors; send a follow-up turn, then confirm via `ash_map.get` / a DB read that the stored map advanced.
+4. Confirm anonymous use of each surface is unchanged (no overlay, no errors, no extra Haiku call).
+5. Rollback if needed: unset `ASH_ALLY_ENABLED` — instant, no code change.
