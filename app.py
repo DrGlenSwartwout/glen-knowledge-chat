@@ -11068,10 +11068,11 @@ def _biofield_status_brief(cx, email):
 
 def _people_brief(cx, email):
     """Best-effort name + tags for a reveal's owner email. Empty on miss/error.
-    Tags are filtered to health-related only — operational CRM/marketing tags
-    (type:*, consent:*, source:*, reengagement:*, pb:cert, "concierge", ...) are
-    dropped so the biofield reveals view shows just clinically-meaningful tags."""
-    from dashboard.biofield_profile import is_operational_tag
+    Tags are filtered to health conditions only — the `people.tags` field is a broad
+    CRM bucket (marketing, lifecycle, chat topics, roles); real clinical conditions
+    live in the Practice Better `pb:` namespace, so we allowlist those (shown without
+    the pb: prefix) and drop the rest, so the reveals view shows just conditions."""
+    from dashboard.biofield_profile import is_health_tag, clean_health_tag
     out = {"client_name": "", "tags": []}
     try:
         row = cx.execute("SELECT name, tags FROM people WHERE lower(email)=lower(?)",
@@ -11080,8 +11081,8 @@ def _people_brief(cx, email):
             out["client_name"] = (row[0] or "").strip()
             try:
                 t = json.loads(row[1] or "[]")
-                out["tags"] = [str(x) for x in t
-                               if not is_operational_tag(str(x))] if isinstance(t, list) else []
+                out["tags"] = [clean_health_tag(str(x)) for x in t
+                               if is_health_tag(str(x))] if isinstance(t, list) else []
             except Exception:
                 out["tags"] = []
     except Exception:
