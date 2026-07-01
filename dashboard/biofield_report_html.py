@@ -102,6 +102,9 @@ _STYLE = """
    padding:1px 8px;margin:0 3px 3px 0;font-size:12px;color:var(--muted)}
  li.sdrag{cursor:grab}
  li.sdrag:hover{color:var(--accent)}
+ .btn.saved,.ghost.saved{background:var(--ok);color:#0c0e12;border-color:var(--ok)}
+ @keyframes savedpulse{0%{box-shadow:0 0 0 2px var(--ok)}100%{box-shadow:0 0 0 2px transparent}}
+ .savedflash{animation:savedpulse 1s ease-out}
  @media(max-width:720px){.chainlayout{flex-direction:column}.rail{flex-direction:row;flex-wrap:wrap;
    position:static;max-height:none;flex-basis:auto}}
 </style>
@@ -351,20 +354,26 @@ function suggestFor(btn,rp){var card=btn.closest('.lcard');var s=card?val(card.d
   arr.forEach(function(x){var b=document.createElement('button');b.type='button';b.className='chip';
    b.textContent=x.remedy+' ('+x.count+')';b.onclick=function(){set(rp+'_remedy',x.remedy);fillDose(rp)};
    box.appendChild(b);box.appendChild(document.createTextNode(' '))})})}
+function flashSaved(btn,msg){if(!btn)return;var o=btn.dataset.o||btn.textContent;btn.dataset.o=o;
+ btn.textContent=msg||'Saved ✓';btn.classList.add('saved');clearTimeout(btn._t);
+ btn._t=setTimeout(function(){btn.textContent=btn.dataset.o;btn.classList.remove('saved')},1400)}
+function pulse(el){if(!el)return;el.classList.remove('savedflash');void el.offsetWidth;el.classList.add('savedflash')}
 async function saveRemedy(rid,btn){var card=btn.closest('.lcard');var gid=card.dataset.gid;
- var head=val(gid+'_head'),most=val(gid+'_most');
- await post('/author/__TID__/row/'+rid,{head:head,most_affected:most,
+ var head=val(gid+'_head'),most=val(gid+'_most');btn.disabled=true;
+ try{await post('/author/__TID__/row/'+rid,{head:head,most_affected:most,
   remedy:val('r'+rid+'_remedy'),dosage:val('r'+rid+'_dosage'),
   frequency:val('r'+rid+'_frequency'),timing:val('r'+rid+'_timing')});
  var rids=(card.dataset.rids||'').split(',').filter(Boolean);
  for(var i=0;i<rids.length;i++){if(rids[i]!==String(rid)){
    await post('/author/__TID__/row/'+rids[i],{head:head,most_affected:most})}}
- astat('Saved.')}
-async function saveLayer(gid){var card=document.querySelector('[data-gid="'+gid+'"]');if(!card)return;
- var head=val(gid+'_head'),most=val(gid+'_most');
- var rids=(card.dataset.rids||'').split(',').filter(Boolean);
+ flashSaved(btn,'Saved ✓');pulse(btn.closest('.rline'));astat('Remedy saved.')}
+ finally{btn.disabled=false}}
+async function saveLayer(gid,btn){var card=document.querySelector('[data-gid="'+gid+'"]');if(!card)return;
+ var head=val(gid+'_head'),most=val(gid+'_most');if(btn)btn.disabled=true;
+ try{var rids=(card.dataset.rids||'').split(',').filter(Boolean);
  for(var i=0;i<rids.length;i++)await post('/author/__TID__/row/'+rids[i],{head:head,most_affected:most});
- astat('Layer saved.')}
+ flashSaved(btn,'Saved ✓');pulse(card);astat('Layer saved.')}
+ finally{if(btn)btn.disabled=false}}
 async function addRemedy(gid){var rem=val(gid+'_nr_remedy');if(!rem){astat('Enter a remedy.');return}
  var layer=val(gid+'_layer');if(!layer)layer=document.querySelectorAll('.lcard').length;
  await post('/author/__TID__/row',{layer:layer,head:val(gid+'_head'),most_affected:val(gid+'_most'),
@@ -724,7 +733,7 @@ def _render_chain_cards(report, depth_values, covered_by_layer=None):
             f"</div><input type=hidden id={gid}_layer value=\"{n}\"></div>"
             + lines + _covered_html(covered_by_layer.get(n)) + _new_remedy_line(gid, "Add remedy") +
             f"<div class=lfoot><span class=food>Layer {n}</span>"
-            f"<button class='btn ghost' onclick=\"saveLayer('{gid}')\">Save layer</button></div></div>")
+            f"<button class='btn ghost' onclick=\"saveLayer('{gid}',this)\">Save layer</button></div></div>")
     # trailing card to start a brand-new layer
     cards += (
         "<div class=lcard data-gid=gnew data-nodrop=1><div class=lhdr><span class=lnum>+</span>"
