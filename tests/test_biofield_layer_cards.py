@@ -40,6 +40,19 @@ def test_set_layer_order_reassigns_layer_by_group_position():
     assert order[0][0] == "Head B" and order[1][0] == "Head B"
 
 
+def test_reorder_frees_unconfirmed_scan_row():
+    cx = sqlite3.connect(":memory:")
+    live = add_chain_row(cx, "9", 1, "Live", "", "R1", confirmed=1, origin="live")
+    scan = add_chain_row(cx, "9", 2, "Scan", "", "R2", confirmed=0, origin="scan")
+    # by default the unconfirmed scan row trails
+    assert [l["head"] for l in ordered_chain(cx, "9")] == ["Live", "Scan"]
+    # dragging it to the top must stick (and promote it out of the bottom zone)
+    set_layer_order(cx, "9", [[scan], [live]])
+    rows = ordered_chain(cx, "9")
+    assert [l["head"] for l in rows] == ["Scan", "Live"]
+    assert all(l["zone"] == "top" for l in rows)          # scan row promoted -> stays put
+
+
 def test_reorder_layers_route(tmp_path, monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
     db = str(tmp_path / "c.db")
