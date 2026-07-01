@@ -1,7 +1,13 @@
 {
   "intro_video": "/static/fireside/video/intro.mp4",
   "intro_poster": "/static/fireside/video/intro-poster.jpg",
-  "speaking_loop": "/static/fireside/video/speaking-loop.mp4",
+  "speaking_loop": "/static/fireside/video/reactions/speak-1.mp4",
+  "speaking_loops": [
+    "/static/fireside/video/reactions/speak-1.mp4",
+    "/static/fireside/video/reactions/speak-2.mp4",
+    "/static/fireside/video/reactions/speak-3.mp4",
+    "/static/fireside/video/reactions/speak-4.mp4"
+  ],
   "pondering_loops": ["/static/fireside/video/pondering-1.mp4"],
   "fillers": [
     {"id": "hmm",     "kind": "think",  "text": "Hmmm…",                                  "file": "/static/fireside/audio/filler-hmm.mp3"},
