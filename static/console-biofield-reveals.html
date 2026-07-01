@@ -47,6 +47,14 @@
   textarea{ min-height:70px; resize:vertical; }
   .remedy-row{ border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:8px; background:#0c0e12; }
   .remedy-row .tag{ font-size:11px; color:var(--ok); margin-bottom:6px; }
+  .remedy-search{ position:relative; }
+  .remedy-dd{ position:absolute; top:100%; left:0; right:0; z-index:60; margin-top:2px;
+    background:var(--card); border:1px solid var(--line); border-radius:6px; max-height:260px;
+    overflow:auto; display:none; box-shadow:0 6px 20px rgba(0,0,0,.4); }
+  .remedy-dd-item{ padding:7px 11px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--line); }
+  .remedy-dd-item:last-child{ border-bottom:0; }
+  .remedy-dd-item:hover,.remedy-dd-item.active{ background:rgba(255,255,255,.07); }
+  .remedy-dd-item .mslug{ color:var(--muted); font-size:11px; }
   .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px; }
   .btn{ background:var(--accent); color:#fff; border:0; border-radius:8px;
         padding:8px 14px; font:inherit; cursor:pointer; }
@@ -106,6 +114,66 @@ function boot(){
 }
 
 var CANON = {};   // slug -> {meaning, source}; used to pre-check "Remember this meaning"
+var REMEDIES = [];  // [{slug,name}] full product catalog, for remedy-name type-ahead
+
+function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':s); return d.innerHTML; }
+
+function _canonMeaning(slug){
+  var c = CANON[slug];
+  return c ? (typeof c === 'string' ? c : (c.meaning || '')) : '';
+}
+
+// Type-ahead on a remedy-name input: type letters -> dropdown of matching remedies;
+// picking one autofills the slug and (if we have a stored meaning) the meaning field.
+function attachRemedySearch(nameInput, slugInput, meaningArea){
+  var wrap = document.createElement('div');
+  wrap.className = 'remedy-search';
+  nameInput.parentNode.insertBefore(wrap, nameInput);
+  wrap.appendChild(nameInput);
+  var dd = document.createElement('div');
+  dd.className = 'remedy-dd';
+  wrap.appendChild(dd);
+  var active = -1, shown = [];
+  function hide(){ dd.style.display='none'; dd.innerHTML=''; active=-1; shown=[]; }
+  function pick(p){
+    nameInput.value = p.name || '';
+    if(slugInput) slugInput.value = p.slug || '';
+    var m = _canonMeaning(p.slug);
+    if(meaningArea && m) meaningArea.value = m;   // autofill meaning when we have one
+    hide();
+    if(slugInput) slugInput.dispatchEvent(new Event('change'));
+  }
+  function render(matches){
+    shown = matches; active = -1; dd.innerHTML='';
+    matches.forEach(function(p){
+      var item = document.createElement('div');
+      item.className = 'remedy-dd-item';
+      var mk = _canonMeaning(p.slug) ? ' &middot; has meaning' : '';
+      item.innerHTML = esc(p.name || '') + ' <span class="mslug">' + esc(p.slug || '') + mk + '</span>';
+      item.addEventListener('mousedown', function(e){ e.preventDefault(); pick(p); });
+      dd.appendChild(item);
+    });
+    dd.style.display = matches.length ? 'block' : 'none';
+  }
+  nameInput.addEventListener('input', function(){
+    var q = nameInput.value.trim().toLowerCase();
+    if(q.length < 2){ hide(); return; }
+    render(REMEDIES.filter(function(p){
+      return ((p.name||'').toLowerCase().indexOf(q) !== -1) ||
+             ((p.slug||'').toLowerCase().indexOf(q) !== -1);
+    }).slice(0, 15));
+  });
+  nameInput.addEventListener('keydown', function(e){
+    if(dd.style.display !== 'block') return;
+    if(e.key === 'ArrowDown'){ e.preventDefault(); active=Math.min(active+1,shown.length-1); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); active=Math.max(active-1,0); }
+    else if(e.key === 'Enter' && active >= 0){ e.preventDefault(); pick(shown[active]); return; }
+    else if(e.key === 'Escape'){ hide(); return; }
+    else return;
+    Array.prototype.forEach.call(dd.children, function(el,i){ el.classList.toggle('active', i===active); });
+  });
+  nameInput.addEventListener('blur', function(){ setTimeout(hide, 150); });
+}
 
 // "Remember this meaning" = Glen has REVIEWED this meaning. Pre-check ONLY when a
 // Glen-reviewed canonical meaning (source 'glen') exists and matches what's shown.
@@ -141,6 +209,10 @@ async function loadList(){
       CANON = {};
       rm.json.rows.forEach(function(x){ if(x.slug) CANON[x.slug] = x.meaning || ''; });
     }
+  } catch(e) {}
+  try {
+    var cat = await api('GET', '/api/console/biofield-portal/catalog');
+    if(cat.ok && cat.json && Array.isArray(cat.json.products)) REMEDIES = cat.json.products;
   } catch(e) {}
   el.innerHTML = '';
   var all = (r.json.drafts || []).concat(r.json.approved || []);
@@ -384,6 +456,7 @@ function buildCard(d){
       meaningArea.className = 'remedy-meaning';
       meaningArea.value = rem.meaning || '';
       row.appendChild(meaningArea);
+      attachRemedySearch(nameInput, slugInput, meaningArea);
 
       var rememberLabel = document.createElement('label');
       var rememberCheck = document.createElement('input');
@@ -439,6 +512,7 @@ function buildCard(d){
       meaningArea.className = 'remedy-meaning';
       meaningArea.value = rem.meaning || '';
       row.appendChild(meaningArea);
+      attachRemedySearch(nameInput, slugInput, meaningArea);
 
       remediesContainer.appendChild(row);
     });
