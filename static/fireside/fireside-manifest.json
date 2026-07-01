@@ -1,5 +1,5 @@
 {
-  "intro_video": "/static/fireside/video/intro.mp4",
+  "intro_video": "/static/fireside/video/reactions/rest-1.mp4",
   "intro_poster": "/static/fireside/video/intro-poster.jpg",
   "speaking_loop": "/static/fireside/video/reactions/speak-1.mp4",
   "speaking_loops": [
@@ -49,6 +49,8 @@
     {"id": "gentle_gravity-2", "family": "gentle_gravity", "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-gentle-gravity-2.mp4"},
     {"id": "delight-2",   "family": "delight",          "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-delight-2.mp4"},
     {"id": "surprise-2",  "family": "surprise",         "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.4, "file": "/static/fireside/video/reactions/react-surprise-2.mp4"},
+    {"id": "gaze-up-right",  "family": "pondering", "form": "silent", "gaze": "up_right",  "intensity": "low", "tier": "gaze", "duration_s": 2.8, "file": "/static/fireside/video/reactions/gaze-up-right.mp4"},
+    {"id": "gaze-lat-right", "family": "pondering", "form": "silent", "gaze": "lat_right", "intensity": "low", "tier": "gaze", "duration_s": 3.2, "file": "/static/fireside/video/reactions/gaze-lat-right.mp4"},
     {"id": "hobbit-boy",     "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 11.3, "file": "/static/fireside/video/reactions/hobbit-2.mp4", "audio": "/static/fireside/audio/hobbit-boy.mp3"},
     {"id": "hobbit-kettle",  "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 4.2, "file": "/static/fireside/video/reactions/hobbit-3.mp4", "audio": "/static/fireside/audio/hobbit-kettle.mp3"},
     {"id": "hobbit-door",    "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 12.1, "file": "/static/fireside/video/reactions/hobbit-2.mp4", "audio": "/static/fireside/audio/hobbit-door.mp3"},
