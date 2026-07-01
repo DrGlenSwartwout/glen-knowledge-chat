@@ -199,7 +199,10 @@
             var msg; try { msg = JSON.parse(line); } catch (e) { return; }
             if (msg.token) { full += msg.token; sub.textContent = full; }
             else if (msg.error) { finishReply(full || 'My thoughts wandered. Say that again?', false); }
-            else if (msg.done) { finishReply(full, !!msg.hook); }
+            else if (msg.done) {
+              if (msg.user_name) window.__firesideName = String(msg.user_name);  // for personalized hobbit-call
+              finishReply(full, !!msg.hook);
+            }
           });
           return pump();
         });
@@ -373,6 +376,40 @@
   syncCanvas();
   window.addEventListener('resize', syncCanvas);
 
+  // Personalized hobbit-call: play caller audio, then a runtime-TTS'd reply that speaks the
+  // visitor's name (fetched in parallel so it's ready by the time the caller finishes), then the
+  // departing footsteps. Falls back to the clip's generic combined audio if the TTS fails.
+  function playPersonalizedInterruption(clip, name) {
+    var line = clip.reply_template.replace(/\{name\}/g, name);
+    var ttsUrl = null;
+    var ttsReady = fetch('/chat/tts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: line })
+    }).then(function (r) { return r.ok ? r.blob() : null; })
+      .then(function (b) { ttsUrl = b ? URL.createObjectURL(b) : null; })
+      .catch(function () { ttsUrl = null; });
+
+    function playSrc(src, onend) {
+      try { _interAudio.pause(); _interAudio.currentTime = 0; } catch (e) {}
+      _interAudio.src = src;
+      _interAudio.onended = onend || null;
+      _interAudio.play().catch(function () { if (onend) onend(); });
+    }
+    function playLeave() {
+      if (ttsUrl) { try { URL.revokeObjectURL(ttsUrl); } catch (e) {} ttsUrl = null; }
+      if (clip.leave_audio) playSrc(clip.leave_audio, function () { _interAudio.onended = null; });
+      else _interAudio.onended = null;
+    }
+    function playReply() {
+      ttsReady.then(function () {
+        if (ttsUrl) playSrc(ttsUrl, playLeave);
+        else if (clip.audio) playSrc(clip.audio, function () { _interAudio.onended = null; }); // fallback: generic reply
+        else playLeave();
+      });
+    }
+    playSrc(clip.caller_audio, playReply);
+  }
+
   // Called by the inline script after the manifest fetch resolves.
   // Returns { director, ambience } so the inline script can hold references.
   window.__firesideInit = function (rawManifest, ttsAudioEl) {
@@ -382,9 +419,16 @@
       videoA: stageA,
       videoB: stageB,
       onInterjectionAudio: function (clip) {
-        // Reuse the interjection audio pattern: play clip.audio if present
-        if (!clip || !clip.audio) return;
+        if (!clip) return;
+        var name = window.__firesideName;
+        // Personalized hobbit-call: caller -> runtime-TTS reply (with the visitor's name) -> leave
+        if (clip.reply_template && clip.caller_audio && name) {
+          playPersonalizedInterruption(clip, name);
+          return;
+        }
+        if (!clip.audio) return;
         try { _interAudio.pause(); _interAudio.currentTime = 0; } catch (e) {}
+        _interAudio.onended = null;
         _interAudio.src = clip.audio;
         _interAudio.play().catch(function () {});
       },

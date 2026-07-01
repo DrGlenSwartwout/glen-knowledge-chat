@@ -123,6 +123,15 @@ def update_coverage(cx, fireside_id: int, coverage: dict) -> None:
     cx.commit()
 
 
+def set_name(cx, fireside_id: int, name: str) -> None:
+    init_table(cx)
+    cx.execute(
+        "UPDATE fireside_sessions SET user_name = ? WHERE id = ?",
+        (str(name)[:40], int(fireside_id)),
+    )
+    cx.commit()
+
+
 def mark_ended(cx, fireside_id: int) -> None:
     init_table(cx)
     cx.execute(

@@ -94,3 +94,15 @@ test('intro variant arrays: normalize + fall back to singulars', () => {
   assert.deepEqual(b.intro_welcomes, ['/w.mp4']);
   assert.deepEqual(b.intro_welcome_audios, ['/a.mp3']);
 });
+
+test('reaction personalization fields: reply_template / caller_audio / leave_audio', () => {
+  const m = normalizeManifest({ reactions: [
+    { id: 'h', family: 'invitation', tier: 'interruption', file: '/v.mp4', audio: '/a.mp3',
+      reply_template: 'for {name}', caller_audio: '/c.mp3', leave_audio: '/l.mp3' },
+    { id: 'plain', family: 'surprise', tier: 'backchannel', file: '/r.mp4' },
+  ]});
+  assert.equal(m.reactions[0].reply_template, 'for {name}');
+  assert.equal(m.reactions[0].caller_audio, '/c.mp3');
+  assert.equal(m.reactions[0].leave_audio, '/l.mp3');
+  assert.equal(m.reactions[1].reply_template, null);   // default
+});

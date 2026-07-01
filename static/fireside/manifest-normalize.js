@@ -21,6 +21,11 @@ function normReaction(r) {
     duration_s: num(r.duration_s, 2.5),
     loopable: bool(r.loopable),
     audio: str(r.audio),
+    // name-personalized interruption (played when the visitor's name is known):
+    // caller_audio + a runtime-TTS'd reply_template ({name} slot) + optional leave_audio
+    reply_template: str(r.reply_template),
+    caller_audio: str(r.caller_audio),
+    leave_audio: str(r.leave_audio),
   };
 }
 
