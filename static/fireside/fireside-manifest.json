@@ -19,7 +19,19 @@
     {"id": "oh",      "text": "Oh…",                        "file": "/static/fireside/audio/inter-oh.mp3"},
     {"id": "heart",   "text": "Now that's the heart of it—","file": "/static/fireside/audio/inter-heart.mp3"}
   ],
-  "resting_loops": [],
-  "reactions": [],
+  "resting_loops": [
+    "/static/fireside/video/reactions/rest-1.mp4",
+    "/static/fireside/video/reactions/rest-2.mp4"
+  ],
+  "reactions": [
+    {"id": "invitation",  "family": "invitation",       "form": "silent", "hand": "open_palm", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-invitation.mp4"},
+    {"id": "empathic",    "family": "empathic_concern", "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-empathic.mp4"},
+    {"id": "recognition", "family": "recognition",      "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-recognition.mp4"},
+    {"id": "pondering",   "family": "pondering",        "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-pondering.mp4"},
+    {"id": "reassurance", "family": "reassurance",      "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-reassurance.mp4"},
+    {"id": "curiosity",   "family": "curiosity",        "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-curiosity.mp4"},
+    {"id": "affirming",   "family": "affirming",        "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-affirming.mp4"},
+    {"id": "surprise",    "family": "surprise",         "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.4, "file": "/static/fireside/video/reactions/react-surprise.mp4"}
+  ],
   "ambience": { "bed": null, "bed_volume": 0.18, "oneshots": [] }
 }
