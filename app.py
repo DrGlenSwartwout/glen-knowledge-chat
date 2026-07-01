@@ -4329,6 +4329,11 @@ _REVIEWS_VIDEO = os.environ.get("REVIEWS_VIDEO", "").strip().lower() in ("1", "t
 # Embed the existing /practitioner-finder as a card in the client portal (dark
 # until flipped). Prefill is built from the client's stored address in portal_view.
 _PORTAL_FINDER_ENABLED = os.environ.get("PORTAL_FINDER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Staged portal-link rollout via GHL. Both must be set for /admin/portal/rollout-enroll
+# to do anything (else it 503s, inert): the GHL contact custom-field key that holds
+# the portal URL, and the workflow id that emails it.
+_PORTAL_URL_FIELD = os.environ.get("PORTAL_URL_FIELD", "").strip()
+_PORTAL_INVITE_WORKFLOW = os.environ.get("PORTAL_INVITE_WORKFLOW", "").strip()
 _REVIEWS_VIDEO_TRIM = os.environ.get("REVIEWS_VIDEO_TRIM", "").strip().lower() in ("1", "true", "yes")
 _REVIEWS_GIFTS = os.environ.get("REVIEWS_GIFTS", "").strip().lower() in ("1", "true", "yes")
 _REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "yes")
@@ -12923,6 +12928,63 @@ def admin_client_portal_upsert():
             print(f"[portal-upsert] send failed: {e!r}", flush=True)
     return jsonify({"ok": True, "token": token, "url": url,
                     "portal_id": pid, "emailed": emailed})
+
+
+@app.route("/admin/portal/get-or-create-link", methods=["POST"])
+def admin_portal_get_or_create_link():
+    """Idempotent portal link for the staged rollout: returns the client's STABLE
+    link (the raw token cached in portal_notify_state), minting a pending portal
+    only if none exists. Unlike /reissue-link it NEVER rotates an already-cached
+    token, so it is safe to call repeatedly across waves. Console-secret gated."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    from dashboard import client_portal as _cp
+    from dashboard import notify_state as _ns
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _ns.init_table(cx)
+        token = _cp.ensure_token(cx, email, name)
+    return jsonify({"ok": True, "email": email, "url": f"{PUBLIC_BASE_URL}/portal/{token}"})
+
+
+@app.route("/admin/portal/rollout-enroll", methods=["POST"])
+def admin_portal_rollout_enroll():
+    """Staged-rollout step for ONE recipient: ensure a stable portal link, push it
+    into the GHL portal-URL custom field, tag `portal-invite`, and enroll in the
+    portal-invite workflow (which emails the link). Idempotent (ensure_token +
+    upsert). Inert (503) until PORTAL_URL_FIELD + PORTAL_INVITE_WORKFLOW are set.
+    Console-secret gated."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not (_PORTAL_URL_FIELD and _PORTAL_INVITE_WORKFLOW):
+        return jsonify({"ok": False,
+                        "error": "GHL rollout not configured (set PORTAL_URL_FIELD + PORTAL_INVITE_WORKFLOW)"}), 503
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    first, _, last = name.partition(" ")
+    from dashboard import client_portal as _cp
+    from dashboard import notify_state as _ns
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _ns.init_table(cx)
+        token = _cp.ensure_token(cx, email, name)
+    url = f"{PUBLIC_BASE_URL}/portal/{token}"
+    contact_id, _created, err = ghl_upsert_contact(
+        email, first, last, custom_fields={_PORTAL_URL_FIELD: url},
+        extra_tags=["portal-invite"])
+    if err or not contact_id:
+        return jsonify({"ok": False, "url": url, "error": err or "no contact_id"}), 502
+    _, werr = _ghl_post(f"/contacts/{contact_id}/workflow/{_PORTAL_INVITE_WORKFLOW}", {})
+    return jsonify({"ok": not werr, "url": url, "contact_id": contact_id,
+                    "enrolled": not werr, "error": werr})
 
 
 @app.route("/admin/portal/delete", methods=["POST"])
