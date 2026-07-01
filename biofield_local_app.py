@@ -726,47 +726,84 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         fname = f"test_{test_id}.mp3"
         with open(os.path.join(AUDIO_DIR, fname), "wb") as f:
             f.write(audio)
-        return {"url": f"/audio/{fname}", "bytes": len(audio)}
+        # Auto-attach: if this client's report is already published, refresh their
+        # portal so the new audio appears without a manual re-publish (best-effort,
+        # send=False so no re-email; reuses the original special price).
+        attached = False
+        sp = _published_special(test_id)
+        if sp is not None:
+            try:
+                res = _do_publish(test_id, int(sp or 0), send=False)
+                attached = not res.get("unresolved")
+            except Exception as e:
+                print(f"[audio] portal auto-attach failed: {e}", flush=True)
+        return {"url": f"/audio/{fname}", "bytes": len(audio), "portal_attached": attached}
 
     @app.route("/audio/<path:fname>")
     def serve_audio(fname):
         return send_from_directory(AUDIO_DIR, fname, mimetype="audio/mpeg")
 
-    @app.route("/test/<test_id>/publish-portal", methods=["POST"])
-    def publish_portal(test_id):
+    def _pub_init(cx):
+        cx.execute("CREATE TABLE IF NOT EXISTS biofield_portal_published("
+                   "test_id TEXT PRIMARY KEY, special_price_cents INTEGER, updated_at TEXT)")
+
+    def _mark_published(test_id, special):
+        with sqlite3.connect(db_path) as cx:
+            _pub_init(cx)
+            cx.execute("INSERT INTO biofield_portal_published(test_id,special_price_cents,updated_at) "
+                       "VALUES(?,?,?) ON CONFLICT(test_id) DO UPDATE SET "
+                       "special_price_cents=excluded.special_price_cents, updated_at=excluded.updated_at",
+                       (test_id, int(special or 0), datetime.datetime.utcnow().isoformat()))
+            cx.commit()
+
+    def _published_special(test_id):
+        with sqlite3.connect(db_path) as cx:
+            _pub_init(cx)
+            r = cx.execute("SELECT special_price_cents FROM biofield_portal_published "
+                           "WHERE test_id=?", (test_id,)).fetchone()
+        return r[0] if r else None
+
+    def _do_publish(test_id, special, send):
+        """Build + upload PDF/audio assets + upsert the portal for a test. Returns the
+        upsert response dict (or {"unresolved": [...]}); raises on hard errors."""
         from dashboard import biofield_portal_publish as _bpp
-        body = request.get_json(silent=True) or {}
-        try:
-            special = int(body.get("special_price_cents") or 0)
-        except (TypeError, ValueError):
-            return {"ok": False, "error": "special_price_cents must be an integer"}, 400
         with sqlite3.connect(db_path) as cx:
             pre = _bpp.build_portal_content(cx, test_id, special_price_cents=special)
             if pre["unresolved"]:
-                return {"ok": False, "unresolved": pre["unresolved"]}, 409
-            # report HTML -> pdf bytes (reuse the report renderer)
+                return {"unresolved": pre["unresolved"]}
             rep = _report_for(cx, test_id)
             narrative = get_narrative(cx, test_id)
         base = os.environ.get("PORTAL_PUBLISH_BASE_URL", "")
         key = os.environ.get("CONSOLE_SECRET", "")
         if not base:
-            return {"ok": False, "error": "PORTAL_PUBLISH_BASE_URL not set"}, 500
+            raise RuntimeError("PORTAL_PUBLISH_BASE_URL not set")
+        pdf_bytes = report_pdf_bytes(render_present(rep, narrative))
+        pdf_url = _bpp.upload_asset(pdf_bytes, _bpp._asset_name("pdf"), base_url=base, console_key=key)
+        audio_url = None
+        audio_path = os.path.join(AUDIO_DIR, f"test_{test_id}.mp3")
+        if os.path.exists(audio_path):
+            with open(audio_path, "rb") as af:
+                audio_url = _bpp.upload_asset(af.read(), _bpp._asset_name("mp3"),
+                                              base_url=base, console_key=key)
+        with sqlite3.connect(db_path) as cx:
+            payload = _bpp.build_portal_content(cx, test_id, special_price_cents=special,
+                                                audio_url=audio_url, report_pdf_url=pdf_url)
+        return _bpp.publish_to_portal(payload, base_url=base, console_key=key, send=send)
+
+    @app.route("/test/<test_id>/publish-portal", methods=["POST"])
+    def publish_portal(test_id):
+        body = request.get_json(silent=True) or {}
         try:
-            pdf_bytes = report_pdf_bytes(render_present(rep, narrative))
-            pdf_url = _bpp.upload_asset(pdf_bytes, _bpp._asset_name("pdf"),
-                                        base_url=base, console_key=key)
-            audio_url = None
-            audio_path = os.path.join(AUDIO_DIR, f"test_{test_id}.mp3")
-            if os.path.exists(audio_path):
-                with open(audio_path, "rb") as af:
-                    audio_url = _bpp.upload_asset(af.read(), _bpp._asset_name("mp3"),
-                                                  base_url=base, console_key=key)
-            with sqlite3.connect(db_path) as cx:
-                payload = _bpp.build_portal_content(cx, test_id, special_price_cents=special,
-                                                    audio_url=audio_url, report_pdf_url=pdf_url)
-            res = _bpp.publish_to_portal(payload, base_url=base, console_key=key, send=True)
+            special = int(body.get("special_price_cents") or 0)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "special_price_cents must be an integer"}, 400
+        try:
+            res = _do_publish(test_id, special, send=True)
         except Exception as e:
             return {"ok": False, "error": str(e)[:300]}, 502
+        if res.get("unresolved"):
+            return {"ok": False, "unresolved": res["unresolved"]}, 409
+        _mark_published(test_id, special)   # remember for auto-attach on later audio
         return {"ok": True, "url": res.get("url", ""),
                 "updated": bool(res.get("updated")), "note": res.get("note", ""),
                 "emailed": bool(res.get("emailed")), "unresolved": []}
