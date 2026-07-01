@@ -252,6 +252,32 @@ def set_manual_balanced(cx, tid, stress_id, value):
     cx.commit()
 
 
+def cover_stress(cx, tid, stress_id, rids):
+    """Mark a stress as covered by a layer: link its code to each of the layer's
+    remedy rows (rids) in the coverage map, so it shows as balanced under that
+    layer. Returns the stress code, or None if the stress/code is missing."""
+    init_stress_tables(cx)
+    t = _num(tid)
+    row = cx.execute("SELECT code FROM biofield_auth_stress WHERE id=? AND test_id=?",
+                     (stress_id, t)).fetchone()
+    if not row or not (row[0] or "").strip():
+        return None
+    code = row[0]
+    for rid in rids or []:
+        try:
+            rid = int(rid)
+        except (TypeError, ValueError):
+            continue
+        rr = cx.execute("SELECT remedy FROM biofield_auth_chain WHERE id=? AND test_id=?",
+                        (rid, t)).fetchone()
+        remedy = ((rr[0] if rr else "") or "").strip().lower()
+        if remedy:
+            cx.execute("INSERT OR IGNORE INTO biofield_auth_remedy_coverage"
+                       "(test_id,remedy,code) VALUES(?,?,?)", (t, remedy, code))
+    cx.commit()
+    return code
+
+
 def add_stress(cx, tid, label, *, source="voice", balance="required"):
     """Add a stress unless its normalized label already exists for this test (any
     source) -> merge. Stored with code=_norm(label) so UNIQUE(test_id,source,code)
