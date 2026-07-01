@@ -615,6 +615,20 @@
   .journey-card.status-done { border-color: var(--gold); }
   @media (max-width: 760px) { #journey-cards { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 420px) { #journey-cards { grid-template-columns: 1fr; } }
+  /* Fireside invitation — prominent warm entry above the funnel */
+  #fireside-invite { max-width: 900px; margin: 22px auto 6px; padding: 0 20px; }
+  #fireside-invite .fi-inner { position: relative; text-align: center; overflow: hidden;
+    border: 1px solid rgba(212,168,67,0.35); border-radius: var(--radius); padding: 34px 24px;
+    background: radial-gradient(ellipse at 50% 130%, rgba(212,168,67,0.18), rgba(20,12,6,0) 70%), rgba(20,12,6,0.5); }
+  #fireside-invite .fi-title { font-size: 26px; line-height: 1.2; margin: 0 0 8px; color: var(--warm, #f3e2c7); }
+  #fireside-invite .fi-sub { font-size: 15px; color: var(--muted); margin: 0 auto 20px; max-width: 560px; }
+  #fireside-invite .fi-cta { display: inline-block; text-decoration: none; color: #1a0f06;
+    background: linear-gradient(#caa86a,#8a6a38); border-radius: 30px; padding: 14px 38px;
+    font-size: 18px; font-weight: 600; box-shadow: 0 0 24px 5px rgba(220,180,90,0.5);
+    animation: fiGlow 2.6s ease-in-out infinite; }
+  @keyframes fiGlow { 0%,100% { box-shadow: 0 0 20px 4px rgba(220,180,90,.45); }
+    50% { box-shadow: 0 0 38px 12px rgba(240,200,110,.85); } }
+  @media (max-width: 760px) { #fireside-invite .fi-title { font-size: 22px; } }
 </style>
   <script src="/static/theme-toggle.js"></script>
 </head>
@@ -630,6 +644,15 @@
       Welcome, <span data-name>there</span>. Let&rsquo;s begin.
     </p>
   </div>
+
+  <!-- Fireside invitation: prominent, state-aware entry to the immersive Glendalf conversation. -->
+  <section id="fireside-invite" class="reveal in">
+    <div class="fi-inner">
+      <h2 class="fi-title">Sit by the fire with Glendalf</h2>
+      <p class="fi-sub" data-fi-sub>Pull up a chair. Tell an old friend what&rsquo;s weighing on you, and let&rsquo;s find what your body needs next.</p>
+      <a class="fi-cta" href="/begin/fireside">Sit by the fire</a>
+    </div>
+  </section>
 
   <!-- BEGIN #1 HERO: headline + sub + video + simplified self-healing chat.
        Ungated (always visible, above the fold). Deeper layered content below
@@ -850,6 +873,9 @@
     if(!name) return;
     document.querySelectorAll('[data-name]').forEach(function(el){ el.textContent = name; });
     document.querySelectorAll('[data-name-prefix]').forEach(function(el){ el.style.display = 'inline'; });
+    // Returning traveler: warm the fireside invitation with their name.
+    var fiSub = document.querySelector('[data-fi-sub]');
+    if (fiSub) fiSub.textContent = 'Welcome back, ' + name + '. The fire is still warm — come sit a while.';
   }
   function unlock(trigger, extra){
     var body = Object.assign({ trigger: trigger, ref: getRef() }, extra||{});
