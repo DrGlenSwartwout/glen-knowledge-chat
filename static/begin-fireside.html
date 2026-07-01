@@ -135,7 +135,7 @@
   var micHint = document.getElementById('mic-hint');
   var typeToggle = document.getElementById('type-toggle');
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  var voiceMode = false, rec = null, recActive = false, voiceAutostart = false;
+  var voiceMode = false, rec = null, recActive = false, voiceAuto = false, autoListenTimer = null;
 
   var manifest = null;
   var state = 'intro';
@@ -174,7 +174,7 @@
     setVideo(p[Math.floor(Math.random() * p.length)], {loop:true});
   }
   function listening()  { pondering(); state = 'listening'; if (director) director.toResting();
-    micReady(); if (voiceMode && voiceAutostart) { voiceAutostart = false; startRec(); } }
+    micReady(); if (voiceMode && voiceAuto) { scheduleAutoListen(); } }
   function speakingLoop(){
     if (director) return;                 // Director.toSpeaking() handles the speaking loop crossfade
     setVideo(manifest.speaking_loop, {loop:true});
@@ -375,8 +375,17 @@
     micHint.textContent = '';
   }
   function stopRec() { if (rec) { try { rec.stop(); } catch (e) {} } }
+  function scheduleAutoListen() {
+    // Hands-free: after Glendalf finishes speaking, reopen the mic so the
+    // traveler can simply reply. A short grace keeps it from feeling abrupt.
+    if (autoListenTimer) clearTimeout(autoListenTimer);
+    autoListenTimer = setTimeout(function () {
+      if (voiceMode && voiceAuto && state === 'listening' && !recActive) startRec();
+    }, 500);
+  }
   function toTypeMode() {
-    voiceMode = false; stopRec();
+    voiceMode = false; voiceAuto = false; stopRec();
+    if (autoListenTimer) clearTimeout(autoListenTimer);
     voice.classList.add('hidden');
     composer.classList.remove('hidden');
     say.focus();
@@ -408,8 +417,8 @@
   // --- wire up ---
   if (SR) { voiceMode = true; voice.classList.remove('hidden'); composer.classList.add('hidden'); }
   mic.addEventListener('click', function () {
-    if (state === 'intro') { voiceAutostart = true; armWelcome(); return; }  // first tap: he notices you, then listens
-    if (state === 'listening') { startRec(); }
+    if (state === 'intro') { voiceAuto = true; armWelcome(); return; }  // first tap: he notices you, then listens hands-free
+    if (state === 'listening') { voiceAuto = true; startRec(); }         // opting into voice keeps it hands-free for later turns
   });
   typeToggle.addEventListener('click', toTypeMode);
   composer.addEventListener('submit', function (e) {
