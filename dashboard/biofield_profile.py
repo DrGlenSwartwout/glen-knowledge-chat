@@ -31,6 +31,31 @@ def is_operational_tag(tag):
     return any(kw in t for kw in _OP_KEYWORDS)
 
 
+# The `people.tags` field is a broad CRM bucket (marketing, lifecycle, chat topics,
+# roles). Real clinical conditions live in the Practice Better `pb:` namespace, so a
+# denylist can't keep up — an allowlist of pb: conditions is the reliable signal.
+# These pb: values are NOT conditions (roles, tools, admin) and are excluded.
+_PB_NON_CONDITION = {"od", "rn", "np", "do", "md", "dc", "lac", "nd", "zyto", "cert",
+                     "member", "membership", "account", "ash", "staff", "vip"}
+
+
+def is_health_tag(tag):
+    """True if a CRM tag is a clinical/health condition worth showing (e.g. in a
+    biofield reveal). Keeps Practice Better `pb:<condition>` tags; drops everything
+    else — marketing/lifecycle/topic/role tags and non-condition pb: values."""
+    t = (tag or "").strip().lower().strip('[]"\'')
+    if not t.startswith("pb:"):
+        return False
+    val = t[3:].strip()
+    return bool(val) and val not in _PB_NON_CONDITION and not is_operational_tag(t)
+
+
+def clean_health_tag(tag):
+    """Display form of a health tag: strip the `pb:` prefix (e.g. 'pb:wet-amd' -> 'wet-amd')."""
+    s = (tag or "").strip().strip('[]"\'')
+    return s[3:] if s.lower().startswith("pb:") else s
+
+
 def _items(v):
     """A profile field may be a list or a comma/semicolon-separated string."""
     if v is None:
