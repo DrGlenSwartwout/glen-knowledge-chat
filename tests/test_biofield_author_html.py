@@ -67,6 +67,18 @@ def test_save_buttons_track_saved_and_dirty_state():
     assert "function setSaved" in html and "function markDirty" in html
 
 
+def test_editor_has_narrative_generate_and_prefill():
+    rep = {"test_id": "a4", "client": {"name": "Agnes", "email": ""}, "date": "",
+           "layers": [{"layer": 1, "head": "H", "remedy": "R", "rid": 5, "confirmed": 1}],
+           "schedule": {"slots": [], "entries": []}}
+    html = render_author_html(rep, [], "", narrative="Aloha Agnes, draft narrative.")
+    assert "<h2>Narrative</h2>" in html
+    assert "onclick=genNarr()" in html and "function genNarr" in html   # generate in editor
+    assert "id=narrEd" in html and "Aloha Agnes, draft narrative." in html  # prefilled + editable
+    assert "/test/a4/generate" in html                                  # wired to the generate route
+    assert "id=narrSaveBtn" in html and "function saveNarrEd" in html   # save draft
+
+
 def test_author_page_escapes_free_text():
     rep = _report()
     rep["client"]["name"] = "<script>x</script>"
