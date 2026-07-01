@@ -54,6 +54,19 @@ def test_author_has_left_layer_rail_reorderable():
     assert "draggable=true" in html and "persistOrder(box)" in html  # rail + cards share reorder
 
 
+def test_save_buttons_track_saved_and_dirty_state():
+    rep = {"test_id": "a1", "client": {"name": "J", "email": ""}, "date": "",
+           "layers": [{"layer": 1, "head": "H", "most_affected": "T", "remedy": "R",
+                       "rid": 5, "confirmed": 1}], "schedule": {"slots": [], "entries": []}}
+    html = render_author_html(rep, [], "")
+    # save buttons are tagged for the saved/dirty toggle
+    assert "class='btn savebtn' data-dirty=Update" in html          # remedy Save
+    assert "savebtn' data-dirty='Update layer'" in html             # layer Save
+    # editing a field marks its button dirty; saving turns it green + keeps it
+    assert 'oninput="dirtyRow(this)"' in html and 'oninput="dirtyLayer(this)"' in html
+    assert "function setSaved" in html and "function markDirty" in html
+
+
 def test_author_page_escapes_free_text():
     rep = _report()
     rep["client"]["name"] = "<script>x</script>"

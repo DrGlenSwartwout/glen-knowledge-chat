@@ -102,6 +102,9 @@ _STYLE = """
    padding:1px 8px;margin:0 3px 3px 0;font-size:12px;color:var(--muted)}
  li.sdrag{cursor:grab}
  li.sdrag:hover{color:var(--accent)}
+ .btn.saved,.ghost.saved{background:var(--ok);color:#0c0e12;border-color:var(--ok)}
+ @keyframes savedpulse{0%{box-shadow:0 0 0 2px var(--ok)}100%{box-shadow:0 0 0 2px transparent}}
+ .savedflash{animation:savedpulse 1s ease-out}
  @media(max-width:720px){.chainlayout{flex-direction:column}.rail{flex-direction:row;flex-wrap:wrap;
    position:static;max-height:none;flex-basis:auto}}
 </style>
@@ -323,7 +326,9 @@ async function delRow(rid){if(!confirm('Delete this row?'))return;
 async function fillDose(p){var n=val(p+'_remedy');if(!n)return;
  const r=await (await fetch('/api/dosing?name='+encodeURIComponent(n))).json();
  if(r.dosage)set(p+'_dosage',r.dosage);if(r.frequency)set(p+'_frequency',r.frequency);
- if(r.timing)set(p+'_timing',r.timing);astat('Dosing filled from catalog.')}
+ if(r.timing)set(p+'_timing',r.timing);astat('Dosing filled from catalog.');
+ var el=document.getElementById(p+'_remedy');var line=el&&el.closest?el.closest('.rline'):null;
+ if(line)markDirty(line.querySelector('.savebtn'))}
 async function suggest(p){var s=val(p+'_head');var box=document.getElementById(p+'_sug');box.textContent='';
  if(!s){astat('Enter a stress first.');return}
  const r=await (await fetch('/api/suggest?stress='+encodeURIComponent(s))).json();var arr=r.suggestions||[];
@@ -351,20 +356,31 @@ function suggestFor(btn,rp){var card=btn.closest('.lcard');var s=card?val(card.d
   arr.forEach(function(x){var b=document.createElement('button');b.type='button';b.className='chip';
    b.textContent=x.remedy+' ('+x.count+')';b.onclick=function(){set(rp+'_remedy',x.remedy);fillDose(rp)};
    box.appendChild(b);box.appendChild(document.createTextNode(' '))})})}
+// Save buttons stay GREEN 'Saved ✓' after a save and flip to gold 'Update' the
+// moment their line/layer is edited again.
+function setSaved(btn){if(!btn)return;btn.classList.add('saved');btn.textContent='Saved ✓'}
+function markDirty(btn){if(btn&&btn.classList.contains('saved')){
+ btn.classList.remove('saved');btn.textContent=btn.dataset.dirty||'Update'}}
+function pulse(el){if(!el)return;el.classList.remove('savedflash');void el.offsetWidth;el.classList.add('savedflash')}
+function dirtyRow(inp){var r=inp.closest('.rline');if(r)markDirty(r.querySelector('.savebtn'))}
+function dirtyLayer(inp){var c=inp.closest('.lcard');if(c)markDirty(c.querySelector('.lfoot .savebtn'))}
 async function saveRemedy(rid,btn){var card=btn.closest('.lcard');var gid=card.dataset.gid;
- var head=val(gid+'_head'),most=val(gid+'_most');
- await post('/author/__TID__/row/'+rid,{head:head,most_affected:most,
+ var head=val(gid+'_head'),most=val(gid+'_most');btn.disabled=true;
+ try{await post('/author/__TID__/row/'+rid,{head:head,most_affected:most,
   remedy:val('r'+rid+'_remedy'),dosage:val('r'+rid+'_dosage'),
   frequency:val('r'+rid+'_frequency'),timing:val('r'+rid+'_timing')});
  var rids=(card.dataset.rids||'').split(',').filter(Boolean);
  for(var i=0;i<rids.length;i++){if(rids[i]!==String(rid)){
    await post('/author/__TID__/row/'+rids[i],{head:head,most_affected:most})}}
- astat('Saved.')}
-async function saveLayer(gid){var card=document.querySelector('[data-gid="'+gid+'"]');if(!card)return;
- var head=val(gid+'_head'),most=val(gid+'_most');
- var rids=(card.dataset.rids||'').split(',').filter(Boolean);
+ setSaved(btn);pulse(btn.closest('.rline'));
+ setSaved(card.querySelector('.lfoot .savebtn'));astat('Remedy saved.')}
+ finally{btn.disabled=false}}
+async function saveLayer(gid,btn){var card=document.querySelector('[data-gid="'+gid+'"]');if(!card)return;
+ var head=val(gid+'_head'),most=val(gid+'_most');if(btn)btn.disabled=true;
+ try{var rids=(card.dataset.rids||'').split(',').filter(Boolean);
  for(var i=0;i<rids.length;i++)await post('/author/__TID__/row/'+rids[i],{head:head,most_affected:most});
- astat('Layer saved.')}
+ setSaved(btn);pulse(card);astat('Layer saved.')}
+ finally{if(btn)btn.disabled=false}}
 async function addRemedy(gid){var rem=val(gid+'_nr_remedy');if(!rem){astat('Enter a remedy.');return}
  var layer=val(gid+'_layer');if(!layer)layer=document.querySelectorAll('.lcard').length;
  await post('/author/__TID__/row',{layer:layer,head:val(gid+'_head'),most_affected:val(gid+'_most'),
@@ -653,15 +669,15 @@ def _remedy_line(l, depth_values):
              + _depth_select(l.get("rid"), "remedy", l.get("remedy_depth"), depth_values) + "</span>")
     return (f"<div class='rline{unconf}' data-rid=\"{rid}\">"
             f"<input id=\"{p}_remedy\" class=rem list=catalog value=\"{g('remedy')}\" "
-            f"title=\"{g('remedy')}\" onchange=\"fillDose('{p}')\">"
-            f"<input id=\"{p}_dosage\" class=dz value=\"{g('dosage')}\" placeholder=dose>"
-            f"<input id=\"{p}_frequency\" class=dz value=\"{g('frequency')}\" placeholder=freq>"
-            f"<input id=\"{p}_timing\" class=dz value=\"{g('timing')}\" placeholder=timing>"
+            f"title=\"{g('remedy')}\" oninput=\"dirtyRow(this)\" onchange=\"fillDose('{p}')\">"
+            f"<input id=\"{p}_dosage\" class=dz value=\"{g('dosage')}\" placeholder=dose oninput=\"dirtyRow(this)\">"
+            f"<input id=\"{p}_frequency\" class=dz value=\"{g('frequency')}\" placeholder=freq oninput=\"dirtyRow(this)\">"
+            f"<input id=\"{p}_timing\" class=dz value=\"{g('timing')}\" placeholder=timing oninput=\"dirtyRow(this)\">"
             + depth +
             f"<button class=chip onclick=\"fillDose('{p}')\">dose</button>"
             f"<button class=chip onclick=\"suggestFor(this,'{p}')\">uses</button>"
             f"{confirm_btn}"
-            f"<button class=btn onclick=\"saveRemedy('{rid}',this)\">Save</button>"
+            f"<button class='btn savebtn' data-dirty=Update onclick=\"saveRemedy('{rid}',this)\">Save</button>"
             f"<button class='btn ghost' onclick=\"delRow('{rid}')\">Del</button>"
             f"<span id=\"{p}_sug\" class=food style='flex-basis:100%'></span></div>")
 
@@ -711,8 +727,8 @@ def _render_chain_cards(report, depth_values, covered_by_layer=None):
         rids = ",".join(str(r.get("rid")) for r in g["rows"] if r.get("rid") is not None)
         he, me, n = _e(g["head"]), _e(g["most_affected"]), g["layer"]
         lines = "".join(_remedy_line(r, depth_values) for r in g["rows"])
-        head_in = _xwrap(f'<input id={gid}_head list=vocab value="{he}" title="{he}">')
-        tail_in = _xwrap(f'<input id={gid}_most value="{me}" title="{me}">')
+        head_in = _xwrap(f'<input id={gid}_head list=vocab value="{he}" title="{he}" oninput="dirtyLayer(this)">')
+        tail_in = _xwrap(f'<input id={gid}_most value="{me}" title="{me}" oninput="dirtyLayer(this)">')
         cards += (
             f"<div class=lcard draggable=true data-gid={gid} data-rids=\"{rids}\" "
             "ondragstart=dragStart(event) ondragend=dragEnd(event) ondragover=dragOver(event) "
@@ -724,7 +740,8 @@ def _render_chain_cards(report, depth_values, covered_by_layer=None):
             f"</div><input type=hidden id={gid}_layer value=\"{n}\"></div>"
             + lines + _covered_html(covered_by_layer.get(n)) + _new_remedy_line(gid, "Add remedy") +
             f"<div class=lfoot><span class=food>Layer {n}</span>"
-            f"<button class='btn ghost' onclick=\"saveLayer('{gid}')\">Save layer</button></div></div>")
+            f"<button class='btn ghost savebtn' data-dirty='Update layer' "
+            f"onclick=\"saveLayer('{gid}',this)\">Save layer</button></div></div>")
     # trailing card to start a brand-new layer
     cards += (
         "<div class=lcard data-gid=gnew data-nodrop=1><div class=lhdr><span class=lnum>+</span>"
