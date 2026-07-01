@@ -352,15 +352,19 @@ def reorder_chain(cx, tid, rid, new_layer):
 def set_layer_order(cx, tid, groups):
     """groups = ordered list of layer groups, each a list of chain-row ids. Assign
     stored layer = group position (1-based) to every row in that group so ordered_chain
-    presents the groups (and their remedies) in this order."""
+    presents the groups (and their remedies) in this order.
+
+    Deliberately placing a card also confirms its rows (confirmed=1) so an unbalanced
+    scan row honours its new position instead of snapping back to the bottom zone --
+    arranging a card counts as reviewing it. Rows already confirmed are unaffected."""
     for i, rids in enumerate(groups or [], 1):
         for rid in rids or []:
             try:
                 rid = int(rid)
             except (TypeError, ValueError):
                 continue
-            cx.execute("UPDATE biofield_auth_chain SET layer=? WHERE id=? AND test_id=?",
-                       (i, rid, _num(tid)))
+            cx.execute("UPDATE biofield_auth_chain SET layer=?, confirmed=1 "
+                       "WHERE id=? AND test_id=?", (i, rid, _num(tid)))
     cx.commit()
 
 
