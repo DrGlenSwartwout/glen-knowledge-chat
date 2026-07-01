@@ -12874,11 +12874,14 @@ def admin_client_portal_upsert():
     emailed = False
     if body.get("send"):
         try:
+            audio_url = ((content.get("audio") or {}).get("url") or "").strip()
+            audio_line = (f"\n\n🎧 Listen to your personal audio walkthrough:\n{audio_url}"
+                          if audio_url else "")
             _send_full_report_email(
                 email, name, "Your personal healing home is ready 🌺",
                 f"Aloha {name or ''},\n\nYour personal healing home is ready — your "
                 f"biofield walkthrough, your healing path, and your remedies, all in "
-                f"one place:\n\n{url}\n\nWith aloha,\nDr. Glen & Rae")
+                f"one place:\n\n{url}{audio_line}\n\nWith aloha,\nDr. Glen & Rae")
             emailed = True
         except Exception as e:
             print(f"[portal-upsert] send failed: {e!r}", flush=True)
