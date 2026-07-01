@@ -143,6 +143,7 @@
       <textarea id="pcReply" rows="6" placeholder="Write your reply to the client&hellip;" style="width:100%"></textarea>
       <div style="margin-top:.5rem">
         <button class="btn" onclick="sendReply()">Send as Dr. Glen</button>
+        <label style="font-weight:normal;margin-left:.6rem"><input type="checkbox" id="pcNotify" checked> Email the client that you replied</label>
         <span id="pcStatus" class="muted small"></span>
       </div>
     </div>
@@ -483,8 +484,11 @@ async function sendReply(){
   if(!email){ $('pcStatus').textContent='Enter a client email above.'; return; }
   if(!content){ $('pcStatus').textContent='Write a reply first.'; return; }
   $('pcStatus').textContent='Sending…';
-  try{ var r=await api('POST','/api/console/portal/'+encodeURIComponent(email)+'/message',{content:content});
-    if(r.ok && r.json && r.json.ok){ $('pcReply').value=''; $('pcStatus').textContent='Sent — it’s in the client’s portal chat.'; loadThread(); }
+  var notify = $('pcNotify') ? $('pcNotify').checked : true;
+  try{ var r=await api('POST','/api/console/portal/'+encodeURIComponent(email)+'/message',{content:content, notify:notify});
+    if(r.ok && r.json && r.json.ok){ $('pcReply').value='';
+      $('pcStatus').textContent = r.json.notified ? 'Sent — in the portal chat and the client was emailed.' : 'Sent — it’s in the client’s portal chat.';
+      loadThread(); }
     else { $('pcStatus').textContent='Send failed ('+r.status+').'; } }
   catch(e){ $('pcStatus').textContent='Send failed: '+e; }
 }

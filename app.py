@@ -12418,21 +12418,54 @@ def api_console_portal_messages(email):
                     "messages": _portal_chat_thread(email)})
 
 
+def _notify_client_of_reply(email, name):
+    """Best-effort: email the client that Dr. Glen replied, linking their portal.
+    Respects opt-out; suppression handled downstream. Returns True if sent."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    try:
+        from dashboard import notify_state as _ns
+        from dashboard import client_portal as _cp
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _ns.init_table(cx)
+            if _ns.get_state(cx, email).get("opt_status") == "out":
+                return False
+            token = _cp.ensure_token(cx, email, name or "")
+        link = f"{PUBLIC_BASE_URL}/portal/{token}"
+        _send_full_report_email(
+            email, name, "Dr. Glen replied to you 🌺",
+            f"Aloha {name or ''},\n\nDr. Glen just replied to you in your Healing Oasis "
+            f"portal. Come read it and continue the conversation here:\n\n{link}\n\n"
+            f"With aloha,\nDr. Glen & Rae")
+        return True
+    except Exception as e:
+        print(f"[portal-chat] reply notify failed: {e!r}", flush=True)
+        return False
+
+
 @app.route("/api/console/portal/<path:email>/message", methods=["POST"])
 def api_console_portal_message(email):
     """Console: Dr. Glen (or Rae) posts a reply into a client's portal chat thread.
-    Appears in the client's chat as a practitioner message and persists."""
+    Appears in the client's chat as a practitioner message and persists; by default
+    also emails the client that a reply is waiting (pass notify=false to skip)."""
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     data = request.get_json(silent=True) or {}
     content = (data.get("content") or "").strip()
     author = (data.get("author") or "Dr. Glen").strip() or "Dr. Glen"
+    notify = data.get("notify", True)
     if not content:
         return jsonify({"error": "empty message"}), 400
     from dashboard import portal_chat as _pchat
+    from dashboard import client_portal as _cp
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         mid = _pchat.add_message(cx, email, _pchat.PRACTITIONER, content, author=author)
-    return jsonify({"ok": mid is not None, "id": mid})
+        rec = _cp.get_portal_content_by_email(cx, email) or {}
+    notified = False
+    if mid is not None and notify:
+        notified = _notify_client_of_reply(email, rec.get("name") or "")
+    return jsonify({"ok": mid is not None, "id": mid, "notified": notified})
 
 
 @app.route("/sms/inbound", methods=["POST"])
