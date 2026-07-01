@@ -12994,9 +12994,10 @@ def admin_portal_get_or_create_link():
 @app.route("/admin/portal/rollout-enroll", methods=["POST"])
 def admin_portal_rollout_enroll():
     """Staged-rollout step for ONE recipient: ensure a stable portal link, push it
-    into the GHL portal-URL custom field, tag `portal-invite`, and enroll in the
-    portal-invite workflow (which emails the link). Idempotent (ensure_token +
-    upsert). Inert (503) until PORTAL_URL_FIELD + PORTAL_INVITE_WORKFLOW are set.
+    into the GHL portal-URL custom field, THEN add the `portal-invite` tag, whose
+    "tag added" trigger fires the portal-invite workflow that emails the link.
+    Idempotent (ensure_token + upsert). Inert (503) until PORTAL_URL_FIELD +
+    PORTAL_INVITE_WORKFLOW are set.
     Console-secret gated.
 
     mode="link" (default, warm tiers): pre-mint a stable portal link now.
@@ -13024,14 +13025,20 @@ def admin_portal_rollout_enroll():
             _ns.init_table(cx)
             token = _cp.ensure_token(cx, email, name)
         url = f"{PUBLIC_BASE_URL}/portal/{token}"
+    # Set the portal-URL custom field FIRST, with NO tag. If we added the tag in
+    # this same upsert, ghl_upsert_contact PUTs tags BEFORE the custom field, so
+    # the "tag added" workflow trigger would fire with an empty {{contact.portal_url}}
+    # — the exact broken-link failure seen on the E4L onboarding email.
     contact_id, _created, err = ghl_upsert_contact(
-        email, first, last, custom_fields={_PORTAL_URL_FIELD: url},
-        extra_tags=["portal-invite"])
+        email, first, last, custom_fields={_PORTAL_URL_FIELD: url})
     if err or not contact_id:
         return jsonify({"ok": False, "url": url, "error": err or "no contact_id"}), 502
-    _, werr = _ghl_post(f"/contacts/{contact_id}/workflow/{_PORTAL_INVITE_WORKFLOW}", {})
-    return jsonify({"ok": not werr, "url": url, "contact_id": contact_id,
-                    "enrolled": not werr, "error": werr})
+    # NOW add the tag → the portal-invite workflow's "tag added" trigger fires the
+    # email with the link already populated. No direct workflow enroll — that would
+    # double-send alongside the tag trigger.
+    _cid, terr = ghl_update_tags(email, add=["portal-invite"])
+    return jsonify({"ok": not terr, "url": url, "contact_id": contact_id,
+                    "tagged": not terr, "error": terr})
 
 
 @app.route("/admin/portal/delete", methods=["POST"])
