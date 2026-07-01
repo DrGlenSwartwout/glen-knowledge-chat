@@ -10,6 +10,7 @@ export class Ambience {
     this.muted = !!opts.muted;
     this.bedEl = null;
     this.timers = [];
+    this.loopEls = [];
     this.cancelSpark = null;
   }
 
@@ -22,7 +23,18 @@ export class Ambience {
       this.bedEl.volume = this.muted ? 0 : this.amb.bed_volume;
       this.bedEl.play().catch(() => {});
     }
-    for (const o of this.amb.oneshots) this._schedule(o);
+    for (const o of this.amb.oneshots) {
+      if (o.loop) this._startLoop(o);       // continuous soft layer (fills dead time)
+      else this._schedule(o);               // random one-shot
+    }
+  }
+
+  _startLoop(o) {
+    const a = new Audio(o.file);
+    a.loop = true;
+    a.volume = this.muted ? 0 : o.volume;
+    a.play().catch(() => {});
+    this.loopEls.push({ el: a, volume: o.volume });
   }
 
   _schedule(o) {
@@ -46,11 +58,14 @@ export class Ambience {
   setMuted(m) {
     this.muted = !!m;
     if (this.bedEl) this.bedEl.volume = this.muted ? 0 : this.amb.bed_volume;
+    for (const L of this.loopEls) L.el.volume = this.muted ? 0 : L.volume;
   }
 
   stop() {
     this.timers.forEach(clearTimeout); this.timers = [];
     if (this.bedEl) { this.bedEl.pause(); this.bedEl = null; }
+    for (const L of this.loopEls) { try { L.el.pause(); } catch (e) {} }
+    this.loopEls = [];
     if (this.cancelSpark) { this.cancelSpark(); this.cancelSpark = null; }
   }
 }
