@@ -70,7 +70,8 @@ def main(argv=None):
                 continue
             try:
                 res = _post(base, key, p)
-                url = base.rstrip("/") + (res.get("url") or "")
+                u = res.get("url") or ""
+                url = u if u.startswith("http") else base.rstrip("/") + u
                 w.writerow([p["email"], p["name"], url, res.get("emailed"), "ok"])
                 print("OK ", p["email"], url, "emailed=" + str(res.get("emailed")))
             except Exception as e:  # log + continue; never abort the whole cohort
