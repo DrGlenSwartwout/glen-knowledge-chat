@@ -651,8 +651,10 @@
       const loc = (params.get('location') || '').trim();
       if (!loc) return;
       const ctry = (params.get('country') || '').trim();
-      if (ctry && countrySelect.querySelector('option[value="' + ctry + '"]')) {
-        countrySelect.value = ctry;
+      // ISO-2/3 or the ANY sentinel only — keeps an arbitrary URL value out of the
+      // attribute selector (a stray quote would throw and abort the prefill).
+      if (/^[A-Za-z]{2,3}$/.test(ctry) && countrySelect.querySelector('option[value="' + ctry.toUpperCase() + '"]')) {
+        countrySelect.value = ctry.toUpperCase();
         syncRadiusForCountry();
       }
       document.getElementById('location-input').value = loc;
