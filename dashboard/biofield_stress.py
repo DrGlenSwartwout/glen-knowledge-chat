@@ -14,6 +14,12 @@ def _num(tid):
     return int(str(tid).lstrip("a") or 0)
 
 
+def _is_operational_tag(tag):
+    """Lazy wrapper: True if a CRM tag is pipeline/marketing state, not a health stress."""
+    from dashboard.biofield_profile import is_operational_tag
+    return is_operational_tag(tag)
+
+
 def init_stress_tables(cx):
     cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_stress(
         id INTEGER PRIMARY KEY AUTOINCREMENT, test_id INTEGER, code TEXT, label TEXT,
@@ -134,6 +140,10 @@ def list_stresses(cx, tid, chain_rows):
     chain_rem_lower = {(n or "").strip().lower() for n in remedy_names if (n or "").strip()}
     active, balanced, items = [], [], []
     for r in rows:
+        # Operational CRM/marketing tags (type:*, consent:*, "concierge", ...) are not
+        # health stresses -> never show them in the balancing panel.
+        if r["source"] == "tag" and _is_operational_tag(r["code"] or r["label"]):
+            continue
         is_cov = r["code"] in covered
         lbl_rem = head_map.get(_norm(r["label"]))
         hist_rem = None
