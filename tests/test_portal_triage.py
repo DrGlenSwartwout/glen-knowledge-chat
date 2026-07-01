@@ -43,3 +43,15 @@ def test_store_add_list_count_resolve():
     assert any(it["name"] == "Agnes" for it in items)
     pt.resolve(cx, i1)
     assert pt.open_count(cx) == 1
+
+
+def test_format_digest_groups_high_first():
+    assert pt.format_digest([]) == (0, "")
+    items = [{"id": 1, "email": "a@x.com", "name": "Al", "category": "question",
+              "urgency": "low", "summary": "s1", "recommendation": "r1"},
+             {"id": 2, "email": "b@x.com", "name": "Bo", "category": "health-concern",
+              "urgency": "high", "summary": "s2", "recommendation": "r2"}]
+    count, body = pt.format_digest(items)
+    assert count == 2
+    assert body.index("HIGH") < body.index("LOW")          # high listed first
+    assert "s2" in body and "r1" in body

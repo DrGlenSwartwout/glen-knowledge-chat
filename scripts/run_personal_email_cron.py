@@ -137,6 +137,7 @@ def run_daily_piggybacks():
     _piggyback_post("testimonial-invites-cron",
                     "/api/console/testimonial-invites/scan?days=3&gmail_limit=200",
                     "X-Console-Key", CONSOLE_SECRET)
+    _piggyback_post("triage-digest", "/api/cron/triage-digest", "X-Cron-Secret", CRON_SECRET)
     for path in ("/admin/sync-pb-tags", "/admin/sync-practitioner-tags",
                  "/admin/sync-people-to-ghl", "/api/cron/charge-subscriptions"):
         _piggyback_post(f"pb-sync-chain {path}", path, "X-Cron-Secret", CRON_SECRET, timeout=600)
