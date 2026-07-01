@@ -146,6 +146,8 @@
   var idleTimer = null;
   var fillerAudio = new Audio();
   var replyAudio = new Audio();
+  var murmurAudio = new Audio();                 // soft "thinking" hum that bridges the processing gap
+  var replyStarted = false, murmurTimer = null, lastMurmur = null;
   // Reaction director + ambience (initialized after manifest loads, via module script)
   var director = null, ambience = null;
   var lastInputMs = 0;
@@ -221,15 +223,50 @@
   }
 
   // --- A turn ---
+  // Thinking murmur: a soft hum that bridges the gap AFTER the break-in filler
+  // while the reply is still composing. Skipped if the reply is already ready,
+  // and faded out the instant it becomes ready — so it's only heard when needed.
+  function playMurmur() {
+    var mur = pick(manifest.thinking_murmurs, lastMurmur);
+    if (!mur) return;
+    lastMurmur = mur.id;
+    try { murmurAudio.pause(); murmurAudio.currentTime = 0; } catch (e) {}
+    murmurAudio.src = mur.file; murmurAudio.volume = 0.5; murmurAudio.muted = false;
+    murmurAudio.onended = function () {
+      if (!replyStarted && (state === 'pondering' || state === 'speaking')) playMurmur();  // keep bridging a long wait
+    };
+    murmurAudio.play().catch(function () {});
+  }
+  function startMurmurIfNeeded() {
+    murmurTimer = null;
+    if (replyStarted) return;                                   // reply already speaking -> skip it
+    if (state !== 'pondering' && state !== 'speaking') return;
+    playMurmur();
+  }
+  function stopMurmur() {
+    if (murmurTimer) { clearTimeout(murmurTimer); murmurTimer = null; }
+    murmurAudio.onended = null;
+    if (murmurAudio.paused) return;
+    var v = murmurAudio.volume, i = 0;                          // quick fade so the cut isn't abrupt
+    var fade = setInterval(function () {
+      i++; murmurAudio.volume = Math.max(0, v * (1 - i / 5));
+      if (i >= 5) { clearInterval(fade); try { murmurAudio.pause(); murmurAudio.currentTime = 0; } catch (e) {} murmurAudio.volume = v; }
+    }, 40);
+  }
+
   function sendTurn(message) {
     state = 'pondering';
     send.disabled = true;
     if (idleTimer) clearTimeout(idleTimer);
     travelerTurns++; turnsSinceInterjection++;
     sub.textContent = '';
-    // 1. instant filler (zero-latency, so never silent)
+    // 1. instant filler (zero-latency, so never silent) — the spoken break-in
     var f = pick(manifest.fillers, lastFiller);
     if (f) { lastFiller = f.id; playClip(fillerAudio, f.file); }
+    // 1b. after the break-in (~1.1s), bridge with a murmur only if the reply isn't ready yet
+    replyStarted = false;
+    if (murmurTimer) clearTimeout(murmurTimer);
+    murmurTimer = setTimeout(startMurmurIfNeeded, 1100);
     // 2. pondering video while we think
     pondering();
     // 3 + 4. stream subtitles via SSE while TTS renders in parallel
@@ -280,6 +317,7 @@
       if (!r.ok) throw new Error('tts ' + r.status);
       return r.blob();
     }).then(function (blob) {
+      replyStarted = true; stopMurmur();          // reply audio is ready — the murmur's job is done
       var url = URL.createObjectURL(blob);
       replyAudio.src = url; replyAudio.muted = false;
       speakingLoop(); state = 'speaking';
@@ -288,6 +326,7 @@
       replyAudio.onerror = function () { URL.revokeObjectURL(url); afterReply(text, hook); };
       replyAudio.play().catch(function () { afterReply(text, hook); });
     }).catch(function () {
+      replyStarted = true; stopMurmur();          // reply resolved (fallback) — stop bridging
       // voice failed -> speechSynthesis fallback via TTS helper, then continue
       if (window.TTS && window.TTS.attachAndSpeak) { try { window.TTS.attachAndSpeak(sub, text); } catch (e) {} }
       setTimeout(function () { afterReply(text, hook); }, 600);

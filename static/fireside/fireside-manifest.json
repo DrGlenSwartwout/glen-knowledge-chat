@@ -541,5 +541,22 @@
         "max_gap_s": 420
       }
     ]
-  }
+  },
+  "thinking_murmurs": [
+    {
+      "id": "m1",
+      "text": "Hmmmm… mmm…",
+      "file": "/static/fireside/audio/murmur-1.mp3"
+    },
+    {
+      "id": "m2",
+      "text": "Mmmmm, mm-hmm…",
+      "file": "/static/fireside/audio/murmur-2.mp3"
+    },
+    {
+      "id": "m3",
+      "text": "Mmm… hmm, mmm…",
+      "file": "/static/fireside/audio/murmur-3.mp3"
+    }
+  ]
 }
