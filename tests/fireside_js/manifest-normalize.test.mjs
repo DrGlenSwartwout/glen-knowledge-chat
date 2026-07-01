@@ -49,3 +49,18 @@ test('ambience oneshots: defaults + bad entries skipped', () => {
   assert.equal(m.ambience.oneshots[0].volume, 0.2);   // default
   assert.equal(m.ambience.oneshots[0].spark, true);
 });
+
+test('speaking_loops: array supported; falls back to single speaking_loop', () => {
+  // explicit array
+  const a = normalizeManifest({ speaking_loops: ['/s1.mp4', '/s2.mp4', 42, ''] });
+  assert.deepEqual(a.speaking_loops, ['/s1.mp4', '/s2.mp4']);
+  assert.equal(a.speaking_loop, '/s1.mp4');           // first, for back-compat
+  // fallback: only single speaking_loop -> becomes a 1-element array
+  const b = normalizeManifest({ speaking_loop: '/only.mp4' });
+  assert.deepEqual(b.speaking_loops, ['/only.mp4']);
+  assert.equal(b.speaking_loop, '/only.mp4');
+  // neither -> empty array, null loop
+  const c = normalizeManifest({});
+  assert.deepEqual(c.speaking_loops, []);
+  assert.equal(c.speaking_loop, null);
+});

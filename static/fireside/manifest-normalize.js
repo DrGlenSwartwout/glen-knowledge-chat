@@ -42,6 +42,10 @@ export function normalizeManifest(raw) {
   const pondering = arrOfStr(m.pondering_loops);
   const speaking = str(m.speaking_loop);
 
+  // multiple speaking loops (alternated by the director); fall back to the single speaking_loop
+  let speakingLoops = arrOfStr(m.speaking_loops);
+  if (!speakingLoops.length && speaking) speakingLoops = [speaking];
+
   let resting = arrOfStr(m.resting_loops);
   if (!resting.length) resting = pondering.length ? pondering.slice() : (speaking ? [speaking] : []);
 
@@ -49,7 +53,8 @@ export function normalizeManifest(raw) {
   return {
     intro_video: str(m.intro_video),
     intro_poster: str(m.intro_poster),
-    speaking_loop: speaking,
+    speaking_loop: speaking || (speakingLoops[0] || null),
+    speaking_loops: speakingLoops,
     pondering_loops: pondering,
     resting_loops: resting,
     fillers: Array.isArray(m.fillers) ? m.fillers.filter((x) => x && typeof x === 'object') : [],

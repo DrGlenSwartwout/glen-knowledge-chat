@@ -111,8 +111,18 @@ export class Director {
   onReplyReady() { this.toSpeaking(); }
 
   toSpeaking() {
-    // v1: return to the existing speaking loop (Phase B makes this emotion-matched).
-    if (this.m.speaking_loop) this._crossfadeTo(this.m.speaking_loop, { loop: true });
-    else this.toResting();
+    // Alternate across the speaking loops (avoid immediate repeat); Phase B makes this emotion-matched.
+    const loops = (this.m.speaking_loops && this.m.speaking_loops.length)
+      ? this.m.speaking_loops
+      : (this.m.speaking_loop ? [this.m.speaking_loop] : []);
+    if (!loops.length) return this.toResting();
+    let pool = loops;
+    if (loops.length > 1 && this._lastSpeaking) {
+      const alt = loops.filter((s) => s !== this._lastSpeaking);
+      if (alt.length) pool = alt;
+    }
+    const pick = pool[Math.floor(Math.random() * pool.length)] || pool[0];
+    this._lastSpeaking = pick;
+    this._crossfadeTo(pick, { loop: true });
   }
 }
