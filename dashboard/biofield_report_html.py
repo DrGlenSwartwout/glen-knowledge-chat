@@ -144,28 +144,9 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
     head += (f'<p class=sub><a href="/test/{tid_link}/report" target="_blank">Open clean report</a>'
              f' &nbsp;·&nbsp; <a href="/test/{tid_link}/report.pdf" target="_blank">Download printable PDF</a></p>')
 
-    # Causal chain table
-    rows = ""
-    for l in report.get("layers") or []:
-        ln = l.get("layer")
-        badge = ""
-        if l.get("depth_status") == "shallow":
-            badge = (f"<br><span class=warn>&#9888; may not reach "
-                     f"{_e(l.get('depth_need') or 'this depth')}</span>")
-        rows += (
-            "<tr>"
-            f"<td class=lyr>{_e(str(ln)) if ln is not None else '&middot;'}</td>"
-            f"<td>{_e(l.get('head') or '')}</td>"
-            f"<td>{_e(l.get('most_affected') or '')}</td>"
-            f"<td>{_e(l.get('remedy') or '')}{badge}</td>"
-            f"<td>{_e(l.get('dosage') or '')}</td>"
-            f"<td>{_e(l.get('frequency') or '')}</td>"
-            f"<td>{_e(l.get('timing') or '')}</td>"
-            "</tr>")
+    # Causal chain table (grouped by layer, matching the editor's cards)
     chain = ("<h2>Causal Chain Report</h2>"
-             "<table><tr><th>Layer</th><th>Head of Chain</th><th>Most Affected</th>"
-             "<th>Remedy</th><th>Dosage</th><th>Frequency</th><th>Timing</th></tr>"
-             f"{rows}</table>")
+             + render_chain_table(report.get("layers") or [], with_depth_badge=True))
 
     # Schedule grid
     sched = report.get("schedule") or {}
@@ -592,6 +573,32 @@ def group_layers(layers):
     for i, g in enumerate(groups, 1):
         g["layer"] = i
     return groups
+
+
+def render_chain_table(layers, with_depth_badge=False):
+    """Read-only Causal Chain table, grouped by layer to match the editor's cards:
+    each layer's number/Head/Tail span (rowspan) its remedy rows. Shared by the
+    internal viewer and the clean report/PDF."""
+    rows = ""
+    for g in group_layers(layers):
+        n = len(g["rows"]) or 1
+        for i, l in enumerate(g["rows"]):
+            badge = ""
+            if with_depth_badge and l.get("depth_status") == "shallow":
+                badge = (f"<br><span class=warn>&#9888; may not reach "
+                         f"{_e(l.get('depth_need') or 'this depth')}</span>")
+            lead = ""
+            if i == 0:
+                lead = (f"<td class=lyr rowspan={n}>{_e(str(g['layer']))}</td>"
+                        f"<td rowspan={n}>{_e(g['head'])}</td>"
+                        f"<td rowspan={n}>{_e(g['most_affected'])}</td>")
+            rows += ("<tr>" + lead +
+                     f"<td>{_e(l.get('remedy') or '')}{badge}</td>"
+                     f"<td>{_e(l.get('dosage') or '')}</td>"
+                     f"<td>{_e(l.get('frequency') or '')}</td>"
+                     f"<td>{_e(l.get('timing') or '')}</td></tr>")
+    return ("<table><tr><th>Layer</th><th>Head</th><th>Tail</th><th>Remedy</th>"
+            "<th>Dosage</th><th>Frequency</th><th>Timing</th></tr>" + rows + "</table>")
 
 
 def _xwrap(inp):
