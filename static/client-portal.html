@@ -362,9 +362,12 @@ function render(d, v){
     document.getElementById("loading").hidden = true;
     document.getElementById("app").hidden = false;
     var g = '<div class="card"><h2>Welcome to your healing home</h2>'
-      + '<p>Before we continue, please review and agree to our Terms of Service.</p>'
-      + '<p><a href="' + esc((window.TOS_URL || "https://illtowell.com/terms")) + '" target="_blank" rel="noopener">Read the Terms</a></p>'
-      + '<button class="btn" id="tosAgreeBtn">I agree to the Terms</button>'
+      + '<p>Before we continue, please review and agree to our Terms of Service. '
+      + 'These cover both Remedy Match and the Energy For Life (E4L) biofield scan.</p>'
+      + '<p><a href="' + esc((window.TOS_URL || "https://illtowell.com/terms")) + '" target="_blank" rel="noopener">Read the Remedy Match Terms</a>'
+      + ' &nbsp;·&nbsp; '
+      + '<a href="' + esc((window.E4L_TOS_URL || "https://e4l.com/terms-and-conditions")) + '" target="_blank" rel="noopener">Read the E4L Terms</a></p>'
+      + '<button class="btn" id="tosAgreeBtn">I agree to both Terms</button>'
       + '<div class="err" id="tosErr" hidden></div></div>';
     document.getElementById("app").innerHTML = g;
     var b = document.getElementById("tosAgreeBtn");
