@@ -869,8 +869,15 @@
       host.appendChild(a);
     });
   }
+  function isLikelyName(n){
+    // A first name is one clean word — guard against captured junk like "Hi I'm".
+    if(!n) return false; n = String(n).trim();
+    if(/\s/.test(n)) return false;
+    if(n.length < 2 || n.length > 20) return false;
+    return /^[A-Za-z][A-Za-z'\-]*$/.test(n);
+  }
   function personalize(name){
-    if(!name) return;
+    if(!isLikelyName(name)) return;
     document.querySelectorAll('[data-name]').forEach(function(el){ el.textContent = name; });
     document.querySelectorAll('[data-name-prefix]').forEach(function(el){ el.style.display = 'inline'; });
     // Returning traveler: warm the fireside invitation with their name.
