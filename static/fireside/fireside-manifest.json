@@ -3,7 +3,7 @@
   "intro_poster": "/static/fireside/video/intro-poster.jpg",
   "intro_read": "/static/fireside/video/intro-read.mp4",
   "intro_welcome": "/static/fireside/video/intro-welcome.mp4",
-  "intro_welcome_audio": "/static/fireside/audio/intro-welcome.mp3",
+  "intro_welcome_audio": "/static/fireside/audio/intro-welcome-3.mp3",
   "intro_reads": [
     "/static/fireside/video/intro-read.mp4",
     "/static/fireside/video/intro-read-2.mp4"
@@ -14,8 +14,6 @@
     "/static/fireside/video/intro-welcome-3.mp4"
   ],
   "intro_welcome_audios": [
-    "/static/fireside/audio/intro-welcome.mp3",
-    "/static/fireside/audio/intro-welcome-2.mp3",
     "/static/fireside/audio/intro-welcome-3.mp3"
   ],
   "speaking_loop": "/static/fireside/video/reactions/speak-1.mp4",
