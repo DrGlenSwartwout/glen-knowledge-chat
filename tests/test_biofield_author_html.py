@@ -34,7 +34,10 @@ def test_author_table_columns_readable_and_expandable():
     assert "list=\"catalog\"" in html          # remedy keeps its catalog autocomplete
     assert 'title="TMG"' in html               # full value available on hover
     assert "<th>Head</th>" in html and "<th>Tail</th>" in html   # renamed columns
-    assert "Depth of penetration" not in html  # depth column hidden for now
+    # Depth column is present but hidden by default, revealed via the Show/Hide toggle
+    assert "<th class=dcol>Depth of penetration</th>" in html
+    assert "id=depthbtn" in html and "toggleDepth()" in html
+    assert "function toggleDepth" in html and "function restoreDepth" in html
 
 
 def test_author_page_escapes_free_text():

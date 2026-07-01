@@ -199,9 +199,9 @@ def test_depth_match_flagged_in_report(tmp_path):
     client.post(f"/author/{tid}/depth", json={"rid": rid, "side": "stress", "rank": 5})
     client.post(f"/author/{tid}/depth", json={"rid": rid, "side": "remedy", "rank": 1})
     assert b"may not reach" in client.get("/test/" + tid).data
-    # Depth-of-penetration column is hidden in the editor for now (report still flags it).
+    # Depth column is present in the editor (hidden by default, shown via toggle).
     ed = client.get("/author/" + tid)
-    assert b"Depth of penetration" not in ed.data
+    assert b"Depth of penetration" in ed.data and b"Nucleoplasm" in ed.data
 
 
 def test_report_view_shows_voice_stress_balanced_via_head_match(tmp_path):
