@@ -83,3 +83,14 @@ test('intro book-flow fields: read / welcome / welcome_audio pass through, defau
   assert.equal(b.intro_read, null);
   assert.equal(b.intro_welcome, null);
 });
+
+test('intro variant arrays: normalize + fall back to singulars', () => {
+  const a = normalizeManifest({ intro_reads: ['/r1.mp4','/r2.mp4'], intro_welcomes: ['/w1.mp4'], intro_welcome_audios: ['/a1.mp3','/a2.mp3'] });
+  assert.deepEqual(a.intro_reads, ['/r1.mp4','/r2.mp4']);
+  assert.deepEqual(a.intro_welcome_audios, ['/a1.mp3','/a2.mp3']);
+  // fallback: only singular provided -> 1-element arrays
+  const b = normalizeManifest({ intro_read: '/r.mp4', intro_welcome: '/w.mp4', intro_welcome_audio: '/a.mp3' });
+  assert.deepEqual(b.intro_reads, ['/r.mp4']);
+  assert.deepEqual(b.intro_welcomes, ['/w.mp4']);
+  assert.deepEqual(b.intro_welcome_audios, ['/a.mp3']);
+});

@@ -252,13 +252,22 @@
   }
 
   // --- Intro ---
+  // Round-robin an intro variant per browser so repeat visits (same person/IP) get variety.
+  function rotate(arr, key) {
+    if (!arr || !arr.length) return null;
+    var i = 0;
+    try { i = (parseInt(localStorage.getItem(key) || '-1', 10) + 1) % arr.length; localStorage.setItem(key, i); } catch (e) {}
+    return arr[i] || arr[0];
+  }
+
   function startIntro() {
     if (!manifest) return;
     overlay.remove();
     state = 'intro';
-    if (manifest.intro_read) {
+    var read = rotate(manifest.intro_reads, 'fs_intro_read') || manifest.intro_read;
+    if (read) {
       // He's absorbed in his book; the reading LOOPS until the visitor engages.
-      setVideo(manifest.intro_read, {loop: true});
+      setVideo(read, {loop: true});
       stage.muted = true;
       stage.onended = null;
       stage.play().catch(function () { toWelcome(); });
@@ -279,11 +288,13 @@
   function toWelcome() {
     if (state !== 'intro') return;
     state = 'intro-welcome';
-    if (manifest.intro_welcome) {
-      setVideo(manifest.intro_welcome, {loop: false});
+    var wv = rotate(manifest.intro_welcomes, 'fs_intro_welcome') || manifest.intro_welcome;
+    var wa = rotate(manifest.intro_welcome_audios, 'fs_intro_welcome_audio') || manifest.intro_welcome_audio;
+    if (wv) {
+      setVideo(wv, {loop: false});
       stage.muted = true;
-      if (manifest.intro_welcome_audio) {
-        try { replyAudio.src = manifest.intro_welcome_audio; replyAudio.play().catch(function () {}); } catch (e) {}
+      if (wa) {
+        try { replyAudio.src = wa; replyAudio.play().catch(function () {}); } catch (e) {}
       }
       stage.onended = function () { listening(); say.focus(); };
       stage.play().catch(function () { listening(); say.focus(); });
