@@ -136,6 +136,8 @@
   .chat-bubble.user{align-self:flex-end;background:var(--brand);color:var(--btn-fg)}
   .chat-bubble.assistant{align-self:flex-start;background:var(--card2);border:1px solid var(--line)}
   .chat-bubble.error{align-self:flex-start;border:1px solid var(--err);color:var(--err)}
+  .chat-bubble.practitioner{align-self:flex-start;background:var(--card2);border:1px solid var(--brand);box-shadow:inset 3px 0 0 var(--brand)}
+  .chat-author{font-size:.72rem;font-weight:700;letter-spacing:.03em;opacity:.8;margin-bottom:3px}
   .chat-input-row{display:flex;gap:8px;align-items:center;margin-top:.2rem}
   .chat-input-row input{flex:1;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:.95rem;font-family:inherit;outline:0}
   .chat-input-row input:focus{border-color:var(--brand)}
@@ -748,6 +750,12 @@ function render(d, v){
   if(chatSendEl){ chatSendEl.addEventListener("click", sendChatMessage); }
   var chatInputEl = document.getElementById("chatInput");
   if(chatInputEl){ chatInputEl.addEventListener("keydown", function(e){ if(e.key==="Enter"&&!e.shiftKey){ sendChatMessage(); } }); }
+  // Load the persisted thread (client messages, AI answers, and Dr. Glen's replies)
+  if(d && Array.isArray(d.messages) && d.messages.length){
+    chatHistory = d.messages.map(function(m){
+      return {role: m.role, author: m.author || "", content: m.content || ""};
+    });
+  }
   repopulateChatHistory();
 
   const btn = document.getElementById("reorderBtn");
@@ -874,10 +882,22 @@ let chatHistory = [];
 function repopulateChatHistory(){
   var msgs = document.getElementById("chatMsgs");
   if(!msgs || !chatHistory.length) return;
+  msgs.innerHTML = "";
   chatHistory.forEach(function(entry){
+    var role = entry.role;
+    var cls = (role === "user" || role === "client") ? "user"
+            : (role === "practitioner") ? "practitioner" : "assistant";
     var div = document.createElement("div");
-    div.className = "chat-bubble " + (entry.role === "user" ? "user" : "assistant");
-    div.textContent = entry.content || "";
+    div.className = "chat-bubble " + cls;
+    if(entry.author && cls !== "user"){
+      var a = document.createElement("div");
+      a.className = "chat-author";
+      a.textContent = entry.author;
+      div.appendChild(a);
+    }
+    var body = document.createElement("div");
+    body.textContent = entry.content || "";
+    div.appendChild(body);
     msgs.appendChild(div);
   });
   msgs.scrollTop = msgs.scrollHeight;
@@ -928,7 +948,10 @@ async function sendChatMessage(){
         method: "POST",
         credentials: "same-origin",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({query: query, history: chatHistory}),
+        body: JSON.stringify({query: query, history: chatHistory.map(function(m){
+          return {role: (m.role==="user"||m.role==="client") ? "user" : "assistant",
+                  content: m.content || ""};
+        })}),
       }
     );
     if(!resp.ok){
