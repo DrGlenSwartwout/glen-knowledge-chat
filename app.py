@@ -13184,6 +13184,45 @@ def admin_client_portal_upsert():
                     "portal_id": pid, "emailed": emailed})
 
 
+# --- Tier-4 "pull" model: request-a-portal claim links ---------------------
+# A claim link is a stateless HMAC-signed URL (no table). The cold Tier-4 email
+# carries it as a "Request your portal" button; the portal is minted only when
+# the recipient clicks — so we never create orphan portals for the ~2.4k oldest
+# contacts, and the click is an explicit opt-in that pairs with the TOS gate.
+# read env directly: the module-level CONSOLE_SECRET is defined later in the file
+_CLAIM_SECRET = os.environ.get("CONSOLE_SECRET") or os.environ.get("WEBHOOK_SECRET", "")
+
+
+def _portal_claim_sign(email):
+    email = (email or "").strip().lower()
+    return hmac.new(_CLAIM_SECRET.encode(), ("portal-claim:" + email).encode(),
+                    hashlib.sha256).hexdigest()[:40]
+
+
+def _portal_claim_url(email):
+    from urllib.parse import quote
+    email = (email or "").strip().lower()
+    return f"{PUBLIC_BASE_URL}/portal/claim?e={quote(email)}&s={_portal_claim_sign(email)}"
+
+
+@app.route("/portal/claim", methods=["GET"])
+def portal_claim():
+    """Mint-on-click: verify the signed claim link, ensure the caller's portal
+    exists (idempotent), and drop them into it (first access shows the TOS gate).
+    A bad/forged signature just goes home — no portal is created."""
+    email = (request.args.get("e") or "").strip().lower()
+    sig = request.args.get("s") or ""
+    if not email or not _CLAIM_SECRET or not hmac.compare_digest(sig, _portal_claim_sign(email)):
+        return redirect("/")
+    from dashboard import client_portal as _cp
+    from dashboard import notify_state as _ns
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _ns.init_table(cx)
+        token = _cp.ensure_token(cx, email)
+    return redirect(f"/portal/{token}")
+
+
 @app.route("/admin/portal/get-or-create-link", methods=["POST"])
 def admin_portal_get_or_create_link():
     """Idempotent portal link for the staged rollout: returns the client's STABLE
@@ -13209,10 +13248,15 @@ def admin_portal_get_or_create_link():
 @app.route("/admin/portal/rollout-enroll", methods=["POST"])
 def admin_portal_rollout_enroll():
     """Staged-rollout step for ONE recipient: ensure a stable portal link, push it
-    into the GHL portal-URL custom field, tag `portal-invite`, and enroll in the
-    portal-invite workflow (which emails the link). Idempotent (ensure_token +
-    upsert). Inert (503) until PORTAL_URL_FIELD + PORTAL_INVITE_WORKFLOW are set.
-    Console-secret gated."""
+    into the GHL portal-URL custom field, THEN add the `portal-invite` tag, whose
+    "tag added" trigger fires the portal-invite workflow that emails the link.
+    Idempotent (ensure_token + upsert). Inert (503) until PORTAL_URL_FIELD +
+    PORTAL_INVITE_WORKFLOW are set.
+    Console-secret gated.
+
+    mode="link" (default, warm tiers): pre-mint a stable portal link now.
+    mode="claim" (cold Tier 4): push a signed claim link instead — the portal is
+    minted only when they click, so no orphan portals for people who never engage."""
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     if not (_PORTAL_URL_FIELD and _PORTAL_INVITE_WORKFLOW):
@@ -13221,24 +13265,34 @@ def admin_portal_rollout_enroll():
     body = request.get_json(silent=True) or {}
     email = (body.get("email") or "").strip().lower()
     name = (body.get("name") or "").strip()
+    mode = (body.get("mode") or "link").strip().lower()
     if not email:
         return jsonify({"error": "email required"}), 400
     first, _, last = name.partition(" ")
-    from dashboard import client_portal as _cp
-    from dashboard import notify_state as _ns
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        _cp.init_client_portal_table(cx)
-        _ns.init_table(cx)
-        token = _cp.ensure_token(cx, email, name)
-    url = f"{PUBLIC_BASE_URL}/portal/{token}"
+    if mode == "claim":
+        url = _portal_claim_url(email)  # no mint; portal is created on click
+    else:
+        from dashboard import client_portal as _cp
+        from dashboard import notify_state as _ns
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _cp.init_client_portal_table(cx)
+            _ns.init_table(cx)
+            token = _cp.ensure_token(cx, email, name)
+        url = f"{PUBLIC_BASE_URL}/portal/{token}"
+    # Set the portal-URL custom field FIRST, with NO tag. If we added the tag in
+    # this same upsert, ghl_upsert_contact PUTs tags BEFORE the custom field, so
+    # the "tag added" workflow trigger would fire with an empty {{contact.portal_url}}
+    # — the exact broken-link failure seen on the E4L onboarding email.
     contact_id, _created, err = ghl_upsert_contact(
-        email, first, last, custom_fields={_PORTAL_URL_FIELD: url},
-        extra_tags=["portal-invite"])
+        email, first, last, custom_fields={_PORTAL_URL_FIELD: url})
     if err or not contact_id:
         return jsonify({"ok": False, "url": url, "error": err or "no contact_id"}), 502
-    _, werr = _ghl_post(f"/contacts/{contact_id}/workflow/{_PORTAL_INVITE_WORKFLOW}", {})
-    return jsonify({"ok": not werr, "url": url, "contact_id": contact_id,
-                    "enrolled": not werr, "error": werr})
+    # NOW add the tag → the portal-invite workflow's "tag added" trigger fires the
+    # email with the link already populated. No direct workflow enroll — that would
+    # double-send alongside the tag trigger.
+    _cid, terr = ghl_update_tags(email, add=["portal-invite"])
+    return jsonify({"ok": not terr, "url": url, "contact_id": contact_id,
+                    "tagged": not terr, "error": terr})
 
 
 @app.route("/admin/portal/delete", methods=["POST"])
