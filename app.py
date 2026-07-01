@@ -13162,9 +13162,13 @@ def admin_client_portal_upsert():
             _pbr.init_table(cx)
             _pbr.upsert_report(cx, email, scan_date, (body.get("scan_id") or ""),
                                content, content.get("biofield_status") or "ai_draft")
+    # Persistent portal: a returning client keeps their existing link (token is None on
+    # update). Resolve the stable link anyway so send=true can still NOTIFY them — e.g.
+    # a new scan landed on their persistent portal and they should hear about it.
+    updated = token is None
     if token is None:
-        return jsonify({"ok": True, "updated": True, "portal_id": pid,
-                        "note": "existing portal updated; prior link unchanged"})
+        with _db_lock, sqlite3.connect(LOG_DB) as _tcx:
+            token = _cp.ensure_token(_tcx, email, name)
     url = f"{PUBLIC_BASE_URL}/portal/{token}"
     emailed = False
     if body.get("send"):
@@ -13180,8 +13184,9 @@ def admin_client_portal_upsert():
             emailed = True
         except Exception as e:
             print(f"[portal-upsert] send failed: {e!r}", flush=True)
-    return jsonify({"ok": True, "token": token, "url": url,
-                    "portal_id": pid, "emailed": emailed})
+    return jsonify({"ok": True, "token": token, "url": url, "updated": updated,
+                    "portal_id": pid, "emailed": emailed,
+                    "note": "existing portal updated; prior link unchanged" if updated else ""})
 
 
 # --- Tier-4 "pull" model: request-a-portal claim links ---------------------
