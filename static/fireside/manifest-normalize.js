@@ -32,6 +32,7 @@ function normOneshot(o) {
     id, file,
     volume: num(o.volume, 0.2),
     spark: bool(o.spark),
+    loop: bool(o.loop),                 // continuous soft layer (fills dead time) vs random one-shot
     min_gap_s: num(o.min_gap_s, 60),
     max_gap_s: num(o.max_gap_s, 180),
   };

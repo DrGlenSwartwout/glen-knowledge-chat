@@ -64,3 +64,12 @@ test('speaking_loops: array supported; falls back to single speaking_loop', () =
   assert.deepEqual(c.speaking_loops, []);
   assert.equal(c.speaking_loop, null);
 });
+
+test('ambience oneshot: loop flag defaults false, honored when true', () => {
+  const m = normalizeManifest({ ambience: { oneshots: [
+    { id: 'rain', file: '/rain.mp3', loop: true, volume: 0.1 },
+    { id: 'pop', file: '/pop.mp3' },        // loop defaults false
+  ]}});
+  assert.equal(m.ambience.oneshots[0].loop, true);
+  assert.equal(m.ambience.oneshots[1].loop, false);
+});
