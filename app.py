@@ -4290,6 +4290,9 @@ _TOURNEY_K = int(os.environ.get("IMAGE_TOURNAMENT_CONVERGE_K", "3"))
 _TOURNEY_CADENCE_DAYS = int(os.environ.get("IMAGE_TOURNAMENT_CADENCE_DAYS", "3"))
 _REVIEWS_ENABLED = os.environ.get("REVIEWS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _REVIEWS_VIDEO = os.environ.get("REVIEWS_VIDEO", "").strip().lower() in ("1", "true", "yes")
+# Embed the existing /practitioner-finder as a card in the client portal (dark
+# until flipped). Prefill is built from the client's stored address in portal_view.
+_PORTAL_FINDER_ENABLED = os.environ.get("PORTAL_FINDER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 _REVIEWS_VIDEO_TRIM = os.environ.get("REVIEWS_VIDEO_TRIM", "").strip().lower() in ("1", "true", "yes")
 _REVIEWS_GIFTS = os.environ.get("REVIEWS_GIFTS", "").strip().lower() in ("1", "true", "yes")
 _REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "yes")
@@ -12640,7 +12643,8 @@ def api_client_portal_view(token):
             return jsonify({"error": "not found"}), 404
         view = _pv.get_portal_view(cx, ident.person_id,
                                    offers_enabled_keys=_enabled_offer_keys(),
-                                   quiz_url=QUIZ_URL, public_base_url=PUBLIC_BASE_URL)
+                                   quiz_url=QUIZ_URL, public_base_url=PUBLIC_BASE_URL,
+                                   finder_enabled=_PORTAL_FINDER_ENABLED)
     if view is None:
         return jsonify({"error": "not found"}), 404
     view["auth_method"] = ident.auth_method

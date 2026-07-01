@@ -413,6 +413,20 @@ function render(d, v){
     </div>
   </div>`;
 
+  // Practitioner Finder — embed the existing /practitioner-finder, auto-located to
+  // the client (zip or city + country) so results load without typing. Flag-gated.
+  if (v && v.practitioner_finder && v.practitioner_finder.enabled) {
+    const pf = v.practitioner_finder;
+    const q = pf.location
+      ? ("?location=" + encodeURIComponent(pf.location) + "&country=" + encodeURIComponent(pf.country || "US"))
+      : "";
+    html += `<div class="card"><h2>Find a Practitioner Near You</h2>
+      <p class="muted small" style="margin:.3rem 0 .7rem">Search certified practitioners by your city or zip — all specialties, worldwide.</p>
+      <iframe src="/practitioner-finder${q}" title="Practitioner Finder" loading="lazy"
+        style="width:100%;min-height:640px;height:80vh;border:0;border-radius:12px"></iframe>
+    </div>`;
+  }
+
   // Trial-upgrade hook: show the member discount we're setting aside while they're
   // on the trial (becomes points when their membership continues). Trial only.
   if(d.membership_category === "trial"){
