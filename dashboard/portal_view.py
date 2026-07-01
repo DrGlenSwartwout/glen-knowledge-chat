@@ -153,8 +153,18 @@ def _ambassador_block(cx, email, quiz_url, public_base_url):
     return block
 
 
+def _practitioner_finder_block(address, enabled):
+    """Prefill data for the embedded /practitioner-finder card. Zip beats city
+    (more precise); country defaults to US. An absent address yields an empty
+    location so the finder falls back to its own type-to-search default."""
+    address = address or {}
+    location = (address.get("zip") or "").strip() or (address.get("city") or "").strip()
+    country = (address.get("country") or "").strip() or "US"
+    return {"enabled": bool(enabled), "location": location, "country": country}
+
+
 def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
-                    quiz_url="", public_base_url=""):
+                    quiz_url="", public_base_url="", finder_enabled=False):
     import sqlite3
     cx.row_factory = sqlite3.Row
     prow = cx.execute("SELECT * FROM people WHERE id=?", (person_id,)).fetchone()
@@ -185,4 +195,5 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
         "biofield": _biofield_block(cx, email, scan_date=scan_date),
         "upgrade": _upgrade_block(cx, email, roles, offers_enabled_keys),
         "ambassador": _ambassador_block(cx, email, quiz_url, public_base_url),
+        "practitioner_finder": _practitioner_finder_block(account["address"], finder_enabled),
     }

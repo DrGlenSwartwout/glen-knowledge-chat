@@ -643,6 +643,22 @@
       if (isAny && radiusSelect.value === 'country-wide') radiusSelect.value = '25';
     }
 
+    // Prefill location + country from the embed URL (?location=&country=) and
+    // auto-search, so the portal card loads located to the client. No params
+    // (the plain public page) → no-op, behaviour unchanged.
+    function applyUrlPrefill() {
+      const params = new URLSearchParams(window.location.search);
+      const loc = (params.get('location') || '').trim();
+      if (!loc) return;
+      const ctry = (params.get('country') || '').trim();
+      if (ctry && countrySelect.querySelector('option[value="' + ctry + '"]')) {
+        countrySelect.value = ctry;
+        syncRadiusForCountry();
+      }
+      document.getElementById('location-input').value = loc;
+      runSearch();
+    }
+
     async function loadCountries() {
       try {
         const resp = await fetch('/api/practitioner-finder/countries');
@@ -658,6 +674,7 @@
         countrySelect.value = 'US';
       } catch (_) { /* leave the static US-only option in place */ }
       syncRadiusForCountry();
+      applyUrlPrefill();
     }
     countrySelect.addEventListener('change', syncRadiusForCountry);
     loadCountries();
