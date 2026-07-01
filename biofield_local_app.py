@@ -377,11 +377,21 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
 
     @app.route("/author/<test_id>")
     def author_edit(test_id):
+        from dashboard.biofield_report_html import group_layers
+        from dashboard.biofield_stress import list_stresses
         with sqlite3.connect(db_path) as cx:
             rep = authored_report(cx, test_id)
             dv = dimension_values(cx, DEPTH_KEY)
             transcript = get_notes(cx, test_id)
-        return Response(render_author_html(rep, dv, transcript), mimetype="text/html")
+            # Stresses each layer's remedies cover, keyed by card layer number so the
+            # cards can show them inline (chain_rows grouped to match the head cards).
+            groups = group_layers(rep.get("layers") or [])
+            chain_rows = [{"layer": g["layer"], "head": g["head"], "remedy": r.get("remedy")}
+                          for g in groups for r in g["rows"]]
+            sdata = list_stresses(cx, test_id, chain_rows)
+            covered = {L["layer"]: L["stresses"] for L in sdata.get("by_layer") or []}
+        return Response(render_author_html(rep, dv, transcript, covered_by_layer=covered),
+                        mimetype="text/html")
 
     @app.route("/author/<test_id>/depth", methods=["POST"])
     def author_depth(test_id):
@@ -539,6 +549,14 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         with sqlite3.connect(db_path) as cx:
             set_layer_order(cx, test_id, order)
         return {"ok": True}
+
+    @app.route("/author/<test_id>/stress/<int:sid>/cover", methods=["POST"])
+    def author_stress_cover(test_id, sid):
+        rids = (request.get_json(silent=True) or {}).get("rids") or []
+        from dashboard.biofield_stress import cover_stress
+        with sqlite3.connect(db_path) as cx:
+            code = cover_stress(cx, test_id, sid, rids)
+        return {"ok": code is not None, "code": code}
 
     @app.route("/api/catalog")
     def api_catalog():

@@ -97,6 +97,11 @@ _STYLE = """
  .railitem.over{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
  .rnum{color:var(--accent);font-weight:700;min-width:16px;text-align:center}
  .rhead{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .covered{margin:5px 0 2px;line-height:1.9}
+ .cchip{display:inline-block;background:#0c0e12;border:1px solid var(--line);border-radius:999px;
+   padding:1px 8px;margin:0 3px 3px 0;font-size:12px;color:var(--muted)}
+ li.sdrag{cursor:grab}
+ li.sdrag:hover{color:var(--accent)}
  @media(max-width:720px){.chainlayout{flex-direction:column}.rail{flex-direction:row;flex-wrap:wrap;
    position:static;max-height:none;flex-basis:auto}}
 </style>
@@ -374,13 +379,23 @@ function dragStart(e){_drag=e.currentTarget;e.currentTarget.classList.add('drag'
 function dragEnd(e){e.currentTarget.classList.remove('drag');
  document.querySelectorAll('.over').forEach(function(c){c.classList.remove('over')})}
 function dragOver(e){e.preventDefault();var t=e.currentTarget;
+ if(_dragStress){if(t.classList.contains('lcard')&&!t.dataset.nodrop)t.classList.add('over');return}
  if(_drag&&t!==_drag&&!t.dataset.nodrop&&_drag.parentNode===t.parentNode)t.classList.add('over')}
 function dragLeave(e){e.currentTarget.classList.remove('over')}
 function drop(e){e.preventDefault();var t=e.currentTarget;t.classList.remove('over');
+ if(_dragStress){var sid=_dragStress;_dragStress=null;
+  if(t.classList.contains('lcard')&&!t.dataset.nodrop&&t.dataset.rids!==undefined)coverStress(sid,t);return}
  if(!_drag||t===_drag||t.dataset.nodrop||_drag.parentNode!==t.parentNode){return}
  var box=t.parentNode,items=[].slice.call(box.children);
  var di=items.indexOf(_drag),ti=items.indexOf(t);
  box.insertBefore(_drag,di<ti?t.nextSibling:t);persistOrder(box)}
+var _dragStress=null;
+function stressDragStart(e,sid){_dragStress=sid;
+ if(e.dataTransfer){e.dataTransfer.effectAllowed='copy';try{e.dataTransfer.setData('text','s')}catch(_){}}}
+function stressDragEnd(e){_dragStress=null;
+ document.querySelectorAll('.lcard.over').forEach(function(c){c.classList.remove('over')})}
+async function coverStress(sid,card){var rids=(card.dataset.rids||'').split(',').filter(Boolean);
+ await post('/author/__TID__/stress/'+sid+'/cover',{rids:rids});location.reload()}
 async function persistOrder(box){
  var order=[].slice.call(box.children).filter(function(c){return c.dataset.rids!==undefined&&c.dataset.gid!=='gnew'})
   .map(function(c){return (c.dataset.rids||'').split(',').filter(Boolean)});
@@ -677,7 +692,19 @@ def _render_layer_rail(groups):
     return f"<div id=layerrail class=rail>{items}</div>"
 
 
-def _render_chain_cards(report, depth_values):
+def _covered_html(stresses):
+    """Inline 'balances:' chips of the stresses a layer's remedies cover."""
+    stresses = stresses or []
+    if not stresses:
+        return ("<div class=covered><span class=food>balances: &mdash; "
+                "drag an unbalanced stress here</span></div>")
+    chips = " ".join(f"<span class=cchip>{_e(s.get('code') or '')} {_e(s.get('label') or '')}</span>"
+                     for s in stresses)
+    return f"<div class=covered><span class=food>balances:</span> {chips}</div>"
+
+
+def _render_chain_cards(report, depth_values, covered_by_layer=None):
+    covered_by_layer = covered_by_layer or {}
     cards = ""
     for gi, g in enumerate(group_layers(report.get("layers") or [])):
         gid = "g" + str(gi)
@@ -695,7 +722,7 @@ def _render_chain_cards(report, depth_values):
             f"<label>Head</label>{head_in}"
             f"<label>Tail</label>{tail_in}"
             f"</div><input type=hidden id={gid}_layer value=\"{n}\"></div>"
-            + lines + _new_remedy_line(gid, "Add remedy") +
+            + lines + _covered_html(covered_by_layer.get(n)) + _new_remedy_line(gid, "Add remedy") +
             f"<div class=lfoot><span class=food>Layer {n}</span>"
             f"<button class='btn ghost' onclick=\"saveLayer('{gid}')\">Save layer</button></div></div>")
     # trailing card to start a brand-new layer
@@ -709,7 +736,7 @@ def _render_chain_cards(report, depth_values):
     return cards
 
 
-def render_author_html(report, depth_values=None, transcript=""):
+def render_author_html(report, depth_values=None, transcript="", covered_by_layer=None):
     tid = _e(report.get("test_id") or "")
     c = report.get("client") or {}
     head = (f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
@@ -742,7 +769,8 @@ def render_author_html(report, depth_values=None, transcript=""):
              "&#10303; handle); &lsquo;add a remedy&rsquo; adds another remedy to a layer, and the "
              "last card starts a new layer.</p>"
              "<div class=chainlayout>" + _render_layer_rail(groups) +
-             "<div id=chaintbl class=chain>" + _render_chain_cards(report, depth_values) + "</div>"
+             "<div id=chaintbl class=chain>"
+             + _render_chain_cards(report, depth_values, covered_by_layer) + "</div>"
              "</div>"
              "<datalist id=vocab></datalist><datalist id=catalog></datalist>")
     session = (
@@ -831,20 +859,25 @@ def render_suggest_panel(data):
 
 def render_stress_panel(data):
     data = data or {}
-    def _row(s, active):
+    def _row(s, active, drag=False):
+        sid = int(s.get("id") or 0)
         tag = _e(s.get("balance") or "")
         by = _e(s.get("balanced_by") or "")
         bytxt = f" <span class=food>&middot; {by}</span>" if (not active and by) else ""
         btn = (f"<button class='btn ghost' style='font-size:11px' "
-               f"onclick=\"balanceStress({int(s.get('id') or 0)},{'true' if active else 'false'})\">"
+               f"onclick=\"balanceStress({sid},{'true' if active else 'false'})\">"
                f"{'Balance' if active else 'Reactivate'}</button>")
-        return (f"<li><b>{_e(s.get('code') or '')}</b> {_e(s.get('label') or '')} "
+        # Unassigned stresses are draggable onto a layer card to mark them covered.
+        drag_attr = (f" class=sdrag draggable=true ondragstart=\"stressDragStart(event,{sid})\" "
+                     "ondragend=stressDragEnd(event) title='Drag onto a layer to cover it'"
+                     if drag else "")
+        return (f"<li{drag_attr}><b>{_e(s.get('code') or '')}</b> {_e(s.get('label') or '')} "
                 f"<span class=pill>{tag}</span>{bytxt} {btn}</li>")
     if "by_layer" in data:
         # Per-layer grouping: every AI-created stress under each causal-chain layer
         # (covered-by-remedy or head match), a stress may appear under several layers.
-        def _list(stresses):
-            return "".join(_row(s, not s.get("balanced")) for s in stresses or [])
+        def _list(stresses, drag=False):
+            return "".join(_row(s, not s.get("balanced"), drag) for s in stresses or [])
         parts = []
         for L in data.get("by_layer") or []:
             sub = " &middot; ".join(x for x in [_e(L.get("head") or ""),
@@ -856,10 +889,10 @@ def render_stress_panel(data):
                          f"Layer {_e(str(L.get('layer')))}"
                          + (f" <span style='font-weight:400'>&mdash; {sub}</span>" if sub else "")
                          + "</div>" + body)
-        un = _list(data.get("unassigned"))
+        un = _list(data.get("unassigned"), drag=True)
         if un:
             parts.append("<div class=food style='font-weight:600;margin-top:6px'>"
-                         "Unassigned &mdash; not on any layer</div>"
+                         "Unassigned &mdash; drag onto a layer to cover it</div>"
                          f"<ul style='margin:4px 0;padding-left:18px'>{un}</ul>")
         inner = "".join(parts) or "<div class=food style='margin-top:6px'>No stresses yet.</div>"
         return ("<div class=card><div class=food style='text-transform:uppercase;font-size:11px;"
