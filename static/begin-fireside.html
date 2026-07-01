@@ -136,6 +136,7 @@
   var typeToggle = document.getElementById('type-toggle');
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var voiceMode = false, rec = null, recActive = false, voiceAuto = false, autoListenTimer = null;
+  var silenceTimer = null, voiceFinal = '', voiceInterim = '', PAUSE_MS = 1200;  // ~1.2s quiet = end of the traveler's turn
 
   var manifest = null;
   var state = 'intro';
@@ -384,31 +385,57 @@
     }, 500);
   }
   function toTypeMode() {
-    voiceMode = false; voiceAuto = false; stopRec();
+    voiceMode = false; voiceAuto = false;
+    voiceFinal = ''; voiceInterim = ''; clearSilence();  // don't auto-submit a half-spoken thought
+    stopRec();
     if (autoListenTimer) clearTimeout(autoListenTimer);
     voice.classList.add('hidden');
     composer.classList.remove('hidden');
     say.focus();
   }
+  function clearSilence() { if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; } }
+  function armSilence() { clearSilence(); silenceTimer = setTimeout(endpoint, PAUSE_MS); }  // reset on every speech
+  function endpoint() {
+    // The traveler has gone quiet ~PAUSE_MS -> take their turn. sendTurn plays a
+    // short break-in ("So…", "Ah, I see.") in Glendalf's voice, then streams the reply.
+    clearSilence();
+    var t = (voiceFinal + voiceInterim).trim();
+    voiceFinal = ''; voiceInterim = '';
+    if (!t || state !== 'listening') return;
+    stopRec();
+    say.value = ''; micThinking();
+    sendTurn(t);
+  }
   function startRec() {
     if (recActive) { stopRec(); return; }         // tap again to cancel
     if (state !== 'listening' || !SR) return;
+    voiceFinal = ''; voiceInterim = '';
     try {
       rec = new SR();
-      rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
+      // Continuous + interim so WE decide the end-of-turn pause (the API's own
+      // endpoint isn't tunable and clips reflective pauses).
+      rec.lang = 'en-US'; rec.interimResults = true; rec.maxAlternatives = 1; rec.continuous = true;
       rec.onstart  = function () { recActive = true; mic.classList.add('mic-live'); micHint.textContent = 'Listening…'; };
       rec.onerror  = function (ev) {
-        recActive = false; mic.classList.remove('mic-live');
+        recActive = false; clearSilence(); mic.classList.remove('mic-live');
         // mic blocked -> fall back to typing so the traveler is never stuck
         if (ev && (ev.error === 'not-allowed' || ev.error === 'service-not-allowed')) { toTypeMode(); }
         else { micHint.textContent = 'Tap to speak'; }
       };
-      rec.onend    = function () { recActive = false; mic.classList.remove('mic-live');
-        if (micHint.textContent === 'Listening…') micHint.textContent = 'Tap to speak'; };
+      rec.onend    = function () {
+        recActive = false; mic.classList.remove('mic-live');
+        // iOS Safari ignores continuous and ends per-utterance -> use that as the endpoint
+        if ((voiceFinal + voiceInterim).trim() && state === 'listening') { endpoint(); return; }
+        clearSilence();
+        if (micHint.textContent === 'Listening…') micHint.textContent = 'Tap to speak';
+      };
       rec.onresult = function (ev) {
-        var t = ''; for (var i = 0; i < ev.results.length; i++) { t += ev.results[i][0].transcript; }
-        t = t.trim();
-        if (t && state === 'listening') { say.value = ''; micThinking(); sendTurn(t); }
+        voiceInterim = '';
+        for (var i = ev.resultIndex; i < ev.results.length; i++) {
+          var r = ev.results[i];
+          if (r.isFinal) voiceFinal += r[0].transcript; else voiceInterim += r[0].transcript;
+        }
+        if ((voiceFinal + voiceInterim).trim()) armSilence();
       };
       rec.start();
     } catch (e) { toTypeMode(); }

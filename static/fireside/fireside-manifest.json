@@ -23,77 +23,523 @@
     "/static/fireside/video/reactions/speak-3.mp4",
     "/static/fireside/video/reactions/speak-4.mp4"
   ],
-  "pondering_loops": ["/static/fireside/video/pondering-1.mp4"],
+  "pondering_loops": [
+    "/static/fireside/video/pondering-1.mp4"
+  ],
   "fillers": [
-    {"id": "hmm",     "kind": "think",  "text": "Hmmm…",                                  "file": "/static/fireside/audio/filler-hmm.mp3"},
-    {"id": "well",    "kind": "think",  "text": "Well…",                                  "file": "/static/fireside/audio/filler-well.mp3"},
-    {"id": "isee",    "kind": "ack",    "text": "I see.",                                 "file": "/static/fireside/audio/filler-isee.mp3"},
-    {"id": "interesting", "kind": "ack", "text": "That's very interesting.",             "file": "/static/fireside/audio/filler-interesting.mp3"},
-    {"id": "consider", "kind": "think", "text": "Let me consider that.",                 "file": "/static/fireside/audio/filler-consider.mp3"},
-    {"id": "contemplate", "kind": "think", "text": "You've given me much to contemplate there.", "file": "/static/fireside/audio/filler-contemplate.mp3"},
-    {"id": "heres",   "kind": "bridge", "text": "Here's what I think…",                  "file": "/static/fireside/audio/filler-heres.mp3"}
+    {
+      "id": "hmm",
+      "kind": "think",
+      "text": "Hmmm…",
+      "file": "/static/fireside/audio/filler-hmm.mp3"
+    },
+    {
+      "id": "well",
+      "kind": "think",
+      "text": "Well…",
+      "file": "/static/fireside/audio/filler-well.mp3"
+    },
+    {
+      "id": "isee",
+      "kind": "ack",
+      "text": "I see.",
+      "file": "/static/fireside/audio/filler-isee.mp3"
+    },
+    {
+      "id": "interesting",
+      "kind": "ack",
+      "text": "That's very interesting.",
+      "file": "/static/fireside/audio/filler-interesting.mp3"
+    },
+    {
+      "id": "consider",
+      "kind": "think",
+      "text": "Let me consider that.",
+      "file": "/static/fireside/audio/filler-consider.mp3"
+    },
+    {
+      "id": "contemplate",
+      "kind": "think",
+      "text": "You've given me much to contemplate there.",
+      "file": "/static/fireside/audio/filler-contemplate.mp3"
+    },
+    {
+      "id": "heres",
+      "kind": "bridge",
+      "text": "Here's what I think…",
+      "file": "/static/fireside/audio/filler-heres.mp3"
+    },
+    {
+      "id": "so",
+      "kind": "bridge",
+      "text": "So…",
+      "file": "/static/fireside/audio/filler-so.mp3"
+    },
+    {
+      "id": "right",
+      "kind": "bridge",
+      "text": "Right, then.",
+      "file": "/static/fireside/audio/filler-right.mp3"
+    },
+    {
+      "id": "ah",
+      "kind": "ack",
+      "text": "Ah, I see.",
+      "file": "/static/fireside/audio/filler-ah.mp3"
+    },
+    {
+      "id": "mm",
+      "kind": "ack",
+      "text": "Mm.",
+      "file": "/static/fireside/audio/filler-mm.mp3"
+    },
+    {
+      "id": "yes",
+      "kind": "ack",
+      "text": "Yes…",
+      "file": "/static/fireside/audio/filler-yes.mp3"
+    }
   ],
   "interjections": [
-    {"id": "ah",      "text": "Ah—",                       "file": "/static/fireside/audio/inter-ah.mp3"},
-    {"id": "goon",    "text": "Yes, go on…",               "file": "/static/fireside/audio/inter-goon.mp3"},
-    {"id": "mm",      "text": "Mm—",                        "file": "/static/fireside/audio/inter-mm.mp3"},
-    {"id": "oh",      "text": "Oh…",                        "file": "/static/fireside/audio/inter-oh.mp3"},
-    {"id": "heart",   "text": "Now that's the heart of it—","file": "/static/fireside/audio/inter-heart.mp3"}
+    {
+      "id": "ah",
+      "text": "Ah—",
+      "file": "/static/fireside/audio/inter-ah.mp3"
+    },
+    {
+      "id": "goon",
+      "text": "Yes, go on…",
+      "file": "/static/fireside/audio/inter-goon.mp3"
+    },
+    {
+      "id": "mm",
+      "text": "Mm—",
+      "file": "/static/fireside/audio/inter-mm.mp3"
+    },
+    {
+      "id": "oh",
+      "text": "Oh…",
+      "file": "/static/fireside/audio/inter-oh.mp3"
+    },
+    {
+      "id": "heart",
+      "text": "Now that's the heart of it—",
+      "file": "/static/fireside/audio/inter-heart.mp3"
+    }
   ],
   "resting_loops": [
     "/static/fireside/video/reactions/rest-1.mp4",
     "/static/fireside/video/reactions/rest-2.mp4"
   ],
   "reactions": [
-    {"id": "invitation",  "family": "invitation",       "form": "silent", "hand": "open_palm", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-invitation.mp4"},
-    {"id": "empathic",    "family": "empathic_concern", "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-empathic.mp4"},
-    {"id": "recognition", "family": "recognition",      "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-recognition.mp4"},
-    {"id": "pondering",   "family": "pondering",        "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-pondering.mp4"},
-    {"id": "reassurance", "family": "reassurance",      "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-reassurance.mp4"},
-    {"id": "curiosity",   "family": "curiosity",        "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-curiosity.mp4"},
-    {"id": "affirming",   "family": "affirming",        "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-affirming.mp4"},
-    {"id": "surprise",    "family": "surprise",         "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.4, "file": "/static/fireside/video/reactions/react-surprise.mp4"},
-    {"id": "attending",   "family": "attending",        "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-attending.mp4"},
-    {"id": "gentle_gravity", "family": "gentle_gravity", "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-gentle-gravity.mp4"},
-    {"id": "awe",         "family": "awe",              "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-awe.mp4"},
-    {"id": "delight",     "family": "delight",          "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-delight.mp4"},
-    {"id": "lightness",   "family": "lightness",        "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-lightness.mp4"},
-    {"id": "empathic-2",  "family": "empathic_concern", "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-empathic-2.mp4"},
-    {"id": "awe-2",       "family": "awe",              "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-awe-2.mp4"},
-    {"id": "pondering-2", "family": "pondering",        "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-pondering-2.mp4"},
-    {"id": "gentle_gravity-2", "family": "gentle_gravity", "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-gentle-gravity-2.mp4"},
-    {"id": "delight-2",   "family": "delight",          "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-delight-2.mp4"},
-    {"id": "surprise-2",  "family": "surprise",         "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.4, "file": "/static/fireside/video/reactions/react-surprise-2.mp4"},
-    {"id": "gaze-up-right",  "family": "pondering", "form": "silent", "gaze": "up_right",  "intensity": "low", "tier": "gaze", "duration_s": 2.8, "file": "/static/fireside/video/reactions/gaze-up-right.mp4"},
-    {"id": "gaze-lat-right", "family": "pondering", "form": "silent", "gaze": "lat_right", "intensity": "low", "tier": "gaze", "duration_s": 3.2, "file": "/static/fireside/video/reactions/gaze-lat-right.mp4"},
-    {"id": "hobbit-boy",     "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 11.3, "file": "/static/fireside/video/reactions/hobbit-2.mp4", "audio": "/static/fireside/audio/hobbit-boy.mp3", "reply_template": "Not just now. I'm with {name}.", "caller_audio": "/static/fireside/audio/hobbit-caller-boy.mp3", "leave_audio": "/static/fireside/audio/hobbit-leave.mp3"},
-    {"id": "hobbit-kettle",  "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 4.2, "file": "/static/fireside/video/reactions/hobbit-3.mp4", "audio": "/static/fireside/audio/hobbit-kettle.mp3", "reply_template": "Bring a cup for {name} as well.", "caller_audio": "/static/fireside/audio/hobbit-caller-kettle.mp3"},
-    {"id": "hobbit-door",    "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 12.1, "file": "/static/fireside/video/reactions/hobbit-2.mp4", "audio": "/static/fireside/audio/hobbit-door.mp3", "reply_template": "Later, later. {name} has my full attention.", "caller_audio": "/static/fireside/audio/hobbit-caller-door.mp3", "leave_audio": "/static/fireside/audio/hobbit-leave.mp3"},
-    {"id": "hobbit-gate",    "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 11.9, "file": "/static/fireside/video/reactions/hobbit-3.mp4", "audio": "/static/fireside/audio/hobbit-gate.mp3", "reply_template": "Let them ask. {name} has me now.", "caller_audio": "/static/fireside/audio/hobbit-caller-gate.mp3", "leave_audio": "/static/fireside/audio/hobbit-leave.mp3"},
-    {"id": "hobbit-village", "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 6.1, "file": "/static/fireside/video/reactions/hobbit-2.mp4", "audio": "/static/fireside/audio/hobbit-village.mp3", "reply_template": "Always something. But not now \u2014 I'm listening to {name}.", "caller_audio": "/static/fireside/audio/hobbit-caller-village.mp3"},
-    {"id": "hobbit-supper",  "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 4.0, "file": "/static/fireside/video/reactions/hobbit-3.mp4", "audio": "/static/fireside/audio/hobbit-supper.mp3", "reply_template": "Set an extra plate for {name}.", "caller_audio": "/static/fireside/audio/hobbit-caller-supper.mp3"}
+    {
+      "id": "invitation",
+      "family": "invitation",
+      "form": "silent",
+      "hand": "open_palm",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-invitation.mp4"
+    },
+    {
+      "id": "empathic",
+      "family": "empathic_concern",
+      "form": "silent",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-empathic.mp4"
+    },
+    {
+      "id": "recognition",
+      "family": "recognition",
+      "form": "silent",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-recognition.mp4"
+    },
+    {
+      "id": "pondering",
+      "family": "pondering",
+      "form": "silent",
+      "intensity": "low",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-pondering.mp4"
+    },
+    {
+      "id": "reassurance",
+      "family": "reassurance",
+      "form": "silent",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-reassurance.mp4"
+    },
+    {
+      "id": "curiosity",
+      "family": "curiosity",
+      "form": "silent",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-curiosity.mp4"
+    },
+    {
+      "id": "affirming",
+      "family": "affirming",
+      "form": "silent",
+      "intensity": "low",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-affirming.mp4"
+    },
+    {
+      "id": "surprise",
+      "family": "surprise",
+      "form": "silent",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.4,
+      "file": "/static/fireside/video/reactions/react-surprise.mp4"
+    },
+    {
+      "id": "attending",
+      "family": "attending",
+      "form": "silent",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-attending.mp4"
+    },
+    {
+      "id": "gentle_gravity",
+      "family": "gentle_gravity",
+      "form": "silent",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-gentle-gravity.mp4"
+    },
+    {
+      "id": "awe",
+      "family": "awe",
+      "form": "silent",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-awe.mp4"
+    },
+    {
+      "id": "delight",
+      "family": "delight",
+      "form": "silent",
+      "intensity": "low",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-delight.mp4"
+    },
+    {
+      "id": "lightness",
+      "family": "lightness",
+      "form": "silent",
+      "intensity": "low",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-lightness.mp4"
+    },
+    {
+      "id": "empathic-2",
+      "family": "empathic_concern",
+      "form": "silent",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-empathic-2.mp4"
+    },
+    {
+      "id": "awe-2",
+      "family": "awe",
+      "form": "silent",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-awe-2.mp4"
+    },
+    {
+      "id": "pondering-2",
+      "family": "pondering",
+      "form": "silent",
+      "intensity": "low",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-pondering-2.mp4"
+    },
+    {
+      "id": "gentle_gravity-2",
+      "family": "gentle_gravity",
+      "form": "silent",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-gentle-gravity-2.mp4"
+    },
+    {
+      "id": "delight-2",
+      "family": "delight",
+      "form": "silent",
+      "intensity": "low",
+      "tier": "backchannel",
+      "duration_s": 2.6,
+      "file": "/static/fireside/video/reactions/react-delight-2.mp4"
+    },
+    {
+      "id": "surprise-2",
+      "family": "surprise",
+      "form": "silent",
+      "intensity": "med",
+      "tier": "backchannel",
+      "duration_s": 2.4,
+      "file": "/static/fireside/video/reactions/react-surprise-2.mp4"
+    },
+    {
+      "id": "gaze-up-right",
+      "family": "pondering",
+      "form": "silent",
+      "gaze": "up_right",
+      "intensity": "low",
+      "tier": "gaze",
+      "duration_s": 2.8,
+      "file": "/static/fireside/video/reactions/gaze-up-right.mp4"
+    },
+    {
+      "id": "gaze-lat-right",
+      "family": "pondering",
+      "form": "silent",
+      "gaze": "lat_right",
+      "intensity": "low",
+      "tier": "gaze",
+      "duration_s": 3.2,
+      "file": "/static/fireside/video/reactions/gaze-lat-right.mp4"
+    },
+    {
+      "id": "hobbit-boy",
+      "family": "invitation",
+      "form": "vocalized",
+      "intensity": "med",
+      "tier": "interruption",
+      "duration_s": 11.3,
+      "file": "/static/fireside/video/reactions/hobbit-2.mp4",
+      "audio": "/static/fireside/audio/hobbit-boy.mp3",
+      "reply_template": "Not just now. I'm with {name}.",
+      "caller_audio": "/static/fireside/audio/hobbit-caller-boy.mp3",
+      "leave_audio": "/static/fireside/audio/hobbit-leave.mp3"
+    },
+    {
+      "id": "hobbit-kettle",
+      "family": "invitation",
+      "form": "vocalized",
+      "intensity": "med",
+      "tier": "interruption",
+      "duration_s": 4.2,
+      "file": "/static/fireside/video/reactions/hobbit-3.mp4",
+      "audio": "/static/fireside/audio/hobbit-kettle.mp3",
+      "reply_template": "Bring a cup for {name} as well.",
+      "caller_audio": "/static/fireside/audio/hobbit-caller-kettle.mp3"
+    },
+    {
+      "id": "hobbit-door",
+      "family": "invitation",
+      "form": "vocalized",
+      "intensity": "med",
+      "tier": "interruption",
+      "duration_s": 12.1,
+      "file": "/static/fireside/video/reactions/hobbit-2.mp4",
+      "audio": "/static/fireside/audio/hobbit-door.mp3",
+      "reply_template": "Later, later. {name} has my full attention.",
+      "caller_audio": "/static/fireside/audio/hobbit-caller-door.mp3",
+      "leave_audio": "/static/fireside/audio/hobbit-leave.mp3"
+    },
+    {
+      "id": "hobbit-gate",
+      "family": "invitation",
+      "form": "vocalized",
+      "intensity": "med",
+      "tier": "interruption",
+      "duration_s": 11.9,
+      "file": "/static/fireside/video/reactions/hobbit-3.mp4",
+      "audio": "/static/fireside/audio/hobbit-gate.mp3",
+      "reply_template": "Let them ask. {name} has me now.",
+      "caller_audio": "/static/fireside/audio/hobbit-caller-gate.mp3",
+      "leave_audio": "/static/fireside/audio/hobbit-leave.mp3"
+    },
+    {
+      "id": "hobbit-village",
+      "family": "invitation",
+      "form": "vocalized",
+      "intensity": "med",
+      "tier": "interruption",
+      "duration_s": 6.1,
+      "file": "/static/fireside/video/reactions/hobbit-2.mp4",
+      "audio": "/static/fireside/audio/hobbit-village.mp3",
+      "reply_template": "Always something. But not now — I'm listening to {name}.",
+      "caller_audio": "/static/fireside/audio/hobbit-caller-village.mp3"
+    },
+    {
+      "id": "hobbit-supper",
+      "family": "invitation",
+      "form": "vocalized",
+      "intensity": "med",
+      "tier": "interruption",
+      "duration_s": 4.0,
+      "file": "/static/fireside/video/reactions/hobbit-3.mp4",
+      "audio": "/static/fireside/audio/hobbit-supper.mp3",
+      "reply_template": "Set an extra plate for {name}.",
+      "caller_audio": "/static/fireside/audio/hobbit-caller-supper.mp3"
+    }
   ],
   "ambience": {
     "bed": "/static/fireside/audio/amb-fire.mp3",
     "bed_volume": 0.18,
     "oneshots": [
-      {"id": "wind",   "file": "/static/fireside/audio/amb-wind.mp3",   "volume": 0.14, "spark": false, "min_gap_s": 70, "max_gap_s": 180},
-      {"id": "owl",    "file": "/static/fireside/audio/amb-owl.mp3",    "volume": 0.12, "spark": false, "min_gap_s": 90, "max_gap_s": 220},
-      {"id": "embers", "file": "/static/fireside/audio/amb-embers.mp3", "volume": 0.16, "spark": true,  "min_gap_s": 50, "max_gap_s": 140},
-      {"id": "logsettle",   "file": "/static/fireside/audio/amb-logsettle.mp3",   "volume": 0.18, "spark": true,  "min_gap_s": 60,  "max_gap_s": 170},
-      {"id": "kettle",      "file": "/static/fireside/audio/amb-kettle.mp3",      "volume": 0.13, "spark": false, "min_gap_s": 90,  "max_gap_s": 230},
-      {"id": "crockery",    "file": "/static/fireside/audio/amb-crockery.mp3",    "volume": 0.12, "spark": false, "min_gap_s": 100, "max_gap_s": 250},
-      {"id": "cupboard",    "file": "/static/fireside/audio/amb-cupboard.mp3",    "volume": 0.11, "spark": false, "min_gap_s": 120, "max_gap_s": 280},
-      {"id": "bread",       "file": "/static/fireside/audio/amb-bread.mp3",       "volume": 0.11, "spark": false, "min_gap_s": 130, "max_gap_s": 300},
-      {"id": "bell",        "file": "/static/fireside/audio/amb-bell.mp3",        "volume": 0.10, "spark": false, "min_gap_s": 220, "max_gap_s": 520},
-      {"id": "dogbark",     "file": "/static/fireside/audio/amb-dogbark.mp3",     "volume": 0.10, "spark": false, "min_gap_s": 200, "max_gap_s": 460},
-      {"id": "bookpages",   "file": "/static/fireside/audio/amb-bookpages.mp3",   "volume": 0.10, "spark": false, "min_gap_s": 110, "max_gap_s": 260},
-      {"id": "bottlechime", "file": "/static/fireside/audio/amb-bottlechime.mp3", "volume": 0.10, "spark": false, "min_gap_s": 140, "max_gap_s": 320},
-      {"id": "rain",        "file": "/static/fireside/audio/amb-rain.mp3",        "volume": 0.10, "spark": false, "min_gap_s": 220, "max_gap_s": 460},
-      {"id": "crickets",    "file": "/static/fireside/audio/amb-crickets.mp3",    "volume": 0.10, "spark": false, "min_gap_s": 240, "max_gap_s": 500},
-      {"id": "birdsong",    "file": "/static/fireside/audio/amb-birdsong.mp3",    "volume": 0.10, "spark": false, "min_gap_s": 240, "max_gap_s": 500},
-      {"id": "stew",        "file": "/static/fireside/audio/amb-stew.mp3",        "volume": 0.12, "spark": false, "min_gap_s": 160, "max_gap_s": 380},
-      {"id": "catpurr",     "file": "/static/fireside/audio/amb-catpurr.mp3",     "volume": 0.10, "spark": false, "min_gap_s": 190, "max_gap_s": 420}
+      {
+        "id": "wind",
+        "file": "/static/fireside/audio/amb-wind.mp3",
+        "volume": 0.14,
+        "spark": false,
+        "min_gap_s": 70,
+        "max_gap_s": 180
+      },
+      {
+        "id": "owl",
+        "file": "/static/fireside/audio/amb-owl.mp3",
+        "volume": 0.12,
+        "spark": false,
+        "min_gap_s": 90,
+        "max_gap_s": 220
+      },
+      {
+        "id": "embers",
+        "file": "/static/fireside/audio/amb-embers.mp3",
+        "volume": 0.16,
+        "spark": true,
+        "min_gap_s": 50,
+        "max_gap_s": 140
+      },
+      {
+        "id": "logsettle",
+        "file": "/static/fireside/audio/amb-logsettle.mp3",
+        "volume": 0.18,
+        "spark": true,
+        "min_gap_s": 60,
+        "max_gap_s": 170
+      },
+      {
+        "id": "kettle",
+        "file": "/static/fireside/audio/amb-kettle.mp3",
+        "volume": 0.13,
+        "spark": false,
+        "min_gap_s": 90,
+        "max_gap_s": 230
+      },
+      {
+        "id": "crockery",
+        "file": "/static/fireside/audio/amb-crockery.mp3",
+        "volume": 0.12,
+        "spark": false,
+        "min_gap_s": 100,
+        "max_gap_s": 250
+      },
+      {
+        "id": "cupboard",
+        "file": "/static/fireside/audio/amb-cupboard.mp3",
+        "volume": 0.11,
+        "spark": false,
+        "min_gap_s": 120,
+        "max_gap_s": 280
+      },
+      {
+        "id": "bread",
+        "file": "/static/fireside/audio/amb-bread.mp3",
+        "volume": 0.11,
+        "spark": false,
+        "min_gap_s": 130,
+        "max_gap_s": 300
+      },
+      {
+        "id": "bell",
+        "file": "/static/fireside/audio/amb-bell.mp3",
+        "volume": 0.1,
+        "spark": false,
+        "min_gap_s": 220,
+        "max_gap_s": 520
+      },
+      {
+        "id": "dogbark",
+        "file": "/static/fireside/audio/amb-dogbark.mp3",
+        "volume": 0.1,
+        "spark": false,
+        "min_gap_s": 200,
+        "max_gap_s": 460
+      },
+      {
+        "id": "bookpages",
+        "file": "/static/fireside/audio/amb-bookpages.mp3",
+        "volume": 0.1,
+        "spark": false,
+        "min_gap_s": 110,
+        "max_gap_s": 260
+      },
+      {
+        "id": "bottlechime",
+        "file": "/static/fireside/audio/amb-bottlechime.mp3",
+        "volume": 0.1,
+        "spark": false,
+        "min_gap_s": 140,
+        "max_gap_s": 320
+      },
+      {
+        "id": "rain",
+        "file": "/static/fireside/audio/amb-rain.mp3",
+        "volume": 0.1,
+        "spark": false,
+        "min_gap_s": 220,
+        "max_gap_s": 460
+      },
+      {
+        "id": "crickets",
+        "file": "/static/fireside/audio/amb-crickets.mp3",
+        "volume": 0.1,
+        "spark": false,
+        "min_gap_s": 240,
+        "max_gap_s": 500
+      },
+      {
+        "id": "birdsong",
+        "file": "/static/fireside/audio/amb-birdsong.mp3",
+        "volume": 0.1,
+        "spark": false,
+        "min_gap_s": 240,
+        "max_gap_s": 500
+      },
+      {
+        "id": "stew",
+        "file": "/static/fireside/audio/amb-stew.mp3",
+        "volume": 0.12,
+        "spark": false,
+        "min_gap_s": 160,
+        "max_gap_s": 380
+      },
+      {
+        "id": "catpurr",
+        "file": "/static/fireside/audio/amb-catpurr.mp3",
+        "volume": 0.1,
+        "spark": false,
+        "min_gap_s": 190,
+        "max_gap_s": 420
+      }
     ]
   }
 }
