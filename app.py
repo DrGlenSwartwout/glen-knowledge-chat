@@ -12387,6 +12387,14 @@ def api_portal_chat(token):
                                        client_name=(portal.get("name") or "You"))
         except Exception as e:
             print(f"[portal-chat] persist failed: {e!r}", flush=True)
+        # Triage: flag messages that need Dr. Glen's attention -> console + email him.
+        try:
+            import threading as _t2
+            _t2.Thread(target=_triage_portal_message,
+                       args=(email, portal.get("name") or "", query, answer),
+                       daemon=True).start()
+        except Exception:
+            pass
         try:
             convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-2:]) + f"\nassistant: {answer}"
             mx = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=120,
@@ -12466,6 +12474,69 @@ def api_console_portal_message(email):
     if mid is not None and notify:
         notified = _notify_client_of_reply(email, rec.get("name") or "")
     return jsonify({"ok": mid is not None, "id": mid, "notified": notified})
+
+
+def _triage_portal_message(email, name, query, answer):
+    """Background: classify a client's portal message; if it needs Dr. Glen's
+    attention, store a triage item and email him full context + a recommendation."""
+    try:
+        from dashboard import portal_triage as _pt
+
+        def _complete(system, user):
+            m = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=300,
+                                    system=system, messages=[{"role": "user", "content": user}])
+            return m.content[0].text
+
+        res = _pt.classify(_complete, query, answer)
+        if not res:
+            return
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _pt.add_item(cx, email, name, res["category"], res["urgency"],
+                         res["summary"], res["recommendation"], query, answer)
+        subject = f"[Portal triage · {res['urgency']}] {res['category']} — {name or email}"
+        try:
+            token = None
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                from dashboard import client_portal as _cp
+                token = _cp.ensure_token(cx, email, name or "")
+            link = f"{PUBLIC_BASE_URL}/portal/{token}" if token else ""
+        except Exception:
+            link = ""
+        body = (f"A client message may need your attention.\n\n"
+                f"Client: {name or ''} <{email}>\n"
+                f"Category: {res['category']}   Urgency: {res['urgency']}\n\n"
+                f"What they need: {res['summary']}\n"
+                f"Recommendation: {res['recommendation']}\n\n"
+                f"--- Their message ---\n{query}\n\n"
+                f"--- AI answer given ---\n{answer}\n\n"
+                f"Reply in their portal chat (console → Biofield Portal Editor → Portal chat),"
+                f" or open their portal:\n{link}\n")
+        try:
+            _send_full_report_email("drglenswartwout@gmail.com", "Dr. Glen", subject, body)
+        except Exception as e:
+            print(f"[triage] email failed: {e!r}", flush=True)
+    except Exception as e:
+        print(f"[triage] {e!r}", flush=True)
+
+
+@app.route("/api/console/triage")
+def api_console_triage():
+    """Console: open triage items (client messages needing Dr. Glen). Console-gated."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import portal_triage as _pt
+    with sqlite3.connect(LOG_DB) as cx:
+        return jsonify({"open_count": _pt.open_count(cx), "items": _pt.list_open(cx)})
+
+
+@app.route("/api/console/triage/<int:item_id>/resolve", methods=["POST"])
+def api_console_triage_resolve(item_id):
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import portal_triage as _pt
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _pt.resolve(cx, item_id)
+    return jsonify({"ok": True})
 
 
 @app.route("/sms/inbound", methods=["POST"])
