@@ -12886,6 +12886,28 @@ def admin_client_portal_upsert():
                     "portal_id": pid, "emailed": emailed})
 
 
+@app.route("/admin/portal/get-or-create-link", methods=["POST"])
+def admin_portal_get_or_create_link():
+    """Idempotent portal link for the staged rollout: returns the client's STABLE
+    link (the raw token cached in portal_notify_state), minting a pending portal
+    only if none exists. Unlike /reissue-link it NEVER rotates an already-cached
+    token, so it is safe to call repeatedly across waves. Console-secret gated."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    from dashboard import client_portal as _cp
+    from dashboard import notify_state as _ns
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _ns.init_table(cx)
+        token = _cp.ensure_token(cx, email, name)
+    return jsonify({"ok": True, "email": email, "url": f"{PUBLIC_BASE_URL}/portal/{token}"})
+
+
 @app.route("/admin/portal/delete", methods=["POST"])
 def admin_client_portal_delete():
     """Remove a client portal and ALL its biofield traces (reports + corrections),
