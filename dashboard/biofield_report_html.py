@@ -65,10 +65,27 @@ _STYLE = """
  .full{display:none;margin-top:3px;padding:5px 7px;background:#0c0e12;border:1px solid var(--line);
    border-radius:6px;font-size:13px;white-space:pre-wrap;word-break:break-word;color:var(--fg)}
  tr.unconf td{box-shadow:inset 4px 0 0 var(--accent);background:#1a160d}
- th.dcol,td.dcol{display:none}
- col.dcol{width:0}
- table.showdepth th.dcol,table.showdepth td.dcol{display:table-cell}
- table.showdepth col.dcol{width:120px}
+ .dcol{display:none}
+ #chaintbl.showdepth .dcol{display:inline-flex;align-items:center;gap:4px}
+ #chaintbl.showdepth .dcol select{max-width:150px}
+ .lcard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 10px}
+ .lcard.drag{opacity:.45}
+ .lcard.over{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+ .lhdr{display:flex;align-items:flex-start;gap:10px}
+ .grip{cursor:grab;color:var(--muted);font-size:18px;line-height:1.4;user-select:none}
+ .lnum{color:var(--accent);font-weight:700;background:#0c0e12;border:1px solid var(--line);
+   border-radius:6px;padding:4px 10px;min-width:32px;text-align:center}
+ .htfields{flex:1;display:grid;grid-template-columns:auto 1fr;gap:5px 8px;align-items:center}
+ .htfields>label{margin:0;color:var(--muted);font-size:12px}
+ .htfields input{width:100%;background:#0c0e12;color:var(--fg);border:1px solid var(--line);
+   border-radius:6px;padding:6px 8px;font:inherit;font-size:14px}
+ .rline{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:5px 0;padding:5px 6px;border-radius:6px}
+ .rline.unconf{box-shadow:inset 3px 0 0 var(--accent);background:#1a160d}
+ .rline input{background:#0c0e12;color:var(--fg);border:1px solid var(--line);border-radius:6px;
+   padding:5px 7px;font:inherit;font-size:13px}
+ .rline .rem{flex:1;min-width:200px}
+ .rline .dz{width:88px}
+ .lfoot{display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px;flex-wrap:wrap}
 </style>
 """
 
@@ -325,6 +342,52 @@ function _setDepth(on){var t=document.getElementById('chaintbl'),b=document.getE
 function toggleDepth(){var on=!document.getElementById('chaintbl').classList.contains('showdepth');
  _setDepth(on);try{localStorage.setItem('bf_depth',on?'1':'0')}catch(e){}}
 function restoreDepth(){var on=false;try{on=localStorage.getItem('bf_depth')==='1'}catch(e){}_setDepth(on)}
+// --- card-based causal chain: per-remedy + per-layer save, drag-to-reorder ---
+function suggestFor(btn,rp){var card=btn.closest('.lcard');var s=card?val(card.dataset.gid+'_head'):'';
+ var box=document.getElementById(rp+'_sug');if(box)box.textContent='';
+ if(!s){astat('Enter a stress (Head) first.');return}
+ fetch('/api/suggest?stress='+encodeURIComponent(s)).then(function(r){return r.json()}).then(function(r){
+  var arr=(r.suggestions)||[];if(!arr.length){if(box)box.textContent='no history for that stress';return}
+  box.appendChild(document.createTextNode('Used before: '));
+  arr.forEach(function(x){var b=document.createElement('button');b.type='button';b.className='chip';
+   b.textContent=x.remedy+' ('+x.count+')';b.onclick=function(){set(rp+'_remedy',x.remedy);fillDose(rp)};
+   box.appendChild(b);box.appendChild(document.createTextNode(' '))})})}
+async function saveRemedy(rid,btn){var card=btn.closest('.lcard');var gid=card.dataset.gid;
+ var head=val(gid+'_head'),most=val(gid+'_most');
+ await post('/author/__TID__/row/'+rid,{head:head,most_affected:most,
+  remedy:val('r'+rid+'_remedy'),dosage:val('r'+rid+'_dosage'),
+  frequency:val('r'+rid+'_frequency'),timing:val('r'+rid+'_timing')});
+ var rids=(card.dataset.rids||'').split(',').filter(Boolean);
+ for(var i=0;i<rids.length;i++){if(rids[i]!==String(rid)){
+   await post('/author/__TID__/row/'+rids[i],{head:head,most_affected:most})}}
+ astat('Saved.')}
+async function saveLayer(gid){var card=document.querySelector('[data-gid="'+gid+'"]');if(!card)return;
+ var head=val(gid+'_head'),most=val(gid+'_most');
+ var rids=(card.dataset.rids||'').split(',').filter(Boolean);
+ for(var i=0;i<rids.length;i++)await post('/author/__TID__/row/'+rids[i],{head:head,most_affected:most});
+ astat('Layer saved.')}
+async function addRemedy(gid){var rem=val(gid+'_nr_remedy');if(!rem){astat('Enter a remedy.');return}
+ var layer=val(gid+'_layer');if(!layer)layer=document.querySelectorAll('.lcard').length;
+ await post('/author/__TID__/row',{layer:layer,head:val(gid+'_head'),most_affected:val(gid+'_most'),
+  remedy:rem,dosage:val(gid+'_nr_dosage'),frequency:val(gid+'_nr_frequency'),timing:val(gid+'_nr_timing')});
+ location.reload()}
+var _drag=null;
+function dragStart(e){_drag=e.currentTarget;e.currentTarget.classList.add('drag');
+ if(e.dataTransfer){e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text','x')}catch(_){}}}
+function dragEnd(e){e.currentTarget.classList.remove('drag');
+ document.querySelectorAll('.lcard.over').forEach(function(c){c.classList.remove('over')})}
+function dragOver(e){e.preventDefault();var t=e.currentTarget;
+ if(_drag&&t!==_drag&&t.dataset.gid!=='gnew')t.classList.add('over')}
+function dragLeave(e){e.currentTarget.classList.remove('over')}
+function drop(e){e.preventDefault();var t=e.currentTarget;t.classList.remove('over');
+ if(!_drag||t===_drag||t.dataset.gid==='gnew'){return}
+ var box=t.parentNode,cards=[].slice.call(box.querySelectorAll('.lcard'));
+ var di=cards.indexOf(_drag),ti=cards.indexOf(t);
+ box.insertBefore(_drag,di<ti?t.nextSibling:t);persistOrder()}
+async function persistOrder(){var box=document.getElementById('chaintbl');
+ var order=[].slice.call(box.querySelectorAll('.lcard')).filter(function(c){return c.dataset.gid!=='gnew'})
+  .map(function(c){return (c.dataset.rids||'').split(',').filter(Boolean)});
+ await post('/author/__TID__/reorder-layers',{order:order});location.reload()}
 function rstat(t){document.getElementById('rstat').textContent=t}
 var _mr,_dg,_sess='';
 async function recStart(){
@@ -508,6 +571,102 @@ def _depth_select(rid, side, current, depth_values):
             f"style='font-size:12px;max-width:170px'>{opts}</select>")
 
 
+def group_layers(layers):
+    """Group ordered chain rows into layer cards. Rows sharing a non-empty head are
+    one layer (a layer can carry several remedies); empty-head rows stand alone.
+    Groups keep first-appearance order and get a 1-based display number."""
+    groups, by_head = [], {}
+    for l in layers or []:
+        head = (l.get("head") or "").strip()
+        key = head.lower() if head else None
+        g = by_head.get(key) if key is not None else None
+        if g is None:
+            g = {"head": head, "most_affected": (l.get("most_affected") or "").strip(),
+                 "zone": l.get("zone") or "top", "rows": []}
+            groups.append(g)
+            if key is not None:
+                by_head[key] = g
+        elif not g["most_affected"] and (l.get("most_affected") or "").strip():
+            g["most_affected"] = (l.get("most_affected") or "").strip()
+        g["rows"].append(l)
+    for i, g in enumerate(groups, 1):
+        g["layer"] = i
+    return groups
+
+
+def _xwrap(inp):
+    """An input plus the ⤢ expand affordance (reveals long values)."""
+    return (f"<span class=cellwrap>{inp}<button type=button class=xpand onclick=\"xpand(this)\" "
+            "title='Show full text'>&#8690;</button><div class=full></div></span>")
+
+
+def _remedy_line(l, depth_values):
+    rid = _e(str(l.get("rid") or ""))
+    p = "r" + rid
+    g = lambda k: _e(l.get(k) or "")
+    unconf = " unconf" if l.get("confirmed") == 0 else ""
+    confirm_btn = (f"<button class=chip onclick=\"confirmRow('{rid}')\">&#10003; confirm</button> "
+                   if l.get("confirmed") == 0 else "")
+    depth = ("<span class=dcol><span class=food>depth</span> "
+             + _depth_select(l.get("rid"), "stress", l.get("stress_depth"), depth_values)
+             + _depth_select(l.get("rid"), "remedy", l.get("remedy_depth"), depth_values) + "</span>")
+    return (f"<div class='rline{unconf}' data-rid=\"{rid}\">"
+            f"<input id=\"{p}_remedy\" class=rem list=catalog value=\"{g('remedy')}\" "
+            f"title=\"{g('remedy')}\" onchange=\"fillDose('{p}')\">"
+            f"<input id=\"{p}_dosage\" class=dz value=\"{g('dosage')}\" placeholder=dose>"
+            f"<input id=\"{p}_frequency\" class=dz value=\"{g('frequency')}\" placeholder=freq>"
+            f"<input id=\"{p}_timing\" class=dz value=\"{g('timing')}\" placeholder=timing>"
+            + depth +
+            f"<button class=chip onclick=\"fillDose('{p}')\">dose</button>"
+            f"<button class=chip onclick=\"suggestFor(this,'{p}')\">uses</button>"
+            f"{confirm_btn}"
+            f"<button class=btn onclick=\"saveRemedy('{rid}',this)\">Save</button>"
+            f"<button class='btn ghost' onclick=\"delRow('{rid}')\">Del</button>"
+            f"<span id=\"{p}_sug\" class=food style='flex-basis:100%'></span></div>")
+
+
+def _new_remedy_line(gid, add_label):
+    return (f"<div class=rline data-new=1>"
+            f"<input id={gid}_nr_remedy class=rem list=catalog placeholder='add a remedy…' "
+            f"onchange=\"fillDose('{gid}_nr')\">"
+            f"<input id={gid}_nr_dosage class=dz placeholder=dose>"
+            f"<input id={gid}_nr_frequency class=dz placeholder=freq>"
+            f"<input id={gid}_nr_timing class=dz placeholder=timing>"
+            f"<button class=btn onclick=\"addRemedy('{gid}')\">{add_label}</button></div>")
+
+
+def _render_chain_cards(report, depth_values):
+    cards = ""
+    for gi, g in enumerate(group_layers(report.get("layers") or [])):
+        gid = "g" + str(gi)
+        rids = ",".join(str(r.get("rid")) for r in g["rows"] if r.get("rid") is not None)
+        he, me, n = _e(g["head"]), _e(g["most_affected"]), g["layer"]
+        lines = "".join(_remedy_line(r, depth_values) for r in g["rows"])
+        head_in = _xwrap(f'<input id={gid}_head list=vocab value="{he}" title="{he}">')
+        tail_in = _xwrap(f'<input id={gid}_most value="{me}" title="{me}">')
+        cards += (
+            f"<div class=lcard draggable=true data-gid={gid} data-rids=\"{rids}\" "
+            "ondragstart=dragStart(event) ondragend=dragEnd(event) ondragover=dragOver(event) "
+            "ondragleave=dragLeave(event) ondrop=drop(event)>"
+            "<div class=lhdr><span class=grip title='Drag to reorder'>&#10303;</span>"
+            f"<span class=lnum>{n}</span><div class=htfields>"
+            f"<label>Head</label>{head_in}"
+            f"<label>Tail</label>{tail_in}"
+            f"</div><input type=hidden id={gid}_layer value=\"{n}\"></div>"
+            + lines + _new_remedy_line(gid, "Add remedy") +
+            f"<div class=lfoot><span class=food>Layer {n}</span>"
+            f"<button class='btn ghost' onclick=\"saveLayer('{gid}')\">Save layer</button></div></div>")
+    # trailing card to start a brand-new layer
+    cards += (
+        "<div class=lcard data-gid=gnew><div class=lhdr><span class=lnum>+</span>"
+        "<div class=htfields>"
+        "<label>Head</label><input id=gnew_head list=vocab placeholder='new layer stress (head)'>"
+        "<label>Tail</label><input id=gnew_most placeholder='most affected (tail)'>"
+        "</div><input type=hidden id=gnew_layer value=''></div>"
+        + _new_remedy_line("gnew", "Add layer") + "</div>")
+    return cards
+
+
 def render_author_html(report, depth_values=None, transcript=""):
     tid = _e(report.get("test_id") or "")
     c = report.get("client") or {}
@@ -531,50 +690,14 @@ def render_author_html(report, depth_values=None, transcript=""):
         f"<label>Date</label><input id=h_date value=\"{_e(report.get('date') or '')}\" style='width:160px'>"
         "<div class=btnrow><button class=btn onclick=saveHeader()>Save header</button>"
         "<span id=astat class=food></span></div></div>")
-    rows = ""
-    shown_divider = False
-    for l in report.get("layers") or []:
-        if not shown_divider and l.get("zone") == "bottom":
-            rows += ("<tr><td colspan=10 style='text-align:center;color:var(--muted);"
-                     "font-size:12px;padding:4px 0'><b>Unbalanced from scan</b></td></tr>")
-            shown_divider = True
-        rid_raw = l.get("rid")
-        rid = _e(str(rid_raw or ""))
-        p = "r" + rid
-        cls = " class=unconf" if l.get("confirmed") == 0 else ""
-        confirm_btn = (f"<button class=chip onclick=\"confirmRow('{rid}')\">&#10003; confirm</button> "
-                       if l.get("confirmed") == 0 else "")
-        # Depth column (dcol) is hidden by default; the Show/Hide depth toggle reveals it.
-        depth_cell = ("<td class=dcol><span class=food>stress</span> "
-                      + _depth_select(rid_raw, "stress", l.get("stress_depth"), depth_values)
-                      + "<br><span class=food>remedy</span> "
-                      + _depth_select(rid_raw, "remedy", l.get("remedy_depth"), depth_values) + "</td>")
-        rows += (f"<tr{cls}>" + _row_inputs(p, l) + depth_cell +
-                 f"<td><button class=chip onclick=\"fillDose('{p}')\">dose</button> "
-                 f"<button class=chip onclick=\"suggest('{p}')\">uses</button></td>"
-                 f"<td>{confirm_btn}<button class=btn onclick=\"saveRow('{rid}')\">Save</button> "
-                 f"<button class='btn ghost' onclick=\"delRow('{rid}')\">Del</button></td></tr>"
-                 f"<tr><td colspan=10><span id={p}_sug class=food></span></td></tr>")
-    addr = ("<tr>" + _row_inputs("new", {}) +
-            "<td class='dcol food'>set depth after saving</td>"
-            "<td><button class=chip onclick=\"fillDose('new')\">dose</button> "
-            "<button class=chip onclick=\"suggest('new')\">uses</button></td>"
-            "<td><button class=btn onclick=addRow()>Add row</button></td></tr>"
-            "<tr><td colspan=10><span id=new_sug class=food></span></td></tr>")
-    table = ("<h2>Causal chain "
+    chain = ("<h2>Causal chain "
              "<button class='btn ghost' id=depthbtn onclick=toggleDepth() "
              "style='font-size:12px;padding:3px 9px;vertical-align:middle'>Show depth</button></h2>"
-             "<p class=sub>Enter rows directly. Layer 1 = most recent/surface, higher = deeper root. "
-             "Dosage / frequency / timing auto-fill from the catalog (minimum dose) the moment you pick a "
-             "remedy, and stay editable; 'uses' shows what you've used for that stress before.</p>"
-             "<table id=chaintbl>"
-             "<colgroup><col style='width:44px'><col style='width:22%'><col style='width:22%'>"
-             "<col style='width:23%'><col style='width:9%'><col style='width:9%'><col style='width:9%'>"
-             "<col class=dcol><col><col></colgroup>"
-             "<tr><th>Layer</th><th>Head</th><th>Tail</th>"
-             "<th>Remedy</th><th>Dosage</th><th>Frequency</th><th>Timing</th>"
-             "<th class=dcol>Depth of penetration</th><th></th><th></th></tr>"
-             + rows + addr + "</table>"
+             "<p class=sub>Each layer is a card &mdash; the layer number with its Head and Tail on top, "
+             "then one line per remedy (dose / frequency / timing auto-fill from the catalog). "
+             "Drag a card by its &#10303; handle to reorder layers; &lsquo;add a remedy&rsquo; adds "
+             "another remedy to a layer, and the last card starts a new layer.</p>"
+             "<div id=chaintbl class=chain>" + _render_chain_cards(report, depth_values) + "</div>"
              "<datalist id=vocab></datalist><datalist id=catalog></datalist>")
     session = (
         "<h2>Live session (voice)</h2>"
@@ -603,7 +726,7 @@ def render_author_html(report, depth_values=None, transcript=""):
                  "<div class=btnrow style='margin:6px 0'>"
                  "<button class='btn ghost' onclick=suggestRemedies()>Suggest minimal remedies</button>"
                  "</div>"
-                 "<div id=suggestpanel></div>" + table + session
+                 "<div id=suggestpanel></div>" + chain + session
                  + _AUTHOR_JS.replace("__TID__", tid))
 
 

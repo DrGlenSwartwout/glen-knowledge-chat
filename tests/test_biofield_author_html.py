@@ -20,24 +20,23 @@ def test_author_page_has_header_rows_and_endpoints():
     assert "TMG" in html and "Night" in html                 # existing row prefilled
     assert "/author/a1/header" in html                       # save header
     assert "/author/a1/row" in html                          # add/save rows
-    assert "Add row" in html
+    assert "Add remedy" in html and "Add layer" in html      # per-layer + new-layer add
     assert "/test/a1" in html                                # link to the read-only report
     assert "fillDose" in html                                # remedy auto-fills dosing on change
 
 
-def test_author_table_columns_readable_and_expandable():
+def test_author_chain_is_cards_readable_and_reorderable():
     html = render_author_html(_report(), [], "")
-    assert "<colgroup" in html                 # explicit column widths (wide head/most/remedy)
-    assert "class=wrapcell" in html            # head/most/remedy cells wrap
-    assert "onclick=\"xpand(this)\"" in html   # per-field expand button
-    assert "function xpand" in html            # handler present
-    assert "list=\"catalog\"" in html          # remedy keeps its catalog autocomplete
-    assert 'title="TMG"' in html               # full value available on hover
-    assert "<th>Head</th>" in html and "<th>Tail</th>" in html   # renamed columns
-    # Depth column is present but hidden by default, revealed via the Show/Hide toggle
-    assert "<th class=dcol>Depth of penetration</th>" in html
-    assert "id=depthbtn" in html and "toggleDepth()" in html
-    assert "function toggleDepth" in html and "function restoreDepth" in html
+    assert "class=lcard" in html and "data-gid=g0" in html   # a layer card
+    assert ">Head</label>" in html and ">Tail</label>" in html  # head/tail on line 1
+    assert "onclick=\"xpand(this)\"" in html and "function xpand" in html  # expand full head/tail
+    assert "list=catalog" in html                            # remedy keeps its catalog autocomplete
+    assert "draggable=true" in html and "class=grip" in html # drag handle
+    assert "function drop" in html and "reorder-layers" in html  # drag persists new order
+    assert "data-gid=gnew" in html                           # trailing "new layer" card
+    # depth toggle still present, hidden by default (dcol)
+    assert "id=depthbtn" in html and "function toggleDepth" in html
+    assert "class=dcol" in html and "function restoreDepth" in html
 
 
 def test_author_page_escapes_free_text():
@@ -61,7 +60,7 @@ def test_author_page_delete_confirm_and_unconfirmed_highlight():
     rep["layers"][0]["confirmed"] = 0          # a voice-added row
     html = render_author_html(rep)
     assert "delTest()" in html and "confirmAll()" in html
-    assert "class=unconf" in html              # highlighted for Rae
+    assert "rline unconf" in html              # unconfirmed remedy line highlighted for Rae
     assert "confirmRow('5')" in html           # per-row confirm (rid 5)
 
 

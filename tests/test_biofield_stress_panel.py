@@ -32,4 +32,7 @@ def test_author_page_marks_unbalanced_scan_group():
                 "stress_depth": None, "remedy_depth": None, "depth_status": None, "depth_need": None}],
            "schedule": []}
     html = render_author_html(rep, [], "")
-    assert "Unbalanced from scan" in html
+    # Unconfirmed scan rows are flagged by the unconf highlight on their remedy line
+    # (the two-zone divider was replaced by the per-layer card layout).
+    assert "rline unconf" in html
+    assert "confirmRow('2')" in html      # the scan row (rid 2) offers confirm
