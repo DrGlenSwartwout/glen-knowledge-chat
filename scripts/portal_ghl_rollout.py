@@ -40,10 +40,14 @@ def next_wave(rows, sent_emails, wave_size):
 
 
 def _load_sent(path):
+    """Emails that SUCCEEDED (status == ok). Errored rows are intentionally NOT
+    counted as sent, so a transient GHL failure is retried on the next wave."""
     if not path or not os.path.exists(path):
         return set()
     with open(path) as f:
-        return {(row.get("email") or "").strip().lower() for row in csv.DictReader(f)}
+        return {(row.get("email") or "").strip().lower()
+                for row in csv.DictReader(f)
+                if (row.get("status") or "").strip().lower() == "ok"}
 
 
 def _post(base, key, email, name):
