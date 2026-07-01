@@ -402,7 +402,7 @@
   ],
   "ambience": {
     "bed": "/static/fireside/audio/amb-fire.mp3",
-    "bed_volume": 0.18,
+    "bed_volume": 0.09,
     "oneshots": [
       {
         "id": "wind",
@@ -423,7 +423,7 @@
       {
         "id": "embers",
         "file": "/static/fireside/audio/amb-embers.mp3",
-        "volume": 0.16,
+        "volume": 0.08,
         "spark": true,
         "min_gap_s": 50,
         "max_gap_s": 140
@@ -431,7 +431,7 @@
       {
         "id": "logsettle",
         "file": "/static/fireside/audio/amb-logsettle.mp3",
-        "volume": 0.18,
+        "volume": 0.09,
         "spark": true,
         "min_gap_s": 60,
         "max_gap_s": 170
