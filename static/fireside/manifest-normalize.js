@@ -54,6 +54,9 @@ export function normalizeManifest(raw) {
   return {
     intro_video: str(m.intro_video),
     intro_poster: str(m.intro_poster),
+    intro_read: str(m.intro_read),               // looping "reading" state until the visitor engages
+    intro_welcome: str(m.intro_welcome),         // notice -> set book down -> welcome (on first interaction)
+    intro_welcome_audio: str(m.intro_welcome_audio),
     speaking_loop: speaking || (speakingLoops[0] || null),
     speaking_loops: speakingLoops,
     pondering_loops: pondering,

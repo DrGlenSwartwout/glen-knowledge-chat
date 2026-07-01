@@ -73,3 +73,13 @@ test('ambience oneshot: loop flag defaults false, honored when true', () => {
   assert.equal(m.ambience.oneshots[0].loop, true);
   assert.equal(m.ambience.oneshots[1].loop, false);
 });
+
+test('intro book-flow fields: read / welcome / welcome_audio pass through, default null', () => {
+  const a = normalizeManifest({ intro_read: '/r.mp4', intro_welcome: '/w.mp4', intro_welcome_audio: '/w.mp3' });
+  assert.equal(a.intro_read, '/r.mp4');
+  assert.equal(a.intro_welcome, '/w.mp4');
+  assert.equal(a.intro_welcome_audio, '/w.mp3');
+  const b = normalizeManifest({});
+  assert.equal(b.intro_read, null);
+  assert.equal(b.intro_welcome, null);
+});

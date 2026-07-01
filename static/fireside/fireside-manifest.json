@@ -1,6 +1,9 @@
 {
-  "intro_video": "/static/fireside/video/reactions/rest-1.mp4",
+  "intro_video": "/static/fireside/video/intro-read.mp4",
   "intro_poster": "/static/fireside/video/intro-poster.jpg",
+  "intro_read": "/static/fireside/video/intro-read.mp4",
+  "intro_welcome": "/static/fireside/video/intro-welcome.mp4",
+  "intro_welcome_audio": "/static/fireside/audio/intro-welcome.mp3",
   "speaking_loop": "/static/fireside/video/reactions/speak-1.mp4",
   "speaking_loops": [
     "/static/fireside/video/reactions/speak-1.mp4",
