@@ -256,18 +256,45 @@
     if (!manifest) return;
     overlay.remove();
     state = 'intro';
-    setVideo(manifest.intro_video, {loop: false});
-    stage.muted = false;
-    stage.onended = function () { stage.muted = true; listening(); say.focus(); };
-    // safety: if the intro can't play, fall straight to listening
-    stage.play().catch(function () { listening(); say.focus(); });
+    if (manifest.intro_read) {
+      // He's absorbed in his book; the reading LOOPS until the visitor engages.
+      setVideo(manifest.intro_read, {loop: true});
+      stage.muted = true;
+      stage.onended = null;
+      stage.play().catch(function () { toWelcome(); });
+      // first click/type in the chat makes him notice you
+      say.addEventListener('focus', armWelcome, {once: true});
+      say.addEventListener('input', armWelcome, {once: true});
+    } else {
+      // legacy single intro video
+      setVideo(manifest.intro_video, {loop: false});
+      stage.muted = false;
+      stage.onended = function () { stage.muted = true; listening(); say.focus(); };
+      stage.play().catch(function () { listening(); say.focus(); });
+    }
+  }
+
+  function armWelcome() { if (state === 'intro') toWelcome(); }
+
+  function toWelcome() {
+    if (state !== 'intro') return;
+    state = 'intro-welcome';
+    if (manifest.intro_welcome) {
+      setVideo(manifest.intro_welcome, {loop: false});
+      stage.muted = true;
+      if (manifest.intro_welcome_audio) {
+        try { replyAudio.src = manifest.intro_welcome_audio; replyAudio.play().catch(function () {}); } catch (e) {}
+      }
+      stage.onended = function () { listening(); say.focus(); };
+      stage.play().catch(function () { listening(); say.focus(); });
+    } else { listening(); say.focus(); }
   }
 
   // --- wire up ---
   composer.addEventListener('submit', function (e) {
     e.preventDefault();
     var m = say.value.trim();
-    if (!m || state === 'intro' || state === 'pondering' || state === 'speaking' || state === 'ended') return;
+    if (!m || state === 'intro' || state === 'intro-welcome' || state === 'pondering' || state === 'speaking' || state === 'ended') return;
     say.value = '';
     sendTurn(m);
   });
