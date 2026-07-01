@@ -57,6 +57,10 @@ export function normalizeManifest(raw) {
     intro_read: str(m.intro_read),               // looping "reading" state until the visitor engages
     intro_welcome: str(m.intro_welcome),         // notice -> set book down -> welcome (on first interaction)
     intro_welcome_audio: str(m.intro_welcome_audio),
+    // rotated variants (per-browser round-robin for repeat-visit variety); fall back to the singulars
+    intro_reads: arrOfStr(m.intro_reads).length ? arrOfStr(m.intro_reads) : (str(m.intro_read) ? [str(m.intro_read)] : []),
+    intro_welcomes: arrOfStr(m.intro_welcomes).length ? arrOfStr(m.intro_welcomes) : (str(m.intro_welcome) ? [str(m.intro_welcome)] : []),
+    intro_welcome_audios: arrOfStr(m.intro_welcome_audios).length ? arrOfStr(m.intro_welcome_audios) : (str(m.intro_welcome_audio) ? [str(m.intro_welcome_audio)] : []),
     speaking_loop: speaking || (speakingLoops[0] || null),
     speaking_loops: speakingLoops,
     pondering_loops: pondering,
