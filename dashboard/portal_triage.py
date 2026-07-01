@@ -60,6 +60,25 @@ def resolve(cx, item_id):
     cx.commit()
 
 
+def format_digest(items):
+    """Build the daily digest text from open items -> (count, body). Grouped by
+    urgency (high first). Returns (0, "") when there's nothing open."""
+    items = items or []
+    if not items:
+        return (0, "")
+    rank = {"high": 0, "medium": 1, "low": 2}
+    ordered = sorted(items, key=lambda it: (rank.get(it.get("urgency"), 3), it.get("id", 0)))
+    lines = [f"{len(ordered)} open item(s) needing your attention:", ""]
+    for it in ordered:
+        who = it.get("name") or it.get("email") or "(unknown)"
+        lines.append(f"[{(it.get('urgency') or '?').upper()}] {it.get('category', '')} — "
+                     f"{who} <{it.get('email', '')}>")
+        lines.append(f"   {it.get('summary', '')}")
+        lines.append(f"   ↳ {it.get('recommendation', '')}")
+        lines.append("")
+    return (len(ordered), "\n".join(lines))
+
+
 _TRIAGE_SYSTEM = (
     "You triage a client's message to a naturopathic practitioner (Dr. Glen Swartwout). "
     "Decide if it NEEDS DR. GLEN'S PERSONAL ATTENTION: a direct question meant for him, a "

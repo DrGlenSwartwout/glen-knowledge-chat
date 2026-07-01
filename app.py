@@ -12558,6 +12558,10 @@ def _triage_portal_message(email, name, query, answer):
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             _pt.add_item(cx, email, name, res["category"], res["urgency"],
                          res["summary"], res["recommendation"], query, answer)
+        # All flagged items show in the console queue + roll into the daily digest;
+        # only HIGH urgency emails Dr. Glen immediately.
+        if res["urgency"] != "high":
+            return
         subject = f"[Portal triage · {res['urgency']}] {res['category']} — {name or email}"
         try:
             token = None
@@ -12602,6 +12606,38 @@ def api_console_triage_resolve(item_id):
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _pt.resolve(cx, item_id)
     return jsonify({"ok": True})
+
+
+def _send_triage_digest():
+    """Email Dr. Glen a digest of all OPEN triage items. Returns the item count
+    (0 -> nothing open, no email sent)."""
+    from dashboard import portal_triage as _pt
+    with sqlite3.connect(LOG_DB) as cx:
+        items = _pt.list_open(cx, limit=200)
+    count, body = _pt.format_digest(items)
+    if not count:
+        return 0
+    body = ("Your daily portal-chat triage digest — open items needing attention.\n"
+            "(High-urgency items were emailed to you as they arrived.)\n\n" + body +
+            "\nHandle these in console → Biofield Portal Editor → “Needs your attention”.")
+    _send_full_report_email("drglenswartwout@gmail.com", "Dr. Glen",
+                            f"[Triage digest] {count} open item(s)", body)
+    return count
+
+
+@app.route("/api/cron/triage-digest", methods=["POST"])
+def api_cron_triage_digest():
+    """Daily digest of open triage items -> emailed to Dr. Glen. Cron-gated
+    (X-Cron-Secret == CRON_SECRET, falls back to CONSOLE_SECRET)."""
+    key = (request.headers.get("X-Cron-Secret", "") or request.args.get("key", "")).strip()
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        n = _send_triage_digest()
+        return jsonify({"ok": True, "open_items": n, "emailed": n > 0})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:200]}), 500
 
 
 @app.route("/sms/inbound", methods=["POST"])
