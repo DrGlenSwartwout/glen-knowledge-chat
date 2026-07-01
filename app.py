@@ -2000,6 +2000,35 @@ def begin_fireside():
     return resp
 
 
+_FIRESIDE_NAME_STOP = {
+    "tired", "lost", "sad", "here", "sorry", "feeling", "not", "just", "okay", "fine",
+    "so", "really", "very", "struggling", "scared", "afraid", "anxious", "depressed",
+    "exhausted", "confused", "done", "ready", "trying", "hoping", "looking", "good",
+    "bad", "new", "back", "still", "always", "never", "worried", "stressed", "overwhelmed",
+    "hurting", "broken", "stuck", "angry", "unsure", "curious", "grateful", "glad", "happy",
+    "a", "an", "the", "in", "at", "on", "sure", "kind", "type", "bit", "little", "trying",
+}
+
+def _fireside_extract_name(text: str):
+    """Best-effort first-name capture from the traveler's message. Conservative:
+    strong intro patterns, or 'I'm X' only when X is a plausible name (not a feeling)."""
+    import re
+    t = (text or "").strip()
+    m = re.search(r"\b(?:my name is|my name's|name's|call me|i am called|they call me)\s+([A-Za-z][A-Za-z'\-]{1,19})", t, re.I)
+    if not m:
+        m2 = re.search(r"(?:(?i:i'?m|i am|this is))\s+([A-Z][a-zA-Z'\-]{1,19})\b", t)
+        if m2 and m2.group(1).lower() not in _FIRESIDE_NAME_STOP:
+            m = m2
+    if m:
+        name = m.group(1).strip()
+        if name.lower() in _FIRESIDE_NAME_STOP:
+            return None
+        name = name[:1].upper() + name[1:]
+        if 2 <= len(name) <= 20 and name.isalpha():
+            return name
+    return None
+
+
 @app.route("/begin/fireside/agent", methods=["POST", "OPTIONS"])
 def begin_fireside_agent():
     if request.method == "OPTIONS":
@@ -2029,6 +2058,13 @@ def begin_fireside_agent():
         transcript = sess.get("transcript") or []
         prior_turns = int(sess.get("turn_count") or 0)
         fireside_store.append_turn(cx, fireside_id, "traveler", message)
+        # Capture the traveler's name once (for the personalized hobbit-call, etc.)
+        user_name = sess.get("user_name")
+        if not user_name:
+            cand = _fireside_extract_name(message)
+            if cand:
+                fireside_store.set_name(cx, fireside_id, cand)
+                user_name = cand
 
     this_turn = prior_turns + 1
     system = fireside_agent.build_system(coverage, this_turn)
@@ -2062,7 +2098,7 @@ def begin_fireside_agent():
                 fireside_store.mark_ended(cx, fireside_id)
         _fireside_coverage_async(fireside_id, message, clean, coverage)
         yield sse({"done": True, "hook": hooked, "fireside_id": fireside_id,
-                   "turn_count": this_turn})
+                   "turn_count": this_turn, "user_name": user_name})
 
     resp = Response(stream_with_context(generate()), content_type="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
