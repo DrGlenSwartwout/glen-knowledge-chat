@@ -390,8 +390,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                           for g in groups for r in g["rows"]]
             sdata = list_stresses(cx, test_id, chain_rows)
             covered = {L["layer"]: L["stresses"] for L in sdata.get("by_layer") or []}
-        return Response(render_author_html(rep, dv, transcript, covered_by_layer=covered),
-                        mimetype="text/html")
+            narrative = get_narrative(cx, test_id)
+        return Response(render_author_html(rep, dv, transcript, covered_by_layer=covered,
+                                           narrative=narrative), mimetype="text/html")
 
     @app.route("/author/<test_id>/depth", methods=["POST"])
     def author_depth(test_id):

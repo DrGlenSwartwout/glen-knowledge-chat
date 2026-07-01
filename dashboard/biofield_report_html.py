@@ -358,6 +358,15 @@ function suggestFor(btn,rp){var card=btn.closest('.lcard');var s=card?val(card.d
    box.appendChild(b);box.appendChild(document.createTextNode(' '))})})}
 // Save buttons stay GREEN 'Saved ✓' after a save and flip to gold 'Update' the
 // moment their line/layer is edited again.
+async function genNarr(){var s=document.getElementById('narrStat');s.textContent='Generating… (~10-20s)';
+ try{var j=await post('/test/__TID__/generate',{notes:val('sessText')});
+  if(j.error){s.textContent='Error: '+j.error;return}
+  document.getElementById('narrEd').value=j.narrative||'';setSaved(document.getElementById('narrSaveBtn'));
+  s.textContent='Generated & saved — review and edit if needed.'}
+ catch(e){s.textContent='Error: '+e}}
+async function saveNarrEd(btn){await post('/test/__TID__/narrative',{narrative:val('narrEd')});
+ setSaved(btn||document.getElementById('narrSaveBtn'));
+ document.getElementById('narrStat').textContent='Narrative saved.'}
 function setSaved(btn){if(!btn)return;btn.classList.add('saved');btn.textContent='Saved ✓'}
 function markDirty(btn){if(btn&&btn.classList.contains('saved')){
  btn.classList.remove('saved');btn.textContent=btn.dataset.dirty||'Update'}}
@@ -753,7 +762,7 @@ def _render_chain_cards(report, depth_values, covered_by_layer=None):
     return cards
 
 
-def render_author_html(report, depth_values=None, transcript="", covered_by_layer=None):
+def render_author_html(report, depth_values=None, transcript="", covered_by_layer=None, narrative=""):
     tid = _e(report.get("test_id") or "")
     c = report.get("client") or {}
     head = (f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
@@ -807,6 +816,18 @@ def render_author_html(report, depth_values=None, transcript="", covered_by_laye
         "<div class=food><em id=interim></em></div>"
         f"<textarea id=sessText rows=6 placeholder='Live transcript appears here as you speak..."
         f"'>{_e(transcript)}</textarea>")
+    narrative_section = (
+        "<h2>Narrative</h2>"
+        "<p class=sub>Generate a plain-language narrative from the transcript above and the "
+        "causal chain &mdash; then review, edit, and Save. It appears on the client report and PDF.</p>"
+        "<div class=btnrow>"
+        "<button class=btn onclick=genNarr()>Generate narrative</button>"
+        "<button id=narrSaveBtn class='btn ghost savebtn' data-dirty=Update "
+        "onclick=saveNarrEd(this)>Save narrative</button>"
+        "<span id=narrStat class=food></span></div>"
+        f"<textarea id=narrEd rows=14 oninput=\"markDirty(document.getElementById('narrSaveBtn'))\" "
+        f"placeholder='Click Generate narrative to draft one from the transcript + chain…'>"
+        f"{_e(narrative)}</textarea>")
     return _page("Edit Biofield Test",
                  head + hdr + "<div id=e4lpanel></div>"
                  "<div class=btnrow style='margin:6px 0'>"
@@ -817,7 +838,7 @@ def render_author_html(report, depth_values=None, transcript="", covered_by_laye
                  "<div class=btnrow style='margin:6px 0'>"
                  "<button class='btn ghost' onclick=suggestRemedies()>Suggest minimal remedies</button>"
                  "</div>"
-                 "<div id=suggestpanel></div>" + chain + session
+                 "<div id=suggestpanel></div>" + chain + session + narrative_section
                  + _AUTHOR_JS.replace("__TID__", tid))
 
 
