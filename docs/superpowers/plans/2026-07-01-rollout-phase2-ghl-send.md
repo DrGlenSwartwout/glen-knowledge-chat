@@ -12,11 +12,37 @@
 - Throttle: small daily waves to protect sender reputation (recommend 150/day; tunable).
 - Link retrieval must be idempotent: do NOT rotate an existing client's token on every run.
 
-## The recipient roster (SP0 recipient-list)
-Assembled locally from FileMaker CSV ∪ e4l.db (deduped by lowercased email) →
-`scratchpad/rollout-roster.csv` (`name,email,source,confidence`). This is the
-send list. (Populating the prod `people` hub is a SEPARATE concern — NOT required
-to send — and is deferred.)
+## The recipient roster (SP0 recipient-list) — FINAL, tiered
+Assembled locally from the real **Practice Better export** (174 active clients) ∪
+FileMaker CSV ∪ e4l.db, deduped by lowercased email →
+`scratchpad/rollout-roster-tiered-v2.csv` (`tier,tier_label,name,email,source,confidence`,
+tier-sorted). This is the send list. (Populating the prod `people` hub is a SEPARATE
+concern — NOT required to send — and is deferred.)
+
+**Send tiers (final), total 2,986:**
+
+| Order | Tier | Label | Count | Cumulative |
+|---|---|---|---|---|
+| 1 | 1 | pb_member (real PB accounts, all active; +41 PB-only added) | 174 | 174 |
+| 2 | 2 | e4l_no_scan | 125 | 299 |
+| 3 | 3 | e4l_with_scan | 238 | 537 |
+| 4 | 4 | other (FileMaker historical, not PB/E4L) | 2,449 | 2,986 |
+
+At 150/day: Tier 1 in ~1–2 days, E4L by ~day 4, then the long Tier-4 tail (~16 days).
+Tier 4 is the oldest/coldest — highest bounce/spam risk; sent last, and the wave-by-wave
+sender lets Glen halt before Tier 4 if earlier waves show trouble.
+
+## Design note — push (pre-mint + link) vs pull (request-a-portal button)
+Two delivery models; the right one differs by tier:
+- **Push** (email a working portal link; portal pre-minted): frictionless, highest
+  conversion. Best for **warm** tiers who know Glen — **Tier 1 PB** and **Tiers 2/3 E4L**.
+- **Pull** (email a soft "Request your portal" CTA → mint on click): only mints for the
+  interested (no orphan portals), softer optics, better deliverability, explicit opt-in.
+  Best for the **cold Tier-4** tail (2,449 old FileMaker contacts).
+- **Recommended: hybrid** — push Tiers 1–3 (~537), pull Tier 4 (2,449).
+- Pull needs a small build: a GHL email button → public `/portal/claim?t=<signed-email>`
+  endpoint that verifies the signed token, mints via `ensure_token`, and redirects into
+  `/portal/<token>` (TOS gate). Mints only on click. (Not yet built.)
 
 ## Blocking inputs needed from Glen (the only things stopping the send)
 1. **GHL custom field** for the portal URL — Glen creates a contact custom field
