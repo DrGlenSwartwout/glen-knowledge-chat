@@ -71,6 +71,12 @@
     <h1>Biofield Portal Editor</h1>
     <p class="sub">Compose or edit a client's healing-home portal, then publish. Paste your narrative skill's <code>portal-seed.json</code> to pre-fill.</p>
 
+    <div id="triageCard" class="card" style="display:none;border-color:var(--brand)">
+      <h2>⚠ Needs your attention <span id="triageCount" class="muted small"></span></h2>
+      <p class="muted small">Client portal-chat messages the assistant flagged for you. Click a client to load their thread below.</p>
+      <div id="triageList"></div>
+    </div>
+
     <div class="card">
       <h2>Client</h2>
       <div class="row">
@@ -143,6 +149,7 @@
       <textarea id="pcReply" rows="6" placeholder="Write your reply to the client&hellip;" style="width:100%"></textarea>
       <div style="margin-top:.5rem">
         <button class="btn" onclick="sendReply()">Send as Dr. Glen</button>
+        <label style="font-weight:normal;margin-left:.6rem"><input type="checkbox" id="pcNotify" checked> Email the client that you replied</label>
         <span id="pcStatus" class="muted small"></span>
       </div>
     </div>
@@ -163,6 +170,7 @@ function boot(){
   if(!key()){ $('gate').style.display='flex'; return; }
   $('app').style.display='block';
   loadCatalog();
+  loadTriage();
   var _urlEmail = new URLSearchParams(location.search).get('email');
   if (_urlEmail) { $('email').value = _urlEmail; loadExisting(); }
   if($('#layers') && $('layers').children.length===0) addLayer();
@@ -453,6 +461,31 @@ async function publish(send){
 function setStatus(msg, ok){ const s=$('status'); s.textContent=msg; s.className='status '+(ok?'ok':'bad'); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+// ── Triage: client messages the assistant flagged for Dr. Glen ──
+async function loadTriage(){
+  try{ var r=await api('GET','/api/console/triage'); if(!r.ok) return;
+    var items=(r.json&&r.json.items)||[]; var card=$('triageCard'), list=$('triageList');
+    $('triageCount').textContent = items.length ? '('+items.length+')' : '';
+    if(!items.length){ card.style.display='none'; return; }
+    card.style.display='';
+    list.innerHTML = items.map(function(it){
+      return '<div style="border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin:.5rem 0">'
+        + '<div><b>'+esc(it.name||it.email)+'</b> <span class="muted small">&lt;'+esc(it.email)+'&gt;</span> '
+        + '<span class="muted small">· '+esc(it.category)+' · '+esc(it.urgency)+'</span></div>'
+        + '<div style="margin:.2rem 0"><b>'+esc(it.summary||'')+'</b></div>'
+        + '<div class="muted small" style="margin-bottom:.3rem">↳ '+esc(it.recommendation||'')+'</div>'
+        + '<div class="small" style="white-space:pre-wrap;word-break:break-word;opacity:.85">'+esc((it.message||'').slice(0,600))+'</div>'
+        + '<div style="margin-top:.5rem">'
+        + '<button class="btn ghost sm" onclick="pickTriage(\''+esc(it.email).replace(/\x27/g,"")+'\')">Open this client</button> '
+        + '<button class="btn ghost sm" onclick="resolveTriage('+it.id+')">Mark handled</button>'
+        + '</div></div>';
+    }).join('');
+  }catch(e){}
+}
+function pickTriage(email){ $('email').value=email; loadExisting(); loadThread();
+  window.scrollTo({top:0,behavior:'smooth'}); }
+async function resolveTriage(id){ try{ await api('POST','/api/console/triage/'+id+'/resolve'); loadTriage(); }catch(e){} }
+
 // ── Portal chat: read the client's saved thread + reply as Dr. Glen ──
 function renderThread(msgs){
   var box=$('pcThread'); box.innerHTML='';
@@ -483,8 +516,11 @@ async function sendReply(){
   if(!email){ $('pcStatus').textContent='Enter a client email above.'; return; }
   if(!content){ $('pcStatus').textContent='Write a reply first.'; return; }
   $('pcStatus').textContent='Sending…';
-  try{ var r=await api('POST','/api/console/portal/'+encodeURIComponent(email)+'/message',{content:content});
-    if(r.ok && r.json && r.json.ok){ $('pcReply').value=''; $('pcStatus').textContent='Sent — it’s in the client’s portal chat.'; loadThread(); }
+  var notify = $('pcNotify') ? $('pcNotify').checked : true;
+  try{ var r=await api('POST','/api/console/portal/'+encodeURIComponent(email)+'/message',{content:content, notify:notify});
+    if(r.ok && r.json && r.json.ok){ $('pcReply').value='';
+      $('pcStatus').textContent = r.json.notified ? 'Sent — in the portal chat and the client was emailed.' : 'Sent — it’s in the client’s portal chat.';
+      loadThread(); }
     else { $('pcStatus').textContent='Send failed ('+r.status+').'; } }
   catch(e){ $('pcStatus').textContent='Send failed: '+e; }
 }
