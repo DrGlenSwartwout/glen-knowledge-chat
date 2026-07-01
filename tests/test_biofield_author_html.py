@@ -25,6 +25,16 @@ def test_author_page_has_header_rows_and_endpoints():
     assert "fillDose" in html                                # remedy auto-fills dosing on change
 
 
+def test_author_table_columns_readable_and_expandable():
+    html = render_author_html(_report(), [], "")
+    assert "<colgroup" in html                 # explicit column widths (wide head/most/remedy)
+    assert "class=wrapcell" in html            # head/most/remedy cells wrap
+    assert "onclick=\"xpand(this)\"" in html   # per-field expand button
+    assert "function xpand" in html            # handler present
+    assert "list=\"catalog\"" in html          # remedy keeps its catalog autocomplete
+    assert 'title="TMG"' in html               # full value available on hover
+
+
 def test_author_page_escapes_free_text():
     rep = _report()
     rep["client"]["name"] = "<script>x</script>"

@@ -57,6 +57,13 @@ _STYLE = """
    border-radius:6px;padding:5px;font:inherit;font-size:13px}
  td input.lyr{width:46px;text-align:center}
  td{white-space:nowrap}
+ td.wrapcell{white-space:normal}
+ .cellwrap{position:relative;display:block}
+ .cellwrap input{padding-right:20px}
+ .xpand{position:absolute;right:2px;top:2px;background:#0c0e12;border:1px solid var(--line);
+   color:var(--accent);border-radius:4px;font-size:11px;line-height:1;padding:2px 4px;cursor:pointer}
+ .full{display:none;margin-top:3px;padding:5px 7px;background:#0c0e12;border:1px solid var(--line);
+   border-radius:6px;font-size:13px;white-space:pre-wrap;word-break:break-word;color:var(--fg)}
  tr.unconf td{box-shadow:inset 4px 0 0 var(--accent);background:#1a160d}
 </style>
 """
@@ -307,6 +314,8 @@ async function suggest(p){var s=val(p+'_head');var box=document.getElementById(p
   box.appendChild(b);box.appendChild(document.createTextNode(' '))})}
 async function saveDepth(el){await post('/author/__TID__/depth',
  {rid:el.dataset.rid,side:el.dataset.side,rank:el.value});astat('Depth saved.')}
+function xpand(btn){var w=btn.parentNode,i=w.querySelector('input,textarea'),f=w.querySelector('.full');
+ if(f.style.display==='block'){f.style.display='none'}else{f.textContent=i.value;f.style.display='block'}}
 function rstat(t){document.getElementById('rstat').textContent=t}
 var _mr,_dg,_sess='';
 async function recStart(){
@@ -403,15 +412,22 @@ setPhase(1);
 def _row_inputs(p, l):
     layer = "" if l.get("layer") is None else _e(str(l.get("layer")))
     g = lambda k: _e(l.get(k) or "")
+    def _wrap(inp):
+        # wide, wrapping cell + a ⤢ button that reveals the full value (long stress /
+        # remedy names clip inside the input; hover title + click-to-expand show all).
+        return (f"<td class=wrapcell><span class=cellwrap>{inp}"
+                f"<button type=button class=xpand onclick=\"xpand(this)\" "
+                f"title=\"Show full text\">&#8690;</button><div class=full></div></span></td>")
+    head = f'<input id="{p}_head" list="vocab" value="{g("head")}" title="{g("head")}">'
+    most = f'<input id="{p}_most" value="{g("most_affected")}" title="{g("most_affected")}">'
+    remedy = (f'<input id="{p}_remedy" list="catalog" value="{g("remedy")}" '
+              f'title="{g("remedy")}" onchange="fillDose(\'{p}\')">')
     return (
         f'<td><input id="{p}_layer" class="lyr" value="{layer}"></td>'
-        f'<td><input id="{p}_head" list="vocab" value="{g("head")}"></td>'
-        f'<td><input id="{p}_most" value="{g("most_affected")}"></td>'
-        f"<td><input id=\"{p}_remedy\" list=\"catalog\" value=\"{g('remedy')}\""
-        f" onchange=\"fillDose('{p}')\"></td>"
-        f'<td><input id="{p}_dosage" value="{g("dosage")}"></td>'
-        f'<td><input id="{p}_frequency" value="{g("frequency")}"></td>'
-        f'<td><input id="{p}_timing" value="{g("timing")}"></td>')
+        + _wrap(head) + _wrap(most) + _wrap(remedy)
+        + f'<td><input id="{p}_dosage" value="{g("dosage")}"></td>'
+        + f'<td><input id="{p}_frequency" value="{g("frequency")}"></td>'
+        + f'<td><input id="{p}_timing" value="{g("timing")}"></td>')
 
 
 def render_e4l_panel(ctx):
@@ -540,7 +556,11 @@ def render_author_html(report, depth_values=None, transcript=""):
              "remedy, and stay editable; 'uses' shows what you've used for that stress before. "
              "Set depth-of-penetration on the stress and the remedy &mdash; a remedy shallower than its "
              "stress is flagged on the report.</p>"
-             "<table><tr><th>Layer</th><th>Head / Stress</th><th>Most Affected</th>"
+             "<table>"
+             "<colgroup><col style='width:44px'><col style='width:19%'><col style='width:19%'>"
+             "<col style='width:20%'><col style='width:9%'><col style='width:9%'><col style='width:9%'>"
+             "<col style='width:52px'><col><col></colgroup>"
+             "<tr><th>Layer</th><th>Head / Stress</th><th>Most Affected</th>"
              "<th>Remedy</th><th>Dosage</th><th>Frequency</th><th>Timing</th>"
              "<th>Depth of penetration</th><th></th><th></th></tr>"
              + rows + addr + "</table>"
