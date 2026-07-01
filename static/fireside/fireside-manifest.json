@@ -48,7 +48,21 @@
     {"id": "pondering-2", "family": "pondering",        "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-pondering-2.mp4"},
     {"id": "gentle_gravity-2", "family": "gentle_gravity", "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-gentle-gravity-2.mp4"},
     {"id": "delight-2",   "family": "delight",          "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-delight-2.mp4"},
-    {"id": "surprise-2",  "family": "surprise",         "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.4, "file": "/static/fireside/video/reactions/react-surprise-2.mp4"}
+    {"id": "surprise-2",  "family": "surprise",         "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.4, "file": "/static/fireside/video/reactions/react-surprise-2.mp4"},
+    {"id": "hobbit-boy",     "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 4.6, "file": "/static/fireside/video/reactions/hobbit-2.mp4", "audio": "/static/fireside/audio/hobbit-boy.mp3"},
+    {"id": "hobbit-kettle",  "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 4.2, "file": "/static/fireside/video/reactions/hobbit-3.mp4", "audio": "/static/fireside/audio/hobbit-kettle.mp3"},
+    {"id": "hobbit-door",    "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 5.4, "file": "/static/fireside/video/reactions/hobbit-2.mp4", "audio": "/static/fireside/audio/hobbit-door.mp3"},
+    {"id": "hobbit-gate",    "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 5.2, "file": "/static/fireside/video/reactions/hobbit-3.mp4", "audio": "/static/fireside/audio/hobbit-gate.mp3"},
+    {"id": "hobbit-village", "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 6.1, "file": "/static/fireside/video/reactions/hobbit-2.mp4", "audio": "/static/fireside/audio/hobbit-village.mp3"},
+    {"id": "hobbit-supper",  "family": "invitation", "form": "vocalized", "intensity": "med", "tier": "interruption", "duration_s": 4.0, "file": "/static/fireside/video/reactions/hobbit-3.mp4", "audio": "/static/fireside/audio/hobbit-supper.mp3"}
   ],
-  "ambience": { "bed": null, "bed_volume": 0.18, "oneshots": [] }
+  "ambience": {
+    "bed": "/static/fireside/audio/amb-fire.mp3",
+    "bed_volume": 0.18,
+    "oneshots": [
+      {"id": "wind",   "file": "/static/fireside/audio/amb-wind.mp3",   "volume": 0.14, "spark": false, "min_gap_s": 70, "max_gap_s": 180},
+      {"id": "owl",    "file": "/static/fireside/audio/amb-owl.mp3",    "volume": 0.12, "spark": false, "min_gap_s": 90, "max_gap_s": 220},
+      {"id": "embers", "file": "/static/fireside/audio/amb-embers.mp3", "volume": 0.16, "spark": true,  "min_gap_s": 50, "max_gap_s": 140}
+    ]
+  }
 }
