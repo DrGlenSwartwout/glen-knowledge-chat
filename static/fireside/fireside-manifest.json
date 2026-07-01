@@ -31,7 +31,12 @@
     {"id": "reassurance", "family": "reassurance",      "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-reassurance.mp4"},
     {"id": "curiosity",   "family": "curiosity",        "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-curiosity.mp4"},
     {"id": "affirming",   "family": "affirming",        "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-affirming.mp4"},
-    {"id": "surprise",    "family": "surprise",         "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.4, "file": "/static/fireside/video/reactions/react-surprise.mp4"}
+    {"id": "surprise",    "family": "surprise",         "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.4, "file": "/static/fireside/video/reactions/react-surprise.mp4"},
+    {"id": "attending",   "family": "attending",        "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-attending.mp4"},
+    {"id": "gentle_gravity", "family": "gentle_gravity", "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-gentle-gravity.mp4"},
+    {"id": "awe",         "family": "awe",              "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-awe.mp4"},
+    {"id": "delight",     "family": "delight",          "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-delight.mp4"},
+    {"id": "lightness",   "family": "lightness",        "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-lightness.mp4"}
   ],
   "ambience": { "bed": null, "bed_volume": 0.18, "oneshots": [] }
 }
