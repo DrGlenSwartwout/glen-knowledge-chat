@@ -39,6 +39,21 @@ def test_author_chain_is_cards_readable_and_reorderable():
     assert "class=dcol" in html and "function restoreDepth" in html
 
 
+def test_author_has_left_layer_rail_reorderable():
+    rep = {"test_id": "a1", "client": {"name": "J", "email": "j@x.com"}, "date": "",
+           "layers": [
+               {"layer": 1, "head": "Lymph", "most_affected": "G", "remedy": "R1", "rid": 5, "confirmed": 1},
+               {"layer": 2, "head": "Neural", "most_affected": "C", "remedy": "R2", "rid": 6, "confirmed": 1},
+               {"layer": 3, "head": "Neural", "most_affected": "C", "remedy": "R3", "rid": 7, "confirmed": 1}],
+           "schedule": {"slots": [], "entries": []}}
+    html = render_author_html(rep, [], "")
+    assert "class=chainlayout" in html and "id=layerrail" in html
+    assert html.count("class=railitem") == 2                 # one chip per layer (Neural merged)
+    assert 'data-rids="6,7"' in html                         # merged layer carries both remedies
+    assert "onclick=\"focusCard('g1')\"" in html             # click scrolls to its card
+    assert "draggable=true" in html and "persistOrder(box)" in html  # rail + cards share reorder
+
+
 def test_author_page_escapes_free_text():
     rep = _report()
     rep["client"]["name"] = "<script>x</script>"

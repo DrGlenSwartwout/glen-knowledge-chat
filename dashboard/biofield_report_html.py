@@ -86,6 +86,19 @@ _STYLE = """
  .rline .rem{flex:1;min-width:200px}
  .rline .dz{width:88px}
  .lfoot{display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px;flex-wrap:wrap}
+ .chainlayout{display:flex;gap:12px;align-items:flex-start}
+ .rail{flex:0 0 148px;position:sticky;top:52px;display:flex;flex-direction:column;gap:6px;
+   max-height:82vh;overflow:auto;padding-right:2px}
+ #chaintbl.chain{flex:1;min-width:0}
+ .railitem{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);
+   border-radius:8px;padding:6px 8px;cursor:grab;font-size:12px}
+ .railitem:hover{border-color:var(--accent)}
+ .railitem.drag{opacity:.45}
+ .railitem.over{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+ .rnum{color:var(--accent);font-weight:700;min-width:16px;text-align:center}
+ .rhead{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ @media(max-width:720px){.chainlayout{flex-direction:column}.rail{flex-direction:row;flex-wrap:wrap;
+   position:static;max-height:none;flex-basis:auto}}
 </style>
 """
 
@@ -371,23 +384,29 @@ async function addRemedy(gid){var rem=val(gid+'_nr_remedy');if(!rem){astat('Ente
  await post('/author/__TID__/row',{layer:layer,head:val(gid+'_head'),most_affected:val(gid+'_most'),
   remedy:rem,dosage:val(gid+'_nr_dosage'),frequency:val(gid+'_nr_frequency'),timing:val(gid+'_nr_timing')});
  location.reload()}
+// Generic drag-reorder: works for both the full cards (#chaintbl) and the left
+// layer rail (#layerrail). Only reorders within one container; the trailing
+// "new layer" card and anything marked data-nodrop are inert.
 var _drag=null;
 function dragStart(e){_drag=e.currentTarget;e.currentTarget.classList.add('drag');
  if(e.dataTransfer){e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text','x')}catch(_){}}}
 function dragEnd(e){e.currentTarget.classList.remove('drag');
- document.querySelectorAll('.lcard.over').forEach(function(c){c.classList.remove('over')})}
+ document.querySelectorAll('.over').forEach(function(c){c.classList.remove('over')})}
 function dragOver(e){e.preventDefault();var t=e.currentTarget;
- if(_drag&&t!==_drag&&t.dataset.gid!=='gnew')t.classList.add('over')}
+ if(_drag&&t!==_drag&&!t.dataset.nodrop&&_drag.parentNode===t.parentNode)t.classList.add('over')}
 function dragLeave(e){e.currentTarget.classList.remove('over')}
 function drop(e){e.preventDefault();var t=e.currentTarget;t.classList.remove('over');
- if(!_drag||t===_drag||t.dataset.gid==='gnew'){return}
- var box=t.parentNode,cards=[].slice.call(box.querySelectorAll('.lcard'));
- var di=cards.indexOf(_drag),ti=cards.indexOf(t);
- box.insertBefore(_drag,di<ti?t.nextSibling:t);persistOrder()}
-async function persistOrder(){var box=document.getElementById('chaintbl');
- var order=[].slice.call(box.querySelectorAll('.lcard')).filter(function(c){return c.dataset.gid!=='gnew'})
+ if(!_drag||t===_drag||t.dataset.nodrop||_drag.parentNode!==t.parentNode){return}
+ var box=t.parentNode,items=[].slice.call(box.children);
+ var di=items.indexOf(_drag),ti=items.indexOf(t);
+ box.insertBefore(_drag,di<ti?t.nextSibling:t);persistOrder(box)}
+async function persistOrder(box){
+ var order=[].slice.call(box.children).filter(function(c){return c.dataset.rids!==undefined&&c.dataset.gid!=='gnew'})
   .map(function(c){return (c.dataset.rids||'').split(',').filter(Boolean)});
  await post('/author/__TID__/reorder-layers',{order:order});location.reload()}
+function focusCard(gid){var c=document.querySelector('.lcard[data-gid="'+gid+'"]');if(!c)return;
+ c.scrollIntoView({behavior:'smooth',block:'center'});c.classList.add('over');
+ setTimeout(function(){c.classList.remove('over')},900)}
 function rstat(t){document.getElementById('rstat').textContent=t}
 var _mr,_dg,_sess='';
 async function recStart(){
@@ -635,6 +654,22 @@ def _new_remedy_line(gid, add_label):
             f"<button class=btn onclick=\"addRemedy('{gid}')\">{add_label}</button></div>")
 
 
+def _render_layer_rail(groups):
+    """Compact left-hand column of numbered layer chips, drag-reorderable, that
+    mirrors the cards. Clicking a chip scrolls its card into view."""
+    items = ""
+    for gi, g in enumerate(groups):
+        gid = "g" + str(gi)
+        rids = ",".join(str(r.get("rid")) for r in g["rows"] if r.get("rid") is not None)
+        head = _e((g["head"] or "").strip() or "(no head)")
+        items += (f"<div class=railitem draggable=true data-gid={gid} data-rids=\"{rids}\" "
+                  "ondragstart=dragStart(event) ondragend=dragEnd(event) ondragover=dragOver(event) "
+                  "ondragleave=dragLeave(event) ondrop=drop(event) "
+                  f"onclick=\"focusCard('{gid}')\" title=\"{head}\">"
+                  f"<span class=rnum>{g['layer']}</span><span class=rhead>{head}</span></div>")
+    return f"<div id=layerrail class=rail>{items}</div>"
+
+
 def _render_chain_cards(report, depth_values):
     cards = ""
     for gi, g in enumerate(group_layers(report.get("layers") or [])):
@@ -658,7 +693,7 @@ def _render_chain_cards(report, depth_values):
             f"<button class='btn ghost' onclick=\"saveLayer('{gid}')\">Save layer</button></div></div>")
     # trailing card to start a brand-new layer
     cards += (
-        "<div class=lcard data-gid=gnew><div class=lhdr><span class=lnum>+</span>"
+        "<div class=lcard data-gid=gnew data-nodrop=1><div class=lhdr><span class=lnum>+</span>"
         "<div class=htfields>"
         "<label>Head</label><input id=gnew_head list=vocab placeholder='new layer stress (head)'>"
         "<label>Tail</label><input id=gnew_most placeholder='most affected (tail)'>"
@@ -690,14 +725,18 @@ def render_author_html(report, depth_values=None, transcript=""):
         f"<label>Date</label><input id=h_date value=\"{_e(report.get('date') or '')}\" style='width:160px'>"
         "<div class=btnrow><button class=btn onclick=saveHeader()>Save header</button>"
         "<span id=astat class=food></span></div></div>")
+    groups = group_layers(report.get("layers") or [])
     chain = ("<h2>Causal chain "
              "<button class='btn ghost' id=depthbtn onclick=toggleDepth() "
              "style='font-size:12px;padding:3px 9px;vertical-align:middle'>Show depth</button></h2>"
              "<p class=sub>Each layer is a card &mdash; the layer number with its Head and Tail on top, "
              "then one line per remedy (dose / frequency / timing auto-fill from the catalog). "
-             "Drag a card by its &#10303; handle to reorder layers; &lsquo;add a remedy&rsquo; adds "
-             "another remedy to a layer, and the last card starts a new layer.</p>"
+             "Reorder layers by dragging in the numbered rail on the left (or drag a card by its "
+             "&#10303; handle); &lsquo;add a remedy&rsquo; adds another remedy to a layer, and the "
+             "last card starts a new layer.</p>"
+             "<div class=chainlayout>" + _render_layer_rail(groups) +
              "<div id=chaintbl class=chain>" + _render_chain_cards(report, depth_values) + "</div>"
+             "</div>"
              "<datalist id=vocab></datalist><datalist id=catalog></datalist>")
     session = (
         "<h2>Live session (voice)</h2>"
