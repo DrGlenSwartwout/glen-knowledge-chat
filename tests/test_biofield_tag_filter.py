@@ -34,6 +34,31 @@ def test_mine_drops_operational_tags_keeps_clinical():
     assert set(out) == {"pb:migraine", "Inflammation", "Hashimoto's"}
 
 
+def test_tag_labels_cleaned_for_display():
+    cx = sqlite3.connect(":memory:")
+    st.init_stress_tables(cx)
+    # profile tag-mining stored these with JSON-quote artifacts + pb: namespace
+    for code, label in [("pb:migraine", '"pb:migraine"'),
+                        ("pb:fatty-liver", '"pb:fatty-liver"'),
+                        ("pb:wet-amd", '"pb:wet-amd"')]:
+        cx.execute("INSERT INTO biofield_auth_stress(test_id,code,label,source,balance,"
+                   "manual_balanced,created_at,updated_at) VALUES(9,?,?,'tag','required',0,'','')",
+                   (code, label))
+    cx.commit()
+    labels = {s["label"] for s in st.list_stresses(cx, "9", [])["active"]}
+    assert labels == {"Migraine", "Fatty Liver", "Wet Amd"}
+    assert not any('"' in l or l.lower().startswith("pb:") for l in labels)
+
+
+def test_scan_and_voice_labels_left_untouched():
+    cx = sqlite3.connect(":memory:")
+    st.init_stress_tables(cx)
+    st.add_stress(cx, "9", "Membrane instability", source="scan", balance="required")
+    st.add_stress(cx, "9", "always feels wired at night", source="voice", balance="required")
+    labels = {s["label"] for s in st.list_stresses(cx, "9", [])["active"]}
+    assert labels == {"Membrane instability", "always feels wired at night"}
+
+
 def test_list_stresses_hides_operational_tag_rows():
     cx = sqlite3.connect(":memory:")
     st.init_stress_tables(cx)
@@ -45,6 +70,6 @@ def test_list_stresses_hides_operational_tag_rows():
     data = st.list_stresses(cx, "9", [])
     labels = {s["label"] for s in data["active"] + data["balanced"]}
     assert "Membrane" in labels
-    assert "pb:migraine" in labels               # clinical tag kept
+    assert "Migraine" in labels                  # clinical tag kept (pb: cleaned off)
     assert "type:client" not in labels           # operational tags gone
     assert "consent:opted-in" not in labels

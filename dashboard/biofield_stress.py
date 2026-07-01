@@ -20,6 +20,26 @@ def _is_operational_tag(tag):
     return is_operational_tag(tag)
 
 
+def _clean_label(label, source):
+    """Display cleanup for mined CRM-tag labels only: drop JSON quote/bracket
+    artifacts and the `pb:` namespace, turn a slug into words, and tidy casing.
+    Scan/voice/comm labels are clinical free text and returned unchanged."""
+    if source != "tag":
+        return label
+    s = (label or "").strip()
+    core = s.strip('[]"\' ')               # drop JSON quote/bracket artifacts
+    is_ns = core.lower().startswith("pb:")
+    if is_ns:
+        core = core[3:]
+    # Only reformat coded/quoted/namespaced tags. Clean free text stays as typed.
+    if core == s and not is_ns:
+        return label
+    if " " not in core:                    # a coded slug -> spaced words
+        core = core.replace("-", " ").replace("_", " ")
+    core = " ".join(w[:1].upper() + w[1:] if w else w for w in core.split(" "))
+    return core or label
+
+
 def init_stress_tables(cx):
     cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_stress(
         id INTEGER PRIMARY KEY AUTOINCREMENT, test_id INTEGER, code TEXT, label TEXT,
@@ -163,7 +183,8 @@ def list_stresses(cx, tid, chain_rows):
             by = "manual"
         else:
             by = ""
-        item = {"id": r["id"], "code": r["code"], "label": r["label"],
+        item = {"id": r["id"], "code": r["code"],
+                "label": _clean_label(r["label"], r["source"]),
                 "source": r["source"], "balance": r["balance"],
                 "balanced": is_bal, "balanced_by": by}
         (balanced if is_bal else active).append(item)
