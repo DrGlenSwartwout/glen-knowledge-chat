@@ -75,21 +75,9 @@ def _narrative(narrative):
 
 
 def _chain(report):
-    rows = ""
-    for l in report.get("layers") or []:
-        ln = l.get("layer")
-        rows += ("<tr>"
-                 f"<td>{_e(ln) if ln is not None else '·'}</td>"
-                 f"<td>{_e(l.get('head'))}</td>"
-                 f"<td>{_e(l.get('most_affected'))}</td>"
-                 f"<td>{_e(l.get('remedy'))}</td>"
-                 f"<td>{_e(l.get('dosage'))}</td>"
-                 f"<td>{_e(l.get('frequency'))}</td>"
-                 f"<td>{_e(l.get('timing'))}</td>"
-                 "</tr>")
-    return ("<h2>Causal Chain</h2>"
-            "<table><tr><th>Layer</th><th>Head</th><th>Most Affected</th><th>Remedy</th>"
-            "<th>Dosage</th><th>Frequency</th><th>Timing</th></tr>" + rows + "</table>")
+    from dashboard.biofield_report_html import render_chain_table
+    # Grouped by layer (Head/Tail span their remedies) to match the editor + viewer.
+    return "<h2>Causal Chain</h2>" + render_chain_table(report.get("layers") or [])
 
 
 def render_present(report, narrative=""):
