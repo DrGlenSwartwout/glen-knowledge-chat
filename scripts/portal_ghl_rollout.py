@@ -16,6 +16,7 @@ import csv
 import json
 import os
 import sys
+import time
 import urllib.request
 
 _SKIP_CONFIDENCE = {"unresolved", "low", ""}
@@ -66,6 +67,9 @@ def main(argv=None):
     ap.add_argument("--roster", required=True)
     ap.add_argument("--send-log", default="portal-send-log.csv")
     ap.add_argument("--wave-size", type=int, default=150)
+    ap.add_argument("--delay", type=float, default=2.5,
+                    help="seconds to pause between enrolls (each enroll = ~5 GHL calls; "
+                         "throttle to stay under GHL's rate limit / avoid 502s)")
     ap.add_argument("--mode", choices=["link", "claim"], default="link",
                     help="link = pre-mint (warm tiers); claim = mint-on-click (cold Tier 4)")
     ap.add_argument("--send", action="store_true")
@@ -98,6 +102,7 @@ def main(argv=None):
                 w.writerow([p["email"], tier_of.get(p["email"], ""), False, f"exc:{e}"])
                 lf.flush()
                 print("EXC", p["email"], e)
+            time.sleep(a.delay)  # throttle: each enroll fans out to ~5 GHL calls
     return 0
 
 

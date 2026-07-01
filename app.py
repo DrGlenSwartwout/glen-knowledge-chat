@@ -13300,9 +13300,9 @@ def admin_portal_rollout_enroll():
     # NOT fire from a v1 API tag update (verified live — tagging set the field but
     # never sent), so we start the workflow via the API instead of relying on the tag.
     _, werr = _ghl_post(f"/contacts/{contact_id}/workflow/{_PORTAL_INVITE_WORKFLOW}", {})
-    # Tag only as a record/segmentation marker — it does NOT itself start the workflow,
-    # so this can't double-send alongside the direct enroll above.
-    ghl_update_tags(email, add=["portal-invite"])
+    # (No portal-invite tag: it was record-only and cost 2 extra GHL calls per enroll
+    # — dropping it takes the fan-out from ~5 to ~3 GHL calls, which stops the 502s
+    # seen under wave load. The send-log already records who was invited.)
     return jsonify({"ok": not werr, "url": url, "contact_id": contact_id,
                     "enrolled": not werr, "error": werr})
 
