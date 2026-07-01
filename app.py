@@ -12145,6 +12145,19 @@ def _portal_priced_lines(items, member=False):
     return lines, items_rec, subtotal_cents
 
 
+def _portal_chat_thread(email, limit=100):
+    """The persisted portal chat thread for a client email (empty on any error)."""
+    if not email:
+        return []
+    try:
+        from dashboard import portal_chat as _pchat
+        with sqlite3.connect(LOG_DB) as _cx:
+            return _pchat.list_messages(_cx, email, limit=limit)
+    except Exception as e:
+        print(f"[portal-chat] thread load failed: {e!r}", flush=True)
+        return []
+
+
 def _portal_record_for(cx, token):
     """A portal content record by path token, OR — when client login is live —
     by the rm_portal_session cookie (the tokenless /portal/me logged-in home).
@@ -12262,6 +12275,7 @@ def api_client_portal(token):
         "reorder_items": display,
         "notify_on": notify_on,
         "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
+        "messages": _portal_chat_thread(email_for_reports),
     })
 
 
@@ -12364,6 +12378,15 @@ def api_portal_chat(token):
                       daemon=True).start()
         except Exception:
             pass
+        # Persist the turn to the durable portal chat thread (remembered across
+        # sessions; Dr. Glen can reply into it from the console).
+        try:
+            from dashboard import portal_chat as _pchat
+            with _db_lock, sqlite3.connect(LOG_DB) as _pcx:
+                _pchat.record_exchange(_pcx, email, query, answer,
+                                       client_name=(portal.get("name") or "You"))
+        except Exception as e:
+            print(f"[portal-chat] persist failed: {e!r}", flush=True)
         try:
             convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-2:]) + f"\nassistant: {answer}"
             mx = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=120,
@@ -12384,6 +12407,32 @@ def api_portal_chat(token):
 
     return Response(stream_with_context(generate()), content_type="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/api/console/portal/<path:email>/messages")
+def api_console_portal_messages(email):
+    """Console: read a client's persisted portal chat thread (console-gated)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify({"email": (email or "").strip().lower(),
+                    "messages": _portal_chat_thread(email)})
+
+
+@app.route("/api/console/portal/<path:email>/message", methods=["POST"])
+def api_console_portal_message(email):
+    """Console: Dr. Glen (or Rae) posts a reply into a client's portal chat thread.
+    Appears in the client's chat as a practitioner message and persists."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    content = (data.get("content") or "").strip()
+    author = (data.get("author") or "Dr. Glen").strip() or "Dr. Glen"
+    if not content:
+        return jsonify({"error": "empty message"}), 400
+    from dashboard import portal_chat as _pchat
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        mid = _pchat.add_message(cx, email, _pchat.PRACTITIONER, content, author=author)
+    return jsonify({"ok": mid is not None, "id": mid})
 
 
 @app.route("/sms/inbound", methods=["POST"])

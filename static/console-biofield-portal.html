@@ -134,6 +134,18 @@
       <button class="btn ghost" onclick="publish(true)">Publish &amp; email client</button>
       <a id="previewLink" class="preview" target="_blank" rel="noopener" style="display:none">Preview portal ↗</a>
     </p>
+
+    <div class="card">
+      <h2>Portal chat &mdash; reply as Dr. Glen</h2>
+      <p class="muted small">The client's saved portal conversation. Your reply appears in their portal chat and is remembered.</p>
+      <button class="btn ghost sm" onclick="loadThread()">Load thread for client above</button>
+      <div id="pcThread" style="max-height:320px;overflow:auto;margin:.7rem 0;display:flex;flex-direction:column;gap:8px"></div>
+      <textarea id="pcReply" rows="6" placeholder="Write your reply to the client&hellip;" style="width:100%"></textarea>
+      <div style="margin-top:.5rem">
+        <button class="btn" onclick="sendReply()">Send as Dr. Glen</button>
+        <span id="pcStatus" class="muted small"></span>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -440,6 +452,42 @@ async function publish(send){
 
 function setStatus(msg, ok){ const s=$('status'); s.textContent=msg; s.className='status '+(ok?'ok':'bad'); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ── Portal chat: read the client's saved thread + reply as Dr. Glen ──
+function renderThread(msgs){
+  var box=$('pcThread'); box.innerHTML='';
+  if(!msgs || !msgs.length){ box.innerHTML='<span class="muted small">No conversation yet.</span>'; return; }
+  msgs.forEach(function(m){
+    var mine = (m.role==='practitioner');
+    var who = m.author || (m.role==='client'?'Client':(m.role==='practitioner'?'Dr. Glen':'Ask Dr. Glen'));
+    var d=document.createElement('div');
+    d.style.cssText='border:1px solid var(--line);border-radius:10px;padding:7px 11px;max-width:88%;'
+      +(mine?'align-self:flex-end;border-color:var(--brand)':'align-self:flex-start')
+      +(m.role==='client'?';background:var(--card2)':'');
+    d.innerHTML='<div style="font-size:.72rem;font-weight:700;opacity:.75;margin-bottom:2px">'+esc(who)
+      +'</div><div style="white-space:pre-wrap;word-break:break-word">'+esc(m.content||'')+'</div>';
+    box.appendChild(d);
+  });
+  box.scrollTop=box.scrollHeight;
+}
+async function loadThread(){
+  var email=($('email').value||'').trim(); if(!email){ $('pcStatus').textContent='Enter a client email above.'; return; }
+  $('pcStatus').textContent='Loading…';
+  try{ var r=await api('GET','/api/console/portal/'+encodeURIComponent(email)+'/messages');
+    if(!r.ok){ $('pcStatus').textContent='Load failed ('+r.status+').'; return; }
+    renderThread((r.json&&r.json.messages)||[]); $('pcStatus').textContent=''; }
+  catch(e){ $('pcStatus').textContent='Load failed: '+e; }
+}
+async function sendReply(){
+  var email=($('email').value||'').trim(); var content=($('pcReply').value||'').trim();
+  if(!email){ $('pcStatus').textContent='Enter a client email above.'; return; }
+  if(!content){ $('pcStatus').textContent='Write a reply first.'; return; }
+  $('pcStatus').textContent='Sending…';
+  try{ var r=await api('POST','/api/console/portal/'+encodeURIComponent(email)+'/message',{content:content});
+    if(r.ok && r.json && r.json.ok){ $('pcReply').value=''; $('pcStatus').textContent='Sent — it’s in the client’s portal chat.'; loadThread(); }
+    else { $('pcStatus').textContent='Send failed ('+r.status+').'; } }
+  catch(e){ $('pcStatus').textContent='Send failed: '+e; }
+}
 
 boot();
 </script>
