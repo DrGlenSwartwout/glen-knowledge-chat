@@ -132,7 +132,7 @@ def list_stresses(cx, tid, chain_rows):
         "FROM biofield_auth_stress WHERE test_id=? ORDER BY "
         "CASE balance WHEN 'required' THEN 0 ELSE 1 END, id", (t,)).fetchall()
     chain_rem_lower = {(n or "").strip().lower() for n in remedy_names if (n or "").strip()}
-    active, balanced = [], []
+    active, balanced, items = [], [], []
     for r in rows:
         is_cov = r["code"] in covered
         lbl_rem = head_map.get(_norm(r["label"]))
@@ -157,7 +157,61 @@ def list_stresses(cx, tid, chain_rows):
                 "source": r["source"], "balance": r["balance"],
                 "balanced": is_bal, "balanced_by": by}
         (balanced if is_bal else active).append(item)
-    return {"active": active, "balanced": balanced}
+        items.append(item)
+    by_layer, unassigned = _group_by_layer(cx, tid, chain_rows, items)
+    return {"active": active, "balanced": balanced,
+            "by_layer": by_layer, "unassigned": unassigned}
+
+
+def _group_by_layer(cx, tid, chain_rows, items):
+    """Group stresses under each causal-chain layer. A stress belongs to a layer
+    when the layer's remedy covers the stress's code (biofield_auth_remedy_coverage)
+    OR the stress label matches the layer's head. A stress covered by several
+    layers' remedies is listed under EACH. Stresses on no layer -> `unassigned`.
+    Chain rows sharing a layer number are merged (a layer can need several remedies)."""
+    layers, order = {}, []
+    for r in chain_rows or []:
+        if not isinstance(r, dict):
+            continue
+        try:
+            ln = int(r.get("layer"))
+        except (TypeError, ValueError):
+            continue
+        if ln not in layers:
+            layers[ln] = {"head": "", "remedies": [], "remedies_disp": []}
+            order.append(ln)
+        head = (r.get("head") or "").strip()
+        if head and not layers[ln]["head"]:
+            layers[ln]["head"] = head
+        rem = (r.get("remedy") or "").strip()
+        if rem and rem.lower() not in layers[ln]["remedies"]:
+            layers[ln]["remedies"].append(rem.lower())
+            layers[ln]["remedies_disp"].append(rem)
+    all_rem = [rl for L in layers.values() for rl in L["remedies"]]
+    cov = {}
+    if all_rem:
+        ph = ",".join("?" for _ in all_rem)
+        for rem, code in cx.execute(
+                f"SELECT remedy, code FROM biofield_auth_remedy_coverage "
+                f"WHERE test_id=? AND remedy IN ({ph})", (_num(tid), *all_rem)).fetchall():
+            cov.setdefault(rem, set()).add(code)
+    by_layer, assigned = [], set()
+    for ln in order:
+        L = layers[ln]
+        head_norm = _norm(L["head"])
+        rem_codes = set()
+        for rl in L["remedies"]:
+            rem_codes |= cov.get(rl, set())
+        stresses = []
+        for it in items:
+            if it["code"] in rem_codes or (head_norm and _norm(it["label"]) == head_norm):
+                stresses.append(it)
+                assigned.add(it["id"])
+        by_layer.append({"layer": ln, "head": L["head"],
+                         "remedy": ", ".join(L["remedies_disp"]),
+                         "remedies": L["remedies_disp"], "stresses": stresses})
+    unassigned = [it for it in items if it["id"] not in assigned]
+    return by_layer, unassigned
 
 
 def set_manual_balanced(cx, tid, stress_id, value):

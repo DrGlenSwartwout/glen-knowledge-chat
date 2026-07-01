@@ -473,7 +473,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         from dashboard import biofield_stress as _st
         with sqlite3.connect(db_path) as cx:
             rep = _report_for(cx, test_id)
-            chain_rows = [{"head": l.get("head"), "remedy": l.get("remedy")}
+            chain_rows = [{"layer": l.get("layer"), "head": l.get("head"),
+                           "remedy": l.get("remedy")}
                           for l in (rep.get("layers") or [])]
             data = _st.list_stresses(cx, test_id, chain_rows)
         return {"data": data, "html": render_stress_panel(data)}

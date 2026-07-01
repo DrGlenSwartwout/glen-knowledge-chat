@@ -640,6 +640,30 @@ def render_stress_panel(data):
                f"{'Balance' if active else 'Reactivate'}</button>")
         return (f"<li><b>{_e(s.get('code') or '')}</b> {_e(s.get('label') or '')} "
                 f"<span class=pill>{tag}</span>{bytxt} {btn}</li>")
+    if "by_layer" in data:
+        # Per-layer grouping: every AI-created stress under each causal-chain layer
+        # (covered-by-remedy or head match), a stress may appear under several layers.
+        def _list(stresses):
+            return "".join(_row(s, not s.get("balanced")) for s in stresses or [])
+        parts = []
+        for L in data.get("by_layer") or []:
+            sub = " &middot; ".join(x for x in [_e(L.get("head") or ""),
+                                                _e(L.get("remedy") or "")] if x)
+            items = _list(L.get("stresses"))
+            body = (f"<ul style='margin:4px 0;padding-left:18px'>{items}</ul>" if items
+                    else "<div class=food style='margin:2px 0 6px'>No stresses on this layer.</div>")
+            parts.append(f"<div class=food style='font-weight:600;margin-top:6px'>"
+                         f"Layer {_e(str(L.get('layer')))}"
+                         + (f" <span style='font-weight:400'>&mdash; {sub}</span>" if sub else "")
+                         + "</div>" + body)
+        un = _list(data.get("unassigned"))
+        if un:
+            parts.append("<div class=food style='font-weight:600;margin-top:6px'>"
+                         "Unassigned &mdash; not on any layer</div>"
+                         f"<ul style='margin:4px 0;padding-left:18px'>{un}</ul>")
+        inner = "".join(parts) or "<div class=food style='margin-top:6px'>No stresses yet.</div>"
+        return ("<div class=card><div class=food style='text-transform:uppercase;font-size:11px;"
+                "letter-spacing:.08em'>Stresses by layer</div>" + inner + "</div>")
     act = "".join(_row(s, True) for s in data.get("active") or [])
     bal = "".join(_row(s, False) for s in data.get("balanced") or [])
     act_html = (f"<div class=food style='font-weight:600;margin-top:6px'>Active &mdash; to balance</div>"
