@@ -532,6 +532,14 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             delete_chain_row(cx, rid)
         return {"ok": True}
 
+    @app.route("/author/<test_id>/reorder-layers", methods=["POST"])
+    def author_reorder_layers(test_id):
+        order = (request.get_json(silent=True) or {}).get("order") or []
+        from dashboard.biofield_authoring import set_layer_order
+        with sqlite3.connect(db_path) as cx:
+            set_layer_order(cx, test_id, order)
+        return {"ok": True}
+
     @app.route("/api/catalog")
     def api_catalog():
         with sqlite3.connect(db_path) as cx:

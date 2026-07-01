@@ -180,9 +180,9 @@ def test_delete_confirm_and_unconfirmed_from_interpret(tmp_path):
     tid = client.post("/author/new").headers["Location"].rstrip("/").rsplit("/", 1)[-1]
     client.post(f"/author/{tid}/session", json={"transcript": "acid balanced by sterol max"})
     client.post(f"/author/{tid}/interpret", json={})
-    assert b"class=unconf" in client.get("/author/" + tid).data        # voice rows highlighted
+    assert b"rline unconf" in client.get("/author/" + tid).data        # voice rows highlighted
     assert client.post(f"/author/{tid}/confirm-all", json={}).status_code == 200
-    assert b"class=unconf" not in client.get("/author/" + tid).data    # confirmed -> no highlight
+    assert b"rline unconf" not in client.get("/author/" + tid).data    # confirmed -> no highlight
     assert client.post(f"/author/{tid}/delete", json={}).status_code == 200
     assert ("/author/" + tid).encode() not in client.get("/").data     # gone from the list
 
@@ -199,9 +199,9 @@ def test_depth_match_flagged_in_report(tmp_path):
     client.post(f"/author/{tid}/depth", json={"rid": rid, "side": "stress", "rank": 5})
     client.post(f"/author/{tid}/depth", json={"rid": rid, "side": "remedy", "rank": 1})
     assert b"may not reach" in client.get("/test/" + tid).data
-    # Depth column is present in the editor (hidden by default, shown via toggle).
+    # Depth selects are present per remedy line (hidden by default, shown via toggle).
     ed = client.get("/author/" + tid)
-    assert b"Depth of penetration" in ed.data and b"Nucleoplasm" in ed.data
+    assert b"Nucleoplasm" in ed.data and b"class=dcol" in ed.data and b"depthbtn" in ed.data
 
 
 def test_report_view_shows_voice_stress_balanced_via_head_match(tmp_path):
