@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>By the Fire with Glendalf</title>
 <style>
   :root { --warm:#f3e2c7; --dim:#b89a72; }
   * { box-sizing: border-box; }
   html, body { margin:0; height:100%; background:#0c0703; color:var(--warm);
     font-family: Georgia, 'Times New Roman', serif; overflow:hidden; }
-  #fireside { position:fixed; inset:0; display:flex; flex-direction:column;
+  #fireside { position:fixed; left:0; right:0; top:0; height:100dvh; display:flex; flex-direction:column;
     align-items:center; justify-content:flex-end; }
   #stage-wrap { position:absolute; inset:0; }
   #vignette { position:absolute; inset:0; pointer-events:none;
@@ -80,6 +80,25 @@
 </main>
 
 <script src="/static/tts-output.js"></script>
+<script>
+(function(){
+  // Mobile keyboard fix: pin the fireside to the VISIBLE viewport so the
+  // on-screen keyboard shrinks the scene instead of shoving Glendalf's face
+  // off the top. visualViewport tracks the keyboard on iOS/Android; the
+  // interactive-widget=resizes-content viewport hint covers the rest.
+  var vv = window.visualViewport;
+  function fit(){
+    var el = document.getElementById('fireside');
+    if(!el) return;
+    el.style.height = (vv ? vv.height : window.innerHeight) + 'px';
+  }
+  if(vv){ vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); }
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', fit);
+  document.addEventListener('DOMContentLoaded', fit);
+  fit();
+})();
+</script>
 <script>
 (function () {
   "use strict";
