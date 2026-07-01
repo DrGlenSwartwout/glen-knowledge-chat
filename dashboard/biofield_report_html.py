@@ -525,44 +525,38 @@ def render_author_html(report, depth_values=None, transcript=""):
     shown_divider = False
     for l in report.get("layers") or []:
         if not shown_divider and l.get("zone") == "bottom":
-            rows += ("<tr><td colspan=10 style='text-align:center;color:var(--muted);"
+            rows += ("<tr><td colspan=9 style='text-align:center;color:var(--muted);"
                      "font-size:12px;padding:4px 0'><b>Unbalanced from scan</b></td></tr>")
             shown_divider = True
         rid_raw = l.get("rid")
         rid = _e(str(rid_raw or ""))
         p = "r" + rid
-        depth_cell = ("<td><span class=food>stress</span> "
-                      + _depth_select(rid_raw, "stress", l.get("stress_depth"), depth_values)
-                      + "<br><span class=food>remedy</span> "
-                      + _depth_select(rid_raw, "remedy", l.get("remedy_depth"), depth_values) + "</td>")
         cls = " class=unconf" if l.get("confirmed") == 0 else ""
         confirm_btn = (f"<button class=chip onclick=\"confirmRow('{rid}')\">&#10003; confirm</button> "
                        if l.get("confirmed") == 0 else "")
-        rows += (f"<tr{cls}>" + _row_inputs(p, l) + depth_cell +
+        # Depth-of-penetration column hidden for now to give Head/Tail/Remedy room.
+        rows += (f"<tr{cls}>" + _row_inputs(p, l) +
                  f"<td><button class=chip onclick=\"fillDose('{p}')\">dose</button> "
                  f"<button class=chip onclick=\"suggest('{p}')\">uses</button></td>"
                  f"<td>{confirm_btn}<button class=btn onclick=\"saveRow('{rid}')\">Save</button> "
                  f"<button class='btn ghost' onclick=\"delRow('{rid}')\">Del</button></td></tr>"
-                 f"<tr><td colspan=10><span id={p}_sug class=food></span></td></tr>")
+                 f"<tr><td colspan=9><span id={p}_sug class=food></span></td></tr>")
     addr = ("<tr>" + _row_inputs("new", {}) +
-            "<td class=food>save row first</td>"
             "<td><button class=chip onclick=\"fillDose('new')\">dose</button> "
             "<button class=chip onclick=\"suggest('new')\">uses</button></td>"
             "<td><button class=btn onclick=addRow()>Add row</button></td></tr>"
-            "<tr><td colspan=10><span id=new_sug class=food></span></td></tr>")
+            "<tr><td colspan=9><span id=new_sug class=food></span></td></tr>")
     table = ("<h2>Causal chain</h2>"
              "<p class=sub>Enter rows directly. Layer 1 = most recent/surface, higher = deeper root. "
              "Dosage / frequency / timing auto-fill from the catalog (minimum dose) the moment you pick a "
-             "remedy, and stay editable; 'uses' shows what you've used for that stress before. "
-             "Set depth-of-penetration on the stress and the remedy &mdash; a remedy shallower than its "
-             "stress is flagged on the report.</p>"
+             "remedy, and stay editable; 'uses' shows what you've used for that stress before.</p>"
              "<table>"
-             "<colgroup><col style='width:44px'><col style='width:19%'><col style='width:19%'>"
-             "<col style='width:20%'><col style='width:9%'><col style='width:9%'><col style='width:9%'>"
-             "<col style='width:52px'><col><col></colgroup>"
-             "<tr><th>Layer</th><th>Head / Stress</th><th>Most Affected</th>"
+             "<colgroup><col style='width:44px'><col style='width:23%'><col style='width:23%'>"
+             "<col style='width:24%'><col style='width:9%'><col style='width:9%'><col style='width:9%'>"
+             "<col><col></colgroup>"
+             "<tr><th>Layer</th><th>Head</th><th>Tail</th>"
              "<th>Remedy</th><th>Dosage</th><th>Frequency</th><th>Timing</th>"
-             "<th>Depth of penetration</th><th></th><th></th></tr>"
+             "<th></th><th></th></tr>"
              + rows + addr + "</table>"
              "<datalist id=vocab></datalist><datalist id=catalog></datalist>")
     session = (

@@ -33,6 +33,8 @@ def test_author_table_columns_readable_and_expandable():
     assert "function xpand" in html            # handler present
     assert "list=\"catalog\"" in html          # remedy keeps its catalog autocomplete
     assert 'title="TMG"' in html               # full value available on hover
+    assert "<th>Head</th>" in html and "<th>Tail</th>" in html   # renamed columns
+    assert "Depth of penetration" not in html  # depth column hidden for now
 
 
 def test_author_page_escapes_free_text():
