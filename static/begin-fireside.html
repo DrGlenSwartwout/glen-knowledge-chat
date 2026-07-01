@@ -65,6 +65,17 @@
            aria-label="Speak to Glendalf" />
     <button id="send" type="submit" aria-label="Send">➤</button>
   </form>
+  <form id="optin" class="hidden" autocomplete="on"
+    style="position:relative;z-index:2;width:92%;max-width:520px;display:flex;flex-direction:column;gap:12px;align-items:center;margin-bottom:26px;">
+    <input id="optin-email" name="email" type="email" placeholder="Where shall I send the way?"
+      aria-label="Your email"
+      style="width:100%;background:rgba(20,12,6,.72);border:1px solid #6b5436;color:var(--warm);border-radius:26px;padding:14px 20px;font-size:18px;font-family:inherit;outline:none;text-align:center;" />
+    <label style="font-size:14px;color:var(--dim);display:flex;gap:8px;align-items:center;">
+      <input id="optin-tos" type="checkbox" /> I agree to the <a href="https://remedymatch.com/info/terms-and-conditions" target="_blank" rel="noopener" style="color:var(--dim);">terms</a>
+    </label>
+    <button id="optin-send" type="submit"
+      style="background:linear-gradient(#caa86a,#8a6a38);color:#1a0f06;border:none;border-radius:30px;padding:14px 36px;font-size:20px;font-family:inherit;cursor:pointer;box-shadow:0 0 22px 4px rgba(220,180,90,.55);">Send me the way</button>
+  </form>
   <div id="begin-overlay"><button id="begin-btn" type="button">Sit by the fire</button></div>
 </main>
 
@@ -317,9 +328,37 @@
     if (idleTimer) clearTimeout(idleTimer);
     if (typeDebounceTimer) clearTimeout(typeDebounceTimer);
   });
+  // Hook handoff: "Yes, I'm ready" -> reveal a warm email capture -> onboard -> confirm.
+  var optin = document.getElementById('optin');
+  var optinEmail = document.getElementById('optin-email');
+  var optinTos = document.getElementById('optin-tos');
   yes.addEventListener('click', function () {
-    // End of this slice: the Remedy Match wiring is the next spec.
-    sub.textContent = 'Then let us go and find it.';
+    yes.style.display = 'none';
+    optin.classList.remove('hidden');
+    var who = window.__firesideName ? (', ' + window.__firesideName) : '';
+    sub.textContent = 'Then it is settled' + who + '. Leave word of where to find you, and I will send you the way to your first Remedy Match.';
+    optinEmail.focus();
+  });
+  optin.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var email = (optinEmail.value || '').trim();
+    if (!email || email.indexOf('@') < 0) { optinEmail.focus(); return; }
+    if (!optinTos.checked) { sub.textContent = 'A small matter first — the terms, if you would.'; return; }
+    var btn = document.getElementById('optin-send');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    fetch('/begin/fireside/opt-in', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, tos: true, name: window.__firesideName || '' })
+    }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) {
+        optin.classList.add('hidden');
+        var nm = (res && res.name) ? (', ' + res.name) : (window.__firesideName ? (', ' + window.__firesideName) : '');
+        sub.textContent = 'It is done' + nm + '. Your first Remedy Match is set aside — look for it by fire-mail. Until next we sit.';
+      })
+      .catch(function () {
+        btn.disabled = false; btn.textContent = 'Send me the way';
+        sub.textContent = 'The fire flickered — try once more?';
+      });
   });
   beginBtn.addEventListener('click', function () {
     startIntro();

@@ -2108,6 +2108,71 @@ def begin_fireside_agent():
     return resp
 
 
+@app.route("/begin/fireside/opt-in", methods=["POST", "OPTIONS"])
+def begin_fireside_optin():
+    """Emotional-close handoff: capture email at the fireside hook, onboard the
+    traveler (tagged 'fireside'), carrying the name we captured in the conversation."""
+    if request.method == "OPTIONS":
+        return "", 200
+    if not FIRESIDE_ENABLED:
+        return "", 404
+    from dashboard import fireside_store
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    tos = bool(data.get("tos"))
+    if not email or "@" not in email:
+        return jsonify({"error": "valid email required"}), 400
+    if not tos:
+        return jsonify({"error": "tos required"}), 400
+    session_id = (request.cookies.get("amg_session")
+                  or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
+    ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
+
+    name = ""
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        try:
+            sess = fireside_store.get_or_create(cx, session_id)
+            name = (sess.get("user_name") or "").strip()
+        except Exception:
+            pass
+        if not name:
+            name = (data.get("name") or "").strip()
+        nparts = name.split(None, 1)
+        first_name = nparts[0] if nparts else ""
+        last_name = nparts[1] if len(nparts) > 1 else ""
+        state = begin_funnel.record_unlock(
+            cx, session_id=session_id, trigger="tos", email=email,
+            first_name=first_name, tos=True, ref_slug=ref_slug,
+            tos_version=BEGIN_TOS_VERSION)
+        begin_funnel.record_unlock(
+            cx, session_id=session_id, trigger="quiz", email=email,
+            detail="fireside", ref_slug=ref_slug)
+
+    import threading as _threading
+
+    def _onboard():
+        try:
+            tags = ["begin", "fireside"]
+            if ref_slug:
+                tags.append(f"ref:{ref_slug}")
+                _capture_concierge_referral(email, first_name, last_name, ref_slug)
+            ghl_result = ghl_onboard_contact(
+                email, first_name, last_name,
+                source_tag="source:fireside", extra_tags=tags)
+            _log_inbound_lead("fireside", email, first_name, last_name, "", "{}", ghl_result)
+        except Exception as e:
+            print(f"[fireside-optin] {e!r}", flush=True)
+
+    _threading.Thread(target=_onboard, daemon=True).start()
+
+    guide_token = _mint_lead_magnet_guide_link(email)
+    resp = jsonify({"ok": True, "name": first_name, "guide_token": guide_token})
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", session_id, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 @app.route("/begin/doorway/opt-in", methods=["POST", "OPTIONS"])
 def begin_doorway_optin():
     if request.method == "OPTIONS":
