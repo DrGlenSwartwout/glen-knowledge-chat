@@ -36,7 +36,13 @@
     {"id": "gentle_gravity", "family": "gentle_gravity", "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-gentle-gravity.mp4"},
     {"id": "awe",         "family": "awe",              "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-awe.mp4"},
     {"id": "delight",     "family": "delight",          "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-delight.mp4"},
-    {"id": "lightness",   "family": "lightness",        "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-lightness.mp4"}
+    {"id": "lightness",   "family": "lightness",        "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-lightness.mp4"},
+    {"id": "empathic-2",  "family": "empathic_concern", "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-empathic-2.mp4"},
+    {"id": "awe-2",       "family": "awe",              "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-awe-2.mp4"},
+    {"id": "pondering-2", "family": "pondering",        "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-pondering-2.mp4"},
+    {"id": "gentle_gravity-2", "family": "gentle_gravity", "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-gentle-gravity-2.mp4"},
+    {"id": "delight-2",   "family": "delight",          "form": "silent", "intensity": "low", "tier": "backchannel", "duration_s": 2.6, "file": "/static/fireside/video/reactions/react-delight-2.mp4"},
+    {"id": "surprise-2",  "family": "surprise",         "form": "silent", "intensity": "med", "tier": "backchannel", "duration_s": 2.4, "file": "/static/fireside/video/reactions/react-surprise-2.mp4"}
   ],
   "ambience": { "bed": null, "bed_volume": 0.18, "oneshots": [] }
 }
