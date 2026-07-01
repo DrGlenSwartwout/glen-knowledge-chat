@@ -27,6 +27,33 @@ def test_is_operational_tag_classifies():
         assert not is_operational_tag(t), f"{t!r} should be kept"
 
 
+# The real people.tags CRM vocabulary a bare namespace-check missed.
+_BROAD_CRM = ["aerai", "aweber email list opted in", "beta-personal-email", "budget <$300/mo",
+              "chatbot", "chatbot-lead", "close_leads", "e4l-membership-lapsed-2026-06",
+              "e4l.db import", "email bounced", "email paramedic - email list growth", "fireside",
+              "household:gonsai", "portal-invite", "practitioner-portal",
+              "topic-32-my-health-focus", "pb:od", "pb:rn", "pb:zyto", "pb:cert"]
+# free-text health terms that must NOT be dropped (no collision with CRM keywords/prefixes)
+_HEALTH_FREETEXT = ["Inflammation", "Heavy metals", "Hashimoto's", "Acidic", "Liver",
+                    "lead toxicity", "mercury toxicity", "beta-carotene", "beta-glucan",
+                    "chronic fatigue", "pb:migraine", "pb:wet-amd", "pb:fatty-liver"]
+
+
+def test_broad_crm_vocabulary_filtered_health_kept():
+    for t in _BROAD_CRM:
+        assert is_operational_tag(t), f"{t!r} (CRM) should be filtered"
+    for t in _HEALTH_FREETEXT:
+        assert not is_operational_tag(t), f"{t!r} (health) must be kept"
+
+
+def test_mine_keeps_freetext_health_drops_broad_crm():
+    profile = {"tags": ["chatbot-lead", "aweber email list opted in", "budget <$300/mo",
+                        "pb:migraine", "Inflammation"],
+               "conditions": "Hashimoto's; Eczema", "body_systems": ["Liver"]}
+    out = mine_profile_stresses(profile, lambda t: [])
+    assert set(out) == {"pb:migraine", "Inflammation", "Hashimoto's", "Eczema", "Liver"}
+
+
 def test_mine_drops_operational_tags_keeps_clinical():
     profile = {"tags": ["type:client", "consent:opted-in", "begin", "pb:migraine", "Inflammation"],
                "conditions": "Hashimoto's"}
