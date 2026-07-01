@@ -65,6 +65,10 @@ _STYLE = """
  .full{display:none;margin-top:3px;padding:5px 7px;background:#0c0e12;border:1px solid var(--line);
    border-radius:6px;font-size:13px;white-space:pre-wrap;word-break:break-word;color:var(--fg)}
  tr.unconf td{box-shadow:inset 4px 0 0 var(--accent);background:#1a160d}
+ th.dcol,td.dcol{display:none}
+ col.dcol{width:0}
+ table.showdepth th.dcol,table.showdepth td.dcol{display:table-cell}
+ table.showdepth col.dcol{width:120px}
 </style>
 """
 
@@ -316,6 +320,11 @@ async function saveDepth(el){await post('/author/__TID__/depth',
  {rid:el.dataset.rid,side:el.dataset.side,rank:el.value});astat('Depth saved.')}
 function xpand(btn){var w=btn.parentNode,i=w.querySelector('input,textarea'),f=w.querySelector('.full');
  if(f.style.display==='block'){f.style.display='none'}else{f.textContent=i.value;f.style.display='block'}}
+function _setDepth(on){var t=document.getElementById('chaintbl'),b=document.getElementById('depthbtn');
+ if(!t)return;t.classList.toggle('showdepth',on);if(b)b.textContent=on?'Hide depth':'Show depth'}
+function toggleDepth(){var on=!document.getElementById('chaintbl').classList.contains('showdepth');
+ _setDepth(on);try{localStorage.setItem('bf_depth',on?'1':'0')}catch(e){}}
+function restoreDepth(){var on=false;try{on=localStorage.getItem('bf_depth')==='1'}catch(e){}_setDepth(on)}
 function rstat(t){document.getElementById('rstat').textContent=t}
 var _mr,_dg,_sess='';
 async function recStart(){
@@ -406,6 +415,7 @@ loadLists();
 loadE4L();
 loadStress();
 setPhase(1);
+restoreDepth();
 </script>"""
 
 
@@ -525,7 +535,7 @@ def render_author_html(report, depth_values=None, transcript=""):
     shown_divider = False
     for l in report.get("layers") or []:
         if not shown_divider and l.get("zone") == "bottom":
-            rows += ("<tr><td colspan=9 style='text-align:center;color:var(--muted);"
+            rows += ("<tr><td colspan=10 style='text-align:center;color:var(--muted);"
                      "font-size:12px;padding:4px 0'><b>Unbalanced from scan</b></td></tr>")
             shown_divider = True
         rid_raw = l.get("rid")
@@ -534,29 +544,36 @@ def render_author_html(report, depth_values=None, transcript=""):
         cls = " class=unconf" if l.get("confirmed") == 0 else ""
         confirm_btn = (f"<button class=chip onclick=\"confirmRow('{rid}')\">&#10003; confirm</button> "
                        if l.get("confirmed") == 0 else "")
-        # Depth-of-penetration column hidden for now to give Head/Tail/Remedy room.
-        rows += (f"<tr{cls}>" + _row_inputs(p, l) +
+        # Depth column (dcol) is hidden by default; the Show/Hide depth toggle reveals it.
+        depth_cell = ("<td class=dcol><span class=food>stress</span> "
+                      + _depth_select(rid_raw, "stress", l.get("stress_depth"), depth_values)
+                      + "<br><span class=food>remedy</span> "
+                      + _depth_select(rid_raw, "remedy", l.get("remedy_depth"), depth_values) + "</td>")
+        rows += (f"<tr{cls}>" + _row_inputs(p, l) + depth_cell +
                  f"<td><button class=chip onclick=\"fillDose('{p}')\">dose</button> "
                  f"<button class=chip onclick=\"suggest('{p}')\">uses</button></td>"
                  f"<td>{confirm_btn}<button class=btn onclick=\"saveRow('{rid}')\">Save</button> "
                  f"<button class='btn ghost' onclick=\"delRow('{rid}')\">Del</button></td></tr>"
-                 f"<tr><td colspan=9><span id={p}_sug class=food></span></td></tr>")
+                 f"<tr><td colspan=10><span id={p}_sug class=food></span></td></tr>")
     addr = ("<tr>" + _row_inputs("new", {}) +
+            "<td class='dcol food'>set depth after saving</td>"
             "<td><button class=chip onclick=\"fillDose('new')\">dose</button> "
             "<button class=chip onclick=\"suggest('new')\">uses</button></td>"
             "<td><button class=btn onclick=addRow()>Add row</button></td></tr>"
-            "<tr><td colspan=9><span id=new_sug class=food></span></td></tr>")
-    table = ("<h2>Causal chain</h2>"
+            "<tr><td colspan=10><span id=new_sug class=food></span></td></tr>")
+    table = ("<h2>Causal chain "
+             "<button class='btn ghost' id=depthbtn onclick=toggleDepth() "
+             "style='font-size:12px;padding:3px 9px;vertical-align:middle'>Show depth</button></h2>"
              "<p class=sub>Enter rows directly. Layer 1 = most recent/surface, higher = deeper root. "
              "Dosage / frequency / timing auto-fill from the catalog (minimum dose) the moment you pick a "
              "remedy, and stay editable; 'uses' shows what you've used for that stress before.</p>"
-             "<table>"
-             "<colgroup><col style='width:44px'><col style='width:23%'><col style='width:23%'>"
-             "<col style='width:24%'><col style='width:9%'><col style='width:9%'><col style='width:9%'>"
-             "<col><col></colgroup>"
+             "<table id=chaintbl>"
+             "<colgroup><col style='width:44px'><col style='width:22%'><col style='width:22%'>"
+             "<col style='width:23%'><col style='width:9%'><col style='width:9%'><col style='width:9%'>"
+             "<col class=dcol><col><col></colgroup>"
              "<tr><th>Layer</th><th>Head</th><th>Tail</th>"
              "<th>Remedy</th><th>Dosage</th><th>Frequency</th><th>Timing</th>"
-             "<th></th><th></th></tr>"
+             "<th class=dcol>Depth of penetration</th><th></th><th></th></tr>"
              + rows + addr + "</table>"
              "<datalist id=vocab></datalist><datalist id=catalog></datalist>")
     session = (
