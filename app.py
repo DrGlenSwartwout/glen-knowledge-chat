@@ -4593,7 +4593,12 @@ _FORMATS = [
 
 
 def _qty_eligible(p):
-    return bool(p.get("qty_pricing")) and p.get("price_cents") == 6997 and not p.get("info_only")
+    # A Functional Formulation that gets the volume curve. Keyed on the explicit
+    # qty_pricing FF flag (NOT on price == $69.97): flagging by price is fragile —
+    # change FF pricing and volume silently dies, and it left ~55 real FFs (Scar
+    # Solve, Nerve Repair, Neuro Magnesium, Terrain Restore…) without volume because
+    # the flag was never set. info-only stays excluded. Flag the product = it's an FF.
+    return bool(p.get("qty_pricing")) and not p.get("info_only")
 
 
 def _inhouse_ff_unit_cents(p, total_ff_qty, settings):
@@ -4604,9 +4609,12 @@ def _inhouse_ff_unit_cents(p, total_ff_qty, settings):
     if not _qty_eligible(p):
         return int(p.get("price_cents") or 0)
     from dashboard import pricing as _pricing
+    # Base the volume math on the product's OWN price, not a hardcoded $69.97, so
+    # changing FF pricing flows through instead of breaking the discount.
+    base = int(p.get("price_cents") or 0)
     pct = _pricing.volume_pct(int(total_ff_qty or 0), settings)
-    eff = int(round(6997 * (1 - (pct or 0) / 100.0)))
-    floor = int(round(6997 * float(settings.get("discount_floor_pct", 0.57))))
+    eff = int(round(base * (1 - (pct or 0) / 100.0)))
+    floor = int(round(base * float(settings.get("discount_floor_pct", 0.57))))
     return max(eff, floor)
 
 
