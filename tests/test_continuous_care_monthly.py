@@ -136,6 +136,23 @@ def test_fulfill_idempotent(monkeypatch, tmp_path):
     assert len(rows) == 1  # no double sub
 
 
+def test_fulfill_no_second_membership_for_existing_member(monkeypatch, tmp_path):
+    """Two DIFFERENT checkout sessions for the same email (per-session idempotency
+    can't catch this) must NOT create a second active membership — else the charge
+    cron would bill $99/mo twice. Guard mirrors the sibling minting paths."""
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    _mock_stripe_success(app_module, monkeypatch, "dup@x.com")
+    app_module._fulfill_continuous_care_monthly("sess_dup_A")
+    # A distinct session id for the same email -> claim table doesn't dedup it.
+    res = app_module._fulfill_continuous_care_monthly("sess_dup_B")
+    assert res.get("duplicate_member") is True
+    from dashboard import subscriptions as subs
+    with sqlite3.connect(db) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = subs.active_memberships_by_email(cx, "dup@x.com")
+    assert len(rows) == 1  # still exactly one billing sub
+
+
 def test_fulfill_no_membership_when_pi_not_succeeded(monkeypatch, tmp_path):
     app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
     from dashboard import stripe_pay

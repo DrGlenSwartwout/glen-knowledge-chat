@@ -7236,6 +7236,7 @@ def _fulfill_continuous_care_monthly(session_id):
             return {"ok": False, "reason": "no_card"}
         claimed = False
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row  # active_memberships_by_email returns dict-rows
             cx.execute(
                 "CREATE TABLE IF NOT EXISTS continuous_care_grants "
                 "(session_id TEXT PRIMARY KEY, email TEXT, created_at TEXT)")
@@ -7253,6 +7254,21 @@ def _fulfill_continuous_care_monthly(session_id):
                 from datetime import date as _date
                 today = _date.today().isoformat()
                 next_charge = _subs.add_months(today, 1)
+                # Never create a SECOND active membership for an email that already has
+                # one — the charge cron bills every active membership row, so a duplicate
+                # row = double $99/mo. (Idempotency above is per-session, not per-email:
+                # two checkout sessions, or an already-monthly member, would collide.)
+                # Match the sibling minting paths (portal_group_join_return / group-bundle),
+                # which all guard on active_memberships_by_email. Still extend the access
+                # grant for the month just paid, and log for manual reconciliation of the
+                # duplicate month-1 charge.
+                if _subs.active_memberships_by_email(cx, email):
+                    print(f"[continuous-care] {email} already has an active membership; "
+                          f"NOT creating a 2nd sub (session={session_id}) — reconcile the "
+                          f"duplicate month-1 charge manually", flush=True)
+                    _grant_membership(cx, email, _pp.term_days(today, 1) + 4, "continuous_care")
+                    cx.commit()
+                    return {"ok": True, "duplicate_member": True, "email": email}
                 # order_count=1 records the month-1 charge just taken at checkout, so
                 # membership_category reads 'full' (member pricing) immediately —
                 # this is a paid card-on-file membership, not the $1-trial. Capped
@@ -26185,7 +26201,7 @@ def cron_membership_renewals():
             if not PROGRAM_CARE_TASTER_ENABLED:
                 continue
             _base = (PUBLIC_BASE_URL or "").rstrip("/")
-            _renew_url = f"{_base}/prepay?renew=3mo" if _base else "your member portal"
+            _renew_url = f"{_base}/prepay?renew=6mo" if _base else "your member portal"
             subject = f"Your care window ends in {days_left} day{s_days} - keep your Continuous Care going"
             body = (
                 f"Aloha,\n\n"

@@ -811,7 +811,7 @@ def test_renewal_cron_prepay_skipped_when_flag_off(app_client_mem, fake_smtp, mo
 
 def test_renewal_cron_care_taster_sends_continuous_care_invite(app_client_mem, fake_smtp, monkeypatch):
     """A 30-day care_taster window ending in-window gets the Continuous Care invite copy
-    (no auto-charge, /prepay?renew=3mo link) — never the truly.vip video-renewal copy."""
+    (no auto-charge, /prepay?renew=6mo link) — never the truly.vip video-renewal copy."""
     client, app_module, db = app_client_mem
     monkeypatch.setattr(app_module, "PROGRAM_CARE_TASTER_ENABLED", True, raising=False)
     monkeypatch.setattr(app_module, "PUBLIC_BASE_URL", "https://test.local", raising=False)
@@ -833,7 +833,7 @@ def test_renewal_cron_care_taster_sends_continuous_care_invite(app_client_mem, f
     assert msgs, "care_taster member was not reminded"
     blob = " ".join(msgs).lower()
     assert "continuous care" in blob
-    assert "/prepay?renew=3mo" in blob
+    assert "/prepay?renew=6mo" in blob
     assert "truly.vip" not in blob              # must NOT get the video-renewal body
 
 
