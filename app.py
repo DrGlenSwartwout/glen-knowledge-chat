@@ -9213,12 +9213,21 @@ def membership_category(email):
                 # they activate -> classify as 'trial'. Other grant-only members
                 # (founding / studio_credit / coaching) intentionally stay 'none' (paid),
                 # so this keys narrowly on the biofield deposit source.
+                #
+                # BUT only while the deposit is their ONLY active grant. Once they convert
+                # (prepay term / founding / studio grant added), the deposit grant lingers
+                # for the rest of its ~90-day window and must NOT keep withholding the
+                # discount from a now-paying member — so require no OTHER active grant.
                 now_iso = datetime.utcnow().isoformat() + "Z"
-                row = cx.execute(
+                deposit = cx.execute(
                     "SELECT 1 FROM memberships WHERE email=? AND expires_at > ? "
                     "AND source='biofield_trial' LIMIT 1", (email, now_iso)).fetchone()
-                if row:
-                    return "trial"
+                if deposit:
+                    other_paid = cx.execute(
+                        "SELECT 1 FROM memberships WHERE email=? AND expires_at > ? "
+                        "AND source!='biofield_trial' LIMIT 1", (email, now_iso)).fetchone()
+                    if not other_paid:
+                        return "trial"
             return cat
     except Exception:
         return "none"

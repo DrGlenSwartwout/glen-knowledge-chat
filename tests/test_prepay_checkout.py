@@ -171,6 +171,45 @@ def test_prepay_page_scaffold(monkeypatch, tmp_path):
     assert "/api/prepay/tiers" in html
 
 
+def _grant(cx, app_module, email, source, days=90):
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (source, email, now.isoformat() + "Z", (now + timedelta(days=days)).isoformat() + "Z",
+         source, source, "", ""))
+    cx.commit()
+
+
+def test_pure_deposit_buyer_withholds_discount(monkeypatch, tmp_path):
+    """A $1 deposit grant alone => 'trial' => discount withheld (analysis still unlocked)."""
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    with sqlite3.connect(db) as cx:
+        _grant(cx, app_module, "d@x.com", "biofield_trial")
+    assert app_module.membership_category("d@x.com") == "trial"
+    assert app_module._is_paid_member("d@x.com") is False
+
+
+def test_deposit_buyer_who_prepays_gets_member_pricing(monkeypatch, tmp_path):
+    """Regression (sticky-trial): once a deposit buyer converts via a prepay term, the
+    lingering biofield_trial grant must NOT keep withholding the member discount."""
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    with sqlite3.connect(db) as cx:
+        _grant(cx, app_module, "d@x.com", "biofield_trial")
+        _grant(cx, app_module, "d@x.com", "prepay_6mo")
+    assert app_module.membership_category("d@x.com") != "trial"
+    assert app_module._is_paid_member("d@x.com") is True
+
+
+def test_founding_grant_member_stays_paid(monkeypatch, tmp_path):
+    """A pure founding/comp grant (never deposited) is a paid member (discount kept)."""
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    with sqlite3.connect(db) as cx:
+        _grant(cx, app_module, "f@x.com", "founding")
+    assert app_module._is_paid_member("f@x.com") is True
+
+
 def _post_webhook(app_module, monkeypatch, sid="cs_1"):
     monkeypatch.delenv("STRIPE_WEBHOOK_SECRET", raising=False)
     import json as _json
