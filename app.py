@@ -4486,6 +4486,12 @@ PREPAY_LADDER_ENABLED = os.environ.get("PREPAY_LADDER_ENABLED", "").strip().lowe
 # Analysis + portal PREVIEW for a soft window (no hard-revoke pressure, no auto-charge).
 # Paid membership begins only on first order / prepay; the $1 credit persists regardless.
 BIOFIELD_DEPOSIT_PREVIEW_DAYS = int(os.environ.get("BIOFIELD_DEPOSIT_PREVIEW_DAYS", "90") or "90")
+# Program → deposit front door, Task 2: a paid program (biofield) purchase grants a
+# 30-day Continuous Care taster window. Source "care_taster" (NOT "biofield_trial") so
+# it reads as a paid grant (member pricing kept), not the discount-withheld trial state.
+PROGRAM_CARE_TASTER_ENABLED = os.environ.get("PROGRAM_CARE_TASTER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+PROGRAM_CARE_TASTER_DAYS = 30
+CARE_TASTER_SOURCE = "care_taster"
 FIRESIDE_ENABLED = os.environ.get("FIRESIDE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 FIRESIDE_MAX_CHARS = 4000  # cap a single fireside message (cost + row growth)
 PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
@@ -7258,6 +7264,27 @@ def begin_checkout_return():
                             except Exception as _bpe:
                                 print(f"[biofield] points settle failed inv={bf_inv}: {_bpe!r}",
                                       flush=True)
+                            # ── Continuous Care taster: 30-day paid grant (flag-gated) ──
+                            if PROGRAM_CARE_TASTER_ENABLED:
+                                try:
+                                    with _db_lock, sqlite3.connect(LOG_DB) as _ctc:
+                                        _ctc.execute(
+                                            "CREATE TABLE IF NOT EXISTS care_taster_grants "
+                                            "(order_ref TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
+                                        claimed = _ctc.execute(
+                                            "INSERT OR IGNORE INTO care_taster_grants "
+                                            "(order_ref, email, granted_at) VALUES (?,?,?)",
+                                            (bf_inv or bf_email, bf_email,
+                                             datetime.utcnow().isoformat() + "Z")).rowcount == 1
+                                        _ctc.commit()
+                                        if claimed:
+                                            init_membership_tables(_ctc)
+                                            _grant_membership(_ctc, bf_email,
+                                                               PROGRAM_CARE_TASTER_DAYS,
+                                                               CARE_TASTER_SOURCE)
+                                            _ctc.commit()
+                                except Exception as _cte:
+                                    print(f"[care-taster] grant failed: {_cte!r}", flush=True)
                     except Exception as _be:
                         print(f"[biofield] return seed failed: {_be!r}", flush=True)
 
