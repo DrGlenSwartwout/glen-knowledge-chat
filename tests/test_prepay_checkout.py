@@ -144,13 +144,13 @@ def test_tiers_endpoint_flag_off(monkeypatch, tmp_path):
     assert r.get_json().get("ok") is False
 
 
-def test_tiers_endpoint_returns_four_rungs(monkeypatch, tmp_path):
+def test_tiers_endpoint_returns_public_rungs(monkeypatch, tmp_path):
     app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
     monkeypatch.setattr(app_module, "PREPAY_LADDER_ENABLED", True, raising=False)
     body = app_module.app.test_client().get("/api/prepay/tiers").get_json()
     assert body["ok"] is True
     keys = [t["key"] for t in body["tiers"]]
-    assert keys == ["1mo", "3mo", "6mo", "12mo"]
+    assert keys == ["1mo", "6mo", "12mo"]  # 3mo retired from the public picker
     six = next(t for t in body["tiers"] if t["key"] == "6mo")
     assert six["per_month_cents"] == 9100 and six["savings_pct"] == 8 and six["badge"] == "Most Popular"
 
