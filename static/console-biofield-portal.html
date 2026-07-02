@@ -148,6 +148,7 @@
       <div id="pcThread" style="max-height:320px;overflow:auto;margin:.7rem 0;display:flex;flex-direction:column;gap:8px"></div>
       <textarea id="pcReply" rows="6" placeholder="Write your reply to the client&hellip;" style="width:100%"></textarea>
       <div style="margin-top:.5rem">
+        <button class="btn ghost" onclick="draftReply()">&#10024; Draft reply</button>
         <button class="btn" onclick="sendReply()">Send as Dr. Glen</button>
         <label style="font-weight:normal;margin-left:.6rem"><input type="checkbox" id="pcNotify" checked> Email the client that you replied</label>
         <span id="pcStatus" class="muted small"></span>
@@ -510,6 +511,17 @@ async function loadThread(){
     if(!r.ok){ $('pcStatus').textContent='Load failed ('+r.status+').'; return; }
     renderThread((r.json&&r.json.messages)||[]); $('pcStatus').textContent=''; }
   catch(e){ $('pcStatus').textContent='Load failed: '+e; }
+}
+async function draftReply(){
+  var email=($('email').value||'').trim();
+  if(!email){ $('pcStatus').textContent='Enter a client email above.'; return; }
+  $('pcStatus').textContent='Drafting a reply…';
+  try{ var r=await api('POST','/api/console/portal/'+encodeURIComponent(email)+'/draft-reply',{});
+    if(r.ok && r.json && r.json.ok){
+      if(r.json.draft){ $('pcReply').value=r.json.draft; $('pcStatus').textContent='Draft ready — edit, then Send.'; }
+      else { $('pcStatus').textContent='No client message to reply to yet.'; }
+    } else { $('pcStatus').textContent='Draft failed ('+r.status+').'; } }
+  catch(e){ $('pcStatus').textContent='Draft failed: '+e; }
 }
 async function sendReply(){
   var email=($('email').value||'').trim(); var content=($('pcReply').value||'').trim();
