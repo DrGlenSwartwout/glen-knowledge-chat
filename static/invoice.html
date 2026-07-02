@@ -112,6 +112,8 @@
     </div>
   </div>
 
+  <div id="savings" style="display:none"></div>
+
   <div class="card" id="pay-card">
     <h2>Pay</h2>
     <div id="pay-notice"></div>
@@ -173,7 +175,7 @@ async function load() {
   if (ORDER.pay_status === 'paid' || !ORDER.editable) {
     $('paid-banner').style.display = ORDER.pay_status==='paid' ? 'block' : 'none';
   }
-  renderLines(); renderTotals(); setupPay();
+  renderLines(); renderTotals(); setupPay(); renderSavings();
   if (ORDER.invoice_note){ $('note-text').textContent = ORDER.invoice_note; $('note-card').style.display=''; }
   $('print-btn').style.display = 'inline-block';
   // Console "Print invoice" deep-links here with ?print=1 to auto-open the dialog.
@@ -298,6 +300,32 @@ async function cancelOrder(){
     $('add-row').style.display='none';
     ORDER.editable=false; renderLines();
   }catch(e){ $('cancel-msg').textContent='Network error — please try again.'; btn.disabled=false; }
+}
+function renderSavings(){
+  const s=$('savings'), o=ORDER.savings_offer;
+  if(!o || !ORDER.editable || ORDER.pay_status==='paid'){ s.style.display='none'; return; }
+  s.style.display='block';
+  s.innerHTML='<div class="card" style="border:1px solid #2f7d4f;background:#f4fbf6">'
+    +'<div style="font-weight:600;color:#22623c">\u{1F49A} We found you a better price</div>'
+    +'<div style="margin:6px 0 10px">This order would be <b>'+money(o.savings_cents)+' less</b> on the <b>'
+      +esc(o.cohort_name)+'</b> plan — '+money(o.new_total_cents)+' instead of '+money(o.current_total_cents)+'.</div>'
+    +'<button class="primary" onclick="applyPlan(false,this)">Apply to this order</button> '
+    +'<button class="ghost" onclick="applyPlan(true,this)">Make it my plan going forward</button>'
+    +'<div id="savings-msg" class="muted" style="margin-top:6px"></div></div>';
+}
+async function applyPlan(forever, btn){
+  const o=ORDER.savings_offer; if(!o) return;
+  if(btn) btn.disabled=true;
+  try{
+    const r=await fetch(API+'/apply-plan',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({cohort_key:o.cohort_key, forever:!!forever})});
+    const j=await r.json();
+    if(!j.ok){ $('savings-msg').textContent=j.error||'Could not apply — please reach out.'; if(btn) btn.disabled=false; return; }
+    ORDER=j.order;
+    LINES=ORDER.lines.map(l=>({slug:l.slug,name:l.name,qty:l.qty,unit_cents:l.unit_cents,
+      service:l.service,srp_cents:l.srp_cents,regular_cents:l.regular_cents}));
+    renderLines(); renderTotals(); renderSavings();   // offer now absent -> banner hides
+  }catch(e){ $('savings-msg').textContent='Network error — please try again.'; if(btn) btn.disabled=false; }
 }
 function row(label, v, raw){ return '<div class="row"><span>'+label+'</span><span>'+(raw?v:money(v))+'</span></div>'; }
 function fillAdd(){ $('add-sel').innerHTML = '<option value="">+ add a product…</option>' +

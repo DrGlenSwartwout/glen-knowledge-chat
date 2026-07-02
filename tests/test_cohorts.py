@@ -78,6 +78,33 @@ def test_reorder_loyalty_price_gated_by_earned_and_ff():
         pass
 
 
+def test_candidate_cohorts_excludes_held_and_loyalty():
+    C, cx = _cx()
+    C.upsert_cohort(cx, key="volA", name="Stock up", policy={"type": "percent_off", "pct": 10})
+    C.upsert_cohort(cx, key="flatB", name="Stay course", policy={"type": "flat_ff", "cents": 5000})
+    C.upsert_cohort(cx, key="loy", name="Loyalty", policy={"type": "reorder_loyalty", "ff_cents": 5000})
+    C.add_member(cx, "jc@x.com", "volA")
+    cand = {c["key"] for c in C.candidate_cohorts(cx, "jc@x.com")}
+    assert cand == {"flatB"}   # volA held, loy excluded (automatic)
+
+
+def test_savings_offer_picks_best_cheaper_plan():
+    from dashboard import cohorts as C
+    lines = [{"slug": "nm", "qty": 2, "list_cents": 6997, "is_ff": True}]
+    current = [6997]   # currently paying list
+    cands = [
+        {"key": "flat", "name": "Flat $50", "policy": {"type": "flat_ff", "cents": 5000}},
+        {"key": "half", "name": "Half off FF", "policy": {"type": "percent_off", "pct": 50, "scope": "ff"}},
+    ]
+    off = C.savings_offer(lines, current, cands)
+    assert off["cohort_key"] == "half"                    # 3498 < 5000 -> best
+    assert off["current_total_cents"] == 13994            # 6997*2
+    assert off["new_total_cents"] == 6996                 # 3498*2
+    assert off["savings_cents"] == 13994 - 6996
+    # no candidate beats current -> None
+    assert C.savings_offer(lines, [3000], cands) is None  # already below both plans
+
+
 def test_best_cohort_price_is_lowest_applicable():
     from dashboard import cohorts as C
     cohorts = [

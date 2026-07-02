@@ -191,6 +191,47 @@ def reorder_loyalty_price(cohorts, *, slug, is_ff, earned_slugs):
     return min(prices) if prices else None
 
 
+def candidate_cohorts(cx, email):
+    """Active cohorts the client is NOT already in — the plans switch-to-save can
+    offer them. Excludes reorder_loyalty (automatic for earners, not a 'plan' to
+    switch to)."""
+    have = {c["key"] for c in member_cohorts(cx, email)}
+    return [c for c in list_cohorts(cx)
+            if c.get("active") and c["key"] not in have
+            and (c.get("policy") or {}).get("type") != "reorder_loyalty"]
+
+
+def savings_offer(lines, current_units, candidate_list, *, earned_slugs=None):
+    """Would a plan the client ISN'T on make this cart cheaper? For each candidate
+    cohort, price the cart as lowest-wins vs the current per-line prices; return the
+    single best cheaper plan or None.
+      lines        = [{slug, qty, list_cents, is_ff}]
+      current_units= [cents] current effective UNIT price per line (same order)
+    Returns {cohort_key, cohort_name, current_total_cents, new_total_cents,
+    savings_cents} or None. Pure."""
+    if not lines or not candidate_list:
+        return None
+    current_total = sum(int(u) * int(ln["qty"]) for u, ln in zip(current_units, lines))
+    best = None
+    for c in candidate_list:
+        pol = c.get("policy") or {}
+        new_total = 0
+        for u, ln in zip(current_units, lines):
+            if pol.get("type") == "reorder_loyalty":
+                cand = reorder_loyalty_price([c], slug=ln["slug"], is_ff=ln["is_ff"],
+                                             earned_slugs=earned_slugs)
+            else:
+                cand = policy_unit_cents(pol, slug=ln["slug"],
+                                         list_cents=ln["list_cents"], is_ff=ln["is_ff"])
+            eff = min(int(u), cand) if cand is not None else int(u)
+            new_total += eff * int(ln["qty"])
+        if new_total < current_total and (best is None or new_total < best["new_total_cents"]):
+            best = {"cohort_key": c["key"], "cohort_name": c["name"],
+                    "current_total_cents": current_total, "new_total_cents": new_total,
+                    "savings_cents": current_total - new_total}
+    return best
+
+
 def best_cohort_price(cohorts, *, slug, list_cents, is_ff):
     """Lowest unit price across the client's held cohort policies, or None if none
     applies to this product. `cohorts` = member_cohorts() output."""
