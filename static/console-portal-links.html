@@ -1,0 +1,144 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal Links</title>
+<style>
+  :root{ --bg:#0a150d; --surface:#0f1f14; --border:#21472d; --cream:#eaf3ec;
+         --muted:#8aa594; --gold:#d4a843; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--cream);
+        font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  h1{ margin:18px 24px 2px; font-size:22px; }
+  .sub{ margin:0 24px 16px; color:var(--muted); font-size:13px; }
+  .bar{ display:flex; gap:8px; align-items:center; margin:0 24px 14px; flex-wrap:wrap; }
+  input[type=text]{ padding:9px 12px; border-radius:8px; border:1px solid var(--border);
+        background:var(--surface); color:var(--cream); min-width:260px; }
+  button{ padding:8px 13px; border-radius:8px; border:1px solid var(--border);
+        background:var(--surface); color:var(--cream); cursor:pointer; }
+  button.gold{ background:var(--gold); color:#0a150d; border-color:var(--gold); font-weight:600; }
+  button:hover{ border-color:var(--gold); }
+  .wrap{ margin:0 24px 40px; overflow-x:auto; }
+  table{ border-collapse:collapse; width:100%; min-width:720px; }
+  th,td{ text-align:left; padding:9px 12px; border-bottom:1px solid var(--border); font-size:14px; vertical-align:middle; }
+  th{ color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  tr:hover td{ background:rgba(255,255,255,.02); }
+  .email{ color:#9db4ff; }
+  .pill{ font-size:11px; padding:1px 8px; border-radius:10px; }
+  .pill.has{ background:rgba(102,187,106,.16); color:#8fd39a; }
+  .pill.no{ background:rgba(212,168,67,.16); color:var(--gold); }
+  .linkbox{ display:flex; gap:6px; align-items:center; margin-top:5px; }
+  .linkbox input{ min-width:340px; font-size:12px; }
+  .muted{ color:var(--muted); font-size:12px; }
+  .note{ margin:6px 0 0; font-size:12px; }
+  .ok{ color:#8fd39a; } .warn{ color:var(--gold); } .err{ color:#e88; }
+  #gate{ position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; }
+  #gate input{ padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--cream); }
+</style>
+<div id="gate"><div style="text-align:center">
+  <p style="color:var(--muted);margin-bottom:10px">Enter console key</p>
+  <input id="key-input" type="password" placeholder="console key">
+  <button class="gold" onclick="unlock()" style="margin-left:6px">Unlock</button>
+</div></div>
+
+<h1>Portal Links</h1>
+<div class="sub">Look up or re-send any client's personal <code>/portal/&lt;token&gt;</code> link. Clients who lost theirs can also self-recover at <code>/portal/login</code>.</div>
+
+<div class="bar">
+  <input id="q" type="text" placeholder="Filter by name or email…" oninput="render()">
+  <span class="muted" id="count"></span>
+  <span style="flex:1"></span>
+  <input id="lookup" type="text" placeholder="Exact email → get link">
+  <button class="gold" onclick="lookupExact()">Get link</button>
+</div>
+
+<div class="wrap">
+  <table>
+    <thead><tr><th>Name</th><th>Email</th><th>Updated</th><th>Link</th><th>Actions</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<script>
+  var ALL = [];
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  (function(){ var u = new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':s); return d.innerHTML; }
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key-input').value); boot(); }
+
+  function boot(){
+    if(!key()){ document.getElementById('gate').style.display='flex'; return; }
+    document.getElementById('gate').style.display='none';
+    load();
+  }
+  async function load(){
+    var r = await fetch('/api/console/portal-links', { headers: hdr() });
+    if(r.status===401){ document.getElementById('gate').style.display='flex'; return; }
+    var j = await r.json();
+    ALL = (j.portals || []);
+    render();
+  }
+  function render(){
+    var q = (document.getElementById('q').value || '').trim().toLowerCase();
+    var rows = ALL.filter(function(p){
+      return !q || (p.email||'').toLowerCase().indexOf(q)>=0 || (p.name||'').toLowerCase().indexOf(q)>=0;
+    });
+    document.getElementById('count').textContent = rows.length + ' of ' + ALL.length;
+    document.getElementById('rows').innerHTML = rows.map(rowHtml).join('') ||
+      '<tr><td colspan="5" class="muted">No portals'+(q?' match "'+esc(q)+'"':'')+'.</td></tr>';
+  }
+  function rowHtml(p){
+    var e = esc(p.email);
+    var pill = p.has_token ? '<span class="pill has">on file</span>' : '<span class="pill no">re-issues</span>';
+    return '<tr data-email="'+e+'">'
+      + '<td>'+esc(p.name||'—')+'</td>'
+      + '<td class="email">'+e+'</td>'
+      + '<td class="muted">'+esc((p.updated_at||'').slice(0,10))+'</td>'
+      + '<td>'+pill+'</td>'
+      + '<td><button onclick="getLink(this,\''+e+'\')">Get link</button> '
+      +     '<button onclick="resend(this,\''+e+'\')">Re-send email</button>'
+      +     '<div class="note"></div></td>'
+      + '</tr>';
+  }
+  function noteEl(btn){ return btn.closest('td').querySelector('.note'); }
+  async function getLink(btn, email){
+    var note = noteEl(btn); note.innerHTML = '<span class="muted">…</span>';
+    var r = await fetch('/api/console/portal-link?email='+encodeURIComponent(email), { headers: hdr() });
+    var j = await r.json();
+    if(!j.ok || !j.found){ note.innerHTML = '<span class="err">No portal for that email.</span>'; return; }
+    var warn = j.reissued ? '<div class="note warn">Re-issued a fresh link (the old one, if any, no longer works).</div>' : '';
+    note.innerHTML = '<div class="linkbox"><input type="text" readonly value="'+esc(j.link)+'" onclick="this.select()">'
+      + '<button class="gold" onclick="copyVal(this)">Copy</button></div>' + warn;
+  }
+  function copyVal(btn){
+    var inp = btn.closest('.linkbox').querySelector('input'); inp.select();
+    navigator.clipboard.writeText(inp.value).then(function(){ btn.textContent='Copied'; setTimeout(function(){btn.textContent='Copy';},1200); });
+  }
+  async function resend(btn, email){
+    if(!confirm('Email the portal link to '+email+'?')) return;
+    var note = noteEl(btn); note.innerHTML = '<span class="muted">Sending…</span>';
+    var r = await fetch('/api/console/portal-link/resend', { method:'POST', headers: hdr(), body: JSON.stringify({email:email}) });
+    var j = await r.json();
+    if(j.ok){ note.innerHTML = '<span class="ok">Sent ('+esc(j.sent_via||'email')+').</span>'
+        + (j.reissued ? ' <span class="warn">Fresh link issued.</span>' : ''); }
+    else { note.innerHTML = '<span class="err">Not sent: '+esc((j.error!=null?j.error:'error'))+'</span>'; }
+  }
+  async function lookupExact(){
+    var email = (document.getElementById('lookup').value||'').trim().toLowerCase();
+    if(!email){ return; }
+    document.getElementById('q').value = email; render();
+    // if it's already in the table, surface its Get-link; else query directly
+    var tr = document.querySelector('tr[data-email="'+CSS.escape(email)+'"]');
+    if(tr){ getLink(tr.querySelector('button'), email); return; }
+    // not in list — query anyway (may re-issue / create-none)
+    var r = await fetch('/api/console/portal-link?email='+encodeURIComponent(email), { headers: hdr() });
+    var j = await r.json();
+    document.getElementById('rows').innerHTML = (j.ok && j.found)
+      ? '<tr><td>—</td><td class="email">'+esc(email)+'</td><td></td><td></td>'
+        + '<td><div class="linkbox"><input type="text" readonly value="'+esc(j.link)+'" onclick="this.select()">'
+        + '<button class="gold" onclick="copyVal(this)">Copy</button></div>'
+        + (j.reissued?'<div class="note warn">Re-issued a fresh link.</div>':'')+'</td></tr>'
+      : '<tr><td colspan="5" class="err">No portal exists for '+esc(email)+'. (They need a portal first.)</td></tr>';
+  }
+
+  boot();
+</script>

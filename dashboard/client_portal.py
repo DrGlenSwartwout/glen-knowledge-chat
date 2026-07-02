@@ -124,6 +124,43 @@ def ensure_token(cx, email, name=""):
     return token
 
 
+def list_portals(cx, *, limit=2000):
+    """All client portals, newest first, for the console lookup table:
+    [{email, name, updated_at, has_token}]. has_token = a stable raw token is on
+    file (the exact link they were sent is recoverable without rotating)."""
+    from dashboard import notify_state as _ns
+    rows = cx.execute(
+        "SELECT email, name, updated_at FROM client_portals ORDER BY updated_at DESC LIMIT ?",
+        (int(limit),)).fetchall()
+    out = []
+    for r in rows:
+        email = r[0] or ""
+        try:
+            has_token = bool(_ns.get_state(cx, email).get("portal_token")) if email else False
+        except Exception:
+            has_token = False
+        out.append({"email": email, "name": r[1] or "",
+                    "updated_at": r[2] or "", "has_token": has_token})
+    return out
+
+
+def portal_link_for(cx, email, base_url):
+    """The portal link for an EXISTING client, as (link, reissued). Reuses the
+    stable token when one is on file (same link they were sent); re-mints only when
+    just a hash was stored (reissued=True, any prior link stops working). Returns
+    (None, False) when the client has no portal — this never creates one, so a
+    lookup can't spawn portals for arbitrary emails."""
+    email = (email or "").strip().lower()
+    if not email:
+        return (None, False)
+    if not cx.execute("SELECT 1 FROM client_portals WHERE email=?", (email,)).fetchone():
+        return (None, False)
+    from dashboard import notify_state as _ns
+    had_token = bool(_ns.get_state(cx, email).get("portal_token"))
+    token = ensure_token(cx, email)
+    return (f"{(base_url or '').rstrip('/')}/portal/{token}", not had_token)
+
+
 def get_portal_by_token(cx, token: str):
     th = _hash(token)
     row = cx.execute(
