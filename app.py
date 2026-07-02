@@ -9110,42 +9110,49 @@ def _open_coaching_for_order(cx, email, order_id, source, window_source="self_se
     return {"ok": True, "created": res["created"], "ends_at": res["window"]["ends_at"]}
 
 
-def _resolve_shipment_member(cx, shipment):
-    """(email, order_id, order_source) for a shipment, or (None, None, None).
-    Prefer the explicit orders.shipment_id link, then order_uuid==external_ref."""
-    if shipment is None:
-        return (None, None, None)
-    sid = shipment["id"] if isinstance(shipment, sqlite3.Row) else shipment.get("id")
-    uuid = shipment["order_uuid"] if isinstance(shipment, sqlite3.Row) else shipment.get("order_uuid")
-    order = cx.execute("SELECT id, email, source FROM orders WHERE shipment_id=? ORDER BY id DESC LIMIT 1",
-                       (sid,)).fetchone()
-    if not order and uuid:
-        order = cx.execute("SELECT id, email, source FROM orders WHERE external_ref=? ORDER BY id DESC LIMIT 1",
-                           (uuid,)).fetchone()
-    if not order:
-        return (None, None, None)
-    email = order["email"]
-    if not email:
-        email = shipment["resolved_email"] if isinstance(shipment, sqlite3.Row) else shipment.get("resolved_email")
-    return ((email or "").strip().lower() or None, order["id"], order["source"])
-
-
 def _activate_coaching_for_shipment(cx, shipment, *, delivered_at):
     """Idempotent: on first delivery signal for a shipment, mark delivered_at and
-    (if a qualifying+eligible order resolves) open a coaching window source='delivery'."""
+    open a coaching window (source='delivery') for EVERY qualifying+eligible member
+    order. A combined household shipment shares one tracking number across several
+    member orders, so each client gets their own window (single shipments = 1
+    member = unchanged behavior). open_window is no-stacking/one-per-order, so this
+    never double-opens. Returns {ok, opened, members:[per-order result]}."""
     already = shipment["delivered_at"] if isinstance(shipment, sqlite3.Row) else shipment.get("delivered_at")
     if already:
         return {"skipped": "already_processed"}
     sid = shipment["id"] if isinstance(shipment, sqlite3.Row) else shipment.get("id")
+    uuid = shipment["order_uuid"] if isinstance(shipment, sqlite3.Row) else shipment.get("order_uuid")
     _tracking.mark_shipment_delivered(cx, sid, delivered_at)
-    email, oid, src = _resolve_shipment_member(cx, shipment)
-    if not (email and oid):
+    members = _coaching.shipment_member_orders(cx, sid, uuid)
+    if not members:
         return {"ok": False, "reason": "unresolved"}
-    res = _open_coaching_for_order(cx, email, oid, src, window_source="delivery")
-    if res.get("ok"):
+    # resolved_email is the shipment's single parsed recipient — only a safe
+    # fallback when there's exactly one member (never cross-assign it in a
+    # multi-client household).
+    resolved_email = (shipment["resolved_email"] if isinstance(shipment, sqlite3.Row)
+                      else shipment.get("resolved_email"))
+    single = len(members) == 1
+    opened, results = 0, []
+    for m in members:
+        email = m["email"] or ((resolved_email or "").strip().lower() if single else "") or None
+        if not email:
+            results.append({"order_id": m["id"], "ok": False, "reason": "no_email"})
+            continue
+        res = _open_coaching_for_order(cx, email, m["id"], m["source"], window_source="delivery")
+        results.append({"order_id": m["id"], **res})
+        if res.get("ok"):
+            opened += 1
+    if opened:
         cx.execute("UPDATE shipments SET coaching_opened=1 WHERE id=?", (sid,))
         cx.commit()
-    return res
+    top = {"ok": opened > 0, "opened": opened, "members": results}
+    # Surface a single opened window's ends_at so the per-order "Mark delivered"
+    # message ("coaching month started through …") still renders a date. On a
+    # multi-member household there's no single date to show.
+    succeeded = [r for r in results if r.get("ok") and r.get("ends_at")]
+    if len(succeeded) == 1:
+        top["ends_at"] = succeeded[0]["ends_at"]
+    return top
 
 
 def _activate_coaching_by_order(cx, order_id):
