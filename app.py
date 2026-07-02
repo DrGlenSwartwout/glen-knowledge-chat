@@ -25785,6 +25785,26 @@ def cron_membership_renewals():
                 f"---\n"
                 f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
             )
+        elif _src == CARE_TASTER_SOURCE:
+            # The 30-day Continuous Care taster is ending. NEVER auto-charge — invite the
+            # buyer to continue on Continuous Care. Dark unless enabled.
+            if not PROGRAM_CARE_TASTER_ENABLED:
+                continue
+            _base = (PUBLIC_BASE_URL or "").rstrip("/")
+            _renew_url = f"{_base}/prepay?renew=3mo" if _base else "your member portal"
+            subject = f"Your care window ends in {days_left} day{s_days} - keep your Continuous Care going"
+            body = (
+                f"Aloha,\n\n"
+                f"Your 30-day Continuous Care window ends in {days_left} day{s_days}"
+                f" on {r['expires_at']}. There's nothing to cancel and no automatic charge - "
+                f"your card was never kept on file.\n\n"
+                f"When you're ready to keep your care going, continue on Continuous Care here:\n"
+                f"{_renew_url}\n\n"
+                f"Everything in your portal stays active right up to that date.\n\n"
+                f"In wellness,\nDr. Glen and Rae\n"
+                f"---\n"
+                f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+            )
         else:
             subject = f"Your Remedy Match coaching access ends in {days_left} day{s_days}"
             body = (
