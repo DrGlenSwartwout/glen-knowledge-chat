@@ -2684,6 +2684,9 @@ def begin_biofield_reveal(token):
             "cart_enabled": BIOFIELD_CART_ENABLED,
             "remedies": [_biofield_remedy_payload(r) for r in all_remedies],
             "layers": _layers_payload,
+            "email": email,
+            "program_enabled": PROGRAM_CARE_TASTER_ENABLED,
+            "program_tier": PROGRAM_SCALABLE_TIER,
         }
     else:
         payload = {
@@ -2697,6 +2700,9 @@ def begin_biofield_reveal(token):
             "trial_enabled": BIOFIELD_TRIAL_ENABLED,
             "cart_enabled": BIOFIELD_CART_ENABLED,
             "layers": _layers_payload,
+            "email": email,
+            "program_enabled": PROGRAM_CARE_TASTER_ENABLED,
+            "program_tier": PROGRAM_SCALABLE_TIER,
         }
 
     # Set the biofield gate (idempotent, wrapped) -> Find step 2 fills.

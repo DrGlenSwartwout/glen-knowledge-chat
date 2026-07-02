@@ -823,6 +823,47 @@
         refreshCartBar();
       }
 
+      // -- Program CTA: flag-gated $100 scalable program front-door.
+      //    Hidden by default (dark behind PROGRAM_CARE_TASTER_ENABLED); shown when
+      //    window.__REVEAL__.program_enabled is true. Independent of paid/non-paid state. --
+      if (data.program_enabled) {
+        var programSection = document.createElement("div");
+        programSection.className = "cta-section";
+        programSection.id = "program-cta-section";
+
+        var programBtn = document.createElement("button");
+        programBtn.className = "buy-btn";
+        programBtn.id = "program-checkout";
+        programBtn.textContent = "Continue to your program";
+        programSection.appendChild(programBtn);
+
+        var programMsg = document.createElement("p");
+        programMsg.className = "cta-note";
+        programSection.appendChild(programMsg);
+
+        programBtn.addEventListener("click", function () {
+          programBtn.disabled = true;
+          programMsg.textContent = "Loading...";
+          fetch("/biofield/checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: data.email, tier: "scalable" })
+          }).then(function (res) { return res.json(); }).then(function (body) {
+            if (body && body.ok && body.stripe_url) {
+              window.location = body.stripe_url;
+            } else {
+              programMsg.textContent = "Something went wrong. Please try again.";
+              programBtn.disabled = false;
+            }
+          }).catch(function () {
+            programMsg.textContent = "Something went wrong. Please try again.";
+            programBtn.disabled = false;
+          });
+        });
+
+        root.appendChild(programSection);
+      }
+
     })();
   </script>
 </body>

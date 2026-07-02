@@ -235,3 +235,23 @@ def test_program_checkout_auto_redeems_deposit_credit(monkeypatch, tmp_path):
     assert body["ok"] is True
     assert cap["stripe_amount"] == 9900, "the $1 deposit credit must auto-apply as $1 off"
     assert int(cap["stripe_metadata"]["points_redeemed_cents"]) == 100
+
+
+# ── Task 5: flag-gated $100 program CTA on the biofield reveal page ──
+
+def test_reveal_page_exposes_program_cta(monkeypatch, tmp_path):
+    """Flag ON: the served begin-biofield.html/JS must carry the program CTA wiring
+    (reads window.__REVEAL__.program_enabled, posts tier 'scalable' to /biofield/checkout).
+    Invalid token -> payload null is fine (scaffold test, mirrors
+    test_reveal_page_scaffold_unlock_checkout in test_biofield_trial.py) -- the CTA
+    markup/JS lives in the static HTML regardless of which reveal state renders."""
+    app_module = _load_app()
+    _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "PROGRAM_CARE_TASTER_ENABLED", True, raising=False)
+    client = app_module.app.test_client()
+    r = client.get("/begin/biofield/any-token")
+    assert r.status_code == 200
+    html = r.data.decode()
+    assert "program_enabled" in html, "'program_enabled' not found in begin-biofield.html"
+    assert "/biofield/checkout" in html, "'/biofield/checkout' not found in begin-biofield.html"
+    assert "scalable" in html, "'scalable' not found in begin-biofield.html"
