@@ -9,9 +9,10 @@ DEFAULTS = {
     "subscribe_tiers": [5, 10, 15],       # % by completed-order count (1st,2nd,3rd+)
     "cadences": [1, 2, 3],                # months
     # volume curve: [total_months, pct_off] knots, ascending; linear interp; flat beyond last.
-    # A smooth LINEAR ramp from 1 unit (0%) to 12 units (max), flat at the max beyond 12.
-    # Two knots = one straight line; edit the last row's % in the console to set the max.
-    "volume_anchors": [[1, 0], [12, 43]],
+    # A smooth ramp from 1 unit (0% off, base $70) to 12 units (29% off, floor $50), flat
+    # beyond 12. Piecewise-linear across the 1/2/4/7/12 knots; edit rows in the console to
+    # reshape the curve.
+    "volume_anchors": [[1, 0], [2, 14], [4, 21], [7, 26], [12, 29]],
 }
 
 

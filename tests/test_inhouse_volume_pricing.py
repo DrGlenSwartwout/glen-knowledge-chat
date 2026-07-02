@@ -34,10 +34,10 @@ def test_ff_unit_cents_by_total_qty():
     # PAID MEMBER (#394: member=True) — effective = round(6997*(1-volume_pct(total)/100)),
     # floored at list*0.57
     assert f(FF, 1, s, member=True) == 6997     # vp(1)=0%
-    assert f(FF, 3, s, member=True) == 6450     # vp(3)≈7.82%
-    assert f(FF, 6, s, member=True) == 5629     # vp(6)≈19.55%
-    assert f(FF, 12, s, member=True) == 3988    # vp(12)=43% (== floor)
-    assert f(FF, 99, s, member=True) == 3988    # capped at the 12-unit max
+    assert f(FF, 3, s, member=True) == 5773     # vp(3)=17.5%
+    assert f(FF, 6, s, member=True) == 5294     # vp(6)≈24.33%
+    assert f(FF, 12, s, member=True) == 4968    # vp(12)=29%
+    assert f(FF, 99, s, member=True) == 4968    # capped at the 12-unit max
     assert f(NONFF, 12, s, member=True) == 7000  # non-FF: list price, no volume
     # NON-MEMBER / trial (#394: member=False default) — always regular list price
     assert f(FF, 6, s, member=False) == 6997
@@ -55,15 +55,15 @@ def test_multi_ff_lines_share_total_rate():
     appmod = _app()
     s = _pricing.load_settings(None)
     # total FF qty 6 → BOTH FF lines priced at the vp(6) rate, even a qty-2 line (members only)
-    assert appmod._inhouse_ff_unit_cents(FF, 6, s, member=True) == 5629
-    assert appmod._inhouse_ff_unit_cents(FF2, 6, s, member=True) == 5629
+    assert appmod._inhouse_ff_unit_cents(FF, 6, s, member=True) == 5294
+    assert appmod._inhouse_ff_unit_cents(FF2, 6, s, member=True) == 5294
 
 
 def test_line_unit_override_wins():
     appmod = _app()
     s = _pricing.load_settings(None)
     assert appmod._inhouse_line_unit_cents(FF, 5000, 12, s) == 5000   # explicit override (member-independent)
-    assert appmod._inhouse_line_unit_cents(FF, None, 12, s, member=True) == 3988    # FF volume (paid member)
+    assert appmod._inhouse_line_unit_cents(FF, None, 12, s, member=True) == 4968    # FF volume (paid member)
     assert appmod._inhouse_line_unit_cents(FF, None, 12, s, member=False) == 6997   # non-member regular
     assert appmod._inhouse_line_unit_cents(NONFF, None, 12, s, member=True) == 7000
 
@@ -85,10 +85,10 @@ def test_price_preview_route(monkeypatch):
     j = r.get_json()
     assert j["ok"] and j["total_ff_qty"] == 6
     by = {l["slug"]: l for l in j["lines"]}
-    assert by["brain"]["is_ff"] and by["brain"]["effective_unit_cents"] == 5629
-    assert by["bone"]["effective_unit_cents"] == 5629          # qty-2 FF line, total rate
+    assert by["brain"]["is_ff"] and by["brain"]["effective_unit_cents"] == 5294
+    assert by["bone"]["effective_unit_cents"] == 5294          # qty-2 FF line, total rate
     assert (not by["mix"]["is_ff"]) and by["mix"]["effective_unit_cents"] == 7000
-    assert j["subtotal_cents"] == 5629 * 4 + 5629 * 2 + 7000 * 1
+    assert j["subtotal_cents"] == 5294 * 4 + 5294 * 2 + 7000 * 1
 
 
 def test_price_preview_owner_only():
@@ -120,7 +120,7 @@ def test_manual_charges_ff_effective_no_double_discount(monkeypatch, tmp_path):
     assert r.status_code == 200
     j = r.get_json()
     assert j["ok"]
-    # FF qty6 charged at the effective 5629/unit; NO separate volume discount applied.
-    assert j["lines"][0]["unit_cents"] == 5629
-    assert j["totals"]["subtotal_cents"] == 5629 * 6
+    # FF qty6 charged at the effective 5294/unit; NO separate volume discount applied.
+    assert j["lines"][0]["unit_cents"] == 5294
+    assert j["totals"]["subtotal_cents"] == 5294 * 6
     assert j["totals"]["discount_cents"] == 0
