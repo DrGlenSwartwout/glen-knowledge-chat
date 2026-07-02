@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Remedy Match — Membership</title>
+  <title>Remedy Match — Continuous Care</title>
   <style>
     :root { --ink:#2d2d2d; --muted:#666; --line:#e6e6e0; --gold:#b8892b; --bg:#f9f9f7; --accent:#2e6f5e; }
     * { box-sizing: border-box; }
@@ -47,8 +47,8 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>Choose your membership</h1>
-    <p class="sub">Prepay and lock in your rate — the longer the term, the more you save. Member pricing on everything for your whole term.</p>
+    <h1>Choose your Continuous Care</h1>
+    <p class="sub">Ongoing guided healing — your protocol re-matched as you progress, plus live group coaching, your AI ally, and Terrain Restore. Prepay a longer term and save, up to two months free on the year.</p>
     <div class="tiers" id="tiers"></div>
     <div class="form">
       <div><input type="email" id="email" placeholder="you@email.com" autocomplete="email"></div>
@@ -116,8 +116,8 @@
 
       fetch("/api/prepay/tiers").then(function (r) { return r.json(); }).then(function (d) {
         if (d && d.ok && d.tiers) render(d.tiers);
-        else errEl.textContent = "Membership options are unavailable right now.";
-      }).catch(function () { errEl.textContent = "Could not load membership options."; });
+        else errEl.textContent = "Continuous Care options are unavailable right now.";
+      }).catch(function () { errEl.textContent = "Could not load Continuous Care options."; });
     })();
   </script>
 </body>

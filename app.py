@@ -2876,7 +2876,7 @@ def prepay_tiers():
 
 @app.route("/prepay/checkout", methods=["POST"])
 def prepay_checkout():
-    """Start a one-time Stripe Checkout for a prepaid membership term (1/3/6/12 mo).
+    """Start a one-time Stripe Checkout for a prepaid Continuous Care term (1/3/6/12 mo).
     A prepaid term does NOT vault a chargeable card (save_card=False) and never
     auto-renews — the charge cron only ever sees subscriptions rows, and this path
     creates none."""
@@ -2893,7 +2893,7 @@ def prepay_checkout():
     try:
         sess = _sp.create_checkout_session(
             tier["price_cents"], customer_email=email,
-            description=f"Remedy Match membership - {tier['label']} prepaid",
+            description=f"Remedy Match Continuous Care - {tier['label']} prepaid",
             metadata={"email": email, "kind": "prepay_term", "tier_key": tier_key},
             success_url=f"{base}/prepay/return?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base}/",
@@ -2906,7 +2906,7 @@ def prepay_checkout():
 
 @app.route("/prepay/return")
 def prepay_return():
-    """Stripe return for a prepaid membership term. Re-fetches the session +
+    """Stripe return for a prepaid Continuous Care term. Re-fetches the session +
     PaymentIntent (the security guarantee), verifies a succeeded prepay_term payment,
     then grants the day-based term idempotently (claim-then-create on a session-id
     PRIMARY KEY, mirroring _fulfill_biofield_trial). Never raises."""
@@ -6924,7 +6924,7 @@ def _fulfill_biofield_trial(session_id):
 
 
 def _fulfill_prepay_term(session_id):
-    """Grant a prepaid membership term from a paid prepay_term Stripe session,
+    """Grant a prepaid Continuous Care term from a paid prepay_term Stripe session,
     idempotently. Callable from the /prepay/return redirect AND the webhook, so a
     closed tab / dropped redirect still gets fulfilled (money captured => term granted).
     Re-fetches the session + PaymentIntent (the security guarantee); only proceeds on a
@@ -6971,15 +6971,16 @@ def _fulfill_prepay_term(session_id):
         try:
             if PUBLIC_BASE_URL:
                 per_mo = _pp.per_month_cents(tier_key)
-                subject = "Your Remedy Match membership is active"
+                subject = "Your Continuous Care is active"
                 body = (
                     "Aloha,\n\n"
-                    f"Your {tier['label']} membership is active - you're all set. "
+                    f"Your {tier['label']} of Continuous Care is active - you're all set. "
                     f"That's ${tier['price_cents']/100:.0f} prepaid (about "
-                    f"${per_mo/100:.0f}/mo), with member pricing on everything for "
-                    "your whole term.\n\n"
-                    "There's nothing to cancel and no surprise charges - when your "
-                    "term ends we'll simply check in about renewing.\n\n"
+                    f"${per_mo/100:.0f}/mo). I'll keep re-matching your protocol as you "
+                    "progress, with live group coaching, your AI ally, and Terrain Restore "
+                    "the whole way.\n\n"
+                    "There's nothing to cancel and no surprise charges - when your term "
+                    "ends we'll simply check in about renewing.\n\n"
                     "In wellness,\nDr. Glen and Rae\n"
                 )
                 _send_inquiry_email(email, subject, body)
@@ -25599,20 +25600,20 @@ def cron_membership_renewals():
             _tier_key = _src[len("prepay_"):]
             _renew_cents = _prepay.renewal_price_cents(_tier_key)
             _tier = _prepay.get_tier(_tier_key)
-            _term_label = (_tier or {}).get("label", "membership term")
+            _term_label = (_tier or {}).get("label", "term")
             _base = (PUBLIC_BASE_URL or "").rstrip("/")
             _renew_url = f"{_base}/prepay?renew={_tier_key}" if _base else "your member portal"
             _renew_line = (f"${_renew_cents/100:.0f} for another {_term_label}"
                            if _renew_cents else "your loyalty renewal rate")
-            subject = f"Your Remedy Match membership renews in {days_left} day{s_days}"
+            subject = f"Your Continuous Care renews in {days_left} day{s_days}"
             body = (
                 f"Aloha,\n\n"
-                f"Your prepaid Remedy Match membership ends in {days_left} day{s_days}"
+                f"Your prepaid Continuous Care ends in {days_left} day{s_days}"
                 f" on {r['expires_at']}. There's nothing to cancel and no automatic "
                 f"charge - your card was never kept on file for renewal.\n\n"
-                f"When you're ready to continue, you can renew at your loyalty rate "
+                f"When you're ready to keep going, you can renew at your loyalty rate "
                 f"({_renew_line}) here:\n{_renew_url}\n\n"
-                f"Your member pricing and everything in your portal stay active right up "
+                f"Your care and everything in your portal stay active right up "
                 f"to that date.\n\n"
                 f"In wellness,\nDr. Glen and Rae\n"
                 f"---\n"

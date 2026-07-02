@@ -59,7 +59,7 @@ def test_checkout_creates_session_at_tier_price(monkeypatch, tmp_path):
     r = app_module.app.test_client().post("/prepay/checkout", json={"email": "A@b.com", "tier_key": "12mo"})
     body = r.get_json()
     assert body["ok"] is True and body["url"] == "https://stripe.test/cs_1"
-    assert captured["amount"] == 59900
+    assert captured["amount"] == 99000
     assert captured["save_card"] is False
     assert captured["metadata"]["kind"] == "prepay_term"
     assert captured["metadata"]["tier_key"] == "12mo"
@@ -151,7 +151,7 @@ def test_tiers_endpoint_returns_four_rungs(monkeypatch, tmp_path):
     keys = [t["key"] for t in body["tiers"]]
     assert keys == ["1mo", "3mo", "6mo", "12mo"]
     six = next(t for t in body["tiers"] if t["key"] == "6mo")
-    assert six["per_month_cents"] == 7500 and six["savings_pct"] == 24 and six["badge"] == "Most Popular"
+    assert six["per_month_cents"] == 9100 and six["savings_pct"] == 8 and six["badge"] == "Most Popular"
 
 
 def test_prepay_page_flag_off_redirects(monkeypatch, tmp_path):
