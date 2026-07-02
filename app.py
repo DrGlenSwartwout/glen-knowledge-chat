@@ -26988,6 +26988,60 @@ def api_customers_search():
     return jsonify({"ok": True, "people": people})
 
 
+def _cohort_best_price(cohorts, slug, list_cents, is_ff):
+    """Lowest held-cohort policy price for a line, or None. Safe wrapper."""
+    if not cohorts:
+        return None
+    try:
+        from dashboard import cohorts as _co
+        return _co.best_cohort_price(cohorts, slug=slug, list_cents=list_cents, is_ff=is_ff)
+    except Exception:
+        return None
+
+
+def _cohort_loyalty_price(loyalty_cohorts, slug, is_ff, earned_slugs):
+    """Earned reorder-loyalty price for a line, or None. Safe wrapper."""
+    if not loyalty_cohorts:
+        return None
+    try:
+        from dashboard import cohorts as _co
+        return _co.reorder_loyalty_price(loyalty_cohorts, slug=slug, is_ff=is_ff,
+                                         earned_slugs=earned_slugs)
+    except Exception:
+        return None
+
+
+def _earned_reorder_slugs(cx, email):
+    """FF slugs this client has EARNED the reorder-loyalty price on: a paid Biofield
+    Analysis on record AND a prior purchase of that SKU (paid or fulfilled order).
+    Reorders of those SKUs then qualify for the loyalty rate. Best-effort; empty on
+    any gap. cx.row_factory should be sqlite3.Row (caller sets it)."""
+    email = (email or "").strip().lower()
+    if not email:
+        return set()
+    try:
+        if not _has_paid_biofield(email):
+            return set()
+        earned = set()
+        for r in cx.execute(
+                "SELECT items_json FROM orders WHERE lower(email)=? AND "
+                "(pay_status='paid' OR status IN ('shipped','delivered','done'))",
+                (email,)).fetchall():
+            try:
+                items = json.loads((r["items_json"] if isinstance(r, _sqlite3.Row) else r[0]) or "[]")
+            except Exception:
+                items = []
+            for it in items:
+                s = (it.get("slug") or "").strip()
+                p = _get_product(s) if s else None
+                if p and _qty_eligible(p):
+                    earned.add(s)
+        return earned
+    except Exception as _e:
+        print(f"[reorder-loyalty] earned-slugs skipped: {_e!r}", flush=True)
+        return set()
+
+
 def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
                            discount_cents_in=None, points_redeem_cents_in=None,
                            adjustment_cents_in=None):
@@ -27003,10 +27057,11 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     # This client's saved special prices ({slug: cents}) — applied when the owner
     # hasn't typed an explicit per-line override on THIS order. Precedence:
     # explicit line override > client special price > standard volume/list.
-    _cprices, _ff_flat, _cohorts = {}, None, []
+    _cprices, _ff_flat, _cohorts, _loyalty, _earned = {}, None, [], [], set()
     try:
         from dashboard import client_prices as _cp_mod
         _cpx = _sqlite3.connect(LOG_DB)
+        _cpx.row_factory = _sqlite3.Row
         try:
             _cp_mod.init_table(_cpx)
             if email:
@@ -27016,6 +27071,9 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
                 from dashboard import cohorts as _co_mod
                 _co_mod.init_tables(_cpx)
                 _cohorts = _co_mod.member_cohorts(_cpx, email)
+                _loyalty = _co_mod.active_reorder_loyalty(_cpx)   # auto-applies to earners
+                if _loyalty:
+                    _earned = _earned_reorder_slugs(_cpx, email)
         finally:
             _cpx.close()
     except Exception as _cpe:
@@ -27029,7 +27087,7 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         qty = max(1, min(int(ln.get("qty") or 1), 99))
         # Precedence: explicit per-line edit > per-SKU client price > client's flat
         # FF rate (FF products only) > LOWEST of {standard volume/list, held cohort
-        # policies}. Per-client rates are the floor — cohorts only apply below them.
+        # policies, earned reorder-loyalty}. Per-client rates are the floor.
         _explicit = ln.get("unit_cents")
         if _explicit not in (None, ""):
             unit_cents = _inhouse_line_unit_cents(p, _explicit, total_ff_qty, settings)
@@ -27039,13 +27097,13 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
             unit_cents = _inhouse_line_unit_cents(p, _ff_flat, total_ff_qty, settings)
         else:
             unit_cents = _inhouse_line_unit_cents(p, None, total_ff_qty, settings)  # volume/list
-            if _cohorts:
-                from dashboard import cohorts as _co_mod
-                _cp = _co_mod.best_cohort_price(
-                    _cohorts, slug=slug, list_cents=int(p.get("price_cents") or 0),
-                    is_ff=_qty_eligible(p))
-                if _cp is not None:
-                    unit_cents = min(unit_cents, _cp)   # lowest wins among automatics
+            _is_ff = _qty_eligible(p)
+            _lc = int(p.get("price_cents") or 0)
+            for _cand in (
+                _cohort_best_price(_cohorts, slug, _lc, _is_ff),
+                _cohort_loyalty_price(_loyalty, slug, _is_ff, _earned)):
+                if _cand is not None:
+                    unit_cents = min(unit_cents, _cand)   # lowest wins among automatics
         line_cents = unit_cents * qty
         subtotal_list += line_cents
         cart.append({"slug": slug, "qty": qty})
@@ -27332,12 +27390,13 @@ def api_orders_price_preview():
     vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2)
     # Reflect this client's saved special prices in the live preview too (same
     # precedence as the pricer: explicit line edit > client price > volume/list).
-    _cprices, _ff_flat, _cohorts = {}, None, []
+    _cprices, _ff_flat, _cohorts, _loyalty, _earned = {}, None, [], [], set()
     _pemail = (_body.get("email") or "").strip().lower()
     if _pemail:
         try:
             from dashboard import client_prices as _cp_mod
             _cpx = _sqlite3.connect(LOG_DB)
+            _cpx.row_factory = _sqlite3.Row
             try:
                 _cp_mod.init_table(_cpx)
                 _cprices = _cp_mod.price_map(_cpx, _pemail)
@@ -27346,10 +27405,13 @@ def api_orders_price_preview():
                     from dashboard import cohorts as _co_mod
                     _co_mod.init_tables(_cpx)
                     _cohorts = _co_mod.member_cohorts(_cpx, _pemail)
+                    _loyalty = _co_mod.active_reorder_loyalty(_cpx)
+                    if _loyalty:
+                        _earned = _earned_reorder_slugs(_cpx, _pemail)
             finally:
                 _cpx.close()
         except Exception:
-            _cprices, _ff_flat, _cohorts = {}, None, []
+            _cprices, _ff_flat, _cohorts, _loyalty, _earned = {}, None, [], [], set()
     out_lines, subtotal = [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
@@ -27369,11 +27431,11 @@ def api_orders_price_preview():
         else:
             _eff_ov = None
         unit = _inhouse_line_unit_cents(p, _eff_ov, total_ff_qty, settings)
-        if _eff_ov is None and _cohorts:   # cohort competes with volume/list (lowest wins)
-            from dashboard import cohorts as _co_mod
-            _cp = _co_mod.best_cohort_price(_cohorts, slug=slug, list_cents=list_cents, is_ff=is_ff)
-            if _cp is not None:
-                unit = min(unit, _cp)
+        if _eff_ov is None:   # cohort + earned loyalty compete with volume/list (lowest wins)
+            for _cand in (_cohort_best_price(_cohorts, slug, list_cents, is_ff),
+                          _cohort_loyalty_price(_loyalty, slug, is_ff, _earned)):
+                if _cand is not None:
+                    unit = min(unit, _cand)
         overridden = ov not in (None, "")
         line_cents = unit * qty
         subtotal += line_cents
