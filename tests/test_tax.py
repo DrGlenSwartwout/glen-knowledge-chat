@@ -156,8 +156,9 @@ def _stub_retail_checkout(app_module, monkeypatch, tmp_path):
         begin_funnel.record_unlock(cx, session_id="m", trigger="tos",
                                    email="buyer@x.com", tos=True, tos_version="v")
     monkeypatch.setattr(app_module, "_get_product",
-                        lambda slug: {"name": "Test", "info_only": False, "qbo_item_id": None})
-    monkeypatch.setattr(app_module, "_qty_unit_cents", lambda p, qty: 10000)
+                        lambda slug: {"slug": "test", "name": "Test", "info_only": False,
+                                      "qbo_item_id": None, "price_cents": 10000})
+    monkeypatch.setattr(app_module._shipping, "quote", lambda b: {"shipping_cents": 0})
     seen = {}
     monkeypatch.setattr(app_module, "_ingest_order",
                         lambda **k: seen.update({"order_get_cents": k.get("get_cents")}))
