@@ -46,6 +46,7 @@
   #invoice h2 { color:var(--accent-light); }
   #invoice pre { white-space:pre-wrap; font-family:ui-monospace,Menlo,monospace; font-size:13px; color:var(--text); }
   .inv-actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+  button.inv-sent { background:rgba(58,90,64,0.28); border-color:#3a5a40; color:#9fd3a6; }
   .auth-warn { background:rgba(204,75,44,.08); border:1px solid var(--red); border-radius:8px; padding:14px; color:var(--red); margin-bottom:20px; display:none; }
   #toast { position:fixed; bottom:20px; right:20px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 16px; font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; }
   #toast.show { opacity:1; } #toast.error { border-color:var(--red); color:var(--red); } #toast.ok { border-color:var(--green); color:var(--green); }
@@ -122,7 +123,8 @@
       <div class="row"><span>Points applied</span><span id="t-points">—</span></div>
       <div class="row grand"><span>Total</span><span id="t-total">$0.00</span></div>
     </div>
-    <div style="margin-top:16px"><button id="submit-btn" class="primary" onclick="submitOrder()">Create proposed invoice</button></div>
+    <div style="margin-top:16px"><button id="submit-btn" class="primary" onclick="submitOrder()">Create proposed invoice</button>
+      <button id="send-inv-btn" class="ghost" style="display:none;margin-left:8px" onclick="sendInvoiceEdit()">Send invoice to customer</button></div>
   </div>
 </div>
 
@@ -294,6 +296,11 @@ async function loadOrderForEdit(oid){
   $("page-intro").innerHTML = "Edit this order's line items, prices, shipping and discount. Saving updates the invoice"
     + " and (for QuickBooks-backed orders) pushes the same change to QuickBooks.";
   $("submit-btn").textContent = "Save invoice changes";
+  // Edit mode: the order already exists, so it can be emailed straight from here
+  // (turns green + "Invoice Sent" once it's already gone out).
+  var _sib = $("send-inv-btn");
+  _sib.style.display = "inline-block";
+  if (o.invoice_sent_at){ _sib.textContent = "Invoice Sent "+invSentStr(o.invoice_sent_at)+" (re-send)"; _sib.classList.add("inv-sent"); }
   // Prefill customer (read-only context — pricing/membership keyed off email).
   $("person_id").value = o.person_id||""; $("c-name").value = o.name||""; $("c-email").value = o.email||""; $("c-phone").value = o.phone||"";
   const a = o.address||{};
@@ -375,6 +382,7 @@ function showInvoice(j){
   inv.innerHTML=`<h2>Proposed invoice ${esc(j.external_ref)} created</h2><pre>${esc(summary)}</pre>`
     +`<div class="inv-actions">`
     +`<button class="primary" onclick="lifecycle('orders.confirm',{})">Confirm</button>`
+    +`<button class="ghost" onclick="lifecycle('orders.send_invoice',{})">Send invoice</button>`
     +`<button class="ghost" onclick="recordPayment()">Record payment</button>`
     +`<button class="mini" onclick="copyInv()">Copy</button>`
     +`<a class="mini" href="/console/orders?key=${encodeURIComponent(KEY)}" style="text-decoration:none">Open orders board</a></div>`;
@@ -385,8 +393,20 @@ async function lifecycle(key, params){
   params.order_id = LAST_ORDER.order_id;
   const r = await fetch("/api/action/"+key, {method:"POST", headers:HEADERS, body:JSON.stringify(params)});
   const j = await r.json();
-  if (j && (j.status==="denied"||j.ok===false)) { toast("Action failed: "+(j.reason||j.error||""),"error"); return; }
-  toast(key==="orders.confirm" ? "Invoice confirmed" : "Payment recorded — in fulfillment");
+  if (!j || j.status!=="done") { toast("Action failed: "+((j&&j.result&&j.result.error)||(j&&(j.reason||j.error))||""),"error"); return; }
+  toast((j.result&&j.result.message) || (key==="orders.confirm" ? "Invoice confirmed" : key==="orders.send_invoice" ? "Invoice sent" : "Payment recorded — in fulfillment"));
+}
+function invSentStr(iso){ try{ return new Date(iso).toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'2-digit'}); }catch(e){ return ''; } }
+async function sendInvoiceEdit(){
+  const btn=$("send-inv-btn"); btn.disabled=true;
+  try{
+    const r=await fetch("/api/action/orders.send_invoice",{method:"POST",headers:HEADERS,body:JSON.stringify({order_id:Number(EDIT_OID)})});
+    const j=await r.json();
+    if(!j||j.status!=="done"){ toast("Send failed: "+((j&&j.result&&j.result.error)||(j&&(j.reason||j.error))||"error"),"error"); btn.disabled=false; return; }
+    toast((j.result&&j.result.message)||"Invoice sent");
+    btn.textContent="Invoice Sent "+invSentStr(new Date().toISOString())+" (re-send)"; btn.classList.add("inv-sent");
+  }catch(e){ toast(e.message,"error"); }
+  btn.disabled=false;
 }
 function recordPayment(){
   const a=prompt("Amount in dollars (blank = invoice total):","");
