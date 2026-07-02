@@ -14,6 +14,11 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+# Reserved slug for a client's FLAT rate across all Functional Formulations. It
+# never matches a real product slug, and is filtered out of the per-SKU views.
+FF_FLAT_SLUG = "__all_ff__"
+
+
 def _norm(email):
     return (email or "").strip().lower()
 
@@ -60,23 +65,40 @@ def get_price(cx, email, slug):
 
 
 def price_map(cx, email):
-    """{slug: price_cents} for a client — one read to price a whole cart."""
+    """{slug: price_cents} of PER-SKU prices for a client (the FF-flat reserved
+    slug is excluded) — one read to price a whole cart."""
     email = _norm(email)
     if not email:
         return {}
     return {r[0]: int(r[1]) for r in cx.execute(
-        "SELECT slug, price_cents FROM client_prices WHERE email=?", (email,)).fetchall()}
+        "SELECT slug, price_cents FROM client_prices WHERE email=? AND slug!=?",
+        (email, FF_FLAT_SLUG)).fetchall()}
+
+
+def set_ff_flat(cx, email, price_cents):
+    """This client's flat rate for ALL Functional Formulations."""
+    set_price(cx, email, FF_FLAT_SLUG, price_cents, note="all-FFs flat rate")
+
+
+def get_ff_flat(cx, email):
+    """This client's flat FF rate in cents, or None."""
+    return get_price(cx, email, FF_FLAT_SLUG)
+
+
+def remove_ff_flat(cx, email):
+    return remove(cx, email, FF_FLAT_SLUG)
 
 
 def list_for(cx, email):
-    """A client's special prices as [{slug, price_cents, note, updated_at}]."""
+    """A client's PER-SKU special prices as [{slug, price_cents, note, updated_at}]
+    (the FF-flat reserved slug is excluded — read it with get_ff_flat)."""
     email = _norm(email)
     if not email:
         return []
     return [{"slug": r[0], "price_cents": int(r[1]), "note": r[2], "updated_at": r[3]}
             for r in cx.execute(
                 "SELECT slug, price_cents, note, updated_at FROM client_prices "
-                "WHERE email=? ORDER BY slug", (email,)).fetchall()]
+                "WHERE email=? AND slug!=? ORDER BY slug", (email, FF_FLAT_SLUG)).fetchall()]
 
 
 def remove(cx, email, slug):

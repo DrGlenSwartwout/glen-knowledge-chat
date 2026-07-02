@@ -40,6 +40,20 @@ def test_price_map_and_list_and_remove():
     assert C.clients_with_prices(cx) == [{"email": "jc@x.com", "count": 1}]
 
 
+def test_ff_flat_is_separate_from_per_sku_views():
+    C, cx = _cx()
+    C.set_price(cx, "jc@x.com", "neuro-magnesium", 4500)
+    C.set_ff_flat(cx, "jc@x.com", 4200)
+    assert C.get_ff_flat(cx, "jc@x.com") == 4200
+    # the flat rate must NOT leak into per-SKU views
+    assert "neuro-magnesium" in C.price_map(cx, "jc@x.com")
+    assert C.FF_FLAT_SLUG not in C.price_map(cx, "jc@x.com")
+    assert all(r["slug"] != C.FF_FLAT_SLUG for r in C.list_for(cx, "jc@x.com"))
+    assert C.get_ff_flat(cx, "nobody@x.com") is None
+    assert C.remove_ff_flat(cx, "jc@x.com") is True
+    assert C.get_ff_flat(cx, "jc@x.com") is None
+
+
 def test_rejects_negative_and_blank():
     C, cx = _cx()
     for bad in [("jc@x.com", "s", -1), ("", "s", 100), ("jc@x.com", "", 100)]:

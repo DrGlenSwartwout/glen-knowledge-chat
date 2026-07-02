@@ -26950,13 +26950,15 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     # This client's saved special prices ({slug: cents}) — applied when the owner
     # hasn't typed an explicit per-line override on THIS order. Precedence:
     # explicit line override > client special price > standard volume/list.
-    _cprices = {}
+    _cprices, _ff_flat = {}, None
     try:
         from dashboard import client_prices as _cp_mod
         _cpx = _sqlite3.connect(LOG_DB)
         try:
             _cp_mod.init_table(_cpx)
-            _cprices = _cp_mod.price_map(_cpx, email) if email else {}
+            if email:
+                _cprices = _cp_mod.price_map(_cpx, email)
+                _ff_flat = _cp_mod.get_ff_flat(_cpx, email)
         finally:
             _cpx.close()
     except Exception as _cpe:
@@ -26968,8 +26970,17 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         if not p:
             continue
         qty = max(1, min(int(ln.get("qty") or 1), 99))
+        # Precedence: explicit per-line edit > per-SKU client price > client's flat
+        # FF rate (FF products only) > standard volume/list.
         _explicit = ln.get("unit_cents")
-        _override = _explicit if _explicit not in (None, "") else _cprices.get(slug)
+        if _explicit not in (None, ""):
+            _override = _explicit
+        elif _cprices.get(slug) is not None:
+            _override = _cprices.get(slug)
+        elif _ff_flat is not None and _qty_eligible(p):
+            _override = _ff_flat
+        else:
+            _override = None
         unit_cents = _inhouse_line_unit_cents(p, _override, total_ff_qty, settings)
         line_cents = unit_cents * qty
         subtotal_list += line_cents
@@ -27257,7 +27268,7 @@ def api_orders_price_preview():
     vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2)
     # Reflect this client's saved special prices in the live preview too (same
     # precedence as the pricer: explicit line edit > client price > volume/list).
-    _cprices = {}
+    _cprices, _ff_flat = {}, None
     _pemail = (_body.get("email") or "").strip().lower()
     if _pemail:
         try:
@@ -27266,10 +27277,11 @@ def api_orders_price_preview():
             try:
                 _cp_mod.init_table(_cpx)
                 _cprices = _cp_mod.price_map(_cpx, _pemail)
+                _ff_flat = _cp_mod.get_ff_flat(_cpx, _pemail)
             finally:
                 _cpx.close()
         except Exception:
-            _cprices = {}
+            _cprices, _ff_flat = {}, None
     out_lines, subtotal = [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
@@ -27280,7 +27292,14 @@ def api_orders_price_preview():
         ov = ln.get("unit_cents")
         is_ff = _qty_eligible(p)
         list_cents = int(p.get("price_cents") or 0)
-        _eff_ov = ov if ov not in (None, "") else _cprices.get(slug)
+        if ov not in (None, ""):
+            _eff_ov = ov
+        elif _cprices.get(slug) is not None:
+            _eff_ov = _cprices.get(slug)
+        elif _ff_flat is not None and is_ff:
+            _eff_ov = _ff_flat
+        else:
+            _eff_ov = None
         unit = _inhouse_line_unit_cents(p, _eff_ov, total_ff_qty, settings)
         overridden = ov not in (None, "")
         line_cents = unit * qty
@@ -27311,7 +27330,8 @@ def api_console_client_prices():
         if request.method == "GET":
             email = (request.args.get("email") or "").strip().lower()
             if email:
-                return jsonify({"ok": True, "email": email, "prices": _cp.list_for(cx, email)})
+                return jsonify({"ok": True, "email": email, "prices": _cp.list_for(cx, email),
+                                "ff_flat_cents": _cp.get_ff_flat(cx, email)})
             return jsonify({"ok": True, "clients": _cp.clients_with_prices(cx)})
         body = request.get_json(silent=True) or {}
         email = (body.get("email") or "").strip().lower()
@@ -27323,6 +27343,30 @@ def api_console_client_prices():
                 return jsonify({"ok": False, "error": "slug required"}), 400
             _cp.remove(cx, email, slug)
             return jsonify({"ok": True, "prices": _cp.list_for(cx, email)})
+        # (a) Flat rate for ALL of this client's FFs.
+        if body.get("ff_flat_cents") not in (None, ""):
+            try:
+                _cp.set_ff_flat(cx, email, int(body["ff_flat_cents"]))
+                return jsonify({"ok": True, "ff_flat_cents": _cp.get_ff_flat(cx, email)})
+            except (ValueError, TypeError):
+                return jsonify({"ok": False, "error": "invalid ff_flat_cents"}), 400
+        # (b) One $ applied to the FF products on this order (server picks the FFs).
+        if body.get("these_ff_cents") not in (None, ""):
+            try:
+                pc = int(body["these_ff_cents"])
+            except (ValueError, TypeError):
+                return jsonify({"ok": False, "error": "invalid these_ff_cents"}), 400
+            saved, applied = 0, []
+            for s in (body.get("slugs") or []):
+                s = (s or "").strip()
+                pr = _get_product(s) if s else None
+                if pr and _qty_eligible(pr):
+                    _cp.set_price(cx, email, s, pc, note="FFs-on-invoice")
+                    saved += 1
+                    applied.append(s)
+            return jsonify({"ok": True, "saved": saved, "applied": applied,
+                            "prices": _cp.list_for(cx, email)})
+        # (c) Explicit per-SKU list (the "save line prices" button).
         items = body.get("prices")
         if items is None and body.get("slug"):
             items = [{"slug": body.get("slug"), "price_cents": body.get("price_cents"),
