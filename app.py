@@ -27259,7 +27259,10 @@ def api_invoice_update(token):
         return jsonify({"ok": False, "error": "no valid items"}), 400
     ship = order.get("address") or {}
     try:
-        pc = _price_cart(cart, ship=ship, channel="retail")
+        # Gate Type-2 order-total pricing on membership so a member editing their own
+        # invoice is priced the same as at checkout (not overcharged).
+        pc = _price_cart(cart, ship=ship, channel="retail",
+                         program_member=_is_paid_member(order.get("email") or ""))
         discount_cents = int(pc.get("discount_cents") or 0)
         shipping_cents = _bos_orders.effective_shipping_cents(
             (order.get("channel") or "") == "pickup", pc.get("shipping_cents"))
