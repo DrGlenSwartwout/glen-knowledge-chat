@@ -11094,8 +11094,8 @@ def _member_name_for(cx, email):
 
 @app.route("/api/console/members", methods=["GET"])
 def api_console_members():
-    """Trial / Full / Paused membership board. Trial rows carry the accrued
-    upgrade credit (the conversion call-list)."""
+    """Trial / Full / Paused membership board. The trial-credit accrual machinery
+    has been retired (credit is always 0); rows are grouped by category only."""
     if CONSOLE_SECRET:
         _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
         if _key != CONSOLE_SECRET and not _owner_token_ok(_key):
@@ -11114,7 +11114,8 @@ def api_console_members():
             row = _subs.member_board_row(s, name=_member_name_for(cx, email),
                                          credit_cents=credit)
             buckets[cat].append(row)  # cat is always trial/full/paused (pre-seeded)
-    # Trial = the call-list: highest accrued credit first.
+    # credit_cents is always 0 now (accrual retired); sort is a harmless no-op
+    # kept for row-shape stability.
     buckets["trial"].sort(key=lambda r: r.get("credit_cents", 0), reverse=True)
     counts = {k: len(v) for k, v in buckets.items()}
     return jsonify({"buckets": buckets, "counts": counts})
@@ -26555,7 +26556,7 @@ def api_orders_manual():
         "zip": addr_in.get("zip") or "", "country": (addr_in.get("country") or "US").upper(),
     }
     # Server-authoritative pricing (shared with the console invoice editor): per-line
-    # overrides, FF volume rate for paid members, shipping/GET, discount, points.
+    # overrides, FF volume rate (open to all, not just paid members), shipping/GET, discount, points.
     try:
         priced = _price_inhouse_invoice(
             lines_in, email=customer.get("email"), pickup=pickup, ship=ship,

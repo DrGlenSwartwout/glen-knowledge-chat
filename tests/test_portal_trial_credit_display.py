@@ -1,6 +1,6 @@
 """Portal trial-credit display (PR4): /api/portal/<token> exposes
-membership_category + trial_credit_cents so the portal can show a trial buyer the
-upgrade credit they've accrued so far.
+membership_category + trial_credit_cents. The upgrade-credit accrual machinery has
+since been retired, so trial_credit_cents is always 0 — these tests pin that.
 """
 import json
 import sqlite3
