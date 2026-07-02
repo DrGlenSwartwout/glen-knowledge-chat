@@ -35,6 +35,7 @@ def test_choose_generic_when_no_token(monkeypatch):
     assert b"window.__CHOOSE__" in r.data
     assert b'"reveal_url": "/begin"' in r.data
     assert b'"token": null' in r.data
+    assert b'"email": null' in r.data  # no email leaked without a valid token
     assert "no-store" in r.headers.get("Cache-Control", "")
 
 
@@ -47,6 +48,7 @@ def test_choose_valid_token_links_back_to_reveal(monkeypatch):
     assert r.status_code == 200
     assert b'"reveal_url": "/begin/biofield/TOK123"' in r.data
     assert b'"token": "TOK123"' in r.data
+    assert b'"email": "a@x.com"' in r.data  # injected server-side for Door A checkout
 
 
 def test_choose_invalid_token_falls_back_generic(monkeypatch):
@@ -57,6 +59,7 @@ def test_choose_invalid_token_falls_back_generic(monkeypatch):
     assert r.status_code == 200
     assert b'"reveal_url": "/begin"' in r.data
     assert b'"token": null' in r.data
+    assert b'"email": null' in r.data
 
 
 def test_choose_payload_carries_flag_state(monkeypatch):
