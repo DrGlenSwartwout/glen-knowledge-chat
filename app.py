@@ -2986,6 +2986,53 @@ def prepay_return():
     return _redir(f"{PUBLIC_BASE_URL.rstrip('/')}/?prepay={'ok' if ok else 'err'}")
 
 
+@app.route("/continuous-care/checkout", methods=["POST"])
+def continuous_care_checkout():
+    """Start a Stripe Checkout for Continuous Care MONTHLY (6 or 12 month fixed
+    term, card-on-file). Unlike the prepay ladder above, this VAULTS the card
+    (save_card=True) — month 1 is charged now, and the charge cron bills months
+    2..N off the vaulted card, capped at term_charges_total."""
+    if not (CONTINUOUS_CARE_MONTHLY_ENABLED and _STRIPE_ACTIVE):
+        return jsonify({"ok": False, "error": "unavailable"}), 200
+    from dashboard import stripe_pay as _sp, prepay as _pp
+    data = request.get_json(silent=True) or request.form or {}
+    email = (data.get("email") or "").strip().lower()
+    term_months = int(data.get("term_months") or 0)
+    if not email or term_months not in (6, 12):
+        return jsonify({"ok": False, "error": "invalid"}), 200
+    base = PUBLIC_BASE_URL.rstrip("/")
+    try:
+        sess = _sp.create_checkout_session(
+            _pp.MONTHLY_ANCHOR_CENTS, customer_email=email,
+            description=f"Remedy Match Continuous Care - {term_months} month (monthly)",
+            metadata={"email": email, "kind": "continuous_care_monthly",
+                     "term_months": str(term_months)},
+            success_url=f"{base}/continuous-care/return?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{base}/",
+            save_card=True)
+        return jsonify({"ok": True, "url": sess.get("url")})
+    except Exception as e:
+        print(f"[continuous-care] checkout failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "checkout_failed"}), 200
+
+
+@app.route("/continuous-care/return")
+def continuous_care_return():
+    """Stripe return for Continuous Care MONTHLY. Re-fetches the session +
+    PaymentIntent (the security guarantee), verifies a succeeded payment and a
+    vaulted card, then creates the capped card-on-file membership idempotently
+    (claim-then-create on a session-id PRIMARY KEY, mirroring _fulfill_prepay_term).
+    Never raises."""
+    from flask import redirect as _redir
+    sid = (request.args.get("session_id") or "").strip()
+    # Fulfillment is idempotent + self-verifying (re-fetches the session, checks kind +
+    # succeeded payment), and the webhook is the safety net — so honor any paid session
+    # here regardless of the flag. The shared fulfiller never raises.
+    res = _fulfill_continuous_care_monthly(sid) if sid else {"ok": False}
+    ok = bool(res.get("ok"))
+    return _redir(f"{PUBLIC_BASE_URL.rstrip('/')}/?care={'ok' if ok else 'err'}")
+
+
 @app.route("/membership/cancel/<token>", methods=["GET"])
 def membership_cancel(token):
     """One-click cancel via a tokened link minted at biofield-trial grant time."""
@@ -4557,6 +4604,11 @@ REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PREPAY_LADDER_ENABLED = os.environ.get("PREPAY_LADDER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Continuous Care MONTHLY: a card-on-file recurring membership fixed to a 6- or
+# 12-month term (vs. the upfront prepay ladder above, which never vaults a card).
+# Month 1 is charged at checkout; the charge cron takes over from month 2, capped
+# at term_charges_total (see dashboard.subscriptions.migrate_add_term_cap_column).
+CONTINUOUS_CARE_MONTHLY_ENABLED = os.environ.get("CONTINUOUS_CARE_MONTHLY_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Sub-project 4: the two-door "see & choose" surface (/begin/choose) — Door A à-la-carte
 # vs Door B Continuous Care. Flag-dark: off ⇒ route redirects + reveal CTA hidden.
 TWO_DOOR_ENABLED = os.environ.get("TWO_DOOR_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
@@ -7135,6 +7187,102 @@ def _fulfill_prepay_term(session_id):
         return {"ok": True, "created": True, "email": email}
     except Exception as e:
         print(f"[prepay] fulfill failed: {e!r}", flush=True)
+        return {"ok": False, "reason": "error"}
+
+
+def _fulfill_continuous_care_monthly(session_id):
+    """Grant a Continuous Care MONTHLY (card-on-file, 6- or 12-month capped term)
+    membership from a paid continuous_care_monthly Stripe session, idempotently.
+    Callable from the /continuous-care/return redirect AND the webhook, so a closed
+    tab / dropped redirect still gets fulfilled (money captured => membership
+    created). Re-fetches the session + PaymentIntent (the security guarantee);
+    only proceeds on a succeeded payment WITH a vaulted customer + payment method
+    (no membership without a chargeable card on file). Claim-then-create on
+    continuous_care_grants(session_id) makes the redirect and webhook race safely.
+    Never raises."""
+    try:
+        from dashboard import stripe_pay as _sp, prepay as _pp, subscriptions as _subs
+        sess = _sp.get_session(session_id)
+        md = sess.get("metadata") or {}
+        if md.get("kind") != "continuous_care_monthly":
+            return {"ok": False, "reason": "not_continuous_care"}
+        email = (md.get("email") or "").strip().lower()
+        try:
+            term_months = int(md.get("term_months") or 0)
+        except (TypeError, ValueError):
+            term_months = 0
+        pi_id = sess.get("payment_intent")
+        if not (email and term_months in (6, 12) and pi_id):
+            return {"ok": False, "reason": "incomplete"}
+        pi = _sp.get_payment_intent(pi_id)
+        if pi.get("status") != "succeeded":
+            return {"ok": False, "reason": "unpaid"}
+        customer = pi.get("customer")
+        pm = pi.get("payment_method")
+        if not (customer and pm):
+            # No vaulted card => nothing to bill months 2..N off of. Do not create
+            # a membership that the cron could never charge correctly.
+            print(f"[continuous-care] no vaulted card on {session_id} — skipping", flush=True)
+            return {"ok": False, "reason": "no_card"}
+        claimed = False
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "CREATE TABLE IF NOT EXISTS continuous_care_grants "
+                "(session_id TEXT PRIMARY KEY, email TEXT, created_at TEXT)")
+            _subs.init_subscriptions_table(cx)
+            _subs.migrate_add_membership_columns(cx)
+            _subs.migrate_add_term_cap_column(cx)
+            init_membership_tables(cx)
+            claimed = cx.execute(
+                "INSERT OR IGNORE INTO continuous_care_grants "
+                "(session_id, email, created_at) VALUES (?,?,?)",
+                (session_id, email, datetime.utcnow().isoformat() + "Z")).rowcount == 1
+            cx.commit()
+            next_charge = None
+            if claimed:
+                from datetime import date as _date
+                today = _date.today().isoformat()
+                next_charge = _subs.add_months(today, 1)
+                # order_count=1 records the month-1 charge just taken at checkout, so
+                # membership_category reads 'full' (member pricing) immediately —
+                # this is a paid card-on-file membership, not the $1-trial. Capped
+                # at term_months total charges (the Task-2 cron cap stops it there).
+                _subs.create_membership(
+                    cx, email=email, stripe_customer_id=customer,
+                    stripe_payment_method_id=pm, amount_cents=_pp.MONTHLY_ANCHOR_CENTS,
+                    next_charge_date=next_charge, cadence_months=1,
+                    term_charges_total=term_months, initial_order_count=1)
+                # Immediate access grant until the first cron charge extends it
+                # (~35 days) — mirrors _grant_prepay_term's day-based access pattern.
+                _grant_membership(cx, email, _pp.term_days(today, 1) + 4, "continuous_care")
+                cx.commit()
+        if not claimed:
+            return {"ok": True, "already": True, "email": email}
+        # FTC/ROSCA easy-cancel token, minted exactly as the removed biofield-trial
+        # auto-charge block did. Outside the write lock (own connection + commit).
+        try:
+            with sqlite3.connect(LOG_DB) as _cx:
+                _mint_membership_cancel_url(_cx, email)
+        except Exception as _ce:
+            print(f"[continuous-care] cancel-token mint failed: {_ce!r}", flush=True)
+        # Ledger (idempotent on source+ref) + confirmation email, best-effort — must
+        # never undo the committed membership. Inside the won-claim path, so exactly
+        # once.
+        try:
+            _ingest_order(source="continuous_care_monthly", external_ref=pi.get("id"),
+                          email=email, items=[], total_cents=_pp.MONTHLY_ANCHOR_CENTS,
+                          address={}, channel="retail", status="done")
+        except Exception as _oe:
+            print(f"[continuous-care] order-ledger record failed: {_oe!r}", flush=True)
+        try:
+            _send_subscription_email(email, "receipt", {
+                "kind": "membership", "total_cents": _pp.MONTHLY_ANCHOR_CENTS,
+                "next_charge_date": next_charge, "invoice_id": pi.get("id")})
+        except Exception as _e:
+            print(f"[continuous-care] confirmation email failed: {_e!r}", flush=True)
+        return {"ok": True, "created": True, "email": email}
+    except Exception as e:
+        print(f"[continuous-care] fulfill failed: {e!r}", flush=True)
         return {"ok": False, "reason": "error"}
 
 
@@ -17211,6 +17359,7 @@ def webhook_stripe():
                 _fulfill_biofield_trial(session_id)
                 _fulfill_prepay_term(session_id)
                 _fulfill_biofield_program(session_id)
+                _fulfill_continuous_care_monthly(session_id)
         return ("", 200)
     except Exception as e:
         print(f"[webhook-stripe] {e!r}", flush=True)
