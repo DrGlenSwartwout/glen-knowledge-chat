@@ -72,6 +72,33 @@ def window_for_order(cx, order_id):
     return _with_days_remaining(dict(row)) if row else None
 
 
+def shipment_member_orders(cx, shipment_id, order_uuid=None):
+    """All member orders of a shipment, as [{id, email, source}] (email lowercased
+    for the ledger). Prefer orders linked via orders.shipment_id — a combined
+    household shipment shares one tracking number across several member orders, so
+    delivery coaching must open for EVERY member, not just one. Falls back to
+    order_uuid==external_ref for legacy single-order shipments that never set
+    shipment_id. Excludes cancelled orders."""
+    rows = []
+    if shipment_id is not None:
+        rows = cx.execute(
+            "SELECT id, email, source FROM orders "
+            "WHERE shipment_id=? AND status!='cancelled' ORDER BY id",
+            (shipment_id,)).fetchall()
+    if not rows and order_uuid:
+        rows = cx.execute(
+            "SELECT id, email, source FROM orders "
+            "WHERE external_ref=? AND status!='cancelled' ORDER BY id",
+            (order_uuid,)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        out.append({"id": d["id"],
+                    "email": (d["email"] or "").strip().lower() or None,
+                    "source": d["source"]})
+    return out
+
+
 def open_window(cx, *, email, order_id, days, source, now=None):
     """Open a coaching window unless one is already active (no-stacking) or this
     order already activated one (one-per-order). Returns {created, window}."""
