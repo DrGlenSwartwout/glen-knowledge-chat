@@ -32,6 +32,7 @@ def _seed(cx):
     subs.init_subscriptions_table(cx)
     subs.migrate_add_failed_count(cx)
     subs.migrate_add_membership_columns(cx)
+    subs.migrate_add_term_cap_column(cx)
     orders_mod.init_orders_table(cx)
     _clean(cx)
     from datetime import date

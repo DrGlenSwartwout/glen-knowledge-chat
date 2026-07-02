@@ -33,6 +33,16 @@ TIERS = [
 
 _BY_KEY = {t["key"]: t for t in TIERS}
 
+# The public-facing picker ladder. 3mo is retired from the public picker but its
+# TIERS entry is kept above (untouched) for easy restore — just add "3mo" back
+# here if it's ever reinstated.
+PUBLIC_TIER_KEYS = ["1mo", "6mo", "12mo"]
+
+# Tiers that represent a term commitment (as opposed to the no-commitment
+# monthly anchor) — used by the picker to show the "pay monthly vs pay up
+# front" choice.
+COMMITMENT_TIER_KEYS = ["6mo", "12mo"]
+
 
 def get_tier(key):
     """Return the tier descriptor dict for *key*, or None if unknown."""
@@ -59,9 +69,23 @@ def savings_pct_vs_anchor(key) -> int:
     return round((full - t["price_cents"]) / full * 100)
 
 
+def monthly_total_cents(key) -> int:
+    """What the same number of months would cost paid monthly at the anchor
+    rate (no discount) — the "pay monthly" comparison figure for a term."""
+    t = get_tier(key)
+    return MONTHLY_ANCHOR_CENTS * t["months"] if t else 0
+
+
+def upfront_savings_cents(key) -> int:
+    """How much a term saves vs paying monthly for the same span, floored at 0."""
+    t = get_tier(key)
+    return max(0, monthly_total_cents(key) - t["price_cents"]) if t else 0
+
+
 def tiers_public() -> list:
     """The ladder as the picker UI needs it: descriptor + computed per-month +
-    savings %. No hidden fields, safe to serialize to the page."""
+    savings %. No hidden fields, safe to serialize to the page. Only the
+    public tiers (3mo retired — see PUBLIC_TIER_KEYS) are included."""
     return [
         {
             "key": t["key"],
@@ -71,8 +95,13 @@ def tiers_public() -> list:
             "savings_pct": savings_pct_vs_anchor(t["key"]),
             "badge": t["badge"],
             "label": t["label"],
+            "commitment": t["key"] in COMMITMENT_TIER_KEYS,
+            "monthly_cents": MONTHLY_ANCHOR_CENTS,
+            "monthly_total_cents": monthly_total_cents(t["key"]),
+            "upfront_savings_cents": upfront_savings_cents(t["key"]),
         }
         for t in TIERS
+        if t["key"] in PUBLIC_TIER_KEYS
     ]
 
 

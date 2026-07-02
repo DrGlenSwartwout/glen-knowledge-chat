@@ -18,6 +18,7 @@ def _owns_group(cx, email):
     try:
         _subs.init_subscriptions_table(cx)
         _subs.migrate_add_membership_columns(cx)
+        _subs.migrate_add_term_cap_column(cx)
         cx.row_factory = sqlite3.Row  # active_memberships_by_email does dict(row)
         return bool(_subs.active_memberships_by_email(cx, email))
     except Exception:

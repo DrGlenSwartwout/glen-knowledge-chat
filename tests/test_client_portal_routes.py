@@ -278,6 +278,7 @@ def test_group_join_return_creates_membership(client, monkeypatch):
     cx.row_factory = _sq.Row  # active_memberships_by_email does dict(row)
     subs.init_subscriptions_table(cx)
     subs.migrate_add_membership_columns(cx)
+    subs.migrate_add_term_cap_column(cx)
     assert subs.active_memberships_by_email(cx, "gj2@example.com")
     cx.close()
 
