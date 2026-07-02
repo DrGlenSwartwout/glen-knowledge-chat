@@ -408,6 +408,15 @@
       "audio": "/static/fireside/audio/hobbit-supper.mp3",
       "reply_template": "Set an extra plate for {name}.",
       "caller_audio": "/static/fireside/audio/hobbit-caller-supper.mp3"
+    },
+    {
+      "id": "hero-intense",
+      "family": "gentle_gravity",
+      "form": "silent",
+      "intensity": "high",
+      "tier": "hero",
+      "duration_s": 4.6,
+      "file": "/static/fireside/video/reactions/hero-intense.mp4"
     }
   ],
   "ambience": {

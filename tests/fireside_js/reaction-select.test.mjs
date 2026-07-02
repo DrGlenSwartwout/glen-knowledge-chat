@@ -41,3 +41,13 @@ test('avoids repeating lastId when an alternative exists', () => {
   const c = selectClip(two, { tier: 'backchannel', family: 'attending' }, 'a', rng);
   assert.equal(c.id, 'b');
 });
+
+test('strictFamily: no cross-family fallback (hero gate)', () => {
+  const heroes = [R({ id: 'heavy', family: 'gentle_gravity', tier: 'hero', intensity: 'high' })];
+  // unrelated family + strict → null (won't fire an intense hero on light content)
+  assert.equal(selectClip(heroes, { tier: 'hero', family: 'delight', strictFamily: true }), null);
+  // akin family (empathic_concern → gentle_gravity via affinity) + strict → still fires
+  assert.equal(selectClip(heroes, { tier: 'hero', family: 'empathic_concern', strictFamily: true }).id, 'heavy');
+  // without strict, the old last-resort fallback returns it for any family
+  assert.equal(selectClip(heroes, { tier: 'hero', family: 'delight' }).id, 'heavy');
+});

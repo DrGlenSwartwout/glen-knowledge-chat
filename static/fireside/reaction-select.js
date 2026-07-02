@@ -16,7 +16,7 @@ export const FAMILY_AFFINITY = {
   lightness: ['delight', 'affirming'],
 };
 
-function chooseFamilyPool(pool, family) {
+function chooseFamilyPool(pool, family, strict) {
   if (!family) return pool;
   const exact = pool.filter((c) => c.family === family);
   if (exact.length) return exact;
@@ -24,7 +24,9 @@ function chooseFamilyPool(pool, family) {
     const hit = pool.filter((c) => c.family === alt);
     if (hit.length) return hit;
   }
-  return pool; // last resort: anything in this tier
+  // strict: no cross-family fallback — used for tiers (e.g. hero) whose clip
+  // would feel wrong on unrelated content. Non-strict: last resort = anything.
+  return strict ? [] : pool;
 }
 
 export function selectClip(reactions, query, lastId = null, rng = Math.random) {
@@ -36,7 +38,8 @@ export function selectClip(reactions, query, lastId = null, rng = Math.random) {
     const g = pool.filter((c) => c.gaze === q.gaze);
     if (g.length) pool = g;
   }
-  pool = chooseFamilyPool(pool, q.family);
+  pool = chooseFamilyPool(pool, q.family, q.strictFamily);
+  if (!pool.length) return null;
   if (q.form) {
     const f = pool.filter((c) => c.form === q.form);
     if (f.length) pool = f;
