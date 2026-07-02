@@ -27287,6 +27287,42 @@ def api_invoice_update(token):
     return jsonify({"ok": True, "order": _invoice_summary(updated)})
 
 
+@app.route("/api/invoice/<token>/cancel", methods=["POST"])
+def api_invoice_cancel(token):
+    """Customer cancels their own unpaid order from the invoice page. Marks it
+    cancelled (only while proposed/confirmed/new and not paid/shipped) and emails
+    the owner so a client-initiated cancel is never silent."""
+    order = _invoice_order_for_token(token)
+    if not order:
+        return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    if order.get("pay_status") == "paid" or order.get("status") in _bos_orders._TERMINAL_STATUSES:
+        return jsonify({"ok": False, "error": "This order can no longer be cancelled "
+                        "online — please reach out and we'll help."}), 409
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        _bos_orders.set_order_status(cx, order["id"], "cancelled")
+        try:  # best-effort audit note; never blocks the cancel
+            cx.execute("UPDATE orders SET notes=COALESCE(notes,'')||? WHERE id=?",
+                       (f"\n[cancelled by client {datetime.utcnow().date().isoformat()}]",
+                        order["id"]))
+            cx.commit()
+        except Exception:
+            pass
+    finally:
+        cx.close()
+    try:
+        from dashboard import inbox as _inbox
+        ref = order.get("external_ref") or f"#{order['id']}"
+        _inbox.send_email("drglenswartwout@gmail.com",
+                          f"Order {ref} CANCELLED by customer",
+                          f"{order.get('name') or ''} <{order.get('email') or ''}> cancelled order "
+                          f"{ref} (${(int(order.get('total_cents') or 0))/100:,.2f}) from the invoice page.")
+    except Exception as _e:
+        print(f"[invoice] cancel notify skipped: {_e!r}", flush=True)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/invoice/<token>/apply-points", methods=["POST"])
 def api_invoice_apply_points(token):
     """Customer applies points against the invoice total. Server is the ONLY

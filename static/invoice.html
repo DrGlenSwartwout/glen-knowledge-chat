@@ -124,6 +124,10 @@
     <button class="primary" id="pay-btn" onclick="pay()">Pay now</button>
     <button class="ghost" id="claim-btn" style="display:none" onclick="claim()">I’ve sent payment</button>
     <div id="pay-msg" class="muted" style="margin-top:8px"></div>
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      <button class="ghost" id="cancel-btn" onclick="cancelOrder()">Cancel this order</button>
+      <div id="cancel-msg" class="muted" style="margin-top:6px"></div>
+    </div>
   </div>
 </div>
 <!-- Print/PDF surface: filled on demand by printInvoice(); shown only when printing. -->
@@ -282,6 +286,18 @@ async function applyPoints(){
   const r = await fetch(API+'/apply-points', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({cents})});
   const j = await r.json(); if(!j.ok){ alert(j.error||'could not apply points'); return; }
   ORDER=j.order; renderTotals();
+}
+async function cancelOrder(){
+  if(!confirm('Cancel this order? You can always reach out and we’ll be glad to help you reorder.')) return;
+  const btn=$('cancel-btn'); btn.disabled=true; $('cancel-msg').textContent='Cancelling…';
+  try{
+    const r=await fetch(API+'/cancel',{method:'POST',headers:{'Content-Type':'application/json'}});
+    const j=await r.json();
+    if(!j.ok){ $('cancel-msg').textContent=j.error||'Could not cancel — please reach out.'; btn.disabled=false; return; }
+    $('pay-card').innerHTML='<div class="notice">Your order has been cancelled. Mahalo — reach out anytime and we’ll be glad to help you reorder.</div>';
+    $('add-row').style.display='none';
+    ORDER.editable=false; renderLines();
+  }catch(e){ $('cancel-msg').textContent='Network error — please try again.'; btn.disabled=false; }
 }
 function row(label, v, raw){ return '<div class="row"><span>'+label+'</span><span>'+(raw?v:money(v))+'</span></div>'; }
 function fillAdd(){ $('add-sel').innerHTML = '<option value="">+ add a product…</option>' +
