@@ -95,6 +95,48 @@
   </div>
 
   <div class="panel">
+    <h2>Product discounts</h2>
+    <div class="note">Three non-additive discount types. Only one applies per order (the pricing engine picks the best-fit enabled type). Each ramp is linear-interpolated between rows and flat beyond the last row.</div>
+
+    <label style="margin-top:16px;display:flex;align-items:center;gap:8px;font-weight:600">
+      <input type="checkbox" id="ds_same_sku_enabled" style="width:auto" /> Same-SKU volume (type 1)
+    </label>
+    <div class="hint">Discount by quantity of the SAME product in the cart. Open to everyone.</div>
+    <table>
+      <thead><tr><th>Qty</th><th>Discount (%)</th><th></th></tr></thead>
+      <tbody id="ds_same_sku_anchors"></tbody>
+    </table>
+    <div class="actions">
+      <button class="btn small" onclick="addDiscountAnchor('ds_same_sku_anchors')">Add anchor</button>
+    </div>
+
+    <label style="margin-top:20px;display:flex;align-items:center;gap:8px;font-weight:600">
+      <input type="checkbox" id="ds_program_total_enabled" style="width:auto" /> Program-total volume (type 2)
+    </label>
+    <div class="hint">Discount by total order quantity across all products. Gated to paid members only.</div>
+    <table>
+      <thead><tr><th>Qty</th><th>Discount (%)</th><th></th></tr></thead>
+      <tbody id="ds_program_total_anchors"></tbody>
+    </table>
+    <div class="actions">
+      <button class="btn small" onclick="addDiscountAnchor('ds_program_total_anchors')">Add anchor</button>
+    </div>
+
+    <label style="margin-top:20px;display:flex;align-items:center;gap:8px;font-weight:600">
+      <input type="checkbox" id="ds_open_total_enabled" style="width:auto" /> Open-total volume (type 3)
+    </label>
+    <div class="hint">Discount by total order quantity across all products. Open to everyone (not member-gated).</div>
+    <table>
+      <thead><tr><th>Qty</th><th>Discount (%)</th><th></th></tr></thead>
+      <tbody id="ds_open_total_anchors"></tbody>
+    </table>
+    <div class="actions">
+      <button class="btn small" onclick="addDiscountAnchor('ds_open_total_anchors')">Add anchor</button>
+    </div>
+    <div class="note">Off by default — conflicts with the remedymatch.com public store; enabling applies a mix-and-match discount to every buyer.</div>
+  </div>
+
+  <div class="panel">
     <h2>Subscriptions</h2>
     <div class="grid">
       <div class="field">
@@ -216,6 +258,30 @@
     return out;
   }
 
+  // ----- product-discount ramp tables (same_sku / program_total / open_total) -----
+  function addDiscountAnchor(tbodyId){ getEl(tbodyId).appendChild(anchorRow(1, 0)); }
+  function setDiscountRamp(tbodyId, rows){
+    var body = getEl(tbodyId);
+    body.innerHTML = '';
+    (rows || []).forEach(function(r){ body.appendChild(anchorRow(r[0], r[1])); });
+  }
+  function readDiscountRamp(tbodyId){
+    var out = [];
+    getEl(tbodyId).querySelectorAll('tr').forEach(function(tr){
+      var q = tr.querySelector('.a-months').value, p = tr.querySelector('.a-pct').value;
+      if (q === '' && p === '') return;
+      out.push([Number(q), Number(p)]);
+    });
+    return out;
+  }
+  function readDiscounts(){
+    return {
+      same_sku:      {enabled: getEl('ds_same_sku_enabled').checked,      anchors: readDiscountRamp('ds_same_sku_anchors')},
+      program_total: {enabled: getEl('ds_program_total_enabled').checked, anchors: readDiscountRamp('ds_program_total_anchors')},
+      open_total:    {enabled: getEl('ds_open_total_enabled').checked,    anchors: readDiscountRamp('ds_open_total_anchors')}
+    };
+  }
+
   // ----- referral cert anchors table -----
   function referralCertRow(modules, pct){
     var tr = document.createElement('tr');
@@ -269,6 +335,14 @@
     setReferralCertAnchors(r.referral_cert_anchors != null ? r.referral_cert_anchors : ((DEFAULTS.rewards||{}).referral_cert_anchors));
     setCsv('subscribe_tiers', eff.subscribe_tiers);
     setCsv('cadences', eff.cadences);
+    // product discounts (same_sku / program_total / open_total)
+    var dDefaults = (DEFAULTS.discounts || {});
+    var d = eff.discounts || {};
+    ['same_sku', 'program_total', 'open_total'].forEach(function(t){
+      var block = d[t] || dDefaults[t] || {enabled: false, anchors: [[1, 0]]};
+      getEl('ds_' + t + '_enabled').checked = !!block.enabled;
+      setDiscountRamp('ds_' + t + '_anchors', block.anchors);
+    });
   }
 
   function setHint(id, val){
@@ -307,6 +381,7 @@
       subscribe_tiers: readCsv('subscribe_tiers'),
       cadences: readCsv('cadences'),
       volume_anchors: readAnchors(),
+      discounts: readDiscounts(),
       rewards: {
         referral_reward_pct: getNum('referral_reward_pct') != null ? getNum('referral_reward_pct') / 100 : null,
         cash_out_threshold_cents: getNum('cash_out_threshold_cents') != null ? Math.round(getNum('cash_out_threshold_cents') * 100) : null,
