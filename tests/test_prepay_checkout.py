@@ -171,6 +171,42 @@ def test_prepay_page_scaffold(monkeypatch, tmp_path):
     assert "/api/prepay/tiers" in html
 
 
+def _post_webhook(app_module, monkeypatch, sid="cs_1"):
+    monkeypatch.delenv("STRIPE_WEBHOOK_SECRET", raising=False)
+    import json as _json
+    payload = _json.dumps({"type": "checkout.session.completed", "data": {"object": {"id": sid}}})
+    return app_module.app.test_client().post("/webhook/stripe", data=payload,
+                                             content_type="application/json")
+
+
+def test_webhook_fulfills_prepay_closed_tab(monkeypatch, tmp_path):
+    """Safety net: the Stripe webhook grants a prepaid term even when the browser
+    never lands on /prepay/return (closed tab / dropped redirect)."""
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "_STRIPE_ACTIVE", True, raising=False)
+    _mock_paid_prepay_session(app_module, monkeypatch, tier_key="6mo")
+    r = _post_webhook(app_module, monkeypatch)
+    assert r.status_code == 200
+    with sqlite3.connect(db) as cx:
+        grants = cx.execute("SELECT source FROM memberships WHERE email='a@b.com'").fetchall()
+        subs = cx.execute("SELECT COUNT(*) FROM subscriptions WHERE email='a@b.com'").fetchone()[0]
+    assert len(grants) == 1 and grants[0][0] == "prepay_6mo"
+    assert subs == 0
+
+
+def test_webhook_and_return_single_grant(monkeypatch, tmp_path):
+    """Redirect + webhook both firing (any order) must grant exactly once."""
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "PREPAY_LADDER_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "_STRIPE_ACTIVE", True, raising=False)
+    _mock_paid_prepay_session(app_module, monkeypatch, tier_key="12mo")
+    _post_webhook(app_module, monkeypatch)
+    app_module.app.test_client().get("/prepay/return?session_id=cs_1")
+    with sqlite3.connect(db) as cx:
+        n = cx.execute("SELECT COUNT(*) FROM memberships WHERE email='a@b.com'").fetchone()[0]
+    assert n == 1
+
+
 def test_return_unpaid_grants_nothing(monkeypatch, tmp_path):
     app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
     monkeypatch.setattr(app_module, "PREPAY_LADDER_ENABLED", True, raising=False)

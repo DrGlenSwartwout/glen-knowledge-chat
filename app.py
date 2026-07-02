@@ -2912,62 +2912,11 @@ def prepay_return():
     PRIMARY KEY, mirroring _fulfill_biofield_trial). Never raises."""
     from flask import redirect as _redir
     sid = (request.args.get("session_id") or "").strip()
-    ok = False
-    if sid and PREPAY_LADDER_ENABLED and _STRIPE_ACTIVE:
-        try:
-            from dashboard import stripe_pay as _sp, prepay as _pp
-            sess = _sp.get_session(sid)
-            md = sess.get("metadata") or {}
-            if md.get("kind") == "prepay_term":
-                email = (md.get("email") or "").strip().lower()
-                tier_key = (md.get("tier_key") or "").strip()
-                pi_id = sess.get("payment_intent")
-                tier = _pp.get_tier(tier_key)
-                if email and tier and pi_id:
-                    pi = _sp.get_payment_intent(pi_id)
-                    if pi.get("status") == "succeeded":
-                        claimed = False
-                        with _db_lock, sqlite3.connect(LOG_DB) as cx:
-                            cx.execute(
-                                "CREATE TABLE IF NOT EXISTS prepay_term_grants "
-                                "(session_id TEXT PRIMARY KEY, email TEXT, tier_key TEXT, granted_at TEXT)")
-                            init_membership_tables(cx)
-                            claimed = cx.execute(
-                                "INSERT OR IGNORE INTO prepay_term_grants "
-                                "(session_id, email, tier_key, granted_at) VALUES (?,?,?,?)",
-                                (sid, email, tier_key, datetime.utcnow().isoformat() + "Z")).rowcount == 1
-                            cx.commit()
-                            if claimed:
-                                _grant_prepay_term(cx, email, tier_key)
-                                cx.commit()
-                        ok = True
-                        if claimed:
-                            # Record the charge on the ledger (idempotent on source+ref).
-                            try:
-                                _ingest_order(source="prepay_term", external_ref=pi_id, email=email,
-                                              total_cents=tier["price_cents"], channel="retail", status="done")
-                            except Exception as _oe:
-                                print(f"[prepay] order-ledger record failed: {_oe!r}", flush=True)
-                            # Confirmation email, best-effort — must never undo the grant.
-                            try:
-                                if PUBLIC_BASE_URL:
-                                    per_mo = _pp.per_month_cents(tier_key)
-                                    subject = "Your Remedy Match membership is active"
-                                    body = (
-                                        "Aloha,\n\n"
-                                        f"Your {tier['label']} membership is active - you're all set. "
-                                        f"That's ${tier['price_cents']/100:.0f} prepaid (about "
-                                        f"${per_mo/100:.0f}/mo), with member pricing on everything for "
-                                        "your whole term.\n\n"
-                                        "There's nothing to cancel and no surprise charges - when your "
-                                        "term ends we'll simply check in about renewing.\n\n"
-                                        "In wellness,\nDr. Glen and Rae\n"
-                                    )
-                                    _send_inquiry_email(email, subject, body)
-                            except Exception as _e:
-                                print(f"[prepay] confirmation email failed: {_e!r}", flush=True)
-        except Exception as e:
-            print(f"[prepay] return failed: {e!r}", flush=True)
+    # Fulfillment is idempotent + self-verifying (re-fetches the session, checks kind +
+    # succeeded payment), and the webhook is the safety net — so honor any paid session
+    # here regardless of the flag. The shared fulfiller never raises.
+    res = _fulfill_prepay_term(sid) if sid else {"ok": False}
+    ok = bool(res.get("ok"))
     return _redir(f"{PUBLIC_BASE_URL.rstrip('/')}/?prepay={'ok' if ok else 'err'}")
 
 
@@ -7091,6 +7040,74 @@ def _fulfill_biofield_trial(session_id):
         return {"ok": True, "created": True, "email": bt_email}
     except Exception as e:
         print(f"[biofield-trial] fulfill failed: {e!r}", flush=True)
+        return {"ok": False, "reason": "error"}
+
+
+def _fulfill_prepay_term(session_id):
+    """Grant a prepaid membership term from a paid prepay_term Stripe session,
+    idempotently. Callable from the /prepay/return redirect AND the webhook, so a
+    closed tab / dropped redirect still gets fulfilled (money captured => term granted).
+    Re-fetches the session + PaymentIntent (the security guarantee); only proceeds on a
+    succeeded payment. Claim-then-create on prepay_term_grants(session_id) makes the
+    redirect and webhook race safely. Never raises."""
+    try:
+        from dashboard import stripe_pay as _sp, prepay as _pp
+        sess = _sp.get_session(session_id)
+        md = sess.get("metadata") or {}
+        if md.get("kind") != "prepay_term":
+            return {"ok": False, "reason": "not_prepay"}
+        email = (md.get("email") or "").strip().lower()
+        tier_key = (md.get("tier_key") or "").strip()
+        tier = _pp.get_tier(tier_key)
+        pi_id = sess.get("payment_intent")
+        if not (email and tier and pi_id):
+            return {"ok": False, "reason": "incomplete"}
+        pi = _sp.get_payment_intent(pi_id)
+        if pi.get("status") != "succeeded":
+            return {"ok": False, "reason": "unpaid"}
+        claimed = False
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute(
+                "CREATE TABLE IF NOT EXISTS prepay_term_grants "
+                "(session_id TEXT PRIMARY KEY, email TEXT, tier_key TEXT, granted_at TEXT)")
+            init_membership_tables(cx)
+            claimed = cx.execute(
+                "INSERT OR IGNORE INTO prepay_term_grants "
+                "(session_id, email, tier_key, granted_at) VALUES (?,?,?,?)",
+                (session_id, email, tier_key, datetime.utcnow().isoformat() + "Z")).rowcount == 1
+            cx.commit()
+            if claimed:
+                _grant_prepay_term(cx, email, tier_key)
+                cx.commit()
+        if not claimed:
+            return {"ok": True, "already": True, "email": email}
+        # Ledger (idempotent on source+ref) + confirmation email, best-effort — must
+        # never undo the committed grant. Inside the won-claim path, so exactly once.
+        try:
+            _ingest_order(source="prepay_term", external_ref=pi_id, email=email,
+                          total_cents=tier["price_cents"], channel="retail", status="done")
+        except Exception as _oe:
+            print(f"[prepay] order-ledger record failed: {_oe!r}", flush=True)
+        try:
+            if PUBLIC_BASE_URL:
+                per_mo = _pp.per_month_cents(tier_key)
+                subject = "Your Remedy Match membership is active"
+                body = (
+                    "Aloha,\n\n"
+                    f"Your {tier['label']} membership is active - you're all set. "
+                    f"That's ${tier['price_cents']/100:.0f} prepaid (about "
+                    f"${per_mo/100:.0f}/mo), with member pricing on everything for "
+                    "your whole term.\n\n"
+                    "There's nothing to cancel and no surprise charges - when your "
+                    "term ends we'll simply check in about renewing.\n\n"
+                    "In wellness,\nDr. Glen and Rae\n"
+                )
+                _send_inquiry_email(email, subject, body)
+        except Exception as _e:
+            print(f"[prepay] confirmation email failed: {_e!r}", flush=True)
+        return {"ok": True, "created": True, "email": email}
+    except Exception as e:
+        print(f"[prepay] fulfill failed: {e!r}", flush=True)
         return {"ok": False, "reason": "error"}
 
 
@@ -16945,7 +16962,11 @@ def webhook_stripe():
         if (event or {}).get("type") == "checkout.session.completed":
             session_id = (((event.get("data") or {}).get("object") or {}).get("id") or "").strip()
             if session_id:
+                # Each fulfiller re-fetches the session and no-ops on a non-matching
+                # kind, so calling both routes the session to the right handler (a
+                # closed tab / dropped redirect still gets fulfilled).
                 _fulfill_biofield_trial(session_id)
+                _fulfill_prepay_term(session_id)
         return ("", 200)
     except Exception as e:
         print(f"[webhook-stripe] {e!r}", flush=True)
