@@ -124,7 +124,9 @@
       <div class="row grand"><span>Total</span><span id="t-total">$0.00</span></div>
     </div>
     <div style="margin-top:16px"><button id="submit-btn" class="primary" onclick="submitOrder()">Create proposed invoice</button>
-      <button id="send-inv-btn" class="ghost" style="display:none;margin-left:8px" onclick="sendInvoiceEdit()">Send invoice to customer</button></div>
+      <button id="send-inv-btn" class="ghost" style="display:none;margin-left:8px" onclick="sendInvoiceEdit()">Send invoice to customer</button>
+      <button id="save-cprices-btn" class="ghost" style="margin-left:8px" onclick="saveClientPrices()">Save line prices as this client's standard</button></div>
+    <div id="cprices-note" class="muted" style="margin-top:6px"></div>
   </div>
 </div>
 
@@ -397,6 +399,22 @@ async function lifecycle(key, params){
   toast((j.result&&j.result.message) || (key==="orders.confirm" ? "Invoice confirmed" : key==="orders.send_invoice" ? "Invoice sent" : "Payment recorded — in fulfillment"));
 }
 function invSentStr(iso){ try{ return new Date(iso).toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'2-digit'}); }catch(e){ return ''; } }
+async function saveClientPrices(){
+  const email = ($("c-email").value||"").trim().toLowerCase();
+  if(!email){ toast("Enter the client's email first","error"); return; }
+  const prices = LINES.filter(l=>l.slug).map(l=>({slug:l.slug, price_cents:l.unit_cents}));
+  if(!prices.length){ toast("Add line items first","error"); return; }
+  if(!confirm("Save these "+prices.length+" line prices as "+email+"'s standard? They'll auto-apply to their future orders (you can still override a line).")) return;
+  const btn=$("save-cprices-btn"); btn.disabled=true;
+  try{
+    const r=await fetch("/api/console/client-prices",{method:"POST",headers:HEADERS,body:JSON.stringify({email, prices})});
+    const j=await r.json();
+    if(!j.ok){ toast(j.error||"Could not save","error"); btn.disabled=false; return; }
+    $("cprices-note").textContent="Saved "+j.saved+" special price(s) for "+email+" — they'll auto-apply next time.";
+    toast("Client prices saved");
+  }catch(e){ toast(e.message,"error"); }
+  btn.disabled=false;
+}
 async function sendInvoiceEdit(){
   const btn=$("send-inv-btn"); btn.disabled=true;
   try{
