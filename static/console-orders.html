@@ -44,6 +44,9 @@
                  color:var(--cream); border-radius:6px; padding:3px 9px; cursor:pointer; }
   .acts button:hover { border-color:var(--gold); color:var(--gold); }
   .acts button.cancel:hover { border-color:var(--red); color:var(--red); }
+  /* Sent-invoice confirmation state: green so "Invoice Sent" reads at a glance. */
+  .acts button.inv-sent { background:rgba(58,90,64,0.28); border-color:#3a5a40; color:#9fd3a6; }
+  .acts button.inv-sent:hover { border-color:#66bb6a; color:#c6ecc9; }
   .bo-badge { display:inline-block; font-size:10px; font-weight:600; color:var(--red);
               border:1px solid var(--red); border-radius:5px; padding:1px 5px; margin-left:6px; }
   .pay-badge { display:inline-block; font-size:10px; font-weight:600; border-radius:5px;
@@ -129,10 +132,10 @@
     var total = o.total_cents ? '$'+(o.total_cents/100).toFixed(2) : '';
     var items = (o.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||''); }).join(', ');
     var acts = '';
-    if (o.status==='proposed') acts = editBtn(o.id) + ' ' + btn(o.id,'orders.confirm','Confirm') + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
-    else if (o.status==='confirmed') acts = editBtn(o.id) + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
-    else if (o.status==='new' && !isPaidReady(o)) acts = editBtn(o.id) + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
-    else if (o.status==='new')     acts = editBtn(o.id) + ' ' + btn(o.id,'orders.mark_packed','Pack') + ' ' + btn(o.id,'orders.send_invoice','Send invoice') + ' ' + printInvBtn(o.id);
+    if (o.status==='proposed') acts = editBtn(o.id) + ' ' + btn(o.id,'orders.confirm','Confirm') + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
+    else if (o.status==='confirmed') acts = editBtn(o.id) + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
+    else if (o.status==='new' && !isPaidReady(o)) acts = editBtn(o.id) + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
+    else if (o.status==='new')     acts = editBtn(o.id) + ' ' + btn(o.id,'orders.mark_packed','Pack') + ' ' + sendInvBtn(o) + ' ' + printInvBtn(o.id);
     else if (o.status==='packed') acts = btn(o.id,'orders.create_label','Create label') + ' ' + shipBtn(o.id);
     else if (o.status==='shipped') acts = btn(o.id,'orders.send_tracking','Send tracking') + ' ' + btn(o.id,'orders.mark_delivered','Mark delivered') + ' ' + btn(o.id,'orders.mark_done','Mark done');
     if (o.pay_status === 'claimed') acts = '<button onclick="confirmClaimed(' + Number(o.id) + ",'" + String(o.pay_method || '').replace(/'/g, '') + "'" + ')">Confirm payment' + (o.pay_method ? ' (' + esc(o.pay_method) + ')' : '') + '</button> ' + acts;
@@ -408,9 +411,24 @@
     setTimeout(function(){ card.classList.remove('ord-flash'); }, 2600);
   }
 
+  // Send-invoice button reflects whether it's already been emailed: once sent it
+  // turns green and reads "Invoice Sent M/D/YY", and re-clicking re-sends.
+  function invSentStr(iso){ try { return new Date(iso).toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'2-digit'}); } catch(e){ return ''; } }
+  function sendInvBtn(o){
+    if (o.invoice_sent_at){
+      return '<button class="inv-sent" onclick="act('+Number(o.id)+',\'orders.send_invoice\',{})">Invoice Sent '+esc(invSentStr(o.invoice_sent_at))+' (re-send)</button>';
+    }
+    return '<button onclick="act('+Number(o.id)+',\'orders.send_invoice\',{})">Send invoice</button>';
+  }
   async function act(id, key, params){
     params = params || {}; params.order_id = id;
-    await fetch('/api/action/'+key, {method:'POST', headers:hdr(), body:JSON.stringify(params)});
+    var r = await fetch('/api/action/'+key, {method:'POST', headers:hdr(), body:JSON.stringify(params)});
+    var res = await r.json().catch(function(){ return {}; });
+    // Surface failures — the board used to swallow them, so a Send invoice that
+    // errored (e.g. no customer email) silently left the button unchanged.
+    if (res && res.status && res.status!=='done'){
+      alert((res.result && res.result.error) || res.error || ('Action did not complete ('+res.status+').'));
+    }
     load();
   }
   function ship(id){
