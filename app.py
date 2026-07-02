@@ -26136,6 +26136,7 @@ import dashboard.actions_tasks  # noqa: F401  (registers tasks.* actions)
 import dashboard.actions_rewards  # noqa: F401  (registers rewards.process_payout MONEY_SEND action)
 import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals)
 import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
+import dashboard.combined_shipments as _bos_combined_shipments  # noqa: F401 (household combined-shipment model + actions)
 import dashboard.coaching as _coaching_actions  # noqa: F401 (registers coaching.grant action)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
 import dashboard.payments as _bos_payments  # noqa: F401 (Stripe payments ledger — read-only)
@@ -26191,6 +26192,7 @@ def _init_bos_orders():
         _stripe_alerts.init_stripe_alerts_table(cx)
         _tracking.init_tracking_schema(cx)
         _tracking.migrate_add_delivery_columns(cx)
+        _bos_combined_shipments.init_combined_shipments_table(cx)
     finally:
         cx.close()
 
@@ -26323,6 +26325,32 @@ def console_order_invoice_link(oid):
     tok = create_order_invoice_token(oid)
     return jsonify({"ok": True,
                     "link": f"{PUBLIC_BASE_URL.rstrip('/')}/invoice/{tok}?print=1"})
+
+
+@app.route("/api/console/shipments/suggestions", methods=["GET"])
+def console_shipment_suggestions():
+    """Owner/ops: the combined-shipment feature flag + clusters of ungrouped
+    orders that could ship together (same household or same ship-to address).
+    Drives the Orders board's Combine UI + auto-suggest banner."""
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    enabled = _bos_combined_shipments._enabled()
+    if not enabled:
+        return jsonify({"ok": True, "enabled": False, "clusters": []})
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        def _household_of(pid):
+            try:
+                return _person_household_slug(cx, pid)
+            except Exception:
+                return None
+        clusters = _bos_combined_shipments.suggest_combinable(
+            cx, household_of=_household_of)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "enabled": True, "clusters": clusters})
 
 
 def _is_shipping_line_name(name):

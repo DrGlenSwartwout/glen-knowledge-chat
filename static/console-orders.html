@@ -63,6 +63,22 @@
   #gate input { padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--cream); }
   @keyframes ord-flash { 0% { background: rgba(212,175,55,0.45); } 100% { background: transparent; } }
   .card.ord-flash { animation: ord-flash 2.4s ease-out; }
+  /* Household / combined-shipment UI */
+  .hh-check { margin-right:7px; transform:scale(1.15); cursor:pointer; vertical-align:middle; }
+  .hh-badge { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:10px;
+    background:rgba(124,156,255,0.18); color:#9db4ff; font-size:11px; }
+  #hhbar { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:40;
+    display:none; align-items:center; gap:12px; padding:10px 16px; border-radius:12px;
+    background:var(--surface); border:1px solid var(--gold); box-shadow:0 6px 24px rgba(0,0,0,0.45); }
+  #hhbar button { padding:7px 14px; border-radius:8px; border:1px solid var(--gold);
+    background:var(--gold); color:#0a150d; cursor:pointer; font-weight:600; }
+  #hhbar .link { background:none; border:none; color:var(--muted); cursor:pointer; font-weight:400; }
+  #hhbanner { display:none; margin:0 12px 10px; padding:9px 13px; border-radius:10px;
+    background:rgba(124,156,255,0.10); border:1px solid rgba(124,156,255,0.35); color:#c7d2ff; font-size:13px; }
+  #hhbanner button { margin-left:8px; padding:3px 10px; border-radius:7px; border:1px solid #7c9cff;
+    background:none; color:#9db4ff; cursor:pointer; }
+  .hh-ship { border:1px solid rgba(124,156,255,0.5) !important; }
+  .hh-ship .card-head .who::before { content:"\1F3E0 "; }
 </style>
 </head>
 <body>
@@ -75,7 +91,13 @@
 
   <h1>Orders</h1>
   <div class="sub">Every order, from every channel, through one lifecycle.</div>
+  <div id="hhbanner"></div>
   <div class="cols" id="board"></div>
+  <div id="hhbar">
+    <span id="hhbar-label"></span>
+    <button onclick="combineSelected()">Combine into shipment &rarr;</button>
+    <button class="link" onclick="clearSelection()">clear</button>
+  </div>
 
 <script>
   // A "new" (in-fulfillment) order is paid-ready only once its payment is paid or
@@ -96,6 +118,13 @@
   // Display-only relabel of order source (DB values unchanged).
   function srcLabel(s){ var m={'reorder':'Order','portal-reorder':'Portal-Order'}; return m[s]||s; }
 
+  // Household / combined-shipment state (feature-flagged server-side).
+  var HH = { enabled:false, sel:{}, clusters:[] };
+  var _TERMINAL = {shipped:1, delivered:1, done:1, cancelled:1};
+  // An order can join a new combined shipment if it's not out the door, not a
+  // pickup, and not already in a shipment.
+  function combinable(o){ return !_TERMINAL[o.status] && o.channel!=='pickup' && o.group_shipment_id==null && isPaidReady(o); }
+
   function cardHtml(o){
     var total = o.total_cents ? '$'+(o.total_cents/100).toFixed(2) : '';
     var items = (o.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||''); }).join(', ');
@@ -108,6 +137,16 @@
     else if (o.status==='shipped') acts = btn(o.id,'orders.send_tracking','Send tracking') + ' ' + btn(o.id,'orders.mark_delivered','Mark delivered') + ' ' + btn(o.id,'orders.mark_done','Mark done');
     if (o.pay_status === 'claimed') acts = '<button onclick="confirmClaimed(' + Number(o.id) + ",'" + String(o.pay_method || '').replace(/'/g, '') + "'" + ')">Confirm payment' + (o.pay_method ? ' (' + esc(o.pay_method) + ')' : '') + '</button> ' + acts;
     if (o.status!=='done' && o.status!=='delivered' && o.status!=='cancelled') acts += ' <button class="cancel" onclick="act('+Number(o.id)+',\'orders.cancel\',{})">Cancel</button>';
+    // Grouped into a combined shipment: fulfillment is driven by the shipment
+    // card (in the Households column), so suppress this order's own shipping
+    // buttons. Money actions (invoice/pay) stay reachable when still unpaid.
+    if (o.group_shipment_id!=null && (o.status==='new' || o.status==='packed' || o.status==='shipped') && isPaidReady(o)) {
+      // Keep the money action reachable (a claimed payment still needs confirming);
+      // only the fulfillment buttons move to the shipment card.
+      var keep = (o.pay_status==='claimed')
+        ? '<button onclick="confirmClaimed(' + Number(o.id) + ",'" + String(o.pay_method || '').replace(/'/g, '') + "'" + ')">Confirm payment' + (o.pay_method ? ' (' + esc(o.pay_method) + ')' : '') + '</button> ' : '';
+      acts = keep + '<span class="meta">Shipping handled in shipment #'+Number(o.group_shipment_id)+' (Households column).</span>';
+    }
     var bo = Number(o.backorder_units||0);
     // Backorder only applies once an order is paid + in fulfillment (new/packed/
     // shipped) — never on an unpaid proposed/confirmed invoice (all-unfulfilled).
@@ -121,8 +160,15 @@
     // Collapsed default: clickable HEADER (name + pay/backorder badge ; date placed ·
     // where/how placed · amount). Click opens the BODY (products, tracking, fulfillment,
     // actions). Action buttons live in the body, so clicking them never toggles the card.
+    // Household select checkbox (only for combinable orders when the flag is on)
+    // and a badge when the order is already in a combined shipment.
+    var sel = (HH.enabled && combinable(o))
+      ? '<input type="checkbox" class="hh-check" '+(HH.sel[o.id]?'checked ':'')
+        +'onclick="event.stopPropagation(); toggleSel('+Number(o.id)+', this)">' : '';
+    var gb = (o.group_shipment_id!=null)
+      ? '<span class="hh-badge">shipment #'+Number(o.group_shipment_id)+'</span>' : '';
     var head = '<div class="card-head" onclick="toggleCard(this)">'
-      + '<div class="who">'+esc(o.name||o.email||'Order #'+o.id)+badge+'<span class="chev">&#9656;</span></div>'
+      + '<div class="who">'+sel+esc(o.name||o.email||'Order #'+o.id)+gb+badge+'<span class="chev">&#9656;</span></div>'
       + '<div class="meta">'+esc(dateStr(o.created_at))+' &middot; <span class="src">'+esc(whereLabel(o))+'</span>'
         + (total?' &middot; '+total:'')+'</div>'
       + '</div>';
@@ -216,6 +262,12 @@
     var r = await fetch('/api/orders?limit=300', {headers:hdr()});
     if (r.status===401){ document.getElementById('gate').style.display='flex'; return; }
     var orders = (await r.json()).data || [];
+    // Combined-shipment feature flag + auto-suggest clusters (best-effort).
+    try {
+      var sr = await fetch('/api/console/shipments/suggestions', {headers:hdr()});
+      if (sr.ok){ var sj = await sr.json(); HH.enabled = !!sj.enabled; HH.clusters = sj.clusters || []; }
+    } catch(e){ HH.enabled = false; HH.clusters = []; }
+    HH.byId = {}; orders.forEach(function(o){ HH.byId[o.id] = o; });  // for the combine confirm
     // Header-search deep link (Records mode): /console/orders?q=<ref|name|email>
     var q = (new URLSearchParams(location.search).get('q') || '').trim().toLowerCase();
     if (q) {
@@ -234,6 +286,17 @@
         + ' · <a href="/console/orders" style="color:#7c9cff">clear</a>';
       board.appendChild(note);
     }
+    // Households column (leftmost): one card per open combined shipment, built
+    // purely from the orders that carry a group_shipment_id.
+    var groups = {};
+    orders.forEach(function(o){ if(o.group_shipment_id!=null){ (groups[o.group_shipment_id]=groups[o.group_shipment_id]||[]).push(o); } });
+    var gids = Object.keys(groups);
+    if (gids.length){
+      var gcol = document.createElement('div'); gcol.className='col';
+      gcol.innerHTML = '<h2>Households <span class="n">'+gids.length+'</span></h2>'
+        + gids.map(function(id){ return shipmentCardHtml(id, groups[id]); }).join('');
+      board.appendChild(gcol);
+    }
     LANES.forEach(function(l){
       var pred = l[2] || function(o){ return o.status===l[0]; };
       var inLane = orders.filter(pred);
@@ -242,7 +305,96 @@
         + inLane.map(cardHtml).join('');
       board.appendChild(col);
     });
+    renderBanner();
+    updateBar();
     maybeHighlight();
+  }
+
+  // One card summarizing a combined shipment (status/tracking are lockstep across
+  // members, so any member reflects the shipment). Buttons act on shipment_id.
+  function shipmentCardHtml(sid, ms){
+    var st = (ms[0]||{}).status || '';
+    var tn = ''; ms.forEach(function(m){ if(m.tracking_number) tn = m.tracking_number; });
+    var who = ms.map(function(m){ return esc(m.name||m.email||('#'+m.id)); }).join(' + ');
+    var items = ms.map(function(m){ return (m.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||''); }).join(', '); }).filter(Boolean).join(' | ');
+    var acts = '';
+    if (!tn) acts += gbtn(sid,'shipments.create_label','Create label') + ' <button onclick="setGroupTracking('+Number(sid)+')">Set tracking</button> ';
+    if (st==='new') acts += gbtn(sid,'shipments.mark_packed','Pack') + ' ';
+    if (tn) acts += gbtn(sid,'shipments.send_tracking','Send tracking') + ' ' + gbtn(sid,'shipments.mark_delivered','Mark delivered') + ' ' + gbtn(sid,'shipments.mark_done','Mark done') + ' ';
+    acts += '<button class="cancel" onclick="if(confirm(\'Un-group shipment #'+Number(sid)+' back into standalone orders?\'))actGroup('+Number(sid)+',\'shipments.cancel\',{})">Cancel</button>';
+    // While still open (no label bought), each member can be pulled out individually.
+    var memberList = '';
+    if (!tn) memberList = '<div class="meta">Members:<br>' + ms.map(function(m){
+        return '&bull; '+esc(m.name||m.email||('#'+m.id))
+          + ' <button onclick="actGroup('+Number(sid)+',\'shipments.remove\',{order_id:'+Number(m.id)+'})" style="padding:0 6px;border:1px solid var(--border);border-radius:5px;background:none;color:var(--muted);cursor:pointer">remove</button>';
+      }).join('<br>') + '</div>';
+    var head = '<div class="card-head" onclick="toggleCard(this)"><div class="who">'+who
+      + '<span class="hh-badge">shipment #'+Number(sid)+'</span><span class="chev">&#9656;</span></div>'
+      + '<div class="meta">'+esc(st)+(tn?' &middot; tracking '+esc(tn):'')+'</div></div>';
+    var body = '<div class="card-body">'
+      + (items?'<div class="meta prods">'+items+'</div>':'')
+      + memberList
+      + '<div class="acts">'+acts+'</div></div>';
+    return '<div class="card hh-ship" data-sid="'+Number(sid)+'">'+head+body+'</div>';
+  }
+  function gbtn(sid,key,label){ return '<button onclick="actGroup('+Number(sid)+',\''+key+'\',{})">'+label+'</button>'; }
+
+  // ── Selection + combine ──
+  function toggleSel(id, el){ if(el && el.checked) HH.sel[id]=true; else delete HH.sel[id]; updateBar(); }
+  function selCount(){ return Object.keys(HH.sel).length; }
+  function updateBar(){
+    var bar = document.getElementById('hhbar'); if(!bar) return;
+    var n = selCount();
+    document.getElementById('hhbar-label').textContent = n+' order'+(n===1?'':'s')+' selected';
+    bar.style.display = (n>=2) ? 'flex' : 'none';
+  }
+  function clearSelection(){ HH.sel={}; document.querySelectorAll('.hh-check').forEach(function(c){ c.checked=false; }); updateBar(); }
+  function _addrStr(a){ a=a||{}; return [a.street,a.city,a.state,a.zip].filter(Boolean).join(', '); }
+  async function combineSelected(){
+    var ids = Object.keys(HH.sel).map(Number);
+    if (ids.length<2){ alert('Select at least 2 orders to combine.'); return; }
+    // Show the shared ship-to (the first order's address) and warn loudly if the
+    // selected orders don't all share one address — this is the mis-ship guard.
+    var norm = function(a){ a=a||{}; return ((a.street||'')+'|'+(a.zip||'')).toLowerCase().trim(); };
+    var distinct = {}; ids.forEach(function(id){ var o=HH.byId[id]||{}; distinct[norm(o.address)]=1; });
+    var shipTo = _addrStr((HH.byId[ids[0]]||{}).address);
+    var warn = (Object.keys(distinct).length>1)
+      ? '\n\n⚠️ These orders have DIFFERENT ship-to addresses. Everything will ship to the address above — make sure that is right.' : '';
+    if (!confirm('Combine '+ids.length+' orders into one household shipment, shipping to:\n\n'+(shipTo||'(no address on the first order)')+'\n\nEach client keeps their own invoice and payment.'+warn)) return;
+    var r = await fetch('/api/action/shipments.combine', {method:'POST', headers:hdr(), body:JSON.stringify({order_ids:ids})});
+    var res = await r.json();
+    if (res.status!=='done'){ alert('Could not combine: '+(res.error||'error')); return; }
+    HH.sel={}; load();
+  }
+  function combineCluster(i){
+    var c = HH.clusters[i]; if(!c) return;
+    HH.sel = {}; c.orders.forEach(function(o){ HH.sel[o.id]=true; });
+    combineSelected();
+  }
+  async function actGroup(sid, key, params){
+    params = params || {}; params.shipment_id = Number(sid);
+    var r = await fetch('/api/action/'+key, {method:'POST', headers:hdr(), body:JSON.stringify(params)});
+    var res = await r.json();
+    if (res.status!=='done'){ alert('Action failed: '+(res.error||'error')); return; }
+    var out = res.result || {};
+    if (out.handoff) window.open(out.handoff, '_blank');   // Click-N-Ship handoff
+    load();
+  }
+  function setGroupTracking(sid){
+    var tn = prompt('USPS tracking number (from Click-N-Ship, for the combined parcel):',''); if(tn===null) return;
+    if(!tn.trim()){ alert('Enter a tracking number.'); return; }
+    actGroup(sid, 'shipments.set_tracking', {tracking_number: tn.trim()});
+  }
+  function renderBanner(){
+    var b = document.getElementById('hhbanner'); if(!b) return;
+    if(!HH.enabled || !HH.clusters.length){ b.style.display='none'; return; }
+    var c = HH.clusters[0];
+    var names = c.orders.map(function(o){ return o.name||o.email||('#'+o.id); }).join(' + ');
+    b.innerHTML = '&#127968; These orders share '+(c.key_type==='household'?'a household':'an address')
+      + ' and could ship together: <b>'+esc(names)+'</b>'
+      + '<button onclick="combineCluster(0)">Combine</button>'
+      + (HH.clusters.length>1?' <span class="meta">(+'+(HH.clusters.length-1)+' more)</span>':'');
+    b.style.display='block';
   }
 
   function maybeHighlight(){
