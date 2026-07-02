@@ -4728,10 +4728,16 @@ def _engine_item(p, qty):
     months_per_unit = int(p.get("months_per_unit", 1))
     if "volume_eligible" in p:
         eligible = bool(p["volume_eligible"])
+    elif p.get("info_only"):
+        eligible = False
+    elif p.get("qty_pricing"):
+        eligible = True   # a flagged FF (incl. FF powder blends) → full volume, same as in-house
     else:
-        eligible = not (_is_pure_powder(p) or p.get("info_only"))
+        eligible = not _is_pure_powder(p)   # non-FF unchanged: true pure powders excluded
     prod = dict(p)
-    if _is_pure_powder(p) and "sku_discount_floor_pct" not in prod:
+    # The ~$30 pure-powder floor applies only to a TRUE pure powder, never to a
+    # flagged FF powder blend (which gets the full FF volume curve).
+    if _is_pure_powder(p) and not p.get("qty_pricing") and "sku_discount_floor_pct" not in prod:
         prod["sku_discount_floor_pct"] = 0.75
         prod["sku_points_floor_pct"] = 0.75
     return {
