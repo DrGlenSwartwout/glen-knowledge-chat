@@ -6626,34 +6626,48 @@ def studio_welcome():
 BIOFIELD_PRICE_CENTS = 30000   # $300 Causal Biofield Analysis (service, no shipping)
 _BIOFIELD_ITEM_NAME = "Causal Biofield Analysis"
 
+PROGRAM_PREMIUM_TIER = "premium"
+PROGRAM_SCALABLE_TIER = "scalable"
+# Single source of truth for the two program tiers. Premium = the existing $300 1:1
+# program (behavior unchanged); scalable = the $100 headline the $1-deposit front door
+# flows into.
+PROGRAM_TIERS = {
+    PROGRAM_PREMIUM_TIER:  {"price_cents": BIOFIELD_PRICE_CENTS, "name": _BIOFIELD_ITEM_NAME},
+    PROGRAM_SCALABLE_TIER: {"price_cents": 10000,               "name": "Biofield Program"},
+}
+
 
 def _biofield_enabled() -> bool:
     return os.environ.get("BIOFIELD_CHECKOUT_ENABLED", "").strip().lower() \
         in ("1", "true", "yes", "on")
 
 
-def _price_biofield(points_to_redeem_cents=0):
-    """Price the single $300 Biofield service line through the engine.
+def _price_biofield(points_to_redeem_cents=0, tier=PROGRAM_PREMIUM_TIER):
+    """Price the single Biofield service line through the engine.
 
     A service item has no bottle_type and is volume-ineligible, so it yields NO
     shipping. We build the engine line directly (not via _price_cart, which keys
     shipping off bottle counts) so shipping_cents is always 0. Points are applied
-    by the engine and clamped at the per-SKU points floor (43% of list)."""
+    by the engine and clamped at the per-SKU points floor (43% of list). `tier`
+    resolves price/name from PROGRAM_TIERS (defaults to premium = existing $300)."""
+    _t = PROGRAM_TIERS.get(tier) or PROGRAM_TIERS[PROGRAM_PREMIUM_TIER]
+    _price = _t["price_cents"]
+    _name = _t["name"]
     from dashboard import pricing as _pricing, tax as _tax
     settings = _pricing.load_settings(_pricing_settings())
-    product = {"slug": "biofield-analysis", "name": _BIOFIELD_ITEM_NAME,
+    product = {"slug": "biofield-analysis", "name": _name,
                "volume_eligible": False}
-    item = {"slug": "biofield-analysis", "name": _BIOFIELD_ITEM_NAME, "qty": 1,
-            "product": product, "unit_cents": BIOFIELD_PRICE_CENTS,
+    item = {"slug": "biofield-analysis", "name": _name, "qty": 1,
+            "product": product, "unit_cents": _price,
             "months": 0, "volume_eligible": False}
     priced = _pricing.compute([item], settings=settings,
                               points_to_redeem_cents=int(points_to_redeem_cents or 0),
                               channel="retail", ship_to_state=None,
                               tax_fn=_tax.compute_get_cents)
-    qbo_lines = [{"name": _BIOFIELD_ITEM_NAME,
-                  "amount": round(BIOFIELD_PRICE_CENTS / 100.0, 2), "qty": 1,
-                  "description": _BIOFIELD_ITEM_NAME}]
-    items_rec = [{"name": _BIOFIELD_ITEM_NAME, "qty": 1, "desc": _BIOFIELD_ITEM_NAME}]
+    qbo_lines = [{"name": _name,
+                  "amount": round(_price / 100.0, 2), "qty": 1,
+                  "description": _name}]
+    items_rec = [{"name": _name, "qty": 1, "desc": _name}]
     return {"priced": priced, "qbo_lines": qbo_lines, "items_rec": items_rec,
             "discount_cents": priced["discount_cents"],
             "points_redeemed_cents": priced["points_redeemed_cents"],
@@ -6670,6 +6684,8 @@ def biofield_checkout():
     data  = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     name  = (data.get("name") or "").strip()
+    tier  = (data.get("tier") or PROGRAM_PREMIUM_TIER).strip()
+    tier  = tier if tier in PROGRAM_TIERS else PROGRAM_PREMIUM_TIER
     if not email:
         return jsonify({"ok": False, "error": "email required"}), 400
     if not _STRIPE_ACTIVE:
@@ -6683,7 +6699,7 @@ def biofield_checkout():
         with sqlite3.connect(LOG_DB) as _bcx:
             _points.init_points_table(_bcx)
             redeem = min(redeem, _points.balance(_bcx, email))
-    pc = _price_biofield(points_to_redeem_cents=redeem)
+    pc = _price_biofield(points_to_redeem_cents=redeem, tier=tier)
     charged_cents = pc["priced"]["total_cents"]
     redeemed = pc["points_redeemed_cents"]
 
@@ -6706,10 +6722,11 @@ def biofield_checkout():
         metadata = {"kind": "biofield", "email": email,
                     "invoice_id": inv.get("Id") or "",
                     "customer_id": cust.get("Id") or "",
-                    "points_redeemed_cents": str(int(redeemed))}
+                    "points_redeemed_cents": str(int(redeemed)),
+                    "tier": tier}
         sess = stripe_pay.create_checkout_session(
             charged_cents, customer_email=email,
-            description=f"{_BIOFIELD_ITEM_NAME} #{inv.get('DocNumber') or ''}",
+            description=f"{PROGRAM_TIERS[tier]['name']} #{inv.get('DocNumber') or ''}",
             metadata=metadata, success_url=success,
             cancel_url=f"{PUBLIC_BASE_URL}/begin")
         out["stripe_url"] = sess.get("url") or ""
