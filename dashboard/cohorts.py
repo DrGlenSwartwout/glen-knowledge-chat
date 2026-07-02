@@ -57,42 +57,71 @@ def init_tables(cx):
         )
     """)
     cx.execute("CREATE INDEX IF NOT EXISTS idx_cohort_members_email ON cohort_members(email)")
+    # is_choice: this cohort is one of the plans presented at the client "choice step".
+    try:
+        cx.execute("ALTER TABLE cohorts ADD COLUMN is_choice INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass  # already present
     cx.commit()
 
 
 # ── cohort catalog ───────────────────────────────────────────────────────────
 
-def upsert_cohort(cx, *, key, name, policy, description="", active=True, is_default=False):
+def upsert_cohort(cx, *, key, name, policy, description="", active=True,
+                  is_default=False, is_choice=False):
     key = (key or "").strip()
     if not key or not name or not isinstance(policy, dict):
         raise ValueError("key, name, and a policy dict are required")
     validate_policy(policy)  # raises on a malformed policy
     cx.execute(
-        "INSERT INTO cohorts (key, name, description, policy_json, active, is_default, created_at, updated_at) "
-        "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET "
+        "INSERT INTO cohorts (key, name, description, policy_json, active, is_default, is_choice, created_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET "
         "name=excluded.name, description=excluded.description, policy_json=excluded.policy_json, "
-        "active=excluded.active, is_default=excluded.is_default, updated_at=excluded.updated_at",
+        "active=excluded.active, is_default=excluded.is_default, is_choice=excluded.is_choice, "
+        "updated_at=excluded.updated_at",
         (key, name, description, json.dumps(policy), 1 if active else 0,
-         1 if is_default else 0, _now(), _now()))
+         1 if is_default else 0, 1 if is_choice else 0, _now(), _now()))
     cx.commit()
 
 
+_COHORT_COLS = "key, name, description, policy_json, active, is_default, is_choice"
+
+
+def _cohort_row(r):
+    return {"key": r[0], "name": r[1], "description": r[2],
+            "policy": json.loads(r[3] or "{}"), "active": bool(r[4]),
+            "is_default": bool(r[5]), "is_choice": bool(r[6])}
+
+
 def get_cohort(cx, key):
-    row = cx.execute("SELECT key, name, description, policy_json, active, is_default "
-                     "FROM cohorts WHERE key=?", ((key or "").strip(),)).fetchone()
-    if not row:
-        return None
-    return {"key": row[0], "name": row[1], "description": row[2],
-            "policy": json.loads(row[3] or "{}"), "active": bool(row[4]),
-            "is_default": bool(row[5])}
+    row = cx.execute(f"SELECT {_COHORT_COLS} FROM cohorts WHERE key=?",
+                     ((key or "").strip(),)).fetchone()
+    return _cohort_row(row) if row else None
 
 
 def list_cohorts(cx):
-    return [{"key": r[0], "name": r[1], "description": r[2], "policy": json.loads(r[3] or "{}"),
-             "active": bool(r[4]), "is_default": bool(r[5])}
-            for r in cx.execute(
-                "SELECT key, name, description, policy_json, active, is_default "
-                "FROM cohorts ORDER BY key").fetchall()]
+    return [_cohort_row(r) for r in cx.execute(
+        f"SELECT {_COHORT_COLS} FROM cohorts ORDER BY key").fetchall()]
+
+
+def choosable_cohorts(cx):
+    """Active cohorts flagged as plan-choice options (what the choice step shows)."""
+    return [c for c in list_cohorts(cx) if c.get("active") and c.get("is_choice")]
+
+
+def set_choice(cx, email, chosen_key):
+    """The client picks a plan: join `chosen_key` and leave every OTHER choice
+    cohort (they're in exactly one chosen plan). No-op if the key isn't choosable."""
+    email = _norm(email)
+    chosen_key = (chosen_key or "").strip()
+    choices = {c["key"] for c in choosable_cohorts(cx)}
+    if not email or chosen_key not in choices:
+        return False
+    for k in choices:
+        if k != chosen_key:
+            remove_member(cx, email, k)
+    add_member(cx, email, chosen_key, source="chosen")
+    return True
 
 
 # ── membership ───────────────────────────────────────────────────────────────

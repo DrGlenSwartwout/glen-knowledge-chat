@@ -61,6 +61,19 @@ def test_policy_unit_cents_per_type():
     assert C.policy_unit_cents({"type": "volume"}, slug="x", list_cents=6997, is_ff=True) is None
 
 
+def test_choice_flow_puts_client_in_exactly_one_plan():
+    C, cx = _cx()
+    C.upsert_cohort(cx, key="A", name="Stock up", policy={"type": "percent_off", "pct": 10}, is_choice=True)
+    C.upsert_cohort(cx, key="B", name="Stay course", policy={"type": "flat_ff", "cents": 5000}, is_choice=True)
+    C.upsert_cohort(cx, key="hidden", name="Not a choice", policy={"type": "flat_ff", "cents": 4000})
+    assert {c["key"] for c in C.choosable_cohorts(cx)} == {"A", "B"}
+    assert C.set_choice(cx, "JC@x.com", "A") is True
+    assert [c["key"] for c in C.member_cohorts(cx, "jc@x.com")] == ["A"]
+    assert C.set_choice(cx, "jc@x.com", "B") is True            # switching removes A
+    assert [c["key"] for c in C.member_cohorts(cx, "jc@x.com")] == ["B"]
+    assert C.set_choice(cx, "jc@x.com", "hidden") is False      # non-choosable rejected
+
+
 def test_reorder_loyalty_price_gated_by_earned_and_ff():
     from dashboard import cohorts as C
     loyalty = [{"policy": {"type": "reorder_loyalty", "ff_cents": 5000}}]

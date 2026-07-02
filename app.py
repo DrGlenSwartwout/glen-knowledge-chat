@@ -27581,6 +27581,138 @@ def api_console_cohort_members():
         cx.close()
 
 
+# ── Plan choice step (Phase 5) — client picks how they earn savings ────────────
+# Sent ~3 weeks after delivery ("softly gets them thinking about reordering").
+def _mint_plan_choice_token(email):
+    tok = secrets.token_urlsafe(24)
+    now = datetime.now(timezone.utc)
+    with _db_lock, _sqlite3.connect(LOG_DB) as cx:
+        cx.execute("INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                   "VALUES (?,?,?,?,?)",
+                   (_hash_token(tok), (email or "").strip().lower(), "plan_choice",
+                    now.isoformat(), (now + timedelta(days=60)).isoformat()))
+        cx.commit()
+    return tok
+
+
+def _email_from_plan_choice_token(token):
+    th = _hash_token((token or "").strip())
+    now = datetime.now(timezone.utc).isoformat()
+    with _sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT email FROM auth_tokens WHERE token_hash=? AND purpose='plan_choice' "
+            "AND (expires_at IS NULL OR expires_at > ?)", (th, now)).fetchone()
+    return (row[0] if row else None)
+
+
+@app.route("/choose/<token>")
+def plan_choice_page(token):
+    resp = send_from_directory(STATIC, "choose.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/choose/<token>", methods=["GET"])
+def api_plan_choice_get(token):
+    email = _email_from_plan_choice_token(token)
+    if not email:
+        return jsonify({"ok": False, "error": "this link is invalid or expired"}), 404
+    from dashboard import cohorts as _co
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _co.init_tables(cx)
+        plans = [{"key": c["key"], "name": c["name"], "description": c["description"]}
+                 for c in _co.choosable_cohorts(cx)]
+        chosen = [c["key"] for c in _co.member_cohorts(cx, email)
+                  if c["key"] in {p["key"] for p in plans}]
+        name = ""
+        try:
+            r = cx.execute("SELECT name FROM people WHERE lower(email)=? LIMIT 1", (email,)).fetchone()
+            name = (r[0] if r else "") or ""
+        except Exception:
+            name = ""
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "name": name, "plans": plans,
+                    "chosen_key": (chosen[0] if chosen else None)})
+
+
+@app.route("/api/choose/<token>", methods=["POST"])
+def api_plan_choice_set(token):
+    email = _email_from_plan_choice_token(token)
+    if not email:
+        return jsonify({"ok": False, "error": "this link is invalid or expired"}), 404
+    key = ((request.get_json(silent=True) or {}).get("cohort_key") or "").strip()
+    from dashboard import cohorts as _co
+    with _db_lock, _sqlite3.connect(LOG_DB) as cx:
+        _co.init_tables(cx)
+        ok = _co.set_choice(cx, email, key)
+    if not ok:
+        return jsonify({"ok": False, "error": "not a valid plan"}), 400
+    return jsonify({"ok": True, "chosen_key": key})
+
+
+def _plan_choice_pending(days=21, window=10):
+    """Emails delivered ~`days` ago (within a `window`-day band) that haven't picked
+    a plan yet — the 3-week nudge cohort. Best-effort; empty on any gap."""
+    try:
+        from dashboard import cohorts as _co
+        with _sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = _sqlite3.Row
+            _co.init_tables(cx)
+            choice_keys = {c["key"] for c in _co.choosable_cohorts(cx)}
+            if not choice_keys:
+                return []
+            lo = (datetime.utcnow() - timedelta(days=days + window)).isoformat() + "Z"
+            hi = (datetime.utcnow() - timedelta(days=days)).isoformat() + "Z"
+            rows = cx.execute(
+                "SELECT DISTINCT lower(resolved_email) e FROM shipments "
+                "WHERE delivered_at IS NOT NULL AND delivered_at >= ? AND delivered_at <= ? "
+                "AND resolved_email IS NOT NULL AND resolved_email != ''", (lo, hi)).fetchall()
+            out = []
+            for r in rows:
+                em = r["e"]
+                if em and not any(c["key"] in choice_keys for c in _co.member_cohorts(cx, em)):
+                    out.append(em)
+            return out
+    except Exception as _e:
+        print(f"[plan-choice] pending skipped: {_e!r}", flush=True)
+        return []
+
+
+@app.route("/api/console/plan-choice/pending", methods=["GET"])
+def api_console_plan_choice_pending():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify({"ok": True, "pending": _plan_choice_pending()})
+
+
+@app.route("/api/console/plan-choice/send", methods=["POST"])
+def api_console_plan_choice_send():
+    """Owner: email the plan-choice link to one client (or the whole pending band).
+    The ~3-week automation would call this from a cron piggyback."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    one = (body.get("email") or "").strip().lower()
+    targets = [one] if one else _plan_choice_pending()
+    base = PUBLIC_BASE_URL.rstrip("/")
+    sent = []
+    for em in targets:
+        try:
+            tok = _mint_plan_choice_token(em)
+            link = f"{base}/choose/{tok}"
+            body_txt = ("Aloha,\n\nAs you settle into your remedies, we're building ways to make "
+                        "staying on your healing path more affordable. Take a moment to pick how "
+                        "you'd like to earn your savings going forward:\n\n" + link +
+                        "\n\nMahalo,\nDr. Glen Swartwout")
+            _send_full_report_email(em, "", "Choose how you'd like to earn your savings", body_txt)
+            sent.append(em)
+        except Exception as _e:
+            print(f"[plan-choice] send to {em} failed: {_e!r}", flush=True)
+    return jsonify({"ok": True, "sent": sent, "count": len(sent)})
+
+
 # ── Customer invoice pay-link (Phase 3) — PUBLIC, token-scoped ─────────────────
 # Auth is the per-order token ONLY (never the console key). All pricing is
 # recomputed server-side; client-sent prices are ignored; the Stripe amount comes

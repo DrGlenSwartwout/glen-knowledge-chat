@@ -1,0 +1,68 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Choose your savings plan</title>
+<style>
+  :root{ --bg:#f7faf6; --ink:#1e2b22; --muted:#5c6b60; --green:#2f7d4f; --border:#d7e3d9; --card:#fff; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--ink);
+        font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .wrap{ max-width:640px; margin:0 auto; padding:32px 20px 60px; }
+  h1{ font-size:24px; margin:0 0 6px; }
+  .sub{ color:var(--muted); margin:0 0 24px; }
+  .plan{ background:var(--card); border:1px solid var(--border); border-radius:14px;
+         padding:20px 22px; margin-bottom:16px; }
+  .plan.chosen{ border-color:var(--green); box-shadow:0 0 0 2px rgba(47,125,79,.18); }
+  .plan h2{ font-size:19px; margin:0 0 6px; }
+  .plan p{ color:var(--muted); margin:0 0 14px; }
+  .plan button{ background:var(--green); color:#fff; border:none; border-radius:9px;
+                padding:11px 20px; font-size:15px; font-weight:600; cursor:pointer; }
+  .plan button[disabled]{ opacity:.5; cursor:default; }
+  .chosen-badge{ display:inline-block; color:var(--green); font-weight:600; font-size:14px; }
+  .note{ color:var(--muted); font-size:13px; margin-top:8px; min-height:1em; }
+  .center{ text-align:center; color:var(--muted); padding:40px 0; }
+  .foot{ color:var(--muted); font-size:13px; margin-top:20px; }
+</style>
+<div class="wrap">
+  <h1 id="hd">Choose how you'd like to earn your savings</h1>
+  <p class="sub" id="sub">We're building ways to make staying on your healing path more affordable — pick the one that fits you. You can change it anytime.</p>
+  <div id="plans"><div class="center">Loading…</div></div>
+  <div class="note" id="msg"></div>
+  <p class="foot">Not sure? Either is a great choice — and we'll always let you know if the other would save you more on an order.</p>
+</div>
+<script>
+  var TOKEN = decodeURIComponent((location.pathname.split('/')[2] || ''));
+  var API = '/api/choose/' + encodeURIComponent(TOKEN);
+  var CHOSEN = null;
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':s); return d.innerHTML; }
+  async function load(){
+    var r = await fetch(API);
+    var j = await r.json().catch(function(){ return {}; });
+    if(!j.ok){ document.getElementById('plans').innerHTML = '<div class="center">'+esc(j.error||'This link is invalid or expired.')+'</div>'; return; }
+    if(j.name){ document.getElementById('hd').textContent = 'Aloha ' + j.name.split(' ')[0] + ' — choose how you’d like to earn your savings'; }
+    CHOSEN = j.chosen_key;
+    if(!j.plans.length){ document.getElementById('plans').innerHTML = '<div class="center">No plans are available right now.</div>'; return; }
+    render(j.plans);
+  }
+  function render(plans){
+    document.getElementById('plans').innerHTML = plans.map(function(p){
+      var isChosen = (p.key === CHOSEN);
+      return '<div class="plan'+(isChosen?' chosen':'')+'">'
+        + '<h2>'+esc(p.name)+'</h2>'
+        + (p.description?'<p>'+esc(p.description)+'</p>':'')
+        + (isChosen ? '<span class="chosen-badge">✓ Your current plan</span>'
+                    : '<button onclick="pick(\''+esc(p.key)+'\',this)">Choose this</button>')
+        + '</div>';
+    }).join('');
+  }
+  async function pick(key, btn){
+    if(btn) btn.disabled = true;
+    document.getElementById('msg').textContent = 'Saving your choice…';
+    var r = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ cohort_key:key }) });
+    var j = await r.json().catch(function(){ return {}; });
+    if(!j.ok){ document.getElementById('msg').textContent = j.error || 'Something went wrong — please try again.'; if(btn) btn.disabled=false; return; }
+    CHOSEN = j.chosen_key;
+    document.getElementById('msg').textContent = 'Saved — you’re all set. Mahalo!';
+    load();  // re-render with the new chosen state
+  }
+  load();
+</script>
