@@ -2997,7 +2997,10 @@ def continuous_care_checkout():
     from dashboard import stripe_pay as _sp, prepay as _pp
     data = request.get_json(silent=True) or request.form or {}
     email = (data.get("email") or "").strip().lower()
-    term_months = int(data.get("term_months") or 0)
+    try:
+        term_months = int(data.get("term_months") or 0)
+    except (TypeError, ValueError):
+        term_months = 0
     if not email or term_months not in (6, 12):
         return jsonify({"ok": False, "error": "invalid"}), 200
     base = PUBLIC_BASE_URL.rstrip("/")
