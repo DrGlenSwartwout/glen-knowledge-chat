@@ -80,13 +80,22 @@ def format_digest(items):
 
 
 _TRIAGE_SYSTEM = (
-    "You triage a client's message to a naturopathic practitioner (Dr. Glen Swartwout). "
-    "Decide if it NEEDS DR. GLEN'S PERSONAL ATTENTION: a direct question meant for him, a "
-    "complaint, a problem or bug with the service/portal, a health concern that goes beyond "
-    "general information, or a request only he can fulfill (e.g. a consultation, a custom "
-    "remedy, a review). Routine small-talk, thanks, or a question the AI already fully answered "
-    "do NOT need his attention.\n"
-    "Return STRICT JSON ONLY, no prose: "
+    "You triage a client's portal-chat message to a naturopathic practitioner (Dr. Glen "
+    "Swartwout). An AI concierge has ALREADY answered the client (its reply is shown to you). "
+    "MOST messages are fully handled by the AI and do NOT need Dr. Glen: routine questions such "
+    "as reorder timing, 'what to take when', dosing/protocol clarifications, product/capsule/"
+    "ingredient questions, portal how-tos, and general education are the AI's job (it answers "
+    "Socratically) and must NOT be escalated.\n"
+    "Escalate (needs_attention=true) ONLY when the message genuinely needs Dr. Glen personally:\n"
+    "- a NEW, worsening, or concerning symptom or a possible red flag (clinical judgment the AI "
+    "should not make);\n"
+    "- a request only he can fulfill: a consultation, an Individualized Terrain Restore, a "
+    "personal review of their scan, or a remedy-substitution decision;\n"
+    "- a complaint, dissatisfaction, refund request, or emotionally-charged message;\n"
+    "- a service problem or bug (portal broken, link dead, wrong/missing order);\n"
+    "- a question the AI clearly could NOT answer, or where the client is stuck or frustrated "
+    "after the AI's reply.\n"
+    "When unsure whether the AI handled it, do NOT escalate. Return STRICT JSON ONLY, no prose: "
     '{"needs_attention": true|false, "category": "question"|"complaint"|"issue"|"bug"|'
     '"health-concern"|"request"|"other", "urgency": "low"|"medium"|"high", '
     '"summary": "one-line what they need", "recommendation": "what Dr. Glen should do"}. '
