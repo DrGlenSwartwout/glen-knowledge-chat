@@ -27677,7 +27677,108 @@ def api_invoice_get(token):
     order = _invoice_order_for_token(token)
     if not order:
         return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
-    return jsonify({"ok": True, "order": _invoice_summary(order)})
+    summary = _invoice_summary(order)
+    summary["savings_offer"] = _order_savings_offer(order)   # switch-to-save (None unless a cheaper plan)
+    return jsonify({"ok": True, "order": summary})
+
+
+def _order_savings_offer(order):
+    """Switch-to-save: would a plan this client ISN'T on make THIS (unpaid) order
+    cheaper? Returns {cohort_key, cohort_name, current_total_cents, new_total_cents,
+    savings_cents} or None. Dark unless COHORT_PRICING_ENABLED. Never raises."""
+    try:
+        if not _cohort_pricing_enabled():
+            return None
+        if order.get("pay_status") == "paid" or order.get("status") not in ("proposed", "confirmed"):
+            return None
+        email = (order.get("email") or "").strip().lower()
+        if not email:
+            return None
+        from dashboard import cohorts as _co
+        cx = _sqlite3.connect(LOG_DB)
+        cx.row_factory = _sqlite3.Row
+        try:
+            _co.init_tables(cx)
+            cands = _co.candidate_cohorts(cx, email)
+            if not cands:
+                return None
+            earned = _earned_reorder_slugs(cx, email)
+            lines, units = [], []
+            for it in (order.get("items") or []):
+                slug = (it.get("slug") or "").strip()
+                p = _get_product(slug) if slug else None
+                if not p:
+                    continue
+                lines.append({"slug": slug, "qty": int(it.get("qty") or 1),
+                              "list_cents": int(p.get("price_cents") or 0), "is_ff": _qty_eligible(p)})
+                units.append(int(it.get("unit_cents") or 0))
+            return _co.savings_offer(lines, units, cands, earned_slugs=earned)
+        finally:
+            cx.close()
+    except Exception as _e:
+        print(f"[switch-to-save] offer skipped: {_e!r}", flush=True)
+        return None
+
+
+@app.route("/api/invoice/<token>/apply-plan", methods=["POST"])
+def api_invoice_apply_plan(token):
+    """Switch-to-save action: reprice THIS unpaid order at the chosen plan's prices
+    (lowest-wins vs current); if forever=true, enroll the client in that cohort so
+    future orders get it too. Client-authed by the invoice token."""
+    order = _invoice_order_for_token(token)
+    if not order:
+        return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    if order.get("pay_status") == "paid" or order.get("status") not in ("proposed", "confirmed"):
+        return jsonify({"ok": False, "error": "this order can no longer be changed"}), 409
+    body = request.get_json(silent=True) or {}
+    key = (body.get("cohort_key") or "").strip()
+    forever = bool(body.get("forever"))
+    email = (order.get("email") or "").strip().lower()
+    from dashboard import cohorts as _co
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        _co.init_tables(cx)
+        c = _co.get_cohort(cx, key)
+        if not c or not c.get("active"):
+            return jsonify({"ok": False, "error": "plan not found"}), 404
+        pol = c.get("policy") or {}
+        earned = _earned_reorder_slugs(cx, email)
+        new_items, new_sub = [], 0
+        for it in (order.get("items") or []):
+            slug = (it.get("slug") or "").strip()
+            p = _get_product(slug) if slug else None
+            unit = int(it.get("unit_cents") or 0)
+            qty = int(it.get("qty") or 1)
+            if p:
+                is_ff = _qty_eligible(p)
+                cand = (_co.reorder_loyalty_price([c], slug=slug, is_ff=is_ff, earned_slugs=earned)
+                        if pol.get("type") == "reorder_loyalty"
+                        else _co.policy_unit_cents(pol, slug=slug,
+                                                   list_cents=int(p.get("price_cents") or 0), is_ff=is_ff))
+                if cand is not None:
+                    unit = min(unit, cand)
+            ni = dict(it)
+            ni["unit_cents"], ni["line_cents"] = unit, unit * qty
+            new_items.append(ni)
+            new_sub += unit * qty
+        disc = int(order.get("discount_cents") or 0)
+        adj = int(order.get("adjustment_cents") or 0)
+        ship = int(order.get("shipping_cents") or 0)
+        pts = int(order.get("points_redeemed_cents") or 0)
+        new_total = max(0, max(0, new_sub - disc + adj) + ship - pts)
+        _bos_orders.upsert_order(
+            cx, source=order["source"], external_ref=order["external_ref"],
+            email=order.get("email") or "", name=order.get("name") or "",
+            items=new_items, total_cents=new_total, discount_cents=disc,
+            adjustment_cents=adj, shipping_cents=ship, points_redeemed_cents=pts)
+        if forever and email:
+            _co.add_member(cx, email, key, source="switch-to-save")
+        updated = _bos_orders.get_order(cx, order["id"])
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "switched_forever": bool(forever and email),
+                    "order": _invoice_summary(updated)})
 
 
 @app.route("/api/invoice/<token>/update", methods=["POST"])
