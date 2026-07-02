@@ -101,7 +101,8 @@
       "ingredients_source": "store-recovery-2026-06-08",
       "description": "ACES Eyedrops . Price: $69.97.",
       "bottle_type": "5ml",
-      "fmp_id": "158"
+      "fmp_id": "158",
+      "qty_pricing": true
     },
     "aller-free-aid": {
       "name": "Aller-Free Aid for Inhalant Allergies",
@@ -131,7 +132,8 @@
         }
       ],
       "ingredients_source": "t33",
-      "description": "AllerFree . Price: $69.97."
+      "description": "AllerFree . Price: $69.97.",
+      "qty_pricing": true
     },
     "bone-builder": {
       "name": "Bone Builder",
@@ -580,7 +582,8 @@
       "ingredients_source": "t33",
       "description": "Dental Powder . Dental Powder Dental Powder Brush with this potent soothing, healing, regenerating and remineralizing powder, and leave it in your mouth while you sleep to experience the full magic... Or blend it with coconut oil for an oil-pulling dentrifice... ​A little goes a long, long way... And our new formula now includes over 50 beneficial flora. Here are the details of our popular Proprietary Blend: Minerals: Nanocrystalline Hydroxyapatite (botanical source NCHA, aka MCHA or MCHC, but a thousand times smaller particles) Meta‑analyses of randomized trials in generally healthy...",
       "bottle_type": "30g",
-      "fmp_id": "327"
+      "fmp_id": "327",
+      "qty_pricing": true
     },
     "esr": {
       "name": "Emotional Stress Release (MB5)",
@@ -801,7 +804,8 @@
       "name": "Holy Grail Full Spectrum M-10 ORMUS",
       "qbo_item_id": "18",
       "price_cents": 6997,
-      "pinecone_title": "Holy Grail Full Spectrum ORMUS"
+      "pinecone_title": "Holy Grail Full Spectrum ORMUS",
+      "qty_pricing": true
     },
     "lens-zyme": {
       "name": "Lens-Zyme Brunescense Buster",
@@ -1106,7 +1110,8 @@
       "ingredients_source": "t33",
       "description": "Rescue . Rescue Rescue Rescue powder is a symptom relieving naturally blue colored phytochromotherapy drink mix. The 30 gram bottle supplies 60 doses. Rescue . Each 500 mg scoop supplies: Vitamin C 50% (Phyllanthus emblica) 120 mg 100% Magnesium (Magnesium Threonate) 4 mg 1% Threonate (Magnesium Threonate) 57 mg * MSM (Methylsulfonylmethane) 280 mg * Phycocyanin (Spirulina platensis) 50 mg * Mogroside V 80% (Siraitia grosvenorii) 20 mg * L-Theanine (Camelia sinensis) 7 mg * Bioavailability Blend 17 mg Vitamin B13: Phosphatides 50% ( Helianthus annua ) EGb 761 ( Ginkgo biloba ) (24% Flavone...",
       "bottle_type": "30g",
-      "fmp_id": "394"
+      "fmp_id": "394",
+      "qty_pricing": true
     },
     "lipid-cleanse": {
       "name": "Lipid Cleanse",
@@ -1210,7 +1215,8 @@
       "ingredients_source": "db-formulations-2026-06-25",
       "description": "IOP Syntropy . IOP Syntropy IOP Syntropy IOP Syntropy is formulated to deliver optimal levels of key phytonutrients documented to support regulating and normalizing eye pressure. The suggested dosage range is divided from one to three capsules taken with food throughout the day. IOP is the scientific acronym for intraocular pressure. It is traditionally measured in millimeters of mercury, abbreviated mmHg. The standard pressure range is 10 to 20 or 21 mmHg, with 15 being the norm. Pressures consistently above 21 mmHg may be termed “ocular hypertension” and warrant closer monitoring by an eye...",
       "bottle_type": "30cap",
-      "fmp_id": "878"
+      "fmp_id": "878",
+      "qty_pricing": true
     },
     "stone-solvent": {
       "name": "Stone Solvent",
@@ -1597,7 +1603,8 @@
       "ingredients_source": "db-formulations-2026-06-25",
       "description": "OcuHeal Eye Drops . OcuHeal Eye Drops OcuHeal Eye Drops OcuHeal eye drops delivers botanical and nutritional healing ingredients for the whole eye, including the retina, lens, cornea, conjunctiva, lacrimal glands, and tear film… The OcuHeal ingredients are: Quinton (Quintessential Terrain Restore) 96% Quinton is a very special therapeutic saline solution that comes from the ocean. It supplies the full spectrum of electrolytes in sea water, but not just any sea water. It is sea water that levetates to the surface of the ocean from the pristine and ancient depths, supporting the flourishing of...",
       "bottle_type": "5ml",
-      "fmp_id": "493"
+      "fmp_id": "493",
+      "qty_pricing": true
     },
     "pms-relief": {
       "name": "PMS Relief",
@@ -1663,7 +1670,8 @@
         }
       ],
       "ingredients_source": "t33",
-      "description": "PMS Relief . Price: $69.97."
+      "description": "PMS Relief . Price: $69.97.",
+      "qty_pricing": true
     },
     "thermogenesis": {
       "name": "Thermogenesis",
@@ -1765,7 +1773,8 @@
       ],
       "ingredients_source": "store-recovery-2026-06-08",
       "bottle_type": "30g",
-      "fmp_id": "875"
+      "fmp_id": "875",
+      "qty_pricing": true
     },
     "moisturize": {
       "name": "Moisturize",
@@ -1867,7 +1876,8 @@
       "description": "Vitality . Vitality Vitality Vitality is our drug-free anti-aging formula inspired by the Romanian gerontologist Dr. Ana Aslan's discovery of Gerovital (GH3), which has multiple benefits, including: Euphoric Inhibits the stress hormone, cortisol Improves energy Improves memory The standard Pro-Vitamin Ingredient used in original GH3 formulations is the drug: Procaine Hydrochloride 100 mg We do not include this or any pharmaceutical drug in our all-natural botanical/nutritional formula. The conventional formulations also require the addition of these undesirable stabilizers and buffers, which...",
       "gk_extra_accepted": true,
       "bottle_type": "30cap",
-      "fmp_id": "569"
+      "fmp_id": "569",
+      "qty_pricing": true
     },
     "natural-resource-az": {
       "name": "Natural Resource A-Z",
@@ -1936,7 +1946,8 @@
           "dose": ""
         }
       ],
-      "ingredients_source": "store-recovery-2026-06-08"
+      "ingredients_source": "store-recovery-2026-06-08",
+      "qty_pricing": true
     },
     "sulfur-syntropy": {
       "name": "Sulfur Synergy",
@@ -2235,7 +2246,8 @@
       "ingredients_source": "db-formulations-2026-06-25",
       "description": "MSM Synergy . Price: $69.97. MSM Synergy . MSM Synergy MSM Powder MSM is wonderful support for many functions including comfort, scar reduction and cleansing... MSM (Methylsulfonylmethane) is organic sulfur. It is also a methyl donor. It dissolves easily in water, with a slightly bitter and cooling taste. And it works fast, enhancing comfort in a few minutes. You can also brush your gums with it to support gum tissue regeneration... Reclaim Flexibility, Radiance, and Resilience With Pure MSM – The Beauty Mineral That Works from the Inside Out Imagine waking up without the stiffness… moving...",
       "bottle_type": "30g",
-      "fmp_id": "606"
+      "fmp_id": "606",
+      "qty_pricing": true
     },
     "binder-complex": {
       "name": "Binder Complex",
@@ -2519,7 +2531,8 @@
           "dose": ""
         }
       ],
-      "ingredients_source": "store-recovery-2026-06-08"
+      "ingredients_source": "store-recovery-2026-06-08",
+      "qty_pricing": true
     },
     "clear-the-way": {
       "name": "5 Ways \"Clear the Way\" Naturally Transforms Tissue Healing",
@@ -2668,7 +2681,8 @@
       "ingredients_source": "db-formulations-2026-06-25",
       "description": "Scar Solve . Price: $69.97.",
       "bottle_type": "30cap",
-      "fmp_id": "1074"
+      "fmp_id": "1074",
+      "qty_pricing": true
     },
     "es5-autoimmune": {
       "name": "ES5",
@@ -2773,7 +2787,8 @@
           "dose": ""
         }
       ],
-      "ingredients_source": "store-recovery-2026-06-08"
+      "ingredients_source": "store-recovery-2026-06-08",
+      "qty_pricing": true
     },
     "vital-energy-be": {
       "name": "Vital Energy Be",
@@ -2937,7 +2952,8 @@
         }
       ],
       "ingredients_source": "t33",
-      "description": "Mold Spray . Price: $69.97."
+      "description": "Mold Spray . Price: $69.97.",
+      "qty_pricing": true
     },
     "transform": {
       "name": "Transform",
@@ -3101,7 +3117,8 @@
       "gk_stale_reason": "GK page missing: Retinyl Acetate (GK has Retinyl Palmitate instead), Fisetin, Naringenin",
       "gk_extra_accepted": true,
       "bottle_type": "30cap",
-      "fmp_id": "594"
+      "fmp_id": "594",
+      "qty_pricing": true
     },
     "seaamino-syntropy": {
       "name": "Seacure Synergy",
@@ -3235,7 +3252,8 @@
       "ingredients_source": "db-formulations-2026-06-25",
       "description": "Lipid Zyme . Lipid Zyme Lipid Zyme Fatty deposits in the eye called Drusen are metabolic wastes that build up and can distort the vision, damage the macula, and lead to blindness… The recommended dosage range is 1 capsule up to 3 times daily between meals, as guided and according to tolerance. Each phthalate-free enteric vegicap of Lipid Zyme supplies: Alkaloid: Black Pepper: Piperine ( Piper nigrum ) 3 mg “Piper nigrum, significantly enhances the bioavailability of various nutrients through increased absorption. Lipid Zyme . Piperine does this by inhibiting enzymes that metabolize drugs and...",
       "bottle_type": "30cap",
-      "fmp_id": "467"
+      "fmp_id": "467",
+      "qty_pricing": true
     },
     "neuroprotect": {
       "name": "Neuroprotect",
@@ -3851,7 +3869,8 @@
         }
       ],
       "ingredients_source": "fmp_new",
-      "description": "Comfort . Comfort Comfort Comfort: Synovial Syntropy includes an unparalleled array of key coenzymes, minerals, accessory nutrients and phytonutrients to support joint health, repair, and comfort. Vitamins and Coenzymes: Vitamin B9 (5-MTHF - Methyl Folate) 200 mcg 50%: This biologically active form of Folate supports overall joint health by aiding in the reduction of inflammation. Ascorbyl Palmitate (Supplies Vitamin C) 20 mg 33%: Vitamin C is an antioxidant that can help reduce oxidative stress in joints. As the fat-soluble form, it supplies a reservoir of Vitamin C in the cell membranes..."
+      "description": "Comfort . Comfort Comfort Comfort: Synovial Syntropy includes an unparalleled array of key coenzymes, minerals, accessory nutrients and phytonutrients to support joint health, repair, and comfort. Vitamins and Coenzymes: Vitamin B9 (5-MTHF - Methyl Folate) 200 mcg 50%: This biologically active form of Folate supports overall joint health by aiding in the reduction of inflammation. Ascorbyl Palmitate (Supplies Vitamin C) 20 mg 33%: Vitamin C is an antioxidant that can help reduce oxidative stress in joints. As the fat-soluble form, it supplies a reservoir of Vitamin C in the cell membranes...",
+      "qty_pricing": true
     },
     "food-tolerance": {
       "name": "Food Tolerance",
@@ -3952,7 +3971,8 @@
           "dose": ""
         }
       ],
-      "ingredients_source": "store-recovery-2026-06-08"
+      "ingredients_source": "store-recovery-2026-06-08",
+      "qty_pricing": true
     },
     "youth": {
       "name": "Youth Infoceutical",
@@ -4027,7 +4047,8 @@
       "ingredients_source": "db-formulations-2026-06-25",
       "description": "Bioavailability Blend . Bioavailability Blend Bioavailability Blend Our Bioavailability Blend is an important part of many of our Functional Formulations™ . One 500 mg scoop of Bioavailability Blend supplies enough for about 15 servings. Bioavailability Factors 1 scoop supplies: Vitamin B13: Phosphatides 50% ( Helianthus annua ) EGb 761 ( Ginkgo biloba ) (24% Flavone Glycosides, 6% Lactones, <0.0005% Ginkgolic Acid) Vitamin B3 (as Niacin) 75 mg 375% Miracle Tree 100:1 ( Moringa oleifera ) Licorice Omnipotent ( Glycyrrhiza glabra ) Vinpocetine ( Vinca minor ) Gingerol 10% ( Zingiber...",
       "bottle_type": "30g",
-      "fmp_id": "879"
+      "fmp_id": "879",
+      "qty_pricing": true
     },
     "dry-eye-relief-program": {
       "name": "Dry Eye Relief Program",
@@ -4127,7 +4148,8 @@
       "ingredients_source": "db-formulations-2026-06-25",
       "description": "Endocrine Restore . Price: $69.97.",
       "bottle_type": "30g",
-      "fmp_id": "338"
+      "fmp_id": "338",
+      "qty_pricing": true
     },
     "es13-coh": {
       "name": "ES13",
@@ -4523,7 +4545,8 @@
           "dose": ""
         }
       ],
-      "ingredients_source": "store-recovery-2026-06-08"
+      "ingredients_source": "store-recovery-2026-06-08",
+      "qty_pricing": true
     },
     "flow-ease": {
       "name": "Flow Ease",
@@ -4588,7 +4611,8 @@
       "ingredients_source": "t33",
       "description": "Gas Ex Powder . Price: $69.97.",
       "bottle_type": "30g",
-      "fmp_id": "304"
+      "fmp_id": "304",
+      "qty_pricing": true
     },
     "dht-blocker": {
       "name": "DHT Blocker",
@@ -4798,7 +4822,8 @@
       "description": "Longevity . Longevity Longevity Longevity is formulated to support your lifelong maintenance of optimum mitochondrial function. Visualize supplying new spark plugs for your cells! Longevity benefits include: • Supports optimum Nicotine Adenine Dinucleotide (NAD+) levels in the mitochondria • Promotes the delivery of high-energy electrons into the electron transport chain of oxidative cellular respiration that supplies cellular energy storage in the form of Adenosine Triphosphate (ATP) • Supports mitochondrial function Mitochondrial dysfunction is the first observed precursor of glaucoma, many...",
       "enrichment_note": "Section A: appended the 10 Bioavailability-Factors ingredients per Glen. Source: Glen's Products-Worklist.md.",
       "bottle_type": "30cap",
-      "fmp_id": "570"
+      "fmp_id": "570",
+      "qty_pricing": true
     },
     "ocuflow-bedtime": {
       "name": "OcuFlow Bedtime",
@@ -5325,7 +5350,8 @@
         }
       ],
       "ingredients_source": "t33",
-      "description": "Sweet Life . Price: $69.97."
+      "description": "Sweet Life . Price: $69.97.",
+      "qty_pricing": true
     },
     "es11-male": {
       "name": "ES11",
@@ -5542,7 +5568,8 @@
         }
       ],
       "ingredients_source": "t33",
-      "description": "Stamina Plus . Stamina Plus Stamina Plus Stamina Plus contains all 20 known B complex vitamins in activated, botanical complex and energized homeopathic forms to stimulate cellular uptake and utilization. Stamina Plus has a 30 year track record of effectiveness for stress relief and neurological support. It was formulated by Rev. Dr. Glen Swartwout. Stamina Plus . Bioavailability Factors: 34.5 mg Vitamin B13: Phosphatides 50% (Helianthus annua) EGb 761 (Ginkgo biloba) (24% Flavone Glycosides, 6% Lactones, <0.0005% Ginkgolic Acid) Vitamin B3 (as Niacin) 5 mg 25% Miracle Tree 100:1 (Moringa..."
+      "description": "Stamina Plus . Stamina Plus Stamina Plus Stamina Plus contains all 20 known B complex vitamins in activated, botanical complex and energized homeopathic forms to stimulate cellular uptake and utilization. Stamina Plus has a 30 year track record of effectiveness for stress relief and neurological support. It was formulated by Rev. Dr. Glen Swartwout. Stamina Plus . Bioavailability Factors: 34.5 mg Vitamin B13: Phosphatides 50% (Helianthus annua) EGb 761 (Ginkgo biloba) (24% Flavone Glycosides, 6% Lactones, <0.0005% Ginkgolic Acid) Vitamin B3 (as Niacin) 5 mg 25% Miracle Tree 100:1 (Moringa...",
+      "qty_pricing": true
     },
     "rejuv": {
       "name": "Rejuvenation",
@@ -5573,7 +5600,8 @@
           "dose": "5 ppm"
         }
       ],
-      "ingredients_source": "store-recovery-2026-06-08"
+      "ingredients_source": "store-recovery-2026-06-08",
+      "qty_pricing": true
     },
     "sanctuary-c60": {
       "name": "Sanctuary C60",
@@ -5591,7 +5619,8 @@
         }
       ],
       "ingredients_source": "store-recovery-2026-06-08",
-      "description": "Sanctuary C60 . Price: $69.97."
+      "description": "Sanctuary C60 . Price: $69.97.",
+      "qty_pricing": true
     },
     "iron-out": {
       "name": "Iron Out",
@@ -6072,7 +6101,8 @@
       "name": "Digestzymes",
       "price_cents": 6997,
       "pinecone_title": "Digestzymes",
-      "url": "https://remedymatch.com/remedies/syntropy/27-digestzymes"
+      "url": "https://remedymatch.com/remedies/syntropy/27-digestzymes",
+      "qty_pricing": true
     },
     "et14-bacteria": {
       "name": "ET14",
@@ -6225,7 +6255,8 @@
       "ingredients_source": "db-formulations-2026-06-25",
       "description": "Scar Silk . Price: $69.97.",
       "bottle_type": "30cap",
-      "fmp_id": "324"
+      "fmp_id": "324",
+      "qty_pricing": true
     },
     "one-step": {
       "name": "One Step",
@@ -6829,7 +6860,8 @@
       ],
       "ingredients_source": "store-recovery-2026-06-08",
       "description": "Clear Lens Eyedrops . Price: $69.97.",
-      "bottle_type": "5ml"
+      "bottle_type": "5ml",
+      "qty_pricing": true
     },
     "iron-syntropy": {
       "name": "Iron Synergy",
@@ -7161,7 +7193,8 @@
       "ingredients_source": "db-formulations-2026-06-25",
       "description": "Vein Support . Vein Support Vein Support Vein Support formulation notes: Minerals: Magnesium (from Magnesium Ascorbate) 2 mg 0.5% Bamboo Silica (Bambusa spp.) 1 mg Vitamins: Vitamin C (Magnesium Ascorbate) 30 mg 33% (from 32 mg) Vitamin K2 (MK-7) (Menadione) 40 mcg 33% (from 3.1 mg) Botanicals: Cayenne ( Capsicum annuum ) 50 mg Cilantro juice powder ( Coriandrum sativum ) 80 mg Ketones: Red Rasperry Ketones 98% ( Rubus idaeus ) 35 mg Organosulfur: Garlic Allicin 25% ( Allium sativa ) 5 mg Polyphenols: Bilberry Anthocyanidins 25% ( Vaccinium myrtillus ) 20 mg Turmeric Curcumin &...",
       "bottle_type": "30cap",
-      "fmp_id": "923"
+      "fmp_id": "923",
+      "qty_pricing": true
     },
     "macular-wellness-lycopene": {
       "name": "Macular Wellness Lycopene",
@@ -7274,7 +7307,8 @@
       "ingredients_source": "db-formulations-2026-06-25",
       "description": "B17 Max . B17 Max B17 Max Take up to two capsules a day of B17 Max together with up to two capsules a day of B17 Syntropy. Titrate the dosage by adding one capsule a day and decrease the dosage if lightheaded. B17 Max . Each organic pullulan capsule of B17 Max supplies: Vitamin B17: Amygdalin 98% 400 mg Vitamin B15: Pangamic Acid 99% 55 mg Bioavailability Factors: 34.5 mg Vitamin B13: Phosphatides 50% (Helianthus annua) EGb 761 (Ginkgo biloba) (24% Flavone Glycosides, 6% Lactones, <0.0005% Ginkgolic Acid) Vitamin B3 (as Niacin) 5 mg 25% Miracle Tree 100:1 (Moringa oleifera) Licorice...",
       "bottle_type": "30cap",
-      "fmp_id": "890"
+      "fmp_id": "890",
+      "qty_pricing": true
     },
     "mb8-love": {
       "name": "MB 8",
@@ -7321,7 +7355,8 @@
         }
       ],
       "ingredients_source": "store-recovery-2026-06-08",
-      "fmp_id": "312"
+      "fmp_id": "312",
+      "qty_pricing": true
     },
     "mb3-cbh": {
       "name": "MB 3",
@@ -7750,7 +7785,8 @@
       "description": "Nerve Repair . Price: $69.97. Nerve Repair . Nerve Repair Nerve Repair One organic Pullulan capsule of Nerve Repair supplies: ALCAR (Acetyl L-Carnitine) 160 mg Na RALA (Stabilized Bioenhanced Na R-Alpha Lipoate) 60 mg Lion's Mane Polysaccharides 30% ( Hericium erinaceus ) 160 mg Vitamin B1: Benfotiamine 60 mg Vitamin B6: P5P (Pyridoxal 5-Phosphate) 10 mg Vitamin B12: Methylcobalamin 500 mcg Bioavailability Proprietary Blend 34.5 mg Vitamin B13: Phosphatides 50% ( Helianthus annua ) EGb 761 ( Ginkgo biloba ) (24% Flavone Glycosides, 6% Lactones, <0.0005% Ginkgolic Acid) Vitamin B3 (as Niacin)...",
       "enrichment_note": "Recovered from FMP (Glen 2026-06-05); label-formatted (FDA DVs).",
       "bottle_type": "30cap",
-      "fmp_id": "491"
+      "fmp_id": "491",
+      "qty_pricing": true
     },
     "transresveratrol": {
       "name": "Trans-Resveratrol",
@@ -8148,7 +8184,8 @@
       "ingredients_source": "db-formulations-2026-06-25",
       "description": "Mercury Detox Syntropy Powder . Mercury Detox Syntropy Powder Mercury Detox Syntropy Powder Add a scoop to food or drink twice daily to support Mercury detoxification. Mercury Detox Syntropy Powder supplies 500 mg per scoop: M-State Mineral Factor: Gold ORMUS (Monatomic Gold) 10 mg * Botanical Factors: Black Seed ( Nigella sativa ) 70 mg * Chitosan (90% deacetylated) ( Aspergillus niger ) 70 mg * Chlorella (broken cell wall) ( Chlorella pyrenoidosa ) 70 mg * Cilantro (juice powder) ( Coriandrum sativum ) 70 mg * Diindolylmethane 98% (DIM) ( Brassica oleracea ) 70 mg * Geranium 20:1 ( Geranium...",
       "bottle_type": "30g",
-      "fmp_id": "587"
+      "fmp_id": "587",
+      "qty_pricing": true
     },
     "vitamin-d-syntropy": {
       "name": "Vitamin D Synergy",
@@ -8558,7 +8595,8 @@
       "description": "Man Manna . Man Manna Man Manna We researched all the best proven natural prostate remedies... We considered the range of therapeutic dosages for each ingredient by itself... We combined them in one comprehensive formula... Because of synergy, we see even better results with lower doses. A New Space Age Solution NASA’s Multi-Pill Problem Proves Why Your Prostate Regimen is Failing In space, astronauts once had to take over 20 pills a day just to stay healthy. The problem? Compliance dropped. Absorption was inconsistent. Results varied. So NASA simplified everything. They combined essential...",
       "enrichment_note": "Recovered from FMP (Glen 2026-06-05); label-formatted (FDA DVs).",
       "bottle_type": "30cap",
-      "fmp_id": "178"
+      "fmp_id": "178",
+      "qty_pricing": true
     },
     "artemisinin": {
       "name": "Artemisinin",
@@ -8864,7 +8902,8 @@
           "dose": ""
         }
       ],
-      "ingredients_source": "store-recovery-2026-06-08"
+      "ingredients_source": "store-recovery-2026-06-08",
+      "qty_pricing": true
     },
     "macular-wellness-zeaxanthin": {
       "name": "Macular Wellness Zeaxanthin",
@@ -8961,7 +9000,8 @@
       ],
       "ingredients_source": "store-recovery-2026-06-08",
       "bottle_type": "50ml",
-      "fmp_id": "533"
+      "fmp_id": "533",
+      "qty_pricing": true
     },
     "rhythm-restore": {
       "name": "Rhythm Restore",
@@ -9025,7 +9065,8 @@
       "ingredients_source": "t33",
       "description": "Sublingual B12 . Price: $69.97.",
       "bottle_type": "30g",
-      "fmp_id": "323"
+      "fmp_id": "323",
+      "qty_pricing": true
     },
     "shark-essence": {
       "name": "Shark Essence",
@@ -9054,7 +9095,8 @@
           "dose": ""
         }
       ],
-      "ingredients_source": "store-recovery-2026-06-08"
+      "ingredients_source": "store-recovery-2026-06-08",
+      "qty_pricing": true
     },
     "angiogenx": {
       "name": "AngiogenX",
@@ -9253,7 +9295,8 @@
       ],
       "ingredients_source": "manual",
       "description": "TMG Powder (Trimethylglycine) . TMG Powder (Trimethylglycine) TMG Syntropy Powder (Trimethylglycine) Trimethylglycine is nature's most potent methyl donor... TMG Syntropy includes synergists. Glycine gets its name from its slightly sweet taste. Most people experience TMG as sweet from the glycine amino acid in the core of its structure. Each molecule of TMG has 3 methyl groups it can give... That means one molecule can elevate SAMe levels by recycling SAMe three times from Homocysteine which is associated with atherosclerosis much more strongly than is Cholesterol... SAMe is also strongly...",
-      "enrichment_note": "TMG Syntropy Powder includes Vitamin B15 & B16 (Glen 2026-06-05)"
+      "enrichment_note": "TMG Syntropy Powder includes Vitamin B15 & B16 (Glen 2026-06-05)",
+      "qty_pricing": true
     },
     "cds-water-purifier--activator": {
       "name": "CDS Water Purifier & Activator",
@@ -9278,7 +9321,8 @@
           "dose": "50% (Activator solution)"
         }
       ],
-      "ingredients_source": "store-recovery-2026-06-08"
+      "ingredients_source": "store-recovery-2026-06-08",
+      "qty_pricing": true
     },
     "phosphatides": {
       "name": "Phosphatides",
@@ -9647,7 +9691,8 @@
       "name": "Terrain Restore",
       "price_cents": 6997,
       "pinecone_title": "Terrain Restore",
-      "url": "https://remedymatch.com/remedies/syntropy/113-terrain-restore"
+      "url": "https://remedymatch.com/remedies/syntropy/113-terrain-restore",
+      "qty_pricing": true
     },
     "et6-cfi": {
       "name": "ET6 CFI: Colds Flu Immunity",
@@ -9827,7 +9872,8 @@
         }
       ],
       "ingredients_source": "manual",
-      "enrichment_note": "Section B: replaced with Glen's authoritative C15 formula. Dose-to-ingredient pairing is best-effort (Glen pasted doses and names in separate columns) - awaiting Glen's confirmation. Source: Glen's Products-Worklist.md."
+      "enrichment_note": "Section B: replaced with Glen's authoritative C15 formula. Dose-to-ingredient pairing is best-effort (Glen pasted doses and names in separate columns) - awaiting Glen's confirmation. Source: Glen's Products-Worklist.md.",
+      "qty_pricing": true
     },
     "ei1-neurosensorycolon-meridian": {
       "name": "EI1 Neurosensory/Colon Meridian",
@@ -9899,7 +9945,8 @@
       "name": "Ozonated Olive Oil",
       "price_cents": 6997,
       "pinecone_title": "Ozonated Olive Oil",
-      "url": "https://remedymatch.com/remedies/syntropy/312-ozonated-olive-oil"
+      "url": "https://remedymatch.com/remedies/syntropy/312-ozonated-olive-oil",
+      "qty_pricing": true
     },
     "ei3-mucous-membranessmall-intestine-meridian": {
       "name": "EI3 Mucous Membranes/Small Intestine Meridian",
@@ -10084,7 +10131,8 @@
         }
       ],
       "ingredients_source": "gk",
-      "description": "Reverse AGE. AGE stands for Advanced Glycation Endproducts. They are responsible for about 1/3 of intracellular damage related to aging. AGEs form when sugars react with our body's proteins, fatty acids, and nucleic acids (RNA and DNA). AGE formation is one of the primary ways that degenerative changes and negative effects associated with aging occur in the body. By preventing AGE formation, we allow our body to repair and rejuvenate as it is constantly replacing itself on a molecular level... Reverse AGE can be taken 1 to 2 capsules daily with food. Reverse AGE is..."
+      "description": "Reverse AGE. AGE stands for Advanced Glycation Endproducts. They are responsible for about 1/3 of intracellular damage related to aging. AGEs form when sugars react with our body's proteins, fatty acids, and nucleic acids (RNA and DNA). AGE formation is one of the primary ways that degenerative changes and negative effects associated with aging occur in the body. By preventing AGE formation, we allow our body to repair and rejuvenate as it is constantly replacing itself on a molecular level... Reverse AGE can be taken 1 to 2 capsules daily with food. Reverse AGE is...",
+      "qty_pricing": true
     },
     "methylselenocysteine": {
       "name": "Methylselenocysteine",
@@ -10247,7 +10295,8 @@
       "description": "Dental Regen Powder . Dental Regen Powder Dental Regen Powder Vegan friendly Nano Crystalline Hydroxyapatite Calcium for topical remineralization of the teeth. Meta‑analyses of randomized trials in generally healthy postmenopausal women show calcium supplements (mostly carbonate and citrate, often without vitamin D) increase cardiovascular disease (CVD) risk by about 15% and coronary heart disease (CHD) risk by about 16%. Source: Calcium supplementation and cardiovascular risk: A rising concern In a British Journal of Nutrition randomized trial comparing 1,000 mg/day calcium as MCHA versus...",
       "gk_extra_accepted": true,
       "bottle_type": "30g",
-      "fmp_id": "449"
+      "fmp_id": "449",
+      "qty_pricing": true
     },
     "inositol": {
       "name": "Inositol",
@@ -10576,7 +10625,8 @@
       "description": "Snake &amp; Dragon . Snake & Dragon Snake & Dragon Snake & Dragon ingredients: Gentian ( Gentiana lutea ) (root) 4:1, 160 mg: Gentian is known for its bitter properties and is used to stimulate digestion and appetite. Saikosaponin ( Bupleurum chinense ) ( radix ) 50%, 5 mg: Saikosaponins are compounds found in Bupleurum, which is used in traditional Chinese medicine for its potential anti-inflammatory and immune-modulating effects. Alisma ( Alisma orientalis ) ( rhizome ) 25:1, 34 mg: Alisma is traditionally used in herbal medicine for promoting diuresis and reducing water retention....",
       "enrichment_note": "Recovered from FMP (Glen 2026-06-05); label-formatted (FDA DVs).",
       "bottle_type": "30cap",
-      "fmp_id": "607"
+      "fmp_id": "607",
+      "qty_pricing": true
     },
     "zinc-ascorbate": {
       "name": "Zinc Ascorbate",
@@ -10933,7 +10983,8 @@
       "ingredients_source": "db-formulations-2026-06-25",
       "description": "Crucifer Complex . Crucifer Complex Crucifer Complex DIM is found in Kale at about 0.1% concentration. We add a standardized extract of DIM that is about 1,000 times more concentrated to boost the potent healing effects of our Crucifer Complex. That means a single serving provides as much DIM as 100 grams of Kale. That's about 3.5 ounces or close to a quarter of a pound. Kale and Collards are the only foods rated at 1000 on a scale of 0 to 1000. How many of us find it easy to eat enough of them? Crucifer Complex supplies both in concentrated form with the addition of the key phytonutrient...",
       "bottle_type": "30g",
-      "fmp_id": "582"
+      "fmp_id": "582",
+      "qty_pricing": true
     },
     "hydrolized-pea-protein-aminos--pure--predigested": {
       "name": "Pea Protein Aminos",
@@ -10985,7 +11036,8 @@
       "ingredients_source": "t33",
       "description": "Oxygen Cleanse . Price: $69.97.",
       "bottle_type": "30cap",
-      "fmp_id": "379"
+      "fmp_id": "379",
+      "qty_pricing": true
     },
     "salvianolic-acid": {
       "name": "Salvianolic Acid",
@@ -11505,7 +11557,8 @@
       "ingredients_source": "store-recovery-2026-06-08",
       "description": "Adrenal Syntropy . Adrenal Syntropy Adrenal Syntropy For many years we have instructed our clients to open their capsules of 7 Keto DHEA and hold the powder under their tongues for better efficacy. There is an abundant supply of circulation under the tongue, which carries the 7-Keto directly into the systemic blood supply. Any 7-Keto not absorbed in the mouth must go through the portal blood to be filtered through the liver before reaching the systemic blood supply. About 80% of that is broken down by the liver, so whatever can be absorbed in the mouth is about five times more efficient. The...",
       "bottle_type": "30g",
-      "fmp_id": "313"
+      "fmp_id": "313",
+      "qty_pricing": true
     },
     "cinnamon-blue": {
       "name": "Cinnamon Blue",
@@ -11523,7 +11576,8 @@
         }
       ],
       "ingredients_source": "gk",
-      "description": "Cinnamon Blue . Cinnamon Blue Cinnamon Blue Cinnamon Blue combines aromatic and flavorful Cinnamon Polyphenols with Methylene Blue (MeBlu). Methylene Blue Background: Methylene Blue is safe enough to be available without prescription and is on the World Health Organization's list of essential medicines. Modern hospitals use it to save lives in cases of severe trauma. Methylene Blue was discovered in 1876 and was first used as a dye for cloth. In medical science, it was noticed that staining pathogens with a dye could kill them. Methylene Blue was the first synthetic pharmaceutical and was..."
+      "description": "Cinnamon Blue . Cinnamon Blue Cinnamon Blue Cinnamon Blue combines aromatic and flavorful Cinnamon Polyphenols with Methylene Blue (MeBlu). Methylene Blue Background: Methylene Blue is safe enough to be available without prescription and is on the World Health Organization's list of essential medicines. Modern hospitals use it to save lives in cases of severe trauma. Methylene Blue was discovered in 1876 and was first used as a dye for cloth. In medical science, it was noticed that staining pathogens with a dye could kill them. Methylene Blue was the first synthetic pharmaceutical and was...",
+      "qty_pricing": true
     },
     "ed16-bone-driver": {
       "name": "ED16 Bone Driver",
@@ -11848,7 +11902,8 @@
           "dose": "750 IU"
         }
       ],
-      "ingredients_source": "vault-locked-panel-2026-05-31 (HydroCurc switch 2026-06-25); doses per daily dose (2 scoops)"
+      "ingredients_source": "vault-locked-panel-2026-05-31 (HydroCurc switch 2026-06-25); doses per daily dose (2 scoops)",
+      "qty_pricing": true
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
