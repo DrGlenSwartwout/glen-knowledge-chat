@@ -22892,6 +22892,14 @@ def cron_charge_subscriptions():
                                 "next_charge_date": updated["next_charge_date"] if updated else ""})
                         except Exception as ee:
                             print(f"[sub-cron] membership email sub={sid}: {ee!r}", flush=True)
+                        # Term cap: a fixed-term Continuous Care sub stops after its committed
+                        # number of charges (no auto-renew). NULL cap = legacy uncapped membership.
+                        try:
+                            _cap = updated.get("term_charges_total") if updated else None
+                            if _cap and updated.get("order_count", 0) >= int(_cap):
+                                _subs.set_status(cx, sid, "cancelled")
+                        except Exception as _ce:
+                            print(f"[sub-cron] term-cap sub={sid}: {_ce!r}", flush=True)
                         charged += 1
                     else:
                         _subs.bump_failed_count(cx, sid)
