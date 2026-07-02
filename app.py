@@ -2782,7 +2782,9 @@ def begin_biofield_order_preview(token):
             return jsonify({"ok": True, "lines": [], "subtotal_cents": 0,
                             "shipping_cents": 0, "savings_cents": 0, "total_cents": 0})
         ship = _resolve_ship_address(email, {})
-        pc = _price_cart(items, ship=ship)
+        # Gate Type-2 order-total pricing on membership so the preview matches what the
+        # buyer is actually charged at checkout (begin_biofield_order_checkout does the same).
+        pc = _price_cart(items, ship=ship, program_member=_is_paid_member(email))
         priced = pc["priced"]
         lines = [{"slug": ln.get("slug"), "name": ln.get("name"), "qty": ln.get("qty"),
                   "list_cents": int(ln.get("list_cents") or 0),
