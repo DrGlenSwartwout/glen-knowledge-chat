@@ -12547,6 +12547,45 @@ def api_console_portal_message(email):
     return jsonify({"ok": mid is not None, "id": mid, "notified": notified})
 
 
+@app.route("/api/console/portal/<path:email>/draft-reply", methods=["POST"])
+def api_console_portal_draft_reply(email):
+    """Console: AI-draft Dr. Glen's personal reply to a client's latest portal-chat
+    message (grounded in their thread + portal data), to seed the composer. Glen
+    edits then sends. Console-gated; drafting only — nothing is posted or emailed."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import portal_chat as _pchat, portal_concierge as _pcz, client_portal as _cp
+    with sqlite3.connect(LOG_DB) as cx:
+        msgs = _pchat.list_messages(cx, email, limit=20)
+        rec = _cp.get_portal_content_by_email(cx, email) or {}
+    if not msgs:
+        return jsonify({"ok": True, "draft": ""})
+    try:
+        with sqlite3.connect(LOG_DB) as ocx:
+            ocx.row_factory = sqlite3.Row
+            from dashboard import orders as _o
+            orders = _o.list_orders_by_email(ocx, email)
+    except Exception:
+        orders = []
+    ctx = _pcz.build_context(rec.get("content") or {}, orders)
+    sys = _pcz.system_prompt(ctx) + (
+        "\n\nYou are drafting DR. GLEN'S OWN personal reply to this client (first person, warm, "
+        "signed 'Dr. Glen'), to address their most recent message in the thread below. Keep it "
+        "concise and grounded in their data. If it needs a consultation, a custom Terrain "
+        "Restore, or clinical judgment, say Dr. Glen will follow up personally.")
+    who = lambda m: ("Client" if m["role"] in ("client", "user")
+                     else ("Dr. Glen" if m["role"] == "practitioner" else "Assistant"))
+    convo = "\n".join(f"{who(m)}: {m['content']}" for m in msgs[-12:])
+    try:
+        r = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=500, system=sys,
+                                messages=[{"role": "user",
+                                           "content": "CONVERSATION:\n" + convo + "\n\nDraft Dr. Glen's reply:"}])
+        draft = _strip_dash(r.content[0].text.strip())
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:200]}), 502
+    return jsonify({"ok": True, "draft": draft})
+
+
 def _triage_portal_message(email, name, query, answer):
     """Background: classify a client's portal message; if it needs Dr. Glen's
     attention, store a triage item and email him full context + a recommendation."""
