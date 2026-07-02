@@ -9262,6 +9262,27 @@ def api_console_biofield_portal_audit():
                     "blurred": blurred})
 
 
+@app.route("/api/console/biofield-portal/mark-paid", methods=["POST"])
+def api_console_biofield_mark_paid():
+    """Owner: record a paid Biofield Analysis for an email (biofield_readiness.
+    paid_at) so _has_paid_biofield -> True and their portal report un-blurs. Used
+    to fix legitimately-paid clients the audit flagged. Idempotent (seed_paid
+    COALESCEs — never overwrites an existing payment)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        return jsonify({"ok": False, "error": "valid email required"}), 400
+    from dashboard import biofield_store as _bf
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _bf.init_table(cx)
+        _bf.seed_paid(cx, email, via=(body.get("via") or "owner_console"),
+                      order_ref=(body.get("order_ref") or "manual-unblur"))
+    return jsonify({"ok": True, "email": email, "paid_biofield": _has_paid_biofield(email),
+                    "unlocked": _portal_biofield_unlocked(email)})
+
+
 def membership_category(email):
     """Classify a member into 'none' | 'trial' | 'full' | 'paused' (see
     dashboard.subscriptions.category_for). 'full' is the gate for paid-member
