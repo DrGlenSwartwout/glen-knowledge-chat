@@ -95,7 +95,9 @@ export class Director {
 
   onSubmit(text) {
     const fam = detectFamily(text), intensity = detectIntensity(text);
-    const hero = selectClip(this.m.reactions, { tier: 'hero', family: fam, intensity }, this.lastReactionId);
+    // strictFamily: an intense/weighty hero should only fire when the content matches (or is akin to)
+    // its family — never as a blanket reaction to light or unrelated messages.
+    const hero = selectClip(this.m.reactions, { tier: 'hero', family: fam, intensity, strictFamily: true }, this.lastReactionId);
     if (hero) { this.lastReactionId = hero.id; this._crossfadeTo(hero.file, { loop: false });
       this.front.onended = () => this._ponder(); }
     else this._ponder();

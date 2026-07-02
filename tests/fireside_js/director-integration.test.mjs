@@ -104,6 +104,15 @@ test('onSubmit plays a hero clip, then pondering on its end', () => {
   assert.equal(d.front.loop, true);
 });
 
+test('onSubmit does NOT fire a weighty hero on light/unrelated content (strictFamily gate)', () => {
+  // hero-concern is empathic_concern; a delight message must not trigger it — it pondering instead.
+  const { d } = mkDirector(FIXTURE);
+  d.toResting();
+  d.onSubmit('what a wonderful delightful joyful day');
+  assert.equal(d.front.src, '/v/pon-1.mp4', 'unrelated family → no hero, straight to ponder');
+  assert.equal(d.front.loop, true);
+});
+
 test('onReplyReady crosses to the speaking loop', () => {
   const { d } = mkDirector(FIXTURE);
   d.toResting();
