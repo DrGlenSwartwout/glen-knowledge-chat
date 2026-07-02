@@ -19,9 +19,12 @@ from dashboard import orders as _orders
 
 # Statuses an order can be in and still be combinable (not yet out the door).
 _TERMINAL = _orders._TERMINAL_STATUSES  # ("shipped","delivered","done","cancelled")
+# Only paid-ready orders can join a shipment — mirrors the board's isPaidReady()
+# so the combined path can't ship an order that hasn't been paid/claimed.
+_PAID_OK = ("paid", "claimed")
 # Combined-shipment lifecycle. 'open' = being assembled (members can be added /
 # removed); the rest mirror the order lifecycle and are pushed onto every member.
-SHIPMENT_STATUSES = ("open", "packed", "shipped", "done", "cancelled")
+SHIPMENT_STATUSES = ("open", "packed", "shipped", "delivered", "done", "cancelled")
 
 
 def _now():
@@ -72,6 +75,8 @@ def _combinable_reason(order):
         return "pickup (no shipment)"
     if order.get("group_shipment_id") is not None:
         return f"already in shipment #{order.get('group_shipment_id')}"
+    if (order.get("pay_status") or "unpaid") not in _PAID_OK:
+        return "not paid yet"
     return None
 
 
@@ -183,11 +188,23 @@ def merged_order_view(cx, shipment):
 
 def record_label(cx, sid, *, tracking_number, label_url="", carrier_shipment_id=None):
     """Store the bought label on the shipment AND fan the tracking number + label
-    URL out onto every member order (so each order's own tracking flow works)."""
-    cx.execute(
-        "UPDATE combined_shipments SET tracking_number=?, label_url=?, "
-        "carrier_shipment_id=?, updated_at=? WHERE id=?",
-        (tracking_number, label_url, carrier_shipment_id, _now(), sid))
+    URL out onto every member order (so each order's own tracking flow works).
+    Buying/recording a label locks membership: an 'open' shipment advances to
+    'packed' so add/remove (which require 'open') can no longer change what's on
+    the already-purchased parcel."""
+    row = cx.execute("SELECT status FROM combined_shipments WHERE id=?",
+                     (sid,)).fetchone()
+    new_status = "packed" if (row and row["status"] == "open") else None
+    if new_status:
+        cx.execute(
+            "UPDATE combined_shipments SET tracking_number=?, label_url=?, "
+            "carrier_shipment_id=?, status=?, updated_at=? WHERE id=?",
+            (tracking_number, label_url, carrier_shipment_id, new_status, _now(), sid))
+    else:
+        cx.execute(
+            "UPDATE combined_shipments SET tracking_number=?, label_url=?, "
+            "carrier_shipment_id=?, updated_at=? WHERE id=?",
+            (tracking_number, label_url, carrier_shipment_id, _now(), sid))
     cx.commit()
     for m in _orders.orders_in_group(cx, sid):
         _orders.set_order_label(cx, m["id"], label_url, tracking_number)
@@ -197,8 +214,8 @@ def record_label(cx, sid, *, tracking_number, label_url="", carrier_shipment_id=
 def set_status(cx, sid, status):
     """Advance the shipment and every member order in lockstep. Not for 'cancel'
     (use cancel_shipment) or 'open'."""
-    if status not in ("packed", "shipped", "done"):
-        raise ValueError(f"use set_status only for packed/shipped/done (got {status})")
+    if status not in ("packed", "shipped", "delivered", "done"):
+        raise ValueError(f"use set_status only for packed/shipped/delivered/done (got {status})")
     if get_shipment(cx, sid) is None:
         raise ValueError(f"shipment #{sid} not found")
     cx.execute("UPDATE combined_shipments SET status=?, updated_at=? WHERE id=?",
@@ -395,24 +412,47 @@ def _send_tracking_exec(params, ctx):
         T.init_tracking_schema(cx)
     except Exception:
         pass
+    members = sh.get("members") or []
+    # Re-send guard: if this tracking number was already recorded, the emails
+    # already went out — don't re-email every client on a second button press.
+    if T.shipment_exists(cx, tn):
+        set_status(cx, sid, "shipped")
+        return {"shipment_id": sid, "tracking_number": tn, "emailed": [],
+                "message": f"Tracking {tn} was already sent for shipment #{sid}."}
     emailed = []
-    for m in sh.get("members") or []:
+    for m in members:
         email = m.get("email") or ""
         if not email:
             continue
-        em = T.build_tracking_email(tn, m.get("name"))
-        if _gmail_send_tracking(email, em.get("subject", "tracking number"),
-                                em.get("html", "")):
-            emailed.append(email)
-    # Record the shipment row once (idempotent on tracking_number).
+        # build_tracking_email splits the name -> guard blank-but-truthy names,
+        # and never let one bad member abort the whole household's send.
+        name = (m.get("name") or "").strip() or None
+        try:
+            em = T.build_tracking_email(tn, name)
+            if _gmail_send_tracking(email, em.get("subject", "tracking number"),
+                                    em.get("html", "")):
+                emailed.append(email)
+        except Exception as e:
+            print(f"[combined_shipments] tracking email skipped for {email}: {e!r}",
+                  flush=True)
+    # Record the tracking `shipments` row once, then link EVERY member order to it
+    # so delivery detection / reporting joins (orders.shipment_id) see all members,
+    # not just the first.
+    row_id = None
     try:
-        first = (sh.get("members") or [{}])[0]
+        first = members[0] if members else {}
         T.record_shipment(cx, tracking_number=tn, recipient_name=first.get("name"),
                           resolved_email=first.get("email"),
                           status=("sent" if emailed else "drafted"),
                           order_uuid=first.get("external_ref"))
+        sh_row = T.shipment_by_tracking(cx, tn)
+        if sh_row is not None:
+            row_id = sh_row["id"]
     except Exception as e:
         print(f"[combined_shipments] shipment record: {e!r}", flush=True)
+    if row_id is not None:
+        for m in members:
+            _orders.set_order_tracking(cx, m["id"], tn, shipment_id=row_id)
     set_status(cx, sid, "shipped")
     return {"shipment_id": sid, "tracking_number": tn, "emailed": emailed,
             "message": f"Tracking {tn} sent to {len(emailed)} client(s); "
@@ -467,6 +507,9 @@ action(key="shipments.mark_packed", module="orders", title="Mark shipment packed
 action(key="shipments.mark_shipped", module="orders", title="Mark shipment shipped",
        description="Mark a combined shipment and its orders shipped.",
        risk_tier=LOW_WRITE, permission=(OWNER, OPS, VA))(_status_exec("shipped", "marked shipped"))
+action(key="shipments.mark_delivered", module="orders", title="Mark shipment delivered",
+       description="Mark a combined shipment and its orders delivered.",
+       risk_tier=LOW_WRITE, permission=(OWNER, OPS, VA))(_status_exec("delivered", "marked delivered"))
 action(key="shipments.mark_done", module="orders", title="Mark shipment done",
        description="Mark a combined shipment and its orders done.",
        risk_tier=LOW_WRITE, permission=(OWNER, OPS, VA))(_status_exec("done", "marked done"))

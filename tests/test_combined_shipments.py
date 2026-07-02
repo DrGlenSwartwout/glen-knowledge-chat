@@ -24,11 +24,14 @@ ADDR = {"street": "351 Wailuku Dr", "city": "Hilo", "state": "HI",
 
 
 def _order(O, cx, ref, *, name, email, items, channel="retail",
-           address=None, total_cents=5000, status="new"):
+           address=None, total_cents=5000, status="new", paid=True):
     oid = O.upsert_order(cx, source="manual", external_ref=ref, name=name,
                          email=email, items=items, channel=channel,
                          address=(ADDR if address is None else address),
                          total_cents=total_cents)
+    if paid:
+        # -> status 'new', pay_status 'paid' (combinable requires paid-ready)
+        O.set_order_payment(cx, oid, method="Check", amount_cents=total_cents)
     if status != "new":
         O.set_order_status(cx, oid, status)
     return oid
@@ -54,6 +57,17 @@ def test_combine_stamps_group_and_lists_members():
     assert O.get_order(cx, b)["group_shipment_id"] == sh["id"]
     # ship-to defaulted to the first order's address
     assert sh["ship_to"]["zip"] == "96720"
+
+
+def test_combine_rejects_unpaid_orders():
+    O, C, cx = _db()
+    a = _order(O, cx, "A", name="Des", email="d@x.com", items=[{"name": "M", "qty": 1}], paid=False)
+    b = _order(O, cx, "B", name="JC", email="j@x.com", items=[{"name": "T", "qty": 1}])
+    try:
+        C.create_shipment(cx, [a, b])
+        assert False, "expected ValueError"
+    except ValueError as e:
+        assert "not paid" in str(e)
 
 
 def test_combine_needs_two_orders():
@@ -144,6 +158,29 @@ def test_members_locked_after_leaving_open():
         assert False, "expected ValueError"
     except ValueError as e:
         assert "locked" in str(e)
+
+
+def test_record_label_locks_membership():
+    O, C, cx = _db()
+    a, b = _two(O, cx)
+    c = _order(O, cx, "C", name="Cy", email="c@x.com", items=[{"name": "Z", "qty": 1}])
+    sh = C.create_shipment(cx, [a, b])
+    C.record_label(cx, sh["id"], tracking_number="9400111899")   # open -> packed
+    assert C.get_shipment(cx, sh["id"])["status"] == "packed"
+    try:
+        C.add_order(cx, sh["id"], c)
+        assert False, "expected add to be locked after label"
+    except ValueError as e:
+        assert "locked" in str(e)
+
+
+def test_mark_delivered():
+    O, C, cx = _db()
+    a, b = _two(O, cx)
+    sh = C.create_shipment(cx, [a, b])
+    C.set_status(cx, sh["id"], "delivered")
+    assert C.get_shipment(cx, sh["id"])["status"] == "delivered"
+    assert O.get_order(cx, a)["status"] == "delivered"
 
 
 # ── add / remove while open ──────────────────────────────────────────────────
@@ -246,3 +283,47 @@ def test_combine_action_and_send_tracking(monkeypatch):
     assert set(out["emailed"]) == {"des@x.com", "jc@x.com"}
     assert O.get_order(cx, a)["status"] == "shipped"
     assert O.get_order(cx, b)["status"] == "shipped"
+    # every member is linked to the tracking `shipments` row (delivery/reporting join)
+    from dashboard import tracking as T
+    row = T.shipment_by_tracking(cx, "9400111899")
+    assert row is not None
+    assert O.get_order(cx, a)["shipment_id"] == row["id"]
+    assert O.get_order(cx, b)["shipment_id"] == row["id"]
+
+
+def test_send_tracking_resend_guard_no_double_email(monkeypatch):
+    O, C, cx = _db()
+    a, b = _two(O, cx)
+    monkeypatch.setenv("HOUSEHOLD_SHIPMENTS_ENABLED", "1")
+    sent = []
+    import dashboard.orders as _O
+    monkeypatch.setattr(_O, "_gmail_send_tracking",
+                        lambda to, subj, html: sent.append(to) or True)
+    ctx = {"cx": cx, "actor": _Actor()}
+    sid = C._combine_exec({"order_ids": [a, b]}, ctx)["shipment_id"]
+    C._set_tracking_exec({"shipment_id": sid, "tracking_number": "9400111899"}, ctx)
+    C._send_tracking_exec({"shipment_id": sid}, ctx)
+    assert len(sent) == 2
+    # second click must NOT re-email
+    out2 = C._send_tracking_exec({"shipment_id": sid}, ctx)
+    assert len(sent) == 2
+    assert out2["emailed"] == []
+    assert "already sent" in out2["message"]
+
+
+def test_send_tracking_survives_blank_name(monkeypatch):
+    O, C, cx = _db()
+    a = _order(O, cx, "A", name="   ", email="des@x.com", items=[{"name": "M", "qty": 1}])
+    b = _order(O, cx, "B", name="J.C. Davis", email="jc@x.com", items=[{"name": "T", "qty": 1}])
+    monkeypatch.setenv("HOUSEHOLD_SHIPMENTS_ENABLED", "1")
+    sent = []
+    import dashboard.orders as _O
+    monkeypatch.setattr(_O, "_gmail_send_tracking",
+                        lambda to, subj, html: sent.append(to) or True)
+    ctx = {"cx": cx, "actor": _Actor()}
+    sid = C._combine_exec({"order_ids": [a, b]}, ctx)["shipment_id"]
+    C._set_tracking_exec({"shipment_id": sid, "tracking_number": "9400111899"}, ctx)
+    out = C._send_tracking_exec({"shipment_id": sid}, ctx)
+    # the blank-name member doesn't crash the send; both still get emailed
+    assert set(sent) == {"des@x.com", "jc@x.com"}
+    assert set(out["emailed"]) == {"des@x.com", "jc@x.com"}
