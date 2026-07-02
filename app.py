@@ -2503,6 +2503,43 @@ def begin_path():
     return resp
 
 
+@app.route("/begin/choose", methods=["GET"])
+def begin_choose():
+    """Two-door 'see & choose' surface: Door A (à-la-carte) vs Door B (Continuous Care).
+
+    Reached from the reveal page's handoff CTA with ?token=<reveal token>. Flag-dark behind
+    TWO_DOOR_ENABLED. The token is verified server-side (same path as the reveal route) so
+    Door A can link back to the token-scoped reveal cart; only the token (already in the
+    user's URL bar on the reveal) is carried forward — email is never placed in the payload."""
+    if not TWO_DOOR_ENABLED:
+        return redirect("/")
+
+    token = (request.args.get("token") or "").strip()
+    valid_token = None
+    reveal_url = "/begin"
+    if token:
+        valid, row = _biofield_verify_token(_hash_token(token))
+        if valid and row is not None:
+            valid_token = token
+            reveal_url = f"/begin/biofield/{token}"
+
+    payload = {
+        "token": valid_token,
+        "reveal_url": reveal_url,
+        "program_enabled": PROGRAM_CARE_TASTER_ENABLED,
+        "program_tier": PROGRAM_SCALABLE_TIER,
+        "prepay_enabled": PREPAY_LADDER_ENABLED,
+    }
+    _safe = (json.dumps(payload).replace("<", "\\u003c")
+             .replace(">", "\\u003e").replace("&", "\\u0026"))
+    html = (STATIC / "begin-choose.html").read_text()
+    html = html.replace("</head>", f"<script>window.__CHOOSE__ = {_safe};</script>\n</head>")
+    resp = Response(html, mimetype="text/html", status=200)
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 def _biofield_remedy_payload(r):
     """Return {name, meaning, slug, buy_url, page_url} for any remedy dict. Never raises."""
     try:
@@ -2692,6 +2729,7 @@ def begin_biofield_reveal(token):
             "email": email,
             "program_enabled": PROGRAM_CARE_TASTER_ENABLED,
             "program_tier": PROGRAM_SCALABLE_TIER,
+            "choose_enabled": TWO_DOOR_ENABLED,
         }
     else:
         payload = {
@@ -2709,6 +2747,7 @@ def begin_biofield_reveal(token):
             "email": email,
             "program_enabled": PROGRAM_CARE_TASTER_ENABLED,
             "program_tier": PROGRAM_SCALABLE_TIER,
+            "choose_enabled": TWO_DOOR_ENABLED,
         }
 
     # Set the biofield gate (idempotent, wrapped) -> Find step 2 fills.
@@ -4505,6 +4544,9 @@ REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PREPAY_LADDER_ENABLED = os.environ.get("PREPAY_LADDER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Sub-project 4: the two-door "see & choose" surface (/begin/choose) — Door A à-la-carte
+# vs Door B Continuous Care. Flag-dark: off ⇒ route redirects + reveal CTA hidden.
+TWO_DOOR_ENABLED = os.environ.get("TWO_DOOR_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Model #2 ($1 = credited activation deposit): the deposit unlocks the full Biofield
 # Analysis + portal PREVIEW for a soft window (no hard-revoke pressure, no auto-charge).
 # Paid membership begins only on first order / prepay; the $1 credit persists regardless.

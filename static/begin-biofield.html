@@ -983,6 +983,22 @@
         root.appendChild(programSection);
       }
 
+      // -- Two-door handoff CTA: flag-dark behind TWO_DOOR_ENABLED (data.choose_enabled).
+      //    Carries the reveal token to /begin/choose so Door A can link back to the
+      //    token-scoped cart. Hidden when the flag is off -> reveal page unchanged. --
+      if (data.choose_enabled) {
+        var chooseSection = document.createElement("div");
+        chooseSection.className = "cta-section";
+        chooseSection.id = "choose-cta-section";
+        var chooseLink = document.createElement("a");
+        chooseLink.className = "buy-btn";
+        chooseLink.id = "choose-continue";
+        chooseLink.textContent = "Choose how you want to continue";
+        chooseLink.href = "/begin/choose?token=" + encodeURIComponent(token);
+        chooseSection.appendChild(chooseLink);
+        root.appendChild(chooseSection);
+      }
+
     })();
   </script>
 </body>

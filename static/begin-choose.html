@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Choose How You Continue · Dr. Glen Swartwout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+    --maxw:760px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1); }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{ background:var(--bg); color:var(--cream); font-family:"Open Sans",system-ui,sans-serif;
+    font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%); background-attachment:fixed; }
+  h1,h2,h3{ font-family:"Raleway",system-ui,sans-serif; font-weight:600; line-height:1.25; letter-spacing:-0.01em; }
+  a{ color:inherit; text-decoration:none; }
+  .shell{ max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+  .brandbar{ max-width:var(--maxw); margin:0 auto; padding:30px 24px 8px; display:flex; align-items:center; justify-content:center; gap:14px; }
+  .brand-mark{ width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 4px rgba(212,168,67,0.12); }
+  .brand-name{ font-family:"Raleway",sans-serif; font-weight:600; font-size:13px; letter-spacing:0.32em; color:var(--muted); }
+  .intro{ text-align:center; padding-top:48px; }
+  .eyebrow{ font-family:"Raleway",sans-serif; font-weight:600; font-size:12px; letter-spacing:0.34em; color:var(--green); margin-bottom:18px; }
+  .intro h1{ font-size:clamp(23px,5vw,31px); color:var(--cream); max-width:600px; margin:0 auto; }
+  .intro p{ color:var(--muted); font-size:15px; margin:14px auto 0; max-width:540px; }
+  .section-label{ font-family:"Raleway",sans-serif; font-weight:600; font-size:12px; letter-spacing:0.22em; color:var(--muted); text-align:center; margin:38px 0 14px; }
+  .cards{ display:grid; grid-template-columns:1fr; gap:14px; }
+  .card{ position:relative; display:flex; align-items:flex-start; gap:18px; background:var(--surface);
+    border:1px solid var(--border); border-radius:var(--radius); padding:24px; cursor:pointer;
+    transition:transform .4s var(--ease), border-color .4s var(--ease), background .4s var(--ease); }
+  .card:hover{ transform:translateY(-2px); border-color:rgba(212,168,67,0.45); background:var(--surface-2); }
+  .card.primary{ border-color:rgba(212,168,67,0.5); background:var(--surface-2); }
+  .card-num{ flex:none; width:42px; height:42px; border-radius:50%; display:grid; place-items:center;
+    border:1px solid var(--border); color:var(--gold); font-family:"Raleway",sans-serif; font-weight:600; font-size:15px; }
+  .card-body{ flex:1; min-width:0; }
+  .card-title{ font-family:"Raleway",sans-serif; font-weight:600; font-size:17.5px; color:var(--cream); line-height:1.3; }
+  .card-sub{ font-size:14px; color:var(--muted); margin-top:6px; line-height:1.55; }
+  .card-tag{ display:inline-block; margin-top:10px; font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--green); border:1px solid var(--border); border-radius:999px; padding:3px 10px; }
+  footer{ margin-top:56px; padding:28px 24px 44px; text-align:center; border-top:1px solid rgba(33,71,45,0.5); }
+  .foot-note{ font-size:12.5px; color:var(--muted); opacity:0.7; max-width:520px; margin:0 auto; line-height:1.7; }
+  .back{ display:inline-block; margin-top:18px; color:var(--muted); font-size:13px; }
+  .back:hover{ color:var(--gold); }
+  @media(max-width:560px){ body{font-size:16px;} .shell{padding:0 18px;} .card{padding:20px;gap:14px;}
+    .card-num{width:38px;height:38px;font-size:14px;} .card-title{font-size:16px;} }
+</style>
+  <script src="/static/theme-toggle.js"></script>
+</head>
+<body>
+  <div class="brandbar"><span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Remedy&nbsp;Match &nbsp;·&nbsp; Healing&nbsp;Oasis</span></div>
+
+  <section class="shell intro">
+    <p class="eyebrow">Choose how you continue</p>
+    <h1>You have seen your analysis. Now choose how you want to heal.</h1>
+    <p>Order your matched remedies on your own, as you need them. Or step into Continuous Care, where your protocol is re-matched each month as you make progress.</p>
+  </section>
+
+  <section class="shell">
+    <p class="section-label">Two ways forward</p>
+    <div class="cards">
+      <a class="card" id="door-solo" href="/begin">
+        <span class="card-num">01</span>
+        <span class="card-body">
+          <span class="card-title">On Your Own</span>
+          <span class="card-sub">Order your matched remedies à la carte, whenever you need them, with cost-based quantity pricing. Come back for a new scan when you are ready for the next step. Full control, no commitment.</span>
+          <span class="card-tag">À la carte</span>
+        </span>
+      </a>
+
+      <a class="card primary" id="door-care" href="/prepay">
+        <span class="card-num">02</span>
+        <span class="card-body">
+          <span class="card-title">Continuous Care</span>
+          <span class="card-sub">Ongoing guided healing, about $99 a month. Your protocol is re-matched every month as you progress, plus live group coaching, your AI ally, and Terrain Restore. Prepay a longer term and save, up to two months free on the year. No auto-renewal.</span>
+          <span class="card-tag">Guided · re-matched monthly</span>
+        </span>
+      </a>
+    </div>
+    <div style="text-align:center;"><a class="back" id="back-link" href="/begin">&larr; Back to your results</a></div>
+  </section>
+
+  <footer>
+    <p class="foot-note">Shared in the spirit of education and self-understanding. This space offers wellness and
+      educational guidance. It is not a substitute for diagnosis or medical care from your own provider.</p>
+  </footer>
+
+  <script src="/ref-capture.js"></script>
+  <script>
+    (function () {
+      var data = (window.__CHOOSE__ && typeof window.__CHOOSE__ === "object") ? window.__CHOOSE__ : {};
+      var revealUrl = data.reveal_url || "/begin";
+
+      function ref(){ try { return (typeof getRef === "function") ? (getRef() || "") : ""; } catch(_){ return ""; } }
+      function fork(choice){
+        try {
+          // The door choice rides in `detail` (which /begin/unlock persists to the
+          // journey event); no `path` key -> journey_state.path is left untouched.
+          return fetch("/begin/unlock", { method:"POST",
+            headers:{ "Content-Type":"application/json" }, credentials:"same-origin",
+            body: JSON.stringify({ trigger:"care_fork", detail:(choice||""), ref:ref() }) });
+        } catch(_) { }
+      }
+
+      // Entering the choose room = the care_fork micro-commitment (analytics only).
+      fork("");
+
+      // Door A -> back to the token-scoped reveal cart (or /begin when no valid token).
+      var solo = document.getElementById("door-solo");
+      if (solo) {
+        solo.setAttribute("href", revealUrl);
+        solo.addEventListener("click", function () { fork("solo"); });
+      }
+      var back = document.getElementById("back-link");
+      if (back) { back.setAttribute("href", revealUrl); }
+
+      // Door B -> the Continuous Care prepay picker. Only offered when the prepay
+      // ladder is live; otherwise /prepay would redirect to home, so hide the door
+      // and promote Door A to primary.
+      var care = document.getElementById("door-care");
+      if (care) {
+        if (data.prepay_enabled === false) {
+          care.style.display = "none";
+          if (solo) { solo.classList.add("primary"); }
+        } else {
+          care.addEventListener("click", function () { fork("care"); });
+        }
+      }
+    })();
+  </script>
+<script src="/widget.js" data-position="bottom-right" data-color="#d4a843" data-label="Ask Dr. Glen" data-title="Accelerated Self Healing™"></script>
+</body>
+</html>

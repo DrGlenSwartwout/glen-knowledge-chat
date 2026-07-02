@@ -81,13 +81,14 @@ RUNG_INDEX = {r: i for i, r in enumerate(RUNGS)}
 VALID_TRIGGERS = {
     "load", "video", "scroll", "question", "name", "email", "tos",
     "voice", "scan", "quiz", "paid_fork", "purchase", "share_video",
-    "deep_link",
+    "deep_link", "care_fork",
     "course_ww", "intake", "masterclass", "biofield", "ascend",
 }
 
 # Gate keys stored in unlocked_gates (email/tos drive their own columns, but
-# are still recorded as gates for completeness).
-GATE_TRIGGERS = VALID_TRIGGERS - {"load", "deep_link"}
+# are still recorded as gates for completeness). care_fork is a pure analytics
+# fork (solo vs Continuous Care) like load/deep_link — it must NOT create a gate.
+GATE_TRIGGERS = VALID_TRIGGERS - {"load", "deep_link", "care_fork"}
 
 # ---------------------------------------------------------------------------
 # Awareness-stage inference (Slice 2)
