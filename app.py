@@ -9076,6 +9076,34 @@ def _active_membership_for_email(email):
     return d
 
 
+def _portal_paid_gate_enabled():
+    """Flag: gate portal biofield content behind payment (blur unpaid reveals).
+    Default OFF so merging is safe — flip PORTAL_PAID_GATE_ENABLED=1 only after
+    confirming every legitimately-paid Biofield client is recorded (has a
+    biofield_readiness paid_at or an active membership), else they'd be blurred."""
+    return os.environ.get("PORTAL_PAID_GATE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _portal_biofield_unlocked(email):
+    """True when a portal biofield report's remedies/audio/PDF may un-blur: the
+    client has PAID for it — a paid Biofield Analysis on record, OR an active
+    membership (the $1 lifetime-access unlock). A free E4L reveal published to the
+    portal stays blurred until they pay — same gate as the /begin reveal funnel.
+    Fail-closed (blurred) on any error. When the gate flag is off, everyone is
+    treated as unlocked (pre-gate behavior)."""
+    if not _portal_paid_gate_enabled():
+        return True
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    try:
+        if _has_paid_biofield(email):
+            return True
+        return bool(_active_membership_for_email(email))
+    except Exception:
+        return False
+
+
 def membership_category(email):
     """Classify a member into 'none' | 'trial' | 'full' | 'paused' (see
     dashboard.subscriptions.category_for). 'full' is the gate for paid-member
@@ -12368,10 +12396,14 @@ def api_client_portal(token):
         bf_scan_date, bf_scan_dates, bf_actionable = None, [], False
     cx_r.close()
     bf_confirmed = bf_status == "confirmed"
+    # Remedies/audio/PDF un-blur only when the report is confirmed AND the client
+    # has PAID (paid Biofield Analysis or active membership). A free E4L reveal
+    # published to the portal stays blurred until they pay — same as the funnel.
+    bf_show = bf_confirmed and _portal_biofield_unlocked(email_for_reports)
     bf_layers = []
     for L in (bf_content.get("layers") or []):
         item = {"n": L.get("n"), "title": L.get("title", ""), "meaning": L.get("meaning", "")}
-        if bf_confirmed:
+        if bf_show:
             item["remedy"] = L.get("remedy", "")
             item["dosing"] = L.get("dosing", "")
         bf_layers.append(item)
@@ -12405,15 +12437,15 @@ def api_client_portal(token):
         "name": portal.get("name"),
         "membership_category": membership_cat,
         "trial_credit_cents": trial_credit_cents,
-        "biofield_status": bf_status, "blurred": not bf_confirmed,
+        "biofield_status": bf_status, "blurred": not bf_show,
         "actionable": bf_actionable, "scan_date": bf_scan_date, "scan_dates": bf_scan_dates,
         "greeting": bf_content.get("greeting", ""),
         "video": bf_content.get("video") or {},
-        "audio": (bf_content.get("audio") or {}) if bf_confirmed else {},
-        "report_pdf": (bf_content.get("report_pdf") or {}) if bf_confirmed else {},
+        "audio": (bf_content.get("audio") or {}) if bf_show else {},
+        "report_pdf": (bf_content.get("report_pdf") or {}) if bf_show else {},
         "layers": bf_layers,
         "findings": client_findings,
-        "pricing_note": bf_content.get("pricing_note", "") if bf_confirmed else "",
+        "pricing_note": bf_content.get("pricing_note", "") if bf_show else "",
         "reorder_items": display,
         "notify_on": notify_on,
         "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
@@ -13055,7 +13087,8 @@ def api_client_portal_view(token):
         view = _pv.get_portal_view(cx, ident.person_id,
                                    offers_enabled_keys=_enabled_offer_keys(),
                                    quiz_url=QUIZ_URL, public_base_url=PUBLIC_BASE_URL,
-                                   finder_enabled=_PORTAL_FINDER_ENABLED)
+                                   finder_enabled=_PORTAL_FINDER_ENABLED,
+                                   biofield_unlocked=_portal_biofield_unlocked(ident.email))
     if view is None:
         return jsonify({"error": "not found"}), 404
     view["auth_method"] = ident.auth_method

@@ -61,10 +61,15 @@ def _orders_block(cx, email, roles):
     return {"visible": True, "items": items}
 
 
-def _biofield_block(cx, email, scan_date=None):
+def _biofield_block(cx, email, scan_date=None, unlocked=True):
     """The 'healing adventure' map — per-scan from portal_biofield_reports
     (newest by default, or an explicit scan_date), falling back to the legacy
-    client_portals content as a single confirmed report when no rows exist."""
+    client_portals content as a single confirmed report when no rows exist.
+
+    `unlocked` = the client has PAID for this content (paid Biofield Analysis or
+    active membership). When False, remedies/dosing/pricing stay blurred even on a
+    'confirmed' report — a free E4L reveal published to the portal doesn't hand out
+    the product list until they pay. Caller computes it (this module stays pure)."""
     try:
         _pbr.init_table(cx)
         dates = _pbr.list_report_dates(cx, email)
@@ -78,7 +83,7 @@ def _biofield_block(cx, email, scan_date=None):
         today = datetime.date.today().isoformat()
         actionable = (status != "confirmed") and _pbr.is_actionable(picked, today)
         return _assemble_biofield(content, status, scan_date=picked,
-                                  scan_dates=dates, actionable=actionable)
+                                  scan_dates=dates, actionable=actionable, unlocked=unlocked)
     # Legacy fallback: single confirmed report, no tabs.
     try:
         rec = _cp.get_portal_content_by_email(cx, email)
@@ -90,22 +95,25 @@ def _biofield_block(cx, email, scan_date=None):
     # Legacy portals (no biofield_status) are treated as confirmed → render fully.
     status = content.get("biofield_status") or "confirmed"
     return _assemble_biofield(content, status, scan_date=None,
-                              scan_dates=[], actionable=False)
+                              scan_dates=[], actionable=False, unlocked=unlocked)
 
 
-def _assemble_biofield(content, status, *, scan_date, scan_dates, actionable):
-    confirmed = status == "confirmed"
+def _assemble_biofield(content, status, *, scan_date, scan_dates, actionable, unlocked=True):
+    # A report's remedies un-blur only when it's confirmed AND the client has paid.
+    # `status` is still reported truthfully (the report exists); only the gated
+    # content and `blurred` flag depend on payment.
+    show = (status == "confirmed") and bool(unlocked)
     layers = []
     for L in (content.get("layers") or []):
         item = {"n": L.get("n"), "title": L.get("title", ""), "meaning": L.get("meaning", "")}
-        if confirmed:  # unconfirmed remedies NEVER leave the server
+        if show:  # unconfirmed OR unpaid remedies NEVER leave the server
             item["remedy"] = L.get("remedy", "")
             item["dosing"] = L.get("dosing", "")
         layers.append(item)
-    return {"visible": True, "status": status, "blurred": not confirmed,
+    return {"visible": True, "status": status, "blurred": not show,
             "actionable": actionable, "scan_date": scan_date, "scan_dates": scan_dates,
             "greeting": content.get("greeting", ""), "video": content.get("video") or {},
-            "layers": layers, "pricing_note": content.get("pricing_note", "") if confirmed else ""}
+            "layers": layers, "pricing_note": content.get("pricing_note", "") if show else ""}
 
 
 def _upgrade_block(cx, email, roles, enabled_keys):
@@ -164,7 +172,8 @@ def _practitioner_finder_block(address, enabled):
 
 
 def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
-                    quiz_url="", public_base_url="", finder_enabled=False):
+                    quiz_url="", public_base_url="", finder_enabled=False,
+                    biofield_unlocked=True):
     import sqlite3
     cx.row_factory = sqlite3.Row
     prow = cx.execute("SELECT * FROM people WHERE id=?", (person_id,)).fetchone()
@@ -192,7 +201,7 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
         "roles": roles,
         "account": account,
         "orders": _orders_block(cx, email, roles),
-        "biofield": _biofield_block(cx, email, scan_date=scan_date),
+        "biofield": _biofield_block(cx, email, scan_date=scan_date, unlocked=biofield_unlocked),
         "upgrade": _upgrade_block(cx, email, roles, offers_enabled_keys),
         "ambassador": _ambassador_block(cx, email, quiz_url, public_base_url),
         "practitioner_finder": _practitioner_finder_block(account["address"], finder_enabled),
