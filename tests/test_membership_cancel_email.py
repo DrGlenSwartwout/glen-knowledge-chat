@@ -37,7 +37,9 @@ def _mock_paid_session(app_module, monkeypatch, email="t@x.com"):
         lambda pi: {"customer": "cus_1", "payment_method": "pm_1", "status": "succeeded"})
 
 
-def test_fulfill_sends_welcome_email_with_working_cancel_link(monkeypatch, tmp_path):
+def test_fulfill_sends_deposit_welcome_email(monkeypatch, tmp_path):
+    """Model #2: the welcome email frames the $1 as a credited DEPOSIT — no auto-charge
+    language, no cancel link (there's nothing to cancel), and no subscription is created."""
     app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
     _mock_paid_session(app_module, monkeypatch)
     sent = []
@@ -48,16 +50,13 @@ def test_fulfill_sends_welcome_email_with_working_cancel_link(monkeypatch, tmp_p
     assert len(sent) == 1, f"expected exactly one email, got {len(sent)}"
     to, subj, body = sent[0]
     assert to == "t@x.com"
-    m = re.search(r"/membership/cancel/(\S+)", body)
-    assert m, "no cancel link in email body"
-    tok = m.group(1)
-    # the emailed link actually cancels the membership
-    r = app_module.app.test_client().get(f"/membership/cancel/{tok}")
-    assert r.status_code == 200
+    low = body.lower()
+    assert "deposit" in low, "welcome email should frame the $1 as a deposit"
+    assert "/membership/cancel/" not in body, "Model #2 mints no cancel link"
+    assert "will run on" not in low and "$99" not in body, "no auto-charge language"
     with sqlite3.connect(db) as cx:
-        status = cx.execute(
-            "SELECT status FROM subscriptions WHERE email='t@x.com' AND kind='membership'").fetchone()
-    assert status is not None and status[0] == "cancelled", f"got {status}"
+        subs = cx.execute("SELECT COUNT(*) FROM subscriptions WHERE email='t@x.com'").fetchone()[0]
+    assert subs == 0, "Model #2: no subscription row"
 
 
 def test_welcome_email_sent_exactly_once(monkeypatch, tmp_path):
@@ -80,22 +79,18 @@ def test_email_failure_does_not_break_fulfillment(monkeypatch, tmp_path):
     res = app_module._fulfill_biofield_trial("cs_1")
     assert res.get("created") is True, f"fulfillment should still succeed, got {res}"
     with sqlite3.connect(db) as cx:
-        assert cx.execute("SELECT COUNT(*) FROM subscriptions WHERE email='t@x.com'").fetchone()[0] == 1
+        assert cx.execute("SELECT COUNT(*) FROM subscriptions WHERE email='t@x.com'").fetchone()[0] == 0
         assert cx.execute("SELECT COUNT(*) FROM memberships WHERE email='t@x.com'").fetchone()[0] == 1
 
 
-def test_cancel_token_ttl_extended(monkeypatch, tmp_path):
+def test_no_cancel_token_minted(monkeypatch, tmp_path):
+    """Model #2: no auto-charge => nothing to cancel => no membership_cancel token."""
     app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
     _mock_paid_session(app_module, monkeypatch)
     monkeypatch.setattr(app_module, "_send_inquiry_email", lambda *a, **k: True)
     app_module._fulfill_biofield_trial("cs_1")
     with sqlite3.connect(db) as cx:
         row = cx.execute(
-            "SELECT created_at, expires_at FROM auth_tokens "
+            "SELECT 1 FROM auth_tokens "
             "WHERE purpose='membership_cancel' AND email='t@x.com'").fetchone()
-    assert row, "no membership_cancel token minted"
-    created = datetime.fromisoformat(row[0])
-    expires = datetime.fromisoformat(row[1])
-    days = (expires - created).days
-    assert days >= 365, f"cancel token TTL too short: {days} days"
-    assert days == app_module.MEMBERSHIP_CANCEL_TTL_DAYS
+    assert row is None, "Model #2 mints no membership_cancel token"

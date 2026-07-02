@@ -4482,6 +4482,10 @@ REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PREPAY_LADDER_ENABLED = os.environ.get("PREPAY_LADDER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Model #2 ($1 = credited activation deposit): the deposit unlocks the full Biofield
+# Analysis + portal PREVIEW for a soft window (no hard-revoke pressure, no auto-charge).
+# Paid membership begins only on first order / prepay; the $1 credit persists regardless.
+BIOFIELD_DEPOSIT_PREVIEW_DAYS = int(os.environ.get("BIOFIELD_DEPOSIT_PREVIEW_DAYS", "90") or "90")
 FIRESIDE_ENABLED = os.environ.get("FIRESIDE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 FIRESIDE_MAX_CHARS = 4000  # cap a single fireside message (cost + row growth)
 PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
@@ -6964,8 +6968,7 @@ def _fulfill_biofield_trial(session_id):
     the webhook. Re-fetches the session + PaymentIntent from Stripe (the security guarantee);
     only proceeds on a succeeded payment with a vaulted card. Never raises."""
     try:
-        from dashboard import stripe_pay as _sp, subscriptions as _bt_subs, group_bundle as _bt_gb
-        import datetime as _bt_dt
+        from dashboard import stripe_pay as _sp
         sess = _sp.get_session(session_id)
         md = sess.get("metadata") or {}
         if md.get("kind") != "biofield_trial":
@@ -6987,23 +6990,16 @@ def _fulfill_biofield_trial(session_id):
             _bc.commit()
             if not claimed:
                 return {"ok": True, "already": True, "email": bt_email}
-            _bt_subs.init_subscriptions_table(_bc)
-            _bt_subs.migrate_add_membership_columns(_bc)
             init_membership_tables(_bc)
-            next_charge = _bt_subs.add_months(_bt_dt.date.today().isoformat(), 1)
-            _bt_subs.create_membership(
-                _bc, email=bt_email, stripe_customer_id=pi["customer"],
-                stripe_payment_method_id=pi["payment_method"],
-                amount_cents=_bt_gb.MEMBERSHIP_AMOUNT_CENTS,
-                next_charge_date=next_charge)
-            _member_join_welcome(_bc, bt_email, "biofield_trial")  # excluded in orchestrator
-            _grant_membership(_bc, bt_email, 31, "biofield_trial")
-            cancel_tok = secrets.token_urlsafe(32)
-            _bc.execute(
-                "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) VALUES (?,?,?,?,?)",
-                (_hash_token(cancel_tok), bt_email, "membership_cancel",
-                 datetime.now(timezone.utc).isoformat(),
-                 (datetime.now(timezone.utc) + timedelta(days=MEMBERSHIP_CANCEL_TTL_DAYS)).isoformat()))
+            # Model #2: the $1 is a credited activation DEPOSIT, not an opt-out trial.
+            # It unlocks the full Biofield Analysis + portal preview (a day-based grant),
+            # but creates NO subscription row -> nothing auto-charges, ever. Paid
+            # membership begins only when the client activates on their first order (or
+            # prepays); the $1 credit persists (tracked by the biofield_trial order row).
+            # The member DISCOUNT is withheld during preview (membership_category ->
+            # 'trial' via the grant-aware fallback). Soft ~90-day preview window; no
+            # cancel token is minted because there is nothing to cancel.
+            _grant_membership(_bc, bt_email, BIOFIELD_DEPOSIT_PREVIEW_DAYS, "biofield_trial")
             _bc.commit()
         # Lock released. Record the $1 charge as a captured-charge order so it shows in
         # the Payments ledger (digital unlock -> status 'done', not a fulfillment task).
@@ -7015,20 +7011,21 @@ def _fulfill_biofield_trial(session_id):
                           total_cents=_trial_cents, channel="retail", status="done")
         except Exception as _oe:
             print(f"[biofield-trial] order-ledger record failed: {_oe!r}", flush=True)
-        # Send the welcome / one-click-cancel email best-effort: it must
-        # never undo the committed membership. Inside the won-claim path, so exactly once.
+        # Send the deposit-unlock welcome email best-effort: it must never undo the
+        # committed grant. Inside the won-claim path, so exactly once.
         try:
             if bt_email and PUBLIC_BASE_URL:
-                cancel_url = f"{PUBLIC_BASE_URL}/membership/cancel/{cancel_tok}"
-                subject = "You're in - your membership is active"
+                subject = "You're in - your Biofield Analysis is unlocked"
                 body = (
                     "Aloha,\n\n"
-                    "Your $1 unlocked your full Biofield Analysis and started your membership. "
-                    f"Your first monthly payment of $99 will run on {next_charge}. Everything "
-                    "stays unlocked in the meantime, and you can order your matched remedies anytime.\n\n"
-                    "No pressure, ever. If you want to cancel before your first payment, it is one "
-                    "click, no charge, no reply needed:\n\n"
-                    f"{cancel_url}\n\n"
+                    "Your $1 just unlocked your full Biofield Analysis and opened your member "
+                    "portal - your matched remedies, your causal chain, and your AI ally are "
+                    "waiting for you inside.\n\n"
+                    "That $1 is a deposit, not a trial that turns into a bill. Nothing "
+                    "auto-charges - no card is waiting to spring on you. Your membership begins "
+                    "only when you decide to start, with your first order, and your $1 is credited "
+                    "toward it then. Until that day you're never charged, and the door stays open.\n\n"
+                    "Take all the time you need. When you're ready to begin, I'm right here.\n\n"
                     "In wellness,\n"
                     "Dr. Glen and Rae\n"
                 )
@@ -9208,7 +9205,21 @@ def membership_category(email):
         from dashboard import subscriptions as _subs
         with sqlite3.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
-            return _subs.category_for(cx, email)
+            cat = _subs.category_for(cx, email)
+            if cat == "none":
+                # Model #2: a $1 biofield DEPOSIT buyer holds only a day-based grant (no
+                # subscription row), so category_for returns 'none'. Their Biofield
+                # Analysis is unlocked, but the member DISCOUNT must be withheld until
+                # they activate -> classify as 'trial'. Other grant-only members
+                # (founding / studio_credit / coaching) intentionally stay 'none' (paid),
+                # so this keys narrowly on the biofield deposit source.
+                now_iso = datetime.utcnow().isoformat() + "Z"
+                row = cx.execute(
+                    "SELECT 1 FROM memberships WHERE email=? AND expires_at > ? "
+                    "AND source='biofield_trial' LIMIT 1", (email, now_iso)).fetchone()
+                if row:
+                    return "trial"
+            return cat
     except Exception:
         return "none"
 
