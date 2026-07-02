@@ -26,13 +26,14 @@ A `policy_json` is a small rule set. Policy types (compose freely):
 
 Policies are data, so new structures (a test arm, a reward) are a row, not code.
 
-## Resolution — one predictable rule
-Per line item, the effective unit price is the **first** of:
-1. **Explicit owner line edit** on this order (always wins).
-2. **Best (lowest) applicable cohort policy** across all the client's cohorts.
-3. **Standard volume/list.**
+## Resolution — one predictable rule (DECIDED)
+Per line item, the effective unit price is:
+1. **Explicit owner line edit** on this order — always wins.
+2. **Negotiated per-client rate (a FLOOR).** If Glen set a per-client rate for this SKU, that's the price; automatic discounts never push below it. (Protects the agreed margin — a client on a $45 deal never accidentally gets $40 from volume; and they always get their $45 even if volume would be $60.)
+3. Otherwise, **lowest wins** among the automatic cohort policies the client actually **holds** (volume / loyalty / flat / test-plan).
+4. **Standard volume/list.**
 
-"Best applicable" = compute each cohort policy's price for the line, take the **lowest** — this is the "lowest wins" behavior, now scoped to *cohort policies the client actually holds* rather than an ad-hoc stack. (Alternative: strict cohort priority order. Recommend lowest-wins for client goodwill; revisit if it undercuts a negotiated rate — negotiated rates can be a `per_sku` cohort that we treat as a floor.)
+Key nuance that makes CHOICE meaningful: lowest-wins is scoped to the cohorts the client *is in*, not a global minimum across all plans. A client who chose Plan A isn't automatically given Plan B's price — which is exactly what the **switch-to-save** nudge (below) exists to surface.
 
 ## Earning a cohort (the reorder-loyalty case)
 Per Glen: a SKU earns its reorder price when it was **purchased within a program** —
@@ -50,6 +51,17 @@ Two clearly-explained options, in **outcome** terms, e.g.:
 - **Plan B — Stay the course:** lock in a low per-bottle price on anything you've started (reorder-loyalty / flat).
 
 Their pick sets their cohort (`source='chosen'`). Rules: **two options max**, a sensible default, plain language (no math), and **allow switching** (cooling-off) so a bad choice isn't punitive. This measures **what people prefer** (choice share) — the "selling" test Glen wants — on top of the outcome data.
+
+## Switch-to-save — proactive client advocacy (Glen, and a keystone)
+Because a client's price is the lowest among the cohorts **they're in** (not a global min), a plan they *didn't* choose might be cheaper for a given order. So: **when an order would cost less on another plan, tell them — unprompted — and offer to switch.**
+- At invoice/checkout review: *"Heads up — this order would be $Y less on the **Stay-the-Course** plan. [Apply to this order] · [Switch my plan]."*
+- Two grades of offer: **just this order** (no commitment — pure goodwill) and **switch going forward** (the conversion).
+- It was never announced, so it lands as *"they're on my side"* — the opposite of gotcha pricing, and dead-on brand for a healing practice.
+- Safe because every policy is independently margin-safe: offering the lower plan never dips below what we'd accept.
+- Mechanically trivial once cohorts exist: at pricing time we already compute each policy's price; surface the best *unheld* one when it beats the client's current effective price by a threshold.
+
+## Earning eligibility (DECIDED)
+The `reorder_loyalty` cohort is earned by a **paid Biofield Analysis + purchase of the recommended remedies** (`_has_paid_biofield(email)` AND the client bought the reveal's recommended SKUs). Reorders of those recommended remedies then price at the loyalty rate. All cohort **rates are set in the console** (a pricing-settings surface), not hardcoded.
 
 ## How it absorbs today's mechanisms (migration)
 - Volume curve → the **default** cohort (everyone, unless in another).
@@ -79,8 +91,14 @@ Decide winners on LTV/retention, then **graduate** everyone to the winning struc
 3. **`reorder_loyalty`** policy + program-purchase earning = first earned cohort.
 4. **Choice step** (funnel/portal) + **measurement** report.
 
-## Open decisions (need Glen)
-- Multi-cohort resolution: **lowest-wins** (recommended) vs strict priority?
-- Where/when the choice step appears, and the **two launch plans** + their exact rates.
-- Precise "program purchase" definition to detect earning (the $99 one-off recommended-and-bought; prepaid 6/12-mo term) — needs orders tagged with a program id.
-- Do negotiated per-client rates act as a **floor** (never undercut) or join lowest-wins?
+## Decisions (Glen, 2026-07-02)
+- Multi-cohort resolution: **lowest-wins** among held cohorts. ✅
+- Negotiated per-client rates = **floor** (honored; automatics never undercut). ✅
+- Cohort **rates set in the console**. ✅
+- Earning = **paid Biofield Analysis + purchase of recommended remedies**. ✅
+- **Switch-to-save** proactive nudge added (see above). ✅
+
+## Still open
+- **Where the choice step appears.** Glen leaning "first order?" — recommend presenting it **at/just after the first order** (they've experienced value and are deciding on the ongoing relationship — the natural moment to ask "how do you want to earn savings going forward?"). The switch-to-save nudge then backstops anyone who chose sub-optimally, so the first-order choice doesn't have to be perfect.
+- The **two launch plans** + exact rates (e.g. A: volume "stock up"; B: reorder-loyalty "$50/bottle, stay the course").
+- Whether "program purchase" earning needs orders tagged with a program id, or can be inferred (paid biofield + a later order of a recommended slug).
