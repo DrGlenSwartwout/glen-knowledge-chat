@@ -46,6 +46,16 @@ def test_broad_crm_vocabulary_filtered_health_kept():
         assert not is_operational_tag(t), f"{t!r} (health) must be kept"
 
 
+def test_prettify_condition_keeps_medical_acronyms():
+    from dashboard.biofield_profile import prettify_condition as p, clean_health_tag as c
+    assert p("pb:wet-amd") == "Wet AMD"
+    assert p("psc-cataract") == "PSC Cataract"
+    assert p("pb:ebv") == "EBV"
+    assert p("fatty-liver") == "Fatty Liver"
+    assert p("dry-eye") == "Dry Eye"
+    assert c("pb:dry-amd") == "Dry AMD"          # reveals use the same helper
+
+
 def test_mine_keeps_freetext_health_drops_broad_crm():
     profile = {"tags": ["chatbot-lead", "aweber email list opted in", "budget <$300/mo",
                         "pb:migraine", "Inflammation"],
@@ -73,7 +83,7 @@ def test_tag_labels_cleaned_for_display():
                    (code, label))
     cx.commit()
     labels = {s["label"] for s in st.list_stresses(cx, "9", [])["active"]}
-    assert labels == {"Migraine", "Fatty Liver", "Wet Amd"}
+    assert labels == {"Migraine", "Fatty Liver", "Wet AMD"}   # acronym kept uppercase
     assert not any('"' in l or l.lower().startswith("pb:") for l in labels)
 
 

@@ -34,10 +34,8 @@ def _clean_label(label, source):
     # Only reformat coded/quoted/namespaced tags. Clean free text stays as typed.
     if core == s and not is_ns:
         return label
-    if " " not in core:                    # a coded slug -> spaced words
-        core = core.replace("-", " ").replace("_", " ")
-    core = " ".join(w[:1].upper() + w[1:] if w else w for w in core.split(" "))
-    return core or label
+    from dashboard.biofield_profile import prettify_condition
+    return prettify_condition(core) or label   # hyphens->spaces, Title-case, acronyms UPPER
 
 
 def init_stress_tables(cx):
