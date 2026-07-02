@@ -11,7 +11,11 @@ def _app():
     except Exception as e:
         pytest.skip(f"app not importable: {e}")
 
-def test_product_data_shows_open_volume_tiers(monkeypatch):
+def test_product_data_shows_same_sku_qty_tiers(monkeypatch):
+    """The /begin/product-data qty tiers are single-SKU (type-1 same_sku_pct) pricing,
+    not the order-total volume_pct ramp (that one's OWNER in-house only). Numerics are
+    unchanged from the old volume_pct curve since same_sku's default anchors are
+    identical ([[1,0],[12,29]])."""
     appmod = _app()
     FF = {"slug": "brain", "name": "Brain Boost", "qty_pricing": True, "price_cents": 6997}
     monkeypatch.setattr(appmod, "_get_product", {"brain": FF}.get)

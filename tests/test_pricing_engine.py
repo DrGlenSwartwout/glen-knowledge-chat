@@ -91,6 +91,51 @@ def test_volume_pct_interpolates_and_caps():
     assert pricing.volume_pct(0, s) == 0
 
 
+def test_volume_pct_unchanged_after_ramp_refactor():
+    # Behavior-preservation check: same values as test_volume_pct_at_anchors/interpolates_and_caps.
+    s = pricing.load_settings({})
+    assert pricing.volume_pct(1, s) == 0
+    assert pricing.volume_pct(12, s) == 29
+
+
+def test_same_sku_pct_default_on_linear():
+    s = pricing.load_settings({})
+    assert pricing.same_sku_pct(1, s) == 0
+    assert pricing.same_sku_pct(12, s) == 29
+    assert pricing.same_sku_pct(6, s) == pytest.approx(29 * 5 / 11)
+    assert pricing.same_sku_pct(99, s) == 29
+
+
+def test_open_total_pct_default_off_then_on_via_override():
+    s = pricing.load_settings({})
+    assert pricing.open_total_pct(1, s) == 0
+    assert pricing.open_total_pct(12, s) == 0
+    assert pricing.open_total_pct(99, s) == 0
+
+    s2 = pricing.load_settings({"discounts": {
+        "same_sku":      {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+        "program_total": {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+        "open_total":    {"enabled": True, "anchors": [[1, 0], [12, 20]]},
+    }})
+    assert pricing.open_total_pct(12, s2) == 20
+
+
+def test_program_total_pct_gated_on_membership():
+    s = pricing.load_settings({})
+    assert pricing.program_total_pct(12, s, program_member=False) == 0
+    assert pricing.program_total_pct(12, s, program_member=True) == 29
+
+
+def test_discount_cfg_back_compat_from_legacy_volume_anchors():
+    # Note: pricing.load_settings({"volume_anchors": ...}) always carries DEFAULTS["discounts"]
+    # (present+truthy), so this exercises _discount_cfg's legacy-fallback branch directly with a
+    # settings dict that predates the "discounts" key (e.g. an old on-disk pricing-settings.json).
+    s = {"volume_anchors": [[1, 0], [12, 40]]}
+    cfg = pricing._discount_cfg(s)
+    assert cfg["open_total"] == {"enabled": False, "anchors": [[1, 0], [12, 40]]}
+    assert cfg["same_sku"]["enabled"] is True
+
+
 def _fake_tax(subtotal_cents, *, channel, ship_to_state, resale_ok=False):
     return int(round(subtotal_cents * 0.04)) if ship_to_state == "HI" else 0
 
@@ -120,9 +165,11 @@ def test_compute_subscriber_tier_beats_coupon_no_stack():
     assert r["lines"][0]["line_total_cents"] == 6650   # 5% (sub), coupon ignored
 
 
-def test_compute_volume_mix_and_match_beats_subscriber():
+def test_compute_open_mix_and_match_default_off_guest_gets_subscriber():
     s = pricing.load_settings({})
-    # two different SKUs, 6 months each = 12 total -> linear volume 29% beats 15% tier
+    # two different single-qty SKUs, 6 months each = 12 total months.
+    # type3 (open_total) is default OFF and type2 (program_total) needs program_member,
+    # so a guest (no membership) falls back to the subscriber tier (15%).
     items = [
         {"slug": "a", "name": "A", "qty": 1, "product": {"slug": "a", "price_cents": 7000},
          "unit_cents": 7000, "months": 6, "volume_eligible": True},
@@ -131,6 +178,52 @@ def test_compute_volume_mix_and_match_beats_subscriber():
     ]
     r = pricing.compute(items, settings=s, subscriber_tier_pct=15,
                         channel="retail", ship_to_state="CA", tax_fn=_fake_tax)
+    assert r["lines"][0]["line_total_cents"] == 5950   # 15% off 7000 (subscriber wins)
+    assert r["lines"][1]["line_total_cents"] == 5950
+
+
+def test_compute_program_member_beats_subscriber_via_order_total():
+    s = pricing.load_settings({})
+    # same cart, but the buyer is a paid-program member -> type2 order-total (29%) beats
+    # the 15% subscriber tier.
+    items = [
+        {"slug": "a", "name": "A", "qty": 1, "product": {"slug": "a", "price_cents": 7000},
+         "unit_cents": 7000, "months": 6, "volume_eligible": True},
+        {"slug": "b", "name": "B", "qty": 1, "product": {"slug": "b", "price_cents": 7000},
+         "unit_cents": 7000, "months": 6, "volume_eligible": True},
+    ]
+    r = pricing.compute(items, settings=s, subscriber_tier_pct=15, program_member=True,
+                        channel="retail", ship_to_state="CA", tax_fn=_fake_tax)
+    assert r["lines"][0]["line_total_cents"] == 4970   # round(7000*(1-0.29))
+    assert r["lines"][1]["line_total_cents"] == 4970
+
+
+def test_compute_same_sku_type1_open_to_all_no_membership():
+    s = pricing.load_settings({})
+    # single SKU, qty 6 (one line) -> type1 same-sku ramp applies, open to everyone.
+    items = [
+        {"slug": "a", "name": "A", "qty": 6, "product": {"slug": "a", "price_cents": 7000},
+         "unit_cents": 7000, "months": 6, "volume_eligible": True},
+    ]
+    r = pricing.compute(items, settings=s, channel="retail", ship_to_state="CA", tax_fn=_fake_tax)
+    assert r["lines"][0]["line_total_cents"] == 36464   # round(42000*(1-0.131818))
+
+
+def test_compute_open_total_enabled_beats_no_membership():
+    s = pricing.load_settings({"discounts": {
+        "same_sku":      {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+        "program_total": {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+        "open_total":    {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+    }})
+    # two different single-qty SKUs, 6 months each = 12 total months, NO membership.
+    # open_total is enabled -> 29% order-total applies to everyone.
+    items = [
+        {"slug": "a", "name": "A", "qty": 1, "product": {"slug": "a", "price_cents": 7000},
+         "unit_cents": 7000, "months": 6, "volume_eligible": True},
+        {"slug": "b", "name": "B", "qty": 1, "product": {"slug": "b", "price_cents": 7000},
+         "unit_cents": 7000, "months": 6, "volume_eligible": True},
+    ]
+    r = pricing.compute(items, settings=s, channel="retail", ship_to_state="CA", tax_fn=_fake_tax)
     assert r["lines"][0]["line_total_cents"] == 4970   # round(7000*(1-0.29))
     assert r["lines"][1]["line_total_cents"] == 4970
 

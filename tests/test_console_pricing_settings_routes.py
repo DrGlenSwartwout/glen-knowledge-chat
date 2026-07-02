@@ -66,6 +66,41 @@ def test_post_persists_and_live_applies(tmp_path, monkeypatch):
     assert _app._rewards_settings()["referral_reward_pct"] == 0.07
 
 
+def test_post_persists_discounts_block(tmp_path, monkeypatch):
+    _app = _client(tmp_path, monkeypatch)
+    c = _app.app.test_client()
+    payload = {"discounts": {
+        "same_sku": {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+        "program_total": {"enabled": False, "anchors": [[1, 0], [12, 29]]},
+        "open_total": {"enabled": True, "anchors": [[1, 0], [12, 20]]},
+    }}
+    r = c.post("/api/console/pricing-settings",
+               headers={"X-Console-Key": _key(_app), "Content-Type": "application/json"},
+               data=json.dumps(payload))
+    assert r.status_code == 200, r.get_data(as_text=True)
+    saved = r.get_json()["saved"]
+    assert saved["discounts"]["same_sku"]["anchors"] == [[1, 0], [12, 29]]
+    assert saved["discounts"]["open_total"]["enabled"] is True
+    assert _app._pricing_settings()["discounts"]["open_total"]["enabled"] is True
+
+    r2 = c.get("/api/console/pricing-settings", headers={"X-Console-Key": _key(_app)})
+    eff = r2.get_json()["effective"]
+    assert eff["discounts"]["same_sku"]["anchors"] == [[1, 0], [12, 29]]
+    assert eff["discounts"]["program_total"]["enabled"] is False
+    assert eff["discounts"]["open_total"]["enabled"] is True
+
+
+def test_console_page_has_discount_type_editors(tmp_path, monkeypatch):
+    _app = _client(tmp_path, monkeypatch)
+    c = _app.app.test_client()
+    r = c.get("/console/pricing-settings")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert "same_sku" in html
+    assert "program_total" in html
+    assert "open_total" in html
+
+
 def test_post_rejects_invalid(tmp_path, monkeypatch):
     _app = _client(tmp_path, monkeypatch)
     c = _app.app.test_client()

@@ -2782,7 +2782,9 @@ def begin_biofield_order_preview(token):
             return jsonify({"ok": True, "lines": [], "subtotal_cents": 0,
                             "shipping_cents": 0, "savings_cents": 0, "total_cents": 0})
         ship = _resolve_ship_address(email, {})
-        pc = _price_cart(items, ship=ship)
+        # Gate Type-2 order-total pricing on membership so the preview matches what the
+        # buyer is actually charged at checkout (begin_biofield_order_checkout does the same).
+        pc = _price_cart(items, ship=ship, program_member=_is_paid_member(email))
         priced = pc["priced"]
         lines = [{"slug": ln.get("slug"), "name": ln.get("name"), "qty": ln.get("qty"),
                   "list_cents": int(ln.get("list_cents") or 0),
@@ -4773,7 +4775,7 @@ def _shipping_for_cart(box_counts, total_bottles):
 
 
 def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
-                points_to_redeem_cents=0, channel="retail"):
+                points_to_redeem_cents=0, channel="retail", program_member=False):
     """Price a reorder/checkout cart through the pricing engine + shipping.
     Returns {priced, qbo_lines, discount_cents, points_redeemed_cents, shipping_cents,
     items_rec, subtotal_list_cents}. Raises CheckoutError for non-US ship-to."""
@@ -4807,7 +4809,8 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                               subscriber_tier_pct=subscriber_tier_pct, channel=channel,
                               points_to_redeem_cents=int(points_to_redeem_cents or 0),
                               ship_to_state=ship.get("state", ""),
-                              tax_fn=_tax.compute_get_cents)
+                              tax_fn=_tax.compute_get_cents,
+                              program_member=bool(program_member))
     shipping_cents = _shipping_for_cart(box_counts, total_bottles)
     return {
         "priced": priced, "qbo_lines": qbo_lines, "items_rec": items_rec,
@@ -5169,7 +5172,7 @@ def begin_product_data(slug):
         _base = int(p["price_cents"])
         qty_tiers = []
         for m in (1, 3, 6, 12):
-            u = int(round(_base * (1 - _pricing.volume_pct(m, _s) / 100.0)))
+            u = int(round(_base * (1 - _pricing.same_sku_pct(m, _s) / 100.0)))
             qty_tiers.append({"min": m, "unit_cents": u, "unit": f"${u/100:.2f}",
                               "save": ((_base - u) // 100) if u < _base else 0})
         formats = _FORMATS
@@ -6697,7 +6700,8 @@ def _price_biofield(points_to_redeem_cents=0, tier=PROGRAM_PREMIUM_TIER):
     priced = _pricing.compute([item], settings=settings,
                               points_to_redeem_cents=int(points_to_redeem_cents or 0),
                               channel="retail", ship_to_state=None,
-                              tax_fn=_tax.compute_get_cents)
+                              tax_fn=_tax.compute_get_cents,
+                              program_member=False)  # service line is volume_eligible=False; explicit for clarity
     qbo_lines = [{"name": _name,
                   "amount": round(_price / 100.0, 2), "qty": 1,
                   "description": _name}]
@@ -6829,7 +6833,8 @@ def begin_checkout(slug):
     try:
         pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
                          coupon_pct=_eff_pct,
-                         points_to_redeem_cents=redeem)
+                         points_to_redeem_cents=redeem,
+                         program_member=_is_paid_member(email))
     except CheckoutError as ce:
         return jsonify({"ok": False, "error": str(ce)}), 400
     cust = qb.find_or_create_customer(email, name)
@@ -15219,7 +15224,8 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
             _bal = _pts_co.balance(_cx_pts, email)
         requested_redeem = min(requested_redeem, _bal)
     _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(referral_code, email)
-    pc = _price_cart(cart, ship=ship, coupon_pct=_ref_pct, points_to_redeem_cents=requested_redeem)
+    pc = _price_cart(cart, ship=ship, coupon_pct=_ref_pct, points_to_redeem_cents=requested_redeem,
+                     program_member=_is_paid_member(email))
     if not pc["qbo_lines"]:
         raise CheckoutError("Your cart is empty or those items are no longer available.")
     cust = qb.find_or_create_customer(email, ship.get("name", ""))
@@ -15359,7 +15365,8 @@ def _ship_founding_reservation(cx, sub):
     from dashboard import subscriptions as _subs
     items = sub.get("items") or []
     ship = sub.get("ship_address") or {}
-    pc = _price_cart(items, ship=ship, subscriber_tier_pct=None)
+    pc = _price_cart(items, ship=ship, subscriber_tier_pct=None,
+                     program_member=_is_paid_member(sub["email"]))
     cust = qb.find_or_create_customer(sub["email"], ship.get("name", ""))
     inv = qb.create_invoice(
         cust,
@@ -15464,7 +15471,8 @@ def reorder_subscribe():
     try:
         from dashboard import subscriptions as _subs
         try:
-            pc = _price_cart(cart, ship=ship, subscriber_tier_pct=_subs.tier_for(0))
+            pc = _price_cart(cart, ship=ship, subscriber_tier_pct=_subs.tier_for(0),
+                             program_member=_is_paid_member(email))
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
         if not pc["qbo_lines"]:
@@ -22797,7 +22805,8 @@ def cron_charge_subscriptions():
 
                 # Price the order
                 try:
-                    pc = _price_cart(items, ship=ship, subscriber_tier_pct=tier_pct)
+                    pc = _price_cart(items, ship=ship, subscriber_tier_pct=tier_pct,
+                                     program_member=_is_paid_member(sub["email"]))
                 except CheckoutError as ce:
                     print(f"[sub-cron] price_cart sub={sid}: {ce!r}", flush=True)
                     failed += 1
@@ -27418,7 +27427,10 @@ def api_invoice_update(token):
         return jsonify({"ok": False, "error": "no valid items"}), 400
     ship = order.get("address") or {}
     try:
-        pc = _price_cart(cart, ship=ship, channel="retail")
+        # Gate Type-2 order-total pricing on membership so a member editing their own
+        # invoice is priced the same as at checkout (not overcharged).
+        pc = _price_cart(cart, ship=ship, channel="retail",
+                         program_member=_is_paid_member(order.get("email") or ""))
         discount_cents = int(pc.get("discount_cents") or 0)
         shipping_cents = _bos_orders.effective_shipping_cents(
             (order.get("channel") or "") == "pickup", pc.get("shipping_cents"))
@@ -28104,7 +28116,8 @@ def api_pricing_preview():
         points_to_redeem_cents=data.get("points_to_redeem_cents") or 0,
         channel=data.get("channel", "retail"),
         ship_to_state=data.get("ship_to_state"),
-        tax_fn=_tax.compute_get_cents)
+        tax_fn=_tax.compute_get_cents,
+        program_member=bool(data.get("program_member")))
     return jsonify(result)
 
 

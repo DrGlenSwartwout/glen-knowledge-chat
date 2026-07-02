@@ -28,3 +28,37 @@ def test_price_cart_skips_unknown(monkeypatch):
     monkeypatch.setattr(appmod._shipping, "quote", lambda b: {"shipping_cents": 0})
     out = appmod._price_cart([{"slug":"nope","qty":1}], ship={"state":"CA","country":"US"})
     assert out["qbo_lines"] == []
+
+def _stub_program_products(monkeypatch):
+    # Two single-qty SKUs, each a 6-month unit -> 12 total months across the cart.
+    # qty=1 each keeps same-SKU (type1) at 0%; only the order-total (type2, gated
+    # on program_member) reaches the 12-month/29% anchor.
+    cat = {
+        "sku-a": {"slug": "sku-a", "name": "SKU A", "price_cents": 7000,
+                  "months_per_unit": 6, "qty_pricing": True, "qbo_item_id": "27"},
+        "sku-b": {"slug": "sku-b", "name": "SKU B", "price_cents": 7000,
+                  "months_per_unit": 6, "qty_pricing": True, "qbo_item_id": "28"},
+    }
+    monkeypatch.setattr(appmod, "_get_product", lambda s: cat.get(s))
+
+def test_price_cart_guest_no_order_total_discount(monkeypatch):
+    _stub_program_products(monkeypatch)
+    monkeypatch.setattr(appmod._shipping, "quote", lambda b: {"shipping_cents": 0})
+    cart = [{"slug": "sku-a", "qty": 1}, {"slug": "sku-b", "qty": 1}]
+    out = appmod._price_cart(cart, ship={"state": "CA", "country": "US"}, program_member=False)
+    for ln in out["priced"]["lines"]:
+        assert ln["pct_applied"] == 0
+        assert ln["line_total_cents"] == ln["list_cents"]
+    assert out["discount_cents"] == 0
+
+def test_price_cart_member_gets_order_total_discount(monkeypatch):
+    _stub_program_products(monkeypatch)
+    monkeypatch.setattr(appmod._shipping, "quote", lambda b: {"shipping_cents": 0})
+    cart = [{"slug": "sku-a", "qty": 1}, {"slug": "sku-b", "qty": 1}]
+    out = appmod._price_cart(cart, ship={"state": "CA", "country": "US"}, program_member=True)
+    # 12 total months -> 29% order-total rate on each line (type1 same-sku qty1 = 0%,
+    # so the order-total/program rate wins).
+    for ln in out["priced"]["lines"]:
+        assert ln["pct_applied"] == 29
+        assert ln["line_total_cents"] == 4970           # round(7000*(1-0.29))
+    assert out["discount_cents"] == 4060                # 2 * (7000-4970)

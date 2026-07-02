@@ -14,6 +14,9 @@ def defaults_view():
     d["volume_anchors"] = [list(a) for a in _pricing.DEFAULTS["volume_anchors"]]
     d["subscribe_tiers"] = list(_pricing.DEFAULTS["subscribe_tiers"])
     d["cadences"] = list(_pricing.DEFAULTS["cadences"])
+    d["discounts"] = {k: {"enabled": bool(v["enabled"]),
+                          "anchors": [list(a) for a in v["anchors"]]}
+                      for k, v in _pricing.DEFAULTS["discounts"].items()}
     d["rewards"] = dict(_rewards.DEFAULTS)
     if isinstance(d["rewards"].get("referral_cert_anchors"), list):
         d["rewards"]["referral_cert_anchors"] = [list(a) for a in d["rewards"]["referral_cert_anchors"]]
@@ -27,6 +30,21 @@ def effective(raw):
     pricing_over = {k: v for k, v in raw.items() if k != "rewards"}
     eff = _pricing.load_settings(pricing_over)
     eff["rewards"] = _rewards.load_settings(raw.get("rewards") or {})
+    if "discounts" not in raw or not isinstance(raw.get("discounts"), dict):
+        base = _pricing.DEFAULTS["discounts"]
+        # Only an explicit saved override for the legacy top-level volume_anchors
+        # backfills open_total's ramp; absent that, open_total keeps its own
+        # (disabled, zero) code default -- eff["volume_anchors"] is always present
+        # post-merge (load_settings fills it from DEFAULTS), so it can't be used
+        # to distinguish "no override" from "explicit override".
+        legacy = raw.get("volume_anchors") or base["open_total"]["anchors"]
+        eff["discounts"] = {
+            "same_sku":      {"enabled": bool(base["same_sku"]["enabled"]),
+                              "anchors": [list(a) for a in base["same_sku"]["anchors"]]},
+            "program_total": {"enabled": bool(base["program_total"]["enabled"]),
+                              "anchors": [list(a) for a in base["program_total"]["anchors"]]},
+            "open_total":    {"enabled": False, "anchors": [list(a) for a in legacy]},
+        }
     return eff
 
 
@@ -96,6 +114,25 @@ def validate(payload):
             clean["volume_anchors"] = norm
         else:
             errors.append("volume_anchors must be ascending [months>=1, pct 0-100] pairs")
+
+    if "discounts" in payload:
+        dblock = payload["discounts"] or {}
+        dclean = {}
+        for tname in ("same_sku", "program_total", "open_total"):
+            if tname not in dblock:
+                continue
+            t = dblock[tname] or {}
+            en = t.get("enabled")
+            if not isinstance(en, bool):
+                errors.append(f"discounts.{tname}.enabled must be true or false")
+                continue
+            norm = _validate_anchors(t.get("anchors"), 1)
+            if norm is None:
+                errors.append(f"discounts.{tname}.anchors must be ascending [qty>=1, pct 0-100] pairs")
+                continue
+            dclean[tname] = {"enabled": en, "anchors": norm}
+        if dclean:
+            clean["discounts"] = dclean
 
     if "rewards" in payload:
         rwd = payload["rewards"] or {}
