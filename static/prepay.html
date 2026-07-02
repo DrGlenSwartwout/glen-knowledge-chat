@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Remedy Match — Continuous Care</title>
+  <title>Remedy Match - Continuous Care</title>
   <style>
     :root { --ink:#2d2d2d; --muted:#666; --line:#e6e6e0; --gold:#b8892b; --bg:#f9f9f7; --accent:#2e6f5e; }
     * { box-sizing: border-box; }
@@ -58,13 +58,13 @@
 <body>
   <div class="wrap">
     <h1>Choose your Continuous Care</h1>
-    <p class="sub">Ongoing guided healing — your protocol re-matched as you progress, plus live group coaching, your AI ally, and Terrain Restore. Prepay a longer term and save, up to two months free on the year.</p>
+    <p class="sub">Ongoing guided healing - your protocol re-matched as you progress, plus live group coaching, your AI ally, and Terrain Restore. Prepay a longer term and save, up to two months free on the year.</p>
     <div class="tiers" id="tiers"></div>
     <div class="form">
       <div><input type="email" id="email" placeholder="you@email.com" autocomplete="email"></div>
       <button id="go" disabled>Continue</button>
       <div class="err" id="err"></div>
-      <p class="fine">One payment for your full term. No auto-renewal, no card kept on file — when your term ends we simply check in about renewing.</p>
+      <p class="fine" id="fine">Pay up front for your full term and no card is kept on file. When your term ends we simply check in about renewing - never an automatic charge.</p>
     </div>
   </div>
   <script>
@@ -78,6 +78,17 @@
       var emailEl = document.getElementById("email");
 
       var careEnabled = !!(window.__CARE__ && window.__CARE__.monthly_enabled);
+
+      // When the monthly option is live, the up-front-only disclaimer would be
+      // misleading (monthly DOES keep a card on file), so state both accurately.
+      if (careEnabled) {
+        var fineEl = document.getElementById("fine");
+        if (fineEl) {
+          fineEl.textContent = "Pay up front and no card is kept on file. Or choose monthly on a "
+            + "6 or 12 month plan: your card is kept on file and auto-charged $99 a month for your "
+            + "committed term, then it stops. No auto-renewal either way, and you can cancel anytime.";
+        }
+      }
 
       function fmt(cents) { return "$" + Math.round(cents / 100); }
 
