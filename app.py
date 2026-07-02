@@ -9196,6 +9196,72 @@ def _portal_biofield_unlocked(email):
         return False
 
 
+def _biofield_audit_row(email, confirmed, scan_date, source, name=""):
+    """One audit row: is this client's confirmed portal report un-blurred now?
+    blurred_now = has a confirmed report but is NOT recorded as paid (no paid
+    Biofield Analysis, no active membership) — the ones to eyeball."""
+    email = (email or "").strip().lower()
+    try:
+        paid_bf = _has_paid_biofield(email)
+    except Exception:
+        paid_bf = False
+    try:
+        member = bool(_active_membership_for_email(email))
+    except Exception:
+        member = False
+    unlocked = paid_bf or member
+    return {"email": email, "name": name or "", "scan_date": scan_date, "source": source,
+            "confirmed": bool(confirmed), "paid_biofield": paid_bf, "member": member,
+            "unlocked": unlocked, "blurred_now": bool(confirmed and not unlocked)}
+
+
+@app.route("/api/console/biofield-portal/audit", methods=["GET"])
+def api_console_biofield_portal_audit():
+    """Owner audit for the portal paywall: every client with a CONFIRMED portal
+    biofield report who is NOT recorded as paid (so the gate now blurs them).
+    Use it to catch legitimately-paid Biofield-Analysis clients whose payment
+    isn't on record. Read-only."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import portal_biofield_reports as _pbr
+    from dashboard import client_portal as _cp
+    import json as _json
+    rows, seen = [], set()
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pbr.init_table(cx)
+        _cp.init_client_portal_table(cx)
+        names = {(r["email"] or "").strip().lower(): (r["name"] or "")
+                 for r in cx.execute("SELECT email, name FROM client_portals").fetchall()}
+        # 1) per-scan reports — the client sees the LATEST, so its status drives blur.
+        for r in cx.execute("SELECT DISTINCT lower(email) e FROM portal_biofield_reports "
+                            "WHERE email IS NOT NULL AND email!=''").fetchall():
+            em = r["e"]
+            rep = _pbr.latest_report(cx, em) or {}
+            confirmed = (rep.get("status") or "confirmed") == "confirmed"
+            rows.append(_biofield_audit_row(em, confirmed, rep.get("scan_date"),
+                                            "report", names.get(em, "")))
+            seen.add(em)
+        # 2) legacy single-report portals (content on client_portals, no per-scan rows).
+        for r in cx.execute("SELECT lower(email) e, content_json FROM client_portals").fetchall():
+            em = r["e"]
+            if not em or em in seen:
+                continue
+            try:
+                content = _json.loads(r["content_json"] or "{}")
+            except Exception:
+                content = {}
+            if not (content.get("layers") or content.get("greeting")):
+                continue  # no biofield content on this portal
+            confirmed = (content.get("biofield_status") or "confirmed") == "confirmed"
+            rows.append(_biofield_audit_row(em, confirmed, None, "legacy", names.get(em, "")))
+            seen.add(em)
+    blurred = sorted((x for x in rows if x["blurred_now"]), key=lambda x: x["email"])
+    return jsonify({"ok": True, "gate_on": _portal_paid_gate_enabled(),
+                    "reports_total": len(rows), "blurred_count": len(blurred),
+                    "blurred": blurred})
+
+
 def membership_category(email):
     """Classify a member into 'none' | 'trial' | 'full' | 'paused' (see
     dashboard.subscriptions.category_for). 'full' is the gate for paid-member
