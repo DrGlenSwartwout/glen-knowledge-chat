@@ -4536,6 +4536,13 @@ TOPIC_PAGES_ENABLED = os.environ.get("TOPIC_PAGES_ENABLED", "false").strip().low
 CHAT_PAGE_LINKS_ENABLED = os.environ.get("CHAT_PAGE_LINKS_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 CHAT_TOPIC_OFFER_ENABLED = os.environ.get("CHAT_TOPIC_OFFER_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _cohort_pricing_enabled():
+    """Phase 1 cohort pricing gate. Default OFF — when off, cohort membership is
+    never consulted, so pricing is exactly as before (this whole layer is dark
+    until a cohort exists and the flag is flipped)."""
+    return os.environ.get("COHORT_PRICING_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_CART_ENABLED = os.environ.get("BIOFIELD_CART_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 ASCEND_PERSONALIZED_ENABLED = os.environ.get("ASCEND_PERSONALIZED_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 JOURNEY_SHELL_ENABLED = os.environ.get("JOURNEY_SHELL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
@@ -26992,7 +26999,7 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     # This client's saved special prices ({slug: cents}) — applied when the owner
     # hasn't typed an explicit per-line override on THIS order. Precedence:
     # explicit line override > client special price > standard volume/list.
-    _cprices, _ff_flat = {}, None
+    _cprices, _ff_flat, _cohorts = {}, None, []
     try:
         from dashboard import client_prices as _cp_mod
         _cpx = _sqlite3.connect(LOG_DB)
@@ -27001,6 +27008,10 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
             if email:
                 _cprices = _cp_mod.price_map(_cpx, email)
                 _ff_flat = _cp_mod.get_ff_flat(_cpx, email)
+            if email and _cohort_pricing_enabled():
+                from dashboard import cohorts as _co_mod
+                _co_mod.init_tables(_cpx)
+                _cohorts = _co_mod.member_cohorts(_cpx, email)
         finally:
             _cpx.close()
     except Exception as _cpe:
@@ -27013,17 +27024,24 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
             continue
         qty = max(1, min(int(ln.get("qty") or 1), 99))
         # Precedence: explicit per-line edit > per-SKU client price > client's flat
-        # FF rate (FF products only) > standard volume/list.
+        # FF rate (FF products only) > LOWEST of {standard volume/list, held cohort
+        # policies}. Per-client rates are the floor — cohorts only apply below them.
         _explicit = ln.get("unit_cents")
         if _explicit not in (None, ""):
-            _override = _explicit
+            unit_cents = _inhouse_line_unit_cents(p, _explicit, total_ff_qty, settings)
         elif _cprices.get(slug) is not None:
-            _override = _cprices.get(slug)
+            unit_cents = _inhouse_line_unit_cents(p, _cprices.get(slug), total_ff_qty, settings)
         elif _ff_flat is not None and _qty_eligible(p):
-            _override = _ff_flat
+            unit_cents = _inhouse_line_unit_cents(p, _ff_flat, total_ff_qty, settings)
         else:
-            _override = None
-        unit_cents = _inhouse_line_unit_cents(p, _override, total_ff_qty, settings)
+            unit_cents = _inhouse_line_unit_cents(p, None, total_ff_qty, settings)  # volume/list
+            if _cohorts:
+                from dashboard import cohorts as _co_mod
+                _cp = _co_mod.best_cohort_price(
+                    _cohorts, slug=slug, list_cents=int(p.get("price_cents") or 0),
+                    is_ff=_qty_eligible(p))
+                if _cp is not None:
+                    unit_cents = min(unit_cents, _cp)   # lowest wins among automatics
         line_cents = unit_cents * qty
         subtotal_list += line_cents
         cart.append({"slug": slug, "qty": qty})
@@ -27310,7 +27328,7 @@ def api_orders_price_preview():
     vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2)
     # Reflect this client's saved special prices in the live preview too (same
     # precedence as the pricer: explicit line edit > client price > volume/list).
-    _cprices, _ff_flat = {}, None
+    _cprices, _ff_flat, _cohorts = {}, None, []
     _pemail = (_body.get("email") or "").strip().lower()
     if _pemail:
         try:
@@ -27320,10 +27338,14 @@ def api_orders_price_preview():
                 _cp_mod.init_table(_cpx)
                 _cprices = _cp_mod.price_map(_cpx, _pemail)
                 _ff_flat = _cp_mod.get_ff_flat(_cpx, _pemail)
+                if _cohort_pricing_enabled():
+                    from dashboard import cohorts as _co_mod
+                    _co_mod.init_tables(_cpx)
+                    _cohorts = _co_mod.member_cohorts(_cpx, _pemail)
             finally:
                 _cpx.close()
         except Exception:
-            _cprices, _ff_flat = {}, None
+            _cprices, _ff_flat, _cohorts = {}, None, []
     out_lines, subtotal = [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
@@ -27343,6 +27365,11 @@ def api_orders_price_preview():
         else:
             _eff_ov = None
         unit = _inhouse_line_unit_cents(p, _eff_ov, total_ff_qty, settings)
+        if _eff_ov is None and _cohorts:   # cohort competes with volume/list (lowest wins)
+            from dashboard import cohorts as _co_mod
+            _cp = _co_mod.best_cohort_price(_cohorts, slug=slug, list_cents=list_cents, is_ff=is_ff)
+            if _cp is not None:
+                unit = min(unit, _cp)
         overridden = ov not in (None, "")
         line_cents = unit * qty
         subtotal += line_cents
@@ -27425,6 +27452,65 @@ def api_console_client_prices():
             except (ValueError, TypeError):
                 continue
         return jsonify({"ok": True, "saved": saved, "prices": _cp.list_for(cx, email)})
+    finally:
+        cx.close()
+
+
+@app.route("/api/console/cohorts", methods=["GET", "POST"])
+def api_console_cohorts():
+    """Owner: the cohort catalog (Phase 1). GET lists cohorts + the flag state;
+    POST upserts one {key, name, policy:{type,...}, description?, active?}."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import cohorts as _co
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _co.init_tables(cx)
+        if request.method == "GET":
+            return jsonify({"ok": True, "cohorts": _co.list_cohorts(cx),
+                            "pricing_enabled": _cohort_pricing_enabled()})
+        b = request.get_json(silent=True) or {}
+        try:
+            _co.upsert_cohort(cx, key=b.get("key"), name=b.get("name"),
+                              policy=b.get("policy") or {}, description=b.get("description", ""),
+                              active=bool(b.get("active", True)), is_default=bool(b.get("is_default", False)))
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        return jsonify({"ok": True, "cohorts": _co.list_cohorts(cx)})
+    finally:
+        cx.close()
+
+
+@app.route("/api/console/cohorts/members", methods=["GET", "POST", "DELETE"])
+def api_console_cohort_members():
+    """Owner: cohort membership. GET ?email= lists a client's cohorts; POST
+    {email, cohort_key, source?, expires_at?} adds; DELETE {email, cohort_key}."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import cohorts as _co
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _co.init_tables(cx)
+        if request.method == "GET":
+            email = (request.args.get("email") or "").strip().lower()
+            return jsonify({"ok": True, "email": email,
+                            "cohorts": _co.member_cohorts(cx, email) if email else []})
+        b = request.get_json(silent=True) or {}
+        email = (b.get("email") or "").strip().lower()
+        key = (b.get("cohort_key") or "").strip()
+        if not email or not key:
+            return jsonify({"ok": False, "error": "email and cohort_key required"}), 400
+        if request.method == "DELETE":
+            _co.remove_member(cx, email, key)
+            return jsonify({"ok": True, "cohorts": _co.member_cohorts(cx, email)})
+        try:
+            _co.add_member(cx, email, key, source=b.get("source", "admin"),
+                           expires_at=b.get("expires_at"))
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        return jsonify({"ok": True, "cohorts": _co.member_cohorts(cx, email)})
     finally:
         cx.close()
 
