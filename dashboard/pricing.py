@@ -122,8 +122,11 @@ def open_total_pct(total_qty, settings):
 
 def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
             points_to_redeem_cents=0, channel="retail", ship_to_state=None,
-            resale_ok=False, tax_fn=None):
-    """Price a cart. The single % discount per line = max(volume_pct, sub-or-coupon).
+            resale_ok=False, tax_fn=None, program_member=False):
+    """Price a cart. The single % discount per line = the best (non-additive) of:
+    type1 same-SKU (this line's own qty, open to everyone, default ON), type2
+    program-total (order-total months, gated on program_member, default ON) or
+    type3 open-total (order-total months, everyone, default OFF), and sub-or-coupon.
     Subscriber tier and coupon never stack (subscriber wins if present). Points apply
     after, then GET tax on the discounted subtotal. Base is the TRUE single-unit list, so
     floors always anchor to list.
@@ -137,7 +140,8 @@ def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
     if subscriber_tier_pct is not None:
         base_pct = subscriber_tier_pct      # subscriber tier wins whenever present, even 0
     total_months = sum(int(it.get("months") or 0) for it in items if it.get("volume_eligible"))
-    vpct = volume_pct(total_months, settings)
+    open_pct = open_total_pct(total_months, settings)
+    prog_pct = program_total_pct(total_months, settings, program_member)
     points_left = max(0, int(points_to_redeem_cents or 0))
     lines, subtotal, total_discount, total_points = [], 0, 0, 0
 
@@ -146,7 +150,10 @@ def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
         qty = int(it["qty"])
         unit_list = int(it["unit_cents"])
         line_list = unit_list * qty
-        line_pct = max(vpct if it.get("volume_eligible") else 0, base_pct)  # best-of-one: volume only for eligible items; base discount always applies
+        eligible = bool(it.get("volume_eligible"))
+        t1 = same_sku_pct(qty, settings) if eligible else 0.0       # type1: this line's SKU qty
+        order_pct = max(prog_pct, open_pct) if eligible else 0.0     # type2 (gated) / type3
+        line_pct = max(t1, order_pct, base_pct)                      # non-additive: best single offer
         disc_floor = unit_floor_cents(p, unit_list, settings, "discount") * qty
         pts_floor = unit_floor_cents(p, unit_list, settings, "points") * qty
 
@@ -171,7 +178,7 @@ def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
         "discount_cents": total_discount,
         "points_redeemed_cents": total_points,
         "volume_months": total_months,
-        "volume_pct": vpct,
+        "volume_pct": max(prog_pct, open_pct),
         "get_cents": get_cents,
         "total_cents": subtotal + get_cents,
     }

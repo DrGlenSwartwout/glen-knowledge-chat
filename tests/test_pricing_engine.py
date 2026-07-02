@@ -165,9 +165,11 @@ def test_compute_subscriber_tier_beats_coupon_no_stack():
     assert r["lines"][0]["line_total_cents"] == 6650   # 5% (sub), coupon ignored
 
 
-def test_compute_volume_mix_and_match_beats_subscriber():
+def test_compute_open_mix_and_match_default_off_guest_gets_subscriber():
     s = pricing.load_settings({})
-    # two different SKUs, 6 months each = 12 total -> linear volume 29% beats 15% tier
+    # two different single-qty SKUs, 6 months each = 12 total months.
+    # type3 (open_total) is default OFF and type2 (program_total) needs program_member,
+    # so a guest (no membership) falls back to the subscriber tier (15%).
     items = [
         {"slug": "a", "name": "A", "qty": 1, "product": {"slug": "a", "price_cents": 7000},
          "unit_cents": 7000, "months": 6, "volume_eligible": True},
@@ -176,6 +178,52 @@ def test_compute_volume_mix_and_match_beats_subscriber():
     ]
     r = pricing.compute(items, settings=s, subscriber_tier_pct=15,
                         channel="retail", ship_to_state="CA", tax_fn=_fake_tax)
+    assert r["lines"][0]["line_total_cents"] == 5950   # 15% off 7000 (subscriber wins)
+    assert r["lines"][1]["line_total_cents"] == 5950
+
+
+def test_compute_program_member_beats_subscriber_via_order_total():
+    s = pricing.load_settings({})
+    # same cart, but the buyer is a paid-program member -> type2 order-total (29%) beats
+    # the 15% subscriber tier.
+    items = [
+        {"slug": "a", "name": "A", "qty": 1, "product": {"slug": "a", "price_cents": 7000},
+         "unit_cents": 7000, "months": 6, "volume_eligible": True},
+        {"slug": "b", "name": "B", "qty": 1, "product": {"slug": "b", "price_cents": 7000},
+         "unit_cents": 7000, "months": 6, "volume_eligible": True},
+    ]
+    r = pricing.compute(items, settings=s, subscriber_tier_pct=15, program_member=True,
+                        channel="retail", ship_to_state="CA", tax_fn=_fake_tax)
+    assert r["lines"][0]["line_total_cents"] == 4970   # round(7000*(1-0.29))
+    assert r["lines"][1]["line_total_cents"] == 4970
+
+
+def test_compute_same_sku_type1_open_to_all_no_membership():
+    s = pricing.load_settings({})
+    # single SKU, qty 6 (one line) -> type1 same-sku ramp applies, open to everyone.
+    items = [
+        {"slug": "a", "name": "A", "qty": 6, "product": {"slug": "a", "price_cents": 7000},
+         "unit_cents": 7000, "months": 6, "volume_eligible": True},
+    ]
+    r = pricing.compute(items, settings=s, channel="retail", ship_to_state="CA", tax_fn=_fake_tax)
+    assert r["lines"][0]["line_total_cents"] == 36464   # round(42000*(1-0.131818))
+
+
+def test_compute_open_total_enabled_beats_no_membership():
+    s = pricing.load_settings({"discounts": {
+        "same_sku":      {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+        "program_total": {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+        "open_total":    {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+    }})
+    # two different single-qty SKUs, 6 months each = 12 total months, NO membership.
+    # open_total is enabled -> 29% order-total applies to everyone.
+    items = [
+        {"slug": "a", "name": "A", "qty": 1, "product": {"slug": "a", "price_cents": 7000},
+         "unit_cents": 7000, "months": 6, "volume_eligible": True},
+        {"slug": "b", "name": "B", "qty": 1, "product": {"slug": "b", "price_cents": 7000},
+         "unit_cents": 7000, "months": 6, "volume_eligible": True},
+    ]
+    r = pricing.compute(items, settings=s, channel="retail", ship_to_state="CA", tax_fn=_fake_tax)
     assert r["lines"][0]["line_total_cents"] == 4970   # round(7000*(1-0.29))
     assert r["lines"][1]["line_total_cents"] == 4970
 
