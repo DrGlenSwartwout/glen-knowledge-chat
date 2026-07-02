@@ -14,6 +14,7 @@ def _seed_membership_and_token():
     cx = sqlite3.connect(appmod.LOG_DB)
     subs.init_subscriptions_table(cx)
     subs.migrate_add_membership_columns(cx)
+    subs.migrate_add_term_cap_column(cx)
     cx.execute("DELETE FROM subscriptions WHERE email=?", (EMAIL,))
     cx.execute("DELETE FROM auth_tokens WHERE email=?", (EMAIL,))
     sid = subs.create_membership(cx, email=EMAIL, stripe_customer_id="c",

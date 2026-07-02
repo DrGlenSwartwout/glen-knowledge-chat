@@ -10,6 +10,7 @@ def _cx():
     cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
     subs.init_subscriptions_table(cx)
     subs.migrate_add_membership_columns(cx)
+    subs.migrate_add_term_cap_column(cx)
     return cx
 
 

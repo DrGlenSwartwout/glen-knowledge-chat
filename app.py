@@ -3008,6 +3008,7 @@ def membership_cancel(token):
         if email:
             _subs.init_subscriptions_table(cx)
             _subs.migrate_add_membership_columns(cx)
+            _subs.migrate_add_term_cap_column(cx)
             sub = cx.execute(
                 "SELECT id FROM subscriptions "
                 "WHERE email=? AND kind='membership' AND status='active' "
@@ -3048,6 +3049,7 @@ def membership_pause(token):
         else:
             _subs.init_subscriptions_table(cx)
             _subs.migrate_add_membership_columns(cx)
+            _subs.migrate_add_term_cap_column(cx)
             if request.method == "POST":
                 mode = (request.form.get("mode") or "once").strip()
                 if mode == "cadence":
@@ -6688,6 +6690,7 @@ def studio_claim_return():
                 _sbr.init_table(_cx)
                 _subs.init_subscriptions_table(_cx)
                 _subs.migrate_add_membership_columns(_cx)
+                _subs.migrate_add_term_cap_column(_cx)
                 if email and cus and pm and not _sbr.already_granted(_cx, email):
                     next_date = _subs.add_months(
                         _dt.date.today().isoformat(), 1)
@@ -7320,6 +7323,7 @@ def begin_checkout_return():
                                 _gcx.row_factory = sqlite3.Row
                                 _subs_gb.init_subscriptions_table(_gcx)
                                 _subs_gb.migrate_add_membership_columns(_gcx)
+                                _subs_gb.migrate_add_term_cap_column(_gcx)
                                 _gcx.execute(
                                     "CREATE TABLE IF NOT EXISTS group_bundle_grants "
                                     "(invoice_id TEXT PRIMARY KEY, created_at TEXT)")
@@ -11610,6 +11614,7 @@ def api_console_members():
         cx.row_factory = sqlite3.Row
         _subs.migrate_add_failed_count(cx)
         _subs.migrate_add_membership_columns(cx)
+        _subs.migrate_add_term_cap_column(cx)
         # One row per member (list_active_memberships dedupes by email).
         for s in _subs.list_active_memberships(cx):
             cat = _subs.classify_sub(s)
@@ -13625,6 +13630,7 @@ def portal_group_join_return():
                 cx.row_factory = sqlite3.Row
                 _subs.init_subscriptions_table(cx)
                 _subs.migrate_add_membership_columns(cx)
+                _subs.migrate_add_term_cap_column(cx)
                 if email and cus and pm and not _subs.active_memberships_by_email(cx, email):
                     next_date = _subs.add_months(_dt.date.today().isoformat(), 1)
                     _subs.create_membership(
@@ -22783,6 +22789,7 @@ def cron_charge_subscriptions():
         # Run idempotent migration to ensure failed_count column exists
         _subs.migrate_add_failed_count(cx)
         _subs.migrate_add_membership_columns(cx)
+        _subs.migrate_add_term_cap_column(cx)
 
         # ── Pass 1: Heads-up emails (3-day advance notice) ────────────────────
         try:
@@ -23024,7 +23031,7 @@ def cron_backfill_membership_grants():
     fixed = 0
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
-        _subs.init_subscriptions_table(cx); _subs.migrate_add_membership_columns(cx)
+        _subs.init_subscriptions_table(cx); _subs.migrate_add_membership_columns(cx); _subs.migrate_add_term_cap_column(cx)
         rows = cx.execute("SELECT DISTINCT email, next_charge_date FROM subscriptions "
                           "WHERE kind='membership' AND status='active'").fetchall()
         for r in rows:

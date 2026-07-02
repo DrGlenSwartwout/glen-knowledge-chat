@@ -293,19 +293,31 @@ def migrate_add_membership_columns(cx) -> None:
             pass
 
 
+def migrate_add_term_cap_column(cx):
+    """Idempotent: add term_charges_total (NULL = uncapped) for fixed-term memberships."""
+    cols = {r[1] for r in cx.execute("PRAGMA table_info(subscriptions)")}
+    if "term_charges_total" not in cols:
+        cx.execute("ALTER TABLE subscriptions ADD COLUMN term_charges_total INTEGER")
+        cx.commit()
+
+
 def create_membership(cx, *, email, stripe_customer_id, stripe_payment_method_id,
-                      amount_cents, next_charge_date, cadence_months=1) -> int:
+                      amount_cents, next_charge_date, cadence_months=1,
+                      term_charges_total=None, initial_order_count=0) -> int:
     """Insert an active flat-amount membership subscription (no product items).
-    The first charge lands on next_charge_date (= end of any free window)."""
+    The first charge lands on next_charge_date. term_charges_total caps total charges
+    (NULL = uncapped, legacy behavior); initial_order_count records charges already taken
+    at checkout (e.g. 1 when month 1 was charged in the checkout session)."""
     now = _now_iso()
     cur = cx.execute(
         """INSERT INTO subscriptions
                (email, stripe_customer_id, stripe_payment_method_id, items_json,
                 cadence_months, status, order_count, next_charge_date, ship_address_json,
-                skip_next, created_at, updated_at, kind, amount_cents)
-           VALUES (?,?,?,?,?,'active',0,?,?,0,?,?, 'membership', ?)""",
+                skip_next, created_at, updated_at, kind, amount_cents, term_charges_total)
+           VALUES (?,?,?,?,?,'active',?,?,?,0,?,?, 'membership', ?, ?)""",
         (email, stripe_customer_id, stripe_payment_method_id, "[]",
-         int(cadence_months), next_charge_date, "{}", now, now, int(amount_cents)),
+         int(cadence_months), int(initial_order_count), next_charge_date, "{}", now, now,
+         int(amount_cents), (int(term_charges_total) if term_charges_total is not None else None)),
     )
     cx.commit()
     try:
