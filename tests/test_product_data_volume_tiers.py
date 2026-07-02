@@ -18,4 +18,4 @@ def test_product_data_shows_open_volume_tiers(monkeypatch):
     c = appmod.app.test_client()
     d = c.get("/begin/product-data/brain").get_json()
     tiers = {t["min"]: t["unit_cents"] for t in d["qty_pricing"]}
-    assert tiers == {1: 6997, 3: 5773, 6: 5294, 12: 4968}
+    assert tiers == {1: 6997, 3: 6628, 6: 6075, 12: 4968}
