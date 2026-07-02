@@ -61,6 +61,23 @@ def test_policy_unit_cents_per_type():
     assert C.policy_unit_cents({"type": "volume"}, slug="x", list_cents=6997, is_ff=True) is None
 
 
+def test_reorder_loyalty_price_gated_by_earned_and_ff():
+    from dashboard import cohorts as C
+    loyalty = [{"policy": {"type": "reorder_loyalty", "ff_cents": 5000}}]
+    earned = {"neuro-magnesium"}
+    # earned FF slug -> loyalty rate
+    assert C.reorder_loyalty_price(loyalty, slug="neuro-magnesium", is_ff=True, earned_slugs=earned) == 5000
+    # not earned -> None (a SKU they never bought doesn't qualify)
+    assert C.reorder_loyalty_price(loyalty, slug="terrain-restore", is_ff=True, earned_slugs=earned) is None
+    # not FF -> None
+    assert C.reorder_loyalty_price(loyalty, slug="neuro-magnesium", is_ff=False, earned_slugs=earned) is None
+    # validate requires int ff_cents
+    try:
+        C.validate_policy({"type": "reorder_loyalty"}); assert False
+    except ValueError:
+        pass
+
+
 def test_best_cohort_price_is_lowest_applicable():
     from dashboard import cohorts as C
     cohorts = [

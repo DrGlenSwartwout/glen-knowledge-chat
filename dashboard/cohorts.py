@@ -149,6 +149,8 @@ def validate_policy(policy):
             raise ValueError("percent_off needs numeric pct")
         if policy.get("scope") not in ("ff", "all", None):
             raise ValueError("percent_off scope must be ff|all")
+    if t == "reorder_loyalty" and not isinstance(policy.get("ff_cents"), int):
+        raise ValueError("reorder_loyalty needs int ff_cents")
     return True
 
 
@@ -168,6 +170,25 @@ def policy_unit_cents(policy, *, slug, list_cents, is_ff):
         return int(round(int(list_cents) * (1 - float(policy["pct"]) / 100.0)))
     # volume / reorder_loyalty resolve in the caller, not here.
     return None
+
+
+def active_reorder_loyalty(cx):
+    """Active reorder_loyalty cohorts (applied automatically to earners — no explicit
+    membership needed). Usually one, holding the FF reorder rate."""
+    return [c for c in list_cohorts(cx)
+            if c.get("active") and (c.get("policy") or {}).get("type") == "reorder_loyalty"]
+
+
+def reorder_loyalty_price(cohorts, *, slug, is_ff, earned_slugs):
+    """Lowest FF reorder-loyalty price for this line — but ONLY when the SKU is FF
+    and EARNED (the caller decides earning: paid Biofield + previously purchased).
+    `cohorts` = reorder_loyalty cohorts (e.g. active_reorder_loyalty()). Pure."""
+    if not is_ff or slug not in (earned_slugs or set()):
+        return None
+    prices = [int(c["policy"]["ff_cents"]) for c in (cohorts or [])
+              if (c.get("policy") or {}).get("type") == "reorder_loyalty"
+              and isinstance((c.get("policy") or {}).get("ff_cents"), int)]
+    return min(prices) if prices else None
 
 
 def best_cohort_price(cohorts, *, slug, list_cents, is_ff):
