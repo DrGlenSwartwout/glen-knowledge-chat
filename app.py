@@ -7076,6 +7076,50 @@ def _fulfill_prepay_term(session_id):
         return {"ok": False, "reason": "error"}
 
 
+def _fulfill_biofield_program(session_id):
+    """Grant the 30-day Continuous Care taster from a paid biofield PROGRAM purchase,
+    idempotently. Callable from the /begin/checkout-return redirect AND the Stripe
+    webhook, so a closed tab / dropped redirect still delivers the paid care window
+    (money captured => care granted). Re-fetches the session + PaymentIntent (the
+    security guarantee); only proceeds on a succeeded biofield payment. Claim-then-create
+    on care_taster_grants(order_ref). Flag-gated; never raises. NOTE: the readiness-seed +
+    points-settle stay on the redirect path (pre-existing) — only the paid care grant is
+    made webhook-safe here."""
+    try:
+        if not PROGRAM_CARE_TASTER_ENABLED:
+            return {"ok": False, "reason": "disabled"}
+        from dashboard import stripe_pay as _sp
+        sess = _sp.get_session(session_id)
+        md = sess.get("metadata") or {}
+        if md.get("kind") != "biofield":
+            return {"ok": False, "reason": "not_biofield"}
+        bf_email = (md.get("email") or "").strip().lower()
+        bf_inv = md.get("invoice_id") or ""
+        pi_id = sess.get("payment_intent")
+        if not (bf_email and pi_id):
+            return {"ok": False, "reason": "incomplete"}
+        pi = _sp.get_payment_intent(pi_id)
+        if pi.get("status") != "succeeded":
+            return {"ok": False, "reason": "unpaid"}
+        claimed = False
+        with _db_lock, sqlite3.connect(LOG_DB) as _ctc:
+            _ctc.execute(
+                "CREATE TABLE IF NOT EXISTS care_taster_grants "
+                "(order_ref TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
+            claimed = _ctc.execute(
+                "INSERT OR IGNORE INTO care_taster_grants (order_ref, email, granted_at) VALUES (?,?,?)",
+                (bf_inv or bf_email, bf_email, datetime.utcnow().isoformat() + "Z")).rowcount == 1
+            _ctc.commit()
+            if claimed:
+                init_membership_tables(_ctc)
+                _grant_membership(_ctc, bf_email, PROGRAM_CARE_TASTER_DAYS, CARE_TASTER_SOURCE)
+                _ctc.commit()
+        return {"ok": True, "created": claimed, "email": bf_email}
+    except Exception as e:
+        print(f"[biofield-program] fulfill failed: {e!r}", flush=True)
+        return {"ok": False, "reason": "error"}
+
+
 @app.route("/begin/checkout-return")
 def begin_checkout_return():
     """Stripe retail return: verify the session, record the QBO payment, capture
@@ -7326,26 +7370,9 @@ def begin_checkout_return():
                                 print(f"[biofield] points settle failed inv={bf_inv}: {_bpe!r}",
                                       flush=True)
                             # ── Continuous Care taster: 30-day paid grant (flag-gated) ──
-                            if PROGRAM_CARE_TASTER_ENABLED:
-                                try:
-                                    with _db_lock, sqlite3.connect(LOG_DB) as _ctc:
-                                        _ctc.execute(
-                                            "CREATE TABLE IF NOT EXISTS care_taster_grants "
-                                            "(order_ref TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
-                                        claimed = _ctc.execute(
-                                            "INSERT OR IGNORE INTO care_taster_grants "
-                                            "(order_ref, email, granted_at) VALUES (?,?,?)",
-                                            (bf_inv or bf_email, bf_email,
-                                             datetime.utcnow().isoformat() + "Z")).rowcount == 1
-                                        _ctc.commit()
-                                        if claimed:
-                                            init_membership_tables(_ctc)
-                                            _grant_membership(_ctc, bf_email,
-                                                               PROGRAM_CARE_TASTER_DAYS,
-                                                               CARE_TASTER_SOURCE)
-                                            _ctc.commit()
-                                except Exception as _cte:
-                                    print(f"[care-taster] grant failed: {_cte!r}", flush=True)
+                            # Shared with the Stripe webhook (below) so a closed tab still
+                            # delivers the paid care window. Idempotent via care_taster_grants.
+                            _fulfill_biofield_program(sid)
                     except Exception as _be:
                         print(f"[biofield] return seed failed: {_be!r}", flush=True)
 
@@ -17118,6 +17145,7 @@ def webhook_stripe():
                 # closed tab / dropped redirect still gets fulfilled).
                 _fulfill_biofield_trial(session_id)
                 _fulfill_prepay_term(session_id)
+                _fulfill_biofield_program(session_id)
         return ("", 200)
     except Exception as e:
         print(f"[webhook-stripe] {e!r}", flush=True)
