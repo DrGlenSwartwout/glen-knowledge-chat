@@ -32,8 +32,8 @@ def test_ff_unit_cents_by_total_qty():
     s = _pricing.load_settings(None)
     f = appmod._inhouse_ff_unit_cents
     assert f(FF, 1, s) == 6997
-    assert f(FF, 3, s) == 5773
-    assert f(FF, 6, s) == 5294
+    assert f(FF, 3, s) == 6628
+    assert f(FF, 6, s) == 6075
     assert f(FF, 12, s) == 4968
     assert f(FF, 99, s) == 4968
     assert f(NONFF, 12, s) == 7000
@@ -50,8 +50,8 @@ def test_multi_ff_lines_share_total_rate():
     appmod = _app()
     s = _pricing.load_settings(None)
     # total FF qty 6 → BOTH FF lines priced at the vp(6) rate, even a qty-2 line (open to all)
-    assert appmod._inhouse_ff_unit_cents(FF, 6, s) == 5294
-    assert appmod._inhouse_ff_unit_cents(FF2, 6, s) == 5294
+    assert appmod._inhouse_ff_unit_cents(FF, 6, s) == 6075
+    assert appmod._inhouse_ff_unit_cents(FF2, 6, s) == 6075
 
 
 def test_line_unit_override_wins():
@@ -77,10 +77,10 @@ def test_price_preview_route(monkeypatch):
     j = r.get_json()
     assert j["ok"] and j["total_ff_qty"] == 6
     by = {l["slug"]: l for l in j["lines"]}
-    assert by["brain"]["is_ff"] and by["brain"]["effective_unit_cents"] == 5294
-    assert by["bone"]["effective_unit_cents"] == 5294          # qty-2 FF line, total rate
+    assert by["brain"]["is_ff"] and by["brain"]["effective_unit_cents"] == 6075
+    assert by["bone"]["effective_unit_cents"] == 6075          # qty-2 FF line, total rate
     assert (not by["mix"]["is_ff"]) and by["mix"]["effective_unit_cents"] == 7000
-    assert j["subtotal_cents"] == 5294 * 4 + 5294 * 2 + 7000 * 1
+    assert j["subtotal_cents"] == 6075 * 4 + 6075 * 2 + 7000 * 1
 
 
 def test_price_preview_owner_only():
@@ -111,7 +111,7 @@ def test_manual_charges_ff_effective_no_double_discount(monkeypatch, tmp_path):
     assert r.status_code == 200
     j = r.get_json()
     assert j["ok"]
-    # FF qty6 charged at the effective 5294/unit; NO separate volume discount applied.
-    assert j["lines"][0]["unit_cents"] == 5294
-    assert j["totals"]["subtotal_cents"] == 5294 * 6
+    # FF qty6 charged at the effective 6075/unit; NO separate volume discount applied.
+    assert j["lines"][0]["unit_cents"] == 6075
+    assert j["totals"]["subtotal_cents"] == 6075 * 6
     assert j["totals"]["discount_cents"] == 0

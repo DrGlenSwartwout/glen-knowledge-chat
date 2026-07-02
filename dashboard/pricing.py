@@ -8,11 +8,11 @@ DEFAULTS = {
     "points_redeem_per_point_cents": 5,   # 1 point = 5 cents (20 points = $1)
     "subscribe_tiers": [5, 10, 15],       # % by completed-order count (1st,2nd,3rd+)
     "cadences": [1, 2, 3],                # months
-    # volume curve: [total_months, pct_off] knots, ascending; linear interp; flat beyond last.
-    # A smooth ramp from 1 unit (0% off, base $70) to 12 units (29% off, floor $50), flat
-    # beyond 12. Piecewise-linear across the 1/2/4/7/12 knots; edit rows in the console to
-    # reshape the curve.
-    "volume_anchors": [[1, 0], [2, 14], [4, 21], [7, 26], [12, 29]],
+    # volume ramp: [total_months, pct_off] knots, ascending; linear interp; flat beyond last.
+    # A straight LINEAR line from 1 unit (0% off, base $70) to 12 units (29% off, floor $50),
+    # flat beyond 12 — two anchors only, so the per-unit discount grows evenly with quantity
+    # (not steep-early). Edit rows in the console to reshape.
+    "volume_anchors": [[1, 0], [12, 29]],
 }
 
 

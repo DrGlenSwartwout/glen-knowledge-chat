@@ -28,9 +28,9 @@ def test_begin_checkout_engine_records_discount_and_shipping(monkeypatch):
         "email":"buyer@x.com","name":"B","method":"card","qty":6,
         "address":{"state":"CA","country":"US","name":"B"}})
     assert r.status_code == 200
-    # 6 units → volume ~24.333% off 42000 → discount 42000-31780=10220 passed to QBO
-    assert cap["kw"]["discount_cents"] == 10220
-    assert cap["order"]["discount_cents"] == 10220
+    # 6 units → LINEAR volume 13.1818% off 42000 → discount 42000-36464=5536 passed to QBO
+    assert cap["kw"]["discount_cents"] == 5536
+    assert cap["order"]["discount_cents"] == 5536
     assert cap["order"]["shipping_cents"] == 2295
     assert cap["order"]["source"] == "funnel"
     assert r.get_json()["customer_id"] == "C1"

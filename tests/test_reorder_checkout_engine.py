@@ -29,9 +29,9 @@ def test_reorder_checkout_uses_engine_discount(monkeypatch):
     r = c.post("/reorder/checkout", json={"items":[{"slug":"brain-boost","qty":6}],
                                           "address":{"state":"CA","country":"US","name":"A"}})
     assert r.status_code == 200
-    # engine discount (~24.333% off 42000 -> 42000-31780=10220) passed to QBO
-    assert captured["kw"]["discount_cents"] == 10220
-    assert captured["order"]["discount_cents"] == 10220
+    # engine discount (LINEAR 13.1818% off 42000 -> 42000-36464=5536) passed to QBO
+    assert captured["kw"]["discount_cents"] == 5536
+    assert captured["order"]["discount_cents"] == 5536
     assert captured["order"]["shipping_cents"] == 2295
     # customer_id must be echoed so /begin/checkout-return can record the QBO payment
     assert r.get_json()["customer_id"] == "C1"
