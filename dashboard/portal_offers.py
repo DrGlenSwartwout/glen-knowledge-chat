@@ -8,8 +8,9 @@ import sqlite3
 
 from dashboard import subscriptions as _subs
 from dashboard import biofield_store as _bf
+from dashboard import prepay as _prepay
 
-MEMBERSHIP_PRICE_CENTS = 9900
+MEMBERSHIP_PRICE_CENTS = _prepay.MONTHLY_ANCHOR_CENTS
 BIOFIELD_PRICE_CENTS = 30000
 
 
