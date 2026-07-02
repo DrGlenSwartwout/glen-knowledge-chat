@@ -12,7 +12,7 @@ TRIAL = "members-trial@example.com"
 FULL = "members-full@example.com"
 PAUSED = "members-paused@example.com"
 CANC = "members-cancelled@example.com"
-EXPECTED_TRIAL_CREDIT = 3000  # Bone Builder qty 3: (6997-5997)*3
+EXPECTED_TRIAL_CREDIT = 0  # trial-credit machinery retired; always 0
 
 
 def _clean(cx):

@@ -6,7 +6,7 @@ import json
 import sqlite3
 import pytest
 
-EXPECTED = 3000  # Bone Builder qty 3: (6997-5997)*3
+EXPECTED = 0  # trial-credit machinery retired; always 0
 
 
 @pytest.fixture
