@@ -74,7 +74,7 @@ def test_savings_pct_vs_anchor():
 
 def test_tiers_public_shape():
     pub = prepay.tiers_public()
-    assert len(pub) == 4
+    assert len(pub) == 3  # 3mo retired from the public picker (kept in TIERS)
     row = next(r for r in pub if r["key"] == "6mo")
     assert row["price_cents"] == 54600
     assert row["per_month_cents"] == 9100
