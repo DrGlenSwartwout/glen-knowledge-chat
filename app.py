@@ -5172,7 +5172,7 @@ def begin_product_data(slug):
         _base = int(p["price_cents"])
         qty_tiers = []
         for m in (1, 3, 6, 12):
-            u = int(round(_base * (1 - _pricing.volume_pct(m, _s) / 100.0)))
+            u = int(round(_base * (1 - _pricing.same_sku_pct(m, _s) / 100.0)))
             qty_tiers.append({"min": m, "unit_cents": u, "unit": f"${u/100:.2f}",
                               "save": ((_base - u) // 100) if u < _base else 0})
         formats = _FORMATS
