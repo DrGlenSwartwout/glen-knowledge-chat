@@ -42,3 +42,36 @@ def test_begin_checkout_consent_gate_still_enforced(monkeypatch):
     r = c.post("/begin/checkout/brain-boost", json={"email":"b@x.com","method":"card",
                "address":{"state":"CA","country":"US"}})
     assert r.status_code == 403 and r.get_json().get("need_optin") is True
+
+def test_begin_checkout_member_gets_order_total_rate(monkeypatch):
+    # A single-qty, 12-month-per-unit product: same-SKU (type1, qty=1) = 0%, so
+    # only the order-total/program rate (gated on program_member) can discount it.
+    cap = _setup(monkeypatch)
+    monkeypatch.setattr(appmod, "_get_product",
+        lambda s: {"slug":s,"name":"Program Bundle","price_cents":7000,
+                   "months_per_unit":12,"qty_pricing":True,"qbo_item_id":"27"} if s=="brain-boost" else None)
+    monkeypatch.setattr(appmod, "_is_paid_member", lambda e: True)
+    c = appmod.app.test_client()
+    r = c.post("/begin/checkout/brain-boost", json={
+        "email":"member@x.com","name":"M","method":"card","qty":1,
+        "address":{"state":"CA","country":"US","name":"M"}})
+    assert r.status_code == 200
+    # 29% order-total rate: 7000 - round(7000*(1-0.29)) = 7000-4970 = 2030
+    assert cap["kw"]["discount_cents"] == 2030
+    assert cap["order"]["discount_cents"] == 2030
+
+def test_begin_checkout_guest_no_order_total_rate(monkeypatch):
+    # Same single-qty/12-month product, but the guest email is not a paid member
+    # -> the program-gated order-total rate never fires, only same-SKU (0% at qty=1).
+    cap = _setup(monkeypatch)
+    monkeypatch.setattr(appmod, "_get_product",
+        lambda s: {"slug":s,"name":"Program Bundle","price_cents":7000,
+                   "months_per_unit":12,"qty_pricing":True,"qbo_item_id":"27"} if s=="brain-boost" else None)
+    monkeypatch.setattr(appmod, "_is_paid_member", lambda e: False)
+    c = appmod.app.test_client()
+    r = c.post("/begin/checkout/brain-boost", json={
+        "email":"guest@x.com","name":"G","method":"card","qty":1,
+        "address":{"state":"CA","country":"US","name":"G"}})
+    assert r.status_code == 200
+    assert cap["kw"]["discount_cents"] == 0
+    assert cap["order"]["discount_cents"] == 0
