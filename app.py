@@ -2689,6 +2689,9 @@ def begin_biofield_reveal(token):
             "ship_prefill": _ship_prefill,
             "remedies": [_biofield_remedy_payload(r) for r in all_remedies],
             "layers": _layers_payload,
+            "email": email,
+            "program_enabled": PROGRAM_CARE_TASTER_ENABLED,
+            "program_tier": PROGRAM_SCALABLE_TIER,
         }
     else:
         payload = {
@@ -2703,6 +2706,9 @@ def begin_biofield_reveal(token):
             "cart_enabled": BIOFIELD_CART_ENABLED,
             "ship_prefill": _ship_prefill,
             "layers": _layers_payload,
+            "email": email,
+            "program_enabled": PROGRAM_CARE_TASTER_ENABLED,
+            "program_tier": PROGRAM_SCALABLE_TIER,
         }
 
     # Set the biofield gate (idempotent, wrapped) -> Find step 2 fills.
@@ -4501,8 +4507,18 @@ PREPAY_LADDER_ENABLED = os.environ.get("PREPAY_LADDER_ENABLED", "").strip().lowe
 # Analysis + portal PREVIEW for a soft window (no hard-revoke pressure, no auto-charge).
 # Paid membership begins only on first order / prepay; the $1 credit persists regardless.
 BIOFIELD_DEPOSIT_PREVIEW_DAYS = int(os.environ.get("BIOFIELD_DEPOSIT_PREVIEW_DAYS", "90") or "90")
+# Program → deposit front door, Task 2: a paid program (biofield) purchase grants a
+# 30-day Continuous Care taster window. Source "care_taster" (NOT "biofield_trial") so
+# it reads as a paid grant (member pricing kept), not the discount-withheld trial state.
+PROGRAM_CARE_TASTER_ENABLED = os.environ.get("PROGRAM_CARE_TASTER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+PROGRAM_CARE_TASTER_DAYS = 30
+CARE_TASTER_SOURCE = "care_taster"
+# Program → deposit front door, Task 3: the $1 biofield deposit is credited to the
+# buyer's points balance (1 point = 1c redemption value, per dashboard.points), and
+# auto-redeemed at program checkout so it applies as $1 off the program price.
+PROGRAM_DEPOSIT_CREDIT_CENTS = 100
 # The $1 buys LIFETIME access to the free-level membership (un-blur), not a ~90-day
-# preview. ~100 years = effectively forever; still tunable via env if ever needed.
+# preview (#497). ~100 years = effectively forever; still tunable via env if ever needed.
 BIOFIELD_UNLOCK_DAYS = int(os.environ.get("BIOFIELD_UNLOCK_DAYS", "36500") or "36500")
 FIRESIDE_ENABLED = os.environ.get("FIRESIDE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 FIRESIDE_MAX_CHARS = 4000  # cap a single fireside message (cost + row growth)
@@ -6644,34 +6660,48 @@ def studio_welcome():
 BIOFIELD_PRICE_CENTS = 30000   # $300 Causal Biofield Analysis (service, no shipping)
 _BIOFIELD_ITEM_NAME = "Causal Biofield Analysis"
 
+PROGRAM_PREMIUM_TIER = "premium"
+PROGRAM_SCALABLE_TIER = "scalable"
+# Single source of truth for the two program tiers. Premium = the existing $300 1:1
+# program (behavior unchanged); scalable = the $100 headline the $1-deposit front door
+# flows into.
+PROGRAM_TIERS = {
+    PROGRAM_PREMIUM_TIER:  {"price_cents": BIOFIELD_PRICE_CENTS, "name": _BIOFIELD_ITEM_NAME},
+    PROGRAM_SCALABLE_TIER: {"price_cents": 10000,               "name": "Biofield Program"},
+}
+
 
 def _biofield_enabled() -> bool:
     return os.environ.get("BIOFIELD_CHECKOUT_ENABLED", "").strip().lower() \
         in ("1", "true", "yes", "on")
 
 
-def _price_biofield(points_to_redeem_cents=0):
-    """Price the single $300 Biofield service line through the engine.
+def _price_biofield(points_to_redeem_cents=0, tier=PROGRAM_PREMIUM_TIER):
+    """Price the single Biofield service line through the engine.
 
     A service item has no bottle_type and is volume-ineligible, so it yields NO
     shipping. We build the engine line directly (not via _price_cart, which keys
     shipping off bottle counts) so shipping_cents is always 0. Points are applied
-    by the engine and clamped at the per-SKU points floor (43% of list)."""
+    by the engine and clamped at the per-SKU points floor (43% of list). `tier`
+    resolves price/name from PROGRAM_TIERS (defaults to premium = existing $300)."""
+    _t = PROGRAM_TIERS.get(tier) or PROGRAM_TIERS[PROGRAM_PREMIUM_TIER]
+    _price = _t["price_cents"]
+    _name = _t["name"]
     from dashboard import pricing as _pricing, tax as _tax
     settings = _pricing.load_settings(_pricing_settings())
-    product = {"slug": "biofield-analysis", "name": _BIOFIELD_ITEM_NAME,
+    product = {"slug": "biofield-analysis", "name": _name,
                "volume_eligible": False}
-    item = {"slug": "biofield-analysis", "name": _BIOFIELD_ITEM_NAME, "qty": 1,
-            "product": product, "unit_cents": BIOFIELD_PRICE_CENTS,
+    item = {"slug": "biofield-analysis", "name": _name, "qty": 1,
+            "product": product, "unit_cents": _price,
             "months": 0, "volume_eligible": False}
     priced = _pricing.compute([item], settings=settings,
                               points_to_redeem_cents=int(points_to_redeem_cents or 0),
                               channel="retail", ship_to_state=None,
                               tax_fn=_tax.compute_get_cents)
-    qbo_lines = [{"name": _BIOFIELD_ITEM_NAME,
-                  "amount": round(BIOFIELD_PRICE_CENTS / 100.0, 2), "qty": 1,
-                  "description": _BIOFIELD_ITEM_NAME}]
-    items_rec = [{"name": _BIOFIELD_ITEM_NAME, "qty": 1, "desc": _BIOFIELD_ITEM_NAME}]
+    qbo_lines = [{"name": _name,
+                  "amount": round(_price / 100.0, 2), "qty": 1,
+                  "description": _name}]
+    items_rec = [{"name": _name, "qty": 1, "desc": _name}]
     return {"priced": priced, "qbo_lines": qbo_lines, "items_rec": items_rec,
             "discount_cents": priced["discount_cents"],
             "points_redeemed_cents": priced["points_redeemed_cents"],
@@ -6688,6 +6718,8 @@ def biofield_checkout():
     data  = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     name  = (data.get("name") or "").strip()
+    tier  = (data.get("tier") or PROGRAM_PREMIUM_TIER).strip()
+    tier  = tier if tier in PROGRAM_TIERS else PROGRAM_PREMIUM_TIER
     if not email:
         return jsonify({"ok": False, "error": "email required"}), 400
     if not _STRIPE_ACTIVE:
@@ -6701,7 +6733,14 @@ def biofield_checkout():
         with sqlite3.connect(LOG_DB) as _bcx:
             _points.init_points_table(_bcx)
             redeem = min(redeem, _points.balance(_bcx, email))
-    pc = _price_biofield(points_to_redeem_cents=redeem)
+    elif PROGRAM_CARE_TASTER_ENABLED:
+        # No explicit redeem requested: auto-apply the $1 deposit credit (if any) so
+        # it actually lands as $1 off the program at checkout.
+        from dashboard import points as _points
+        with sqlite3.connect(LOG_DB) as _bcx:
+            _points.init_points_table(_bcx)
+            redeem = min(PROGRAM_DEPOSIT_CREDIT_CENTS, _points.balance(_bcx, email))
+    pc = _price_biofield(points_to_redeem_cents=redeem, tier=tier)
     charged_cents = pc["priced"]["total_cents"]
     redeemed = pc["points_redeemed_cents"]
 
@@ -6724,10 +6763,11 @@ def biofield_checkout():
         metadata = {"kind": "biofield", "email": email,
                     "invoice_id": inv.get("Id") or "",
                     "customer_id": cust.get("Id") or "",
-                    "points_redeemed_cents": str(int(redeemed))}
+                    "points_redeemed_cents": str(int(redeemed)),
+                    "tier": tier}
         sess = stripe_pay.create_checkout_session(
             charged_cents, customer_email=email,
-            description=f"{_BIOFIELD_ITEM_NAME} #{inv.get('DocNumber') or ''}",
+            description=f"{PROGRAM_TIERS[tier]['name']} #{inv.get('DocNumber') or ''}",
             metadata=metadata, success_url=success,
             cancel_url=f"{PUBLIC_BASE_URL}/begin")
         out["stripe_url"] = sess.get("url") or ""
@@ -6900,9 +6940,18 @@ def _fulfill_biofield_trial(session_id):
             # (tracked by the biofield_trial order row). The member DISCOUNT is withheld
             # (membership_category -> 'trial' via the grant-aware fallback, keyed on
             # source not duration). The $1 buys LIFETIME access to the free-level
-            # membership (un-blur), so the grant runs effectively forever; no cancel
-            # token is minted because there is nothing to cancel.
+            # membership (un-blur, #497), so the grant runs effectively forever; no cancel
+            # token is minted because there is nothing to cancel. Plus (#498) the $1 is
+            # credited to points and auto-redeemed at program checkout.
             _grant_membership(_bc, bt_email, BIOFIELD_UNLOCK_DAYS, "biofield_trial")
+            if PROGRAM_CARE_TASTER_ENABLED:
+                try:
+                    from dashboard import points as _points
+                    _points.init_points_table(_bc)
+                    _points.credit(_bc, bt_email, value_cents=PROGRAM_DEPOSIT_CREDIT_CENTS,
+                                   reason="deposit_credit", order_ref=pi_id)
+                except Exception as _pce:
+                    print(f"[deposit-credit] grant failed: {_pce!r}", flush=True)
             _bc.commit()
         # Lock released. Record the $1 charge as a captured-charge order so it shows in
         # the Payments ledger (digital unlock -> status 'done', not a fulfillment task).
@@ -7263,6 +7312,27 @@ def begin_checkout_return():
                             except Exception as _bpe:
                                 print(f"[biofield] points settle failed inv={bf_inv}: {_bpe!r}",
                                       flush=True)
+                            # ── Continuous Care taster: 30-day paid grant (flag-gated) ──
+                            if PROGRAM_CARE_TASTER_ENABLED:
+                                try:
+                                    with _db_lock, sqlite3.connect(LOG_DB) as _ctc:
+                                        _ctc.execute(
+                                            "CREATE TABLE IF NOT EXISTS care_taster_grants "
+                                            "(order_ref TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
+                                        claimed = _ctc.execute(
+                                            "INSERT OR IGNORE INTO care_taster_grants "
+                                            "(order_ref, email, granted_at) VALUES (?,?,?)",
+                                            (bf_inv or bf_email, bf_email,
+                                             datetime.utcnow().isoformat() + "Z")).rowcount == 1
+                                        _ctc.commit()
+                                        if claimed:
+                                            init_membership_tables(_ctc)
+                                            _grant_membership(_ctc, bf_email,
+                                                               PROGRAM_CARE_TASTER_DAYS,
+                                                               CARE_TASTER_SOURCE)
+                                            _ctc.commit()
+                                except Exception as _cte:
+                                    print(f"[care-taster] grant failed: {_cte!r}", flush=True)
                     except Exception as _be:
                         print(f"[biofield] return seed failed: {_be!r}", flush=True)
 
@@ -25740,6 +25810,26 @@ def cron_membership_renewals():
                 f"({_renew_line}) here:\n{_renew_url}\n\n"
                 f"Your care and everything in your portal stay active right up "
                 f"to that date.\n\n"
+                f"In wellness,\nDr. Glen and Rae\n"
+                f"---\n"
+                f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+            )
+        elif _src == CARE_TASTER_SOURCE:
+            # The 30-day Continuous Care taster is ending. NEVER auto-charge — invite the
+            # buyer to continue on Continuous Care. Dark unless enabled.
+            if not PROGRAM_CARE_TASTER_ENABLED:
+                continue
+            _base = (PUBLIC_BASE_URL or "").rstrip("/")
+            _renew_url = f"{_base}/prepay?renew=3mo" if _base else "your member portal"
+            subject = f"Your care window ends in {days_left} day{s_days} - keep your Continuous Care going"
+            body = (
+                f"Aloha,\n\n"
+                f"Your 30-day Continuous Care window ends in {days_left} day{s_days}"
+                f" on {r['expires_at']}. There's nothing to cancel and no automatic charge - "
+                f"your card was never kept on file.\n\n"
+                f"When you're ready to keep your care going, continue on Continuous Care here:\n"
+                f"{_renew_url}\n\n"
+                f"Everything in your portal stays active right up to that date.\n\n"
                 f"In wellness,\nDr. Glen and Rae\n"
                 f"---\n"
                 f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"

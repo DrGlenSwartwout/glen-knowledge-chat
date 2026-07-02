@@ -809,6 +809,52 @@ def test_renewal_cron_prepay_skipped_when_flag_off(app_client_mem, fake_smtp, mo
     assert r.status_code == 200 and r.get_json().get("reminded") == 0
 
 
+def test_renewal_cron_care_taster_sends_continuous_care_invite(app_client_mem, fake_smtp, monkeypatch):
+    """A 30-day care_taster window ending in-window gets the Continuous Care invite copy
+    (no auto-charge, /prepay?renew=3mo link) — never the truly.vip video-renewal copy."""
+    client, app_module, db = app_client_mem
+    monkeypatch.setattr(app_module, "PROGRAM_CARE_TASTER_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "PUBLIC_BASE_URL", "https://test.local", raising=False)
+    import uuid as _uuid
+    now = datetime.utcnow()
+    cx = sqlite3.connect(db)
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source) "
+        "VALUES (?,?,?,?,?,?)",
+        (str(_uuid.uuid4()), "taster@example.com",
+         (now - timedelta(days=28)).isoformat() + "Z",
+         (now + timedelta(days=2)).isoformat() + "Z", "care_taster", "care_taster"))
+    cx.commit(); cx.close()
+    fake_smtp.instances = []
+    r = client.post("/api/cron/membership-renewals", headers=_ckey())
+    assert r.status_code == 200 and r.get_json().get("reminded") == 1
+    msgs = [str(m) for inst in fake_smtp.instances for (_, to, m) in inst.sent
+            if "taster@example.com" in to]
+    assert msgs, "care_taster member was not reminded"
+    blob = " ".join(msgs).lower()
+    assert "continuous care" in blob
+    assert "/prepay?renew=3mo" in blob
+    assert "truly.vip" not in blob              # must NOT get the video-renewal body
+
+
+def test_renewal_cron_care_taster_skipped_when_flag_off(app_client_mem, fake_smtp, monkeypatch):
+    client, app_module, db = app_client_mem
+    monkeypatch.setattr(app_module, "PROGRAM_CARE_TASTER_ENABLED", False, raising=False)
+    import uuid as _uuid
+    now = datetime.utcnow()
+    cx = sqlite3.connect(db)
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source) "
+        "VALUES (?,?,?,?,?,?)",
+        (str(_uuid.uuid4()), "taster2@example.com",
+         (now - timedelta(days=28)).isoformat() + "Z",
+         (now + timedelta(days=2)).isoformat() + "Z", "care_taster", "care_taster"))
+    cx.commit(); cx.close()
+    fake_smtp.instances = []
+    r = client.post("/api/cron/membership-renewals", headers=_ckey())
+    assert r.status_code == 200 and r.get_json().get("reminded") == 0
+
+
 def test_renewal_cron_emails_expiring_in_window(app_client_mem, fake_smtp):
     """Members whose expires_at is in (now, now+3d) and not reminded in last 24h get reminded."""
     client, app_module, db = app_client_mem

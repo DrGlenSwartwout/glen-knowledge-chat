@@ -142,3 +142,28 @@ def test_biofield_checkout_disabled_when_flag_off(monkeypatch, tmp_path):
     r = c.post("/biofield/checkout", json={"email": "buyer@x.com", "name": "B"})
     assert r.status_code in (403, 404)
     assert "stripe_amount" not in cap   # no Stripe session created
+
+
+def test_biofield_checkout_scalable_tier_charges_100(monkeypatch, tmp_path):
+    cap, db = _setup(monkeypatch, tmp_path)
+    monkeypatch.setenv("BIOFIELD_CHECKOUT_ENABLED", "1")
+    c = appmod.app.test_client()
+    r = c.post("/biofield/checkout",
+               json={"email": "buyer@x.com", "name": "B", "tier": "scalable"})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["ok"] is True
+    assert cap["stripe_amount"] == 10000
+    assert cap["stripe_metadata"]["tier"] == "scalable"
+
+
+def test_biofield_checkout_defaults_premium_unchanged(monkeypatch, tmp_path):
+    cap, db = _setup(monkeypatch, tmp_path)
+    monkeypatch.setenv("BIOFIELD_CHECKOUT_ENABLED", "1")
+    c = appmod.app.test_client()
+    r = c.post("/biofield/checkout", json={"email": "buyer@x.com", "name": "B"})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["ok"] is True
+    assert cap["stripe_amount"] == 30000
+    assert cap["stripe_metadata"].get("tier", "premium") == "premium"
