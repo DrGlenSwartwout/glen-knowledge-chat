@@ -43,6 +43,16 @@
     button:disabled { opacity: .5; cursor: default; }
     .fine { color: var(--muted); font-size: .84rem; margin-top: 14px; }
     .err { color: #b23b3b; margin-top: 10px; min-height: 1.2em; }
+    .tier.dual { cursor: default; }
+    .tier.dual:hover { border-color: var(--line); }
+    .actions { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .actions .opt {
+      width: 100%; min-width: 0; background: #fff; color: var(--accent); border: 1.5px solid var(--accent);
+      border-radius: 8px; padding: 10px 12px; font-size: .88rem; font-weight: 600; cursor: pointer;
+    }
+    .actions .opt:hover { background: #f1f7f4; }
+    .actions .opt:disabled { opacity: .5; cursor: default; }
+    .actions .opt.upfront { background: var(--accent); color: #fff; border-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -67,7 +77,37 @@
       var errEl = document.getElementById("err");
       var emailEl = document.getElementById("email");
 
+      var careEnabled = !!(window.__CARE__ && window.__CARE__.monthly_enabled);
+
       function fmt(cents) { return "$" + Math.round(cents / 100); }
+
+      function isDual(t) { return !!(t.commitment && careEnabled); }
+
+      function startCheckout(url, body, btns) {
+        errEl.textContent = "";
+        if (!validEmail()) {
+          errEl.textContent = "Please enter a valid email first.";
+          return;
+        }
+        if (btns) btns.forEach(function (b) { b.disabled = true; });
+        var payload = { email: emailEl.value.trim() };
+        for (var k in body) { payload[k] = body[k]; }
+        fetch(url, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }).then(function (r) { return r.json(); }).then(function (d) {
+          if (d && d.ok && d.url) { location.href = d.url; }
+          else {
+            errEl.textContent = "Sorry - we couldn't start checkout. Please try again.";
+            if (btns) btns.forEach(function (b) { b.disabled = false; });
+            updateGo();
+          }
+        }).catch(function () {
+          errEl.textContent = "Network error - please try again.";
+          if (btns) btns.forEach(function (b) { b.disabled = false; });
+          updateGo();
+        });
+      }
 
       function render(tiers) {
         tiersEl.innerHTML = "";
@@ -77,19 +117,43 @@
           el.dataset.key = t.key;
           var save = t.savings_pct > 0 ? '<div class="save">Save ' + t.savings_pct + '%</div>' : '<div class="save">&nbsp;</div>';
           var badge = t.badge ? '<span class="badge">' + t.badge + '</span>' : '';
-          el.innerHTML = badge +
+          var body = badge +
             '<div class="label">' + t.label + '</div>' +
             '<div class="permo">' + fmt(t.per_month_cents) + '<small>/mo</small></div>' +
             '<div class="total">' + fmt(t.price_cents) + ' total</div>' + save;
-          el.addEventListener("click", function () { select(t.key); });
+
+          if (isDual(t)) {
+            el.className = "tier dual";
+            el.innerHTML = body +
+              '<div class="actions">' +
+                '<button type="button" class="opt monthly">Pay monthly - ' + fmt(t.monthly_cents) + '/mo</button>' +
+                '<button type="button" class="opt upfront">Pay up front - ' + fmt(t.price_cents) + ', save ' + fmt(t.upfront_savings_cents) + '</button>' +
+              '</div>';
+            var monthlyBtn = el.querySelector(".opt.monthly");
+            var upfrontBtn = el.querySelector(".opt.upfront");
+            monthlyBtn.addEventListener("click", function (ev) {
+              ev.stopPropagation();
+              startCheckout("/continuous-care/checkout", { term_months: t.months }, [monthlyBtn, upfrontBtn]);
+            });
+            upfrontBtn.addEventListener("click", function (ev) {
+              ev.stopPropagation();
+              startCheckout("/prepay/checkout", { tier_key: t.key }, [monthlyBtn, upfrontBtn]);
+            });
+            if (preselect === t.key) el.classList.add("selected");
+          } else {
+            el.innerHTML = body;
+            el.addEventListener("click", function () { select(t.key); });
+          }
           tiersEl.appendChild(el);
         });
-        if (preselect && tiers.some(function (t) { return t.key === preselect; })) select(preselect);
+        var preselectTier = tiers.filter(function (t) { return t.key === preselect; })[0];
+        if (preselectTier && !isDual(preselectTier)) select(preselect);
       }
 
       function select(key) {
         selected = key;
         Array.prototype.forEach.call(tiersEl.children, function (c) {
+          if (c.classList.contains("dual")) return;
           c.classList.toggle("selected", c.dataset.key === key);
         });
         updateGo();
@@ -102,16 +166,7 @@
 
       goEl.addEventListener("click", function () {
         if (!selected || !validEmail()) return;
-        goEl.disabled = true; errEl.textContent = "";
-        fetch("/prepay/checkout", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: emailEl.value.trim(), tier_key: selected })
-        }).then(function (r) { return r.json(); }).then(function (d) {
-          if (d && d.ok && d.url) { location.href = d.url; }
-          else { errEl.textContent = "Sorry — we couldn't start checkout. Please try again."; updateGo(); }
-        }).catch(function () {
-          errEl.textContent = "Network error — please try again."; updateGo();
-        });
+        startCheckout("/prepay/checkout", { tier_key: selected }, [goEl]);
       });
 
       fetch("/api/prepay/tiers").then(function (r) { return r.json(); }).then(function (d) {

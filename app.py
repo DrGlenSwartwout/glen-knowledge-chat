@@ -2922,11 +2922,18 @@ def begin_biofield_unlock_checkout(token):
 @app.route("/prepay")
 def prepay_page():
     """The prepay-ladder picker page. Flag-gated; the renewal email deep-links here
-    with ?renew=<tier_key> to pre-select a rung."""
+    with ?renew=<tier_key> to pre-select a rung. Injects window.__CARE__ so the
+    picker can offer the monthly-vs-upfront choice on the 6/12mo commitment tiers
+    when Continuous Care monthly is live."""
     if not PREPAY_LADDER_ENABLED:
         from flask import redirect as _redir
         return _redir(f"{PUBLIC_BASE_URL.rstrip('/')}/")
-    resp = send_from_directory(STATIC, "prepay.html")
+    payload = {"monthly_enabled": CONTINUOUS_CARE_MONTHLY_ENABLED}
+    _safe = (json.dumps(payload).replace("<", "\\u003c")
+             .replace(">", "\\u003e").replace("&", "\\u0026"))
+    html = (STATIC / "prepay.html").read_text()
+    html = html.replace("</head>", f"<script>window.__CARE__ = {_safe};</script>\n</head>")
+    resp = Response(html, mimetype="text/html", status=200)
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
 
