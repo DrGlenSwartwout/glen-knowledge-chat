@@ -69,17 +69,55 @@ def apply_points(price_cents, points_cents, floor_cents):
     return price_cents - used, used
 
 
-def volume_pct(months, settings):
-    """Percentage discount for total cart months, linear-interpolated through the
-    console anchor table (ascending [months, pct_off] pairs); flat beyond the last knot."""
-    anchors = settings["volume_anchors"]
-    m = max(0, int(months or 0))
-    if m <= anchors[0][0]:
+def _ramp_pct(qty, anchors):
+    """Linear-interpolated pct through ascending [qty, pct] anchors; flat beyond the last."""
+    q = max(0, int(qty or 0))
+    if q <= anchors[0][0]:
         return float(anchors[0][1])
     for (m0, p0), (m1, p1) in zip(anchors, anchors[1:]):
-        if m <= m1:
-            return p0 + (p1 - p0) * (m - m0) / (m1 - m0)
+        if q <= m1:
+            return p0 + (p1 - p0) * (q - m0) / (m1 - m0)
     return float(anchors[-1][1])
+
+
+def volume_pct(months, settings):
+    """Legacy OWNER in-house / product-page order-total ramp (reads volume_anchors)."""
+    return _ramp_pct(months, settings["volume_anchors"])
+
+
+def _discount_cfg(settings):
+    """Back-compat mirror of pricing_settings.effective(): return settings['discounts']
+    if present+truthy, else synthesize from legacy volume_anchors with open_total DISABLED."""
+    d = settings.get("discounts")
+    if isinstance(d, dict) and d:
+        return d
+    legacy = settings.get("volume_anchors") or DEFAULTS["volume_anchors"]
+    base = DEFAULTS["discounts"]
+    return {
+        "same_sku":      {"enabled": base["same_sku"]["enabled"],
+                          "anchors": [list(a) for a in base["same_sku"]["anchors"]]},
+        "program_total": {"enabled": base["program_total"]["enabled"],
+                          "anchors": [list(a) for a in base["program_total"]["anchors"]]},
+        "open_total":    {"enabled": False, "anchors": [list(a) for a in legacy]},
+    }
+
+
+def same_sku_pct(line_qty, settings):
+    """Per-line SKU-quantity discount pct (open to everyone, default ON)."""
+    d = _discount_cfg(settings)["same_sku"]
+    return _ramp_pct(line_qty, d["anchors"]) if d.get("enabled") else 0.0
+
+
+def program_total_pct(total_qty, settings, program_member):
+    """Order-total discount pct, gated on paid-program membership (default ON)."""
+    d = _discount_cfg(settings)["program_total"]
+    return _ramp_pct(total_qty, d["anchors"]) if (d.get("enabled") and program_member) else 0.0
+
+
+def open_total_pct(total_qty, settings):
+    """Order-total discount pct, open to everyone (default OFF)."""
+    d = _discount_cfg(settings)["open_total"]
+    return _ramp_pct(total_qty, d["anchors"]) if d.get("enabled") else 0.0
 
 
 def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,

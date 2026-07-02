@@ -91,6 +91,51 @@ def test_volume_pct_interpolates_and_caps():
     assert pricing.volume_pct(0, s) == 0
 
 
+def test_volume_pct_unchanged_after_ramp_refactor():
+    # Behavior-preservation check: same values as test_volume_pct_at_anchors/interpolates_and_caps.
+    s = pricing.load_settings({})
+    assert pricing.volume_pct(1, s) == 0
+    assert pricing.volume_pct(12, s) == 29
+
+
+def test_same_sku_pct_default_on_linear():
+    s = pricing.load_settings({})
+    assert pricing.same_sku_pct(1, s) == 0
+    assert pricing.same_sku_pct(12, s) == 29
+    assert pricing.same_sku_pct(6, s) == pytest.approx(29 * 5 / 11)
+    assert pricing.same_sku_pct(99, s) == 29
+
+
+def test_open_total_pct_default_off_then_on_via_override():
+    s = pricing.load_settings({})
+    assert pricing.open_total_pct(1, s) == 0
+    assert pricing.open_total_pct(12, s) == 0
+    assert pricing.open_total_pct(99, s) == 0
+
+    s2 = pricing.load_settings({"discounts": {
+        "same_sku":      {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+        "program_total": {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+        "open_total":    {"enabled": True, "anchors": [[1, 0], [12, 20]]},
+    }})
+    assert pricing.open_total_pct(12, s2) == 20
+
+
+def test_program_total_pct_gated_on_membership():
+    s = pricing.load_settings({})
+    assert pricing.program_total_pct(12, s, program_member=False) == 0
+    assert pricing.program_total_pct(12, s, program_member=True) == 29
+
+
+def test_discount_cfg_back_compat_from_legacy_volume_anchors():
+    # Note: pricing.load_settings({"volume_anchors": ...}) always carries DEFAULTS["discounts"]
+    # (present+truthy), so this exercises _discount_cfg's legacy-fallback branch directly with a
+    # settings dict that predates the "discounts" key (e.g. an old on-disk pricing-settings.json).
+    s = {"volume_anchors": [[1, 0], [12, 40]]}
+    cfg = pricing._discount_cfg(s)
+    assert cfg["open_total"] == {"enabled": False, "anchors": [[1, 0], [12, 40]]}
+    assert cfg["same_sku"]["enabled"] is True
+
+
 def _fake_tax(subtotal_cents, *, channel, ship_to_state, resale_ok=False):
     return int(round(subtotal_cents * 0.04)) if ship_to_state == "HI" else 0
 
