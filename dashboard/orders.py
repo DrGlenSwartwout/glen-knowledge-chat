@@ -78,6 +78,10 @@ def init_orders_table(cx):
         # dashboard/combined_shipments.py). NULL = ships on its own. Distinct from
         # `shipment_id`, which links to the tracking `shipments` table.
         "ALTER TABLE orders ADD COLUMN group_shipment_id INTEGER",
+        # Manual invoice adjustment (SIGNED): negative = credit, positive =
+        # debit/surcharge. Applied to the total on top of the rule-based discount;
+        # shown as its own line on the invoice + QBO. 0 = none.
+        "ALTER TABLE orders ADD COLUMN adjustment_cents INTEGER NOT NULL DEFAULT 0",
     ):
         try:
             cx.execute(ddl)
@@ -90,7 +94,7 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
                  items=None, total_cents=0, address=None, channel="retail",
                  status="new", get_cents=0, person_id=None,
                  discount_cents=0, points_redeemed_cents=0, shipping_cents=0,
-                 invoice_note=None):
+                 invoice_note=None, adjustment_cents=0):
     """Idempotent on (source, external_ref). Inserts a new order, or updates the
     soft fields of an existing one WITHOUT regressing its lifecycle status.
     items and address are only overwritten when explicitly provided (not None).
@@ -105,10 +109,11 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
         # Only overwrite items_json / address_json when caller provides them.
         sets = ["email=?", "name=?", "phone=?", "total_cents=?", "channel=?",
                 "get_cents=?", "discount_cents=?", "points_redeemed_cents=?",
-                "shipping_cents=?", "updated_at=?"]
+                "shipping_cents=?", "adjustment_cents=?", "updated_at=?"]
         vals = [email, name, phone, int(total_cents or 0), channel,
                 int(get_cents or 0), int(discount_cents or 0),
-                int(points_redeemed_cents or 0), int(shipping_cents or 0), _now()]
+                int(points_redeemed_cents or 0), int(shipping_cents or 0),
+                int(adjustment_cents or 0), _now()]
         if items is not None:
             sets.insert(3, "items_json=?")
             vals.insert(3, json.dumps(items))
@@ -128,14 +133,14 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
     cur = cx.execute(
         "INSERT INTO orders (created_at, source, external_ref, channel, email, name, "
         "phone, items_json, total_cents, address_json, status, get_cents, person_id, "
-        "discount_cents, points_redeemed_cents, shipping_cents, invoice_note) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "discount_cents, points_redeemed_cents, shipping_cents, invoice_note, adjustment_cents) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (_now(), source, ref, channel, email, name, phone,
          json.dumps(items or []), int(total_cents or 0), json.dumps(address or {}),
          status, int(get_cents or 0),
          (int(person_id) if person_id is not None else None),
          int(discount_cents or 0), int(points_redeemed_cents or 0), int(shipping_cents or 0),
-         (str(invoice_note) if invoice_note is not None else None)))
+         (str(invoice_note) if invoice_note is not None else None), int(adjustment_cents or 0)))
     cx.commit()
     return cur.lastrowid
 

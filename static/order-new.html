@@ -107,6 +107,8 @@
       <div><label>Payment method</label>
         <select id="o-method"><option>Check</option><option>Cash</option><option>Venmo</option><option>PayPal</option><option>Credit card</option><option>Zelle</option><option>Wise</option></select></div>
       <div><label>Points to apply $ (off the total)</label><input id="o-points" type="number" step="0.01" placeholder="0"><small id="o-points-avail" style="display:block;color:var(--muted);margin-top:3px"></small></div>
+      <div><label>Adjustment $ (− credit / + debit)</label><input id="o-adjust" type="number" step="0.01" placeholder="0"></div>
+      <div><label>Set total $ (auto-fills adjustment)</label><input id="o-total" type="number" step="0.01" placeholder="auto"></div>
     </div>
     <div style="margin-top:10px"><label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;font-size:14px;color:var(--text);cursor:pointer"><input type="checkbox" id="pickup"> Pickup (no shipping)</label></div>
     <div style="margin-top:10px"><label>Invoice notes (optional — shown to the customer on the invoice)</label>
@@ -114,6 +116,7 @@
     <div class="totals">
       <div class="row"><span>Subtotal</span><span id="t-sub">$0.00</span></div>
       <div class="row"><span>Discount</span><span id="t-disc">—</span></div>
+      <div class="row"><span>Adjustment</span><span id="t-adjust">—</span></div>
       <div class="row"><span>Shipping</span><span id="t-ship">computed on create</span></div>
       <div class="row"><span>Hawai‘i GET (recorded, absorbed)</span><span id="t-get">—</span></div>
       <div class="row"><span>Points applied</span><span id="t-points">—</span></div>
@@ -235,22 +238,45 @@ function refreshPreview(){
     }catch(e){ /* keep client estimate */ }
   }, 250);
 }
-function recalc(){
-  const sub = (PREVIEW && PREVIEW.subtotal_cents!=null) ? PREVIEW.subtotal_cents : LINES.reduce((s,l)=>s+l.qty*l.unit_cents,0);
-  $("t-sub").textContent=dollars(sub);
-  const dRaw=$("o-discount").value.trim();
-  $("t-disc").textContent = dRaw!=="" ? "-"+dollars(Math.round(parseFloat(dRaw)*100)) : "rule-based (on create)";
-  const disc = dRaw!=="" ? Math.round(parseFloat(dRaw)*100) : 0;
-  const pRaw=$("o-points").value.trim();
-  // Cap points to the customer's balance and the discounted subtotal (server re-caps too).
-  let pts = pRaw!=="" ? Math.round(parseFloat(pRaw)*100) : 0;
-  const ceil = Math.min(POINTS_BAL, Math.max(0,sub-disc));
+// Adjustment (signed) and Total are two views of the same knob: enter either and
+// the other auto-calculates around the line subtotal (− discount − points).
+function _subCents(){ return (PREVIEW && PREVIEW.subtotal_cents!=null) ? PREVIEW.subtotal_cents : LINES.reduce((s,l)=>s+l.qty*l.unit_cents,0); }
+function _discCents(){ const d=$("o-discount").value.trim(); return d!=="" ? Math.round(parseFloat(d)*100) : 0; }
+function _adjCents(){ const v=$("o-adjust").value.trim(); return v!=="" ? Math.round(parseFloat(v)*100) : 0; }
+function _ptsCapped(sub, disc){
+  const p=$("o-points").value.trim(); let pts = p!=="" ? Math.round(parseFloat(p)*100) : 0;
+  const ceil = Math.min(POINTS_BAL, Math.max(0, sub-disc));
   if (pts>ceil){ pts=ceil; $("o-points").value=(pts/100).toFixed(2); }
+  return pts;
+}
+function recalc(){
+  const sub = _subCents(); $("t-sub").textContent = dollars(sub);
+  const disc = _discCents();
+  $("t-disc").textContent = $("o-discount").value.trim()!=="" ? "-"+dollars(disc) : "rule-based (on create)";
+  const pts = _ptsCapped(sub, disc);
   $("t-points").textContent = pts ? "-"+dollars(pts) : "—";
-  $("t-total").textContent=dollars(Math.max(0,Math.max(0,sub-disc)-pts))+" + shipping";
+  const baseline = sub - disc - pts;           // pre-adjustment, pre-shipping
+  const adj = _adjCents();
+  $("t-adjust").textContent = adj ? ((adj<0?"−":"+")+dollars(Math.abs(adj))) : "—";
+  const total = Math.max(0, baseline + adj);
+  // Keep the "Set total" field in sync — but never overwrite it while it's being typed.
+  if (document.activeElement !== $("o-total")) $("o-total").value = (total/100).toFixed(2);
+  $("t-total").textContent = dollars(total) + " + shipping";
+}
+// Typing a target total back-computes the adjustment (the other direction of the link).
+function onTotalInput(){
+  const v = $("o-total").value.trim();
+  const sub = _subCents(), disc = _discCents(), pts = _ptsCapped(sub, disc), baseline = sub - disc - pts;
+  if (v==="") { $("o-adjust").value = ""; }
+  else { $("o-adjust").value = ((Math.round(parseFloat(v)*100) - baseline)/100).toFixed(2); }
+  const adj = _adjCents();
+  $("t-adjust").textContent = adj ? ((adj<0?"−":"+")+dollars(Math.abs(adj))) : "—";
+  $("t-total").textContent = dollars(Math.max(0, baseline + adj)) + " + shipping";
 }
 $("o-discount").addEventListener("input", recalc);
 $("o-points").addEventListener("input", recalc);
+$("o-adjust").addEventListener("input", recalc);
+$("o-total").addEventListener("input", onTotalInput);
 // Membership gates volume pricing, so re-price when the customer email changes.
 $("c-email").addEventListener("input", refreshPreview);
 
@@ -279,6 +305,7 @@ async function loadOrderForEdit(oid){
   LINES = (o.items||[]).filter(l=>!l.gift).map(l=>({slug:l.slug||"", name:l.name||l.slug||"",
             qty:Number(l.qty||1), unit_cents:Number(l.unit_cents||0), edited:true}));
   if (o.discount_cents) $("o-discount").value = (o.discount_cents/100).toFixed(2);
+  if (o.adjustment_cents) $("o-adjust").value = (o.adjustment_cents/100).toFixed(2);  // signed
   if (o.channel==="pickup") $("pickup").checked = true;
   if (o.invoice_note) $("o-note").value = o.invoice_note;
   renderLines();
@@ -288,6 +315,8 @@ async function editInvoice(){
   const dRaw=$("o-discount").value.trim();
   const body = { lines: linesPayload(), pickup: $("pickup").checked, invoice_note: $("o-note").value.trim() };
   if (dRaw!=="") body.discount_cents = Math.round(parseFloat(dRaw)*100);
+  const aRaw=$("o-adjust").value.trim();
+  if (aRaw!=="") body.adjustment_cents = Math.round(parseFloat(aRaw)*100);   // signed
   const pRaw=$("o-points").value.trim();
   if (pRaw!=="") body.points_redeem_cents = Math.round(parseFloat(pRaw)*100);
   try{
@@ -317,6 +346,8 @@ async function createInvoice(){
     invoice_note: $("o-note").value.trim(),
   };
   if (dRaw!=="") body.discount_cents = Math.round(parseFloat(dRaw)*100);
+  const aRaw=$("o-adjust").value.trim();
+  if (aRaw!=="") body.adjustment_cents = Math.round(parseFloat(aRaw)*100);   // signed
   const pRaw=$("o-points").value.trim();
   if (pRaw!=="") body.points_redeem_cents = Math.round(parseFloat(pRaw)*100);
   try{
