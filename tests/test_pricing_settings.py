@@ -111,3 +111,81 @@ def test_volume_anchors_still_validated_after_refactor():
     assert any("volume_anchors" in x for x in e)
     clean, e2 = ps.validate({"volume_anchors": [[1, 0], [3, 14]]})
     assert e2 == [] and clean["volume_anchors"] == [[1, 0], [3, 14]]
+
+
+def test_defaults_view_includes_discounts_block():
+    d = ps.defaults_view()
+    assert d["discounts"] == {
+        "same_sku":      {"enabled": True,  "anchors": [[1, 0], [12, 29]]},
+        "program_total": {"enabled": True,  "anchors": [[1, 0], [12, 29]]},
+        "open_total":    {"enabled": False, "anchors": [[1, 0], [12, 0]]},
+    }
+
+
+def test_defaults_view_discounts_is_a_deep_copy():
+    d = ps.defaults_view()
+    d["discounts"]["same_sku"]["anchors"][0][1] = 99
+    d["discounts"]["same_sku"]["enabled"] = False
+    assert _pricing.DEFAULTS["discounts"]["same_sku"]["anchors"][0][1] == 0
+    assert _pricing.DEFAULTS["discounts"]["same_sku"]["enabled"] is True
+
+
+def test_effective_empty_has_default_discounts():
+    eff = ps.effective({})
+    assert eff["discounts"] == _pricing.DEFAULTS["discounts"]
+    assert eff["discounts"]["open_total"]["enabled"] is False
+
+
+def test_effective_legacy_volume_anchors_backfills_open_total():
+    eff = ps.effective({"volume_anchors": [[1, 0], [3, 15], [6, 30], [12, 45]]})
+    assert eff["discounts"]["open_total"]["anchors"] == [[1, 0], [3, 15], [6, 30], [12, 45]]
+    assert eff["discounts"]["open_total"]["enabled"] is False
+    # other types still fall to code defaults
+    assert eff["discounts"]["same_sku"] == {"enabled": True, "anchors": [[1, 0], [12, 29]]}
+    assert eff["discounts"]["program_total"] == {"enabled": True, "anchors": [[1, 0], [12, 29]]}
+
+
+def test_effective_explicit_discounts_block_passes_through():
+    payload = {
+        "discounts": {
+            "same_sku": {"enabled": False, "anchors": [[1, 0], [10, 20]]},
+            "program_total": {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+            "open_total": {"enabled": True, "anchors": [[1, 0], [12, 10]]},
+        }
+    }
+    eff = ps.effective(payload)
+    assert eff["discounts"] == payload["discounts"]
+
+
+def test_validate_accepts_well_formed_discounts_payload():
+    payload = {
+        "discounts": {
+            "same_sku": {"enabled": True, "anchors": [[1, 0], [12, 29]]},
+            "program_total": {"enabled": False, "anchors": [[1, 0], [12, 29]]},
+            "open_total": {"enabled": True, "anchors": [[1, 0], [6, 10], [12, 20]]},
+        }
+    }
+    clean, errors = ps.validate(payload)
+    assert errors == []
+    assert clean["discounts"] == payload["discounts"]
+
+
+def test_validate_rejects_non_bool_enabled():
+    _, e = ps.validate({"discounts": {"same_sku": {"enabled": "yes", "anchors": [[1, 0], [12, 29]]}}})
+    assert any("discounts.same_sku.enabled" in x for x in e)
+
+
+def test_validate_rejects_non_ascending_discount_anchors():
+    _, e = ps.validate({"discounts": {"same_sku": {"enabled": True, "anchors": [[12, 29], [1, 0]]}}})
+    assert any("discounts.same_sku.anchors" in x for x in e)
+
+
+def test_validate_rejects_discount_pct_over_100():
+    _, e = ps.validate({"discounts": {"open_total": {"enabled": True, "anchors": [[1, 0], [12, 150]]}}})
+    assert any("discounts.open_total.anchors" in x for x in e)
+
+
+def test_validate_discounts_partial_types_only():
+    clean, errors = ps.validate({"discounts": {"same_sku": {"enabled": True, "anchors": [[1, 0], [12, 29]]}}})
+    assert errors == []
+    assert clean["discounts"] == {"same_sku": {"enabled": True, "anchors": [[1, 0], [12, 29]]}}

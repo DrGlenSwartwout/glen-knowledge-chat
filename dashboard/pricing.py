@@ -13,6 +13,15 @@ DEFAULTS = {
     # flat beyond 12 — two anchors only, so the per-unit discount grows evenly with quantity
     # (not steep-early). Edit rows in the console to reshape.
     "volume_anchors": [[1, 0], [12, 29]],
+    # discount TYPES (console-toggleable, non-additive; see pricing_settings.py):
+    # same_sku = per-line SKU qty (open to everyone); program_total = order-total,
+    # gated on paid membership; open_total = order-total, everyone (default OFF —
+    # conflicts with the public store; inherits legacy volume_anchors on back-compat).
+    "discounts": {
+        "same_sku":      {"enabled": True,  "anchors": [[1, 0], [12, 29]]},
+        "program_total": {"enabled": True,  "anchors": [[1, 0], [12, 29]]},
+        "open_total":    {"enabled": False, "anchors": [[1, 0], [12, 0]]},
+    },
 }
 
 
