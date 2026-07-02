@@ -1,5 +1,22 @@
 # tests/test_two_door_choose.py
+import sqlite3
 import app as appmod
+import begin_funnel
+
+
+def test_care_fork_unlock_accepted_and_recorded():
+    """The care_fork analytics beacon must NOT 400 (regression: trigger was unregistered),
+    must persist the door choice in the event detail, and must not create a gate or path."""
+    assert "care_fork" in begin_funnel.VALID_TRIGGERS
+    assert "care_fork" not in begin_funnel.GATE_TRIGGERS
+    c = appmod.app.test_client()
+    c.set_cookie("amg_session", "sess-care-fork-test")
+    r = c.post("/begin/unlock", json={"trigger": "care_fork", "detail": "care"})
+    assert r.status_code == 200, r.data
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        state = begin_funnel.get_state(cx, "sess-care-fork-test")
+    assert "care_fork" not in (state.get("unlocked_gates") or [])
+    assert (state.get("path") or "none") == "none"
 
 
 def test_choose_redirects_when_flag_off(monkeypatch):

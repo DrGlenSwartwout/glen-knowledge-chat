@@ -97,15 +97,16 @@
       function ref(){ try { return (typeof getRef === "function") ? (getRef() || "") : ""; } catch(_){ return ""; } }
       function fork(choice){
         try {
+          // The door choice rides in `detail` (which /begin/unlock persists to the
+          // journey event); no `path` key -> journey_state.path is left untouched.
           return fetch("/begin/unlock", { method:"POST",
             headers:{ "Content-Type":"application/json" }, credentials:"same-origin",
-            body: JSON.stringify({ trigger:"care_fork", care_choice:choice, ref:ref() }) });
+            body: JSON.stringify({ trigger:"care_fork", detail:(choice||""), ref:ref() }) });
         } catch(_) { }
       }
 
-      // Entering the choose room = the care_fork micro-commitment (no path kwarg -> the
-      // journey_state.path private/pay_forward column is left untouched).
-      fork(null);
+      // Entering the choose room = the care_fork micro-commitment (analytics only).
+      fork("");
 
       // Door A -> back to the token-scoped reveal cart (or /begin when no valid token).
       var solo = document.getElementById("door-solo");
@@ -116,9 +117,18 @@
       var back = document.getElementById("back-link");
       if (back) { back.setAttribute("href", revealUrl); }
 
-      // Door B -> the Continuous Care prepay picker.
+      // Door B -> the Continuous Care prepay picker. Only offered when the prepay
+      // ladder is live; otherwise /prepay would redirect to home, so hide the door
+      // and promote Door A to primary.
       var care = document.getElementById("door-care");
-      if (care) { care.addEventListener("click", function () { fork("care"); }); }
+      if (care) {
+        if (data.prepay_enabled === false) {
+          care.style.display = "none";
+          if (solo) { solo.classList.add("primary"); }
+        } else {
+          care.addEventListener("click", function () { fork("care"); });
+        }
+      }
     })();
   </script>
 <script src="/widget.js" data-position="bottom-right" data-color="#d4a843" data-label="Ask Dr. Glen" data-title="Accelerated Self Healing™"></script>
