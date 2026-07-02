@@ -26896,6 +26896,20 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
+    # This client's saved special prices ({slug: cents}) — applied when the owner
+    # hasn't typed an explicit per-line override on THIS order. Precedence:
+    # explicit line override > client special price > standard volume/list.
+    _cprices = {}
+    try:
+        from dashboard import client_prices as _cp_mod
+        _cpx = _sqlite3.connect(LOG_DB)
+        try:
+            _cp_mod.init_table(_cpx)
+            _cprices = _cp_mod.price_map(_cpx, email) if email else {}
+        finally:
+            _cpx.close()
+    except Exception as _cpe:
+        print(f"[inhouse-price] client-price lookup skipped: {_cpe!r}", flush=True)
     cart, items_rec, subtotal_list = [], [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
@@ -26903,7 +26917,9 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         if not p:
             continue
         qty = max(1, min(int(ln.get("qty") or 1), 99))
-        unit_cents = _inhouse_line_unit_cents(p, ln.get("unit_cents"), total_ff_qty, settings)
+        _explicit = ln.get("unit_cents")
+        _override = _explicit if _explicit not in (None, "") else _cprices.get(slug)
+        unit_cents = _inhouse_line_unit_cents(p, _override, total_ff_qty, settings)
         line_cents = unit_cents * qty
         subtotal_list += line_cents
         cart.append({"slug": slug, "qty": qty})
@@ -27188,6 +27204,21 @@ def api_orders_price_preview():
     lines_in = _body.get("lines") or []
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
     vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2)
+    # Reflect this client's saved special prices in the live preview too (same
+    # precedence as the pricer: explicit line edit > client price > volume/list).
+    _cprices = {}
+    _pemail = (_body.get("email") or "").strip().lower()
+    if _pemail:
+        try:
+            from dashboard import client_prices as _cp_mod
+            _cpx = _sqlite3.connect(LOG_DB)
+            try:
+                _cp_mod.init_table(_cpx)
+                _cprices = _cp_mod.price_map(_cpx, _pemail)
+            finally:
+                _cpx.close()
+        except Exception:
+            _cprices = {}
     out_lines, subtotal = [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
@@ -27198,7 +27229,8 @@ def api_orders_price_preview():
         ov = ln.get("unit_cents")
         is_ff = _qty_eligible(p)
         list_cents = int(p.get("price_cents") or 0)
-        unit = _inhouse_line_unit_cents(p, ov, total_ff_qty, settings)
+        _eff_ov = ov if ov not in (None, "") else _cprices.get(slug)
+        unit = _inhouse_line_unit_cents(p, _eff_ov, total_ff_qty, settings)
         overridden = ov not in (None, "")
         line_cents = unit * qty
         subtotal += line_cents
@@ -27209,6 +27241,55 @@ def api_orders_price_preview():
             "savings_cents": max(0, list_cents - unit)})
     return jsonify({"ok": True, "total_ff_qty": total_ff_qty,
                     "subtotal_cents": subtotal, "lines": out_lines})
+
+
+@app.route("/api/console/client-prices", methods=["GET", "POST", "DELETE"])
+def api_console_client_prices():
+    """Owner: view/set/remove a client's persistent special prices (email+slug ->
+    cents). Applied by the in-house pricer when no explicit per-line override is
+    typed. GET ?email= lists one client (no email = all clients with prices);
+    POST {email, prices:[{slug,price_cents,note}]} (or a single {email,slug,
+    price_cents}); DELETE {email, slug}."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import client_prices as _cp
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _cp.init_table(cx)
+        if request.method == "GET":
+            email = (request.args.get("email") or "").strip().lower()
+            if email:
+                return jsonify({"ok": True, "email": email, "prices": _cp.list_for(cx, email)})
+            return jsonify({"ok": True, "clients": _cp.clients_with_prices(cx)})
+        body = request.get_json(silent=True) or {}
+        email = (body.get("email") or "").strip().lower()
+        if not email:
+            return jsonify({"ok": False, "error": "email required"}), 400
+        if request.method == "DELETE":
+            slug = (body.get("slug") or "").strip()
+            if not slug:
+                return jsonify({"ok": False, "error": "slug required"}), 400
+            _cp.remove(cx, email, slug)
+            return jsonify({"ok": True, "prices": _cp.list_for(cx, email)})
+        items = body.get("prices")
+        if items is None and body.get("slug"):
+            items = [{"slug": body.get("slug"), "price_cents": body.get("price_cents"),
+                      "note": body.get("note")}]
+        saved = 0
+        for it in (items or []):
+            slug = (it.get("slug") or "").strip()
+            pc = it.get("price_cents")
+            if not slug or pc in (None, ""):
+                continue
+            try:
+                _cp.set_price(cx, email, slug, int(pc), it.get("note"))
+                saved += 1
+            except (ValueError, TypeError):
+                continue
+        return jsonify({"ok": True, "saved": saved, "prices": _cp.list_for(cx, email)})
+    finally:
+        cx.close()
 
 
 # ── Customer invoice pay-link (Phase 3) — PUBLIC, token-scoped ─────────────────
