@@ -205,6 +205,7 @@ function buildInvoicePrintHtml(o){
   const r = (lbl,v,neg,cls)=>`<div class="r${cls?' '+cls:''}"><span>${esc(lbl)}</span><span>${neg?'−':''}${money(v)}</span></div>`;
   let tot = r('Subtotal', o.subtotal_cents);
   if(o.discount_cents) tot += r('Discount', o.discount_cents, true);
+  if(o.adjustment_cents) tot += `<div class="r"><span>Adjustment</span><span>${o.adjustment_cents<0?'−':'+'}${money(Math.abs(o.adjustment_cents))}</span></div>`;
   tot += r('Shipping', o.shipping_cents);
   if(o.get_cents) tot += r('Hawai‘i GET (absorbed)', o.get_cents);
   if(o.points_redeemed_cents) tot += r('Points', o.points_redeemed_cents, true);
@@ -264,6 +265,7 @@ function renderTotals() {
   }
   $('totals').innerHTML =
     row('Subtotal', t.subtotal_cents) + (t.discount_cents?row('Discount','-'+money(t.discount_cents),true):'')
+    + (t.adjustment_cents?('<div class="row"><span>Adjustment</span><span>'+(t.adjustment_cents<0?'−':'+')+money(Math.abs(t.adjustment_cents))+'</span></div>'):'')
     + row('Shipping', t.shipping_cents) + (t.get_cents?row('Hawai‘i GET (absorbed)', t.get_cents):'')
     + pointsRow
     + '<div class="row grand"><span>Total</span><span>'+money(t.total_cents)+'</span></div>'

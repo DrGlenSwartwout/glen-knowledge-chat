@@ -2671,6 +2671,10 @@ def begin_biofield_reveal(token):
                        if _layers_raw
                        else len(row.get("remedies") or []) - (1 if top_unlocked else 0))
 
+    # Pre-fill the in-app shipping review from the client's last order address (their
+    # own data on their own token) so ordering shows a review step, not a bare Stripe
+    # screen. {} when unknown -> the form starts empty.
+    _ship_prefill = _resolve_ship_address(email, {})
     if paid:
         all_remedies = row.get("remedies") or []
         payload = {
@@ -2682,6 +2686,7 @@ def begin_biofield_reveal(token):
             "paid": True,
             "trial_enabled": BIOFIELD_TRIAL_ENABLED,
             "cart_enabled": BIOFIELD_CART_ENABLED,
+            "ship_prefill": _ship_prefill,
             "remedies": [_biofield_remedy_payload(r) for r in all_remedies],
             "layers": _layers_payload,
             "email": email,
@@ -2699,6 +2704,7 @@ def begin_biofield_reveal(token):
             "paid": False,
             "trial_enabled": BIOFIELD_TRIAL_ENABLED,
             "cart_enabled": BIOFIELD_CART_ENABLED,
+            "ship_prefill": _ship_prefill,
             "layers": _layers_payload,
             "email": email,
             "program_enabled": PROGRAM_CARE_TASTER_ENABLED,
@@ -2810,15 +2816,24 @@ def begin_biofield_order_checkout(token):
             return jsonify({"ok": False, "need_optin": True,
                             "error": "Please agree to our Terms to continue your order."}), 403
         body = request.get_json(silent=True) or {}
+        requested = body.get("items") or []
         visible = set(_biofield_visible_slugs(row, email))
         items = []
-        for it in (body.get("items") or []):
+        for it in requested:
             s = (it.get("slug") or "").strip()
             if s and s in visible:
                 items.append({"slug": s, "qty": max(1, min(int(it.get("qty") or 1), 99))})
         if not items:
-            return jsonify({"ok": False,
-                            "error": "Your cart is empty or those items are no longer available."}), 400
+            # Distinguish an empty cart from a LOCKED reveal: if the client asked to
+            # order specific remedies but none are unlocked yet, tell them the truth
+            # and flag need_unlock so the page routes them to the unlock CTA (not a
+            # dead-end "no longer available" — the bug Steve Fox hit on an unapproved
+            # reveal where the visible set is empty).
+            if requested:
+                return jsonify({"ok": False, "need_unlock": True,
+                                "error": "These matches aren't unlocked yet — "
+                                         "unlock your full analysis to order them."}), 400
+            return jsonify({"ok": False, "error": "Your cart is empty."}), 400
         ship = _resolve_ship_address(email, body.get("address") or {})
         try:
             res = _checkout_cart(email, items, ship=ship)
@@ -2848,7 +2863,7 @@ def begin_biofield_unlock_checkout(token):
     try:
         sess = _sp.create_checkout_session(
             100, customer_email=email,
-            description="Biofield Analysis - full unlock",
+            description="Biofield Analysis - lifetime unlock",
             metadata={"email": email, "kind": "biofield_trial", "token": token},
             success_url=f"{base}/begin/checkout-return?kind=biofield_trial&session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base}/begin/biofield/{token}",
@@ -4502,6 +4517,9 @@ CARE_TASTER_SOURCE = "care_taster"
 # buyer's points balance (1 point = 1c redemption value, per dashboard.points), and
 # auto-redeemed at program checkout so it applies as $1 off the program price.
 PROGRAM_DEPOSIT_CREDIT_CENTS = 100
+# The $1 buys LIFETIME access to the free-level membership (un-blur), not a ~90-day
+# preview (#497). ~100 years = effectively forever; still tunable via env if ever needed.
+BIOFIELD_UNLOCK_DAYS = int(os.environ.get("BIOFIELD_UNLOCK_DAYS", "36500") or "36500")
 FIRESIDE_ENABLED = os.environ.get("FIRESIDE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 FIRESIDE_MAX_CHARS = 4000  # cap a single fireside message (cost + row growth)
 PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
@@ -6917,12 +6935,15 @@ def _fulfill_biofield_trial(session_id):
             # Model #2: the $1 is a credited activation DEPOSIT, not an opt-out trial.
             # It unlocks the full Biofield Analysis + portal preview (a day-based grant),
             # but creates NO subscription row -> nothing auto-charges, ever. Paid
-            # membership begins only when the client activates on their first order (or
-            # prepays); the $1 credit persists (tracked by the biofield_trial order row).
-            # The member DISCOUNT is withheld during preview (membership_category ->
-            # 'trial' via the grant-aware fallback). Soft ~90-day preview window; no
-            # cancel token is minted because there is nothing to cancel.
-            _grant_membership(_bc, bt_email, BIOFIELD_DEPOSIT_PREVIEW_DAYS, "biofield_trial")
+            # membership (the DISCOUNT + Continuous Care) begins only when the client
+            # activates on their first order (or prepays); the $1 credit persists
+            # (tracked by the biofield_trial order row). The member DISCOUNT is withheld
+            # (membership_category -> 'trial' via the grant-aware fallback, keyed on
+            # source not duration). The $1 buys LIFETIME access to the free-level
+            # membership (un-blur, #497), so the grant runs effectively forever; no cancel
+            # token is minted because there is nothing to cancel. Plus (#498) the $1 is
+            # credited to points and auto-redeemed at program checkout.
+            _grant_membership(_bc, bt_email, BIOFIELD_UNLOCK_DAYS, "biofield_trial")
             if PROGRAM_CARE_TASTER_ENABLED:
                 try:
                     from dashboard import points as _points
@@ -6952,10 +6973,12 @@ def _fulfill_biofield_trial(session_id):
                     "Your $1 just unlocked your full Biofield Analysis and opened your member "
                     "portal - your matched remedies, your causal chain, and your AI ally are "
                     "waiting for you inside.\n\n"
-                    "That $1 is a deposit, not a trial that turns into a bill. Nothing "
-                    "auto-charges - no card is waiting to spring on you. Your membership begins "
-                    "only when you decide to start, with your first order, and your $1 is credited "
-                    "toward it then. Until that day you're never charged, and the door stays open.\n\n"
+                    "That $1 buys you LIFETIME access to your analysis and your member portal - "
+                    "they're yours to return to anytime, for good. It's a deposit, not a trial "
+                    "that turns into a bill: nothing auto-charges, no card is waiting to spring on "
+                    "you. Your paid membership - with your member discount - begins only when you "
+                    "decide to start, with your first order, and your $1 is credited toward it then. "
+                    "Until that day you're never charged, and the door stays open.\n\n"
                     "Take all the time you need. When you're ready to begin, I'm right here.\n\n"
                     "In wellness,\n"
                     "Dr. Glen and Rae\n"
@@ -26775,7 +26798,8 @@ def api_customers_search():
 
 
 def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
-                           discount_cents_in=None, points_redeem_cents_in=None):
+                           discount_cents_in=None, points_redeem_cents_in=None,
+                           adjustment_cents_in=None):
     """Shared server-authoritative pricing for the in-house order builder AND the
     console invoice editor. Honors per-line unit_cents overrides; FF capsules get the
     order-wide volume rate (open to all); shipping/GET via _price_cart (pickup → no
@@ -26820,7 +26844,11 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         shipping_cents, get_cents = 0, 0
     discount_cents = (max(0, int(discount_cents_in))
                       if discount_cents_in not in (None, "") else 0)
-    total_cents = max(0, subtotal_list - discount_cents) + shipping_cents
+    # Manual adjustment is SIGNED: negative = credit (lowers total), positive =
+    # debit/surcharge (raises it). Applied on top of the rule-based discount.
+    adjustment_cents = (int(adjustment_cents_in)
+                        if adjustment_cents_in not in (None, "") else 0)
+    total_cents = max(0, subtotal_list - discount_cents + adjustment_cents) + shipping_cents
     points_redeemed_cents = 0
     if points_redeem_cents_in not in (None, ""):
         from dashboard import points as _points
@@ -26835,7 +26863,8 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         total_cents -= points_redeemed_cents
     return {"items_rec": items_rec, "cart": cart, "subtotal_cents": subtotal_list,
             "shipping_cents": shipping_cents, "get_cents": get_cents,
-            "discount_cents": discount_cents, "points_redeemed_cents": points_redeemed_cents,
+            "discount_cents": discount_cents, "adjustment_cents": adjustment_cents,
+            "points_redeemed_cents": points_redeemed_cents,
             "total_cents": total_cents}
 
 
@@ -26857,11 +26886,20 @@ def _push_invoice_edit_to_qbo(external_ref, priced):
                            "qty": it["qty"], "item_id": (p or {}).get("qbo_item_id"),
                            "description": it["name"]})
         qlines += _shipping_line(priced["shipping_cents"])
-        _qb_local.replace_invoice_lines(
-            ref, qlines,
-            discount_cents=priced["discount_cents"] + priced["points_redeemed_cents"],
-            tax_cents=0)
-        return {"pushed": True}
+        # Fold the signed manual adjustment into the QBO discount so the QBO total
+        # matches the console total: a credit (negative) raises the discount; a debit
+        # (positive) lowers it. QBO's DiscountLineDetail can't go negative, so a
+        # surcharge that exceeds the discount can't be mirrored — warn in that case.
+        adj = int(priced.get("adjustment_cents") or 0)
+        qbo_discount = priced["discount_cents"] + priced["points_redeemed_cents"] - adj
+        warn = None
+        if qbo_discount < 0:
+            warn = ("QBO can't show a surcharge larger than the discount as a discount "
+                    f"line — the QBO total may be ${abs(qbo_discount) / 100:.2f} under the "
+                    "console total. Add a manual QBO adjustment line if needed.")
+            qbo_discount = 0
+        _qb_local.replace_invoice_lines(ref, qlines, discount_cents=qbo_discount, tax_cents=0)
+        return {"pushed": True, **({"warning": warn} if warn else {})}
     except Exception as e:
         return {"pushed": False, "warning": f"QBO sync failed: {type(e).__name__}: {e}"}
 
@@ -26903,6 +26941,7 @@ def api_orders_edit(oid):
             priced = _price_inhouse_invoice(
                 lines_in, email=email, pickup=pickup, ship=ship,
                 discount_cents_in=body.get("discount_cents"),
+                adjustment_cents_in=body.get("adjustment_cents"),
                 points_redeem_cents_in=None)
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
@@ -26923,6 +26962,7 @@ def api_orders_edit(oid):
             items=priced["items_rec"], total_cents=priced["total_cents"],
             channel=("pickup" if pickup else (order.get("channel") or "retail")),
             get_cents=priced["get_cents"], discount_cents=priced["discount_cents"],
+            adjustment_cents=priced["adjustment_cents"],
             points_redeemed_cents=priced["points_redeemed_cents"],
             shipping_cents=priced["shipping_cents"],
             invoice_note=(note.strip() if isinstance(note, str) else None))
@@ -26939,6 +26979,7 @@ def api_orders_edit(oid):
     return jsonify({"ok": True, "order_id": oid, "qbo": qbo, "warning": warning,
                     "totals": {"subtotal_cents": priced["subtotal_cents"],
                                "discount_cents": priced["discount_cents"],
+                               "adjustment_cents": priced["adjustment_cents"],
                                "shipping_cents": priced["shipping_cents"],
                                "get_cents": priced["get_cents"],
                                "points_redeemed_cents": priced["points_redeemed_cents"],
@@ -26976,6 +27017,7 @@ def api_orders_manual():
         priced = _price_inhouse_invoice(
             lines_in, email=customer.get("email"), pickup=pickup, ship=ship,
             discount_cents_in=body.get("discount_cents"),
+            adjustment_cents_in=body.get("adjustment_cents"),
             points_redeem_cents_in=body.get("points_redeem_cents"))
     except CheckoutError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -26986,6 +27028,7 @@ def api_orders_manual():
     shipping_cents = priced["shipping_cents"]
     get_cents = priced["get_cents"]
     discount_cents = priced["discount_cents"]
+    adjustment_cents = priced["adjustment_cents"]
     points_redeemed_cents = priced["points_redeemed_cents"]
     total_cents = priced["total_cents"]
     # Approved review gifts: append as $0 lines (no price impact) — manual-create only.
@@ -27024,7 +27067,8 @@ def api_orders_manual():
                      "address2": ship["address2"], "city": ship["city"],
                      "state": ship["state"], "zip": ship["zip"], "country": ship["country"]},
             channel=("pickup" if pickup else "retail"), get_cents=get_cents,
-            discount_cents=discount_cents, shipping_cents=shipping_cents,
+            discount_cents=discount_cents, adjustment_cents=adjustment_cents,
+            shipping_cents=shipping_cents,
             points_redeemed_cents=points_redeemed_cents,
             invoice_note=((body.get("invoice_note") or "").strip() or None))
         if _gift_rows and oid:
@@ -27036,6 +27080,7 @@ def api_orders_manual():
     return jsonify({"ok": True, "order_id": oid, "external_ref": ext,
                     "method": (body.get("method") or ""),
                     "totals": {"subtotal_cents": subtotal_list, "discount_cents": discount_cents,
+                               "adjustment_cents": adjustment_cents,
                                "shipping_cents": shipping_cents, "get_cents": get_cents,
                                "points_redeemed_cents": points_redeemed_cents,
                                "total_cents": total_cents},
@@ -27145,6 +27190,7 @@ def _invoice_summary(order):
         "lines": [_invoice_line_view(l) for l in lines],
         "subtotal_cents": subtotal,
         "discount_cents": int(order.get("discount_cents") or 0),
+        "adjustment_cents": int(order.get("adjustment_cents") or 0),
         "shipping_cents": int(order.get("shipping_cents") or 0),
         "get_cents": int(order.get("get_cents") or 0),
         "points_redeemed_cents": int(order.get("points_redeemed_cents") or 0),
