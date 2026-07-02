@@ -73,6 +73,11 @@ def init_orders_table(cx):
         # Optional customer-facing note shown on the invoice (distinct from the
         # internal `notes` column, which never reaches the customer view).
         "ALTER TABLE orders ADD COLUMN invoice_note TEXT",
+        # Household / combined-shipment grouping: when set, this order ships in a
+        # shared parcel tracked by combined_shipments.id (see
+        # dashboard/combined_shipments.py). NULL = ships on its own. Distinct from
+        # `shipment_id`, which links to the tracking `shipments` table.
+        "ALTER TABLE orders ADD COLUMN group_shipment_id INTEGER",
     ):
         try:
             cx.execute(ddl)
@@ -252,6 +257,23 @@ def set_order_tracking(cx, order_id, tracking_number, shipment_id=None):
                      (tracking_number, shipment_id, _now(), order_id))
     cx.commit()
     return cur.rowcount > 0
+
+
+def set_order_group(cx, order_id, group_shipment_id):
+    """Link (or, with None, unlink) an order to a combined shipment. Returns True
+    if the order existed."""
+    cur = cx.execute(
+        "UPDATE orders SET group_shipment_id=?, updated_at=? WHERE id=?",
+        (group_shipment_id, _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def orders_in_group(cx, group_shipment_id):
+    """Member orders of a combined shipment, oldest first."""
+    cur = cx.execute("SELECT * FROM orders WHERE group_shipment_id=? ORDER BY id",
+                     (group_shipment_id,))
+    return [_row_to_dict(r) for r in cur.fetchall()]
 
 
 def set_order_stripe_pi(cx, order_id, payment_intent):
