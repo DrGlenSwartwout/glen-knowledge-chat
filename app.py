@@ -2671,6 +2671,10 @@ def begin_biofield_reveal(token):
                        if _layers_raw
                        else len(row.get("remedies") or []) - (1 if top_unlocked else 0))
 
+    # Pre-fill the in-app shipping review from the client's last order address (their
+    # own data on their own token) so ordering shows a review step, not a bare Stripe
+    # screen. {} when unknown -> the form starts empty.
+    _ship_prefill = _resolve_ship_address(email, {})
     if paid:
         all_remedies = row.get("remedies") or []
         payload = {
@@ -2682,6 +2686,7 @@ def begin_biofield_reveal(token):
             "paid": True,
             "trial_enabled": BIOFIELD_TRIAL_ENABLED,
             "cart_enabled": BIOFIELD_CART_ENABLED,
+            "ship_prefill": _ship_prefill,
             "remedies": [_biofield_remedy_payload(r) for r in all_remedies],
             "layers": _layers_payload,
         }
@@ -2696,6 +2701,7 @@ def begin_biofield_reveal(token):
             "paid": False,
             "trial_enabled": BIOFIELD_TRIAL_ENABLED,
             "cart_enabled": BIOFIELD_CART_ENABLED,
+            "ship_prefill": _ship_prefill,
             "layers": _layers_payload,
         }
 
@@ -2804,15 +2810,24 @@ def begin_biofield_order_checkout(token):
             return jsonify({"ok": False, "need_optin": True,
                             "error": "Please agree to our Terms to continue your order."}), 403
         body = request.get_json(silent=True) or {}
+        requested = body.get("items") or []
         visible = set(_biofield_visible_slugs(row, email))
         items = []
-        for it in (body.get("items") or []):
+        for it in requested:
             s = (it.get("slug") or "").strip()
             if s and s in visible:
                 items.append({"slug": s, "qty": max(1, min(int(it.get("qty") or 1), 99))})
         if not items:
-            return jsonify({"ok": False,
-                            "error": "Your cart is empty or those items are no longer available."}), 400
+            # Distinguish an empty cart from a LOCKED reveal: if the client asked to
+            # order specific remedies but none are unlocked yet, tell them the truth
+            # and flag need_unlock so the page routes them to the unlock CTA (not a
+            # dead-end "no longer available" — the bug Steve Fox hit on an unapproved
+            # reveal where the visible set is empty).
+            if requested:
+                return jsonify({"ok": False, "need_unlock": True,
+                                "error": "These matches aren't unlocked yet — "
+                                         "unlock your full analysis to order them."}), 400
+            return jsonify({"ok": False, "error": "Your cart is empty."}), 400
         ship = _resolve_ship_address(email, body.get("address") or {})
         try:
             res = _checkout_cart(email, items, ship=ship)

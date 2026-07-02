@@ -316,6 +316,29 @@
     #bf-cart-bar .bf-cart-save{ color:#2e7d32; font-size:0.9em; }
     #bf-cart-bar button{ padding:10px 18px; cursor:pointer; }
     #bf-cart-bar button[disabled]{ opacity:0.5; cursor:default; }
+    /* --- In-app order review (items + shipping) before Stripe --- */
+    #bf-review-back{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:60; }
+    #bf-review-back.show{ display:block; }
+    #bf-review{ position:fixed; z-index:61; left:50%; top:50%; transform:translate(-50%,-50%);
+      width:min(520px,92vw); max-height:90vh; overflow:auto; background:var(--card,#fff);
+      color:var(--text,#1a1a1a); border-radius:14px; padding:22px 24px; box-shadow:0 18px 50px rgba(0,0,0,.4); }
+    #bf-review h3{ margin:0 0 4px; font-size:20px; }
+    #bf-review .sub{ color:var(--muted,#667); font-size:13px; margin:0 0 14px; }
+    #bf-review .r-items{ border:1px solid var(--border,#e2e2e2); border-radius:10px; padding:10px 12px; margin-bottom:14px; }
+    #bf-review .r-line{ display:flex; justify-content:space-between; padding:3px 0; font-size:14px; }
+    #bf-review .r-total{ font-weight:700; border-top:1px solid var(--border,#e2e2e2); margin-top:6px; padding-top:6px; }
+    #bf-review label{ display:block; font-size:12px; color:var(--muted,#667); margin:8px 0 3px; }
+    #bf-review input{ width:100%; padding:9px 11px; border-radius:8px; border:1px solid var(--border,#ccc); font-size:14px; }
+    #bf-review .row2{ display:flex; gap:10px; } #bf-review .row2>div{ flex:1; }
+    #bf-review .r-actions{ display:flex; gap:10px; align-items:center; margin-top:18px; }
+    #bf-review .r-actions button{ padding:11px 18px; border-radius:9px; cursor:pointer; }
+    #bf-review .r-pay{ background:var(--accent,#2e7d32); color:#fff; border:none; font-weight:600; flex:1; }
+    #bf-review .r-pay[disabled]{ opacity:.5; cursor:default; }
+    #bf-review .r-cancel{ background:none; border:none; color:var(--muted,#667); cursor:pointer; }
+    #bf-review .r-err{ color:#c0392b; font-size:13px; margin-top:8px; min-height:1em; }
+    #bf-review .r-secure{ color:var(--muted,#667); font-size:12px; margin-top:10px; text-align:center; }
+    @keyframes bf-pulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(46,125,50,.0); } 50%{ box-shadow:0 0 0 6px rgba(46,125,50,.35); } }
+    .bf-pulse{ animation:bf-pulse 1s ease-in-out 2; border-radius:8px; }
   </style>
 </head>
 <body>
@@ -491,9 +514,19 @@
           container.appendChild(meaningEl);
         }
 
-        var orderBtn = document.createElement("a");
+        // Order routes through the in-app review (items + shipping) before Stripe —
+        // no more jumping straight to a bare payment screen. Falls back to the direct
+        // buy link only when the cart isn't enabled.
+        var orderBtn;
+        if (data.cart_enabled && rem.slug) {
+          orderBtn = document.createElement("button");
+          orderBtn.type = "button";
+          orderBtn.addEventListener("click", function () { openReview([{ slug: rem.slug, qty: 1 }]); });
+        } else {
+          orderBtn = document.createElement("a");
+          orderBtn.setAttribute("href", rem.buy_url || "/begin/match");
+        }
         orderBtn.className = "buy-btn";
-        orderBtn.setAttribute("href", rem.buy_url || "/begin/match");
         orderBtn.textContent = "Order";
         container.appendChild(orderBtn);
 
@@ -770,6 +803,97 @@
         root.appendChild(ctaSection);
       }
 
+      // -- In-app order review (items + shipping) shown before Stripe --
+      function esc(s){ var d=document.createElement("div"); d.textContent=(s==null?"":s); return d.innerHTML; }
+      function currentItems(){ var out=[]; for (var s in cartItems){ out.push({ slug: s, qty: cartItems[s] }); } return out; }
+      var REVIEW_ITEMS = [], reviewBack, reviewBox, rItems, rErr, rPayBtn, rPrefilled = false;
+      function buildReviewModal(){
+        if (reviewBox) return;
+        reviewBack = document.createElement("div"); reviewBack.id = "bf-review-back";
+        reviewBox = document.createElement("div"); reviewBox.id = "bf-review";
+        reviewBox.innerHTML =
+          '<h3>Review your order</h3>'
+          + '<p class="sub">Confirm your remedies and shipping address. You’ll enter payment on the next secure step.</p>'
+          + '<div class="r-items"></div>'
+          + '<label>Full name</label><input id="r-name" autocomplete="name">'
+          + '<label>Street address</label><input id="r-street" autocomplete="address-line1">'
+          + '<div class="row2"><div><label>City</label><input id="r-city" autocomplete="address-level2"></div>'
+          +   '<div><label>State</label><input id="r-state" autocomplete="address-level1"></div>'
+          +   '<div><label>ZIP</label><input id="r-zip" autocomplete="postal-code"></div></div>'
+          + '<div class="r-err"></div>'
+          + '<div class="r-actions"><button class="r-pay" type="button">Continue to secure payment →</button>'
+          +   '<button class="r-cancel" type="button">Cancel</button></div>'
+          + '<p class="r-secure">🔒 Payment is processed securely by Stripe.</p>';
+        document.body.appendChild(reviewBack); document.body.appendChild(reviewBox);
+        rItems = reviewBox.querySelector(".r-items");
+        rErr = reviewBox.querySelector(".r-err");
+        rPayBtn = reviewBox.querySelector(".r-pay");
+        reviewBox.querySelector(".r-cancel").addEventListener("click", closeReview);
+        reviewBack.addEventListener("click", closeReview);
+        rPayBtn.addEventListener("click", submitReview);
+        ["r-street","r-city","r-state","r-zip"].forEach(function(id){
+          reviewBox.querySelector("#"+id).addEventListener("input", validateReview);
+        });
+      }
+      function prefillReview(){
+        if (rPrefilled) return; rPrefilled = true;
+        var sp = data.ship_prefill || {};
+        function set(id, v){ var el = reviewBox.querySelector("#"+id); if (el) el.value = v || ""; }
+        set("r-name", sp.name); set("r-street", sp.street || sp.address1);
+        set("r-city", sp.city); set("r-state", sp.state); set("r-zip", sp.zip);
+      }
+      function reviewAddress(){
+        var g = function(id){ return (reviewBox.querySelector("#"+id).value || "").trim(); };
+        return { name:g("r-name"), street:g("r-street"), city:g("r-city"), state:g("r-state"), zip:g("r-zip"), country:"US" };
+      }
+      function validateReview(){
+        var a = reviewAddress(); var ok = !!(a.street && a.city && a.state && a.zip);
+        if (rPayBtn) rPayBtn.disabled = !ok; return ok;
+      }
+      function openReview(explicitItems){
+        buildReviewModal();
+        var its = explicitItems || currentItems();
+        if (!its.length) { return; }
+        REVIEW_ITEMS = its; prefillReview(); rErr.textContent = "";
+        rItems.innerHTML = '<div class="r-line"><span>'+its.length+' remed'+(its.length===1?'y':'ies')+'</span><span>…</span></div>';
+        fetch("/begin/biofield/" + _token + "/order-preview", {
+          method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ items: REVIEW_ITEMS })
+        }).then(function(r){ return r.json(); }).then(function(p){
+          if (p && p.ok) {
+            var lines = (p.lines || []).map(function(l){
+              return '<div class="r-line"><span>'+esc(l.name || l.slug || "Remedy")+(l.qty>1?" ×"+l.qty:"")+'</span><span>$'+(((l.line_total_cents||0))/100).toFixed(2)+'</span></div>';
+            }).join("");
+            rItems.innerHTML = lines + '<div class="r-line r-total"><span>Total</span><span>$'+(((p.total_cents||0))/100).toFixed(2)+' + shipping</span></div>';
+          }
+        }).catch(function(){});
+        validateReview();
+        reviewBack.classList.add("show"); reviewBox.style.display = "block"; reviewBox.scrollTop = 0;
+      }
+      function closeReview(){
+        if (reviewBack) reviewBack.classList.remove("show");
+        if (reviewBox) reviewBox.style.display = "none";
+        if (rPayBtn) rPayBtn.disabled = false;
+      }
+      function submitReview(){
+        if (!validateReview()) { rErr.textContent = "Please complete your shipping address."; return; }
+        rPayBtn.disabled = true; rErr.textContent = "";
+        fetch("/begin/biofield/" + _token + "/order-checkout", {
+          method:"POST", headers:{ "Content-Type":"application/json" },
+          body:JSON.stringify({ items: REVIEW_ITEMS, address: reviewAddress() })
+        }).then(function(r){ return r.json(); }).then(function(res){
+          if (res && res.ok && res.stripe_url) { window.location.href = res.stripe_url; return; }
+          if (res && res.need_unlock) { closeReview(); routeToUnlock(res.error); return; }
+          rErr.textContent = (res && res.error) || "Could not start checkout.";
+          rPayBtn.disabled = false;
+        }).catch(function(){ rErr.textContent = "Network error — please try again."; rPayBtn.disabled = false; });
+      }
+      function routeToUnlock(msg){
+        var el = document.getElementById("unlock-checkout") || document.querySelector(".free-reveal-btn");
+        if (el) { el.scrollIntoView({ behavior:"smooth", block:"center" }); el.classList.add("bf-pulse");
+                  setTimeout(function(){ el.classList.remove("bf-pulse"); }, 2100); }
+        else { alert(msg || "Unlock your full analysis to order these matches."); }
+      }
+
       // -- Matched-set cart (sticky bar) --
       if (data.cart_enabled) {
         var token = (window.location.pathname.split("/")[3] || "");
@@ -811,14 +935,9 @@
         btn.addEventListener("click", function () {
           var its = items();
           if (!its.length) { return; }
-          btn.disabled = true;
-          fetch("/begin/biofield/" + token + "/order-checkout", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ items: its })
-          }).then(function (r) { return r.json(); }).then(function (res) {
-            if (res && res.ok && res.stripe_url) { window.location.href = res.stripe_url; }
-            else { btn.disabled = false; alert((res && res.error) || "Could not start checkout."); }
-          }).catch(function () { btn.disabled = false; });
+          // Open the in-app review (items + shipping) — the checkout call happens
+          // from there, so the client is never dumped straight onto Stripe.
+          openReview(its);
         });
         refreshCartBar();
       }
