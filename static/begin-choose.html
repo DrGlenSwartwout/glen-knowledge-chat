@@ -62,12 +62,12 @@
   <section class="shell">
     <p class="section-label">Two ways forward</p>
     <div class="cards">
-      <a class="card" id="door-solo" href="/begin">
+      <a class="card" id="door-program" href="/begin">
         <span class="card-num">01</span>
         <span class="card-body">
-          <span class="card-title">On Your Own</span>
-          <span class="card-sub">Order your matched remedies à la carte, whenever you need them, with cost-based quantity pricing. Come back for a new scan when you are ready for the next step. Full control, no commitment.</span>
-          <span class="card-tag">À la carte</span>
+          <span class="card-title">Your $100 Program</span>
+          <span class="card-sub">A one-off program design from your analysis, with one month of support. You get your matched formulations and a clear plan to work them. Come back for your next $100 design whenever you are ready for the next step. No commitment.</span>
+          <span class="card-tag">One-off · 1 month support</span>
         </span>
       </a>
 
@@ -108,11 +108,31 @@
       // Entering the choose room = the care_fork micro-commitment (analytics only).
       fork("");
 
-      // Door A -> back to the token-scoped reveal cart (or /begin when no valid token).
-      var solo = document.getElementById("door-solo");
-      if (solo) {
-        solo.setAttribute("href", revealUrl);
-        solo.addEventListener("click", function () { fork("solo"); });
+      // Door A -> the $100 one-off program checkout (mirrors the reveal program CTA).
+      // Needs the server-injected email + program flag; otherwise fall back to the reveal
+      // cart so the card is never a dead end.
+      var program = document.getElementById("door-program");
+      if (program) {
+        if (data.email && data.program_enabled) {
+          program.setAttribute("href", "#");
+          var programBusy = false;
+          program.addEventListener("click", function (e) {
+            e.preventDefault();
+            if (programBusy) { return; }  // one checkout session per click-through
+            programBusy = true;
+            fork("program");
+            fetch("/biofield/checkout", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email: data.email, tier: data.program_tier || "scalable" })
+            }).then(function (r) { return r.json(); }).then(function (b) {
+              if (b && b.ok && b.stripe_url) { window.location = b.stripe_url; }
+              else { window.location = revealUrl; }
+            }).catch(function () { window.location = revealUrl; });
+          });
+        } else {
+          program.setAttribute("href", revealUrl);
+          program.addEventListener("click", function () { fork("program"); });
+        }
       }
       var back = document.getElementById("back-link");
       if (back) { back.setAttribute("href", revealUrl); }

@@ -2505,26 +2505,30 @@ def begin_path():
 
 @app.route("/begin/choose", methods=["GET"])
 def begin_choose():
-    """Two-door 'see & choose' surface: Door A (à-la-carte) vs Door B (Continuous Care).
+    """Two-door 'see & choose' surface: Door A ($100 one-off program) vs Door B (Continuous Care).
 
     Reached from the reveal page's handoff CTA with ?token=<reveal token>. Flag-dark behind
-    TWO_DOOR_ENABLED. The token is verified server-side (same path as the reveal route) so
-    Door A can link back to the token-scoped reveal cart; only the token (already in the
-    user's URL bar on the reveal) is carried forward — email is never placed in the payload."""
+    TWO_DOOR_ENABLED. The token is verified server-side (same path as the reveal route). The
+    verified client email is injected into the page body (NOT the URL) so Door A can start the
+    $100 program checkout exactly like the reveal's program CTA; a fallback reveal_url keeps the
+    door from ever dead-ending when there is no email/program flag."""
     if not TWO_DOOR_ENABLED:
         return redirect("/")
 
     token = (request.args.get("token") or "").strip()
     valid_token = None
+    email = None
     reveal_url = "/begin"
     if token:
         valid, row = _biofield_verify_token(_hash_token(token))
         if valid and row is not None:
             valid_token = token
+            email = (row.get("email") or "").strip().lower() or None
             reveal_url = f"/begin/biofield/{token}"
 
     payload = {
         "token": valid_token,
+        "email": email,
         "reveal_url": reveal_url,
         "program_enabled": PROGRAM_CARE_TASTER_ENABLED,
         "program_tier": PROGRAM_SCALABLE_TIER,
