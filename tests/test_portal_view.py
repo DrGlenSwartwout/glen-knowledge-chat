@@ -131,6 +131,39 @@ def test_biofield_block_reveals_remedies_when_confirmed(tmp_path):
     assert bf["layers"][0]["remedy"] == "Nous Energy"
 
 
+def test_biofield_confirmed_stays_blurred_when_not_unlocked(tmp_path):
+    # A confirmed report published for a client who hasn't PAID (free E4L reveal,
+    # no membership / no paid Biofield Analysis) must stay blurred in the portal —
+    # same gate as the funnel. Paid clients (unlocked=True) still see it.
+    from dashboard import portal_view as pv
+    from dashboard import client_portal as cp
+    cx = _conn(tmp_path)
+    pid = _add_person(cx, "unpaid@example.com", "UP")
+    cp.upsert_portal(cx, "unpaid@example.com", "UP", {"biofield_status": "confirmed", "greeting": "hi",
+        "pricing_note": "buy now", "layers": [{"n": 1, "title": "Calm", "meaning": "m",
+        "remedy": "Nous Energy", "dosing": "1/day"}]})
+    bf = pv.get_portal_view(cx, pid, biofield_unlocked=False)["biofield"]
+    assert bf["status"] == "confirmed"        # the report exists / status unchanged
+    assert bf["blurred"] is True              # but content is gated behind payment
+    assert "remedy" not in bf["layers"][0] and "dosing" not in bf["layers"][0]
+    assert bf["pricing_note"] == ""
+    # A paid/unlocked client still sees everything.
+    bf2 = pv.get_portal_view(cx, pid, biofield_unlocked=True)["biofield"]
+    assert bf2["blurred"] is False and bf2["layers"][0]["remedy"] == "Nous Energy"
+
+
+def test_biofield_unlocked_defaults_true_backcompat(tmp_path):
+    # Default (no flag) keeps the old behavior: confirmed → shown.
+    from dashboard import portal_view as pv
+    from dashboard import client_portal as cp
+    cx = _conn(tmp_path)
+    pid = _add_person(cx, "d@example.com", "D")
+    cp.upsert_portal(cx, "d@example.com", "D", {"biofield_status": "confirmed", "greeting": "hi",
+        "layers": [{"n": 1, "title": "Calm", "meaning": "m", "remedy": "Nous Energy", "dosing": "1/day"}]})
+    bf = pv.get_portal_view(cx, pid)["biofield"]
+    assert bf["blurred"] is False and bf["layers"][0]["remedy"] == "Nous Energy"
+
+
 def test_view_unknown_person_is_none(tmp_path):
     from dashboard import portal_view as pv
     cx = _conn(tmp_path)
