@@ -2,7 +2,9 @@
 1 free live-group month per program month purchased, capped at 3 (the max
 recommended program length); 0 for a Biofield-only / no-program purchase."""
 
-MEMBERSHIP_AMOUNT_CENTS = 9900     # $99/mo founders rate (live group)
+from dashboard import prepay as _prepay
+
+MEMBERSHIP_AMOUNT_CENTS = _prepay.MONTHLY_ANCHOR_CENTS   # $99/mo founders rate (live group)
 MEMBERSHIP_CADENCE_MONTHS = 1
 MAX_INCLUDED_MONTHS = 3
 

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remedy Match — Membership</title>
+  <style>
+    :root { --ink:#2d2d2d; --muted:#666; --line:#e6e6e0; --gold:#b8892b; --bg:#f9f9f7; --accent:#2e6f5e; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--bg); color: var(--ink); margin: 0; padding: 32px 16px; line-height: 1.55;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 1.6rem; font-weight: 600; margin: 0 0 6px; text-align: center; }
+    .sub { text-align: center; color: var(--muted); margin: 0 0 28px; }
+    .tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 520px) { .tiers { grid-template-columns: 1fr; } }
+    .tier {
+      background: #fff; border: 2px solid var(--line); border-radius: 12px; padding: 20px 18px;
+      cursor: pointer; position: relative; transition: border-color .15s, box-shadow .15s;
+    }
+    .tier:hover { border-color: #cfc9b8; }
+    .tier.selected { border-color: var(--accent); box-shadow: 0 2px 12px rgba(46,111,94,.14); }
+    .tier .label { font-weight: 600; font-size: 1.05rem; }
+    .tier .permo { font-size: 1.5rem; font-weight: 700; margin: 6px 0 2px; }
+    .tier .permo small { font-size: .8rem; font-weight: 500; color: var(--muted); }
+    .tier .total { color: var(--muted); font-size: .9rem; }
+    .tier .save { color: var(--accent); font-weight: 600; font-size: .85rem; margin-top: 6px; }
+    .badge {
+      position: absolute; top: -11px; right: 14px; background: var(--gold); color: #fff;
+      font-size: .72rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; letter-spacing: .02em;
+    }
+    .form { margin-top: 26px; text-align: center; }
+    input[type=email] {
+      width: 100%; max-width: 360px; padding: 12px 14px; font-size: 1rem; border: 1px solid var(--line);
+      border-radius: 8px; margin-bottom: 14px;
+    }
+    button {
+      background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 13px 28px;
+      font-size: 1.02rem; font-weight: 600; cursor: pointer; min-width: 220px;
+    }
+    button:disabled { opacity: .5; cursor: default; }
+    .fine { color: var(--muted); font-size: .84rem; margin-top: 14px; }
+    .err { color: #b23b3b; margin-top: 10px; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Choose your membership</h1>
+    <p class="sub">Prepay and lock in your rate — the longer the term, the more you save. Member pricing on everything for your whole term.</p>
+    <div class="tiers" id="tiers"></div>
+    <div class="form">
+      <div><input type="email" id="email" placeholder="you@email.com" autocomplete="email"></div>
+      <button id="go" disabled>Continue</button>
+      <div class="err" id="err"></div>
+      <p class="fine">One payment for your full term. No auto-renewal, no card kept on file — when your term ends we simply check in about renewing.</p>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var selected = null;
+      var params = new URLSearchParams(location.search);
+      var preselect = params.get("renew") || params.get("tier") || "";
+      var tiersEl = document.getElementById("tiers");
+      var goEl = document.getElementById("go");
+      var errEl = document.getElementById("err");
+      var emailEl = document.getElementById("email");
+
+      function fmt(cents) { return "$" + Math.round(cents / 100); }
+
+      function render(tiers) {
+        tiersEl.innerHTML = "";
+        tiers.forEach(function (t) {
+          var el = document.createElement("div");
+          el.className = "tier";
+          el.dataset.key = t.key;
+          var save = t.savings_pct > 0 ? '<div class="save">Save ' + t.savings_pct + '%</div>' : '<div class="save">&nbsp;</div>';
+          var badge = t.badge ? '<span class="badge">' + t.badge + '</span>' : '';
+          el.innerHTML = badge +
+            '<div class="label">' + t.label + '</div>' +
+            '<div class="permo">' + fmt(t.per_month_cents) + '<small>/mo</small></div>' +
+            '<div class="total">' + fmt(t.price_cents) + ' total</div>' + save;
+          el.addEventListener("click", function () { select(t.key); });
+          tiersEl.appendChild(el);
+        });
+        if (preselect && tiers.some(function (t) { return t.key === preselect; })) select(preselect);
+      }
+
+      function select(key) {
+        selected = key;
+        Array.prototype.forEach.call(tiersEl.children, function (c) {
+          c.classList.toggle("selected", c.dataset.key === key);
+        });
+        updateGo();
+      }
+
+      function validEmail() { return /.+@.+\..+/.test((emailEl.value || "").trim()); }
+      function updateGo() { goEl.disabled = !(selected && validEmail()); }
+
+      emailEl.addEventListener("input", updateGo);
+
+      goEl.addEventListener("click", function () {
+        if (!selected || !validEmail()) return;
+        goEl.disabled = true; errEl.textContent = "";
+        fetch("/prepay/checkout", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: emailEl.value.trim(), tier_key: selected })
+        }).then(function (r) { return r.json(); }).then(function (d) {
+          if (d && d.ok && d.url) { location.href = d.url; }
+          else { errEl.textContent = "Sorry — we couldn't start checkout. Please try again."; updateGo(); }
+        }).catch(function () {
+          errEl.textContent = "Network error — please try again."; updateGo();
+        });
+      });
+
+      fetch("/api/prepay/tiers").then(function (r) { return r.json(); }).then(function (d) {
+        if (d && d.ok && d.tiers) render(d.tiers);
+        else errEl.textContent = "Membership options are unavailable right now.";
+      }).catch(function () { errEl.textContent = "Could not load membership options."; });
+    })();
+  </script>
+</body>
+</html>

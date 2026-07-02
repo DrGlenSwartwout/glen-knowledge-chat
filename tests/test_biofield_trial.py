@@ -98,20 +98,25 @@ def _mock_paid_session(app_module, monkeypatch, email="t@x.com", sid="cs_1"):
         lambda pi: {"customer": "cus_1", "payment_method": "pm_1", "status": "succeeded"})
 
 
-def test_return_creates_membership_and_grant(monkeypatch, tmp_path):
+def test_return_creates_grant_no_subscription(monkeypatch, tmp_path):
+    """Model #2: the $1 deposit unlocks a day-based grant (Biofield Analysis unlocked)
+    but creates NO subscription row -> nothing auto-charges. The member DISCOUNT is
+    withheld during preview (category 'trial', _is_paid_member False)."""
     app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
     monkeypatch.setattr(app_module, "BIOFIELD_TRIAL_ENABLED", True, raising=False)
     monkeypatch.setattr(app_module, "_STRIPE_ACTIVE", True, raising=False)
     _mock_paid_session(app_module, monkeypatch)
     c = app_module.app.test_client()
     c.get("/begin/checkout-return?kind=biofield_trial&session_id=cs_1")
-    from dashboard import subscriptions
     with sqlite3.connect(db) as cx:
-        subs = cx.execute("SELECT amount_cents, status, kind FROM subscriptions WHERE email='t@x.com'").fetchall()
+        subs = cx.execute("SELECT COUNT(*) FROM subscriptions WHERE email='t@x.com'").fetchone()[0]
         grants = cx.execute("SELECT source FROM memberships WHERE email='t@x.com'").fetchall()
-    assert len(subs) == 1 and subs[0] == (9900, "active", "membership")
+    assert subs == 0, "Model #2: no subscription row -> nothing can auto-charge"
     assert len(grants) == 1 and grants[0][0] == "biofield_trial"
+    # Analysis unlocked (active grant) but discount withheld (preview = 'trial').
     assert app_module._active_membership_for_email("t@x.com") is not None
+    assert app_module.membership_category("t@x.com") == "trial"
+    assert app_module._is_paid_member("t@x.com") is False
 
 
 def test_return_idempotent(monkeypatch, tmp_path):
@@ -123,7 +128,7 @@ def test_return_idempotent(monkeypatch, tmp_path):
     c.get("/begin/checkout-return?kind=biofield_trial&session_id=cs_1")
     c.get("/begin/checkout-return?kind=biofield_trial&session_id=cs_1")
     with sqlite3.connect(db) as cx:
-        assert cx.execute("SELECT COUNT(*) FROM subscriptions WHERE email='t@x.com'").fetchone()[0] == 1
+        assert cx.execute("SELECT COUNT(*) FROM subscriptions WHERE email='t@x.com'").fetchone()[0] == 0
         assert cx.execute("SELECT COUNT(*) FROM memberships WHERE email='t@x.com'").fetchone()[0] == 1
 
 

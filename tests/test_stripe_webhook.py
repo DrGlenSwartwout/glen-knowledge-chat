@@ -86,15 +86,16 @@ def test_verify_webhook_rejects_malformed_header():
     assert sp.verify_webhook(b'{}', "", "whsec_test") is None
 
 
-def test_fulfill_creates_membership_and_grant(monkeypatch, tmp_path):
+def test_fulfill_creates_deposit_grant_no_subscription(monkeypatch, tmp_path):
     app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
     _mock_paid_trial(app_module, monkeypatch)
     res = app_module._fulfill_biofield_trial("cs_x")
     assert res["ok"] is True
     with sqlite3.connect(db) as cx:
-        subs = cx.execute("SELECT amount_cents, status, kind FROM subscriptions WHERE email='t@x.com'").fetchall()
+        subs = cx.execute("SELECT COUNT(*) FROM subscriptions WHERE email='t@x.com'").fetchone()[0]
         grants = cx.execute("SELECT source FROM memberships WHERE email='t@x.com'").fetchall()
-    assert subs == [(9900, "active", "membership")] and grants == [("biofield_trial",)]
+    # Model #2: the deposit unlocks access (a grant) but creates NO subscription row.
+    assert subs == 0 and grants == [("biofield_trial",)]
     assert app_module._active_membership_for_email("t@x.com") is not None
 
 
@@ -152,7 +153,7 @@ def test_fulfill_idempotent(monkeypatch, tmp_path):
     r2 = app_module._fulfill_biofield_trial("cs_x")
     assert r2.get("already") is True
     with sqlite3.connect(db) as cx:
-        assert cx.execute("SELECT COUNT(*) FROM subscriptions WHERE email='t@x.com'").fetchone()[0] == 1
+        assert cx.execute("SELECT COUNT(*) FROM subscriptions WHERE email='t@x.com'").fetchone()[0] == 0
         assert cx.execute("SELECT COUNT(*) FROM memberships WHERE email='t@x.com'").fetchone()[0] == 1
 
 
