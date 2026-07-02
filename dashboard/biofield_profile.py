@@ -66,10 +66,27 @@ def is_health_tag(tag):
     return bool(val) and val not in _PB_NON_CONDITION and not is_operational_tag(t)
 
 
+# Medical acronyms kept uppercase when prettifying condition slugs (wet-amd -> Wet AMD).
+_ACRONYMS = {"amd", "psc", "ebv", "gi", "cns", "tmj", "ibs", "gerd", "hpv", "uti", "sibo",
+             "pcos", "adhd", "copd", "ms", "als", "ra", "ibd", "ptsd", "ocd", "bph", "tsh",
+             "ldl", "hdl", "hrt", "uv", "dna", "rna", "tbi", "cfs", "emf", "gerd"}
+
+
+def prettify_condition(text):
+    """Human-readable condition label: hyphens/underscores -> spaces, Title-case words,
+    but keep known medical acronyms uppercase. 'pb:wet-amd'/'wet-amd' -> 'Wet AMD',
+    'psc-cataract' -> 'PSC Cataract', 'fatty-liver' -> 'Fatty Liver'."""
+    s = (text or "").strip().strip('[]"\'')
+    if s.lower().startswith("pb:"):
+        s = s[3:]
+    s = s.replace("-", " ").replace("_", " ").strip()
+    words = [w.upper() if w.lower() in _ACRONYMS else (w[:1].upper() + w[1:]) for w in s.split()]
+    return " ".join(words) or (text or "")
+
+
 def clean_health_tag(tag):
-    """Display form of a health tag: strip the `pb:` prefix (e.g. 'pb:wet-amd' -> 'wet-amd')."""
-    s = (tag or "").strip().strip('[]"\'')
-    return s[3:] if s.lower().startswith("pb:") else s
+    """Display form of a health tag: strip `pb:` and prettify (e.g. 'pb:wet-amd' -> 'Wet AMD')."""
+    return prettify_condition(tag)
 
 
 def _items(v):
