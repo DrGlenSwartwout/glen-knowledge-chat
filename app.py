@@ -10938,6 +10938,14 @@ def console_biofield_portal_page():
     return resp
 
 
+@app.route("/console/portal-links")
+def console_portal_links_page():
+    resp = send_from_directory(STATIC, "console-portal-links.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/console/biofield-intake")
 def console_biofield_intake():
     """Launcher: bounce the browser to the LOCAL Biofield Intake portal (the voice
@@ -12971,6 +12979,68 @@ def api_console_biofield_load():
     return jsonify({"found": True, "name": rec.get("name") or "",
                     "content": rec.get("content") or {}, "has_token": True,
                     "scan_dates": [], "scan_date": None})
+
+
+@app.route("/api/console/portal-links", methods=["GET"])
+def api_console_portal_links():
+    """Console lookup table: every client portal (email, name, updated, whether a
+    stable link is on file)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import client_portal as _cp
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portals = _cp.list_portals(cx)
+    return jsonify({"ok": True, "portals": portals})
+
+
+@app.route("/api/console/portal-link", methods=["GET"])
+def api_console_portal_link():
+    """Return the /portal/<token> link for one client by email (reuses the stable
+    token; re-mints only if just a hash was on file). Never creates a portal for an
+    email that doesn't already have one."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    from dashboard import client_portal as _cp
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        link, reissued = _cp.portal_link_for(cx, email, PUBLIC_BASE_URL)
+    if not link:
+        return jsonify({"ok": True, "found": False, "email": email})
+    return jsonify({"ok": True, "found": True, "email": email,
+                    "link": link, "reissued": reissued})
+
+
+@app.route("/api/console/portal-link/resend", methods=["POST"])
+def api_console_portal_link_resend():
+    """Email a client their portal link (for someone who lost it and won't
+    self-serve at /portal/login). Reuses the stable link."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    from dashboard import client_portal as _cp
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        link, reissued = _cp.portal_link_for(cx, email, PUBLIC_BASE_URL)
+        row = cx.execute("SELECT name FROM client_portals WHERE email=?", (email,)).fetchone()
+        name = (row[0] if row else "") or ""
+    if not link:
+        return jsonify({"ok": False, "error": "no portal for that email"}), 404
+    first = (" " + name.split()[0]) if name.strip() else ""
+    login = PUBLIC_BASE_URL.rstrip("/") + "/portal/login"
+    sent_via, err = _send_full_report_email(
+        email, name, "Your Remedy Match portal link",
+        f"Aloha{first},\n\nHere is the link to your personal Remedy Match portal:\n\n{link}\n\n"
+        f"Bookmark it — it's your home base. If you ever lose it, you can also sign in "
+        f"anytime at {login} with this email.\n\n— Dr. Glen Swartwout")
+    return jsonify({"ok": bool(sent_via), "sent_via": sent_via, "error": err,
+                    "link": link, "reissued": reissued})
 
 
 @app.route("/api/console/biofield/review-queue", methods=["GET"])
