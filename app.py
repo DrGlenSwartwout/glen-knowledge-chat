@@ -4547,10 +4547,8 @@ _ALT_PAY = {
 }
 
 
-# Quantity pricing for capsule Functional Formulations ($69.97 base). Per-unit price
-# drops by quantity (Glen 2026-05-30): 3+ $59.97, 6+ $49.97, 12+ $39.97. Applies only
-# to products flagged qty_pricing=true in products.json (capsule + $69.97).
-_QTY_TIERS = [(12, 3997), (6, 4997), (3, 5997), (1, 6997)]   # (min_qty, unit_cents) desc
+# Functional Formulations ($69.97 base) — volume pricing is OPEN TO ALL, driven by the
+# order-wide FF quantity through the pricing engine (_inhouse_ff_unit_cents below).
 _FF_BASE_CENTS = 6997     # $69.97 — the functional-formulation (FF) capsule regular price
 _FF_SRP_CENTS  = 8000     # $80.00 — FF SRP/Value anchor (shown above the $69.97 Regular)
 _FORMATS = [
@@ -4564,28 +4562,12 @@ def _qty_eligible(p):
     return bool(p.get("qty_pricing")) and p.get("price_cents") == 6997 and not p.get("info_only")
 
 
-def _qty_unit_cents(p, qty, member=False):
-    """Per-unit price honoring the capsule quantity tiers for eligible products.
-    Quantity ("member") pricing is PAID-MEMBERS ONLY — non-members pay the regular
-    list price regardless of quantity. Default member=False so any flow that forgets
-    to pass membership charges the regular price (never leaks a discount)."""
-    if not member or not _qty_eligible(p):
-        return p.get("price_cents", 6997)
-    for min_q, unit in _QTY_TIERS:
-        if qty >= min_q:
-            return unit
-    return p.get("price_cents", 6997)
-
-
-def _inhouse_ff_unit_cents(p, total_ff_qty, settings, member=False):
+def _inhouse_ff_unit_cents(p, total_ff_qty, settings):
     """Effective in-house unit price (cents) for a $69.97 functional-formulation
     capsule (_qty_eligible): the order-wide volume rate driven by the TOTAL FF
-    capsule quantity (1 bottle = 1 month). The linear volume curve is monotonic,
-    so the total-quantity rate is the best price each FF line can get. Clamped at
-    the wholesale discount floor so a console max above 43% can't breach it.
-    Volume ("member") pricing is PAID-MEMBERS ONLY; non-members (and non-eligible
-    products) return the list price (callers handle overrides)."""
-    if not member or not _qty_eligible(p):
+    capsule quantity (1 bottle = 1 month). OPEN TO ALL. Clamped at the wholesale
+    discount floor. Non-FF products return list price."""
+    if not _qty_eligible(p):
         return int(p.get("price_cents") or 0)
     from dashboard import pricing as _pricing
     pct = _pricing.volume_pct(int(total_ff_qty or 0), settings)
@@ -4604,13 +4586,12 @@ def _inhouse_total_ff_qty(lines_in):
     return tot
 
 
-def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, member=False):
-    """Per-line unit price for the in-house form: an explicit owner override wins;
-    else FF capsules get the volume rate (PAID MEMBERS ONLY), everything else its
-    list price."""
+def _inhouse_line_unit_cents(p, override, total_ff_qty, settings):
+    """Explicit owner override wins; else FF capsules get the order-wide volume rate
+    (open to all), everything else its list price."""
     if override not in (None, ""):
         return int(override)
-    return _inhouse_ff_unit_cents(p, total_ff_qty, settings, member=member)
+    return _inhouse_ff_unit_cents(p, total_ff_qty, settings)
 
 
 def _is_paid_member(email):
@@ -4629,49 +4610,6 @@ def _is_paid_member(email):
         return membership_category(email) != "trial"
     except Exception:
         return False
-
-
-def _member_unit_prices(item):
-    """(regular_unit_cents, member_unit_cents, qty) for one order/invoice line, or
-    None when the line isn't a volume-eligible product. Resolves the product by
-    slug first (invoice lines carry it), else by canonical catalog NAME (order
-    items_rec store p["name"], no slug). Per-line _qty_unit_cents is the canonical
-    "missed discount" — exactly the pricing the portal reorder path
-    (_portal_priced_lines) applies, the trial buyer's actual reorder channel."""
-    from dashboard import practitioner_portal as _pp
-    cat = (_PRODUCTS.get("products") or {})
-    slug = (item.get("slug") or "").strip() or _pp.name_to_slug((item.get("name") or "").strip(), cat)
-    p = _get_product(slug) if slug else None
-    if not p or not _qty_eligible(p):
-        return None
-    try:
-        qty = max(1, min(int(item.get("qty") or 1), 99))
-    except (TypeError, ValueError):
-        qty = 1
-    return (_qty_unit_cents(p, qty, member=False), _qty_unit_cents(p, qty, member=True), qty)
-
-
-def _missed_member_discount_cents(lines):
-    """Σ over volume-eligible lines of max(0, regular − member) × qty — the quantity
-    discount a non-member leaves on the table on this set of lines (the invoice
-    'become a member and get $X back' figure)."""
-    total = 0
-    for it in (lines or []):
-        pr = _member_unit_prices(it)
-        if pr:
-            reg, mem, qty = pr
-            total += max(0, reg - mem) * qty
-    return max(0, total)
-
-
-def _trial_credit_for_email(cx, email):
-    """Accrued trial-upgrade credit (cents) for a $1-trial buyer: the member volume
-    discount they left on the table on in-window remedy orders, priced with the real
-    catalog. Pure math lives in dashboard.trial_credit; this wires the pricing
-    callback. Returns 0 when there's no trial order / nothing eligible."""
-    from dashboard import trial_credit as _tc
-    return _tc.accrued_credit_cents(
-        cx, email, price_line=lambda item, order: _member_unit_prices(item) or (0, 0, 0))
 
 
 # Recurring membership tiers (Group Coaching). One QBO Item, price set per tier.
@@ -5192,9 +5130,14 @@ def begin_product_data(slug):
     ingredients = p.get("ingredients") or card.get("ingredients", [])
     qty_tiers, formats = None, None
     if _qty_eligible(p):
-        qty_tiers = [{"min": m, "unit_cents": u, "unit": f"${u/100:.2f}",
-                      "save": ((6997 - u) // 100) if u < 6997 else 0}
-                     for m, u in [(1, 6997), (3, 5997), (6, 4997), (12, 3997)]]
+        from dashboard import pricing as _pricing
+        _s = _pricing.load_settings(_pricing_settings())
+        _base = int(p["price_cents"])
+        qty_tiers = []
+        for m in (1, 3, 6, 12):
+            u = int(round(_base * (1 - _pricing.volume_pct(m, _s) / 100.0)))
+            qty_tiers.append({"min": m, "unit_cents": u, "unit": f"${u/100:.2f}",
+                              "save": ((_base - u) // 100) if u < _base else 0})
         formats = _FORMATS
     data = {
         "slug": slug, "name": p["name"],
@@ -6807,159 +6750,99 @@ def begin_checkout(slug):
                         "error": "Please add your name and agree to our Terms "
                                  "to place an order."}), 403
     session_id = request.cookies.get("amg_session", "")
-    if os.environ.get("PRICING_ENGINE_CHECKOUT", "").strip().lower() in ("1", "true", "yes", "on"):
-        from dashboard import qbo_billing as qb
+    from dashboard import qbo_billing as qb
+    try:
+        redeem = int((data.get("points_to_redeem_cents") or 0))
+    except (TypeError, ValueError):
+        redeem = 0
+    if redeem > 0:
+        from dashboard import points as _points
+        with sqlite3.connect(LOG_DB) as _bcx:
+            _points.init_points_table(_bcx)
+            redeem = min(redeem, _points.balance(_bcx, email))
+    _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(data.get("referral_code"), email)
+    _coupon_code = (data.get("coupon_code") or "").strip() or _best_active_self_coupon_code(email, slug)
+    _self_pct, _self_coupon = _resolve_self_coupon_pct(_coupon_code, slug)
+    _gift_pct, _gift_coupon = _resolve_gift_coupon_pct((data.get("gift") or "").strip(), email)
+    # a gift code is product-bound — only honor it when buying the right product
+    if _gift_coupon and _gift_coupon.get("product_slug") != slug:
+        _gift_pct, _gift_coupon = 0, None
+    _eff_pct = max(_ref_pct or 0, _self_pct or 0, _gift_pct or 0)
+    try:
+        pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
+                         coupon_pct=_eff_pct,
+                         points_to_redeem_cents=redeem)
+    except CheckoutError as ce:
+        return jsonify({"ok": False, "error": str(ce)}), 400
+    cust = qb.find_or_create_customer(email, name)
+    allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
+    inv = qb.create_invoice(cust, pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+                            allow_online_pay=allow_online, email_to=email,
+                            discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+    _gift_won = bool(_gift_coupon and _gift_pct >= max(_ref_pct or 0, _self_pct or 0))
+    if not _gift_won:
+        _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
+    if _self_coupon and _self_pct >= (_ref_pct or 0) and _self_pct > (_gift_pct or 0):
         try:
-            redeem = int((data.get("points_to_redeem_cents") or 0))
-        except (TypeError, ValueError):
-            redeem = 0
-        if redeem > 0:
-            from dashboard import points as _points
-            with sqlite3.connect(LOG_DB) as _bcx:
-                _points.init_points_table(_bcx)
-                redeem = min(redeem, _points.balance(_bcx, email))
-        _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(data.get("referral_code"), email)
-        _coupon_code = (data.get("coupon_code") or "").strip() or _best_active_self_coupon_code(email, slug)
-        _self_pct, _self_coupon = _resolve_self_coupon_pct(_coupon_code, slug)
-        _gift_pct, _gift_coupon = _resolve_gift_coupon_pct((data.get("gift") or "").strip(), email)
-        # a gift code is product-bound — only honor it when buying the right product
-        if _gift_coupon and _gift_coupon.get("product_slug") != slug:
-            _gift_pct, _gift_coupon = 0, None
-        _eff_pct = max(_ref_pct or 0, _self_pct or 0, _gift_pct or 0)
+            from dashboard import coupons as _coupons
+            with _db_lock, sqlite3.connect(LOG_DB) as _ccx:
+                _coupons.mark_redeemed(_ccx, _self_coupon["code"], order_ref=inv.get("Id"))
+        except Exception as e:  # noqa: BLE001
+            print(f"[coupons] redeem-mark failed: {e!r}", flush=True)
+    if _gift_won:
         try:
-            pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
-                             coupon_pct=_eff_pct,
-                             points_to_redeem_cents=redeem)
-        except CheckoutError as ce:
-            return jsonify({"ok": False, "error": str(ce)}), 400
-        cust = qb.find_or_create_customer(email, name)
-        allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
-        inv = qb.create_invoice(cust, pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-                                allow_online_pay=allow_online, email_to=email,
-                                discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
-        _gift_won = bool(_gift_coupon and _gift_pct >= max(_ref_pct or 0, _self_pct or 0))
-        if not _gift_won:
-            _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
-        if _self_coupon and _self_pct >= (_ref_pct or 0) and _self_pct > (_gift_pct or 0):
-            try:
-                from dashboard import coupons as _coupons
-                with _db_lock, sqlite3.connect(LOG_DB) as _ccx:
-                    _coupons.mark_redeemed(_ccx, _self_coupon["code"], order_ref=inv.get("Id"))
-            except Exception as e:  # noqa: BLE001
-                print(f"[coupons] redeem-mark failed: {e!r}", flush=True)
-        if _gift_won:
-            try:
-                from dashboard import coupons as _coupons
-                from dashboard import referrals as _rf
-                with _db_lock, sqlite3.connect(LOG_DB) as _gcx:
-                    _coupons.mark_redeemed(_gcx, _gift_coupon["code"], order_ref=inv.get("Id"))
-                    _rf.record_redemption(_gcx, _gift_coupon["code"], _gift_coupon["email"], email, inv.get("Id"))
-            except Exception as e:  # noqa: BLE001
-                print(f"[coupons] gift redeem/attrib failed: {e!r}", flush=True)
-        out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
-               "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt"),
-               "method": method, "customer_id": cust.get("Id"),
-               "pay_link": qb.get_invoice_pay_link(inv)}
-        try:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
-                cx.execute("INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
-                           "VALUES (?,?,?,?,?,?,?)",
-                           (begin_funnel._now(), session_id, email, "purchase",
-                            f"buy-{slug}-{method}", "", ""))
-                cx.commit()
-        except Exception:
-            pass
-        _ingest_order(source="funnel", external_ref=inv.get("Id"), email=email, name=name,
-                      items=pc["items_rec"],
-                      total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
-                      address=ship, channel="retail", get_cents=pc["priced"]["get_cents"],
-                      discount_cents=pc["discount_cents"],
-                      points_redeemed_cents=pc["points_redeemed_cents"],
-                      shipping_cents=pc["shipping_cents"])
-        if method in ("zelle", "wise"):
-            out["pay_instructions"] = _ALT_PAY.get(method, {})
-        elif method == "card" and _STRIPE_ACTIVE:
-            # Group-bundle opt-in: when the flag is on AND the buyer opted in AND the buyer
-            # is a PAID Biofield Analysis client (designed-program gate; the free E4L scan
-            # does not qualify) AND the cart carries >=1 program month, grant 1 free
-            # live-group month per program month (capped at 3). Vaults the card so the
-            # membership can auto-continue.
-            _gb_months = 0
-            if (os.environ.get("GROUP_BUNDLE_ENABLED") and bool(data.get("group_bundle"))
-                    and _has_paid_biofield(email)):
-                from dashboard import group_bundle
-                _gb_months = group_bundle.included_group_months(
-                    pc["priced"].get("volume_months", 0))
-            out["stripe_url"] = _stripe_checkout_url_for_retail(
-                out, email, slug, group_bundle_months=_gb_months)
-            if _STRIPE_ACTIVE and not out.get("stripe_url"):
-                out["payment_error"] = _CARD_UNAVAILABLE
-        try:
-            disp = (request.cookies.get("rm_dispensary") or "").strip()
-            if disp:
-                _record_dispensary_sale(disp, email, qty, inv.get("Id"))
-        except Exception as e:
-            print(f"[dispensary] hook: {e!r}", flush=True)
-        return jsonify(out)
-    # else: legacy body unchanged
-    else:
-        try:
-            from dashboard import qbo_billing as qb
-            cust = qb.find_or_create_customer(email, name)
-            unit = round(_qty_unit_cents(p, qty, _is_paid_member(email)) / 100.0, 2)   # capsule quantity tiers (paid members only)
-            desc = p["name"]
-            fmt_label = next((f["label"] for f in _FORMATS if f["id"] == fmt), "")
-            if fmt and fmt != "bottle" and fmt_label:
-                desc = f"{p['name']} ({fmt_label})"
-            allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
-            from dashboard import tax as _tax
-            subtotal_cents = int(_qty_unit_cents(p, qty, _is_paid_member(email))) * qty
-            # Absorb-and-track: GET is recorded on the order (below), NOT added to the
-            # invoice — the customer pays the all-in price.
-            get_cents = _tax.compute_get_cents(
-                subtotal_cents, channel="retail", ship_to_state=ship.get("state", ""))
-            inv = qb.create_invoice(
-                cust,
-                [{"name": p["name"], "amount": unit, "qty": qty,
-                  "item_id": p.get("qbo_item_id"), "description": desc}],
-                allow_online_pay=allow_online, email_to=email)
-            # best-effort journey log (never break checkout)
-            try:
-                with _db_lock, sqlite3.connect(LOG_DB) as cx:
-                    cx.execute("INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
-                               "VALUES (?,?,?,?,?,?,?)",
-                               (begin_funnel._now(), session_id, email, "purchase",
-                                f"buy-{slug}-{method}", "", ""))
-                    cx.commit()
-            except Exception:
-                pass
-            out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
-                   "doc_number": inv.get("DocNumber"),
-                   "total": inv.get("TotalAmt"), "method": method,
-                   "pay_link": qb.get_invoice_pay_link(inv)}
-            out["customer_id"] = cust.get("Id")
-            _ingest_order(source="funnel", external_ref=inv.get("Id"), email=email, name=name,
-                          items=[{"name": p["name"], "qty": qty, "desc": desc}],
-                          total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
-                          address=ship, channel="retail", get_cents=get_cents)
-            if method in ("zelle", "wise"):
-                out["pay_instructions"] = _ALT_PAY.get(method, {})
-                out["earns_points"] = True   # awarded on confirmed payment (reconciliation, Phase 2)
-            elif method == "card" and _STRIPE_ACTIVE:
-                out["stripe_url"] = _stripe_checkout_url_for_retail(out, email, slug)
-                if not out.get("stripe_url"):
-                    out["payment_error"] = _CARD_UNAVAILABLE
-            # dispensary attribution: credit the referring practitioner $20/bottle (best-effort,
-            # idempotent on the invoice id; never break a customer checkout)
-            try:
-                disp = (request.cookies.get("rm_dispensary") or "").strip()
-                if disp:
-                    _record_dispensary_sale(disp, email, qty, inv.get("Id"))
-            except Exception as e:
-                print(f"[dispensary] hook: {e!r}", flush=True)
-            return jsonify(out)
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            from dashboard import coupons as _coupons
+            from dashboard import referrals as _rf
+            with _db_lock, sqlite3.connect(LOG_DB) as _gcx:
+                _coupons.mark_redeemed(_gcx, _gift_coupon["code"], order_ref=inv.get("Id"))
+                _rf.record_redemption(_gcx, _gift_coupon["code"], _gift_coupon["email"], email, inv.get("Id"))
+        except Exception as e:  # noqa: BLE001
+            print(f"[coupons] gift redeem/attrib failed: {e!r}", flush=True)
+    out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
+           "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt"),
+           "method": method, "customer_id": cust.get("Id"),
+           "pay_link": qb.get_invoice_pay_link(inv)}
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute("INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
+                       "VALUES (?,?,?,?,?,?,?)",
+                       (begin_funnel._now(), session_id, email, "purchase",
+                        f"buy-{slug}-{method}", "", ""))
+            cx.commit()
+    except Exception:
+        pass
+    _ingest_order(source="funnel", external_ref=inv.get("Id"), email=email, name=name,
+                  items=pc["items_rec"],
+                  total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                  address=ship, channel="retail", get_cents=pc["priced"]["get_cents"],
+                  discount_cents=pc["discount_cents"],
+                  points_redeemed_cents=pc["points_redeemed_cents"],
+                  shipping_cents=pc["shipping_cents"])
+    if method in ("zelle", "wise"):
+        out["pay_instructions"] = _ALT_PAY.get(method, {})
+    elif method == "card" and _STRIPE_ACTIVE:
+        # Group-bundle opt-in: when the flag is on AND the buyer opted in AND the buyer
+        # is a PAID Biofield Analysis client (designed-program gate; the free E4L scan
+        # does not qualify) AND the cart carries >=1 program month, grant 1 free
+        # live-group month per program month (capped at 3). Vaults the card so the
+        # membership can auto-continue.
+        _gb_months = 0
+        if (os.environ.get("GROUP_BUNDLE_ENABLED") and bool(data.get("group_bundle"))
+                and _has_paid_biofield(email)):
+            from dashboard import group_bundle
+            _gb_months = group_bundle.included_group_months(
+                pc["priced"].get("volume_months", 0))
+        out["stripe_url"] = _stripe_checkout_url_for_retail(
+            out, email, slug, group_bundle_months=_gb_months)
+        if _STRIPE_ACTIVE and not out.get("stripe_url"):
+            out["payment_error"] = _CARD_UNAVAILABLE
+    try:
+        disp = (request.cookies.get("rm_dispensary") or "").strip()
+        if disp:
+            _record_dispensary_sale(disp, email, qty, inv.get("Id"))
+    except Exception as e:
+        print(f"[dispensary] hook: {e!r}", flush=True)
+    return jsonify(out)
 
 
 def _fulfill_biofield_trial(session_id):
@@ -11400,8 +11283,8 @@ def _member_name_for(cx, email):
 
 @app.route("/api/console/members", methods=["GET"])
 def api_console_members():
-    """Trial / Full / Paused membership board. Trial rows carry the accrued
-    upgrade credit (the conversion call-list)."""
+    """Trial / Full / Paused membership board. The trial-credit accrual machinery
+    has been retired (credit is always 0); rows are grouped by category only."""
     if CONSOLE_SECRET:
         _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
         if _key != CONSOLE_SECRET and not _owner_token_ok(_key):
@@ -11412,17 +11295,16 @@ def api_console_members():
         cx.row_factory = sqlite3.Row
         _subs.migrate_add_failed_count(cx)
         _subs.migrate_add_membership_columns(cx)
-        # One row per member (list_active_memberships dedupes by email). N+1 here
-        # (_member_name_for + _trial_credit_for_email per trial row) is fine at
-        # current member scale; revisit if the trial cohort grows large.
+        # One row per member (list_active_memberships dedupes by email).
         for s in _subs.list_active_memberships(cx):
             cat = _subs.classify_sub(s)
             email = s.get("email") or ""
-            credit = _trial_credit_for_email(cx, email) if cat == "trial" else 0
+            credit = 0
             row = _subs.member_board_row(s, name=_member_name_for(cx, email),
                                          credit_cents=credit)
             buckets[cat].append(row)  # cat is always trial/full/paused (pre-seeded)
-    # Trial = the call-list: highest accrued credit first.
+    # credit_cents is always 0 now (accrual retired); sort is a harmless no-op
+    # kept for row-shape stability.
     buckets["trial"].sort(key=lambda r: r.get("credit_cents", 0), reverse=True)
     counts = {k: len(v) for k, v in buckets.items()}
     return jsonify({"buckets": buckets, "counts": counts})
@@ -12384,11 +12266,13 @@ def _enabled_offer_keys() -> set:
     return keys
 
 
-def _portal_priced_lines(items, member=False):
+def _portal_priced_lines(items):
     """Build QBO invoice lines from a portal's reorder items, honoring an optional
-    per-item ``price_cents`` override (the client's practitioner-special price);
-    falls back to catalog/volume pricing when no override is present.
-    Returns ``(lines, items_rec, subtotal_cents)``."""
+    per-item ``price_cents`` override (the practitioner-special price); else the
+    order-wide volume rate (open to all). Returns (lines, items_rec, subtotal_cents)."""
+    from dashboard import pricing as _pricing
+    settings = _pricing.load_settings(_pricing_settings())
+    total_ff_qty = _inhouse_total_ff_qty(items or [])
     lines, items_rec, subtotal_cents = [], [], 0
     for it in (items or []):
         slug = (it.get("slug") or "").strip()
@@ -12399,14 +12283,10 @@ def _portal_priced_lines(items, member=False):
             qty = max(1, min(int(it.get("qty", 1) or 1), 99))
         except Exception:
             qty = 1
-        override = it.get("price_cents")
-        unit_cents = int(override) if override is not None else int(_qty_unit_cents(p, qty, member))
+        unit_cents = _inhouse_line_unit_cents(p, it.get("price_cents"), total_ff_qty, settings)
         subtotal_cents += unit_cents * qty
         lines.append({"name": p["name"], "amount": round(unit_cents / 100.0, 2),
                       "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
-        # Persist per-line pricing on the stored order so the invoice/print page shows
-        # real line prices (the order total alone isn't enough). slug lets the invoice
-        # resolve Value/Regular anchors; unit_cents is the effective per-bottle price.
         items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"],
                           "slug": slug, "unit_cents": unit_cents, "line_cents": unit_cents * qty})
     return lines, items_rec, subtotal_cents
@@ -12514,16 +12394,10 @@ def api_client_portal(token):
     from dashboard import notify_state as _ns
     with sqlite3.connect(LOG_DB) as _cxn:
         notify_on = (_ns.get_state(_cxn, email_for_reports)["opt_status"] != "out") if email_for_reports else True
-    # Trial-upgrade hook: a $1-trial buyer sees their accrued credit so far (lands
-    # as points when their membership continues). Only computed for trial members.
     membership_cat, trial_credit_cents = "none", 0
     if email_for_reports:
         try:
             membership_cat = membership_category(email_for_reports)
-            if membership_cat == "trial":
-                with sqlite3.connect(LOG_DB) as _cxtc:
-                    _cxtc.row_factory = sqlite3.Row
-                    trial_credit_cents = _trial_credit_for_email(_cxtc, email_for_reports)
         except Exception as e:
             print(f"[portal-credit] {email_for_reports}: {e!r}", flush=True)
     return jsonify({
@@ -12933,7 +12807,7 @@ def api_client_portal_checkout(token):
         return jsonify({"error": "not found"}), 404
     email = (portal.get("email") or "").strip().lower()
     items = (portal.get("content") or {}).get("reorder_items") or []
-    lines, items_rec, _subtotal = _portal_priced_lines(items, member=_is_paid_member(email))
+    lines, items_rec, _subtotal = _portal_priced_lines(items)
     if not lines:
         return jsonify({"error": "Your remedies are no longer available — please reach out and we'll help."}), 400
     if not _STRIPE_ACTIVE:
@@ -15105,70 +14979,21 @@ def reorder_checkout():
         cart = body
         body_address = {}
 
-    # ── Pricing-engine path (feature flag) ────────────────────────────────────
-    if os.environ.get("PRICING_ENGINE_CHECKOUT", "").strip().lower() in ("1", "true", "yes", "on"):
-        try:
-            ship = _resolve_ship_address(email, body_address or {})
-            requested_redeem = (body.get("points_to_redeem_cents") if isinstance(body, dict) else 0) or 0
-            referral_code = body.get("referral_code") if isinstance(body, dict) else None
-            try:
-                res = _checkout_cart(email, cart, ship=ship,
-                                     points_to_redeem_cents=requested_redeem,
-                                     referral_code=referral_code)
-            except CheckoutError as e:
-                return jsonify({"ok": False, "error": str(e)}), 400
-            out, stripe_url = res["out"], res["stripe_url"]
-            _pe = {"payment_error": _CARD_UNAVAILABLE} if (_STRIPE_ACTIVE and not stripe_url) else {}
-            return jsonify({"ok": True, "stripe_url": stripe_url, **out, **_pe})
-        except Exception as e:
-            app.logger.exception("reorder checkout (engine) failed")
-            return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
-    # ── Legacy path (existing code, unchanged) ────────────────────────────────
-    lines, items_rec, subtotal_cents = [], [], 0
-    for c in cart:
-        slug = (c.get("slug") or "").strip()
-        try:
-            qty = max(1, min(int(c.get("qty", 1) or 1), 99))
-        except Exception:
-            qty = 1
-        p = _get_product(slug) if slug else None
-        if not p:
-            continue
-        unit_cents = int(_qty_unit_cents(p, qty, _is_paid_member(email)))
-        subtotal_cents += unit_cents * qty
-        lines.append({"name": p["name"], "amount": round(unit_cents / 100.0, 2),
-                      "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
-        # Persist per-line pricing so the invoice/print page can show real line prices.
-        items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"],
-                          "slug": slug, "unit_cents": unit_cents, "line_cents": unit_cents * qty})
-    if not lines:
-        return jsonify({"ok": False,
-                        "error": "Your cart is empty or those items are no longer available."}), 400
     try:
-        ship = {}
-        with sqlite3.connect(LOG_DB) as cx:
-            cx.row_factory = sqlite3.Row
-            prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
-        if prior:
-            ship = prior[0].get("address") or {}
-        from dashboard import qbo_billing as _qb_local
-        from dashboard import tax as _tax
-        cust = _qb_local.find_or_create_customer(email, ship.get("name", ""))
-        get_cents = _tax.compute_get_cents(subtotal_cents, channel="retail",
-                                           ship_to_state=ship.get("state", ""))
-        inv = _qb_local.create_invoice(cust, lines, allow_online_pay=True, email_to=email)
-        out = {"invoice_id": inv.get("Id"), "customer_id": cust.get("Id"),
-               "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt")}
-        _ingest_order(source="reorder", external_ref=inv.get("Id"), email=email,
-                      name=ship.get("name", ""), items=items_rec,
-                      total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
-                      address=ship, channel="retail", get_cents=get_cents)
-        stripe_url = _stripe_checkout_url_for_reorder(out, email) if _STRIPE_ACTIVE else ""
+        ship = _resolve_ship_address(email, body_address or {})
+        requested_redeem = (body.get("points_to_redeem_cents") if isinstance(body, dict) else 0) or 0
+        referral_code = body.get("referral_code") if isinstance(body, dict) else None
+        try:
+            res = _checkout_cart(email, cart, ship=ship,
+                                 points_to_redeem_cents=requested_redeem,
+                                 referral_code=referral_code)
+        except CheckoutError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        out, stripe_url = res["out"], res["stripe_url"]
         _pe = {"payment_error": _CARD_UNAVAILABLE} if (_STRIPE_ACTIVE and not stripe_url) else {}
-        return jsonify({"ok": True, "stripe_url": stripe_url,
-                        "invoice_id": out["invoice_id"], "total": out["total"], **_pe})
+        return jsonify({"ok": True, "stripe_url": stripe_url, **out, **_pe})
     except Exception as e:
-        app.logger.exception("reorder checkout failed")
+        app.logger.exception("reorder checkout (engine) failed")
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
 
 
@@ -22657,27 +22482,8 @@ def cron_charge_subscriptions():
                         _ingest_order(source="membership", external_ref=res.get("id") or inv_id,
                                       email=sub["email"], items=[], total_cents=amount_cents,
                                       address={}, channel="retail")
-                        # Trial -> full conversion: this is the FIRST $99 charge iff
-                        # order_count is still 0 before advance_after_charge bumps it.
-                        # Hand back the volume discount the trial buyer left on the
-                        # table (30-day window) as loyalty points for their next order.
-                        was_trial = int(sub.get("order_count") or 0) == 0
                         _subs.advance_after_charge(cx, sid)
                         _subs.reset_failed_count(cx, sid)
-                        if was_trial:
-                            try:
-                                from dashboard import trial_credit as _tc
-                                from dashboard import points as _points
-                                _points.init_points_table(cx)
-                                _credit = _trial_credit_for_email(cx, sub["email"])
-                                if _credit > 0:
-                                    _points.credit(cx, sub["email"], value_cents=_credit,
-                                                   reason=_tc.CREDIT_REASON,
-                                                   order_ref=_tc.credit_order_ref(sub["email"]))
-                                    print(f"[sub-cron] trial-credit granted sub={sid} "
-                                          f"email={sub['email']} cents={_credit}", flush=True)
-                            except Exception as _tce:
-                                print(f"[sub-cron] trial-credit sub={sid}: {_tce!r}", flush=True)
                         updated = _subs.get(cx, sid)
                         try:
                             if updated and updated.get("next_charge_date"):
@@ -26779,14 +26585,13 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
                            discount_cents_in=None, points_redeem_cents_in=None):
     """Shared server-authoritative pricing for the in-house order builder AND the
     console invoice editor. Honors per-line unit_cents overrides; FF capsules get the
-    order-wide volume rate for paid members; shipping/GET via _price_cart (pickup → no
+    order-wide volume rate (open to all); shipping/GET via _price_cart (pickup → no
     shipping); a manual order discount; points capped to the customer's real balance.
     Returns a dict of items_rec + the pricing breakdown, or None when no line resolves
     to a real product. Raises CheckoutError for a ship-to the engine rejects."""
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
-    member = _is_paid_member((email or ""))  # gates volume pricing
     cart, items_rec, subtotal_list = [], [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
@@ -26794,7 +26599,7 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         if not p:
             continue
         qty = max(1, min(int(ln.get("qty") or 1), 99))
-        unit_cents = _inhouse_line_unit_cents(p, ln.get("unit_cents"), total_ff_qty, settings, member=member)
+        unit_cents = _inhouse_line_unit_cents(p, ln.get("unit_cents"), total_ff_qty, settings)
         line_cents = unit_cents * qty
         subtotal_list += line_cents
         cart.append({"slug": slug, "qty": qty})
@@ -26973,7 +26778,7 @@ def api_orders_manual():
         "zip": addr_in.get("zip") or "", "country": (addr_in.get("country") or "US").upper(),
     }
     # Server-authoritative pricing (shared with the console invoice editor): per-line
-    # overrides, FF volume rate for paid members, shipping/GET, discount, points.
+    # overrides, FF volume rate (open to all, not just paid members), shipping/GET, discount, points.
     try:
         priced = _price_inhouse_invoice(
             lines_in, email=customer.get("email"), pickup=pickup, ship=ship,
@@ -27056,9 +26861,8 @@ def api_orders_price_preview():
     settings = _pricing.load_settings(_pricing_settings())
     _body = request.get_json(silent=True) or {}
     lines_in = _body.get("lines") or []
-    member = _is_paid_member((_body.get("email") or ""))  # volume pricing = members only
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
-    vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2) if member else 0.0
+    vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2)
     out_lines, subtotal = [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
@@ -27069,7 +26873,7 @@ def api_orders_price_preview():
         ov = ln.get("unit_cents")
         is_ff = _qty_eligible(p)
         list_cents = int(p.get("price_cents") or 0)
-        unit = _inhouse_line_unit_cents(p, ov, total_ff_qty, settings, member=member)
+        unit = _inhouse_line_unit_cents(p, ov, total_ff_qty, settings)
         overridden = ov not in (None, "")
         line_cents = unit * qty
         subtotal += line_cents
@@ -27138,17 +26942,7 @@ def _invoice_summary(order):
     """Customer-safe view — no person_id, notes, phone, or full address."""
     lines = order.get("items") or []
     subtotal = sum(int(l.get("line_cents") or 0) for l in lines)
-    # Upgrade hook: the quantity discount this buyer missed by not being a paid
-    # member. Shown only to non-paid-members (none/trial) — paused/full already get
-    # volume pricing, so they'd see no "become a member" pitch. (Spec §4 says
-    # "non-full"; refined to not-a-paid-member so paused members are excluded too.)
     member_credit_cents = 0
-    try:
-        if not _is_paid_member((order.get("email") or "").strip().lower()):
-            member_credit_cents = _missed_member_discount_cents(lines)
-    except Exception as e:
-        print(f"[invoice-credit] {order.get('external_ref')}: {e!r}", flush=True)
-        member_credit_cents = 0
     return {
         "member_credit_cents": member_credit_cents,
         "points_balance_cents": _invoice_points_balance(order),

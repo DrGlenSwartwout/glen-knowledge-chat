@@ -334,8 +334,9 @@ def category_for(cx, email) -> str:
       trial   -> active membership sub, not paused, order_count == 0 (free first month)
       none    -> no active membership sub
 
-    'full' is the gate for paid-member volume pricing; 'trial' pays regular and
-    accrues the missed discount as upgrade credit.
+    Product volume/quantity pricing is now open to everyone regardless of category
+    (member-gating and the trial upgrade-credit accrual were both retired); this
+    classification still drives the membership board and pause/cadence logic.
     """
     rows = active_memberships_by_email(cx, email)
     if not rows:

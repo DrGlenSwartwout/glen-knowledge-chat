@@ -1,12 +1,12 @@
 """Portal trial-credit display (PR4): /api/portal/<token> exposes
-membership_category + trial_credit_cents so the portal can show a trial buyer the
-upgrade credit they've accrued so far.
+membership_category + trial_credit_cents. The upgrade-credit accrual machinery has
+since been retired, so trial_credit_cents is always 0 — these tests pin that.
 """
 import json
 import sqlite3
 import pytest
 
-EXPECTED = 3000  # Bone Builder qty 3: (6997-5997)*3
+EXPECTED = 0  # trial-credit machinery retired; always 0
 
 
 @pytest.fixture

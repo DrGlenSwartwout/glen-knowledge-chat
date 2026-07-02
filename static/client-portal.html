@@ -429,18 +429,6 @@ function render(d, v){
     </div>`;
   }
 
-  // Trial-upgrade hook: show the member discount we're setting aside while they're
-  // on the trial (becomes points when their membership continues). Trial only.
-  if(d.membership_category === "trial"){
-    const tc = d.trial_credit_cents||0;
-    const head = tc>0 ? `Your membership credit so far: ${esc(money(tc))}`
-                      : `Your membership credit is building`;
-    html += `<div class="card" style="border-left:4px solid #f79009;background:#fffbf3">
-      <h2 style="margin:0 0 .3rem">${head}</h2>
-      <div class="sub" style="margin:0">You're on a trial, so you're paying the regular price — but we're setting aside the member discount you'd be getting. It becomes reward points toward your next remedy order when your membership continues.</div>
-    </div>`;
-  }
-
   // Account snapshot — always shown when we have an identity.
   if(v && v.account){
     const a = v.account;

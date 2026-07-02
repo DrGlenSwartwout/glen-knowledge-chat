@@ -117,9 +117,10 @@ def test_gated_question_empty_is_open(monkeypatch):
 
 def _stub_checkout_deps(app_module, monkeypatch):
     monkeypatch.setattr(app_module, "_get_product",
-                        lambda slug: {"name": "Test Remedy", "info_only": False,
-                                      "qbo_item_id": None})
-    monkeypatch.setattr(app_module, "_qty_unit_cents", lambda p, qty: 1000)
+                        lambda slug: {"slug": "test-remedy", "name": "Test Remedy",
+                                      "info_only": False, "qbo_item_id": None,
+                                      "price_cents": 1000})
+    monkeypatch.setattr(app_module._shipping, "quote", lambda b: {"shipping_cents": 0})
     monkeypatch.setattr(app_module, "_ingest_order", lambda **k: None)
     fake_qb = types.ModuleType("dashboard.qbo_billing")
     fake_qb.find_or_create_customer = lambda email, name: {"Id": "C1"}
