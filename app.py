@@ -26701,7 +26701,8 @@ def api_customers_search():
 
 
 def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
-                           discount_cents_in=None, points_redeem_cents_in=None):
+                           discount_cents_in=None, points_redeem_cents_in=None,
+                           adjustment_cents_in=None):
     """Shared server-authoritative pricing for the in-house order builder AND the
     console invoice editor. Honors per-line unit_cents overrides; FF capsules get the
     order-wide volume rate (open to all); shipping/GET via _price_cart (pickup → no
@@ -26746,7 +26747,11 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         shipping_cents, get_cents = 0, 0
     discount_cents = (max(0, int(discount_cents_in))
                       if discount_cents_in not in (None, "") else 0)
-    total_cents = max(0, subtotal_list - discount_cents) + shipping_cents
+    # Manual adjustment is SIGNED: negative = credit (lowers total), positive =
+    # debit/surcharge (raises it). Applied on top of the rule-based discount.
+    adjustment_cents = (int(adjustment_cents_in)
+                        if adjustment_cents_in not in (None, "") else 0)
+    total_cents = max(0, subtotal_list - discount_cents + adjustment_cents) + shipping_cents
     points_redeemed_cents = 0
     if points_redeem_cents_in not in (None, ""):
         from dashboard import points as _points
@@ -26761,7 +26766,8 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         total_cents -= points_redeemed_cents
     return {"items_rec": items_rec, "cart": cart, "subtotal_cents": subtotal_list,
             "shipping_cents": shipping_cents, "get_cents": get_cents,
-            "discount_cents": discount_cents, "points_redeemed_cents": points_redeemed_cents,
+            "discount_cents": discount_cents, "adjustment_cents": adjustment_cents,
+            "points_redeemed_cents": points_redeemed_cents,
             "total_cents": total_cents}
 
 
@@ -26783,11 +26789,20 @@ def _push_invoice_edit_to_qbo(external_ref, priced):
                            "qty": it["qty"], "item_id": (p or {}).get("qbo_item_id"),
                            "description": it["name"]})
         qlines += _shipping_line(priced["shipping_cents"])
-        _qb_local.replace_invoice_lines(
-            ref, qlines,
-            discount_cents=priced["discount_cents"] + priced["points_redeemed_cents"],
-            tax_cents=0)
-        return {"pushed": True}
+        # Fold the signed manual adjustment into the QBO discount so the QBO total
+        # matches the console total: a credit (negative) raises the discount; a debit
+        # (positive) lowers it. QBO's DiscountLineDetail can't go negative, so a
+        # surcharge that exceeds the discount can't be mirrored — warn in that case.
+        adj = int(priced.get("adjustment_cents") or 0)
+        qbo_discount = priced["discount_cents"] + priced["points_redeemed_cents"] - adj
+        warn = None
+        if qbo_discount < 0:
+            warn = ("QBO can't show a surcharge larger than the discount as a discount "
+                    f"line — the QBO total may be ${abs(qbo_discount) / 100:.2f} under the "
+                    "console total. Add a manual QBO adjustment line if needed.")
+            qbo_discount = 0
+        _qb_local.replace_invoice_lines(ref, qlines, discount_cents=qbo_discount, tax_cents=0)
+        return {"pushed": True, **({"warning": warn} if warn else {})}
     except Exception as e:
         return {"pushed": False, "warning": f"QBO sync failed: {type(e).__name__}: {e}"}
 
@@ -26829,6 +26844,7 @@ def api_orders_edit(oid):
             priced = _price_inhouse_invoice(
                 lines_in, email=email, pickup=pickup, ship=ship,
                 discount_cents_in=body.get("discount_cents"),
+                adjustment_cents_in=body.get("adjustment_cents"),
                 points_redeem_cents_in=None)
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
@@ -26849,6 +26865,7 @@ def api_orders_edit(oid):
             items=priced["items_rec"], total_cents=priced["total_cents"],
             channel=("pickup" if pickup else (order.get("channel") or "retail")),
             get_cents=priced["get_cents"], discount_cents=priced["discount_cents"],
+            adjustment_cents=priced["adjustment_cents"],
             points_redeemed_cents=priced["points_redeemed_cents"],
             shipping_cents=priced["shipping_cents"],
             invoice_note=(note.strip() if isinstance(note, str) else None))
@@ -26865,6 +26882,7 @@ def api_orders_edit(oid):
     return jsonify({"ok": True, "order_id": oid, "qbo": qbo, "warning": warning,
                     "totals": {"subtotal_cents": priced["subtotal_cents"],
                                "discount_cents": priced["discount_cents"],
+                               "adjustment_cents": priced["adjustment_cents"],
                                "shipping_cents": priced["shipping_cents"],
                                "get_cents": priced["get_cents"],
                                "points_redeemed_cents": priced["points_redeemed_cents"],
@@ -26902,6 +26920,7 @@ def api_orders_manual():
         priced = _price_inhouse_invoice(
             lines_in, email=customer.get("email"), pickup=pickup, ship=ship,
             discount_cents_in=body.get("discount_cents"),
+            adjustment_cents_in=body.get("adjustment_cents"),
             points_redeem_cents_in=body.get("points_redeem_cents"))
     except CheckoutError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -26912,6 +26931,7 @@ def api_orders_manual():
     shipping_cents = priced["shipping_cents"]
     get_cents = priced["get_cents"]
     discount_cents = priced["discount_cents"]
+    adjustment_cents = priced["adjustment_cents"]
     points_redeemed_cents = priced["points_redeemed_cents"]
     total_cents = priced["total_cents"]
     # Approved review gifts: append as $0 lines (no price impact) — manual-create only.
@@ -26950,7 +26970,8 @@ def api_orders_manual():
                      "address2": ship["address2"], "city": ship["city"],
                      "state": ship["state"], "zip": ship["zip"], "country": ship["country"]},
             channel=("pickup" if pickup else "retail"), get_cents=get_cents,
-            discount_cents=discount_cents, shipping_cents=shipping_cents,
+            discount_cents=discount_cents, adjustment_cents=adjustment_cents,
+            shipping_cents=shipping_cents,
             points_redeemed_cents=points_redeemed_cents,
             invoice_note=((body.get("invoice_note") or "").strip() or None))
         if _gift_rows and oid:
@@ -26962,6 +26983,7 @@ def api_orders_manual():
     return jsonify({"ok": True, "order_id": oid, "external_ref": ext,
                     "method": (body.get("method") or ""),
                     "totals": {"subtotal_cents": subtotal_list, "discount_cents": discount_cents,
+                               "adjustment_cents": adjustment_cents,
                                "shipping_cents": shipping_cents, "get_cents": get_cents,
                                "points_redeemed_cents": points_redeemed_cents,
                                "total_cents": total_cents},
@@ -27071,6 +27093,7 @@ def _invoice_summary(order):
         "lines": [_invoice_line_view(l) for l in lines],
         "subtotal_cents": subtotal,
         "discount_cents": int(order.get("discount_cents") or 0),
+        "adjustment_cents": int(order.get("adjustment_cents") or 0),
         "shipping_cents": int(order.get("shipping_cents") or 0),
         "get_cents": int(order.get("get_cents") or 0),
         "points_redeemed_cents": int(order.get("points_redeemed_cents") or 0),
