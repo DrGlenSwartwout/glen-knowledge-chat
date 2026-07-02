@@ -110,6 +110,42 @@ def test_program_return_flag_off_grants_nothing(monkeypatch, tmp_path):
     assert n == 0
 
 
+def _post_biofield_webhook(app_module, monkeypatch, sid="cs_1"):
+    monkeypatch.delenv("STRIPE_WEBHOOK_SECRET", raising=False)
+    import json as _json
+    payload = _json.dumps({"type": "checkout.session.completed", "data": {"object": {"id": sid}}})
+    return app_module.app.test_client().post("/webhook/stripe", data=payload,
+                                             content_type="application/json")
+
+
+def test_program_webhook_grants_care_taster_closed_tab(monkeypatch, tmp_path):
+    """Safety net: the Stripe webhook grants the paid 30-day care window even when the
+    browser never lands on /begin/checkout-return (closed tab / dropped redirect)."""
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "PROGRAM_CARE_TASTER_ENABLED", True, raising=False)
+    _mock_paid_biofield_session(app_module, monkeypatch, email="buyer@x.com")
+    r = _post_biofield_webhook(app_module, monkeypatch)
+    assert r.status_code == 200
+    with sqlite3.connect(db) as cx:
+        n = cx.execute("SELECT COUNT(*) FROM memberships WHERE email='buyer@x.com' "
+                       "AND source='care_taster'").fetchone()[0]
+    assert n == 1
+    assert app_module._is_paid_member("buyer@x.com") is True
+
+
+def test_program_webhook_and_redirect_single_care_grant(monkeypatch, tmp_path):
+    """Webhook + redirect (any order) grants the care window exactly once."""
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "PROGRAM_CARE_TASTER_ENABLED", True, raising=False)
+    _mock_paid_biofield_session(app_module, monkeypatch, email="buyer@x.com")
+    _post_biofield_webhook(app_module, monkeypatch)
+    app_module.app.test_client().get("/begin/checkout-return?session_id=cs_1")
+    with sqlite3.connect(db) as cx:
+        n = cx.execute("SELECT COUNT(*) FROM memberships WHERE email='buyer@x.com' "
+                       "AND source='care_taster'").fetchone()[0]
+    assert n == 1
+
+
 def _grant(cx, email, source, days=90):
     from datetime import timedelta
     import uuid
