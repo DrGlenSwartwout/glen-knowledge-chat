@@ -1,31 +1,34 @@
-"""Prepay-ladder pricing — the single source of truth for membership prices.
+"""Continuous Care pricing — the single source of truth for Continuous Care terms.
 
-A prospective member can prepay 1/3/6/12 months up front at a progressive
-per-month discount ("commit now, save"). All money is in CENTS. This is a PURE
-module (no Flask, no Stripe, no DB) — term math delegates to
-subscriptions.add_months so tests run in isolation, mirroring subscriptions.py.
+Continuous Care is term-based and never auto-renews: a client buys a month, or
+prepays 3/6/12 months up front at a modest progressive discount graduated to
+"2 months free" at the annual term. All money is in CENTS. This is a PURE module
+(no Flask, no Stripe, no DB) — term math delegates to subscriptions.add_months so
+tests run in isolation, mirroring subscriptions.py.
 
-The 1-month tier IS the $99/mo anchor: MONTHLY_ANCHOR_CENTS is the reroute target
-for the membership-price hardcodes that used to live as bare 9900 literals in
-group_bundle.py / portal_offers.py (and 99.00 dollars in app.py's QBO tiers).
+The monthly term IS the $99/mo care rate: MONTHLY_ANCHOR_CENTS is the single
+source for that rate (also the reroute target for the $99/mo literals in
+group_bundle.py / portal_offers.py and app.py's QBO tier).
 """
 
 from dashboard import subscriptions as _subs
 
-# The $99/mo regular rate. Single source of truth for the membership fee.
+# The $99/mo Continuous Care rate. Single source of truth.
 MONTHLY_ANCHOR_CENTS = 9900
 
 # When a prepaid term ends, renewal is offered at a shallower (loyalty) rate than
-# the first-term deal so we don't train discount-waiting — default = the 6-month
-# ("Most Popular") per-month rate. Tunable; pending owner confirmation.
-RENEWAL_MONTHLY_CENTS = 7500
+# the annual "2 months free" deal so we don't train discount-waiting — default =
+# the 6-month per-month rate ($91/mo). Tunable.
+RENEWAL_MONTHLY_CENTS = 9100
 
-# Ladder rungs, in ascending term order. price_cents is the one-time prepay total.
+# Continuous Care terms, in ascending order. price_cents is the one-time prepay
+# total. Discounts are graduated (0% / ~2% / ~8% / ~17%) capping at "2 months free"
+# at the annual term — a modest loyalty reward, not a fire-sale.
 TIERS = [
-    {"key": "1mo",  "months": 1,  "price_cents": 9900,  "badge": "",                "label": "1 month"},
-    {"key": "3mo",  "months": 3,  "price_cents": 26700, "badge": "",                "label": "3 months"},
-    {"key": "6mo",  "months": 6,  "price_cents": 45000, "badge": "Most Popular",    "label": "6 months"},
-    {"key": "12mo", "months": 12, "price_cents": 59900, "badge": "Founding Member", "label": "12 months"},
+    {"key": "1mo",  "months": 1,  "price_cents": 9900,  "badge": "",             "label": "Monthly"},
+    {"key": "3mo",  "months": 3,  "price_cents": 29000, "badge": "",             "label": "3 months"},
+    {"key": "6mo",  "months": 6,  "price_cents": 54600, "badge": "Most Popular", "label": "6 months"},
+    {"key": "12mo", "months": 12, "price_cents": 99000, "badge": "2 months free", "label": "12 months"},
 ]
 
 _BY_KEY = {t["key"]: t for t in TIERS}

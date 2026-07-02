@@ -787,7 +787,7 @@ def test_renewal_cron_prepay_sends_no_charge_copy(app_client_mem, fake_smtp, mon
             if "prepaid@example.com" in to]
     assert msgs, "prepay member was not reminded"
     blob = " ".join(msgs).lower()
-    assert "membership renews" in blob          # prepay subject, not "coaching access ends"
+    assert "continuous care renews" in blob     # prepay subject, not "coaching access ends"
     assert "truly.vip" not in blob              # must NOT get the video-renewal body
 
 

@@ -6971,15 +6971,16 @@ def _fulfill_prepay_term(session_id):
         try:
             if PUBLIC_BASE_URL:
                 per_mo = _pp.per_month_cents(tier_key)
-                subject = "Your Remedy Match membership is active"
+                subject = "Your Continuous Care is active"
                 body = (
                     "Aloha,\n\n"
-                    f"Your {tier['label']} membership is active - you're all set. "
+                    f"Your {tier['label']} of Continuous Care is active - you're all set. "
                     f"That's ${tier['price_cents']/100:.0f} prepaid (about "
-                    f"${per_mo/100:.0f}/mo), with member pricing on everything for "
-                    "your whole term.\n\n"
-                    "There's nothing to cancel and no surprise charges - when your "
-                    "term ends we'll simply check in about renewing.\n\n"
+                    f"${per_mo/100:.0f}/mo). I'll keep re-matching your protocol as you "
+                    "progress, with live group coaching, your AI ally, and Terrain Restore "
+                    "the whole way.\n\n"
+                    "There's nothing to cancel and no surprise charges - when your term "
+                    "ends we'll simply check in about renewing.\n\n"
                     "In wellness,\nDr. Glen and Rae\n"
                 )
                 _send_inquiry_email(email, subject, body)
@@ -25599,20 +25600,20 @@ def cron_membership_renewals():
             _tier_key = _src[len("prepay_"):]
             _renew_cents = _prepay.renewal_price_cents(_tier_key)
             _tier = _prepay.get_tier(_tier_key)
-            _term_label = (_tier or {}).get("label", "membership term")
+            _term_label = (_tier or {}).get("label", "term")
             _base = (PUBLIC_BASE_URL or "").rstrip("/")
             _renew_url = f"{_base}/prepay?renew={_tier_key}" if _base else "your member portal"
             _renew_line = (f"${_renew_cents/100:.0f} for another {_term_label}"
                            if _renew_cents else "your loyalty renewal rate")
-            subject = f"Your Remedy Match membership renews in {days_left} day{s_days}"
+            subject = f"Your Continuous Care renews in {days_left} day{s_days}"
             body = (
                 f"Aloha,\n\n"
-                f"Your prepaid Remedy Match membership ends in {days_left} day{s_days}"
+                f"Your prepaid Continuous Care ends in {days_left} day{s_days}"
                 f" on {r['expires_at']}. There's nothing to cancel and no automatic "
                 f"charge - your card was never kept on file for renewal.\n\n"
-                f"When you're ready to continue, you can renew at your loyalty rate "
+                f"When you're ready to keep going, you can renew at your loyalty rate "
                 f"({_renew_line}) here:\n{_renew_url}\n\n"
-                f"Your member pricing and everything in your portal stay active right up "
+                f"Your care and everything in your portal stay active right up "
                 f"to that date.\n\n"
                 f"In wellness,\nDr. Glen and Rae\n"
                 f"---\n"

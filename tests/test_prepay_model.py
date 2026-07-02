@@ -30,7 +30,7 @@ def test_four_tiers_in_ladder_order():
 
 
 def test_tier_prices_and_months():
-    expected = {"1mo": (1, 9900), "3mo": (3, 26700), "6mo": (6, 45000), "12mo": (12, 59900)}
+    expected = {"1mo": (1, 9900), "3mo": (3, 29000), "6mo": (6, 54600), "12mo": (12, 99000)}
     for key, (months, price) in expected.items():
         t = prepay.get_tier(key)
         assert t["months"] == months, key
@@ -43,7 +43,7 @@ def test_one_month_tier_equals_anchor():
 
 def test_badges():
     assert prepay.get_tier("6mo")["badge"] == "Most Popular"
-    assert prepay.get_tier("12mo")["badge"] == "Founding Member"
+    assert prepay.get_tier("12mo")["badge"] == "2 months free"
     assert prepay.get_tier("1mo")["badge"] == ""
 
 
@@ -59,26 +59,26 @@ def test_get_tier_unknown_returns_none():
 
 def test_per_month_cents():
     assert prepay.per_month_cents("1mo") == 9900
-    assert prepay.per_month_cents("3mo") == 8900
-    assert prepay.per_month_cents("6mo") == 7500
-    # 59900 / 12 = 4991.67 -> rounds to ~$50/mo
-    assert prepay.per_month_cents("12mo") == 4992
+    assert prepay.per_month_cents("3mo") == 9667   # 29000 / 3
+    assert prepay.per_month_cents("6mo") == 9100   # 54600 / 6
+    # 99000 / 12 = 8250 ($82.50/mo — 2 months free)
+    assert prepay.per_month_cents("12mo") == 8250
 
 
 def test_savings_pct_vs_anchor():
     assert prepay.savings_pct_vs_anchor("1mo") == 0
-    assert prepay.savings_pct_vs_anchor("3mo") == 10
-    assert prepay.savings_pct_vs_anchor("6mo") == 24
-    assert prepay.savings_pct_vs_anchor("12mo") == 50
+    assert prepay.savings_pct_vs_anchor("3mo") == 2
+    assert prepay.savings_pct_vs_anchor("6mo") == 8
+    assert prepay.savings_pct_vs_anchor("12mo") == 17   # 2 months free
 
 
 def test_tiers_public_shape():
     pub = prepay.tiers_public()
     assert len(pub) == 4
     row = next(r for r in pub if r["key"] == "6mo")
-    assert row["price_cents"] == 45000
-    assert row["per_month_cents"] == 7500
-    assert row["savings_pct"] == 24
+    assert row["price_cents"] == 54600
+    assert row["per_month_cents"] == 9100
+    assert row["savings_pct"] == 8
     assert row["badge"] == "Most Popular"
     assert row["label"] == "6 months"
     assert row["months"] == 6
@@ -115,13 +115,13 @@ def test_term_days_full_year():
 # ---------------------------------------------------------------------------
 
 def test_renewal_monthly_rate_is_six_month_rate():
-    assert prepay.RENEWAL_MONTHLY_CENTS == 7500
+    assert prepay.RENEWAL_MONTHLY_CENTS == 9100
 
 
 def test_renewal_price_cents_scales_with_term():
-    assert prepay.renewal_price_cents("1mo") == 7500
-    assert prepay.renewal_price_cents("6mo") == 45000
-    assert prepay.renewal_price_cents("12mo") == 90000
+    assert prepay.renewal_price_cents("1mo") == 9100
+    assert prepay.renewal_price_cents("6mo") == 54600
+    assert prepay.renewal_price_cents("12mo") == 109200
 
 
 def test_renewal_price_unknown_tier_none():
