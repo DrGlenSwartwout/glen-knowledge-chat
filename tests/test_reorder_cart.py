@@ -132,6 +132,9 @@ def test_items_scope_and_dedupe(app_db):
 # ── checkout ──────────────────────────────────────────────────────────────────
 
 def test_checkout_builds_invoice_and_records(app_db):
+    """Engine contract: qty-2 terrain-restore (6997) + qty-1 brain-cleanse (5997) ->
+    total_months=3 -> volume_pct(3)=17.5%. QBO lines carry LIST amounts (the discount
+    rides discount_cents on the invoice, not the per-line price)."""
     app, db, mk = app_db
     _seed_order(app, db, "c@x.com", [{"name": "Terrain Restore", "qty": 1}], "2026-06-01")
     c = _authed_client(app, db, "c@x.com")
@@ -139,7 +142,7 @@ def test_checkout_builds_invoice_and_records(app_db):
                                           {"slug": "brain-cleanse", "qty": 1}])
     d = r.get_json()
     assert d["ok"] and d["stripe_url"] == "https://stripe.test/pay"
-    # invoice built with both lines + correct quantities
+    # invoice built with both lines + correct quantities, at LIST price
     lines = {l["name"]: l for l in mk.last_lines}
     assert lines["Terrain Restore"]["qty"] == 2 and lines["Terrain Restore"]["amount"] == 69.97
     assert lines["Brain Cleanse"]["qty"] == 1 and lines["Brain Cleanse"]["amount"] == 59.97
