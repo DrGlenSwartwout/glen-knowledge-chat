@@ -2876,7 +2876,7 @@ def prepay_tiers():
 
 @app.route("/prepay/checkout", methods=["POST"])
 def prepay_checkout():
-    """Start a one-time Stripe Checkout for a prepaid membership term (1/3/6/12 mo).
+    """Start a one-time Stripe Checkout for a prepaid Continuous Care term (1/3/6/12 mo).
     A prepaid term does NOT vault a chargeable card (save_card=False) and never
     auto-renews — the charge cron only ever sees subscriptions rows, and this path
     creates none."""
@@ -2893,7 +2893,7 @@ def prepay_checkout():
     try:
         sess = _sp.create_checkout_session(
             tier["price_cents"], customer_email=email,
-            description=f"Remedy Match membership - {tier['label']} prepaid",
+            description=f"Remedy Match Continuous Care - {tier['label']} prepaid",
             metadata={"email": email, "kind": "prepay_term", "tier_key": tier_key},
             success_url=f"{base}/prepay/return?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base}/",
@@ -2906,7 +2906,7 @@ def prepay_checkout():
 
 @app.route("/prepay/return")
 def prepay_return():
-    """Stripe return for a prepaid membership term. Re-fetches the session +
+    """Stripe return for a prepaid Continuous Care term. Re-fetches the session +
     PaymentIntent (the security guarantee), verifies a succeeded prepay_term payment,
     then grants the day-based term idempotently (claim-then-create on a session-id
     PRIMARY KEY, mirroring _fulfill_biofield_trial). Never raises."""
@@ -6924,7 +6924,7 @@ def _fulfill_biofield_trial(session_id):
 
 
 def _fulfill_prepay_term(session_id):
-    """Grant a prepaid membership term from a paid prepay_term Stripe session,
+    """Grant a prepaid Continuous Care term from a paid prepay_term Stripe session,
     idempotently. Callable from the /prepay/return redirect AND the webhook, so a
     closed tab / dropped redirect still gets fulfilled (money captured => term granted).
     Re-fetches the session + PaymentIntent (the security guarantee); only proceeds on a
