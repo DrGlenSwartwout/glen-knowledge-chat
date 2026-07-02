@@ -86,6 +86,19 @@ def redemption_by_order_ref(cx, order_ref):
     return dict(row) if row else None
 
 
+def owner_of_referee(cx, referee_email):
+    """Who referred this person (their Tier-1 referrer email), or '' if none.
+
+    This is the single L2 hop for two-tier referral rewards: owner_of_referee(L1)
+    yields L2 (the referrer's own referrer). One referrer per referee (PK), so the
+    lineage is unambiguous."""
+    init_tables(cx)
+    row = cx.execute(
+        "SELECT owner_email FROM referral_redemptions WHERE referee_email=?",
+        (_norm(referee_email),)).fetchone()
+    return (row[0] or "") if row else ""
+
+
 def mark_rewarded(cx, referee_email, *, reward_cents):
     """Stamp rewarded_at=now and reward_cents on the referee's redemption row."""
     init_tables(cx)
