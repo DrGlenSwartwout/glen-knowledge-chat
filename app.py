@@ -2853,6 +2853,124 @@ def begin_biofield_unlock_checkout(token):
         return jsonify({"ok": False, "error": "checkout_failed"}), 200
 
 
+@app.route("/prepay")
+def prepay_page():
+    """The prepay-ladder picker page. Flag-gated; the renewal email deep-links here
+    with ?renew=<tier_key> to pre-select a rung."""
+    if not PREPAY_LADDER_ENABLED:
+        from flask import redirect as _redir
+        return _redir(f"{PUBLIC_BASE_URL.rstrip('/')}/")
+    resp = send_from_directory(STATIC, "prepay.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/prepay/tiers")
+def prepay_tiers():
+    """Public tier descriptors for the picker (price, per-month, savings %, badge)."""
+    if not PREPAY_LADDER_ENABLED:
+        return jsonify({"ok": False, "error": "unavailable"}), 200
+    from dashboard import prepay as _pp
+    return jsonify({"ok": True, "tiers": _pp.tiers_public()})
+
+
+@app.route("/prepay/checkout", methods=["POST"])
+def prepay_checkout():
+    """Start a one-time Stripe Checkout for a prepaid membership term (1/3/6/12 mo).
+    A prepaid term does NOT vault a chargeable card (save_card=False) and never
+    auto-renews — the charge cron only ever sees subscriptions rows, and this path
+    creates none."""
+    if not (PREPAY_LADDER_ENABLED and _STRIPE_ACTIVE):
+        return jsonify({"ok": False, "error": "unavailable"}), 200
+    from dashboard import stripe_pay as _sp, prepay as _pp
+    data = request.get_json(silent=True) or request.form or {}
+    email = (data.get("email") or "").strip().lower()
+    tier_key = (data.get("tier_key") or "").strip()
+    tier = _pp.get_tier(tier_key)
+    if not email or not tier:
+        return jsonify({"ok": False, "error": "invalid"}), 200
+    base = PUBLIC_BASE_URL.rstrip("/")
+    try:
+        sess = _sp.create_checkout_session(
+            tier["price_cents"], customer_email=email,
+            description=f"Remedy Match membership - {tier['label']} prepaid",
+            metadata={"email": email, "kind": "prepay_term", "tier_key": tier_key},
+            success_url=f"{base}/prepay/return?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{base}/",
+            save_card=False)
+        return jsonify({"ok": True, "url": sess.get("url")})
+    except Exception as e:
+        print(f"[prepay] checkout failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "checkout_failed"}), 200
+
+
+@app.route("/prepay/return")
+def prepay_return():
+    """Stripe return for a prepaid membership term. Re-fetches the session +
+    PaymentIntent (the security guarantee), verifies a succeeded prepay_term payment,
+    then grants the day-based term idempotently (claim-then-create on a session-id
+    PRIMARY KEY, mirroring _fulfill_biofield_trial). Never raises."""
+    from flask import redirect as _redir
+    sid = (request.args.get("session_id") or "").strip()
+    ok = False
+    if sid and PREPAY_LADDER_ENABLED and _STRIPE_ACTIVE:
+        try:
+            from dashboard import stripe_pay as _sp, prepay as _pp
+            sess = _sp.get_session(sid)
+            md = sess.get("metadata") or {}
+            if md.get("kind") == "prepay_term":
+                email = (md.get("email") or "").strip().lower()
+                tier_key = (md.get("tier_key") or "").strip()
+                pi_id = sess.get("payment_intent")
+                tier = _pp.get_tier(tier_key)
+                if email and tier and pi_id:
+                    pi = _sp.get_payment_intent(pi_id)
+                    if pi.get("status") == "succeeded":
+                        claimed = False
+                        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                            cx.execute(
+                                "CREATE TABLE IF NOT EXISTS prepay_term_grants "
+                                "(session_id TEXT PRIMARY KEY, email TEXT, tier_key TEXT, granted_at TEXT)")
+                            init_membership_tables(cx)
+                            claimed = cx.execute(
+                                "INSERT OR IGNORE INTO prepay_term_grants "
+                                "(session_id, email, tier_key, granted_at) VALUES (?,?,?,?)",
+                                (sid, email, tier_key, datetime.utcnow().isoformat() + "Z")).rowcount == 1
+                            cx.commit()
+                            if claimed:
+                                _grant_prepay_term(cx, email, tier_key)
+                                cx.commit()
+                        ok = True
+                        if claimed:
+                            # Record the charge on the ledger (idempotent on source+ref).
+                            try:
+                                _ingest_order(source="prepay_term", external_ref=pi_id, email=email,
+                                              total_cents=tier["price_cents"], channel="retail", status="done")
+                            except Exception as _oe:
+                                print(f"[prepay] order-ledger record failed: {_oe!r}", flush=True)
+                            # Confirmation email, best-effort — must never undo the grant.
+                            try:
+                                if PUBLIC_BASE_URL:
+                                    per_mo = _pp.per_month_cents(tier_key)
+                                    subject = "Your Remedy Match membership is active"
+                                    body = (
+                                        "Aloha,\n\n"
+                                        f"Your {tier['label']} membership is active - you're all set. "
+                                        f"That's ${tier['price_cents']/100:.0f} prepaid (about "
+                                        f"${per_mo/100:.0f}/mo), with member pricing on everything for "
+                                        "your whole term.\n\n"
+                                        "There's nothing to cancel and no surprise charges - when your "
+                                        "term ends we'll simply check in about renewing.\n\n"
+                                        "In wellness,\nDr. Glen and Rae\n"
+                                    )
+                                    _send_inquiry_email(email, subject, body)
+                            except Exception as _e:
+                                print(f"[prepay] confirmation email failed: {_e!r}", flush=True)
+        except Exception as e:
+            print(f"[prepay] return failed: {e!r}", flush=True)
+    return _redir(f"{PUBLIC_BASE_URL.rstrip('/')}/?prepay={'ok' if ok else 'err'}")
+
+
 @app.route("/membership/cancel/<token>", methods=["GET"])
 def membership_cancel(token):
     """One-click cancel via a tokened link minted at biofield-trial grant time."""
@@ -4414,6 +4532,7 @@ JOURNEY_QUEST_ENABLED = os.environ.get("JOURNEY_QUEST_ENABLED", "").strip().lowe
 REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+PREPAY_LADDER_ENABLED = os.environ.get("PREPAY_LADDER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 FIRESIDE_ENABLED = os.environ.get("FIRESIDE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 FIRESIDE_MAX_CHARS = 4000  # cap a single fireside message (cost + row growth)
 PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
@@ -4603,10 +4722,14 @@ def _trial_credit_for_email(cx, email):
 
 
 # Recurring membership tiers (Group Coaching). One QBO Item, price set per tier.
+# The founders monthly rate is sourced from the prepay ladder's single source of
+# truth (prepay.MONTHLY_ANCHOR_CENTS, in cents) so the $99/mo price lives in one
+# place; QBO wants dollars, so convert at this boundary only.
+from dashboard import prepay as _prepay
 _MEMBERSHIP_ITEM = "Group Coaching Membership"
 _MEMBERSHIP_TIERS = {
     "standard": {"label": "Group Coaching Membership", "amount": 149.00},
-    "founders": {"label": "Group Coaching Membership (Founders)", "amount": 99.00},
+    "founders": {"label": "Group Coaching Membership (Founders)", "amount": _prepay.MONTHLY_ANCHOR_CENTS / 100.0},
 }
 
 
@@ -8920,6 +9043,35 @@ def _grant_membership(cx, email, days, source):
     except Exception as _e:
         print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
     _member_join_welcome(cx, email, source)
+    return mid
+
+
+def _grant_prepay_term(cx, email, tier_key):
+    """Record a prepaid N-month membership as a day-based access grant (NOT a
+    subscriptions row). A grant-only member reads as category 'none' -> _is_paid_member
+    True, so they get member/volume pricing for the whole term; and because there is no
+    subscriptions row, the charge cron can never bill it -> a prepaid term can never
+    silently auto-renew. It expires cleanly; renewal is a prompt, not a charge.
+    Returns the grant id, or None for an unknown tier."""
+    from datetime import date as _date
+    tier = _prepay.get_tier(tier_key)
+    if not tier:
+        return None
+    email = (email or "").strip().lower()
+    days = _prepay.term_days(_date.today().isoformat(), tier["months"])
+    mid = _grant_membership(cx, email, days, f"prepay_{tier_key}")
+    try:
+        import json as _json
+        cx.execute(
+            "INSERT INTO journey_events "
+            "(ts, session_id, email, trigger, detail, rung_before, rung_after) "
+            "VALUES (?, ?, ?, 'prepay_term_granted', ?, '', '')",
+            (datetime.utcnow().isoformat() + "Z", "", email,
+             _json.dumps({"tier_key": tier_key, "months": tier["months"],
+                          "price_cents": tier["price_cents"], "days": days,
+                          "membership_id": mid})))
+    except Exception as _e:
+        print(f"[prepay] journey_events insert failed: {_e!r}", flush=True)
     return mid
 
 
@@ -25563,7 +25715,7 @@ def cron_membership_renewals():
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         rows = cx.execute(
-            "SELECT id, email, expires_at, last_reminder_at FROM memberships "
+            "SELECT id, email, expires_at, last_reminder_at, source FROM memberships "
             "WHERE datetime(expires_at) > datetime('now') "
             "AND datetime(expires_at) < datetime('now', '+3 days') "
             "LIMIT 500"
@@ -25584,17 +25736,46 @@ def cron_membership_renewals():
         except Exception:
             days_left = 0
         s_days = "s" if days_left != 1 else ""
-        subject = f"Your Remedy Match coaching access ends in {days_left} day{s_days}"
-        body = (
-            f"Hi,\n\n"
-            f"Your Remedy Match coaching access ends in {days_left} day{s_days}"
-            f" on {r['expires_at']}.\n\n"
-            f"To renew for another 30 days, record a fresh 3-5 minute video at:\n"
-            f"https://truly.vip/Results\n\n"
-            f"Glen reviews each submission and re-opens access on acceptance.\n\n"
-            f"---\n"
-            f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
-        )
+        _src = (r["source"] or "")
+        if _src.startswith("prepay_"):
+            # A prepaid term is ending. NEVER auto-charge — send a renewal PROMPT at
+            # the (shallower) loyalty renewal rate. Skip if the ladder is dark.
+            if not PREPAY_LADDER_ENABLED:
+                continue
+            _tier_key = _src[len("prepay_"):]
+            _renew_cents = _prepay.renewal_price_cents(_tier_key)
+            _tier = _prepay.get_tier(_tier_key)
+            _term_label = (_tier or {}).get("label", "membership term")
+            _base = (PUBLIC_BASE_URL or "").rstrip("/")
+            _renew_url = f"{_base}/prepay?renew={_tier_key}" if _base else "your member portal"
+            _renew_line = (f"${_renew_cents/100:.0f} for another {_term_label}"
+                           if _renew_cents else "your loyalty renewal rate")
+            subject = f"Your Remedy Match membership renews in {days_left} day{s_days}"
+            body = (
+                f"Aloha,\n\n"
+                f"Your prepaid Remedy Match membership ends in {days_left} day{s_days}"
+                f" on {r['expires_at']}. There's nothing to cancel and no automatic "
+                f"charge - your card was never kept on file for renewal.\n\n"
+                f"When you're ready to continue, you can renew at your loyalty rate "
+                f"({_renew_line}) here:\n{_renew_url}\n\n"
+                f"Your member pricing and everything in your portal stay active right up "
+                f"to that date.\n\n"
+                f"In wellness,\nDr. Glen and Rae\n"
+                f"---\n"
+                f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+            )
+        else:
+            subject = f"Your Remedy Match coaching access ends in {days_left} day{s_days}"
+            body = (
+                f"Hi,\n\n"
+                f"Your Remedy Match coaching access ends in {days_left} day{s_days}"
+                f" on {r['expires_at']}.\n\n"
+                f"To renew for another 30 days, record a fresh 3-5 minute video at:\n"
+                f"https://truly.vip/Results\n\n"
+                f"Glen reviews each submission and re-opens access on acceptance.\n\n"
+                f"---\n"
+                f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
+            )
         try:
             ok_sent = _send_inquiry_email(
                 to_email=r["email"], subject=subject, body=body,
