@@ -4505,15 +4505,12 @@ def _qty_unit_cents(p, qty, member=False):
     return p.get("price_cents", 6997)
 
 
-def _inhouse_ff_unit_cents(p, total_ff_qty, settings, member=False):
+def _inhouse_ff_unit_cents(p, total_ff_qty, settings):
     """Effective in-house unit price (cents) for a $69.97 functional-formulation
     capsule (_qty_eligible): the order-wide volume rate driven by the TOTAL FF
-    capsule quantity (1 bottle = 1 month). The linear volume curve is monotonic,
-    so the total-quantity rate is the best price each FF line can get. Clamped at
-    the wholesale discount floor so a console max above 43% can't breach it.
-    Volume ("member") pricing is PAID-MEMBERS ONLY; non-members (and non-eligible
-    products) return the list price (callers handle overrides)."""
-    if not member or not _qty_eligible(p):
+    capsule quantity (1 bottle = 1 month). OPEN TO ALL. Clamped at the wholesale
+    discount floor. Non-FF products return list price."""
+    if not _qty_eligible(p):
         return int(p.get("price_cents") or 0)
     from dashboard import pricing as _pricing
     pct = _pricing.volume_pct(int(total_ff_qty or 0), settings)
@@ -4532,13 +4529,12 @@ def _inhouse_total_ff_qty(lines_in):
     return tot
 
 
-def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, member=False):
-    """Per-line unit price for the in-house form: an explicit owner override wins;
-    else FF capsules get the volume rate (PAID MEMBERS ONLY), everything else its
-    list price."""
+def _inhouse_line_unit_cents(p, override, total_ff_qty, settings):
+    """Explicit owner override wins; else FF capsules get the order-wide volume rate
+    (open to all), everything else its list price."""
     if override not in (None, ""):
         return int(override)
-    return _inhouse_ff_unit_cents(p, total_ff_qty, settings, member=member)
+    return _inhouse_ff_unit_cents(p, total_ff_qty, settings)
 
 
 def _is_paid_member(email):
@@ -26557,14 +26553,13 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
                            discount_cents_in=None, points_redeem_cents_in=None):
     """Shared server-authoritative pricing for the in-house order builder AND the
     console invoice editor. Honors per-line unit_cents overrides; FF capsules get the
-    order-wide volume rate for paid members; shipping/GET via _price_cart (pickup → no
+    order-wide volume rate (open to all); shipping/GET via _price_cart (pickup → no
     shipping); a manual order discount; points capped to the customer's real balance.
     Returns a dict of items_rec + the pricing breakdown, or None when no line resolves
     to a real product. Raises CheckoutError for a ship-to the engine rejects."""
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
-    member = _is_paid_member((email or ""))  # gates volume pricing
     cart, items_rec, subtotal_list = [], [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
@@ -26572,7 +26567,7 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         if not p:
             continue
         qty = max(1, min(int(ln.get("qty") or 1), 99))
-        unit_cents = _inhouse_line_unit_cents(p, ln.get("unit_cents"), total_ff_qty, settings, member=member)
+        unit_cents = _inhouse_line_unit_cents(p, ln.get("unit_cents"), total_ff_qty, settings)
         line_cents = unit_cents * qty
         subtotal_list += line_cents
         cart.append({"slug": slug, "qty": qty})
@@ -26834,9 +26829,8 @@ def api_orders_price_preview():
     settings = _pricing.load_settings(_pricing_settings())
     _body = request.get_json(silent=True) or {}
     lines_in = _body.get("lines") or []
-    member = _is_paid_member((_body.get("email") or ""))  # volume pricing = members only
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
-    vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2) if member else 0.0
+    vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2)
     out_lines, subtotal = [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
@@ -26847,7 +26841,7 @@ def api_orders_price_preview():
         ov = ln.get("unit_cents")
         is_ff = _qty_eligible(p)
         list_cents = int(p.get("price_cents") or 0)
-        unit = _inhouse_line_unit_cents(p, ov, total_ff_qty, settings, member=member)
+        unit = _inhouse_line_unit_cents(p, ov, total_ff_qty, settings)
         overridden = ov not in (None, "")
         line_cents = unit * qty
         subtotal += line_cents
