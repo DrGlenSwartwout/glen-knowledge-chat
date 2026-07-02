@@ -133,3 +133,105 @@ def test_care_taster_outranks_lingering_trial_grant(monkeypatch, tmp_path):
         _grant(cx, "d@x.com", "care_taster", days=30)
     assert app_module.membership_category("d@x.com") != "trial"
     assert app_module._is_paid_member("d@x.com") is True
+
+
+# ── Task 3: credit the $1 deposit to points, auto-redeem at program checkout ──
+
+def _mock_paid_biofield_trial_session(app_module, monkeypatch, email="buyer@x.com",
+                                       pi="pi_dep1"):
+    from dashboard import stripe_pay as _sp
+    monkeypatch.setattr(_sp, "get_session", lambda sid: {
+        "metadata": {"kind": "biofield_trial", "email": email},
+        "payment_intent": pi, "amount_total": 100,
+    })
+    monkeypatch.setattr(app_module.stripe_pay, "get_session", _sp.get_session, raising=False)
+    monkeypatch.setattr(_sp, "get_payment_intent",
+        lambda p: {"customer": "cus_1", "payment_method": "pm_1", "status": "succeeded"})
+    monkeypatch.setattr(app_module.stripe_pay, "get_payment_intent", _sp.get_payment_intent,
+                        raising=False)
+
+
+def test_deposit_credit_granted_on_trial_fulfillment(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "PROGRAM_CARE_TASTER_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "BIOFIELD_TRIAL_ENABLED", True, raising=False)
+    _mock_paid_biofield_trial_session(app_module, monkeypatch, email="buyer@x.com",
+                                       pi="pi_dep1")
+    c = app_module.app.test_client()
+    r = c.get("/begin/checkout-return?kind=biofield_trial&session_id=cs_1")
+    assert r.status_code == 302
+
+    from dashboard import points as _points
+    with sqlite3.connect(db) as cx:
+        _points.init_points_table(cx)
+        bal = _points.balance(cx, "buyer@x.com")
+    assert bal == 100, "the $1 deposit must credit 100 cents of redemption value"
+
+    # Replay (closed tab retried, or webhook + redirect racing) must not double-credit.
+    c.get("/begin/checkout-return?kind=biofield_trial&session_id=cs_1")
+    with sqlite3.connect(db) as cx:
+        bal2 = _points.balance(cx, "buyer@x.com")
+    assert bal2 == 100, "replay must not double-credit the deposit (idempotent on the PI id)"
+
+
+def test_deposit_credit_skipped_when_flag_off(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "PROGRAM_CARE_TASTER_ENABLED", False, raising=False)
+    monkeypatch.setattr(app_module, "BIOFIELD_TRIAL_ENABLED", True, raising=False)
+    _mock_paid_biofield_trial_session(app_module, monkeypatch, email="buyer@x.com",
+                                       pi="pi_dep2")
+    c = app_module.app.test_client()
+    c.get("/begin/checkout-return?kind=biofield_trial&session_id=cs_1")
+
+    from dashboard import points as _points
+    with sqlite3.connect(db) as cx:
+        _points.init_points_table(cx)
+        bal = _points.balance(cx, "buyer@x.com")
+    assert bal == 0
+
+
+def test_program_checkout_auto_redeems_deposit_credit(monkeypatch, tmp_path):
+    """A pre-seeded 100c deposit credit auto-applies (no explicit redeem passed) as $1
+    off a scalable-tier ($100) program checkout: charged 9900, metadata reflects it."""
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "PROGRAM_CARE_TASTER_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "_STRIPE_ACTIVE", True, raising=False)
+    monkeypatch.setattr(app_module, "_QBO_PAYMENTS_ACTIVE", True, raising=False)
+    monkeypatch.setenv("BIOFIELD_CHECKOUT_ENABLED", "1")
+
+    from dashboard import points as _points
+    with sqlite3.connect(db) as cx:
+        _points.init_points_table(cx)
+        _points.credit(cx, "buyer@x.com", value_cents=100, reason="deposit_credit",
+                       order_ref="pi_seed")
+
+    cap = {}
+    import dashboard.qbo_billing as _qb
+    monkeypatch.setattr(_qb, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
+
+    def fake_invoice(cust, lines, **kw):
+        cap["lines"] = lines
+        cap["invoice_kw"] = kw
+        return {"Id": "INVB", "SyncToken": "0", "DocNumber": "9", "TotalAmt": 99.0}
+    monkeypatch.setattr(_qb, "create_invoice", fake_invoice)
+    monkeypatch.setattr(_qb, "get_invoice_pay_link", lambda inv: "")
+
+    import dashboard.stripe_pay as _sp
+
+    def fake_session(amount_cents, *, customer_email, description, metadata,
+                     success_url, cancel_url, save_card=False):
+        cap["stripe_amount"] = amount_cents
+        cap["stripe_metadata"] = metadata
+        return {"id": "cs_test", "url": "https://stripe/biofield"}
+    monkeypatch.setattr(_sp, "create_checkout_session", fake_session)
+    monkeypatch.setattr(app_module.stripe_pay, "create_checkout_session", fake_session,
+                        raising=False)
+
+    c = app_module.app.test_client()
+    r = c.post("/biofield/checkout",
+               json={"email": "buyer@x.com", "name": "B", "tier": "scalable"})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["ok"] is True
+    assert cap["stripe_amount"] == 9900, "the $1 deposit credit must auto-apply as $1 off"
+    assert int(cap["stripe_metadata"]["points_redeemed_cents"]) == 100

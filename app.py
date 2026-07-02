@@ -4492,6 +4492,10 @@ BIOFIELD_DEPOSIT_PREVIEW_DAYS = int(os.environ.get("BIOFIELD_DEPOSIT_PREVIEW_DAY
 PROGRAM_CARE_TASTER_ENABLED = os.environ.get("PROGRAM_CARE_TASTER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PROGRAM_CARE_TASTER_DAYS = 30
 CARE_TASTER_SOURCE = "care_taster"
+# Program → deposit front door, Task 3: the $1 biofield deposit is credited to the
+# buyer's points balance (1 point = 1c redemption value, per dashboard.points), and
+# auto-redeemed at program checkout so it applies as $1 off the program price.
+PROGRAM_DEPOSIT_CREDIT_CENTS = 100
 FIRESIDE_ENABLED = os.environ.get("FIRESIDE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 FIRESIDE_MAX_CHARS = 4000  # cap a single fireside message (cost + row growth)
 PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
@@ -6705,6 +6709,13 @@ def biofield_checkout():
         with sqlite3.connect(LOG_DB) as _bcx:
             _points.init_points_table(_bcx)
             redeem = min(redeem, _points.balance(_bcx, email))
+    elif PROGRAM_CARE_TASTER_ENABLED:
+        # No explicit redeem requested: auto-apply the $1 deposit credit (if any) so
+        # it actually lands as $1 off the program at checkout.
+        from dashboard import points as _points
+        with sqlite3.connect(LOG_DB) as _bcx:
+            _points.init_points_table(_bcx)
+            redeem = min(PROGRAM_DEPOSIT_CREDIT_CENTS, _points.balance(_bcx, email))
     pc = _price_biofield(points_to_redeem_cents=redeem, tier=tier)
     charged_cents = pc["priced"]["total_cents"]
     redeemed = pc["points_redeemed_cents"]
@@ -6906,6 +6917,14 @@ def _fulfill_biofield_trial(session_id):
             # 'trial' via the grant-aware fallback). Soft ~90-day preview window; no
             # cancel token is minted because there is nothing to cancel.
             _grant_membership(_bc, bt_email, BIOFIELD_DEPOSIT_PREVIEW_DAYS, "biofield_trial")
+            if PROGRAM_CARE_TASTER_ENABLED:
+                try:
+                    from dashboard import points as _points
+                    _points.init_points_table(_bc)
+                    _points.credit(_bc, bt_email, value_cents=PROGRAM_DEPOSIT_CREDIT_CENTS,
+                                   reason="deposit_credit", order_ref=pi_id)
+                except Exception as _pce:
+                    print(f"[deposit-credit] grant failed: {_pce!r}", flush=True)
             _bc.commit()
         # Lock released. Record the $1 charge as a captured-charge order so it shows in
         # the Payments ledger (digital unlock -> status 'done', not a fulfillment task).
