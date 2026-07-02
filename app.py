@@ -5054,9 +5054,14 @@ def begin_product_data(slug):
     ingredients = p.get("ingredients") or card.get("ingredients", [])
     qty_tiers, formats = None, None
     if _qty_eligible(p):
-        qty_tiers = [{"min": m, "unit_cents": u, "unit": f"${u/100:.2f}",
-                      "save": ((6997 - u) // 100) if u < 6997 else 0}
-                     for m, u in [(1, 6997), (3, 5997), (6, 4997), (12, 3997)]]
+        from dashboard import pricing as _pricing
+        _s = _pricing.load_settings(_pricing_settings())
+        _base = int(p["price_cents"])
+        qty_tiers = []
+        for m in (1, 3, 6, 12):
+            u = int(round(_base * (1 - _pricing.volume_pct(m, _s) / 100.0)))
+            qty_tiers.append({"min": m, "unit_cents": u, "unit": f"${u/100:.2f}",
+                              "save": ((_base - u) // 100) if u < _base else 0})
         formats = _FORMATS
     data = {
         "slug": slug, "name": p["name"],
