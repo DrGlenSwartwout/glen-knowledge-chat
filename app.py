@@ -2857,7 +2857,7 @@ def begin_biofield_unlock_checkout(token):
     try:
         sess = _sp.create_checkout_session(
             100, customer_email=email,
-            description="Biofield Analysis - full unlock",
+            description="Biofield Analysis - lifetime unlock",
             metadata={"email": email, "kind": "biofield_trial", "token": token},
             success_url=f"{base}/begin/checkout-return?kind=biofield_trial&session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base}/begin/biofield/{token}",
@@ -4501,6 +4501,9 @@ PREPAY_LADDER_ENABLED = os.environ.get("PREPAY_LADDER_ENABLED", "").strip().lowe
 # Analysis + portal PREVIEW for a soft window (no hard-revoke pressure, no auto-charge).
 # Paid membership begins only on first order / prepay; the $1 credit persists regardless.
 BIOFIELD_DEPOSIT_PREVIEW_DAYS = int(os.environ.get("BIOFIELD_DEPOSIT_PREVIEW_DAYS", "90") or "90")
+# The $1 buys LIFETIME access to the free-level membership (un-blur), not a ~90-day
+# preview. ~100 years = effectively forever; still tunable via env if ever needed.
+BIOFIELD_UNLOCK_DAYS = int(os.environ.get("BIOFIELD_UNLOCK_DAYS", "36500") or "36500")
 FIRESIDE_ENABLED = os.environ.get("FIRESIDE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 FIRESIDE_MAX_CHARS = 4000  # cap a single fireside message (cost + row growth)
 PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
@@ -6892,12 +6895,14 @@ def _fulfill_biofield_trial(session_id):
             # Model #2: the $1 is a credited activation DEPOSIT, not an opt-out trial.
             # It unlocks the full Biofield Analysis + portal preview (a day-based grant),
             # but creates NO subscription row -> nothing auto-charges, ever. Paid
-            # membership begins only when the client activates on their first order (or
-            # prepays); the $1 credit persists (tracked by the biofield_trial order row).
-            # The member DISCOUNT is withheld during preview (membership_category ->
-            # 'trial' via the grant-aware fallback). Soft ~90-day preview window; no
-            # cancel token is minted because there is nothing to cancel.
-            _grant_membership(_bc, bt_email, BIOFIELD_DEPOSIT_PREVIEW_DAYS, "biofield_trial")
+            # membership (the DISCOUNT + Continuous Care) begins only when the client
+            # activates on their first order (or prepays); the $1 credit persists
+            # (tracked by the biofield_trial order row). The member DISCOUNT is withheld
+            # (membership_category -> 'trial' via the grant-aware fallback, keyed on
+            # source not duration). The $1 buys LIFETIME access to the free-level
+            # membership (un-blur), so the grant runs effectively forever; no cancel
+            # token is minted because there is nothing to cancel.
+            _grant_membership(_bc, bt_email, BIOFIELD_UNLOCK_DAYS, "biofield_trial")
             _bc.commit()
         # Lock released. Record the $1 charge as a captured-charge order so it shows in
         # the Payments ledger (digital unlock -> status 'done', not a fulfillment task).
@@ -6919,10 +6924,12 @@ def _fulfill_biofield_trial(session_id):
                     "Your $1 just unlocked your full Biofield Analysis and opened your member "
                     "portal - your matched remedies, your causal chain, and your AI ally are "
                     "waiting for you inside.\n\n"
-                    "That $1 is a deposit, not a trial that turns into a bill. Nothing "
-                    "auto-charges - no card is waiting to spring on you. Your membership begins "
-                    "only when you decide to start, with your first order, and your $1 is credited "
-                    "toward it then. Until that day you're never charged, and the door stays open.\n\n"
+                    "That $1 buys you LIFETIME access to your analysis and your member portal - "
+                    "they're yours to return to anytime, for good. It's a deposit, not a trial "
+                    "that turns into a bill: nothing auto-charges, no card is waiting to spring on "
+                    "you. Your paid membership - with your member discount - begins only when you "
+                    "decide to start, with your first order, and your $1 is credited toward it then. "
+                    "Until that day you're never charged, and the door stays open.\n\n"
                     "Take all the time you need. When you're ready to begin, I'm right here.\n\n"
                     "In wellness,\n"
                     "Dr. Glen and Rae\n"
