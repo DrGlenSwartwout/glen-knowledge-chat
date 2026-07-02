@@ -560,6 +560,16 @@ function buildCard(d){
   deleteBtn.onclick = function(){ doDelete(wrap, d.id, deleteBtn); };
   row.appendChild(deleteBtn);
 
+  // Owner one-click: turn this reveal's recommended remedies into a proposed
+  // in-house order (no Stripe). Reuses /api/orders/manual, which resolves the
+  // client's person_id + address from email and prices everything.
+  var orderBtn = document.createElement('button');
+  orderBtn.className = 'btn';
+  orderBtn.textContent = '🛒 Order remedies';
+  orderBtn.title = "Create a proposed in-house order from this reveal's remedies";
+  orderBtn.onclick = function(){ orderRemedies(wrap, d, orderBtn); };
+  row.appendChild(orderBtn);
+
   if(d.first_approved){
     var sendBtn = document.createElement('button');
     sendBtn.className = 'btn';
@@ -661,6 +671,41 @@ async function saveEdit(card, id){
     setTimeout(loadList, 600);
   } else {
     statusEl.textContent = 'Save failed.';
+  }
+}
+
+async function orderRemedies(card, d, btn){
+  // Build a proposed in-house order from the remedies currently on the card
+  // (reflects any edits). Owner override: ALL remedies, not the client-visible
+  // subset. Dedup by slug, qty 1 each.
+  var statusEl = card.querySelector('.status');
+  var seen = {}, lines = [];
+  collectRemedies(card).forEach(function(rem){
+    var slug = (rem.slug || '').trim();
+    if(slug && !seen[slug]){ seen[slug] = 1; lines.push({ slug: slug, qty: 1 }); }
+  });
+  if(!lines.length){ window.alert('No remedies with product slugs on this reveal — add slugs first.'); return; }
+  var who = d.client_name || d.email || ('reveal #' + d.id);
+  if(!d.email && !window.confirm("No email on this reveal — the order won't link to a client record. Create it anyway?")) return;
+  var msg = d.ordered
+    ? (who + ' already has an order ($' + Math.round((d.order_total_cents||0)/100) + '). Create ANOTHER proposed order with ' + lines.length + ' remedies?')
+    : ('Create a proposed order for ' + who + ' with ' + lines.length + ' remed' + (lines.length===1?'y':'ies') + '?');
+  if(!window.confirm(msg)) return;
+  btn.disabled = true;
+  if(statusEl) statusEl.textContent = 'Creating order…';
+  var r = await api('POST', '/api/orders/manual', { customer: { email: d.email || '', name: d.client_name || '' }, lines: lines });
+  if(r.ok && r.json && r.json.ok){
+    var oid = r.json.order_id;
+    if(statusEl) statusEl.textContent = 'Proposed order #' + oid + ' created.';
+    if(window.confirm('Order #' + oid + ' created (proposed). Open it on the Orders board?')){
+      window.open('/console/orders?order=' + encodeURIComponent(oid) + '&key=' + encodeURIComponent(key()), '_blank');
+    }
+    setTimeout(loadList, 600);   // refresh so the 🛒 order badge updates
+  } else {
+    btn.disabled = false;
+    var err = (r.json && r.json.error) ? r.json.error : ('HTTP ' + r.status);
+    if(statusEl) statusEl.textContent = 'Order not created: ' + err;
+    window.alert('Could not create order: ' + err);
   }
 }
 
