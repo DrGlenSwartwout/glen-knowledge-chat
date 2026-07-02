@@ -12,15 +12,27 @@ _FREETEXT = ("challenges", "goals", "notes")
 # certification marker caught by the keyword list below.
 _OP_NAMESPACES = {"type", "consent", "state", "source", "pract", "practitioner",
                   "reengagement", "stage", "pipeline", "status", "lifecycle", "utm",
-                  "campaign", "email", "e4l", "nes", "list", "segment", "funnel", "journey"}
+                  "campaign", "email", "e4l", "nes", "list", "segment", "funnel", "journey",
+                  "household"}
 _OP_KEYWORDS = ("certification", "masterclass", "replay", "webinar", "onboard",
-                "unsubscribe", "opted-in", "opt-in", "concierge", "account", "engage",
-                "cert", "course", "affiliate", "referral", "coupon", "checkout")
-_OP_BARE = {"begin", "concierge", "nes client", "client", "practitioner", "member"}
+                "unsubscribe", "opted-in", "opt-in", "opted", "concierge", "account",
+                "engage", "cert", "course", "affiliate", "referral", "coupon", "checkout",
+                # observed CRM/marketing/lifecycle vocabulary in people.tags
+                "chatbot", "aweber", "fireside", "aerai", "paramedic", "membership",
+                "bounce", "invite", "licensed", "subscriber", "e4l.db")
+# Startswith markers for tag-structured operational values. 'beta-personal' (not
+# 'beta-') so health terms like beta-carotene / beta-glucan are NOT dropped.
+_OP_PREFIXES = ("topic-", "budget", "beta-personal", "e4l-", "portal-",
+                "practitioner-", "household:", "close_leads")
+_OP_BARE = {"begin", "concierge", "nes client", "client", "practitioner", "member",
+            "email", "fireside", "chatbot"}
 
 
 def is_operational_tag(tag):
-    """True if a CRM tag describes pipeline/marketing state rather than health status."""
+    """True if a CRM tag describes pipeline/marketing state rather than health status.
+    Denylist (namespaces + keywords + startswith markers + bare tags) tuned to the
+    real people.tags vocabulary; free-text health terms (Inflammation, Heavy metals,
+    beta-carotene, lead toxicity) are deliberately NOT matched."""
     t = (tag or "").strip().lower().strip('[]"\'')
     if not t:
         return True
@@ -28,6 +40,10 @@ def is_operational_tag(tag):
         return True
     if t in _OP_BARE:
         return True
+    if t.startswith(_OP_PREFIXES):
+        return True
+    if t.startswith("pb:") and t[3:].strip() in _PB_NON_CONDITION:
+        return True   # pb: roles/tools/admin (od, rn, zyto, cert, member, ...) aren't conditions
     return any(kw in t for kw in _OP_KEYWORDS)
 
 
