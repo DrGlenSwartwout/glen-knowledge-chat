@@ -12,8 +12,9 @@ Env:
 import os
 import sys
 import json
-import urllib.request
 import urllib.error
+
+from _cron_http import post_with_retry
 
 WEB_URL = os.environ.get("WEB_URL", "https://glen-knowledge-chat.onrender.com").rstrip("/")
 CRON_SECRET = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
@@ -25,12 +26,11 @@ if not CRON_SECRET:
 
 def main():
     url = f"{WEB_URL}/api/console/reconcile-qbo"
-    req = urllib.request.Request(
-        url, data=b"", method="POST",
-        headers={"X-Cron-Secret": CRON_SECRET, "Content-Type": "application/json"})
+    headers = {"X-Cron-Secret": CRON_SECRET, "Content-Type": "application/json"}
+    # Transient 5xx / connection blips are retried inside post_with_retry.
     try:
-        with urllib.request.urlopen(req, timeout=120) as r:
-            body = json.load(r)
+        body = json.loads(post_with_retry(url, headers, data=b"", timeout=120,
+                                          label="qbo-reconcile-cron"))
         print(f"[qbo-reconcile-cron] reconciled {body.get('count')} order(s): "
               f"{body.get('reconciled')}", flush=True)
     except urllib.error.HTTPError as e:

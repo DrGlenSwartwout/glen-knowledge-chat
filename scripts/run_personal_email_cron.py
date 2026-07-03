@@ -23,6 +23,8 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timezone
 
+from _cron_http import post_with_retry
+
 
 WEB_URL = os.environ.get("WEB_URL", "https://glen-knowledge-chat.onrender.com").rstrip("/")
 CRON_SECRET = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
@@ -37,29 +39,12 @@ if not CRON_SECRET:
 
 def main():
     url = f"{WEB_URL}/cron/personal-send"
-    req = urllib.request.Request(
-        url,
-        method="POST",
-        headers={
-            "X-Cron-Secret": CRON_SECRET,
-            "Content-Type": "application/json",
-        },
-        data=b"{}",
-    )
+    headers = {"X-Cron-Secret": CRON_SECRET, "Content-Type": "application/json"}
+    # Transient 5xx / connection blips are retried inside post_with_retry; a sustained
+    # failure re-raises here and fails the run as before (exit 4/5).
     try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            body = resp.read().decode("utf-8", errors="replace")
-            print(f"HTTP {resp.status}: {body}", flush=True)
-            try:
-                data = json.loads(body)
-                if data.get("ok"):
-                    print(f"Personal email cron: sent {data.get('sent', '?')} email(s)", flush=True)
-                else:
-                    print(f"Cron failed: {data.get('error', 'unknown')}", flush=True)
-                    sys.exit(2)
-            except json.JSONDecodeError:
-                print("Response was not valid JSON", flush=True)
-                sys.exit(3)
+        body = post_with_retry(url, headers, timeout=300,
+                               label="personal-email-cron").decode("utf-8", errors="replace")
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
         print(f"HTTPError {e.code}: {body}", flush=True)
@@ -67,6 +52,18 @@ def main():
     except urllib.error.URLError as e:
         print(f"URLError: {e}", flush=True)
         sys.exit(5)
+
+    print(f"HTTP 200: {body}", flush=True)
+    try:
+        data = json.loads(body)
+        if data.get("ok"):
+            print(f"Personal email cron: sent {data.get('sent', '?')} email(s)", flush=True)
+        else:
+            print(f"Cron failed: {data.get('error', 'unknown')}", flush=True)
+            sys.exit(2)
+    except json.JSONDecodeError:
+        print("Response was not valid JSON", flush=True)
+        sys.exit(3)
 
 
 def invite_pif_gift_notes():
