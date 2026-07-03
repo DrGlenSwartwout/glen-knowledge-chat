@@ -1,0 +1,33 @@
+{
+  "_note": "Curated 'next Functional Formulations to add' per practice type, keyed to the practitioner's credentials. 'default' is the fallback. Blurbs use structure/function language only (supports / promotes / helps maintain), never disease claims. Blurbs tightened 2026-07-03 from Dr. Glen's own formulation data via the formulation-analyzer. Dr. Glen has final edit.",
+  "default": [
+    {"slug": "bone-builder", "blurb": "Supports healthy bone density and skeletal strength with whole-bone MCHC calcium, magnesium, phosphorus, and concomitant trace minerals."},
+    {"slug": "vitality", "blurb": "A botanical and B-vitamin blend that supports energy, memory, mood balance, and youthful vitality."},
+    {"slug": "terrain-restore", "blurb": "Supports gut mucosal barrier integrity and helps maintain healthy tight junctions for whole-body terrain balance."}
+  ],
+  "Health Coach": [
+    {"slug": "vitality", "blurb": "A botanical and B-vitamin blend that supports energy, memory, mood balance, and youthful vitality."},
+    {"slug": "nous-energy", "blurb": "Supports cellular energy and vitality with antioxidant polyphenols, immune-active mushroom polysaccharides, and monoatomic minerals."},
+    {"slug": "adrenal-syntropy", "blurb": "Supports healthy adrenal function, daytime energy metabolism, and a balanced stress response with sublingual 7-Keto."}
+  ],
+  "OD": [
+    {"slug": "crystalline-clarity", "blurb": "Supports crystalline lens clarity and healthy vision with systemic enzymes plus antioxidant minerals that help maintain ocular tissue."},
+    {"slug": "aces-eyedrops", "blurb": "Topical antioxidant support that helps maintain healthy ocular tissue and promotes the eye's natural defense against oxidative stress."},
+    {"slug": "clear-lens-eye-drops", "blurb": "Topical antioxidant blend that supports the clarity of the crystalline lens and helps maintain healthy vision."}
+  ],
+  "ND": [
+    {"slug": "terrain-restore", "blurb": "Supports gut mucosal barrier integrity and helps maintain healthy tight junctions for whole-body terrain balance."},
+    {"slug": "crucifer-complex", "blurb": "Supports healthy liver detoxification pathways and balanced estrogen metabolism with cruciferous nutrients that promote cellular antioxidant defenses."},
+    {"slug": "chelation", "blurb": "Supports the body's natural metal-binding and detoxification pathways and helps maintain healthy antioxidant and glutathione status."}
+  ],
+  "DC": [
+    {"slug": "bone-builder", "blurb": "Supports healthy bone density and skeletal strength with whole-bone MCHC calcium, magnesium, phosphorus, and concomitant trace minerals."},
+    {"slug": "connective-tissue-support", "blurb": "Supports healthy collagen formation and connective tissue integrity with vitamin C, MSM, glucosamine, silica, and antioxidant OPCs."},
+    {"slug": "comfort", "blurb": "Supports a healthy inflammatory response and helps maintain joint comfort, cartilage, and connective tissue for active mobility."}
+  ],
+  "LAc": [
+    {"slug": "terrain-restore", "blurb": "Supports gut mucosal barrier integrity and helps maintain healthy tight junctions for whole-body terrain balance."},
+    {"slug": "cistus-syntropy-immunitea", "blurb": "A polyphenol-rich Cistus incanus tea that supports immune resilience and helps maintain the body's natural microbial balance."},
+    {"slug": "nous-energy", "blurb": "Supports cellular energy and vitality with antioxidant polyphenols, immune-active mushroom polysaccharides, and monoatomic minerals."}
+  ]
+}

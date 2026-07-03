@@ -11332,7 +11332,7 @@ def api_practitioner_checkout():
                       email=(prac.get("email") if isinstance(prac, dict) else "") or "",
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
-                      address=ship, channel="wholesale", get_cents=out.get("get_cents", 0))
+                      items=items, address=ship, channel="wholesale", get_cents=out.get("get_cents", 0))
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":
@@ -11406,7 +11406,7 @@ def api_practitioner_personal_checkout():
                       email=(prac.get("email") if isinstance(prac, dict) else "") or "",
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
-                      address=ship, channel="personal", get_cents=out.get("get_cents", 0))
+                      items=items, address=ship, channel="personal", get_cents=out.get("get_cents", 0))
         # Personal fee-free earn: 3.5% of the charged amount (zelle/wise), else 0.
         # build_order was called with method=None above, so it did NOT credit its
         # own 3% — this is the only earn for this order. Credit the explicit 3.5%

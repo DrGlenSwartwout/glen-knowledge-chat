@@ -737,13 +737,77 @@ def decide_application(practitioner_id, *, approve: bool, notes="", now=None) ->
 
 # ── portal data ───────────────────────────────────────────────────────────────
 
+# Partner Program "Your standing" retail anchors (the online retail range the
+# margin band is measured against). MAP = minimum advertised price.
+_PARTNER_MAP_CENTS = 6997      # $69.97 minimum advertised price
+_PARTNER_SRP_CENTS = 7997      # $79.97 suggested retail
+_PARTNER_SINGLE_CENTS = 5000   # $50 single-bottle wholesale
+
+
+def partner_block(modules_completed, *, wellness_credit_cents=0,
+                  dispensary_credit_cents=0) -> dict:
+    """The Partner Program 'Your standing' summary: certification progress, the
+    resulting volume wholesale floor (same curve as the wholesale chart), and the
+    per-bottle margin range across the $69.97 MAP -> $79.97 SRP online retail
+    range. Pure + defensive; callers pass the credit figures from portal_data."""
+    mc = max(0, min(int(modules_completed or 0), pricing.N_MODULES))
+    floor = pricing.certification_floor_cents(mc)
+    lo = _PARTNER_MAP_CENTS - floor    # margin per bottle at the $69.97 MAP
+    hi = _PARTNER_SRP_CENTS - floor    # margin per bottle at the $79.97 SRP
+    return {
+        "modules_completed": mc,
+        "modules_total": pricing.N_MODULES,
+        "floor_cents": floor,
+        "single_price_cents": _PARTNER_SINGLE_CENTS,
+        "map_cents": _PARTNER_MAP_CENTS,
+        "srp_cents": _PARTNER_SRP_CENTS,
+        "margin_low_cents": lo,
+        "margin_high_cents": hi,
+        "margin_low_pct": round(lo * 100 / _PARTNER_MAP_CENTS),
+        "margin_high_pct": round(hi * 100 / _PARTNER_SRP_CENTS),
+        "wellness_credit_cents": int(wellness_credit_cents or 0),
+        "dispensary_credit_cents": int(dispensary_credit_cents or 0),
+    }
+
+
+# The 12-module Accelerated Self Healing(TM) curriculum: (module #, title, five-fold subtitle).
+_ASH_TRAINING_MODULES = [
+    (1, "Body", "5 States of Matter"),
+    (2, "Mind", "5 C's Meta-Model"),
+    (3, "Spirit", "5 Elements"),
+    (4, "Inheritance", "5 Generations"),
+    (5, "Personal History", "5 Levels of Penetration"),
+    (6, "Epigenetics", "5 Information Patterns"),
+    (7, "Symptoms", "5 Embryological Tissue Layers"),
+    (8, "Terrains", "5 Phases of Terrain"),
+    (9, "Diagnosis", "5 Pathology Types"),
+    (10, "Treatment", "5 Levels of Therapy"),
+    (11, "Regulation", "5 Levels of Regulation"),
+    (12, "Prognosis", "5 Stages of Prognosis"),
+]
+
+
+def training_block(modules_completed) -> dict:
+    """The 12-module ASH curriculum with the practitioner's completion state.
+    Pure; module n is complete when n <= modules_completed."""
+    mc = max(0, min(int(modules_completed or 0), pricing.N_MODULES))
+    return {
+        "modules_completed": mc,
+        "modules_total": pricing.N_MODULES,
+        "modules": [
+            {"n": n, "title": t, "subtitle": s, "complete": n <= mc}
+            for (n, t, s) in _ASH_TRAINING_MODULES
+        ],
+    }
+
+
 def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optional[dict]:
     from db_supabase import supabase_cursor
     with supabase_cursor() as cur:
         cur.execute(
             "SELECT id, name, practice_name, email, portal_role, modules_completed, "
             "wallet_balance_cents, wholesale_unlocked_at, application_status, "
-            "application_submitted_at, approval_notes, resale_license_number "
+            "application_submitted_at, approval_notes, resale_license_number, credentials "
             "FROM practitioners WHERE id=%s",
             (str(practitioner_id),),
         )
@@ -785,4 +849,18 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
             data["dispensary_code"] = get_or_create_dispensary_code(practitioner_id)
         except Exception:
             data["dispensary_code"] = None
+    data["partner"] = partner_block(
+        row["modules_completed"],
+        wellness_credit_cents=row["wallet_balance_cents"],
+        dispensary_credit_cents=data.get("dispensary_credit_total_cents", 0))
+    data["training"] = training_block(row["modules_completed"])
+    from dashboard import dispensary_stats as _dstats
+    try:
+        stats = _dstats.dispense_stats(practitioner_id, db_path=db_path)
+        data["dispense_stats"] = stats
+        data["recommended_ffs"] = _dstats.recommended_ffs(
+            row["credentials"] or "", exclude_slugs=[r["slug"] for r in stats])
+    except Exception:
+        data["dispense_stats"] = []
+        data["recommended_ffs"] = []
     return data
