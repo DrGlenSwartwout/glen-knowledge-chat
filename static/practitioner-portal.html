@@ -95,10 +95,19 @@
   #partner-program .flowfoot{ font-size:12px; color:var(--muted); margin-top:10px; text-align:center; }
   #partner-program .pp-foot{ font-size:11.5px; color:var(--muted); margin-top:22px; }
   #pp-tt{ position:fixed; pointer-events:none; opacity:0; transition:opacity .08s; background:var(--cream); color:var(--bg); font-size:12px; font-weight:600; padding:6px 9px; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.3); z-index:50; transform:translate(-50%,-116%); white-space:nowrap; }
+  /* Training module grid */
+  #tr-mods{ display:grid; grid-template-columns:repeat(4,1fr); grid-template-rows:repeat(3,auto); grid-auto-flow:column; gap:10px; margin-top:16px; }
+  #tr-mods .mod{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:11px 13px; position:relative; }
+  #tr-mods .mod.done{ border-color:var(--gold); }
+  #tr-mods .n{ font-size:11px; font-weight:800; color:var(--gold); }
+  #tr-mods .t{ font-size:14px; font-weight:700; color:var(--cream); margin-top:2px; }
+  #tr-mods .p{ font-size:11px; color:var(--muted); margin-top:3px; }
+  #tr-mods .chk{ position:absolute; top:10px; right:11px; color:var(--gold); font-weight:800; font-size:13px; }
   @media (max-width:760px){
     #partner-program .grid2,#partner-program .grid3,#partner-program .grid4{ grid-template-columns:1fr; }
     #partner-program .mods{ grid-template-columns:repeat(2,1fr); grid-template-rows:none; grid-auto-flow:row; }
     #partner-program .flow{ grid-template-columns:1fr; } #partner-program .arrow{ transform:rotate(90deg); }
+    #tr-mods{ grid-template-columns:repeat(2,1fr); grid-template-rows:none; grid-auto-flow:row; }
   }
 </style>
 <script>(function(){var t=localStorage.getItem('rm-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
@@ -285,7 +294,22 @@
   </section>
 
   <section class="pane" data-pane="training" role="tabpanel" aria-label="Training">
-  <div class="panel"><h2>Training</h2><div class="muted" style="font-size:13px;margin-top:6px">Your 12-module Accelerated Self Healing&trade; Certification will live here. Coming soon.</div></div>
+  <div class="panel">
+    <h2>Accelerated Self Healing&trade; Certification</h2>
+    <div class="muted" style="font-size:13px;margin:4px 0 12px">Twelve five-fold dimensions of healing. Each module you complete lowers your wholesale floor $1.25 a bottle.</div>
+    <div id="tr-progress" style="margin:12px 0">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
+        <span class="muted">Modules completed</span>
+        <span id="tr-count" style="color:var(--gold);font-weight:700">–</span>
+      </div>
+      <div style="height:8px;background:var(--surface-2);border-radius:6px;overflow:hidden">
+        <div id="tr-progbar" style="height:100%;width:0;background:var(--gold);border-radius:6px;transition:width .4s"></div>
+      </div>
+      <div class="muted" id="tr-floor-note" style="font-size:12.5px;margin-top:6px"></div>
+    </div>
+    <a href="/cert" target="_blank" rel="noopener"><button type="button">Submit work-product in the Certification Portal &rarr;</button></a>
+  </div>
+  <div class="mods" id="tr-mods"></div>
   </section>
 </div>
 <div id="pp-tt"></div>
@@ -405,6 +429,23 @@ function renderAmbLinks(d){
   host.innerHTML = '<h2>Your links &amp; rewards</h2>'
     + '<div class="muted" style="font-size:13px;margin:4px 0 10px">Share these to grow your practice. ' + earned + '.</div>'
     + rows;
+}
+
+// Training tab: 12-module ASH curriculum with the practitioner's completion state.
+function renderTraining(d){
+  var tr = d.training; if(!tr) return;
+  var total = tr.modules_total || 12, mc = tr.modules_completed || 0;
+  if($('tr-count')) $('tr-count').textContent = mc + ' / ' + total;
+  if($('tr-progbar')) $('tr-progbar').style.width = Math.round(mc / total * 100) + '%';
+  if($('tr-floor-note') && d.partner) $('tr-floor-note').textContent =
+    'You are at ' + money(d.partner.floor_cents) + ' per bottle at volume; fully certified is ' + money(2500) + '.';
+  var host = $('tr-mods'); if(!host) return; host.innerHTML = '';
+  (tr.modules || []).forEach(function(m){
+    var el = document.createElement('div'); el.className = 'mod' + (m.complete ? ' done' : '');
+    el.innerHTML = '<div class="n">Module ' + m.n + '</div><div class="t">' + escapeHtml(m.title) + '</div>'
+      + '<div class="p">' + escapeHtml(m.subtitle) + '</div>' + (m.complete ? '<span class="chk">&#10003;</span>' : '');
+    host.appendChild(el);
+  });
 }
 
 function render(d){
@@ -548,6 +589,7 @@ function render(d){
     ac.style.display = 'none';
   }
   renderAmbLinks(d);
+  renderTraining(d);
 }
 
 function load(){
