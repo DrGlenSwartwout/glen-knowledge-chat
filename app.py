@@ -29134,6 +29134,16 @@ def api_console_fmp_orders_ingest():
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _fo.ensure_tables(cx)
         counts = _fo.ingest_payload(cx, payload)
+        try:
+            from dashboard import purchase_history as _ph
+            from dashboard import fmp_history as _fh
+            slug_map_path = os.path.join(os.path.dirname(__file__), "data", "fmp_slug_map.json")
+            with open(slug_map_path, encoding="utf-8") as _f:
+                _slug_map = json.load(_f)
+            _ph.init_purchase_history_table(cx)
+            counts["purchase_history"] = _fh.rebuild_from_fmp(cx, _slug_map)
+        except Exception as _e:
+            app.logger.warning("fmp-orders-ingest: purchase_history rebuild skipped: %s", _e)
     return jsonify({"ok": True, "counts": counts})
 
 
