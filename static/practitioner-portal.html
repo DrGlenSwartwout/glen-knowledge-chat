@@ -107,6 +107,7 @@
   #dispense-rank td.num, #dispense-rank th.num{ text-align:right; font-variant-numeric:tabular-nums; }
   #dispense-rank td.tot{ font-weight:700; color:var(--gold); }
   #dispense-rank td.pp, #dispense-rank th.pp{ opacity:.55; }
+  #dispense-rank td.soon, #dispense-rank th.soon{ color:var(--muted); font-size:12px; font-variant-numeric:normal; opacity:.7; }
   a.prodlink{ color:var(--gold); text-decoration:none; font-weight:600; }
   a.prodlink:hover{ text-decoration:underline; }
   .panel.reco{ background:transparent; border-style:dashed; }
@@ -131,6 +132,27 @@
     </div>
     <button id="theme-toggle" class="ghost" onclick="toggleTheme()" style="white-space:nowrap">Light</button>
   </div>
+  <!-- Ask Dr. Glen + Assignment: persistent ABOVE the tabs so they stay visible on
+       every tab (answers product/condition questions AND suggests Functional
+       Formulations to add to your order). Shown to all practitioners. -->
+  <div class="panel" id="assist-panel">
+    <h2>Ask Dr. Glen</h2>
+    <div class="muted" style="font-size:13px;margin:4px 0 10px">Ask about a product or ingredient, or describe a patient or condition — I'll answer and suggest Functional Formulations you can add to your order.</div>
+    <div id="assist-log" style="max-height:300px;overflow:auto;margin-bottom:10px"></div>
+    <div class="row">
+      <input class="slug" id="assist-q" placeholder="e.g. elevated IOP in a glaucoma patient — or 'what's in Bone Builder?'">
+      <button id="assist-send">Ask</button>
+    </div>
+  </div>
+
+  <div class="panel" id="assignment-panel" style="display:none">
+    <h2 id="assignment-title">Assignment</h2>
+    <div class="muted" id="assignment-body" style="font-size:13px;margin:4px 0 10px"></div>
+    <div id="assignment-status" style="font-size:13px;margin-bottom:12px"></div>
+    <button id="assignment-record">Record your video</button>
+    <div id="assignment-feedback"></div>
+  </div>
+
   <nav class="tabs" role="tablist" aria-label="Portal sections">
     <button type="button" class="tab" role="tab" data-tab="partner">Partner Program</button>
     <button type="button" class="tab" role="tab" data-tab="order">Order</button>
@@ -158,26 +180,6 @@
       <div class="stat"><b id="wallet">–</b><span>Wellness Credit</span></div>
       <div class="stat"><b id="status">–</b><span>Reselling access</span></div>
     </div>
-  </div>
-
-  <!-- Ask Dr. Glen — inline chat at the top (answers product/condition questions AND
-       suggests Functional Formulations to add to your order). Shown to all practitioners. -->
-  <div class="panel" id="assist-panel">
-    <h2>Ask Dr. Glen</h2>
-    <div class="muted" style="font-size:13px;margin:4px 0 10px">Ask about a product or ingredient, or describe a patient or condition — I'll answer and suggest Functional Formulations you can add to your order.</div>
-    <div id="assist-log" style="max-height:300px;overflow:auto;margin-bottom:10px"></div>
-    <div class="row">
-      <input class="slug" id="assist-q" placeholder="e.g. elevated IOP in a glaucoma patient — or 'what's in Bone Builder?'">
-      <button id="assist-send">Ask</button>
-    </div>
-  </div>
-
-  <div class="panel" id="assignment-panel" style="display:none">
-    <h2 id="assignment-title">Assignment</h2>
-    <div class="muted" id="assignment-body" style="font-size:13px;margin:4px 0 10px"></div>
-    <div id="assignment-status" style="font-size:13px;margin-bottom:12px"></div>
-    <button id="assignment-record">Record your video</button>
-    <div id="assignment-feedback"></div>
   </div>
 
   <div id="partner-program">
@@ -459,14 +461,14 @@ function renderDispenseStats(d){
   var body = rows.map(function(r){
     return '<tr><td>' + prodLink(r.url, r.name) + '</td>'
       + '<td class="num">' + r.dispensed + '</td>'
-      + '<td class="num">' + r.dropshipped + '</td>'
-      + '<td class="num pp">' + r.patient_portal + '</td>'
-      + '<td class="num tot">' + r.total + '</td></tr>';
+      + '<td class="num soon">soon</td>'
+      + '<td class="num soon">soon</td>'
+      + '<td class="num tot">' + r.dispensed + '</td></tr>';
   }).join('');
   host.innerHTML = '<h2>Products you dispense</h2>'
-    + '<div class="muted" style="font-size:13px;margin:4px 0 8px">Ranked by total units. Patient-portal sales are coming soon.</div>'
-    + '<table><thead><tr><th>Product</th><th class="num">Dispensed</th><th class="num">Drop-shipped</th>'
-    + '<th class="num pp">Patient portal</th><th class="num">Total</th></tr></thead><tbody>' + body + '</tbody></table>';
+    + '<div class="muted" style="font-size:13px;margin:4px 0 8px">Ranked by units you dispense. Drop-shipped and patient-portal breakdowns are coming soon.</div>'
+    + '<table><thead><tr><th>Product</th><th class="num">Dispensed</th><th class="num soon">Drop-shipped</th>'
+    + '<th class="num soon">Patient portal</th><th class="num">Total</th></tr></thead><tbody>' + body + '</tbody></table>';
 }
 // Clients tab: curated "add next" FFs for this practice type (lighter styling).
 function renderRecommended(d){
@@ -552,7 +554,7 @@ function render(d){
       rs.style.display = 'none'; rf.style.display = 'block';
     }
   }
-  // assist-panel ("Ask Dr. Glen") is always shown at the top for every practitioner.
+  // assist-panel ("Ask Dr. Glen") sits above the tab bar, shown on every tab.
   $('pm-card').style.display = d.stripe_active ? 'inline-block' : 'none';
   var tb = $('cart').querySelector('tbody'); tb.innerHTML = '';
   (d.cart||[]).forEach(function(it){

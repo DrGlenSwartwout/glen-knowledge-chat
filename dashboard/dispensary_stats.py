@@ -52,55 +52,79 @@ def rank_dispense_rows(dispensed, dropshipped, patient_portal, *, catalog=None):
         rows.append({"slug": s, "name": _name(s, cat), "url": _url(s),
                      "dispensed": d, "dropshipped": ds_, "patient_portal": pp,
                      "total": d + ds_ + pp})
-    rows.sort(key=lambda r: (-r["total"], r["name"].lower()))
+    rows.sort(key=lambda r: (-r["total"], r["name"].lower(), r["slug"]))
     return rows
 
 
-def _items_for_invoices(cx, invoice_ids):
-    """{slug: units} summed across the given orders' items_json (by external_ref)."""
+def _items_for_invoices(cx, invoice_ids, source):
+    """{slug: units} summed across the given orders' items_json, scoped to the
+    given `source` (orders is UNIQUE(source, external_ref)); newest row wins."""
     out = {}
     for inv in invoice_ids:
-        row = cx.execute("SELECT items_json FROM orders WHERE external_ref=? LIMIT 1", (inv,)).fetchone()
+        try:
+            row = cx.execute(
+                "SELECT items_json FROM orders WHERE external_ref=? AND source=? ORDER BY id DESC LIMIT 1",
+                (inv, source)).fetchone()
+        except Exception:
+            continue
         if not row or not row[0]:
             continue
         try:
-            for it in json.loads(row[0]):
+            parsed = json.loads(row[0])
+        except Exception:
+            continue
+        for it in parsed:
+            try:
                 s = it.get("slug")
                 if s:
                     out[s] = out.get(s, 0) + int(it.get("qty") or 0)
-        except Exception:
-            continue
+            except Exception:
+                continue  # one malformed line never drops the rest of the invoice
     return out
 
 
 def dispense_stats(practitioner_id, *, db_path=None, catalog=None):
     """Collect the practitioner's per-product units across channels and rank them.
-    Dispensed = their own wholesale_orders; Drop-shipped = dispensary_orders;
-    Patient portal = {} (deferred). Never raises."""
+    Dispensed = their own wholesale_orders (orders.items_json, source='wholesale').
+    Drop-shipped + Patient portal are DEFERRED ({}) — those sale flows record only
+    aggregate bottles today (no per-product slug), so per-product ranking of them
+    is not yet supported; the UI marks both columns 'coming soon'. Never raises."""
     try:
         with sqlite3.connect(_log_db(db_path)) as cx:
             w = [r[0] for r in cx.execute(
                 "SELECT invoice_id FROM wholesale_orders WHERE practitioner_id=?", (str(practitioner_id),))]
-            d = [r[0] for r in cx.execute(
-                "SELECT invoice_id FROM dispensary_orders WHERE practitioner_id=?", (str(practitioner_id),))]
-            dispensed = _items_for_invoices(cx, w)
-            dropshipped = _items_for_invoices(cx, d)
+            dispensed = _items_for_invoices(cx, w, "wholesale")
     except Exception:
         return []
-    return rank_dispense_rows(dispensed, dropshipped, {}, catalog=catalog)
+    return rank_dispense_rows(dispensed, {}, {}, catalog=catalog)
 
 
 # ── Section 2: curated practice-type recommendations ───────────────────────
 
+def _practice_tokens(practice_type):
+    """Candidate match tokens from a free-form credentials string, so a compound
+    value like 'OD, FAAO' or 'Health Coach, RN' still resolves to its key."""
+    pt = (practice_type or "").strip().lower()
+    toks = {pt}
+    for part in pt.replace("/", ",").split(","):
+        part = part.strip()
+        if part:
+            toks.add(part)                 # comma part preserves multi-word keys ("health coach")
+            toks.update(part.split())      # single-word tokens ("od" from "od faao")
+    return toks
+
+
 def recommended_ffs(practice_type, *, exclude_slugs=(), recs_path=None, catalog=None):
-    """Resolve practice_type (case-insensitive) to its curated FF list, else
-    'default'; drop exclude_slugs; return [{slug, name, url, blurb}]."""
+    """Resolve practice_type to its curated FF list, else 'default'; drop
+    exclude_slugs; return [{slug, name, url, blurb}]. Matching tokenizes the
+    (free-form) credentials so 'OD, FAAO' resolves to the 'OD' list."""
     try:
         path = recs_path or str(_DATA / "practice_recommendations.json")
         recs = json.loads(Path(path).read_text())
     except Exception:
         return []
-    key = next((k for k in recs if k.lower() == (practice_type or "").strip().lower()), "default")
+    toks = _practice_tokens(practice_type)
+    key = next((k for k in recs if k != "default" and k.lower() in toks), "default")
     cat = _catalog(catalog)
     ex = {s for s in (exclude_slugs or ())}
     out = []
