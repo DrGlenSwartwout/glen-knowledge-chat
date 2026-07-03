@@ -12953,27 +12953,43 @@ def api_client_portal(token):
         "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
         "messages": _portal_chat_thread(email_for_reports),
         "members": fam_members,
+        "access_v2": os.environ.get("PORTAL_ACCESS_V2") in ("1", "true", "True"),
     })
 
 
 @app.route("/api/portal/<token>/unlock-scan", methods=["POST"])
 def api_portal_unlock_scan(token):
     from dashboard import family_access as _fa
+    from dashboard import portal_biofield_reports as _pbr
     import datetime as _dt
     body = request.get_json(silent=True) or {}
     scan_id = str(body.get("scan_id") or "").strip()
-    if not scan_id:
+    scan_date = (body.get("scan_date") or "").strip()
+    # "member" lets a family primary unlock the scan for the member tab they are
+    # currently viewing (the GET /api/portal/<token>?member=... they came from);
+    # absent, defaults to the portal token's own email (unchanged legacy behavior).
+    member = (body.get("member") or "").strip().lower()
+    if not scan_id and not scan_date:
         return jsonify({"error": "scan_id required"}), 400
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         portal = _portal_record_for(cx, token)
         if not portal:
             return jsonify({"error": "not found"}), 404
-        email = (portal.get("email") or "").strip().lower()
+        email = member or (portal.get("email") or "").strip().lower()
+        # The client portal UI never sees scan_id (the GET /api/portal/<token>
+        # response doesn't expose it) — it can only send scan_date. Resolve the
+        # underlying scan_id server-side from the member's report for that date.
+        if not scan_id and scan_date:
+            _pbr.init_table(cx)
+            rep = _pbr.get_report(cx, email, scan_date) or {}
+            scan_id = str(rep.get("scan_id") or "").strip()
+        if not scan_id:
+            return jsonify({"ok": False, "error": "scan not found"}), 400
         _fa.init_tables(cx)
         if _fa.scan_accessible(cx, email, scan_id, is_paid=_is_paid_member(email)):
             return jsonify({"ok": True, "reason": "already"})
         now_iso = _dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-        ok, reason = _fa.grant_free_monthly(cx, email, scan_id, body.get("scan_date"), now_iso)
+        ok, reason = _fa.grant_free_monthly(cx, email, scan_id, scan_date or None, now_iso)
         return jsonify({"ok": ok, "reason": reason})
 
 

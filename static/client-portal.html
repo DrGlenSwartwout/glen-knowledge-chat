@@ -110,6 +110,15 @@
     border-radius:999px;font-size:.8rem;font-weight:600;padding:5px 13px;cursor:pointer;
     line-height:1.2;font-family:inherit}
   .scantab.active{background:var(--brand);color:var(--btn-fg);border-color:var(--brand)}
+  /* family member tabs (Portal Access V2 — access_v2-gated, no effect when off) */
+  .member-tabs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 1rem}
+  .member-tabs .tab{background:var(--brand-soft);color:var(--brand);border:1px solid var(--line);
+    border-radius:999px;font-size:.82rem;font-weight:600;padding:6px 14px;cursor:pointer;
+    line-height:1.2;font-family:inherit}
+  .member-tabs .tab.active{background:var(--brand);color:var(--btn-fg);border-color:var(--brand)}
+  /* per-scan unlock affordance (Portal Access V2) — no blur box, just a plain CTA */
+  .rx-unlock{margin-top:.9rem}
+  .rx-unlock .btn[disabled]{opacity:.75;cursor:default}
   .scansel{background:var(--card2);color:var(--ink);border:1px solid var(--line);
     border-radius:999px;font-size:.8rem;font-weight:600;padding:5px 10px;cursor:pointer;
     font-family:inherit}
@@ -244,6 +253,11 @@ const escGreeting = (s)=>{
 const money = (c)=> (c==null? "" : "$"+(c/100).toFixed(2));
 // The biofield scan the page is currently viewing (null = newest, server default).
 let selectedScanDate = null;
+// Portal Access V2 (family accounts): which member's portal is currently on screen.
+// null = default (the token's own email, i.e. the primary). Only meaningful when
+// the API response carries access_v2:true and a non-empty members[] list.
+let selectedMember = null;
+function selectMember(email){ selectedMember = email || null; load(); }
 // Cold-portal "Preparing your analysis…" state. A fresh portal is created with
 // biofield_status === "pending" and no analysis yet; we post one process-request
 // (a local watcher synthesizes + publishes the draft) and poll until it lands.
@@ -330,8 +344,12 @@ async function load(){
   // succeed depends on the page: a token link lives on its content; the logged-in
   // /me home lives on its session (the view), and biofield content is optional.
   const fetchJson = async (u)=>{ try{ const r=await fetch(u); return r.ok?await r.json():null; }catch(e){ return null; } };
-  // When a specific scan is selected, both endpoints take ?scan_date=<YYYY-MM-DD>.
-  const sd = selectedScanDate ? `?scan_date=${encodeURIComponent(selectedScanDate)}` : "";
+  // When a specific scan is selected, both endpoints take ?scan_date=<YYYY-MM-DD>;
+  // when a family member tab is selected (Portal Access V2 only), ?member=<email>.
+  const qp = [];
+  if(selectedScanDate) qp.push(`scan_date=${encodeURIComponent(selectedScanDate)}`);
+  if(selectedMember) qp.push(`member=${encodeURIComponent(selectedMember)}`);
+  const sd = qp.length ? `?${qp.join("&")}` : "";
   const [data, view] = await Promise.all([
     fetchJson(`/api/portal/${encodeURIComponent(seg)}${sd}`),
     fetchJson(`/api/portal/${encodeURIComponent(seg)}/view${sd}`),
@@ -387,7 +405,20 @@ function render(d, v){
     return;   // suppress the home until agreed
   }
   const app = document.getElementById("app");
-  try{ window.__reportData = d; }catch(e){}   // for printReport()
+  try{ window.__reportData = d; }catch(e){}   // for printReport() and unlockScan()
+  // Portal Access V2: family member tab bar. Strictly gated on access_v2===true
+  // AND a non-empty members[] — when either is false/absent this renders nothing,
+  // so the flag-off / no-family experience is byte-identical to before this feature.
+  let memberTabsHtml = "";
+  if(d.access_v2 === true && Array.isArray(d.members) && d.members.length){
+    if(selectedMember == null){ selectedMember = d.members[0].member_email || null; }
+    memberTabsHtml = `<div class="member-tabs">` + d.members.map(m=>{
+      const email = m.member_email || "";
+      const label = m.member_label || email;
+      const active = email && email === selectedMember ? " active" : "";
+      return `<button type="button" class="tab${active}" data-member="${esc(email)}">${esc(label)}</button>`;
+    }).join("") + `</div>`;
+  }
   const displayName = d.name || (v && v.account && v.account.name) || "";
   // Greet by real first name; never show an email-derived token. A name that is
   // blank, or whose first word contains "@" or "." (e.g. "bob@x.com" stored as a
@@ -401,7 +432,8 @@ function render(d, v){
       <div class="hello">Aloha ${esc(first)}</div>
       <div class="sub">${escGreeting(d.greeting || "This is your personal healing home: your video, your healing path, and your remedies, all in one place.")}</div>
       ${badges.length?`<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>`:""}
-    </div>`;
+    </div>
+    ${memberTabsHtml}`;
 
   // "Ask Dr. Glen" concierge chat — promoted to the TOP of the portal (first card
   // below the hero) so it's the first thing the client sees. Always shown.
@@ -608,6 +640,17 @@ function render(d, v){
             <div class="lock">${ICON_LOCK}<span>Your remedy matches are being confirmed by Dr. Glen.</span></div>
             ${action}
           </div>`;
+      } else if(d.access_v2 === true && d.blurred === true){
+        // Portal Access V2: the scan is locked behind the family/paid gate. No
+        // blurred placeholder here — a plain "Unlock this scan" CTA instead.
+        // Legacy (access_v2 falsy) path is untouched: falls through to the
+        // bf.pricing_note branch below exactly as before.
+        extra = `
+          <div class="rx-unlock">
+            <button type="button" class="btn full" id="scanUnlockBtn">🔒 Unlock this scan</button>
+            <p class="small err" id="scanUnlockErr" hidden></p>
+          </div>`
+          + (bf.pricing_note ? `<p class="note small" style="margin-top:.7rem">${esc(bf.pricing_note)}</p>` : "");
       } else if(bf.pricing_note){
         extra = `<p class="note small" style="margin-top:.7rem">${esc(bf.pricing_note)}</p>`;
       }
@@ -765,6 +808,14 @@ function render(d, v){
   const ssel = document.getElementById("bfScanSel");
   if(ssel) ssel.addEventListener("change", ()=>selectScan(ssel.value));
 
+  // Portal Access V2: family member tabs (only present when access_v2 && members[]).
+  app.querySelectorAll(".member-tabs .tab").forEach(t =>
+    t.addEventListener("click", ()=>selectMember(t.getAttribute("data-member"))));
+
+  // Portal Access V2: per-scan unlock CTA (only present when access_v2 && blurred).
+  const ubtn = document.getElementById("scanUnlockBtn");
+  if(ubtn) ubtn.addEventListener("click", ()=>unlockScan(ubtn));
+
   const nbtn = document.getElementById("notifBtn");
   if(nbtn) nbtn.addEventListener("click", ()=>setNotifyPref(nbtn));
 
@@ -806,6 +857,39 @@ async function advanceBiofield(btn, step){
     await load();
   }catch(e){
     btn.disabled = false; btn.textContent = label;
+  }
+}
+
+// Portal Access V2: unlock the currently-selected scan (family/paid gate). Sends
+// the scan_date of the report on screen (window.__reportData, set in render());
+// the server resolves the underlying scan_id. Re-fetches on success; a monthly
+// cap disables the button in place with an explanatory message.
+async function unlockScan(btn){
+  const err = document.getElementById("scanUnlockErr");
+  if(err){ err.hidden = true; }
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Unlocking…";
+  const rd = window.__reportData || {};
+  const body = {scan_date: rd.scan_date || selectedScanDate || ""};
+  if(rd.scan_id) body.scan_id = rd.scan_id;
+  if(selectedMember) body.member = selectedMember;
+  try{
+    const r = await fetch(`/api/portal/${encodeURIComponent(seg)}/unlock-scan`, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if(j && j.ok){ await load(); return; }
+    if(j && j.reason === "cap"){
+      btn.disabled = true;
+      btn.textContent = "1 free unlock used this month — resets on the 1st.";
+      return;
+    }
+    throw new Error((j && j.error) || "Something went wrong. Please try again.");
+  }catch(e){
+    btn.disabled = false; btn.textContent = label;
+    if(err){ err.textContent = (e && e.message) || "Something went wrong. Please try again."; err.hidden = false; }
   }
 }
 
