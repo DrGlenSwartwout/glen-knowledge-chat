@@ -26,6 +26,46 @@ def test_aging_filters_zero_balance_and_computes_overdue():
     assert aged[1]["days_overdue"] < 0  # future
 
 
+def test_aging_tags_source_qbo():
+    from dashboard import finance as F
+    aged = F.aging([{"Id": "1", "DocNumber": "1", "Balance": "10", "TotalAmt": "10",
+                     "DueDate": "2026-06-01", "CustomerRef": {"name": "A"}}], now=NOW)
+    assert aged[0]["source"] == "qbo"
+
+
+def test_inhouse_aging_shapes_unpaid_orders_and_dedupes_qbo():
+    from dashboard import finance as F
+    orders = [
+        # unpaid, 20 days old (net-14 -> 6 days overdue), in-house only
+        {"id": 11, "created_at": "2026-05-16", "external_ref": "manual-11",
+         "email": "a@x.com", "name": "Al", "total_cents": 9900, "paid_cents": 0,
+         "pay_status": "unpaid", "status": "confirmed"},
+        # already paid -> excluded
+        {"id": 12, "created_at": "2026-05-01", "external_ref": "manual-12",
+         "total_cents": 5000, "pay_status": "paid", "status": "shipped"},
+        # cancelled -> excluded
+        {"id": 13, "created_at": "2026-05-01", "external_ref": "manual-13",
+         "total_cents": 5000, "pay_status": "unpaid", "status": "cancelled"},
+        # fully covered by paid_cents (zero balance) -> excluded
+        {"id": 14, "created_at": "2026-05-01", "external_ref": "manual-14",
+         "total_cents": 5000, "paid_cents": 5000, "pay_status": "unpaid", "status": "new"},
+        # external_ref IS a QBO invoice already on the QBO list -> deduped out
+        {"id": 15, "created_at": "2026-05-01", "external_ref": "QBO-9",
+         "total_cents": 4000, "pay_status": "unpaid", "status": "new"},
+        # recent unpaid, still within net terms -> included but not overdue
+        {"id": 16, "created_at": "2026-06-03", "external_ref": "manual-16",
+         "total_cents": 3000, "pay_status": "unpaid", "status": "new"},
+    ]
+    rows = F.inhouse_aging(orders, qbo_ids={"QBO-9"}, now=NOW)
+    assert [r["id"] for r in rows] == [11, 16]  # paid/cancelled/zero/deduped dropped, most-overdue first
+    assert rows[0]["source"] == "inhouse"
+    assert rows[0]["order_id"] == 11
+    assert rows[0]["balance"] == 99.0
+    assert rows[0]["days_overdue"] == 6      # 20 days old, net-14 terms
+    assert rows[0]["customer"] == "Al"
+    assert rows[1]["days_overdue"] < 0       # id 16 still within terms
+
+
 def test_summarize_totals():
     from dashboard import finance as F
     aged = [{"balance": 70.0, "days_overdue": 4}, {"balance": 40.0, "days_overdue": -5}]
