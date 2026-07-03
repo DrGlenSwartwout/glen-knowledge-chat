@@ -264,6 +264,17 @@ def set_order_tracking(cx, order_id, tracking_number, shipment_id=None):
     return cur.rowcount > 0
 
 
+def set_order_shipping(cx, order_id, shipping_cents, total_cents):
+    """Set an order's shipping charge and total together. Used when a combined
+    shipment recomputes the one-parcel rate and splits it across members; the
+    caller computes the new total (old total - old shipping + new shipping)."""
+    cur = cx.execute(
+        "UPDATE orders SET shipping_cents=?, total_cents=?, updated_at=? WHERE id=?",
+        (int(shipping_cents or 0), int(total_cents or 0), _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
 def set_order_group(cx, order_id, group_shipment_id):
     """Link (or, with None, unlink) an order to a combined shipment. Returns True
     if the order existed."""
