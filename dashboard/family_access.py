@@ -82,3 +82,34 @@ def primary_for(cx, member_email):
 def is_primary(cx, email):
     r = cx.execute("SELECT 1 FROM family_members WHERE primary_email=? LIMIT 1", (_norm(email),)).fetchone()
     return bool(r)
+
+
+def has_unlock(cx, member_email, scan_id):
+    r = cx.execute("SELECT 1 FROM scan_unlocks WHERE member_email=? AND scan_id=?",
+                   (_norm(member_email), str(scan_id))).fetchone()
+    return bool(r)
+
+
+def record_unlock(cx, member_email, scan_id, scan_date, source, now_iso):
+    cur = cx.execute(
+        "INSERT OR IGNORE INTO scan_unlocks (member_email, scan_id, scan_date, unlocked_at, source) "
+        "VALUES (?,?,?,?,?)", (_norm(member_email), str(scan_id), scan_date, now_iso, source))
+    cx.commit()
+    return cur.rowcount == 1
+
+
+def free_unlock_used_this_month(cx, member_email, year_month):
+    r = cx.execute(
+        "SELECT 1 FROM scan_unlocks WHERE member_email=? AND source='free_monthly' "
+        "AND substr(unlocked_at,1,7)=? LIMIT 1", (_norm(member_email), year_month)).fetchone()
+    return bool(r)
+
+
+def grant_free_monthly(cx, member_email, scan_id, scan_date, now_iso):
+    if has_unlock(cx, member_email, scan_id):
+        return True, "already"
+    year_month = now_iso[:7]  # "YYYY-MM"
+    if free_unlock_used_this_month(cx, member_email, year_month):
+        return False, "cap"
+    record_unlock(cx, member_email, scan_id, scan_date, "free_monthly", now_iso)
+    return True, ""

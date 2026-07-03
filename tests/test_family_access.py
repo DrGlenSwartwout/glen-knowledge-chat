@@ -30,3 +30,32 @@ def test_upsert_is_idempotent_and_remove(tmp_db):
     assert len(members) == 1 and members[0]["member_label"] == "M2"
     fa.remove_member(cx, "p@x.com", "m@x.com")
     assert fa.list_members(cx, "p@x.com") == []
+
+
+def test_free_monthly_cap_is_per_member_and_permanent(tmp_db):
+    cx = _cx(tmp_db)
+    # first free unlock in July succeeds
+    ok, reason = fa.grant_free_monthly(cx, "m@x.com", "s1", "2026-07-02", "2026-07-02T10:00:00Z")
+    assert ok and reason == ""
+    assert fa.has_unlock(cx, "m@x.com", "s1") is True
+    # second free unlock same month -> capped
+    ok, reason = fa.grant_free_monthly(cx, "m@x.com", "s2", "2026-07-05", "2026-07-05T10:00:00Z")
+    assert ok is False and reason == "cap"
+    assert fa.has_unlock(cx, "m@x.com", "s2") is False
+    # next month -> allowed again; prior unlock still present (permanent)
+    ok, reason = fa.grant_free_monthly(cx, "m@x.com", "s2", "2026-07-05", "2026-08-01T10:00:00Z")
+    assert ok and reason == ""
+    assert fa.has_unlock(cx, "m@x.com", "s1") is True
+    # a different member is unaffected by m@x.com's usage
+    ok, reason = fa.grant_free_monthly(cx, "other@x.com", "s9", "2026-07-02", "2026-07-02T10:00:00Z")
+    assert ok and reason == ""
+
+
+def test_grant_free_monthly_already_unlocked_is_noop(tmp_db):
+    cx = _cx(tmp_db)
+    fa.record_unlock(cx, "m@x.com", "s1", "2026-07-02", "paid", "2026-07-02T09:00:00Z")
+    ok, reason = fa.grant_free_monthly(cx, "m@x.com", "s1", "2026-07-02", "2026-07-02T10:00:00Z")
+    assert ok is True and reason == "already"
+    # did not consume the monthly allowance
+    ok, reason = fa.grant_free_monthly(cx, "m@x.com", "s2", "2026-07-03", "2026-07-03T10:00:00Z")
+    assert ok and reason == ""
