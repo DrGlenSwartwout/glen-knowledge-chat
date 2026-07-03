@@ -103,6 +103,16 @@
   #tr-mods .t{ font-size:14px; font-weight:700; color:var(--cream); margin-top:2px; }
   #tr-mods .p{ font-size:11px; color:var(--muted); margin-top:3px; }
   #tr-mods .chk{ position:absolute; top:10px; right:11px; color:var(--gold); font-weight:800; font-size:13px; }
+  /* Dispense ranking + recommendations */
+  #dispense-rank td.num, #dispense-rank th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+  #dispense-rank td.tot{ font-weight:700; color:var(--gold); }
+  #dispense-rank td.pp, #dispense-rank th.pp{ opacity:.55; }
+  a.prodlink{ color:var(--gold); text-decoration:none; font-weight:600; }
+  a.prodlink:hover{ text-decoration:underline; }
+  .panel.reco{ background:transparent; border-style:dashed; }
+  .panel.reco h2{ font-size:15px; color:var(--muted); }
+  .reco-item{ margin:8px 0; padding-top:8px; border-top:1px solid var(--border); }
+  .reco-item .blurb{ font-size:13px; color:var(--muted); margin-top:2px; }
   @media (max-width:760px){
     #partner-program .grid2,#partner-program .grid3,#partner-program .grid4{ grid-template-columns:1fr; }
     #partner-program .mods{ grid-template-columns:repeat(2,1fr); grid-template-rows:none; grid-auto-flow:row; }
@@ -286,6 +296,8 @@
     <div id="disp-credit" style="margin-top:10px;font-weight:600;color:var(--gold)"></div>
     <table id="disp-table"><thead><tr><th>Date</th><th>Patient</th><th>Bottles</th><th>Credit</th></tr></thead><tbody></tbody></table>
   </div>
+  <div class="panel" id="dispense-rank" style="display:none"></div>
+  <div class="panel reco" id="reco-ffs" style="display:none"></div>
   </section>
 
   <section class="pane" data-pane="ambassador" role="tabpanel" aria-label="Ambassador">
@@ -429,6 +441,47 @@ function renderAmbLinks(d){
   host.innerHTML = '<h2>Your links &amp; rewards</h2>'
     + '<div class="muted" style="font-size:13px;margin:4px 0 10px">Share these to grow your practice. ' + earned + '.</div>'
     + rows;
+}
+
+function prodLink(url, name){
+  return '<a class="prodlink" href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(name) + '</a>';
+}
+// Clients tab: ranked "products you dispense" across channels.
+function renderDispenseStats(d){
+  var host = $('dispense-rank'); if(!host) return;
+  var rows = d.dispense_stats || [];
+  host.style.display = '';
+  if(!rows.length){
+    host.innerHTML = '<h2>Products you dispense</h2><div class="muted" style="font-size:13px;margin-top:6px">'
+      + 'Your dispensing history will appear here as you place orders and your patients order through your links.</div>';
+    return;
+  }
+  var body = rows.map(function(r){
+    return '<tr><td>' + prodLink(r.url, r.name) + '</td>'
+      + '<td class="num">' + r.dispensed + '</td>'
+      + '<td class="num">' + r.dropshipped + '</td>'
+      + '<td class="num pp">' + r.patient_portal + '</td>'
+      + '<td class="num tot">' + r.total + '</td></tr>';
+  }).join('');
+  host.innerHTML = '<h2>Products you dispense</h2>'
+    + '<div class="muted" style="font-size:13px;margin:4px 0 8px">Ranked by total units. Patient-portal sales are coming soon.</div>'
+    + '<table><thead><tr><th>Product</th><th class="num">Dispensed</th><th class="num">Drop-shipped</th>'
+    + '<th class="num pp">Patient portal</th><th class="num">Total</th></tr></thead><tbody>' + body + '</tbody></table>';
+}
+// Clients tab: curated "add next" FFs for this practice type (lighter styling).
+function renderRecommended(d){
+  var host = $('reco-ffs'); if(!host) return;
+  var recs = d.recommended_ffs || [];
+  if(!recs.length){ host.style.display = 'none'; return; }
+  host.style.display = '';
+  var items = recs.map(function(r){
+    return '<div class="reco-item"><div>' + prodLink(r.url, r.name) + '</div>'
+      + '<div class="blurb">' + escapeHtml(r.blurb) + '</div></div>';
+  }).join('');
+  host.innerHTML = '<h2>Recommended to add next</h2>'
+    + '<div class="muted" style="font-size:12.5px;margin:2px 0 4px">Suggested for your type of practice.</div>'
+    + items
+    + '<div class="muted" style="font-size:11px;margin-top:10px">These statements describe structure/function support and have not been evaluated to diagnose, treat, cure, or prevent any disease.</div>';
 }
 
 // Training tab: 12-module ASH curriculum with the practitioner's completion state.
@@ -590,6 +643,8 @@ function render(d){
   }
   renderAmbLinks(d);
   renderTraining(d);
+  renderDispenseStats(d);
+  renderRecommended(d);
 }
 
 function load(){
