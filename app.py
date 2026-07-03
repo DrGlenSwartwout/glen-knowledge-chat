@@ -7215,7 +7215,8 @@ def _fulfill_biofield_trial(session_id):
             _trial_cents = (int(sess.get("amount_total") or pi.get("amount_received") or 0)
                             or _bos_payments.TRIAL_AMOUNT_CENTS)
             _ingest_order(source="biofield_trial", external_ref=pi_id, email=bt_email,
-                          total_cents=_trial_cents, channel="retail", status="done")
+                          total_cents=_trial_cents, channel="retail", status="done",
+                          paid_cents=_trial_cents)
         except Exception as _oe:
             print(f"[biofield-trial] order-ledger record failed: {_oe!r}", flush=True)
         # Send the deposit-unlock welcome email best-effort: it must never undo the
@@ -27442,21 +27443,26 @@ def _normalize_ship_address(addr, fallback_name=""):
 def _ingest_order(*, source, external_ref, email="", name="", phone="",
                   items=None, total_cents=0, address=None, channel="retail",
                   get_cents=0, discount_cents=0, points_redeemed_cents=0, shipping_cents=0,
-                  status="new"):
+                  status="new", paid_cents=None):
     """Best-effort: record an order into the BOS orders table. Never raises into
     a checkout path. get_cents = absorbed Hawai'i GET owed (recorded, not charged).
     status defaults to 'new' (enters fulfillment); pass 'done' for digital charges
-    with nothing to ship (e.g. the $1 biofield trial membership unlock)."""
+    with nothing to ship (e.g. the $1 biofield trial membership unlock).
+    paid_cents (when not None) records the order as paid for that captured amount
+    WITHOUT moving it off `status` — for already-captured charges like the trial."""
     try:
         cx = _sqlite3.connect(LOG_DB)
         try:
-            _bos_orders.upsert_order(
+            _oid = _bos_orders.upsert_order(
                 cx, source=source, external_ref=external_ref, email=email, name=name,
                 phone=phone, items=items or [], total_cents=int(total_cents or 0),
                 address=address or {}, channel=channel, get_cents=int(get_cents or 0),
                 discount_cents=int(discount_cents or 0),
                 points_redeemed_cents=int(points_redeemed_cents or 0),
                 shipping_cents=int(shipping_cents or 0), status=status)
+            if paid_cents is not None and _oid:
+                _bos_orders.mark_order_paid_keep_status(
+                    cx, _oid, method="card", amount_cents=int(paid_cents))
             # NEW: every buyer gets a portal home (idempotent, fail-open)
             try:
                 from dashboard import portal_provision as _pp

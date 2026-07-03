@@ -511,6 +511,19 @@ def set_order_payment(cx, order_id, *, method, amount_cents):
     return cur.rowcount > 0
 
 
+def mark_order_paid_keep_status(cx, order_id, *, method, amount_cents):
+    """Record payment on an order WITHOUT moving it into the fulfillment board — for
+    digital / no-ship charges (e.g. the $1 biofield trial) that are created 'done'
+    and must stay 'done'. Sets the same payment fields as set_order_payment but
+    leaves status untouched. paid_at is only stamped once (first mark wins)."""
+    cur = cx.execute(
+        "UPDATE orders SET pay_status='paid', pay_method=?, paid_cents=?, "
+        "paid_at=COALESCE(paid_at,?), updated_at=? WHERE id=?",
+        (str(method or ""), int(amount_cents or 0), _now(), _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
 def set_order_payment_claimed(cx, order_id, *, method):
     """Customer says they sent an off-platform payment (Zelle/Wise). Marks the
     invoice 'claimed' (pending OWNER confirmation) — does NOT mark it paid or

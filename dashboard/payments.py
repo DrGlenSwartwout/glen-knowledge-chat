@@ -112,7 +112,22 @@ def backfill_trial_orders(cx, fetch_session, *, dry_run=False, now=None):
             "SELECT session_id, email FROM biofield_trial_grants").fetchall()
     except Exception:
         return {"created": 0, "skipped": 0, "unpaid": 0, "failed": 0}
-    out = {"created": 0, "skipped": 0, "unpaid": 0, "failed": 0}
+    out = {"created": 0, "skipped": 0, "unpaid": 0, "failed": 0, "reconciled": 0}
+    # Reconcile trial orders created before they were marked paid: a biofield_trial
+    # order only exists because its $1 was captured, so an 'unpaid' one is a stale
+    # flag (it showed as "Unpaid" on the Done board). Flip it to paid WITHOUT
+    # moving it off 'done'. Idempotent — a re-run touches only still-unpaid rows.
+    if not dry_run:
+        try:
+            for r in cx.execute(
+                    "SELECT id, total_cents FROM orders WHERE source='biofield_trial' "
+                    "AND COALESCE(pay_status,'unpaid')!='paid'").fetchall():
+                oid = r["id"] if hasattr(r, "keys") else r[0]
+                amt = int((r["total_cents"] if hasattr(r, "keys") else r[1]) or 0) or TRIAL_AMOUNT_CENTS
+                O.mark_order_paid_keep_status(cx, oid, method="card", amount_cents=amt)
+                out["reconciled"] += 1
+        except Exception as e:
+            print(f"[trial-backfill] reconcile pass skipped: {e!r}", flush=True)
     for g in grants:
         sid = g["session_id"] if hasattr(g, "keys") else g[0]
         email = g["email"] if hasattr(g, "keys") else g[1]
@@ -130,9 +145,11 @@ def backfill_trial_orders(cx, fetch_session, *, dry_run=False, now=None):
                 continue
             amount = int(sess.get("amount_total") or 0) or TRIAL_AMOUNT_CENTS
             if not dry_run:
-                O.upsert_order(cx, source="biofield_trial", external_ref=pi_id,
-                               email=email or "", items=[], total_cents=amount,
-                               address={}, channel="retail", status="done")
+                oid = O.upsert_order(cx, source="biofield_trial", external_ref=pi_id,
+                                     email=email or "", items=[], total_cents=amount,
+                                     address={}, channel="retail", status="done")
+                # It's a captured $1 charge — record it paid without leaving 'done'.
+                O.mark_order_paid_keep_status(cx, oid, method="card", amount_cents=amount)
             out["created"] += 1
         except Exception as e:
             print(f"[trial-backfill] {sid}: {e!r}", flush=True)
