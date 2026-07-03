@@ -317,7 +317,9 @@ async function loadReferral(){
     const d = await r.json();
     if (d && d.code){
       const el = document.getElementById('myRef');
-      el.textContent = 'Your referral code: ' + d.code + ' (share it, a friend gets 10% off)';
+      const pct = (d.pct != null) ? d.pct : 10;
+      el.textContent = 'Your referral code: ' + d.code
+        + (pct > 0 ? ' (share it, a friend gets ' + pct + '% off)' : ' (share it with a friend)');
       el.classList.remove('hide');
     }
   } catch(e){}
