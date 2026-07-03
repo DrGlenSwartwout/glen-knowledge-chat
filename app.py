@@ -11506,7 +11506,7 @@ def api_practitioner_dropship_checkout():
                       email=(prac.get("email") or ""),
                       name=(prac.get("name") or ""),
                       total_cents=int(round((out.get("total") or 0) * 100)),
-                      address=ship, channel="wholesale",
+                      items=items, address=ship, channel="wholesale",
                       get_cents=out.get("get_cents", 0))
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
@@ -12546,6 +12546,7 @@ def api_client_checkout(code):
                   email=email,
                   name=name,
                   total_cents=int(round((out.get("total") or 0) * 100)),
+                  items=items,
                   address=ship,
                   channel="retail",
                   get_cents=out.get("get_cents", 0))

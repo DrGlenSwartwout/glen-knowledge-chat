@@ -40,23 +40,27 @@ def _seed(tmp_path):
         "CREATE TABLE dispensary_orders(invoice_id TEXT PRIMARY KEY, practitioner_id TEXT, bottles INT);"
         "CREATE TABLE orders(id INTEGER PRIMARY KEY, source TEXT, external_ref TEXT, items_json TEXT);")
     cx.execute("INSERT INTO wholesale_orders VALUES('INV1','p1')")
-    cx.execute("INSERT INTO dispensary_orders VALUES('INV2','p1',3)")
+    cx.execute("INSERT INTO dispensary_orders VALUES('INV2','p1',5)")
+    cx.execute("INSERT INTO dispensary_orders VALUES('INV3','p1',2)")
     cx.execute("INSERT INTO orders(source,external_ref,items_json) VALUES('wholesale','INV1',?)",
                (_json.dumps([{"slug": "bone-builder", "qty": 10}, {"slug": "nous-energy", "qty": 2}]),))
     cx.execute("INSERT INTO orders(source,external_ref,items_json) VALUES('dispensary','INV2',?)",
-               (_json.dumps([{"name": "Dispensary", "qty": 3}]),))  # slug-less stub → deferred
+               (_json.dumps([{"slug": "bone-builder", "qty": 4}, {"slug": "nous-energy", "qty": 1}]),))
+    cx.execute("INSERT INTO orders(source,external_ref,items_json) VALUES('dispensary','INV3',?)",
+               (_json.dumps([{"name": "Dispensary", "qty": 2}]),))  # slug-less (webhook) → contributes 0 per-product
     cx.commit(); cx.close()
     return p
 
 
-def test_dispense_stats_ranks_dispensed_and_defers_dropship(tmp_path):
+def test_dispense_stats_ranks_dispensed_and_dropshipped(tmp_path):
     rows = ds.dispense_stats("p1", db_path=_seed(str(tmp_path)), catalog=CAT)
     by = {r["slug"]: r for r in rows}
     assert rows[0]["slug"] == "bone-builder"
-    assert by["bone-builder"]["dispensed"] == 10 and by["bone-builder"]["total"] == 10
-    assert by["nous-energy"]["dispensed"] == 2
-    # drop-ship stub has no slug, patient-portal deferred → both channels 0
-    assert all(r["dropshipped"] == 0 and r["patient_portal"] == 0 for r in rows)
+    assert by["bone-builder"]["dispensed"] == 10 and by["bone-builder"]["dropshipped"] == 4
+    assert by["bone-builder"]["total"] == 14
+    assert by["nous-energy"]["dispensed"] == 2 and by["nous-energy"]["dropshipped"] == 1
+    assert all(r["patient_portal"] == 0 for r in rows)  # patient-portal still deferred
+    assert set(by) == {"bone-builder", "nous-energy"}   # slug-less webhook order adds no phantom rows
 
 
 def test_dispense_stats_scopes_by_source_sharing_external_ref(tmp_path):

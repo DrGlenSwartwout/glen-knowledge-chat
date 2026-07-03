@@ -103,6 +103,7 @@ def test_happy_path_zelle_returns_200_and_records_order(client, monkeypatch):
         captured["email"] = email
         captured["address"] = address
         captured["get_cents"] = get_cents
+        captured["items"] = kw.get("items")
 
     monkeypatch.setattr(appmod, "_ingest_order", _fake_ingest_order)
 
@@ -122,3 +123,5 @@ def test_happy_path_zelle_returns_200_and_records_order(client, monkeypatch):
     assert captured["external_ref"] == "INV-001"
     assert captured["email"] == "patient@example.com"
     assert (captured["address"] or {}).get("state") == "OR"
+    # the dispensary sale carries the real line items (so drop-ship per-product ranking works)
+    assert captured["items"] == [{"slug": "brain-boost", "qty": 1}]

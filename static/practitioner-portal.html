@@ -461,13 +461,13 @@ function renderDispenseStats(d){
   var body = rows.map(function(r){
     return '<tr><td>' + prodLink(r.url, r.name) + '</td>'
       + '<td class="num">' + r.dispensed + '</td>'
+      + '<td class="num">' + r.dropshipped + '</td>'
       + '<td class="num soon">soon</td>'
-      + '<td class="num soon">soon</td>'
-      + '<td class="num tot">' + r.dispensed + '</td></tr>';
+      + '<td class="num tot">' + r.total + '</td></tr>';
   }).join('');
   host.innerHTML = '<h2>Products you dispense</h2>'
-    + '<div class="muted" style="font-size:13px;margin:4px 0 8px">Ranked by units you dispense. Drop-shipped and patient-portal breakdowns are coming soon.</div>'
-    + '<table><thead><tr><th>Product</th><th class="num">Dispensed</th><th class="num soon">Drop-shipped</th>'
+    + '<div class="muted" style="font-size:13px;margin:4px 0 8px">Ranked by total units across the products you dispense and drop-ship. Patient-portal breakdown is coming soon.</div>'
+    + '<table><thead><tr><th>Product</th><th class="num">Dispensed</th><th class="num">Drop-shipped</th>'
     + '<th class="num soon">Patient portal</th><th class="num">Total</th></tr></thead><tbody>' + body + '</tbody></table>';
 }
 // Clients tab: curated "add next" FFs for this practice type (lighter styling).
