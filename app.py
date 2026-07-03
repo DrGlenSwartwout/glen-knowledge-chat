@@ -13188,15 +13188,17 @@ def _portal_reorder_module(email):
                 "in_repertoire": in_rep,
             })
 
-    # --- locked_rows: repertoire-eligible SKUs last bought 90-365 days ago,
-    # not already in the client's repertoire, tagged with the shortest
-    # commitment tier whose seed window would reach that purchase. ---
+    # --- locked_rows: FF SKUs (_qty_eligible — Glen 2026-07: the repertoire
+    # discount is FF-only, so only these can ever unlock member pricing) last
+    # bought 90-365 days ago, not already in the client's repertoire, tagged
+    # with the shortest commitment tier whose seed window would reach that
+    # purchase. ---
     locked_rows = []
     for slug in seen:
         if slug in rep_slugs:
             continue
         p = _get_product(slug)
-        if not p or not _repertoire_eligible(p):
+        if not p or not _qty_eligible(p):
             continue
         seen_at = _parse_iso_dt(last_seen_at.get(slug))
         if not seen_at:
@@ -13236,7 +13238,7 @@ def _portal_reorder_module(email):
             except Exception:
                 paid_unit = int(p.get("price_cents") or 0)
             spend_30d_cents += paid_unit * qty
-            if _repertoire_eligible(p):
+            if _qty_eligible(p):  # Glen 2026-07: repertoire discount is FF-only
                 hyp_unit = _rep_priced_unit_cents(p, repertoire_slugs={slug}, settings=settings)
             else:
                 hyp_unit = paid_unit

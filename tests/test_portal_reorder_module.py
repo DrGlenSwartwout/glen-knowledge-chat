@@ -169,6 +169,35 @@ def test_membership_upsell_savings_for_non_member(client):
     assert up.get("already_member") is False
 
 
+def test_membership_upsell_savings_only_counts_ff_products(client):
+    """Glen 2026-07: the repertoire discount is FF-only (commit 899fba0). The
+    membership_upsell projection must match — a non-FF product in the client's
+    last-30-day history contributes ZERO to savings_cents (it stays at regular
+    price even as a hypothetical member), only the FF line's real discount
+    counts. vitamin-e-spectrum has no qty_pricing flag -> non-FF; nous-energy
+    does -> FF."""
+    c, appmod = client
+    email = "ffupsell@example.com"
+    tok = _seed_portal(appmod, email)
+    _seed_order(appmod, source="portal-reorder", email=email,
+                slugs_qty=[("nous-energy", 1)], days_ago=5, unit_cents=6997)  # FF
+    _seed_order(appmod, source="reorder", email=email,
+                slugs_qty=[("vitamin-e-spectrum", 1)], days_ago=6, unit_cents=3997)  # non-FF
+
+    j = c.get(f"/api/portal/{tok}").get_json()
+    up = j["membership_upsell"]
+
+    from dashboard import pricing as _pricing
+    settings = _pricing.load_settings(appmod._pricing_settings())
+    ff_hyp_unit = appmod._rep_priced_unit_cents(
+        appmod._get_product("nous-energy"), repertoire_slugs={"nous-energy"},
+        settings=settings)
+    expected_savings = 6997 - ff_hyp_unit  # non-FF line contributes 0 savings
+    assert up["spend_30d_cents"] == 6997 + 3997
+    assert up["member_would_pay_cents"] == ff_hyp_unit + 3997
+    assert up["savings_cents"] == expected_savings
+
+
 def test_membership_upsell_zeroed_for_already_member(client):
     c, appmod = client
     email = "already@example.com"
@@ -208,6 +237,26 @@ def test_locked_rows_tiered_by_age(client):
     assert by_slug["nous-energy"]["tier"] == "6mo"
     assert by_slug["neuro-magnesium"]["tier"] == "12mo"
     assert "terrain-restore" not in by_slug
+
+
+def test_locked_rows_excludes_non_ff_products(client):
+    """Glen 2026-07: only FF products (_qty_eligible) can ever carry member
+    pricing, so locked_rows (the "unlock member pricing at 6/12mo" pitch)
+    must never list a non-FF SKU as unlockable. vitamin-e-spectrum has no
+    qty_pricing flag -> non-FF, but IS _repertoire_eligible (not a pure
+    powder) -- the exact case the old broad gate got wrong."""
+    c, appmod = client
+    email = "lockedff@example.com"
+    tok = _seed_portal(appmod, email)
+    _seed_order(appmod, source="reorder", email=email,
+                slugs_qty=[("nous-energy", 1)], days_ago=120)  # FF
+    _seed_order(appmod, source="reorder", email=email,
+                slugs_qty=[("vitamin-e-spectrum", 1)], days_ago=120)  # non-FF
+
+    j = c.get(f"/api/portal/{tok}").get_json()
+    by_slug = {r["slug"]: r for r in j["locked_rows"]}
+    assert "nous-energy" in by_slug
+    assert "vitamin-e-spectrum" not in by_slug
 
 
 def test_locked_rows_excludes_slugs_already_in_repertoire(client):
