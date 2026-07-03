@@ -121,10 +121,24 @@
   </nav>
 
   <section class="pane" data-pane="partner" role="tabpanel" aria-label="Partner Program">
-  <div class="cards">
-    <div class="stat"><b id="modules">–</b><span>Certification modules</span></div>
-    <div class="stat"><b id="wallet">–</b><span>Wellness Credit</span></div>
-    <div class="stat"><b id="status">–</b><span>Reselling access</span></div>
+  <div class="panel" id="standing-panel">
+    <h2>Your standing</h2>
+    <div id="pp-progress" style="margin:12px 0 4px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
+        <span class="muted">Certification progress</span>
+        <span id="modules" style="color:var(--gold);font-weight:700">–</span>
+      </div>
+      <div style="height:8px;background:var(--surface-2);border-radius:6px;overflow:hidden">
+        <div id="pp-progbar" style="height:100%;width:0;background:var(--gold);border-radius:6px;transition:width .4s"></div>
+      </div>
+      <div class="muted" id="pp-floor-note" style="font-size:12.5px;margin-top:6px"></div>
+    </div>
+    <div class="cards">
+      <div class="stat"><b id="pp-floor">–</b><span>Your wholesale floor / bottle</span></div>
+      <div class="stat"><b id="pp-margin">–</b><span>Your margin range at volume</span></div>
+      <div class="stat"><b id="wallet">–</b><span>Wellness Credit</span></div>
+      <div class="stat"><b id="status">–</b><span>Reselling access</span></div>
+    </div>
   </div>
 
   <!-- Ask Dr. Glen — inline chat at the top (answers product/condition questions AND
@@ -375,6 +389,15 @@ function render(d){
   applyBranding(d.branding);
   $('modules').textContent = (d.modules_completed||0) + ' / 12';
   $('wallet').textContent = money(d.wallet_balance_cents);
+  // Partner Program "Your standing" band (personalized from d.partner)
+  var pt = d.partner;
+  if(pt){
+    var total = pt.modules_total || 12;
+    var pb = $('pp-progbar'); if(pb) pb.style.width = Math.round((pt.modules_completed||0)/total*100) + '%';
+    var fn = $('pp-floor-note'); if(fn) fn.textContent = 'Each module lowers your floor $1.25. You are at ' + money(pt.floor_cents) + ' per bottle at volume; fully certified is ' + money(2500) + '.';
+    if($('pp-floor')) $('pp-floor').textContent = money(pt.floor_cents);
+    if($('pp-margin')) $('pp-margin').textContent = pt.margin_low_pct + '–' + pt.margin_high_pct + '%';
+  }
   var unlocked = !!d.wholesale_unlocked;
   if (unlocked) {
     $('status').innerHTML = '<span class="badge ok">Active</span>';
