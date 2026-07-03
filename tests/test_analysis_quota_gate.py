@@ -248,3 +248,92 @@ def test_biofield_request_paid_member_unlimited(client, monkeypatch):
         r = c.post("/biofield/request", json={"email": email})
         assert r.status_code == 200 and r.get_json()["ok"] is True
     assert len(sent) == 3
+
+
+# ── trial members: active grant but NOT paid -> free-tier quota, not unlimited ──
+# The gate must match the plan's global "member = _is_paid_member" rule: an
+# unconverted $1-trial buyer has an active membership GRANT (so
+# _active_membership_for_email is truthy) but membership_category=='trial',
+# so _is_paid_member(email) is False and they must be quota-gated like any
+# other free-tier user. Only a FULLY-paid member (_is_paid_member True) stays
+# unlimited.
+
+def test_portal_request_trial_member_gets_free_tier_quota(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "ANALYSIS_QUOTA_ENABLED", True, raising=False)
+    monkeypatch.setattr(appmod, "_active_membership_for_email",
+                        lambda e: {"email": e, "source": "biofield_trial"})
+    monkeypatch.setattr(appmod, "membership_category", lambda e: "trial")
+    email = "trialportal@example.com"
+    tok = _seed_portal(appmod, email)
+
+    r1 = c.post(f"/api/portal/{tok}/biofield/request")
+    assert r1.status_code == 200 and r1.get_json()["ok"] is True
+    assert _status(appmod, email) == "requested"
+
+    from dashboard import client_portal as cp
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cp.set_biofield_status(cx, email, "confirmed")
+    cx.close()
+
+    r2 = c.post(f"/api/portal/{tok}/biofield/request")
+    assert r2.status_code == 200
+    j2 = r2.get_json()
+    assert j2["ok"] is False and j2["reason"] == "monthly_quota"
+    assert _status(appmod, email) == "confirmed"  # unchanged by the blocked request
+
+
+def test_portal_request_full_paid_member_unlimited(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "ANALYSIS_QUOTA_ENABLED", True, raising=False)
+    monkeypatch.setattr(appmod, "_active_membership_for_email", lambda e: {"email": e})
+    monkeypatch.setattr(appmod, "membership_category", lambda e: "full")
+    email = "fullpaidportal@example.com"
+    tok = _seed_portal(appmod, email)
+
+    for _ in range(3):
+        from dashboard import client_portal as cp
+        cx = sqlite3.connect(appmod.LOG_DB)
+        cp.set_biofield_status(cx, email, "confirmed")
+        cx.close()
+        r = c.post(f"/api/portal/{tok}/biofield/request")
+        assert r.status_code == 200 and r.get_json()["ok"] is True
+        assert _status(appmod, email) == "requested"
+
+
+def test_biofield_request_trial_member_gets_free_tier_quota(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "ANALYSIS_QUOTA_ENABLED", True, raising=False)
+    monkeypatch.setattr(appmod, "_active_membership_for_email",
+                        lambda e: {"email": e, "source": "biofield_trial"})
+    monkeypatch.setattr(appmod, "membership_category", lambda e: "trial")
+    sent = []
+    monkeypatch.setattr(appmod, "send_magic_link_email",
+                        lambda to, name, url: sent.append(to))
+    email = "trialbio@example.com"
+
+    r1 = c.post("/biofield/request", json={"email": email})
+    assert r1.status_code == 200 and r1.get_json()["ok"] is True
+    assert len(sent) == 1
+
+    r2 = c.post("/biofield/request", json={"email": email})
+    assert r2.status_code == 200
+    j2 = r2.get_json()
+    assert j2["ok"] is False and j2["reason"] == "monthly_quota"
+    assert len(sent) == 1  # no second magic link sent to a trial member
+
+
+def test_biofield_request_full_paid_member_unlimited(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setattr(appmod, "ANALYSIS_QUOTA_ENABLED", True, raising=False)
+    monkeypatch.setattr(appmod, "_active_membership_for_email", lambda e: {"email": e})
+    monkeypatch.setattr(appmod, "membership_category", lambda e: "full")
+    sent = []
+    monkeypatch.setattr(appmod, "send_magic_link_email",
+                        lambda to, name, url: sent.append(to))
+    email = "fullpaidbio@example.com"
+
+    for _ in range(3):
+        r = c.post("/biofield/request", json={"email": email})
+        assert r.status_code == 200 and r.get_json()["ok"] is True
+    assert len(sent) == 3

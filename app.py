@@ -14078,7 +14078,7 @@ def _biofield_transition(token, new_status, tag):
                 return jsonify({"error": "not found"}), 404
         claimed = False
         if (new_status == "requested" and ANALYSIS_QUOTA_ENABLED
-                and ident.email and not _active_membership_for_email(ident.email)):
+                and ident.email and not _is_paid_member(ident.email)):
             _analysis_quota.init_analysis_quota_table(cx)
             if not _analysis_quota.try_claim(cx, ident.email):
                 return jsonify({"ok": False, "reason": "monthly_quota"}), 200
@@ -15261,7 +15261,7 @@ def biofield_request():
     email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
     if email and "@" in email:
         claimed = False
-        if ANALYSIS_QUOTA_ENABLED and not _active_membership_for_email(email):
+        if ANALYSIS_QUOTA_ENABLED and not _is_paid_member(email):
             with _db_lock, sqlite3.connect(LOG_DB) as cx:
                 _analysis_quota.init_analysis_quota_table(cx)
                 if not _analysis_quota.try_claim(cx, email):
