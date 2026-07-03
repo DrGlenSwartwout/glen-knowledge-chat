@@ -12,6 +12,7 @@ export class Ambience {
     this.timers = [];
     this.loopEls = [];
     this.cancelSpark = null;
+    this._bedRaf = null;
   }
 
   start() {
@@ -20,13 +21,43 @@ export class Ambience {
     if (this.amb.bed) {
       this.bedEl = new Audio(this.amb.bed);
       this.bedEl.loop = true;
-      this.bedEl.volume = this.muted ? 0 : this.amb.bed_volume;
+      this.bedEl.volume = 0;
       this.bedEl.play().catch(() => {});
+      // gentle taper-in: the fire bed loops, so it can't carry a baked fade
+      // (that would dip every loop) — ease it up in JS instead.
+      this._rampBed(this.muted ? 0 : this.amb.bed_volume, 2000);
     }
     for (const o of this.amb.oneshots) {
       if (o.loop) this._startLoop(o);       // continuous soft layer (fills dead time)
       else this._schedule(o);               // random one-shot
     }
+  }
+
+  _rampBed(target, ms) {
+    if (!this.bedEl) return;
+    if (this._bedRaf) cancelAnimationFrame(this._bedRaf);
+    const el = this.bedEl;
+    const from = el.volume;
+    const t0 = performance.now();
+    const tick = (now) => {
+      const k = ms <= 0 ? 1 : Math.min(1, (now - t0) / ms);
+      el.volume = from + (target - from) * k;
+      if (k < 1 && this.bedEl === el) this._bedRaf = requestAnimationFrame(tick);
+      else this._bedRaf = null;
+    };
+    this._bedRaf = requestAnimationFrame(tick);
+  }
+
+  _fadeOutAndPause(el, ms) {
+    const from = el.volume;
+    const t0 = performance.now();
+    const tick = (now) => {
+      const k = ms <= 0 ? 1 : Math.min(1, (now - t0) / ms);
+      el.volume = from * (1 - k);
+      if (k < 1) requestAnimationFrame(tick);
+      else { try { el.pause(); } catch (e) {} }
+    };
+    requestAnimationFrame(tick);
   }
 
   _startLoop(o) {
@@ -57,13 +88,15 @@ export class Ambience {
 
   setMuted(m) {
     this.muted = !!m;
+    if (this._bedRaf) { cancelAnimationFrame(this._bedRaf); this._bedRaf = null; }
     if (this.bedEl) this.bedEl.volume = this.muted ? 0 : this.amb.bed_volume;
     for (const L of this.loopEls) L.el.volume = this.muted ? 0 : L.volume;
   }
 
   stop() {
     this.timers.forEach(clearTimeout); this.timers = [];
-    if (this.bedEl) { this.bedEl.pause(); this.bedEl = null; }
+    if (this._bedRaf) { cancelAnimationFrame(this._bedRaf); this._bedRaf = null; }
+    if (this.bedEl) { this._fadeOutAndPause(this.bedEl, 1200); this.bedEl = null; }
     for (const L of this.loopEls) { try { L.el.pause(); } catch (e) {} }
     this.loopEls = [];
     if (this.cancelSpark) { this.cancelSpark(); this.cancelSpark = null; }
