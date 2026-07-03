@@ -19,7 +19,7 @@ DEFAULTS = {
     # conflicts with the public store; inherits legacy volume_anchors on back-compat).
     "discounts": {
         "same_sku":      {"enabled": True,  "anchors": [[1, 0], [12, 29]]},
-        "program_total": {"enabled": True,  "anchors": [[1, 0], [12, 29]]},
+        "program_total": {"enabled": True,  "anchors": [[1, 0], [18, 29]]},
         "open_total":    {"enabled": False, "anchors": [[1, 0], [12, 0]]},
     },
 }
