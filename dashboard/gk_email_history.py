@@ -19,7 +19,8 @@ from dashboard import purchase_history as _ph
 
 _EMAIL_RE = re.compile(r"\(([^()\s]+@[^()\s]+)\)")
 _DATE_RE = re.compile(r"Placed on (\d{2})-(\d{2})-(\d{4})")
-_ORDER_REF_RE = re.compile(r"ORDER:\s*([A-Z0-9]+)")
+_ORDER_REF_RE = re.compile(r"ORDER:\s*([A-Z0-9]+)", re.I)
+_SUBJECT_REF_RE = re.compile(r"#\s*\d+\s*-\s*([A-Za-z0-9]+)")
 _SLUG_RE = re.compile(r"remedymatch\.com/remedies/[^/\"']+/\d+-([a-z0-9-]+)")
 
 # Gmail search: every GrooveKart order-confirmation email.
@@ -41,8 +42,12 @@ def parse_order_email(body, subject=""):
         mm, dd, yyyy = date_m.groups()
         purchased_at = f"{yyyy}-{mm}-{dd}"
 
+    # Order ref: prefer the subject ("New order : #332 - CODE"), which is always
+    # clean; fall back to the body's "ORDER: CODE" line (case-insensitive, since
+    # HTML-only emails render it as "Order:").
+    subj_m = _SUBJECT_REF_RE.search(subject or "")
     order_m = _ORDER_REF_RE.search(body)
-    order_ref = order_m.group(1) if order_m else None
+    order_ref = subj_m.group(1) if subj_m else (order_m.group(1) if order_m else None)
 
     slugs = _SLUG_RE.findall(body)
 
@@ -118,8 +123,13 @@ def fetch_gk_order_emails():
             headers = full.get("payload", {}).get("headers", [])
             subject = _inbox._header(headers, "Subject")
             body = _inbox._extract_body(full.get("payload", {}))
-            plain = body.get("plain") or _inbox._strip_html_to_text(body.get("html") or "")
-            out.append({"body": plain, "subject": subject})
+            # GrooveKart embeds each product's <a href="...remedies/<id>-<slug>">
+            # URL (which carries the catalog slug) in the HTML. Stripping HTML to
+            # text drops the href, so an HTML-only email would yield zero slugs.
+            # Parse the RAW plain + RAW html together so the slug URLs — and the
+            # customer/date/ref text — are always present for the regexes.
+            raw = (body.get("plain") or "") + "\n\n" + (body.get("html") or "")
+            out.append({"body": raw, "subject": subject})
         page_token = res.get("nextPageToken")
         if not page_token:
             break

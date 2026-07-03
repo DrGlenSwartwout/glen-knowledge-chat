@@ -213,3 +213,22 @@ def test_rebuild_counts_reconcile_on_mixed_batch():
     assert result["skipped_noemail"] == 1
     assert result["skipped_incomplete"] == 2
     assert result["orders"] == contributed_orders + result["skipped_noemail"] + result["skipped_incomplete"]
+
+
+def test_parse_html_only_email_ref_from_subject_and_href_slug():
+    """HTML-only emails render the ref as mixed-case "Order:" (so the all-caps
+    body regex misses it) and keep the slug only inside an <a href>. Ref must
+    come from the subject; slug from the raw href URL; date/email from HTML text."""
+    html_body = (
+        "<span>A new order was placed on Remedy Match by the following "
+        "customer: Sandra Baillie (freedom327@gmail.com)</span>"
+        "<span style=\"color:#333\"><strong>Order:</strong></span> IPLRGXGTR "
+        "Placed on 02-23-2026<br />"
+        "<strong><a href=\"https://remedymatch.com/remedies/syntropy/29-dental-powder\">"
+        "Dental Powder - </a></strong>"
+    )
+    out = gh.parse_order_email(html_body, subject="New order : #332 - IPLRGXGTR")
+    assert out["email"] == "freedom327@gmail.com"
+    assert out["purchased_at"] == "2026-02-23"
+    assert out["order_ref"] == "IPLRGXGTR"
+    assert out["slugs"] == ["dental-powder"]
