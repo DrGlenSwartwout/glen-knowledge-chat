@@ -280,7 +280,7 @@ function renderTotals() {
     // which buildInvoicePrintHtml renders separately): the volume discount this
     // non-member missed on this order. Shown only when there's a discount to gain.
     + (Number(t.member_credit_cents||0)>0
-        ? '<div style="margin-top:12px;background:#fffbf3;border:1px solid #f0c987;border-radius:6px;padding:9px 11px;color:#7a4a00;font-size:13px">Become a member and get <strong>'+money(t.member_credit_cents)+'</strong> back toward your next order.</div>'
+        ? '<div style="margin-top:12px;background:#fffbf3;border:1px solid #f0c987;border-radius:6px;padding:9px 11px;color:#7a4a00;font-size:13px">Start Continuous Care and get <strong>'+money(t.member_credit_cents)+'</strong> back toward your next order.</div>'
         : '');
 }
 async function applyPoints(){
