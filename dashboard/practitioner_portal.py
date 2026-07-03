@@ -807,7 +807,7 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
         cur.execute(
             "SELECT id, name, practice_name, email, portal_role, modules_completed, "
             "wallet_balance_cents, wholesale_unlocked_at, application_status, "
-            "application_submitted_at, approval_notes, resale_license_number "
+            "application_submitted_at, approval_notes, resale_license_number, credentials "
             "FROM practitioners WHERE id=%s",
             (str(practitioner_id),),
         )
@@ -854,4 +854,13 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
         wellness_credit_cents=row["wallet_balance_cents"],
         dispensary_credit_cents=data.get("dispensary_credit_total_cents", 0))
     data["training"] = training_block(row["modules_completed"])
+    from dashboard import dispensary_stats as _dstats
+    try:
+        stats = _dstats.dispense_stats(practitioner_id, db_path=db_path)
+        data["dispense_stats"] = stats
+        data["recommended_ffs"] = _dstats.recommended_ffs(
+            row["credentials"] or "", exclude_slugs=[r["slug"] for r in stats])
+    except Exception:
+        data["dispense_stats"] = []
+        data["recommended_ffs"] = []
     return data
