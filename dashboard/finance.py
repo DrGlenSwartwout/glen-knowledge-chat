@@ -3,7 +3,7 @@ cached QBO-backed reads (production-verified) + the Money home signal + the safe
 finance actions. Finance writes are owner/ops only (Shaira/va excluded)."""
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from dashboard.signals import signal as _signal, RED, AMBER, GREEN, GRAY
 
@@ -44,9 +44,86 @@ def aging(invoices, now=None):
             "email": (inv.get("BillEmail") or {}).get("Address", ""),
             "total": float(inv.get("TotalAmt") or 0), "balance": bal,
             "due_date": due, "days_overdue": _days_overdue(due, now),
+            "source": "qbo",
         })
     out.sort(key=lambda x: -x["days_overdue"])
     return out
+
+
+def _inhouse_net_days():
+    """Payment terms for in-house invoices, so aging matches QBO DueDate semantics
+    (an invoice is 'overdue' only after its terms, not the moment it's created)."""
+    try:
+        return int(os.environ.get("FINANCE_INHOUSE_NET_DAYS", "14"))
+    except (TypeError, ValueError):
+        return 14
+
+
+def inhouse_aging(orders, qbo_ids=None, now=None):
+    """Pure: unpaid in-house order rows -> AR rows (source='inhouse'). Drops paid,
+    cancelled, and zero-balance rows, and any order already represented on the QBO
+    list (its external_ref matches an open QBO invoice Id). Due date = created +
+    net terms. Most-overdue first."""
+    now = now or datetime.now(timezone.utc)
+    qbo_ids = {str(i) for i in (qbo_ids or set())}
+    net = _inhouse_net_days()
+    out = []
+    for o in orders or []:
+        if (o.get("pay_status") or "unpaid") == "paid":
+            continue
+        if (o.get("status") or "") == "cancelled":
+            continue
+        total = int(o.get("total_cents") or 0)
+        paid = int(o.get("paid_cents") or 0)
+        bal_cents = total - paid
+        if bal_cents <= 0:
+            continue
+        ref = str(o.get("external_ref") or "").strip()
+        if ref and ref in qbo_ids:
+            continue  # already counted on the QBO list
+        created = _parse_date(str(o.get("created_at") or "")[:10])
+        due = (created + timedelta(days=net)).date().isoformat() if created else ""
+        out.append({
+            "id": o.get("id"), "order_id": o.get("id"),
+            "doc": ref or ("#" + str(o.get("id"))),
+            "customer": o.get("name") or "",
+            "email": o.get("email") or "",
+            "total": round(total / 100.0, 2),
+            "balance": round(bal_cents / 100.0, 2),
+            "due_date": due, "days_overdue": _days_overdue(due, now),
+            "source": "inhouse", "pay_method": o.get("pay_method") or "",
+        })
+    out.sort(key=lambda x: -x["days_overdue"])
+    return out
+
+
+def _log_db_path():
+    from pathlib import Path
+    return Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent))) / "chat_log.db"
+
+
+def _inhouse_open_rows(qbo_ids):
+    """Best-effort read of unpaid in-house order invoices from the local orders
+    table, shaped as AR rows. Never raises (returns [] on any DB error) so the
+    QBO receivables never go dark because of a local-read hiccup."""
+    import sqlite3
+    try:
+        cx = sqlite3.connect(str(_log_db_path()))
+    except Exception:
+        return []
+    try:
+        cx.row_factory = sqlite3.Row
+        cur = cx.execute(
+            "SELECT id, created_at, external_ref, email, name, total_cents, "
+            "paid_cents, pay_status, pay_method, status FROM orders "
+            "WHERE COALESCE(pay_status,'unpaid')!='paid' "
+            "AND COALESCE(status,'')!='cancelled'")
+        orders = [dict(r) for r in cur.fetchall()]
+    except Exception:
+        return []
+    finally:
+        cx.close()
+    return inhouse_aging(orders, qbo_ids=qbo_ids)
 
 
 def summarize(aged, cash_total=0.0):
@@ -106,12 +183,24 @@ def _cached(key, ttl, fn):
 
 
 def open_invoices():
-    """Cached (10 min): QBO open invoices as AR rows. Production-only (QBO)."""
+    """Cached (10 min): open receivables from every source we can read —
+    QBO open invoices (source='qbo', production-only) PLUS unpaid in-house order
+    invoices (source='inhouse'), deduped against QBO by the order's external_ref.
+    Most-overdue first. The in-house read is best-effort and never blocks the QBO
+    rows. (PayPal/Practice Better/Authorize.net/Wise have no open-invoice API wired
+    — they surface in the weekly reconciler, not here.)"""
     def _f():
         from dashboard import qbo_billing as qb
         rs = qb._query("SELECT * FROM Invoice WHERE Balance > '0' ORDER BY DueDate ASC")
         invs = (rs.get("QueryResponse") or {}).get("Invoice") or []
-        return aging(invs)
+        qbo_rows = aging(invs)
+        try:
+            inh = _inhouse_open_rows({r["id"] for r in qbo_rows if r.get("id") is not None})
+        except Exception:
+            inh = []
+        rows = qbo_rows + inh
+        rows.sort(key=lambda x: -x["days_overdue"])
+        return rows
     return _cached("open_invoices", 600, _f)
 
 

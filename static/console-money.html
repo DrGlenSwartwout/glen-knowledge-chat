@@ -85,6 +85,8 @@
                          text-transform:uppercase; border-radius:5px; padding:1px 7px;
                          border:1px solid var(--border); color:var(--muted); }
   #panel-receivables .ar-row .left .badge.old { border-color:var(--red); color:var(--red); }
+  #panel-receivables .ar-row .left .badge.src-inhouse { border-color:var(--gold); color:var(--gold); }
+  #panel-receivables .ar-row .left .badge.src-qbo { border-color:#3a7d5f; color:#8fc7a9; }
   #panel-receivables .ar-row .right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
   #panel-receivables .ar-row .right .bal { font-size:16px; font-weight:700; font-family:"Raleway",sans-serif; }
   #panel-receivables .acts { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
@@ -144,7 +146,7 @@
 
   <div id="panel-receivables" class="money-panel" style="display:none">
     <h1>Receivables</h1>
-    <div class="sub">Accounts receivable aging and payment actions.</div>
+    <div class="sub">Open invoices from QuickBooks plus unpaid in-house orders, aged with payment actions.</div>
 
     <div class="summary-strip" id="f-summary"></div>
 
@@ -271,27 +273,41 @@
 
     function escAttr(s){ return "'"+s.replace(/'/g,'&#39;')+"'"; }
 
+    function srcPill(src){
+      var label = (src === 'inhouse') ? 'In-house' : 'QuickBooks';
+      return '<span class="badge src-'+esc(src||'qbo')+'">'+esc(label)+'</span>';
+    }
+
     function rowHtml(r){
+      var isInhouse = (r.source === 'inhouse');
       var who = esc(r.customer||r.email||'Invoice '+r.id);
       var doc  = esc(r.doc||r.id);
       var bal  = fmt(r.balance);
       var due  = esc(r.due_date||'');
       var badge = ageBadge(r.days_overdue);
       var iid  = Number(r.id);
-      var params_reminder = JSON.stringify({invoice_id:iid, doc:r.doc||'', email:r.email||'', amount:r.balance});
-      var params_void     = JSON.stringify({invoice_id:iid});
+      var acts;
+      if (isInhouse){
+        // Row id is an ORDER id -> the orders.* actions, not the QBO ones.
+        acts = '<button onclick="MoneyReceivables.recordOrderPayment('+iid+','+(Number(r.balance)||0)+')">Record payment</button>'
+          + '<button onclick="MoneyReceivables.openInvoice('+iid+')">Open invoice</button>'
+          + '<button class="void" onclick="MoneyReceivables.act('+iid+',\'orders.cancel\','+escAttr(JSON.stringify({order_id:iid}))+')">Cancel</button>';
+      } else {
+        var params_reminder = JSON.stringify({invoice_id:iid, doc:r.doc||'', email:r.email||'', amount:r.balance});
+        var params_void     = JSON.stringify({invoice_id:iid});
+        acts = '<button onclick="MoneyReceivables.recordPayment('+iid+','+(Number(r.balance)||0)+')">Record payment</button>'
+          + '<button onclick="MoneyReceivables.act('+iid+',\'finance.send_payment_reminder\','+escAttr(params_reminder)+')">Send reminder</button>'
+          + '<button class="void" onclick="MoneyReceivables.act('+iid+',\'finance.void_invoice\','+escAttr(params_void)+')">Void</button>';
+      }
+      var payMeth = (isInhouse && r.pay_method) ? ' &middot; '+esc(r.pay_method) : '';
       return '<div class="ar-row" data-inv="'+iid+'">'
         + '<div class="left">'
-          + '<div class="who">'+who+'</div>'
-          + '<div class="meta">Doc: '+doc+(due ? ' &middot; Due: '+due : '')+' &middot; '+badge+'</div>'
+          + '<div class="who">'+who+' '+srcPill(r.source)+'</div>'
+          + '<div class="meta">Doc: '+doc+(due ? ' &middot; Due: '+due : '')+' &middot; '+badge+payMeth+'</div>'
         + '</div>'
         + '<div class="right">'
           + '<div class="bal">'+esc(bal)+'</div>'
-          + '<div class="acts">'
-            + '<button onclick="MoneyReceivables.recordPayment('+iid+','+(Number(r.balance)||0)+')">Record payment</button>'
-            + '<button onclick="MoneyReceivables.act('+iid+',\'finance.send_payment_reminder\','+escAttr(params_reminder)+')">Send reminder</button>'
-            + '<button class="void" onclick="MoneyReceivables.act('+iid+',\'finance.void_invoice\','+escAttr(params_void)+')">Void</button>'
-          + '</div>'
+          + '<div class="acts">'+acts+'</div>'
         + '</div>'
       + '</div>';
     }
@@ -364,6 +380,28 @@
       act(id, 'finance.record_payment', { invoice_id: String(id), amount: amount, method: method });
     }
 
+    // In-house order invoice: record a payment against the ORDER (marks it paid +
+    // drops it into fulfillment). amount is dollars; the action wants cents.
+    function recordOrderPayment(orderId, balance){
+      var amtStr = prompt('Amount received for order #' + orderId + ':', String(balance || ''));
+      if (amtStr === null) return;
+      var amount = parseFloat(amtStr);
+      if (!(amount > 0)) { alert('Enter a positive amount.'); return; }
+      var method = prompt('Method (Check / Cash / Venmo / PayPal / Zelle / Wise / Credit card / Other):', 'Zelle');
+      if (method === null) return;
+      act(orderId, 'orders.record_payment', { order_id: orderId, amount_cents: Math.round(amount*100), method: method });
+    }
+
+    // Open the hosted /invoice/<token> page for an in-house order (no auto-print).
+    async function openInvoice(orderId){
+      try {
+        var r = await fetch('/api/console/order/'+orderId+'/invoice-link', { headers: hdr() });
+        var j = await r.json();
+        if (j && j.ok && j.link) { window.open(j.link.split('?')[0], '_blank', 'noopener'); }
+        else { alert('Could not open invoice: ' + ((j && j.error) || 'unknown error')); }
+      } catch(e){ alert('Could not open invoice.'); }
+    }
+
     async function doRefund(){
       var inv = (document.getElementById('r-invoice').value || '').trim();
       var amt = parseFloat(document.getElementById('r-amount').value);
@@ -388,7 +426,8 @@
       load();
     }
 
-    return { load: load, act: act, doRefund: doRefund, recordPayment: recordPayment };
+    return { load: load, act: act, doRefund: doRefund, recordPayment: recordPayment,
+             recordOrderPayment: recordOrderPayment, openInvoice: openInvoice };
   })();
 
   // ---- init: reveal if already unlocked, else show gate ----
