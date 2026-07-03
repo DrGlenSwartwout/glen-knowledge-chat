@@ -12891,6 +12891,207 @@ def _portal_priced_lines(items):
     return lines, items_rec, subtotal_cents
 
 
+def _repertoire_eligible(p):
+    """Whether a product participates in the repertoire/volume discount gate —
+    mirrors _engine_item's eligibility resolution exactly (all Functional
+    Formulations volume-eligible via qty_pricing; true Pure Powders + info_only
+    excluded). Used to decide which SKUs can ever carry a repertoire price."""
+    if not p:
+        return False
+    if "volume_eligible" in p:
+        return bool(p["volume_eligible"])
+    if p.get("info_only"):
+        return False
+    if p.get("qty_pricing"):
+        return True
+    return not _is_pure_powder(p)
+
+
+def _rep_priced_unit_cents(p, *, repertoire_slugs, settings):
+    """Real per-unit price (cents) for a solo qty=1 line of this product, via
+    dashboard.pricing.compute() — the SAME engine function _price_cart delegates
+    to (Task 4). Never hand-recomputes the discount formula: repertoire_slugs is
+    forwarded straight into compute(), which applies repertoire_reorder_pct only
+    when the slug is in the set AND the product is volume_eligible, exactly as
+    at real checkout. Pass repertoire_slugs=None/empty to get the plain list
+    price (no repertoire effect) — used for the non-member/hypothetical branches."""
+    from dashboard import pricing as _pricing
+    it = _engine_item(p, 1)
+    priced = _pricing.compute([it], settings=settings, channel="retail",
+                              repertoire_slugs=repertoire_slugs)
+    return int(priced["lines"][0]["line_total_cents"])
+
+
+def _parse_iso_dt(ts):
+    """Parse a stored orders.created_at ISO8601 string to an aware datetime, or
+    None on any parse failure (never raises)."""
+    if not ts:
+        return None
+    try:
+        s = str(ts).replace("Z", "+00:00")
+        d = datetime.fromisoformat(s)
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d
+    except Exception:
+        return None
+
+
+_PORTAL_CHANNEL_SOURCES = ("portal-reorder", "reorder")
+
+
+def _portal_reorder_module(email):
+    """REPERTOIRE_ENABLED-gated portal payload extension (Task 5): the client's
+    real, portal-channel purchase history, re-priced through the actual
+    repertoire-aware pricing engine (dashboard.pricing.compute(), the same
+    function _price_cart delegates to — Task 4), plus a personalized non-member
+    upsell and forward-framed 'locked' rows for older history a longer
+    commitment would unlock. Display list is portal-channel ONLY (source in
+    'portal-reorder'/'reorder', non-cancelled) per Glen's explicit "bought here,
+    not other channels" — but repertoire PRICING/eligibility stays all-channel
+    (Task 4's design), so a SKU's discount doesn't depend on where it shows up.
+
+    NOTE (see Task 5 report for the full writeup): /api/portal/<token>/checkout
+    — the ACTUAL checkout endpoint wired to the portal's Reorder button — prices
+    through _portal_priced_lines/_inhouse_line_unit_cents, which is NOT yet
+    repertoire-aware (no email/repertoire_slugs passed). So `your_cents` here is
+    the member's true EARNED price (computed via the real pricing engine, matching
+    every other checkout path in this app), but it will not yet match what
+    /api/portal/<token>/checkout actually bills until that endpoint is also wired
+    to repertoire pricing — a gap this task discovered but did not fix (out of
+    this task's authorized file scope). Flagged as a concern, not silently shipped.
+
+    Never raises (caller wraps in try/except); returns {} for a blank email."""
+    from dashboard import pricing as _pricing
+    email = (email or "").strip().lower()
+    if not email:
+        return {}
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        try:
+            repertoire.init_repertoire_table(cx)  # fresh-DB guard
+            rep_slugs = repertoire.repertoire_slugs(cx, email)
+        except Exception as e:
+            print(f"[portal-reorder] repertoire read failed for {email!r}: {e!r}", flush=True)
+            rep_slugs = set()
+        orders = _bos_orders.list_orders_by_email(cx, email, limit=200)
+    member = _is_paid_member(email)
+    settings = _pricing.load_settings(_pricing_settings())
+    now = datetime.now(timezone.utc)
+
+    portal_orders = [o for o in orders
+                     if (o.get("source") in _PORTAL_CHANNEL_SOURCES)
+                     and (o.get("status") != "cancelled")]
+
+    # --- reorder: distinct SKUs from portal-channel history, most-recent qty
+    # wins (orders come back most-recent-first already). ---
+    reorder, seen, last_seen_at = [], set(), {}
+    for o in portal_orders:
+        created = o.get("created_at") or ""
+        for it in (o.get("items") or []):
+            slug = (it.get("slug") or "").strip().lower()
+            if not slug:
+                continue
+            if slug not in last_seen_at or created > last_seen_at[slug]:
+                last_seen_at[slug] = created
+            if slug in seen:
+                continue
+            p = _get_product(slug)
+            if not p:
+                continue  # dropped/inactive since purchase — not purchasable now
+            seen.add(slug)
+            try:
+                qty = max(1, int(it.get("qty", 1) or 1))
+            except Exception:
+                qty = 1
+            regular_cents = int(p.get("price_cents") or 0)
+            in_rep = slug in rep_slugs
+            your_cents = regular_cents
+            if member and in_rep:
+                your_cents = _rep_priced_unit_cents(p, repertoire_slugs=rep_slugs, settings=settings)
+            reorder.append({
+                "slug": slug, "name": p.get("name", slug), "qty": qty,
+                "regular_cents": regular_cents, "your_cents": your_cents,
+                "is_member_price": your_cents < regular_cents,
+                "in_repertoire": in_rep,
+            })
+
+    # --- locked_rows: repertoire-eligible SKUs last bought 90-365 days ago,
+    # not already in the client's repertoire, tagged with the shortest
+    # commitment tier whose seed window would reach that purchase. ---
+    locked_rows = []
+    for slug in seen:
+        if slug in rep_slugs:
+            continue
+        p = _get_product(slug)
+        if not p or not _repertoire_eligible(p):
+            continue
+        seen_at = _parse_iso_dt(last_seen_at.get(slug))
+        if not seen_at:
+            continue
+        age_days = (now - seen_at).days
+        tier = None
+        if 90 < age_days <= 180:
+            tier = "6mo"
+        elif 180 < age_days <= 365:
+            tier = "12mo"
+        if tier:
+            locked_rows.append({
+                "slug": slug, "name": p.get("name", slug),
+                "regular_cents": int(p.get("price_cents") or 0), "tier": tier,
+            })
+
+    # --- membership_upsell: last-30-day portal-channel history, re-priced as
+    # if the client were a member (repertoire_slugs forced to the purchased
+    # slug so the hypothetical isn't gated on their CURRENT membership). ---
+    cutoff_30 = (now - timedelta(days=30)).isoformat()
+    recent = [o for o in portal_orders if (o.get("created_at") or "") >= cutoff_30]
+    reorders_30d = len(recent)
+    spend_30d_cents, member_would_pay_cents = 0, 0
+    for o in recent:
+        for it in (o.get("items") or []):
+            slug = (it.get("slug") or "").strip().lower()
+            p = _get_product(slug) if slug else None
+            if not p:
+                continue
+            try:
+                qty = max(1, int(it.get("qty", 1) or 1))
+            except Exception:
+                qty = 1
+            try:
+                paid_unit = it.get("unit_cents")
+                paid_unit = int(paid_unit) if paid_unit is not None else int(p.get("price_cents") or 0)
+            except Exception:
+                paid_unit = int(p.get("price_cents") or 0)
+            spend_30d_cents += paid_unit * qty
+            if _repertoire_eligible(p):
+                hyp_unit = _rep_priced_unit_cents(p, repertoire_slugs={slug}, settings=settings)
+            else:
+                hyp_unit = paid_unit
+            member_would_pay_cents += hyp_unit * qty
+
+    already_member = member
+    if already_member:
+        member_would_pay_cents = spend_30d_cents
+        savings_cents = 0
+    else:
+        savings_cents = max(0, spend_30d_cents - member_would_pay_cents)
+    net_after_fee_cents = _prepay.MONTHLY_ANCHOR_CENTS - savings_cents
+
+    return {
+        "reorder": reorder,
+        "locked_rows": locked_rows,
+        "membership_upsell": {
+            "reorders_30d": reorders_30d,
+            "spend_30d_cents": spend_30d_cents,
+            "member_would_pay_cents": member_would_pay_cents,
+            "savings_cents": savings_cents,
+            "net_after_fee_cents": net_after_fee_cents,
+            "already_member": already_member,
+        },
+    }
+
+
 def _portal_chat_thread(email, limit=100):
     """The persisted portal chat thread for a client email (empty on any error)."""
     if not email:
@@ -13003,7 +13204,7 @@ def api_client_portal(token):
             membership_cat = membership_category(email_for_reports)
         except Exception as e:
             print(f"[portal-credit] {email_for_reports}: {e!r}", flush=True)
-    return jsonify({
+    payload = {
         "name": portal.get("name"),
         "membership_category": membership_cat,
         "trial_credit_cents": trial_credit_cents,
@@ -13020,7 +13221,18 @@ def api_client_portal(token):
         "notify_on": notify_on,
         "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
         "messages": _portal_chat_thread(email_for_reports),
-    })
+    }
+    # Task 5: portal reorder module (real order history + repertoire pricing +
+    # member savings + forward-framed locked rows). Additive keys only — never
+    # touches reorder_items above (that's the practitioner-curated list the
+    # existing /checkout route still sources from). Flag off => payload is
+    # byte-identical to pre-Task-5 behavior (no new keys at all).
+    if REPERTOIRE_ENABLED and email_for_reports:
+        try:
+            payload.update(_portal_reorder_module(email_for_reports))
+        except Exception as e:
+            print(f"[portal-reorder] module failed for {email_for_reports!r}: {e!r}", flush=True)
+    return jsonify(payload)
 
 
 @app.route("/api/portal/<token>/agree-tos", methods=["POST", "OPTIONS"])
