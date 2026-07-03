@@ -42,12 +42,15 @@ SLUG = "neuro-magnesium"
 
 # A non-FF SKU: _repertoire_eligible()==True (not info_only, not a true pure
 # powder) but _qty_eligible()==False (no qty_pricing flag — not a Functional
-# Formulation). Task 5b review finding: the in-house charge path gated the
-# repertoire best-of branch on _qty_eligible (FF-only), so a member with this
-# SKU in their repertoire saw the discount on display (compute()/_price_cart,
-# via _engine_item's broader volume_eligible resolution) but was charged full
-# list at checkout (_inhouse_line_unit_cents). Fixed by gating on
-# _repertoire_eligible instead, which mirrors _engine_item exactly.
+# Formulation). Glen 2026-07 (margin): the member repertoire reorder discount
+# is now restricted to FF products ONLY — the repertoire slug set is FF-filtered
+# (_ff_filter_slugs) before it ever reaches the pricing engine, at every
+# pricing site (_price_cart, _resolve_repertoire_slugs, _portal_reorder_module's
+# your_cents). So a non-FF repertoire SKU now prices at REGULAR in both display
+# and charge — see test_..._non_ff_repertoire_sku_pays_regular below (this
+# used to assert the opposite: that it GOT the discount; that expectation was
+# the broad-eligibility bug this file originally caught in Task 5b, now
+# superseded by the FF-only restriction).
 NON_FF_SLUG = "ei8-microbes-liver-integrator"
 
 
@@ -73,13 +76,12 @@ def test_portal_priced_lines_matches_price_cart_for_member_repertoire_sku(appmod
 
 
 def test_portal_priced_lines_matches_price_cart_for_non_ff_repertoire_sku(appmod):
-    """Review finding (Task 5b): a non-FF SKU (_qty_eligible()==False) that IS
-    _repertoire_eligible()==True must still get the repertoire discount charged
-    at checkout, matching what the member already sees on display. Before the
-    fix, _inhouse_line_unit_cents gated the repertoire best-of branch on
-    _qty_eligible (FF-only) and this SKU fell through to full list price while
-    compute()/_price_cart (via _engine_item's broader eligibility) discounted
-    it — a display-vs-charge mismatch."""
+    """FF-only restriction (Glen 2026-07, margin): a non-FF SKU
+    (_qty_eligible()==False) that IS _repertoire_eligible()==True must NOT get
+    the repertoire discount — at charge OR display. The repertoire slug set is
+    FF-filtered (_ff_filter_slugs) before it reaches either pricing path, so a
+    member's non-FF repertoire SKU prices at REGULAR everywhere, and display
+    still agrees with charge to the cent (both regular)."""
     p = appmod._get_product(NON_FF_SLUG)
     assert appmod._repertoire_eligible(p) is True
     assert appmod._qty_eligible(p) is False
@@ -99,7 +101,37 @@ def test_portal_priced_lines_matches_price_cart_for_non_ff_repertoire_sku(appmod
 
     assert charge_unit_cents == display_unit_cents
     regular_cents = p["price_cents"]
-    assert charge_unit_cents < regular_cents
+    assert charge_unit_cents == regular_cents
+
+
+def test_mixed_cart_ff_discounted_non_ff_regular_display_and_charge(appmod):
+    """A member with BOTH an FF repertoire SKU and a non-FF repertoire SKU in
+    their cart: the FF one is discounted, the non-FF one is regular — in BOTH
+    the display path (_price_cart/compute) and the charge path
+    (_portal_priced_lines/_inhouse_line_unit_cents), agreeing to the cent."""
+    email = "member@example.com"
+    _seed_active_membership(appmod, email)
+    _add_repertoire(appmod, email, [SLUG, NON_FF_SLUG])
+
+    cart = [{"slug": SLUG, "qty": 1}, {"slug": NON_FF_SLUG, "qty": 1}]
+    lines, items_rec, subtotal = appmod._portal_priced_lines(cart, email=email)
+    charge_by_slug = {r["slug"]: r["unit_cents"] for r in items_rec}
+
+    display = appmod._price_cart(
+        cart, ship={"country": "US", "state": "TX"}, email=email,
+    )["priced"]["lines"]
+    display_by_slug = {l["slug"]: l["line_total_cents"] for l in display}
+
+    ff_regular = appmod._get_product(SLUG)["price_cents"]
+    non_ff_regular = appmod._get_product(NON_FF_SLUG)["price_cents"]
+
+    # FF SKU: discounted, display == charge.
+    assert charge_by_slug[SLUG] < ff_regular
+    assert charge_by_slug[SLUG] == display_by_slug[SLUG]
+    # non-FF SKU: regular, display == charge.
+    assert charge_by_slug[NON_FF_SLUG] == non_ff_regular
+    assert display_by_slug[NON_FF_SLUG] == non_ff_regular
+    assert charge_by_slug[NON_FF_SLUG] == display_by_slug[NON_FF_SLUG]
 
 
 def test_portal_priced_lines_non_member_pays_regular(appmod):

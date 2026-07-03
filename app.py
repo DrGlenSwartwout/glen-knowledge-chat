@@ -4780,20 +4780,20 @@ def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, repertoire_slu
     (open to all), everything else its list price.
 
     repertoire_slugs (optional): a member's repertoire SKU set, resolved ONCE per
-    checkout by the caller (see _resolve_repertoire_slugs) and forwarded here so a
-    fresh DB lookup isn't repeated per line. When this line has no override, is
-    repertoire-eligible (_repertoire_eligible — mirrors _engine_item's broader
-    eligibility resolution, NOT the FF-only _qty_eligible gate the volume math
-    above uses), and its slug is already in the set, it gets AT LEAST
-    settings['repertoire_reorder_pct'] off list — applied via the SAME
-    pricing.apply_discount/unit_floor_cents helpers dashboard.pricing.compute()
+    checkout by the caller (see _resolve_repertoire_slugs) — already FF-filtered
+    there (Glen 2026-07: the repertoire reorder discount is FF-margin-only) — and
+    forwarded here so a fresh DB lookup isn't repeated per line. When this line has
+    no override, is FF-eligible (_qty_eligible, mirroring the FF-only filter the
+    caller already applied to repertoire_slugs), and its slug is already in the
+    set, it gets AT LEAST settings['repertoire_reorder_pct'] off list — applied via
+    the SAME pricing.apply_discount/unit_floor_cents helpers dashboard.pricing.compute()
     uses for the identical case (Task 3/5's display path), so the two paths agree
     to the cent. Never stacked with the FF volume rate — the lower of the two
     (best-of) wins, matching compute()'s max(...) non-additive rule."""
     if override not in (None, ""):
         return int(override)
     base = _inhouse_ff_unit_cents(p, total_ff_qty, settings)
-    if repertoire_slugs and _repertoire_eligible(p):
+    if repertoire_slugs and _qty_eligible(p):
         slug = (p.get("slug") or "").strip().lower()
         if slug in repertoire_slugs:
             from dashboard import pricing as _pricing
@@ -4805,8 +4805,24 @@ def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, repertoire_slu
     return base
 
 
+def _ff_filter_slugs(slugs):
+    """Narrow a repertoire slug set to Functional Formulations only (_qty_eligible —
+    the qty_pricing flag, not info_only). Glen 2026-07: the member repertoire
+    reorder discount is FF-margin-only, so a non-FF SKU in a member's repertoire
+    must never reach the discount logic, at display or at charge. Slugs whose
+    product is missing/inactive are dropped (never priced anyway). None/falsy in
+    -> empty set out (never None, so callers can treat the result uniformly)."""
+    out = set()
+    for slug in (slugs or ()):
+        p = _get_product(slug)
+        if p and _qty_eligible(p):
+            out.add(slug)
+    return out
+
+
 def _resolve_repertoire_slugs(email):
-    """A paid member's repertoire SKU set, resolved once per checkout (fresh-DB-safe,
+    """A paid member's repertoire SKU set, FF-filtered (_ff_filter_slugs — the
+    member reorder discount is FF-only), resolved once per checkout (fresh-DB-safe,
     best-effort — mirrors _price_cart's inline resolution). None when the flag is off,
     there's no email, the email isn't a currently-active paid member, or the lookup
     fails; callers treat None/empty the same as "no repertoire effect"."""
@@ -4815,7 +4831,7 @@ def _resolve_repertoire_slugs(email):
     try:
         with sqlite3.connect(LOG_DB) as _rep_cx:
             repertoire.init_repertoire_table(_rep_cx)  # defensive: fresh-DB guard
-            return repertoire.repertoire_slugs(_rep_cx, email)
+            return _ff_filter_slugs(repertoire.repertoire_slugs(_rep_cx, email))
     except Exception as e:
         print(f"[repertoire] inhouse lookup failed for {email!r}: {e!r}", flush=True)
         return None
@@ -4989,7 +5005,9 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         try:
             with sqlite3.connect(LOG_DB) as _rep_cx:
                 repertoire.init_repertoire_table(_rep_cx)  # defensive: fresh-DB guard
-                rep_slugs = repertoire.repertoire_slugs(_rep_cx, email)
+                # FF-only (Glen 2026-07, margin): non-FF repertoire SKUs never reach
+                # the discount engine, matching _resolve_repertoire_slugs.
+                rep_slugs = _ff_filter_slugs(repertoire.repertoire_slugs(_rep_cx, email))
         except Exception as e:
             print(f"[repertoire] lookup failed for {email!r}: {e!r}", flush=True)
             rep_slugs = None
@@ -7338,6 +7356,21 @@ def _fulfill_prepay_term(session_id):
                             order_slugs_fn=_order_slugs_since)
                     except Exception as _re:
                         print(f"[prepay] repertoire seed failed: {_re!r}", flush=True)
+                # Union in FMP/GK backfilled purchase history (Task 4) — the same
+                # windowed proven-remedies logic as the orders seed above, but for
+                # purchases recorded outside the live orders board. Best-effort,
+                # flag-gated, fresh-DB-safe (own connection, own init).
+                try:
+                    if REPERTOIRE_ENABLED:
+                        import dashboard.purchase_history as purchase_history
+                        with sqlite3.connect(LOG_DB) as _hcx:
+                            purchase_history.init_purchase_history_table(_hcx)
+                            _hist = purchase_history.slugs_since(
+                                _hcx, email, _window_days_for_term(tier["months"]))
+                        if _hist:
+                            repertoire.add_skus(cx, email, list(_hist))
+                except Exception as _e:
+                    print(f"[prepay] purchase_history seed failed: {_e!r}", flush=True)
         if not claimed:
             return {"ok": True, "already": True, "email": email}
         # Ledger (idempotent on source+ref) + confirmation email, best-effort — must
@@ -7456,6 +7489,22 @@ def _fulfill_continuous_care_monthly(session_id):
                         except Exception as _re:
                             print(f"[continuous-care] duplicate-member repertoire seed "
                                   f"failed: {_re!r}", flush=True)
+                    # Union in FMP/GK backfilled purchase history (Task 4) — same
+                    # windowed logic as the orders seed just above, for the
+                    # duplicate-member retroactive-seed path. Best-effort,
+                    # flag-gated, fresh-DB-safe (own connection, own init).
+                    try:
+                        if REPERTOIRE_ENABLED:
+                            import dashboard.purchase_history as purchase_history
+                            with sqlite3.connect(LOG_DB) as _hcx:
+                                purchase_history.init_purchase_history_table(_hcx)
+                                _hist = purchase_history.slugs_since(
+                                    _hcx, email, _window_days_for_term(term_months))
+                            if _hist:
+                                repertoire.add_skus(cx, email, list(_hist))
+                    except Exception as _e:
+                        print(f"[continuous-care] duplicate-member purchase_history "
+                              f"seed failed: {_e!r}", flush=True)
                     return {"ok": True, "duplicate_member": True, "email": email}
                 # order_count=1 records the month-1 charge just taken at checkout, so
                 # membership_category reads 'full' (member pricing) immediately —
@@ -7478,6 +7527,21 @@ def _fulfill_continuous_care_monthly(session_id):
                             order_slugs_fn=_order_slugs_since)
                     except Exception as _re:
                         print(f"[continuous-care] repertoire seed failed: {_re!r}", flush=True)
+                # Union in FMP/GK backfilled purchase history (Task 4) — same
+                # windowed proven-remedies logic as the orders seed above, for
+                # purchases recorded outside the live orders board. Best-effort,
+                # flag-gated, fresh-DB-safe (own connection, own init).
+                try:
+                    if REPERTOIRE_ENABLED:
+                        import dashboard.purchase_history as purchase_history
+                        with sqlite3.connect(LOG_DB) as _hcx:
+                            purchase_history.init_purchase_history_table(_hcx)
+                            _hist = purchase_history.slugs_since(
+                                _hcx, email, _window_days_for_term(term_months))
+                        if _hist:
+                            repertoire.add_skus(cx, email, list(_hist))
+                except Exception as _e:
+                    print(f"[continuous-care] purchase_history seed failed: {_e!r}", flush=True)
         if not claimed:
             return {"ok": True, "already": True, "email": email}
         # FTC/ROSCA easy-cancel token, minted exactly as the removed biofield-trial
@@ -13077,6 +13141,12 @@ def _portal_reorder_module(email):
             print(f"[portal-reorder] repertoire read failed for {email!r}: {e!r}", flush=True)
             rep_slugs = set()
         orders = _bos_orders.list_orders_by_email(cx, email, limit=200)
+    # rep_slugs (full/unfiltered) drives the "in your repertoire" DISPLAY flag and
+    # the locked_rows "already have it" check below — a non-FF product a member
+    # bought IS still in their repertoire, it just isn't member-priced. rep_slugs_ff
+    # (FF-only, Glen 2026-07 margin decision) is what PRICES your_cents, matching
+    # _resolve_repertoire_slugs / _price_cart so display == charge for non-FF too.
+    rep_slugs_ff = _ff_filter_slugs(rep_slugs)
     member = _is_paid_member(email)
     settings = _pricing.load_settings(_pricing_settings())
     now = datetime.now(timezone.utc)
@@ -13107,10 +13177,10 @@ def _portal_reorder_module(email):
             except Exception:
                 qty = 1
             regular_cents = int(p.get("price_cents") or 0)
-            in_rep = slug in rep_slugs
+            in_rep = slug in rep_slugs  # full set: display "in your repertoire" regardless of FF-ness
             your_cents = regular_cents
-            if member and in_rep:
-                your_cents = _rep_priced_unit_cents(p, repertoire_slugs=rep_slugs, settings=settings)
+            if member and slug in rep_slugs_ff:  # FF-only: pricing
+                your_cents = _rep_priced_unit_cents(p, repertoire_slugs=rep_slugs_ff, settings=settings)
             reorder.append({
                 "slug": slug, "name": p.get("name", slug), "qty": qty,
                 "regular_cents": regular_cents, "your_cents": your_cents,
@@ -13118,15 +13188,17 @@ def _portal_reorder_module(email):
                 "in_repertoire": in_rep,
             })
 
-    # --- locked_rows: repertoire-eligible SKUs last bought 90-365 days ago,
-    # not already in the client's repertoire, tagged with the shortest
-    # commitment tier whose seed window would reach that purchase. ---
+    # --- locked_rows: FF SKUs (_qty_eligible — Glen 2026-07: the repertoire
+    # discount is FF-only, so only these can ever unlock member pricing) last
+    # bought 90-365 days ago, not already in the client's repertoire, tagged
+    # with the shortest commitment tier whose seed window would reach that
+    # purchase. ---
     locked_rows = []
     for slug in seen:
         if slug in rep_slugs:
             continue
         p = _get_product(slug)
-        if not p or not _repertoire_eligible(p):
+        if not p or not _qty_eligible(p):
             continue
         seen_at = _parse_iso_dt(last_seen_at.get(slug))
         if not seen_at:
@@ -13166,7 +13238,7 @@ def _portal_reorder_module(email):
             except Exception:
                 paid_unit = int(p.get("price_cents") or 0)
             spend_30d_cents += paid_unit * qty
-            if _repertoire_eligible(p):
+            if _qty_eligible(p):  # Glen 2026-07: repertoire discount is FF-only
                 hyp_unit = _rep_priced_unit_cents(p, repertoire_slugs={slug}, settings=settings)
             else:
                 hyp_unit = paid_unit
@@ -29134,6 +29206,16 @@ def api_console_fmp_orders_ingest():
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _fo.ensure_tables(cx)
         counts = _fo.ingest_payload(cx, payload)
+        try:
+            from dashboard import purchase_history as _ph
+            from dashboard import fmp_history as _fh
+            slug_map_path = os.path.join(os.path.dirname(__file__), "data", "fmp_slug_map.json")
+            with open(slug_map_path, encoding="utf-8") as _f:
+                _slug_map = json.load(_f)
+            _ph.init_purchase_history_table(cx)
+            counts["purchase_history"] = _fh.rebuild_from_fmp(cx, _slug_map)
+        except Exception as _e:
+            app.logger.warning("fmp-orders-ingest: purchase_history rebuild skipped: %s", _e)
     return jsonify({"ok": True, "counts": counts})
 
 
