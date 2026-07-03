@@ -70,3 +70,18 @@ def test_family_is_paid_follows_primary(tmp_db):
     assert fa.family_is_paid(cx, "sasha@fake.com") is True   # member inherits primary's plan
     assert fa.family_is_paid(cx, "karin@x.com") is True
     assert fa.family_is_paid(cx, "stranger@x.com") is False  # not in any family
+
+
+def test_scan_accessible_truth_table(tmp_db):
+    cx = _cx(tmp_db)
+    # locked, free, no family -> not accessible
+    assert fa.scan_accessible(cx, "m@x.com", "s1", is_paid=False) is False
+    # per-member paid -> accessible regardless of rows
+    assert fa.scan_accessible(cx, "m@x.com", "s1", is_paid=True) is True
+    # explicit unlock row -> accessible even if free
+    fa.record_unlock(cx, "m@x.com", "s1", "2026-07-02", "free_monthly", "2026-07-02T10:00:00Z")
+    assert fa.scan_accessible(cx, "m@x.com", "s1", is_paid=False) is True
+    # family plan -> accessible even for a still-locked scan
+    fa.upsert_member(cx, "p@x.com", "m@x.com", "M", "human", 0)
+    fa.set_family_membership(cx, "p@x.com", True, "2026-07-02T10:00:00Z")
+    assert fa.scan_accessible(cx, "m@x.com", "s2", is_paid=False) is True

@@ -131,3 +131,11 @@ def family_is_paid(cx, member_email):
         return False
     r = cx.execute("SELECT active FROM family_memberships WHERE primary_email=?", (primary,)).fetchone()
     return bool(r and r[0])
+
+
+def scan_accessible(cx, member_email, scan_id, is_paid):
+    if is_paid:
+        return True
+    if family_is_paid(cx, member_email):
+        return True
+    return has_unlock(cx, member_email, scan_id)
