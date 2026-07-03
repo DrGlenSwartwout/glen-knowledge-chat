@@ -254,7 +254,38 @@ def set_order_status(cx, order_id, status):
     cur = cx.execute("UPDATE orders SET status=?, updated_at=? WHERE id=?",
                      (status, _now(), order_id))
     cx.commit()
+    if status == "cancelled" and cur.rowcount:
+        try:
+            _ungroup_cancelled_from_shipment(cx, order_id)
+        except Exception as e:  # never let group cleanup block the cancel
+            print(f"[orders] ungroup-on-cancel skipped for #{order_id}: {e!r}", flush=True)
     return cur.rowcount > 0
+
+
+def _ungroup_cancelled_from_shipment(cx, order_id):
+    """When an order is cancelled, drop it from any still-OPEN combined shipment so
+    its stale group link can't block re-combining the remaining members. If that
+    leaves the shipment with fewer than 2 members, dissolve it: un-group the lone
+    remaining order back to standalone and mark the shipment cancelled — a
+    one-order "combined" shipment isn't a combination. No-op once a label is bought
+    (shipment status != 'open'), so a packed/shipped parcel is never touched."""
+    row = cx.execute("SELECT group_shipment_id FROM orders WHERE id=?", (order_id,)).fetchone()
+    sid = row[0] if row else None
+    if not sid:
+        return
+    st = cx.execute("SELECT status FROM combined_shipments WHERE id=?", (sid,)).fetchone()
+    if st is None or st[0] != "open":
+        return
+    cx.execute("UPDATE orders SET group_shipment_id=NULL, updated_at=? WHERE id=?",
+               (_now(), order_id))
+    remaining = cx.execute("SELECT id FROM orders WHERE group_shipment_id=?", (sid,)).fetchall()
+    if len(remaining) < 2:
+        for (rid,) in remaining:
+            cx.execute("UPDATE orders SET group_shipment_id=NULL, updated_at=? WHERE id=?",
+                       (_now(), rid))
+        cx.execute("UPDATE combined_shipments SET status='cancelled', updated_at=? WHERE id=?",
+                   (_now(), sid))
+    cx.commit()
 
 
 def set_order_tracking(cx, order_id, tracking_number, shipment_id=None):
