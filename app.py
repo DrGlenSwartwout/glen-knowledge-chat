@@ -29258,6 +29258,27 @@ def bos_backfill_trial_orders():
     return jsonify({"ok": True, "dry_run": dry, "result": res})
 
 
+@app.route("/api/console/reconcile-captured-charges", methods=["POST"])
+def bos_reconcile_captured_charges():
+    """Mark orders paid when they carry a Stripe-verified captured charge but were
+    left pay_status='unpaid' (biofield/prepay digital flows create the order without
+    recording payment, so it shows "Unpaid" on the Done board). Only 'succeeded'
+    PaymentIntents are touched; status is preserved. ?dry_run=1 reports without
+    writing. Idempotent; safe to re-run."""
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    dry = (request.args.get("dry_run") or "").strip().lower() in ("1", "true", "yes")
+    from dashboard import stripe_pay as _sp
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        res = _bos_payments.reconcile_captured_charges(
+            cx, _sp.get_payment_intent, dry_run=dry)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "dry_run": dry, "result": res})
+
+
 @app.route("/api/console/backfill-affiliate-people", methods=["POST"])
 def api_console_backfill_affiliate_people():
     if _bos_actor() is None:
