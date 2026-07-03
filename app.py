@@ -13362,6 +13362,12 @@ def api_client_portal(token):
             membership_cat = membership_category(email_for_reports)
         except Exception as e:
             print(f"[portal-credit] {email_for_reports}: {e!r}", flush=True)
+    try:
+        from dashboard import portal_element_view as _pev
+        with sqlite3.connect(LOG_DB) as _cxe:
+            element_state = _pev.element_view(_cxe, (portal.get("email") or "").strip().lower())
+    except Exception:
+        element_state = None
     payload = {
         "name": portal.get("name"),
         "membership_category": membership_cat,
@@ -13379,6 +13385,7 @@ def api_client_portal(token):
         "notify_on": notify_on,
         "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
         "messages": _portal_chat_thread(email_for_reports),
+        "element_state": element_state,
     }
     # Task 5: portal reorder module (real order history + repertoire pricing +
     # member savings + forward-framed locked rows). Additive keys only — never
