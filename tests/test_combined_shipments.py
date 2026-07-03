@@ -370,3 +370,51 @@ def test_send_tracking_survives_blank_name(monkeypatch):
     # the blank-name member doesn't crash the send; both still get emailed
     assert set(sent) == {"des@x.com", "jc@x.com"}
     assert set(out["emailed"]) == {"des@x.com", "jc@x.com"}
+
+
+# ── cancel un-groups (Desiree/JC re-combine scenario) ────────────────────────
+
+def test_cancel_member_dissolves_two_member_shipment_and_frees_the_other():
+    # Cancelling one order of a 2-member combined shipment must un-group BOTH
+    # (a one-order "combined" shipment isn't a combination) so the survivor is
+    # immediately free to be combined into a new shipment. This is the exact
+    # Desiree-cancelled / JC-still-stuck case.
+    O, C, cx = _db()
+    a, b = _two(O, cx)                       # a = Desiree, b = JC
+    sh = C.create_shipment(cx, [a, b], created_by="Rae")
+    O.set_order_status(cx, a, "cancelled")   # cancel Desiree's order
+    assert O.get_order(cx, a)["group_shipment_id"] is None
+    assert O.get_order(cx, b)["group_shipment_id"] is None   # JC freed
+    assert C.get_shipment(cx, sh["id"])["status"] == "cancelled"
+    # JC (b) is combinable again — re-combine with a fresh order succeeds.
+    c = _order(O, cx, "C", name="Desire'e", email="des@x.com",
+               items=[{"name": "Mag", "qty": 1, "slug": "neuro-magnesium"}])
+    sh2 = C.create_shipment(cx, [b, c], created_by="Rae")
+    assert {m["id"] for m in sh2["members"]} == {b, c}
+
+
+def test_cancel_member_keeps_shipment_with_two_or_more_remaining():
+    # A 3-member shipment losing one member drops to 2 and stays open.
+    O, C, cx = _db()
+    a, b = _two(O, cx)
+    c = _order(O, cx, "C", name="Third Person", email="third@x.com",
+               items=[{"name": "T", "qty": 1, "slug": "terrain-restore"}])
+    sh = C.create_shipment(cx, [a, b, c], created_by="Rae")
+    O.set_order_status(cx, a, "cancelled")
+    assert O.get_order(cx, a)["group_shipment_id"] is None
+    assert O.get_order(cx, b)["group_shipment_id"] == sh["id"]
+    assert O.get_order(cx, c)["group_shipment_id"] == sh["id"]
+    assert C.get_shipment(cx, sh["id"])["status"] == "open"
+
+
+def test_cancel_leaves_labeled_shipment_untouched():
+    # Once a label is bought (status != 'open'), a cancel must NOT dissolve the
+    # grouping or disturb the parcel.
+    O, C, cx = _db()
+    a, b = _two(O, cx)
+    sh = C.create_shipment(cx, [a, b], created_by="Rae")
+    C.record_label(cx, sh["id"], tracking_number="9400111899", label_url="http://x")
+    O.set_order_status(cx, a, "cancelled")
+    # still grouped; shipment not dissolved
+    assert O.get_order(cx, b)["group_shipment_id"] == sh["id"]
+    assert C.get_shipment(cx, sh["id"])["status"] != "cancelled"
