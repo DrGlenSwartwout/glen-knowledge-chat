@@ -59,15 +59,37 @@ def test_combine_stamps_group_and_lists_members():
     assert sh["ship_to"]["zip"] == "96720"
 
 
-def test_combine_rejects_unpaid_orders():
+def test_combine_allows_unpaid_orders_but_blocks_shipping_until_paid():
+    # New policy: you may GROUP orders before they're paid (e.g. a proposed
+    # in-house invoice + a cart order for the same household), so the shipment can
+    # be set up early. Shipping (label/tracking/pack/ship) stays blocked until
+    # every member is paid — you still can't ship an unpaid order.
     O, C, cx = _db()
-    a = _order(O, cx, "A", name="Des", email="d@x.com", items=[{"name": "M", "qty": 1}], paid=False)
-    b = _order(O, cx, "B", name="JC", email="j@x.com", items=[{"name": "T", "qty": 1}])
+    a = _order(O, cx, "A", name="J.C. Davis", email="jc@x.com",
+               items=[{"name": "T", "qty": 1}], status="proposed", paid=False)
+    b = _order(O, cx, "B", name="Desire'e", email="des@x.com",
+               items=[{"name": "M", "qty": 1}], status="new", paid=False)  # cart
+    sh = C.create_shipment(cx, [a, b])                       # grouping is allowed now
+    assert sh["status"] == "open"
+    assert {m["id"] for m in sh["members"]} == {a, b}
+    # ...but a label can't be applied while a member is unpaid
     try:
-        C.create_shipment(cx, [a, b])
-        assert False, "expected ValueError"
+        C.record_label(cx, sh["id"], tracking_number="9400111899")
+        assert False, "expected ValueError — cannot ship unpaid members"
     except ValueError as e:
-        assert "not paid" in str(e)
+        assert "waiting on payment" in str(e).lower()
+    # pay both, then the label goes through
+    O.set_order_payment(cx, a, method="Check", amount_cents=5000)
+    O.set_order_payment(cx, b, method="Zelle", amount_cents=5000)
+    sh2 = C.record_label(cx, sh["id"], tracking_number="9400111899")
+    assert sh2["status"] == "packed"
+
+
+def test_combinable_reason_allows_unpaid_pre_ship_order():
+    O, C, cx = _db()
+    a = _order(O, cx, "A", name="X", email="x@x.com", items=[{"name": "M", "qty": 1}],
+               status="proposed", paid=False)
+    assert C._combinable_reason(O.get_order(cx, a)) is None
 
 
 def test_combine_needs_two_orders():

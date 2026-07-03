@@ -125,8 +125,10 @@
   var HH = { enabled:false, sel:{}, clusters:[] };
   var _TERMINAL = {shipped:1, delivered:1, done:1, cancelled:1};
   // An order can join a new combined shipment if it's not out the door, not a
-  // pickup, and not already in a shipment.
-  function combinable(o){ return !_TERMINAL[o.status] && o.channel!=='pickup' && o.group_shipment_id==null && isPaidReady(o); }
+  // pickup, and not already in a shipment. Payment is NOT required to group (a
+  // household can be set up while orders are still proposed/cart); the shipment
+  // card blocks label/ship until every member is paid.
+  function combinable(o){ return !_TERMINAL[o.status] && o.channel!=='pickup' && o.group_shipment_id==null; }
 
   function cardHtml(o){
     var total = o.total_cents ? '$'+(o.total_cents/100).toFixed(2) : '';
@@ -320,20 +322,33 @@
     var tn = ''; ms.forEach(function(m){ if(m.tracking_number) tn = m.tracking_number; });
     var who = ms.map(function(m){ return esc(m.name||m.email||('#'+m.id)); }).join(' + ');
     var items = ms.map(function(m){ return (m.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||''); }).join(', '); }).filter(Boolean).join(' | ');
+    // Shipping is blocked until every member is paid — you can group early, but
+    // you can't put a label on / ship an unpaid order (backend enforces this too).
+    var unpaid = ms.filter(function(m){ return !isPaidReady(m); });
+    var allPaid = unpaid.length === 0;
+    var unpaidNames = unpaid.map(function(m){ return esc(m.name||m.email||('#'+m.id)); });
     var acts = '';
-    if (!tn) acts += gbtn(sid,'shipments.create_label','Create label') + ' <button onclick="setGroupTracking('+Number(sid)+')">Set tracking</button> ';
-    if (st==='new') acts += gbtn(sid,'shipments.mark_packed','Pack') + ' ';
-    if (tn) acts += gbtn(sid,'shipments.send_tracking','Send tracking') + ' ' + gbtn(sid,'shipments.mark_delivered','Mark delivered') + ' ' + gbtn(sid,'shipments.mark_done','Mark done') + ' ';
+    if (!allPaid) {
+      acts += '<span class="meta" style="color:var(--gold)">Waiting on payment: '+unpaidNames.join(', ')
+        +' &mdash; collect on each order card, then ship together.</span> ';
+    } else {
+      if (!tn) acts += gbtn(sid,'shipments.create_label','Create label') + ' <button onclick="setGroupTracking('+Number(sid)+')">Set tracking</button> ';
+      if (st==='new') acts += gbtn(sid,'shipments.mark_packed','Pack') + ' ';
+      if (tn) acts += gbtn(sid,'shipments.send_tracking','Send tracking') + ' ' + gbtn(sid,'shipments.mark_delivered','Mark delivered') + ' ' + gbtn(sid,'shipments.mark_done','Mark done') + ' ';
+    }
     acts += '<button class="cancel" onclick="if(confirm(\'Un-group shipment #'+Number(sid)+' back into standalone orders?\'))actGroup('+Number(sid)+',\'shipments.cancel\',{})">Cancel</button>';
     // While still open (no label bought), each member can be pulled out individually.
     var memberList = '';
     if (!tn) memberList = '<div class="meta">Members:<br>' + ms.map(function(m){
-        return '&bull; '+esc(m.name||m.email||('#'+m.id))
+        var pm = isPaidReady(m) ? '' : ' <span style="color:var(--gold)">unpaid</span>';
+        return '&bull; '+esc(m.name||m.email||('#'+m.id)) + pm
           + ' <button onclick="actGroup('+Number(sid)+',\'shipments.remove\',{order_id:'+Number(m.id)+'})" style="padding:0 6px;border:1px solid var(--border);border-radius:5px;background:none;color:var(--muted);cursor:pointer">remove</button>';
       }).join('<br>') + '</div>';
+    var stLabel = allPaid ? esc(st)
+      : ('awaiting payment ('+(ms.length-unpaid.length)+'/'+ms.length+' paid)');
     var head = '<div class="card-head" onclick="toggleCard(this)"><div class="who">'+who
       + '<span class="hh-badge">shipment #'+Number(sid)+'</span><span class="chev">&#9656;</span></div>'
-      + '<div class="meta">'+esc(st)+(tn?' &middot; tracking '+esc(tn):'')+'</div></div>';
+      + '<div class="meta">'+stLabel+(tn?' &middot; tracking '+esc(tn):'')+'</div></div>';
     var body = '<div class="card-body">'
       + (items?'<div class="meta prods">'+items+'</div>':'')
       + memberList
