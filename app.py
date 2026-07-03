@@ -4613,6 +4613,9 @@ JOURNEY_QUEST_ENABLED = os.environ.get("JOURNEY_QUEST_ENABLED", "").strip().lowe
 REWARDS_1B_ENABLED = os.environ.get("REWARDS_1B_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 REWARDS_1B_GIFT_ENABLED = os.environ.get("REWARDS_1B_GIFT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Sub-project 5: two-tier referral points. When on, a paid conversion also credits the
+# referrer's OWN referrer (L2) half the Tier-1 rate, non-cashable. Off = Tier-1 only.
+REFERRAL_TIER2_ENABLED = os.environ.get("REFERRAL_TIER2_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PREPAY_LADDER_ENABLED = os.environ.get("PREPAY_LADDER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Continuous Care MONTHLY: a card-on-file recurring membership fixed to a 6- or
 # 12-month term (vs. the upfront prepay ladder above, which never vaults a card).
@@ -5088,6 +5091,17 @@ def _settle_referrer_reward(cx, order, order_ref):
     if reward > 0:
         _points.credit(cx, red["owner_email"], value_cents=reward, reason="referral_reward",
                        order_ref=f"referral:{red['referee_email']}")
+    # Tier-2 (non-cashable points, half the Tier-1 rate): the referrer's OWN referrer
+    # earns on this sale too. Forward-only — this runs before mark_rewarded, so a replay
+    # hits the rewarded_at early-return above and never double-credits either tier. Flag-dark.
+    if REFERRAL_TIER2_ENABLED:
+        l2_owner = _rf.owner_of_referee(cx, red["owner_email"])
+        # No self-dealing / cycles: L2 must exist and differ from the buyer AND from L1.
+        if l2_owner and l2_owner != red["referee_email"] and l2_owner != red["owner_email"]:
+            reward_l2 = product_cents * pct // 200
+            if reward_l2 > 0:
+                _points.credit(cx, l2_owner, value_cents=reward_l2, reason="referral_reward_l2",
+                               order_ref=f"referral_l2:{red['referee_email']}")
     _rf.mark_rewarded(cx, red["referee_email"], reward_cents=reward)
     return reward
 
@@ -25817,6 +25831,8 @@ def api_pif_summary():
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _points.init_points_table(cx)
         balance_cents = _points.balance(cx, email)
+        tier1_earned_cents = _points.earned_by_reason(cx, email, "referral_reward")
+        tier2_earned_cents = _points.earned_by_reason(cx, email, "referral_reward_l2")
         chain = _pif.chain_summary(cx, email)
         try:
             chain["recipients"] = _pif.chain_recipients(cx, email)
@@ -25835,6 +25851,8 @@ def api_pif_summary():
     return jsonify({
         "ok": True,
         "balance_cents": balance_cents,
+        "tier1_earned_cents": tier1_earned_cents,
+        "tier2_earned_cents": tier2_earned_cents,
         "chain": chain,
         "gift_wallet": gift_wallet,
         "healer_level": _pif.healer_level(chain["reached"]),

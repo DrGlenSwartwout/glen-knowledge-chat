@@ -55,6 +55,16 @@ def redeem(cx, email, *, value_cents, order_ref, scope="rm"):
     return _add(cx, email, -value_cents, "redeem", order_ref, scope=scope)
 
 
+def earned_by_reason(cx, email, reason, *, scope="rm"):
+    """Total cents earned (positive credits only) for a given reason — e.g. per-tier
+    referral earnings. 0 when none."""
+    row = cx.execute(
+        "SELECT COALESCE(SUM(delta_cents),0) FROM points_ledger "
+        "WHERE email=? AND reason=? AND scope=? AND delta_cents > 0",
+        (email, reason, scope)).fetchone()
+    return int(row[0]) if row and row[0] is not None else 0
+
+
 def has_entry(cx, *, order_ref, reason, scope="rm"):
     """True if a ledger row already exists for this order_ref + reason (idempotency guard)."""
     row = cx.execute("SELECT 1 FROM points_ledger WHERE order_ref=? AND reason=? AND scope=? LIMIT 1",
