@@ -208,13 +208,16 @@ def identity_from_session(cx, session_token) -> "Identity | None":
 
 
 def resolve_identity(cx, *, token=None, session_token=None, client_login_enabled=False):
-    """Single choke point. Prefer a logged-in session (only when login is live),
-    else fall back to the emailed portal token. The page/APIs call this and never
-    look at tokens or cookies directly."""
-    if client_login_enabled and session_token:
-        ident = identity_from_session(cx, session_token)
+    """Single choke point. An explicit, resolvable path token wins: opening
+    another client's /portal/<token> link shows THAT client even while you're
+    logged in, so the in-session view matches incognito (no more mixed portal).
+    The tokenless home passes token="me" (never a real token, so it resolves to
+    None) and any bad token falls through to the logged-in session below.
+    The page/APIs call this and never look at tokens or cookies directly."""
+    if token:
+        ident = identity_from_token(cx, token)
         if ident is not None:
             return ident
-    if token:
-        return identity_from_token(cx, token)
+    if client_login_enabled and session_token:
+        return identity_from_session(cx, session_token)
     return None

@@ -129,3 +129,51 @@ def test_resolve_identity_ignores_session_when_login_disabled(tmp_path):
     # and honored only when the flag is flipped (next slice)
     ident = pi.resolve_identity(cx, session_token=sess, client_login_enabled=True)
     assert ident is not None and ident.auth_method == "session"
+
+
+def test_resolve_identity_prefers_explicit_token_over_session(tmp_path):
+    """An explicit /portal/<token> link wins over a logged-in session, so
+    previewing another client's link shows THAT client (matches incognito)
+    instead of a mix of the token's content and your own account."""
+    from dashboard import portal_identity as pi
+    cx = sqlite3.connect(str(tmp_path / "t.db"))
+    pi._ensure_people_table(cx)
+    # a logged-in session for one person...
+    cx.execute(
+        "INSERT INTO people (email, name, roles, created_at, updated_at) VALUES (?,?,?,?,?)",
+        ("me@example.com", "Me", '["client"]', "t", "t"),
+    )
+    cx.commit()
+    my_pid = cx.execute("SELECT id FROM people WHERE email=?", ("me@example.com",)).fetchone()[0]
+    sess = pi.create_client_session(cx, my_pid, "me@example.com")
+    # ...opening a DIFFERENT client's token link, login flag on
+    other_tok = _seed_portal(cx, email="other@example.com", name="Other")
+
+    ident = pi.resolve_identity(cx, token=other_tok, session_token=sess,
+                                client_login_enabled=True)
+
+    assert ident is not None and ident.auth_method == "token"
+    assert ident.email == "other@example.com"
+
+
+def test_resolve_identity_me_sentinel_falls_through_to_session(tmp_path):
+    """The tokenless home passes token='me' (never a real token) so it still
+    resolves to the logged-in session, not a bogus token lookup."""
+    from dashboard import portal_identity as pi
+    from dashboard import client_portal as cp
+    cx = sqlite3.connect(str(tmp_path / "t.db"))
+    pi._ensure_people_table(cx)
+    cp.init_client_portal_table(cx)  # route handlers always init this first
+    cx.execute(
+        "INSERT INTO people (email, name, roles, created_at, updated_at) VALUES (?,?,?,?,?)",
+        ("home@example.com", "Home", '["client"]', "t", "t"),
+    )
+    cx.commit()
+    pid = cx.execute("SELECT id FROM people WHERE email=?", ("home@example.com",)).fetchone()[0]
+    sess = pi.create_client_session(cx, pid, "home@example.com")
+
+    ident = pi.resolve_identity(cx, token="me", session_token=sess,
+                                client_login_enabled=True)
+
+    assert ident is not None and ident.auth_method == "session"
+    assert ident.email == "home@example.com"
