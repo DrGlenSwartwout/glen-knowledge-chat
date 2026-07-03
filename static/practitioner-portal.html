@@ -11,9 +11,12 @@
 <style>
   :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
     --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --radius:14px;
-    --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
+    --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif;
+    /* Partner Program chart ramp (dark default) — CVD-validated gold ordinal */
+    --t0:#A67C1E; --t1:#C99A34; --t2:#E2BB60; --t3:#F2DA92; --single:#E2BB60; --good:#0CA30C; }
   :root[data-theme="light"]{ --bg:#FBF8F3; --surface:#FFFFFF; --surface-2:#F4ECDE;
-    --border:#E2D9C9; --cream:#1E2A2A; --muted:#5F6B6B; --gold:#B08A3E; --green:#2D7A6A; }
+    --border:#E2D9C9; --cream:#1E2A2A; --muted:#5F6B6B; --gold:#B08A3E; --green:#2D7A6A;
+    --t0:#C99A34; --t1:#A67A1C; --t2:#7E5A10; --t3:#573C08; --single:#A67A1C; --good:#0A8A0A; }
   *{box-sizing:border-box}
   body{ margin:0; background:var(--bg); color:var(--cream); font-family:var(--font); line-height:1.6; }
   .wrap{ max-width:960px; margin:0 auto; padding:34px 20px; }
@@ -49,6 +52,54 @@
   .tab.active{ color:var(--gold); border-bottom-color:var(--gold); }
   .pane{ display:none; }
   .pane.active{ display:block; }
+  /* Partner Program pane content (scoped) */
+  #partner-program{ margin-top:16px; }
+  #partner-program .pp-lead{ font-size:15px; color:var(--muted); max-width:720px; margin:0 0 4px; }
+  #partner-program .kicker{ font-size:12px; font-weight:700; letter-spacing:.03em; color:var(--gold); margin-top:26px; }
+  #partner-program .pp-h2{ font-family:var(--heading); font-size:20px; font-weight:700; margin:6px 0 12px; color:var(--cream); }
+  #partner-program .grid2{ display:grid; grid-template-columns:1.1fr .9fr; gap:16px; }
+  #partner-program .grid3{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  #partner-program .grid4{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  #partner-program .card{ background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; }
+  #partner-program .card h3{ font-family:var(--heading); font-size:16px; margin:0 0 6px; color:var(--cream); }
+  #partner-program .card p{ font-size:13.5px; color:var(--muted); margin:0; }
+  #partner-program .pill{ display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:10px; background:rgba(212,168,67,.14); color:var(--gold); font-size:17px; margin-bottom:10px; }
+  #partner-program .chartcard{ background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px 16px 12px; }
+  #partner-program .ct{ font-family:var(--heading); font-size:15px; font-weight:700; color:var(--cream); }
+  #partner-program .cs{ font-size:12.5px; color:var(--muted); margin:2px 0 10px; }
+  #partner-program .legend{ display:flex; flex-wrap:wrap; gap:12px; margin:2px 0 8px; }
+  #partner-program .lg{ display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); font-weight:600; }
+  #partner-program .lg i{ width:20px; height:3px; border-radius:2px; display:inline-block; }
+  #partner-program svg{ display:block; width:100%; height:auto; overflow:visible; }
+  #partner-program .ax{ fill:var(--muted); font-size:12px; font-family:var(--font); }
+  #partner-program .axt{ fill:var(--muted); font-size:12px; font-family:var(--font); font-variant-numeric:tabular-nums; }
+  #partner-program .vlab{ fill:var(--cream); font-size:12.5px; font-weight:700; font-family:var(--font); }
+  #partner-program .gl{ stroke:var(--border); stroke-width:1; opacity:.6; }
+  #partner-program .base{ stroke:var(--border); stroke-width:1; }
+  #partner-program .callout{ display:flex; gap:12px; align-items:flex-start; background:rgba(212,168,67,.08); border:1px solid var(--border); border-left:4px solid var(--gold); border-radius:12px; padding:14px 16px; margin-top:16px; }
+  #partner-program .callout .ic{ font-size:18px; line-height:1; }
+  #partner-program .callout b{ color:var(--cream); }
+  #partner-program .callout p{ font-size:13.5px; color:var(--muted); margin:0; }
+  #partner-program .mods{ display:grid; grid-template-columns:repeat(4,1fr); grid-template-rows:repeat(3,auto); grid-auto-flow:column; gap:10px; margin-top:6px; }
+  #partner-program .mod{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:11px 13px; }
+  #partner-program .mod .n{ font-size:11px; font-weight:800; color:var(--gold); }
+  #partner-program .mod .t{ font-size:14px; font-weight:700; color:var(--cream); margin-top:2px; }
+  #partner-program .mod .p{ font-size:11px; color:var(--muted); margin-top:3px; }
+  #partner-program .flow{ display:grid; grid-template-columns:1fr auto 1fr auto 1fr; align-items:center; gap:6px; margin-top:6px; }
+  #partner-program .node{ background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px; text-align:center; }
+  #partner-program .node .cap{ font-size:11px; font-weight:800; color:var(--muted); }
+  #partner-program .node .who{ font-size:14px; font-weight:800; color:var(--cream); margin:4px 0 8px; }
+  #partner-program .node .rate{ display:inline-block; font-size:12.5px; font-weight:800; color:#241a02; background:var(--gold); border-radius:999px; padding:3px 10px; }
+  #partner-program .node.you{ border:1.5px solid var(--gold); }
+  #partner-program .arrow{ color:var(--gold); font-size:20px; font-weight:800; text-align:center; }
+  #partner-program .flowfoot{ font-size:12px; color:var(--muted); margin-top:10px; text-align:center; }
+  #partner-program .pp-foot{ font-size:11.5px; color:var(--muted); margin-top:22px; }
+  #pp-tt{ position:fixed; pointer-events:none; opacity:0; transition:opacity .08s; background:var(--cream); color:var(--bg); font-size:12px; font-weight:600; padding:6px 9px; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.3); z-index:50; transform:translate(-50%,-116%); white-space:nowrap; }
+  @media (max-width:760px){
+    #partner-program .grid2,#partner-program .grid3,#partner-program .grid4{ grid-template-columns:1fr; }
+    #partner-program .mods{ grid-template-columns:repeat(2,1fr); grid-template-rows:none; grid-auto-flow:row; }
+    #partner-program .flow{ grid-template-columns:1fr; } #partner-program .arrow{ transform:rotate(90deg); }
+  }
 </style>
 <script>(function(){var t=localStorage.getItem('rm-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
 </head>
@@ -96,7 +147,54 @@
     <div id="assignment-feedback"></div>
   </div>
 
-  <div id="partner-program"></div>
+  <div id="partner-program">
+    <p class="pp-lead">Your partnership at a glance: what you pay, what you keep, the certification path that lowers your cost, and how referrals pay you back.</p>
+
+    <div class="grid2">
+      <div class="chartcard">
+        <div class="ct">Your wholesale price per bottle</div>
+        <div class="cs">Blended per-bottle cost by order size, at four certification levels</div>
+        <div class="legend" id="wsLegend"></div>
+        <div id="wsChart"></div>
+      </div>
+      <div class="chartcard">
+        <div class="ct">What you keep, certified</div>
+        <div class="cs">Your margin per bottle across the $69.97–$79.97 online retail range</div>
+        <div class="legend" id="mgLegend"></div>
+        <div id="marginChart"></div>
+      </div>
+    </div>
+
+    <div class="callout"><div class="ic">💡</div><div><p><b>Certification pays for itself.</b> Every module lowers your floor by $1.25 a bottle. All twelve take your best case from $40 to $25, a $15 swing on every bottle at volume, recovered in a single reorder.</p></div></div>
+    <div class="callout"><div class="ic">🛡️</div><div><p><b>Your margin is protected.</b> Suggested retail is $79.97 a bottle, and the minimum advertised price is $69.97. No one, including us, advertises below $69.97, so you are never undercut and your clients see consistent pricing.</p></div></div>
+
+    <div class="kicker">Certification</div>
+    <div class="pp-h2">Accelerated Self Healing&trade; Certification</div>
+    <div class="chartcard" style="margin-bottom:14px">
+      <div class="ct">Your wholesale floor drops with every module</div>
+      <div class="cs">Best-case per-bottle price by modules completed</div>
+      <div id="certChart"></div>
+    </div>
+    <div class="mods" id="pp-mods"></div>
+
+    <div class="kicker">Commission</div>
+    <div class="pp-h2">Dispensing is one stream. Referral is the second.</div>
+    <div class="flow">
+      <div class="node you"><div class="cap">You</div><div class="who">Partner</div><div class="rate">earn on both levels</div></div>
+      <div class="arrow">&rarr;</div>
+      <div class="node"><div class="cap">Level 1 · Direct</div><div class="who">Customers &amp; Members</div><div class="rate">up to 20% recurring</div></div>
+      <div class="arrow">&rarr;</div>
+      <div class="node"><div class="cap">Level 2 · Override</div><div class="who">Practitioners You Mentor</div><div class="rate">5% of their sales</div></div>
+    </div>
+    <p class="flowfoot">Paid only on real product sales, never for recruiting. The Level 2 override comes out of our margin, not your Level 1. Capped at two levels.</p>
+    <div class="grid3" style="margin-top:16px">
+      <div class="card"><h3 style="color:var(--gold)">Refer a remedy customer</h3><p>Up to <b>20% of every order</b>, recurring for life including reorders. On a $79.97 bottle that is about <b>$16.00</b> back to you.</p></div>
+      <div class="card"><h3 style="color:var(--gold)">Refer a member</h3><p><b>$40</b> when they convert to the $99/mo membership, plus <b>20% recurring</b> every month they stay.</p></div>
+      <div class="card"><h3 style="color:var(--gold)">Mentor a practitioner</h3><p>A <b>5% override</b> on their referred product sales, so growing your circle grows your income, the fair way.</p></div>
+    </div>
+
+    <p class="pp-foot">These figures describe the partnership program and are not a promise of specific health outcomes or earnings. Commission rates shown are the program's launch tiers. Accelerated Self Healing&trade; has been developed by Dr. Glen Swartwout and is a trademark of Remedy Match LLC.</p>
+  </div>
   </section>
 
   <section class="pane" data-pane="order" role="tabpanel" aria-label="Order">
@@ -175,6 +273,7 @@
   <div class="panel"><h2>Training</h2><div class="muted" style="font-size:13px;margin-top:6px">Your 12-module Accelerated Self Healing&trade; Certification will live here. Coming soon.</div></div>
   </section>
 </div>
+<div id="pp-tt"></div>
 <script>
 var TOKEN = new URLSearchParams(location.search).get('token') || '';
 var UNLOCKED = false;  // set in render(): true = resale-approved/licensed (wholesale, tax-exempt)
@@ -185,6 +284,7 @@ function toggleTheme(){
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('rm-theme', next);
   var b=document.getElementById('theme-toggle'); if(b) b.textContent = next==='light' ? 'Dark' : 'Light';
+  if(typeof renderPartnerCharts==='function') renderPartnerCharts();
 }
 (function(){ var t=document.documentElement.getAttribute('data-theme'); var b=document.getElementById('theme-toggle'); if(b) b.textContent = t==='light' ? 'Dark' : 'Light'; })();
 function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
@@ -518,6 +618,106 @@ function sendAssist(){ var q = $('assist-q').value.trim(); if(!q) return; $('ass
 $('assist-send').addEventListener('click', sendAssist);
 $('assist-q').addEventListener('keydown', function(e){ if(e.key==='Enter') sendAssist(); });
 $('disp-copy').addEventListener('click', function(){ var i=$('disp-link'); i.select(); try{ document.execCommand('copy'); }catch(e){} $('disp-copy').textContent='Copied'; setTimeout(function(){ $('disp-copy').textContent='Copy'; }, 1500); });
+
+// ── Partner Program charts (self-contained SVG, no libs) ──
+(function(){
+  var SVGNS='http://www.w3.org/2000/svg';
+  var ppTip=document.getElementById('pp-tt');
+  function el(n,a){ var e=document.createElementNS(SVGNS,n); for(var k in a) e.setAttribute(k,a[k]); return e; }
+  function cssv(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  function showTip(e,html){ if(!ppTip) return; ppTip.innerHTML=html; ppTip.style.left=e.clientX+'px'; ppTip.style.top=e.clientY+'px'; ppTip.style.opacity=1; }
+  function hideTip(){ if(ppTip) ppTip.style.opacity=0; }
+  document.addEventListener('mousemove',function(e){ if(ppTip&&ppTip.style.opacity==1){ ppTip.style.left=e.clientX+'px'; ppTip.style.top=e.clientY+'px'; } });
+  function topRoundRect(x,y,w,h,r){ r=Math.max(0,Math.min(r,w/2,h));
+    return 'M'+x+' '+(y+h)+' L'+x+' '+(y+r)+' Q'+x+' '+y+' '+(x+r)+' '+y+' L'+(x+w-r)+' '+y+' Q'+(x+w)+' '+y+' '+(x+w)+' '+(y+r)+' L'+(x+w)+' '+(y+h)+' Z'; }
+
+  var wsTiers=[
+    {name:'Uncertified',c:'--t0',pts:[50,45,40]},
+    {name:'4 modules',c:'--t1',pts:[50,42.5,35]},
+    {name:'8 modules',c:'--t2',pts:[50,40,30]},
+    {name:'Certified (12)',c:'--t3',pts:[50,37.5,25]}
+  ];
+  var wsX=['1 bottle','20 · one box','40+ · two boxes'];
+  function renderWholesale(){
+    var host=document.getElementById('wsChart'); if(!host) return; host.innerHTML='';
+    var W=560,H=300,L=46,R=118,T=14,B=42, pw=W-L-R, ph=H-T-B, ymin=20,ymax=52;
+    var svg=el('svg',{viewBox:'0 0 '+W+' '+H,role:'img'});
+    function X(i){return L+pw*(i/(wsX.length-1));} function Y(v){return T+ph*(1-(v-ymin)/(ymax-ymin));}
+    [20,30,40,50].forEach(function(g){ svg.appendChild(el('line',{x1:L,x2:L+pw,y1:Y(g),y2:Y(g),class:'gl'}));
+      var tx=el('text',{x:L-8,y:Y(g)+4,'text-anchor':'end',class:'axt'}); tx.textContent='$'+g; svg.appendChild(tx); });
+    svg.appendChild(el('line',{x1:L,x2:L+pw,y1:T+ph,y2:T+ph,class:'base'}));
+    wsX.forEach(function(lab,i){ var tx=el('text',{x:X(i),y:T+ph+22,'text-anchor':'middle',class:'ax'}); tx.textContent=lab; svg.appendChild(tx); });
+    wsTiers.forEach(function(s){ var col=cssv(s.c),d='';
+      s.pts.forEach(function(v,i){ d+=(i?'L':'M')+X(i)+' '+Y(v)+' '; });
+      svg.appendChild(el('path',{d:d,fill:'none',stroke:col,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
+      s.pts.forEach(function(v,i){ svg.appendChild(el('circle',{cx:X(i),cy:Y(v),r:4.5,fill:col,stroke:cssv('--surface'),'stroke-width':2}));
+        var hit=el('circle',{cx:X(i),cy:Y(v),r:12,fill:'transparent'}); hit.style.cursor='pointer';
+        hit.addEventListener('mouseenter',function(e){ showTip(e,'<b>'+s.name+'</b><br>'+wsX[i].replace(' · ',' — ')+': $'+v.toFixed(2)); });
+        hit.addEventListener('mouseleave',hideTip); svg.appendChild(hit); });
+      var end=s.pts[s.pts.length-1];
+      var lb=el('text',{x:L+pw+10,y:Y(end)+4,class:'vlab',fill:col}); lb.textContent='$'+end.toFixed(2); svg.appendChild(lb);
+      var nm=el('text',{x:L+pw+10,y:Y(end)+19,class:'ax'}); nm.textContent=s.name; svg.appendChild(nm); });
+    host.appendChild(svg);
+    var lg=document.getElementById('wsLegend'); if(lg){ lg.innerHTML='';
+      wsTiers.forEach(function(s){ var d=document.createElement('span'); d.className='lg'; d.innerHTML='<i style="background:'+cssv(s.c)+'"></i>'+s.name; lg.appendChild(d); }); }
+  }
+
+  var marg=[{l:'Single bottle',lo:19.97,hi:29.97,pr:'29–37%'},{l:'Full box',lo:32.47,hi:42.47,pr:'46–53%'},{l:'Two boxes',lo:44.97,hi:54.97,pr:'64–69%'}];
+  function renderMargin(){
+    var host=document.getElementById('marginChart'); if(!host) return; host.innerHTML='';
+    var W=360,H=300,L=10,R=14,T=34,B=40,col=cssv('--single'), pw=W-L-R,ph=H-T-B,ymax=62,yBase=T+ph;
+    var svg=el('svg',{viewBox:'0 0 '+W+' '+H,role:'img'}); var defs=el('defs',{}); svg.appendChild(defs);
+    var n=marg.length,slot=pw/n,bw=Math.min(48,slot*0.5);
+    function Y(v){return T+ph*(1-v/ymax);}
+    svg.appendChild(el('line',{x1:L,x2:L+pw,y1:yBase,y2:yBase,class:'base'}));
+    marg.forEach(function(m,i){ var cx=L+slot*i+slot/2,x=cx-bw/2,yLo=Y(m.lo),yHi=Y(m.hi);
+      var gid='ppGrad'+i; var grad=el('linearGradient',{id:gid,gradientUnits:'userSpaceOnUse',x1:cx,y1:yLo,x2:cx,y2:yHi});
+      grad.appendChild(el('stop',{offset:'0','stop-color':col,'stop-opacity':'1'}));
+      grad.appendChild(el('stop',{offset:'1','stop-color':col,'stop-opacity':'0.35'})); defs.appendChild(grad);
+      svg.appendChild(el('path',{d:topRoundRect(x,yHi,bw,yBase-yHi,4),fill:'url(#'+gid+')'}));
+      var hit=el('rect',{x:x,y:yHi,width:bw,height:yBase-yHi,fill:'transparent'}); hit.style.cursor='pointer';
+      hit.addEventListener('mouseenter',function(e){ showTip(e,'<b>'+m.l+'</b><br>$'+m.lo.toFixed(2)+' at $69.97 MAP  →  $'+m.hi.toFixed(2)+' at $79.97 retail<br>'+m.pr+' margin'); });
+      hit.addEventListener('mouseleave',hideTip); svg.appendChild(hit);
+      var pc=el('text',{x:cx,y:yHi-10,'text-anchor':'middle',class:'vlab'}); pc.setAttribute('fill',cssv('--good')); pc.textContent=m.pr; svg.appendChild(pc);
+      var lb=el('text',{x:cx,y:yBase+20,'text-anchor':'middle',class:'ax'}); lb.textContent=m.l; svg.appendChild(lb); });
+    host.appendChild(svg);
+    var lg=document.getElementById('mgLegend'); if(lg){ lg.innerHTML='';
+      var a=document.createElement('span'); a.className='lg'; a.innerHTML='<i style="width:11px;height:11px;border-radius:3px;background:'+col+'"></i>at $69.97 MAP';
+      var b=document.createElement('span'); b.className='lg'; b.innerHTML='<i style="width:11px;height:11px;border-radius:3px;background:'+col+';opacity:.35"></i>up to $79.97';
+      lg.appendChild(a); lg.appendChild(b); }
+  }
+
+  function renderCert(){
+    var host=document.getElementById('certChart'); if(!host) return; host.innerHTML='';
+    var W=560,H=240,L=46,R=30,T=16,B=42,col=cssv('--single'), pw=W-L-R,ph=H-T-B,ymin=20,ymax=42;
+    var svg=el('svg',{viewBox:'0 0 '+W+' '+H,role:'img'});
+    function X(m){return L+pw*(m/12);} function Y(v){return T+ph*(1-(v-ymin)/(ymax-ymin));}
+    [25,30,35,40].forEach(function(g){ svg.appendChild(el('line',{x1:L,x2:L+pw,y1:Y(g),y2:Y(g),class:'gl'}));
+      var tx=el('text',{x:L-8,y:Y(g)+4,'text-anchor':'end',class:'axt'}); tx.textContent='$'+g; svg.appendChild(tx); });
+    svg.appendChild(el('line',{x1:L,x2:L+pw,y1:T+ph,y2:T+ph,class:'base'}));
+    [0,4,8,12].forEach(function(m){ var tx=el('text',{x:X(m),y:T+ph+22,'text-anchor':'middle',class:'axt'}); tx.textContent=m; svg.appendChild(tx); });
+    var mt=el('text',{x:L+pw/2,y:H-6,'text-anchor':'middle',class:'ax'}); mt.textContent='Modules completed'; svg.appendChild(mt);
+    var d='',pts=[]; for(var m=0;m<=12;m++){ var v=40-1.25*m; pts.push([m,v]); d+=(m?'L':'M')+X(m)+' '+Y(v)+' '; }
+    svg.appendChild(el('path',{d:d+'L'+X(12)+' '+(T+ph)+' L'+X(0)+' '+(T+ph)+' Z',fill:col,opacity:.10}));
+    svg.appendChild(el('path',{d:d,fill:'none',stroke:col,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
+    [[0,40],[12,25]].forEach(function(pt){ svg.appendChild(el('circle',{cx:X(pt[0]),cy:Y(pt[1]),r:5,fill:col,stroke:cssv('--surface'),'stroke-width':2}));
+      var lb=el('text',{x:X(pt[0])+(pt[0]===0?10:-6),y:Y(pt[1])+(pt[0]===0?-10:20),'text-anchor':pt[0]===0?'start':'end',class:'vlab'}); lb.textContent='$'+pt[1].toFixed(0); svg.appendChild(lb); });
+    pts.forEach(function(pt){ var hit=el('circle',{cx:X(pt[0]),cy:Y(pt[1]),r:10,fill:'transparent'}); hit.style.cursor='pointer';
+      hit.addEventListener('mouseenter',function(e){ showTip(e,'<b>'+pt[0]+' module'+(pt[0]===1?'':'s')+'</b><br>Wholesale floor: $'+pt[1].toFixed(2)); });
+      hit.addEventListener('mouseleave',hideTip); svg.appendChild(hit); });
+    host.appendChild(svg);
+  }
+
+  var PP_MODS=[['1','Body','5 States of Matter'],['2','Mind',"5 C's Meta-Model"],['3','Spirit','5 Elements'],['4','Inheritance','5 Generations'],
+    ['5','Personal History','5 Levels of Penetration'],['6','Epigenetics','5 Information Patterns'],['7','Symptoms','5 Embryological Tissue Layers'],['8','Terrains','5 Phases of Terrain'],
+    ['9','Diagnosis','5 Pathology Types'],['10','Treatment','5 Levels of Therapy'],['11','Regulation','5 Levels of Regulation'],['12','Prognosis','5 Stages of Prognosis']];
+  function renderMods(){ var host=document.getElementById('pp-mods'); if(!host||host.childNodes.length) return;
+    PP_MODS.forEach(function(m){ var d=document.createElement('div'); d.className='mod';
+      d.innerHTML='<div class="n">Module '+m[0]+'</div><div class="t">'+m[1]+'</div><div class="p">'+m[2]+'</div>'; host.appendChild(d); }); }
+
+  window.renderPartnerCharts=function(){ renderWholesale(); renderMargin(); renderCert(); renderMods(); };
+  window.addEventListener('resize',function(){ clearTimeout(window.__ppRz); window.__ppRz=setTimeout(function(){ if(document.querySelector('.pane[data-pane="partner"].active')) window.renderPartnerCharts(); },150); });
+})();
 
 // ── tab shell ──
 var TAB_IDS = {partner:1, order:1, clients:1, ambassador:1, training:1};
