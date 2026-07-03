@@ -14063,20 +14063,35 @@ def _biofield_transition(token, new_status, tag):
                                      client_login_enabled=_client_login_enabled())
         if ident is None:
             return jsonify({"error": "not found"}), 404
-        if (new_status == "requested" and ANALYSIS_QUOTA_ENABLED
-                and ident.email and not _active_membership_for_email(ident.email)):
-            _analysis_quota.init_analysis_quota_table(cx)
-            if not _analysis_quota.try_claim(cx, ident.email):
-                return jsonify({"ok": False, "reason": "monthly_quota"}), 200
+        # Resolve which report (if any) this transition targets, and run every
+        # check that can 409/404 the request, BEFORE the quota gate below —
+        # a free-tier user must not lose their monthly claim on a request that
+        # doesn't actually proceed (non-actionable scan / missing report).
         dates = _pbr.list_report_dates(cx, ident.email)
         if dates:
             picked = req_date if req_date in dates else dates[0]
             if not _pbr.is_actionable(picked, _dt.date.today().isoformat()):
                 return jsonify({"error": "scan no longer actionable"}), 409
+        else:
+            picked = None
+            if _cp.get_portal_content_by_email(cx, ident.email) is None:
+                return jsonify({"error": "not found"}), 404
+        claimed = False
+        if (new_status == "requested" and ANALYSIS_QUOTA_ENABLED
+                and ident.email and not _active_membership_for_email(ident.email)):
+            _analysis_quota.init_analysis_quota_table(cx)
+            if not _analysis_quota.try_claim(cx, ident.email):
+                return jsonify({"ok": False, "reason": "monthly_quota"}), 200
+            claimed = True
+        if dates:
             if not _pbr.set_report_status(cx, ident.email, picked, new_status):
+                if claimed:
+                    _analysis_quota.release(cx, ident.email)
                 return jsonify({"error": "not found"}), 404
         else:
             if not _cp.set_biofield_status(cx, ident.email, new_status):
+                if claimed:
+                    _analysis_quota.release(cx, ident.email)
                 return jsonify({"error": "not found"}), 404
         try:
             _gq.init_ghl_queue_table(cx)
@@ -15245,25 +15260,33 @@ def biofield_request():
     (no email enumeration leak). Mirrors /reorder/request."""
     email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
     if email and "@" in email:
+        claimed = False
         if ANALYSIS_QUOTA_ENABLED and not _active_membership_for_email(email):
             with _db_lock, sqlite3.connect(LOG_DB) as cx:
                 _analysis_quota.init_analysis_quota_table(cx)
                 if not _analysis_quota.try_claim(cx, email):
                     return jsonify({"ok": False, "reason": "monthly_quota"}), 200
-        token = secrets.token_urlsafe(32)
-        now = _now_utc()
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
-            cx.execute(
-                "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
-                "VALUES (?,?,?,?,?)",
-                (_hash_token(token), email, "biofield", now.isoformat(),
-                 (now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)).isoformat()))
-            cx.commit()
+                claimed = True
+        # The claim above only reserves this month's free-tier slot; it must
+        # not be spent if the send never actually goes out (insert/SMTP
+        # failure) — release it so the user can try again this month.
         try:
+            token = secrets.token_urlsafe(32)
+            now = _now_utc()
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.execute(
+                    "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                    "VALUES (?,?,?,?,?)",
+                    (_hash_token(token), email, "biofield", now.isoformat(),
+                     (now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)).isoformat()))
+                cx.commit()
             send_magic_link_email(email, "",
                                   f"{PUBLIC_BASE_URL}/biofield/auth/{token}")
         except Exception as e:
             print(f"[biofield] magic link send failed: {e!r}", flush=True)
+            if claimed:
+                with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                    _analysis_quota.release(cx, email)
     return jsonify({"ok": True})
 
 

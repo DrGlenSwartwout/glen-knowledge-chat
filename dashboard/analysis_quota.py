@@ -25,3 +25,10 @@ def try_claim(cx, email, *, month=None):
 def claimed_this_month(cx, email, *, month=None):
     return cx.execute("SELECT 1 FROM analysis_quota WHERE email=? AND month=?",
                       (_norm(email), _month(month))).fetchone() is not None
+
+def release(cx, email, *, month=None):
+    """Undo a claim that turned out not to correspond to a completed request
+    (e.g. the send/insert after the claim failed). No-op if no claim exists."""
+    cx.execute("DELETE FROM analysis_quota WHERE email=? AND month=?",
+              (_norm(email), _month(month)))
+    cx.commit()

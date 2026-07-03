@@ -93,6 +93,74 @@ def test_portal_request_paid_member_unlimited(client, monkeypatch):
         assert _status(appmod, email) == "requested"
 
 
+def test_portal_request_non_actionable_does_not_consume_quota(client, monkeypatch):
+    """Task 8 fix: a 409 (scan no longer actionable) must NOT burn the
+    free-tier monthly claim - a subsequent VALID request the same month
+    still succeeds."""
+    c, appmod = client
+    monkeypatch.setattr(appmod, "ANALYSIS_QUOTA_ENABLED", True, raising=False)
+    monkeypatch.setattr(appmod, "_active_membership_for_email", lambda e: None)
+    from dashboard import portal_biofield_reports as R
+    import datetime
+    email = "nonactionable@example.com"
+    tok = _seed_portal(appmod, email)
+    cx = sqlite3.connect(appmod.LOG_DB)
+    R.init_table(cx)
+    old = (datetime.date.today() - datetime.timedelta(days=60)).isoformat()
+    today = datetime.date.today().isoformat()
+    R.upsert_report(cx, email, old, "s0", {"layers": []}, "ai_draft")
+    cx.close()
+
+    r1 = c.post(f"/api/portal/{tok}/biofield/request", json={"scan_date": old})
+    assert r1.status_code == 409
+
+    cx = sqlite3.connect(appmod.LOG_DB)
+    R.upsert_report(cx, email, today, "s1", {"layers": []}, "ai_draft")
+    cx.close()
+
+    r2 = c.post(f"/api/portal/{tok}/biofield/request", json={"scan_date": today})
+    assert r2.status_code == 200
+    j2 = r2.get_json()
+    assert j2["ok"] is True and j2["status"] == "requested"
+
+
+def test_portal_request_write_404_does_not_consume_quota(client, monkeypatch):
+    """Defense-in-depth: even if the underlying status write unexpectedly
+    404s after the actionability check passes, the free-tier claim must not
+    be burned - a subsequent request the same month still succeeds."""
+    c, appmod = client
+    monkeypatch.setattr(appmod, "ANALYSIS_QUOTA_ENABLED", True, raising=False)
+    monkeypatch.setattr(appmod, "_active_membership_for_email", lambda e: None)
+    from dashboard import portal_biofield_reports as R
+    import datetime
+    email = "write404@example.com"
+    tok = _seed_portal(appmod, email)
+    cx = sqlite3.connect(appmod.LOG_DB)
+    R.init_table(cx)
+    today = datetime.date.today().isoformat()
+    R.upsert_report(cx, email, today, "s1", {"layers": []}, "ai_draft")
+    cx.close()
+
+    real_set = R.set_report_status
+    fail = {"on": True}
+
+    def _flaky(cx, email, scan_date, status):
+        if fail["on"]:
+            return False
+        return real_set(cx, email, scan_date, status)
+
+    monkeypatch.setattr(R, "set_report_status", _flaky)
+
+    r1 = c.post(f"/api/portal/{tok}/biofield/request", json={"scan_date": today})
+    assert r1.status_code == 404
+
+    fail["on"] = False
+    r2 = c.post(f"/api/portal/{tok}/biofield/request", json={"scan_date": today})
+    assert r2.status_code == 200
+    j2 = r2.get_json()
+    assert j2["ok"] is True and j2["status"] == "requested"
+
+
 def test_portal_interest_route_not_gated(client, monkeypatch):
     """The quota only applies to the 'requested' transition, not 'interested'."""
     c, appmod = client
@@ -139,6 +207,32 @@ def test_biofield_request_free_tier_second_blocked(client, monkeypatch):
     j2 = r2.get_json()
     assert j2["ok"] is False and j2["reason"] == "monthly_quota"
     assert len(sent) == 1  # no second magic link sent
+
+
+def test_biofield_request_send_failure_does_not_consume_quota(client, monkeypatch):
+    """Task 8 fix: if send_magic_link_email raises (SMTP/network failure) after
+    the claim, the free-tier claim must be released - a subsequent request the
+    same month still goes through and actually sends."""
+    c, appmod = client
+    monkeypatch.setattr(appmod, "ANALYSIS_QUOTA_ENABLED", True, raising=False)
+    monkeypatch.setattr(appmod, "_active_membership_for_email", lambda e: None)
+    sent = []
+
+    def _boom(to, name, url):
+        raise RuntimeError("smtp down")
+
+    monkeypatch.setattr(appmod, "send_magic_link_email", _boom)
+    email = "flakybio@example.com"
+
+    r1 = c.post("/biofield/request", json={"email": email})
+    assert r1.status_code == 200 and r1.get_json()["ok"] is True  # always 200, no leak
+    assert len(sent) == 0
+
+    monkeypatch.setattr(appmod, "send_magic_link_email",
+                        lambda to, name, url: sent.append(to))
+    r2 = c.post("/biofield/request", json={"email": email})
+    assert r2.status_code == 200 and r2.get_json()["ok"] is True
+    assert len(sent) == 1  # the retried request actually sent this time
 
 
 def test_biofield_request_paid_member_unlimited(client, monkeypatch):
