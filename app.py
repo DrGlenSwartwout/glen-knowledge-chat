@@ -13383,6 +13383,47 @@ def api_client_portal_checkout(token):
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
 
 
+@app.route("/api/console/family-members/<path:primary_email>", methods=["GET"])
+def api_console_family_get(primary_email):
+    if not _console_key_ok():
+        return jsonify({"error": "forbidden"}), 403
+    from dashboard import family_access as _fa
+    with sqlite3.connect(LOG_DB) as cx:
+        _fa.init_tables(cx)
+        return jsonify({"members": _fa.list_members(cx, primary_email)})
+
+
+@app.route("/api/console/family", methods=["POST", "DELETE"])
+def api_console_family_mutate():
+    if not _console_key_ok():
+        return jsonify({"error": "forbidden"}), 403
+    from dashboard import family_access as _fa
+    b = request.get_json(silent=True) or {}
+    with sqlite3.connect(LOG_DB) as cx:
+        _fa.init_tables(cx)
+        if request.method == "DELETE":
+            _fa.remove_member(cx, b.get("primary_email"), b.get("member_email"))
+        else:
+            _fa.upsert_member(cx, b.get("primary_email"), b.get("member_email"),
+                              b.get("member_label"), b.get("member_type", "human"),
+                              b.get("display_order", 0))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/console/family/membership", methods=["POST"])
+def api_console_family_membership():
+    if not _console_key_ok():
+        return jsonify({"error": "forbidden"}), 403
+    from dashboard import family_access as _fa
+    import datetime as _dt
+    b = request.get_json(silent=True) or {}
+    now_iso = _dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    with sqlite3.connect(LOG_DB) as cx:
+        _fa.init_tables(cx)
+        _fa.set_family_membership(cx, b.get("primary_email"), bool(b.get("active")), now_iso)
+    return jsonify({"ok": True})
+
+
 def _biofield_content_clean(content):
     """Drop blank layers (no title); return (clean_content, has_content)."""
     content = dict(content or {})
