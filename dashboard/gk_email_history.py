@@ -21,7 +21,13 @@ _EMAIL_RE = re.compile(r"\(([^()\s]+@[^()\s]+)\)")
 _DATE_RE = re.compile(r"Placed on (\d{2})-(\d{2})-(\d{4})")
 _ORDER_REF_RE = re.compile(r"ORDER:\s*([A-Z0-9]+)", re.I)
 _SUBJECT_REF_RE = re.compile(r"#\s*\d+\s*-\s*([A-Za-z0-9]+)")
-_SLUG_RE = re.compile(r"remedymatch\.com/remedies/[^/\"']+/\d+-([a-z0-9-]+)")
+# Product URLs live at any category depth under /remedies/ (or /resources/),
+# e.g. /remedies/syntropy/265-ocuheal-eye-drops AND
+# /remedies/forms/powders/pure-simple-singles/329-sumac-bran-501-pure-powder.
+# `(?:[^/"']+/)*` allows any number of intervening category segments before the
+# `<id>-<slug>` leaf. www. is covered since we don't anchor the host start.
+# Non-catalog leaves (resource manuals/ebooks) still validate out downstream.
+_SLUG_RE = re.compile(r"remedymatch\.com/(?:remedies|resources)/(?:[^/\"']+/)*\d+-([a-z0-9-]+)")
 
 # Gmail search: every GrooveKart order-confirmation email.
 _GK_ORDER_QUERY = 'from:support@remedymatch.com subject:"New order"'

@@ -232,3 +232,24 @@ def test_parse_html_only_email_ref_from_subject_and_href_slug():
     assert out["purchased_at"] == "2026-02-23"
     assert out["order_ref"] == "IPLRGXGTR"
     assert out["slugs"] == ["dental-powder"]
+
+
+def test_parse_slugs_at_any_path_depth_and_resources():
+    """Product URLs appear at any category depth under /remedies/, and some
+    are /resources/ (manuals/ebooks). All must be captured; catalog validation
+    filters non-products downstream."""
+    body = (
+        "customer: X (x@y.com) ORDER: ABC Placed on 03-23-2026 "
+        # deep nested category path (real product)
+        '<a href="https://www.remedymatch.com/remedies/forms/powders/pure-simple-singles/329-sumac-bran-501-pure-powder">Sumac</a> '
+        # single-segment (already worked)
+        '<a href="https://remedymatch.com/remedies/syntropy/265-ocuheal-eye-drops">Ocu</a> '
+        # /resources/ leaf (manual)
+        '<a href="https://remedymatch.com/resources/269-denas-pcm-6-manual-in-english">Manual</a>'
+    )
+    out = gh.parse_order_email(body, subject="New order : #1 - ABC")
+    assert out["slugs"] == [
+        "sumac-bran-501-pure-powder",
+        "ocuheal-eye-drops",
+        "denas-pcm-6-manual-in-english",
+    ]
