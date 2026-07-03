@@ -28337,6 +28337,29 @@ def api_orders_price_preview():
                     "subtotal_cents": subtotal, "lines": out_lines})
 
 
+@app.route("/api/console/customers/rename", methods=["POST"])
+def api_console_customer_rename():
+    """Owner: correct a customer's display name across their people record and all
+    their orders (keyed by email) — the invoice bills to the ORDER name, so a
+    person-only edit wouldn't reach it. Body: {email, name, first_name?, last_name?}.
+    Only non-blank fields are written."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    from dashboard import customers as _cust
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        res = _cust.rename_by_email(
+            cx, body.get("email"), name=body.get("name"),
+            first_name=body.get("first_name"), last_name=body.get("last_name"))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    finally:
+        cx.close()
+    return jsonify({"ok": True, **res})
+
+
 @app.route("/api/console/client-prices", methods=["GET", "POST", "DELETE"])
 def api_console_client_prices():
     """Owner: view/set/remove a client's persistent special prices (email+slug ->

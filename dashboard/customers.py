@@ -108,6 +108,30 @@ def find_or_create_by_email(cx, *, email, name="", phone=""):
     return cur.lastrowid
 
 
+def rename_by_email(cx, email, *, name, first_name=None, last_name=None):
+    """Correct a customer's display name across their people record AND every order
+    they have — both keyed by email. The invoice bills to the ORDER name, so a
+    person-only rename wouldn't reach it. Only non-blank values are written; all
+    other fields are left untouched. Returns {people_updated, orders_updated}."""
+    em = (email or "").strip().lower()
+    nm = (name or "").strip()
+    if not em or not nm:
+        raise ValueError("email and non-blank name required")
+    ts = _now()
+    people_updated = cx.execute(
+        "UPDATE people SET name=?, updated_at=? WHERE lower(email)=?", (nm, ts, em)).rowcount
+    if (first_name or "").strip():
+        cx.execute("UPDATE people SET first_name=? WHERE lower(email)=?",
+                   ((first_name or "").strip(), em))
+    if (last_name or "").strip():
+        cx.execute("UPDATE people SET last_name=? WHERE lower(email)=?",
+                   ((last_name or "").strip(), em))
+    orders_updated = cx.execute(
+        "UPDATE orders SET name=?, updated_at=? WHERE lower(email)=?", (nm, ts, em)).rowcount
+    cx.commit()
+    return {"people_updated": people_updated, "orders_updated": orders_updated}
+
+
 def last_address_for(cx, email):
     """The most recent shipping address this email shipped to (from orders), so a
     repeat customer without a saved people-address still autofills."""
