@@ -29242,6 +29242,30 @@ def api_console_fmp_history_rebuild():
     return ok(result)
 
 
+@app.route("/api/console/gk-email-history-rebuild", methods=["POST"])
+@require_console_key
+def api_console_gk_email_history_rebuild():
+    """One-shot admin trigger: rebuild the 'groovekart' slice of purchase_history
+    from GrooveKart order-confirmation emails in Gmail (GrooveKart's admin/API
+    are unavailable, so the emails are the only surviving order-history record).
+    Mirrors /api/console/fmp-history-rebuild's shape: catalog slugs come from
+    data/products.json, Gmail fetch is injected so this stays testable, and
+    errors are surfaced (fail()) rather than logged+skipped."""
+    from dashboard import purchase_history as _ph
+    from dashboard import gk_email_history as _gh
+    products_path = os.path.join(os.path.dirname(__file__), "data", "products.json")
+    try:
+        with open(products_path, encoding="utf-8") as _f:
+            catalog_slugs = set((json.load(_f) or {}).get("products", {}).keys())
+    except Exception as e:
+        return fail(f"could not load data/products.json: {e}", status=400)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _ph.init_purchase_history_table(cx)
+        result = _gh.rebuild_from_gk_emails(
+            cx, fetch_fn=_gh.fetch_gk_order_emails, catalog_slugs=catalog_slugs)
+    return ok(result)
+
+
 @app.route("/api/console/repertoire-reseed", methods=["POST"])
 @require_console_key
 def api_console_repertoire_reseed():
