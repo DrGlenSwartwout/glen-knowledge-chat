@@ -4755,12 +4755,48 @@ def _inhouse_total_ff_qty(lines_in):
     return tot
 
 
-def _inhouse_line_unit_cents(p, override, total_ff_qty, settings):
+def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, repertoire_slugs=None):
     """Explicit owner override wins; else FF capsules get the order-wide volume rate
-    (open to all), everything else its list price."""
+    (open to all), everything else its list price.
+
+    repertoire_slugs (optional): a member's repertoire SKU set, resolved ONCE per
+    checkout by the caller (see _resolve_repertoire_slugs) and forwarded here so a
+    fresh DB lookup isn't repeated per line. When this line has no override, is
+    FF/volume-eligible (_qty_eligible — same gate the volume math above uses), and
+    its slug is already in the set, it gets AT LEAST settings['repertoire_reorder_pct']
+    off list — applied via the SAME pricing.apply_discount/unit_floor_cents helpers
+    dashboard.pricing.compute() uses for the identical case (Task 3/5's display path),
+    so the two paths agree to the cent. Never stacked with the FF volume rate — the
+    lower of the two (best-of) wins, matching compute()'s max(...) non-additive rule."""
     if override not in (None, ""):
         return int(override)
-    return _inhouse_ff_unit_cents(p, total_ff_qty, settings)
+    base = _inhouse_ff_unit_cents(p, total_ff_qty, settings)
+    if repertoire_slugs and _qty_eligible(p):
+        slug = (p.get("slug") or "").strip().lower()
+        if slug in repertoire_slugs:
+            from dashboard import pricing as _pricing
+            list_cents = int(p.get("price_cents") or 0)
+            pct = float(settings.get("repertoire_reorder_pct") or 0.0) * 100.0
+            floor = _pricing.unit_floor_cents(p, list_cents, settings, "discount")
+            rep_cents = _pricing.apply_discount(list_cents, pct, floor)
+            base = min(base, rep_cents)
+    return base
+
+
+def _resolve_repertoire_slugs(email):
+    """A paid member's repertoire SKU set, resolved once per checkout (fresh-DB-safe,
+    best-effort — mirrors _price_cart's inline resolution). None when the flag is off,
+    there's no email, the email isn't a currently-active paid member, or the lookup
+    fails; callers treat None/empty the same as "no repertoire effect"."""
+    if not (REPERTOIRE_ENABLED and email and _is_paid_member(email)):
+        return None
+    try:
+        with sqlite3.connect(LOG_DB) as _rep_cx:
+            repertoire.init_repertoire_table(_rep_cx)  # defensive: fresh-DB guard
+            return repertoire.repertoire_slugs(_rep_cx, email)
+    except Exception as e:
+        print(f"[repertoire] inhouse lookup failed for {email!r}: {e!r}", flush=True)
+        return None
 
 
 def _is_paid_member(email):
@@ -12865,13 +12901,19 @@ def _enabled_offer_keys() -> set:
     return keys
 
 
-def _portal_priced_lines(items):
+def _portal_priced_lines(items, email=None):
     """Build QBO invoice lines from a portal's reorder items, honoring an optional
     per-item ``price_cents`` override (the practitioner-special price); else the
-    order-wide volume rate (open to all). Returns (lines, items_rec, subtotal_cents)."""
+    order-wide volume rate (open to all), with a paid member's repertoire SKUs at
+    their flat reorder rate (Task 5b — this is the ACTUAL checkout charge path, so
+    it must match what the portal displays). Returns (lines, items_rec, subtotal_cents).
+
+    email (optional): the portal token's client email — passed straight through to
+    _resolve_repertoire_slugs, resolved ONCE for the whole cart (not per line)."""
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(items or [])
+    rep_slugs = _resolve_repertoire_slugs(email)
     lines, items_rec, subtotal_cents = [], [], 0
     for it in (items or []):
         slug = (it.get("slug") or "").strip()
@@ -12882,7 +12924,8 @@ def _portal_priced_lines(items):
             qty = max(1, min(int(it.get("qty", 1) or 1), 99))
         except Exception:
             qty = 1
-        unit_cents = _inhouse_line_unit_cents(p, it.get("price_cents"), total_ff_qty, settings)
+        unit_cents = _inhouse_line_unit_cents(p, it.get("price_cents"), total_ff_qty, settings,
+                                              repertoire_slugs=rep_slugs)
         subtotal_cents += unit_cents * qty
         lines.append({"name": p["name"], "amount": round(unit_cents / 100.0, 2),
                       "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
@@ -12951,15 +12994,14 @@ def _portal_reorder_module(email):
     not other channels" — but repertoire PRICING/eligibility stays all-channel
     (Task 4's design), so a SKU's discount doesn't depend on where it shows up.
 
-    NOTE (see Task 5 report for the full writeup): /api/portal/<token>/checkout
-    — the ACTUAL checkout endpoint wired to the portal's Reorder button — prices
-    through _portal_priced_lines/_inhouse_line_unit_cents, which is NOT yet
-    repertoire-aware (no email/repertoire_slugs passed). So `your_cents` here is
-    the member's true EARNED price (computed via the real pricing engine, matching
-    every other checkout path in this app), but it will not yet match what
-    /api/portal/<token>/checkout actually bills until that endpoint is also wired
-    to repertoire pricing — a gap this task discovered but did not fix (out of
-    this task's authorized file scope). Flagged as a concern, not silently shipped.
+    RESOLVED (Task 5b): /api/portal/<token>/checkout — the ACTUAL checkout endpoint
+    wired to the portal's Reorder button — now threads the portal's email through
+    _portal_priced_lines -> _inhouse_line_unit_cents -> _resolve_repertoire_slugs,
+    which applies the SAME repertoire_reorder_pct/floor via pricing.apply_discount/
+    unit_floor_cents that dashboard.pricing.compute() uses here. So `your_cents`
+    (this display payload) and what /api/portal/<token>/checkout actually bills
+    now agree to the cent. (Previously this was an open gap — display without a
+    matching charge; see git history for the prior NOTE.)
 
     Never raises (caller wraps in try/except); returns {} for a blank email."""
     from dashboard import pricing as _pricing
@@ -13622,7 +13664,7 @@ def api_client_portal_checkout(token):
         return jsonify({"error": "not found"}), 404
     email = (portal.get("email") or "").strip().lower()
     items = (portal.get("content") or {}).get("reorder_items") or []
-    lines, items_rec, _subtotal = _portal_priced_lines(items)
+    lines, items_rec, _subtotal = _portal_priced_lines(items, email=email)
     if not lines:
         return jsonify({"error": "Your remedies are no longer available — please reach out and we'll help."}), 400
     if not _STRIPE_ACTIVE:
@@ -27590,6 +27632,11 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
+    # A paid member's repertoire SKU set, resolved ONCE for the whole order (Task 5b —
+    # this also makes the owner in-house INVOICE honor repertoire pricing for members,
+    # not just the portal checkout). Only ever consulted below when a line has no
+    # explicit/client-price/ff-flat override (repertoire never outranks those).
+    rep_slugs = _resolve_repertoire_slugs(email)
     # This client's saved special prices ({slug: cents}) — applied when the owner
     # hasn't typed an explicit per-line override on THIS order. Precedence:
     # explicit line override > client special price > standard volume/list.
@@ -27632,7 +27679,8 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         elif _ff_flat is not None and _qty_eligible(p):
             unit_cents = _inhouse_line_unit_cents(p, _ff_flat, total_ff_qty, settings)
         else:
-            unit_cents = _inhouse_line_unit_cents(p, None, total_ff_qty, settings)  # volume/list
+            unit_cents = _inhouse_line_unit_cents(p, None, total_ff_qty, settings,
+                                                  repertoire_slugs=rep_slugs)  # volume/list/repertoire
             _is_ff = _qty_eligible(p)
             _lc = int(p.get("price_cents") or 0)
             for _cand in (
