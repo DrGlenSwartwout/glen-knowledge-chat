@@ -29258,6 +29258,76 @@ def api_console_fmp_history_rebuild():
     return ok(result)
 
 
+@app.route("/api/console/repertoire-reseed", methods=["POST"])
+@require_console_key
+def api_console_repertoire_reseed():
+    """One-shot admin trigger: retroactively populate dashboard.repertoire for
+    every CURRENTLY-PAID member from their purchase_history (365-day window).
+
+    The repertoire is normally only populated for a member at the moment they
+    convert to paid membership. Members who converted BEFORE a purchase_history
+    backfill (e.g. the FMP one-time load) never got that history pulled into
+    their repertoire — this route fixes that retroactively for everyone who is
+    a paid member right now.
+
+    Candidate emails = active `memberships` grants (expires_at > now) UNION
+    active kind='membership' `subscriptions` (mirrors the UNION already used by
+    /api/console/backfill-member-people, ~app.py:29179). Each candidate is then
+    filtered through _is_paid_member — the SAME gate the discount system uses —
+    so trial/non-paying candidates are excluded even if they hold a grant/sub
+    row (e.g. an unconverted $1-trial buyer).
+
+    Console-gated only (require_console_key), NOT feature-flag gated: this is a
+    manual one-shot admin action, harmless because the discount system already
+    reads repertoire under REPERTOIRE_ENABLED (already live).
+
+    One bad email can't abort the run: each candidate is processed in its own
+    try/except."""
+    from dashboard import purchase_history as _ph
+    from dashboard import repertoire as _rep
+
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _ph.init_purchase_history_table(cx)
+        _rep.init_repertoire_table(cx)
+
+        now = datetime.utcnow().isoformat() + "Z"
+        candidates = [r[0] for r in cx.execute(
+            "SELECT DISTINCT m.email FROM ("
+            "  SELECT email FROM subscriptions WHERE kind='membership' AND status='active' "
+            "  UNION SELECT email FROM memberships WHERE expires_at > ?) m "
+            "WHERE m.email IS NOT NULL AND TRIM(m.email)<>''", (now,)).fetchall()]
+
+        members_seen = 0
+        members_reseeded = 0
+        slugs_added = 0
+        failures = 0
+        for email in candidates:
+            if not _is_paid_member(email):
+                continue
+            members_seen += 1
+            try:
+                hist = _ph.slugs_since(cx, email, 365)
+                if not hist:
+                    continue
+                before = len(_rep.repertoire_slugs(cx, email))
+                _rep.add_skus(cx, email, list(hist))
+                after = len(_rep.repertoire_slugs(cx, email))
+                delta = after - before
+                if delta > 0:
+                    members_reseeded += 1
+                    slugs_added += delta
+            except Exception as e:
+                failures += 1
+                app.logger.warning("repertoire-reseed: failed for %r: %r", email, e)
+
+    return ok({
+        "members_seen": members_seen,
+        "members_reseeded": members_reseeded,
+        "slugs_added": slugs_added,
+        "failures": failures,
+    })
+
+
 @app.route("/api/console/test-portal-welcome", methods=["POST"])
 def api_console_test_portal_welcome():
     """Live-verify the portal welcome email. dry_run=1 (default) reports what
