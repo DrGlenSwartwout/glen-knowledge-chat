@@ -14,78 +14,45 @@ Env (on the cron service):
 import os
 import sys
 import json
-import time
-import urllib.request
 import urllib.error
+
+from _cron_http import post_with_retry
 
 WEB_URL = os.environ.get("WEB_URL", "https://glen-knowledge-chat.onrender.com").rstrip("/")
 CRON_SECRET = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
-
-# The web service occasionally returns a transient 502/503/504 (cold start, brief
-# unavailability, mid-deploy) or refuses the connection while spinning up. Those blips
-# clear on their own, so retry a couple times before failing the whole cron run —
-# otherwise every blip fires a "cron Exited with status 1" alert for nothing.
-RETRY_STATUS = {502, 503, 504}
-BACKOFF_SECONDS = [5, 15]  # waits before retry #1 and retry #2 (len+1 = max attempts)
 
 if not CRON_SECRET:
     print("ERROR: CRON_SECRET (or CONSOLE_SECRET) not set on cron service", flush=True)
     sys.exit(1)
 
 
-def _post_once():
-    url = f"{WEB_URL}/api/cron/reply-watch"
-    req = urllib.request.Request(
-        url, data=b"{}", method="POST",
-        headers={"X-Cron-Secret": CRON_SECRET, "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=240) as r:
-        return json.load(r)
-
-
 def main():
-    max_attempts = len(BACKOFF_SECONDS) + 1
-    for attempt in range(1, max_attempts + 1):
-        try:
-            body = _post_once()
-        except urllib.error.HTTPError as e:
-            detail = e.read()[:300]
-            if e.code in RETRY_STATUS and attempt < max_attempts:
-                wait = BACKOFF_SECONDS[attempt - 1]
-                print(f"[reply-watcher-cron] HTTP {e.code} (transient); "
-                      f"retry {attempt}/{max_attempts - 1} in {wait}s", flush=True)
-                time.sleep(wait)
-                continue
-            print(f"[reply-watcher-cron] HTTP {e.code}: {detail!r}", flush=True)
-            sys.exit(1)
-        except urllib.error.URLError as e:
-            # Connection-level failure (refused/reset while spinning up) — also transient.
-            if attempt < max_attempts:
-                wait = BACKOFF_SECONDS[attempt - 1]
-                print(f"[reply-watcher-cron] connection error {e.reason!r} (transient); "
-                      f"retry {attempt}/{max_attempts - 1} in {wait}s", flush=True)
-                time.sleep(wait)
-                continue
-            print(f"[reply-watcher-cron] failed: {e!r}", flush=True)
-            sys.exit(1)
-        except Exception as e:  # noqa: BLE001
-            print(f"[reply-watcher-cron] failed: {e!r}", flush=True)
-            sys.exit(1)
+    url = f"{WEB_URL}/api/cron/reply-watch"
+    headers = {"X-Cron-Secret": CRON_SECRET, "Content-Type": "application/json"}
+    # Transient 5xx / connection blips are retried inside post_with_retry; a sustained
+    # failure re-raises here and we fail the run as before.
+    try:
+        body = json.loads(post_with_retry(url, headers, timeout=240,
+                                           label="reply-watcher-cron"))
+    except urllib.error.HTTPError as e:
+        print(f"[reply-watcher-cron] HTTP {e.code}: {e.read()[:300]!r}", flush=True)
+        sys.exit(1)
+    except Exception as e:  # noqa: BLE001
+        print(f"[reply-watcher-cron] failed: {e!r}", flush=True)
+        sys.exit(1)
 
-        # Reached the web service and got a JSON body.
-        if not body.get("ok"):
-            print(f"[reply-watcher-cron] failed: {body.get('error')}", flush=True)
-            sys.exit(2)
-        processed = body.get("processed") or 0
-        errored = body.get("errored") or 0
-        suffix = f" (after {attempt - 1} retry)" if attempt > 1 else ""
-        print(f"[reply-watcher-cron] processed={processed} "
-              f"skipped_nonuser={body.get('skipped_nonuser')} "
-              f"errored={errored}{suffix}", flush=True)
-        # Systematic failure (e.g. token lost gmail.modify): nothing processed but the
-        # batch errored. Surface as a failed job instead of a healthy-looking exit 0.
-        if errored and not processed:
-            sys.exit(3)
-        return
+    if not body.get("ok"):
+        print(f"[reply-watcher-cron] failed: {body.get('error')}", flush=True)
+        sys.exit(2)
+    processed = body.get("processed") or 0
+    errored = body.get("errored") or 0
+    print(f"[reply-watcher-cron] processed={processed} "
+          f"skipped_nonuser={body.get('skipped_nonuser')} "
+          f"errored={errored}", flush=True)
+    # Systematic failure (e.g. token lost gmail.modify): nothing processed but the
+    # batch errored. Surface as a failed job instead of a healthy-looking exit 0.
+    if errored and not processed:
+        sys.exit(3)
 
 
 if __name__ == "__main__":
