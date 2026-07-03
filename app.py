@@ -13525,9 +13525,13 @@ def api_portal_chat(token):
                 try:
                     if not _active_membership_for_email(em):
                         return
-                    from dashboard import portal_element
-                    with _db_lock, sqlite3.connect(LOG_DB) as _ecx:
-                        portal_element.refresh(_ecx, em)
+                    from dashboard import portal_element, member_element_state
+                    with sqlite3.connect(LOG_DB) as _rcx:
+                        scores = portal_element.analyze(_rcx, em)
+                    if not scores:
+                        return
+                    with _db_lock, sqlite3.connect(LOG_DB) as _wcx:
+                        member_element_state.upsert(_wcx, em, scores, source="portal_chat")
                 except Exception as e:
                     print(f"[portal-element] refresh failed: {e!r}", flush=True)
 

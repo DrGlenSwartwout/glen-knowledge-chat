@@ -12,7 +12,10 @@ _WINDOW = 6      # most-recent client messages to analyze together
 _MIN_CHARS = 60  # below this the transcript is too thin to score meaningfully
 
 
-def refresh(cx, email, window=_WINDOW):
+def analyze(cx, email, window=_WINDOW):
+    """Read the member's recent client messages and run text-mode element
+    analysis. Returns the element_scores dict, or None when there is too little
+    text or the analysis yields no elements. Does NOT write."""
     email = (email or "").strip().lower()
     if not email:
         return None
@@ -24,6 +27,14 @@ def refresh(cx, email, window=_WINDOW):
         return None
     haiku = _haiku_analyze(transcript, {"word_count": len(transcript.split())})
     elements = (haiku or {}).get("elements") or {}
+    return elements or None
+
+
+def refresh(cx, email, window=_WINDOW):
+    """Analyze recent chat and persist the member's element state on one
+    connection. Convenience wrapper (used in tests / single-connection callers).
+    In the request path, callers analyze unlocked then upsert under the lock."""
+    elements = analyze(cx, email, window)
     if not elements:
         return None
     return member_element_state.upsert(cx, email, elements, source="portal_chat")

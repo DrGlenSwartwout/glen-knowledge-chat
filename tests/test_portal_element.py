@@ -61,3 +61,13 @@ def test_refresh_only_uses_client_messages(monkeypatch):
                         lambda transcript, lexical: seen.update(t=transcript) or {"elements": {"Water": 5, "Wood": 9}})
     pe.refresh(cx, "j@x.com")
     assert "IGNORE ME" not in seen["t"]
+
+
+def test_analyze_returns_scores_without_writing(monkeypatch):
+    cx = _cx()
+    _seed(cx, "j@x.com", ["I keep waking at 3am full of dread and cannot get warm at all."])
+    monkeypatch.setattr(pe, "_haiku_analyze",
+                        lambda t, l: {"elements": {"Wood": 40, "Water": 5}})
+    scores = pe.analyze(cx, "j@x.com")
+    assert scores == {"Wood": 40, "Water": 5}
+    assert mes.get(cx, "j@x.com") is None   # analyze must not persist
