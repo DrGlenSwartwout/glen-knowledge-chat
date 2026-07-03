@@ -40,8 +40,8 @@ def _add_repertoire(appmod, email, slugs):
 
 SLUG = "neuro-magnesium"
 
-# A non-FF SKU: _repertoire_eligible()==True (not info_only, not a true pure
-# powder) but _qty_eligible()==False (no qty_pricing flag — not a Functional
+# A non-FF SKU: broadly eligible under the OLD rule (not info_only, not a true
+# pure powder) but _qty_eligible()==False (no qty_pricing flag — not a Functional
 # Formulation). Glen 2026-07 (margin): the member repertoire reorder discount
 # is now restricted to FF products ONLY — the repertoire slug set is FF-filtered
 # (_ff_filter_slugs) before it ever reaches the pricing engine, at every
@@ -77,13 +77,15 @@ def test_portal_priced_lines_matches_price_cart_for_member_repertoire_sku(appmod
 
 def test_portal_priced_lines_matches_price_cart_for_non_ff_repertoire_sku(appmod):
     """FF-only restriction (Glen 2026-07, margin): a non-FF SKU
-    (_qty_eligible()==False) that IS _repertoire_eligible()==True must NOT get
+    (_qty_eligible()==False) that WAS broadly eligible under the old rule must NOT get
     the repertoire discount — at charge OR display. The repertoire slug set is
     FF-filtered (_ff_filter_slugs) before it reaches either pricing path, so a
     member's non-FF repertoire SKU prices at REGULAR everywhere, and display
     still agrees with charge to the cent (both regular)."""
     p = appmod._get_product(NON_FF_SLUG)
-    assert appmod._repertoire_eligible(p) is True
+    # non-FF, yet broadly eligible under the pre-FF-only rule (not info_only,
+    # not a true pure powder) — i.e. it WOULD have been discounted before:
+    assert not p.get("info_only") and not appmod._is_pure_powder(p)
     assert appmod._qty_eligible(p) is False
 
     email = "member@example.com"

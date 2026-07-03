@@ -13058,22 +13058,6 @@ def _portal_priced_lines(items, email=None):
     return lines, items_rec, subtotal_cents
 
 
-def _repertoire_eligible(p):
-    """Whether a product participates in the repertoire/volume discount gate —
-    mirrors _engine_item's eligibility resolution exactly (all Functional
-    Formulations volume-eligible via qty_pricing; true Pure Powders + info_only
-    excluded). Used to decide which SKUs can ever carry a repertoire price."""
-    if not p:
-        return False
-    if "volume_eligible" in p:
-        return bool(p["volume_eligible"])
-    if p.get("info_only"):
-        return False
-    if p.get("qty_pricing"):
-        return True
-    return not _is_pure_powder(p)
-
-
 def _rep_priced_unit_cents(p, *, repertoire_slugs, settings):
     """Real per-unit price (cents) for a solo qty=1 line of this product, via
     dashboard.pricing.compute() — the SAME engine function _price_cart delegates
