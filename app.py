@@ -7173,6 +7173,38 @@ def _fulfill_biofield_trial(session_id):
         return {"ok": False, "reason": "error"}
 
 
+def _window_days_for_term(term_months):
+    """Map a membership term length (months) to the lookback window (days) used to
+    seed a new member's repertoire from their purchase history: short terms get a
+    tight recent window, longer terms get more history."""
+    m = int(term_months or 0)
+    if m <= 1:
+        return 90
+    if m <= 6:
+        return 180
+    return 365
+
+
+def _order_slugs_since(cx, email, window_days):
+    """Distinct-ish list of item slugs from this email's non-cancelled orders in the
+    last window_days. Used to seed dashboard.repertoire on membership conversion."""
+    import json as _json
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    cutoff = (_dt.now(_tz.utc) - _td(days=int(window_days or 0))).isoformat()
+    cx.row_factory = sqlite3.Row
+    rows = cx.execute(
+        "SELECT items_json FROM orders WHERE lower(email)=? "
+        "AND status!='cancelled' AND created_at>=?",
+        ((email or "").strip().lower(), cutoff)).fetchall()
+    out = []
+    for r in rows:
+        for it in (_json.loads(r["items_json"] or "[]") or []):
+            s = (it.get("slug") or "").strip().lower()
+            if s:
+                out.append(s)
+    return out
+
+
 def _fulfill_prepay_term(session_id):
     """Grant a prepaid Continuous Care term from a paid prepay_term Stripe session,
     idempotently. Callable from the /prepay/return redirect AND the webhook, so a
@@ -7209,6 +7241,14 @@ def _fulfill_prepay_term(session_id):
             if claimed:
                 _grant_prepay_term(cx, email, tier_key)
                 cx.commit()
+                if REPERTOIRE_ENABLED:
+                    try:
+                        repertoire.init_repertoire_table(cx)
+                        repertoire.seed_from_history(
+                            cx, email, _window_days_for_term(tier["months"]),
+                            order_slugs_fn=_order_slugs_since)
+                    except Exception as _re:
+                        print(f"[prepay] repertoire seed failed: {_re!r}", flush=True)
         if not claimed:
             return {"ok": True, "already": True, "email": email}
         # Ledger (idempotent on source+ref) + confirmation email, best-effort — must
@@ -7324,6 +7364,14 @@ def _fulfill_continuous_care_monthly(session_id):
                 # (~35 days) — mirrors _grant_prepay_term's day-based access pattern.
                 _grant_membership(cx, email, _pp.term_days(today, 1) + 4, "continuous_care")
                 cx.commit()
+                if REPERTOIRE_ENABLED:
+                    try:
+                        repertoire.init_repertoire_table(cx)
+                        repertoire.seed_from_history(
+                            cx, email, _window_days_for_term(term_months),
+                            order_slugs_fn=_order_slugs_since)
+                    except Exception as _re:
+                        print(f"[continuous-care] repertoire seed failed: {_re!r}", flush=True)
         if not claimed:
             return {"ok": True, "already": True, "email": email}
         # FTC/ROSCA easy-cancel token, minted exactly as the removed biofield-trial
@@ -26927,6 +26975,31 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                     _send_portal_welcome(email, name, _tok)
             except Exception as _pe:
                 print(f"[orders] portal-provision {source}/{external_ref}: {_pe!r}", flush=True)
+            # Repertoire append: a paid member's purchase adds these SKUs so their
+            # NEXT reorder prices at the flat member rate (dashboard/repertoire.py).
+            # Gated on CURRENT membership status (_is_paid_member), not this order's
+            # pay_status -- pay_status defaults to 'unpaid' at ingest time and isn't
+            # reliably flipped to 'paid' here for most sources (it's a separate
+            # BOS-invoicing concept), so it can't be used to require "actually paid"
+            # at this hook. Runs AFTER upsert_order (i.e. after _price_cart already
+            # priced this order), so it can never discount the order it's derived
+            # from -- only future ones. Best-effort: must never affect order
+            # recording. Worst case: a member's repertoire picks up a SKU from an
+            # order that later gets cancelled/abandoned -- next reorder of that SKU
+            # is $50 instead of full price, a minor overcorrection.
+            try:
+                if REPERTOIRE_ENABLED and email and _is_paid_member(email):
+                    slugs = []
+                    for it in (items or []):
+                        s = ((it or {}).get("slug") or "").strip().lower()
+                        if s:
+                            slugs.append(s)
+                    if slugs:
+                        with _db_lock, sqlite3.connect(LOG_DB) as _rep_cx:
+                            repertoire.init_repertoire_table(_rep_cx)
+                            repertoire.add_skus(_rep_cx, email, slugs)
+            except Exception as _re:
+                print(f"[orders] repertoire append {source}/{external_ref}: {_re!r}", flush=True)
         finally:
             cx.close()
     except Exception as e:
