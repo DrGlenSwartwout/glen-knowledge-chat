@@ -64,6 +64,7 @@ def upsert(cx, email, element_scores, source="portal_chat"):
         """,
         (email, json.dumps(element_scores or {}), dom, dfc, source),
     )
+    cx.commit()
     return get(cx, email)
 
 
