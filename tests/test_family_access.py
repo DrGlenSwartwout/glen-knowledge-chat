@@ -59,3 +59,14 @@ def test_grant_free_monthly_already_unlocked_is_noop(tmp_db):
     # did not consume the monthly allowance
     ok, reason = fa.grant_free_monthly(cx, "m@x.com", "s2", "2026-07-03", "2026-07-03T10:00:00Z")
     assert ok and reason == ""
+
+
+def test_family_is_paid_follows_primary(tmp_db):
+    cx = _cx(tmp_db)
+    fa.upsert_member(cx, "karin@x.com", "karin@x.com", "Karin", "human", 0)
+    fa.upsert_member(cx, "karin@x.com", "sasha@fake.com", "Sasha", "pet", 1)
+    assert fa.family_is_paid(cx, "sasha@fake.com") is False
+    fa.set_family_membership(cx, "karin@x.com", True, "2026-07-02T10:00:00Z")
+    assert fa.family_is_paid(cx, "sasha@fake.com") is True   # member inherits primary's plan
+    assert fa.family_is_paid(cx, "karin@x.com") is True
+    assert fa.family_is_paid(cx, "stranger@x.com") is False  # not in any family

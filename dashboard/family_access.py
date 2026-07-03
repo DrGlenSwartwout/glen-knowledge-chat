@@ -113,3 +113,21 @@ def grant_free_monthly(cx, member_email, scan_id, scan_date, now_iso):
         return False, "cap"
     record_unlock(cx, member_email, scan_id, scan_date, "free_monthly", now_iso)
     return True, ""
+
+
+def set_family_membership(cx, primary_email, active, now_iso):
+    p = _norm(primary_email)
+    cx.execute(
+        "INSERT INTO family_memberships (primary_email, active, updated_at) VALUES (?,?,?) "
+        "ON CONFLICT(primary_email) DO UPDATE SET active=excluded.active, updated_at=excluded.updated_at",
+        (p, 1 if active else 0, now_iso))
+    cx.commit()
+
+
+def family_is_paid(cx, member_email):
+    m = _norm(member_email)
+    primary = primary_for(cx, m) or (m if is_primary(cx, m) else None)
+    if not primary:
+        return False
+    r = cx.execute("SELECT active FROM family_memberships WHERE primary_email=?", (primary,)).fetchone()
+    return bool(r and r[0])
