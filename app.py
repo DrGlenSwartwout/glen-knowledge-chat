@@ -13509,6 +13509,24 @@ def api_portal_chat(token):
                        daemon=True).start()
         except Exception:
             pass
+        # Refresh the member's TCM element state from their recent chat (paid
+        # members only; drives the Glendalf backdrop). Fire-and-forget, text mode.
+        try:
+            import threading as _t3
+
+            def _refresh_element(em):
+                try:
+                    if not _active_membership_for_email(em):
+                        return
+                    from dashboard import portal_element
+                    with _db_lock, sqlite3.connect(LOG_DB) as _ecx:
+                        portal_element.refresh(_ecx, em)
+                except Exception as e:
+                    print(f"[portal-element] refresh failed: {e!r}", flush=True)
+
+            _t3.Thread(target=_refresh_element, args=(email,), daemon=True).start()
+        except Exception:
+            pass
         try:
             convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-2:]) + f"\nassistant: {answer}"
             mx = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=120,
