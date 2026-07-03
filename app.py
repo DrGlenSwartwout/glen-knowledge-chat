@@ -23066,6 +23066,14 @@ def cron_charge_subscriptions():
                     amount_cents = int(sub.get("amount_cents") or 0)
                     if amount_cents <= 0:
                         continue
+                    # A capped term (term_charges_total set) = Continuous Care; an uncapped
+                    # membership = the legacy group-coaching bundle. Keep the card-statement
+                    # descriptor, QBO line, and receipt email all naming the same product.
+                    _is_cc = bool(sub.get("term_charges_total"))
+                    _product = "continuous_care" if _is_cc else "group_coaching"
+                    _charge_label = ("Remedy Match Continuous Care" if _is_cc
+                                     else "Remedy Match live group coaching")
+                    _line_label = "Continuous Care" if _is_cc else "Live Group Coaching"
                     if dry_run:
                         print(f"[sub-cron] DRY membership charge sub={sid} "
                               f"email={sub['email']} amount={amount_cents}", flush=True)
@@ -23073,15 +23081,15 @@ def cron_charge_subscriptions():
                         continue
                     res = stripe_pay.charge_off_session(
                         sub["stripe_customer_id"], sub["stripe_payment_method_id"],
-                        amount_cents, description="Remedy Match live group coaching",
+                        amount_cents, description=_charge_label,
                         metadata={"sub": str(sid), "kind": "membership"})
                     if res.get("status") == "succeeded":
                         try:
                             cust = qb.find_or_create_customer(sub["email"], "")
                             inv = qb.create_invoice(
                                 cust,
-                                [{"name": "Live Group Coaching", "amount": amount_cents / 100.0,
-                                  "qty": 1, "description": "Live Group Coaching (monthly)"}],
+                                [{"name": _line_label, "amount": amount_cents / 100.0,
+                                  "qty": 1, "description": f"{_line_label} (monthly)"}],
                                 allow_online_pay=False, email_to=sub["email"])
                             inv_id = inv.get("Id", "")
                         except Exception as qe:
@@ -23101,11 +23109,6 @@ def cron_charge_subscriptions():
                         except Exception as _ge:
                             print(f"[sub-cron] grant-extend sub={sid}: {_ge!r}", flush=True)
                         try:
-                            # A capped term (term_charges_total set) = Continuous Care;
-                            # an uncapped membership = the legacy group-coaching bundle.
-                            _product = ("continuous_care"
-                                        if (updated and updated.get("term_charges_total"))
-                                        else "group_coaching")
                             _send_subscription_email(sub["email"], "receipt", {
                                 "total_cents": amount_cents, "invoice_id": inv_id,
                                 "kind": "membership", "product": _product,

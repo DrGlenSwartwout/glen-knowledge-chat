@@ -105,3 +105,61 @@ def test_pause_page_still_works_for_uncapped_membership(monkeypatch, tmp_path):
     assert r.status_code == 200
     assert b'"continuous_care": true' not in r.data
     assert b'"paused_charge_date"' in r.data   # normal pause preview still offered
+
+
+# -- cron: recurring charge names the right product everywhere ---------------
+
+import os
+
+
+def _cron_headers():
+    sec = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "test-secret")
+    return {"X-Cron-Secret": sec}
+
+
+def _run_cron_capture(monkeypatch, email, *, term_cap):
+    """Drive the real charge cron for one due membership sub; capture the Stripe
+    charge description and the receipt-email data dict."""
+    monkeypatch.setenv("SUBSCRIPTIONS_ENABLED", "true")
+    if not (os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET")):
+        monkeypatch.setenv("CONSOLE_SECRET", "test-secret")
+    cap = {}
+    monkeypatch.setattr(appmod.stripe_pay, "charge_off_session",
+                        lambda *a, **k: cap.update(charge_desc=k.get("description"))
+                        or {"status": "succeeded", "id": "ch"})
+    monkeypatch.setattr(appmod.qb, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
+    monkeypatch.setattr(appmod.qb, "create_invoice",
+                        lambda cust, lines, **k: cap.update(qbo_line=lines[0]["name"]) or {"Id": "INV1"})
+    monkeypatch.setattr(appmod, "_ingest_order", lambda **k: None)
+    monkeypatch.setattr(appmod, "_send_subscription_email",
+                        lambda to, kind, data: cap.update(receipt=data) if kind == "receipt" else None)
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+    try:
+        subs.init_subscriptions_table(cx); subs.migrate_add_failed_count(cx)
+        subs.migrate_add_membership_columns(cx); subs.migrate_add_term_cap_column(cx)
+        cx.execute("DELETE FROM subscriptions WHERE email=?", (email,)); cx.commit()
+        subs.create_membership(cx, email=email, stripe_customer_id="cus",
+                               stripe_payment_method_id="pm", amount_cents=9900,
+                               next_charge_date="2000-01-01", cadence_months=1,
+                               term_charges_total=term_cap, initial_order_count=1)
+        cx.commit()
+        r = appmod.app.test_client().post("/api/cron/charge-subscriptions", headers=_cron_headers())
+        assert r.status_code == 200, r.data
+    finally:
+        cx.execute("DELETE FROM subscriptions WHERE email=?", (email,)); cx.commit(); cx.close()
+    return cap
+
+
+def test_cron_capped_charge_is_continuous_care(monkeypatch):
+    cap = _run_cron_capture(monkeypatch, "cron-cc@x.com", term_cap=6)
+    assert cap["receipt"]["product"] == "continuous_care"
+    assert "Continuous Care" in cap["charge_desc"]
+    assert cap["qbo_line"] == "Continuous Care"
+
+
+def test_cron_uncapped_charge_is_group_coaching(monkeypatch):
+    cap = _run_cron_capture(monkeypatch, "cron-gc@x.com", term_cap=None)
+    assert cap["receipt"]["product"] == "group_coaching"
+    assert "live group coaching" in cap["charge_desc"].lower()
+    assert cap["qbo_line"] == "Live Group Coaching"
