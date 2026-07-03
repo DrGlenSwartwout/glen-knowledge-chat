@@ -171,6 +171,18 @@
   .cat-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
   .cat-name { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
   .cat-count { background: var(--border); border-radius: 10px; padding: 1px 7px; font-size: 11px; color: var(--muted); }
+  /* Collapsible message sections + hide-similar (Console Messages) */
+  .cat-header { cursor: pointer; user-select: none; }
+  .cat-toggle { font-size: 9px; color: var(--muted); transition: transform .15s; display: inline-block; width: 10px; }
+  .category-group.collapsed .cat-toggle { transform: rotate(-90deg); }
+  .cat-header:hover .cat-name { color: var(--text); }
+  .category-group.collapsed .todo-card,
+  .category-group.collapsed .sim-chip { display: none !important; }
+  .sim-chip { display: none; margin: -2px 0 10px 0; font-size: 11px; padding: 3px 10px; border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+  .sim-chip:hover { border-color: var(--glen); color: var(--glen); }
+  body[data-hide-similar] .sim-chip { display: inline-block; }
+  body[data-hide-similar] .todo-card.similar-dup { display: none; }
+  body[data-hide-similar] .category-group.sim-revealed .todo-card.similar-dup { display: flex; }
   .todo-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 12px; align-items: flex-start; transition: opacity .2s; }
   .todo-card.done-item { opacity: .4; background: var(--done-bg); }
   .todo-card.delegated-item { opacity: .5; }
@@ -698,6 +710,8 @@
     <button class="btn-view-toggle" id="btn-view-toggle" onclick="toggleCompactView()" title="Toggle compact view">☰ Compact</button>
     <button class="btn-bulk-expand" onclick="expandAllCards()">Expand all</button>
     <button class="btn-bulk-expand" onclick="collapseAllCards()">Collapse all</button>
+    <button class="btn-view-toggle" id="btn-collapse-sections" onclick="toggleAllSections()" title="Collapse or expand all message sections">⊟ Sections</button>
+    <button class="btn-view-toggle" id="btn-hide-similar" onclick="toggleHideSimilar()" title="Hide near-duplicate messages (keeps the newest of each)">⧉ Hide similar</button>
     <div class="refresh-info">Refresh in <span id="countdown">30:00</span></div>
     <button class="btn-refresh" onclick="refresh()">Refresh now</button>
     <button class="btn-add-task" onclick="openNewTaskDialog()" title="Add task">+ Task</button>
@@ -1437,12 +1451,32 @@ function renderTodos(todos) {
   });
   container.innerHTML = sorted.map(cat => {
     const items = groups[cat];
-    return `<div class="category-group">
-      <div class="cat-header">
+    const collapsed = COLLAPSED_CATS.has(cat) ? ' collapsed' : '';
+    // Fold near-duplicate subjects (reply chains, repeated notifications) so
+    // "Hide similar" can hide all but the newest of each. Counts drive the chip.
+    const counts = {};
+    items.forEach(t => { const k = _simKey(t); counts[k] = (counts[k] || 0) + 1; });
+    const emitted = {};
+    const cards = items.map(t => {
+      const k = _simKey(t);
+      const isFirst = !emitted[k];
+      emitted[k] = true;
+      let html = todoCard(t);
+      if (isFirst) {
+        const n = counts[k];
+        if (n > 1) html += `<button class="sim-chip" onclick="revealSimilar(this)">＋${n - 1} similar hidden</button>`;
+      } else {
+        html = html.replace('class="todo-card', 'class="todo-card similar-dup');
+      }
+      return html;
+    }).join('');
+    return `<div class="category-group${collapsed}">
+      <div class="cat-header" data-cat="${escHtml(cat)}" onclick="toggleCategory(this)">
+        <span class="cat-toggle">▾</span>
         <span class="cat-name">${escHtml(cat)}</span>
         <span class="cat-count">${items.length}</span>
       </div>
-      ${items.map(t => todoCard(t)).join('')}
+      ${cards}
     </div>`;
   }).join('');
 }
@@ -2757,6 +2791,63 @@ function toggleCompactView() {
 }
 function expandAllCards()   { document.querySelectorAll('.todo-card').forEach(c => c.classList.add('expanded')); }
 function collapseAllCards() { document.querySelectorAll('.todo-card').forEach(c => c.classList.remove('expanded')); }
+
+// ── Console Messages: collapsible sections + hide-similar ────────────────────
+// Section = one category group. Collapsed categories persist per browser so the
+// feed reopens the way you left it. "Hide similar" folds near-duplicate subjects.
+let COLLAPSED_CATS = new Set();
+try { COLLAPSED_CATS = new Set(JSON.parse(localStorage.getItem('console-collapsed-cats') || '[]')); } catch (e) {}
+function _saveCollapsedCats() {
+  try { localStorage.setItem('console-collapsed-cats', JSON.stringify([...COLLAPSED_CATS])); } catch (e) {}
+}
+function toggleCategory(headerEl) {
+  const group = headerEl.closest('.category-group');
+  const cat = headerEl.getAttribute('data-cat') || '';
+  if (!group) return;
+  if (group.classList.toggle('collapsed')) COLLAPSED_CATS.add(cat);
+  else COLLAPSED_CATS.delete(cat);
+  _saveCollapsedCats();
+}
+function toggleAllSections() {
+  const groups = [...document.querySelectorAll('.category-group')];
+  const anyOpen = groups.some(g => !g.classList.contains('collapsed'));
+  groups.forEach(g => {
+    const header = g.querySelector('.cat-header');
+    const cat = header ? header.getAttribute('data-cat') : '';
+    g.classList.toggle('collapsed', anyOpen);
+    if (cat) { if (anyOpen) COLLAPSED_CATS.add(cat); else COLLAPSED_CATS.delete(cat); }
+  });
+  _saveCollapsedCats();
+  const btn = document.getElementById('btn-collapse-sections');
+  if (btn) btn.classList.toggle('active', anyOpen);
+}
+// Normalize a subject so reply chains & repeated notifications collapse together.
+function _simKey(t) {
+  let s = (t.title || '').toLowerCase();
+  for (let i = 0; i < 4; i++) s = s.replace(/^\s*(re|fwd?|aw|fw)\s*:\s*/i, '');
+  s = s.replace(/[‘’“”"']/g, '').replace(/\s+/g, ' ').replace(/[\s!?.:;,·•…\-–—]+$/, '').trim();
+  return (t.category || '') + '␟' + s;
+}
+function revealSimilar(el) {
+  const group = el.closest('.category-group');
+  if (!group) return;
+  group.classList.add('sim-revealed');
+  group.querySelectorAll('.sim-chip').forEach(c => { c.style.display = 'none'; });
+}
+function toggleHideSimilar() {
+  const on = document.body.toggleAttribute('data-hide-similar');
+  if (!on) document.querySelectorAll('.category-group.sim-revealed').forEach(g => g.classList.remove('sim-revealed'));
+  const btn = document.getElementById('btn-hide-similar');
+  if (btn) btn.classList.toggle('active', on);
+  try { localStorage.setItem('console-hide-similar', on ? '1' : '0'); } catch (e) {}
+}
+function initHideSimilar() {
+  if (localStorage.getItem('console-hide-similar') === '1') {
+    document.body.setAttribute('data-hide-similar', '');
+    const btn = document.getElementById('btn-hide-similar');
+    if (btn) btn.classList.add('active');
+  }
+}
 function initCompactView() {
   if (localStorage.getItem('console-view') === 'compact') {
     document.body.setAttribute('data-view', 'compact');
@@ -2773,6 +2864,7 @@ document.addEventListener('click', (e) => {
   if (card) card.classList.toggle('expanded');
 });
 initCompactView();
+initHideSimilar();
 
 // ── Refresh ───────────────────────────────────────────────────────────────────
 async function refresh(restoreScrollY) {
