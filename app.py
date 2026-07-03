@@ -12672,8 +12672,9 @@ def api_referral_my_code():
     from dashboard import referrals as _rf
     with sqlite3.connect(LOG_DB) as cx:
         code = _rf.get_or_create_code(cx, email)
-    return jsonify({"ok": True, "code": code,
-                    "share_text": f"Use my code {code} for {_referral_pct()}% off at illtowell.com"})
+    pct = _referral_pct()
+    return jsonify({"ok": True, "code": code, "pct": pct,
+                    "share_text": f"Use my code {code} for {pct}% off at illtowell.com"})
 
 
 @app.route("/api/referral/enabled", methods=["GET"])
