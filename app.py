@@ -12942,6 +12942,27 @@ def api_client_portal(token):
     })
 
 
+@app.route("/api/portal/<token>/unlock-scan", methods=["POST"])
+def api_portal_unlock_scan(token):
+    from dashboard import family_access as _fa
+    import datetime as _dt
+    body = request.get_json(silent=True) or {}
+    scan_id = str(body.get("scan_id") or "").strip()
+    if not scan_id:
+        return jsonify({"error": "scan_id required"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        _fa.init_tables(cx)
+        if _fa.scan_accessible(cx, email, scan_id, is_paid=_is_paid_member(email)):
+            return jsonify({"ok": True, "reason": "already"})
+        now_iso = _dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        ok, reason = _fa.grant_free_monthly(cx, email, scan_id, body.get("scan_date"), now_iso)
+        return jsonify({"ok": ok, "reason": reason})
+
+
 @app.route("/api/portal/<token>/agree-tos", methods=["POST", "OPTIONS"])
 def api_portal_agree_tos(token):
     if request.method == "OPTIONS":
