@@ -139,3 +139,17 @@ def scan_accessible(cx, member_email, scan_id, is_paid):
     if family_is_paid(cx, member_email):
         return True
     return has_unlock(cx, member_email, scan_id)
+
+
+def authorized_member(cx, token_email, requested_member):
+    """Return the member email the token is allowed to act on, or None.
+    - no requested_member OR requested_member == token_email -> token_email (self)
+    - else authorized ONLY if token_email is a family primary AND requested_member
+      is one of its members -> requested_member
+    - otherwise -> None (caller decides: 403 for writes, fall back to self for reads)."""
+    t = _norm(token_email); r = _norm(requested_member)
+    if not r or r == t:
+        return t
+    if is_primary(cx, t) and r in {m["member_email"] for m in list_members(cx, t)}:
+        return r
+    return None

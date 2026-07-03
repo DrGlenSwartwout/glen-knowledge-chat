@@ -85,3 +85,35 @@ def test_scan_accessible_truth_table(tmp_db):
     fa.upsert_member(cx, "p@x.com", "m@x.com", "M", "human", 0)
     fa.set_family_membership(cx, "p@x.com", True, "2026-07-02T10:00:00Z")
     assert fa.scan_accessible(cx, "m@x.com", "s2", is_paid=False) is True
+
+
+def test_authorized_member_no_requested_returns_self(tmp_db):
+    cx = _cx(tmp_db)
+    assert fa.authorized_member(cx, "P@x.com", None) == "p@x.com"
+    assert fa.authorized_member(cx, "p@x.com", "") == "p@x.com"
+
+
+def test_authorized_member_requested_equals_token_returns_self(tmp_db):
+    cx = _cx(tmp_db)
+    assert fa.authorized_member(cx, "p@x.com", "P@X.com") == "p@x.com"
+
+
+def test_authorized_member_primary_and_real_member_returns_member(tmp_db):
+    cx = _cx(tmp_db)
+    fa.upsert_member(cx, "p@x.com", "p@x.com", "P", "human", 0)
+    fa.upsert_member(cx, "p@x.com", "m@x.com", "M", "human", 1)
+    assert fa.authorized_member(cx, "p@x.com", "m@x.com") == "m@x.com"
+
+
+def test_authorized_member_primary_and_stranger_returns_none(tmp_db):
+    cx = _cx(tmp_db)
+    fa.upsert_member(cx, "p@x.com", "p@x.com", "P", "human", 0)
+    fa.upsert_member(cx, "p@x.com", "m@x.com", "M", "human", 1)
+    assert fa.authorized_member(cx, "p@x.com", "stranger@x.com") is None
+
+
+def test_authorized_member_non_primary_token_returns_none(tmp_db):
+    cx = _cx(tmp_db)
+    fa.upsert_member(cx, "p@x.com", "m@x.com", "M", "human", 0)
+    # m@x.com is a member, not a primary -> cannot act on any other email
+    assert fa.authorized_member(cx, "m@x.com", "other@x.com") is None

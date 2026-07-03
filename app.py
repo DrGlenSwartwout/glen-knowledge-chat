@@ -12867,13 +12867,28 @@ def api_client_portal(token):
     from dashboard import portal_biofield_reports as _pbr
     import datetime as _dt
     email_for_reports = (portal.get("email") or "").strip().lower()
+    _access_v2 = os.environ.get("PORTAL_ACCESS_V2") in ("1", "true", "True")
+    _cx_fa = None
+    if _access_v2:
+        from dashboard import family_access as _fa
+        _cx_fa = sqlite3.connect(LOG_DB); _fa.init_tables(_cx_fa)
+        # allow a family primary to view a specific member's reports; an
+        # unauthorized request (not self, not a real family member) falls
+        # back to the token owner's own reports — never leaks another
+        # client's data.
+        fam_members = _fa.list_members(_cx_fa, email_for_reports) if _fa.is_primary(_cx_fa, email_for_reports) else []
+        reports_email = _fa.authorized_member(
+            _cx_fa, email_for_reports, request.args.get("member")) or email_for_reports
+    else:
+        fam_members = []
+        reports_email = email_for_reports
     cx_r = sqlite3.connect(LOG_DB)
     _pbr.init_table(cx_r)
-    dates = _pbr.list_report_dates(cx_r, email_for_reports) if email_for_reports else []
+    dates = _pbr.list_report_dates(cx_r, reports_email) if reports_email else []
     req_date = (request.args.get("scan_date") or "").strip()
     if dates:
         picked = req_date if req_date in dates else dates[0]
-        rep = _pbr.get_report(cx_r, email_for_reports, picked) or {}
+        rep = _pbr.get_report(cx_r, reports_email, picked) or {}
         bf_content = rep.get("content") or {}
         bf_status = rep.get("status") or "confirmed"
         bf_scan_date, bf_scan_dates = picked, dates
@@ -12888,19 +12903,13 @@ def api_client_portal(token):
     # Remedies/audio/PDF un-blur only when the report is confirmed AND the client
     # has PAID (paid Biofield Analysis or active membership). A free E4L reveal
     # published to the portal stays blurred until they pay — same as the funnel.
-    if os.environ.get("PORTAL_ACCESS_V2") in ("1", "true", "True"):
-        from dashboard import family_access as _fa
-        # allow a family primary to view a specific member's reports
-        member_email = (request.args.get("member") or "").strip().lower() or email_for_reports
-        _cx_fa = sqlite3.connect(LOG_DB); _fa.init_tables(_cx_fa)
-        fam_members = _fa.list_members(_cx_fa, email_for_reports) if _fa.is_primary(_cx_fa, email_for_reports) else []
+    if _access_v2:
         # scan id for the currently-picked report (0/"" when none)
         _picked_scan_id = str((rep.get("scan_id") if dates else content.get("scan_id")) or "")
         bf_show = bf_confirmed and _fa.scan_accessible(
-            _cx_fa, member_email, _picked_scan_id, is_paid=_is_paid_member(member_email))
+            _cx_fa, reports_email, _picked_scan_id, is_paid=_is_paid_member(reports_email))
         _cx_fa.close()
     else:
-        fam_members = []
         bf_show = bf_confirmed and _portal_biofield_unlocked(email_for_reports)
     bf_layers = []
     for L in (bf_content.get("layers") or []):
@@ -12953,7 +12962,7 @@ def api_client_portal(token):
         "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
         "messages": _portal_chat_thread(email_for_reports),
         "members": fam_members,
-        "access_v2": os.environ.get("PORTAL_ACCESS_V2") in ("1", "true", "True"),
+        "access_v2": _access_v2,
     })
 
 
@@ -12975,7 +12984,12 @@ def api_portal_unlock_scan(token):
         portal = _portal_record_for(cx, token)
         if not portal:
             return jsonify({"error": "not found"}), 404
-        email = member or (portal.get("email") or "").strip().lower()
+        token_email = (portal.get("email") or "").strip().lower()
+        _fa.init_tables(cx)
+        resolved = _fa.authorized_member(cx, token_email, member)
+        if resolved is None:
+            return jsonify({"ok": False, "error": "not authorized"}), 403
+        email = resolved
         # The client portal UI never sees scan_id (the GET /api/portal/<token>
         # response doesn't expose it) — it can only send scan_date. Resolve the
         # underlying scan_id server-side from the member's report for that date.
@@ -12985,7 +12999,6 @@ def api_portal_unlock_scan(token):
             scan_id = str(rep.get("scan_id") or "").strip()
         if not scan_id:
             return jsonify({"ok": False, "error": "scan not found"}), 400
-        _fa.init_tables(cx)
         if _fa.scan_accessible(cx, email, scan_id, is_paid=_is_paid_member(email)):
             return jsonify({"ok": True, "reason": "already"})
         now_iso = _dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
