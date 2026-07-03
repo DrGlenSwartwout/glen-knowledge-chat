@@ -70,6 +70,7 @@
   .hh-check { margin-right:7px; transform:scale(1.15); cursor:pointer; vertical-align:middle; }
   .hh-badge { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:10px;
     background:rgba(124,156,255,0.18); color:#9db4ff; font-size:11px; }
+  .onum { font-weight:600; color:var(--cream); }
   #hhbar { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:40;
     display:none; align-items:center; gap:12px; padding:10px 16px; border-radius:12px;
     background:var(--surface); border:1px solid var(--gold); box-shadow:0 6px 24px rgba(0,0,0,0.45); }
@@ -174,7 +175,9 @@
       ? '<span class="hh-badge">shipment #'+Number(o.group_shipment_id)+'</span>' : '';
     var head = '<div class="card-head" onclick="toggleCard(this)">'
       + '<div class="who">'+sel+esc(o.name||o.email||'Order #'+o.id)+gb+badge+'<span class="chev">&#9656;</span></div>'
-      + '<div class="meta">'+esc(dateStr(o.created_at))+' &middot; <span class="src">'+esc(whereLabel(o))+'</span>'
+      + '<div class="meta"><span class="onum">#'+Number(o.id)+'</span>'
+        + (o.external_ref?' &middot; '+esc(o.external_ref):'')
+        + ' &middot; '+esc(dateStr(o.created_at))+' &middot; <span class="src">'+esc(whereLabel(o))+'</span>'
         + (total?' &middot; '+total:'')+'</div>'
       + '</div>';
     var body = '<div class="card-body">'
@@ -277,7 +280,7 @@
     var q = (new URLSearchParams(location.search).get('q') || '').trim().toLowerCase();
     if (q) {
       orders = orders.filter(function(o){
-        return [o.external_ref, o.name, o.email].some(function(v){
+        return [o.id, '#'+o.id, o.external_ref, o.name, o.email].some(function(v){
           return (v || '').toString().toLowerCase().indexOf(q) >= 0;
         });
       });
