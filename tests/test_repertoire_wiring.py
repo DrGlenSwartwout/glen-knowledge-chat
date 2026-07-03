@@ -180,6 +180,68 @@ def test_prepay_term_seed_flag_off_no_write(monkeypatch, tmp_path):
     assert slugs == set()
 
 
+def _mock_paid_continuous_care_session(app_module, monkeypatch, email="a@b.com",
+                                        term_months=6):
+    from dashboard import stripe_pay
+    monkeypatch.setattr(stripe_pay, "get_session",
+        lambda s: {"metadata": {"kind": "continuous_care_monthly", "email": email,
+                                 "term_months": str(term_months)},
+                   "payment_intent": "pi_1"})
+    monkeypatch.setattr(stripe_pay, "get_payment_intent",
+        lambda pi: {"id": "pi_1", "customer": "cus_1", "payment_method": "pm_1",
+                    "status": "succeeded"})
+
+
+def test_continuous_care_duplicate_member_still_seeds_repertoire(monkeypatch, tmp_path):
+    """A buyer whose active membership already originated elsewhere (e.g. the
+    group-bundle or studio-bridge path, neither of which seeds repertoire) hits
+    the duplicate_member early-return when they buy a continuous_care_monthly
+    term. They still paid for the term, so retroactive repertoire seeding from
+    their windowed order history must still happen on that path (Task-4 review
+    finding fix) — not just on the main won-claim branch."""
+    A = _load_app()
+    db = _fresh(A, monkeypatch, tmp_path)
+    monkeypatch.setattr(A, "REPERTOIRE_ENABLED", True)
+    monkeypatch.setattr(A, "_STRIPE_ACTIVE", True, raising=False)
+    monkeypatch.setattr(A, "PUBLIC_BASE_URL", "https://test.local", raising=False)
+    monkeypatch.setattr(A, "_ingest_order", lambda **kw: None, raising=False)
+    monkeypatch.setattr(A, "_send_subscription_email", lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(A, "_mint_membership_cancel_url", lambda *a, **k: None, raising=False)
+
+    email = "dupmember@x.com"
+
+    # Pre-existing active membership from a path that does NOT seed repertoire
+    # (mirrors group-bundle / studio-bridge create_membership calls) — this is
+    # what makes _fulfill_continuous_care_monthly take the duplicate_member
+    # early-return instead of the main won-claim branch.
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(db) as cx:
+        _subs.init_subscriptions_table(cx)
+        _subs.migrate_add_membership_columns(cx)
+        _subs.migrate_add_term_cap_column(cx)
+        _subs.create_membership(
+            cx, email=email, stripe_customer_id="cus_other",
+            stripe_payment_method_id="pm_other", amount_cents=9900,
+            next_charge_date="2026-08-01", cadence_months=1,
+            term_charges_total=None, initial_order_count=1)
+
+    # Prior non-cancelled orders in the 6mo (180d) window.
+    _seed_order(db, source="funnel", external_ref="o1", email=email, slugs=["a"], days_ago=10)
+    _seed_order(db, source="funnel", external_ref="o2", email=email, slugs=["b"], days_ago=20)
+    # Cancelled — must be excluded.
+    _seed_order(db, source="funnel", external_ref="o3", email=email, slugs=["c"],
+                status="cancelled", days_ago=5)
+
+    _mock_paid_continuous_care_session(A, monkeypatch, email=email, term_months=6)
+    res = A._fulfill_continuous_care_monthly("cs_1")
+    assert res.get("ok") is True
+    assert res.get("duplicate_member") is True
+
+    with sqlite3.connect(db) as cx:
+        slugs = A.repertoire.repertoire_slugs(cx, email)
+    assert slugs == {"a", "b"}
+
+
 def test_ingest_order_appends_slugs_for_paid_member(monkeypatch, tmp_path):
     """A member's completed purchase adds its item slugs to their repertoire so
     the NEXT reorder is discounted."""

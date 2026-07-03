@@ -7350,6 +7350,21 @@ def _fulfill_continuous_care_monthly(session_id):
                           f"duplicate month-1 charge manually", flush=True)
                     _grant_membership(cx, email, _pp.term_days(today, 1) + 4, "continuous_care")
                     cx.commit()
+                    # This paid term still owes retroactive repertoire seeding — the
+                    # member's existing active membership may have originated from a
+                    # path that never seeds (group-bundle / studio-bridge), so without
+                    # this the buyer pays for continuous_care_monthly and silently gets
+                    # zero repertoire benefit. Same call as the won-claim branch below;
+                    # add_skus is INSERT OR IGNORE idempotent, so re-seeding is safe.
+                    if REPERTOIRE_ENABLED:
+                        try:
+                            repertoire.init_repertoire_table(cx)
+                            repertoire.seed_from_history(
+                                cx, email, _window_days_for_term(term_months),
+                                order_slugs_fn=_order_slugs_since)
+                        except Exception as _re:
+                            print(f"[continuous-care] duplicate-member repertoire seed "
+                                  f"failed: {_re!r}", flush=True)
                     return {"ok": True, "duplicate_member": True, "email": email}
                 # order_count=1 records the month-1 charge just taken at checkout, so
                 # membership_category reads 'full' (member pricing) immediately —
