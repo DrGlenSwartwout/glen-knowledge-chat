@@ -86,6 +86,7 @@ from dashboard import ash_ally
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
 from dashboard.voice_doorway import voice_signal_tags
+import dashboard.repertoire as repertoire
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -2827,7 +2828,7 @@ def begin_biofield_order_preview(token):
         ship = _resolve_ship_address(email, {})
         # Gate Type-2 order-total pricing on membership so the preview matches what the
         # buyer is actually charged at checkout (begin_biofield_order_checkout does the same).
-        pc = _price_cart(items, ship=ship, program_member=_is_paid_member(email))
+        pc = _price_cart(items, ship=ship, program_member=_is_paid_member(email), email=email)
         priced = pc["priced"]
         lines = [{"slug": ln.get("slug"), "name": ln.get("name"), "qty": ln.get("qty"),
                   "list_cents": int(ln.get("list_cents") or 0),
@@ -4625,6 +4626,22 @@ PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lo
 # referrer's OWN referrer (L2) half the Tier-1 rate, non-cashable. Off = Tier-1 only.
 REFERRAL_TIER2_ENABLED = os.environ.get("REFERRAL_TIER2_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PREPAY_LADDER_ENABLED = os.environ.get("PREPAY_LADDER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Repertoire reorder pricing: paid members get a flat reorder rate on SKUs they've
+# already bought (dashboard/repertoire.py). Default OFF — when off, _price_cart never
+# resolves a repertoire set, so pricing is byte-identical to before this flag existed.
+REPERTOIRE_ENABLED = os.environ.get("REPERTOIRE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Analysis request cadence: free-tier accounts get 1 "request an analysis" per
+# calendar month (dashboard/analysis_quota.py); paid members are unlimited.
+# Default OFF — when off, both request routes behave exactly as before this flag.
+ANALYSIS_QUOTA_ENABLED = os.environ.get("ANALYSIS_QUOTA_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+from dashboard import analysis_quota as _analysis_quota  # noqa: E402
+
+def _init_analysis_quota_table():
+    with sqlite3.connect(LOG_DB) as cx:
+        _analysis_quota.init_analysis_quota_table(cx)
+
+_init_analysis_quota_table()
 # Continuous Care MONTHLY: a card-on-file recurring membership fixed to a 6- or
 # 12-month term (vs. the upfront prepay ladder above, which never vaults a card).
 # Month 1 is charged at checkout; the charge cron takes over from month 2, capped
@@ -4758,12 +4775,50 @@ def _inhouse_total_ff_qty(lines_in):
     return tot
 
 
-def _inhouse_line_unit_cents(p, override, total_ff_qty, settings):
+def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, repertoire_slugs=None):
     """Explicit owner override wins; else FF capsules get the order-wide volume rate
-    (open to all), everything else its list price."""
+    (open to all), everything else its list price.
+
+    repertoire_slugs (optional): a member's repertoire SKU set, resolved ONCE per
+    checkout by the caller (see _resolve_repertoire_slugs) and forwarded here so a
+    fresh DB lookup isn't repeated per line. When this line has no override, is
+    repertoire-eligible (_repertoire_eligible — mirrors _engine_item's broader
+    eligibility resolution, NOT the FF-only _qty_eligible gate the volume math
+    above uses), and its slug is already in the set, it gets AT LEAST
+    settings['repertoire_reorder_pct'] off list — applied via the SAME
+    pricing.apply_discount/unit_floor_cents helpers dashboard.pricing.compute()
+    uses for the identical case (Task 3/5's display path), so the two paths agree
+    to the cent. Never stacked with the FF volume rate — the lower of the two
+    (best-of) wins, matching compute()'s max(...) non-additive rule."""
     if override not in (None, ""):
         return int(override)
-    return _inhouse_ff_unit_cents(p, total_ff_qty, settings)
+    base = _inhouse_ff_unit_cents(p, total_ff_qty, settings)
+    if repertoire_slugs and _repertoire_eligible(p):
+        slug = (p.get("slug") or "").strip().lower()
+        if slug in repertoire_slugs:
+            from dashboard import pricing as _pricing
+            list_cents = int(p.get("price_cents") or 0)
+            pct = float(settings.get("repertoire_reorder_pct") or 0.0) * 100.0
+            floor = _pricing.unit_floor_cents(p, list_cents, settings, "discount")
+            rep_cents = _pricing.apply_discount(list_cents, pct, floor)
+            base = min(base, rep_cents)
+    return base
+
+
+def _resolve_repertoire_slugs(email):
+    """A paid member's repertoire SKU set, resolved once per checkout (fresh-DB-safe,
+    best-effort — mirrors _price_cart's inline resolution). None when the flag is off,
+    there's no email, the email isn't a currently-active paid member, or the lookup
+    fails; callers treat None/empty the same as "no repertoire effect"."""
+    if not (REPERTOIRE_ENABLED and email and _is_paid_member(email)):
+        return None
+    try:
+        with sqlite3.connect(LOG_DB) as _rep_cx:
+            repertoire.init_repertoire_table(_rep_cx)  # defensive: fresh-DB guard
+            return repertoire.repertoire_slugs(_rep_cx, email)
+    except Exception as e:
+        print(f"[repertoire] inhouse lookup failed for {email!r}: {e!r}", flush=True)
+        return None
 
 
 def _is_paid_member(email):
@@ -4917,11 +4972,27 @@ def _shipping_for_cart(box_counts, total_bottles):
 
 
 def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
-                points_to_redeem_cents=0, channel="retail", program_member=False):
+                points_to_redeem_cents=0, channel="retail", program_member=False,
+                email=None):
     """Price a reorder/checkout cart through the pricing engine + shipping.
     Returns {priced, qbo_lines, discount_cents, points_redeemed_cents, shipping_cents,
-    items_rec, subtotal_list_cents}. Raises CheckoutError for non-US ship-to."""
+    items_rec, subtotal_list_cents}. Raises CheckoutError for non-US ship-to.
+
+    email (optional): when REPERTOIRE_ENABLED and the email belongs to a currently
+    active paid member (_is_paid_member), resolves that member's repertoire SKU set
+    and forwards it to the pricing engine so repertoire reorders price at the flat
+    member rate. Gated on CURRENT membership at read time — no stored per-SKU expiry.
+    Flag off (or no/non-member email) -> repertoire_slugs stays None, pricing unchanged."""
     from dashboard import pricing as _pricing, tax as _tax
+    rep_slugs = None
+    if REPERTOIRE_ENABLED and email and _is_paid_member(email):
+        try:
+            with sqlite3.connect(LOG_DB) as _rep_cx:
+                repertoire.init_repertoire_table(_rep_cx)  # defensive: fresh-DB guard
+                rep_slugs = repertoire.repertoire_slugs(_rep_cx, email)
+        except Exception as e:
+            print(f"[repertoire] lookup failed for {email!r}: {e!r}", flush=True)
+            rep_slugs = None
     country = (ship.get("country") or "US").strip().upper()
     if country not in ("US", "USA", ""):
         raise CheckoutError("We ship to US addresses only — please use a US forwarding address.")
@@ -4952,7 +5023,8 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                               points_to_redeem_cents=int(points_to_redeem_cents or 0),
                               ship_to_state=ship.get("state", ""),
                               tax_fn=_tax.compute_get_cents,
-                              program_member=bool(program_member))
+                              program_member=bool(program_member),
+                              repertoire_slugs=rep_slugs)
     shipping_cents = _shipping_for_cart(box_counts, total_bottles)
     return {
         "priced": priced, "qbo_lines": qbo_lines, "items_rec": items_rec,
@@ -5220,6 +5292,12 @@ with sqlite3.connect(LOG_DB) as _cx:
         session_id TEXT PRIMARY KEY, email TEXT, opened TEXT, updated_at TEXT)""")
     _cx.execute("CREATE INDEX IF NOT EXISTS idx_section_prefs_email ON section_prefs(email)")
 _SECTIONS = ("ingredients", "how", "research", "description", "video", "comparison", "images")
+
+# Repertoire reorder pricing table (dashboard/repertoire.py) — created at startup so
+# the flag-gated read path in _price_cart never hits a missing-table error; _price_cart
+# also re-inits defensively at read time (belt-and-suspenders for fresh/test DBs).
+with sqlite3.connect(LOG_DB) as _cx:
+    repertoire.init_repertoire_table(_cx)
 
 
 def _read_open_sections(session_id, email=""):
@@ -6988,7 +7066,7 @@ def begin_checkout(slug):
         pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
                          coupon_pct=_eff_pct,
                          points_to_redeem_cents=redeem,
-                         program_member=_is_paid_member(email))
+                         program_member=_is_paid_member(email), email=email)
     except CheckoutError as ce:
         return jsonify({"ok": False, "error": str(ce)}), 400
     cust = qb.find_or_create_customer(email, name)
@@ -7153,6 +7231,38 @@ def _fulfill_biofield_trial(session_id):
         return {"ok": False, "reason": "error"}
 
 
+def _window_days_for_term(term_months):
+    """Map a membership term length (months) to the lookback window (days) used to
+    seed a new member's repertoire from their purchase history: short terms get a
+    tight recent window, longer terms get more history."""
+    m = int(term_months or 0)
+    if m <= 1:
+        return 90
+    if m <= 6:
+        return 180
+    return 365
+
+
+def _order_slugs_since(cx, email, window_days):
+    """Distinct-ish list of item slugs from this email's non-cancelled orders in the
+    last window_days. Used to seed dashboard.repertoire on membership conversion."""
+    import json as _json
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    cutoff = (_dt.now(_tz.utc) - _td(days=int(window_days or 0))).isoformat()
+    cx.row_factory = sqlite3.Row
+    rows = cx.execute(
+        "SELECT items_json FROM orders WHERE lower(email)=? "
+        "AND status!='cancelled' AND created_at>=?",
+        ((email or "").strip().lower(), cutoff)).fetchall()
+    out = []
+    for r in rows:
+        for it in (_json.loads(r["items_json"] or "[]") or []):
+            s = (it.get("slug") or "").strip().lower()
+            if s:
+                out.append(s)
+    return out
+
+
 def _notify_first_cc_signup(email, plan_label, amount_cents):
     """Email Glen ONCE when the first Continuous Care signup lands (monthly OR
     up-front). Global once-guard via ops_notices(key PRIMARY KEY) — atomic under the
@@ -7220,6 +7330,14 @@ def _fulfill_prepay_term(session_id):
             if claimed:
                 _grant_prepay_term(cx, email, tier_key)
                 cx.commit()
+                if REPERTOIRE_ENABLED:
+                    try:
+                        repertoire.init_repertoire_table(cx)
+                        repertoire.seed_from_history(
+                            cx, email, _window_days_for_term(tier["months"]),
+                            order_slugs_fn=_order_slugs_since)
+                    except Exception as _re:
+                        print(f"[prepay] repertoire seed failed: {_re!r}", flush=True)
         if not claimed:
             return {"ok": True, "already": True, "email": email}
         # Ledger (idempotent on source+ref) + confirmation email, best-effort — must
@@ -7323,6 +7441,21 @@ def _fulfill_continuous_care_monthly(session_id):
                           f"duplicate month-1 charge manually", flush=True)
                     _grant_membership(cx, email, _pp.term_days(today, 1) + 4, "continuous_care")
                     cx.commit()
+                    # This paid term still owes retroactive repertoire seeding — the
+                    # member's existing active membership may have originated from a
+                    # path that never seeds (group-bundle / studio-bridge), so without
+                    # this the buyer pays for continuous_care_monthly and silently gets
+                    # zero repertoire benefit. Same call as the won-claim branch below;
+                    # add_skus is INSERT OR IGNORE idempotent, so re-seeding is safe.
+                    if REPERTOIRE_ENABLED:
+                        try:
+                            repertoire.init_repertoire_table(cx)
+                            repertoire.seed_from_history(
+                                cx, email, _window_days_for_term(term_months),
+                                order_slugs_fn=_order_slugs_since)
+                        except Exception as _re:
+                            print(f"[continuous-care] duplicate-member repertoire seed "
+                                  f"failed: {_re!r}", flush=True)
                     return {"ok": True, "duplicate_member": True, "email": email}
                 # order_count=1 records the month-1 charge just taken at checkout, so
                 # membership_category reads 'full' (member pricing) immediately —
@@ -7337,6 +7470,14 @@ def _fulfill_continuous_care_monthly(session_id):
                 # (~35 days) — mirrors _grant_prepay_term's day-based access pattern.
                 _grant_membership(cx, email, _pp.term_days(today, 1) + 4, "continuous_care")
                 cx.commit()
+                if REPERTOIRE_ENABLED:
+                    try:
+                        repertoire.init_repertoire_table(cx)
+                        repertoire.seed_from_history(
+                            cx, email, _window_days_for_term(term_months),
+                            order_slugs_fn=_order_slugs_since)
+                    except Exception as _re:
+                        print(f"[continuous-care] repertoire seed failed: {_re!r}", flush=True)
         if not claimed:
             return {"ok": True, "already": True, "email": email}
         # FTC/ROSCA easy-cancel token, minted exactly as the removed biofield-trial
@@ -12820,13 +12961,19 @@ def _enabled_offer_keys() -> set:
     return keys
 
 
-def _portal_priced_lines(items):
+def _portal_priced_lines(items, email=None):
     """Build QBO invoice lines from a portal's reorder items, honoring an optional
     per-item ``price_cents`` override (the practitioner-special price); else the
-    order-wide volume rate (open to all). Returns (lines, items_rec, subtotal_cents)."""
+    order-wide volume rate (open to all), with a paid member's repertoire SKUs at
+    their flat reorder rate (Task 5b — this is the ACTUAL checkout charge path, so
+    it must match what the portal displays). Returns (lines, items_rec, subtotal_cents).
+
+    email (optional): the portal token's client email — passed straight through to
+    _resolve_repertoire_slugs, resolved ONCE for the whole cart (not per line)."""
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(items or [])
+    rep_slugs = _resolve_repertoire_slugs(email)
     lines, items_rec, subtotal_cents = [], [], 0
     for it in (items or []):
         slug = (it.get("slug") or "").strip()
@@ -12837,13 +12984,214 @@ def _portal_priced_lines(items):
             qty = max(1, min(int(it.get("qty", 1) or 1), 99))
         except Exception:
             qty = 1
-        unit_cents = _inhouse_line_unit_cents(p, it.get("price_cents"), total_ff_qty, settings)
+        unit_cents = _inhouse_line_unit_cents(p, it.get("price_cents"), total_ff_qty, settings,
+                                              repertoire_slugs=rep_slugs)
         subtotal_cents += unit_cents * qty
         lines.append({"name": p["name"], "amount": round(unit_cents / 100.0, 2),
                       "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
         items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"],
                           "slug": slug, "unit_cents": unit_cents, "line_cents": unit_cents * qty})
     return lines, items_rec, subtotal_cents
+
+
+def _repertoire_eligible(p):
+    """Whether a product participates in the repertoire/volume discount gate —
+    mirrors _engine_item's eligibility resolution exactly (all Functional
+    Formulations volume-eligible via qty_pricing; true Pure Powders + info_only
+    excluded). Used to decide which SKUs can ever carry a repertoire price."""
+    if not p:
+        return False
+    if "volume_eligible" in p:
+        return bool(p["volume_eligible"])
+    if p.get("info_only"):
+        return False
+    if p.get("qty_pricing"):
+        return True
+    return not _is_pure_powder(p)
+
+
+def _rep_priced_unit_cents(p, *, repertoire_slugs, settings):
+    """Real per-unit price (cents) for a solo qty=1 line of this product, via
+    dashboard.pricing.compute() — the SAME engine function _price_cart delegates
+    to (Task 4). Never hand-recomputes the discount formula: repertoire_slugs is
+    forwarded straight into compute(), which applies repertoire_reorder_pct only
+    when the slug is in the set AND the product is volume_eligible, exactly as
+    at real checkout. Pass repertoire_slugs=None/empty to get the plain list
+    price (no repertoire effect) — used for the non-member/hypothetical branches."""
+    from dashboard import pricing as _pricing
+    it = _engine_item(p, 1)
+    priced = _pricing.compute([it], settings=settings, channel="retail",
+                              repertoire_slugs=repertoire_slugs)
+    return int(priced["lines"][0]["line_total_cents"])
+
+
+def _parse_iso_dt(ts):
+    """Parse a stored orders.created_at ISO8601 string to an aware datetime, or
+    None on any parse failure (never raises)."""
+    if not ts:
+        return None
+    try:
+        s = str(ts).replace("Z", "+00:00")
+        d = datetime.fromisoformat(s)
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d
+    except Exception:
+        return None
+
+
+_PORTAL_CHANNEL_SOURCES = ("portal-reorder", "reorder")
+
+
+def _portal_reorder_module(email):
+    """REPERTOIRE_ENABLED-gated portal payload extension (Task 5): the client's
+    real, portal-channel purchase history, re-priced through the actual
+    repertoire-aware pricing engine (dashboard.pricing.compute(), the same
+    function _price_cart delegates to — Task 4), plus a personalized non-member
+    upsell and forward-framed 'locked' rows for older history a longer
+    commitment would unlock. Display list is portal-channel ONLY (source in
+    'portal-reorder'/'reorder', non-cancelled) per Glen's explicit "bought here,
+    not other channels" — but repertoire PRICING/eligibility stays all-channel
+    (Task 4's design), so a SKU's discount doesn't depend on where it shows up.
+
+    RESOLVED (Task 5b): /api/portal/<token>/checkout — the ACTUAL checkout endpoint
+    wired to the portal's Reorder button — now threads the portal's email through
+    _portal_priced_lines -> _inhouse_line_unit_cents -> _resolve_repertoire_slugs,
+    which applies the SAME repertoire_reorder_pct/floor via pricing.apply_discount/
+    unit_floor_cents that dashboard.pricing.compute() uses here. So `your_cents`
+    (this display payload) and what /api/portal/<token>/checkout actually bills
+    now agree to the cent. (Previously this was an open gap — display without a
+    matching charge; see git history for the prior NOTE.)
+
+    Never raises (caller wraps in try/except); returns {} for a blank email."""
+    from dashboard import pricing as _pricing
+    email = (email or "").strip().lower()
+    if not email:
+        return {}
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        try:
+            repertoire.init_repertoire_table(cx)  # fresh-DB guard
+            rep_slugs = repertoire.repertoire_slugs(cx, email)
+        except Exception as e:
+            print(f"[portal-reorder] repertoire read failed for {email!r}: {e!r}", flush=True)
+            rep_slugs = set()
+        orders = _bos_orders.list_orders_by_email(cx, email, limit=200)
+    member = _is_paid_member(email)
+    settings = _pricing.load_settings(_pricing_settings())
+    now = datetime.now(timezone.utc)
+
+    portal_orders = [o for o in orders
+                     if (o.get("source") in _PORTAL_CHANNEL_SOURCES)
+                     and (o.get("status") != "cancelled")]
+
+    # --- reorder: distinct SKUs from portal-channel history, most-recent qty
+    # wins (orders come back most-recent-first already). ---
+    reorder, seen, last_seen_at = [], set(), {}
+    for o in portal_orders:
+        created = o.get("created_at") or ""
+        for it in (o.get("items") or []):
+            slug = (it.get("slug") or "").strip().lower()
+            if not slug:
+                continue
+            if slug not in last_seen_at or created > last_seen_at[slug]:
+                last_seen_at[slug] = created
+            if slug in seen:
+                continue
+            p = _get_product(slug)
+            if not p:
+                continue  # dropped/inactive since purchase — not purchasable now
+            seen.add(slug)
+            try:
+                qty = max(1, int(it.get("qty", 1) or 1))
+            except Exception:
+                qty = 1
+            regular_cents = int(p.get("price_cents") or 0)
+            in_rep = slug in rep_slugs
+            your_cents = regular_cents
+            if member and in_rep:
+                your_cents = _rep_priced_unit_cents(p, repertoire_slugs=rep_slugs, settings=settings)
+            reorder.append({
+                "slug": slug, "name": p.get("name", slug), "qty": qty,
+                "regular_cents": regular_cents, "your_cents": your_cents,
+                "is_member_price": your_cents < regular_cents,
+                "in_repertoire": in_rep,
+            })
+
+    # --- locked_rows: repertoire-eligible SKUs last bought 90-365 days ago,
+    # not already in the client's repertoire, tagged with the shortest
+    # commitment tier whose seed window would reach that purchase. ---
+    locked_rows = []
+    for slug in seen:
+        if slug in rep_slugs:
+            continue
+        p = _get_product(slug)
+        if not p or not _repertoire_eligible(p):
+            continue
+        seen_at = _parse_iso_dt(last_seen_at.get(slug))
+        if not seen_at:
+            continue
+        age_days = (now - seen_at).days
+        tier = None
+        if 90 < age_days <= 180:
+            tier = "6mo"
+        elif 180 < age_days <= 365:
+            tier = "12mo"
+        if tier:
+            locked_rows.append({
+                "slug": slug, "name": p.get("name", slug),
+                "regular_cents": int(p.get("price_cents") or 0), "tier": tier,
+            })
+
+    # --- membership_upsell: last-30-day portal-channel history, re-priced as
+    # if the client were a member (repertoire_slugs forced to the purchased
+    # slug so the hypothetical isn't gated on their CURRENT membership). ---
+    cutoff_30 = (now - timedelta(days=30)).isoformat()
+    recent = [o for o in portal_orders if (o.get("created_at") or "") >= cutoff_30]
+    reorders_30d = len(recent)
+    spend_30d_cents, member_would_pay_cents = 0, 0
+    for o in recent:
+        for it in (o.get("items") or []):
+            slug = (it.get("slug") or "").strip().lower()
+            p = _get_product(slug) if slug else None
+            if not p:
+                continue
+            try:
+                qty = max(1, int(it.get("qty", 1) or 1))
+            except Exception:
+                qty = 1
+            try:
+                paid_unit = it.get("unit_cents")
+                paid_unit = int(paid_unit) if paid_unit is not None else int(p.get("price_cents") or 0)
+            except Exception:
+                paid_unit = int(p.get("price_cents") or 0)
+            spend_30d_cents += paid_unit * qty
+            if _repertoire_eligible(p):
+                hyp_unit = _rep_priced_unit_cents(p, repertoire_slugs={slug}, settings=settings)
+            else:
+                hyp_unit = paid_unit
+            member_would_pay_cents += hyp_unit * qty
+
+    already_member = member
+    if already_member:
+        member_would_pay_cents = spend_30d_cents
+        savings_cents = 0
+    else:
+        savings_cents = max(0, spend_30d_cents - member_would_pay_cents)
+    net_after_fee_cents = _prepay.MONTHLY_ANCHOR_CENTS - savings_cents
+
+    return {
+        "reorder": reorder,
+        "locked_rows": locked_rows,
+        "membership_upsell": {
+            "reorders_30d": reorders_30d,
+            "spend_30d_cents": spend_30d_cents,
+            "member_would_pay_cents": member_would_pay_cents,
+            "savings_cents": savings_cents,
+            "net_after_fee_cents": net_after_fee_cents,
+            "already_member": already_member,
+        },
+    }
 
 
 def _portal_chat_thread(email, limit=100):
@@ -12958,7 +13306,7 @@ def api_client_portal(token):
             membership_cat = membership_category(email_for_reports)
         except Exception as e:
             print(f"[portal-credit] {email_for_reports}: {e!r}", flush=True)
-    return jsonify({
+    payload = {
         "name": portal.get("name"),
         "membership_category": membership_cat,
         "trial_credit_cents": trial_credit_cents,
@@ -12975,7 +13323,18 @@ def api_client_portal(token):
         "notify_on": notify_on,
         "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
         "messages": _portal_chat_thread(email_for_reports),
-    })
+    }
+    # Task 5: portal reorder module (real order history + repertoire pricing +
+    # member savings + forward-framed locked rows). Additive keys only — never
+    # touches reorder_items above (that's the practitioner-curated list the
+    # existing /checkout route still sources from). Flag off => payload is
+    # byte-identical to pre-Task-5 behavior (no new keys at all).
+    if REPERTOIRE_ENABLED and email_for_reports:
+        try:
+            payload.update(_portal_reorder_module(email_for_reports))
+        except Exception as e:
+            print(f"[portal-reorder] module failed for {email_for_reports!r}: {e!r}", flush=True)
+    return jsonify(payload)
 
 
 @app.route("/api/portal/<token>/agree-tos", methods=["POST", "OPTIONS"])
@@ -13351,12 +13710,42 @@ def api_admin_sms_deliveries():
     return jsonify({"deliveries": rows})
 
 
+def _portal_entitled_slugs(email):
+    """The set of slugs this portal client is entitled to reorder — their own
+    portal-channel purchase history (the SAME source Task 5's `reorder` module
+    displays; see _portal_reorder_module). Used to guard Task 6b's per-item
+    checkout so a posted body can never charge an arbitrary catalog SKU the
+    client never actually bought through the portal. Never raises; empty set
+    on any lookup failure (fails closed — an empty set rejects every slug)."""
+    try:
+        mod = _portal_reorder_module(email)
+    except Exception as e:
+        print(f"[portal-reorder] entitlement lookup failed for {email!r}: {e!r}", flush=True)
+        return set()
+    return {(row.get("slug") or "").strip().lower()
+            for row in (mod.get("reorder") or []) if row.get("slug")}
+
+
 @app.route("/api/portal/<token>/checkout", methods=["POST"])
 def api_client_portal_checkout(token):
-    """Build a real live Stripe checkout for the client's pre-loaded remedies at
-    their portal price (per-item practitioner-special override honored). Mirrors
-    the legacy reorder path but with custom pricing, so the live /reorder/checkout
-    stays untouched."""
+    """Build a real live Stripe checkout for the client's remedies at their
+    portal price. Two sources for WHICH items get charged:
+
+    - Task 6b: an optional JSON body {items:[{slug, qty}]} (or the {slug, qty}
+      shorthand for a single row) charges EXACTLY those items — this is what
+      each per-row "Reorder" button now posts, so clicking a row reorders that
+      row's product, not the whole curated cart. Every posted slug is checked
+      against _portal_entitled_slugs (the client's own purchase history) and
+      rejected if it isn't there; qty is clamped; any posted price/price_cents
+      is dropped on the floor — price is ALWAYS computed server-side by
+      _portal_priced_lines, never trusted from the client.
+    - Absent body (unchanged, backward compatible): the practitioner-curated
+      `content.reorder_items` cart, per-item practitioner-special override
+      honored, exactly as before Task 6b.
+
+    Either way, pricing goes through the SAME repertoire-aware
+    _portal_priced_lines (Task 5b), so member pricing holds; the add-then-
+    confirm + QBO invoice + Stripe-URL flow is identical either way."""
     from dashboard import client_portal as _cp
     with sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
@@ -13364,8 +13753,29 @@ def api_client_portal_checkout(token):
     if not portal:
         return jsonify({"error": "not found"}), 404
     email = (portal.get("email") or "").strip().lower()
-    items = (portal.get("content") or {}).get("reorder_items") or []
-    lines, items_rec, _subtotal = _portal_priced_lines(items)
+    body = request.get_json(silent=True) or {}
+    posted = body.get("items")
+    if posted is None and (body.get("slug") or "").strip():
+        posted = [{"slug": body.get("slug"), "qty": body.get("qty", 1)}]
+    if posted:
+        if not isinstance(posted, list) or not posted:
+            return jsonify({"error": "Invalid items."}), 400
+        entitled = _portal_entitled_slugs(email)
+        items = []
+        for it in posted:
+            if not isinstance(it, dict):
+                return jsonify({"error": "Invalid items."}), 400
+            slug = (it.get("slug") or "").strip().lower()
+            if not slug or slug not in entitled:
+                return jsonify({"error": "That item isn't available to reorder."}), 400
+            try:
+                qty = max(1, min(int(it.get("qty", 1) or 1), 99))
+            except Exception:
+                qty = 1
+            items.append({"slug": slug, "qty": qty})  # price_cents NEVER accepted from the client
+    else:
+        items = (portal.get("content") or {}).get("reorder_items") or []
+    lines, items_rec, _subtotal = _portal_priced_lines(items, email=email)
     if not lines:
         return jsonify({"error": "Your remedies are no longer available — please reach out and we'll help."}), 400
     if not _STRIPE_ACTIVE:
@@ -13699,15 +14109,35 @@ def _biofield_transition(token, new_status, tag):
                                      client_login_enabled=_client_login_enabled())
         if ident is None:
             return jsonify({"error": "not found"}), 404
+        # Resolve which report (if any) this transition targets, and run every
+        # check that can 409/404 the request, BEFORE the quota gate below —
+        # a free-tier user must not lose their monthly claim on a request that
+        # doesn't actually proceed (non-actionable scan / missing report).
         dates = _pbr.list_report_dates(cx, ident.email)
         if dates:
             picked = req_date if req_date in dates else dates[0]
             if not _pbr.is_actionable(picked, _dt.date.today().isoformat()):
                 return jsonify({"error": "scan no longer actionable"}), 409
+        else:
+            picked = None
+            if _cp.get_portal_content_by_email(cx, ident.email) is None:
+                return jsonify({"error": "not found"}), 404
+        claimed = False
+        if (new_status == "requested" and ANALYSIS_QUOTA_ENABLED
+                and ident.email and not _is_paid_member(ident.email)):
+            _analysis_quota.init_analysis_quota_table(cx)
+            if not _analysis_quota.try_claim(cx, ident.email):
+                return jsonify({"ok": False, "reason": "monthly_quota"}), 200
+            claimed = True
+        if dates:
             if not _pbr.set_report_status(cx, ident.email, picked, new_status):
+                if claimed:
+                    _analysis_quota.release(cx, ident.email)
                 return jsonify({"error": "not found"}), 404
         else:
             if not _cp.set_biofield_status(cx, ident.email, new_status):
+                if claimed:
+                    _analysis_quota.release(cx, ident.email)
                 return jsonify({"error": "not found"}), 404
         try:
             _gq.init_ghl_queue_table(cx)
@@ -14876,20 +15306,33 @@ def biofield_request():
     (no email enumeration leak). Mirrors /reorder/request."""
     email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
     if email and "@" in email:
-        token = secrets.token_urlsafe(32)
-        now = _now_utc()
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
-            cx.execute(
-                "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
-                "VALUES (?,?,?,?,?)",
-                (_hash_token(token), email, "biofield", now.isoformat(),
-                 (now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)).isoformat()))
-            cx.commit()
+        claimed = False
+        if ANALYSIS_QUOTA_ENABLED and not _is_paid_member(email):
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _analysis_quota.init_analysis_quota_table(cx)
+                if not _analysis_quota.try_claim(cx, email):
+                    return jsonify({"ok": False, "reason": "monthly_quota"}), 200
+                claimed = True
+        # The claim above only reserves this month's free-tier slot; it must
+        # not be spent if the send never actually goes out (insert/SMTP
+        # failure) — release it so the user can try again this month.
         try:
+            token = secrets.token_urlsafe(32)
+            now = _now_utc()
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                cx.execute(
+                    "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
+                    "VALUES (?,?,?,?,?)",
+                    (_hash_token(token), email, "biofield", now.isoformat(),
+                     (now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)).isoformat()))
+                cx.commit()
             send_magic_link_email(email, "",
                                   f"{PUBLIC_BASE_URL}/biofield/auth/{token}")
         except Exception as e:
             print(f"[biofield] magic link send failed: {e!r}", flush=True)
+            if claimed:
+                with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                    _analysis_quota.release(cx, email)
     return jsonify({"ok": True})
 
 
@@ -15559,7 +16002,7 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
         requested_redeem = min(requested_redeem, _bal)
     _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(referral_code, email)
     pc = _price_cart(cart, ship=ship, coupon_pct=_ref_pct, points_to_redeem_cents=requested_redeem,
-                     program_member=_is_paid_member(email))
+                     program_member=_is_paid_member(email), email=email)
     if not pc["qbo_lines"]:
         raise CheckoutError("Your cart is empty or those items are no longer available.")
     cust = qb.find_or_create_customer(email, ship.get("name", ""))
@@ -15700,7 +16143,8 @@ def _ship_founding_reservation(cx, sub):
     items = sub.get("items") or []
     ship = sub.get("ship_address") or {}
     pc = _price_cart(items, ship=ship, subscriber_tier_pct=None,
-                     program_member=_is_paid_member(sub["email"]))
+                     program_member=_is_paid_member(sub["email"]),
+                     email=sub["email"])
     cust = qb.find_or_create_customer(sub["email"], ship.get("name", ""))
     inv = qb.create_invoice(
         cust,
@@ -15806,7 +16250,7 @@ def reorder_subscribe():
         from dashboard import subscriptions as _subs
         try:
             pc = _price_cart(cart, ship=ship, subscriber_tier_pct=_subs.tier_for(0),
-                             program_member=_is_paid_member(email))
+                             program_member=_is_paid_member(email), email=email)
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
         if not pc["qbo_lines"]:
@@ -23175,7 +23619,8 @@ def cron_charge_subscriptions():
                 # Price the order
                 try:
                     pc = _price_cart(items, ship=ship, subscriber_tier_pct=tier_pct,
-                                     program_member=_is_paid_member(sub["email"]))
+                                     program_member=_is_paid_member(sub["email"]),
+                                     email=sub["email"])
                 except CheckoutError as ce:
                     print(f"[sub-cron] price_cart sub={sid}: {ce!r}", flush=True)
                     failed += 1
@@ -26969,6 +27414,31 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                     _send_portal_welcome(email, name, _tok)
             except Exception as _pe:
                 print(f"[orders] portal-provision {source}/{external_ref}: {_pe!r}", flush=True)
+            # Repertoire append: a paid member's purchase adds these SKUs so their
+            # NEXT reorder prices at the flat member rate (dashboard/repertoire.py).
+            # Gated on CURRENT membership status (_is_paid_member), not this order's
+            # pay_status -- pay_status defaults to 'unpaid' at ingest time and isn't
+            # reliably flipped to 'paid' here for most sources (it's a separate
+            # BOS-invoicing concept), so it can't be used to require "actually paid"
+            # at this hook. Runs AFTER upsert_order (i.e. after _price_cart already
+            # priced this order), so it can never discount the order it's derived
+            # from -- only future ones. Best-effort: must never affect order
+            # recording. Worst case: a member's repertoire picks up a SKU from an
+            # order that later gets cancelled/abandoned -- next reorder of that SKU
+            # is $50 instead of full price, a minor overcorrection.
+            try:
+                if REPERTOIRE_ENABLED and email and _is_paid_member(email):
+                    slugs = []
+                    for it in (items or []):
+                        s = ((it or {}).get("slug") or "").strip().lower()
+                        if s:
+                            slugs.append(s)
+                    if slugs:
+                        with _db_lock, sqlite3.connect(LOG_DB) as _rep_cx:
+                            repertoire.init_repertoire_table(_rep_cx)
+                            repertoire.add_skus(_rep_cx, email, slugs)
+            except Exception as _re:
+                print(f"[orders] repertoire append {source}/{external_ref}: {_re!r}", flush=True)
         finally:
             cx.close()
     except Exception as e:
@@ -27332,6 +27802,11 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
+    # A paid member's repertoire SKU set, resolved ONCE for the whole order (Task 5b —
+    # this also makes the owner in-house INVOICE honor repertoire pricing for members,
+    # not just the portal checkout). Only ever consulted below when a line has no
+    # explicit/client-price/ff-flat override (repertoire never outranks those).
+    rep_slugs = _resolve_repertoire_slugs(email)
     # This client's saved special prices ({slug: cents}) — applied when the owner
     # hasn't typed an explicit per-line override on THIS order. Precedence:
     # explicit line override > client special price > standard volume/list.
@@ -27374,7 +27849,8 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         elif _ff_flat is not None and _qty_eligible(p):
             unit_cents = _inhouse_line_unit_cents(p, _ff_flat, total_ff_qty, settings)
         else:
-            unit_cents = _inhouse_line_unit_cents(p, None, total_ff_qty, settings)  # volume/list
+            unit_cents = _inhouse_line_unit_cents(p, None, total_ff_qty, settings,
+                                                  repertoire_slugs=rep_slugs)  # volume/list/repertoire
             _is_ff = _qty_eligible(p)
             _lc = int(p.get("price_cents") or 0)
             for _cand in (
@@ -28221,7 +28697,8 @@ def api_invoice_update(token):
         # Gate Type-2 order-total pricing on membership so a member editing their own
         # invoice is priced the same as at checkout (not overcharged).
         pc = _price_cart(cart, ship=ship, channel="retail",
-                         program_member=_is_paid_member(order.get("email") or ""))
+                         program_member=_is_paid_member(order.get("email") or ""),
+                         email=(order.get("email") or ""))
         discount_cents = int(pc.get("discount_cents") or 0)
         shipping_cents = _bos_orders.effective_shipping_cents(
             (order.get("channel") or "") == "pickup", pc.get("shipping_cents"))
