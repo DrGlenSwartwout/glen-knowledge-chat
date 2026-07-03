@@ -119,7 +119,7 @@
   function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   // Display-only relabel of order source (DB values unchanged).
-  function srcLabel(s){ var m={'reorder':'Order','portal-reorder':'Portal-Order'}; return m[s]||s; }
+  function srcLabel(s){ var m={'reorder':'Order','portal-reorder':'Portal order'}; return m[s]||s; }
 
   // Household / combined-shipment state (feature-flagged server-side).
   var HH = { enabled:false, sel:{}, clusters:[] };
@@ -193,7 +193,7 @@
   function dateStr(iso){ try { return new Date(iso).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}); } catch(e){ return ''; } }
   // Friendly "where/how placed" label from the order source (+ pickup), plain text (esc'd by caller).
   function whereLabel(o){
-    var m={'in-house':'In-house (phone/email)','portal-reorder':'Portal reorder','reorder':'Reorder',
+    var m={'in-house':'In-house (phone/email)','portal-reorder':'Portal order','reorder':'Order',
            'funnel':'Website','biofield_trial':'Biofield trial','biofield':'Biofield'};
     var lbl = m[(o.source||'')] || srcLabel(o.source) || o.source || '—';
     if (o.channel==='pickup') lbl += ' · Pickup';
