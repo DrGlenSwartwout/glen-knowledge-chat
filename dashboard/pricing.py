@@ -13,6 +13,7 @@ DEFAULTS = {
     # flat beyond 12 — two anchors only, so the per-unit discount grows evenly with quantity
     # (not steep-early). Edit rows in the console to reshape.
     "volume_anchors": [[1, 0], [12, 29]],
+    "repertoire_reorder_pct": 0.29,   # member flat reorder rate on repertoire SKUs (~$50 on $69.97)
     # discount TYPES (console-toggleable, non-additive; see pricing_settings.py):
     # same_sku = per-line SKU qty (open to everyone); program_total = order-total,
     # gated on paid membership; open_total = order-total, everyone (default OFF —
@@ -122,7 +123,7 @@ def open_total_pct(total_qty, settings):
 
 def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
             points_to_redeem_cents=0, channel="retail", ship_to_state=None,
-            resale_ok=False, tax_fn=None, program_member=False):
+            resale_ok=False, tax_fn=None, program_member=False, repertoire_slugs=None):
     """Price a cart. The single % discount per line = the best (non-additive) of:
     type1 same-SKU (this line's own qty, open to everyone, default ON), type2
     program-total (order-total months, gated on program_member, default ON) or
@@ -153,7 +154,12 @@ def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
         eligible = bool(it.get("volume_eligible"))
         t1 = same_sku_pct(qty, settings) if eligible else 0.0       # type1: this line's SKU qty
         order_pct = max(prog_pct, open_pct) if eligible else 0.0     # type2 (gated) / type3
-        line_pct = max(t1, order_pct, base_pct)                      # non-additive: best single offer
+        rep_pct = 0.0
+        if repertoire_slugs and eligible and (it.get("slug") or "").strip().lower() in repertoire_slugs:
+            # repertoire_reorder_pct is stored as a 0-1 fraction (like discount_floor_pct);
+            # line_pct/apply_discount work in 0-100 percent, so convert here.
+            rep_pct = float(settings.get("repertoire_reorder_pct") or 0.0) * 100.0
+        line_pct = max(t1, order_pct, base_pct, rep_pct)             # non-additive: best single offer
         disc_floor = unit_floor_cents(p, unit_list, settings, "discount") * qty
         pts_floor = unit_floor_cents(p, unit_list, settings, "points") * qty
 
