@@ -39,6 +39,17 @@
     h('<h1>No active membership to pause</h1><p>You don’t have an active membership right now, so there’s nothing to pause.</p>');
     return;
   }
+  if(d.continuous_care){
+    // Continuous Care is a committed term, so there is no cadence to switch and no
+    // month-by-month pause. The only self-serve change is a clean cancel.
+    h('<h1>Manage your Continuous Care</h1>'
+      + '<div class="panel"><p class="ink">Your Continuous Care is a committed term, so there’s no cadence to change or month to pause. '
+      + 'Your access runs through the term you paid for.</p>'
+      + '<p>If you’d like to stop future payments, you can cancel anytime. You keep everything through the end of your paid term.</p></div>'
+      + (d.cancel_url ? '<p><a class="date" href="'+d.cancel_url+'">Cancel my Continuous Care</a></p>' : '')
+      + '<p class="muted">Prefer to keep going? There’s nothing to do — your care simply continues.</p>');
+    return;
+  }
   if(d.confirmed){
     if(d.ok){
       if(d.mode === 'cadence'){

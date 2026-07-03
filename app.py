@@ -3107,7 +3107,16 @@ def membership_pause(token):
             _subs.init_subscriptions_table(cx)
             _subs.migrate_add_membership_columns(cx)
             _subs.migrate_add_term_cap_column(cx)
-            if request.method == "POST":
+            rows = _subs.active_memberships_by_email(cx, email)
+            cancel_url = f"{PUBLIC_BASE_URL}/membership/cancel/{token}"
+            # Continuous Care is a fixed 6/12-month term (term_charges_total set): it has no
+            # cadence to switch and no month-by-month pause. Offer cancel only (stop future
+            # charges; access runs through the paid term). Never pause/re-cadence a CC term.
+            is_continuous_care = bool(rows and rows[0].get("term_charges_total"))
+            if is_continuous_care:
+                payload = {"valid": True, "confirmed": False, "continuous_care": True,
+                           "cancel_url": cancel_url}
+            elif request.method == "POST":
                 mode = (request.form.get("mode") or "once").strip()
                 if mode == "cadence":
                     months = 2 if (request.form.get("months") or "").strip() == "2" else 3
@@ -3119,7 +3128,6 @@ def membership_pause(token):
                     payload = {"valid": True, "confirmed": True, "mode": "once",
                                "ok": bool(res), **(res or {})}
             else:
-                rows = _subs.active_memberships_by_email(cx, email)
                 if rows:
                     sub = rows[0]
                     payload = {"valid": True, "confirmed": False,
@@ -3127,7 +3135,7 @@ def membership_pause(token):
                                "resume_date": _subs.add_months(
                                    sub["next_charge_date"], int(sub.get("cadence_months") or 1)),
                                "already_paused": bool(sub.get("skip_next")),
-                               "cancel_url": f"{PUBLIC_BASE_URL}/membership/cancel/{token}"}
+                               "cancel_url": cancel_url}
                 else:
                     payload = {"valid": True, "confirmed": False, "no_membership": True}
     html = (STATIC / "membership-pause.html").read_text()
@@ -7300,9 +7308,10 @@ def _fulfill_continuous_care_monthly(session_id):
             return {"ok": True, "already": True, "email": email}
         # FTC/ROSCA easy-cancel token, minted exactly as the removed biofield-trial
         # auto-charge block did. Outside the write lock (own connection + commit).
+        cancel_url = ""
         try:
             with sqlite3.connect(LOG_DB) as _cx:
-                _mint_membership_cancel_url(_cx, email)
+                cancel_url = _mint_membership_cancel_url(_cx, email) or ""
         except Exception as _ce:
             print(f"[continuous-care] cancel-token mint failed: {_ce!r}", flush=True)
         # Ledger (idempotent on source+ref) + confirmation email, best-effort — must
@@ -7316,7 +7325,8 @@ def _fulfill_continuous_care_monthly(session_id):
             print(f"[continuous-care] order-ledger record failed: {_oe!r}", flush=True)
         try:
             _send_subscription_email(email, "receipt", {
-                "kind": "membership", "total_cents": _pp.MONTHLY_ANCHOR_CENTS,
+                "kind": "membership", "product": "continuous_care",
+                "total_cents": _pp.MONTHLY_ANCHOR_CENTS, "cancel_url": cancel_url,
                 "next_charge_date": next_charge, "invoice_id": pi.get("id")})
         except Exception as _e:
             print(f"[continuous-care] confirmation email failed: {_e!r}", flush=True)
@@ -22884,7 +22894,23 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
                 )
         elif kind == "receipt":
             inv_id = data.get("invoice_id", "")
-            if is_membership:
+            if is_membership and data.get("product") == "continuous_care":
+                # Continuous Care (6/12mo term, card on file) — distinct from the group
+                # coaching bundle even though both are kind="membership".
+                cancel_url = data.get("cancel_url")
+                subject = f"Your Continuous Care payment - {amount_str}"
+                body = (
+                    f"Aloha,\n\n"
+                    f"Your Continuous Care payment has been processed. Thank you for continuing "
+                    f"your healing journey with us.\n\n"
+                    f"Amount charged: {amount_str}\n"
+                    + (f"Invoice: {inv_id}\n" if inv_id else "")
+                    + f"\nYour next payment date: {charge_date}\n\n"
+                    + (f"You can cancel anytime, no reply needed:\n\n{cancel_url}\n\n"
+                       if cancel_url else "")
+                    + "In wellness,\nDr. Glen"
+                )
+            elif is_membership:
                 subject = f"Your live group coaching payment — {amount_str}"
                 body = (
                     f"Hi,\n\n"
@@ -23075,9 +23101,14 @@ def cron_charge_subscriptions():
                         except Exception as _ge:
                             print(f"[sub-cron] grant-extend sub={sid}: {_ge!r}", flush=True)
                         try:
+                            # A capped term (term_charges_total set) = Continuous Care;
+                            # an uncapped membership = the legacy group-coaching bundle.
+                            _product = ("continuous_care"
+                                        if (updated and updated.get("term_charges_total"))
+                                        else "group_coaching")
                             _send_subscription_email(sub["email"], "receipt", {
                                 "total_cents": amount_cents, "invoice_id": inv_id,
-                                "kind": "membership",
+                                "kind": "membership", "product": _product,
                                 "next_charge_date": updated["next_charge_date"] if updated else ""})
                         except Exception as ee:
                             print(f"[sub-cron] membership email sub={sid}: {ee!r}", flush=True)

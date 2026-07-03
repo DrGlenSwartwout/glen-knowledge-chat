@@ -163,7 +163,7 @@
       b.disabled = true; m.textContent = 'Starting...';
       fetch('/coaching/start', {method:'POST'}).then(function(r){return r.json();}).then(function(d){
         if(d.ok){ m.textContent = 'Your coaching month is active through ' + (d.ends_at ? d.ends_at.slice(0,10) : 'the next 30 days') + '.'; }
-        else if(d.offer_99){ m.innerHTML = 'Coaching runs with an active membership month. <a href="{{ membership_join_url }}">Start one for $99 →</a>'; }
+        else if(d.offer_99){ m.innerHTML = 'Live group coaching runs with Continuous Care. <a href="{{ membership_join_url }}">Start yours →</a>'; }
         else { m.textContent = 'We couldn\'t start coaching just now. Please try again shortly.'; b.disabled = false; }
       }).catch(function(){ m.textContent = 'Something went wrong. Please try again.'; b.disabled = false; });
     });
@@ -173,7 +173,7 @@
   <div class="shell">
   <div class="card coaching-window">
     <h2>Start a coaching month</h2>
-    <p>Live group coaching runs with an active membership month — <a href="{{ membership_join_url }}">start one for $99 &rarr;</a></p>
+    <p>Live group coaching runs with Continuous Care. <a href="{{ membership_join_url }}">Start yours &rarr;</a></p>
   </div>
   </div>
   {% endif %}
