@@ -28640,6 +28640,38 @@ def _invoice_line_view(l):
     return out
 
 
+def _invoice_display_name(order):
+    """Best-effort billed-to name for the invoice. An order's own `name` column is
+    blank for portal/reorder/import flows that don't re-collect it (the same gap the
+    /api/orders board backfills). Resolve in order: order name → linked person record
+    → people table by email → shipping-address name. Never raises."""
+    nm = (order.get("name") or "").strip()
+    if nm:
+        return nm
+    try:
+        from dashboard import customers as _cust
+        cx = _sqlite3.connect(LOG_DB)
+        cx.row_factory = _sqlite3.Row
+        try:
+            pid = order.get("person_id")
+            if pid:
+                p = _cust.get_person(cx, pid)
+                if p and (p.get("name") or "").strip():
+                    return p["name"].strip()
+            em = (order.get("email") or "").strip().lower()
+            if em:
+                row = cx.execute(
+                    "SELECT name FROM people WHERE lower(email)=? "
+                    "AND TRIM(COALESCE(name,''))<>'' ORDER BY id LIMIT 1", (em,)).fetchone()
+                if row and (row["name"] or "").strip():
+                    return row["name"].strip()
+        finally:
+            cx.close()
+    except Exception as e:  # noqa: BLE001 — name is cosmetic; never break the invoice
+        print(f"[invoice] name fallback skipped: {e!r}", flush=True)
+    return ((order.get("address") or {}).get("name") or "").strip()
+
+
 def _invoice_summary(order):
     """Customer-safe view — no person_id, notes, phone, or full address."""
     lines = order.get("items") or []
@@ -28649,7 +28681,7 @@ def _invoice_summary(order):
         "member_credit_cents": member_credit_cents,
         "points_balance_cents": _invoice_points_balance(order),
         "external_ref": order.get("external_ref"),
-        "name": order.get("name") or "",
+        "name": _invoice_display_name(order),
         "invoice_note": order.get("invoice_note") or "",
         "lines": [_invoice_line_view(l) for l in lines],
         "subtotal_cents": subtotal,
