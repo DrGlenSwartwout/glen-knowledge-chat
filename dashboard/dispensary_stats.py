@@ -85,18 +85,31 @@ def _items_for_invoices(cx, invoice_ids, source):
 
 def dispense_stats(practitioner_id, *, db_path=None, catalog=None):
     """Collect the practitioner's per-product units across channels and rank them.
-    Dispensed = their own wholesale_orders (orders.items_json, source='wholesale').
-    Drop-shipped + Patient portal are DEFERRED ({}) — those sale flows record only
-    aggregate bottles today (no per-product slug), so per-product ranking of them
-    is not yet supported; the UI marks both columns 'coming soon'. Never raises."""
+    Dispensed  = their own wholesale_orders  (orders.items_json, source='wholesale').
+    Drop-shipped = their dispensary_orders    (orders.items_json, source='dispensary')
+                   — patient sales through the practitioner's dispensary link. Sales
+                   ingested without line items (e.g. the GrooveKart webhook stub) hold
+                   only aggregate bottles and contribute nothing per-product.
+    Patient portal = {} (deferred; no practitioner<->client attribution yet).
+    Never raises."""
+    dispensed, dropshipped = {}, {}
     try:
         with sqlite3.connect(_log_db(db_path)) as cx:
-            w = [r[0] for r in cx.execute(
-                "SELECT invoice_id FROM wholesale_orders WHERE practitioner_id=?", (str(practitioner_id),))]
-            dispensed = _items_for_invoices(cx, w, "wholesale")
+            try:  # each channel degrades independently (a missing table zeroes only its own)
+                w = [r[0] for r in cx.execute(
+                    "SELECT invoice_id FROM wholesale_orders WHERE practitioner_id=?", (str(practitioner_id),))]
+                dispensed = _items_for_invoices(cx, w, "wholesale")
+            except Exception:
+                dispensed = {}
+            try:
+                d = [r[0] for r in cx.execute(
+                    "SELECT invoice_id FROM dispensary_orders WHERE practitioner_id=?", (str(practitioner_id),))]
+                dropshipped = _items_for_invoices(cx, d, "dispensary")
+            except Exception:
+                dropshipped = {}
     except Exception:
         return []
-    return rank_dispense_rows(dispensed, {}, {}, catalog=catalog)
+    return rank_dispense_rows(dispensed, dropshipped, {}, catalog=catalog)
 
 
 # ── Section 2: curated practice-type recommendations ───────────────────────
