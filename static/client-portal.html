@@ -94,6 +94,27 @@
   .pill{font-size:.72rem;font-weight:700;border-radius:999px;padding:2px 9px;background:var(--brand-soft);color:var(--ok)}
   .soon{border-style:dashed;background:linear-gradient(180deg,var(--card),var(--card2));text-align:center}
   .soon .muted{margin:.2rem 0 0}
+  /* Task 6: portal reorder module — remedies with qty, locked (forward-framed)
+     rows, and the non-member savings upsell. */
+  .remitem{padding:9px 0;border-bottom:1px dashed var(--line)}
+  .remitem:last-child{border-bottom:0}
+  .remitem-top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+  .remitem-bot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:7px}
+  .save{color:var(--brand);font-weight:600}
+  .qty-ctl{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:2px 4px}
+  .qtybtn{background:none;border:0;color:var(--ink);font-size:1rem;font-weight:700;cursor:pointer;
+    width:26px;height:26px;line-height:26px;padding:0;border-radius:6px}
+  .qtybtn:active{transform:translateY(1px)}
+  .qtyval{min-width:1.2em;text-align:center;font-weight:600}
+  .remBtn{padding:9px 16px;font-size:.92rem}
+  .lockedrow{padding:9px 0;border-bottom:1px dashed var(--line);opacity:.62}
+  .lockedrow:last-child{border-bottom:0}
+  .lockedrow-top{display:flex;justify-content:space-between;gap:10px}
+  .lockedcopy{display:flex;align-items:flex-start;gap:6px;margin:.3rem 0 0}
+  .lockedcopy svg{flex:0 0 auto;margin-top:2px;opacity:.8}
+  .upsell-card{background:linear-gradient(180deg,var(--card),var(--card2))}
+  .upsell-benefits{margin:.5rem 0 .9rem;padding-left:1.1rem}
+  .upsell-benefits li{margin:.25rem 0}
   /* biofield disclosure + pending-remedy placeholder */
   .disclose{color:var(--muted);font-size:.78rem;margin:.4rem 0 0;display:flex;align-items:center;gap:6px;letter-spacing:.01em}
   .disclose svg{flex:0 0 auto;opacity:.8}
@@ -639,6 +660,73 @@ function render(d, v){
       <p class="small err" id="reorderErr" hidden></p></div>`;
   }
 
+  // Task 6: portal reorder module (Task 5's payload extension). Every access
+  // below is guarded — when REPERTOIRE_ENABLED is off server-side, d.reorder /
+  // d.locked_rows / d.membership_upsell simply aren't in the payload, and none
+  // of this renders. Never touches d.reorder_items above (that's the
+  // practitioner-curated list the /checkout endpoint sources from).
+  if(Array.isArray(d.reorder) && d.reorder.length){
+    let rrows = "";
+    d.reorder.forEach(it=>{
+      const slug = esc(it.slug||"");
+      const qty = Math.max(1, parseInt(it.qty,10) || 1);
+      const regular = it.regular_cents!=null ? it.regular_cents : 0;
+      const yours = it.your_cents!=null ? it.your_cents : regular;
+      const price = it.is_member_price
+        ? `<span class="reg">${esc(money(regular))}</span><span class="sp">${esc(money(yours))}</span>`
+        : `${esc(money(yours))}`;
+      const save = it.is_member_price
+        ? `<span class="save small">You save ${esc(money(Math.max(0, regular - yours)))}</span>`
+        : `<span></span>`;
+      rrows += `<div class="remitem" data-slug="${slug}" data-unit-cents="${yours}">
+        <div class="remitem-top"><span class="nm">${esc(it.name||it.slug||"")}</span><span class="pr">${price}</span></div>
+        <div class="remitem-bot">
+          <span class="qty-ctl">
+            <button type="button" class="qtybtn" data-dir="-1" aria-label="Decrease quantity">−</button>
+            <span class="qtyval" data-qty="${qty}">${qty}</span>
+            <button type="button" class="qtybtn" data-dir="1" aria-label="Increase quantity">+</button>
+          </span>
+          ${save}
+          <button class="btn remBtn" data-slug="${slug}">Reorder</button>
+        </div>
+      </div>`;
+    });
+    html += `<div class="card"><h2>Your Remedies</h2>
+      <div>${rrows}</div>
+      <p class="muted small" style="margin:.7rem 0 0">Shipping calculated at checkout.</p>
+      <p class="small err" id="remErr" hidden></p></div>`;
+  }
+
+  if(Array.isArray(d.locked_rows) && d.locked_rows.length){
+    let lrows = "";
+    d.locked_rows.forEach(it=>{
+      const months = it.tier === "12mo" ? "12" : "6";
+      lrows += `<div class="lockedrow">
+        <div class="lockedrow-top"><span class="nm">${esc(it.name||it.slug||"")}</span><span class="pr muted">${esc(money(it.regular_cents))}</span></div>
+        <p class="lockedcopy muted small">${ICON_LOCK}<span>Unlock member pricing on this when you commit to ${months} months.</span></p>
+      </div>`;
+    });
+    html += `<div class="card"><h2>More savings ahead</h2>
+      <div>${lrows}</div></div>`;
+  }
+
+  if(d.membership_upsell && !d.membership_upsell.already_member && (d.membership_upsell.savings_cents||0) > 0){
+    const mu = d.membership_upsell;
+    const times = mu.reorders_30d === 1 ? "once" : `${esc(mu.reorders_30d)} times`;
+    const netLine = (mu.net_after_fee_cents||0) > 0
+      ? `<p class="muted small">That's <b>${esc(money(mu.net_after_fee_cents))}</b> ahead even after the membership fee — before Zoom Q&amp;A, group coaching, or expanded education even come into it.</p>`
+      : `<p class="muted small">Membership pays for itself on remedies alone — and that's before Zoom Q&amp;A, group coaching, or expanded education.</p>`;
+    html += `<div class="card upsell-card"><h2>You could be saving more</h2>
+      <p class="muted small">You ordered ${times} in the last 30 days. As a member, those same remedies would have saved you <b>${esc(money(mu.savings_cents))}</b>.</p>
+      ${netLine}
+      <ul class="upsell-benefits small muted">
+        <li>Live Zoom Q&amp;A + group coaching</li>
+        <li>Expanded education</li>
+        <li>Member pricing on your repertoire</li>
+      </ul>
+      <a class="btn full" href="/prepay">Become a member</a></div>`;
+  }
+
   // Order history — role-gated (clients) by the view assembler.
   if(v && v.orders && v.orders.visible && Array.isArray(v.orders.items) && v.orders.items.length){
     let rows = "";
@@ -770,6 +858,26 @@ function render(d, v){
 
   const sabtn = document.getElementById("socialAddBtn");
   if(sabtn) sabtn.addEventListener("click", addSocial);
+
+  // Task 6: qty steppers (local display only — the row's shown price already
+  // reflects Task 5's server-computed per-unit price; stepping just updates
+  // the visible line total) + per-row Reorder buttons on the "Your Remedies"
+  // module. Both are no-ops when the module didn't render (querySelectorAll
+  // on an absent node returns an empty list).
+  app.querySelectorAll(".qtybtn").forEach(qb=>{
+    qb.addEventListener("click", ()=>{
+      const row = qb.closest(".remitem");
+      const val = row && row.querySelector(".qtyval");
+      if(!val) return;
+      let q = (parseInt(val.getAttribute("data-qty"), 10) || 1) + (parseInt(qb.getAttribute("data-dir"), 10) || 0);
+      if(q < 1) q = 1;
+      val.setAttribute("data-qty", String(q));
+      val.textContent = String(q);
+    });
+  });
+  app.querySelectorAll(".remBtn").forEach(rb=>{
+    rb.addEventListener("click", ()=>reorderItem(rb));
+  });
 }
 
 async function setNotifyPref(btn){
@@ -838,6 +946,31 @@ async function reorder(){
   }catch(e){
     err.textContent = e.message || "Something went wrong. Please reach out and we’ll help.";
     err.hidden = false; btn.disabled = false; btn.textContent = label;
+  }
+}
+
+async function reorderItem(btn){
+  // Task 6: per-row "Reorder" button on the "Your Remedies" module. This is
+  // add-then-confirm, never a silent charge: it calls the SAME checkout
+  // endpoint the "Order my remedies" button above uses, which returns a live
+  // Stripe Checkout URL — the actual charge only happens if the client
+  // confirms on Stripe's hosted page. One-shot latch: disabled immediately on
+  // click (before any await), so a double-click or a slow network can't
+  // double-fire it. (This codebase has been bitten by double-fire before —
+  // see feedback_print_once_guard.)
+  if(btn.disabled) return;
+  btn.disabled = true;
+  const err = document.getElementById("remErr");
+  if(err) err.hidden = true;
+  const label = btn.textContent; btn.textContent = "Setting up your order…";
+  try{
+    const c = await fetch(`/api/portal/${encodeURIComponent(token)}/checkout`, {method:"POST"});
+    const cj = await c.json();
+    if(cj.stripe_url){ location.href = cj.stripe_url; return; }
+    throw new Error(cj.error || "Checkout is temporarily unavailable. Please reach out to us and we’ll help.");
+  }catch(e){
+    if(err){ err.textContent = e.message || "Something went wrong. Please reach out and we’ll help."; err.hidden = false; }
+    btn.disabled = false; btn.textContent = label;
   }
 }
 
