@@ -12888,7 +12888,20 @@ def api_client_portal(token):
     # Remedies/audio/PDF un-blur only when the report is confirmed AND the client
     # has PAID (paid Biofield Analysis or active membership). A free E4L reveal
     # published to the portal stays blurred until they pay — same as the funnel.
-    bf_show = bf_confirmed and _portal_biofield_unlocked(email_for_reports)
+    if os.environ.get("PORTAL_ACCESS_V2") in ("1", "true", "True"):
+        from dashboard import family_access as _fa
+        # allow a family primary to view a specific member's reports
+        member_email = (request.args.get("member") or "").strip().lower() or email_for_reports
+        _cx_fa = sqlite3.connect(LOG_DB); _fa.init_tables(_cx_fa)
+        fam_members = _fa.list_members(_cx_fa, email_for_reports) if _fa.is_primary(_cx_fa, email_for_reports) else []
+        # scan id for the currently-picked report (0/"" when none)
+        _picked_scan_id = str((rep.get("scan_id") if dates else content.get("scan_id")) or "")
+        bf_show = bf_confirmed and _fa.scan_accessible(
+            _cx_fa, member_email, _picked_scan_id, is_paid=_is_paid_member(member_email))
+        _cx_fa.close()
+    else:
+        fam_members = []
+        bf_show = bf_confirmed and _portal_biofield_unlocked(email_for_reports)
     bf_layers = []
     for L in (bf_content.get("layers") or []):
         item = {"n": L.get("n"), "title": L.get("title", ""), "meaning": L.get("meaning", "")}
@@ -12939,6 +12952,7 @@ def api_client_portal(token):
         "notify_on": notify_on,
         "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
         "messages": _portal_chat_thread(email_for_reports),
+        "members": fam_members,
     })
 
 
