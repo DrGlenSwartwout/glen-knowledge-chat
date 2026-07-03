@@ -770,6 +770,37 @@ def partner_block(modules_completed, *, wellness_credit_cents=0,
     }
 
 
+# The 12-module Accelerated Self Healing(TM) curriculum: (module #, title, five-fold subtitle).
+_ASH_TRAINING_MODULES = [
+    (1, "Body", "5 States of Matter"),
+    (2, "Mind", "5 C's Meta-Model"),
+    (3, "Spirit", "5 Elements"),
+    (4, "Inheritance", "5 Generations"),
+    (5, "Personal History", "5 Levels of Penetration"),
+    (6, "Epigenetics", "5 Information Patterns"),
+    (7, "Symptoms", "5 Embryological Tissue Layers"),
+    (8, "Terrains", "5 Phases of Terrain"),
+    (9, "Diagnosis", "5 Pathology Types"),
+    (10, "Treatment", "5 Levels of Therapy"),
+    (11, "Regulation", "5 Levels of Regulation"),
+    (12, "Prognosis", "5 Stages of Prognosis"),
+]
+
+
+def training_block(modules_completed) -> dict:
+    """The 12-module ASH curriculum with the practitioner's completion state.
+    Pure; module n is complete when n <= modules_completed."""
+    mc = max(0, min(int(modules_completed or 0), pricing.N_MODULES))
+    return {
+        "modules_completed": mc,
+        "modules_total": pricing.N_MODULES,
+        "modules": [
+            {"n": n, "title": t, "subtitle": s, "complete": n <= mc}
+            for (n, t, s) in _ASH_TRAINING_MODULES
+        ],
+    }
+
+
 def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optional[dict]:
     from db_supabase import supabase_cursor
     with supabase_cursor() as cur:
@@ -822,4 +853,5 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
         row["modules_completed"],
         wellness_credit_cents=row["wallet_balance_cents"],
         dispensary_credit_cents=data.get("dispensary_credit_total_cents", 0))
+    data["training"] = training_block(row["modules_completed"])
     return data
