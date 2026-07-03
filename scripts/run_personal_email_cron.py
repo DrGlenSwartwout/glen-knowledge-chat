@@ -138,6 +138,15 @@ def run_daily_piggybacks():
     for path in ("/admin/sync-pb-tags", "/admin/sync-practitioner-tags",
                  "/admin/sync-people-to-ghl", "/api/cron/charge-subscriptions"):
         _piggyback_post(f"pb-sync-chain {path}", path, "X-Cron-Secret", CRON_SECRET, timeout=600)
+    # Refresh GrooveKart retail history from order emails, then re-seed active
+    # members' repertoires from purchase_history (FMP + GK). Both idempotent;
+    # GK rebuild runs first so the reseed picks up the newest orders. Harmless
+    # regardless of REPERTOIRE_ENABLED (the seeded repertoire is only read for
+    # pricing when the flag is on; reseed only touches paying members).
+    _piggyback_post("gk-email-history", "/api/console/gk-email-history-rebuild",
+                    "X-Console-Key", CONSOLE_SECRET)
+    _piggyback_post("repertoire-reseed", "/api/console/repertoire-reseed",
+                    "X-Console-Key", CONSOLE_SECRET)
     if datetime.now(timezone.utc).weekday() == 0:  # Monday
         _piggyback_post("usps-rate-check", "/cron/usps-rate-check", "X-Cron-Secret", CRON_SECRET)
     else:
