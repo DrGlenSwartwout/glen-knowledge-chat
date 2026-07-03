@@ -23,3 +23,22 @@ def test_unlock_scan_unknown_token_404(tmp_db, monkeypatch):
     c = _client(tmp_db, monkeypatch)
     r = c.post("/api/portal/NOPE/unlock-scan", json={"scan_id": "s1"})
     assert r.status_code == 404
+
+
+def test_unlock_scan_already_accessible_no_burn(tmp_db, monkeypatch):
+    c = _client(tmp_db, monkeypatch)
+    monkeypatch.setattr(appmod, "_is_paid_member", lambda e: True)
+    r1 = c.post("/api/portal/TOK/unlock-scan", json={"scan_id": "s1"})
+    assert r1.status_code == 200
+    assert r1.get_json() == {"ok": True, "reason": "already"}
+
+    monkeypatch.setattr(appmod, "_is_paid_member", lambda e: False)
+    r2 = c.post("/api/portal/TOK/unlock-scan", json={"scan_id": "s2"})
+    assert r2.status_code == 200
+    assert r2.get_json() == {"ok": True, "reason": ""}
+
+
+def test_unlock_scan_missing_scan_id_400(tmp_db, monkeypatch):
+    c = _client(tmp_db, monkeypatch)
+    r = c.post("/api/portal/TOK/unlock-scan", json={})
+    assert r.status_code == 400

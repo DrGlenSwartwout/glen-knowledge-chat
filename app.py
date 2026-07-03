@@ -12950,7 +12950,7 @@ def api_portal_unlock_scan(token):
     scan_id = str(body.get("scan_id") or "").strip()
     if not scan_id:
         return jsonify({"error": "scan_id required"}), 400
-    with sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
         portal = _portal_record_for(cx, token)
         if not portal:
             return jsonify({"error": "not found"}), 404
