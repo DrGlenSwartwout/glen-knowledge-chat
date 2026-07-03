@@ -29573,6 +29573,12 @@ def bos_orders_create():
                     for o in rows:
                         if not (o.get("name") or "").strip():
                             o["name"] = by_email.get((o.get("email") or "").strip().lower(), o.get("name") or "")
+                # Title-Case the display name on every card: names are often stored
+                # all-lowercase by import/portal flows. Same rule as the invoice —
+                # only re-cases values that are entirely one case, leaving already
+                # mixed-case names (McDonald, DeLuca) intact.
+                for o in rows:
+                    o["name"] = _titlecase_name(o.get("name"))
             except Exception as _e:
                 print(f"[orders] name backfill skipped: {_e!r}", flush=True)
             # Annotate each order with the client's published biofield report PDF
