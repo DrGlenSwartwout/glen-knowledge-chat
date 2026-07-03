@@ -81,6 +81,31 @@ def _combinable_reason(order):
     return None
 
 
+def split_shipping_proportional(total_cents, weights):
+    """Split a combined shipping charge across members in proportion to `weights`
+    (each member's own standalone shipping — what their bottles would cost to ship
+    alone). Returns a list of ints summing EXACTLY to total_cents (largest-remainder
+    rounding). Falls back to an even split when every weight is zero."""
+    total = max(0, int(total_cents or 0))
+    n = len(weights)
+    if n == 0:
+        return []
+    ws = [max(0, int(w or 0)) for w in weights]
+    sw = sum(ws)
+    if sw == 0:                      # no basis -> even split, remainder to the first members
+        base = total // n
+        rem = total - base * n
+        return [base + (1 if i < rem else 0) for i in range(n)]
+    raw = [total * w / sw for w in ws]
+    floors = [int(r) for r in raw]
+    leftover = total - sum(floors)
+    # hand the leftover cents to the largest fractional remainders (deterministic)
+    order = sorted(range(n), key=lambda i: (raw[i] - floors[i], -i), reverse=True)
+    for k in range(leftover):
+        floors[order[k]] += 1
+    return floors
+
+
 def _unpaid_members(cx, sid):
     """Member orders of a shipment that aren't paid/claimed yet."""
     return [m for m in _orders.orders_in_group(cx, sid)

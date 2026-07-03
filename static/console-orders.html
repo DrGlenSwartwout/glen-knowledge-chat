@@ -336,12 +336,15 @@
       if (st==='new') acts += gbtn(sid,'shipments.mark_packed','Pack') + ' ';
       if (tn) acts += gbtn(sid,'shipments.send_tracking','Send tracking') + ' ' + gbtn(sid,'shipments.mark_delivered','Mark delivered') + ' ' + gbtn(sid,'shipments.mark_done','Mark done') + ' ';
     }
+    // Recompute + split the one-parcel shipping (only meaningful while still open).
+    if (!tn) acts += '<button onclick="recalcShipping('+Number(sid)+',false)">Recalc shipping</button> ';
     acts += '<button class="cancel" onclick="if(confirm(\'Un-group shipment #'+Number(sid)+' back into standalone orders?\'))actGroup('+Number(sid)+',\'shipments.cancel\',{})">Cancel</button>';
     // While still open (no label bought), each member can be pulled out individually.
     var memberList = '';
     if (!tn) memberList = '<div class="meta">Members:<br>' + ms.map(function(m){
         var pm = isPaidReady(m) ? '' : ' <span style="color:var(--gold)">unpaid</span>';
-        return '&bull; '+esc(m.name||m.email||('#'+m.id)) + pm
+        var shp = ' &middot; ship $'+(((m.shipping_cents||0))/100).toFixed(2);
+        return '&bull; '+esc(m.name||m.email||('#'+m.id)) + pm + shp
           + ' <button onclick="actGroup('+Number(sid)+',\'shipments.remove\',{order_id:'+Number(m.id)+'})" style="padding:0 6px;border:1px solid var(--border);border-radius:5px;background:none;color:var(--muted);cursor:pointer">remove</button>';
       }).join('<br>') + '</div>';
     var stLabel = allPaid ? esc(st)
@@ -382,7 +385,31 @@
     var r = await fetch('/api/action/shipments.combine', {method:'POST', headers:hdr(), body:JSON.stringify({order_ids:ids})});
     var res = await r.json();
     if (res.status!=='done'){ alert('Could not combine: '+(res.error||'error')); return; }
-    HH.sel={}; load();
+    HH.sel={};
+    // One parcel = one shipping charge: recompute + split it across members right away.
+    var sid = res.result && res.result.shipment_id;
+    if (sid){ await recalcShipping(sid, true); } else { load(); }
+  }
+
+  // Recompute the one-parcel shipping and split it across the shipment's unpaid
+  // members (proportional to each member's own standalone shipping). quiet=true
+  // suppresses the summary alert (used right after combine).
+  async function recalcShipping(sid, quiet){
+    try {
+      var r = await fetch('/api/console/shipments/'+Number(sid)+'/recalc-shipping', {method:'POST', headers:hdr()});
+      var j = await r.json();
+      if (!j.ok){ if(!quiet) alert('Could not recalc shipping: '+(j.error||'error')); load(); return; }
+      if (!quiet){
+        var lines = (j.members||[]).map(function(m){
+          return '• '+(m.name||('#'+m.order_id))+': '
+            + (m.skipped==='paid'
+                ? '$'+((m.shipping_cents||0)/100).toFixed(2)+' (paid, unchanged)'
+                : '$'+((m.new_shipping_cents||0)/100).toFixed(2));
+        }).join('\n');
+        alert('Combined parcel shipping $'+((j.combined_shipping_cents||0)/100).toFixed(2)+', split:\n'+lines);
+      }
+      load();
+    } catch(e){ if(!quiet) alert('Could not recalc shipping.'); load(); }
   }
   function combineCluster(i){
     var c = HH.clusters[i]; if(!c) return;

@@ -27599,6 +27599,71 @@ def console_shipment_suggestions():
     return jsonify({"ok": True, "enabled": True, "clusters": clusters})
 
 
+def _recompute_combined_shipping(cx, sid):
+    """Recompute a combined shipment's ONE-parcel shipping (the geometric packer on
+    the union of all members' bottles, via the same _price_cart the invoices use)
+    and split it across members in proportion to each member's OWN standalone
+    shipping — so each pays their fair share and the combining saving is passed on
+    pro-rata. Only UNPAID members are re-billed; a member already paid keeps its
+    invoice as billed. Returns a summary dict."""
+    members = _bos_orders.orders_in_group(cx, sid)
+    if len(members) < 2:
+        return {"ok": False, "error": "shipment has fewer than 2 members"}
+    ship_addr = {"country": "US"}
+    try:
+        sh = _bos_combined_shipments.get_shipment(cx, sid) or {}
+        ship_addr = {**(sh.get("ship_to") or {}), "country": "US"}
+    except Exception:
+        pass
+
+    def _cart(o):
+        return [{"slug": (it.get("slug") or "").strip(), "qty": int(it.get("qty", 1) or 1)}
+                for it in (o.get("items") or []) if (it.get("slug") or "").strip()]
+
+    def _ship_of(cart):
+        if not cart:
+            return 0
+        try:
+            return int((_price_cart(cart, ship=ship_addr, channel="retail") or {}).get("shipping_cents") or 0)
+        except Exception as e:
+            print(f"[combined-ship] price failed: {e!r}", flush=True)
+            return 0
+
+    union = []
+    for m in members:
+        union += _cart(m)
+    combined = _ship_of(union)
+    weights = [_ship_of(_cart(m)) for m in members]   # each member's standalone shipping
+    shares = _bos_combined_shipments.split_shipping_proportional(combined, weights)
+    updates = []
+    for m, share in zip(members, shares):
+        old_ship = int(m.get("shipping_cents") or 0)
+        if (m.get("pay_status") or "unpaid") == "paid":
+            updates.append({"order_id": m["id"], "name": m.get("name") or "",
+                            "skipped": "paid", "shipping_cents": old_ship})
+            continue
+        new_total = max(0, int(m.get("total_cents") or 0) - old_ship + int(share))
+        _bos_orders.set_order_shipping(cx, m["id"], int(share), new_total)
+        updates.append({"order_id": m["id"], "name": m.get("name") or "",
+                        "old_shipping_cents": old_ship, "new_shipping_cents": int(share),
+                        "new_total_cents": new_total})
+    return {"ok": True, "shipment_id": sid,
+            "combined_shipping_cents": combined, "members": updates}
+
+
+@app.route("/api/console/shipments/<int:sid>/recalc-shipping", methods=["POST"])
+def console_shipment_recalc_shipping(sid):
+    """Owner/ops: recompute + split one-parcel shipping across a combined shipment's
+    unpaid members (proportional to each member's own standalone shipping)."""
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    with _db_lock, _sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = _sqlite3.Row
+        res = _recompute_combined_shipping(cx, sid)
+    return jsonify(res), (200 if res.get("ok") else 400)
+
+
 def _is_shipping_line_name(name):
     """True for any QBO shipping/handling line. Substring match on 'shipping' (covers
     the funnel/reorder line 'Shipping (USPS)' / 'USPS shipping' as well as plain

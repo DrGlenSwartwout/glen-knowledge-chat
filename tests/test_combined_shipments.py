@@ -85,6 +85,27 @@ def test_combine_allows_unpaid_orders_but_blocks_shipping_until_paid():
     assert sh2["status"] == "packed"
 
 
+def test_split_shipping_proportional_by_own_shipping():
+    from dashboard import combined_shipments as C
+    # combined parcel $11.00; JC would ship $6 alone, Desiree $9 alone -> 6:9 of 1100
+    shares = C.split_shipping_proportional(1100, [600, 900])
+    assert sum(shares) == 1100
+    assert shares == [440, 660]
+
+
+def test_split_shipping_proportional_is_exact_with_rounding():
+    from dashboard import combined_shipments as C
+    shares = C.split_shipping_proportional(1000, [100, 200])  # 333.33 / 666.67
+    assert sum(shares) == 1000
+    assert shares == [333, 667]        # leftover cent to the larger fractional part
+
+
+def test_split_shipping_zero_weights_falls_back_to_even():
+    from dashboard import combined_shipments as C
+    assert C.split_shipping_proportional(900, [0, 0]) == [450, 450]
+    assert sum(C.split_shipping_proportional(1001, [0, 0, 0])) == 1001
+
+
 def test_combinable_reason_allows_unpaid_pre_ship_order():
     O, C, cx = _db()
     a = _order(O, cx, "A", name="X", email="x@x.com", items=[{"name": "M", "qty": 1}],
